@@ -1,17 +1,26 @@
+#!/usr/bin/env python3
+"""
+Lark Base Client
+
+專注於高效的全表掃描功能：
+- 快速獲取所有記錄
+- 批次操作
+- 用戶管理
+"""
+
 import logging
 import requests
 import threading
 from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime, timedelta
-from ..config import settings
 
 
 class LarkAuthManager:
     """Lark 認證管理器"""
     
-    def __init__(self, app_id: str = None, app_secret: str = None):
-        self.app_id = app_id or settings.lark.app_id
-        self.app_secret = app_secret or settings.lark.app_secret
+    def __init__(self, app_id: str, app_secret: str):
+        self.app_id = app_id
+        self.app_secret = app_secret
         
         # Token 快取
         self._tenant_access_token = None
@@ -132,7 +141,16 @@ class LarkTableManager:
             return None
     
     def get_table_fields(self, obj_token: str, table_id: str) -> List[Dict[str, Any]]:
-        """獲取表格的完整欄位結構"""
+        """
+        獲取表格的完整欄位結構
+        
+        Args:
+            obj_token: 應用 Token
+            table_id: 表格 ID
+            
+        Returns:
+            List[Dict]: 欄位列表，每個欄位包含 field_name, type 等資訊
+        """
         try:
             token = self.auth_manager.get_tenant_access_token()
             if not token:
@@ -164,13 +182,22 @@ class LarkTableManager:
             return []
     
     def get_available_field_names(self, obj_token: str, table_id: str) -> List[str]:
-        """獲取表格中所有可用的欄位名稱"""
+        """
+        獲取表格中所有可用的欄位名稱
+        
+        Args:
+            obj_token: 應用 Token
+            table_id: 表格 ID
+            
+        Returns:
+            List[str]: 欄位名稱列表
+        """
         fields = self.get_table_fields(obj_token, table_id)
         return [field.get('field_name', '') for field in fields if field.get('field_name')]
 
 
 class LarkRecordManager:
-    """Lark 記錄管理器"""
+    """Lark 記錄管理器 - 專注於全表掃描"""
     
     def __init__(self, auth_manager: LarkAuthManager):
         self.auth_manager = auth_manager
@@ -213,6 +240,16 @@ class LarkRecordManager:
             if result.get('code') != 0:
                 error_msg = result.get('msg', 'Unknown error')
                 self.logger.error(f"API 請求失敗: {error_msg}")
+                # 如果是 FieldNameNotFound 錯誤，嘗試提取更多資訊
+                if 'FieldNameNotFound' in error_msg or 'field' in error_msg.lower():
+                    self.logger.error(f"API 完整回應: {result}")
+                    self.logger.error(f"請求 URL: {url}")
+                    self.logger.error(f"請求方法: {method}")
+                    if method in ['POST', 'PUT'] and 'json' in kwargs:
+                        request_data = kwargs.get('json', {})
+                        if 'fields' in request_data:
+                            self.logger.error(f"請求的欄位列表: {list(request_data['fields'].keys())}")
+                            self.logger.error(f"請求的欄位資料: {request_data['fields']}")
                 return None
             
             return result.get('data', {})
@@ -222,7 +259,16 @@ class LarkRecordManager:
             return None
     
     def get_all_records(self, obj_token: str, table_id: str) -> List[Dict]:
-        """獲取表格所有記錄（高效全表掃描）"""
+        """
+        獲取表格所有記錄（高效全表掃描）
+        
+        Args:
+            obj_token: Obj Token
+            table_id: 表格 ID
+            
+        Returns:
+            記錄列表
+        """
         url = f"{self.base_url}/bitable/v1/apps/{obj_token}/tables/{table_id}/records"
         
         all_records = []
@@ -300,82 +346,102 @@ class LarkRecordManager:
         self.logger.info(f"批次創建完成，成功: {len(success_ids)}, 失敗: {len(error_messages)}")
         
         return overall_success, success_ids, error_messages
+
+
+class LarkUserManager:
+    """Lark 用戶管理器"""
     
-    def batch_update_records(self, obj_token: str, table_id: str, 
-                           updates: List[Tuple[str, Dict[str, Any]]]) -> bool:
-        """批量更新記錄（自動分批處理）"""
-        if not updates:
-            return True
+    def __init__(self, auth_manager: LarkAuthManager):
+        self.auth_manager = auth_manager
         
-        batch_size = 500
+        # 設定日誌
+        self.logger = logging.getLogger(f"{__name__}.LarkUserManager")
         
-        # 分批處理
-        for i in range(0, len(updates), batch_size):
-            batch = updates[i:i + batch_size]
+        # API 配置
+        self.base_url = "https://open.larksuite.com/open-apis"
+        self.timeout = 30
+        
+        # 用戶快取
+        self._user_cache = {}  # email -> user_info
+        self._cache_lock = threading.Lock()
+    
+    def get_user_by_email(self, email: str) -> Optional[Dict]:
+        """根據 Email 獲取用戶資訊"""
+        with self._cache_lock:
+            if email in self._user_cache:
+                return self._user_cache[email]
+        
+        try:
+            token = self.auth_manager.get_tenant_access_token()
+            if not token:
+                return None
             
-            # 準備批次數據
-            payload = {
-                'records': [
-                    {
-                        'record_id': record_id,
-                        'fields': fields
-                    }
-                    for record_id, fields in batch
-                ]
+            headers = {
+                'Authorization': f'Bearer {token}',
+                'Content-Type': 'application/json'
             }
             
-            url = f"{self.base_url}/bitable/v1/apps/{obj_token}/tables/{table_id}/records/batch_update"
-            result = self._make_request('POST', url, json=payload)
+            url = f"{self.base_url}/contact/v3/users/batch_get_id"
+            data = {'emails': [email]}
             
-            if not result:
-                self.logger.error(f"批次更新失敗 {i+1}-{i+len(batch)}/{len(updates)}")
-                return False
+            response = requests.post(url, json=data, headers=headers, timeout=self.timeout)
             
-            self.logger.info(f"批次更新記錄 {i+1}-{i+len(batch)}/{len(updates)} 成功")
-        
-        self.logger.info(f"成功批量更新 {len(updates)} 筆記錄")
-        return True
-    
-    def batch_delete_records(self, obj_token: str, table_id: str, 
-                           record_ids: List[str]) -> bool:
-        """批次刪除記錄"""
-        if not record_ids:
-            return True
-        
-        max_batch_size = 500
-        
-        # 分批處理
-        for i in range(0, len(record_ids), max_batch_size):
-            batch_ids = record_ids[i:i + max_batch_size]
+            if response.status_code != 200:
+                return None
             
-            # 準備批次刪除數據
-            data = {'records': batch_ids}
+            result = response.json()
+            if result.get('code') != 0:
+                return None
             
-            url = f"{self.base_url}/bitable/v1/apps/{obj_token}/tables/{table_id}/records/batch_delete"
-            result = self._make_request('POST', url, json=data)
+            # 提取用戶資訊
+            data_section = result.get('data', {})
+            user_list = data_section.get('user_list', [])
             
-            if not result:
-                self.logger.error(f"批次刪除失敗")
-                return False
-        
-        self.logger.info(f"批次刪除完成，共刪除 {len(record_ids)} 筆記錄")
-        return True
+            if user_list:
+                user_info = user_list[0]
+                user_id = user_info.get('user_id')
+                
+                if not user_id:
+                    return None
+                
+                # 轉換為統一格式
+                result = {
+                    'id': user_id,
+                    'name': user_info.get('name', email.split('@')[0]),
+                    'email': email
+                }
+                
+                # 快取結果
+                with self._cache_lock:
+                    self._user_cache[email] = result
+                return result
+            
+            return None
+                
+        except Exception as e:
+            self.logger.error(f"用戶查詢異常: {e}")
+            return None
 
 
 class LarkClient:
-    """Lark Base Client - 專注於高效的全表掃描功能"""
+    """
+    Lark Base Client
     
-    def __init__(self, app_id: str = None, app_secret: str = None):
-        self.app_id = app_id or settings.lark.app_id
-        self.app_secret = app_secret or settings.lark.app_secret
+    專注於高效的全表掃描功能
+    """
+    
+    def __init__(self, app_id: str, app_secret: str):
+        self.app_id = app_id
+        self.app_secret = app_secret
         
         # 設定日誌
         self.logger = logging.getLogger(f"{__name__}.LarkClient")
         
         # 初始化管理器
-        self.auth_manager = LarkAuthManager(self.app_id, self.app_secret)
+        self.auth_manager = LarkAuthManager(app_id, app_secret)
         self.table_manager = LarkTableManager(self.auth_manager)
         self.record_manager = LarkRecordManager(self.auth_manager)
+        self.user_manager = LarkUserManager(self.auth_manager)
         
         # 當前 Wiki Token
         self._current_wiki_token = None
@@ -403,17 +469,14 @@ class LarkClient:
             # 測試認證
             token = self.auth_manager.get_tenant_access_token()
             if not token:
-                self.logger.error("認證失敗")
                 return False
             
             # 如果提供了 wiki_token，測試 Obj Token 解析
             if wiki_token:
                 obj_token = self.table_manager.get_obj_token(wiki_token)
                 if not obj_token:
-                    self.logger.error("Wiki Token 解析失敗")
                     return False
             
-            self.logger.info("連接測試成功")
             return True
             
         except Exception as e:
@@ -421,7 +484,16 @@ class LarkClient:
             return False
     
     def get_all_records(self, table_id: str, wiki_token: str = None) -> List[Dict]:
-        """獲取表格所有記錄（主要功能）"""
+        """
+        獲取表格所有記錄（主要功能）
+        
+        Args:
+            table_id: 表格 ID
+            wiki_token: Wiki Token（可選，使用預設值）
+            
+        Returns:
+            記錄列表
+        """
         obj_token = self._get_obj_token(wiki_token)
         if not obj_token:
             return []
@@ -446,7 +518,16 @@ class LarkClient:
         return self.record_manager.update_record(obj_token, table_id, record_id, fields)
     
     def get_table_fields(self, table_id: str, wiki_token: str = None) -> List[Dict[str, Any]]:
-        """獲取表格的完整欄位結構"""
+        """
+        獲取表格的完整欄位結構
+        
+        Args:
+            table_id: 表格 ID
+            wiki_token: Wiki Token（可選，使用預設值）
+            
+        Returns:
+            List[Dict]: 欄位列表，每個欄位包含 field_name, type 等資訊
+        """
         obj_token = self._get_obj_token(wiki_token)
         if not obj_token:
             return []
@@ -454,7 +535,16 @@ class LarkClient:
         return self.table_manager.get_table_fields(obj_token, table_id)
     
     def get_available_field_names(self, table_id: str, wiki_token: str = None) -> List[str]:
-        """獲取表格中所有可用的欄位名稱"""
+        """
+        獲取表格中所有可用的欄位名稱
+        
+        Args:
+            table_id: 表格 ID
+            wiki_token: Wiki Token（可選，使用預設值）
+            
+        Returns:
+            List[str]: 欄位名稱列表
+        """
         obj_token = self._get_obj_token(wiki_token)
         if not obj_token:
             return []
@@ -470,23 +560,9 @@ class LarkClient:
         
         return self.record_manager.batch_create_records(obj_token, table_id, records)
     
-    def batch_delete_records(self, table_id: str, record_ids: List[str],
-                           wiki_token: str = None) -> bool:
-        """批次刪除記錄"""
-        obj_token = self._get_obj_token(wiki_token)
-        if not obj_token:
-            return False
-        
-        return self.record_manager.batch_delete_records(obj_token, table_id, record_ids)
-    
-    def batch_update_records(self, table_id: str, updates: List[Tuple[str, Dict]],
-                           wiki_token: str = None) -> bool:
-        """批次更新記錄"""
-        obj_token = self._get_obj_token(wiki_token)
-        if not obj_token:
-            return False
-        
-        return self.record_manager.batch_update_records(obj_token, table_id, updates)
+    def get_user_by_email(self, email: str) -> Optional[Dict]:
+        """根據 Email 獲取用戶資訊"""
+        return self.user_manager.get_user_by_email(email)
     
     def _get_obj_token(self, wiki_token: str = None) -> Optional[str]:
         """獲取 Obj Token（內部方法）"""
@@ -508,8 +584,9 @@ class LarkClient:
         return {
             'auth_token_valid': self.auth_manager.is_token_valid(),
             'obj_token_cache_size': len(self.table_manager._obj_tokens),
+            'user_cache_size': len(self.user_manager._user_cache),
             'client_type': 'LarkClient',
-            'features': ['全表掃描', '批次操作']
+            'features': ['全表掃描', '批次操作', '用戶管理']
         }
     
     def clear_caches(self):
@@ -517,4 +594,11 @@ class LarkClient:
         with self.table_manager._cache_lock:
             self.table_manager._obj_tokens.clear()
         
+        with self.user_manager._cache_lock:
+            self.user_manager._user_cache.clear()
+        
         self.logger.info("所有快取已清理")
+
+
+# 向後相容
+LarkBaseClient = LarkClient
