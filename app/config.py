@@ -15,7 +15,7 @@ class JiraConfig(BaseModel):
 class AppConfig(BaseModel):
     debug: bool = False
     host: str = "0.0.0.0"
-    port: int = 8000
+    port: int = 9999
     database_url: str = "sqlite:///./test_case_repo.db"
     
 class Settings(BaseModel):
@@ -40,7 +40,7 @@ def create_default_config(config_path: str = "config.yaml") -> None:
         "app": {
             "debug": False,
             "host": "0.0.0.0",
-            "port": 8000,
+            "port": 9999,
             "database_url": "sqlite:///./test_case_repo.db"
         },
         "lark": {

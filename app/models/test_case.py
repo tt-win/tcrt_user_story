@@ -221,29 +221,49 @@ class TestCaseCreate(BaseModel):
     precondition: Optional[str] = None
     steps: Optional[str] = None
     expected_result: Optional[str] = None
+    assignee: Optional[LarkUser] = None
+    test_result: Optional[TestResultStatus] = None
+    attachments: Optional[List[LarkAttachment]] = None
+    user_story_map: Optional[List[LarkRecord]] = None
+    tcg: Optional[List[LarkRecord]] = None
+    parent_record: Optional[LarkRecord] = None
 
 
 class TestCaseUpdate(BaseModel):
     """更新測試案例請求模型"""
+    test_case_number: Optional[str] = Field(None, min_length=1)
     title: Optional[str] = Field(None, min_length=1)
     priority: Optional[Priority] = None
     precondition: Optional[str] = None
     steps: Optional[str] = None
     expected_result: Optional[str] = None
+    assignee: Optional[LarkUser] = None
     test_result: Optional[TestResultStatus] = None
+    attachments: Optional[List[LarkAttachment]] = None
+    user_story_map: Optional[List[LarkRecord]] = None
+    tcg: Optional[List[LarkRecord]] = None
+    parent_record: Optional[LarkRecord] = None
 
 
-class TestCaseResponse(BaseModel):
+class TestCaseResponse(TestCase):
     """測試案例回應模型"""
-    record_id: str
-    test_case_number: str
-    title: str
-    priority: str
-    test_result: Optional[str]
-    assignee_name: Optional[str]
-    attachment_count: int
-    tcg_number: Optional[str]
-    user_story: Optional[str]
+    pass
+
+
+class TestCaseBatchOperation(BaseModel):
+    """測試案例批次操作模型"""
+    operation: str = Field(..., description="操作類型：delete, update_tcg, update_priority, update_assignee")
+    record_ids: List[str] = Field(..., description="要操作的記錄 ID 列表")
+    update_data: Optional[Dict[str, Any]] = Field(None, description="更新資料（刪除操作時不需要）")
+
+
+class TestCaseBatchResponse(BaseModel):
+    """測試案例批次操作回應模型"""
+    success: bool = Field(..., description="操作是否成功")
+    processed_count: int = Field(..., description="處理的記錄數")
+    success_count: int = Field(..., description="成功的記錄數")
+    error_count: int = Field(..., description="失敗的記錄數")
+    error_messages: List[str] = Field([], description="錯誤訊息列表")
 
 
 # 欄位映射類別

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, Field, HttpUrl, validator
+from pydantic import BaseModel, Field, HttpUrl, field_validator, ConfigDict
 from typing import Optional, Dict, Any
 from datetime import datetime
 from enum import Enum
@@ -15,25 +15,22 @@ class LarkRepoConfig(BaseModel):
     """Lark Repository 配置"""
     wiki_token: str = Field(..., description="Lark Wiki Token")
     test_case_table_id: str = Field(..., description="測試案例表格 ID")
-    test_run_table_id: Optional[str] = Field(None, description="測試執行表格 ID")
+    # 移除 test_run_table_id，改用 TestRunConfig 管理多個 test run
     
-    @validator('wiki_token')
+    @field_validator('wiki_token')
+    @classmethod
     def validate_wiki_token(cls, v):
         if not v or len(v) < 10:
             raise ValueError('Wiki token must be at least 10 characters long')
         return v
     
-    @validator('test_case_table_id')
+    @field_validator('test_case_table_id')
+    @classmethod
     def validate_test_case_table_id(cls, v):
         if not v or not v.startswith('tbl'):
             raise ValueError('Test case table ID must start with "tbl"')
         return v
     
-    @validator('test_run_table_id')
-    def validate_test_run_table_id(cls, v):
-        if v and not v.startswith('tbl'):
-            raise ValueError('Test run table ID must start with "tbl"')
-        return v
 
 
 class JiraConfig(BaseModel):
@@ -42,7 +39,8 @@ class JiraConfig(BaseModel):
     default_assignee: Optional[str] = Field(None, description="預設指派人")
     issue_type: str = Field("Bug", description="預設 Issue 類型")
     
-    @validator('project_key')
+    @field_validator('project_key')
+    @classmethod
     def validate_project_key(cls, v):
         if v and (len(v) < 2 or len(v) > 10):
             raise ValueError('Project key must be between 2 and 10 characters')
@@ -81,12 +79,11 @@ class Team(BaseModel):
     test_case_count: int = Field(0, description="測試案例數量")
     last_sync_at: Optional[datetime] = Field(None, description="最後同步時間")
     
-    class Config:
-        """Pydantic 配置"""
-        use_enum_values = True
-        validate_assignment = True
-        extra = "forbid"
-        schema_extra = {
+    model_config = ConfigDict(
+        use_enum_values=True,
+        validate_assignment=True,
+        extra="forbid",
+        json_schema_extra={
             "example": {
                 "name": "Frontend Team",
                 "description": "前端開發測試團隊",
@@ -108,8 +105,10 @@ class Team(BaseModel):
                 "status": "active"
             }
         }
+    )
     
-    @validator('name')
+    @field_validator('name')
+    @classmethod
     def validate_name(cls, v):
         if not v.strip():
             raise ValueError('Team name cannot be empty')

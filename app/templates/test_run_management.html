@@ -1,0 +1,761 @@
+{% extends "base.html" %}
+
+{% block title %}測試執行管理 - Test Case Repository Web Tool{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- 頁面標題與工具列 -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h3 mb-1">測試執行管理</h1>
+            <p class="text-muted">管理測試執行記錄，追蹤測試進度和結果</p>
+        </div>
+        <div class="d-flex gap-2">
+            <button type="button" class="btn btn-primary" id="createTestRunBtn">
+                <i class="fas fa-play me-2"></i>建立測試執行
+            </button>
+            <button type="button" class="btn btn-outline-secondary" id="refreshBtn">
+                <i class="fas fa-sync-alt me-2"></i>重新載入
+            </button>
+        </div>
+    </div>
+
+    <!-- 篩選與搜尋區 -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-6 col-lg-3">
+                    <label for="searchInput" class="form-label">關鍵字搜尋</label>
+                    <input type="text" class="form-control" id="searchInput" placeholder="搜尋測試執行名稱...">
+                </div>
+                <div class="col-md-3 col-lg-2">
+                    <label for="statusFilter" class="form-label">執行狀態</label>
+                    <select class="form-select" id="statusFilter">
+                        <option value="">全部狀態</option>
+                        <option value="Planning">計劃中</option>
+                        <option value="In Progress">進行中</option>
+                        <option value="Completed">已完成</option>
+                        <option value="Cancelled">已取消</option>
+                    </select>
+                </div>
+                <div class="col-md-3 col-lg-2">
+                    <label for="assigneeFilter" class="form-label">執行者</label>
+                    <select class="form-select" id="assigneeFilter">
+                        <option value="">全部執行者</option>
+                        <!-- 執行者選項將由 JavaScript 動態載入 -->
+                    </select>
+                </div>
+                <div class="col-md-6 col-lg-3">
+                    <label for="dateRangeFilter" class="form-label">日期範圍</label>
+                    <div class="input-group">
+                        <input type="date" class="form-control" id="startDate">
+                        <span class="input-group-text">至</span>
+                        <input type="date" class="form-control" id="endDate">
+                    </div>
+                </div>
+                <div class="col-md-6 col-lg-2 d-flex align-items-end">
+                    <button type="button" class="btn btn-outline-primary me-2" id="applyFiltersBtn">
+                        <i class="fas fa-filter me-2"></i>套用篩選
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary" id="clearFiltersBtn">
+                        <i class="fas fa-times me-2"></i>清除
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 載入中狀態 -->
+    <div class="text-center py-5 d-none" id="loadingState">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">載入中...</span>
+        </div>
+        <div class="mt-2 text-muted">載入測試執行記錄中...</div>
+    </div>
+
+    <!-- 測試執行表格 -->
+    <div class="card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover" id="testRunsTable">
+                    <thead>
+                        <tr>
+                            <th width="80">ID</th>
+                            <th>測試執行名稱</th>
+                            <th width="100">狀態</th>
+                            <th width="120">執行者</th>
+                            <th width="150">進度</th>
+                            <th width="120">開始時間</th>
+                            <th width="120">結束時間</th>
+                            <th width="100">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="testRunsTableBody">
+                        <!-- 將由 JavaScript 動態載入 -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- 分頁控制 -->
+    <nav aria-label="測試執行分頁" class="mt-3">
+        <ul class="pagination justify-content-center" id="pagination">
+            <!-- 將由 JavaScript 動態載入 -->
+        </ul>
+    </nav>
+</div>
+
+<!-- 建立測試執行 Modal -->
+<div class="modal fade" id="createTestRunModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-play me-2"></i>建立測試執行
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="testRunForm">
+                    <div class="mb-3">
+                        <label for="testRunName" class="form-label">測試執行名稱 <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="testRunName" name="name" required>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="assignee" class="form-label">執行者</label>
+                            <input type="text" class="form-control" id="assignee" name="assignee">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="plannedDate" class="form-label">計劃執行日期</label>
+                            <input type="date" class="form-control" id="plannedDate" name="planned_date">
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="description" class="form-label">執行描述</label>
+                        <textarea class="form-control" id="description" name="description" rows="3" 
+                                placeholder="描述這次測試執行的目的、範圍或特殊注意事項"></textarea>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label class="form-label">選擇測試案例</label>
+                        <div class="border rounded p-3" style="max-height: 300px; overflow-y: auto;">
+                            <div class="mb-2">
+                                <input type="text" class="form-control form-control-sm" 
+                                       id="testCaseSearch" placeholder="搜尋測試案例...">
+                            </div>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="checkbox" id="selectAllTestCases">
+                                <label class="form-check-label fw-bold" for="selectAllTestCases">
+                                    全選
+                                </label>
+                            </div>
+                            <div id="testCasesList">
+                                <!-- 測試案例列表將由 JavaScript 動態載入 -->
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="saveTestRunBtn">
+                    <i class="fas fa-save me-2"></i>建立測試執行
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 測試執行詳情 Modal -->
+<div class="modal fade" id="testRunDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-clipboard-list me-2"></i>
+                    <span id="testRunDetailTitle">測試執行詳情</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <!-- 執行資訊摘要 -->
+                <div class="row mb-4">
+                    <div class="col-md-3">
+                        <div class="card bg-light">
+                            <div class="card-body text-center">
+                                <div class="h4 mb-1" id="totalTestCases">0</div>
+                                <div class="text-muted small">總測試案例</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card bg-success text-white">
+                            <div class="card-body text-center">
+                                <div class="h4 mb-1" id="passedTestCases">0</div>
+                                <div class="small">通過</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card bg-danger text-white">
+                            <div class="card-body text-center">
+                                <div class="h4 mb-1" id="failedTestCases">0</div>
+                                <div class="small">失敗</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3">
+                        <div class="card bg-warning text-white">
+                            <div class="card-body text-center">
+                                <div class="h4 mb-1" id="skippedTestCases">0</div>
+                                <div class="small">跳過</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 測試案例結果表格 -->
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th width="100">案例 ID</th>
+                                <th>標題</th>
+                                <th width="80">狀態</th>
+                                <th width="120">執行時間</th>
+                                <th width="100">結果</th>
+                                <th width="100">操作</th>
+                            </tr>
+                        </thead>
+                        <tbody id="testRunResultsTable">
+                            <!-- 將由 JavaScript 動態載入 -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 執行測試案例 Modal -->
+<div class="modal fade" id="executeTestModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-play-circle me-2"></i>執行測試案例
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="testCaseContent">
+                    <!-- 測試案例內容將由 JavaScript 動態載入 -->
+                </div>
+                
+                <hr>
+                
+                <div class="row">
+                    <div class="col-md-4">
+                        <label for="testResult" class="form-label">執行結果 <span class="text-danger">*</span></label>
+                        <select class="form-select" id="testResult" required>
+                            <option value="">請選擇結果</option>
+                            <option value="Pass">通過</option>
+                            <option value="Fail">失敗</option>
+                            <option value="Skip">跳過</option>
+                        </select>
+                    </div>
+                    <div class="col-md-8">
+                        <label for="executionNotes" class="form-label">執行備註</label>
+                        <textarea class="form-control" id="executionNotes" rows="3" 
+                                placeholder="記錄執行過程中的發現、問題或其他備註"></textarea>
+                    </div>
+                </div>
+                
+                <div class="mt-3" id="failureDetailsSection" style="display: none;">
+                    <label for="failureDetails" class="form-label">失敗詳情</label>
+                    <textarea class="form-control" id="failureDetails" rows="3" 
+                            placeholder="詳細描述失敗原因、錯誤訊息或異常行為"></textarea>
+                </div>
+                
+                <div class="mt-3">
+                    <label for="screenshots" class="form-label">結果截圖</label>
+                    <input type="file" class="form-control" id="screenshots" multiple accept="image/*">
+                    <div class="form-text">可上傳多張截圖作為執行結果證明</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="saveResultBtn">
+                    <i class="fas fa-save me-2"></i>儲存結果
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let testRuns = [];
+let filteredTestRuns = [];
+let currentPage = 1;
+let pageSize = 20;
+let availableTestCases = [];
+let currentTestRun = null;
+let currentExecutingTestCase = null;
+
+document.addEventListener('DOMContentLoaded', function() {
+    initTestRunManagement();
+    bindEvents();
+});
+
+function initTestRunManagement() {
+    loadTestRuns();
+    loadAvailableTestCases();
+}
+
+async function loadTestRuns() {
+    try {
+        showLoadingState();
+        
+        const response = await fetch('/api/test_runs');
+        if (!response.ok) {
+            throw new Error('載入測試執行記錄失敗');
+        }
+        
+        testRuns = await response.json();
+        filteredTestRuns = [...testRuns];
+        
+        renderTestRunsTable();
+        updatePagination();
+        hideLoadingState();
+        
+    } catch (error) {
+        console.error('載入測試執行記錄失敗:', error);
+        showError('載入測試執行記錄失敗：' + error.message);
+        hideLoadingState();
+    }
+}
+
+async function loadAvailableTestCases() {
+    try {
+        const response = await fetch('/api/test_cases');
+        if (!response.ok) {
+            throw new Error('載入測試案例失敗');
+        }
+        
+        availableTestCases = await response.json();
+        renderTestCasesList();
+        
+    } catch (error) {
+        console.error('載入測試案例失敗:', error);
+        showError('載入測試案例失敗：' + error.message);
+    }
+}
+
+function renderTestRunsTable() {
+    const tbody = document.getElementById('testRunsTableBody');
+    const startIndex = (currentPage - 1) * pageSize;
+    const endIndex = startIndex + pageSize;
+    const pageTestRuns = filteredTestRuns.slice(startIndex, endIndex);
+    
+    if (pageTestRuns.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="8" class="text-center py-4">
+                    <i class="fas fa-search fa-2x text-muted mb-2"></i>
+                    <div class="text-muted">沒有找到符合條件的測試執行記錄</div>
+                </td>
+            </tr>
+        `;
+        return;
+    }
+    
+    tbody.innerHTML = pageTestRuns.map(testRun => `
+        <tr>
+            <td>
+                <code class="small">${testRun.id}</code>
+            </td>
+            <td>
+                <div class="fw-medium">${testRun.name}</div>
+                <div class="small text-muted">${testRun.description || ''}</div>
+            </td>
+            <td>
+                <span class="badge ${getStatusBadgeClass(testRun.status)}">${getStatusText(testRun.status)}</span>
+            </td>
+            <td>
+                <div class="small">${testRun.assignee || '-'}</div>
+            </td>
+            <td>
+                <div class="progress" style="height: 20px;">
+                    <div class="progress-bar bg-success" style="width: ${testRun.pass_rate || 0}%">
+                        ${testRun.pass_rate || 0}%
+                    </div>
+                </div>
+                <div class="small text-muted mt-1">
+                    ${testRun.passed || 0}/${testRun.total || 0} 通過
+                </div>
+            </td>
+            <td>
+                <div class="small text-muted">
+                    ${formatDate(testRun.start_date, 'date')}
+                </div>
+            </td>
+            <td>
+                <div class="small text-muted">
+                    ${testRun.end_date ? formatDate(testRun.end_date, 'date') : '-'}
+                </div>
+            </td>
+            <td>
+                <div class="btn-group">
+                    <button type="button" class="btn btn-sm btn-outline-primary" 
+                            onclick="viewTestRunDetail(${testRun.id})" title="檢視詳情">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-success" 
+                            onclick="executeTestRun(${testRun.id})" title="執行測試">
+                        <i class="fas fa-play"></i>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-danger" 
+                            onclick="deleteTestRun(${testRun.id})" title="刪除">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function renderTestCasesList() {
+    const container = document.getElementById('testCasesList');
+    
+    if (availableTestCases.length === 0) {
+        container.innerHTML = '<div class="text-muted text-center py-3">尚無可用的測試案例</div>';
+        return;
+    }
+    
+    container.innerHTML = availableTestCases.map(testCase => `
+        <div class="form-check mb-1">
+            <input class="form-check-input test-case-checkbox" type="checkbox" 
+                   value="${testCase.id}" id="testCase${testCase.id}">
+            <label class="form-check-label" for="testCase${testCase.id}">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="fw-medium">${testCase.title}</div>
+                        <div class="small text-muted">${testCase.case_id || testCase.id}</div>
+                    </div>
+                    <span class="badge ${getPriorityBadgeClass(testCase.priority)} ms-2">
+                        ${getPriorityText(testCase.priority)}
+                    </span>
+                </div>
+            </label>
+        </div>
+    `).join('');
+}
+
+function bindEvents() {
+    // 建立測試執行按鈕
+    document.getElementById('createTestRunBtn').addEventListener('click', showCreateTestRunModal);
+    
+    // 重新載入按鈕
+    document.getElementById('refreshBtn').addEventListener('click', loadTestRuns);
+    
+    // 搜尋與篩選
+    document.getElementById('applyFiltersBtn').addEventListener('click', applyFilters);
+    document.getElementById('clearFiltersBtn').addEventListener('click', clearFilters);
+    
+    // 儲存測試執行按鈕
+    document.getElementById('saveTestRunBtn').addEventListener('click', saveTestRun);
+    
+    // 全選測試案例
+    document.getElementById('selectAllTestCases').addEventListener('change', toggleSelectAllTestCases);
+    
+    // 測試案例搜尋
+    document.getElementById('testCaseSearch').addEventListener('input', filterTestCases);
+    
+    // 測試結果變更
+    document.getElementById('testResult').addEventListener('change', function() {
+        const failureSection = document.getElementById('failureDetailsSection');
+        if (this.value === 'Fail') {
+            failureSection.style.display = 'block';
+        } else {
+            failureSection.style.display = 'none';
+        }
+    });
+    
+    // 儲存執行結果按鈕
+    document.getElementById('saveResultBtn').addEventListener('click', saveExecutionResult);
+}
+
+function showCreateTestRunModal() {
+    const modal = document.getElementById('createTestRunModal');
+    const form = document.getElementById('testRunForm');
+    
+    // 重設表單
+    form.reset();
+    
+    // 重設測試案例選擇
+    document.querySelectorAll('.test-case-checkbox').forEach(cb => cb.checked = false);
+    document.getElementById('selectAllTestCases').checked = false;
+    
+    const bsModal = new bootstrap.Modal(modal);
+    bsModal.show();
+}
+
+async function saveTestRun() {
+    const form = document.getElementById('testRunForm');
+    const formData = new FormData(form);
+    
+    // 獲取選中的測試案例
+    const selectedTestCases = Array.from(document.querySelectorAll('.test-case-checkbox:checked'))
+        .map(cb => parseInt(cb.value));
+    
+    if (selectedTestCases.length === 0) {
+        showError('請至少選擇一個測試案例');
+        return;
+    }
+    
+    const testRunData = {
+        name: formData.get('name'),
+        assignee: formData.get('assignee'),
+        description: formData.get('description'),
+        planned_date: formData.get('planned_date'),
+        test_case_ids: selectedTestCases
+    };
+    
+    // 表單驗證
+    if (!testRunData.name) {
+        showError('請填寫測試執行名稱');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/test_runs', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(testRunData)
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.detail || '建立測試執行失敗');
+        }
+        
+        // 關閉 Modal
+        const modal = bootstrap.Modal.getInstance(document.getElementById('createTestRunModal'));
+        modal.hide();
+        
+        // 重新載入測試執行列表
+        await loadTestRuns();
+        
+        showSuccess('測試執行建立成功');
+        
+    } catch (error) {
+        console.error('建立測試執行失敗:', error);
+        showError('建立失敗：' + error.message);
+    }
+}
+
+function toggleSelectAllTestCases() {
+    const selectAll = document.getElementById('selectAllTestCases').checked;
+    document.querySelectorAll('.test-case-checkbox').forEach(cb => {
+        if (cb.style.display !== 'none') { // 只選擇可見的項目
+            cb.checked = selectAll;
+        }
+    });
+}
+
+function filterTestCases() {
+    const searchTerm = document.getElementById('testCaseSearch').value.toLowerCase();
+    const testCaseItems = document.querySelectorAll('#testCasesList .form-check');
+    
+    testCaseItems.forEach(item => {
+        const text = item.textContent.toLowerCase();
+        if (text.includes(searchTerm)) {
+            item.style.display = 'block';
+        } else {
+            item.style.display = 'none';
+        }
+    });
+}
+
+function applyFilters() {
+    const search = document.getElementById('searchInput').value.toLowerCase();
+    const status = document.getElementById('statusFilter').value;
+    const assignee = document.getElementById('assigneeFilter').value;
+    const startDate = document.getElementById('startDate').value;
+    const endDate = document.getElementById('endDate').value;
+    
+    filteredTestRuns = testRuns.filter(testRun => {
+        const matchSearch = !search || testRun.name.toLowerCase().includes(search);
+        const matchStatus = !status || testRun.status === status;
+        const matchAssignee = !assignee || testRun.assignee === assignee;
+        
+        const matchDate = (!startDate || testRun.start_date >= startDate) &&
+                         (!endDate || testRun.start_date <= endDate);
+        
+        return matchSearch && matchStatus && matchAssignee && matchDate;
+    });
+    
+    currentPage = 1;
+    renderTestRunsTable();
+    updatePagination();
+}
+
+function clearFilters() {
+    document.getElementById('searchInput').value = '';
+    document.getElementById('statusFilter').value = '';
+    document.getElementById('assigneeFilter').value = '';
+    document.getElementById('startDate').value = '';
+    document.getElementById('endDate').value = '';
+    
+    filteredTestRuns = [...testRuns];
+    currentPage = 1;
+    renderTestRunsTable();
+    updatePagination();
+}
+
+// 工具函數
+function getStatusBadgeClass(status) {
+    const classes = {
+        'Planning': 'bg-secondary',
+        'In Progress': 'bg-primary',
+        'Completed': 'bg-success',
+        'Cancelled': 'bg-danger'
+    };
+    return classes[status] || 'bg-secondary';
+}
+
+function getStatusText(status) {
+    const texts = {
+        'Planning': '計劃中',
+        'In Progress': '進行中',
+        'Completed': '已完成',
+        'Cancelled': '已取消'
+    };
+    return texts[status] || status;
+}
+
+function getPriorityBadgeClass(priority) {
+    const classes = {
+        'High': 'bg-danger',
+        'Medium': 'bg-warning',
+        'Low': 'bg-info'
+    };
+    return classes[priority] || 'bg-secondary';
+}
+
+function getPriorityText(priority) {
+    const texts = {
+        'High': '高',
+        'Medium': '中',
+        'Low': '低'
+    };
+    return texts[priority] || priority;
+}
+
+function showLoadingState() {
+    document.getElementById('loadingState').classList.remove('d-none');
+}
+
+function hideLoadingState() {
+    document.getElementById('loadingState').classList.add('d-none');
+}
+
+function updatePagination() {
+    const pagination = document.getElementById('pagination');
+    const totalPages = Math.ceil(filteredTestRuns.length / pageSize);
+    
+    if (totalPages <= 1) {
+        pagination.innerHTML = '';
+        return;
+    }
+    
+    let paginationHtml = '';
+    
+    // 上一頁
+    paginationHtml += `
+        <li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
+            <a class="page-link" href="#" onclick="changePage(${currentPage - 1})">上一頁</a>
+        </li>
+    `;
+    
+    // 頁碼
+    for (let i = 1; i <= totalPages; i++) {
+        if (i === currentPage) {
+            paginationHtml += `<li class="page-item active"><a class="page-link" href="#">${i}</a></li>`;
+        } else if (i === 1 || i === totalPages || (i >= currentPage - 2 && i <= currentPage + 2)) {
+            paginationHtml += `<li class="page-item"><a class="page-link" href="#" onclick="changePage(${i})">${i}</a></li>`;
+        } else if (i === currentPage - 3 || i === currentPage + 3) {
+            paginationHtml += `<li class="page-item disabled"><a class="page-link" href="#">...</a></li>`;
+        }
+    }
+    
+    // 下一頁
+    paginationHtml += `
+        <li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
+            <a class="page-link" href="#" onclick="changePage(${currentPage + 1})">下一頁</a>
+        </li>
+    `;
+    
+    pagination.innerHTML = paginationHtml;
+}
+
+function changePage(page) {
+    const totalPages = Math.ceil(filteredTestRuns.length / pageSize);
+    if (page >= 1 && page <= totalPages) {
+        currentPage = page;
+        renderTestRunsTable();
+        updatePagination();
+    }
+}
+
+// 通用工具函數
+function showSuccess(message) {
+    if (AppUtils && AppUtils.showSuccess) {
+        AppUtils.showSuccess(message);
+    } else {
+        alert(message);
+    }
+}
+
+function showError(message) {
+    if (AppUtils && AppUtils.showError) {
+        AppUtils.showError(message);
+    } else {
+        alert(message);
+    }
+}
+
+function formatDate(dateString, format) {
+    if (AppUtils && AppUtils.formatDate) {
+        return AppUtils.formatDate(dateString, format);
+    } else {
+        return new Date(dateString).toLocaleDateString();
+    }
+}
+
+// 佔位函數 - 待實作
+function viewTestRunDetail(id) {
+    showError('測試執行詳情檢視功能尚未實作');
+}
+
+function executeTestRun(id) {
+    showError('測試執行功能尚未實作');
+}
+
+function deleteTestRun(id) {
+    showError('刪除測試執行功能尚未實作');
+}
+
+function saveExecutionResult() {
+    showError('儲存執行結果功能尚未實作');
+}
+</script>
+{% endblock %}

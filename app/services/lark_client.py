@@ -314,6 +314,43 @@ class LarkRecordManager:
         result = self._make_request('PUT', url, json=data)
         return result is not None
     
+    def delete_record(self, obj_token: str, table_id: str, record_id: str) -> bool:
+        """刪除單筆記錄"""
+        url = f"{self.base_url}/bitable/v1/apps/{obj_token}/tables/{table_id}/records/{record_id}"
+        
+        result = self._make_request('DELETE', url)
+        return result is not None
+    
+    def batch_delete_records(self, obj_token: str, table_id: str, record_ids: List[str]) -> Tuple[bool, int, List[str]]:
+        """批次刪除記錄"""
+        if not record_ids:
+            return True, 0, []
+        
+        max_batch_size = 500
+        deleted_count = 0
+        error_messages = []
+        
+        # 分批處理
+        for i in range(0, len(record_ids), max_batch_size):
+            batch_ids = record_ids[i:i + max_batch_size]
+            
+            url = f"{self.base_url}/bitable/v1/apps/{obj_token}/tables/{table_id}/records/batch_delete"
+            data = {'records': batch_ids}
+            
+            result = self._make_request('POST', url, json=data)
+            
+            if result:
+                # 成功刪除的記錄
+                deleted_records = result.get('records', [])
+                deleted_count += len(deleted_records)
+            else:
+                error_messages.append(f"批次 {i//max_batch_size + 1} 刪除失敗")
+        
+        overall_success = len(error_messages) == 0
+        self.logger.info(f"批次刪除完成，成功: {deleted_count}, 失敗: {len(error_messages)}")
+        
+        return overall_success, deleted_count, error_messages
+    
     def batch_create_records(self, obj_token: str, table_id: str, 
                            records_data: List[Dict]) -> Tuple[bool, List[str], List[str]]:
         """批次創建記錄"""
@@ -517,6 +554,23 @@ class LarkClient:
         
         return self.record_manager.update_record(obj_token, table_id, record_id, fields)
     
+    def delete_record(self, table_id: str, record_id: str, wiki_token: str = None) -> bool:
+        """刪除單筆記錄"""
+        obj_token = self._get_obj_token(wiki_token)
+        if not obj_token:
+            return False
+        
+        return self.record_manager.delete_record(obj_token, table_id, record_id)
+    
+    def batch_delete_records(self, table_id: str, record_ids: List[str], 
+                           wiki_token: str = None) -> Tuple[bool, int, List[str]]:
+        """批次刪除記錄"""
+        obj_token = self._get_obj_token(wiki_token)
+        if not obj_token:
+            return False, 0, ['無法獲取 Obj Token']
+        
+        return self.record_manager.batch_delete_records(obj_token, table_id, record_ids)
+    
     def get_table_fields(self, table_id: str, wiki_token: str = None) -> List[Dict[str, Any]]:
         """
         獲取表格的完整欄位結構
@@ -598,6 +652,158 @@ class LarkClient:
             self.user_manager._user_cache.clear()
         
         self.logger.info("所有快取已清理")
+    
+    def upload_file_to_drive(self, file_content: bytes, file_name: str, wiki_token: str = None) -> Optional[str]:
+        """上傳檔案到 Lark Drive 並返回 file_token"""
+        obj_token = self._get_obj_token(wiki_token)
+        if not obj_token:
+            return None
+        
+        try:
+            token = self.auth_manager.get_tenant_access_token()
+            if not token:
+                self.logger.error("無法獲取 Access Token")
+                return None
+            
+            headers = {
+                'Authorization': f'Bearer {token}'
+            }
+            
+            # 準備 multipart/form-data
+            files = {
+                'file': (file_name, file_content, 'application/octet-stream')
+            }
+            
+            data = {
+                'file_name': file_name,
+                'parent_type': 'bitable',
+                'parent_node': obj_token
+            }
+            
+            url = f"{self.record_manager.base_url}/drive/v1/files/upload_all"
+            response = requests.post(
+                url, 
+                headers=headers, 
+                files=files, 
+                data=data,
+                timeout=self.record_manager.timeout
+            )
+            
+            if response.status_code != 200:
+                self.logger.error(f"檔案上傳失敗，HTTP {response.status_code}: {response.text}")
+                return None
+            
+            result = response.json()
+            
+            if result.get('code') != 0:
+                error_msg = result.get('msg', 'Unknown error')
+                self.logger.error(f"檔案上傳失敗: {error_msg}")
+                return None
+            
+            file_token = result.get('data', {}).get('file_token')
+            if file_token:
+                self.logger.info(f"檔案上傳成功，file_token: {file_token}")
+                return file_token
+            else:
+                self.logger.error("檔案上傳成功但未獲取到 file_token")
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"檔案上傳異常: {e}")
+            return None
+    
+    def update_record_attachment(self, table_id: str, record_id: str, field_name: str, 
+                               file_tokens: List[str], wiki_token: str = None) -> bool:
+        """更新記錄的附件欄位"""
+        obj_token = self._get_obj_token(wiki_token)
+        if not obj_token:
+            return False
+        
+        try:
+            # 準備附件欄位資料
+            attachment_data = [{'file_token': token} for token in file_tokens]
+            
+            # 準備更新資料
+            fields = {
+                field_name: attachment_data
+            }
+            
+            # 呼叫更新記錄 API
+            success = self.record_manager.update_record(obj_token, table_id, record_id, fields)
+            
+            if success:
+                self.logger.info(f"附件欄位更新成功，記錄: {record_id}，附件數: {len(file_tokens)}")
+            else:
+                self.logger.error(f"附件欄位更新失敗，記錄: {record_id}")
+            
+            return success
+            
+        except Exception as e:
+            self.logger.error(f"附件欄位更新異常: {e}")
+            return False
+    
+    def upload_and_attach_file(self, table_id: str, record_id: str, field_name: str,
+                             file_content: bytes, file_name: str, append: bool = True,
+                             wiki_token: str = None) -> bool:
+        """
+        上傳檔案並附加到記錄的附件欄位
+        
+        Args:
+            table_id: 表格 ID
+            record_id: 記錄 ID
+            field_name: 附件欄位名稱
+            file_content: 檔案內容（二進位）
+            file_name: 檔案名稱
+            append: 是否追加到現有附件（True）或替換全部附件（False）
+            wiki_token: Wiki Token（可選）
+            
+        Returns:
+            bool: 是否成功
+        """
+        obj_token = self._get_obj_token(wiki_token)
+        if not obj_token:
+            return False
+        
+        try:
+            # 步驟 1: 上傳檔案到 Lark Drive
+            file_token = self.upload_file_to_drive(file_content, file_name, wiki_token)
+            if not file_token:
+                return False
+            
+            # 步驟 2: 獲取現有附件（如果是追加模式）
+            existing_file_tokens = []
+            if append:
+                # 獲取現有記錄
+                records = self.get_all_records(table_id, wiki_token)
+                target_record = None
+                for record in records:
+                    if record.get('record_id') == record_id:
+                        target_record = record
+                        break
+                
+                if target_record:
+                    existing_attachments = target_record.get('fields', {}).get(field_name, [])
+                    if isinstance(existing_attachments, list):
+                        existing_file_tokens = [att.get('file_token') for att in existing_attachments 
+                                              if att.get('file_token')]
+            
+            # 步驟 3: 準備完整的附件列表
+            all_file_tokens = existing_file_tokens + [file_token]
+            
+            # 步驟 4: 更新記錄的附件欄位
+            success = self.update_record_attachment(table_id, record_id, field_name, 
+                                                  all_file_tokens, wiki_token)
+            
+            if success:
+                self.logger.info(f"檔案上傳並附加成功，檔案: {file_name}")
+            else:
+                self.logger.error(f"檔案上傳成功但附加到記錄失敗，檔案: {file_name}")
+            
+            return success
+            
+        except Exception as e:
+            self.logger.error(f"檔案上傳並附加異常: {e}")
+            return False
 
 
 # 向後相容

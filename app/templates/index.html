@@ -1,0 +1,268 @@
+{% extends "base.html" %}
+
+{% block title %}首頁 - Test Case Repository Web Tool{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- 頂部標題列 -->
+    <div class="row mb-4">
+        <div class="col">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h1 class="text-primary mb-1">Test Case Repository</h1>
+                    <p class="text-muted mb-0">選擇團隊開始管理測試案例</p>
+                </div>
+                <div>
+                    <!-- 右上角團隊設定進入點 -->
+                    <a href="/team-management" class="btn btn-outline-primary">
+                        <i class="fas fa-cog me-2"></i>團隊設定
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 載入狀態 -->
+    <div id="loading-state" class="text-center py-5" style="display: none;">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">載入中...</span>
+        </div>
+        <div class="mt-3 text-muted">載入團隊資料中...</div>
+    </div>
+
+    <!-- 團隊列表區域 -->
+    <div id="teams-section">
+        <!-- 將由 JavaScript 動態載入 -->
+    </div>
+
+    <!-- 無團隊時的提示區域 -->
+    <div id="no-teams-section" style="display: none;">
+        <div class="row justify-content-center">
+            <div class="col-md-6 col-lg-4">
+                <div class="card text-center add-team-card" onclick="goToTeamManagement()" style="cursor: pointer;">
+                    <div class="card-body py-5">
+                        <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center mx-auto mb-3" 
+                             style="width: 64px; height: 64px; font-size: 24px;">
+                            <i class="fas fa-plus"></i>
+                        </div>
+                        <h5 class="text-primary mb-2">新增第一個團隊</h5>
+                        <p class="text-muted small mb-0">
+                            建立團隊並設定 Lark 資料來源
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 有團隊時的列表區域 -->
+    <div id="teams-list" style="display: none;">
+        <div class="row" id="teams-container">
+            <!-- 團隊卡片和新增團隊卡片將在此處動態生成 -->
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let teams = [];
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadTeams();
+});
+
+async function loadTeams() {
+    try {
+        showLoading();
+        
+        const response = await fetch('/api/teams/');
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        teams = await response.json();
+        renderTeams();
+        
+    } catch (error) {
+        console.error('載入團隊失敗:', error);
+        AppUtils.showError('載入團隊失敗：' + error.message);
+        showNoTeams();
+    } finally {
+        hideLoading();
+    }
+}
+
+function renderTeams() {
+    if (!teams || teams.length === 0) {
+        showNoTeams();
+        return;
+    }
+    
+    showTeamsList();
+    renderTeamCards();
+}
+
+function showLoading() {
+    document.getElementById('loading-state').style.display = 'block';
+    document.getElementById('teams-section').style.display = 'none';
+}
+
+function hideLoading() {
+    document.getElementById('loading-state').style.display = 'none';
+    document.getElementById('teams-section').style.display = 'block';
+}
+
+function showNoTeams() {
+    document.getElementById('no-teams-section').style.display = 'block';
+    document.getElementById('teams-list').style.display = 'none';
+}
+
+function showTeamsList() {
+    document.getElementById('no-teams-section').style.display = 'none';
+    document.getElementById('teams-list').style.display = 'block';
+}
+
+function renderTeamCards() {
+    const container = document.getElementById('teams-container');
+    
+    // 現有團隊卡片
+    const teamsHtml = teams.map(team => `
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card h-100 team-card" onclick="selectTeam(${team.id})" style="cursor: pointer;">
+                <div class="card-body">
+                    <div class="d-flex align-items-start mb-3">
+                        <div class="flex-shrink-0 me-3">
+                            <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center" 
+                                 style="width: 48px; height: 48px; font-size: 18px; font-weight: bold;">
+                                ${getTeamInitials(team.name)}
+                            </div>
+                        </div>
+                        <div class="flex-grow-1">
+                            <h5 class="card-title text-primary mb-1">${escapeHtml(team.name)}</h5>
+                            <p class="card-text text-muted small mb-0">
+                                ${escapeHtml(team.description || '無描述')}
+                            </p>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <small class="text-muted">
+                            <i class="fas fa-table me-1"></i>已連結 Lark 資料源
+                        </small>
+                    </div>
+                    
+                    <div class="text-center">
+                        <button class="btn btn-primary w-100" onclick="event.stopPropagation(); selectTeam(${team.id})">
+                            <i class="fas fa-arrow-right me-2"></i>進入團隊
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `).join('');
+    
+    // 新增團隊卡片
+    const addTeamCard = `
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card h-100 add-team-card text-center" onclick="goToTeamManagement()" style="cursor: pointer;">
+                <div class="card-body d-flex flex-column justify-content-center">
+                    <div class="text-primary rounded-circle d-flex align-items-center justify-content-center mx-auto mb-3" 
+                         style="width: 48px; height: 48px; font-size: 18px; border: 2px dashed var(--tr-primary);">
+                        <i class="fas fa-plus"></i>
+                    </div>
+                    <h6 class="text-primary mb-1">新增更多團隊</h6>
+                    <small class="text-muted">建立新的團隊專案</small>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    container.innerHTML = teamsHtml + addTeamCard;
+}
+
+function selectTeam(teamId) {
+    const team = teams.find(t => t.id === teamId);
+    if (!team) return;
+    
+    // 儲存選擇的團隊
+    if (AppUtils && AppUtils.setCurrentTeam) {
+        AppUtils.setCurrentTeam(team);
+        AppUtils.showSuccess(`已選擇團隊：${team.name}`);
+        
+        // 跳轉到測試案例管理
+        setTimeout(() => {
+            window.location.href = '/test-case-management';
+        }, 500);
+    }
+}
+
+function goToTeamManagement() {
+    window.location.href = '/team-management';
+}
+
+function getTeamInitials(name) {
+    if (!name) return 'T';
+    
+    return name
+        .split(' ')
+        .map(word => word.charAt(0).toUpperCase())
+        .slice(0, 2)
+        .join('');
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+    };
+    return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+}
+
+// 添加團隊卡片 hover 效果
+document.addEventListener('DOMContentLoaded', function() {
+    // CSS hover 效果將通過樣式表定義
+});
+</script>
+
+<style>
+.team-card {
+    transition: all 0.2s ease;
+    border: 1px solid var(--tr-border-light);
+}
+
+.team-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--tr-shadow-md);
+    border-color: var(--tr-primary);
+}
+
+.team-card:hover .card-title {
+    color: var(--tr-primary-dark) !important;
+}
+
+.add-team-card {
+    transition: all 0.2s ease;
+    border: 1px solid var(--tr-border-light);
+}
+
+.add-team-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--tr-shadow-md);
+    border-color: var(--tr-primary);
+}
+
+.add-team-card:hover h5,
+.add-team-card:hover h6 {
+    color: var(--tr-primary-dark) !important;
+}
+
+.add-team-card:hover .fas {
+    color: var(--tr-primary-dark) !important;
+}
+</style>
+{% endblock %}

@@ -399,24 +399,34 @@ class TestRunStatistics(BaseModel):
     failed_runs: int = Field(..., description="失敗數")
     retest_runs: int = Field(..., description="重測數")
     not_available_runs: int = Field(..., description="不適用數")
+    execution_rate: float = Field(..., description="執行完成率（百分比）")
+    pass_rate: float = Field(..., description="通過率（百分比）")
+    total_pass_rate: float = Field(..., description="總通過率（百分比）")
     
-    @property
-    def execution_rate(self) -> float:
-        """執行完成率（百分比）"""
-        if self.total_runs == 0:
-            return 0.0
-        return round((self.executed_runs / self.total_runs) * 100, 2)
-    
-    @property
-    def pass_rate(self) -> float:
-        """通過率（基於已執行數，百分比）"""
-        if self.executed_runs == 0:
-            return 0.0
-        return round((self.passed_runs / self.executed_runs) * 100, 2)
-    
-    @property
-    def total_pass_rate(self) -> float:
-        """總通過率（基於總執行數，百分比）"""
-        if self.total_runs == 0:
-            return 0.0
-        return round((self.passed_runs / self.total_runs) * 100, 2)
+    @classmethod
+    def create(cls, total_runs: int, executed_runs: int, passed_runs: int, 
+               failed_runs: int, retest_runs: int, not_available_runs: int) -> 'TestRunStatistics':
+        """建立統計資訊實例並計算比率"""
+        execution_rate = 0.0
+        if total_runs > 0:
+            execution_rate = round((executed_runs / total_runs) * 100, 2)
+        
+        pass_rate = 0.0
+        if executed_runs > 0:
+            pass_rate = round((passed_runs / executed_runs) * 100, 2)
+        
+        total_pass_rate = 0.0
+        if total_runs > 0:
+            total_pass_rate = round((passed_runs / total_runs) * 100, 2)
+        
+        return cls(
+            total_runs=total_runs,
+            executed_runs=executed_runs,
+            passed_runs=passed_runs,
+            failed_runs=failed_runs,
+            retest_runs=retest_runs,
+            not_available_runs=not_available_runs,
+            execution_rate=execution_rate,
+            pass_rate=pass_rate,
+            total_pass_rate=total_pass_rate
+        )

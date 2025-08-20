@@ -1,0 +1,768 @@
+{% extends "base.html" %}
+
+{% block title %}測試案例管理 - Test Case Repository Web Tool{% endblock %}
+
+{% block head %}
+<!-- Markdown 編輯器相關資源 -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/easymde@2.18.0/dist/easymde.min.css">
+<script src="https://cdn.jsdelivr.net/npm/easymde@2.18.0/dist/easymde.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- 頁面標題與工具列 -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h3 mb-1">測試案例管理</h1>
+            <p class="text-muted">管理測試案例，支援搜尋、過濾、編輯和批次操作</p>
+        </div>
+        <div class="d-flex gap-2">
+            <button type="button" class="btn btn-primary" id="addTestCaseBtn">
+                <i class="fas fa-plus me-2"></i>新增測試案例
+            </button>
+            <button type="button" class="btn btn-outline-secondary" id="refreshBtn">
+                <i class="fas fa-sync-alt me-2"></i>重新載入
+            </button>
+        </div>
+    </div>
+
+    <!-- 搜尋與篩選區 -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-6 col-lg-4">
+                    <label for="searchInput" class="form-label">關鍵字搜尋</label>
+                    <input type="text" class="form-control" id="searchInput" placeholder="搜尋測試案例標題、描述...">
+                </div>
+                <div class="col-md-3 col-lg-2">
+                    <label for="statusFilter" class="form-label">狀態</label>
+                    <select class="form-select" id="statusFilter">
+                        <option value="">全部狀態</option>
+                        <option value="Draft">草稿</option>
+                        <option value="Review">待審核</option>
+                        <option value="Active">啟用</option>
+                        <option value="Deprecated">廢棄</option>
+                    </select>
+                </div>
+                <div class="col-md-3 col-lg-2">
+                    <label for="priorityFilter" class="form-label">優先級</label>
+                    <select class="form-select" id="priorityFilter">
+                        <option value="">全部優先級</option>
+                        <option value="High">高</option>
+                        <option value="Medium">中</option>
+                        <option value="Low">低</option>
+                    </select>
+                </div>
+                <div class="col-md-6 col-lg-2">
+                    <label for="tagFilter" class="form-label">標籤</label>
+                    <select class="form-select" id="tagFilter">
+                        <option value="">全部標籤</option>
+                        <!-- 標籤選項將由 JavaScript 動態載入 -->
+                    </select>
+                </div>
+                <div class="col-md-6 col-lg-2 d-flex align-items-end">
+                    <button type="button" class="btn btn-outline-primary me-2" id="applyFiltersBtn">
+                        <i class="fas fa-filter me-2"></i>套用篩選
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary" id="clearFiltersBtn">
+                        <i class="fas fa-times me-2"></i>清除
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 批次操作工具列 -->
+    <div class="card mb-3 d-none" id="batchToolbar">
+        <div class="card-body py-2">
+            <div class="d-flex justify-content-between align-items-center">
+                <div class="d-flex align-items-center">
+                    <span class="text-muted me-3">已選取 <strong id="selectedCount">0</strong> 個項目</span>
+                </div>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="batchEditBtn">
+                        <i class="fas fa-edit me-2"></i>批次編輯
+                    </button>
+                    <button type="button" class="btn btn-outline-danger btn-sm" id="batchDeleteBtn">
+                        <i class="fas fa-trash me-2"></i>批次刪除
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="deselectAllBtn">
+                        <i class="fas fa-times me-2"></i>取消選取
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 載入中狀態 -->
+    <div class="text-center py-5 d-none" id="loadingState">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">載入中...</span>
+        </div>
+        <div class="mt-2 text-muted">載入測試案例中...</div>
+    </div>
+
+    <!-- 測試案例表格 -->
+    <div class="card">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover" id="testCasesTable">
+                    <thead>
+                        <tr>
+                            <th width="30">
+                                <input type="checkbox" class="form-check-input" id="selectAllCheckbox">
+                            </th>
+                            <th width="80">ID</th>
+                            <th>標題</th>
+                            <th width="100">狀態</th>
+                            <th width="80">優先級</th>
+                            <th width="150">標籤</th>
+                            <th width="120">建立者</th>
+                            <th width="120">更新時間</th>
+                            <th width="100">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="testCasesTableBody">
+                        <!-- 將由 JavaScript 動態載入 -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- 分頁控制 -->
+    <nav aria-label="測試案例分頁" class="mt-3">
+        <ul class="pagination justify-content-center" id="pagination">
+            <!-- 將由 JavaScript 動態載入 -->
+        </ul>
+    </nav>
+</div>
+
+<!-- 測試案例詳情/編輯 Modal -->
+<div class="modal fade" id="testCaseModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-clipboard-check me-2"></i>
+                    <span id="testCaseModalTitle">新增測試案例</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="testCaseForm">
+                    <input type="hidden" id="testCaseId" name="id">
+                    
+                    <!-- 基本資訊 -->
+                    <div class="row mb-3">
+                        <div class="col-md-8">
+                            <label for="title" class="form-label">測試案例標題 <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="title" name="title" required>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="testCaseIdField" class="form-label">案例 ID</label>
+                            <input type="text" class="form-control" id="testCaseIdField" name="case_id" placeholder="自動產生">
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-4">
+                            <label for="priority" class="form-label">優先級</label>
+                            <select class="form-select" id="priority" name="priority">
+                                <option value="Medium">中</option>
+                                <option value="High">高</option>
+                                <option value="Low">低</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="status" class="form-label">狀態</label>
+                            <select class="form-select" id="status" name="status">
+                                <option value="Draft">草稿</option>
+                                <option value="Review">待審核</option>
+                                <option value="Active">啟用</option>
+                                <option value="Deprecated">廢棄</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="tags" class="form-label">標籤</label>
+                            <input type="text" class="form-control" id="tags" name="tags" placeholder="以逗號分隔">
+                        </div>
+                    </div>
+
+                    <!-- 測試內容 Tabs -->
+                    <ul class="nav nav-tabs" id="testCaseContentTabs">
+                        <li class="nav-item">
+                            <button class="nav-link active" data-bs-toggle="tab" data-bs-target="#descriptionTab">
+                                <i class="fas fa-align-left me-2"></i>描述
+                            </button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#stepsTab">
+                                <i class="fas fa-list-ol me-2"></i>測試步驟
+                            </button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#expectedTab">
+                                <i class="fas fa-check-circle me-2"></i>預期結果
+                            </button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-bs-toggle="tab" data-bs-target="#attachmentsTab">
+                                <i class="fas fa-paperclip me-2"></i>附件
+                            </button>
+                        </li>
+                    </ul>
+                    
+                    <div class="tab-content mt-3" id="testCaseContentTabsContent">
+                        <!-- 描述 Tab -->
+                        <div class="tab-pane fade show active" id="descriptionTab">
+                            <textarea id="description" name="description" class="form-control" rows="6" 
+                                    placeholder="測試案例的詳細描述，支援 Markdown 格式"></textarea>
+                        </div>
+                        
+                        <!-- 測試步驟 Tab -->
+                        <div class="tab-pane fade" id="stepsTab">
+                            <textarea id="test_steps" name="test_steps" class="form-control" rows="10" 
+                                    placeholder="1. 第一個測試步驟&#10;2. 第二個測試步驟&#10;3. ..."></textarea>
+                        </div>
+                        
+                        <!-- 預期結果 Tab -->
+                        <div class="tab-pane fade" id="expectedTab">
+                            <textarea id="expected_result" name="expected_result" class="form-control" rows="6" 
+                                    placeholder="描述預期的測試結果"></textarea>
+                        </div>
+                        
+                        <!-- 附件 Tab -->
+                        <div class="tab-pane fade" id="attachmentsTab">
+                            <div class="mb-3">
+                                <label for="attachmentUpload" class="form-label">上傳附件</label>
+                                <input type="file" class="form-control" id="attachmentUpload" multiple 
+                                       accept=".jpg,.jpeg,.png,.gif,.pdf,.doc,.docx,.xls,.xlsx,.txt">
+                                <div class="form-text">支援圖片、PDF、Office 文件，單檔最大 10MB</div>
+                            </div>
+                            <div id="attachmentsList">
+                                <!-- 附件列表將由 JavaScript 動態載入 -->
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="saveTestCaseBtn">
+                    <i class="fas fa-save me-2"></i>儲存
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 刪除確認 Modal -->
+<div class="modal fade" id="deleteConfirmModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-exclamation-triangle text-warning me-2"></i>確認刪除
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p>確定要刪除選取的測試案例嗎？</p>
+                <div class="alert alert-warning" role="alert">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <strong>注意：</strong>刪除後將無法復原
+                </div>
+                <div id="deleteList">
+                    <!-- 要刪除的項目列表 -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-danger" id="confirmDeleteBtn">
+                    <i class="fas fa-trash me-2"></i>確認刪除
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let testCases = [];
+let filteredTestCases = [];
+let selectedTestCases = new Set();
+let currentPage = 1;
+let pageSize = 20;
+let markdownEditor = null;
+
+document.addEventListener('DOMContentLoaded', function() {
+    initTestCaseManagement();
+    bindEvents();
+});
+
+function initTestCaseManagement() {
+    loadTestCases();
+    initMarkdownEditor();
+}
+
+function initMarkdownEditor() {
+    // 初始化 Markdown 編輯器 (僅在需要時)
+    const textareas = ['description', 'test_steps', 'expected_result'];
+    
+    textareas.forEach(id => {
+        const element = document.getElementById(id);
+        if (element) {
+            element.addEventListener('focus', function() {
+                if (!this.easyMDE) {
+                    this.easyMDE = new EasyMDE({
+                        element: this,
+                        spellChecker: false,
+                        toolbar: ["bold", "italic", "heading", "|", "unordered-list", "ordered-list", "|", "link", "image", "|", "preview", "side-by-side", "fullscreen"],
+                        placeholder: this.placeholder
+                    });
+                }
+            });
+        }
+    });
+}
+
+async function loadTestCases() {
+    try {
+        showLoadingState();
+        
+        const response = await fetch('/api/test_cases');
+        if (!response.ok) {
+            throw new Error('載入測試案例失敗');
+        }
+        
+        testCases = await response.json();
+        filteredTestCases = [...testCases];
+        
+        renderTestCasesTable();
+        updatePagination();
+        hideLoadingState();
+        
+    } catch (error) {
+        console.error('載入測試案例失敗:', error);
+        showError('載入測試案例失敗：' + error.message);
+        hideLoadingState();
+    }
+}
+
+function renderTestCasesTable() {
+    const tbody = document.getElementById('testCasesTableBody');
+    const startIndex = (currentPage - 1) * pageSize;
+    const endIndex = startIndex + pageSize;
+    const pageTestCases = filteredTestCases.slice(startIndex, endIndex);
+    
+    if (pageTestCases.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="9" class="text-center py-4">
+                    <i class="fas fa-search fa-2x text-muted mb-2"></i>
+                    <div class="text-muted">沒有找到符合條件的測試案例</div>
+                </td>
+            </tr>
+        `;
+        return;
+    }
+    
+    tbody.innerHTML = pageTestCases.map(testCase => `
+        <tr>
+            <td>
+                <input type="checkbox" class="form-check-input test-case-checkbox" 
+                       value="${testCase.id}" ${selectedTestCases.has(testCase.id) ? 'checked' : ''}>
+            </td>
+            <td>
+                <code class="small">${testCase.case_id || testCase.id}</code>
+            </td>
+            <td>
+                <div class="d-flex align-items-center">
+                    <div>
+                        <div class="fw-medium">${testCase.title}</div>
+                        <div class="small text-muted text-truncate" style="max-width: 300px;">
+                            ${testCase.description ? testCase.description.substring(0, 80) + '...' : ''}
+                        </div>
+                    </div>
+                </div>
+            </td>
+            <td>
+                <span class="badge ${getStatusBadgeClass(testCase.status)}">${getStatusText(testCase.status)}</span>
+            </td>
+            <td>
+                <span class="badge ${getPriorityBadgeClass(testCase.priority)}">${getPriorityText(testCase.priority)}</span>
+            </td>
+            <td>
+                <div class="d-flex flex-wrap gap-1">
+                    ${testCase.tags ? testCase.tags.split(',').map(tag => 
+                        `<span class="badge bg-light text-dark">${tag.trim()}</span>`
+                    ).join('') : ''}
+                </div>
+            </td>
+            <td>
+                <div class="small">
+                    <div>${testCase.created_by || '-'}</div>
+                </div>
+            </td>
+            <td>
+                <div class="small text-muted">
+                    ${formatDate(testCase.updated_at, 'datetime')}
+                </div>
+            </td>
+            <td>
+                <div class="btn-group">
+                    <button type="button" class="btn btn-sm btn-outline-primary" 
+                            onclick="viewTestCase(${testCase.id})" title="檢視">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" 
+                            onclick="editTestCase(${testCase.id})" title="編輯">
+                        <i class="fas fa-edit"></i>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-danger" 
+                            onclick="deleteTestCase(${testCase.id})" title="刪除">
+                        <i class="fas fa-trash"></i>
+                    </button>
+                </div>
+            </td>
+        </tr>
+    `).join('');
+}
+
+function bindEvents() {
+    // 新增按鈕
+    document.getElementById('addTestCaseBtn').addEventListener('click', () => showTestCaseModal());
+    
+    // 重新載入按鈕
+    document.getElementById('refreshBtn').addEventListener('click', loadTestCases);
+    
+    // 搜尋與篩選
+    document.getElementById('applyFiltersBtn').addEventListener('click', applyFilters);
+    document.getElementById('clearFiltersBtn').addEventListener('click', clearFilters);
+    
+    // 批次操作
+    document.getElementById('selectAllCheckbox').addEventListener('change', toggleSelectAll);
+    document.getElementById('batchEditBtn').addEventListener('click', batchEditTestCases);
+    document.getElementById('batchDeleteBtn').addEventListener('click', batchDeleteTestCases);
+    document.getElementById('deselectAllBtn').addEventListener('click', deselectAll);
+    
+    // 儲存按鈕
+    document.getElementById('saveTestCaseBtn').addEventListener('click', saveTestCase);
+    
+    // 刪除確認按鈕
+    document.getElementById('confirmDeleteBtn').addEventListener('click', confirmDelete);
+}
+
+function showTestCaseModal(testCase = null, mode = 'edit') {
+    const modal = document.getElementById('testCaseModal');
+    const title = document.getElementById('testCaseModalTitle');
+    const form = document.getElementById('testCaseForm');
+    
+    // 重設表單
+    form.reset();
+    
+    if (testCase) {
+        if (mode === 'view') {
+            title.textContent = '檢視測試案例';
+            // 設定為唯讀模式
+            form.querySelectorAll('input, textarea, select').forEach(el => el.disabled = true);
+        } else {
+            title.textContent = '編輯測試案例';
+            form.querySelectorAll('input, textarea, select').forEach(el => el.disabled = false);
+        }
+        
+        // 填入資料
+        document.getElementById('testCaseId').value = testCase.id;
+        document.getElementById('title').value = testCase.title || '';
+        document.getElementById('testCaseIdField').value = testCase.case_id || '';
+        document.getElementById('priority').value = testCase.priority || 'Medium';
+        document.getElementById('status').value = testCase.status || 'Draft';
+        document.getElementById('tags').value = testCase.tags || '';
+        document.getElementById('description').value = testCase.description || '';
+        document.getElementById('test_steps').value = testCase.test_steps || '';
+        document.getElementById('expected_result').value = testCase.expected_result || '';
+        
+    } else {
+        title.textContent = '新增測試案例';
+        form.querySelectorAll('input, textarea, select').forEach(el => el.disabled = false);
+        document.getElementById('testCaseId').value = '';
+    }
+    
+    const bsModal = new bootstrap.Modal(modal);
+    bsModal.show();
+}
+
+function viewTestCase(id) {
+    const testCase = testCases.find(tc => tc.id === id);
+    if (testCase) {
+        showTestCaseModal(testCase, 'view');
+    }
+}
+
+function editTestCase(id) {
+    const testCase = testCases.find(tc => tc.id === id);
+    if (testCase) {
+        showTestCaseModal(testCase, 'edit');
+    }
+}
+
+async function saveTestCase() {
+    const form = document.getElementById('testCaseForm');
+    const formData = new FormData(form);
+    
+    const testCaseData = {
+        title: formData.get('title'),
+        case_id: formData.get('case_id'),
+        priority: formData.get('priority'),
+        status: formData.get('status'),
+        tags: formData.get('tags'),
+        description: formData.get('description'),
+        test_steps: formData.get('test_steps'),
+        expected_result: formData.get('expected_result')
+    };
+    
+    // 表單驗證
+    if (!testCaseData.title) {
+        showError('請填寫測試案例標題');
+        return;
+    }
+    
+    try {
+        const testCaseId = document.getElementById('testCaseId').value;
+        let response;
+        
+        if (testCaseId) {
+            // 更新現有測試案例
+            response = await fetch(`/api/test_cases/${testCaseId}`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(testCaseData)
+            });
+        } else {
+            // 新增測試案例
+            response = await fetch('/api/test_cases', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(testCaseData)
+            });
+        }
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.detail || '儲存失敗');
+        }
+        
+        // 關閉 Modal
+        const modal = bootstrap.Modal.getInstance(document.getElementById('testCaseModal'));
+        modal.hide();
+        
+        // 重新載入測試案例
+        await loadTestCases();
+        
+        showSuccess(testCaseId ? '測試案例更新成功' : '測試案例新增成功');
+        
+    } catch (error) {
+        console.error('儲存測試案例失敗:', error);
+        showError('儲存失敗：' + error.message);
+    }
+}
+
+// 工具函數
+function getStatusBadgeClass(status) {
+    const classes = {
+        'Draft': 'bg-secondary',
+        'Review': 'bg-warning',
+        'Active': 'bg-success',
+        'Deprecated': 'bg-danger'
+    };
+    return classes[status] || 'bg-secondary';
+}
+
+function getStatusText(status) {
+    const texts = {
+        'Draft': '草稿',
+        'Review': '待審核',
+        'Active': '啟用',
+        'Deprecated': '廢棄'
+    };
+    return texts[status] || status;
+}
+
+function getPriorityBadgeClass(priority) {
+    const classes = {
+        'High': 'bg-danger',
+        'Medium': 'bg-warning',
+        'Low': 'bg-info'
+    };
+    return classes[priority] || 'bg-secondary';
+}
+
+function getPriorityText(priority) {
+    const texts = {
+        'High': '高',
+        'Medium': '中',
+        'Low': '低'
+    };
+    return texts[priority] || priority;
+}
+
+function applyFilters() {
+    const search = document.getElementById('searchInput').value.toLowerCase();
+    const status = document.getElementById('statusFilter').value;
+    const priority = document.getElementById('priorityFilter').value;
+    const tag = document.getElementById('tagFilter').value;
+    
+    filteredTestCases = testCases.filter(testCase => {
+        const matchSearch = !search || 
+            testCase.title.toLowerCase().includes(search) ||
+            (testCase.description && testCase.description.toLowerCase().includes(search));
+        
+        const matchStatus = !status || testCase.status === status;
+        const matchPriority = !priority || testCase.priority === priority;
+        const matchTag = !tag || (testCase.tags && testCase.tags.includes(tag));
+        
+        return matchSearch && matchStatus && matchPriority && matchTag;
+    });
+    
+    currentPage = 1;
+    renderTestCasesTable();
+    updatePagination();
+}
+
+function clearFilters() {
+    document.getElementById('searchInput').value = '';
+    document.getElementById('statusFilter').value = '';
+    document.getElementById('priorityFilter').value = '';
+    document.getElementById('tagFilter').value = '';
+    
+    filteredTestCases = [...testCases];
+    currentPage = 1;
+    renderTestCasesTable();
+    updatePagination();
+}
+
+function toggleSelectAll() {
+    const selectAll = document.getElementById('selectAllCheckbox').checked;
+    const checkboxes = document.querySelectorAll('.test-case-checkbox');
+    
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = selectAll;
+        if (selectAll) {
+            selectedTestCases.add(parseInt(checkbox.value));
+        } else {
+            selectedTestCases.delete(parseInt(checkbox.value));
+        }
+    });
+    
+    updateBatchToolbar();
+}
+
+function updateBatchToolbar() {
+    const toolbar = document.getElementById('batchToolbar');
+    const count = document.getElementById('selectedCount');
+    
+    count.textContent = selectedTestCases.size;
+    
+    if (selectedTestCases.size > 0) {
+        toolbar.classList.remove('d-none');
+    } else {
+        toolbar.classList.add('d-none');
+    }
+}
+
+function deselectAll() {
+    selectedTestCases.clear();
+    document.querySelectorAll('.test-case-checkbox').forEach(cb => cb.checked = false);
+    document.getElementById('selectAllCheckbox').checked = false;
+    updateBatchToolbar();
+}
+
+function showLoadingState() {
+    document.getElementById('loadingState').classList.remove('d-none');
+}
+
+function hideLoadingState() {
+    document.getElementById('loadingState').classList.add('d-none');
+}
+
+function updatePagination() {
+    const pagination = document.getElementById('pagination');
+    const totalPages = Math.ceil(filteredTestCases.length / pageSize);
+    
+    if (totalPages <= 1) {
+        pagination.innerHTML = '';
+        return;
+    }
+    
+    let paginationHtml = '';
+    
+    // 上一頁
+    paginationHtml += `
+        <li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
+            <a class="page-link" href="#" onclick="changePage(${currentPage - 1})">上一頁</a>
+        </li>
+    `;
+    
+    // 頁碼
+    for (let i = 1; i <= totalPages; i++) {
+        if (i === currentPage) {
+            paginationHtml += `<li class="page-item active"><a class="page-link" href="#">${i}</a></li>`;
+        } else if (i === 1 || i === totalPages || (i >= currentPage - 2 && i <= currentPage + 2)) {
+            paginationHtml += `<li class="page-item"><a class="page-link" href="#" onclick="changePage(${i})">${i}</a></li>`;
+        } else if (i === currentPage - 3 || i === currentPage + 3) {
+            paginationHtml += `<li class="page-item disabled"><a class="page-link" href="#">...</a></li>`;
+        }
+    }
+    
+    // 下一頁
+    paginationHtml += `
+        <li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
+            <a class="page-link" href="#" onclick="changePage(${currentPage + 1})">下一頁</a>
+        </li>
+    `;
+    
+    pagination.innerHTML = paginationHtml;
+}
+
+function changePage(page) {
+    const totalPages = Math.ceil(filteredTestCases.length / pageSize);
+    if (page >= 1 && page <= totalPages) {
+        currentPage = page;
+        renderTestCasesTable();
+        updatePagination();
+    }
+}
+
+// 通用工具函數
+function showSuccess(message) {
+    if (AppUtils && AppUtils.showSuccess) {
+        AppUtils.showSuccess(message);
+    } else {
+        alert(message);
+    }
+}
+
+function showError(message) {
+    if (AppUtils && AppUtils.showError) {
+        AppUtils.showError(message);
+    } else {
+        alert(message);
+    }
+}
+
+function formatDate(dateString, format) {
+    if (AppUtils && AppUtils.formatDate) {
+        return AppUtils.formatDate(dateString, format);
+    } else {
+        return new Date(dateString).toLocaleDateString();
+    }
+}
+</script>
+{% endblock %}

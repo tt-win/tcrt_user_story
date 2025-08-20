@@ -112,3 +112,13 @@ config.yaml
 # SQLite
 *.sqlite3
 *.db
+
+# Design and documentation files
+*.md
+!README.md
+plan/
+architecture.md
+spec.md
+task.md
+lark_*.md
+api_*.md
