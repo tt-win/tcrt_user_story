@@ -168,7 +168,7 @@ async def get_test_runs(
     lark_client, team, config = get_lark_client_for_test_run(team_id, config_id, db)
     
     try:
-        # 從 Lark 獲取所有記錄
+        # 從 Lark 取得所有記錄
         records = lark_client.get_all_records(config.table_id)
         
         # 過濾
@@ -228,7 +228,7 @@ async def get_test_runs(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"獲取測試執行記錄失敗: {str(e)}"
+            detail=f"取得測試執行記錄失敗: {str(e)}"
         )
 
 
@@ -250,7 +250,7 @@ async def get_test_runs_count(
     lark_client, team, config = get_lark_client_for_test_run(team_id, config_id, db)
     
     try:
-        # 從 Lark 獲取所有記錄
+        # 從 Lark 取得所有記錄
         records = lark_client.get_all_records(config.table_id)
         
         # 過濾
@@ -270,7 +270,7 @@ async def get_test_runs_count(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"獲取測試執行記錄數量失敗: {str(e)}"
+            detail=f"取得測試執行記錄數量失敗: {str(e)}"
         )
 
 
@@ -285,7 +285,7 @@ async def get_test_run(
     lark_client, team, config = get_lark_client_for_test_run(team_id, config_id, db)
     
     try:
-        # 從 Lark 獲取所有記錄，然後找到指定的記錄
+        # 從 Lark 取得所有記錄，然後找到指定的記錄
         records = lark_client.get_all_records(config.table_id)
         
         target_record = None
@@ -309,7 +309,7 @@ async def get_test_run(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"獲取測試執行記錄失敗: {str(e)}"
+            detail=f"取得測試執行記錄失敗: {str(e)}"
         )
 
 
@@ -361,7 +361,7 @@ async def create_test_run(
                 detail="建立 Lark 記錄失敗"
             )
         
-        # 重新獲取建立的記錄
+        # 重新取得建立的記錄
         records = lark_client.get_all_records(config.table_id)
         created_record = None
         for record in records:
@@ -372,7 +372,7 @@ async def create_test_run(
         if not created_record:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="無法獲取建立的記錄"
+                detail="無法取得建立的記錄"
             )
         
         # 轉換為 TestRun 模型回傳
@@ -399,7 +399,7 @@ async def update_test_run(
     lark_client, team, config = get_lark_client_for_test_run(team_id, config_id, db)
     
     try:
-        # 先獲取現有記錄
+        # 先取得現有記錄
         records = lark_client.get_all_records(config.table_id)
         existing_record = None
         for record in records:
@@ -462,7 +462,7 @@ async def update_test_run(
                 detail="更新 Lark 記錄失敗"
             )
         
-        # 重新獲取更新後的記錄
+        # 重新取得更新後的記錄
         updated_records = lark_client.get_all_records(config.table_id)
         updated_record = None
         for record in updated_records:
@@ -473,7 +473,7 @@ async def update_test_run(
         if not updated_record:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="無法獲取更新後的記錄"
+                detail="無法取得更新後的記錄"
             )
         
         # 轉換為 TestRun 模型回傳
@@ -543,7 +543,7 @@ async def get_test_run_statistics(
     lark_client, team, config = get_lark_client_for_test_run(team_id, config_id, db)
     
     try:
-        # 從 Lark 獲取所有記錄
+        # 從 Lark 取得所有記錄
         records = lark_client.get_all_records(config.table_id)
         
         # 統計計算
@@ -581,7 +581,7 @@ async def get_test_run_statistics(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"獲取測試執行統計失敗: {str(e)}"
+            detail=f"取得測試執行統計失敗: {str(e)}"
         )
 
 

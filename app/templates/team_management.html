@@ -13,15 +13,15 @@
                     <p class="text-muted mb-0">管理各團隊的 Lark 多維表格連結設定</p>
                 </div>
                 <div class="d-flex gap-2 align-items-center">
+                    <a href="/" class="btn btn-outline-secondary">
+                        <i class="fas fa-home me-2"></i>回到首頁
+                    </a>
                     <button type="button" class="btn btn-primary" id="createTeamBtn">
                         <i class="fas fa-plus me-2"></i>新增團隊
                     </button>
-                    <button type="button" class="btn btn-outline-secondary" id="refreshBtn">
-                        <i class="fas fa-sync-alt me-2"></i>重新載入
+                    <button type="button" class="btn btn-secondary" id="refreshBtn">
+                        <i class="fas fa-sync-alt me-2"></i>重新整理
                     </button>
-                    <a href="/" class="btn btn-outline-secondary">
-                        <i class="fas fa-arrow-left me-2"></i>返回首頁
-                    </a>
                 </div>
             </div>
         </div>
@@ -77,10 +77,10 @@
                         </div>
                     </div>
 
-                    <!-- Lark 配置 -->
+                    <!-- Lark 設定 -->
                     <div class="mb-4">
                         <h6 class="text-primary mb-3">
-                            <i class="fas fa-table me-2"></i>Lark 多維表格配置
+                            <i class="fas fa-table me-2"></i>Lark 多維表格設定
                         </h6>
                         <div class="row">
                             <div class="col-md-6">
@@ -245,7 +245,7 @@ function renderTeamCards() {
                     <div class="mb-3">
                         <div class="d-flex align-items-center mb-2">
                             <i class="fas fa-table me-2 text-success"></i>
-                            <small class="text-muted">Lark: ${team.is_lark_configured ? '已配置' : '未配置'}</small>
+                            <small class="text-muted">Lark: ${team.is_lark_configured ? '已設定' : '未設定'}</small>
                         </div>
                         <div class="d-flex align-items-center">
                             <i class="fas fa-list me-2 text-muted"></i>
@@ -288,7 +288,7 @@ function editTeam(teamId) {
     currentEditTeam = team;
     document.getElementById('teamModalLabel').textContent = '編輯團隊';
     
-    // 填入表單數據
+    // 填入表單資料
     document.getElementById('teamName').value = team.name;
     document.getElementById('teamDescription').value = team.description || '';
     document.getElementById('wikiToken').value = team.lark_config.wiki_token;
@@ -305,7 +305,7 @@ async function saveTeam() {
     const form = document.getElementById('teamForm');
     const formData = new FormData(form);
     
-    // 構建團隊數據
+    // 構建團隊資料
     const teamData = {
         name: formData.get('name'),
         description: formData.get('description') || null,

@@ -2,7 +2,7 @@ app:
   database_url: sqlite:///./test_case_repo.db
   debug: false
   host: 0.0.0.0
-  port: 8000
+  port: 9999
 jira:
   api_token: 'YOUR_JIRA_API_TOKEN'
   server_url: 'https://your-domain.atlassian.net'

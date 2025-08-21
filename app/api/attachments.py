@@ -81,7 +81,7 @@ async def upload_testcase_attachment(
         
         # 上傳檔案並附加到記錄
         success = lark_client.upload_and_attach_file(
-            table_id=team.lark_config["test_case_table_id"],
+            table_id=team.test_case_table_id,
             record_id=record_id,
             field_name=field_name,
             file_content=file_content,
@@ -306,10 +306,10 @@ async def attach_file_token_to_testcase(
     lark_client, team = get_lark_client_for_team(team_id, db)
     
     try:
-        # 獲取現有附件（如果是追加模式）
+        # 取得現有附件（如果是追加模式）
         existing_file_tokens = []
         if append:
-            records = lark_client.get_all_records(team.lark_config["test_case_table_id"])
+            records = lark_client.get_all_records(team.test_case_table_id)
             target_record = None
             for record in records:
                 if record.get('record_id') == record_id:
@@ -327,7 +327,7 @@ async def attach_file_token_to_testcase(
         
         # 更新記錄的附件欄位
         success = lark_client.update_record_attachment(
-            table_id=team.lark_config["test_case_table_id"],
+            table_id=team.test_case_table_id,
             record_id=record_id,
             field_name=field_name,
             file_tokens=all_file_tokens
@@ -353,4 +353,93 @@ async def attach_file_token_to_testcase(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"附加 file_token 過程發生錯誤: {str(e)}"
+        )
+
+
+@router.delete("/teams/{team_id}/testcases/{record_id}/attachments/{file_token}")
+async def remove_testcase_attachment(
+    team_id: int,
+    record_id: str,
+    file_token: str,
+    field_name: str = "Attachment",
+    db: Session = Depends(get_db)
+):
+    """
+    從測試案例記錄中移除指定的附件
+    
+    Args:
+        team_id: 團隊 ID
+        record_id: 測試案例記錄 ID
+        file_token: 要移除的附件 file_token
+        field_name: 附件欄位名稱（預設: "Attachment"）
+    """
+    lark_client, team = get_lark_client_for_team(team_id, db)
+    
+    try:
+        # 取得現有記錄
+        records = lark_client.get_all_records(team.test_case_table_id)
+        target_record = None
+        for record in records:
+            if record.get('record_id') == record_id:
+                target_record = record
+                break
+        
+        if not target_record:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"找不到記錄 ID {record_id}"
+            )
+        
+        # 取得現有附件
+        existing_attachments = target_record.get('fields', {}).get(field_name, [])
+        if not isinstance(existing_attachments, list):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="附件欄位格式錯誤"
+            )
+        
+        # 過濾掉要刪除的 file_token
+        remaining_file_tokens = []
+        removed_attachment_name = None
+        
+        for attachment in existing_attachments:
+            if attachment.get('file_token') != file_token:
+                remaining_file_tokens.append(attachment.get('file_token'))
+            else:
+                removed_attachment_name = attachment.get('name', file_token)
+        
+        if len(remaining_file_tokens) == len(existing_attachments):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"找不到要刪除的附件 file_token: {file_token}"
+            )
+        
+        # 更新記錄的附件欄位
+        success = lark_client.update_record_attachment(
+            table_id=team.test_case_table_id,
+            record_id=record_id,
+            field_name=field_name,
+            file_tokens=remaining_file_tokens
+        )
+        
+        if success:
+            return {
+                "success": True,
+                "message": f"已成功移除附件: {removed_attachment_name or file_token}",
+                "removed_file_token": file_token,
+                "removed_file_name": removed_attachment_name,
+                "remaining_attachments": len(remaining_file_tokens)
+            }
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="附件移除失敗"
+            )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"移除附件過程發生錯誤: {str(e)}"
         )

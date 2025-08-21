@@ -37,7 +37,7 @@ class JiraAuthManager:
             
             if response.status_code == 200:
                 user_info = response.json()
-                self.logger.info(f"JIRA 連接成功，用戶: {user_info.get('displayName', self.username)}")
+                self.logger.info(f"JIRA 連接成功，使用者: {user_info.get('displayName', self.username)}")
                 return True
             else:
                 self.logger.error(f"JIRA 連接失敗，HTTP {response.status_code}")
@@ -143,12 +143,12 @@ class JiraIssueManager:
             
             start_at += batch_size
         
-        self.logger.info(f"JQL 搜尋完成，共獲取 {len(all_issues)} 筆 Issues")
+        self.logger.info(f"JQL 搜尋完成，共取得 {len(all_issues)} 筆 Issues")
         return all_issues[:max_results]
     
     def get_issue(self, issue_key: str, fields: List[str] = None) -> Optional[Dict[str, Any]]:
         """
-        獲取單個 Issue
+        取得單個 Issue
         
         Args:
             issue_key: Issue Key (例如: PROJ-123)
@@ -164,10 +164,10 @@ class JiraIssueManager:
         response = self._make_request('GET', f'/rest/api/2/issue/{issue_key}', params=params)
         
         if response:
-            self.logger.debug(f"成功獲取 Issue: {issue_key}")
+            self.logger.debug(f"成功取得 Issue: {issue_key}")
             return response
         else:
-            self.logger.warning(f"無法獲取 Issue: {issue_key}")
+            self.logger.warning(f"無法取得 Issue: {issue_key}")
             return None
     
     def create_issue(self, project_key: str, summary: str, issue_type: str = "Bug", 
@@ -254,7 +254,7 @@ class JiraIssueManager:
     
     def get_projects(self) -> List[Dict[str, Any]]:
         """
-        獲取所有專案列表
+        取得所有專案列表
         
         Returns:
             List[Dict]: 專案列表
@@ -262,10 +262,10 @@ class JiraIssueManager:
         response = self._make_request('GET', '/rest/api/2/project')
         
         if response:
-            self.logger.info(f"成功獲取 {len(response)} 個專案")
+            self.logger.info(f"成功取得 {len(response)} 個專案")
             return response
         else:
-            self.logger.error("獲取專案列表失敗")
+            self.logger.error("取得專案列表失敗")
             return []
 
 
@@ -295,7 +295,7 @@ class JiraClient:
         return self.issue_manager.search_issues(jql, fields, max_results)
     
     def get_issue(self, issue_key: str, fields: List[str] = None) -> Optional[Dict[str, Any]]:
-        """獲取單個 Issue"""
+        """取得單個 Issue"""
         return self.issue_manager.get_issue(issue_key, fields)
     
     def create_issue(self, project_key: str, summary: str, issue_type: str = "Bug", 
@@ -312,7 +312,7 @@ class JiraClient:
         return self.issue_manager.add_comment(issue_key, comment)
     
     def get_projects(self) -> List[Dict[str, Any]]:
-        """獲取所有專案列表"""
+        """取得所有專案列表"""
         return self.issue_manager.get_projects()
     
     def create_bug_from_test_result(self, project_key: str, test_case_title: str, 
@@ -366,7 +366,7 @@ class JiraClient:
         )
     
     def get_performance_stats(self) -> Dict:
-        """獲取效能統計資訊"""
+        """取得效能統計資訊"""
         return {
             'server_url': self.auth_manager.server_url,
             'username': self.auth_manager.username,

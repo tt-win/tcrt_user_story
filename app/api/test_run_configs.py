@@ -256,7 +256,7 @@ async def validate_test_run_config(
         # 設定 wiki token（從團隊配置取得）
         lark_client.set_wiki_token(team.wiki_token)
         
-        # 嘗試獲取表格資訊來驗證連線
+        # 嘗試取得表格資訊來驗證連線
         fields = lark_client.get_table_fields(config_db.table_id)
         
         if fields:
@@ -268,7 +268,7 @@ async def validate_test_run_config(
         else:
             return {
                 "valid": False,
-                "message": f"無法獲取測試執行表格 '{config_db.name}' 的欄位資訊"
+                "message": f"無法取得測試執行表格 '{config_db.name}' 的欄位資訊"
             }
             
     except Exception as e:
@@ -307,7 +307,7 @@ async def sync_test_run_config(
         
         lark_client.set_wiki_token(team.wiki_token)
         
-        # 獲取所有測試執行記錄
+        # 取得所有測試執行記錄
         records = lark_client.get_all_records(config_db.table_id)
         
         # 統計資訊

@@ -17,6 +17,7 @@ from app.models.test_case import (
 )
 from app.models.database_models import Team as TeamDB
 from app.services.lark_client import LarkClient
+from app.services.tcg_converter import tcg_converter
 
 router = APIRouter(prefix="/teams/{team_id}/testcases", tags=["test-cases"])
 
@@ -140,7 +141,7 @@ async def get_test_cases(
     lark_client, team = get_lark_client_for_team(team_id, db)
     
     try:
-        # 從 Lark 獲取所有記錄
+        # 從 Lark 取得所有記錄
         records = lark_client.get_all_records(team.test_case_table_id)
         
         # 過濾
@@ -159,22 +160,50 @@ async def get_test_cases(
         # 分頁
         paginated_records = sorted_records[skip:skip + limit]
         
-        # 轉換為 TestCase 模型
+        # 轉換為 TestCase 模型並處理 TCG 顯示
         test_cases = []
+        tcg_record_ids = set()
+        
         for record in paginated_records:
             try:
                 test_case = TestCase.from_lark_record(record, team_id)
                 test_cases.append(test_case)
+                
+                # 收集所有 TCG record_ids 用於批量轉換
+                for tcg_record in test_case.tcg:
+                    if tcg_record.record_ids:
+                        tcg_record_ids.update(tcg_record.record_ids)
+                        
             except Exception as e:
                 print(f"轉換記錄失敗 {record.get('record_id')}: {e}")
                 continue
+        
+        # 批量轉換 TCG record_ids 為顯示文字
+        if tcg_record_ids:
+            tcg_mapping = tcg_converter.get_tcg_numbers_by_record_ids(list(tcg_record_ids))
+            
+            # 為每個測試案例設置 TCG 顯示文字
+            for test_case in test_cases:
+                for tcg_record in test_case.tcg:
+                    if tcg_record.record_ids:
+                        # 將 record_ids 轉換為顯示文字
+                        tcg_numbers = []
+                        for record_id in tcg_record.record_ids:
+                            tcg_number = tcg_mapping.get(record_id)
+                            if tcg_number:
+                                tcg_numbers.append(tcg_number)
+                        
+                        # 更新顯示文字
+                        if tcg_numbers:
+                            tcg_record.text = ", ".join(tcg_numbers)
+                            tcg_record.text_arr = tcg_numbers
         
         return test_cases
         
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"獲取測試案例失敗: {str(e)}"
+            detail=f"取得測試案例失敗: {str(e)}"
         )
 
 
@@ -193,7 +222,7 @@ async def get_test_cases_count(
     lark_client, team = get_lark_client_for_team(team_id, db)
     
     try:
-        # 從 Lark 獲取所有記錄
+        # 從 Lark 取得所有記錄
         records = lark_client.get_all_records(team.test_case_table_id)
         
         # 過濾
@@ -211,7 +240,7 @@ async def get_test_cases_count(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"獲取測試案例數量失敗: {str(e)}"
+            detail=f"取得測試案例數量失敗: {str(e)}"
         )
 
 
@@ -225,7 +254,7 @@ async def get_test_case(
     lark_client, team = get_lark_client_for_team(team_id, db)
     
     try:
-        # 從 Lark 獲取所有記錄，然後找到指定的記錄
+        # 從 Lark 取得所有記錄，然後找到指定的記錄
         records = lark_client.get_all_records(team.test_case_table_id)
         
         target_record = None
@@ -249,7 +278,7 @@ async def get_test_case(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"獲取測試案例失敗: {str(e)}"
+            detail=f"取得測試案例失敗: {str(e)}"
         )
 
 
@@ -263,6 +292,11 @@ async def create_test_case(
     lark_client, team = get_lark_client_for_team(team_id, db)
     
     try:
+        # 處理附件：將 SimpleAttachment 轉換為 file_token 列表
+        attachment_tokens = []
+        if case.attachments:
+            attachment_tokens = [att.file_token for att in case.attachments]
+        
         # 建立 TestCase 模型實例
         test_case = TestCase(
             test_case_number=case.test_case_number,
@@ -273,7 +307,7 @@ async def create_test_case(
             expected_result=case.expected_result,
             assignee=case.assignee,
             test_result=case.test_result,
-            attachments=case.attachments or [],
+            attachments=[],  # 暫時為空，將在 to_lark_fields 中處理
             user_story_map=case.user_story_map or [],
             tcg=case.tcg or [],
             parent_record=case.parent_record,
@@ -282,6 +316,12 @@ async def create_test_case(
         
         # 轉換為 Lark 格式
         lark_fields = test_case.to_lark_fields()
+        
+        # 手動添加附件 file_tokens（Lark 需要 [{"file_token": token}]）
+        if attachment_tokens is not None:
+            lark_fields[test_case.FIELD_IDS['attachments']] = [
+                {'file_token': t} for t in attachment_tokens
+            ]
         
         # 建立 Lark 記錄
         record_id = lark_client.create_record(team.test_case_table_id, lark_fields)
@@ -292,7 +332,7 @@ async def create_test_case(
                 detail="建立 Lark 記錄失敗"
             )
         
-        # 重新獲取建立的記錄
+        # 重新取得建立的記錄
         records = lark_client.get_all_records(team.test_case_table_id)
         created_record = None
         for record in records:
@@ -303,7 +343,7 @@ async def create_test_case(
         if not created_record:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="無法獲取建立的記錄"
+                detail="無法取得建立的記錄"
             )
         
         # 轉換為 TestCase 模型回傳
@@ -329,7 +369,7 @@ async def update_test_case(
     lark_client, team = get_lark_client_for_team(team_id, db)
     
     try:
-        # 先獲取現有記錄
+        # 先取得現有記錄
         records = lark_client.get_all_records(team.test_case_table_id)
         existing_record = None
         for record in records:
@@ -363,17 +403,58 @@ async def update_test_case(
             existing_case.assignee = case_update.assignee
         if case_update.test_result is not None:
             existing_case.test_result = case_update.test_result
+        # 處理附件更新
+        attachment_tokens = None
         if case_update.attachments is not None:
-            existing_case.attachments = case_update.attachments
+            attachment_tokens = [att.file_token for att in case_update.attachments]
+            existing_case.attachments = []  # 清空，稍後手動添加到 lark_fields
+            
         if case_update.user_story_map is not None:
             existing_case.user_story_map = case_update.user_story_map
         if case_update.tcg is not None:
-            existing_case.tcg = case_update.tcg
+            # 處理 TCG 更新：支援字串和 LarkRecord 格式
+            if isinstance(case_update.tcg, str):
+                # 如果是字串格式，使用 TCG converter 找到對應的 record_id
+                tcg_number = case_update.tcg.strip()
+                if tcg_number:
+                    from app.services.tcg_converter import tcg_converter
+                    from app.models.lark_types import LarkRecord
+                    
+                    # 使用 TCG converter 查找對應的 record_id
+                    tcg_record_id = tcg_converter.get_record_id_by_tcg_number(tcg_number)
+                    
+                    if tcg_record_id:
+                        # 創建 LarkRecord 物件
+                        tcg_table_id = "tblcK6eF3yQCuwwl"  # TCG 表格的固定 ID
+                        tcg_record = LarkRecord(
+                            record_ids=[tcg_record_id],
+                            table_id=tcg_table_id,
+                            text=tcg_number,
+                            text_arr=[tcg_number],
+                            display_text=tcg_number,
+                            type="text"
+                        )
+                        existing_case.tcg = [tcg_record]
+                    else:
+                        # 如果找不到對應的 TCG，清空 TCG
+                        existing_case.tcg = []
+                else:
+                    # 空字串則清空 TCG
+                    existing_case.tcg = []
+            else:
+                # 如果是 LarkRecord 列表格式，直接使用
+                existing_case.tcg = case_update.tcg
         if case_update.parent_record is not None:
             existing_case.parent_record = case_update.parent_record
         
         # 轉換為 Lark 格式
         lark_fields = existing_case.to_lark_fields()
+        
+        # 手動處理附件 file_tokens（Lark 需要 [{"file_token": token}]）
+        if attachment_tokens is not None:
+            lark_fields[existing_case.FIELD_IDS['attachments']] = [
+                {'file_token': t} for t in attachment_tokens
+            ]
         
         # 更新 Lark 記錄
         success = lark_client.update_record(team.test_case_table_id, record_id, lark_fields)
@@ -384,7 +465,7 @@ async def update_test_case(
                 detail="更新 Lark 記錄失敗"
             )
         
-        # 重新獲取更新後的記錄
+        # 重新取得更新後的記錄
         updated_records = lark_client.get_all_records(team.test_case_table_id)
         updated_record = None
         for record in updated_records:
@@ -395,7 +476,7 @@ async def update_test_case(
         if not updated_record:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="無法獲取更新後的記錄"
+                detail="無法取得更新後的記錄"
             )
         
         # 轉換為 TestCase 模型回傳
@@ -470,7 +551,7 @@ async def batch_operation_test_cases(
         )
     
     try:
-        # 獲取所有記錄
+        # 取得所有記錄
         records = lark_client.get_all_records(team.test_case_table_id)
         target_records = [
             record for record in records 

@@ -90,6 +90,20 @@ class TestRunConfig(Base):
     team = relationship("Team", back_populates="test_run_configs")
 
 
+class TCGRecord(Base):
+    """TCG 記錄表格"""
+    __tablename__ = "tcg_records"
+    
+    # 使用 TCG 單號作為主鍵，避免重複
+    tcg_number = Column(String(50), primary_key=True, index=True)
+    record_id = Column(String(255), nullable=False, index=True)
+    title = Column(Text, nullable=True)
+    
+    # 系統欄位
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 # 建立資料庫表格的函數
 def create_database_tables():
     """創建所有資料庫表格"""

@@ -3,9 +3,9 @@
 Lark Base Client
 
 專注於高效的全表掃描功能：
-- 快速獲取所有記錄
+- 快速取得所有記錄
 - 批次操作
-- 用戶管理
+- 使用者管理
 """
 
 import logging
@@ -35,7 +35,7 @@ class LarkAuthManager:
         self.timeout = 30
     
     def get_tenant_access_token(self, force_refresh: bool = False) -> Optional[str]:
-        """獲取 Tenant Access Token"""
+        """取得 Tenant Access Token"""
         with self._token_lock:
             # 檢查是否需要刷新
             if (not force_refresh and 
@@ -44,7 +44,7 @@ class LarkAuthManager:
                 datetime.now() < self._token_expire_time):
                 return self._tenant_access_token
             
-            # 獲取新 Token
+            # 取得新 Token
             try:
                 response = requests.post(
                     self.auth_url,
@@ -56,13 +56,13 @@ class LarkAuthManager:
                 )
                 
                 if response.status_code != 200:
-                    self.logger.error(f"Token 獲取失敗，HTTP {response.status_code}")
+                    self.logger.error(f"Token 取得失敗，HTTP {response.status_code}")
                     return None
                 
                 result = response.json()
                 
                 if result.get('code') != 0:
-                    self.logger.error(f"Token 獲取失敗: {result.get('msg')}")
+                    self.logger.error(f"Token 取得失敗: {result.get('msg')}")
                     return None
                 
                 # 快取 Token
@@ -73,7 +73,7 @@ class LarkAuthManager:
                 return self._tenant_access_token
                 
             except Exception as e:
-                self.logger.error(f"Token 獲取異常: {e}")
+                self.logger.error(f"Token 取得異常: {e}")
                 return None
     
     def is_token_valid(self) -> bool:
@@ -101,7 +101,7 @@ class LarkTableManager:
         self.timeout = 30
     
     def get_obj_token(self, wiki_token: str) -> Optional[str]:
-        """從 Wiki Token 獲取 Obj Token"""
+        """從 Wiki Token 取得 Obj Token"""
         with self._cache_lock:
             if wiki_token in self._obj_tokens:
                 return self._obj_tokens[wiki_token]
@@ -142,7 +142,7 @@ class LarkTableManager:
     
     def get_table_fields(self, obj_token: str, table_id: str) -> List[Dict[str, Any]]:
         """
-        獲取表格的完整欄位結構
+        取得表格的完整欄位結構
         
         Args:
             obj_token: 應用 Token
@@ -165,25 +165,25 @@ class LarkTableManager:
             response = requests.get(url, headers=headers, timeout=self.timeout)
             
             if response.status_code != 200:
-                self.logger.error(f"獲取表格欄位失敗，HTTP {response.status_code}: {response.text}")
+                self.logger.error(f"取得表格欄位失敗，HTTP {response.status_code}: {response.text}")
                 return []
             
             result = response.json()
             if result.get('code') != 0:
-                self.logger.error(f"獲取表格欄位失敗: {result.get('msg')}")
+                self.logger.error(f"取得表格欄位失敗: {result.get('msg')}")
                 return []
             
             fields = result.get('data', {}).get('items', [])
-            self.logger.debug(f"獲取表格 {table_id} 的 {len(fields)} 個欄位")
+            self.logger.debug(f"取得表格 {table_id} 的 {len(fields)} 個欄位")
             return fields
             
         except Exception as e:
-            self.logger.error(f"獲取表格欄位異常: {e}")
+            self.logger.error(f"取得表格欄位異常: {e}")
             return []
     
     def get_available_field_names(self, obj_token: str, table_id: str) -> List[str]:
         """
-        獲取表格中所有可用的欄位名稱
+        取得表格中所有可用的欄位名稱
         
         Args:
             obj_token: 應用 Token
@@ -215,7 +215,7 @@ class LarkRecordManager:
         try:
             token = self.auth_manager.get_tenant_access_token()
             if not token:
-                self.logger.error("無法獲取 Access Token")
+                self.logger.error("無法取得 Access Token")
                 return None
             
             headers = kwargs.pop('headers', {})
@@ -260,7 +260,7 @@ class LarkRecordManager:
     
     def get_all_records(self, obj_token: str, table_id: str) -> List[Dict]:
         """
-        獲取表格所有記錄（高效全表掃描）
+        取得表格所有記錄（高效全表掃描）
         
         Args:
             obj_token: Obj Token
@@ -275,9 +275,13 @@ class LarkRecordManager:
         page_token = None
         
         while True:
-            params = {'page_size': self.max_page_size}
+            params = {
+                'page_size': self.max_page_size,
+                'automatic_fields': True  # 包含系統自動欄位（建立時間、更新時間等）
+            }
             if page_token:
                 params['page_token'] = page_token
+            
             
             result = self._make_request('GET', url, params=params)
             if not result:
@@ -291,7 +295,7 @@ class LarkRecordManager:
             if not page_token or not result.get('has_more', False):
                 break
         
-        self.logger.info(f"全表掃描完成，共獲取 {len(all_records)} 筆記錄")
+        self.logger.info(f"全表掃描完成，共取得 {len(all_records)} 筆記錄")
         return all_records
     
     def create_record(self, obj_token: str, table_id: str, fields: Dict) -> Optional[str]:
@@ -386,7 +390,7 @@ class LarkRecordManager:
 
 
 class LarkUserManager:
-    """Lark 用戶管理器"""
+    """Lark 使用者管理器"""
     
     def __init__(self, auth_manager: LarkAuthManager):
         self.auth_manager = auth_manager
@@ -398,12 +402,12 @@ class LarkUserManager:
         self.base_url = "https://open.larksuite.com/open-apis"
         self.timeout = 30
         
-        # 用戶快取
+        # 使用者快取
         self._user_cache = {}  # email -> user_info
         self._cache_lock = threading.Lock()
     
     def get_user_by_email(self, email: str) -> Optional[Dict]:
-        """根據 Email 獲取用戶資訊"""
+        """根據 Email 取得使用者資訊"""
         with self._cache_lock:
             if email in self._user_cache:
                 return self._user_cache[email]
@@ -430,7 +434,7 @@ class LarkUserManager:
             if result.get('code') != 0:
                 return None
             
-            # 提取用戶資訊
+            # 提取使用者資訊
             data_section = result.get('data', {})
             user_list = data_section.get('user_list', [])
             
@@ -456,7 +460,7 @@ class LarkUserManager:
             return None
                 
         except Exception as e:
-            self.logger.error(f"用戶查詢異常: {e}")
+            self.logger.error(f"使用者查詢異常: {e}")
             return None
 
 
@@ -522,7 +526,7 @@ class LarkClient:
     
     def get_all_records(self, table_id: str, wiki_token: str = None) -> List[Dict]:
         """
-        獲取表格所有記錄（主要功能）
+        取得表格所有記錄（主要功能）
         
         Args:
             table_id: 表格 ID
@@ -567,13 +571,13 @@ class LarkClient:
         """批次刪除記錄"""
         obj_token = self._get_obj_token(wiki_token)
         if not obj_token:
-            return False, 0, ['無法獲取 Obj Token']
+            return False, 0, ['無法取得 Obj Token']
         
         return self.record_manager.batch_delete_records(obj_token, table_id, record_ids)
     
     def get_table_fields(self, table_id: str, wiki_token: str = None) -> List[Dict[str, Any]]:
         """
-        獲取表格的完整欄位結構
+        取得表格的完整欄位結構
         
         Args:
             table_id: 表格 ID
@@ -590,7 +594,7 @@ class LarkClient:
     
     def get_available_field_names(self, table_id: str, wiki_token: str = None) -> List[str]:
         """
-        獲取表格中所有可用的欄位名稱
+        取得表格中所有可用的欄位名稱
         
         Args:
             table_id: 表格 ID
@@ -610,16 +614,16 @@ class LarkClient:
         """批次創建記錄"""
         obj_token = self._get_obj_token(wiki_token)
         if not obj_token:
-            return False, [], ['無法獲取 Obj Token']
+            return False, [], ['無法取得 Obj Token']
         
         return self.record_manager.batch_create_records(obj_token, table_id, records)
     
     def get_user_by_email(self, email: str) -> Optional[Dict]:
-        """根據 Email 獲取用戶資訊"""
+        """根據 Email 取得使用者資訊"""
         return self.user_manager.get_user_by_email(email)
     
     def _get_obj_token(self, wiki_token: str = None) -> Optional[str]:
-        """獲取 Obj Token（內部方法）"""
+        """取得 Obj Token（內部方法）"""
         if wiki_token:
             return self.table_manager.get_obj_token(wiki_token)
         elif self._current_obj_token:
@@ -634,13 +638,13 @@ class LarkClient:
             return None
     
     def get_performance_stats(self) -> Dict:
-        """獲取效能統計資訊"""
+        """取得效能統計資訊"""
         return {
             'auth_token_valid': self.auth_manager.is_token_valid(),
             'obj_token_cache_size': len(self.table_manager._obj_tokens),
             'user_cache_size': len(self.user_manager._user_cache),
             'client_type': 'LarkClient',
-            'features': ['全表掃描', '批次操作', '用戶管理']
+            'features': ['全表掃描', '批次操作', '使用者管理']
         }
     
     def clear_caches(self):
@@ -662,7 +666,7 @@ class LarkClient:
         try:
             token = self.auth_manager.get_tenant_access_token()
             if not token:
-                self.logger.error("無法獲取 Access Token")
+                self.logger.error("無法取得 Access Token")
                 return None
             
             headers = {
@@ -676,11 +680,12 @@ class LarkClient:
             
             data = {
                 'file_name': file_name,
-                'parent_type': 'bitable',
-                'parent_node': obj_token
+                'parent_type': 'bitable_file',  # 正確的 bitable 文件上傳類型
+                'parent_node': obj_token,       # 使用 bitable 的 app_token
+                'size': str(len(file_content))
             }
             
-            url = f"{self.record_manager.base_url}/drive/v1/files/upload_all"
+            url = f"{self.record_manager.base_url}/drive/v1/medias/upload_all"  # 正確的素材上傳端點
             response = requests.post(
                 url, 
                 headers=headers, 
@@ -705,7 +710,7 @@ class LarkClient:
                 self.logger.info(f"檔案上傳成功，file_token: {file_token}")
                 return file_token
             else:
-                self.logger.error("檔案上傳成功但未獲取到 file_token")
+                self.logger.error("檔案上傳成功但未取得到 file_token")
                 return None
                 
         except Exception as e:
@@ -770,10 +775,10 @@ class LarkClient:
             if not file_token:
                 return False
             
-            # 步驟 2: 獲取現有附件（如果是追加模式）
+            # 步驟 2: 取得現有附件（如果是追加模式）
             existing_file_tokens = []
             if append:
-                # 獲取現有記錄
+                # 取得現有記錄
                 records = self.get_all_records(table_id, wiki_token)
                 target_record = None
                 for record in records:

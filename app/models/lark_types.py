@@ -12,8 +12,8 @@ from enum import Enum
 
 class LarkUser(BaseModel):
     """Lark 人員欄位資料結構 (類型11)"""
-    id: str = Field(..., description="用戶 ID")
-    name: str = Field(..., description="用戶名稱")
+    id: str = Field(..., description="使用者 ID")
+    name: str = Field(..., description="使用者名稱")
     en_name: Optional[str] = Field(None, description="英文名稱")
     email: str = Field(..., description="電子郵件")
     

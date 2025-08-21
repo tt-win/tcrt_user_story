@@ -1,3 +1,17 @@
+/* 緊湊設計系統 */
+.btn {
+    padding: 0.25rem 0.5rem !important;
+    font-size: 0.875rem !important;
+    line-height: 1.4 !important;
+}
+
+/* 更小的按鈕樣式 */
+.btn-xs {
+    padding: 0.125rem 0.375rem !important;
+    font-size: 0.75rem !important;
+    line-height: 1.3 !important;
+}
+
 /* TestRail 色彩系統 - 保留 */
 :root {
     /* TestRail 色彩系統 */
@@ -48,28 +62,97 @@ body {
     background-color: var(--tr-bg-body);
 }
 
-/* 基礎容器 */
+/* 基礎容器 - 緊湊設計 */
 .container-fluid {
     max-width: 100%;
-    padding: 1rem;
+    padding: 0.75rem; /* 減少內邊距 */
 }
 
 /* 基礎按鈕樣式 */
 .btn {
-    border-radius: 4px;
+    border-radius: 6px;
     font-weight: 500;
     transition: all 0.2s ease;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
+.btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+/* 主要操作按鈕 - 藍色系 */
 .btn-primary {
-    background-color: var(--tr-primary);
-    border-color: var(--tr-primary);
+    background: linear-gradient(135deg, var(--tr-primary) 0%, #5BA0F2 100%);
+    border: 1px solid var(--tr-primary);
+    color: #ffffff;
 }
 
 .btn-primary:hover {
-    background-color: var(--tr-primary-dark);
+    background: linear-gradient(135deg, var(--tr-primary-dark) 0%, #4A8FD1 100%);
     border-color: var(--tr-primary-dark);
+    color: #ffffff;
 }
+
+.btn-primary:focus, .btn-primary:active {
+    background: linear-gradient(135deg, var(--tr-primary-dark) 0%, #4A8FD1 100%);
+    border-color: var(--tr-primary-dark);
+    color: #ffffff;
+    box-shadow: 0 0 0 0.2rem rgba(74, 144, 226, 0.25);
+}
+
+/* 次要操作按鈕 - 灰藍色系 */
+.btn-secondary {
+    background: linear-gradient(135deg, #8E9AAF 0%, #A8B4C8 100%);
+    border: 1px solid #8E9AAF;
+    color: #ffffff;
+}
+
+.btn-secondary:hover {
+    background: linear-gradient(135deg, #7A8599 0%, #9BA7BB 100%);
+    border-color: #7A8599;
+    color: #ffffff;
+}
+
+/* 檢視操作按鈕 - 冷灰藍色系 */
+.btn-view {
+    background: linear-gradient(135deg, #6B7D8C 0%, #8394A5 100%);
+    border: 1px solid #6B7D8C;
+    color: #ffffff;
+}
+
+.btn-view:hover {
+    background: linear-gradient(135deg, #5A6B7A 0%, #6B7D8C 100%);
+    border-color: #5A6B7A;
+    color: #ffffff;
+}
+
+/* 編輯操作按鈕 - 中性藍灰色系 */
+.btn-edit {
+    background: linear-gradient(135deg, #5B6C84 0%, #708199 100%);
+    border: 1px solid #5B6C84;
+    color: #ffffff;
+}
+
+.btn-edit:hover {
+    background: linear-gradient(135deg, #4A5A72 0%, #5B6C84 100%);
+    border-color: #4A5A72;
+    color: #ffffff;
+}
+
+/* 危險操作按鈕 - 低飽和度紅色系 */
+.btn-danger {
+    background: linear-gradient(135deg, #B85450 0%, #C96A66 100%);
+    border: 1px solid #B85450;
+    color: #ffffff;
+}
+
+.btn-danger:hover {
+    background: linear-gradient(135deg, #A44743 0%, #B85450 100%);
+    border-color: #A44743;
+    color: #ffffff;
+}
+
 
 /* 基礎卡片樣式 */
 .card {
@@ -90,10 +173,14 @@ body {
     font-weight: 600;
     background-color: var(--tr-bg-sidebar);
     color: var(--tr-text-secondary);
+    vertical-align: middle;
+    padding: 0.75rem;
 }
 
 .table td {
     border-bottom: 1px solid var(--tr-border-light);
+    vertical-align: middle;
+    padding: 0.75rem;
 }
 
 .table-hover tbody tr:hover {
@@ -105,7 +192,7 @@ body {
     position: fixed;
     top: 1rem;
     right: 1rem;
-    z-index: 1050;
+    z-index: 1060;
     max-width: 400px;
 }
 
@@ -147,3 +234,340 @@ body {
 .text-danger { color: var(--tr-danger) !important; }
 .text-warning { color: var(--tr-warning) !important; }
 .text-info { color: var(--tr-info) !important; }
+
+/* Test Case Number 樣式 */
+code.small {
+    color: #495057 !important; /* 較深的灰色 */
+    background-color: transparent !important;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-weight: 500;
+    white-space: nowrap !important; /* 防止換行 */
+}
+
+/* Test Case Number 欄位不換行 - 確保足夠寬度顯示完整 TCG 號碼 */
+#testCasesTable tbody td[data-field="test_case_number"] {
+    white-space: nowrap !important;
+    min-width: 180px !important;
+    max-width: 200px !important;
+    width: 190px !important;
+}
+
+/* Test Case 資料列樣式 */
+#testCasesTable tbody tr {
+    color: #495057 !important; /* 整個資料列使用較深的灰色 */
+}
+
+#testCasesTable tbody td {
+    color: #495057 !important; /* 確保所有資料單元格使用較深的灰色 */
+    vertical-align: middle !important; /* 強制垂直對齊 */
+    padding: 0.25rem 0.5rem !important; /* 更小的內邊距 */
+    height: 2rem !important; /* 更密集的行高 */
+}
+
+#testCasesTable thead th {
+    vertical-align: middle !important; /* 表頭也要垂直對齊 */
+    padding: 0.75rem !important; /* 統一內邊距 */
+}
+
+/* 確保日期欄位也使用深灰色 */
+#testCasesTable tbody td .text-muted {
+    color: #495057 !important; /* 覆蓋 text-muted 的顏色 */
+}
+
+/* 分離式操作按鈕樣式 */
+.test-case-actions {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+}
+
+.test-case-actions .btn {
+    border-radius: 4px !important; /* 四方形圓角 */
+    min-width: 32px;
+    height: 32px;
+    padding: 0 8px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* TCG 標籤樣式 */
+.tcg-tag {
+    background-color: #f8f9fa !important;
+    color: #495057 !important;
+    border: 1px solid #dee2e6 !important;
+    font-size: 0.75rem !important;
+    font-weight: 500 !important;
+    padding: 0.125rem 0.25rem !important; /* 減少右側內邊距 */
+    border-radius: 0.25rem !important;
+    margin: 0 !important; /* 移除外邊距 */
+    display: inline-block; /* 改回 inline-block */
+    line-height: 1;
+    height: auto !important; /* 自動高度 */
+    vertical-align: middle; /* 垂直對齊 */
+    white-space: nowrap; /* 防止內容換行 */
+    box-sizing: border-box; /* 確保邊框計算正確 */
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace; /* 使用等寬字體 */
+    letter-spacing: 0; /* 移除字母間距 */
+}
+
+.tcg-tag:hover {
+    background-color: #e9ecef !important;
+    border-color: #adb5bd !important;
+}
+
+/* TCG 編輯區域 */
+.tcg-edit-area {
+    cursor: pointer;
+    min-height: 1.5rem; /* 最小高度，允許內容撐開 */
+    display: inline-flex; /* 改為 inline-flex 讓寬度自適應內容 */
+    align-items: center;
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    gap: 0.25rem;
+    padding: 0; /* 移除內邊距，與標頭對齊 */
+    border-radius: 0.375rem;
+    transition: all 0.2s ease;
+    width: auto; /* 改為自動寬度 */
+    white-space: nowrap;
+    overflow: visible; /* 允許標籤顯示 */
+}
+
+/* TCG 編輯時的表格單元格固定高度 */
+#testCasesTable tbody td[data-field="tcg"] {
+    height: 2rem !important; /* 與其他單元格一致 */
+    vertical-align: middle !important;
+    padding: 0.25rem 0.5rem !important; /* 與其他單元格一致 */
+    white-space: nowrap !important; /* 防止換行 */
+    min-width: 80px !important; /* 縮小最小寬度 */
+    width: auto !important; /* 自動寬度，根據內容調整 */
+}
+
+/* TCG 編輯時容器固定高度 */
+#testCasesTable tbody td[data-field="tcg"].editing {
+    height: 2rem !important; /* 編輯時也保持一致高度 */
+    vertical-align: middle !important;
+    padding: 0.25rem 0.5rem !important; /* 與其他單元格一致 */
+    overflow: visible !important; /* 允許下拉選單顯示 */
+}
+
+.tcg-edit-area:hover {
+    background-color: rgba(0, 123, 255, 0.05);
+}
+
+.tcg-edit-area.editing {
+    background-color: #fff;
+    border: none !important;
+    box-shadow: none !important;
+    outline: none !important;
+}
+
+/* TCG 編輯下拉選單 - 移除藍框避免行高變化 */
+.tcg-dropdown {
+    position: fixed !important;
+    z-index: 9999 !important;
+    background: white !important;
+    border: 1px solid #dee2e6 !important;
+    border-radius: 0.375rem;
+    box-shadow: 0 0.25rem 0.5rem rgba(0, 0, 0, 0.1) !important;
+    max-height: 200px;
+    overflow-y: auto;
+    display: block !important;
+    min-width: 300px;
+}
+
+.tcg-dropdown-item {
+    padding: 0.25rem 0.75rem;
+    cursor: pointer;
+    border-bottom: 1px solid #f8f9fa;
+    transition: background-color 0.15s ease;
+    font-size: 0.875rem;
+    color: #212529;
+    line-height: 1.2;
+}
+
+.tcg-dropdown-item:hover {
+    background-color: #e3f2fd !important;
+    color: #0d47a1;
+}
+
+.tcg-dropdown-item:last-child {
+    border-bottom: none;
+}
+
+/* TCG 搜尋輸入框 */
+.tcg-search-input {
+    border: 1px solid #dee2e6 !important;
+    outline: none !important;
+    box-shadow: none !important;
+    background: transparent;
+    font-size: 0.875rem;
+    padding: 0.25rem 0.5rem;
+    width: 150px;
+    min-width: 100px;
+}
+
+.tcg-search-input:focus {
+    border: 1px solid #dee2e6 !important;
+    outline: none !important;
+    box-shadow: none !important;
+}
+
+
+/* 緊湊設計 - 卡片 */
+.card {
+    margin-bottom: 0.75rem !important;
+}
+
+.card-body {
+    padding: 0.75rem !important;
+}
+
+.card-header {
+    padding: 0.5rem 0.75rem !important;
+}
+
+/* 緊湊設計 - 表單元素 */
+.form-control, .form-select {
+    padding: 0.25rem 0.5rem !important;
+    font-size: 0.875rem !important;
+    line-height: 1.4 !important;
+}
+
+.form-label {
+    margin-bottom: 0.25rem !important;
+    font-weight: 500 !important;
+    font-size: 0.875rem !important;
+}
+
+/* 輸入群組緊湊樣式 */
+.input-group {
+    margin-bottom: 0.75rem !important;
+}
+
+/* Modal緊湊樣式 */
+.modal-header {
+    padding: 0.75rem 1rem !important;
+}
+
+.modal-body {
+    padding: 1rem !important;
+}
+
+.modal-footer {
+    padding: 0.75rem 1rem !important;
+}
+
+.modal-title {
+    font-size: 1.1rem !important;
+}
+
+
+
+
+/* 表格緊湊樣式 */
+.table th {
+    padding: 0.5rem !important;
+    font-size: 0.875rem !important;
+}
+
+.table td {
+    padding: 0.375rem 0.5rem !important;
+    font-size: 0.875rem !important;
+}
+
+/* 行距緊湊化 */
+.mb-3 {
+    margin-bottom: 0.75rem !important;
+}
+
+.mb-4 {
+    margin-bottom: 1rem !important;
+}
+
+.mt-3 {
+    margin-top: 0.75rem !important;
+}
+
+.mt-4 {
+    margin-top: 1rem !important;
+}
+
+/* 間距調整 */
+.row {
+    margin: 0 -0.375rem !important;
+}
+
+.row > * {
+    padding: 0 0.375rem !important;
+}
+
+/* 導航和分頁緊湊樣式 */
+.pagination {
+    margin-bottom: 0.5rem !important;
+}
+
+
+/* Modal 中的 TCG 編輯區域 - 防止藍框影響高度 */
+#testCaseModal #modalTCGContainer.tcg-modal-edit-area.editing {
+    min-height: 38px !important;
+    max-height: 38px !important;
+    overflow: visible !important;
+    position: relative !important;
+    border: 1px solid #ced4da !important;
+}
+
+/* Modal 中的 TCG 搜尋框 - 移除藍框，使用淡色邊框 */
+#testCaseModal #modalTCGContainer .form-control.tcg-modal-search-input:focus,
+#testCaseModal #modalTCGContainer .tcg-modal-search-input.form-control:focus {
+    border-color: #ced4da !important;
+    box-shadow: none !important;
+    outline: none !important;
+}
+
+/* Modal 中的 TCG 搜尋框 - 確保高度一致，移除預設樣式 */
+#testCaseModal #modalTCGContainer .form-control.tcg-modal-search-input,
+#testCaseModal #modalTCGContainer .tcg-modal-search-input.form-control {
+    height: 36px !important;
+    border: 1px solid #ced4da !important;
+    box-shadow: none !important;
+}
+
+/* Modal 中的 TCG 下拉選單 - 確保絕對定位不影響父容器 */
+#testCaseModal #modalTCGContainer .tcg-modal-dropdown {
+    position: absolute !important;
+    top: 100% !important;
+    left: 0 !important;
+    right: 0 !important;
+    z-index: 1060 !important;
+    margin-top: 1px !important;
+}
+
+/* 固定包含 TCG 編輯區域的整個 row 高度 */
+#testCaseModal .fixed-section .row {
+    min-height: 65px !important;
+    align-items: flex-start !important;
+}
+
+/* 強制設定 Test Case Number 表格標題和儲存格寬度 */
+table th:nth-child(2),
+table td:nth-child(2) {
+    width: 190px !important;
+    max-width: 200px !important;
+    min-width: 180px !important;
+}
+
+/* 更具體的選擇器 */
+.table th:nth-child(2),
+.table td:nth-child(2) {
+    width: 190px !important;
+    max-width: 200px !important;
+    min-width: 180px !important;
+}
+
+.page-link {
+    padding: 0.375rem 0.5rem !important;
+    font-size: 0.875rem !important;
+}

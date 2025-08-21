@@ -106,7 +106,7 @@ async def validate_lark_repo(team: TeamCreate):
         # 設定 wiki token
         lark_client.set_wiki_token(team.lark_config.wiki_token)
         
-        # 嘗試獲取表格資訊來驗證連線
+        # 嘗試取得表格資訊來驗證連線
         fields = lark_client.get_table_fields(team.lark_config.test_case_table_id)
         
         return {

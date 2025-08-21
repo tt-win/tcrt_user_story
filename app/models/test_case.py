@@ -15,6 +15,25 @@ from .lark_types import (
 )
 
 
+class SimpleAttachment(BaseModel):
+    """簡化的附件資料模型，用於前端傳送"""
+    file_token: str = Field(..., description="檔案 Token")
+    name: str = Field(..., description="檔案名稱")
+    size: int = Field(..., description="檔案大小（位元組）")
+    type: Optional[str] = Field(None, description="MIME 類型")
+    
+    model_config = ConfigDict(
+        json_schema_extra={
+            "example": {
+                "file_token": "NjGkb2iGvonNi3x5cURlPjv2gic",
+                "name": "image.png",
+                "size": 139246,
+                "type": "image/png"
+            }
+        }
+    )
+
+
 class TestCase(BaseModel):
     """測試案例資料模型"""
     
@@ -139,6 +158,17 @@ class TestCase(BaseModel):
             fields.get(cls.FIELD_IDS['parent_record'])
         )
         
+        # 解析系統時間戳欄位
+        created_time = record.get('created_time')
+        if created_time:
+            # Lark 時間戳是以毫秒為單位的 Unix 時間戳
+            test_case_data['created_at'] = datetime.fromtimestamp(created_time / 1000)
+        
+        last_modified_time = record.get('last_modified_time')
+        if last_modified_time:
+            # Lark 時間戳是以毫秒為單位的 Unix 時間戳
+            test_case_data['updated_at'] = datetime.fromtimestamp(last_modified_time / 1000)
+        
         return cls(**test_case_data)
     
     def to_lark_fields(self) -> Dict[str, Any]:
@@ -162,6 +192,28 @@ class TestCase(BaseModel):
             test_result_value = self.test_result.value if hasattr(self.test_result, 'value') else self.test_result
             lark_fields[self.FIELD_IDS['test_result']] = test_result_value
         
+        # 處理 TCG 欄位
+        if self.tcg is not None:
+            # TCG 欄位是 Duplex Link 類型，需要字串陣列
+            tcg_record_ids = []
+            for tcg_record in self.tcg:
+                # 使用 record_ids[0] 而不是 record_id
+                record_id = tcg_record.record_ids[0] if tcg_record.record_ids else None
+                if record_id:
+                    tcg_record_ids.append(record_id)
+            lark_fields[self.FIELD_IDS['tcg']] = tcg_record_ids
+        
+        # 處理附件欄位
+        if self.attachments is not None:
+            # 附件欄位是 Attachment 類型，需要 [{"file_token": token}] 陣列
+            attachment_items = []
+            for attachment in self.attachments:
+                token = getattr(attachment, 'file_token', None)
+                if token:
+                    attachment_items.append({'file_token': token})
+            # 允許傳空陣列以清空附件
+            lark_fields[self.FIELD_IDS['attachments']] = attachment_items
+        
         return lark_fields
     
     # 便利方法
@@ -170,6 +222,21 @@ class TestCase(BaseModel):
         if self.tcg:
             return self.tcg[0].display_text
         return None
+    
+    def get_tcg_numbers(self) -> List[str]:
+        """取得所有 TCG 編號列表"""
+        tcg_numbers = []
+        for tcg_record in self.tcg:
+            if tcg_record.text_arr:
+                tcg_numbers.extend(tcg_record.text_arr)
+            elif tcg_record.text:
+                tcg_numbers.append(tcg_record.text)
+        return tcg_numbers
+    
+    def get_tcg_display(self) -> str:
+        """取得 TCG 顯示文字（多個 TCG 用逗號分隔）"""
+        tcg_numbers = self.get_tcg_numbers()
+        return ", ".join(tcg_numbers) if tcg_numbers else ""
     
     def get_user_story(self) -> Optional[str]:
         """取得 User Story"""
@@ -223,7 +290,7 @@ class TestCaseCreate(BaseModel):
     expected_result: Optional[str] = None
     assignee: Optional[LarkUser] = None
     test_result: Optional[TestResultStatus] = None
-    attachments: Optional[List[LarkAttachment]] = None
+    attachments: Optional[List[SimpleAttachment]] = None
     user_story_map: Optional[List[LarkRecord]] = None
     tcg: Optional[List[LarkRecord]] = None
     parent_record: Optional[LarkRecord] = None
@@ -239,9 +306,9 @@ class TestCaseUpdate(BaseModel):
     expected_result: Optional[str] = None
     assignee: Optional[LarkUser] = None
     test_result: Optional[TestResultStatus] = None
-    attachments: Optional[List[LarkAttachment]] = None
+    attachments: Optional[List[SimpleAttachment]] = None
     user_story_map: Optional[List[LarkRecord]] = None
-    tcg: Optional[List[LarkRecord]] = None
+    tcg: Optional[Union[str, List[LarkRecord]]] = None
     parent_record: Optional[LarkRecord] = None
 
 

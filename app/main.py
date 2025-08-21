@@ -4,12 +4,16 @@ from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
 import os
 from pathlib import Path
+import logging
 
 app = FastAPI(
     title="Test Case Repository Web Tool",
     description="A web-based test case management system with Lark integration",
     version="1.0.0"
 )
+
+# 配置日誌
+logging.basicConfig(level=logging.INFO)
 
 # 設置靜態文件和模板路徑 - 必須在其他路由之前
 BASE_DIR = Path.cwd()
@@ -43,6 +47,28 @@ async def test_run_management(request: Request):
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
+
+@app.on_event("startup")
+async def startup_event():
+    """應用程式啟動事件"""
+    try:
+        # 啟動定時任務調度器
+        from app.services.scheduler import task_scheduler
+        task_scheduler.start()
+        logging.info("定時任務調度器已啟動")
+    except Exception as e:
+        logging.error(f"啟動定時任務調度器失敗: {e}")
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    """應用程式關閉事件"""
+    try:
+        # 停止定時任務調度器
+        from app.services.scheduler import task_scheduler
+        task_scheduler.stop()
+        logging.info("定時任務調度器已停止")
+    except Exception as e:
+        logging.error(f"停止定時任務調度器失敗: {e}")
 
 if __name__ == "__main__":
     import uvicorn
