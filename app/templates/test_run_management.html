@@ -193,27 +193,6 @@
                         </div>
                     </div>
                     
-                    <div class="row mb-3">
-                        <div class="col-md-6">
-                            <label for="testVersion" class="form-label" data-i18n="testRun.testVersion">測試版本</label>
-                            <input type="text" class="form-control" id="testVersion" name="test_version">
-                        </div>
-                        <div class="col-md-6">
-                            <label for="testEnvironment" class="form-label" data-i18n="testRun.testEnvironment">測試環境</label>
-                            <input type="text" class="form-control" id="testEnvironment" name="test_environment">
-                        </div>
-                    </div>
-                    
-                    <div class="row mb-3">
-                        <div class="col-md-6">
-                            <label for="buildNumber" class="form-label" data-i18n="testRun.buildNumber">建置編號</label>
-                            <input type="text" class="form-control" id="buildNumber" name="build_number">
-                        </div>
-                        <div class="col-md-6">
-                            <label for="startDate" class="form-label" data-i18n="testRun.startDate">開始日期</label>
-                            <input type="date" class="form-control" id="startDate" name="start_date">
-                        </div>
-                    </div>
                     
                     <div class="mb-3">
                         <label for="configDescription" class="form-label" data-i18n="common.description">描述</label>
@@ -407,7 +386,6 @@ function createConfigCard(config) {
     const passPercentage = config.pass_rate || 0;
     
     const createdDate = AppUtils.formatDate(new Date(config.created_at));
-    const startDate = config.start_date ? AppUtils.formatDate(new Date(config.start_date)) : (window.i18n ? window.i18n.t('testRun.notConfigured') : '未設定');
     
     return `
         <div class="col-md-6 col-lg-4 mb-4">
@@ -424,7 +402,6 @@ function createConfigCard(config) {
                             <h5 class="card-title text-primary mb-1 text-truncate">${escapeHtml(config.name)}</h5>
                             <div class="d-flex align-items-center mb-2">
                                 <span class="status-badge ${statusClass} me-2">${statusText}</span>
-                                ${config.test_version ? `<small class="text-muted">v${escapeHtml(config.test_version)}</small>` : ''}
                             </div>
                         </div>
                     </div>
@@ -457,10 +434,6 @@ function createConfigCard(config) {
                         <div class="stats-item">
                             <i class="fas fa-calendar stats-icon"></i>
                             <small class="text-muted">${window.i18n ? window.i18n.t('testRun.createdLabel', {date: createdDate}) : `建立: ${createdDate}`}</small>
-                        </div>
-                        <div class="stats-item">
-                            <i class="fas fa-play-circle stats-icon"></i>
-                            <small class="text-muted">${window.i18n ? window.i18n.t('testRun.startLabel', {date: startDate}) : `開始: ${startDate}`}</small>
                         </div>
                     </div>
                     
@@ -538,11 +511,7 @@ async function saveTestRunConfig() {
         team_id: currentTeamId,
         name: formData.get('name'),
         table_id: formData.get('table_id'),
-        description: formData.get('description'),
-        test_version: formData.get('test_version'),
-        test_environment: formData.get('test_environment'),
-        build_number: formData.get('build_number'),
-        start_date: formData.get('start_date') || null
+        description: formData.get('description')
     };
     
     try {
@@ -668,9 +637,6 @@ function createConfigDetailContent(config) {
                     <tr><td>${window.i18n ? window.i18n.t('testRun.configNameLabel') : '名稱'}</td><td>${escapeHtml(config.name)}</td></tr>
                     <tr><td>${window.i18n ? window.i18n.t('testRun.configTableIdLabel') : 'Table ID'}</td><td><code>${escapeHtml(config.table_id)}</code></td></tr>
                     <tr><td>${window.i18n ? window.i18n.t('testRun.configStatusLabel') : '狀態'}</td><td><span class="status-badge ${getStatusClass(config.status)}">${getStatusText(config.status)}</span></td></tr>
-                    <tr><td>${window.i18n ? window.i18n.t('testRun.configVersionLabel') : '測試版本'}</td><td>${escapeHtml(config.test_version || (window.i18n ? window.i18n.t('testRun.notConfigured') : '未設定'))}</td></tr>
-                    <tr><td>${window.i18n ? window.i18n.t('testRun.configEnvironmentLabel') : '測試環境'}</td><td>${escapeHtml(config.test_environment || (window.i18n ? window.i18n.t('testRun.notConfigured') : '未設定'))}</td></tr>
-                    <tr><td>${window.i18n ? window.i18n.t('testRun.configBuildLabel') : '建置編號'}</td><td>${escapeHtml(config.build_number || (window.i18n ? window.i18n.t('testRun.notConfigured') : '未設定'))}</td></tr>
                 </table>
             </div>
             <div class="col-md-6">
@@ -681,7 +647,6 @@ function createConfigDetailContent(config) {
                     <tr><td>${window.i18n ? window.i18n.t('testRun.configExecutionRateLabel') : '執行率'}</td><td>${config.execution_rate.toFixed(1)}%</td></tr>
                     <tr><td>${window.i18n ? window.i18n.t('testRun.configPassRateLabel') : '通過率'}</td><td>${config.pass_rate.toFixed(1)}%</td></tr>
                     <tr><td>${window.i18n ? window.i18n.t('testRun.configCreatedLabel') : '建立時間'}</td><td>${AppUtils.formatDateTime(new Date(config.created_at))}</td></tr>
-                    <tr><td>${window.i18n ? window.i18n.t('testRun.configStartLabel') : '開始時間'}</td><td>${config.start_date ? AppUtils.formatDateTime(new Date(config.start_date)) : (window.i18n ? window.i18n.t('testRun.notConfigured') : '未設定')}</td></tr>
                 </table>
             </div>
         </div>
