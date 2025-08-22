@@ -1,88 +1,106 @@
 {% extends "base.html" %}
 
-{% block title %}測試執行管理 - Test Case Repository Web Tool{% endblock %}
+{% block title %}{{ i18n.t('testRun.management') if i18n else '測試執行管理' }} - Test Case Repository Web Tool{% endblock %}
 
 {% block head %}
-<!-- 快速編輯樣式 -->
+<!-- Test Run 入口頁面樣式 -->
 <style>
-.hover-editable {
+/* Test Run 卡片樣式 */
+.test-run-card {
+    transition: all 0.2s ease;
+    border: 1px solid var(--tr-border-light);
     cursor: pointer;
-    transition: background-color 0.2s;
 }
 
-.hover-editable:hover {
-    background-color: rgba(0, 123, 255, 0.1);
+.test-run-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--tr-shadow-md);
+    border-color: var(--tr-primary);
 }
 
-.hover-edit-btn {
-    opacity: 0;
-    transition: opacity 0.3s ease;
-    pointer-events: none;
-    min-width: 28px;
-    min-height: 28px;
-    padding: 2px 4px;
+.test-run-card:hover .card-title {
+    color: var(--tr-primary-dark) !important;
 }
 
-.hover-editable:hover .hover-edit-btn {
-    opacity: 1 !important;
-    pointer-events: auto;
+.test-run-card .card-body {
+    padding: 1.25rem;
 }
 
-.hover-editable .hover-edit-btn {
-    display: block !important;
+/* 新增 Test Run 卡片樣式 */
+.add-test-run-card {
+    transition: all 0.2s ease;
+    border: 2px dashed var(--tr-border-light);
+    cursor: pointer;
+    background-color: var(--tr-bg-light);
 }
 
-.quick-edit-input {
-    border: 1px solid #007bff !important;
-    border-radius: 4px !important;
-    padding: 0.25rem 0.5rem !important;
-    font-size: 0.875rem !important;
-    line-height: 1.5 !important;
-    height: auto !important;
-    min-height: 1.5rem !important;
-    margin: 0 !important;
-    box-sizing: border-box !important;
+.add-test-run-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--tr-shadow-md);
+    border-color: var(--tr-primary);
+    background-color: var(--tr-primary-light);
 }
 
-/* 固定表頭設計（位於可滾動容器內） */
-#testRunsTable thead th {
-    position: sticky;
-    top: 0;
-    z-index: 20;
-    background-color: #f8f9fa;
-    border-bottom: 1px solid #dee2e6;
+.add-test-run-card:hover h5,
+.add-test-run-card:hover h6 {
+    color: var(--tr-primary-dark) !important;
 }
 
-/* 列表滾動容器 */
-#testRunsScroll { overflow-y: auto; }
-
-/* Sticky 分頁：固定底部且透明背景 */
-#testRunsPagination {
-    position: sticky;
-    bottom: 0;
-    z-index: 25;
-    background-color: transparent;
-    border-top: none;
-    padding-top: 0.25rem;
-    padding-bottom: 0.25rem;
+.add-test-run-card:hover .fas {
+    color: var(--tr-primary-dark) !important;
 }
 
-/* 批次工具列樣式 */
-#batchInlineToolbar {
-    background: linear-gradient(135deg, #e3f2fd, #f3e5f5);
-    border-radius: 8px;
-    padding: 8px 16px;
-    border: 1px solid #bbdefb;
-}
-
-/* 載入進度樣式優化 */
+/* 進度條樣式 */
 .progress {
-    height: 6px;
-    border-radius: 3px;
+    height: 8px;
+    border-radius: 4px;
 }
 
 .progress-bar {
-    border-radius: 3px;
+    border-radius: 4px;
+}
+
+/* 狀態標籤樣式 */
+.status-badge {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.375rem;
+    font-weight: 500;
+}
+
+.status-active { background-color: #d1ecf1; color: #0c5460; }
+.status-completed { background-color: #d4edda; color: #155724; }
+.status-draft { background-color: #fff3cd; color: #856404; }
+.status-archived { background-color: #f8d7da; color: #721c24; }
+
+/* 統計資訊樣式 */
+.stats-item {
+    display: flex;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.stats-item:last-child {
+    margin-bottom: 0;
+}
+
+.stats-icon {
+    width: 1.25rem;
+    text-align: center;
+    margin-right: 0.5rem;
+    opacity: 0.7;
+}
+
+/* 載入動畫 */
+.loading-skeleton {
+    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background-size: 200% 100%;
+    animation: loading 1.5s infinite;
+}
+
+@keyframes loading {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
 }
 </style>
 {% endblock %}
@@ -99,313 +117,154 @@
             <a href="/" class="btn btn-outline-secondary">
                 <i class="fas fa-home me-2"></i><span data-i18n="navigation.backToHome">回到首頁</span>
             </a>
-            <button type="button" class="btn btn-primary" id="createTestRunBtn">
-                <i class="fas fa-play me-2"></i><span data-i18n="testRun.createTestRun">建立測試執行</span>
-            </button>
             <button type="button" class="btn btn-secondary" id="refreshBtn">
                 <i class="fas fa-sync-alt me-2"></i><span data-i18n="common.refresh">重新整理</span>
             </button>
         </div>
     </div>
 
-    <!-- 篩選與搜尋區 -->
-    <div class="card mb-4" id="runSearchFilterCard" style="display: none;">
-        <div class="card-body">
-            <div class="row g-3">
-                <div class="col-md-6 col-lg-3">
-                    <label for="searchInput" class="form-label" data-i18n="testRun.keywordSearch">關鍵字搜尋</label>
-                    <input type="text" class="form-control" id="searchInput" data-i18n-placeholder="testRun.searchPlaceholder">
-                </div>
-                <div class="col-md-3 col-lg-2">
-                    <label for="statusFilter" class="form-label" data-i18n="testRun.executionStatus">執行狀態</label>
-                    <select class="form-select" id="statusFilter">
-                        <option value="" data-i18n="testRun.allStatuses">全部狀態</option>
-                        <option value="Planning" data-i18n="testRun.planning">計劃中</option>
-                        <option value="In Progress" data-i18n="testRun.inProgress">進行中</option>
-                        <option value="Completed" data-i18n="testRun.completed">已完成</option>
-                        <option value="Cancelled" data-i18n="testRun.cancelled">已取消</option>
-                    </select>
-                </div>
-                <div class="col-md-3 col-lg-2">
-                    <label for="assigneeFilter" class="form-label" data-i18n="form.assignee">執行者</label>
-                    <select class="form-select" id="assigneeFilter">
-                        <option value="" data-i18n="form.allAssignees">全部執行者</option>
-                        <!-- 執行者選項將由 JavaScript 動態載入 -->
-                    </select>
-                </div>
-                <div class="col-md-6 col-lg-3">
-                    <label for="dateRangeFilter" class="form-label" data-i18n="form.dateRange">日期範圍</label>
-                    <div class="input-group">
-                        <input type="date" class="form-control" id="startDate">
-                        <span class="input-group-text" data-i18n="testRun.to">至</span>
-                        <input type="date" class="form-control" id="endDate">
-                    </div>
-                </div>
-                <div class="col-md-6 col-lg-2 d-flex align-items-end">
-                    <div class="d-flex align-items-center mb-2 mb-lg-0">
-                        <button type="button" class="btn btn-primary me-2" id="applyFiltersBtn">
-                            <i class="fas fa-filter me-2"></i><span data-i18n="common.apply">套用</span><span data-i18n="common.filter">篩選</span>
-                        </button>
-                        <button type="button" class="btn btn-secondary" id="clearFiltersBtn">
-                            <i class="fas fa-times me-2"></i><span data-i18n="testRun.clearFilter">清除</span>
-                        </button>
-                    </div>
-                    <!-- 批次操作工具列（靠右顯示） -->
-                    <div id="batchInlineToolbar" class="d-none d-flex align-items-center gap-2 ms-lg-auto mb-2 mb-lg-0">
-                        <span class="text-muted" data-i18n="form.batchSelectedItems" data-i18n-params='{"count":0}'>已選取 <strong id="selectedCount">0</strong> 個項目</span>
-                        <button type="button" class="btn btn-success btn-sm" id="batchStartBtn">
-                            <i class="fas fa-play me-2"></i><span data-i18n="form.batchStart">批次開始</span>
-                        </button>
-                        <button type="button" class="btn btn-danger btn-sm" id="batchDeleteBtn">
-                            <i class="fas fa-trash me-2"></i><span data-i18n="form.batchDelete">批次刪除</span>
-                        </button>
+    <!-- 載入狀態 -->
+    <div id="loading-state" class="text-center py-5" style="display: none;">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden" data-i18n="common.loading">載入中...</span>
+        </div>
+        <div class="mt-3 text-muted" data-i18n="testRun.loadingConfigs">載入測試執行配置中...</div>
+    </div>
+
+    <!-- 無配置時的提示區域 -->
+    <div id="no-configs-section" style="display: none;">
+        <div class="row justify-content-center">
+            <div class="col-md-6 col-lg-4">
+                <div class="card text-center add-test-run-card" onclick="openCreateTestRunConfigModal()">
+                    <div class="card-body py-5">
+                        <div class="text-primary rounded-circle d-flex align-items-center justify-content-center mx-auto mb-3" 
+                             style="width: 64px; height: 64px; font-size: 24px; border: 2px dashed var(--tr-primary);">
+                            <i class="fas fa-plus"></i>
+                        </div>
+                        <h5 class="text-primary mb-2" data-i18n="testRun.createFirstConfig">建立第一個測試執行</h5>
+                        <p class="text-muted small mb-0" data-i18n="testRun.createFirstConfigHint">
+                            設定 Lark 資料表開始測試執行
+                        </p>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- 載入進度指示器 -->
-    <div id="loadingProgress" class="card mb-2" style="display: none;">
-        <div class="card-body">
-            <h5 class="card-title mb-3">
-                <i class="fas fa-spinner fa-spin me-2"></i><span data-i18n="loading.loadingText">載入中...</span>
-            </h5>
-            
-            <!-- Test Run 載入進度 -->
-            <div class="mb-3">
-                <div class="d-flex justify-content-between align-items-center mb-1">
-                    <small class="text-muted" data-i18n="loading.loadingTestRuns">載入測試執行記錄</small>
-                    <small class="text-muted" id="testRunProgress">0%</small>
-                </div>
-                <div class="progress">
-                    <div class="progress-bar bg-primary" id="testRunProgressBar" role="progressbar" style="width: 0%"></div>
-                </div>
-            </div>
+    <!-- Test Run 配置卡片區域 -->
+    <div id="test-run-configs-section">
+        <div class="row" id="test-run-configs-container">
+            <!-- Test Run 配置卡片將在此處動態生成 -->
         </div>
     </div>
-
-    <!-- 測試執行表格 -->
-    <div class="card" id="testRunsCard" style="display: none;">
-        <div class="card-body">
-            <div class="table-responsive" id="testRunsScroll">
-                <table class="table table-hover table-sm" id="testRunsTable">
-                    <thead>
-                        <tr style="height: 32px !important; line-height: 1.2;">
-                            <th width="30" class="text-center" style="padding: 4px 8px !important; vertical-align: middle;">
-                                <input type="checkbox" class="form-check-input" id="selectAllCheckbox" data-i18n-title="testRun.selectAllToggle">
-                            </th>
-                            <th width="60" style="padding: 4px 8px !important; vertical-align: middle;">ID</th>
-                            <th style="padding: 4px 8px !important; vertical-align: middle;" data-i18n="table.testRunName">測試執行名稱</th>
-                            <th width="100" style="padding: 4px 8px !important; vertical-align: middle;" data-i18n="common.status">狀態</th>
-                            <th width="120" style="padding: 4px 8px !important; vertical-align: middle;" data-i18n="table.assignee">執行者</th>
-                            <th width="150" style="padding: 4px 8px !important; vertical-align: middle;" data-i18n="table.progress">進度</th>
-                            <th width="120" style="padding: 4px 8px !important; vertical-align: middle;" data-i18n="table.startTime">開始時間</th>
-                            <th width="120" style="padding: 4px 8px !important; vertical-align: middle;" data-i18n="table.endTime">結束時間</th>
-                            <th width="100" style="padding: 4px 8px !important; vertical-align: middle;" data-i18n="table.operations">操作</th>
-                        </tr>
-                    </thead>
-                    <tbody id="testRunsTableBody">
-                        <!-- 將由 JavaScript 動態載入 -->
-                    </tbody>
-                </table>
-            </div>
-        </div>
-    </div>
-
-    <!-- 分頁控制 -->
-    <nav data-i18n-aria-label="testRun.pagination" aria-label="測試執行分頁" class="mt-3" id="testRunsPagination">
-        <ul class="pagination justify-content-center" id="pagination">
-            <!-- 將由 JavaScript 動態載入 -->
-        </ul>
-    </nav>
 </div>
 
-<!-- 建立測試執行 Modal -->
-<div class="modal fade" id="createTestRunModal" tabindex="-1">
+<!-- 建立 Test Run 配置 Modal -->
+<div class="modal fade" id="createTestRunConfigModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">
-                    <i class="fas fa-play me-2"></i><span data-i18n="form.createTestRun">建立測試執行</span>
+                    <i class="fas fa-plus me-2"></i><span data-i18n="testRun.createConfig">建立 Test Run 配置</span>
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <form id="testRunForm">
+                <form id="testRunConfigForm">
                     <div class="mb-3">
-                        <label for="testRunName" class="form-label"><span data-i18n="form.testRunNameRequired">測試執行名稱</span> <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" id="testRunName" name="name" required>
+                        <label for="configName" class="form-label">
+                            <span data-i18n="testRun.configName">Test Run 名稱</span> 
+                            <span class="text-danger">*</span>
+                        </label>
+                        <input type="text" class="form-control" id="configName" name="name" required 
+                               data-i18n-placeholder="testRun.configNamePlaceholder"
+                               placeholder="輸入 Test Run 名稱">
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="tableId" class="form-label">
+                            <span data-i18n="testRun.larkTableId">Lark 表格 ID</span> 
+                            <span class="text-danger">*</span>
+                        </label>
+                        <input type="text" class="form-control" id="tableId" name="table_id" required 
+                               placeholder="tbl..." pattern="tbl.*">
+                        <div class="form-text" data-i18n="testRun.tableIdHint">
+                            請輸入 Lark 表格的 Table ID，格式為以 "tbl" 開頭
+                        </div>
                     </div>
                     
                     <div class="row mb-3">
                         <div class="col-md-6">
-                            <label for="assignee" class="form-label" data-i18n="form.assignee">執行者</label>
-                            <input type="text" class="form-control" id="assignee" name="assignee">
+                            <label for="testVersion" class="form-label" data-i18n="testRun.testVersion">測試版本</label>
+                            <input type="text" class="form-control" id="testVersion" name="test_version">
                         </div>
                         <div class="col-md-6">
-                            <label for="plannedDate" class="form-label" data-i18n="form.plannedExecutionDate">計劃執行日期</label>
-                            <input type="date" class="form-control" id="plannedDate" name="planned_date">
+                            <label for="testEnvironment" class="form-label" data-i18n="testRun.testEnvironment">測試環境</label>
+                            <input type="text" class="form-control" id="testEnvironment" name="test_environment">
+                        </div>
+                    </div>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="buildNumber" class="form-label" data-i18n="testRun.buildNumber">建置編號</label>
+                            <input type="text" class="form-control" id="buildNumber" name="build_number">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="startDate" class="form-label" data-i18n="testRun.startDate">開始日期</label>
+                            <input type="date" class="form-control" id="startDate" name="start_date">
                         </div>
                     </div>
                     
                     <div class="mb-3">
-                        <label for="description" class="form-label" data-i18n="form.executionDescription">執行描述</label>
-                        <textarea class="form-control" id="description" name="description" rows="3" 
-                                data-i18n-placeholder="form.executionDescriptionPlaceholder"></textarea>
+                        <label for="configDescription" class="form-label" data-i18n="common.description">描述</label>
+                        <textarea class="form-control" id="configDescription" name="description" rows="3" 
+                                data-i18n-placeholder="testRun.descriptionPlaceholder"
+                                placeholder="描述這次測試執行配置的目的和範圍"></textarea>
                     </div>
                     
-                    <div class="mb-3">
-                        <label class="form-label" data-i18n="form.selectTestCases">選擇測試案例</label>
-                        <div class="border rounded p-3" style="max-height: 300px; overflow-y: auto;">
-                            <div class="mb-2">
-                                <input type="text" class="form-control form-control-sm" 
-                                       id="testCaseSearch" data-i18n-placeholder="form.testCaseSearchPlaceholder">
-                            </div>
-                            <div class="form-check mb-2">
-                                <input class="form-check-input" type="checkbox" id="selectAllTestCases">
-                                <label class="form-check-label fw-bold" for="selectAllTestCases">
-                                    <span data-i18n="form.selectAll">全選</span>
-                                </label>
-                            </div>
-                            <div id="testCasesList">
-                                <!-- 測試案例列表將由 JavaScript 動態載入 -->
-                            </div>
+                    <!-- 驗證狀態顯示 -->
+                    <div id="connectionStatus" class="d-none">
+                        <div class="alert alert-info mb-0">
+                            <i class="fas fa-spinner fa-spin me-2"></i>
+                            <span data-i18n="testRun.verifyingConnection">驗證 Lark 表格連線中...</span>
                         </div>
                     </div>
                 </form>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">取消</button>
-                <button type="button" class="btn btn-primary" id="saveTestRunBtn">
-                    <i class="fas fa-save me-2"></i><span data-i18n="form.createTestRun">建立測試執行</span>
+                <button type="button" class="btn btn-secondary" id="verifyConnectionBtn">
+                    <i class="fas fa-check me-2"></i><span data-i18n="testRun.verifyConnection">驗證連線</span>
+                </button>
+                <button type="button" class="btn btn-primary" id="saveConfigBtn">
+                    <i class="fas fa-save me-2"></i><span data-i18n="testRun.createConfig">建立配置</span>
                 </button>
             </div>
         </div>
     </div>
 </div>
 
-<!-- 測試執行詳情 Modal -->
-<div class="modal fade" id="testRunDetailModal" tabindex="-1">
-    <div class="modal-dialog modal-xl">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">
-                    <i class="fas fa-clipboard-list me-2"></i>
-                    <span id="testRunDetailTitle" data-i18n="form.testRunDetails">測試執行詳情</span>
-                </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <!-- 執行資訊摘要 -->
-                <div class="row mb-4">
-                    <div class="col-md-3">
-                        <div class="card bg-light">
-                            <div class="card-body text-center">
-                                <div class="h4 mb-1" id="totalTestCases">0</div>
-                                <div class="text-muted small" data-i18n="table.totalTestCases">總測試案例</div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="card bg-success text-white">
-                            <div class="card-body text-center">
-                                <div class="h4 mb-1" id="passedTestCases">0</div>
-                                <div class="small" data-i18n="table.passed">通過</div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="card bg-danger text-white">
-                            <div class="card-body text-center">
-                                <div class="h4 mb-1" id="failedTestCases">0</div>
-                                <div class="small" data-i18n="table.failed">失敗</div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-md-3">
-                        <div class="card bg-warning text-white">
-                            <div class="card-body text-center">
-                                <div class="h4 mb-1" id="skippedTestCases">0</div>
-                                <div class="small" data-i18n="table.skipped">跳過</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- 測試案例結果表格 -->
-                <div class="table-responsive">
-                    <table class="table table-sm">
-                        <thead>
-                            <tr>
-                                <th width="100" data-i18n="table.caseId">案例 ID</th>
-                                <th data-i18n="table.title">標題</th>
-                                <th width="80" data-i18n="table.status">狀態</th>
-                                <th width="120" data-i18n="table.executionTime">執行時間</th>
-                                <th width="100" data-i18n="table.result">結果</th>
-                                <th width="100" data-i18n="table.operations">操作</th>
-                            </tr>
-                        </thead>
-                        <tbody id="testRunResultsTable">
-                            <!-- 將由 JavaScript 動態載入 -->
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- 執行測試案例 Modal -->
-<div class="modal fade" id="executeTestModal" tabindex="-1">
+<!-- Test Run 配置詳情 Modal -->
+<div class="modal fade" id="configDetailModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">
-                    <i class="fas fa-play-circle me-2"></i><span data-i18n="form.executeTestCase">執行測試案例</span>
+                    <i class="fas fa-cog me-2"></i>
+                    <span id="configDetailTitle" data-i18n="testRun.configDetails">Test Run 配置詳情</span>
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body">
-                <div id="testCaseContent">
-                    <!-- 測試案例內容將由 JavaScript 動態載入 -->
-                </div>
-                
-                <hr>
-                
-                <div class="row">
-                    <div class="col-md-4">
-                        <label for="testResult" class="form-label"><span data-i18n="form.executionResult">執行結果</span> <span class="text-danger">*</span></label>
-                        <select class="form-select" id="testResult" required>
-                            <option value="" data-i18n="form.selectResultPlaceholder">請選擇結果</option>
-                            <option value="Pass" data-i18n="testRun.pass">通過</option>
-                            <option value="Fail" data-i18n="testRun.fail">失敗</option>
-                            <option value="Skip" data-i18n="testRun.skip">跳過</option>
-                        </select>
-                    </div>
-                    <div class="col-md-8">
-                        <label for="executionNotes" class="form-label" data-i18n="form.executionNotes">執行備註</label>
-                        <textarea class="form-control" id="executionNotes" rows="3" 
-                                data-i18n-placeholder="form.executionNotesPlaceholder"></textarea>
-                    </div>
-                </div>
-                
-                <div class="mt-3" id="failureDetailsSection" style="display: none;">
-                    <label for="failureDetails" class="form-label" data-i18n="form.failureDetails">失敗詳情</label>
-                    <textarea class="form-control" id="failureDetails" rows="3" 
-                            data-i18n-placeholder="form.failureDetailsPlaceholder"></textarea>
-                </div>
-                
-                <div class="mt-3">
-                    <label for="screenshots" class="form-label" data-i18n="form.resultScreenshots">結果截圖</label>
-                    <input type="file" class="form-control" id="screenshots" multiple accept="image/*">
-                    <div class="form-text" data-i18n="form.screenshotHint">可上傳多張截圖作為執行結果證明</div>
-                </div>
+            <div class="modal-body" id="configDetailContent">
+                <!-- 配置詳情將由 JavaScript 動態載入 -->
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">取消</button>
-                <button type="button" class="btn btn-primary" id="saveResultBtn">
-                    <i class="fas fa-save me-2"></i><span data-i18n="form.saveResult">儲存結果</span>
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" data-i18n="common.close">關閉</button>
+                <button type="button" class="btn btn-warning" id="editConfigBtn">
+                    <i class="fas fa-edit me-2"></i><span data-i18n="common.edit">編輯</span>
+                </button>
+                <button type="button" class="btn btn-danger" id="deleteConfigBtn">
+                    <i class="fas fa-trash me-2"></i><span data-i18n="common.delete">刪除</span>
                 </button>
             </div>
         </div>
@@ -415,749 +274,426 @@
 
 {% block scripts %}
 <script>
-let testRuns = [];
-let filteredTestRuns = [];
-let currentPage = 1;
-let pageSize = 50;
-let availableTestCases = [];
-let currentTestRun = null;
-let currentExecutingTestCase = null;
-let selectedTestRuns = new Set(); // 用於批次操作的選中項目
+// Test Run 配置管理
+
+let testRunConfigs = [];
+let currentTeamId = null;
 
 document.addEventListener('DOMContentLoaded', function() {
-    initTestRunManagement();
-    bindEvents();
-    // 初始化列表高度（等待初始排版完成）
-    setTimeout(adjustTestRunsScrollHeight, 0);
+    // 初始化頁面
+    initializePage();
+    
+    // 綁定事件監聽器
+    bindEventListeners();
 });
 
-function initTestRunManagement() {
-    loadTestRuns();
-    loadAvailableTestCases();
-}
-
-async function loadTestRuns() {
-    try {
-        showLoadingState();
-        const connectingMsg = window.i18n ? window.i18n.t('loading.connecting') : '連接伺服器...';
-        updateTestRunProgress(10, connectingMsg);
-        
-        const response = await fetch('/api/test_runs');
-        if (!response.ok) {
-            throw new Error('載入測試執行記錄失敗');
-        }
-        
-        updateTestRunProgress(50, '處理資料...');
-        testRuns = await response.json();
-        filteredTestRuns = [...testRuns];
-        
-        updateTestRunProgress(80, '渲染表格...');
-        renderTestRunsTable();
-        updatePagination();
-        
-        const completedMsg = window.i18n ? window.i18n.t('loading.completed') : '載入完成';
-        updateTestRunProgress(100, completedMsg);
-        setTimeout(() => {
-            hideLoadingState();
-            adjustTestRunsScrollHeight();
-        }, 200);
-        
-    } catch (error) {
-        console.error('載入測試執行記錄失敗:', error);
-        const loadFailedMessage = window.i18n ? window.i18n.t('errors.loadTestRunsFailed') : '載入測試執行記錄失敗';
-        AppUtils.showError(loadFailedMessage + '：' + error.message);
-        hideLoadingState();
-    }
-}
-
-function updateTestRunProgress(progress, message) {
-    const progressText = document.getElementById('testRunProgress');
-    const progressBar = document.getElementById('testRunProgressBar');
-    
-    if (progressText) progressText.textContent = `${progress}%`;
-    if (progressBar) progressBar.style.width = `${progress}%`;
-}
-
-async function loadAvailableTestCases() {
-    try {
-        const response = await fetch('/api/test_cases');
-        if (!response.ok) {
-            throw new Error('載入測試案例失敗');
-        }
-        
-        availableTestCases = await response.json();
-        renderTestCasesList();
-        
-    } catch (error) {
-        console.error('載入測試案例失敗:', error);
-        const loadTestCasesFailedMessage = window.i18n ? window.i18n.t('errors.loadTestCasesFailed') : '載入測試案例失敗';
-        showError(loadTestCasesFailedMessage + '：' + error.message);
-    }
-}
-
-function renderTestRunsTable() {
-    const tbody = document.getElementById('testRunsTableBody');
-    const startIndex = (currentPage - 1) * pageSize;
-    const endIndex = startIndex + pageSize;
-    const pageTestRuns = filteredTestRuns.slice(startIndex, endIndex);
-    
-    if (pageTestRuns.length === 0) {
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="8" class="text-center py-4">
-                    <i class="fas fa-search fa-2x text-muted mb-2"></i>
-                    <div class="text-muted" data-i18n="errors.noTestRunsFound">沒有找到符合條件的測試執行記錄</div>
-                </td>
-            </tr>
-        `;
-        adjustTestRunsScrollHeight();
+function initializePage() {
+    // 取得當前團隊 ID
+    currentTeamId = AppUtils.getCurrentTeam()?.id;
+    if (!currentTeamId) {
+        AppUtils.showError(window.i18n ? window.i18n.t('messages.pleaseSelectTeam') : '請先選擇一個團隊');
+        window.location.href = '/';
         return;
     }
     
-    tbody.innerHTML = pageTestRuns.map(testRun => `
-        <tr>
-            <td class="text-center align-middle" style="padding: 4px 8px !important;">
-                <input type="checkbox" class="form-check-input test-run-checkbox" 
-                       value="${testRun.id}" data-i18n-title="tooltips.selectTestRun">
-            </td>
-            <td class="align-middle" style="padding: 4px 8px !important;">
-                <code class="small">${testRun.id}</code>
-            </td>
-            <td class="align-middle position-relative hover-editable" data-field="name" data-record-id="${testRun.id}" 
-                style="padding: 4px 45px 4px 8px !important;">
-                <div class="fw-medium">${escapeHtml(testRun.name || '')}</div>
-                <div class="small text-muted">${escapeHtml(testRun.description || '')}</div>
-                <button type="button" class="btn btn-sm btn-edit position-absolute hover-edit-btn" 
-                        style="top: 50%; right: 5px; transform: translateY(-50%); z-index: 10;" 
-                        onclick="quickEditTestRun('${testRun.id}', 'name')" data-i18n-title="tooltips.quickEdit">
-                    <i class="fas fa-edit"></i>
-                </button>
-            </td>
-            <td class="align-middle" style="padding: 4px 8px !important;">
-                <span class="badge ${getStatusBadgeClass(testRun.status)}">${getStatusText(testRun.status)}</span>
-            </td>
-            <td class="align-middle position-relative hover-editable" data-field="assignee" data-record-id="${testRun.id}"
-                style="padding: 4px 45px 4px 8px !important;">
-                <div class="small">${escapeHtml(testRun.assignee || '-')}</div>
-                <button type="button" class="btn btn-sm btn-edit position-absolute hover-edit-btn" 
-                        style="top: 50%; right: 5px; transform: translateY(-50%); z-index: 10;" 
-                        onclick="quickEditTestRun('${testRun.id}', 'assignee')" data-i18n-title="tooltips.quickEdit">
-                    <i class="fas fa-edit"></i>
-                </button>
-            </td>
-            <td class="align-middle" style="padding: 4px 8px !important;">
-                <div class="progress" style="height: 20px;">
-                    <div class="progress-bar bg-success" style="width: ${testRun.pass_rate || 0}%">
-                        ${testRun.pass_rate || 0}%
-                    </div>
-                </div>
-                <div class="small text-muted mt-1">
-                    <span data-i18n="table.progressFormat" data-i18n-params='{"passed":${testRun.passed || 0}, "total":${testRun.total || 0}}'>${testRun.passed || 0}/${testRun.total || 0} 通過</span>
-                </div>
-            </td>
-            <td class="align-middle" style="padding: 4px 8px !important;">
-                <div class="small text-muted">
-                    ${formatDate(testRun.start_date, 'date')}
-                </div>
-            </td>
-            <td class="align-middle" style="padding: 4px 8px !important;">
-                <div class="small text-muted">
-                    ${testRun.end_date ? formatDate(testRun.end_date, 'date') : '-'}
-                </div>
-            </td>
-            <td class="align-middle" style="padding: 4px 8px !important;">
-                <div class="btn-group">
-                    <button type="button" class="btn btn-sm btn-outline-primary" 
-                            onclick="viewTestRunDetail(${testRun.id})" data-i18n-title="tooltips.viewDetails">
-                        <i class="fas fa-eye"></i>
-                    </button>
-                    <button type="button" class="btn btn-sm btn-outline-success" 
-                            onclick="executeTestRun(${testRun.id})" data-i18n-title="tooltips.executeTest">
-                        <i class="fas fa-play"></i>
-                    </button>
-                    <button type="button" class="btn btn-sm btn-outline-danger" 
-                            onclick="deleteTestRun(${testRun.id})" data-i18n-title="tooltips.delete">
-                        <i class="fas fa-trash"></i>
-                    </button>
-                </div>
-            </td>
-        </tr>
-    `).join('');
-    adjustTestRunsScrollHeight();
+    // 載入 Test Run 配置
+    loadTestRunConfigs();
 }
 
-function renderTestCasesList() {
-    const container = document.getElementById('testCasesList');
+function bindEventListeners() {
+    // 重新整理按鈕
+    document.getElementById('refreshBtn').addEventListener('click', function() {
+        loadTestRunConfigs();
+    });
     
-    if (availableTestCases.length === 0) {
-        const noTestCasesMessage = window.i18n ? window.i18n.t('errors.noTestCasesAvailable') : '尚無可用的測試案例';
-        container.innerHTML = `<div class="text-muted text-center py-3">${noTestCasesMessage}</div>`;
+    // 建立配置按鈕
+    document.addEventListener('click', function(e) {
+        if (e.target.closest('.add-test-run-card')) {
+            openCreateTestRunConfigModal();
+        }
+    });
+    
+    // Modal 相關事件
+    document.getElementById('saveConfigBtn').addEventListener('click', saveTestRunConfig);
+    document.getElementById('verifyConnectionBtn').addEventListener('click', verifyTableConnection);
+}
+
+async function loadTestRunConfigs() {
+    try {
+        showLoading();
+        
+        const response = await fetch(`/api/teams/${currentTeamId}/test-run-configs/`);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        testRunConfigs = await response.json();
+        renderTestRunConfigs();
+        
+    } catch (error) {
+        console.error('載入 Test Run 配置失敗:', error);
+        const errorMsg = window.i18n ? window.i18n.t('messages.loadConfigsFailed') : '載入 Test Run 配置失敗';
+        AppUtils.showError(errorMsg + '：' + error.message);
+        showNoConfigs();
+    } finally {
+        hideLoading();
+    }
+}
+
+function renderTestRunConfigs() {
+    if (!testRunConfigs || testRunConfigs.length === 0) {
+        showNoConfigs();
         return;
     }
     
-    container.innerHTML = availableTestCases.map(testCase => `
-        <div class="form-check mb-1">
-            <input class="form-check-input test-case-checkbox" type="checkbox" 
-                   value="${testCase.id}" id="testCase${testCase.id}">
-            <label class="form-check-label" for="testCase${testCase.id}">
-                <div class="d-flex justify-content-between align-items-center">
-                    <div>
-                        <div class="fw-medium">${testCase.title}</div>
-                        <div class="small text-muted">${testCase.case_id || testCase.id}</div>
+    showConfigsSection();
+    renderConfigCards();
+}
+
+function showLoading() {
+    document.getElementById('loading-state').style.display = 'block';
+    document.getElementById('test-run-configs-section').style.display = 'none';
+    document.getElementById('no-configs-section').style.display = 'none';
+}
+
+function hideLoading() {
+    document.getElementById('loading-state').style.display = 'none';
+}
+
+function showNoConfigs() {
+    document.getElementById('no-configs-section').style.display = 'block';
+    document.getElementById('test-run-configs-section').style.display = 'none';
+}
+
+function showConfigsSection() {
+    document.getElementById('no-configs-section').style.display = 'none';
+    document.getElementById('test-run-configs-section').style.display = 'block';
+}
+
+function renderConfigCards() {
+    const container = document.getElementById('test-run-configs-container');
+    
+    // 現有配置卡片
+    const configsHtml = testRunConfigs.map(config => createConfigCard(config)).join('');
+    
+    // 新增配置卡片
+    const addConfigCard = `
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card h-100 add-test-run-card text-center">
+                <div class="card-body d-flex flex-column justify-content-center">
+                    <div class="text-primary rounded-circle d-flex align-items-center justify-content-center mx-auto mb-3" 
+                         style="width: 48px; height: 48px; font-size: 18px; border: 2px dashed var(--tr-primary);">
+                        <i class="fas fa-plus"></i>
                     </div>
-                    <span class="badge ${getPriorityBadgeClass(testCase.priority)} ms-2">
-                        ${getPriorityText(testCase.priority)}
-                    </span>
+                    <h6 class="text-primary mb-1">${window.i18n ? window.i18n.t('testRun.addMoreConfigs') : '新增更多 Test Run'}</h6>
+                    <small class="text-muted">${window.i18n ? window.i18n.t('testRun.addMoreConfigsHint') : '建立新的測試執行配置'}</small>
                 </div>
-            </label>
+            </div>
         </div>
-    `).join('');
+    `;
+    
+    container.innerHTML = configsHtml + addConfigCard;
+    
+    // 重新翻譯新增的內容
+    if (window.i18n && window.i18n.isReady()) {
+        window.i18n.retranslate();
+    }
 }
 
-function bindEvents() {
-    // 建立測試執行按鈕
-    document.getElementById('createTestRunBtn').addEventListener('click', showCreateTestRunModal);
+function createConfigCard(config) {
+    const statusClass = getStatusClass(config.status);
+    const statusText = getStatusText(config.status);
+    const progressPercentage = config.execution_rate || 0;
+    const passPercentage = config.pass_rate || 0;
     
-    // 重新載入按鈕
-    document.getElementById('refreshBtn').addEventListener('click', loadTestRuns);
+    const createdDate = AppUtils.formatDate(new Date(config.created_at));
+    const startDate = config.start_date ? AppUtils.formatDate(new Date(config.start_date)) : (window.i18n ? window.i18n.t('testRun.notConfigured') : '未設定');
     
-    // 搜尋與篩選
-    document.getElementById('applyFiltersBtn').addEventListener('click', applyFilters);
-    document.getElementById('clearFiltersBtn').addEventListener('click', clearFilters);
-    
-    // 批次操作
-    document.getElementById('selectAllCheckbox').addEventListener('change', toggleSelectAll);
-    const batchStartBtn = document.getElementById('batchStartBtn');
-    const batchDeleteBtn = document.getElementById('batchDeleteBtn');
-    if (batchStartBtn) batchStartBtn.addEventListener('click', batchStartTestRuns);
-    if (batchDeleteBtn) batchDeleteBtn.addEventListener('click', batchDeleteTestRuns);
-    
-    // 儲存測試執行按鈕
-    document.getElementById('saveTestRunBtn').addEventListener('click', saveTestRun);
-    
-    // 全選測試案例
-    document.getElementById('selectAllTestCases').addEventListener('change', toggleSelectAllTestCases);
-    
-    // 測試案例搜尋
-    document.getElementById('testCaseSearch').addEventListener('input', filterTestCases);
-    
-    // 監聽表格內的複選框變化
-    document.addEventListener('change', function(e) {
-        if (e.target.classList.contains('test-run-checkbox')) {
-            const testRunId = parseInt(e.target.value);
-            if (e.target.checked) {
-                selectedTestRuns.add(testRunId);
-            } else {
-                selectedTestRuns.delete(testRunId);
-            }
-            updateBatchToolbar();
+    return `
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card h-100 test-run-card" onclick="enterTestRun(${config.id})">
+                <div class="card-body">
+                    <div class="d-flex align-items-start mb-3">
+                        <div class="flex-shrink-0 me-3">
+                            <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center" 
+                                 style="width: 48px; height: 48px; font-size: 16px; font-weight: bold;">
+                                <i class="fas fa-play"></i>
+                            </div>
+                        </div>
+                        <div class="flex-grow-1 min-width-0">
+                            <h5 class="card-title text-primary mb-1 text-truncate">${escapeHtml(config.name)}</h5>
+                            <div class="d-flex align-items-center mb-2">
+                                <span class="status-badge ${statusClass} me-2">${statusText}</span>
+                                ${config.test_version ? `<small class="text-muted">v${escapeHtml(config.test_version)}</small>` : ''}
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 進度資訊 -->
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <small class="text-muted">${window.i18n ? window.i18n.t('testRun.progressLabel') : '執行進度'}</small>
+                            <small class="text-muted">${progressPercentage.toFixed(1)}%</small>
+                        </div>
+                        <div class="progress mb-2">
+                            <div class="progress-bar bg-primary" style="width: ${progressPercentage}%"></div>
+                        </div>
+                        
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <small class="text-muted">${window.i18n ? window.i18n.t('testRun.passRateLabel') : '通過率'}</small>
+                            <small class="text-muted">${passPercentage.toFixed(1)}%</small>
+                        </div>
+                        <div class="progress">
+                            <div class="progress-bar bg-success" style="width: ${passPercentage}%"></div>
+                        </div>
+                    </div>
+                    
+                    <!-- 統計資訊 -->
+                    <div class="mb-3">
+                        <div class="stats-item">
+                            <i class="fas fa-list-ul stats-icon"></i>
+                            <small class="text-muted">${window.i18n ? window.i18n.t('testRun.totalExecuted', {total: config.total_test_cases, executed: config.executed_cases}) : `總數: ${config.total_test_cases} | 已執行: ${config.executed_cases}`}</small>
+                        </div>
+                        <div class="stats-item">
+                            <i class="fas fa-calendar stats-icon"></i>
+                            <small class="text-muted">${window.i18n ? window.i18n.t('testRun.createdLabel', {date: createdDate}) : `建立: ${createdDate}`}</small>
+                        </div>
+                        <div class="stats-item">
+                            <i class="fas fa-play-circle stats-icon"></i>
+                            <small class="text-muted">${window.i18n ? window.i18n.t('testRun.startLabel', {date: startDate}) : `開始: ${startDate}`}</small>
+                        </div>
+                    </div>
+                    
+                    <!-- 操作按鈕 -->
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-primary btn-sm flex-grow-1" onclick="event.stopPropagation(); enterTestRun(${config.id})">
+                            <i class="fas fa-arrow-right me-1"></i>${window.i18n ? window.i18n.t('testRun.enterButton') : '進入'}
+                        </button>
+                        <button class="btn btn-outline-secondary btn-sm" onclick="event.stopPropagation(); showConfigDetails(${config.id})">
+                            <i class="fas fa-info-circle"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function getStatusClass(status) {
+    switch (status) {
+        case 'active': return 'status-active';
+        case 'completed': return 'status-completed';
+        case 'draft': return 'status-draft';
+        case 'archived': return 'status-archived';
+        default: return 'status-draft';
+    }
+}
+
+function getStatusText(status) {
+    if (window.i18n) {
+        const statusKey = `testRun.status.${status}`;
+        const translated = window.i18n.t(statusKey);
+        // If translation key doesn't exist, fall back to default
+        if (translated === statusKey) {
+            return getDefaultStatusText(status);
         }
-    });
+        return translated;
+    }
     
-    // 測試結果變更
-    document.getElementById('testResult').addEventListener('change', function() {
-        const failureSection = document.getElementById('failureDetailsSection');
-        if (this.value === 'Fail') {
-            failureSection.style.display = 'block';
-        } else {
-            failureSection.style.display = 'none';
-        }
-    });
-    
-    // 儲存執行結果按鈕
-    document.getElementById('saveResultBtn').addEventListener('click', saveExecutionResult);
-
-    // 視窗大小變化時調整列表高度
-    window.addEventListener('resize', adjustTestRunsScrollHeight);
+    return getDefaultStatusText(status);
 }
 
-function showCreateTestRunModal() {
-    const modal = document.getElementById('createTestRunModal');
-    const form = document.getElementById('testRunForm');
-    
-    // 重設表單
-    form.reset();
-    
-    // 重設測試案例選擇
-    document.querySelectorAll('.test-case-checkbox').forEach(cb => cb.checked = false);
-    document.getElementById('selectAllTestCases').checked = false;
-    
-    const bsModal = new bootstrap.Modal(modal);
-    bsModal.show();
+function getDefaultStatusText(status) {
+    switch (status) {
+        case 'active': return '進行中';
+        case 'completed': return '已完成';
+        case 'draft': return '草稿';
+        case 'archived': return '已歸檔';
+        default: return '未知';
+    }
 }
 
-async function saveTestRun() {
-    const form = document.getElementById('testRunForm');
+function openCreateTestRunConfigModal() {
+    // 清空表單
+    document.getElementById('testRunConfigForm').reset();
+    document.getElementById('connectionStatus').classList.add('d-none');
+    
+    // 顯示 Modal
+    const modal = new bootstrap.Modal(document.getElementById('createTestRunConfigModal'));
+    modal.show();
+}
+
+async function saveTestRunConfig() {
+    const form = document.getElementById('testRunConfigForm');
     const formData = new FormData(form);
     
-    // 獲取選中的測試案例
-    const selectedTestCases = Array.from(document.querySelectorAll('.test-case-checkbox:checked'))
-        .map(cb => parseInt(cb.value));
-    
-    if (selectedTestCases.length === 0) {
-        showError(window.i18n ? window.i18n.t('errors.pleaseSelectTestCases') : '請至少選擇一個測試案例');
+    // 驗證表單
+    if (!form.checkValidity()) {
+        form.reportValidity();
         return;
     }
     
-    const testRunData = {
+    // 準備資料
+    const configData = {
+        team_id: currentTeamId,
         name: formData.get('name'),
-        assignee: formData.get('assignee'),
+        table_id: formData.get('table_id'),
         description: formData.get('description'),
-        planned_date: formData.get('planned_date'),
-        test_case_ids: selectedTestCases
+        test_version: formData.get('test_version'),
+        test_environment: formData.get('test_environment'),
+        build_number: formData.get('build_number'),
+        start_date: formData.get('start_date') || null
     };
     
-    // 表單驗證
-    if (!testRunData.name) {
-        showError(window.i18n ? window.i18n.t('errors.testRunNameRequired') : '請填寫測試執行名稱');
-        return;
-    }
-    
     try {
-        const response = await fetch('/api/test_runs', {
+        // 禁用按鈕
+        const saveBtn = document.getElementById('saveConfigBtn');
+        saveBtn.disabled = true;
+        const creatingText = window.i18n ? window.i18n.t('testRun.creatingConfig') : '建立中...';
+        saveBtn.innerHTML = `<i class="fas fa-spinner fa-spin me-2"></i>${creatingText}`;
+        
+        const response = await fetch(`/api/teams/${currentTeamId}/test-run-configs/`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
             },
-            body: JSON.stringify(testRunData)
+            body: JSON.stringify(configData)
         });
         
         if (!response.ok) {
             const errorData = await response.json();
-            throw new Error(errorData.detail || '建立測試執行失敗');
+            throw new Error(errorData.detail || '建立失敗');
         }
+        
+        const newConfig = await response.json();
         
         // 關閉 Modal
-        const modal = bootstrap.Modal.getInstance(document.getElementById('createTestRunModal'));
+        const modal = bootstrap.Modal.getInstance(document.getElementById('createTestRunConfigModal'));
         modal.hide();
         
-        // 重新載入測試執行列表
-        await loadTestRuns();
+        // 顯示成功訊息
+        const successMsg = window.i18n ? window.i18n.t('testRun.createConfigSuccess') : '成功建立 Test Run 配置';
+        AppUtils.showSuccess(successMsg);
         
-        showSuccess(window.i18n ? window.i18n.t('messages.testRunCreated') : '測試執行建立成功');
+        // 重新載入列表
+        loadTestRunConfigs();
         
     } catch (error) {
-        console.error('建立測試執行失敗:', error);
-        const createFailedMessage = window.i18n ? window.i18n.t('errors.createFailed') : '建立失敗';
-        showError(createFailedMessage + '：' + error.message);
+        console.error('建立 Test Run 配置失敗:', error);
+        const errorMsg = window.i18n ? window.i18n.t('testRun.createConfigFailed', {error: error.message}) : '建立失敗：' + error.message;
+        AppUtils.showError(errorMsg);
+    } finally {
+        // 恢復按鈕
+        const saveBtn = document.getElementById('saveConfigBtn');
+        saveBtn.disabled = false;
+        const createText = window.i18n ? window.i18n.t('testRun.createConfig') : '建立配置';
+        saveBtn.innerHTML = `<i class="fas fa-save me-2"></i>${createText}`;
     }
 }
 
-function toggleSelectAllTestCases() {
-    const selectAll = document.getElementById('selectAllTestCases').checked;
-    document.querySelectorAll('.test-case-checkbox').forEach(cb => {
-        if (cb.style.display !== 'none') { // 只選擇可見的項目
-            cb.checked = selectAll;
-        }
-    });
-}
-
-function filterTestCases() {
-    const searchTerm = document.getElementById('testCaseSearch').value.toLowerCase();
-    const testCaseItems = document.querySelectorAll('#testCasesList .form-check');
-    
-    testCaseItems.forEach(item => {
-        const text = item.textContent.toLowerCase();
-        if (text.includes(searchTerm)) {
-            item.style.display = 'block';
-        } else {
-            item.style.display = 'none';
-        }
-    });
-}
-
-function applyFilters() {
-    const search = document.getElementById('searchInput').value.toLowerCase();
-    const status = document.getElementById('statusFilter').value;
-    const assignee = document.getElementById('assigneeFilter').value;
-    const startDate = document.getElementById('startDate').value;
-    const endDate = document.getElementById('endDate').value;
-    
-    filteredTestRuns = testRuns.filter(testRun => {
-        const matchSearch = !search || testRun.name.toLowerCase().includes(search);
-        const matchStatus = !status || testRun.status === status;
-        const matchAssignee = !assignee || testRun.assignee === assignee;
-        
-        const matchDate = (!startDate || testRun.start_date >= startDate) &&
-                         (!endDate || testRun.start_date <= endDate);
-        
-        return matchSearch && matchStatus && matchAssignee && matchDate;
-    });
-    
-    currentPage = 1;
-    renderTestRunsTable();
-    updatePagination();
-}
-
-function clearFilters() {
-    document.getElementById('searchInput').value = '';
-    document.getElementById('statusFilter').value = '';
-    document.getElementById('assigneeFilter').value = '';
-    document.getElementById('startDate').value = '';
-    document.getElementById('endDate').value = '';
-    
-    filteredTestRuns = [...testRuns];
-    currentPage = 1;
-    renderTestRunsTable();
-    updatePagination();
-}
-
-// 工具函數
-function getStatusBadgeClass(status) {
-    const classes = {
-        'Planning': 'bg-secondary',
-        'In Progress': 'bg-primary',
-        'Completed': 'bg-success',
-        'Cancelled': 'bg-danger'
-    };
-    return classes[status] || 'bg-secondary';
-}
-
-function getStatusText(status) {
-    const texts = {
-        'Planning': '計劃中',
-        'In Progress': '進行中',
-        'Completed': '已完成',
-        'Cancelled': '已取消'
-    };
-    return texts[status] || status;
-}
-
-function getPriorityBadgeClass(priority) {
-    const classes = {
-        'High': 'bg-danger',
-        'Medium': 'bg-warning',
-        'Low': 'bg-info'
-    };
-    return classes[priority] || 'bg-secondary';
-}
-
-function getPriorityText(priority) {
-    const texts = {
-        'High': '高',
-        'Medium': '中',
-        'Low': '低'
-    };
-    return texts[priority] || priority;
-}
-
-function showLoadingState() {
-    const progressDiv = document.getElementById('loadingProgress');
-    if (progressDiv) {
-        progressDiv.style.display = 'block';
-    }
-    
-    // 隱藏搜尋與篩選區和表格（精準鎖定）
-    const searchCard = document.getElementById('runSearchFilterCard');
-    const tableCard = document.getElementById('testRunsCard');
-    if (searchCard) searchCard.style.display = 'none';
-    if (tableCard) tableCard.style.display = 'none';
-}
-
-function hideLoadingState() {
-    const progressDiv = document.getElementById('loadingProgress');
-    if (progressDiv) {
-        progressDiv.style.display = 'none';
-    }
-    
-    // 顯示搜尋與篩選區和表格（精準鎖定）
-    const searchCard = document.getElementById('runSearchFilterCard');
-    const tableCard = document.getElementById('testRunsCard');
-    if (searchCard) searchCard.style.display = 'block';
-    if (tableCard) tableCard.style.display = 'block';
-    adjustTestRunsScrollHeight();
-}
-
-function updatePagination() {
-    const pagination = document.getElementById('pagination');
-    const totalPages = Math.ceil(filteredTestRuns.length / pageSize);
-    
-    if (totalPages <= 1) {
-        pagination.innerHTML = '';
-        adjustTestRunsScrollHeight();
+async function verifyTableConnection() {
+    const tableId = document.getElementById('tableId').value;
+    if (!tableId) {
+        const errorMsg = window.i18n ? window.i18n.t('testRun.pleaseEnterTableId') : '請先輸入 Table ID';
+        AppUtils.showError(errorMsg);
         return;
     }
     
-    let paginationHtml = '';
-    
-    // 上一頁
-    paginationHtml += `
-        <li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
-            <a class="page-link" href="#" onclick="changePage(${currentPage - 1})" data-i18n="pagination.previousPage">上一頁</a>
-        </li>
+    const statusDiv = document.getElementById('connectionStatus');
+    statusDiv.classList.remove('d-none');
+    const verifyingText = window.i18n ? window.i18n.t('testRun.verifyingConnection') : '驗證 Lark 表格連線中...';
+    statusDiv.innerHTML = `
+        <div class="alert alert-info mb-0">
+            <i class="fas fa-spinner fa-spin me-2"></i>
+            ${verifyingText}
+        </div>
     `;
     
-    // 頁碼
-    for (let i = 1; i <= totalPages; i++) {
-        if (i === currentPage) {
-            paginationHtml += `<li class="page-item active"><a class="page-link" href="#">${i}</a></li>`;
-        } else if (i === 1 || i === totalPages || (i >= currentPage - 2 && i <= currentPage + 2)) {
-            paginationHtml += `<li class="page-item"><a class="page-link" href="#" onclick="changePage(${i})">${i}</a></li>`;
-        } else if (i === currentPage - 3 || i === currentPage + 3) {
-            paginationHtml += `<li class="page-item disabled"><a class="page-link" href="#">...</a></li>`;
-        }
+    try {
+        // 這裡可以實作實際的驗證邏輯
+        // 目前先模擬驗證
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        
+        const successText = window.i18n ? window.i18n.t('testRun.connectionSuccess') : 'Lark 表格連線成功';
+        statusDiv.innerHTML = `
+            <div class="alert alert-success mb-0">
+                <i class="fas fa-check me-2"></i>
+                ${successText}
+            </div>
+        `;
+        
+    } catch (error) {
+        const failText = window.i18n ? window.i18n.t('testRun.connectionFailed', {error: error.message}) : `連線失敗：${error.message}`;
+        statusDiv.innerHTML = `
+            <div class="alert alert-danger mb-0">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                ${failText}
+            </div>
+        `;
     }
+}
+
+function enterTestRun(configId) {
+    // 這裡會跳轉到實際的 Test Run 內容頁面
+    // 模擬跳轉
+    const config = testRunConfigs.find(c => c.id === configId);
+    if (config) {
+        const infoMsg = window.i18n ? window.i18n.t('testRun.enterTestRun', {name: config.name}) : `將進入 Test Run: ${config.name}`;
+        AppUtils.showInfo(infoMsg);
+        // TODO: 實作跳轉到實際的 Test Run 內容頁面
+        // window.location.href = `/test-run/${configId}`;
+    }
+}
+
+function showConfigDetails(configId) {
+    const config = testRunConfigs.find(c => c.id === configId);
+    if (!config) return;
     
-    // 下一頁
-    paginationHtml += `
-        <li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
-            <a class="page-link" href="#" onclick="changePage(${currentPage + 1})" data-i18n="pagination.nextPage">下一頁</a>
-        </li>
+    // 顯示配置詳情 Modal
+    const modal = new bootstrap.Modal(document.getElementById('configDetailModal'));
+    
+    // 填入詳情內容
+    document.getElementById('configDetailTitle').textContent = config.name;
+    document.getElementById('configDetailContent').innerHTML = createConfigDetailContent(config);
+    
+    modal.show();
+}
+
+function createConfigDetailContent(config) {
+    return `
+        <div class="row">
+            <div class="col-md-6">
+                <h6>${window.i18n ? window.i18n.t('testRun.configBasicInfo') : '基本資訊'}</h6>
+                <table class="table table-sm">
+                    <tr><td>${window.i18n ? window.i18n.t('testRun.configNameLabel') : '名稱'}</td><td>${escapeHtml(config.name)}</td></tr>
+                    <tr><td>${window.i18n ? window.i18n.t('testRun.configTableIdLabel') : 'Table ID'}</td><td><code>${escapeHtml(config.table_id)}</code></td></tr>
+                    <tr><td>${window.i18n ? window.i18n.t('testRun.configStatusLabel') : '狀態'}</td><td><span class="status-badge ${getStatusClass(config.status)}">${getStatusText(config.status)}</span></td></tr>
+                    <tr><td>${window.i18n ? window.i18n.t('testRun.configVersionLabel') : '測試版本'}</td><td>${escapeHtml(config.test_version || (window.i18n ? window.i18n.t('testRun.notConfigured') : '未設定'))}</td></tr>
+                    <tr><td>${window.i18n ? window.i18n.t('testRun.configEnvironmentLabel') : '測試環境'}</td><td>${escapeHtml(config.test_environment || (window.i18n ? window.i18n.t('testRun.notConfigured') : '未設定'))}</td></tr>
+                    <tr><td>${window.i18n ? window.i18n.t('testRun.configBuildLabel') : '建置編號'}</td><td>${escapeHtml(config.build_number || (window.i18n ? window.i18n.t('testRun.notConfigured') : '未設定'))}</td></tr>
+                </table>
+            </div>
+            <div class="col-md-6">
+                <h6>${window.i18n ? window.i18n.t('testRun.configStatsInfo') : '統計資訊'}</h6>
+                <table class="table table-sm">
+                    <tr><td>${window.i18n ? window.i18n.t('testRun.configTotalCasesLabel') : '總測試案例'}</td><td>${config.total_test_cases}</td></tr>
+                    <tr><td>${window.i18n ? window.i18n.t('testRun.configExecutedLabel') : '已執行'}</td><td>${config.executed_cases}</td></tr>
+                    <tr><td>${window.i18n ? window.i18n.t('testRun.configExecutionRateLabel') : '執行率'}</td><td>${config.execution_rate.toFixed(1)}%</td></tr>
+                    <tr><td>${window.i18n ? window.i18n.t('testRun.configPassRateLabel') : '通過率'}</td><td>${config.pass_rate.toFixed(1)}%</td></tr>
+                    <tr><td>${window.i18n ? window.i18n.t('testRun.configCreatedLabel') : '建立時間'}</td><td>${AppUtils.formatDateTime(new Date(config.created_at))}</td></tr>
+                    <tr><td>${window.i18n ? window.i18n.t('testRun.configStartLabel') : '開始時間'}</td><td>${config.start_date ? AppUtils.formatDateTime(new Date(config.start_date)) : (window.i18n ? window.i18n.t('testRun.notConfigured') : '未設定')}</td></tr>
+                </table>
+            </div>
+        </div>
+        ${config.description ? `
+            <div class="mt-3">
+                <h6>${window.i18n ? window.i18n.t('common.description') : '描述'}</h6>
+                <p class="text-muted">${escapeHtml(config.description)}</p>
+            </div>
+        ` : ''}
     `;
-    
-    pagination.innerHTML = paginationHtml;
-    adjustTestRunsScrollHeight();
 }
 
-function changePage(page) {
-    const totalPages = Math.ceil(filteredTestRuns.length / pageSize);
-    if (page >= 1 && page <= totalPages) {
-        currentPage = page;
-        renderTestRunsTable();
-        updatePagination();
-        adjustTestRunsScrollHeight();
-    }
-}
-
-// 通用工具函數
-function showSuccess(message) {
-    if (AppUtils && AppUtils.showSuccess) {
-        AppUtils.showSuccess(message);
-    } else {
-        alert(message);
-    }
-}
-
-function showError(message) {
-    if (AppUtils && AppUtils.showError) {
-        AppUtils.showError(message);
-    } else {
-        alert(message);
-    }
-}
-
-function formatDate(dateString, format) {
-    if (AppUtils && AppUtils.formatDate) {
-        return AppUtils.formatDate(dateString, format);
-    } else {
-        // 備用方案：使用瀏覽器的預設 locale，符合地區標準格式
-        const date = new Date(dateString);
-        if (isNaN(date.getTime())) return '';
-        const browserLocale = navigator.language || navigator.userLanguage || 'en-US';
-        
-        if (format === 'date') {
-            return date.toLocaleDateString(browserLocale);
-        } else if (format === 'datetime') {
-            return date.toLocaleString(browserLocale);
-        } else if (format === 'time') {
-            return date.toLocaleTimeString(browserLocale);
-        }
-        
-        return date.toLocaleDateString(browserLocale);
-    }
-}
-
-// 批次操作功能
-function toggleSelectAll() {
-    const selectAll = document.getElementById('selectAllCheckbox').checked;
-    const checkboxes = document.querySelectorAll('.test-run-checkbox');
-    
-    checkboxes.forEach(checkbox => {
-        checkbox.checked = selectAll;
-        const id = parseInt(checkbox.value);
-        if (selectAll) {
-            selectedTestRuns.add(id);
-        } else {
-            selectedTestRuns.delete(id);
-        }
-    });
-    updateBatchToolbar();
-}
-
-function updateBatchToolbar() {
-    const toolbar = document.getElementById('batchInlineToolbar');
-    const selectedCount = document.getElementById('selectedCount');
-    
-    if (selectedTestRuns.size > 0) {
-        toolbar.classList.remove('d-none');
-        selectedCount.textContent = selectedTestRuns.size;
-    } else {
-        toolbar.classList.add('d-none');
-    }
-    // 工具列顯示狀態改變時，重新計算列表高度避免重疊
-    adjustTestRunsScrollHeight();
-}
-
-function deselectAll() {
-    selectedTestRuns.clear();
-    document.getElementById('selectAllCheckbox').checked = false;
-    document.querySelectorAll('.test-run-checkbox').forEach(cb => {
-        cb.checked = false;
-    });
-    updateBatchToolbar();
-}
-
-async function batchStartTestRuns() {
-    if (selectedTestRuns.size === 0) {
-        AppUtils.showError(window.i18n ? window.i18n.t('errors.pleaseSelectTestRunsToStart') : '請先選擇要開始的測試執行');
-        return;
-    }
-    
-    const selectedIds = Array.from(selectedTestRuns);
-    const selectedRuns = testRuns.filter(tr => selectedIds.includes(tr.id));
-    
-    const confirmMessage = window.i18n ? 
-        window.i18n.t('confirm.batchStartTestRuns', {count: selectedRuns.length}) : 
-        `確定要開始執行這 ${selectedRuns.length} 個測試執行嗎？`;
-    if (confirm(confirmMessage)) {
-        try {
-            for (const testRun of selectedRuns) {
-                // 更新本地狀態
-                testRun.status = 'In Progress';
-                testRun.start_date = new Date().toISOString();
-            }
-            
-            // 重新渲染表格
-            renderTestRunsTable();
-            deselectAll();
-            
-            const batchStartSuccessMessage = window.i18n ? 
-                window.i18n.t('messages.batchStartSuccess', {count: selectedRuns.length}) : 
-                `成功開始 ${selectedRuns.length} 個測試執行`;
-            AppUtils.showSuccess(batchStartSuccessMessage);
-            
-        } catch (error) {
-            console.error('批次開始測試執行失敗:', error);
-            const batchStartFailedMessage = window.i18n ? window.i18n.t('errors.batchStartFailed') : '批次開始失敗';
-            AppUtils.showError(batchStartFailedMessage + '：' + error.message);
-        }
-    }
-}
-
-async function batchDeleteTestRuns() {
-    if (selectedTestRuns.size === 0) {
-        AppUtils.showError(window.i18n ? window.i18n.t('errors.pleaseSelectTestRunsToDelete') : '請先選擇要刪除的測試執行');
-        return;
-    }
-    
-    const selectedIds = Array.from(selectedTestRuns);
-    const selectedRuns = testRuns.filter(tr => selectedIds.includes(tr.id));
-    
-    const confirmDeleteMessage = window.i18n ? 
-        window.i18n.t('confirm.batchDeleteTestRuns', {count: selectedRuns.length}) : 
-        `確定要刪除這 ${selectedRuns.length} 個測試執行嗎？此操作無法復原。`;
-    if (confirm(confirmDeleteMessage)) {
-        try {
-            // 從本地陣列移除已刪除的項目（背景處理，不顯示載入動畫）
-            const deletedIds = Array.from(selectedIds);
-            testRuns = testRuns.filter(tr => !deletedIds.includes(tr.id));
-            filteredTestRuns = filteredTestRuns.filter(tr => !deletedIds.includes(tr.id));
-            
-            // 重新渲染表格和分頁
-            renderTestRunsTable();
-            updatePagination();
-            deselectAll();
-            
-            // 用 toast 通知成功
-            const batchDeleteSuccessMessage = window.i18n ? 
-                window.i18n.t('messages.batchDeleteTestRunsSuccess', {count: selectedRuns.length}) : 
-                `成功刪除 ${selectedRuns.length} 個測試執行`;
-            AppUtils.showSuccess(batchDeleteSuccessMessage);
-            
-        } catch (error) {
-            console.error('批次刪除測試執行失敗:', error);
-            const batchDeleteFailedMessage = window.i18n ? window.i18n.t('errors.batchDeleteFailed') : '批次刪除失敗';
-            AppUtils.showError(batchDeleteFailedMessage + '：' + error.message);
-        }
-    }
-}
-
-// 行內快速編輯功能
-function quickEditTestRun(testRunId, field) {
-    const testRun = testRuns.find(tr => tr.id == testRunId);
-    if (!testRun) return;
-    
-    const cell = document.querySelector(`td[data-record-id="${testRunId}"][data-field="${field}"]`);
-    const currentValue = field === 'name' ? testRun.name : testRun.assignee;
-    const originalContent = cell.innerHTML;
-    
-    // 創建編輯輸入框
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.value = currentValue || '';
-    input.className = 'form-control quick-edit-input';
-    input.style.width = '100%';
-    
-    // 替換單元格內容
-    cell.innerHTML = '';
-    cell.appendChild(input);
-    input.focus();
-    input.select();
-    
-    // 處理儲存
-    const saveEdit = async () => {
-        const newValue = input.value.trim();
-        
-        if (newValue === currentValue) {
-            // 沒有變更，恢復原始內容
-            cell.innerHTML = originalContent;
-            return;
-        }
-        
-        // 更新本地資料
-        if (field === 'name') {
-            testRun.name = newValue;
-        } else if (field === 'assignee') {
-            testRun.assignee = newValue;
-        }
-        
-        // 先恢復原始結構
-        cell.innerHTML = originalContent;
-        
-        // 立即重新渲染表格以顯示新值
-        renderTestRunsTable();
-        
-        // 在背景處理儲存（實際應用中應該調用 API）
-        try {
-            // TODO: 實際的 API 調用
-            console.log(`已更新測試執行 ${testRunId} 的 ${field} 為: ${newValue}`);
-            AppUtils.showSuccess(window.i18n ? window.i18n.t('messages.updateSuccess') : '更新成功');
-            
-        } catch (error) {
-            console.error('快速編輯失敗:', error);
-            const updateFailedMessage = window.i18n ? window.i18n.t('errors.updateFailed') : '更新失敗';
-            AppUtils.showError(updateFailedMessage + '：' + error.message);
-            
-            // 如果儲存失敗，恢復原值並重新渲染
-            if (field === 'name') {
-                testRun.name = currentValue;
-            } else if (field === 'assignee') {
-                testRun.assignee = currentValue;
-            }
-            renderTestRunsTable();
-        }
-    };
-    
-    // 處理取消
-    const cancelEdit = () => {
-        cell.innerHTML = originalContent;
-    };
-    
-    // 綁定事件
-    input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-            e.preventDefault();
-            saveEdit();
-        } else if (e.key === 'Escape') {
-            e.preventDefault();
-            cancelEdit();
-        }
-    });
-    
-    input.addEventListener('blur', saveEdit);
-}
-
-// 工具函數
 function escapeHtml(text) {
     if (!text) return '';
     const map = {
@@ -1168,81 +704,6 @@ function escapeHtml(text) {
         "'": '&#039;'
     };
     return text.replace(/[&<>"']/g, function(m) { return map[m]; });
-}
-
-// 佔位函數 - 基礎實作
-function viewTestRunDetail(id) {
-    const testRun = testRuns.find(tr => tr.id == id);
-    if (!testRun) {
-        AppUtils.showError(window.i18n ? window.i18n.t('errors.testRunNotFound') : '找不到測試執行記錄');
-        return;
-    }
-    
-    const detailMsg = window.i18n ? 
-        `${window.i18n.t('form.testRunDetails')}:
-
-${window.i18n.t('common.name')}: ${testRun.name || window.i18n.t('testRun.unnamed')}
-${window.i18n.t('common.status')}: ${getStatusText(testRun.status)}
-${window.i18n.t('common.assignee')}: ${testRun.assignee || window.i18n.t('testRun.unassigned')}
-${window.i18n.t('common.progress')}: ${testRun.pass_rate || 0}% (${testRun.passed || 0}/${testRun.total || 0})
-${window.i18n.t('common.startTime')}: ${formatDate(testRun.start_date, 'datetime')}
-${window.i18n.t('common.endTime')}: ${testRun.end_date ? formatDate(testRun.end_date, 'datetime') : window.i18n.t('testRun.incomplete')}
-
-${window.i18n.t('messages.operationNotImplemented')}` :
-        `測試執行詳情：\n\n名稱：${testRun.name || '未命名'}\n狀態：${getStatusText(testRun.status)}\n執行者：${testRun.assignee || '未指定'}\n進度：${testRun.pass_rate || 0}% (${testRun.passed || 0}/${testRun.total || 0})\n開始時間：${formatDate(testRun.start_date, 'datetime')}\n結束時間：${testRun.end_date ? formatDate(testRun.end_date, 'datetime') : '未完成'}\n\n說明：詳細檢視功能開發中...`;
-    alert(detailMsg);
-}
-
-function executeTestRun(id) {
-    const testRun = testRuns.find(tr => tr.id == id);
-    if (!testRun) {
-        AppUtils.showError(window.i18n ? window.i18n.t('errors.testRunNotFound') : '找不到測試執行記錄');
-        return;
-    }
-    
-    if (testRun.status === 'In Progress') {
-        AppUtils.showWarning(window.i18n ? window.i18n.t('errors.testRunAlreadyInProgress') : '測試執行已在進行中');
-        return;
-    }
-    
-    const confirmMsg = window.i18n ? window.i18n.t('testRun.confirmStartExecution', {name: testRun.name}) : `確定要開始執行「${testRun.name}」嗎？`;
-    if (confirm(confirmMsg)) {
-        // 更新本地狀態
-        testRun.status = 'In Progress';
-        testRun.start_date = new Date().toISOString();
-        
-        // 重新渲染表格
-        renderTestRunsTable();
-        
-        const successMsg = window.i18n ? window.i18n.t('testRun.executionStarted', {name: testRun.name}) : `已開始執行「${testRun.name}」`;
-        AppUtils.showSuccess(successMsg);
-    }
-}
-
-function deleteTestRun(id) {
-    const testRun = testRuns.find(tr => tr.id == id);
-    if (!testRun) {
-        AppUtils.showError(window.i18n ? window.i18n.t('errors.testRunNotFound') : '找不到測試執行記錄');
-        return;
-    }
-    
-    const confirmMsg = window.i18n ? window.i18n.t('testRun.confirmDelete', {name: testRun.name}) : `確定要刪除測試執行「${testRun.name}」嗎？此操作無法復原。`;
-    if (confirm(confirmMsg)) {
-        // 從本地陣列移除
-        testRuns = testRuns.filter(tr => tr.id !== id);
-        filteredTestRuns = filteredTestRuns.filter(tr => tr.id !== id);
-        
-        // 重新渲染表格和分頁
-        renderTestRunsTable();
-        updatePagination();
-        
-        const successMsg = window.i18n ? window.i18n.t('testRun.deleteSuccess', {name: testRun.name}) : `已成功刪除「${testRun.name}」`;
-        AppUtils.showSuccess(successMsg);
-    }
-}
-
-function saveExecutionResult() {
-    showError(window.i18n ? window.i18n.t('errors.executionResultNotImplemented') : '儲存執行結果功能尚未實作');
 }
 
 // 更新頁面標題翻譯
