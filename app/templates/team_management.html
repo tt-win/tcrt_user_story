@@ -9,18 +9,18 @@
         <div class="col">
             <div class="d-flex justify-content-between align-items-start">
                 <div>
-                    <h1 class="text-primary mb-1">團隊管理</h1>
-                    <p class="text-muted mb-0">管理各團隊的 Lark 多維表格連結設定</p>
+                    <h1 class="text-primary mb-1" data-i18n="team.management">團隊管理</h1>
+                    <p class="text-muted mb-0" data-i18n="team.subtitle">管理各團隊的 Lark 多維表格連結設定</p>
                 </div>
                 <div class="d-flex gap-2 align-items-center">
                     <a href="/" class="btn btn-outline-secondary">
-                        <i class="fas fa-home me-2"></i>回到首頁
+                        <i class="fas fa-home me-2"></i><span data-i18n="navigation.backToHome">回到首頁</span>
                     </a>
                     <button type="button" class="btn btn-primary" id="createTeamBtn">
-                        <i class="fas fa-plus me-2"></i>新增團隊
+                        <i class="fas fa-plus me-2"></i><span data-i18n="team.createTeam">新增團隊</span>
                     </button>
                     <button type="button" class="btn btn-secondary" id="refreshBtn">
-                        <i class="fas fa-sync-alt me-2"></i>重新整理
+                        <i class="fas fa-sync-alt me-2"></i><span data-i18n="common.refresh">重新整理</span>
                     </button>
                 </div>
             </div>
@@ -30,9 +30,9 @@
     <!-- 載入狀態 -->
     <div id="loading-state" class="text-center py-5" style="display: none;">
         <div class="spinner-border text-primary" role="status">
-            <span class="visually-hidden">載入中...</span>
+            <span class="visually-hidden" data-i18n="common.loading">載入中...</span>
         </div>
-        <div class="mt-3 text-muted">載入團隊資料中...</div>
+        <div class="mt-3 text-muted" data-i18n="messages.loadingTeams">載入團隊資料中...</div>
     </div>
 
     <!-- 團隊列表區域 -->
@@ -45,8 +45,8 @@
     <!-- 無團隊時的提示 -->
     <div id="no-teams-section" class="text-center py-5" style="display: none;">
         <i class="fas fa-users fa-3x text-muted mb-3"></i>
-        <h5 class="text-muted mb-2">尚未建立任何團隊</h5>
-        <p class="text-muted">點擊上方「新增團隊」按鈕開始建立第一個團隊</p>
+        <h5 class="text-muted mb-2" data-i18n="team.noTeams">尚未建立任何團隊</h5>
+        <p class="text-muted" data-i18n="team.noTeamsHint">點擊上方「新增團隊」按鈕開始建立第一個團隊</p>
     </div>
 </div>
 
@@ -55,24 +55,24 @@
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title" id="teamModalLabel">新增團隊</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="關閉"></button>
+                <h5 class="modal-title" id="teamModalLabel" data-i18n="team.createTeam">新增團隊</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="關閉"></button>
             </div>
             <div class="modal-body">
                 <form id="teamForm">
                     <!-- 基本資訊 -->
                     <div class="mb-4">
-                        <h6 class="text-primary mb-3">基本資訊</h6>
+                        <h6 class="text-primary mb-3" data-i18n="team.basicInfo">基本資訊</h6>
                         <div class="row">
                             <div class="col-md-6">
-                                <label for="teamName" class="form-label">團隊名稱 <span class="text-danger">*</span></label>
+                                <label for="teamName" class="form-label"><span data-i18n="team.teamName">團隊名稱</span> <span class="text-danger">*</span></label>
                                 <input type="text" class="form-control" id="teamName" name="name" required 
-                                       placeholder="例：Frontend Team">
+                                       data-i18n-placeholder="team.teamNamePlaceholder">
                             </div>
                             <div class="col-md-6">
-                                <label for="teamDescription" class="form-label">團隊描述</label>
+                                <label for="teamDescription" class="form-label" data-i18n="team.teamDescription">團隊描述</label>
                                 <input type="text" class="form-control" id="teamDescription" name="description" 
-                                       placeholder="團隊簡短描述">
+                                       data-i18n-placeholder="team.teamDescriptionPlaceholder">
                             </div>
                         </div>
                     </div>
@@ -80,27 +80,27 @@
                     <!-- Lark 設定 -->
                     <div class="mb-4">
                         <h6 class="text-primary mb-3">
-                            <i class="fas fa-table me-2"></i>Lark 多維表格設定
+                            <i class="fas fa-table me-2"></i><span data-i18n="team.larkSettings">Lark 多維表格設定</span>
                         </h6>
                         <div class="row">
                             <div class="col-md-6">
-                                <label for="wikiToken" class="form-label">Wiki Token <span class="text-danger">*</span></label>
+                                <label for="wikiToken" class="form-label"><span data-i18n="team.wikiToken">Wiki Token</span> <span class="text-danger">*</span></label>
                                 <input type="text" class="form-control" id="wikiToken" name="wiki_token" required 
-                                       placeholder="例：Q4XxwaS2Cif80DkAku9lMKuAgof">
-                                <div class="form-text">從 Lark 多維表格分享連結中取得</div>
+                                       data-i18n-placeholder="team.wikiTokenPlaceholder">
+                                <div class="form-text" data-i18n="team.wikiTokenHelp">從 Lark 多維表格分享連結中取得</div>
                             </div>
                             <div class="col-md-6">
-                                <label for="testCaseTableId" class="form-label">Test Case 表格 ID <span class="text-danger">*</span></label>
+                                <label for="testCaseTableId" class="form-label"><span data-i18n="team.testCaseTableId">Test Case 表格 ID</span> <span class="text-danger">*</span></label>
                                 <input type="text" class="form-control" id="testCaseTableId" name="test_case_table_id" required 
-                                       placeholder="例：tblEAg8srqYs0rzi">
-                                <div class="form-text">測試案例表格的 ID</div>
+                                       data-i18n-placeholder="team.testCaseTableIdPlaceholder">
+                                <div class="form-text" data-i18n="team.testCaseTableIdHelp">測試案例表格的 ID</div>
                             </div>
                         </div>
                         <div class="row mt-3">
                             <div class="col-12">
                                 <div class="d-flex align-items-center">
                                     <button type="button" class="btn btn-outline-info" id="validateLarkBtn">
-                                        <i class="fas fa-check me-2"></i>驗證 Lark 連線
+                                        <i class="fas fa-check me-2"></i><span data-i18n="team.validateConnection">驗證 Lark 連線</span>
                                     </button>
                                     <div id="larkValidationResult" class="ms-3"></div>
                                 </div>
@@ -112,19 +112,19 @@
                     <!-- 團隊設定 -->
                     <div class="mb-3">
                         <h6 class="text-primary mb-3">
-                            <i class="fas fa-cog me-2"></i>團隊設定
+                            <i class="fas fa-cog me-2"></i><span data-i18n="team.teamSettings">團隊設定</span>
                         </h6>
                         <div class="row">
                             <div class="col-md-6">
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" id="enableNotifications" name="enable_notifications" checked>
-                                    <label class="form-check-label" for="enableNotifications">啟用通知</label>
+                                    <label class="form-check-label" for="enableNotifications" data-i18n="team.enableNotifications">啟用通知</label>
                                 </div>
                             </div>
                             <div class="col-md-6">
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" id="autoCreateBugs" name="auto_create_bugs">
-                                    <label class="form-check-label" for="autoCreateBugs">自動建立 Bug</label>
+                                    <label class="form-check-label" for="autoCreateBugs" data-i18n="team.autoCreateBugs">自動建立 Bug</label>
                                 </div>
                             </div>
                         </div>
@@ -132,9 +132,9 @@
                 </form>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">取消</button>
                 <button type="button" class="btn btn-primary" id="saveTeamBtn">
-                    <i class="fas fa-save me-2"></i>儲存團隊
+                    <i class="fas fa-save me-2"></i><span data-i18n="team.saveTeam">儲存團隊</span>
                 </button>
             </div>
         </div>
@@ -175,11 +175,12 @@ async function loadTeams() {
         renderTeams();
         
     } catch (error) {
-        console.error('載入團隊失敗:', error);
+        console.error('Load teams failed:', error);
         if (AppUtils && AppUtils.showError) {
-            AppUtils.showError('載入團隊失敗：' + error.message);
+            const errorMsg = window.i18n ? window.i18n.t('messages.loadFailed') : '載入失敗';
+            AppUtils.showError(errorMsg + '：' + error.message);
         } else {
-            console.error('AppUtils 不可用:', error.message);
+            console.error('AppUtils not available:', error.message);
         }
         showNoTeams();
     } finally {
@@ -237,7 +238,7 @@ function renderTeamCards() {
                         <div class="flex-grow-1">
                             <h5 class="card-title text-primary mb-1">${escapeHtml(team.name)}</h5>
                             <p class="card-text text-muted small mb-0">
-                                ${escapeHtml(team.description || '無描述')}
+                                ${escapeHtml(team.description || (window.i18n ? window.i18n.t('common.noDescription') : '無描述'))}
                             </p>
                         </div>
                     </div>
@@ -245,22 +246,26 @@ function renderTeamCards() {
                     <div class="mb-3">
                         <div class="d-flex align-items-center mb-2">
                             <i class="fas fa-table me-2 text-success"></i>
-                            <small class="text-muted">Lark: ${team.is_lark_configured ? '已設定' : '未設定'}</small>
+                            <small class="text-muted">Lark: ${team.is_lark_configured ? 
+                                (window.i18n ? window.i18n.t('team.configured') : '已設定') : 
+                                (window.i18n ? window.i18n.t('team.notConfigured') : '未設定')}</small>
                         </div>
                         <div class="d-flex align-items-center">
                             <i class="fas fa-list me-2 text-muted"></i>
-                            <small class="text-muted">${team.test_case_count || 0} 個測試案例</small>
+                            <small class="text-muted">${window.i18n ? 
+                                window.i18n.t('team.testCaseCount', {count: team.test_case_count || 0}) : 
+                                `${team.test_case_count || 0} 個測試案例`}</small>
                         </div>
                     </div>
                     
                     <div class="btn-group w-100" role="group">
-                        <button class="btn btn-outline-primary btn-sm" onclick="editTeam(${team.id})" title="編輯">
+                        <button class="btn btn-outline-primary btn-sm" onclick="editTeam(${team.id})" title="${window.i18n ? window.i18n.t('common.edit') : '編輯'}">
                             <i class="fas fa-edit"></i>
                         </button>
-                        <button class="btn btn-outline-success btn-sm" onclick="selectTeam(${team.id})" title="進入團隊">
+                        <button class="btn btn-outline-success btn-sm" onclick="selectTeam(${team.id})" title="${window.i18n ? window.i18n.t('tooltips.enterTeam') : '進入團隊'}">
                             <i class="fas fa-arrow-right"></i>
                         </button>
-                        <button class="btn btn-outline-danger btn-sm" onclick="deleteTeam(${team.id})" title="刪除">
+                        <button class="btn btn-outline-danger btn-sm" onclick="deleteTeam(${team.id})" title="${window.i18n ? window.i18n.t('common.delete') : '刪除'}">
                             <i class="fas fa-trash"></i>
                         </button>
                     </div>
@@ -270,11 +275,17 @@ function renderTeamCards() {
     `).join('');
     
     container.innerHTML = teamsHtml;
+    
+    // Retranslate the newly added content
+    if (window.i18n && window.i18n.isReady()) {
+        window.i18n.retranslate();
+    }
 }
 
 function showCreateTeamModal() {
     currentEditTeam = null;
-    document.getElementById('teamModalLabel').textContent = '新增團隊';
+    const modalTitle = window.i18n ? window.i18n.t('team.createTeam') : '新增團隊';
+    document.getElementById('teamModalLabel').textContent = modalTitle;
     document.getElementById('teamForm').reset();
     
     const modal = new bootstrap.Modal(document.getElementById('teamModal'));
@@ -286,7 +297,8 @@ function editTeam(teamId) {
     if (!team) return;
     
     currentEditTeam = team;
-    document.getElementById('teamModalLabel').textContent = '編輯團隊';
+    const modalTitle = window.i18n ? window.i18n.t('team.editTeam') : '編輯團隊';
+    document.getElementById('teamModalLabel').textContent = modalTitle;
     
     // 填入表單資料
     document.getElementById('teamName').value = team.name;
@@ -322,7 +334,8 @@ async function saveTeam() {
     
     // 驗證必填欄位
     if (!teamData.name || !teamData.lark_config.wiki_token || !teamData.lark_config.test_case_table_id) {
-        AppUtils.showError('請填寫所有必填欄位');
+        const errorMsg = window.i18n ? window.i18n.t('messages.fillRequiredFields') : '請填寫所有必填欄位';
+        AppUtils.showError(errorMsg);
         return;
     }
     
@@ -345,10 +358,14 @@ async function saveTeam() {
         
         if (!response.ok) {
             const error = await response.json();
-            throw new Error(error.detail || '儲存團隊失敗');
+            const defaultMsg = window.i18n ? window.i18n.t('messages.saveFailed') : '儲存失敗';
+            throw new Error(error.detail || defaultMsg);
         }
         
-        AppUtils.showSuccess(currentEditTeam ? '團隊更新成功' : '團隊建立成功');
+        const successMsg = currentEditTeam ? 
+            (window.i18n ? window.i18n.t('team.teamUpdated') : '團隊更新成功') :
+            (window.i18n ? window.i18n.t('team.teamSaved') : '團隊建立成功');
+        AppUtils.showSuccess(successMsg);
         
         // 關閉模態視窗
         const modal = bootstrap.Modal.getInstance(document.getElementById('teamModal'));
@@ -358,8 +375,9 @@ async function saveTeam() {
         await loadTeams();
         
     } catch (error) {
-        console.error('儲存團隊失敗:', error);
-        AppUtils.showError('儲存團隊失敗：' + error.message);
+        console.error('Save team failed:', error);
+        const errorMsg = window.i18n ? window.i18n.t('messages.saveFailed') : '儲存失敗';
+        AppUtils.showError(errorMsg + '：' + error.message);
     }
 }
 
@@ -369,13 +387,15 @@ async function validateLarkConnection() {
     const resultDiv = document.getElementById('larkValidationResult');
     
     if (!wikiToken || !testCaseTableId) {
-        showValidationMessage('請先填寫 Wiki Token 和 Test Case 表格 ID', 'warning');
+        const warningMsg = window.i18n ? window.i18n.t('team.pleaseEnterToken') : '請先填寫 Wiki Token 和 Test Case 表格 ID';
+        showValidationMessage(warningMsg, 'warning');
         return;
     }
     
     const validateBtn = document.getElementById('validateLarkBtn');
     validateBtn.disabled = true;
-    validateBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>驗證中...';
+    const validatingMsg = window.i18n ? window.i18n.t('team.validating') : '驗證中...';
+    validateBtn.innerHTML = `<i class="fas fa-spinner fa-spin me-2"></i>${validatingMsg}`;
     
     try {
         const response = await fetch('/api/teams/validate', {
@@ -400,17 +420,21 @@ async function validateLarkConnection() {
         const result = await response.json();
         
         if (result.valid) {
-            showValidationMessage('連線驗證成功', 'success');
+            const successMsg = window.i18n ? window.i18n.t('team.connectionValid') : '連線驗證成功';
+            showValidationMessage(successMsg, 'success');
         } else {
-            showValidationMessage('連線驗證失敗', 'danger');
+            const failMsg = window.i18n ? window.i18n.t('team.connectionInvalid') : '連線驗證失敗';
+            showValidationMessage(failMsg, 'danger');
         }
         
     } catch (error) {
-        console.error('驗證失敗:', error);
-        showValidationMessage('驗證過程發生錯誤', 'danger');
+        console.error('Validation failed:', error);
+        const errorMsg = window.i18n ? window.i18n.t('team.connectionError') : '驗證過程發生錯誤';
+        showValidationMessage(errorMsg, 'danger');
     } finally {
         validateBtn.disabled = false;
-        validateBtn.innerHTML = '<i class="fas fa-check me-2"></i>驗證 Lark 連線';
+        const validateText = window.i18n ? window.i18n.t('team.validateConnection') : '驗證 Lark 連線';
+        validateBtn.innerHTML = `<i class="fas fa-check me-2"></i>${validateText}`;
     }
 }
 
@@ -421,7 +445,10 @@ function selectTeam(teamId) {
     // 儲存選擇的團隊
     if (AppUtils && AppUtils.setCurrentTeam) {
         AppUtils.setCurrentTeam(team);
-        AppUtils.showSuccess(`已選擇團隊：${team.name}`);
+        const successMsg = window.i18n ? 
+            window.i18n.t('team.teamSelected', {name: team.name}) : 
+            `已選擇團隊：${team.name}`;
+        AppUtils.showSuccess(successMsg);
         
         // 跳轉到測試案例管理
         setTimeout(() => {
@@ -434,7 +461,10 @@ async function deleteTeam(teamId) {
     const team = teams.find(t => t.id === teamId);
     if (!team) return;
     
-    if (!confirm(`確定要刪除團隊「${team.name}」嗎？此操作無法復原。`)) {
+    const confirmMsg = window.i18n ? 
+        window.i18n.t('team.confirmDelete', {name: team.name}) : 
+        `確定要刪除團隊「${team.name}」嗎？此操作無法復原。`;
+    if (!confirm(confirmMsg)) {
         return;
     }
     
@@ -444,15 +474,18 @@ async function deleteTeam(teamId) {
         });
         
         if (!response.ok) {
-            throw new Error('刪除團隊失敗');
+            const errorMsg = window.i18n ? window.i18n.t('messages.deleteFailed') : '刪除失敗';
+            throw new Error(errorMsg);
         }
         
-        AppUtils.showSuccess('團隊刪除成功');
+        const successMsg = window.i18n ? window.i18n.t('team.teamDeleted') : '團隊刪除成功';
+        AppUtils.showSuccess(successMsg);
         await loadTeams();
         
     } catch (error) {
-        console.error('刪除團隊失敗:', error);
-        AppUtils.showError('刪除團隊失敗：' + error.message);
+        console.error('Delete team failed:', error);
+        const errorMsg = window.i18n ? window.i18n.t('messages.deleteFailed') : '刪除失敗';
+        AppUtils.showError(errorMsg + '：' + error.message);
     }
 }
 
@@ -509,6 +542,17 @@ function escapeHtml(text) {
     };
     return text.replace(/[&<>"']/g, function(m) { return map[m]; });
 }
+
+// 更新頁面標題翻譯
+function updatePageTitle() {
+    const pageTitle = window.i18n ? window.i18n.t('team.management') : '團隊管理';
+    const siteTitle = window.i18n ? window.i18n.t('navigation.title') : 'Test Case Repository';
+    document.title = `${pageTitle} - ${siteTitle} Web Tool`;
+}
+
+// 監聽 i18n 初始化和語言變更事件
+document.addEventListener('i18nReady', updatePageTitle);
+document.addEventListener('languageChanged', updatePageTitle);
 </script>
 
 <style>

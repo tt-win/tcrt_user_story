@@ -95,29 +95,50 @@ const AppUtils = {
         }, 3000);
     },
 
-    // 格式化日期
+    // 格式化日期 - 使用瀏覽器的 locale 設定，不依賴介面語言
     formatDate: function(dateString, format = 'datetime') {
         if (!dateString) return '';
         
+        // 使用新的 DateTimeFormatter 模組，它會自動使用瀏覽器的 locale 設定
+        if (window.DateTimeFormatter) {
+            return window.DateTimeFormatter.format(dateString, format);
+        }
+        
+        // 備用方案：如果 DateTimeFormatter 尚未載入，使用瀏覽器預設 locale
         const date = new Date(dateString);
-        const options = {};
-
+        if (isNaN(date.getTime())) return '';
+        
+        // 使用瀏覽器的預設 locale 而非硬編碼的 'zh-TW'
+        const browserLocale = navigator.language || navigator.userLanguage || 'en-US';
+        
+        // 使用地區標準格式，讓各地區顯示符合當地慣例的格式
         if (format === 'date') {
-            options.year = 'numeric';
-            options.month = '2-digit';
-            options.day = '2-digit';
+            return date.toLocaleDateString(browserLocale);
         } else if (format === 'datetime') {
-            options.year = 'numeric';
-            options.month = '2-digit';
-            options.day = '2-digit';
-            options.hour = '2-digit';
-            options.minute = '2-digit';
+            return date.toLocaleString(browserLocale);
         } else if (format === 'time') {
-            options.hour = '2-digit';
-            options.minute = '2-digit';
+            return date.toLocaleTimeString(browserLocale);
         }
 
-        return date.toLocaleString('zh-TW', options);
+        return date.toLocaleString(browserLocale);
+    },
+
+    // 格式化相對時間 (e.g., "2 hours ago", "in 3 days")
+    formatRelativeTime: function(dateString) {
+        if (window.DateTimeFormatter) {
+            return window.DateTimeFormatter.formatRelative(dateString);
+        }
+        
+        // 簡單備用方案
+        return this.formatDate(dateString, 'datetime');
+    },
+
+    // 獲取瀏覽器的 locale 設定
+    getBrowserLocale: function() {
+        if (window.DateTimeFormatter) {
+            return window.DateTimeFormatter.getBrowserLocale();
+        }
+        return navigator.language || navigator.userLanguage || 'en-US';
     },
 
     // 團隊變更回調函數 (可由外部設定)
@@ -130,6 +151,20 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // 載入儲存的團隊選擇
     AppUtils.getCurrentTeam();
+    
+    // Debug: 顯示瀏覽器 locale 資訊
+    const browserLocale = AppUtils.getBrowserLocale();
+    console.log('瀏覽器 Locale:', browserLocale);
+    
+    // Debug: 測試日期格式化
+    const testDate = new Date('2024-08-22T14:30:00');
+    console.log('測試日期格式化:');
+    console.log('- 日期:', AppUtils.formatDate(testDate, 'date'));
+    console.log('- 時間:', AppUtils.formatDate(testDate, 'time'));
+    console.log('- 日期時間:', AppUtils.formatDate(testDate, 'datetime'));
+    if (window.DateTimeFormatter) {
+        console.log('- 相對時間:', AppUtils.formatRelativeTime(testDate));
+    }
 });
 
 // 全域函數 (向後兼容)

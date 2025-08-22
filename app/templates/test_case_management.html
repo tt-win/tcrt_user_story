@@ -210,18 +210,18 @@ html, body { height: 100%; overflow: hidden; }
     <!-- 頁面標題與工具列 -->
     <div class="d-flex justify-content-between align-items-center mb-3">
         <div>
-            <h1 class="h3 mb-1">測試案例管理</h1>
-            <p class="text-muted">管理測試案例，支援搜尋、過濾、編輯和批次操作</p>
+            <h1 class="h3 mb-1" data-i18n="testCase.management">測試案例管理</h1>
+            <p class="text-muted" data-i18n="testCase.subtitle">管理測試案例，支援搜尋、過濾、編輯和批次操作</p>
         </div>
         <div class="d-flex gap-2">
             <a href="/" class="btn btn-outline-secondary">
-                <i class="fas fa-home me-2"></i>回到首頁
+                <i class="fas fa-home me-2"></i><span data-i18n="navigation.backToHome">回到首頁</span>
             </a>
             <button type="button" class="btn btn-primary" id="addTestCaseBtn">
-                <i class="fas fa-plus me-2"></i>新增測試案例
+                <i class="fas fa-plus me-2"></i><span data-i18n="testCase.createTestCase">新增測試案例</span>
             </button>
             <button type="button" class="btn btn-secondary" id="refreshBtn">
-                <i class="fas fa-sync-alt me-2"></i>重新整理
+                <i class="fas fa-sync-alt me-2"></i><span data-i18n="common.refresh">重新整理</span>
             </button>
         </div>
     </div>
@@ -230,13 +230,13 @@ html, body { height: 100%; overflow: hidden; }
     <div id="loadingProgress" class="card mb-2" style="display: none;">
         <div class="card-body">
             <h5 class="card-title mb-3">
-                <i class="fas fa-spinner fa-spin me-2"></i>載入中...
+                <i class="fas fa-spinner fa-spin me-2"></i><span data-i18n="common.loading">載入中...</span>
             </h5>
             
             <!-- Test Case 載入進度 -->
             <div class="mb-3">
                 <div class="d-flex justify-content-between align-items-center mb-1">
-                    <small class="text-muted">載入測試案例</small>
+                    <small class="text-muted" data-i18n="testCase.loadingTestCases">載入測試案例</small>
                     <small class="text-muted" id="testCaseProgress">0%</small>
                 </div>
                 <div class="progress" style="height: 6px;">
@@ -247,7 +247,7 @@ html, body { height: 100%; overflow: hidden; }
             <!-- TCG 快取載入進度 -->
             <div class="mb-2">
                 <div class="d-flex justify-content-between align-items-center mb-1">
-                    <small class="text-muted">載入 TCG 單號快取</small>
+                    <small class="text-muted" data-i18n="testCase.loadingTCG">載入 TCG 單號快取</small>
                     <small class="text-muted" id="tcgCacheProgress">0%</small>
                 </div>
                 <div class="progress" style="height: 6px;">
@@ -262,36 +262,36 @@ html, body { height: 100%; overflow: hidden; }
         <div class="card-body">
             <div class="row g-3">
                 <div class="col-md-3 col-lg-2">
-                    <label for="testCaseNumberSearch" class="form-label">Test Case Number</label>
-                    <input type="text" class="form-control" id="testCaseNumberSearch" placeholder="TCG-93178...">
+                    <label for="testCaseNumberSearch" class="form-label" data-i18n="testCase.testCaseNumber">Test Case Number</label>
+                    <input type="text" class="form-control" id="testCaseNumberSearch" data-i18n-placeholder="testCase.testCaseNumberPlaceholder">
                 </div>
                 <div class="col-md-4 col-lg-3">
-                    <label for="searchInput" class="form-label">關鍵字搜尋</label>
-                    <input type="text" class="form-control" id="searchInput" placeholder="搜尋標題、描述...">
+                    <label for="searchInput" class="form-label" data-i18n="common.search">關鍵字搜尋</label>
+                    <input type="text" class="form-control" id="searchInput" data-i18n-placeholder="testCase.searchPlaceholder">
                 </div>
                 <div class="col-md-2 col-lg-1">
-                    <label for="priorityFilter" class="form-label">優先級</label>
+                    <label for="priorityFilter" class="form-label" data-i18n="testCase.priority">優先級</label>
                     <select class="form-select" id="priorityFilter">
-                        <option value="">全部</option>
-                        <option value="High">High</option>
-                        <option value="Medium">Medium</option>
-                        <option value="Low">Low</option>
+                        <option value="" data-i18n="common.all">全部</option>
+                        <option value="High" data-i18n="priority.high">High</option>
+                        <option value="Medium" data-i18n="priority.medium">Medium</option>
+                        <option value="Low" data-i18n="priority.low">Low</option>
                     </select>
                 </div>
                 <div class="col-md-3 col-lg-6 d-flex align-items-end justify-content-between flex-wrap">
                     <div class="d-flex align-items-center mb-2 mb-lg-0">
                         <button type="button" class="btn btn-primary me-2" id="applyFiltersBtn">
-                            <i class="fas fa-filter me-2"></i>套用篩選
+                            <i class="fas fa-filter me-2"></i><span data-i18n="common.apply">套用篩選</span>
                         </button>
                         <button type="button" class="btn btn-secondary" id="clearFiltersBtn">
-                            <i class="fas fa-times me-2"></i>清除
+                            <i class="fas fa-times me-2"></i><span data-i18n="common.clear">清除</span>
                         </button>
                     </div>
                     <!-- 批次操作工具列（與套用篩選同一排、靠右顯示） -->
                     <div id="batchInlineToolbar" class="d-none d-flex align-items-center gap-2 ms-lg-auto mb-2 mb-lg-0">
-                        <span class="text-muted">已選取 <strong id="selectedCount">0</strong> 個項目</span>
+                        <span class="text-muted" data-i18n="testCase.selectedItems" data-i18n-params='{"count":0}'>已選取 <strong id="selectedCount">0</strong> 個項目</span>
                         <button type="button" class="btn btn-danger btn-sm" id="batchDeleteBtn">
-                            <i class="fas fa-trash me-2"></i>批次刪除
+                            <i class="fas fa-trash me-2"></i><span data-i18n="testCase.batchDelete">批次刪除</span>
                         </button>
                     </div>
                 </div>
@@ -309,13 +309,13 @@ html, body { height: 100%; overflow: hidden; }
                             <th width="30" class="text-center" style="padding: 4px 8px !important; vertical-align: middle;">
                                 <input type="checkbox" class="form-check-input" id="selectAllCheckbox">
                             </th>
-                            <th width="220" style="padding: 4px 8px !important; vertical-align: middle;">Test Case Number</th>
-                            <th style="padding: 4px 8px !important; vertical-align: middle;">標題</th>
+                            <th width="220" style="padding: 4px 8px !important; vertical-align: middle;" data-i18n="testCase.testCaseNumber">Test Case Number</th>
+                            <th style="padding: 4px 8px !important; vertical-align: middle;" data-i18n="common.title">標題</th>
                             <th width="120" class="text-center" style="padding: 4px 8px !important; vertical-align: middle;">TCG</th>
-                            <th width="80" class="text-center" style="padding: 4px 8px !important; vertical-align: middle;">優先級</th>
-                            <th width="100" class="text-center" style="padding: 4px 8px !important; vertical-align: middle;">建立日期</th>
-                            <th width="100" class="text-center" style="padding: 4px 8px !important; vertical-align: middle;">更新日期</th>
-                            <th width="100" style="padding: 4px 8px !important; vertical-align: middle;">操作</th>
+                            <th width="80" class="text-center" style="padding: 4px 8px !important; vertical-align: middle;" data-i18n="testCase.priority">優先級</th>
+                            <th width="100" class="text-center" style="padding: 4px 8px !important; vertical-align: middle;" data-i18n="common.createDate">建立日期</th>
+                            <th width="100" class="text-center" style="padding: 4px 8px !important; vertical-align: middle;" data-i18n="common.updateDate">更新日期</th>
+                            <th width="100" style="padding: 4px 8px !important; vertical-align: middle;" data-i18n="common.actions">操作</th>
                         </tr>
                     </thead>
                     <tbody id="testCasesTableBody">
@@ -341,13 +341,13 @@ html, body { height: 100%; overflow: hidden; }
             <div class="modal-header">
                 <h5 class="modal-title">
                     <i class="fas fa-clipboard-check me-2"></i>
-                    <span id="testCaseModalTitle">新增測試案例</span>
+                    <span id="testCaseModalTitle" data-i18n="testCase.createTestCase">新增測試案例</span>
                 </h5>
                 <div class="d-flex align-items-center gap-2">
-                    <button type="button" class="btn btn-outline-secondary btn-sm" id="prevTestCaseBtn" title="上一隻測試案例">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="prevTestCaseBtn" data-i18n-title="testCase.previousTestCase">
                         <i class="fas fa-chevron-left"></i>
                     </button>
-                    <button type="button" class="btn btn-outline-secondary btn-sm" id="nextTestCaseBtn" title="下一隻測試案例">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="nextTestCaseBtn" data-i18n-title="testCase.nextTestCase">
                         <i class="fas fa-chevron-right"></i>
                     </button>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
@@ -366,7 +366,7 @@ html, body { height: 100%; overflow: hidden; }
                                 <input type="text" class="form-control" id="testCaseNumber" name="test_case_number" required>
                             </div>
                             <div class="col-md-6">
-                                <label for="title" class="form-label">測試案例標題 <span class="text-danger">*</span></label>
+                                <label for="title" class="form-label"><span data-i18n="form.testCaseTitle">測試案例標題</span> <span class="text-danger">*</span></label>
                                 <input type="text" class="form-control" id="title" name="title" required>
                             </div>
                             <div class="col-md-2">
@@ -383,7 +383,7 @@ html, body { height: 100%; overflow: hidden; }
                                     <input type="text" 
                                            id="modalTCGInput" 
                                            class="form-control" 
-                                           placeholder="輸入搜尋 TCG..."
+                                           data-i18n-placeholder="testCase.tcgPlaceholder"
                                            autocomplete="off"
                                            onkeyup="handleTCGSearch(this)"
                                            onfocus="showTCGDropdown()"
@@ -420,40 +420,40 @@ html, body { height: 100%; overflow: hidden; }
                                                 <!-- Markdown 工具列 -->
                                                 <div class="markdown-toolbar px-2 py-1 border-bottom" data-target="precondition" style="background-color: #f8f9fa; height: 32px; display: flex; align-items: center;">
                                                     <div class="btn-group btn-group-sm me-1" role="group">
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="**" title="粗體">
+                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="**" data-i18n-title="markdown.bold">
                                                             <i class="fas fa-bold"></i>
                                                         </button>
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="*" title="斜體">
+                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="*" data-i18n-title="markdown.italic">
                                                             <i class="fas fa-italic"></i>
                                                         </button>
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="`" title="程式碼">
+                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="`" data-i18n-title="markdown.code">
                                                             <i class="fas fa-code"></i>
                                                         </button>
                                                     </div>
                                                     <div class="btn-group btn-group-sm me-1" role="group">
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="# " title="標題 1">H1</button>
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="## " title="標題 2">H2</button>
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="### " title="標題 3">H3</button>
+                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="# " data-i18n-title="markdown.heading1">H1</button>
+                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="## " data-i18n-title="markdown.heading2">H2</button>
+                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="### " data-i18n-title="markdown.heading3">H3</button>
                                                     </div>
                                                     <div class="btn-group btn-group-sm me-1" role="group">
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="- " title="無序列表">
+                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="- " data-i18n-title="markdown.unorderedList">
                                                             <i class="fas fa-list-ul"></i>
                                                         </button>
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="1. " title="有序列表">
+                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="1. " data-i18n-title="markdown.orderedList">
                                                             <i class="fas fa-list-ol"></i>
                                                         </button>
                                                     </div>
                                                     <div class="btn-group btn-group-sm" role="group">
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="[text](url)" title="連結">
+                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="[text](url)" data-i18n-title="markdown.link">
                                                             <i class="fas fa-link"></i>
                                                         </button>
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="![alt](url)" title="圖片">
+                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="![alt](url)" data-i18n-title="markdown.image">
                                                             <i class="fas fa-image"></i>
                                                         </button>
                                                     </div>
                                                 </div>
                                                 <textarea id="precondition" name="precondition" class="markdown-textarea" rows="4" 
-                                                        placeholder="測試前置條件，支援 Markdown 格式" 
+                                                        data-i18n-placeholder="testCase.preconditionsPlaceholder" 
                                                         style="border: none; border-radius: 0; height: calc(100% - 32px); resize: none; outline: none; padding: 0.375rem 0.75rem; width: 100%; box-sizing: border-box; overflow-y: auto;"></textarea>
                                             </div>
                                         </div>
@@ -471,7 +471,7 @@ html, body { height: 100%; overflow: hidden; }
                             <!-- 測試步驟區域 -->
                             <div class="col-12 mb-4">
                                 <label for="test_steps" class="form-label">
-                                    <i class="fas fa-list-ol me-2"></i>測試步驟
+                                    <i class="fas fa-list-ol me-2"></i><span data-i18n="form.testSteps">測試步驟</span>
                                 </label>
                                 <div class="markdown-field-container" id="test_steps_container">
                                     <div class="row">
@@ -481,40 +481,40 @@ html, body { height: 100%; overflow: hidden; }
                                                 <!-- Markdown 工具列 -->
                                                 <div class="markdown-toolbar px-2 py-1 border-bottom" data-target="test_steps" style="background-color: #f8f9fa; height: 32px; display: flex; align-items: center;">
                                                     <div class="btn-group btn-group-sm me-1" role="group">
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="**" title="粗體">
+                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="**" data-i18n-title="markdown.bold">
                                                             <i class="fas fa-bold"></i>
                                                         </button>
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="*" title="斜體">
+                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="*" data-i18n-title="markdown.italic">
                                                             <i class="fas fa-italic"></i>
                                                         </button>
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="`" title="程式碼">
+                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="`" data-i18n-title="markdown.code">
                                                             <i class="fas fa-code"></i>
                                                         </button>
                                                     </div>
                                                     <div class="btn-group btn-group-sm me-1" role="group">
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="# " title="標題 1">H1</button>
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="## " title="標題 2">H2</button>
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="### " title="標題 3">H3</button>
+                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="# " data-i18n-title="markdown.heading1">H1</button>
+                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="## " data-i18n-title="markdown.heading2">H2</button>
+                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="### " data-i18n-title="markdown.heading3">H3</button>
                                                     </div>
                                                     <div class="btn-group btn-group-sm me-1" role="group">
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="- " title="無序列表">
+                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="- " data-i18n-title="markdown.unorderedList">
                                                             <i class="fas fa-list-ul"></i>
                                                         </button>
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="1. " title="有序列表">
+                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="1. " data-i18n-title="markdown.orderedList">
                                                             <i class="fas fa-list-ol"></i>
                                                         </button>
                                                     </div>
                                                     <div class="btn-group btn-group-sm" role="group">
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="[text](url)" title="連結">
+                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="[text](url)" data-i18n-title="markdown.link">
                                                             <i class="fas fa-link"></i>
                                                         </button>
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="![alt](url)" title="圖片">
+                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="![alt](url)" data-i18n-title="markdown.image">
                                                             <i class="fas fa-image"></i>
                                                         </button>
                                                     </div>
                                                 </div>
                                                 <textarea id="test_steps" name="test_steps" class="markdown-textarea" rows="6" 
-                                                        placeholder="詳細的測試執行步驟，支援 Markdown 格式&#10;&#10;範例：&#10;1. 開啟應用程式&#10;2. 點擊 **登入** 按鈕&#10;3. 輸入有效的使用者名稱和密碼&#10;4. 確認畫面顯示歡迎訊息" 
+                                                        data-i18n-placeholder="testCase.stepsPlaceholder" 
                                                         style="border: none; border-radius: 0; height: calc(100% - 32px); resize: none; outline: none; padding: 0.375rem 0.75rem; width: 100%; box-sizing: border-box; overflow-y: auto;"></textarea>
                                             </div>
                                         </div>
@@ -532,7 +532,7 @@ html, body { height: 100%; overflow: hidden; }
                             <!-- 預期結果區域 -->
                             <div class="col-12 mb-4">
                                 <label for="expected_result" class="form-label">
-                                    <i class="fas fa-check-circle me-2"></i>預期結果
+                                    <i class="fas fa-check-circle me-2"></i><span data-i18n="form.expectedResults">預期結果</span>
                                 </label>
                                 <div class="markdown-field-container" id="expected_result_container">
                                     <div class="row">
@@ -542,40 +542,40 @@ html, body { height: 100%; overflow: hidden; }
                                                 <!-- Markdown 工具列 -->
                                                 <div class="markdown-toolbar px-2 py-1 border-bottom" data-target="expected_result" style="background-color: #f8f9fa; height: 32px; display: flex; align-items: center;">
                                                     <div class="btn-group btn-group-sm me-1" role="group">
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="**" title="粗體">
+                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="**" data-i18n-title="markdown.bold">
                                                             <i class="fas fa-bold"></i>
                                                         </button>
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="*" title="斜體">
+                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="*" data-i18n-title="markdown.italic">
                                                             <i class="fas fa-italic"></i>
                                                         </button>
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="`" title="程式碼">
+                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="`" data-i18n-title="markdown.code">
                                                             <i class="fas fa-code"></i>
                                                         </button>
                                                     </div>
                                                     <div class="btn-group btn-group-sm me-1" role="group">
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="# " title="標題 1">H1</button>
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="## " title="標題 2">H2</button>
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="### " title="標題 3">H3</button>
+                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="# " data-i18n-title="markdown.heading1">H1</button>
+                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="## " data-i18n-title="markdown.heading2">H2</button>
+                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="### " data-i18n-title="markdown.heading3">H3</button>
                                                     </div>
                                                     <div class="btn-group btn-group-sm me-1" role="group">
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="- " title="無序列表">
+                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="- " data-i18n-title="markdown.unorderedList">
                                                             <i class="fas fa-list-ul"></i>
                                                         </button>
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="1. " title="有序列表">
+                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="1. " data-i18n-title="markdown.orderedList">
                                                             <i class="fas fa-list-ol"></i>
                                                         </button>
                                                     </div>
                                                     <div class="btn-group btn-group-sm" role="group">
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="[text](url)" title="連結">
+                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="[text](url)" data-i18n-title="markdown.link">
                                                             <i class="fas fa-link"></i>
                                                         </button>
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="![alt](url)" title="圖片">
+                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="![alt](url)" data-i18n-title="markdown.image">
                                                             <i class="fas fa-image"></i>
                                                         </button>
                                                     </div>
                                                 </div>
                                                 <textarea id="expected_result" name="expected_result" class="markdown-textarea" rows="4" 
-                                                        placeholder="描述預期的測試結果，支援 Markdown 格式" 
+                                                        data-i18n-placeholder="testCase.expectedResultsPlaceholder" 
                                                         style="border: none; border-radius: 0; height: calc(100% - 32px); resize: none; outline: none; padding: 0.375rem 0.75rem; width: 100%; box-sizing: border-box; overflow-y: auto;"></textarea>
                                             </div>
                                         </div>
@@ -594,11 +594,11 @@ html, body { height: 100%; overflow: hidden; }
                         <!-- 附件區域 -->
                         <div class="mb-3">
                             <label for="attachmentUpload" class="form-label">
-                                <i class="fas fa-paperclip me-2"></i>附件
+                                <i class="fas fa-paperclip me-2"></i><span data-i18n="form.attachments">附件</span>
                             </label>
                             <input type="file" class="form-control" id="attachmentUpload" multiple 
                                    accept=".jpg,.jpeg,.png,.gif,.pdf,.doc,.docx,.xls,.xlsx,.txt">
-                            <div class="form-text">支援圖片、PDF、Office 文件，單檔最大 10MB</div>
+                            <div class="form-text" data-i18n="form.attachmentHint">支援圖片、PDF、Office 文件，單檔最大 10MB</div>
                             <div id="attachmentsList" class="mt-2">
                                 <!-- 附件列表將由 JavaScript 動態載入 -->
                             </div>
@@ -611,20 +611,20 @@ html, body { height: 100%; overflow: hidden; }
                             <!-- 模式切換按鈕 -->
                             <div class="btn-group btn-group-sm" role="group">
                                 <button type="button" class="btn btn-secondary active" id="previewModeBtn">
-                                    <i class="fas fa-eye me-1"></i>瀏覽
+                                    <i class="fas fa-eye me-1"></i><span data-i18n="form.browse">瀏覽</span>
                                 </button>
                                 <button type="button" class="btn btn-outline-secondary" id="splitModeBtn">
-                                    <i class="fas fa-edit me-1"></i>編輯
+                                    <i class="fas fa-edit me-1"></i><span data-i18n="form.editMode">編輯</span>
                                 </button>
                             </div>
                             <!-- 操作按鈕 -->
                             <div class="d-flex gap-2">
-                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">取消</button>
                                 <button type="button" class="btn btn-success" id="saveAndAddNextBtn" disabled style="display: none;">
-                                    <i class="fas fa-plus me-2"></i>儲存並新增下一筆
+                                    <i class="fas fa-plus me-2"></i><span data-i18n="form.saveAndNext">儲存並新增下一筆</span>
                                 </button>
                                 <button type="button" class="btn btn-primary" id="saveTestCaseBtn" disabled>
-                                    <i class="fas fa-save me-2"></i>儲存
+                                    <i class="fas fa-save me-2"></i><span data-i18n="common.save">儲存</span>
                                 </button>
                             </div>
                         </div>
@@ -641,23 +641,23 @@ html, body { height: 100%; overflow: hidden; }
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">
-                    <i class="fas fa-exclamation-triangle text-warning me-2"></i>確認刪除
+                    <i class="fas fa-exclamation-triangle text-warning me-2"></i><span data-i18n="form.deleteConfirmation">確認刪除</span>
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
                 <div class="alert alert-warning mb-3" role="alert">
                     <i class="fas fa-exclamation-triangle me-2"></i>
-                    <strong>警告：</strong>刪除操作無法復原，請謹慎確認
+                    <strong>警告：</strong><span data-i18n="form.deleteWarning">刪除操作無法復原，請謹慎確認</span>
                 </div>
                 <div id="deleteList">
                     <!-- 要刪除的項目列表 -->
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">取消</button>
                 <button type="button" class="btn btn-danger" id="confirmDeleteBtn">
-                    <i class="fas fa-trash me-2"></i>確認刪除
+                    <i class="fas fa-trash me-2"></i><span data-i18n="common.delete">確認刪除</span>
                 </button>
             </div>
         </div>
@@ -771,7 +771,8 @@ async function loadTCGCache(updateProgress = null) {
         saveTCGCacheToStorage();
         
         if (updateProgress) {
-            updateProgress(100, `載入完成 (${tcgCache.length} 筆)`);
+            const tcgCompletedMsg = window.i18n ? window.i18n.t('loading.completedWithCount', {count: tcgCache.length}) : `載入完成 (${tcgCache.length} 筆)`;
+            updateProgress(100, tcgCompletedMsg);
         }
         
         console.log(`TCG 快取更新完成: ${tcgCache.length} 筆記錄`);
@@ -907,7 +908,8 @@ async function loadTestCases(showLoadingBlock = true, updateProgress = null) {
             throw new Error('請先選擇團隊');
         }
         
-        if (updateProgress) updateProgress(30, '連接伺服器...');
+        const connectingMsg = window.i18n ? window.i18n.t('loading.connecting') : '連接伺服器...';
+        if (updateProgress) updateProgress(30, connectingMsg);
         
         const response = await fetch(`/api/teams/${currentTeam.id}/testcases/`);
         if (!response.ok) {
@@ -937,11 +939,13 @@ async function loadTestCases(showLoadingBlock = true, updateProgress = null) {
             hideLoadingState();
         }
         
-        if (updateProgress) updateProgress(100, `載入完成 (${testCases.length} 筆)`);
+        const completedMsg = window.i18n ? window.i18n.t('loading.completedWithCount', {count: testCases.length}) : `載入完成 (${testCases.length} 筆)`;
+        if (updateProgress) updateProgress(100, completedMsg);
         
     } catch (error) {
         console.error('載入測試案例失敗:', error);
-        showError('載入測試案例失敗：' + error.message);
+        const message = window.i18n ? window.i18n.t('errors.loadTestCasesFailed') : '載入測試案例失敗';
+        showError(message + '：' + error.message);
         if (showLoadingBlock) {
             hideLoadingState();
         }
@@ -958,7 +962,7 @@ async function refreshTestCases() {
     const hasFilters = hasAnyFilters();
     
     // 顯示載入動畫在按鈕內
-    refreshBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2" role="status"></span>重新載入${hasFilters ? ' & 篩選' : ''}`;
+    refreshBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2" role="status"></span>${window.i18n ? window.i18n.t('common.refresh') : '重新載入'}${hasFilters ? (window.i18n ? ' & ' + window.i18n.t('common.filter') : ' & 篩選') : ''}`;
     refreshBtn.disabled = true;
     
     try {
@@ -969,9 +973,9 @@ async function refreshTestCases() {
         if (hasFilters) {
             applyFilters();
             // 提示使用者已保持篩選條件
-            AppUtils.showSuccess('資料已重新載入，篩選條件已保持');
+            AppUtils.showSuccess(window.i18n ? window.i18n.t('messages.dataReloadedWithFilters') : '資料已重新載入，篩選條件已保持');
         } else {
-            AppUtils.showSuccess('資料已重新載入');
+            AppUtils.showSuccess(window.i18n ? window.i18n.t('messages.dataReloaded') : '資料已重新載入');
         }
         
     } finally {
@@ -1003,7 +1007,7 @@ function renderTestCasesTable() {
             <tr>
                 <td colspan="9" class="text-center py-4">
                     <i class="fas fa-search fa-2x text-muted mb-2"></i>
-                    <div class="text-muted">沒有找到符合條件的測試案例</div>
+                    <div class="text-muted" data-i18n="errors.noMatchingTestCases">沒有找到符合條件的測試案例</div>
                 </td>
             </tr>
         `;
@@ -1022,7 +1026,7 @@ function renderTestCasesTable() {
                 </div>
                 <button type="button" class="btn btn-sm btn-edit position-absolute hover-edit-btn" 
                         style="top: 50%; right: 5px; transform: translateY(-50%); z-index: 10;" 
-                        onclick="quickEdit('${testCase.record_id}', 'test_case_number')" title="快速編輯">
+                        onclick="quickEdit('${testCase.record_id}', 'test_case_number')" data-i18n-title="tooltips.quickEdit">
                     <i class="fas fa-edit"></i>
                 </button>
             </td>
@@ -1037,12 +1041,12 @@ function renderTestCasesTable() {
                 </div>
                 <button type="button" class="btn btn-sm btn-edit position-absolute hover-edit-btn" 
                         style="top: 50%; right: 5px; transform: translateY(-50%); z-index: 10;" 
-                        onclick="quickEdit('${testCase.record_id}', 'title')" title="快速編輯">
+                        onclick="quickEdit('${testCase.record_id}', 'title')" data-i18n-title="tooltips.quickEdit">
                     <i class="fas fa-edit"></i>
                 </button>
             </td>
             <td class="align-middle text-center position-relative" data-field="tcg" data-record-id="${testCase.record_id}">
-                <div class="tcg-edit-area" onclick="editTCG('${testCase.record_id}')" title="點擊編輯 TCG">
+                <div class="tcg-edit-area" onclick="editTCG('${testCase.record_id}')" data-i18n-title="tooltips.clickEditTcg">
                     ${getTCGTags(testCase)}
                 </div>
             </td>
@@ -1062,11 +1066,11 @@ function renderTestCasesTable() {
             <td class="align-middle text-center">
                 <div class="test-case-actions">
                     <button type="button" class="btn btn-sm btn-view" 
-                            onclick="viewTestCase('${testCase.record_id}')" title="檢視/編輯">
+                            onclick="viewTestCase('${testCase.record_id}')" data-i18n-title="tooltips.viewEdit">
                         <i class="fas fa-eye"></i>
                     </button>
                     <button type="button" class="btn btn-sm btn-danger" 
-                            onclick="deleteTestCase('${testCase.record_id}')" title="刪除">
+                            onclick="deleteTestCase('${testCase.record_id}')" data-i18n-title="tooltips.delete">
                         <i class="fas fa-trash"></i>
                     </button>
                 </div>
@@ -1169,7 +1173,7 @@ function showTestCaseModal(testCase = null) {
         // 找到當前測試案例在 filteredTestCases 中的索引
         currentTestCaseIndex = filteredTestCases.findIndex(tc => tc.record_id === testCase.record_id);
         updateNavigationButtons();
-        title.textContent = '檢視測試案例';
+        title.textContent = window.i18n ? window.i18n.t('testCase.viewTestCase') : '檢視測試案例';
         
         // 填入資料
         document.getElementById('testCaseId').value = testCase.record_id;
@@ -1218,7 +1222,7 @@ function showTestCaseModal(testCase = null) {
         saveAndAddNextBtn.style.display = 'none';
         
     } else {
-        title.textContent = '新增測試案例';
+        title.textContent = window.i18n ? window.i18n.t('testCase.createTestCase') : '新增測試案例';
         
         // 清空所有表單欄位
         document.getElementById('testCaseId').value = '';
@@ -1253,7 +1257,8 @@ function showTestCaseModal(testCase = null) {
         markdownFields.forEach(fieldId => {
             const previewElement = document.querySelector(`.markdown-preview[data-target="${fieldId}"]`);
             if (previewElement) {
-                previewElement.innerHTML = '<p class="text-muted">預覽內容會在這裡顯示</p>';
+                const previewPlaceholder = window.i18n ? window.i18n.t('errors.previewPlaceholder') : '預覽內容會在這裡顯示';
+                previewElement.innerHTML = `<p class="text-muted">${previewPlaceholder}</p>`;
             }
         });
         
@@ -1396,11 +1401,12 @@ function deleteTestCase(id) {
             updatePagination();
             
             // 用 toast 通知成功
-            AppUtils.showSuccess('測試案例刪除成功');
+            AppUtils.showSuccess(window.i18n ? window.i18n.t('messages.testCaseDeleted') : '測試案例刪除成功');
             
         } catch (error) {
             console.error('刪除測試案例失敗:', error);
-            showError('刪除失敗：' + error.message);
+            const message = window.i18n ? window.i18n.t('errors.deleteFailed') : '刪除失敗';
+            showError(message + '：' + error.message);
         }
     };
 }
@@ -1433,7 +1439,7 @@ async function saveTestCase() {
     
     // 表單驗證
     if (!testCaseData.title) {
-        showError('請填寫測試案例標題');
+        showError(window.i18n ? window.i18n.t('errors.testCaseTitleRequired') : '請填寫測試案例標題');
         return;
     }
     
@@ -1446,7 +1452,8 @@ async function saveTestCase() {
         );
         
         if (isDuplicate) {
-            showError(`測試案例編號 '${testCaseData.test_case_number}' 已存在，請使用其他編號`);
+            const existsMessage = window.i18n ? window.i18n.t('errors.testCaseNumberExists') : '已存在，請使用其他編號';
+            showError(`測試案例編號 '${testCaseData.test_case_number}' ${existsMessage}`);
             return;
         }
     }
@@ -1454,7 +1461,7 @@ async function saveTestCase() {
     // 獲取當前選擇的團隊
     const currentTeam = AppUtils.getCurrentTeam();
     if (!currentTeam || !currentTeam.id) {
-        showError('請先選擇團隊');
+        showError(window.i18n ? window.i18n.t('errors.pleaseSelectTeam') : '請先選擇團隊');
         return;
     }
     
@@ -1465,10 +1472,14 @@ async function saveTestCase() {
     isFormChanged = false;
     const saveBtn = document.getElementById('saveTestCaseBtn');
     saveBtn.disabled = true;
-    saveBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>儲存中...';
+    const savingText = window.i18n ? window.i18n.t('messages.saving') : '儲存中...';
+    saveBtn.innerHTML = `<i class="fas fa-spinner fa-spin me-2"></i>${savingText}`;
     
     // 顯示儲存中訊息
-    showSuccess(testCaseId ? '測試案例更新中...' : '測試案例新增中...');
+    const savingMessage = testCaseId ? 
+        (window.i18n ? window.i18n.t('messages.testCaseSaving') : '測試案例更新中...') : 
+        (window.i18n ? window.i18n.t('messages.testCaseSaving') : '測試案例新增中...');
+    showSuccess(savingMessage);
     
     // 背景處理儲存
     setTimeout(async () => {
@@ -1505,7 +1516,7 @@ async function saveTestCase() {
                 const newTestCase = await response.json();
                 if (newTestCase && newTestCase.record_id) {
                     document.getElementById('testCaseId').value = newTestCase.record_id;
-                    document.getElementById('testCaseModalTitle').textContent = '檢視測試案例';
+                    document.getElementById('testCaseModalTitle').textContent = window.i18n ? window.i18n.t('testCase.viewTestCase') : '檢視測試案例';
                 }
             }
             
@@ -1515,10 +1526,14 @@ async function saveTestCase() {
             // 恢復儲存按鈕狀態
             const saveBtn = document.getElementById('saveTestCaseBtn');
             saveBtn.disabled = false;
-            saveBtn.innerHTML = '<i class="fas fa-save me-2"></i>儲存';
+            const saveText = window.i18n ? window.i18n.t('common.save') : '儲存';
+            saveBtn.innerHTML = `<i class="fas fa-save me-2"></i>${saveText}`;
             
             // 更新成功訊息
-            showSuccess(testCaseId ? '測試案例更新完成' : '測試案例新增完成');
+            const completedMessage = testCaseId ? 
+                (window.i18n ? window.i18n.t('messages.testCaseUpdated') : '測試案例更新完成') : 
+                (window.i18n ? window.i18n.t('messages.testCaseCreated') : '測試案例新增完成');
+            showSuccess(completedMessage);
             
         } catch (error) {
             console.error('儲存測試案例失敗:', error);
@@ -1526,9 +1541,11 @@ async function saveTestCase() {
             // 恢復儲存按鈕狀態
             const saveBtn = document.getElementById('saveTestCaseBtn');
             saveBtn.disabled = false;
-            saveBtn.innerHTML = '<i class="fas fa-save me-2"></i>儲存';
+            const saveText = window.i18n ? window.i18n.t('common.save') : '儲存';
+            saveBtn.innerHTML = `<i class="fas fa-save me-2"></i>${saveText}`;
             
-            showError('儲存失敗：' + error.message);
+            const saveFailedMessage = window.i18n ? window.i18n.t('errors.saveFailed') : '儲存失敗';
+            showError(saveFailedMessage + '：' + error.message);
         }
     }, 100); // 100ms 延遲確保 UI 響應
 }
@@ -1550,7 +1567,7 @@ async function saveAndAddNext() {
     
     // 表單驗證
     if (!testCaseData.title) {
-        showError('請填寫測試案例標題');
+        showError(window.i18n ? window.i18n.t('errors.testCaseTitleRequired') : '請填寫測試案例標題');
         return;
     }
     
@@ -1561,7 +1578,8 @@ async function saveAndAddNext() {
         );
         
         if (isDuplicate) {
-            showError(`測試案例編號 '${testCaseData.test_case_number}' 已存在，請使用其他編號`);
+            const existsMessage = window.i18n ? window.i18n.t('errors.testCaseNumberExists') : '已存在，請使用其他編號';
+            showError(`測試案例編號 '${testCaseData.test_case_number}' ${existsMessage}`);
             return;
         }
     }
@@ -1569,7 +1587,7 @@ async function saveAndAddNext() {
     // 獲取當前選擇的團隊
     const currentTeam = AppUtils.getCurrentTeam();
     if (!currentTeam || !currentTeam.id) {
-        showError('請先選擇團隊');
+        showError(window.i18n ? window.i18n.t('errors.pleaseSelectTeam') : '請先選擇團隊');
         return;
     }
     
@@ -1578,9 +1596,10 @@ async function saveAndAddNext() {
     const saveAndAddNextBtn = document.getElementById('saveAndAddNextBtn');
     saveBtn.disabled = true;
     saveAndAddNextBtn.disabled = true;
-    saveAndAddNextBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>儲存中...';
+    const savingText = window.i18n ? window.i18n.t('messages.saving') : '儲存中...';
+    saveAndAddNextBtn.innerHTML = `<i class="fas fa-spinner fa-spin me-2"></i>${savingText}`;
     
-    showSuccess('測試案例新增中...');
+    showSuccess(window.i18n ? window.i18n.t('messages.testCaseSaving') : '測試案例新增中...');
     
     try {
         // 新增測試案例
@@ -1600,7 +1619,7 @@ async function saveAndAddNext() {
         // 重新載入測試案例（不顯示載入動畫）
         await loadTestCases(false);
         
-        showSuccess('測試案例新增完成，準備下一筆');
+        showSuccess(window.i18n ? window.i18n.t('messages.testCaseCreatedNext') : '測試案例新增完成，準備下一筆');
         
         // 重置表單為新增下一筆狀態
         showTestCaseModal(null); // 呼叫新增模式，會自動清空所有欄位並設定為編輯模式
@@ -1611,9 +1630,11 @@ async function saveAndAddNext() {
         // 恢復按鈕狀態
         saveBtn.disabled = false;
         saveAndAddNextBtn.disabled = false;
-        saveAndAddNextBtn.innerHTML = '<i class="fas fa-plus me-2"></i>儲存並新增下一筆';
+        const saveAndNextText = window.i18n ? window.i18n.t('testCase.saveAndNext') : '儲存並新增下一筆';
+        saveAndAddNextBtn.innerHTML = `<i class="fas fa-plus me-2"></i>${saveAndNextText}`;
         
-        showError('儲存失敗：' + error.message);
+        const saveFailedMessage = window.i18n ? window.i18n.t('errors.saveFailed') : '儲存失敗';
+        showError(saveFailedMessage + '：' + error.message);
     }
 }
 
@@ -1746,12 +1767,14 @@ function updateFilterStatus() {
     
     if (hasFilters) {
         // 有篩選條件時，更新按鈕樣式和文字
-        applyBtn.innerHTML = '<i class="fas fa-filter me-2"></i>已篩選 (' + filteredTestCases.length + ')';
+        const filteredText = window.i18n ? window.i18n.t('common.filtered', {count: filteredTestCases.length}) : `已篩選 (${filteredTestCases.length})`;
+        applyBtn.innerHTML = '<i class="fas fa-filter me-2"></i>' + filteredText;
         applyBtn.className = 'btn btn-success me-2';
         clearBtn.style.display = 'inline-block';
     } else {
         // 無篩選條件時，恢復原始樣式
-        applyBtn.innerHTML = '<i class="fas fa-filter me-2"></i>套用篩選';
+        const applyFilterText = window.i18n ? window.i18n.t('common.applyFilter') : '套用篩選';
+        applyBtn.innerHTML = '<i class="fas fa-filter me-2"></i>' + applyFilterText;
         applyBtn.className = 'btn btn-primary me-2';
         clearBtn.style.display = testCases.length === filteredTestCases.length ? 'none' : 'inline-block';
     }
@@ -1797,16 +1820,17 @@ function deselectAll() {
 
 function batchEditTestCases() {
     if (selectedTestCases.size === 0) {
-        showError('請先選擇要編輯的測試案例');
+        showError(window.i18n ? window.i18n.t('errors.pleaseSelectTestCase') : '請先選擇要編輯的測試案例');
         return;
     }
     // TODO: 實現批次編輯功能
-    alert('批次編輯功能開發中...');
+    const msg = window.i18n ? window.i18n.t('messages.operationNotImplemented') : '批次編輯功能開發中...';
+    alert(msg);
 }
 
 function batchDeleteTestCases() {
     if (selectedTestCases.size === 0) {
-        showError('請先選擇要刪除的測試案例');
+        showError(window.i18n ? window.i18n.t('errors.pleaseSelectForDelete') : '請先選擇要刪除的測試案例');
         return;
     }
     
@@ -1875,11 +1899,15 @@ function batchDeleteTestCases() {
             updatePagination();
             
             // 用 toast 通知成功
-            AppUtils.showSuccess(`成功刪除 ${selectedCases.length} 個測試案例`);
+            const batchDeleteMessage = window.i18n ? 
+                window.i18n.t('messages.batchDeleteSuccess', {count: selectedCases.length}) : 
+                `成功刪除 ${selectedCases.length} 個測試案例`;
+            AppUtils.showSuccess(batchDeleteMessage);
             
         } catch (error) {
             console.error('批次刪除測試案例失敗:', error);
-            showError('批次刪除失敗：' + error.message);
+            const batchDeleteFailedMessage = window.i18n ? window.i18n.t('errors.batchDeleteFailed') : '批次刪除失敗';
+            showError(batchDeleteFailedMessage + '：' + error.message);
         }
     };
 }
@@ -1918,9 +1946,10 @@ function updatePagination() {
     let paginationHtml = '';
     
     // 上一頁
+    const previousText = window.i18n ? window.i18n.t('pagination.previousPage') : '上一頁';
     paginationHtml += `
         <li class="page-item ${currentPage === 1 ? 'disabled' : ''}">
-            <a class="page-link" href="#" onclick="changePage(${currentPage - 1})">上一頁</a>
+            <a class="page-link" href="#" onclick="changePage(${currentPage - 1})">${previousText}</a>
         </li>
     `;
     
@@ -1936,9 +1965,10 @@ function updatePagination() {
     }
     
     // 下一頁
+    const nextText = window.i18n ? window.i18n.t('pagination.nextPage') : '下一頁';
     paginationHtml += `
         <li class="page-item ${currentPage === totalPages ? 'disabled' : ''}">
-            <a class="page-link" href="#" onclick="changePage(${currentPage + 1})">下一頁</a>
+            <a class="page-link" href="#" onclick="changePage(${currentPage + 1})">${nextText}</a>
         </li>
     `;
     
@@ -2037,10 +2067,14 @@ function quickEdit(recordId, field) {
                     throw new Error(errorData.detail || '更新失敗');
                 }
                 // 成功後顯示提示，但不重新渲染（已經渲染過了）
-                showSuccess(`${field === 'test_case_number' ? 'Test Case Number' : '標題'} 更新成功`);
+                const fieldName = field === 'test_case_number' ? 'Test Case Number' : 
+                    (window.i18n ? window.i18n.t('common.title') : '標題');
+                const updateSuccessMessage = window.i18n ? window.i18n.t('messages.fieldUpdated') : '更新成功';
+                showSuccess(`${fieldName} ${updateSuccessMessage}`);
             }).catch(error => {
                 console.error('快速編輯失敗:', error);
-                showError('更新失敗：' + error.message);
+                const updateFailedMessage = window.i18n ? window.i18n.t('errors.updateFailed') : '更新失敗';
+                showError(updateFailedMessage + '：' + error.message);
                 
                 // 如果儲存失敗，恢復原值並重新渲染
                 testCase[field] = currentValue;
@@ -2049,7 +2083,8 @@ function quickEdit(recordId, field) {
             
         } catch (error) {
             console.error('快速編輯失敗:', error);
-            showError('更新失敗：' + error.message);
+            const updateFailedMessage = window.i18n ? window.i18n.t('errors.updateFailed') : '更新失敗';
+            showError(updateFailedMessage + '：' + error.message);
             
             // 恢復原值並重新渲染
             testCase[field] = currentValue;
@@ -2124,7 +2159,7 @@ async function startTCGSearch() {
     const searchHtml = `
         <div class="tcg-search-container position-relative" style="min-height: 32px; height: 32px; display: flex; align-items: center; overflow: hidden;">
             <input type="text" class="form-control form-control-sm tcg-search-input" 
-                   placeholder="搜尋 TCG..." autocomplete="off" 
+                   data-i18n-placeholder="testCase.tcgPlaceholder" autocomplete="off" 
                    onkeydown="handleTCGSearchKeydown(event)" 
                    oninput="handleTCGSearchInput(event)"
                    onclick="event.stopPropagation()"
@@ -2213,13 +2248,13 @@ function updateTCGCellDisplay(cell, tcgNumbers) {
     
     if (tcgNumbers.length === 0) {
         // 清除後留白，但保留點擊事件
-        cell.innerHTML = `<div class="tcg-edit-area" onclick="editTCG('${recordId}')" title="點擊編輯 TCG"></div>`;
+        cell.innerHTML = `<div class="tcg-edit-area" onclick="editTCG('${recordId}')" data-i18n-title="tooltips.clickEditTcg"></div>`;
     } else {
         // 顯示 TCG 標籤，保留點擊事件
         const tcgHtml = tcgNumbers.map(tcg => 
             `<span class="tcg-tag">${tcg}</span>`
         ).join('');
-        cell.innerHTML = `<div class="tcg-edit-area" onclick="editTCG('${recordId}')" title="點擊編輯 TCG">${tcgHtml}</div>`;
+        cell.innerHTML = `<div class="tcg-edit-area" onclick="editTCG('${recordId}')" data-i18n-title="tooltips.clickEditTcg">${tcgHtml}</div>`;
     }
     // 工具列顯示狀態可能改變整體高度，需重新計算列表高度
     adjustTestCasesScrollHeight();
@@ -2326,7 +2361,8 @@ async function searchTCGOptions(keyword) {
         
     } catch (error) {
         console.error('搜尋 TCG 失敗:', error);
-        dropdown.innerHTML = '<div class="p-2 text-danger small">搜尋失敗</div>';
+        const searchFailedMessage = window.i18n ? window.i18n.t('errors.searchFailed') : '搜尋失敗';
+        dropdown.innerHTML = `<div class="p-2 text-danger small">${searchFailedMessage}</div>`;
         
         // 更新位置並顯示
         const searchInput = currentTCGEditor.cell.querySelector('.tcg-search-input');
@@ -2457,11 +2493,12 @@ async function saveTCGChanges(recordId, tcgNumbers) {
         // 重新渲染表格
         renderTestCasesTable();
         
-        showSuccess(`TCG 更新成功`);
+        showSuccess(window.i18n ? window.i18n.t('messages.tcgUpdated') : 'TCG 更新成功');
         
     } catch (error) {
         console.error('更新 TCG 失敗:', error);
-        showError('更新失敗：' + error.message);
+        const updateFailedMessage = window.i18n ? window.i18n.t('errors.updateFailed') : '更新失敗';
+        showError(updateFailedMessage + '：' + error.message);
         
         // 恢復原始內容
         restoreTCGDisplay();
@@ -2496,10 +2533,21 @@ function formatDate(dateString, format) {
     if (AppUtils && AppUtils.formatDate) {
         return AppUtils.formatDate(dateString, format);
     } else {
-        return new Date(dateString).toLocaleDateString();
+        // 備用方案：使用瀏覽器的預設 locale，符合地區標準格式
+        const date = new Date(dateString);
+        if (isNaN(date.getTime())) return '';
+        const browserLocale = navigator.language || navigator.userLanguage || 'en-US';
+        
+        if (format === 'date') {
+            return date.toLocaleDateString(browserLocale);
+        } else if (format === 'datetime') {
+            return date.toLocaleString(browserLocale);
+        } else if (format === 'time') {
+            return date.toLocaleTimeString(browserLocale);
+        }
+        
+        return date.toLocaleDateString(browserLocale);
     }
-    // 工具列顯示狀態可能改變整體高度，需重新計算列表高度
-    adjustTestCasesScrollHeight();
 }
 
 // Markdown 編輯器功能
@@ -2515,38 +2563,38 @@ function generateMarkdownToolbar(targetFieldId) {
     return `
         <div class="markdown-toolbar px-2 py-1 border-bottom" data-target="${targetFieldId}" style="background-color: #f8f9fa; height: 32px; display: flex; align-items: center;">
             <div class="btn-group btn-group-sm me-1" role="group">
-                <button type="button" class="btn btn-outline-secondary btn-xs" data-md="**" title="粗體">
+                <button type="button" class="btn btn-outline-secondary btn-xs" data-md="**" data-i18n-title="markdown.bold">
                     <i class="fas fa-bold"></i>
                 </button>
-                <button type="button" class="btn btn-outline-secondary btn-xs" data-md="*" title="斜體">
+                <button type="button" class="btn btn-outline-secondary btn-xs" data-md="*" data-i18n-title="markdown.italic">
                     <i class="fas fa-italic"></i>
                 </button>
-                <button type="button" class="btn btn-outline-secondary btn-xs" data-md="\`" title="程式碼">
+                <button type="button" class="btn btn-outline-secondary btn-xs" data-md="\`" data-i18n-title="markdown.code">
                     <i class="fas fa-code"></i>
                 </button>
             </div>
             <div class="btn-group btn-group-sm me-1" role="group">
-                <button type="button" class="btn btn-outline-secondary btn-xs" data-md="# " title="標題 1">H1</button>
-                <button type="button" class="btn btn-outline-secondary btn-xs" data-md="## " title="標題 2">H2</button>
-                <button type="button" class="btn btn-outline-secondary btn-xs" data-md="### " title="標題 3">H3</button>
+                <button type="button" class="btn btn-outline-secondary btn-xs" data-md="# " data-i18n-title="markdown.heading1">H1</button>
+                <button type="button" class="btn btn-outline-secondary btn-xs" data-md="## " data-i18n-title="markdown.heading2">H2</button>
+                <button type="button" class="btn btn-outline-secondary btn-xs" data-md="### " data-i18n-title="markdown.heading3">H3</button>
             </div>
             <div class="btn-group btn-group-sm me-1" role="group">
-                <button type="button" class="btn btn-outline-secondary btn-xs" data-md="- " title="無序列表">
+                <button type="button" class="btn btn-outline-secondary btn-xs" data-md="- " data-i18n-title="markdown.unorderedList">
                     <i class="fas fa-list-ul"></i>
                 </button>
-                <button type="button" class="btn btn-outline-secondary btn-xs" data-md="1. " title="有序列表">
+                <button type="button" class="btn btn-outline-secondary btn-xs" data-md="1. " data-i18n-title="markdown.orderedList">
                     <i class="fas fa-list-ol"></i>
                 </button>
             </div>
             <div class="btn-group btn-group-sm" role="group">
-                <button type="button" class="btn btn-outline-secondary btn-xs" data-md="[text](url)" title="連結">
+                <button type="button" class="btn btn-outline-secondary btn-xs" data-md="[text](url)" data-i18n-title="markdown.link">
                     <i class="fas fa-link"></i>
                 </button>
-                <button type="button" class="btn btn-outline-secondary btn-xs" data-md="![alt](url)" title="圖片">
+                <button type="button" class="btn btn-outline-secondary btn-xs" data-md="![alt](url)" data-i18n-title="markdown.image">
                     <i class="fas fa-image"></i>
                 </button>
             </div>
-            <button type="button" class="btn btn-outline-info btn-xs markdown-help-btn" title="Markdown 語法說明" style="margin-left: 8px;" onclick="window.open('https://www.markdownguide.org/cheat-sheet/', '_blank')">
+            <button type="button" class="btn btn-outline-info btn-xs markdown-help-btn" data-i18n-title="tooltips.markdownHelp" style="margin-left: 8px;" onclick="window.open('https://www.markdownguide.org/cheat-sheet/', '_blank')">
                 <i class="fas fa-question-circle"></i>
             </button>
         </div>
@@ -2661,11 +2709,20 @@ function addHelpButtonsToToolbars() {
             const helpButton = document.createElement('button');
             helpButton.type = 'button';
             helpButton.className = 'btn btn-outline-info btn-xs markdown-help-btn';
-            helpButton.title = 'Markdown 語法說明';
+            helpButton.setAttribute('data-i18n-title', 'markdown.help');
+            helpButton.title = 'Markdown 語法說明'; // fallback
             helpButton.style.marginLeft = '8px';
             helpButton.onclick = () => window.open('https://www.markdownguide.org/cheat-sheet/', '_blank');
             helpButton.innerHTML = '<i class="fas fa-question-circle"></i>';
             toolbar.appendChild(helpButton);
+            
+            // 手動觸發翻譯
+            if (window.i18n && window.i18n.isReady()) {
+                const translatedTitle = window.i18n.t('markdown.help');
+                if (translatedTitle && translatedTitle !== 'markdown.help') {
+                    helpButton.title = translatedTitle;
+                }
+            }
         }
     });
 }
@@ -2885,7 +2942,8 @@ function updateSingleFieldPreview(fieldId) {
         try {
             previewDiv.innerHTML = marked.parse(content);
         } catch (error) {
-            previewDiv.innerHTML = '<p class="text-muted">Markdown 解析錯誤</p>';
+            const markdownErrorMessage = window.i18n ? window.i18n.t('errors.markdownParseError') : 'Markdown 解析錯誤';
+            previewDiv.innerHTML = `<p class="text-muted">${markdownErrorMessage}</p>`;
         }
     } else {
         // 簡單的 Markdown 轉換
@@ -2902,7 +2960,8 @@ function updateSingleFieldPreview(fieldId) {
             .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" style="max-width: 100%; height: auto;">')
             .replace(/\n/g, '<br>');
         
-        previewDiv.innerHTML = html || '<p class="text-muted">預覽將在此顯示...</p>';
+        const previewPlaceholder = window.i18n ? window.i18n.t('messages.previewDisplayHere') : '預覽將在此顯示...';
+        previewDiv.innerHTML = html || `<p class="text-muted">${previewPlaceholder}</p>`;
     }
     // 工具列顯示狀態可能改變整體高度，需重新計算列表高度
     adjustTestCasesScrollHeight();
@@ -2919,7 +2978,8 @@ function handleAttachmentUpload(event) {
     // 驗證檔案
     for (let file of files) {
         if (file.size > 10 * 1024 * 1024) { // 10MB 限制
-            showError(`檔案 "${file.name}" 超過 10MB 大小限制`);
+            const fileSizeLimitMessage = window.i18n ? window.i18n.t('errors.fileSizeLimit') : '檔案超過10MB大小限制';
+            showError(`檔案 "${file.name}" ${fileSizeLimitMessage}`);
             return;
         }
     }
@@ -2948,7 +3008,7 @@ function handleAttachmentUpload(event) {
 async function uploadFilesToServer(files) {
     const currentTeam = AppUtils.getCurrentTeam();
     if (!currentTeam || !currentTeam.id) {
-        showError('請先選擇團隊');
+        showError(window.i18n ? window.i18n.t('errors.pleaseSelectTeam') : '請先選擇團隊');
         return;
     }
     
@@ -2983,7 +3043,8 @@ async function uploadFilesToServer(files) {
             
             // 更新當前上傳的檔案名稱
             const statusText = attachmentsList.querySelector('.mt-2 small');
-            statusText.textContent = `正在上傳: ${file.name}`;
+            const uploadingMessage = window.i18n ? window.i18n.t('messages.uploadingFile') : '正在上傳';
+            statusText.textContent = `${uploadingMessage}: ${file.name}`;
             
             const formData = new FormData();
             formData.append('file', file);
@@ -3001,7 +3062,8 @@ async function uploadFilesToServer(files) {
                     const currentRecordId = getCurrentRecordId();
                     if (currentRecordId) {
                         const statusText = attachmentsList.querySelector('.mt-2 small');
-                        statusText.textContent = `正在附加: ${file.name}`;
+                        const attachingMessage = window.i18n ? window.i18n.t('messages.attachingFile') : '正在附加';
+                        statusText.textContent = `${attachingMessage}: ${file.name}`;
                         
                         const attachFormData = new FormData();
                         attachFormData.append('file_token', result.file_token);
@@ -3078,7 +3140,8 @@ async function uploadFilesToServer(files) {
             } catch (fileError) {
                 console.error(`上傳檔案 ${file.name} 失敗:`, fileError);
                 // 繼續上傳其他檔案，但記錄錯誤
-                showError(`上傳 "${file.name}" 失敗: ${fileError.message}`);
+                const uploadFailedMessage = window.i18n ? window.i18n.t('errors.uploadFailed') : '上傳失敗';
+                showError(`${uploadFailedMessage} "${file.name}": ${fileError.message}`);
             }
         }
         
@@ -3089,13 +3152,17 @@ async function uploadFilesToServer(files) {
         renderAttachmentsList();
         
         if (uploadedFiles.length > 0) {
-            showSuccess(`成功上傳並附加 ${uploadedFiles.length} 個附件`);
+            const attachmentsUploadedMessage = window.i18n ? 
+                window.i18n.t('messages.attachmentsUploaded', {count: uploadedFiles.length}) : 
+                `成功上傳並附加 ${uploadedFiles.length} 個附件`;
+            showSuccess(attachmentsUploadedMessage);
             // 注意：現在不需要觸發表單變更檢查，因為附件已經立即附加到記錄
         }
         
     } catch (error) {
         console.error('上傳附件過程發生錯誤:', error);
-        showError('上傳附件失敗：' + error.message);
+        const uploadAttachmentFailedMessage = window.i18n ? window.i18n.t('errors.uploadAttachmentFailed') : '上傳附件失敗';
+        showError(uploadAttachmentFailedMessage + '：' + error.message);
         
         // 上傳失敗時顯示錯誤狀態
         attachmentsList.innerHTML = `
@@ -3112,7 +3179,8 @@ async function uploadFilesToServer(files) {
 function renderAttachmentsList() {
     const attachmentsList = document.getElementById('attachmentsList');
     if (!uploadedAttachments || uploadedAttachments.length === 0) {
-        attachmentsList.innerHTML = '<p class="text-muted small mb-0">尚無附件</p>';
+        const noAttachmentsMessage = window.i18n ? window.i18n.t('errors.noAttachments') : '尚無附件';
+        attachmentsList.innerHTML = `<p class="text-muted small mb-0">${noAttachmentsMessage}</p>`;
         return;
     }
     
@@ -3127,7 +3195,7 @@ function renderAttachmentsList() {
             </div>
             <div>
                 <button type="button" class="btn btn-sm btn-outline-danger" 
-                        onclick="removeAttachment('${attachment.file_token}', '${attachment.name}', ${index})" title="移除附件">
+                        onclick="removeAttachment('${attachment.file_token}', '${attachment.name}', ${index})" data-i18n-title="tooltips.removeAttachment">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
@@ -3136,7 +3204,7 @@ function renderAttachmentsList() {
     
     attachmentsList.innerHTML = `
         <div class="attachments-header mb-2">
-            <h6 class="mb-0 text-secondary">已上傳的附件 (${uploadedAttachments.length})</h6>
+            <h6 class="mb-0 text-secondary">${window.i18n ? window.i18n.t('form.uploadedAttachments') : '已上傳的附件'} (${uploadedAttachments.length})</h6>
         </div>
         ${attachmentsHtml}
     `;
@@ -3165,7 +3233,10 @@ function downloadAttachment(filename) {
 
 // 移除附件
 async function removeAttachment(fileToken, filename, index) {
-    if (confirm(`確定要刪除附件 "${filename}" 嗎？`)) {
+    const confirmMessage = window.i18n ? 
+        window.i18n.t('confirm.deleteAttachment', {filename: filename}) : 
+        `確定要刪除附件 "${filename}" 嗎？`;
+    if (confirm(confirmMessage)) {
         try {
             console.log(`正在刪除附件: ${filename}...`);
             
@@ -3223,14 +3294,17 @@ async function removeAttachment(fileToken, filename, index) {
                 
                 // 重新渲染附件列表
                 renderAttachmentsList();
-                showSuccess(`已成功刪除附件: ${filename}`);
+                const attachmentDeletedMessage = window.i18n ? 
+                    window.i18n.t('messages.attachmentDeleted') : '已成功刪除附件';
+                showSuccess(`${attachmentDeletedMessage}: ${filename}`);
             } else {
                 throw new Error(result.message || '刪除附件失敗');
             }
             
         } catch (error) {
             console.error('刪除附件錯誤:', error);
-            showError(`刪除附件失敗: ${error.message}`);
+            const attachmentDeleteFailedMessage = window.i18n ? window.i18n.t('errors.attachmentDeleteFailed') : '刪除附件失敗';
+            showError(`${attachmentDeleteFailedMessage}: ${error.message}`);
         }
     }
     // 工具列顯示狀態可能改變整體高度，需重新計算列表高度
@@ -3322,7 +3396,7 @@ async function startModalTCGSearch() {
     const searchHtml = `
         <div class="tcg-modal-search-container position-relative" style="width: 100%;">
             <input type="text" class="form-control tcg-modal-search-input" 
-                   placeholder="搜尋 TCG..." autocomplete="off" 
+                   data-i18n-placeholder="testCase.tcgPlaceholder" autocomplete="off" 
                    onkeydown="handleModalTCGSearchKeydown(event)" 
                    oninput="handleModalTCGSearchInput(event)"
                    onclick="event.stopPropagation()"
@@ -3394,7 +3468,8 @@ async function finishModalTCGEdit() {
 
 function updateModalTCGDisplay(container, tcgs) {
     if (tcgs.length === 0) {
-        container.innerHTML = '<span class="text-muted">點擊編輯 TCG</span>';
+        const clickToEditMessage = window.i18n ? window.i18n.t('errors.clickToEditTcg') : '點擊編輯 TCG';
+        container.innerHTML = `<span class="text-muted">${clickToEditMessage}</span>`;
     } else {
         container.innerHTML = tcgs.join(', ');
     }
@@ -3450,7 +3525,8 @@ async function searchModalTCGOptions(keyword) {
         }
     } catch (error) {
         console.error('搜尋 TCG 失敗:', error);
-        dropdown.innerHTML = '<div class="p-2 text-danger small">搜尋失敗，請重試</div>';
+        const searchFailedRetryMessage = window.i18n ? window.i18n.t('errors.searchFailedRetry') : '搜尋失敗，請重試';
+        dropdown.innerHTML = `<div class="p-2 text-danger small">${searchFailedRetryMessage}</div>`;
     }
     // 工具列顯示狀態可能改變整體高度，需重新計算列表高度
     adjustTestCasesScrollHeight();
@@ -3569,7 +3645,8 @@ function updateTCGDropdown(results) {
     if (!dropdown) return;
     
     if (results.length === 0) {
-        dropdown.innerHTML = '<div class="p-2 text-muted">找不到匹配的 TCG</div>';
+        const noTcgMatchesMessage = window.i18n ? window.i18n.t('errors.noTcgMatches') : '找不到匹配的 TCG';
+        dropdown.innerHTML = `<div class="p-2 text-muted">${noTcgMatchesMessage}</div>`;
         return;
     }
     
@@ -3736,5 +3813,16 @@ function showNextTestCase() {
     // 工具列顯示狀態可能改變整體高度，需重新計算列表高度
     adjustTestCasesScrollHeight();
 }
+
+// 更新頁面標題翻譯
+function updatePageTitle() {
+    const pageTitle = window.i18n ? window.i18n.t('testCase.management') : '測試案例管理';
+    const siteTitle = window.i18n ? window.i18n.t('navigation.title') : 'Test Case Repository';
+    document.title = `${pageTitle} - ${siteTitle} Web Tool`;
+}
+
+// 監聽 i18n 初始化和語言變更事件
+document.addEventListener('i18nReady', updatePageTitle);
+document.addEventListener('languageChanged', updatePageTitle);
 </script>
 {% endblock %}
