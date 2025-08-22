@@ -257,6 +257,7 @@
 
 let testRunConfigs = [];
 let currentTeamId = null;
+let configDetailModalInstance = null;
 
 document.addEventListener('DOMContentLoaded', function() {
     // 初始化頁面
@@ -385,7 +386,7 @@ function createConfigCard(config) {
     const progressPercentage = config.execution_rate || 0;
     const passPercentage = config.pass_rate || 0;
     
-    const createdDate = AppUtils.formatDate(new Date(config.created_at));
+    const createdDate = AppUtils.formatDate(config.created_at, 'datetime-tz');
     
     return `
         <div class="col-md-6 col-lg-4 mb-4">
@@ -617,15 +618,65 @@ function enterTestRun(configId) {
 function showConfigDetails(configId) {
     const config = testRunConfigs.find(c => c.id === configId);
     if (!config) return;
+
+    const modalElement = document.getElementById('configDetailModal');
     
-    // 顯示配置詳情 Modal
-    const modal = new bootstrap.Modal(document.getElementById('configDetailModal'));
+    // Singleton pattern for modal instance
+    if (!configDetailModalInstance) {
+        configDetailModalInstance = new bootstrap.Modal(modalElement);
+    }
     
     // 填入詳情內容
     document.getElementById('configDetailTitle').textContent = config.name;
     document.getElementById('configDetailContent').innerHTML = createConfigDetailContent(config);
     
-    modal.show();
+    // 處理刪除按鈕
+    const deleteBtn = document.getElementById('deleteConfigBtn');
+    deleteBtn.setAttribute('data-config-id', configId);
+    
+    // 為了避免重複綁定，先移除舊的監聽器
+    deleteBtn.removeEventListener('click', handleDeleteConfig);
+    deleteBtn.addEventListener('click', handleDeleteConfig);
+    
+    configDetailModalInstance.show();
+}
+
+async function handleDeleteConfig(event) {
+    const configId = event.currentTarget.getAttribute('data-config-id');
+    const config = testRunConfigs.find(c => c.id === parseInt(configId));
+    if (!config) return;
+
+    const confirmMsg = window.i18n ? window.i18n.t('testRun.deleteConfirm', { name: escapeHtml(config.name) }) : `您確定要刪除 Test Run 配置 "${escapeHtml(config.name)}" 嗎？此操作無法復原。`;
+    
+    if (confirm(confirmMsg)) {
+        await deleteTestRunConfig(configId);
+    }
+}
+
+async function deleteTestRunConfig(configId) {
+    try {
+        const response = await fetch(`/api/teams/${currentTeamId}/test-run-configs/${configId}`, {
+            method: 'DELETE'
+        });
+
+        if (response.ok) { // Status 204 is ok
+            if (configDetailModalInstance) {
+                configDetailModalInstance.hide();
+            }
+            
+            const successMsg = window.i18n ? window.i18n.t('testRun.deleteSuccess') : '成功刪除 Test Run 配置';
+            AppUtils.showSuccess(successMsg);
+            
+            await loadTestRunConfigs(); // 重新載入列表
+        } else {
+            const errorData = await response.json();
+            throw new Error(errorData.detail || '刪除失敗');
+        }
+    } catch (error) {
+        console.error('刪除 Test Run 配置失敗:', error);
+        const errorMsg = window.i18n ? window.i18n.t('testRun.deleteFailed', { error: error.message }) : `刪除失敗：${error.message}`;
+        AppUtils.showError(errorMsg);
+    }
 }
 
 function createConfigDetailContent(config) {
@@ -646,7 +697,7 @@ function createConfigDetailContent(config) {
                     <tr><td>${window.i18n ? window.i18n.t('testRun.configExecutedLabel') : '已執行'}</td><td>${config.executed_cases}</td></tr>
                     <tr><td>${window.i18n ? window.i18n.t('testRun.configExecutionRateLabel') : '執行率'}</td><td>${config.execution_rate.toFixed(1)}%</td></tr>
                     <tr><td>${window.i18n ? window.i18n.t('testRun.configPassRateLabel') : '通過率'}</td><td>${config.pass_rate.toFixed(1)}%</td></tr>
-                    <tr><td>${window.i18n ? window.i18n.t('testRun.configCreatedLabel') : '建立時間'}</td><td>${AppUtils.formatDateTime(new Date(config.created_at))}</td></tr>
+                    <tr><td>${window.i18n ? window.i18n.t('testRun.configCreatedLabel') : '建立時間'}</td><td>${AppUtils.formatDate(config.created_at, 'datetime-tz')}</td></tr>
                 </table>
             </div>
         </div>

@@ -123,6 +123,7 @@ class TestRunConfigSummary(BaseModel):
     """測試執行配置摘要（用於列表顯示）"""
     id: int = Field(..., description="配置 ID")
     name: str = Field(..., description="測試執行名稱")
+    table_id: str = Field(..., description="Lark 測試執行表格 ID")
     test_version: Optional[str] = Field(None, description="測試版本")
     status: TestRunStatus = Field(..., description="執行狀態")
     execution_rate: float = Field(..., description="執行率")

@@ -15,6 +15,7 @@ from app.models.test_run_config import (
 )
 from app.models.database_models import TestRunConfig as TestRunConfigDB, Team as TeamDB
 from app.services.lark_client import LarkClient
+from app.config import settings
 from datetime import datetime
 
 router = APIRouter(prefix="/teams/{team_id}/test-run-configs", tags=["test-run-configs"])
@@ -93,6 +94,7 @@ async def get_test_run_configs(
         summary = TestRunConfigSummary(
             id=config.id,
             name=config.name,
+            table_id=config.table_id,
             test_version=config.test_version,
             status=config.status,
             execution_rate=config.get_execution_rate(),
@@ -176,24 +178,9 @@ async def update_test_run_config(
         )
     
     # 更新欄位
-    if config_update.name is not None:
-        config_db.name = config_update.name
-    if config_update.description is not None:
-        config_db.description = config_update.description
-    if config_update.table_id is not None:
-        config_db.table_id = config_update.table_id
-    if config_update.test_version is not None:
-        config_db.test_version = config_update.test_version
-    if config_update.test_environment is not None:
-        config_db.test_environment = config_update.test_environment
-    if config_update.build_number is not None:
-        config_db.build_number = config_update.build_number
-    if config_update.status is not None:
-        config_db.status = config_update.status
-    if config_update.start_date is not None:
-        config_db.start_date = config_update.start_date
-    if config_update.end_date is not None:
-        config_db.end_date = config_update.end_date
+    update_data = config_update.dict(exclude_unset=True)
+    for key, value in update_data.items():
+        setattr(config_db, key, value)
     
     # 提交更新
     db.commit()
@@ -249,8 +236,8 @@ async def validate_test_run_config(
     try:
         # 建立 Lark Client 來驗證連線
         lark_client = LarkClient(
-            app_id="cli_a8d1077685be102f",
-            app_secret="***REMOVED***"
+            app_id=settings.lark.app_id,
+            app_secret=settings.lark.app_secret
         )
         
         # 設定 wiki token（從團隊配置取得）
@@ -301,8 +288,8 @@ async def sync_test_run_config(
     try:
         # 建立 Lark Client
         lark_client = LarkClient(
-            app_id="cli_a8d1077685be102f",
-            app_secret="***REMOVED***"
+            app_id=settings.lark.app_id,
+            app_secret=settings.lark.app_secret
         )
         
         lark_client.set_wiki_token(team.wiki_token)
