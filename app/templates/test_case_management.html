@@ -137,6 +137,12 @@ html, body { height: 100%; overflow: hidden; }
 
 /* (reverted) removed modal TCG custom styles */
 
+/* Markdown 預覽區域：移除首尾多餘邊距，避免卡片內留下額外留白 */
+
+/* 卡片與編輯容器對齊：確保卡片本身不產生額外外距 */
+/* (revert) remove special markdown preview margin normalization */
+
+
 /* 在顯示前先隱藏 modal 內容，避免進場時可見的滾動回頂彈跳感 */
 .modal-preparing .modal-body {
     visibility: hidden;
@@ -255,20 +261,24 @@ html, body { height: 100%; overflow: hidden; }
     <div class="card mb-3" id="searchFilterCard" style="display: none;">
         <div class="card-body">
             <div class="row g-3">
-                <div class="col-md-6 col-lg-4">
-                    <label for="searchInput" class="form-label">關鍵字搜尋</label>
-                    <input type="text" class="form-control" id="searchInput" placeholder="搜尋測試案例標題、描述...">
-                </div>
                 <div class="col-md-3 col-lg-2">
+                    <label for="testCaseNumberSearch" class="form-label">Test Case Number</label>
+                    <input type="text" class="form-control" id="testCaseNumberSearch" placeholder="TCG-93178...">
+                </div>
+                <div class="col-md-4 col-lg-3">
+                    <label for="searchInput" class="form-label">關鍵字搜尋</label>
+                    <input type="text" class="form-control" id="searchInput" placeholder="搜尋標題、描述...">
+                </div>
+                <div class="col-md-2 col-lg-1">
                     <label for="priorityFilter" class="form-label">優先級</label>
                     <select class="form-select" id="priorityFilter">
-                        <option value="">全部優先級</option>
+                        <option value="">全部</option>
                         <option value="High">High</option>
                         <option value="Medium">Medium</option>
                         <option value="Low">Low</option>
                     </select>
                 </div>
-                <div class="col-md-6 col-lg-6 d-flex align-items-end justify-content-between flex-wrap">
+                <div class="col-md-3 col-lg-6 d-flex align-items-end justify-content-between flex-wrap">
                     <div class="d-flex align-items-center mb-2 mb-lg-0">
                         <button type="button" class="btn btn-primary me-2" id="applyFiltersBtn">
                             <i class="fas fa-filter me-2"></i>套用篩選
@@ -402,7 +412,7 @@ html, body { height: 100%; overflow: hidden; }
                                         <i class="fas fa-list-ul me-2"></i>Precondition
                                     </label>
                                 </div>
-                                <div class="markdown-field-container">
+                                <div class="markdown-field-container" id="precondition_container">
                                     <div class="row">
                                         <div class="col-12 d-none edit-column">
                                             <!-- 編輯框容器 -->
@@ -463,7 +473,7 @@ html, body { height: 100%; overflow: hidden; }
                                 <label for="test_steps" class="form-label">
                                     <i class="fas fa-list-ol me-2"></i>測試步驟
                                 </label>
-                                <div class="markdown-field-container">
+                                <div class="markdown-field-container" id="test_steps_container">
                                     <div class="row">
                                         <div class="col-12 d-none edit-column">
                                             <!-- 編輯框容器 -->
@@ -524,7 +534,7 @@ html, body { height: 100%; overflow: hidden; }
                                 <label for="expected_result" class="form-label">
                                     <i class="fas fa-check-circle me-2"></i>預期結果
                                 </label>
-                                <div class="markdown-field-container">
+                                <div class="markdown-field-container" id="expected_result_container">
                                     <div class="row">
                                         <div class="col-12 d-none edit-column">
                                             <!-- 編輯框容器 -->
@@ -600,19 +610,19 @@ html, body { height: 100%; overflow: hidden; }
                         <div class="d-flex justify-content-between align-items-center">
                             <!-- 模式切換按鈕 -->
                             <div class="btn-group btn-group-sm" role="group">
-                                <button type="button" class="btn btn-outline-secondary" id="editModeBtn">
-                                    <i class="fas fa-edit me-1"></i>編輯
-                                </button>
                                 <button type="button" class="btn btn-secondary active" id="previewModeBtn">
-                                    <i class="fas fa-eye me-1"></i>預覽
+                                    <i class="fas fa-eye me-1"></i>瀏覽
                                 </button>
                                 <button type="button" class="btn btn-outline-secondary" id="splitModeBtn">
-                                    <i class="fas fa-columns me-1"></i>並排
+                                    <i class="fas fa-edit me-1"></i>編輯
                                 </button>
                             </div>
                             <!-- 操作按鈕 -->
                             <div class="d-flex gap-2">
                                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                                <button type="button" class="btn btn-success" id="saveAndAddNextBtn" disabled style="display: none;">
+                                    <i class="fas fa-plus me-2"></i>儲存並新增下一筆
+                                </button>
                                 <button type="button" class="btn btn-primary" id="saveTestCaseBtn" disabled>
                                     <i class="fas fa-save me-2"></i>儲存
                                 </button>
@@ -817,6 +827,8 @@ async function initTestCaseManagement() {
     } finally {
         // 隱藏進度條
         hideLoadingProgress();
+        // 初始化篩選狀態
+        updateFilterStatus();
     }
     // 工具列顯示狀態可能改變整體高度，需重新計算列表高度
     adjustTestCasesScrollHeight();
@@ -942,13 +954,26 @@ async function refreshTestCases() {
     const refreshBtn = document.getElementById('refreshBtn');
     const originalHTML = refreshBtn.innerHTML;
     
+    // 檢查是否有搜尋條件
+    const hasFilters = hasAnyFilters();
+    
     // 顯示載入動畫在按鈕內
-    refreshBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status"></span>重新載入';
+    refreshBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2" role="status"></span>重新載入${hasFilters ? ' & 篩選' : ''}`;
     refreshBtn.disabled = true;
     
     try {
         // 調用 loadTestCases，但不顯示載入區塊
         await loadTestCases(false);
+        
+        // 重新載入後，自動套用當前的搜尋條件
+        if (hasFilters) {
+            applyFilters();
+            // 提示使用者已保持篩選條件
+            AppUtils.showSuccess('資料已重新載入，篩選條件已保持');
+        } else {
+            AppUtils.showSuccess('資料已重新載入');
+        }
+        
     } finally {
         // 恢復按鈕原始狀態
         refreshBtn.innerHTML = originalHTML;
@@ -956,6 +981,15 @@ async function refreshTestCases() {
     }
     // 工具列顯示狀態可能改變整體高度，需重新計算列表高度
     adjustTestCasesScrollHeight();
+}
+
+// 檢查是否有任何篩選條件的輔助函數
+function hasAnyFilters() {
+    const testCaseNumberSearch = document.getElementById('testCaseNumberSearch').value.trim();
+    const search = document.getElementById('searchInput').value.trim();
+    const priority = document.getElementById('priorityFilter').value;
+    
+    return testCaseNumberSearch || search || priority;
 }
 
 function renderTestCasesTable() {
@@ -1055,6 +1089,20 @@ function bindEvents() {
     document.getElementById('applyFiltersBtn').addEventListener('click', applyFilters);
     document.getElementById('clearFiltersBtn').addEventListener('click', clearFilters);
     
+    // 搜尋欄位 Enter 鍵支援
+    document.getElementById('testCaseNumberSearch').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            applyFilters();
+        }
+    });
+    document.getElementById('searchInput').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            applyFilters();
+        }
+    });
+    
     // 批次操作
     document.getElementById('selectAllCheckbox').addEventListener('change', toggleSelectAll);
     const batchDeleteBtn = document.getElementById('batchDeleteBtn');
@@ -1079,6 +1127,9 @@ function bindEvents() {
     
     // 儲存按鈕
     document.getElementById('saveTestCaseBtn').addEventListener('click', saveTestCase);
+    
+    // 儲存並新增下一筆按鈕
+    document.getElementById('saveAndAddNextBtn').addEventListener('click', saveAndAddNext);
 }
 
 let originalFormData = {}; // 存儲原始表單資料
@@ -1090,6 +1141,7 @@ function showTestCaseModal(testCase = null) {
     const title = document.getElementById('testCaseModalTitle');
     const form = document.getElementById('testCaseForm');
     const saveBtn = document.getElementById('saveTestCaseBtn');
+    const saveAndAddNextBtn = document.getElementById('saveAndAddNextBtn');
     
     // 重設表單和狀態
     form.reset();
@@ -1159,16 +1211,54 @@ function showTestCaseModal(testCase = null) {
             updateMarkdownPreview(fieldId);
         });
         
+        // 檢視模式下預設為預覽模式
+        setEditorMode('preview');
+        
+        // 隱藏「儲存並新增下一筆」按鈕（編輯模式不需要）
+        saveAndAddNextBtn.style.display = 'none';
+        
     } else {
         title.textContent = '新增測試案例';
+        
+        // 清空所有表單欄位
         document.getElementById('testCaseId').value = '';
+        document.getElementById('title').value = '';
+        document.getElementById('testCaseNumber').value = '';
+        document.getElementById('priority').value = 'Medium';
+        document.getElementById('tcg').value = '';
+        document.getElementById('precondition').value = '';
+        document.getElementById('test_steps').value = '';
+        document.getElementById('expected_result').value = '';
+        
+        // 清空 Modal TCG 輸入框
+        const modalTCGInput = document.getElementById('modalTCGInput');
+        if (modalTCGInput) {
+            modalTCGInput.value = '';
+        }
+        
+        // 清除 modal 的 recordId dataset
+        modal.dataset.recordId = '';
+        
         originalFormData = {};
         saveBtn.disabled = false; // 新增模式下儲存按鈕啟用
+        saveAndAddNextBtn.disabled = false; // 新增模式下「儲存並新增下一筆」按鈕啟用
+        saveAndAddNextBtn.style.display = 'inline-block'; // 顯示「儲存並新增下一筆」按鈕
         currentTestCaseIndex = -1;
         updateNavigationButtons();
         
         // 渲染附件列表（新增模式下為空）
         renderAttachmentsList();
+        
+        // 清空所有 Markdown 預覽內容
+        markdownFields.forEach(fieldId => {
+            const previewElement = document.querySelector(`.markdown-preview[data-target="${fieldId}"]`);
+            if (previewElement) {
+                previewElement.innerHTML = '<p class="text-muted">預覽內容會在這裡顯示</p>';
+            }
+        });
+        
+        // 新增模式下預設為編輯模式
+        setEditorMode('split');
     }
     
     // 啟用所有欄位（檢視/編輯合一）
@@ -1215,6 +1305,7 @@ function viewTestCase(id) {
 function bindFormChangeListeners() {
     const form = document.getElementById('testCaseForm');
     const saveBtn = document.getElementById('saveTestCaseBtn');
+    const saveAndAddNextBtn = document.getElementById('saveAndAddNextBtn');
     
     // 為所有表單欄位綁定變更事件
     form.querySelectorAll('input, textarea, select').forEach(element => {
@@ -1227,6 +1318,7 @@ function bindFormChangeListeners() {
 function checkFormChanges() {
     const form = document.getElementById('testCaseForm');
     const saveBtn = document.getElementById('saveTestCaseBtn');
+    const saveAndAddNextBtn = document.getElementById('saveAndAddNextBtn');
     const formData = new FormData(form);
     
     // 檢查新增模式
@@ -1234,6 +1326,7 @@ function checkFormChanges() {
         // 新增模式：檢查是否有填入必要欄位
         const hasTitle = formData.get('title') && formData.get('title').trim();
         saveBtn.disabled = !hasTitle;
+        saveAndAddNextBtn.disabled = !hasTitle;
         return;
     }
     
@@ -1344,6 +1437,20 @@ async function saveTestCase() {
         return;
     }
     
+    // 檢查測試案例編號唯一性
+    if (testCaseData.test_case_number) {
+        const testCaseId = document.getElementById('testCaseId').value;
+        const isDuplicate = testCases.some(tc => 
+            tc.test_case_number === testCaseData.test_case_number &&
+            tc.record_id !== testCaseId // 排除當前編輯的記錄
+        );
+        
+        if (isDuplicate) {
+            showError(`測試案例編號 '${testCaseData.test_case_number}' 已存在，請使用其他編號`);
+            return;
+        }
+    }
+    
     // 獲取當前選擇的團隊
     const currentTeam = AppUtils.getCurrentTeam();
     if (!currentTeam || !currentTeam.id) {
@@ -1426,6 +1533,90 @@ async function saveTestCase() {
     }, 100); // 100ms 延遲確保 UI 響應
 }
 
+// 儲存並新增下一筆測試案例
+async function saveAndAddNext() {
+    const form = document.getElementById('testCaseForm');
+    const formData = new FormData(form);
+    
+    const testCaseData = {
+        title: formData.get('title'),
+        test_case_number: formData.get('test_case_number'),
+        priority: formData.get('priority'),
+        precondition: document.getElementById('precondition').value,
+        steps: document.getElementById('test_steps').value,
+        expected_result: document.getElementById('expected_result').value,
+        tcg: document.getElementById('modalTCGInput').value
+    };
+    
+    // 表單驗證
+    if (!testCaseData.title) {
+        showError('請填寫測試案例標題');
+        return;
+    }
+    
+    // 檢查測試案例編號唯一性（新增模式不需要排除任何記錄）
+    if (testCaseData.test_case_number) {
+        const isDuplicate = testCases.some(tc => 
+            tc.test_case_number === testCaseData.test_case_number
+        );
+        
+        if (isDuplicate) {
+            showError(`測試案例編號 '${testCaseData.test_case_number}' 已存在，請使用其他編號`);
+            return;
+        }
+    }
+    
+    // 獲取當前選擇的團隊
+    const currentTeam = AppUtils.getCurrentTeam();
+    if (!currentTeam || !currentTeam.id) {
+        showError('請先選擇團隊');
+        return;
+    }
+    
+    // 禁用按鈕並顯示載入狀態
+    const saveBtn = document.getElementById('saveTestCaseBtn');
+    const saveAndAddNextBtn = document.getElementById('saveAndAddNextBtn');
+    saveBtn.disabled = true;
+    saveAndAddNextBtn.disabled = true;
+    saveAndAddNextBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>儲存中...';
+    
+    showSuccess('測試案例新增中...');
+    
+    try {
+        // 新增測試案例
+        const response = await fetch(`/api/teams/${currentTeam.id}/testcases/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(testCaseData)
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.detail || '儲存失敗');
+        }
+        
+        // 重新載入測試案例（不顯示載入動畫）
+        await loadTestCases(false);
+        
+        showSuccess('測試案例新增完成，準備下一筆');
+        
+        // 重置表單為新增下一筆狀態
+        showTestCaseModal(null); // 呼叫新增模式，會自動清空所有欄位並設定為編輯模式
+        
+    } catch (error) {
+        console.error('儲存測試案例失敗:', error);
+        
+        // 恢復按鈕狀態
+        saveBtn.disabled = false;
+        saveAndAddNextBtn.disabled = false;
+        saveAndAddNextBtn.innerHTML = '<i class="fas fa-plus me-2"></i>儲存並新增下一筆';
+        
+        showError('儲存失敗：' + error.message);
+    }
+}
+
 // 工具函數
 function getStatusBadgeClass(status) {
     const classes = {
@@ -1504,25 +1695,38 @@ function getTCGTags(testCase) {
 }
 
 function applyFilters() {
+    const testCaseNumberSearch = document.getElementById('testCaseNumberSearch').value.toLowerCase();
     const search = document.getElementById('searchInput').value.toLowerCase();
     const priority = document.getElementById('priorityFilter').value;
     
     filteredTestCases = testCases.filter(testCase => {
+        // Test Case Number 搜尋（包含 TCG 編號和測試案例編號）
+        const matchTestCaseNumber = !testCaseNumberSearch || 
+            (testCase.test_case_number && testCase.test_case_number.toLowerCase().includes(testCaseNumberSearch)) ||
+            (testCase.tcg && testCase.tcg.some(tcgItem => {
+                const tcgText = tcgItem.text || tcgItem;
+                return tcgText && tcgText.toLowerCase().includes(testCaseNumberSearch);
+            }));
+        
+        // 關鍵字搜尋（標題和描述）
         const matchSearch = !search || 
             testCase.title.toLowerCase().includes(search) ||
             (testCase.description && testCase.description.toLowerCase().includes(search));
         
+        // 優先級篩選
         const matchPriority = !priority || testCase.priority === priority;
         
-        return matchSearch && matchPriority;
+        return matchTestCaseNumber && matchSearch && matchPriority;
     });
     
     currentPage = 1;
     renderTestCasesTable();
     updatePagination();
+    updateFilterStatus();
 }
 
 function clearFilters() {
+    document.getElementById('testCaseNumberSearch').value = '';
     document.getElementById('searchInput').value = '';
     document.getElementById('priorityFilter').value = '';
     
@@ -1530,6 +1734,27 @@ function clearFilters() {
     currentPage = 1;
     renderTestCasesTable();
     updatePagination();
+    updateFilterStatus();
+}
+
+function updateFilterStatus() {
+    const applyBtn = document.getElementById('applyFiltersBtn');
+    const clearBtn = document.getElementById('clearFiltersBtn');
+    
+    // 檢查是否有任何篩選條件
+    const hasFilters = hasAnyFilters();
+    
+    if (hasFilters) {
+        // 有篩選條件時，更新按鈕樣式和文字
+        applyBtn.innerHTML = '<i class="fas fa-filter me-2"></i>已篩選 (' + filteredTestCases.length + ')';
+        applyBtn.className = 'btn btn-success me-2';
+        clearBtn.style.display = 'inline-block';
+    } else {
+        // 無篩選條件時，恢復原始樣式
+        applyBtn.innerHTML = '<i class="fas fa-filter me-2"></i>套用篩選';
+        applyBtn.className = 'btn btn-primary me-2';
+        clearBtn.style.display = testCases.length === filteredTestCases.length ? 'none' : 'inline-block';
+    }
 }
 
 function toggleSelectAll() {
@@ -2285,13 +2510,116 @@ let activeTextarea = null; // 當前焦點的 textarea
 // 支援 Markdown 的欄位
 const markdownFields = ['precondition', 'test_steps', 'expected_result'];
 
-// 初始化 Markdown 編輯器
-function initializeMarkdownEditor() {
-    // 模式切換按鈕
-    document.getElementById('editModeBtn').addEventListener('click', () => setEditorMode('edit'));
-    document.getElementById('previewModeBtn').addEventListener('click', () => setEditorMode('preview'));
-    document.getElementById('splitModeBtn').addEventListener('click', () => setEditorMode('split'));
+// 生成 Markdown 工具列 HTML
+function generateMarkdownToolbar(targetFieldId) {
+    return `
+        <div class="markdown-toolbar px-2 py-1 border-bottom" data-target="${targetFieldId}" style="background-color: #f8f9fa; height: 32px; display: flex; align-items: center;">
+            <div class="btn-group btn-group-sm me-1" role="group">
+                <button type="button" class="btn btn-outline-secondary btn-xs" data-md="**" title="粗體">
+                    <i class="fas fa-bold"></i>
+                </button>
+                <button type="button" class="btn btn-outline-secondary btn-xs" data-md="*" title="斜體">
+                    <i class="fas fa-italic"></i>
+                </button>
+                <button type="button" class="btn btn-outline-secondary btn-xs" data-md="\`" title="程式碼">
+                    <i class="fas fa-code"></i>
+                </button>
+            </div>
+            <div class="btn-group btn-group-sm me-1" role="group">
+                <button type="button" class="btn btn-outline-secondary btn-xs" data-md="# " title="標題 1">H1</button>
+                <button type="button" class="btn btn-outline-secondary btn-xs" data-md="## " title="標題 2">H2</button>
+                <button type="button" class="btn btn-outline-secondary btn-xs" data-md="### " title="標題 3">H3</button>
+            </div>
+            <div class="btn-group btn-group-sm me-1" role="group">
+                <button type="button" class="btn btn-outline-secondary btn-xs" data-md="- " title="無序列表">
+                    <i class="fas fa-list-ul"></i>
+                </button>
+                <button type="button" class="btn btn-outline-secondary btn-xs" data-md="1. " title="有序列表">
+                    <i class="fas fa-list-ol"></i>
+                </button>
+            </div>
+            <div class="btn-group btn-group-sm" role="group">
+                <button type="button" class="btn btn-outline-secondary btn-xs" data-md="[text](url)" title="連結">
+                    <i class="fas fa-link"></i>
+                </button>
+                <button type="button" class="btn btn-outline-secondary btn-xs" data-md="![alt](url)" title="圖片">
+                    <i class="fas fa-image"></i>
+                </button>
+            </div>
+            <button type="button" class="btn btn-outline-info btn-xs markdown-help-btn" title="Markdown 語法說明" style="margin-left: 8px;" onclick="window.open('https://www.markdownguide.org/cheat-sheet/', '_blank')">
+                <i class="fas fa-question-circle"></i>
+            </button>
+        </div>
+    `;
+}
+
+// 生成完整的 Markdown 編輯器容器
+function generateMarkdownEditor(fieldId, fieldName, placeholder, rows = 6, height = '200px') {
+    return `
+        <div class="row">
+            <div class="col-12 d-none edit-column">
+                <!-- 編輯框容器 -->
+                <div class="form-control markdown-edit-container" style="padding: 0; height: ${height};">
+                    ${generateMarkdownToolbar(fieldId)}
+                    <textarea id="${fieldId}" name="${fieldName}" class="markdown-textarea" rows="${rows}" 
+                              placeholder="${placeholder}" style="border: none; border-radius: 0; height: calc(100% - 32px); resize: none; outline: none; padding: 0.375rem 0.75rem; width: 100%; box-sizing: border-box; overflow-y: auto;"></textarea>
+                </div>
+            </div>
+            <div class="col-12 preview-column">
+                <div class="markdown-preview-container" style="height: ${height};">
+                    <div class="markdown-preview" id="${fieldId}Preview" style="padding: 8px; height: 100%; overflow-y: auto; background: #f8f9fa; border: 1px solid #ced4da; border-radius: 0.375rem;">
+                        <p class="text-muted">預覽內容會在這裡顯示</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+// 初始化所有 Markdown 編輯器
+function initializeAllMarkdownEditors() {
+    // 編輯器配置
+    const editorConfigs = [
+        {
+            fieldId: 'precondition',
+            fieldName: 'precondition',
+            placeholder: '請描述測試前置條件...',
+            height: '200px'
+        },
+        {
+            fieldId: 'test_steps',
+            fieldName: 'test_steps',
+            placeholder: '請描述詳細的測試步驟...',
+            height: '250px'
+        },
+        {
+            fieldId: 'expected_result',
+            fieldName: 'expected_result',
+            placeholder: '請描述預期的測試結果...',
+            height: '200px'
+        }
+    ];
     
+    // 為每個編輯器生成 HTML 並替換現有內容
+    editorConfigs.forEach(config => {
+        const container = document.getElementById(config.fieldId + '_container');
+        if (container) {
+            container.innerHTML = generateMarkdownEditor(
+                config.fieldId,
+                config.fieldName,
+                config.placeholder,
+                6,
+                config.height
+            ).trim();
+        }
+    });
+    
+    // 重新綁定事件
+    bindMarkdownEvents();
+}
+
+// 綁定 Markdown 事件
+function bindMarkdownEvents() {
     // Markdown 工具列按鈕 (個別工具列)
     document.querySelectorAll('.markdown-toolbar button[data-md]').forEach(btn => {
         btn.addEventListener('click', (e) => {
@@ -2323,6 +2651,37 @@ function initializeMarkdownEditor() {
         }
     });
     
+}
+
+// 安全地添加幫助按鈕到現有工具列
+function addHelpButtonsToToolbars() {
+    markdownFields.forEach(fieldId => {
+        const toolbar = document.querySelector(`.markdown-toolbar[data-target="${fieldId}"]`);
+        if (toolbar && !toolbar.querySelector('.markdown-help-btn')) {
+            const helpButton = document.createElement('button');
+            helpButton.type = 'button';
+            helpButton.className = 'btn btn-outline-info btn-xs markdown-help-btn';
+            helpButton.title = 'Markdown 語法說明';
+            helpButton.style.marginLeft = '8px';
+            helpButton.onclick = () => window.open('https://www.markdownguide.org/cheat-sheet/', '_blank');
+            helpButton.innerHTML = '<i class="fas fa-question-circle"></i>';
+            toolbar.appendChild(helpButton);
+        }
+    });
+}
+
+// 初始化 Markdown 編輯器
+function initializeMarkdownEditor() {
+    // 模式切換按鈕
+    document.getElementById('previewModeBtn').addEventListener('click', () => setEditorMode('preview'));
+    document.getElementById('splitModeBtn').addEventListener('click', () => setEditorMode('split'));
+    
+    // 綁定 Markdown 事件
+    bindMarkdownEvents();
+    
+    // 安全地添加幫助按鈕
+    addHelpButtonsToToolbars();
+    
     // 附件上傳功能
     const attachmentUpload = document.getElementById('attachmentUpload');
     if (attachmentUpload) {
@@ -2337,13 +2696,15 @@ function setEditorMode(mode) {
     currentEditorMode = mode;
     
     // 更新按鈕狀態
-    document.querySelectorAll('#editModeBtn, #previewModeBtn, #splitModeBtn').forEach(btn => {
+    document.querySelectorAll('#previewModeBtn, #splitModeBtn').forEach(btn => {
         btn.classList.remove('active', 'btn-secondary');
         btn.classList.add('btn-outline-secondary');
     });
     const activeBtn = document.getElementById(mode + 'ModeBtn');
-    activeBtn.classList.remove('btn-outline-secondary');
-    activeBtn.classList.add('btn-secondary', 'active');
+    if (activeBtn) {
+        activeBtn.classList.remove('btn-outline-secondary');
+        activeBtn.classList.add('btn-secondary', 'active');
+    }
     
     // 為所有 Markdown 欄位設置模式
     markdownFields.forEach(fieldId => {

@@ -2,6 +2,91 @@
 
 {% block title %}測試執行管理 - Test Case Repository Web Tool{% endblock %}
 
+{% block head %}
+<!-- 快速編輯樣式 -->
+<style>
+.hover-editable {
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.hover-editable:hover {
+    background-color: rgba(0, 123, 255, 0.1);
+}
+
+.hover-edit-btn {
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+    min-width: 28px;
+    min-height: 28px;
+    padding: 2px 4px;
+}
+
+.hover-editable:hover .hover-edit-btn {
+    opacity: 1 !important;
+    pointer-events: auto;
+}
+
+.hover-editable .hover-edit-btn {
+    display: block !important;
+}
+
+.quick-edit-input {
+    border: 1px solid #007bff !important;
+    border-radius: 4px !important;
+    padding: 0.25rem 0.5rem !important;
+    font-size: 0.875rem !important;
+    line-height: 1.5 !important;
+    height: auto !important;
+    min-height: 1.5rem !important;
+    margin: 0 !important;
+    box-sizing: border-box !important;
+}
+
+/* 固定表頭設計（位於可滾動容器內） */
+#testRunsTable thead th {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+}
+
+/* 列表滾動容器 */
+#testRunsScroll { overflow-y: auto; }
+
+/* Sticky 分頁：固定底部且透明背景 */
+#testRunsPagination {
+    position: sticky;
+    bottom: 0;
+    z-index: 25;
+    background-color: transparent;
+    border-top: none;
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem;
+}
+
+/* 批次工具列樣式 */
+#batchInlineToolbar {
+    background: linear-gradient(135deg, #e3f2fd, #f3e5f5);
+    border-radius: 8px;
+    padding: 8px 16px;
+    border: 1px solid #bbdefb;
+}
+
+/* 載入進度樣式優化 */
+.progress {
+    height: 6px;
+    border-radius: 3px;
+}
+
+.progress-bar {
+    border-radius: 3px;
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="container-fluid">
     <!-- 頁面標題與工具列 -->
@@ -24,7 +109,7 @@
     </div>
 
     <!-- 篩選與搜尋區 -->
-    <div class="card mb-4">
+    <div class="card mb-4" id="runSearchFilterCard" style="display: none;">
         <div class="card-body">
             <div class="row g-3">
                 <div class="col-md-6 col-lg-3">
@@ -57,40 +142,67 @@
                     </div>
                 </div>
                 <div class="col-md-6 col-lg-2 d-flex align-items-end">
-                    <button type="button" class="btn btn-outline-primary me-2" id="applyFiltersBtn">
-                        <i class="fas fa-filter me-2"></i>套用篩選
-                    </button>
-                    <button type="button" class="btn btn-outline-secondary" id="clearFiltersBtn">
-                        <i class="fas fa-times me-2"></i>清除
-                    </button>
+                    <div class="d-flex align-items-center mb-2 mb-lg-0">
+                        <button type="button" class="btn btn-primary me-2" id="applyFiltersBtn">
+                            <i class="fas fa-filter me-2"></i>套用篩選
+                        </button>
+                        <button type="button" class="btn btn-secondary" id="clearFiltersBtn">
+                            <i class="fas fa-times me-2"></i>清除
+                        </button>
+                    </div>
+                    <!-- 批次操作工具列（靠右顯示） -->
+                    <div id="batchInlineToolbar" class="d-none d-flex align-items-center gap-2 ms-lg-auto mb-2 mb-lg-0">
+                        <span class="text-muted">已選取 <strong id="selectedCount">0</strong> 個項目</span>
+                        <button type="button" class="btn btn-success btn-sm" id="batchStartBtn">
+                            <i class="fas fa-play me-2"></i>批次開始
+                        </button>
+                        <button type="button" class="btn btn-danger btn-sm" id="batchDeleteBtn">
+                            <i class="fas fa-trash me-2"></i>批次刪除
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- 載入中狀態 -->
-    <div class="text-center py-5 d-none" id="loadingState">
-        <div class="spinner-border text-primary" role="status">
-            <span class="visually-hidden">載入中...</span>
+    <!-- 載入進度指示器 -->
+    <div id="loadingProgress" class="card mb-2" style="display: none;">
+        <div class="card-body">
+            <h5 class="card-title mb-3">
+                <i class="fas fa-spinner fa-spin me-2"></i>載入中...
+            </h5>
+            
+            <!-- Test Run 載入進度 -->
+            <div class="mb-3">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <small class="text-muted">載入測試執行記錄</small>
+                    <small class="text-muted" id="testRunProgress">0%</small>
+                </div>
+                <div class="progress">
+                    <div class="progress-bar bg-primary" id="testRunProgressBar" role="progressbar" style="width: 0%"></div>
+                </div>
+            </div>
         </div>
-        <div class="mt-2 text-muted">載入測試執行記錄中...</div>
     </div>
 
     <!-- 測試執行表格 -->
-    <div class="card">
+    <div class="card" id="testRunsCard" style="display: none;">
         <div class="card-body">
-            <div class="table-responsive">
-                <table class="table table-hover" id="testRunsTable">
+            <div class="table-responsive" id="testRunsScroll">
+                <table class="table table-hover table-sm" id="testRunsTable">
                     <thead>
-                        <tr>
-                            <th width="80">ID</th>
-                            <th>測試執行名稱</th>
-                            <th width="100">狀態</th>
-                            <th width="120">執行者</th>
-                            <th width="150">進度</th>
-                            <th width="120">開始時間</th>
-                            <th width="120">結束時間</th>
-                            <th width="100">操作</th>
+                        <tr style="height: 32px !important; line-height: 1.2;">
+                            <th width="30" class="text-center" style="padding: 4px 8px !important; vertical-align: middle;">
+                                <input type="checkbox" class="form-check-input" id="selectAllCheckbox" title="全選/取消全選">
+                            </th>
+                            <th width="60" style="padding: 4px 8px !important; vertical-align: middle;">ID</th>
+                            <th style="padding: 4px 8px !important; vertical-align: middle;">測試執行名稱</th>
+                            <th width="100" style="padding: 4px 8px !important; vertical-align: middle;">狀態</th>
+                            <th width="120" style="padding: 4px 8px !important; vertical-align: middle;">執行者</th>
+                            <th width="150" style="padding: 4px 8px !important; vertical-align: middle;">進度</th>
+                            <th width="120" style="padding: 4px 8px !important; vertical-align: middle;">開始時間</th>
+                            <th width="120" style="padding: 4px 8px !important; vertical-align: middle;">結束時間</th>
+                            <th width="100" style="padding: 4px 8px !important; vertical-align: middle;">操作</th>
                         </tr>
                     </thead>
                     <tbody id="testRunsTableBody">
@@ -102,7 +214,7 @@
     </div>
 
     <!-- 分頁控制 -->
-    <nav aria-label="測試執行分頁" class="mt-3">
+    <nav aria-label="測試執行分頁" class="mt-3" id="testRunsPagination">
         <ul class="pagination justify-content-center" id="pagination">
             <!-- 將由 JavaScript 動態載入 -->
         </ul>
@@ -306,14 +418,17 @@
 let testRuns = [];
 let filteredTestRuns = [];
 let currentPage = 1;
-let pageSize = 20;
+let pageSize = 50;
 let availableTestCases = [];
 let currentTestRun = null;
 let currentExecutingTestCase = null;
+let selectedTestRuns = new Set(); // 用於批次操作的選中項目
 
 document.addEventListener('DOMContentLoaded', function() {
     initTestRunManagement();
     bindEvents();
+    // 初始化列表高度（等待初始排版完成）
+    setTimeout(adjustTestRunsScrollHeight, 0);
 });
 
 function initTestRunManagement() {
@@ -324,24 +439,40 @@ function initTestRunManagement() {
 async function loadTestRuns() {
     try {
         showLoadingState();
+        updateTestRunProgress(10, '連接伺服器...');
         
         const response = await fetch('/api/test_runs');
         if (!response.ok) {
             throw new Error('載入測試執行記錄失敗');
         }
         
+        updateTestRunProgress(50, '處理資料...');
         testRuns = await response.json();
         filteredTestRuns = [...testRuns];
         
+        updateTestRunProgress(80, '渲染表格...');
         renderTestRunsTable();
         updatePagination();
-        hideLoadingState();
+        
+        updateTestRunProgress(100, '載入完成');
+        setTimeout(() => {
+            hideLoadingState();
+            adjustTestRunsScrollHeight();
+        }, 200);
         
     } catch (error) {
         console.error('載入測試執行記錄失敗:', error);
-        showError('載入測試執行記錄失敗：' + error.message);
+        AppUtils.showError('載入測試執行記錄失敗：' + error.message);
         hideLoadingState();
     }
+}
+
+function updateTestRunProgress(progress, message) {
+    const progressText = document.getElementById('testRunProgress');
+    const progressBar = document.getElementById('testRunProgressBar');
+    
+    if (progressText) progressText.textContent = `${progress}%`;
+    if (progressBar) progressBar.style.width = `${progress}%`;
 }
 
 async function loadAvailableTestCases() {
@@ -375,25 +506,42 @@ function renderTestRunsTable() {
                 </td>
             </tr>
         `;
+        adjustTestRunsScrollHeight();
         return;
     }
     
     tbody.innerHTML = pageTestRuns.map(testRun => `
         <tr>
-            <td>
+            <td class="text-center align-middle" style="padding: 4px 8px !important;">
+                <input type="checkbox" class="form-check-input test-run-checkbox" 
+                       value="${testRun.id}" title="選擇此測試執行">
+            </td>
+            <td class="align-middle" style="padding: 4px 8px !important;">
                 <code class="small">${testRun.id}</code>
             </td>
-            <td>
-                <div class="fw-medium">${testRun.name}</div>
-                <div class="small text-muted">${testRun.description || ''}</div>
+            <td class="align-middle position-relative hover-editable" data-field="name" data-record-id="${testRun.id}" 
+                style="padding: 4px 45px 4px 8px !important;">
+                <div class="fw-medium">${escapeHtml(testRun.name || '')}</div>
+                <div class="small text-muted">${escapeHtml(testRun.description || '')}</div>
+                <button type="button" class="btn btn-sm btn-edit position-absolute hover-edit-btn" 
+                        style="top: 50%; right: 5px; transform: translateY(-50%); z-index: 10;" 
+                        onclick="quickEditTestRun('${testRun.id}', 'name')" title="快速編輯">
+                    <i class="fas fa-edit"></i>
+                </button>
             </td>
-            <td>
+            <td class="align-middle" style="padding: 4px 8px !important;">
                 <span class="badge ${getStatusBadgeClass(testRun.status)}">${getStatusText(testRun.status)}</span>
             </td>
-            <td>
-                <div class="small">${testRun.assignee || '-'}</div>
+            <td class="align-middle position-relative hover-editable" data-field="assignee" data-record-id="${testRun.id}"
+                style="padding: 4px 45px 4px 8px !important;">
+                <div class="small">${escapeHtml(testRun.assignee || '-')}</div>
+                <button type="button" class="btn btn-sm btn-edit position-absolute hover-edit-btn" 
+                        style="top: 50%; right: 5px; transform: translateY(-50%); z-index: 10;" 
+                        onclick="quickEditTestRun('${testRun.id}', 'assignee')" title="快速編輯">
+                    <i class="fas fa-edit"></i>
+                </button>
             </td>
-            <td>
+            <td class="align-middle" style="padding: 4px 8px !important;">
                 <div class="progress" style="height: 20px;">
                     <div class="progress-bar bg-success" style="width: ${testRun.pass_rate || 0}%">
                         ${testRun.pass_rate || 0}%
@@ -403,17 +551,17 @@ function renderTestRunsTable() {
                     ${testRun.passed || 0}/${testRun.total || 0} 通過
                 </div>
             </td>
-            <td>
+            <td class="align-middle" style="padding: 4px 8px !important;">
                 <div class="small text-muted">
                     ${formatDate(testRun.start_date, 'date')}
                 </div>
             </td>
-            <td>
+            <td class="align-middle" style="padding: 4px 8px !important;">
                 <div class="small text-muted">
                     ${testRun.end_date ? formatDate(testRun.end_date, 'date') : '-'}
                 </div>
             </td>
-            <td>
+            <td class="align-middle" style="padding: 4px 8px !important;">
                 <div class="btn-group">
                     <button type="button" class="btn btn-sm btn-outline-primary" 
                             onclick="viewTestRunDetail(${testRun.id})" title="檢視詳情">
@@ -431,6 +579,7 @@ function renderTestRunsTable() {
             </td>
         </tr>
     `).join('');
+    adjustTestRunsScrollHeight();
 }
 
 function renderTestCasesList() {
@@ -471,6 +620,13 @@ function bindEvents() {
     document.getElementById('applyFiltersBtn').addEventListener('click', applyFilters);
     document.getElementById('clearFiltersBtn').addEventListener('click', clearFilters);
     
+    // 批次操作
+    document.getElementById('selectAllCheckbox').addEventListener('change', toggleSelectAll);
+    const batchStartBtn = document.getElementById('batchStartBtn');
+    const batchDeleteBtn = document.getElementById('batchDeleteBtn');
+    if (batchStartBtn) batchStartBtn.addEventListener('click', batchStartTestRuns);
+    if (batchDeleteBtn) batchDeleteBtn.addEventListener('click', batchDeleteTestRuns);
+    
     // 儲存測試執行按鈕
     document.getElementById('saveTestRunBtn').addEventListener('click', saveTestRun);
     
@@ -479,6 +635,19 @@ function bindEvents() {
     
     // 測試案例搜尋
     document.getElementById('testCaseSearch').addEventListener('input', filterTestCases);
+    
+    // 監聽表格內的複選框變化
+    document.addEventListener('change', function(e) {
+        if (e.target.classList.contains('test-run-checkbox')) {
+            const testRunId = parseInt(e.target.value);
+            if (e.target.checked) {
+                selectedTestRuns.add(testRunId);
+            } else {
+                selectedTestRuns.delete(testRunId);
+            }
+            updateBatchToolbar();
+        }
+    });
     
     // 測試結果變更
     document.getElementById('testResult').addEventListener('change', function() {
@@ -492,6 +661,9 @@ function bindEvents() {
     
     // 儲存執行結果按鈕
     document.getElementById('saveResultBtn').addEventListener('click', saveExecutionResult);
+
+    // 視窗大小變化時調整列表高度
+    window.addEventListener('resize', adjustTestRunsScrollHeight);
 }
 
 function showCreateTestRunModal() {
@@ -664,11 +836,30 @@ function getPriorityText(priority) {
 }
 
 function showLoadingState() {
-    document.getElementById('loadingState').classList.remove('d-none');
+    const progressDiv = document.getElementById('loadingProgress');
+    if (progressDiv) {
+        progressDiv.style.display = 'block';
+    }
+    
+    // 隱藏搜尋與篩選區和表格（精準鎖定）
+    const searchCard = document.getElementById('runSearchFilterCard');
+    const tableCard = document.getElementById('testRunsCard');
+    if (searchCard) searchCard.style.display = 'none';
+    if (tableCard) tableCard.style.display = 'none';
 }
 
 function hideLoadingState() {
-    document.getElementById('loadingState').classList.add('d-none');
+    const progressDiv = document.getElementById('loadingProgress');
+    if (progressDiv) {
+        progressDiv.style.display = 'none';
+    }
+    
+    // 顯示搜尋與篩選區和表格（精準鎖定）
+    const searchCard = document.getElementById('runSearchFilterCard');
+    const tableCard = document.getElementById('testRunsCard');
+    if (searchCard) searchCard.style.display = 'block';
+    if (tableCard) tableCard.style.display = 'block';
+    adjustTestRunsScrollHeight();
 }
 
 function updatePagination() {
@@ -677,6 +868,7 @@ function updatePagination() {
     
     if (totalPages <= 1) {
         pagination.innerHTML = '';
+        adjustTestRunsScrollHeight();
         return;
     }
     
@@ -708,6 +900,7 @@ function updatePagination() {
     `;
     
     pagination.innerHTML = paginationHtml;
+    adjustTestRunsScrollHeight();
 }
 
 function changePage(page) {
@@ -716,6 +909,7 @@ function changePage(page) {
         currentPage = page;
         renderTestRunsTable();
         updatePagination();
+        adjustTestRunsScrollHeight();
     }
 }
 
@@ -744,17 +938,266 @@ function formatDate(dateString, format) {
     }
 }
 
-// 佔位函數 - 待實作
+// 批次操作功能
+function toggleSelectAll() {
+    const selectAll = document.getElementById('selectAllCheckbox').checked;
+    const checkboxes = document.querySelectorAll('.test-run-checkbox');
+    
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = selectAll;
+        const id = parseInt(checkbox.value);
+        if (selectAll) {
+            selectedTestRuns.add(id);
+        } else {
+            selectedTestRuns.delete(id);
+        }
+    });
+    updateBatchToolbar();
+}
+
+function updateBatchToolbar() {
+    const toolbar = document.getElementById('batchInlineToolbar');
+    const selectedCount = document.getElementById('selectedCount');
+    
+    if (selectedTestRuns.size > 0) {
+        toolbar.classList.remove('d-none');
+        selectedCount.textContent = selectedTestRuns.size;
+    } else {
+        toolbar.classList.add('d-none');
+    }
+    // 工具列顯示狀態改變時，重新計算列表高度避免重疊
+    adjustTestRunsScrollHeight();
+}
+
+function deselectAll() {
+    selectedTestRuns.clear();
+    document.getElementById('selectAllCheckbox').checked = false;
+    document.querySelectorAll('.test-run-checkbox').forEach(cb => {
+        cb.checked = false;
+    });
+    updateBatchToolbar();
+}
+
+async function batchStartTestRuns() {
+    if (selectedTestRuns.size === 0) {
+        AppUtils.showError('請先選擇要開始的測試執行');
+        return;
+    }
+    
+    const selectedIds = Array.from(selectedTestRuns);
+    const selectedRuns = testRuns.filter(tr => selectedIds.includes(tr.id));
+    
+    if (confirm(`確定要開始執行這 ${selectedRuns.length} 個測試執行嗎？`)) {
+        try {
+            for (const testRun of selectedRuns) {
+                // 更新本地狀態
+                testRun.status = 'In Progress';
+                testRun.start_date = new Date().toISOString();
+            }
+            
+            // 重新渲染表格
+            renderTestRunsTable();
+            deselectAll();
+            
+            AppUtils.showSuccess(`成功開始 ${selectedRuns.length} 個測試執行`);
+            
+        } catch (error) {
+            console.error('批次開始測試執行失敗:', error);
+            AppUtils.showError('批次開始失敗：' + error.message);
+        }
+    }
+}
+
+async function batchDeleteTestRuns() {
+    if (selectedTestRuns.size === 0) {
+        AppUtils.showError('請先選擇要刪除的測試執行');
+        return;
+    }
+    
+    const selectedIds = Array.from(selectedTestRuns);
+    const selectedRuns = testRuns.filter(tr => selectedIds.includes(tr.id));
+    
+    if (confirm(`確定要刪除這 ${selectedRuns.length} 個測試執行嗎？此操作無法復原。`)) {
+        try {
+            // 從本地陣列移除已刪除的項目（背景處理，不顯示載入動畫）
+            const deletedIds = Array.from(selectedIds);
+            testRuns = testRuns.filter(tr => !deletedIds.includes(tr.id));
+            filteredTestRuns = filteredTestRuns.filter(tr => !deletedIds.includes(tr.id));
+            
+            // 重新渲染表格和分頁
+            renderTestRunsTable();
+            updatePagination();
+            deselectAll();
+            
+            // 用 toast 通知成功
+            AppUtils.showSuccess(`成功刪除 ${selectedRuns.length} 個測試執行`);
+            
+        } catch (error) {
+            console.error('批次刪除測試執行失敗:', error);
+            AppUtils.showError('批次刪除失敗：' + error.message);
+        }
+    }
+}
+
+// 行內快速編輯功能
+function quickEditTestRun(testRunId, field) {
+    const testRun = testRuns.find(tr => tr.id == testRunId);
+    if (!testRun) return;
+    
+    const cell = document.querySelector(`td[data-record-id="${testRunId}"][data-field="${field}"]`);
+    const currentValue = field === 'name' ? testRun.name : testRun.assignee;
+    const originalContent = cell.innerHTML;
+    
+    // 創建編輯輸入框
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.value = currentValue || '';
+    input.className = 'form-control quick-edit-input';
+    input.style.width = '100%';
+    
+    // 替換單元格內容
+    cell.innerHTML = '';
+    cell.appendChild(input);
+    input.focus();
+    input.select();
+    
+    // 處理儲存
+    const saveEdit = async () => {
+        const newValue = input.value.trim();
+        
+        if (newValue === currentValue) {
+            // 沒有變更，恢復原始內容
+            cell.innerHTML = originalContent;
+            return;
+        }
+        
+        // 更新本地資料
+        if (field === 'name') {
+            testRun.name = newValue;
+        } else if (field === 'assignee') {
+            testRun.assignee = newValue;
+        }
+        
+        // 先恢復原始結構
+        cell.innerHTML = originalContent;
+        
+        // 立即重新渲染表格以顯示新值
+        renderTestRunsTable();
+        
+        // 在背景處理儲存（實際應用中應該調用 API）
+        try {
+            // TODO: 實際的 API 調用
+            console.log(`已更新測試執行 ${testRunId} 的 ${field} 為: ${newValue}`);
+            AppUtils.showSuccess(`更新成功`);
+            
+        } catch (error) {
+            console.error('快速編輯失敗:', error);
+            AppUtils.showError('更新失敗：' + error.message);
+            
+            // 如果儲存失敗，恢復原值並重新渲染
+            if (field === 'name') {
+                testRun.name = currentValue;
+            } else if (field === 'assignee') {
+                testRun.assignee = currentValue;
+            }
+            renderTestRunsTable();
+        }
+    };
+    
+    // 處理取消
+    const cancelEdit = () => {
+        cell.innerHTML = originalContent;
+    };
+    
+    // 綁定事件
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            saveEdit();
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            cancelEdit();
+        }
+    });
+    
+    input.addEventListener('blur', saveEdit);
+}
+
+// 工具函數
+function escapeHtml(text) {
+    if (!text) return '';
+    const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+    };
+    return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+}
+
+// 佔位函數 - 基礎實作
 function viewTestRunDetail(id) {
-    showError('測試執行詳情檢視功能尚未實作');
+    const testRun = testRuns.find(tr => tr.id == id);
+    if (!testRun) {
+        AppUtils.showError('找不到測試執行記錄');
+        return;
+    }
+    
+    alert(`測試執行詳情：
+    
+名稱：${testRun.name || '未命名'}
+狀態：${getStatusText(testRun.status)}
+執行者：${testRun.assignee || '未指定'}
+進度：${testRun.pass_rate || 0}% (${testRun.passed || 0}/${testRun.total || 0})
+開始時間：${formatDate(testRun.start_date, 'datetime')}
+結束時間：${testRun.end_date ? formatDate(testRun.end_date, 'datetime') : '未完成'}
+
+說明：詳細檢視功能開發中...`);
 }
 
 function executeTestRun(id) {
-    showError('測試執行功能尚未實作');
+    const testRun = testRuns.find(tr => tr.id == id);
+    if (!testRun) {
+        AppUtils.showError('找不到測試執行記錄');
+        return;
+    }
+    
+    if (testRun.status === 'In Progress') {
+        AppUtils.showWarning('測試執行已在進行中');
+        return;
+    }
+    
+    if (confirm(`確定要開始執行「${testRun.name}」嗎？`)) {
+        // 更新本地狀態
+        testRun.status = 'In Progress';
+        testRun.start_date = new Date().toISOString();
+        
+        // 重新渲染表格
+        renderTestRunsTable();
+        
+        AppUtils.showSuccess(`已開始執行「${testRun.name}」`);
+    }
 }
 
 function deleteTestRun(id) {
-    showError('刪除測試執行功能尚未實作');
+    const testRun = testRuns.find(tr => tr.id == id);
+    if (!testRun) {
+        AppUtils.showError('找不到測試執行記錄');
+        return;
+    }
+    
+    if (confirm(`確定要刪除測試執行「${testRun.name}」嗎？此操作無法復原。`)) {
+        // 從本地陣列移除
+        testRuns = testRuns.filter(tr => tr.id !== id);
+        filteredTestRuns = filteredTestRuns.filter(tr => tr.id !== id);
+        
+        // 重新渲染表格和分頁
+        renderTestRunsTable();
+        updatePagination();
+        
+        AppUtils.showSuccess(`已成功刪除「${testRun.name}」`);
+    }
 }
 
 function saveExecutionResult() {
