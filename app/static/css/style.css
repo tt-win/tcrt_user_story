@@ -105,13 +105,13 @@ body {
 /* 次要操作按鈕 - 灰藍色系 */
 .btn-secondary {
     background: linear-gradient(135deg, #8E9AAF 0%, #A8B4C8 100%);
-    border: 1px solid #8E9AAF;
+    border: 1px solid var(--tr-border-medium);
     color: #ffffff;
 }
 
 .btn-secondary:hover {
     background: linear-gradient(135deg, #7A8599 0%, #9BA7BB 100%);
-    border-color: #7A8599;
+    border-color: var(--tr-border-medium);
     color: #ffffff;
 }
 
@@ -201,6 +201,7 @@ body {
     border-radius: 6px;
     margin-bottom: 0.5rem;
     box-shadow: var(--tr-shadow-md);
+    border: 1px solid var(--tr-border-light);
 }
 
 .alert-success {
@@ -435,6 +436,7 @@ code.small {
     padding: 0.25rem 0.5rem !important;
     font-size: 0.875rem !important;
     line-height: 1.4 !important;
+    border: 1px solid var(--tr-border-light);
 }
 
 .form-label {
@@ -470,12 +472,12 @@ code.small {
 
 /* 表格緊湊樣式 */
 .table th {
-    padding: 0.5rem !important;
+    padding: 0.75rem !important;
     font-size: 0.875rem !important;
 }
 
 .table td {
-    padding: 0.375rem 0.5rem !important;
+    padding: 0.75rem !important;
     font-size: 0.875rem !important;
 }
 

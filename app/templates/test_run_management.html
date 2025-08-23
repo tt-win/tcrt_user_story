@@ -68,10 +68,10 @@
     font-weight: 500;
 }
 
-.status-active { background-color: #d1ecf1; color: #0c5460; }
-.status-completed { background-color: #d4edda; color: #155724; }
-.status-draft { background-color: #fff3cd; color: #856404; }
-.status-archived { background-color: #f8d7da; color: #721c24; }
+.status-active { background-color: var(--tr-info); color: #0c5460; opacity: 0.2; }
+.status-completed { background-color: var(--tr-success); color: #155724; opacity: 0.2; }
+.status-draft { background-color: var(--tr-warning); color: #856404; opacity: 0.2; }
+.status-archived { background-color: var(--tr-danger); color: #721c24; opacity: 0.2; }
 
 /* 統計資訊樣式 */
 .stats-item {
@@ -93,7 +93,7 @@
 
 /* Loading animation */
 .loading-skeleton {
-    background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+    background: linear-gradient(90deg, var(--tr-bg-sidebar) 25%, var(--tr-border-light) 50%, var(--tr-bg-sidebar) 75%);
     background-size: 200% 100%;
     animation: loading 1.5s infinite;
 }
