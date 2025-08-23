@@ -575,6 +575,21 @@ table td:nth-child(2) {
     font-size: 0.875rem !important;
 }
 
+/* 固定分頁欄（可複用，與語言切換按鈕相同定位模型） */
+.fixed-pagination-bar {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1040; /* 低於語言切換按鈕 (1050) */
+    background-color: transparent;
+    padding: 0.25rem 0.75rem;
+    border-top: none;
+}
+.fixed-pagination-bar .pagination {
+    margin-bottom: 0 !important;
+}
+
 /* 頁面標題顏色自定義 - 使用更高權重的選擇器 */
 /* 主標題使用完整的主題色 */
 main > .d-flex.justify-content-between.align-items-center.mb-3 h1.h3 {
