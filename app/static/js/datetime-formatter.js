@@ -43,31 +43,56 @@ class DateTimeFormatter {
         return this.formatterCache.get(cacheKey);
     }
 
-    /**
-     * Format a date using browser locale preferences
-     * @param {Date|string} date - Date object or date string
-     * @param {string} style - Format style: 'date', 'time', 'datetime', 'short', 'medium', 'long', 'full'
-     * @returns {string} Formatted date string
-     */
-    format(date, style = 'datetime') {
-        if (!date) return '';
+/**
+      * Format a date using browser locale preferences
+      * @param {Date|string} date - Date object or date string
+      * @param {string} style - Format style: 'date', 'time', 'datetime', 'short', 'medium', 'long', 'full'
+      * @returns {string} Formatted date string
+      */
+     format(date, style = 'datetime') {
+         if (!date) return '';
 
-        // Convert string to Date if necessary
-        const dateObj = date instanceof Date ? date : new Date(date);
-        
-        // Check for invalid date
-        if (isNaN(dateObj.getTime())) {
-            console.warn('Invalid date provided to DateTimeFormatter:', date);
-            return '';
-        }
+         // Convert string to Date if necessary
+         let dateObj;
+         if (date instanceof Date) {
+             dateObj = date;
+         } else {
+             // If string doesn't have timezone identifier, assume it's UTC time
+             const dateString = String(date);
+             if (dateString.match(/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d+)?$/) && !dateString.endsWith('Z')) {
+                 // No timezone identifier, treat as UTC time (support both 'T' and ' ' separators)
+                 const isoString = dateString.includes('T') ? dateString + 'Z' : dateString.replace(' ', 'T') + 'Z';
+                 dateObj = new Date(isoString);
+             } else {
+                 dateObj = new Date(dateString);
+             }
+         }
+         
+         // Check for invalid date
+         if (isNaN(dateObj.getTime())) {
+             console.warn('Invalid date provided to DateTimeFormatter:', date);
+             return '';
+         }
 
-        const locale = this.browserLocale;
-        const options = this.getOptionsForStyle(style);
-        const cacheKey = `${locale}-${style}`;
-        
-        const formatter = this.getFormatter(cacheKey, locale, options);
-        return formatter.format(dateObj);
-    }
+         const locale = this.browserLocale;
+         const options = this.getOptionsForStyle(style);
+         const cacheKey = `${locale}-${style}`;
+         
+         // Special handling for datetime-tz to ensure proper timezone display
+         if (style === 'datetime-tz') {
+             // For datetime-tz, explicitly set timezone to show timezone information
+             const tzOptions = {
+                 ...options,
+                 timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+                 timeZoneName: 'short'
+             };
+             const tzFormatter = this.getFormatter(cacheKey + '-tz', locale, tzOptions);
+             return tzFormatter.format(dateObj);
+         }
+         
+         const formatter = this.getFormatter(cacheKey, locale, options);
+         return formatter.format(dateObj);
+     }
 
     /**
      * Get Intl.DateTimeFormat options based on style
@@ -89,11 +114,27 @@ class DateTimeFormatter {
                 dateStyle: 'short',
                 timeStyle: 'short'
             },
+            'datetime-tz': {
+                year: 'numeric',
+                month: 'numeric', 
+                day: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+                timeZoneName: 'short'
+            },
             
             // Standard Intl styles
             'short': {
                 dateStyle: 'short',
                 timeStyle: 'short'
+            },
+            'short-tz': {
+                year: 'numeric',
+                month: 'numeric', 
+                day: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+                timeZoneName: 'short'
             },
             'medium': {
                 dateStyle: 'medium',

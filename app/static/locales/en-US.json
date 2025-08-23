@@ -273,6 +273,7 @@
     "connectionFailed": "Connection failed: {error}",
     "pleaseEnterTableId": "Please enter Table ID first",
     "createConfigSuccess": "Successfully created Test Run configuration",
+    "updateSuccess": "Update successful",
     "createConfigFailed": "Creation failed: {error}",
     "loadConfigsFailed": "Load failed",
     "enterTestRun": "Entering Test Run: {name}",
@@ -339,7 +340,6 @@
     "batchDeleteTestRunsSuccess": "Successfully deleted {count} test runs",
     "testRunCreated": "Test run created successfully",
     "testRunDeleted": "Test run deleted successfully",
-    "updateSuccess": "Update successful",
     "previewDisplayHere": "Preview will be displayed here...",
     "loadConfigsFailed": "Failed to load Test Run configurations"
   },

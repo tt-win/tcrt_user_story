@@ -18,6 +18,7 @@ from app.models.test_case import (
 from app.models.database_models import Team as TeamDB
 from app.services.lark_client import LarkClient
 from app.services.tcg_converter import tcg_converter
+from app.config import settings
 
 router = APIRouter(prefix="/teams/{team_id}/testcases", tags=["test-cases"])
 
@@ -33,8 +34,8 @@ def get_lark_client_for_team(team_id: int, db: Session) -> tuple[LarkClient, Tea
     
     # 建立 Lark Client
     lark_client = LarkClient(
-        app_id="cli_a8d1077685be102f",
-        app_secret="***REMOVED***"
+        app_id=settings.lark.app_id,
+        app_secret=settings.lark.app_secret
     )
     
     if not lark_client.set_wiki_token(team.wiki_token):

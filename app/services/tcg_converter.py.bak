@@ -54,8 +54,8 @@ class TCGConverter:
             from app.config import settings            
             # 初始化 Lark 客戶端
             lark_client = LarkClient(
-                app_id=settings.lark.app_id,
-                app_secret=settings.lark.app_secret
+                app_id="cli_a8d1077685be102f",
+                app_secret="***REMOVED***"
             )
             
             tcg_wiki_token = "Q4XxwaS2Cif80DkAku9lMKuAgof"

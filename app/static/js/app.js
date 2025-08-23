@@ -105,7 +105,14 @@ const AppUtils = {
         }
         
         // 備用方案：如果 DateTimeFormatter 尚未載入，使用瀏覽器預設 locale
-        const date = new Date(dateString);
+        let date;
+        // Handle UTC time strings without timezone identifier (support both 'T' and ' ' separators)
+        if (typeof dateString === 'string' && dateString.match(/^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(\.\d+)?$/) && !dateString.endsWith('Z')) {
+            const isoString = dateString.includes('T') ? dateString + 'Z' : dateString.replace(' ', 'T') + 'Z';
+            date = new Date(isoString);
+        } else {
+            date = new Date(dateString);
+        }
         if (isNaN(date.getTime())) return '';
         
         // 使用瀏覽器的預設 locale 而非硬編碼的 'zh-TW'
@@ -116,6 +123,16 @@ const AppUtils = {
             return date.toLocaleDateString(browserLocale);
         } else if (format === 'datetime') {
             return date.toLocaleString(browserLocale);
+        } else if (format === 'datetime-tz') {
+            // 顯示包含時區資訊的日期時間格式
+            return date.toLocaleString(browserLocale, {
+                year: 'numeric',
+                month: 'numeric', 
+                day: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+                timeZoneName: 'short'
+            });
         } else if (format === 'time') {
             return date.toLocaleTimeString(browserLocale);
         }

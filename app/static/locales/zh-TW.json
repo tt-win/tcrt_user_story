@@ -273,6 +273,7 @@
     "connectionFailed": "連線失敗：{error}",
     "pleaseEnterTableId": "請先輸入 Table ID",
     "createConfigSuccess": "成功建立 Test Run 配置",
+    "updateSuccess": "更新成功",
     "createConfigFailed": "建立失敗：{error}",
     "loadConfigsFailed": "載入失敗",
     "enterTestRun": "將進入 Test Run: {name}",

@@ -15,6 +15,7 @@
 /* TestRail 色彩系統 - 保留 */
 :root {
     /* TestRail 色彩系統 */
+    --tr-primary-rgb: 74, 144, 226;
     --tr-primary: #4A90E2;
     --tr-primary-dark: #357ABD;
     --tr-secondary: #7B68EE;
@@ -570,4 +571,15 @@ table td:nth-child(2) {
 .page-link {
     padding: 0.375rem 0.5rem !important;
     font-size: 0.875rem !important;
+}
+
+/* 頁面標題顏色自定義 - 使用更高權重的選擇器 */
+/* 主標題使用完整的主題色 */
+main > .d-flex.justify-content-between.align-items-center.mb-3 h1.h3 {
+    color: var(--tr-primary) !important;
+}
+
+/* 副標題使用帶有 70% 透明度的主題色，以達到柔和、退後的效果 */
+main > .d-flex.justify-content-between.align-items-center.mb-3 p.text-muted {
+    color: rgba(74, 144, 226, 0.7) !important;
 }

@@ -5,13 +5,27 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
+from pydantic import BaseModel
 
 from app.database import get_db
 from app.models.team import Team, TeamCreate, TeamUpdate, TeamResponse
 from app.models.database_models import Team as TeamDB
 from app.services.lark_client import LarkClient
+from app.config import settings
 
 router = APIRouter(prefix="/teams", tags=["teams"])
+
+
+class SimpleTableValidationRequest(BaseModel):
+    """簡單的表格驗證請求"""
+    wiki_token: str
+    table_id: str
+
+
+class ValidationResponse(BaseModel):
+    """驗證回應"""
+    valid: bool
+    message: str
 
 def team_db_to_model(team_db: TeamDB) -> dict:
     """將資料庫團隊模型轉換為 API 回應字典"""
@@ -99,8 +113,8 @@ async def validate_lark_repo(team: TeamCreate):
     try:
         # 創建 Lark Client 來驗證連線
         lark_client = LarkClient(
-            app_id="cli_a8d1077685be102f",
-            app_secret="***REMOVED***"
+            app_id=settings.lark.app_id,
+            app_secret=settings.lark.app_secret
         )
         
         # 設定 wiki token
@@ -118,6 +132,44 @@ async def validate_lark_repo(team: TeamCreate):
             "valid": False,
             "message": f"Lark Repo 連線驗證失敗: {str(e)}"
         }
+
+
+@router.post("/validate-table", response_model=ValidationResponse)
+async def validate_table(request: SimpleTableValidationRequest):
+    """簡單的表格驗證 API（不依賴完整團隊資料）"""
+    try:
+        # 創建 Lark Client 來驗證表格
+        lark_client = LarkClient(
+            app_id=settings.lark.app_id,
+            app_secret=settings.lark.app_secret
+        )
+        
+        # 設定 wiki token
+        if not lark_client.set_wiki_token(request.wiki_token):
+            return ValidationResponse(
+                valid=False,
+                message="Failed to set Wiki Token, please check if the token is correct"
+            )
+        
+        # 嘗試取得表格資訊來驗證連線
+        fields = lark_client.get_table_fields(request.table_id)
+        
+        if fields:
+            return ValidationResponse(
+                valid=True,
+                message=f"Table validation successful, found {len(fields)} fields"
+            )
+        else:
+            return ValidationResponse(
+                valid=False,
+                message="Unable to retrieve table field information, please check if the Table ID is correct"
+            )
+            
+    except Exception as e:
+        return ValidationResponse(
+            valid=False,
+            message=f"Table validation failed: {str(e)}"
+        )
 
 @router.get("/{team_id}")
 async def get_team(team_id: int, db: Session = Depends(get_db)):
