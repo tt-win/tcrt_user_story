@@ -290,7 +290,9 @@ html, body { height: 100%; overflow: hidden; }
                     </div>
                     <!-- 批次操作工具列（與套用篩選同一排、靠右顯示） -->
                     <div id="batchInlineToolbar" class="d-none d-flex align-items-center gap-2 ms-lg-auto mb-2 mb-lg-0">
-                        <span class="text-muted" data-i18n="testCase.selectedItems" data-i18n-params='{"count":0}'>已選取 <strong id="selectedCount">0</strong> 個項目</span>
+                        <span class="text-muted" id="selectedCountWrapper" data-i18n="testCase.selectedItems" data-i18n-params='{"count":0}'>
+                            已選取 0 個項目
+                        </span>
                         <button type="button" class="btn btn-danger btn-sm" id="batchDeleteBtn">
                             <i class="fas fa-trash me-2"></i><span data-i18n="testCase.batchDelete">批次刪除</span>
                         </button>
@@ -1800,28 +1802,32 @@ function toggleSelectAll() {
 
 function updateBatchToolbar() {
     const toolbar = document.getElementById('batchInlineToolbar');
-    const count = document.getElementById('selectedCount');
-    
-    // 修正：即使 count 為 null 也應該繼續處理工具列顯示
     if (!toolbar) return;
     
-    // 更新選中數量
-    if (count) {
-        count.textContent = selectedTestCases.size;
-    }
+    const selectedCount = selectedTestCases ? selectedTestCases.size : 0;
     
-    // 更新 i18n 參數
-    const i18nSpan = toolbar.querySelector('[data-i18n="testCase.selectedItems"]');
-    if (i18nSpan) {
-        i18nSpan.setAttribute('data-i18n-params', JSON.stringify({count: selectedTestCases.size}));
+    // 更新選中數量顯示
+    const countWrapper = document.getElementById('selectedCountWrapper');
+    if (countWrapper) {
+        // 更新 data-i18n-params
+        countWrapper.setAttribute('data-i18n-params', JSON.stringify({count: selectedCount}));
+        
         // 如果 i18n 已載入，重新翻譯此元素
         if (window.i18n && window.i18n.updateElement) {
-            window.i18n.updateElement(i18nSpan);
+            window.i18n.updateElement(countWrapper);
+        } else {
+            // 如果 i18n 還未載入或無法更新，手動更新內容
+            const currentLang = localStorage.getItem('preferredLanguage') || 'zh-TW';
+            if (currentLang === 'zh-TW') {
+                countWrapper.textContent = `已選取 ${selectedCount} 個項目`;
+            } else {
+                countWrapper.textContent = `${selectedCount} items selected`;
+            }
         }
     }
     
     // 顯示/隱藏工具列
-    if (selectedTestCases.size > 0) {
+    if (selectedCount > 0) {
         toolbar.classList.remove('d-none');
     } else {
         toolbar.classList.add('d-none');
