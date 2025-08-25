@@ -1801,13 +1801,32 @@ function toggleSelectAll() {
 function updateBatchToolbar() {
     const toolbar = document.getElementById('batchInlineToolbar');
     const count = document.getElementById('selectedCount');
-    if (!toolbar || !count) return;
-    count.textContent = selectedTestCases.size;
+    
+    // 修正：即使 count 為 null 也應該繼續處理工具列顯示
+    if (!toolbar) return;
+    
+    // 更新選中數量
+    if (count) {
+        count.textContent = selectedTestCases.size;
+    }
+    
+    // 更新 i18n 參數
+    const i18nSpan = toolbar.querySelector('[data-i18n="testCase.selectedItems"]');
+    if (i18nSpan) {
+        i18nSpan.setAttribute('data-i18n-params', JSON.stringify({count: selectedTestCases.size}));
+        // 如果 i18n 已載入，重新翻譯此元素
+        if (window.i18n && window.i18n.updateElement) {
+            window.i18n.updateElement(i18nSpan);
+        }
+    }
+    
+    // 顯示/隱藏工具列
     if (selectedTestCases.size > 0) {
         toolbar.classList.remove('d-none');
     } else {
         toolbar.classList.add('d-none');
     }
+    
     // 工具列顯示狀態可能改變整體高度，需重新計算列表高度
     adjustTestCasesScrollHeight();
 }
