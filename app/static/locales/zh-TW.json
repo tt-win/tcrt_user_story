@@ -272,12 +272,30 @@
     "connectionSuccess": "Lark 表格連線成功",
     "connectionFailed": "連線失敗：{error}",
     "pleaseEnterTableId": "請先輸入 Table ID",
+    "tableIdOptionalHint": "本地模式可留空；若需同步 Lark，請填入以 \"tbl\" 開頭的 Table ID",
     "createConfigSuccess": "成功建立 Test Run 配置",
+    "createConfigSuccessSelectCases": "成功建立 Test Run 配置，請選擇要加入的 Test Case",
     "updateSuccess": "更新成功",
     "createConfigFailed": "建立失敗：{error}",
     "loadConfigsFailed": "載入失敗",
     "enterTestRun": "將進入 Test Run: {name}",
     "descriptionPlaceholder": "描述這次測試執行配置的目的和範圍",
+    "itemsCreated": "建立成功（{count} 筆）",
+    "caseSelect": {
+      "title": "選擇要加入的 Test Case",
+      "searchPlaceholder": "搜尋標題或編號...",
+      "columns": {
+        "caseNumber": "Test Case 編號",
+        "title": "標題",
+        "priority": "優先級",
+        "attachments": "附件"
+      },
+      "selectedInfo": "已選 {count} 筆，按「建立」加入 Test Run"
+    },
+    "testEnvironment": "測試環境",
+    "testEnvironmentPlaceholder": "例如：Staging / UAT / Prod Sandbox",
+    "buildNumber": "建置版本",
+    "buildNumberPlaceholder": "例如：v1.2.3 / build #4567",
     "status": {
       "active": "進行中",
       "completed": "已完成",

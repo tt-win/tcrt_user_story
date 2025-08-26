@@ -186,13 +186,13 @@
                     
                     <div class="mb-3">
                         <label for="tableId" class="form-label">
-                            <span data-i18n="testRun.larkTableId">Lark 表格 ID</span> 
-                            <span class="text-danger">*</span>
+                            <span data-i18n="testRun.larkTableId">Lark 表格 ID</span>
+                            <span class="badge bg-secondary ms-2" style="font-weight: 500;" data-i18n="common.optional">選填</span>
                         </label>
-                        <input type="text" class="form-control" id="tableId" name="table_id" required 
-                               placeholder="tbl..." pattern="tbl.*">
-                        <div class="form-text" data-i18n="testRun.tableIdHint">
-                            請輸入 Lark 表格的 Table ID，格式為以 "tbl" 開頭
+                        <input type="text" class="form-control" id="tableId" name="table_id"
+                               placeholder="tbl...">
+                        <div class="form-text" data-i18n="testRun.tableIdOptionalHint">
+                            本地模式可留空；若需同步 Lark，請填入以 "tbl" 開頭的 Table ID
                         </div>
                     </div>
                     
@@ -201,6 +201,21 @@
                         <textarea class="form-control" id="configDescription" name="description" rows="3" 
                                 data-i18n-placeholder="testRun.descriptionPlaceholder"></textarea>
 
+                    </div>
+
+                    <div class="row">
+                      <div class="col-md-6">
+                        <div class="mb-3">
+                          <label for="testEnvironment" class="form-label"><span data-i18n="testRun.testEnvironment">測試環境</span> <span class="badge bg-secondary ms-2" data-i18n="common.optional">選填</span></label>
+                          <input type="text" class="form-control" id="testEnvironment" name="test_environment" data-i18n-placeholder="testRun.testEnvironmentPlaceholder" placeholder="例如：Staging / UAT / Prod Sandbox">
+                        </div>
+                      </div>
+                      <div class="col-md-6">
+                        <div class="mb-3">
+                          <label for="buildNumber" class="form-label"><span data-i18n="testRun.buildNumber">建置版本</span> <span class="badge bg-secondary ms-2" data-i18n="common.optional">選填</span></label>
+                          <input type="text" class="form-control" id="buildNumber" name="build_number" data-i18n-placeholder="testRun.buildNumberPlaceholder" placeholder="例如：v1.2.3 / build #4567">
+                        </div>
+                      </div>
                     </div>
                 </form>
             </div>
@@ -213,6 +228,44 @@
         </div>
     </div>
 </div>
+
+<!-- Test Case 選擇 Modal -->
+<div class="modal fade" id="caseSelectModal" tabindex="-1">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-tasks me-2"></i><span data-i18n="testRun.caseSelect.title">選擇要加入的 Test Case</span></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="d-flex gap-2 mb-3">
+          <input id="caseSearchInput" class="form-control" data-i18n-placeholder="testRun.caseSelect.searchPlaceholder" placeholder="搜尋標題或編號...">
+          <button class="btn btn-secondary" id="caseSearchBtn"><i class="fas fa-search me-1"></i><span data-i18n="common.search">搜尋</span></button>
+        </div>
+        <div id="caseSelectInfo" class="text-muted small mb-2"></div>
+        <div class="table-responsive" style="max-height: 50vh; overflow:auto;">
+          <table class="table table-sm align-middle">
+            <thead>
+              <tr>
+                <th style="width:32px;"><input type="checkbox" id="selectAllCases"></th>
+                <th style="width:160px;"><span data-i18n="testRun.caseSelect.columns.caseNumber">Test Case Number</span></th>
+                <th><span data-i18n="testRun.caseSelect.columns.title">Title</span></th>
+                <th style="width:100px;"><span data-i18n="testRun.caseSelect.columns.priority">Priority</span></th>
+                <th style="width:100px;"><span data-i18n="testRun.caseSelect.columns.attachments">Attachments</span></th>
+              </tr>
+            </thead>
+            <tbody id="caseListBody"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <div class="me-auto text-muted small"><span id="selectedCount">0</span></div>
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">取消</button>
+        <button type="button" class="btn btn-primary" id="confirmCreateItemsBtn"><i class="fas fa-check me-1"></i><span data-i18n="common.create">建立</span></button>
+      </div>
+    </div>
+  </div>
+  </div>
 
 <!-- Test Run 配置詳情 Modal -->
 <div class="modal fade" id="configDetailModal" tabindex="-1">
@@ -272,6 +325,36 @@
   </div>
 </div>
 -->
+<!-- Test Run Delete Confirmation Dialog -->
+<div class="modal fade" id="deleteConfigModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">
+          <i class="fas fa-exclamation-triangle text-warning me-2"></i>
+          <span data-i18n="common.confirm">確認刪除</span>
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p id="deleteConfirmMessage" class="mb-3"></p>
+        <div class="alert alert-warning mb-0">
+          <i class="fas fa-info-circle me-2"></i>
+          <span data-i18n="form.deleteWarning">此操作無法復原，請仔細確認</span>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+          <span data-i18n="common.cancel">取消</span>
+        </button>
+        <button type="button" class="btn btn-danger" id="confirmDeleteConfigBtn">
+          <i class="fas fa-trash me-2"></i>
+          <span data-i18n="common.delete">刪除</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -282,7 +365,7 @@ let testRunConfigs = [];
 let currentTeamId = null;
 let configDetailModalInstance = null;
 let configFormModalInstance = null;
-// let deleteTestRunModalInstance = null; // 暫時註解
+// delete config modal is handled via bootstrap instance on demand
 
 document.addEventListener('DOMContentLoaded', function() {
     initializePage();
@@ -396,11 +479,15 @@ function createConfigCard(config) {
     const progressPercentage = config.execution_rate || 0;
     const passPercentage = config.pass_rate || 0;
     const createdDate = AppUtils.formatDate(config.created_at, 'datetime-tz');
+    const envLabel = window.i18n ? window.i18n.t('testRun.testEnvironment') : '測試環境';
+    const buildLabel = window.i18n ? window.i18n.t('testRun.buildNumber') : '建置版本';
+    const envLine = config.test_environment ? `<div class=\"stats-item\"><i class=\"fas fa-server stats-icon\"></i><small class=\"text-muted\">${envLabel}: ${escapeHtml(config.test_environment)}</small></div>` : '';
+    const buildLine = config.build_number ? `<div class=\"stats-item\"><i class=\"fas fa-code-branch stats-icon\"></i><small class=\"text-muted\">${buildLabel}: ${escapeHtml(config.build_number)}</small></div>` : '';
     
     return `
         <div class="col-md-6 col-lg-4 mb-4">
             <div class="card h-100 test-run-card" onclick="enterTestRun(${config.id})">
-                <div class="card-body">
+                <div class="card-body d-flex flex-column h-100">
                     <div class="d-flex align-items-start mb-3">
                         <div class="flex-shrink-0 me-3">
                             <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center" 
@@ -432,6 +519,8 @@ function createConfigCard(config) {
                         </div>
                     </div>
                     <div class="mb-3">
+                        ${envLine}
+                        ${buildLine}
                         <div class="stats-item">
                             <i class="fas fa-list-ul stats-icon"></i>
                             <small class="text-muted">${window.i18n ? window.i18n.t('testRun.totalExecuted', {total: config.total_test_cases, executed: config.executed_cases}) : `總數: ${config.total_test_cases} | 已執行: ${config.executed_cases}`}</small>
@@ -441,7 +530,7 @@ function createConfigCard(config) {
                             <small class="text-muted">${window.i18n ? window.i18n.t('testRun.createdLabel', {date: createdDate}) : `建立: ${createdDate}`}</small>
                         </div>
                     </div>
-                    <div class="d-flex gap-2">
+                    <div class="d-flex gap-2 mt-auto pt-2">
                         <button class="btn btn-primary btn-sm flex-grow-1" onclick="event.stopPropagation(); enterTestRun(${config.id})">
                             <i class="fas fa-arrow-right me-1"></i><span data-i18n="testRun.enterButton">進入</span>
                         </button>
@@ -510,6 +599,15 @@ function openConfigFormModal(configId = null) {
             document.getElementById('configName').value = config.name;
             document.getElementById('tableId').value = config.table_id;
             document.getElementById('configDescription').value = config.description || '';
+            // 嘗試載入詳細配置以填入可選欄位
+            fetch(`/api/teams/${currentTeamId}/test-run-configs/${configId}`)
+              .then(r => r.ok ? r.json() : null)
+              .then(full => {
+                if (full) {
+                  document.getElementById('testEnvironment').value = full.test_environment || '';
+                  document.getElementById('buildNumber').value = full.build_number || '';
+                }
+              }).catch(() => {});
         }
     } else {
         // Create mode
@@ -531,11 +629,15 @@ async function handleSaveConfig() {
     const configId = document.getElementById('configId').value;
     const isEdit = !!configId;
 
-    const configData = {
-        name: document.getElementById('configName').value,
-        table_id: document.getElementById('tableId').value,
-        description: document.getElementById('configDescription').value,
-    };
+    const configData = { name: document.getElementById('configName').value };
+    const tableIdVal = (document.getElementById('tableId').value || '').trim();
+    const descVal = (document.getElementById('configDescription').value || '').trim();
+    const envVal = (document.getElementById('testEnvironment').value || '').trim();
+    const buildVal = (document.getElementById('buildNumber').value || '').trim();
+    if (tableIdVal) configData.table_id = tableIdVal;
+    if (descVal) configData.description = descVal;
+    if (envVal) configData.test_environment = envVal;
+    if (buildVal) configData.build_number = buildVal;
 
     const url = isEdit ? `/api/teams/${currentTeamId}/test-run-configs/${configId}` : `/api/teams/${currentTeamId}/test-run-configs/`;
     const method = isEdit ? 'PUT' : 'POST';
@@ -555,11 +657,18 @@ async function handleSaveConfig() {
             throw new Error(errorData.detail || fallbackMsg);
         }
 
+        const data = await response.json();
         configFormModalInstance.hide();
-        const successMsgKey = isEdit ? 'testRun.updateSuccess' : 'testRun.createConfigSuccess';
-        const fallbackMsg = isEdit ? (window.i18n ? window.i18n.t('testRun.updateSuccess') : '更新成功') : (window.i18n ? window.i18n.t('testRun.createConfigSuccess') : '建立成功');
-        AppUtils.showSuccess(window.i18n ? window.i18n.t(successMsgKey) : fallbackMsg);
-        await loadTestRunConfigs();
+        if (isEdit) {
+          const msg = window.i18n ? window.i18n.t('testRun.updateSuccess') : '更新成功';
+          AppUtils.showSuccess(msg);
+          await loadTestRunConfigs();
+        } else {
+          const msg = window.i18n ? window.i18n.t('testRun.createConfigSuccessSelectCases') : '建立成功，請選擇要加入的 Test Case';
+          AppUtils.showSuccess(msg);
+          // 進入 Test Case 選擇流程
+          openCaseSelectModal(data.id);
+        }
 
     } catch (error) {
         AppUtils.showError(error.message);
@@ -607,70 +716,45 @@ function handleEditConfig(event) {
     }, 150);
 }
 
-// Test Run Delete Confirmation Dialog Management - Temporarily commented to fix loading issues
-/*
-function showDeleteConfirmModal(configName, deleteCallback) {
-    const modal = document.getElementById('deleteTestRunModal');
-    const messageElement = document.getElementById('deleteConfirmMessage');
-    const confirmButton = document.getElementById('confirmDeleteTestRun');
-    
-    if (!deleteTestRunModalInstance) {
-        deleteTestRunModalInstance = new bootstrap.Modal(modal);
-    }
-    
-    // 設定確認訊息
-    const confirmMsg = window.i18n ? 
-        window.i18n.t('testRun.confirmDelete', { name: escapeHtml(configName) }) : 
-        `您確定要刪除 Test Run 配置 "${escapeHtml(configName)}" 嗎？`;
-    
-    messageElement.textContent = confirmMsg;
-    
-    // 綁定確認按鈕事件（移除舊事件避免重複）
-    confirmButton.replaceWith(confirmButton.cloneNode(true));
-    const newConfirmButton = document.getElementById('confirmDeleteTestRun');
-    
-    newConfirmButton.addEventListener('click', async () => {
-        deleteTestRunModalInstance.hide();
-        await deleteCallback();
-    });
-    
-    // 顯示 Modal
-    deleteTestRunModalInstance.show();
-}
-*/
-
 async function handleDeleteConfig(event) {
     const configId = event.currentTarget.getAttribute('data-config-id');
     const config = testRunConfigs.find(c => c.id === parseInt(configId));
     if (!config) return;
-
-    // Use confirm() dialog for deletion confirmation
-    const confirmMsg = window.i18n ? window.i18n.t('testRun.confirmDelete', { name: escapeHtml(config.name) }) : `您確定要刪除 Test Run 配置 "${escapeHtml(config.name)}" 嗎？此操作無法復原。`;
-    
-    if (confirm(confirmMsg)) {
+    // Show custom modal
+    const modal = document.getElementById('deleteConfigModal');
+    const msgEl = document.getElementById('deleteConfirmMessage');
+    msgEl.textContent = window.i18n ? window.i18n.t('testRun.confirmDelete', { name: escapeHtml(config.name) }) : `您確定要刪除 Test Run 配置 "${escapeHtml(config.name)}" 嗎？此操作無法復原。`;
+    const inst = bootstrap.Modal.getOrCreateInstance(modal);
+    // Rebind confirm handler
+    const btnOld = document.getElementById('confirmDeleteConfigBtn');
+    const btnNew = btnOld.cloneNode(true);
+    btnOld.parentNode.replaceChild(btnNew, btnOld);
+    document.getElementById('confirmDeleteConfigBtn').addEventListener('click', async () => {
         try {
-            const response = await fetch(`/api/teams/${currentTeamId}/test-run-configs/${configId}`, {
-                method: 'DELETE'
-            });
-
-            if (response.ok) {
-                if (configDetailModalInstance) {
-                    configDetailModalInstance.hide();
-                }
+            const resp = await fetch(`/api/teams/${currentTeamId}/test-run-configs/${configId}`, { method: 'DELETE' });
+            if (resp.ok || resp.status === 204) {
+                if (configDetailModalInstance) configDetailModalInstance.hide();
+                inst.hide();
                 const successMsg = window.i18n ? window.i18n.t('testRun.deleteSuccess', { name: config.name }) : `成功刪除 "${config.name}"`;
                 AppUtils.showSuccess(successMsg);
                 await loadTestRunConfigs();
             } else {
-                const errorData = await response.json();
+                let detail = '';
+                try {
+                    const text = await resp.text();
+                    try { detail = JSON.parse(text).detail || text; } catch { detail = text; }
+                } catch { detail = ''; }
                 const fallbackMsg = window.i18n ? window.i18n.t('messages.deleteFailed') : '刪除失敗';
-                throw new Error(errorData.detail || fallbackMsg);
+                throw new Error(detail || fallbackMsg);
             }
         } catch (error) {
             console.error('Error deleting Test Run configuration:', error);
             const errorMsg = window.i18n ? window.i18n.t('messages.deleteFailed') : '刪除失敗';
             AppUtils.showError(`${errorMsg}: ${error.message}`);
         }
-    }
+    });
+    if (window.i18n && window.i18n.isReady()) window.i18n.retranslate(modal);
+    inst.show();
 }
 
 function createConfigDetailContent(config) {
@@ -681,6 +765,8 @@ function createConfigDetailContent(config) {
                 <table class="table table-sm">
                     <tr><td data-i18n="testRun.configNameLabel">名稱</td><td>${escapeHtml(config.name)}</td></tr>
                     <tr><td data-i18n="testRun.configTableIdLabel">Table ID</td><td><code>${escapeHtml(config.table_id)}</code></td></tr>
+                    <tr><td data-i18n="testRun.testEnvironment">測試環境</td><td>${escapeHtml(config.test_environment || '')}</td></tr>
+                    <tr><td data-i18n="testRun.buildNumber">建置版本</td><td>${escapeHtml(config.build_number || '')}</td></tr>
                     <tr><td data-i18n="testRun.configStatusLabel">狀態</td><td><span class="status-badge ${getStatusClass(config.status)}">${getStatusText(config.status)}</span></td></tr>
                 </table>
             </div>
@@ -741,5 +827,146 @@ function enterTestRun(configId) {
 
 document.addEventListener('i18nReady', updatePageTitle);
 document.addEventListener('languageChanged', updatePageTitle);
+
+// ---- Test Case 選擇流程 ----
+let caseSelectModalInstance = null;
+let currentSelectingConfigId = null;
+let availableCases = [];
+let selectedCaseMap = new Map(); // key: test_case_number, value: case object
+
+function openCaseSelectModal(configId) {
+  currentSelectingConfigId = configId;
+  const modalEl = document.getElementById('caseSelectModal');
+  if (!caseSelectModalInstance) caseSelectModalInstance = new bootstrap.Modal(modalEl);
+  // reset
+  selectedCaseMap.clear();
+  document.getElementById('selectedCount').textContent = '0';
+  document.getElementById('caseListBody').innerHTML = '';
+  document.getElementById('caseSearchInput').value = '';
+  document.getElementById('caseSelectInfo').textContent = '';
+  caseSelectModalInstance.show();
+  // load first page
+  loadTeamTestCases('');
+  if (window.i18n && window.i18n.isReady()) window.i18n.retranslate(document.getElementById('caseSelectModal'));
+}
+
+async function loadTeamTestCases(search) {
+  try {
+    const url = new URL(`/api/teams/${currentTeamId}/testcases`, window.location.origin);
+    if (search) url.searchParams.set('search', search);
+    url.searchParams.set('limit', '200');
+    const resp = await fetch(url);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    availableCases = await resp.json();
+    renderCaseList();
+  } catch (e) {
+    AppUtils.showError((window.i18n ? window.i18n.t('messages.loadFailed') : '載入失敗') + `: ${e.message}`);
+  }
+}
+
+function renderCaseList() {
+  const tbody = document.getElementById('caseListBody');
+  const rows = availableCases.map(c => {
+    const num = escapeHtml(c.test_case_number || '');
+    const ttl = escapeHtml(c.title || '');
+    const pri = escapeHtml(c.priority || '');
+    const attCount = (c.attachments || []).length || 0;
+    const checked = selectedCaseMap.has(c.test_case_number) ? 'checked' : '';
+    return `
+      <tr>
+        <td><input type="checkbox" class="case-check" data-num="${num}" ${checked}></td>
+        <td><code>${num}</code></td>
+        <td>${ttl}</td>
+        <td>${pri}</td>
+        <td>${attCount}</td>
+      </tr>`;
+  }).join('');
+  tbody.innerHTML = rows;
+  wireCaseCheckHandlers();
+  updateSelectedCount();
+  if (window.i18n && window.i18n.isReady()) window.i18n.retranslate(document.getElementById('caseSelectModal'));
+}
+
+function wireCaseCheckHandlers() {
+  document.querySelectorAll('.case-check').forEach(el => {
+    el.addEventListener('change', (e) => {
+      const num = e.target.getAttribute('data-num');
+      if (e.target.checked) {
+        const c = availableCases.find(x => x.test_case_number === num);
+        if (c) selectedCaseMap.set(num, c);
+      } else {
+        selectedCaseMap.delete(num);
+      }
+      updateSelectedCount();
+    });
+  });
+  const selectAll = document.getElementById('selectAllCases');
+  selectAll.checked = false;
+  selectAll.addEventListener('change', (e) => {
+    if (e.target.checked) {
+      availableCases.forEach(c => selectedCaseMap.set(c.test_case_number, c));
+      document.querySelectorAll('.case-check').forEach(ch => ch.checked = true);
+    } else {
+      selectedCaseMap.clear();
+      document.querySelectorAll('.case-check').forEach(ch => ch.checked = false);
+    }
+    updateSelectedCount();
+  });
+  document.getElementById('caseSearchBtn').onclick = () => {
+    loadTeamTestCases(document.getElementById('caseSearchInput').value.trim());
+  };
+}
+
+function updateSelectedCount() {
+  const count = selectedCaseMap.size;
+  const selectedEl = document.getElementById('selectedCount');
+  selectedEl.textContent = String(count);
+  const info = document.getElementById('caseSelectInfo');
+  if (window.i18n && count > 0) {
+    info.textContent = window.i18n.t('testRun.caseSelect.selectedInfo', { count });
+  } else {
+    info.textContent = '';
+  }
+}
+
+document.getElementById('confirmCreateItemsBtn').addEventListener('click', createItemsFromSelection);
+
+async function createItemsFromSelection() {
+  if (!currentSelectingConfigId) return;
+  if (selectedCaseMap.size === 0) {
+    const warn = window.i18n ? window.i18n.t('errors.pleaseSelectTestCases') : '請先選擇至少一筆 Test Case';
+    AppUtils.showWarning ? AppUtils.showWarning(warn) : alert(warn);
+    return;
+  }
+  const items = Array.from(selectedCaseMap.values()).map(c => ({
+    test_case_number: c.test_case_number,
+    title: c.title,
+    priority: c.priority || 'Medium',
+    precondition: c.precondition || null,
+    steps: c.steps || null,
+    expected_result: c.expected_result || null,
+    assignee: c.assignee ? { id: c.assignee.id, name: c.assignee.name, en_name: c.assignee.en_name, email: c.assignee.email } : null,
+    attachments: (c.attachments || []).map(a => ({ file_token: a.file_token, name: a.name, size: a.size, type: a.type })),
+    user_story_map: c.user_story_map || [],
+    tcg: c.tcg || [],
+    parent_record: c.parent_record || [],
+    raw_fields: c.raw_fields || null,
+  }));
+
+  try {
+    const url = `/api/teams/${currentTeamId}/test-run-configs/${currentSelectingConfigId}/items`;
+    const resp = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items }) });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const res = await resp.json();
+    caseSelectModalInstance.hide();
+    const msg = window.i18n ? window.i18n.t('testRun.itemsCreated', { count: res.created_count || items.length }) : `建立成功 (${res.created_count || items.length} 筆)`;
+    AppUtils.showSuccess(msg);
+    // 同步統計後刷新管理頁
+    try { await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentSelectingConfigId}/sync`); } catch(e) {}
+    await loadTestRunConfigs();
+  } catch (e) {
+    AppUtils.showError((window.i18n ? window.i18n.t('messages.saveFailed') : '建立失敗') + `: ${e.message}`);
+  }
+}
 </script>
 {% endblock %}

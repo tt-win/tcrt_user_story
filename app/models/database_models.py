@@ -5,7 +5,7 @@
 以及相關的關聯表格。
 """
 
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum, Boolean, Float
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum, Boolean, Float, UniqueConstraint, Index
 from sqlalchemy.orm import relationship, declarative_base
 from datetime import datetime
 from typing import Optional
@@ -63,7 +63,7 @@ class TestRunConfig(Base):
     # 基本資訊
     name = Column(String(100), nullable=False)
     description = Column(Text, nullable=True)
-    table_id = Column(String(255), nullable=False)
+    table_id = Column(String(255), nullable=True)
     
     # 測試執行元資料
     test_version = Column(String(50), nullable=True)
@@ -88,6 +88,8 @@ class TestRunConfig(Base):
     
     # 關聯關係
     team = relationship("Team", back_populates="test_run_configs")
+    # 本地測試執行項目
+    items = relationship("TestRunItem", back_populates="config", cascade="all, delete-orphan")
 
 
 class TCGRecord(Base):
@@ -102,6 +104,55 @@ class TCGRecord(Base):
     # 系統欄位
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class TestRunItem(Base):
+    """本地儲存的測試執行項目（來自本產品挑選的 Test Case）"""
+    __tablename__ = "test_run_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    team_id = Column(Integer, ForeignKey("teams.id"), nullable=False)
+    config_id = Column(Integer, ForeignKey("test_run_configs.id"), nullable=False, index=True)
+
+    # 從 Test Case 複製的重要欄位（建立時擷取）
+    test_case_number = Column(String(100), nullable=False, index=True)
+    title = Column(Text, nullable=False)
+    priority = Column(Enum(Priority), default=Priority.MEDIUM)
+    precondition = Column(Text, nullable=True)
+    steps = Column(Text, nullable=True)
+    expected_result = Column(Text, nullable=True)
+
+    # 執行資訊
+    assignee_id = Column(String(64), nullable=True)
+    assignee_name = Column(String(255), nullable=True)
+    assignee_en_name = Column(String(255), nullable=True)
+    assignee_email = Column(String(255), nullable=True)
+    assignee_json = Column(Text, nullable=True)  # 原始 assignee 結構（JSON 字串）
+    test_result = Column(Enum(TestResultStatus), nullable=True)
+    executed_at = Column(DateTime, nullable=True)
+    execution_duration = Column(Integer, nullable=True)
+    # 注意：環境與版本屬於 TestRunConfig 層級，不在項目層儲存
+
+    # 多值/關聯/原始欄位（JSON 字串保存）
+    attachments_json = Column(Text, nullable=True)
+    user_story_map_json = Column(Text, nullable=True)
+    tcg_json = Column(Text, nullable=True)
+    parent_record_json = Column(Text, nullable=True)
+    raw_fields_json = Column(Text, nullable=True)
+
+    # 系統欄位
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # 關聯
+    config = relationship("TestRunConfig", back_populates="items")
+
+    __table_args__ = (
+        UniqueConstraint('config_id', 'test_case_number', name='uq_test_run_item_config_case'),
+        Index('ix_test_run_items_team', 'team_id'),
+        Index('ix_test_run_items_result', 'test_result'),
+        Index('ix_test_run_items_priority', 'priority'),
+    )
 
 
 # 建立資料庫表格的函數

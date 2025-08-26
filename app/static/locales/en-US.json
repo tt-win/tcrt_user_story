@@ -272,12 +272,30 @@
     "connectionSuccess": "Lark table connection successful",
     "connectionFailed": "Connection failed: {error}",
     "pleaseEnterTableId": "Please enter Table ID first",
+    "tableIdOptionalHint": "Optional in local mode; to sync with Lark, use a Table ID starting with \"tbl\"",
     "createConfigSuccess": "Successfully created Test Run configuration",
+    "createConfigSuccessSelectCases": "Test Run configuration created. Please select test cases to add",
     "updateSuccess": "Update successful",
     "createConfigFailed": "Creation failed: {error}",
     "loadConfigsFailed": "Load failed",
     "enterTestRun": "Entering Test Run: {name}",
     "descriptionPlaceholder": "Describe the purpose and scope of this test run configuration",
+    "itemsCreated": "Created successfully ({count})",
+    "caseSelect": {
+      "title": "Select Test Cases to Add",
+      "searchPlaceholder": "Search title or number...",
+      "columns": {
+        "caseNumber": "Test Case Number",
+        "title": "Title",
+        "priority": "Priority",
+        "attachments": "Attachments"
+      },
+      "selectedInfo": "{count} selected, click 'Create' to add to Test Run"
+    },
+    "testEnvironment": "Test Environment",
+    "testEnvironmentPlaceholder": "e.g., Staging / UAT / Prod Sandbox",
+    "buildNumber": "Build Version",
+    "buildNumberPlaceholder": "e.g., v1.2.3 / build #4567",
     "status": {
       "active": "Active",
       "completed": "Completed",

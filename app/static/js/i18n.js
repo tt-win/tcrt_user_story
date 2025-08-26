@@ -17,6 +17,7 @@ class I18nSystem {
         this.supportedLanguages = ['zh-TW', 'en-US'];
         this.fallbackLanguage = 'zh-TW';
         this.isLoaded = false;
+        this.cacheBuster = String(Date.now());
         
         // Initialize the system
         this.init();
@@ -93,7 +94,7 @@ class I18nSystem {
     async loadTranslations() {
         const loadPromises = this.supportedLanguages.map(async (language) => {
             try {
-                const response = await fetch(`/static/locales/${language}.json`);
+                const response = await fetch(`/static/locales/${language}.json?v=${this.cacheBuster}`);
                 if (!response.ok) {
                     throw new Error(`Failed to load ${language}: ${response.status}`);
                 }
@@ -245,20 +246,21 @@ class I18nSystem {
     /**
      * Translate all elements on the current page
      */
-    translatePage() {
+    translatePage(container = document) {
         if (!this.isLoaded) {
             return;
         }
 
         // Find all elements with data-i18n attributes
-        const elements = document.querySelectorAll('[data-i18n]');
+        const root = container instanceof HTMLElement ? container : document;
+        const elements = root.querySelectorAll('[data-i18n]');
         
         elements.forEach(element => {
             this.translateElement(element);
         });
 
         // Also handle other i18n attributes
-        this.translateAttributes();
+        this.translateAttributes(root);
     }
 
     /**
@@ -291,11 +293,11 @@ class I18nSystem {
     /**
      * Translate elements with attribute-specific data-i18n attributes
      */
-    translateAttributes() {
+    translateAttributes(root = document) {
         const attributeTypes = ['placeholder', 'title', 'alt', 'aria-label'];
         
         attributeTypes.forEach(attrType => {
-            const elements = document.querySelectorAll(`[data-i18n-${attrType}]`);
+            const elements = (root instanceof HTMLElement ? root : document).querySelectorAll(`[data-i18n-${attrType}]`);
             
             elements.forEach(element => {
                 const key = element.getAttribute(`data-i18n-${attrType}`);
@@ -349,8 +351,8 @@ class I18nSystem {
     /**
      * Manually trigger a page retranslation (useful for dynamic content)
      */
-    retranslate() {
-        this.translatePage();
+    retranslate(container) {
+        this.translatePage(container);
     }
 
     /**

@@ -1,7 +1,8 @@
 """
 測試執行配置 API 路由
 
-管理團隊的多個測試執行配置，每個配置對應一個 Lark 測試執行表格
+管理團隊的多個測試執行配置。重構後 Test Run 不再依賴 Lark 表格，
+內容由本系統從團隊的 Test Case 中挑選並儲存於本地資料庫。
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
@@ -13,9 +14,7 @@ from app.models.test_run_config import (
     TestRunConfig, TestRunConfigCreate, TestRunConfigUpdate, TestRunConfigResponse,
     TestRunConfigSummary, TestRunConfigStatistics
 )
-from app.models.database_models import TestRunConfig as TestRunConfigDB, Team as TeamDB
-from app.services.lark_client import LarkClient
-from app.config import settings
+from app.models.database_models import TestRunConfig as TestRunConfigDB, Team as TeamDB, TestRunItem as TestRunItemDB
 from datetime import datetime
 
 router = APIRouter(prefix="/teams/{team_id}/test-run-configs", tags=["test-run-configs"])
@@ -28,7 +27,7 @@ def test_run_config_db_to_model(config_db: TestRunConfigDB) -> TestRunConfig:
         team_id=config_db.team_id,
         name=config_db.name,
         description=config_db.description,
-        table_id=config_db.table_id,
+        table_id=getattr(config_db, 'table_id', None),
         test_version=config_db.test_version,
         test_environment=config_db.test_environment,
         build_number=config_db.build_number,
@@ -51,7 +50,7 @@ def test_run_config_model_to_db(config: TestRunConfigCreate) -> TestRunConfigDB:
         team_id=config.team_id,
         name=config.name,
         description=config.description,
-        table_id=config.table_id,
+        table_id=config.table_id if hasattr(config, 'table_id') else None,
         test_version=config.test_version,
         test_environment=config.test_environment,
         build_number=config.build_number,
@@ -87,7 +86,7 @@ async def get_test_run_configs(
     
     configs_db = query.order_by(TestRunConfigDB.created_at.desc()).all()
     
-    # 轉換為摘要格式
+    # 轉換為摘要格式（execution_rate/pass_rate 由模型方法計算）
     summaries = []
     for config_db in configs_db:
         config = test_run_config_db_to_model(config_db)
@@ -95,6 +94,8 @@ async def get_test_run_configs(
             id=config.id,
             name=config.name,
             table_id=config.table_id,
+            test_environment=config.test_environment,
+            build_number=config.build_number,
             test_version=config.test_version,
             status=config.status,
             execution_rate=config.get_execution_rate(),
@@ -208,9 +209,17 @@ async def delete_test_run_config(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"找不到測試執行配置 ID {config_id}"
         )
-    
-    db.delete(config_db)
-    db.commit()
+    # 先刪除本地 items，避免潛在的參照錯誤
+    try:
+        db.query(TestRunItemDB).filter(
+            TestRunItemDB.config_id == config_id,
+            TestRunItemDB.team_id == team_id
+        ).delete(synchronize_session=False)
+        db.delete(config_db)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
 @router.post("/{config_id}/validate", response_model=dict)
@@ -219,50 +228,15 @@ async def validate_test_run_config(
     config_id: int,
     db: Session = Depends(get_db)
 ):
-    """驗證測試執行配置的 Lark 表格連線"""
-    team = verify_team_exists(team_id, db)
-    
+    """重構後：僅確認配置存在與基本欄位有效。"""
+    verify_team_exists(team_id, db)
     config_db = db.query(TestRunConfigDB).filter(
         TestRunConfigDB.id == config_id,
         TestRunConfigDB.team_id == team_id
     ).first()
-    
     if not config_db:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"找不到測試執行配置 ID {config_id}"
-        )
-    
-    try:
-        # 建立 Lark Client 來驗證連線
-        lark_client = LarkClient(
-            app_id=settings.lark.app_id,
-            app_secret=settings.lark.app_secret
-        )
-        
-        # 設定 wiki token（從團隊配置取得）
-        lark_client.set_wiki_token(team.wiki_token)
-        
-        # 嘗試取得表格資訊來驗證連線
-        fields = lark_client.get_table_fields(config_db.table_id)
-        
-        if fields:
-            return {
-                "valid": True,
-                "message": f"測試執行表格 '{config_db.name}' 連線驗證成功",
-                "field_count": len(fields)
-            }
-        else:
-            return {
-                "valid": False,
-                "message": f"無法取得測試執行表格 '{config_db.name}' 的欄位資訊"
-            }
-            
-    except Exception as e:
-        return {
-            "valid": False,
-            "message": f"測試執行表格 '{config_db.name}' 連線驗證失敗: {str(e)}"
-        }
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"找不到測試執行配置 ID {config_id}")
+    return {"valid": True, "message": "配置有效（本地模式）"}
 
 
 @router.get("/{config_id}/sync", response_model=dict)
@@ -271,76 +245,41 @@ async def sync_test_run_config(
     config_id: int,
     db: Session = Depends(get_db)
 ):
-    """同步測試執行配置的統計資訊"""
-    team = verify_team_exists(team_id, db)
-    
+    """重構後：從本地 TestRunItem 統計並回寫到 TestRunConfig。"""
+    verify_team_exists(team_id, db)
     config_db = db.query(TestRunConfigDB).filter(
         TestRunConfigDB.id == config_id,
         TestRunConfigDB.team_id == team_id
     ).first()
-    
     if not config_db:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"找不到測試執行配置 ID {config_id}"
-        )
-    
-    try:
-        # 建立 Lark Client
-        lark_client = LarkClient(
-            app_id=settings.lark.app_id,
-            app_secret=settings.lark.app_secret
-        )
-        
-        lark_client.set_wiki_token(team.wiki_token)
-        
-        # 取得所有測試執行記錄
-        records = lark_client.get_all_records(config_db.table_id)
-        
-        # 統計資訊
-        total_cases = len(records)
-        executed_cases = 0
-        passed_cases = 0
-        failed_cases = 0
-        
-        for record in records:
-            fields = record.get('fields', {})
-            test_result = fields.get('Test Result', '')
-            
-            if test_result:
-                executed_cases += 1
-                if test_result == 'Passed':
-                    passed_cases += 1
-                elif test_result == 'Failed':
-                    failed_cases += 1
-        
-        # 更新統計資訊
-        config_db.total_test_cases = total_cases
-        config_db.executed_cases = executed_cases
-        config_db.passed_cases = passed_cases
-        config_db.failed_cases = failed_cases
-        config_db.last_sync_at = datetime.utcnow()
-        
-        db.commit()
-        
-        return {
-            "success": True,
-            "message": "同步完成",
-            "statistics": {
-                "total_test_cases": total_cases,
-                "executed_cases": executed_cases,
-                "passed_cases": passed_cases,
-                "failed_cases": failed_cases,
-                "execution_rate": (executed_cases / total_cases * 100) if total_cases > 0 else 0,
-                "pass_rate": (passed_cases / executed_cases * 100) if executed_cases > 0 else 0
-            }
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"找不到測試執行配置 ID {config_id}")
+
+    # 以本地 items 統計
+    items_q = db.query(TestRunItemDB).filter(TestRunItemDB.config_id == config_id)
+    total_cases = items_q.count()
+    executed_cases = items_q.filter(TestRunItemDB.test_result.isnot(None)).count()
+    passed_cases = items_q.filter(TestRunItemDB.test_result == 'Passed').count()
+    failed_cases = items_q.filter(TestRunItemDB.test_result == 'Failed').count()
+
+    config_db.total_test_cases = total_cases
+    config_db.executed_cases = executed_cases
+    config_db.passed_cases = passed_cases
+    config_db.failed_cases = failed_cases
+    config_db.last_sync_at = datetime.utcnow()
+    db.commit()
+
+    return {
+        "success": True,
+        "message": "同步完成（本地資料）",
+        "statistics": {
+            "total_test_cases": total_cases,
+            "executed_cases": executed_cases,
+            "passed_cases": passed_cases,
+            "failed_cases": failed_cases,
+            "execution_rate": (executed_cases / total_cases * 100) if total_cases > 0 else 0,
+            "pass_rate": (passed_cases / executed_cases * 100) if executed_cases > 0 else 0
         }
-        
-    except Exception as e:
-        return {
-            "success": False,
-            "message": f"同步失敗: {str(e)}"
-        }
+    }
 
 
 @router.get("/statistics", response_model=TestRunConfigStatistics)
