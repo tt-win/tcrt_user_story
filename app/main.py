@@ -44,6 +44,10 @@ async def test_case_management(request: Request):
 async def test_run_management(request: Request):
     return templates.TemplateResponse("test_run_management.html", {"request": request})
 
+@app.get("/test-run-execution", response_class=HTMLResponse)
+async def test_run_execution(request: Request):
+    return templates.TemplateResponse("test_run_execution.html", {"request": request})
+
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
@@ -52,6 +56,11 @@ async def health_check():
 async def startup_event():
     """應用程式啟動事件"""
     try:
+        # 確保資料表存在（包含新增的歷程表）
+        from app.models.database_models import create_database_tables
+        create_database_tables()
+        logging.info("資料表檢查/建立完成")
+
         # 啟動定時任務調度器
         from app.services.scheduler import task_scheduler
         task_scheduler.start()

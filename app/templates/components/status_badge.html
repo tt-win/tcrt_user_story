@@ -1,0 +1,4 @@
+{% macro status_badge(text, variant='secondary', size='lg', pill=False, extra_classes='') %}
+<span class="badge {{ 'rounded-pill' if pill }} {{ 'badge-status-lg' if size=='lg' else '' }} bg-{{ variant }} {{ extra_classes|e }}">{{ text }}</span>
+{% endmacro %}
+

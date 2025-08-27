@@ -68,10 +68,10 @@
     font-weight: 500;
 }
 
-.status-active { background-color: var(--tr-info); color: #0c5460; opacity: 0.2; }
-.status-completed { background-color: var(--tr-success); color: #155724; opacity: 0.2; }
-.status-draft { background-color: var(--tr-warning); color: #856404; opacity: 0.2; }
-.status-archived { background-color: var(--tr-danger); color: #721c24; opacity: 0.2; }
+.status-draft { background-color: #FFF3CD; color: #856404; border: 1px solid #FFEAA7; }
+.status-active { background-color: #CCE5FF; color: #0056B3; border: 1px solid #99D6FF; }
+.status-completed { background-color: #D4EDDA; color: #155724; border: 1px solid #A3E4A3; }
+.status-archived { background-color: #E2E3E5; color: #495057; border: 1px solid #CED4DA; }
 
 /* 統計資訊樣式 */
 .stats-item {
@@ -230,21 +230,26 @@
 </div>
 
 <!-- Test Case 選擇 Modal -->
-<div class="modal fade" id="caseSelectModal" tabindex="-1">
-  <div class="modal-dialog modal-xl">
+<div class="modal fade" id="caseSelectModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
     <div class="modal-content">
       <div class="modal-header">
         <h5 class="modal-title"><i class="fas fa-tasks me-2"></i><span data-i18n="testRun.caseSelect.title">選擇要加入的 Test Case</span></h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
-        <div class="d-flex gap-2 mb-3">
-          <input id="caseSearchInput" class="form-control" data-i18n-placeholder="testRun.caseSelect.searchPlaceholder" placeholder="搜尋標題或編號...">
-          <button class="btn btn-secondary" id="caseSearchBtn"><i class="fas fa-search me-1"></i><span data-i18n="common.search">搜尋</span></button>
+        <div class="input-group input-group-search mb-3">
+          <div class="position-relative flex-grow-1">
+            <input id="caseSearchInput" class="form-control pe-4" data-i18n-placeholder="testRun.caseSelect.searchPlaceholder" placeholder="搜尋標題或編號...">
+            <button class="input-clear-btn d-none" id="caseClearBtn" type="button" data-i18n-title="common.clear" title="清除" tabindex="-1" aria-label="Clear">
+              <i class="fas fa-times-circle"></i>
+            </button>
+          </div>
+          <button class="btn btn-secondary" id="caseSearchBtn" type="button"><i class="fas fa-search me-1"></i><span data-i18n="common.search">搜尋</span></button>
         </div>
         <div id="caseSelectInfo" class="text-muted small mb-2"></div>
         <div class="table-responsive" style="max-height: 50vh; overflow:auto;">
-          <table class="table table-sm align-middle">
+          <table class="table table-sm align-middle table-sticky">
             <thead>
               <tr>
                 <th style="width:32px;"><input type="checkbox" id="selectAllCases"></th>
@@ -370,6 +375,21 @@ let configFormModalInstance = null;
 document.addEventListener('DOMContentLoaded', function() {
     initializePage();
     bindEventListeners();
+    
+    // Ensure translations applied after DOM is ready
+    if (window.i18n && window.i18n.isReady && window.i18n.isReady()) {
+        refreshStatusTexts();
+    }
+});
+
+// Listen for i18n ready event
+document.addEventListener('i18nReady', function(event) {
+    refreshStatusTexts();
+});
+
+// Listen for language changes
+document.addEventListener('languageChanged', function(event) {
+    refreshStatusTexts();
 });
 
 function initializePage() {
@@ -479,10 +499,8 @@ function createConfigCard(config) {
     const progressPercentage = config.execution_rate || 0;
     const passPercentage = config.pass_rate || 0;
     const createdDate = AppUtils.formatDate(config.created_at, 'datetime-tz');
-    const envLabel = window.i18n ? window.i18n.t('testRun.testEnvironment') : '測試環境';
-    const buildLabel = window.i18n ? window.i18n.t('testRun.buildNumber') : '建置版本';
-    const envLine = config.test_environment ? `<div class=\"stats-item\"><i class=\"fas fa-server stats-icon\"></i><small class=\"text-muted\">${envLabel}: ${escapeHtml(config.test_environment)}</small></div>` : '';
-    const buildLine = config.build_number ? `<div class=\"stats-item\"><i class=\"fas fa-code-branch stats-icon\"></i><small class=\"text-muted\">${buildLabel}: ${escapeHtml(config.build_number)}</small></div>` : '';
+    const envLine = config.test_environment ? `<div class=\"stats-item\"><i class=\"fas fa-server stats-icon\"></i><small class=\"text-muted\"><span data-i18n=\"testRun.testEnvironment\">測試環境</span>: ${escapeHtml(config.test_environment)}</small></div>` : '';
+    const buildLine = config.build_number ? `<div class=\"stats-item\"><i class=\"fas fa-code-branch stats-icon\"></i><small class=\"text-muted\"><span data-i18n=\"testRun.buildNumber\">建置版本</span>: ${escapeHtml(config.build_number)}</small></div>` : '';
     
     return `
         <div class="col-md-6 col-lg-4 mb-4">
@@ -523,11 +541,11 @@ function createConfigCard(config) {
                         ${buildLine}
                         <div class="stats-item">
                             <i class="fas fa-list-ul stats-icon"></i>
-                            <small class="text-muted">${window.i18n ? window.i18n.t('testRun.totalExecuted', {total: config.total_test_cases, executed: config.executed_cases}) : `總數: ${config.total_test_cases} | 已執行: ${config.executed_cases}`}</small>
+                            <small class="text-muted">${(window.i18n && window.i18n.isReady()) ? window.i18n.t('testRun.totalExecuted', {total: config.total_test_cases, executed: config.executed_cases}) : `總數: ${config.total_test_cases} | 已執行: ${config.executed_cases}`}</small>
                         </div>
                         <div class="stats-item">
                             <i class="fas fa-calendar stats-icon"></i>
-                            <small class="text-muted">${window.i18n ? window.i18n.t('testRun.createdLabel', {date: createdDate}) : `建立: ${createdDate}`}</small>
+                            <small class="text-muted">${(window.i18n && window.i18n.isReady()) ? window.i18n.t('testRun.createdLabel', {date: createdDate}) : `建立: ${createdDate}`}</small>
                         </div>
                     </div>
                     <div class="d-flex gap-2 mt-auto pt-2">
@@ -555,7 +573,7 @@ function getStatusClass(status) {
 }
 
 function getStatusText(status) {
-    if (window.i18n) {
+    if (window.i18n && window.i18n.isReady && window.i18n.isReady()) {
         const statusKey = `testRun.status.${status}`;
         const translated = window.i18n.t(statusKey);
         if (translated === statusKey) {
@@ -567,12 +585,34 @@ function getStatusText(status) {
 }
 
 function getDefaultStatusText(status) {
-    switch (status) {
-        case 'active': return window.i18n ? window.i18n.t('testRun.status.active') : '進行中';
-        case 'completed': return window.i18n ? window.i18n.t('testRun.status.completed') : '已完成';
-        case 'draft': return window.i18n ? window.i18n.t('testRun.status.draft') : '草稿';
-        case 'archived': return window.i18n ? window.i18n.t('testRun.status.archived') : '已歸檔';
-        default: return window.i18n ? window.i18n.t('testRun.status.unknown') : '未知';
+    const defaultTexts = {
+        'active': '進行中',
+        'completed': '已完成', 
+        'draft': '草稿',
+        'archived': '已歸檔',
+        'unknown': '未知'
+    };
+    return defaultTexts[status] || '未知';
+}
+
+function refreshStatusTexts() {
+    // Refresh status texts in config cards by reloading the configs
+    if (typeof loadTestRunConfigs === 'function') {
+        loadTestRunConfigs();
+    }
+    
+    // Also refresh any status text in modals if they're visible
+    const detailModal = document.getElementById('configDetailModal');
+    if (detailModal && detailModal.classList.contains('show')) {
+        // Find all status badges in the detail modal and update them
+        const statusBadges = detailModal.querySelectorAll('.status-badge');
+        statusBadges.forEach(badge => {
+            const statusClass = badge.className.match(/status-(\w+)/);
+            if (statusClass && statusClass[1]) {
+                const status = statusClass[1];
+                badge.textContent = getStatusText(status);
+            }
+        });
     }
 }
 
@@ -666,7 +706,9 @@ async function handleSaveConfig() {
         } else {
           const msg = window.i18n ? window.i18n.t('testRun.createConfigSuccessSelectCases') : '建立成功，請選擇要加入的 Test Case';
           AppUtils.showSuccess(msg);
-          // 進入 Test Case 選擇流程
+          // 進入 Test Case 選擇流程（直接開啟，取消時自動回滾）
+          pendingCreate = true;
+          createdItemsInSession = false;
           openCaseSelectModal(data.id);
         }
 
@@ -817,12 +859,8 @@ function enterTestRun(configId) {
         return;
     }
     
-    // 顯示進入訊息
-    const enterMsg = window.i18n ? window.i18n.t('testRun.enterTestRun', { name: config.name }) : `將進入 Test Run: ${config.name}`;
-    AppUtils.showInfo(enterMsg);
-    
-    // 暫時直接顯示配置詳情，未來可以導向專門的測試執行頁面
-    showConfigDetails(configId);
+    // 導向 Test Run 執行頁面
+    window.location.href = `/test-run-execution?config_id=${configId}`;
 }
 
 document.addEventListener('i18nReady', updatePageTitle);
@@ -833,6 +871,15 @@ let caseSelectModalInstance = null;
 let currentSelectingConfigId = null;
 let availableCases = [];
 let selectedCaseMap = new Map(); // key: test_case_number, value: case object
+let pendingCreate = false; // true only for newly created config awaiting items
+let createdItemsInSession = false; // set true when items are created
+
+// Removed confirmation step; open modal directly and rely on hidden handler for rollback
+function openCaseSelectModalWithConfirm(configId) {
+  pendingCreate = true;
+  createdItemsInSession = false;
+  openCaseSelectModal(configId);
+}
 
 function openCaseSelectModal(configId) {
   currentSelectingConfigId = configId;
@@ -845,21 +892,62 @@ function openCaseSelectModal(configId) {
   document.getElementById('caseSearchInput').value = '';
   document.getElementById('caseSelectInfo').textContent = '';
   caseSelectModalInstance.show();
+  // ensure we bind a one-time hide handler for rollback if pending
+  const modalDom = document.getElementById('caseSelectModal');
+  // Remove previous listener if any by cloning (simple way to avoid multiple bindings)
+  modalDom.addEventListener('hidden.bs.modal', async function onHidden() {
+    // This will be called whenever modal hides. If pending and no items created, rollback
+    if (pendingCreate && !createdItemsInSession && currentSelectingConfigId) {
+      try {
+        await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentSelectingConfigId}`, { method: 'DELETE' });
+        const warnMsg = window.i18n ? window.i18n.t('testRun.configDeletedDueToCancel') : '已取消選擇，設定已刪除';
+        AppUtils.showInfo(warnMsg);
+        await loadTestRunConfigs();
+      } catch (e) {
+        AppUtils.showError((window.i18n ? window.i18n.t('messages.deleteFailed') : '刪除失敗') + `: ${e.message}`);
+      } finally {
+        pendingCreate = false;
+        createdItemsInSession = false;
+        currentSelectingConfigId = null;
+      }
+    } else {
+      // Clear flags when modal hides in any case
+      pendingCreate = false;
+      createdItemsInSession = false;
+      currentSelectingConfigId = null;
+    }
+    // remove this handler after execution
+    modalDom.removeEventListener('hidden.bs.modal', onHidden);
+  }, { once: true });
   // load first page
   loadTeamTestCases('');
   if (window.i18n && window.i18n.isReady()) window.i18n.retranslate(document.getElementById('caseSelectModal'));
+  // bind search/clear once per open
+  bindCaseSearchBarEvents();
 }
 
 async function loadTeamTestCases(search) {
   try {
-    const url = new URL(`/api/teams/${currentTeamId}/testcases`, window.location.origin);
+    console.log('Loading test cases for team ID:', currentTeamId);
+    const url = new URL(`/api/teams/${currentTeamId}/testcases/`, window.location.origin);
     if (search) url.searchParams.set('search', search);
     url.searchParams.set('limit', '200');
+    console.log('API URL:', url.toString());
+    
     const resp = await fetch(url);
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    console.log('API Response Status:', resp.status);
+    
+    if (!resp.ok) {
+      const errorText = await resp.text();
+      console.log('API Error Response:', errorText);
+      throw new Error(`HTTP ${resp.status}: ${errorText}`);
+    }
+    
     availableCases = await resp.json();
+    console.log('Loaded test cases:', availableCases.length);
     renderCaseList();
   } catch (e) {
+    console.error('Load test cases error:', e);
     AppUtils.showError((window.i18n ? window.i18n.t('messages.loadFailed') : '載入失敗') + `: ${e.message}`);
   }
 }
@@ -912,9 +1000,49 @@ function wireCaseCheckHandlers() {
     }
     updateSelectedCount();
   });
-  document.getElementById('caseSearchBtn').onclick = () => {
-    loadTeamTestCases(document.getElementById('caseSearchInput').value.trim());
-  };
+  // search handlers moved to bindCaseSearchBarEvents()
+}
+
+function bindCaseSearchBarEvents() {
+  const searchBtn = document.getElementById('caseSearchBtn');
+  const clearBtn = document.getElementById('caseClearBtn');
+  const inputEl = document.getElementById('caseSearchInput');
+  if (searchBtn) {
+    searchBtn.onclick = () => {
+      loadTeamTestCases(inputEl.value.trim());
+    };
+  }
+  if (clearBtn) {
+    clearBtn.onclick = () => {
+      inputEl.value = '';
+      clearBtn.classList.add('d-none');
+      loadTeamTestCases('');
+      inputEl.focus();
+    };
+  }
+  if (inputEl) {
+    inputEl.onkeydown = (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        loadTeamTestCases(inputEl.value.trim());
+      }
+    };
+    // toggle clear button visibility on input
+    inputEl.addEventListener('input', () => {
+      if (clearBtn) {
+        if (inputEl.value && inputEl.value.length > 0) {
+          clearBtn.classList.remove('d-none');
+        } else {
+          clearBtn.classList.add('d-none');
+        }
+      }
+    });
+    // initialize visibility
+    if (clearBtn) {
+      if (inputEl.value && inputEl.value.length > 0) clearBtn.classList.remove('d-none');
+      else clearBtn.classList.add('d-none');
+    }
+  }
 }
 
 function updateSelectedCount() {
@@ -958,6 +1086,8 @@ async function createItemsFromSelection() {
     const resp = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items }) });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const res = await resp.json();
+    createdItemsInSession = true;
+    pendingCreate = false;
     caseSelectModalInstance.hide();
     const msg = window.i18n ? window.i18n.t('testRun.itemsCreated', { count: res.created_count || items.length }) : `建立成功 (${res.created_count || items.length} 筆)`;
     AppUtils.showSuccess(msg);

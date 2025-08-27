@@ -5,9 +5,12 @@
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import Optional
 import io
+import requests
+import urllib.parse
 
 from app.database import get_db
 from app.models.database_models import Team as TeamDB, TestRunConfig as TestRunConfigDB
@@ -443,4 +446,133 @@ async def remove_testcase_attachment(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"移除附件過程發生錯誤: {str(e)}"
+        )
+
+
+@router.get("/teams/{team_id}/attachments/download")
+async def download_attachment_proxy(
+    team_id: int,
+    file_url: str = None,
+    file_token: str = None,
+    filename: str = None,
+    db: Session = Depends(get_db)
+):
+    """
+    附件下載代理 API
+    
+    代理 Lark 文件下載請求，自動附加正確的 Authorization header
+    
+    Args:
+        team_id: 團隊 ID
+        file_url: Lark 文件下載 URL（優先使用）
+        file_token: 文件 token（如果沒有 file_url）
+        filename: 建議的檔案名稱
+    """
+    lark_client, team = get_lark_client_for_team(team_id, db)
+    
+    try:
+        # 決定下載 URL
+        download_url = file_url
+        if not download_url and file_token:
+            download_url = f"https://open.larksuite.com/open-apis/drive/v1/medias/{file_token}/download"
+        
+        if not download_url:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="必須提供 file_url 或 file_token"
+            )
+        
+        # 取得 access token
+        token = lark_client.auth_manager.get_tenant_access_token()
+        if not token:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="無法取得 Lark access token"
+            )
+        
+        # 代理下載請求
+        headers = {
+            'Authorization': f'Bearer {token}',
+        }
+        
+        response = requests.get(
+            download_url, 
+            headers=headers, 
+            stream=True,
+            timeout=30
+        )
+        
+        if response.status_code == 401:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Lark API 認證失敗"
+            )
+        elif response.status_code == 404:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="附件不存在"
+            )
+        elif response.status_code != 200:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Lark API 錯誤: HTTP {response.status_code}"
+            )
+        
+        # 準備響應 headers
+        response_headers = {}
+        
+        # 設定 Content-Type
+        content_type = response.headers.get('content-type')
+        if content_type:
+            response_headers['Content-Type'] = content_type
+        
+        # 設定檔案名稱（處理中文檔名）
+        if filename:
+            # 使用 RFC 5987 標準處理非 ASCII 檔案名稱
+            try:
+                # 嘗試 ASCII 編碼
+                filename.encode('ascii')
+                response_headers['Content-Disposition'] = f'attachment; filename="{filename}"'
+            except UnicodeEncodeError:
+                # 包含非 ASCII 字符，使用 RFC 5987 格式
+                encoded_filename = urllib.parse.quote(filename, safe='')
+                response_headers['Content-Disposition'] = f'attachment; filename*=UTF-8\'\'{encoded_filename}'
+        elif 'content-disposition' in response.headers:
+            response_headers['Content-Disposition'] = response.headers['content-disposition']
+        
+        # 設定 Content-Length (如果有)
+        content_length = response.headers.get('content-length')
+        if content_length:
+            response_headers['Content-Length'] = content_length
+        
+        # 創建流式響應
+        def generate_file_stream():
+            try:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        yield chunk
+            finally:
+                response.close()
+        
+        return StreamingResponse(
+            generate_file_stream(),
+            headers=response_headers
+        )
+        
+    except HTTPException:
+        raise
+    except requests.exceptions.Timeout:
+        raise HTTPException(
+            status_code=status.HTTP_504_GATEWAY_TIMEOUT,
+            detail="Lark 文件下載超時"
+        )
+    except requests.exceptions.RequestException as e:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Lark 文件下載失敗: {str(e)}"
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"附件下載代理錯誤: {str(e)}"
         )

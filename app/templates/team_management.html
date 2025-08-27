@@ -21,11 +21,15 @@
     <button type="button" class="btn btn-secondary" id="refreshBtn">
         <i class="fas fa-sync-alt me-2"></i><span data-i18n="common.refresh">重新整理</span>
     </button>
+    <button type="button" class="btn btn-secondary" id="syncOrgBtn">
+        <i class="fas fa-users me-2"></i><span data-i18n="orgSync.openButton">同步組織架構</span>
+    </button>
 </div>
 {% endblock %}
 
 {% block content %}
 <div class="container-fluid">
+
 
     <!-- 載入狀態 -->
     <div id="loading-state" class="text-center py-5" style="display: none;">
@@ -140,6 +144,206 @@
         </div>
     </div>
 </div>
+
+<!-- 同步歷史模態視窗 -->
+<div class="modal fade" id="syncHistoryModal" tabindex="-1" aria-labelledby="syncHistoryModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="syncHistoryModalLabel" data-i18n="orgSync.historyModalTitle">同步歷史記錄</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="關閉"></button>
+            </div>
+            <div class="modal-body">
+                <div id="syncHistoryLoading" class="text-center py-4" style="display: none;">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden" data-i18n="common.loading">載入中...</span>
+                    </div>
+                    <div class="mt-2 text-muted" data-i18n="orgSync.historyLoading">載入同步歷史記錄...</div>
+                </div>
+                
+                <div id="syncHistoryContent">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead class="table-light">
+                                <tr>
+                                    <th width="12%" data-i18n="orgSync.table.type">類型</th>
+                                    <th width="12%" data-i18n="orgSync.table.status">狀態</th>
+                                    <th width="22%" data-i18n="orgSync.table.startTime">開始時間</th>
+                                    <th width="22%" data-i18n="orgSync.table.endTime">結束時間</th>
+                                    <th width="12%" data-i18n="orgSync.table.duration">耗時</th>
+                                    <th width="20%" data-i18n="orgSync.table.stats">統計</th>
+                                </tr>
+                            </thead>
+                            <tbody id="syncHistoryTableBody">
+                                <!-- 同步記錄將在此處動態生成 -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <div id="noSyncHistory" class="text-center py-4" style="display: none;">
+                    <i class="fas fa-history fa-3x text-muted mb-3"></i>
+                    <h6 class="text-muted" data-i18n="orgSync.historyNoRecordsTitle">尚無同步記錄</h6>
+                    <p class="text-muted small" data-i18n="orgSync.historyNoRecordsHint">請先執行組織架構同步</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.close">關閉</button>
+                <button type="button" class="btn btn-primary" id="refreshHistoryBtn">
+                    <i class="fas fa-sync-alt me-2"></i><span data-i18n="common.refresh">重新整理</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 同步功能框模態視窗 -->
+<div class="modal fade" id="syncModal" tabindex="-1" aria-labelledby="syncModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="syncModalLabel">
+                    <i class="fas fa-users me-2"></i><span data-i18n="orgSync.modalTitle">組織架構同步管理</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="關閉"></button>
+            </div>
+            <div class="modal-body">
+                <!-- 同步狀態區域 -->
+                <div class="mb-4">
+                    <div class="card">
+                        <div class="card-header bg-light">
+                            <h6 class="card-title mb-0">
+                                <i class="fas fa-info-circle me-2"></i><span data-i18n="orgSync.currentStatus">當前同步狀態</span>
+                            </h6>
+                        </div>
+                        <div class="card-body">
+                            <div id="syncStatusContent">
+                                <div id="syncStatusLoading" class="text-center py-3" style="display: none;">
+                                    <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
+                                    <span class="text-muted" data-i18n="orgSync.loadingStatus">載入狀態中...</span>
+                                </div>
+                                
+                                <div id="syncStatusIdle" class="d-flex align-items-center" style="display: none;">
+                                    <div class="flex-shrink-0">
+                                        <i class="fas fa-check-circle text-success fa-2x"></i>
+                                    </div>
+                                    <div class="flex-grow-1 ms-3">
+                                        <h6 class="mb-1 text-success" data-i18n="orgSync.idle">系統空閒</h6>
+                                        <p class="mb-0 text-muted small" data-i18n="orgSync.readyToRun">準備執行新的同步作業</p>
+                                        <div id="lastSyncTime" class="text-muted small mt-1"></div>
+                                    </div>
+                                </div>
+                                
+                                <div id="syncStatusRunning" class="d-flex align-items-center" style="display: none;">
+                                    <div class="flex-shrink-0">
+                                        <div class="spinner-border text-primary" role="status"></div>
+                                    </div>
+                                    <div class="flex-grow-1 ms-3">
+                                        <h6 class="mb-1 text-primary" data-i18n="orgSync.syncing">同步進行中</h6>
+                                        <p class="mb-2 text-muted small" data-i18n="orgSync.syncingDesc">正在同步組織架構資料...</p>
+                                        <div class="progress mb-2" style="height: 6px;">
+                                            <div id="syncProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                                        </div>
+                                        <div id="syncProgressText" class="text-muted small" data-i18n="orgSync.preparing">準備開始...</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 組織統計區域 -->
+                <div class="mb-4">
+                    <div class="card">
+                        <div class="card-header bg-light">
+                            <h6 class="card-title mb-0">
+                                <i class="fas fa-chart-bar me-2"></i><span data-i18n="orgSync.statsTitle">組織架構統計</span>
+                            </h6>
+                        </div>
+                        <div class="card-body">
+                            <div id="orgStatsContent">
+                                <div id="orgStatsLoading" class="text-center py-3" style="display: none;">
+                                    <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
+                                    <span class="text-muted" data-i18n="orgSync.statsLoading">載入統計資料中...</span>
+                                </div>
+                                
+                                <div id="orgStatsData" class="text-muted" style="display: none;">
+                                    <div class="d-flex flex-nowrap align-items-center org-compact-stats">
+                                        <span class="stat me-3">
+                                            <i class="fas fa-building text-info me-1" style="font-size: 0.95rem;"></i>
+                                            <span class="fw-semibold" id="totalDepartments">-</span>
+                                        </span>
+                                        <span class="stat">
+                                            <i class="fas fa-users text-success me-1" style="font-size: 0.95rem;"></i>
+                                            <span class="fw-semibold" id="totalUsers">-</span>
+                                        </span>
+                                    </div>
+                                </div>
+                                
+                                <div id="orgStatsError" class="text-center py-3 text-muted" style="display: none;">
+                                    <i class="fas fa-exclamation-triangle me-2"></i>
+                                    <span data-i18n="orgSync.statsError">統計資料載入失敗</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 同步歷史快速檢視 -->
+                <div class="mb-4">
+                    <div class="card">
+                        <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                            <h6 class="card-title mb-0">
+                                <i class="fas fa-history me-2"></i><span data-i18n="orgSync.recentHistory">最近同步記錄</span>
+                            </h6>
+                            <button type="button" class="btn btn-sm btn-primary" id="viewFullHistoryBtn">
+                                <i class="fas fa-external-link-alt me-1"></i><span data-i18n="orgSync.viewFullHistory">查看完整歷史</span>
+                            </button>
+                        </div>
+                        <div class="card-body">
+                            <div id="recentSyncHistory">
+                                <div id="historyLoading" class="text-center py-3" style="display: none;">
+                                    <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
+                                    <span class="text-muted" data-i18n="orgSync.historyLoading">載入歷史記錄中...</span>
+                                </div>
+                                
+                                <div id="recentHistoryList">
+                                    <!-- 最近的同步記錄將在此處動態生成 -->
+                                </div>
+                                
+                                <div id="noRecentHistory" class="text-center py-3 text-muted" style="display: none;">
+                                    <i class="fas fa-history me-2"></i>
+                                    <span data-i18n="orgSync.noRecentHistory">尚無同步記錄</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer d-flex justify-content-between">
+                <div>
+                    <button type="button" class="btn btn-outline-secondary" id="refreshSyncDataBtn">
+                        <i class="fas fa-sync-alt me-2"></i><span data-i18n="common.refresh">重新整理</span>
+                    </button>
+                </div>
+                <div>
+                    <button type="button" class="btn btn-secondary me-2" data-bs-dismiss="modal" data-i18n="common.close">關閉</button>
+                    <div class="btn-group no-stretch" role="group" aria-label="Sync Actions">
+                        <button type="button" class="btn btn-primary" id="startDeptSyncBtn">
+                            <i class="fas fa-sitemap me-2"></i><span data-i18n="orgSync.departmentsSync">部門同步</span>
+                        </button>
+                        <button type="button" class="btn btn-primary" id="startUserSyncBtn">
+                            <i class="fas fa-address-book me-2"></i><span data-i18n="orgSync.contactsSync">用戶同步</span>
+                        </button>
+                        <button type="button" class="btn btn-primary" id="startSyncBtn">
+                            <i class="fas fa-play me-2"></i><span data-i18n="orgSync.fullSync">完整同步</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -157,6 +361,26 @@ function initTeamManagement() {
     document.getElementById('refreshBtn').addEventListener('click', loadTeams);
     document.getElementById('saveTeamBtn').addEventListener('click', saveTeam);
     document.getElementById('validateLarkBtn').addEventListener('click', validateLarkConnection);
+    document.getElementById('syncOrgBtn').addEventListener('click', openSyncModal);
+    document.getElementById('refreshHistoryBtn').addEventListener('click', () => {
+        if (currentHistoryTeamId) {
+            loadSyncHistory(currentHistoryTeamId);
+        }
+    });
+    
+    // 同步功能框事件監聽器
+    document.getElementById('startSyncBtn').addEventListener('click', () => startSyncFromModal('full'));
+    document.getElementById('startDeptSyncBtn').addEventListener('click', () => startSyncFromModal('departments'));
+    document.getElementById('startUserSyncBtn').addEventListener('click', () => startSyncFromModal('users'));
+    document.getElementById('refreshSyncDataBtn').addEventListener('click', refreshSyncModalData);
+    document.getElementById('viewFullHistoryBtn').addEventListener('click', () => {
+        // 關閉同步功能框，開啟完整歷史模態框
+        const syncModal = bootstrap.Modal.getInstance(document.getElementById('syncModal'));
+        if (syncModal) {
+            syncModal.hide();
+        }
+        showGlobalSyncHistory();
+    });
 
     // 載入團隊列表
     loadTeams();
@@ -227,7 +451,7 @@ function renderTeamCards() {
     const teamsHtml = teams.map(team => `
         <div class="col-md-6 col-lg-4 mb-4">
             <div class="card h-100 team-card">
-                <div class="card-body">
+                <div class="card-body d-flex flex-column h-100">
                     <div class="d-flex align-items-start mb-3">
                         <div class="flex-shrink-0 me-3">
                             <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center" 
@@ -238,36 +462,36 @@ function renderTeamCards() {
                         <div class="flex-grow-1">
                             <h5 class="card-title text-primary mb-1">${escapeHtml(team.name)}</h5>
                             <p class="card-text text-muted small mb-0">
-                                ${escapeHtml(team.description || (window.i18n ? window.i18n.t('common.noDescription') : '無描述'))}
+                                ${escapeHtml(team.description || ((window.i18n && window.i18n.isReady()) ? window.i18n.t('common.noDescription') : '無描述'))}
                             </p>
                         </div>
                     </div>
-                    
-                    <div class="mb-3">
-                        <div class="d-flex align-items-center mb-2">
-                            <i class="fas fa-table me-2 text-success"></i>
-                            <small class="text-muted">Lark: ${team.is_lark_configured ? 
-                                (window.i18n ? window.i18n.t('team.configured') : '已設定') : 
-                                (window.i18n ? window.i18n.t('team.notConfigured') : '未設定')}</small>
+                    <div class="mt-auto pt-2">
+                        <div class="mb-2">
+                            <div class="d-flex align-items-center mb-1">
+                                <i class="fas fa-table me-2 text-success"></i>
+                                <small class="text-muted">Lark: ${team.is_lark_configured ? 
+                                    ((window.i18n && window.i18n.isReady()) ? window.i18n.t('team.configured') : '已設定') : 
+                                    ((window.i18n && window.i18n.isReady()) ? window.i18n.t('team.notConfigured') : '未設定')}</small>
+                            </div>
+                            <div class="d-flex align-items-center">
+                                <i class="fas fa-list me-2 text-muted"></i>
+                                <small class="text-muted">${(window.i18n && window.i18n.isReady()) ? 
+                                    window.i18n.t('team.testCaseCount', {count: team.test_case_count || 0}) : 
+                                    `${team.test_case_count || 0} 個測試案例`}</small>
+                            </div>
                         </div>
-                        <div class="d-flex align-items-center">
-                            <i class="fas fa-list me-2 text-muted"></i>
-                            <small class="text-muted">${window.i18n ? 
-                                window.i18n.t('team.testCaseCount', {count: team.test_case_count || 0}) : 
-                                `${team.test_case_count || 0} 個測試案例`}</small>
+                        <div class="btn-group w-100" role="group">
+                            <button class="btn btn-outline-primary btn-sm" onclick="editTeam(${team.id})" title="${(window.i18n && window.i18n.isReady()) ? window.i18n.t('common.edit') : '編輯'}">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button class="btn btn-outline-success btn-sm" onclick="selectTeam(${team.id})" title="${(window.i18n && window.i18n.isReady()) ? window.i18n.t('tooltips.enterTeam') : '進入團隊'}">
+                                <i class="fas fa-arrow-right"></i>
+                            </button>
+                            <button class="btn btn-outline-danger btn-sm" onclick="deleteTeam(${team.id})" title="${(window.i18n && window.i18n.isReady()) ? window.i18n.t('common.delete') : '刪除'}">
+                                <i class="fas fa-trash"></i>
+                            </button>
                         </div>
-                    </div>
-                    
-                    <div class="btn-group w-100" role="group">
-                        <button class="btn btn-outline-primary btn-sm" onclick="editTeam(${team.id})" title="${window.i18n ? window.i18n.t('common.edit') : '編輯'}">
-                            <i class="fas fa-edit"></i>
-                        </button>
-                        <button class="btn btn-outline-success btn-sm" onclick="selectTeam(${team.id})" title="${window.i18n ? window.i18n.t('tooltips.enterTeam') : '進入團隊'}">
-                            <i class="fas fa-arrow-right"></i>
-                        </button>
-                        <button class="btn btn-outline-danger btn-sm" onclick="deleteTeam(${team.id})" title="${window.i18n ? window.i18n.t('common.delete') : '刪除'}">
-                            <i class="fas fa-trash"></i>
-                        </button>
                     </div>
                 </div>
             </div>
@@ -276,9 +500,9 @@ function renderTeamCards() {
     
     container.innerHTML = teamsHtml;
     
-    // Retranslate the newly added content
+    // Retranslate the newly added content only within container
     if (window.i18n && window.i18n.isReady()) {
-        window.i18n.retranslate();
+        window.i18n.retranslate(container);
     }
 }
 
@@ -442,18 +666,10 @@ function selectTeam(teamId) {
     const team = teams.find(t => t.id === teamId);
     if (!team) return;
     
-    // 儲存選擇的團隊
+    // 儲存選擇的團隊，直接導向（不顯示 Toast）
     if (AppUtils && AppUtils.setCurrentTeam) {
         AppUtils.setCurrentTeam(team);
-        const successMsg = window.i18n ? 
-            window.i18n.t('team.teamSelected', {name: team.name}) : 
-            `已選擇團隊：${team.name}`;
-        AppUtils.showSuccess(successMsg);
-        
-        // 跳轉到測試案例管理
-        setTimeout(() => {
-            window.location.href = '/test-case-management';
-        }, 500);
+        window.location.href = '/test-case-management';
     }
 }
 
@@ -553,8 +769,752 @@ function updatePageTitle() {
 // 監聽 i18n 初始化和語言變更事件
 document.addEventListener('i18nReady', updatePageTitle);
 document.addEventListener('languageChanged', updatePageTitle);
+
+// ===== 組織架構同步功能 =====
+
+// ===== 同步功能框模態視窗管理 =====
+
+// 模態視窗狀態管理
+let syncModalInstance = null;
+let syncPollingInterval = null;
+
+// 開啟同步功能框
+async function openSyncModal() {
+    // 檢查是否有可用的團隊
+    if (!teams || teams.length === 0) {
+        AppUtils.showError(getI18n('orgSync.addTeamFirst', '請先新增團隊後再執行同步'));
+        return;
+    }
+
+    const modal = document.getElementById('syncModal');
+    if (!syncModalInstance) {
+        syncModalInstance = new bootstrap.Modal(modal);
+        
+        // 監聽模態框關閉事件，保存狀態到localStorage
+        modal.addEventListener('hidden.bs.modal', saveSyncModalState);
+        modal.addEventListener('shown.bs.modal', loadSyncModalState);
+    }
+
+    // 載入模態框數據
+    await loadSyncModalData();
+    
+    syncModalInstance.show();
+}
+
+// 載入同步功能框所有數據
+async function loadSyncModalData() {
+    await Promise.all([
+        loadSyncStatus(),
+        loadOrgStats(),
+        loadRecentSyncHistory()
+    ]);
+}
+
+// 重新整理同步功能框數據
+async function refreshSyncModalData() {
+    const refreshBtn = document.getElementById('refreshSyncDataBtn');
+    const originalHtml = refreshBtn.innerHTML;
+    
+    refreshBtn.disabled = true;
+    refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>重新整理中...';
+    
+    try {
+        await loadSyncModalData();
+    } finally {
+        refreshBtn.disabled = false;
+        refreshBtn.innerHTML = originalHtml;
+    }
+}
+
+// 載入同步狀態
+async function loadSyncStatus() {
+    const loadingDiv = document.getElementById('syncStatusLoading');
+    const idleDiv = document.getElementById('syncStatusIdle');
+    const runningDiv = document.getElementById('syncStatusRunning');
+    
+    // 顯示載入狀態（使用 Bootstrap d-none 以避免 d-flex !important 影響）
+    loadingDiv.classList.remove('d-none');
+    idleDiv.classList.add('d-none');
+    runningDiv.classList.add('d-none');
+    
+    try {
+        const defaultTeamId = teams[0].id;
+        const response = await fetch(`/api/teams/${defaultTeamId}/sync/status`);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        
+        const result = await response.json();
+        if (result.success && result.data) {
+            const data = result.data;
+            
+            loadingDiv.classList.add('d-none');
+            
+            if (data.is_syncing) {
+                // 同步進行中
+                setSyncStatus('running');
+                
+                // 更新進度信息
+                const progressText = document.getElementById('syncProgressText');
+                const progressBar = document.getElementById('syncProgressBar');
+                
+                if (data.current_sync_id) {
+                    const idPrefix = getI18n('orgSync.syncIdPrefix', '同步ID:');
+                    progressText.textContent = `${idPrefix} ${data.current_sync_id}`;
+                    progressBar.style.width = '50%'; // 暫時顯示50%進度
+                }
+                
+                // 開始輪詢狀態
+                startSyncPolling();
+                
+                // 按鈕狀態由 setSyncStatus 控制
+            } else {
+                // 系統空閒
+                setSyncStatus('idle');
+                
+                // 顯示最後同步時間
+                if (data.last_sync_end) {
+                    const lastSyncDiv = document.getElementById('lastSyncTime');
+                    const lastPrefix = getI18n('orgSync.lastSyncPrefix', '最後同步:');
+                    lastSyncDiv.textContent = `${lastPrefix} ${new Date(data.last_sync_end).toLocaleString()}`;
+                }
+                
+                // 按鈕狀態由 setSyncStatus 控制
+            }
+        }
+    } catch (error) {
+        console.error('載入同步狀態失敗:', error);
+        loadingDiv.classList.add('d-none');
+        setSyncStatus('idle');
+    }
+}
+
+function setSyncStatus(mode) {
+    const idleDiv = document.getElementById('syncStatusIdle');
+    const runningDiv = document.getElementById('syncStatusRunning');
+    const startBtn = document.getElementById('startSyncBtn');
+    const deptBtn = document.getElementById('startDeptSyncBtn');
+    const userBtn = document.getElementById('startUserSyncBtn');
+
+    if (mode === 'running') {
+        idleDiv.classList.add('d-none');
+        runningDiv.classList.remove('d-none');
+        if (startBtn) startBtn.disabled = true;
+        if (deptBtn) deptBtn.disabled = true;
+        if (userBtn) userBtn.disabled = true;
+    } else if (mode === 'idle') {
+        runningDiv.classList.add('d-none');
+        idleDiv.classList.remove('d-none');
+        if (startBtn) startBtn.disabled = false;
+        if (deptBtn) deptBtn.disabled = false;
+        if (userBtn) userBtn.disabled = false;
+    } else {
+        runningDiv.classList.add('d-none');
+        idleDiv.classList.add('d-none');
+        if (startBtn) startBtn.disabled = false;
+        if (deptBtn) deptBtn.disabled = false;
+        if (userBtn) userBtn.disabled = false;
+    }
+}
+
+// 載入組織統計
+async function loadOrgStats() {
+    const loadingDiv = document.getElementById('orgStatsLoading');
+    const dataDiv = document.getElementById('orgStatsData');
+    const errorDiv = document.getElementById('orgStatsError');
+    
+    // 顯示載入狀態
+    loadingDiv.style.display = 'block';
+    dataDiv.style.display = 'none';
+    errorDiv.style.display = 'none';
+    
+    try {
+        const defaultTeamId = teams[0].id;
+        const response = await fetch(`/api/teams/${defaultTeamId}/sync/stats`);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        
+        const result = await response.json();
+        if (result.success && result.data) {
+            const data = result.data;
+            
+            // 更新部門統計
+            document.getElementById('totalDepartments').textContent = data.total_departments || 0;
+            // 更新用戶統計
+            document.getElementById('totalUsers').textContent = data.total_users || 0;
+            
+            loadingDiv.style.display = 'none';
+            dataDiv.style.display = 'block';
+        } else {
+            throw new Error('API 返回錯誤');
+        }
+    } catch (error) {
+        console.error('載入組織統計失敗:', error);
+        loadingDiv.style.display = 'none';
+        errorDiv.style.display = 'block';
+    }
+}
+
+// 載入最近同步記錄
+async function loadRecentSyncHistory() {
+    const loadingDiv = document.getElementById('historyLoading');
+    const listDiv = document.getElementById('recentHistoryList');
+    const noHistoryDiv = document.getElementById('noRecentHistory');
+    
+    // 顯示載入狀態
+    loadingDiv.style.display = 'block';
+    listDiv.innerHTML = '';
+    noHistoryDiv.style.display = 'none';
+    
+    try {
+        const defaultTeamId = teams[0].id;
+        const response = await fetch(`/api/teams/${defaultTeamId}/sync/history?limit=3`);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        
+        const result = await response.json();
+        if (result.success && result.data && result.data.history.length > 0) {
+            const history = result.data.history;
+            
+            let html = '';
+            history.forEach(record => {
+                const statusClass = record.status === 'completed' ? 'success' : 
+                                  record.status === 'failed' ? 'danger' : 'warning';
+                const statusText = record.status === 'completed' ? getI18n('orgSync.status.completed', '完成') :
+                                 record.status === 'failed' ? getI18n('orgSync.status.failed', '失敗') : getI18n('orgSync.status.running', '進行中');
+                
+                html += `
+                    <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
+                        <div class="flex-grow-1">
+                            <div class="d-flex align-items-center">
+                                <span class="badge badge-status-lg bg-${statusClass} me-2">${statusText}</span>
+                                <span class="text-muted small">${
+                                    record.sync_type === 'full' ? getI18n('orgSync.type.full', '完整同步') :
+                                    record.sync_type === 'departments' ? getI18n('orgSync.type.departments', '部門同步') :
+                                    record.sync_type === 'users' ? getI18n('orgSync.type.users', '用戶同步') : record.sync_type
+                                }</span>
+                            </div>
+                            <div class="text-muted small mt-1">
+                                ${new Date(record.start_time).toLocaleString()}
+                            </div>
+                        </div>
+                        <div class="text-end">
+                            <small class="text-muted">ID: ${record.id}</small>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            listDiv.innerHTML = html;
+            loadingDiv.style.display = 'none';
+        } else {
+            loadingDiv.style.display = 'none';
+            noHistoryDiv.style.display = 'block';
+        }
+    } catch (error) {
+        console.error('載入最近同步記錄失敗:', error);
+        loadingDiv.style.display = 'none';
+        noHistoryDiv.style.display = 'block';
+    }
+}
+
+// 從模態框開始同步
+async function startSyncFromModal(syncType = 'full') {
+    const startBtn = syncType === 'full' ? document.getElementById('startSyncBtn') : 
+        (syncType === 'departments' ? document.getElementById('startDeptSyncBtn') : document.getElementById('startUserSyncBtn'));
+    const originalHtml = startBtn.innerHTML;
+    
+    startBtn.disabled = true;
+    startBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>啟動中...';
+    
+    try {
+        // Guard: ensure not already syncing
+        try {
+            const defaultTeamId = teams[0].id;
+            const statusResp = await fetch(`/api/teams/${defaultTeamId}/sync/status`);
+            if (statusResp.ok) {
+                const statusJson = await statusResp.json();
+                if (statusJson.success && statusJson.data && statusJson.data.is_syncing) {
+                    AppUtils.showWarning(getI18n('orgSync.syncing', '同步進行中'));
+                    startBtn.disabled = false;
+                    startBtn.innerHTML = originalHtml;
+                    return;
+                }
+            }
+        } catch (_) {}
+        const defaultTeamId = teams[0].id;
+        
+        const response = await fetch(`/api/teams/${defaultTeamId}/sync/trigger`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                sync_type: syncType,
+                trigger_user: 'user-sync-modal' // 識別來自功能框的同步
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // 同步啟動成功，重新載入狀態
+            await loadSyncStatus();
+            
+            // 保存觸發用戶到localStorage，用於後續的Toast通知
+            localStorage.setItem('sync_trigger_user', 'user-sync-modal');
+            
+            AppUtils.showSuccess(getI18n('orgSync.syncStarted', '組織架構同步已啟動'));
+        } else {
+            throw new Error(result.message || '同步啟動失敗');
+        }
+    } catch (error) {
+        console.error('啟動同步失敗:', error);
+        AppUtils.showError(getI18n('orgSync.startFailedPrefix', '啟動同步失敗') + '：' + error.message);
+        
+        startBtn.disabled = false;
+        startBtn.innerHTML = originalHtml;
+    }
+}
+
+// 開始同步狀態輪詢
+function startSyncPolling() {
+    if (syncPollingInterval) {
+        clearInterval(syncPollingInterval);
+    }
+    
+    let pollCount = 0;
+    const maxPolls = 120; // 10分鐘最大輪詢時間
+    
+    const poll = async () => {
+        try {
+            const defaultTeamId = teams[0].id;
+            const response = await fetch(`/api/teams/${defaultTeamId}/sync/status`);
+            
+            if (response.ok) {
+                const result = await response.json();
+                
+                if (result.success && result.data) {
+                    const data = result.data;
+                    
+                    if (!data.is_syncing) {
+                        // 同步完成
+                        clearInterval(syncPollingInterval);
+                        syncPollingInterval = null;
+                        
+                        // 重新載入所有數據
+                        await loadSyncModalData();
+                        
+                        // 檢查是否是當前用戶觸發的同步
+                        const triggerUser = localStorage.getItem('sync_trigger_user');
+                        if (triggerUser === 'user-sync-modal') {
+                            AppUtils.showSuccess(getI18n('orgSync.syncCompleted', '組織架構同步已完成！'));
+                            localStorage.removeItem('sync_trigger_user');
+                        }
+                    } else {
+                        // 更新進度顯示
+                        setSyncStatus('running');
+                        const progressText = document.getElementById('syncProgressText');
+                        const progressBar = document.getElementById('syncProgressBar');
+                        
+                        if (data.current_sync_id) {
+                            const syncingText = getI18n('orgSync.syncing', '同步進行中');
+                            const idPrefix = getI18n('orgSync.syncIdPrefix', '同步ID:');
+                            progressText.textContent = `${syncingText} (${idPrefix} ${data.current_sync_id})`;
+                            // 根據時間推算進度百分比
+                            const elapsed = pollCount * 5; // 5秒間隔
+                            const estimatedProgress = Math.min(50 + (elapsed / 120) * 40, 90); // 50-90%之間
+                            progressBar.style.width = `${estimatedProgress}%`;
+                        }
+                    }
+                }
+            }
+            
+            pollCount++;
+            if (pollCount >= maxPolls) {
+                // 超時停止輪詢
+                clearInterval(syncPollingInterval);
+                syncPollingInterval = null;
+                AppUtils.showWarning(getI18n('orgSync.statusTimeout', '同步狀態檢查超時，請手動刷新查看結果'));
+                // 恢復按鈕
+                document.getElementById('startSyncBtn').disabled = false;
+                const deptBtn = document.getElementById('startDeptSyncBtn');
+                const userBtn = document.getElementById('startUserSyncBtn');
+                if (deptBtn) deptBtn.disabled = false;
+                if (userBtn) userBtn.disabled = false;
+            }
+        } catch (error) {
+            console.error('輪詢同步狀態失敗:', error);
+        }
+    };
+    
+    // 每5秒輪詢一次
+    syncPollingInterval = setInterval(poll, 5000);
+}
+
+// 保存模態框狀態到localStorage
+function saveSyncModalState() {
+    const modalState = {
+        lastClosed: Date.now(),
+        wasPolling: syncPollingInterval !== null
+    };
+    localStorage.setItem('sync_modal_state', JSON.stringify(modalState));
+}
+
+// 從localStorage載入模態框狀態
+function loadSyncModalState() {
+    try {
+        const savedState = localStorage.getItem('sync_modal_state');
+        if (savedState) {
+            const state = JSON.parse(savedState);
+            
+            // 如果之前在輪詢且關閉時間不超過30秒，繼續輪詢
+            const timeSinceClose = Date.now() - state.lastClosed;
+            if (state.wasPolling && timeSinceClose < 30000) {
+                // 先載入一次狀態，如果仍在同步則開始輪詢
+                loadSyncStatus();
+            }
+        }
+    } catch (error) {
+        console.error('載入模態框狀態失敗:', error);
+    }
+}
+
+// ===== 全域組織架構同步功能 =====
+
+// 觸發全域同步
+async function triggerGlobalSync() {
+    const syncBtn = document.getElementById('syncOrgBtn');
+    const statusDiv = document.getElementById('global-sync-status');
+    
+    // 檢查是否有可用的團隊
+    if (!teams || teams.length === 0) {
+        AppUtils.showError(getI18n('orgSync.addTeamFirst', '請先新增團隊後再執行同步'));
+        return;
+    }
+    
+    // 使用第一個團隊作為預設
+    const defaultTeamId = teams[0].id;
+    
+    try {
+        // 顯示同步中狀態
+        syncBtn.disabled = true;
+        statusDiv.style.display = 'block';
+        
+        // 觸發同步
+        const response = await fetch(`/api/teams/${defaultTeamId}/sync/trigger`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                sync_type: 'full',
+                trigger_user: 'web-user'
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            // 同步開始成功
+            AppUtils.showSuccess(getI18n('orgSync.syncStarted', '組織架構同步已開始'));
+            
+            // 開始輪詢同步狀態
+            pollGlobalSyncStatus(defaultTeamId);
+            
+        } else {
+            // 同步開始失敗
+            AppUtils.showError(getI18n('orgSync.syncFailedPrefix', '同步失敗') + `: ${result.message}`);
+            syncBtn.disabled = false;
+            statusDiv.style.display = 'none';
+        }
+        
+    } catch (error) {
+        console.error('觸發全域同步失敗:', error);
+        AppUtils.showError(getI18n('orgSync.triggerFailedPrefix', '觸發全域同步失敗') + `: ${error.message}`);
+        syncBtn.disabled = false;
+        statusDiv.style.display = 'none';
+    }
+}
+
+// 輪詢全域同步狀態
+async function pollGlobalSyncStatus(teamId) {
+    const maxPolls = 60; // 最多輪詢 60 次 (5 分鐘)
+    let pollCount = 0;
+    
+    const poll = async () => {
+        try {
+            const response = await fetch(`/api/teams/${teamId}/sync/status`);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            
+            const result = await response.json();
+            
+            if (result.success && result.data) {
+                const data = result.data;
+                
+                if (!data.is_syncing) {
+                    // 同步完成
+                    const syncBtn = document.getElementById('syncOrgBtn');
+                    const statusDiv = document.getElementById('global-sync-status');
+                    
+                    syncBtn.disabled = false;
+                    statusDiv.style.display = 'none';
+                    
+                    // 檢查最後結果
+                    if (data.last_result && data.last_result.success) {
+                        AppUtils.showSuccess(getI18n('orgSync.syncCompleted', '組織架構同步完成'));
+                    } else {
+                        AppUtils.showWarning(getI18n('orgSync.syncCompletedWithIssues', '同步完成，但可能有部分錯誤'));
+                    }
+                    
+                    return; // 停止輪詢
+                }
+                
+                // 繼續輪詢
+                pollCount++;
+                if (pollCount < maxPolls) {
+                    setTimeout(poll, 5000); // 5秒後再次檢查
+                } else {
+                    // 超時停止
+                    document.getElementById('syncOrgBtn').disabled = false;
+                    document.getElementById('global-sync-status').style.display = 'none';
+                    AppUtils.showWarning(getI18n('orgSync.statusTimeout', '同步狀態檢查超時，請手動刷新頁面查看結果'));
+                }
+            }
+            
+        } catch (error) {
+            console.error('檢查全域同步狀態失敗:', error);
+            // 發生錯誤時也停止輪詢
+            document.getElementById('syncOrgBtn').disabled = false;
+            document.getElementById('global-sync-status').style.display = 'none';
+        }
+    };
+    
+    // 開始第一次輪詢
+    setTimeout(poll, 2000); // 2秒後開始檢查
+}
+
+// 顯示全域同步歷史模態框
+let currentHistoryTeamId = null;
+
+async function showGlobalSyncHistory() {
+    // 檢查是否有可用的團隊
+    if (!teams || teams.length === 0) {
+        AppUtils.showError(getI18n('orgSync.addTeamFirstForHistory', '請先新增團隊後再查看同步歷史'));
+        return;
+    }
+    
+    // 使用第一個團隊作為預設
+    const defaultTeamId = teams[0].id;
+    currentHistoryTeamId = defaultTeamId;
+    
+    // 設定模態框標題為全域模式
+    document.getElementById('syncHistoryModalLabel').textContent = getI18n('orgSync.historyModalTitle', '組織架構同步歷史記錄');
+    
+    // 顯示模態框
+    const modal = new bootstrap.Modal(document.getElementById('syncHistoryModal'));
+    modal.show();
+    
+    // 載入歷史記錄
+    await loadSyncHistory(defaultTeamId);
+}
+
+async function loadSyncHistory(teamId) {
+    const loadingDiv = document.getElementById('syncHistoryLoading');
+    const contentDiv = document.getElementById('syncHistoryContent');
+    const noHistoryDiv = document.getElementById('noSyncHistory');
+    const tableBody = document.getElementById('syncHistoryTableBody');
+    
+    try {
+        // 顯示載入狀態
+        loadingDiv.style.display = 'block';
+        contentDiv.style.display = 'none';
+        noHistoryDiv.style.display = 'none';
+        
+        const response = await fetch(`/api/teams/${teamId}/sync/history`);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const result = await response.json();
+        
+        if (result.success && result.data.history.length > 0) {
+            // 有歷史記錄，渲染表格
+            renderSyncHistoryTable(result.data.history);
+            contentDiv.style.display = 'block';
+        } else {
+            // 無歷史記錄
+            noHistoryDiv.style.display = 'block';
+        }
+        
+    } catch (error) {
+        console.error('載入同步歷史失敗:', error);
+        AppUtils.showError(getI18n('orgSync.loadHistoryFailedPrefix', '載入同步歷史失敗') + `: ${error.message}`);
+        noHistoryDiv.style.display = 'block';
+    } finally {
+        loadingDiv.style.display = 'none';
+    }
+}
+
+function renderSyncHistoryTable(history) {
+    const tableBody = document.getElementById('syncHistoryTableBody');
+    
+    const rows = history.map(record => {
+        // 格式化時間
+        const startTime = record.start_time ? new Date(record.start_time).toLocaleString('zh-TW') : '-';
+        const endTime = record.end_time ? new Date(record.end_time).toLocaleString('zh-TW') : '-';
+        
+        // 計算耗時
+        let duration = '-';
+        if (record.duration_seconds) {
+            const minutes = Math.floor(record.duration_seconds / 60);
+            const seconds = Math.round(record.duration_seconds % 60);
+            duration = minutes > 0 ? `${minutes}分${seconds}秒` : `${seconds}秒`;
+        }
+        
+        // 狀態標籤
+        let statusBadge = '';
+        switch (record.status) {
+            case 'completed':
+                statusBadge = `<span class=\"badge badge-status-lg bg-success\">${getI18n('orgSync.status.completed', '完成')}</span>`;
+                break;
+            case 'failed':
+                statusBadge = `<span class=\"badge badge-status-lg bg-danger\">${getI18n('orgSync.status.failed', '失敗')}</span>`;
+                break;
+            case 'running':
+                statusBadge = `<span class=\"badge badge-status-lg bg-primary\">${getI18n('orgSync.status.running', '進行中')}</span>`;
+                break;
+            default:
+                statusBadge = `<span class=\"badge badge-status-lg bg-secondary\">${getI18n('orgSync.status.unknown', '未知')}</span>`;
+        }
+        
+        // 同步類型
+        let syncTypeText = '';
+        switch (record.sync_type) {
+            case 'full':
+                syncTypeText = getI18n('orgSync.type.full', '完整同步');
+                break;
+            case 'departments':
+                syncTypeText = getI18n('orgSync.type.departments', '部門同步');
+                break;
+            case 'users':
+                syncTypeText = getI18n('orgSync.type.users', '用戶同步');
+                break;
+            default:
+                syncTypeText = record.sync_type;
+        }
+        
+        // 統計信息（使用 i18n 標籤）
+        const stats = [];
+        const deptLabel = getI18n('orgSync.labels.departments', '部門');
+        const userLabel = getI18n('orgSync.labels.users', '用戶');
+        if (record.departments_created || record.departments_updated) {
+            stats.push(`${deptLabel}: +${record.departments_created || 0}/${record.departments_updated || 0}`);
+        }
+        if (record.users_created || record.users_updated) {
+            stats.push(`${userLabel}: +${record.users_created || 0}/${record.users_updated || 0}`);
+        }
+        const statsText = stats.length > 0 ? stats.join('<br>') : '-';
+        
+        return `
+            <tr>
+                <td>${syncTypeText}</td>
+                <td>${statusBadge}</td>
+                <td>${startTime}</td>
+                <td>${endTime}</td>
+                <td>${duration}</td>
+                <td><small>${statsText}</small></td>
+            </tr>
+        `;
+    }).join('');
+    
+    tableBody.innerHTML = rows;
+}
+
+function showErrorDetails(recordId, errorMessage) {
+    AppUtils.showError(`${getI18n('orgSync.errorPrefix', '同步錯誤')} (ID: ${recordId})：${errorMessage}`);
+}
+
+// ===== i18n helper without calling window.i18n.t =====
+function getI18n(key, fallback = '') {
+    const container = document.getElementById('org-sync-i18n');
+    if (!container) return fallback || key;
+    const el = container.querySelector(`[data-i18n="${key}"]`);
+    if (el && el.textContent && el.textContent.trim().length > 0) {
+        return el.textContent.trim();
+    }
+    return fallback || key;
+}
 </script>
 
+<!-- Hidden i18n texts for Organization Sync (used by JS without window.i18n.t) -->
+<div id="org-sync-i18n" class="d-none">
+    <span data-i18n="orgSync.openButton">同步組織架構</span>
+    <span data-i18n="orgSync.modalTitle">組織架構同步管理</span>
+    <span data-i18n="orgSync.currentStatus">當前同步狀態</span>
+    <span data-i18n="orgSync.loadingStatus">載入狀態中...</span>
+    <span data-i18n="orgSync.idle">系統空閒</span>
+    <span data-i18n="orgSync.readyToRun">準備執行新的同步作業</span>
+    <span data-i18n="orgSync.syncing">同步進行中</span>
+    <span data-i18n="orgSync.syncingDesc">正在同步組織架構資料...</span>
+    <span data-i18n="orgSync.preparing">準備開始...</span>
+    <span data-i18n="orgSync.statsTitle">組織架構統計</span>
+    <span data-i18n="orgSync.statsLoading">載入統計資料中...</span>
+    <span data-i18n="orgSync.statsError">統計資料載入失敗</span>
+    <span data-i18n="orgSync.departmentsStats">部門統計</span>
+    <span data-i18n="orgSync.usersStats">用戶統計</span>
+    <span data-i18n="orgSync.total">總數</span>
+    <span data-i18n="orgSync.active">活躍</span>
+    <span data-i18n="orgSync.recentHistory">最近同步記錄</span>
+    <span data-i18n="orgSync.viewFullHistory">查看完整歷史</span>
+    <span data-i18n="orgSync.noRecentHistory">尚無同步記錄</span>
+    <span data-i18n="orgSync.fullSync">完整同步</span>
+    <span data-i18n="orgSync.departmentsSync">部門同步</span>
+    <span data-i18n="orgSync.contactsSync">用戶同步</span>
+    <span data-i18n="orgSync.historyModalTitle">同步歷史記錄</span>
+    <span data-i18n="orgSync.historyLoading">載入歷史記錄中...</span>
+    <span data-i18n="orgSync.historyNoRecordsTitle">尚無同步記錄</span>
+    <span data-i18n="orgSync.historyNoRecordsHint">請先執行組織架構同步</span>
+    <span data-i18n="orgSync.table.type">類型</span>
+    <span data-i18n="orgSync.table.status">狀態</span>
+    <span data-i18n="orgSync.table.startTime">開始時間</span>
+    <span data-i18n="orgSync.table.endTime">結束時間</span>
+    <span data-i18n="orgSync.table.duration">耗時</span>
+    <span data-i18n="orgSync.table.stats">統計</span>
+    <span data-i18n="orgSync.table.trigger">觸發者</span>
+    <span data-i18n="orgSync.table.actions">操作</span>
+    <span data-i18n="orgSync.lastSyncPrefix">最後同步:</span>
+    <span data-i18n="orgSync.syncIdPrefix">同步ID:</span>
+    <span data-i18n="orgSync.addTeamFirst">請先新增團隊後再執行同步</span>
+    <span data-i18n="orgSync.addTeamFirstForHistory">請先新增團隊後再查看同步歷史</span>
+    <span data-i18n="orgSync.syncStarted">組織架構同步已開始</span>
+    <span data-i18n="orgSync.syncCompleted">組織架構同步已完成！</span>
+    <span data-i18n="orgSync.syncCompletedWithIssues">同步完成，但可能有部分錯誤</span>
+    <span data-i18n="orgSync.syncFailedPrefix">同步失敗</span>
+    <span data-i18n="orgSync.startFailedPrefix">啟動同步失敗</span>
+    <span data-i18n="orgSync.triggerFailedPrefix">觸發全域同步失敗</span>
+    <span data-i18n="orgSync.statusTimeout">同步狀態檢查超時，請手動刷新頁面查看結果</span>
+    <span data-i18n="orgSync.viewErrorDetails">查看錯誤詳情</span>
+    <span data-i18n="orgSync.errorPrefix">同步錯誤</span>
+    <span data-i18n="orgSync.status.completed">完成</span>
+    <span data-i18n="orgSync.status.failed">失敗</span>
+    <span data-i18n="orgSync.status.running">進行中</span>
+    <span data-i18n="orgSync.status.unknown">未知</span>
+    <span data-i18n="orgSync.type.full">完整同步</span>
+    <span data-i18n="orgSync.type.departments">部門同步</span>
+    <span data-i18n="orgSync.type.users">用戶同步</span>
+    <span data-i18n="orgSync.labels.departments">部門</span>
+    <span data-i18n="orgSync.labels.users">用戶</span>
+</div>
 <style>
 .team-card {
     transition: all 0.2s ease;
@@ -583,5 +1543,18 @@ document.addEventListener('languageChanged', updatePageTitle);
 #teamModal .modal-lg {
     max-width: 800px;
 }
+
+/* Prevent sync action buttons from wrapping and stretching */
+.no-stretch .btn {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+/* Keep org stats in one line and aligned */
+.org-compact-stats { white-space: nowrap; }
+.org-compact-stats .stat { display: inline-flex; align-items: baseline; }
+
+/* Enlarge status badges in Sync History */
+/* moved to /static/css/style.css */
 </style>
 {% endblock %}

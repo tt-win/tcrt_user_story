@@ -16,6 +16,7 @@ from app.models.database_models import (
     TestRunItem as TestRunItemDB,
     TestRunConfig as TestRunConfigDB,
     Team as TeamDB,
+    TestRunItemResultHistory as ResultHistoryDB,
 )
 from app.models.lark_types import Priority, TestResultStatus
 from pydantic import BaseModel, Field
@@ -86,6 +87,9 @@ class TestRunItemUpdate(BaseModel):
     execution_duration: Optional[int] = None
     attachments: Optional[List[AttachmentItem]] = None
     execution_results: Optional[List[AttachmentItem]] = None
+    # Optional: 變更原因（寫入歷程）
+    change_reason: Optional[str] = None
+    change_source: Optional[str] = None  # single, api
 
 
 class TestRunItemResponse(BaseModel):
@@ -111,6 +115,20 @@ class TestRunItemResponse(BaseModel):
     updated_at: Optional[datetime]
 
 
+class ResultHistoryItem(BaseModel):
+    id: int
+    item_id: int
+    prev_result: Optional[str] = None
+    new_result: Optional[str] = None
+    prev_executed_at: Optional[datetime] = None
+    new_executed_at: Optional[datetime] = None
+    changed_by_id: Optional[str] = None
+    changed_by_name: Optional[str] = None
+    change_source: Optional[str] = None
+    change_reason: Optional[str] = None
+    changed_at: datetime
+
+
 class BatchCreateRequest(BaseModel):
     items: List[TestRunItemCreate]
 
@@ -123,7 +141,8 @@ class BatchCreateResponse(BaseModel):
 
 
 class BatchUpdateResultRequest(BaseModel):
-    updates: List[Dict[str, Any]]  # each { id: int, test_result: str, executed_at?: datetime }
+    updates: List[Dict[str, Any]]  # each { id: int, test_result?: str, executed_at?: datetime, assignee_name?: str, change_reason?: str }
+    change_source: Optional[str] = None  # batch
 
 
 def _to_json(value: Any) -> Optional[str]:
@@ -178,6 +197,33 @@ def _db_to_response(item: TestRunItemDB) -> TestRunItemResponse:
         created_at=item.created_at,
         updated_at=item.updated_at,
     )
+
+
+def _add_result_history(db: Session, item: TestRunItemDB,
+                        prev_result, prev_executed_at,
+                        new_result, new_executed_at,
+                        source: Optional[str] = None,
+                        reason: Optional[str] = None,
+                        changed_by_id: Optional[str] = None,
+                        changed_by_name: Optional[str] = None):
+    # 僅在真的有變更時寫入
+    if prev_result == new_result and prev_executed_at == new_executed_at:
+        return
+    rec = ResultHistoryDB(
+        team_id=item.team_id,
+        config_id=item.config_id,
+        item_id=item.id,
+        prev_result=prev_result,
+        new_result=new_result,
+        prev_executed_at=prev_executed_at,
+        new_executed_at=new_executed_at,
+        changed_by_id=changed_by_id,
+        changed_by_name=changed_by_name or 'web',
+        change_source=source or 'single',
+        change_reason=reason,
+        changed_at=datetime.utcnow()
+    )
+    db.add(rec)
 
 
 @router.get("/", response_model=List[TestRunItemResponse])
@@ -316,6 +362,8 @@ async def update_item(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到項目")
 
     data = payload.model_dump(exclude_unset=True)
+    prev_result = item.test_result
+    prev_executed_at = item.executed_at
     # Simple field updates
     for key in ['title', 'precondition', 'steps', 'expected_result', 'execution_duration']:
         if key in data:
@@ -328,7 +376,7 @@ async def update_item(
     if 'executed_at' in data:
         item.executed_at = data['executed_at']
 
-    # Assignee
+    # Assignee (object form)
     if 'assignee' in data:
         assignee = data['assignee']
         if assignee is None:
@@ -340,6 +388,22 @@ async def update_item(
             item.assignee_email = assignee.get('email')
             item.assignee_json = _to_json(assignee)
 
+    # Assignee (simple name form)
+    if 'assignee_name' in data:
+        name = (data.get('assignee_name') or '').strip()
+        if name:
+            item.assignee_name = name
+            item.assignee_id = None
+            item.assignee_en_name = None
+            item.assignee_email = None
+            item.assignee_json = None
+        else:
+            item.assignee_id = None
+            item.assignee_name = None
+            item.assignee_en_name = None
+            item.assignee_email = None
+            item.assignee_json = None
+
     # Attachments
     if 'attachments' in data:
         attachments = data['attachments'] or []
@@ -347,6 +411,17 @@ async def update_item(
     if 'execution_results' in data:
         execution_results = data['execution_results'] or []
         item.execution_results_json = _to_json(execution_results)
+
+    # 記錄歷程（若有變更）
+    _add_result_history(
+        db, item,
+        prev_result, prev_executed_at,
+        item.test_result, item.executed_at,
+        source=data.get('change_source') or 'single',
+        reason=data.get('change_reason'),
+        changed_by_id=None,
+        changed_by_name=None
+    )
 
     item.updated_at = datetime.utcnow()
     db.commit()
@@ -369,6 +444,12 @@ async def delete_item(
     ).first()
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到項目")
+    # 保險刪除對應歷程（避免 DB 未啟用 FK 級聯時殘留）
+    db.query(ResultHistoryDB).filter(
+        ResultHistoryDB.team_id == team_id,
+        ResultHistoryDB.config_id == config_id,
+        ResultHistoryDB.item_id == item_id,
+    ).delete(synchronize_session=False)
     db.delete(item)
     db.commit()
 
@@ -383,25 +464,78 @@ async def batch_update_results(
     _verify_team_and_config(team_id, config_id, db)
     success = 0
     errors: List[str] = []
+    source = payload.change_source or 'batch'
     for upd in payload.updates:
-        item_id = upd.get('id')
-        result = upd.get('test_result')
-        if not item_id or not result:
-            errors.append("缺少 id 或 test_result")
+        try:
+            item_id = upd.get('id')
+            # 檢查是否至少有一個要更新的欄位
+            if not item_id or not any(key in upd for key in ['test_result', 'assignee_name', 'executed_at']):
+                errors.append("缺少 id 或更新欄位")
+                continue
+
+            item = db.query(TestRunItemDB).filter(
+                TestRunItemDB.id == item_id,
+                TestRunItemDB.team_id == team_id,
+                TestRunItemDB.config_id == config_id,
+            ).first()
+            if not item:
+                errors.append(f"項目 {item_id} 不存在")
+                continue
+
+            prev_result = item.test_result
+            prev_executed_at = item.executed_at
+
+            # 更新測試結果
+            if 'test_result' in upd and upd['test_result'] is not None:
+                item.test_result = upd['test_result']
+
+            # 更新執行時間
+            if 'executed_at' in upd:
+                executed_at_value = upd.get('executed_at')
+                if executed_at_value:
+                    # 處理 ISO 字串格式的 datetime
+                    if isinstance(executed_at_value, str):
+                        try:
+                            if executed_at_value.endswith('Z'):
+                                executed_at_value = executed_at_value[:-1] + '+00:00'
+                            item.executed_at = datetime.fromisoformat(executed_at_value.replace('Z', '+00:00'))
+                        except Exception:
+                            item.executed_at = datetime.utcnow()
+                    else:
+                        item.executed_at = executed_at_value
+                else:
+                    item.executed_at = datetime.utcnow()
+
+            # 更新執行者
+            if 'assignee_name' in upd:
+                assignee_name = upd.get('assignee_name')
+                if assignee_name:
+                    item.assignee_name = assignee_name
+                    item.assignee_id = None
+                    item.assignee_en_name = None
+                    item.assignee_email = None
+                    item.assignee_json = None
+                else:
+                    item.assignee_id = None
+                    item.assignee_name = None
+                    item.assignee_en_name = None
+                    item.assignee_email = None
+                    item.assignee_json = None
+
+            # 記錄歷程（僅在有變更時會落盤）
+            _add_result_history(
+                db, item,
+                prev_result, prev_executed_at,
+                item.test_result, item.executed_at,
+                source=source,
+                reason=upd.get('change_reason')
+            )
+
+            item.updated_at = datetime.utcnow()
+            success += 1
+        except Exception as e:
+            errors.append(f"項目 {upd.get('id')} 更新失敗: {str(e)}")
             continue
-        item = db.query(TestRunItemDB).filter(
-            TestRunItemDB.id == item_id,
-            TestRunItemDB.team_id == team_id,
-            TestRunItemDB.config_id == config_id,
-        ).first()
-        if not item:
-            errors.append(f"項目 {item_id} 不存在")
-            continue
-        item.test_result = result
-        if 'executed_at' in upd:
-            item.executed_at = upd.get('executed_at')
-        item.updated_at = datetime.utcnow()
-        success += 1
     db.commit()
     return {
         "success": len(errors) == 0,
@@ -410,6 +544,47 @@ async def batch_update_results(
         "error_count": len(errors),
         "error_messages": errors,
     }
+
+
+@router.get("/{item_id}/result-history", response_model=List[ResultHistoryItem])
+async def get_result_history(
+    team_id: int,
+    config_id: int,
+    item_id: int,
+    db: Session = Depends(get_db),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200)
+):
+    _verify_team_and_config(team_id, config_id, db)
+    item = db.query(TestRunItemDB).filter(
+        TestRunItemDB.id == item_id,
+        TestRunItemDB.team_id == team_id,
+        TestRunItemDB.config_id == config_id,
+    ).first()
+    if not item:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到項目")
+
+    q = db.query(ResultHistoryDB).filter(
+        ResultHistoryDB.team_id == team_id,
+        ResultHistoryDB.config_id == config_id,
+        ResultHistoryDB.item_id == item_id,
+    ).order_by(ResultHistoryDB.changed_at.desc())
+    records = q.offset(skip).limit(limit).all()
+    def _map(r: ResultHistoryDB) -> ResultHistoryItem:
+        return ResultHistoryItem(
+            id=r.id,
+            item_id=r.item_id,
+            prev_result=r.prev_result.value if hasattr(r.prev_result, 'value') else r.prev_result,
+            new_result=r.new_result.value if hasattr(r.new_result, 'value') else r.new_result,
+            prev_executed_at=r.prev_executed_at,
+            new_executed_at=r.new_executed_at,
+            changed_by_id=r.changed_by_id,
+            changed_by_name=r.changed_by_name,
+            change_source=r.change_source,
+            change_reason=r.change_reason,
+            changed_at=r.changed_at,
+        )
+    return [_map(r) for r in records]
 
 
 @router.get("/statistics", response_model=Dict[str, Any])
@@ -441,8 +616,8 @@ async def get_items_statistics(
         "failed_runs": failed,
         "retest_runs": retest,
         "not_available_runs": na,
-        "execution_rate": round(execution_rate, 2),
-        "pass_rate": round(pass_rate, 2),
-        "total_pass_rate": round(total_pass_rate, 2),
+        # 無條件捨去為整數
+        "execution_rate": int(execution_rate // 1),
+        "pass_rate": int(pass_rate // 1),
+        "total_pass_rate": int(total_pass_rate // 1),
     }
-

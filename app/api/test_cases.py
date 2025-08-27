@@ -51,13 +51,15 @@ def filter_test_cases(records: List[dict], **filters) -> List[dict]:
     """根據條件過濾測試案例記錄"""
     filtered_records = records
     
-    # 搜尋標題
-    if filters.get('search'):
-        search_term = filters['search'].lower()
-        filtered_records = [
-            r for r in filtered_records 
-            if search_term in r.get('fields', {}).get('Title', '').lower()
-        ]
+    # 關鍵字搜尋：標題或測試案例編號
+    if filters.get('search') is not None and str(filters['search']).strip() != '':
+        search_term = str(filters['search']).strip().lower()
+        def rec_matches(r: dict) -> bool:
+            f = r.get('fields', {}) or {}
+            title = str(f.get('Title', '') or '').lower()
+            num = str(f.get('Test Case Number', '') or '').lower()
+            return (search_term in title) or (search_term in num)
+        filtered_records = [r for r in filtered_records if rec_matches(r)]
     
     # TCG 過濾
     if filters.get('tcg_filter'):

@@ -10,6 +10,8 @@ from .test_runs import router as test_runs_router
 from .attachments import router as attachments_router
 from .tcg import router as tcg_router
 from .test_run_items import router as test_run_items_router
+from .contacts import router as contacts_router
+from .team_sync import router as team_sync_router
 
 # 創建主 API 路由器
 api_router = APIRouter()
@@ -22,5 +24,7 @@ api_router.include_router(test_runs_router)
 api_router.include_router(attachments_router)
 api_router.include_router(tcg_router)
 api_router.include_router(test_run_items_router)
+api_router.include_router(contacts_router)
+api_router.include_router(team_sync_router)
 
 # 可以在此添加其他 API 路由

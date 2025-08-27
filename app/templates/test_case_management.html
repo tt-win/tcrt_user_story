@@ -5,6 +5,15 @@
 {% block head %}
 <!-- Markdown 編輯器相關資源 -->
 <script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js"></script>
+<script>
+// Configure marked to treat single newlines as <br> so previews show line breaks
+if (window.marked && typeof window.marked.setOptions === 'function') {
+    window.marked.setOptions({
+        gfm: true,
+        breaks: true
+    });
+}
+</script>
 
 <!-- 快速編輯樣式 -->
 <style>
@@ -670,6 +679,35 @@ html, body { height: 100%; overflow: hidden; }
 
 {% block scripts %}
 <script>
+// 與執行頁共用的 Test Case 詳細快取設定（localStorage）
+const EXEC_TC_CACHE_PREFIX = 'tr_exec_tc_cache_v1';
+const EXEC_TC_CACHE_TTL_MS = 60 * 60 * 1000; // 1 小時
+
+function getExecCacheKey(testCaseNumber) {
+    try {
+        const team = AppUtils.getCurrentTeam();
+        const teamId = team && team.id ? team.id : 'unknown';
+        return `${EXEC_TC_CACHE_PREFIX}:${teamId}:${testCaseNumber}`;
+    } catch (_) {
+        return `${EXEC_TC_CACHE_PREFIX}:unknown:${testCaseNumber}`;
+    }
+}
+
+function setExecCachedTestCase(testCaseNumber, data) {
+    try {
+        const key = getExecCacheKey(testCaseNumber);
+        const payload = { ts: Date.now(), data };
+        localStorage.setItem(key, JSON.stringify(payload));
+    } catch (_) {}
+}
+
+function removeExecCachedTestCase(testCaseNumber) {
+    try {
+        const key = getExecCacheKey(testCaseNumber);
+        localStorage.removeItem(key);
+    } catch (_) {}
+}
+
 let testCases = [];
 let filteredTestCases = [];
 let selectedTestCases = new Set();
@@ -685,12 +723,100 @@ const TCG_CACHE_KEY = 'tcg_cache';
 const TCG_CACHE_TIMESTAMP_KEY = 'tcg_cache_timestamp';
 const TCG_CACHE_EXPIRY = 24 * 60 * 60 * 1000; // 24小時過期
 
-document.addEventListener('DOMContentLoaded', function() {
-    initTestCaseManagement();
-    bindEvents();
-    initializeMarkdownEditor();
-    // 初始化列表高度（等待初始排版完成）
-    setTimeout(adjustTestCasesScrollHeight, 0);
+document.addEventListener('DOMContentLoaded', async function() {
+    try {
+        // 先處理 URL 的 team_id，確保後續載入不會因為未選擇團隊而中止
+        const urlParams = new URLSearchParams(window.location.search);
+        const teamIdParam = urlParams.get('team_id');
+        if (teamIdParam && (!AppUtils.getCurrentTeam() || !AppUtils.getCurrentTeam().id)) {
+            const teamId = parseInt(teamIdParam);
+            if (!isNaN(teamId)) {
+                AppUtils.setCurrentTeam({ id: teamId, name: 'From Test Run' });
+            }
+        }
+    } catch (_) {}
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const minimal = urlParams.get('minimal') === '1' || urlParams.get('editor') === '1';
+    const tcNumber = urlParams.get('tc') || urlParams.get('test_case_number');
+    const mode = urlParams.get('mode') || 'preview';
+
+    if (minimal && tcNumber) {
+        // 最小模式：不載入列表，直接開啟指定測試案例
+        try {
+            // 綁定事件（包含儲存按鈕）
+            bindEvents();
+            initializeMarkdownEditor();
+            // 隱藏列表與搜尋區塊
+            const page = document.getElementById('testCasesPage');
+            if (page) {
+                const searchCard = document.getElementById('searchFilterCard');
+                const tableCard = document.querySelector('#testCasesTable')?.closest('.card');
+                if (searchCard) searchCard.style.display = 'none';
+                if (tableCard) tableCard.style.display = 'none';
+            }
+            // 套用最小模式樣式：隱藏頁首/頁尾與背景容器
+            try {
+                document.body.classList.add('minimal-mode');
+                if (!document.getElementById('minimal-mode-style')) {
+                    const style = document.createElement('style');
+                    style.id = 'minimal-mode-style';
+                    style.textContent = `
+                        .minimal-mode .app-header, .minimal-mode .app-footer { display: none !important; }
+                        .minimal-mode #testCasesPage, .minimal-mode #searchFilterCard, .minimal-mode #loadingProgress, .minimal-mode #testCasesPagination { display: none !important; }
+                        body.minimal-mode { overflow: hidden; }
+                    `;
+                    document.head.appendChild(style);
+                }
+            } catch (_) {}
+
+            // 直接從 API 抓此測試案例
+            const currentTeam = AppUtils.getCurrentTeam();
+            if (!currentTeam || !currentTeam.id) throw new Error('請先選擇團隊');
+            const resp = await fetch(`/api/teams/${currentTeam.id}/testcases/?search=${encodeURIComponent(tcNumber)}&limit=1`);
+            if (!resp.ok) throw new Error('載入測試案例失敗');
+            const arr = await resp.json();
+            const target = Array.isArray(arr) ? arr.find(tc => tc.test_case_number === tcNumber) : null;
+            if (target) {
+                // 設定最小模式旗標，供顯示 Modal 時使用無背板
+                window.__MINIMAL_MODE__ = true;
+                showTestCaseModal(target);
+                if (mode === 'edit' || mode === 'split') {
+                    // 切換為可編輯模式（若可行）
+                    try { setEditorMode('split'); } catch (_) {}
+                }
+            } else {
+                showError('找不到指定的測試案例');
+            }
+        } catch (e) {
+            console.error('最小模式開啟測試案例失敗:', e);
+            // 回退到完整載入
+            await initTestCaseManagement();
+            bindEvents();
+            initializeMarkdownEditor();
+        }
+    } else {
+        // 原本完整流程
+        await initTestCaseManagement();
+        bindEvents();
+        initializeMarkdownEditor();
+        // 初始化列表高度（等待初始排版完成）
+        setTimeout(adjustTestCasesScrollHeight, 0);
+        try {
+            if (tcNumber) {
+                const openAfterLoad = async () => {
+                    if (!Array.isArray(testCases) || testCases.length === 0) {
+                        await loadTestCases(false);
+                    }
+                    const target = testCases.find(tc => (tc.test_case_number === tcNumber) || (tc.record_id === tcNumber));
+                    if (target) {
+                        showTestCaseModal(target);
+                    }
+                };
+                setTimeout(openAfterLoad, 0);
+            }
+        } catch (_) {}
+    }
 });
 
 // TCG 快取管理函數
@@ -1281,7 +1407,8 @@ function showTestCaseModal(testCase = null) {
     
     // 只創建一次 Modal 實例，避免 backdrop 累積
     if (!testCaseModalInstance) {
-        testCaseModalInstance = new bootstrap.Modal(modal);
+        const modalOptions = window.__MINIMAL_MODE__ ? { backdrop: false, keyboard: true, focus: true } : undefined;
+        testCaseModalInstance = new bootstrap.Modal(modal, modalOptions);
         
         // 只綁定一次事件監聽器
         // 顯示前立即重置滾動，並暫時隱藏內容避免進場彈跳
@@ -1294,10 +1421,52 @@ function showTestCaseModal(testCase = null) {
             calculateDynamicHeights();
             resetModalScrollPositions(modal);
             modal.classList.remove('modal-preparing');
+            // 綁定鍵盤左右鍵支援（僅檢視狀態觸發）
+            document.addEventListener('keydown', handleTestCaseModalKeydown);
         });
+        // 關閉時移除鍵盤事件監聽
+        modal.addEventListener('hidden.bs.modal', function() {
+            document.removeEventListener('keydown', handleTestCaseModalKeydown);
+            // 最小模式：在 Modal 關閉後一併關閉彈出視窗
+            if (window.__MINIMAL_MODE__) {
+                try { window.close(); } catch (e) {}
+            }
+        });
+
+        // 最小模式：點擊關閉按鈕時一併關閉彈出視窗
+        if (window.__MINIMAL_MODE__) {
+            const closeBtn = modal.querySelector('.btn-close');
+            if (closeBtn && !closeBtn._closeWindowBound) {
+                closeBtn.addEventListener('click', function() {
+                    setTimeout(function(){ try { window.close(); } catch (e) {} }, 0);
+                });
+                closeBtn._closeWindowBound = true;
+            }
+        }
     }
     
     testCaseModalInstance.show();
+}
+
+// 鍵盤支援：在檢視 Test Case Modal 時使用左右鍵切換
+function handleTestCaseModalKeydown(e) {
+    try {
+        const modal = document.getElementById('testCaseModal');
+        if (!modal || !modal.classList.contains('show')) return;
+        // 避免在輸入元件或可編輯區域觸發
+        const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
+        const isEditable = e.target && (e.target.isContentEditable || tag === 'input' || tag === 'textarea' || tag === 'select');
+        if (isEditable) return;
+        // 編輯模式時不觸發
+        if (typeof currentEditorMode !== 'undefined' && currentEditorMode !== 'preview') return;
+        if (e.key === 'ArrowLeft') {
+            e.preventDefault();
+            showPrevTestCase();
+        } else if (e.key === 'ArrowRight') {
+            e.preventDefault();
+            showNextTestCase();
+        }
+    } catch (_) {}
 }
 
 function viewTestCase(id) {
@@ -1398,6 +1567,14 @@ function deleteTestCase(id) {
             const deletedId = recordId;
             testCases = testCases.filter(tc => tc.record_id !== deletedId);
             filteredTestCases = filteredTestCases.filter(tc => tc.record_id !== deletedId);
+
+            // 同步移除執行頁快取
+            try {
+                if (testCase && (testCase.test_case_number || testCase.record_id)) {
+                    const number = testCase.test_case_number;
+                    if (number) removeExecCachedTestCase(number);
+                }
+            } catch (e) { console.debug('remove exec cache (delete) skipped:', e); }
             
             // 重新渲染表格和分頁
             renderTestCasesTable();
@@ -1525,6 +1702,21 @@ async function saveTestCase() {
             
             // 重新載入測試案例（不顯示載入動畫）
             await loadTestCases(false);
+
+            // 同步更新執行頁快取：若編號變更則移除舊快取，並寫入新資料
+            try {
+                const oldNumber = (originalFormData && originalFormData.test_case_number) ? originalFormData.test_case_number : null;
+                const newNumber = testCaseData.test_case_number;
+                if (oldNumber && oldNumber !== newNumber) {
+                    removeExecCachedTestCase(oldNumber);
+                }
+                // 從最新列表取得完整資料寫入快取
+                const updatedId = document.getElementById('testCaseId').value;
+                const updated = testCases.find(tc => (updatedId && tc.record_id === updatedId) || tc.test_case_number === newNumber);
+                if (updated && updated.test_case_number) {
+                    setExecCachedTestCase(updated.test_case_number, updated);
+                }
+            } catch (e) { console.debug('sync exec cache skipped:', e); }
             
             // 恢復儲存按鈕狀態
             const saveBtn = document.getElementById('saveTestCaseBtn');
@@ -1621,6 +1813,14 @@ async function saveAndAddNext() {
         
         // 重新載入測試案例（不顯示載入動畫）
         await loadTestCases(false);
+
+        // 將新建的案例寫入執行頁快取
+        try {
+            const created = testCases.find(tc => tc.test_case_number === testCaseData.test_case_number);
+            if (created && created.test_case_number) {
+                setExecCachedTestCase(created.test_case_number, created);
+            }
+        } catch (e) { console.debug('set exec cache (create) skipped:', e); }
         
         showSuccess(window.i18n ? window.i18n.t('messages.testCaseCreatedNext') : '測試案例新增完成，準備下一筆');
         

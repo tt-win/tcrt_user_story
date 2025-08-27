@@ -123,7 +123,7 @@ function renderTeamCards() {
     const teamsHtml = teams.map(team => `
         <div class="col-md-6 col-lg-4 mb-4">
             <div class="card h-100 team-card">
-                <div class="card-body">
+                <div class="card-body d-flex flex-column h-100">
                     <div class="d-flex align-items-start mb-3">
                         <div class="flex-shrink-0 me-3">
                             <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center" 
@@ -138,20 +138,20 @@ function renderTeamCards() {
                             </p>
                         </div>
                     </div>
-                    
-                    <div class="mb-3">
-                        <small class="text-muted">
-                            <i class="fas fa-table me-1"></i>${window.i18n ? window.i18n.t('team.linked') : '已連結 Lark 資料源'}
-                        </small>
-                    </div>
-                    
-                    <div class="d-grid gap-2">
+                    <div class="mt-auto pt-2">
+                        <div class="mb-2">
+                            <small class="text-muted">
+                                <i class="fas fa-table me-1"></i><span data-i18n="team.linked">已連結 Lark 資料源</span>
+                            </small>
+                        </div>
+                        <div class="d-grid gap-2">
                         <button class="btn btn-primary" onclick="event.stopPropagation(); selectTeamForTestCases(${team.id})">
-                            <i class="fas fa-list-check me-2"></i>${window.i18n ? window.i18n.t('navigation.testCaseManagement') : 'Test Case 管理'}
+                            <i class="fas fa-list-check me-2"></i><span data-i18n="navigation.testCaseManagement">Test Case 管理</span>
                         </button>
                         <button class="btn btn-secondary" onclick="event.stopPropagation(); selectTeamForTestRuns(${team.id})">
-                            <i class="fas fa-play-circle me-2"></i>${window.i18n ? window.i18n.t('navigation.testRunManagement') : 'Test Run 管理'}
+                            <i class="fas fa-play-circle me-2"></i><span data-i18n="navigation.testRunManagement">Test Run 管理</span>
                         </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -167,8 +167,8 @@ function renderTeamCards() {
                          style="width: 48px; height: 48px; font-size: 18px; border: 2px dashed var(--tr-primary);">
                         <i class="fas fa-plus"></i>
                     </div>
-                    <h6 class="text-primary mb-1">${window.i18n ? window.i18n.t('team.addMoreTeams') : '新增更多團隊'}</h6>
-                    <small class="text-muted">${window.i18n ? window.i18n.t('team.addMoreTeamsHint') : '建立新的團隊專案'}</small>
+                    <h6 class="text-primary mb-1"><span data-i18n="team.addMoreTeams">新增更多團隊</span></h6>
+                    <small class="text-muted"><span data-i18n="team.addMoreTeamsHint">建立新的團隊專案</span></small>
                 </div>
             </div>
         </div>
@@ -178,7 +178,7 @@ function renderTeamCards() {
     
     // Retranslate the newly added content
     if (window.i18n && window.i18n.isReady()) {
-        window.i18n.retranslate();
+        window.i18n.retranslate(container);
     }
 }
 
@@ -189,15 +189,8 @@ function selectTeamForTestCases(teamId) {
     // 儲存選擇的團隊
     if (AppUtils && AppUtils.setCurrentTeam) {
         AppUtils.setCurrentTeam(team);
-        const successMsg = window.i18n ? 
-            window.i18n.t('team.navigateToTestCases', {name: team.name}) : 
-            `已選擇團隊：${team.name} - 進入測試案例管理`;
-        AppUtils.showSuccess(successMsg);
-        
-        // 跳轉到測試案例管理
-        setTimeout(() => {
-            window.location.href = '/test-case-management';
-        }, 500);
+        // 直接導向測試案例管理（不顯示 Toast）
+        window.location.href = '/test-case-management';
     }
 }
 
@@ -208,15 +201,8 @@ function selectTeamForTestRuns(teamId) {
     // 儲存選擇的團隊
     if (AppUtils && AppUtils.setCurrentTeam) {
         AppUtils.setCurrentTeam(team);
-        const successMsg = window.i18n ? 
-            window.i18n.t('team.navigateToTestRuns', {name: team.name}) : 
-            `已選擇團隊：${team.name} - 進入測試執行管理`;
-        AppUtils.showSuccess(successMsg);
-        
-        // 跳轉到測試執行管理
-        setTimeout(() => {
-            window.location.href = '/test-run-management';
-        }, 500);
+        // 直接導向測試執行管理（不顯示 Toast）
+        window.location.href = '/test-run-management';
     }
 }
 

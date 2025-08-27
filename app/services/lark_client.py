@@ -404,7 +404,13 @@ class LarkUserManager:
         
         # 使用者快取
         self._user_cache = {}  # email -> user_info
+        self._all_users_cache = []  # 完整用戶列表快取
+        self._users_index = {}  # 用戶搜尋索引
+        self._cache_timestamp = None  # 快取時間戳
         self._cache_lock = threading.Lock()
+        
+        # 快取設定
+        self.cache_expiry_hours = 24  # 快取24小時過期
     
     def get_user_by_email(self, email: str) -> Optional[Dict]:
         """根據 Email 取得使用者資訊"""
@@ -462,6 +468,274 @@ class LarkUserManager:
         except Exception as e:
             self.logger.error(f"使用者查詢異常: {e}")
             return None
+    
+    def _is_cache_expired(self) -> bool:
+        """檢查快取是否過期"""
+        if not self._cache_timestamp:
+            return True
+        
+        from datetime import datetime, timedelta
+        expiry_time = self._cache_timestamp + timedelta(hours=self.cache_expiry_hours)
+        return datetime.now() > expiry_time
+    
+    def fetch_all_users(self, force_refresh: bool = False) -> List[Dict]:
+        """
+        拉取所有用戶列表（支援快取）
+        
+        Args:
+            force_refresh: 強制刷新快取
+            
+        Returns:
+            List[Dict]: 用戶列表
+        """
+        with self._cache_lock:
+            # 檢查快取是否有效
+            if not force_refresh and self._all_users_cache and not self._is_cache_expired():
+                self.logger.info(f"使用快取的用戶列表，共 {len(self._all_users_cache)} 個用戶")
+                return self._all_users_cache.copy()
+        
+        self.logger.info("開始拉取所有用戶列表...")
+        
+        try:
+            token = self.auth_manager.get_tenant_access_token()
+            if not token:
+                self.logger.error("無法獲取 access token")
+                return []
+            
+            import requests
+            
+            headers = {
+                'Authorization': f'Bearer {token}',
+                'Content-Type': 'application/json'
+            }
+            
+            all_users = []
+            page_token = None
+            page_count = 0
+            
+            while True:
+                page_count += 1
+                self.logger.debug(f"拉取第 {page_count} 頁用戶資料...")
+                
+                url = f"{self.base_url}/contact/v3/users"
+                params = {
+                    'page_size': 100,  # 每頁最大數量
+                    'user_id_type': 'user_id'
+                }
+                
+                if page_token:
+                    params['page_token'] = page_token
+                
+                response = requests.get(url, headers=headers, params=params, timeout=self.timeout)
+                
+                if response.status_code != 200:
+                    self.logger.error(f"拉取用戶列表失敗，HTTP {response.status_code}: {response.text}")
+                    break
+                
+                result = response.json()
+                
+                if result.get('code') != 0:
+                    self.logger.error(f"拉取用戶列表失敗: {result.get('msg')}")
+                    # 如果是權限問題，返回空列表但不報錯
+                    if "Access denied" in str(result.get('msg', '')):
+                        self.logger.warning("Contact API 權限不足，無法拉取用戶列表")
+                    break
+                
+                # 提取用戶資料
+                page_users = result.get('data', {}).get('items', [])
+                all_users.extend(page_users)
+                
+                self.logger.debug(f"第 {page_count} 頁獲得 {len(page_users)} 個用戶，累計 {len(all_users)} 個")
+                
+                # 檢查是否有下一頁
+                has_more = result.get('data', {}).get('has_more', False)
+                page_token = result.get('data', {}).get('page_token')
+                
+                if not has_more or not page_token:
+                    break
+            
+            if all_users:
+                self.logger.info(f"成功拉取 {len(all_users)} 個用戶")
+                
+                # 更新快取
+                with self._cache_lock:
+                    self._all_users_cache = all_users
+                    self._users_index = self._create_search_index(all_users)
+                    from datetime import datetime
+                    self._cache_timestamp = datetime.now()
+                
+                return all_users
+            else:
+                self.logger.warning("未拉取到任何用戶資料")
+                return []
+                
+        except Exception as e:
+            self.logger.error(f"拉取用戶列表異常: {e}")
+            return []
+    
+    def _create_search_index(self, users: List[Dict]) -> Dict:
+        """創建搜尋索引"""
+        index = {
+            'by_id': {},
+            'by_email': {},
+            'by_name': {},
+            'search_terms': {}
+        }
+        
+        for user in users:
+            user_id = user.get('user_id')
+            email = user.get('email')
+            name = user.get('name', '')
+            
+            if user_id:
+                index['by_id'][user_id] = user
+            
+            if email:
+                index['by_email'][email.lower()] = user
+            
+            if name:
+                index['by_name'][name.lower()] = user
+            
+            # 建立搜尋詞索引
+            search_terms = []
+            if name:
+                search_terms.extend(name.lower().split())
+            if email:
+                search_terms.append(email.lower())
+                search_terms.append(email.lower().split('@')[0])
+            
+            for term in search_terms:
+                if term not in index['search_terms']:
+                    index['search_terms'][term] = []
+                index['search_terms'][term].append(user)
+        
+        return index
+    
+    def search_users(self, query: str, limit: int = 50) -> List[Dict]:
+        """
+        搜尋用戶（本地搜尋）
+        
+        Args:
+            query: 搜尋關鍵字
+            limit: 結果數量限制
+            
+        Returns:
+            List[Dict]: 搜尋結果
+        """
+        if not query or not query.strip():
+            return []
+        
+        # 確保有用戶資料
+        if not self._all_users_cache:
+            users = self.fetch_all_users()
+            if not users:
+                return []
+        
+        query = query.lower().strip()
+        results = []
+        seen_ids = set()  # 避免重複結果
+        
+        with self._cache_lock:
+            # 方法1: 精確匹配（優先級最高）
+            if query in self._users_index.get('by_email', {}):
+                user = self._users_index['by_email'][query]
+                if user.get('user_id') not in seen_ids:
+                    results.append(user)
+                    seen_ids.add(user.get('user_id'))
+            
+            if query in self._users_index.get('by_name', {}):
+                user = self._users_index['by_name'][query]
+                if user.get('user_id') not in seen_ids:
+                    results.append(user)
+                    seen_ids.add(user.get('user_id'))
+            
+            # 方法2: 搜尋詞匹配
+            for term, term_users in self._users_index.get('search_terms', {}).items():
+                if query in term:
+                    for user in term_users:
+                        if user.get('user_id') not in seen_ids and len(results) < limit:
+                            results.append(user)
+                            seen_ids.add(user.get('user_id'))
+            
+            # 方法3: 模糊匹配（如果結果不夠）
+            if len(results) < limit:
+                for user in self._all_users_cache:
+                    if len(results) >= limit:
+                        break
+                    
+                    if user.get('user_id') in seen_ids:
+                        continue
+                    
+                    name = user.get('name', '').lower()
+                    email = user.get('email', '').lower()
+                    
+                    if query in name or query in email:
+                        results.append(user)
+                        seen_ids.add(user.get('user_id'))
+        
+        self.logger.debug(f"搜尋 '{query}' 找到 {len(results)} 個結果")
+        return results[:limit]
+    
+    def get_user_by_id(self, user_id: str) -> Optional[Dict]:
+        """根據用戶ID獲取用戶資訊"""
+        # 先檢查索引快取
+        if self._users_index and user_id in self._users_index.get('by_id', {}):
+            return self._users_index['by_id'][user_id]
+        
+        # 如果沒有快取，嘗試拉取用戶列表
+        users = self.fetch_all_users()
+        if users and self._users_index:
+            return self._users_index.get('by_id', {}).get(user_id)
+        
+        return None
+    
+    def format_user_for_frontend(self, user: Dict) -> Dict:
+        """格式化用戶資料供前端使用"""
+        return {
+            'id': user.get('user_id'),
+            'name': user.get('name', ''),
+            'email': user.get('email', ''),
+            'avatar': user.get('avatar', {}).get('avatar_72', ''),
+            'department_name': self._get_department_name(user.get('department_ids', [])),
+            'status': user.get('status', {}).get('is_activated', True),
+            'display_name': f"{user.get('name', '')} ({user.get('email', '')})" if user.get('email') else user.get('name', '')
+        }
+    
+    def _get_department_name(self, department_ids: List[str]) -> str:
+        """獲取部門名稱（簡化實現）"""
+        # 這裡可以後續擴展部門資料的拉取邏輯
+        if department_ids:
+            return f"部門 {len(department_ids)} 個"
+        return "未分配部門"
+    
+    def get_users_for_frontend(self, query: str = None, limit: int = 50) -> List[Dict]:
+        """
+        獲取格式化的用戶列表供前端使用
+        
+        Args:
+            query: 搜尋關鍵字（可選）
+            limit: 結果數量限制
+            
+        Returns:
+            List[Dict]: 格式化的用戶列表
+        """
+        if query:
+            users = self.search_users(query, limit)
+        else:
+            # 返回前N個用戶
+            users = self.fetch_all_users()[:limit] if self._all_users_cache else self.fetch_all_users()[:limit]
+        
+        return [self.format_user_for_frontend(user) for user in users]
+    
+    def clear_user_cache(self):
+        """清空用戶快取"""
+        with self._cache_lock:
+            self._user_cache.clear()
+            self._all_users_cache.clear()
+            self._users_index.clear()
+            self._cache_timestamp = None
+        
+        self.logger.info("用戶快取已清空")
 
 
 class LarkClient:
@@ -652,8 +926,8 @@ class LarkClient:
         with self.table_manager._cache_lock:
             self.table_manager._obj_tokens.clear()
         
-        with self.user_manager._cache_lock:
-            self.user_manager._user_cache.clear()
+        # 使用 user_manager 的清理方法
+        self.user_manager.clear_user_cache()
         
         self.logger.info("所有快取已清理")
     

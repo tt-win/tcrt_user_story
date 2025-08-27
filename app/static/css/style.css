@@ -18,11 +18,22 @@
     --tr-primary-rgb: 74, 144, 226;
     --tr-primary: #4A90E2;
     --tr-primary-dark: #357ABD;
+    --tr-primary-light: #E3F2FD;
     --tr-secondary: #7B68EE;
+    --tr-secondary-dark: #5A4FCF;
+    --tr-secondary-light: #F3F0FF;
     --tr-success: #5CB85C;
+    --tr-success-dark: #449D44;
+    --tr-success-light: #DFF0D8;
     --tr-warning: #F0AD4E;
+    --tr-warning-dark: #EC971F;
+    --tr-warning-light: #FCF8E3;
     --tr-danger: #D9534F;
+    --tr-danger-dark: #C9302C;
+    --tr-danger-light: #F2DEDE;
     --tr-info: #5BC0DE;
+    --tr-info-dark: #31B0D5;
+    --tr-info-light: #D9EDF7;
 
     /* 背景色系 */
     --tr-bg-body: #F8F9FA;
@@ -30,8 +41,10 @@
     --tr-bg-sidebar: #F5F6F7;
     --tr-bg-content: #FFFFFF;
     --tr-bg-card: #FFFFFF;
+    --tr-bg-light: #F8F9FA;
 
     /* 邊框色系 */
+    --tr-border: #DEE2E6;
     --tr-border-light: #E1E5E9;
     --tr-border-medium: #D1D5D9;
     --tr-border-dark: #ADB5BD;
@@ -600,3 +613,90 @@ main > .d-flex.justify-content-between.align-items-center.mb-3 h1.h3 {
 main > .d-flex.justify-content-between.align-items-center.mb-3 p.text-muted {
     color: rgba(74, 144, 226, 0.7) !important;
 }
+:root {
+  --header-height: 64px;
+  --footer-height: 52px;
+}
+
+.app-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--header-height);
+  z-index: 1030;
+}
+
+.app-footer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: var(--footer-height);
+  z-index: 1030;
+}
+
+.app-main {
+  min-height: calc(100vh - var(--header-height) - var(--footer-height));
+  padding-top: calc(var(--header-height) + 8px);
+  padding-bottom: calc(var(--footer-height) + 8px);
+  overflow: auto;
+}
+
+/* Sticky table header within scroll containers */
+.table-sticky thead th {
+  position: sticky;
+  top: 0;
+  background-color: var(--bs-body-bg, #fff);
+  z-index: 2;
+}
+
+/* Inline clear button inside inputs */
+.input-clear-btn {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: none;
+  background: transparent;
+  color: #6c757d;
+  padding: 0;
+  line-height: 1;
+}
+.input-clear-btn:hover { color: #495057; }
+
+/* Seamless input + button in search group */
+.input-group-search .position-relative .form-control {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  border-right: 0;
+}
+.input-group-search .btn {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+/* Apply focus ring to the whole search group, not the button */
+.input-group-search:focus-within {
+  box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, .25);
+  border-radius: 0.375rem;
+}
+/* Remove extra focus shadow from the button itself */
+.input-group-search .btn:focus,
+.input-group-search .btn:focus-visible {
+  box-shadow: none;
+  outline: none;
+}
+
+/* Status badge (slightly larger with more padding) */
+.badge-status-lg {
+  font-size: 0.75rem;
+  padding: 0.45em 0.7em;
+}
+
+/* Fun loading animation (compact, same line-height impression) */
+.fun-loader { width: 220px; height: 28px; position: relative; }
+.fun-track { position: relative; width: 100%; height: 100%; overflow: hidden; }
+.fun-ground { position: absolute; left: 0; right: 0; bottom: 2px; height: 2px; background: repeating-linear-gradient(90deg, #cfd6de 0 12px, #e7ecf2 12px 24px); }
+.fun-runner { position: absolute; bottom: 6px; left: -32px; font-size: 18px; animation: runAcross 2.2s linear infinite; }
+@keyframes runAcross { from { left: -32px; } to { left: calc(100% + 32px); } }
+.fun-dot { position: absolute; bottom: 9px; left: -16px; width: 10px; height: 10px; background: var(--tr-primary, #4A90E2); border-radius: 50%; animation: runAcross 2.2s linear infinite; opacity: .85; }

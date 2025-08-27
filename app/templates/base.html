@@ -16,50 +16,54 @@
     {% block head %}{% endblock %}
 </head>
 <body>
-    <!-- Language Switcher -->
-    <div id="language-switcher" class="position-fixed bottom-0 end-0 ps-3 pe-3 pt-3 pb-2" style="z-index: 1050;">
-        <div class="dropdown">
-            <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" id="languageDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-                <i class="fas fa-globe me-1"></i>
-                <span id="current-language" data-i18n="language.current">中文</span>
-            </button>
-            <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="languageDropdown">
-                <li><a class="dropdown-item" href="#" data-language="zh-TW">
-                    <i class="fas fa-check me-2 text-success" id="check-zh-TW" style="visibility: visible;"></i><span data-i18n="common.languageZhTw" data-i18n-fallback="繁體中文">繁體中文</span>
-                </a></li>
-                <li><a class="dropdown-item" href="#" data-language="en-US">
-                    <i class="fas fa-check me-2 text-success" id="check-en-US" style="visibility: hidden;"></i><span data-i18n="common.languageEnUs" data-i18n-fallback="English">English</span>
-                </a></li>
-            </ul>
-        </div>
-    </div>
-
-    <!-- Flash Messages -->
-    <div id="flash-messages"></div>
-    
-    <!-- Main Content Area -->
-    <main class="container-fluid">
-        <!-- Standardized Page Header -->
-        {% block page_header %}
-        <div class="d-flex justify-content-between align-items-center mb-3 px-3">
-            <div>
+    <!-- App Header (fixed) -->
+    <header class="app-header border-bottom bg-white">
+        <div class="container-fluid d-flex justify-content-between align-items-center h-100 px-3">
+            <div class="py-2">
                 {% block page_title %}
-                <h1 class="h3 mb-1">{% block page_title_text %}頁面標題{% endblock %}</h1>
+                <h1 class="h5 mb-0">{% block page_title_text %}頁面標題{% endblock %}</h1>
                 {% endblock %}
                 {% block page_subtitle %}
-                <p class="text-muted mb-0">{% block page_subtitle_text %}頁面副標題{% endblock %}</p>
+                <small class="text-muted">{% block page_subtitle_text %}頁面副標題{% endblock %}</small>
                 {% endblock %}
             </div>
             {% block page_actions %}
-            <div class="d-flex gap-2">
+            <div class="d-flex gap-2 py-2">
                 <!-- 工具按鈕區域 -->
             </div>
             {% endblock %}
         </div>
-        {% endblock %}
-        
+    </header>
+
+    <!-- Flash Messages (top-right, below fixed header) -->
+    <div id="flash-messages" class="position-fixed" style="z-index: 1060; top: calc(var(--header-height) + 8px); right: 12px;"></div>
+
+    <!-- Main Content Area (scrollable) -->
+    <main class="app-main container-fluid">
         {% block content %}{% endblock %}
     </main>
+
+    <!-- App Footer (fixed) with Language Switcher -->
+    <footer class="app-footer border-top bg-white">
+        <div class="container-fluid d-flex justify-content-end align-items-center h-100 px-3">
+            <div id="language-switcher" class="">
+                <div class="dropdown">
+                    <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" id="languageDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="fas fa-globe me-1"></i>
+                        <span id="current-language" data-i18n="language.current">中文</span>
+                    </button>
+                    <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="languageDropdown">
+                        <li><a class="dropdown-item" href="#" data-language="zh-TW">
+                            <i class="fas fa-check me-2 text-success" id="check-zh-TW" style="visibility: visible;"></i><span data-i18n="common.languageZhTw" data-i18n-fallback="繁體中文">繁體中文</span>
+                        </a></li>
+                        <li><a class="dropdown-item" href="#" data-language="en-US">
+                            <i class="fas fa-check me-2 text-success" id="check-en-US" style="visibility: hidden;"></i><span data-i18n="common.languageEnUs" data-i18n-fallback="English">English</span>
+                        </a></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </footer>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="/static/js/i18n.js"></script>
@@ -72,16 +76,31 @@
     document.addEventListener('DOMContentLoaded', function() {
         // Initialize language switcher
         initLanguageSwitcher();
+        // Ensure translations applied after DOM is ready
+        if (window.i18n && window.i18n.isReady()) {
+            window.i18n.retranslate(document);
+        }
     });
 
     // Wait for i18n to be ready
     document.addEventListener('i18nReady', function(event) {
         updateLanguageSwitcher(event.detail.language);
+        // Apply translations once i18n is ready
+        if (window.i18n) window.i18n.retranslate(document);
     });
 
     // Listen for language changes
     document.addEventListener('languageChanged', function(event) {
         updateLanguageSwitcher(event.detail.language);
+        // Re-translate the whole page on language change
+        if (window.i18n) window.i18n.retranslate(document);
+    });
+
+    // Handle bfcache page restore ensuring translations reapplied
+    window.addEventListener('pageshow', function() {
+        if (window.i18n && window.i18n.isReady()) {
+            window.i18n.retranslate(document);
+        }
     });
 
     function initLanguageSwitcher() {

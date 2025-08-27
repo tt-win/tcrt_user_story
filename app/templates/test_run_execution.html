@@ -3,6 +3,20 @@
 {% block title %}{{ i18n.t('testRun.execution') if i18n else 'Test Run 執行' }} - Test Case Repository Web Tool{% endblock %}
 
 {% block head %}
+<!-- Markdown 編輯器相關資源 -->
+<script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js"></script>
+<script>
+// Configure marked to treat single newlines as <br> so previews show line breaks
+if (window.marked && typeof window.marked.setOptions === 'function') {
+    window.marked.setOptions({
+        breaks: true,
+        gfm: true,
+        headerIds: false,
+        mangle: false
+    });
+}
+</script>
+
 <!-- Test Run 執行頁面樣式 -->
 <style>
 /* Test Run 執行頁面整體布局 */
@@ -150,6 +164,7 @@
 /* 大尺寸測試結果選擇器 */
 .result-selector-lg {
     min-width: 150px;
+    text-align: center; /* 讓容器內文字置中（對部分瀏覽器有幫助） */
 }
 
 .result-selector-lg select {
@@ -157,6 +172,14 @@
     padding: 0.375rem 0.75rem;
     border: 1px solid var(--tr-border-light);
     border-radius: 0.25rem;
+    text-align: center;           /* 置中文本 */
+    text-align-last: center;      /* 大多數瀏覽器對齊選中項 */
+    -moz-text-align-last: center; /* Firefox 專用前綴 */
+}
+
+/* 作為回退，讓下拉選項本身也置中 */
+.result-selector-lg select option {
+    text-align: center;
 }
 
 /* 大尺寸優先級 badge */
@@ -171,6 +194,9 @@
     font-size: 0.85rem;
     padding: 0.4rem 0.8rem;
     font-weight: 500;
+    display: inline-block;        /* 讓寬度可控制並可置中內容 */
+    text-align: center;           /* 置中文本 */
+    min-width: 140px;             /* 與下拉寬度接近，視覺對齊 */
 }
 
 /* 執行者編輯器樣式 */
@@ -300,11 +326,98 @@
     }
 }
 /* Test Case 詳細資料 Modal 內部固定與捲動區域 */
-#testCaseDetailModal .modal-dialog { max-height: 90vh; }
-#testCaseDetailModal .modal-content { display: flex; max-height: 90vh; }
+#testCaseDetailModal .modal-dialog { max-height: 95vh; }
+#testCaseDetailModal .modal-content { display: flex; max-height: 95vh; }
 #testCaseDetailModal .modal-body { display: flex; flex-direction: column; overflow: hidden; }
 #testCaseDetailFixed { flex: 0 0 auto; }
-#testCaseDetailScrollable { flex: 1 1 auto; overflow-y: auto; min-height: 0; }
+#testCaseDetailScrollable { flex: 1 1 auto; overflow-y: auto; min-height: 0; max-height: 100%; }
+
+/* Timeline 樣式 */
+.timeline-item { position: relative; padding-left: 1rem; margin-bottom: 0.75rem; }
+.timeline-item::before { content: ''; position: absolute; left: 0.38rem; top: 0.2rem; width: 8px; height: 8px; border-radius: 50%; background-color: var(--tr-primary, #0d6efd); }
+.timeline-item .time { font-size: 0.75rem; color: var(--tr-text-muted); }
+.timeline-item .status { font-size: 0.85rem; font-weight: 500; }
+.timeline-divider { height: 1px; background: var(--tr-border-light); margin: 0.25rem 0 0.5rem; }
+
+/* 淡色區塊配色（保留配色，不影響捲動） */
+.section-block { padding: 0.75rem; border-radius: 0.375rem; border: 1px solid var(--tr-border-light); }
+.section-precondition { background: rgba(13, 110, 253, 0.06); border-color: rgba(13, 110, 253, 0.2); }
+.section-steps { background: rgba(255, 193, 7, 0.08); border-color: rgba(255, 193, 7, 0.25); }
+.section-expected { background: rgba(25, 135, 84, 0.08); border-color: rgba(25, 135, 84, 0.25); }
+/* 僅內容可捲動：限制內容高度，讓外框固定 */
+/* 外框（#testCaseDetailScrollable）負責捲動；內容區塊不產生次級卷軸 */
+.section-attachments { background: rgba(108, 117, 125, 0.06); border-color: rgba(108, 117, 125, 0.25); }
+
+/* Markdown 內容樣式（Test Case Detail Modal） */
+#testCaseDetailModal .markdown-preview {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.6;
+}
+#testCaseDetailModal .markdown-preview h1,
+#testCaseDetailModal .markdown-preview h2,
+#testCaseDetailModal .markdown-preview h3,
+#testCaseDetailModal .markdown-preview h4,
+#testCaseDetailModal .markdown-preview h5,
+#testCaseDetailModal .markdown-preview h6 {
+    margin-top: 1rem;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+}
+#testCaseDetailModal .markdown-preview h1 { font-size: 1.4rem; }
+#testCaseDetailModal .markdown-preview h2 { font-size: 1.2rem; }
+#testCaseDetailModal .markdown-preview h3 { font-size: 1.05rem; }
+#testCaseDetailModal .markdown-preview h4 { font-size: 0.95rem; }
+#testCaseDetailModal .markdown-preview h5 { font-size: 0.9rem; }
+#testCaseDetailModal .markdown-preview h6 { font-size: 0.85rem; }
+#testCaseDetailModal .markdown-preview ul,
+#testCaseDetailModal .markdown-preview ol {
+    padding-left: 1.5rem;
+    margin-bottom: 1rem;
+}
+#testCaseDetailModal .markdown-preview code {
+    background-color: var(--tr-bg-sidebar);
+    padding: 0.125rem 0.25rem;
+    border-radius: 0.25rem;
+    font-size: 0.875em;
+}
+#testCaseDetailModal .markdown-preview pre {
+    background-color: var(--tr-bg-sidebar);
+    padding: 0.75rem;
+    border-radius: 0.375rem;
+    overflow-x: auto;
+}
+#testCaseDetailModal .markdown-preview pre code {
+    background: none;
+    padding: 0;
+}
+#testCaseDetailModal .markdown-preview a {
+    color: var(--tr-primary);
+    text-decoration: none;
+}
+#testCaseDetailModal .markdown-preview a:hover {
+    text-decoration: underline;
+}
+#testCaseDetailModal .markdown-preview blockquote {
+    border-left: 4px solid var(--tr-primary);
+    margin: 1rem 0;
+    padding-left: 1rem;
+    color: var(--tr-text-muted);
+}
+#testCaseDetailModal .markdown-preview table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 1rem 0;
+}
+#testCaseDetailModal .markdown-preview th,
+#testCaseDetailModal .markdown-preview td {
+    border: 1px solid var(--tr-border-light);
+    padding: 0.5rem;
+    text-align: left;
+}
+#testCaseDetailModal .markdown-preview th {
+    background-color: var(--tr-bg-light);
+    font-weight: 600;
+}
 </style>
 {% endblock %}
 
@@ -343,13 +456,7 @@
 
 {% block content %}
 <div class="container-fluid test-run-execution">
-    <!-- 載入狀態 -->
-    <div id="loading-state" class="text-center py-5" style="display: none;">
-        <div class="spinner-border text-primary" role="status">
-            <span class="visually-hidden" data-i18n="common.loading">載入中...</span>
-        </div>
-        <div class="mt-3 text-muted" data-i18n="testRun.loadingItems">載入測試項目中...</div>
-    </div>
+    <!-- 移除全頁載入狀態，改在列表區顯示載入動畫 -->
 
     <!-- Test Run 資訊與控制區 -->
     <div id="test-run-header" style="display: none;">
@@ -397,6 +504,14 @@
 
     <!-- Test Run Items 表格 -->
     <div id="test-run-items-container" class="test-run-items-container" style="display: none;">
+        <!-- 列表區載入動畫（預設隱藏） -->
+        <div id="items-loading" class="align-items-center justify-content-center py-5 d-none" style="min-height: 240px;">
+            <div class="text-center text-muted">
+                <div class="spinner-border text-primary" role="status"></div>
+                <div class="mt-2" data-i18n="testRun.loadingItems">載入測試項目中...</div>
+            </div>
+        </div>
+
         <div class="test-run-items-table">
             <table class="table table-hover table-sm">
                 <thead>
@@ -585,22 +700,53 @@
 <div class="modal fade" id="testCaseDetailModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
     <div class="modal-dialog modal-xl modal-dialog-scrollable">
         <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">
+            <div class="modal-header align-items-center">
+                <h5 class="modal-title d-flex align-items-center">
                     <i class="fas fa-tasks me-2"></i>
                     <span data-i18n="testRun.testCaseDetails">Test Case 詳細資料</span>
                 </h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <!-- Test Result 下拉/Badge：緊貼在標題後面 -->
+                <div id="testCaseDetailHeaderResult" class="ms-3" style="min-width: 170px;"></div>
+                <!-- 標頭靠右：上一隻 / 下一隻 / 關閉 -->
+                <div class="d-flex align-items-center gap-2 ms-auto">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="prevExecCaseBtn" title="上一隻">
+                        <i class="fas fa-chevron-left"></i>
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="nextExecCaseBtn" title="下一隻">
+                        <i class="fas fa-chevron-right"></i>
+                    </button>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
             </div>
-            <div class="modal-body">
+            <div class="modal-body" style="flex: 1; overflow: hidden; display: flex; flex-direction: column;">
                 <div id="testCaseDetailLoading" class="text-center py-4">
                     <i class="fas fa-spinner fa-spin me-2"></i>
                     <span data-i18n="common.loading">載入中...</span>
                 </div>
-                <!-- 固定區：Basic Info + 測試詳情標題 -->
-                <div id="testCaseDetailFixed" style="display:none;"></div>
-                <!-- 可捲動區：僅測試詳情內容 -->
-                <div id="testCaseDetailScrollable" style="display:none;"></div>
+                <!-- 內容 + 歷程並排區域 -->
+                <div id="testCaseDetailBodyRow" class="d-none" style="flex: 1; min-height: 0; display: flex; gap: 12px;">
+                    <!-- 左側：Basic Info（固定）+ 詳情（可捲動） -->
+                    <div id="testCaseDetailLeft" style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; overflow: hidden;">
+                        <!-- 固定區：Basic Info + 測試詳情標題 -->
+                        <div id="testCaseDetailFixed" style="display:none;"></div>
+                        <!-- 可捲動區：僅測試詳情內容 -->
+                        <div id="testCaseDetailScrollable" style="display:none;"></div>
+                    </div>
+                    <!-- 右側：結果歷程 Timeline（1/4 寬） -->
+                    <aside id="testCaseDetailTimelinePane" style="flex: 0 0 25%; max-width: 25%; border-left: 1px solid var(--tr-border-light); padding-left: 10px; display: none; min-width: 240px;">
+                        <div class="d-flex align-items-center justify-content-between mb-2">
+                            <h6 class="mb-0"><i class="fas fa-history me-2"></i><span data-i18n="testRun.resultHistory">結果歷程</span></h6>
+                            <button type="button" id="refreshTimelineBtn" class="btn btn-sm btn-outline-secondary" title="刷新"><i class="fas fa-sync-alt"></i></button>
+                        </div>
+                        <div id="timelineLoading" class="text-center py-2" style="display:none;">
+                            <i class="fas fa-spinner fa-spin"></i>
+                        </div>
+                        <div id="timelineEmpty" class="text-muted small" style="display:none;">
+                            <i class="fas fa-info-circle me-1"></i><span data-i18n="testRun.noHistory">尚無歷程</span>
+                        </div>
+                        <div id="timelineList" style="height: calc(100% - 28px); overflow-y: auto;"></div>
+                    </aside>
+                </div>
                 <div id="testCaseDetailError" style="display: none;">
                     <div class="alert alert-danger">
                         <i class="fas fa-exclamation-triangle me-2"></i>
@@ -628,7 +774,7 @@
 <script>
 // Test Run 執行頁面
 let currentConfigId = null;
-let currentTeamId = 1; // 暫時硬編碼
+let currentTeamId = null; // 由 AppUtils 取得，無則退回 1
 let testRunConfig = null;
 let testRunItems = [];
 let itemDetailModal = null;
@@ -636,6 +782,9 @@ let confirmModal = null;
 let restartModal = null;
 let batchModifyModal = null;
 let selectedItems = new Set(); // 追踪選中的測試執行項目
+// Test Case 詳細快取（localStorage），以測試案例編號為 key
+const TEST_CASE_CACHE_PREFIX = 'tr_exec_tc_cache_v1';
+const TEST_CASE_CACHE_TTL_MS = 60 * 60 * 1000; // 1 小時
 
 // 頁面初始化
 document.addEventListener('DOMContentLoaded', function() {
@@ -654,6 +803,13 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function initializePage() {
+    // 取得目前團隊 ID（與管理頁一致），無則暫用 1
+    currentTeamId = AppUtils.getCurrentTeam()?.id;
+    if (!currentTeamId) {
+        currentTeamId = 1;
+        console.log('Using temporary hardcoded team ID:', currentTeamId);
+    }
+
     itemDetailModal = new bootstrap.Modal(document.getElementById('itemDetailModal'));
     confirmModal = new bootstrap.Modal(document.getElementById('confirmModal'));
     restartModal = new bootstrap.Modal(document.getElementById('restartModal'));
@@ -692,9 +848,26 @@ function initializePage() {
 }
 
 function bindEventListeners() {
-    document.getElementById('refreshBtn').addEventListener('click', () => {
-        loadTestRunItems();
-        updateStatistics();
+    document.getElementById('refreshBtn').addEventListener('click', async () => {
+        try {
+            showItemsLoading();
+            // 重新載入 Items
+            await loadTestRunItems();
+            // 強制重新抓取 Test Case 詳細並更新快取
+            await preloadAllTeamTestCasesForRun(testRunItems);
+            // 更新統計
+            await updateStatistics();
+            // 若詳情 Modal 開啟中則刷新 timeline（以目前顯示的 test case）
+            try {
+                const modalEl = document.getElementById('testCaseDetailModal');
+                const isShown = modalEl && modalEl.classList.contains('show');
+                if (isShown && currentDetailTestCase && currentDetailTestCase.test_case_number) {
+                    renderResultHistoryTimeline({ test_case_number: currentDetailTestCase.test_case_number });
+                }
+            } catch (_) {}
+        } finally {
+            hideItemsLoading();
+        }
     });
     
     document.getElementById('startBtn').addEventListener('click', () => {
@@ -731,7 +904,6 @@ function bindEventListeners() {
 
 async function loadTestRunConfig() {
     try {
-        showLoading();
         const response = await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         
@@ -744,21 +916,27 @@ async function loadTestRunConfig() {
         console.error('Failed to load Test Run config:', error);
         AppUtils.showError('{{ i18n.t("testRun.loadFailed") if i18n else "載入失敗" }}' + ': ' + error.message);
     } finally {
-        hideLoading();
+        hideItemsLoading();
     }
 }
 
 async function loadTestRunItems() {
     try {
+        showItemsLoading();
         const response = await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         
         testRunItems = await response.json();
+        // 比照 Test Case Management：一次抓取整個團隊的測試案例清單，
+        // 並將本次 Test Run 需要的案例寫入本地快取（改為背景預抓，不阻塞列表顯示）。
+        Promise.resolve().then(() => preloadAllTeamTestCasesForRun(testRunItems)).catch(() => {});
         renderTestRunItems();
+        hideItemsLoading();
         
     } catch (error) {
         console.error('Failed to load test items:', error);
         AppUtils.showError('{{ i18n.t("testRun.loadItemsFailed") if i18n else "載入測試項目失敗" }}' + ': ' + error.message);
+        hideItemsLoading();
     }
 }
 
@@ -809,6 +987,41 @@ function renderTestRunItems() {
     
     // 綁定事件處理器
     bindItemEventHandlers(canUpdate);
+
+    // 確保載入動畫關閉，顯示列表
+    hideItemsLoading();
+}
+
+// 列表區載入動畫控制（顯示空框 + spinner）
+function showItemsLoading() {
+    try {
+        const container = document.getElementById('test-run-items-container');
+        const loading = document.getElementById('items-loading');
+        const tableWrap = container.querySelector('.test-run-items-table');
+        if (container) container.style.display = 'block';
+        if (loading) {
+            loading.classList.remove('d-none');
+            loading.classList.add('d-flex');
+            loading.style.display = '';
+        }
+        if (tableWrap) tableWrap.style.display = 'none';
+        const tbody = document.getElementById('items-table-body');
+        if (tbody) tbody.innerHTML = '';
+    } catch (_) {}
+}
+
+function hideItemsLoading() {
+    try {
+        const container = document.getElementById('test-run-items-container');
+        const loading = document.getElementById('items-loading');
+        const tableWrap = container.querySelector('.test-run-items-table');
+        if (loading) {
+            loading.classList.remove('d-flex');
+            loading.classList.add('d-none');
+            loading.style.display = '';
+        }
+        if (tableWrap) tableWrap.style.display = 'block';
+    } catch (_) {}
 }
 
 function shouldShowCheckbox(status) {
@@ -833,7 +1046,7 @@ function createItemRow(item, index, canUpdate) {
     const resultClass = getResultClass(item.test_result);
     const resultText = getResultText(item.test_result);
     const executedAt = item.executed_at ? AppUtils.formatDate(item.executed_at, 'datetime') : '-';
-    const assigneeName = item.assignee_name || '-';
+    const assigneeName = (item.assignee_name || (item.assignee && item.assignee.name)) || '-';
     const canEditAssignee = testRunConfig && testRunConfig.status !== 'completed';
     const showCheckbox = shouldShowCheckbox(testRunConfig ? testRunConfig.status : 'draft');
     
@@ -885,8 +1098,8 @@ function createItemRow(item, index, canUpdate) {
 function bindItemEventHandlers(canUpdate) {
     if (!canUpdate) return;
     
-    // 結果選擇器樣式更新
-    document.querySelectorAll('.result-selector').forEach(select => {
+    // 結果選擇器樣式更新（同時支援 .result-selector 與 .result-selector-lg）
+    document.querySelectorAll('.result-selector, .result-selector-lg').forEach(select => {
         select.addEventListener('change', function() {
             updateSelectClass(this);
         });
@@ -912,6 +1125,7 @@ function bindItemEventHandlers(canUpdate) {
             
             const options = {
                 teamId: currentTeamId,
+                allowCustomValue: true,
                 onSelect: (contact) => {
                     // 當選擇聯絡人時，自動更新 assignee
                     updateAssignee(itemId, contact.name);
@@ -929,7 +1143,9 @@ function bindItemEventHandlers(canUpdate) {
 
 function updateSelectClass(select) {
     const value = select.value;
-    select.className = `form-select result-selector-lg ${getResultClass(value)}`;
+    const hasSm = select.classList.contains('form-select-sm');
+    const sizeClass = hasSm ? 'form-select-sm ' : '';
+    select.className = `form-select ${sizeClass}result-selector-lg ${getResultClass(value)}`;
 }
 
 async function updateTestResult(itemId, result) {
@@ -956,6 +1172,15 @@ async function updateTestResult(itemId, result) {
         
         // 更新統計
         await updateStatistics();
+        // 若詳情 Modal 開啟中且為同一測試案例，刷新右側 timeline
+        try {
+            const modalEl = document.getElementById('testCaseDetailModal');
+            const isShown = modalEl && modalEl.classList.contains('show');
+            const item = testRunItems.find(i => i.id === itemId);
+            if (isShown && item && currentDetailTestCase && currentDetailTestCase.test_case_number === item.test_case_number) {
+                renderResultHistoryTimeline({ test_case_number: item.test_case_number });
+            }
+        } catch (_) {}
         
     } catch (error) {
         console.error('Failed to update test result:', error);
@@ -976,8 +1201,10 @@ async function updateStatistics() {
         document.getElementById('executed-count').textContent = stats.executed_runs;
         document.getElementById('passed-count').textContent = stats.passed_runs;
         document.getElementById('failed-count').textContent = stats.failed_runs;
-        document.getElementById('execution-rate').textContent = stats.execution_rate + '%';
-        document.getElementById('pass-rate').textContent = stats.pass_rate + '%';
+        // 顯示為無條件捨去之整數百分比
+        document.getElementById('execution-rate').textContent = Math.floor(stats.execution_rate) + '%';
+        // 通過率顯示為無條件捨去之整數百分比
+        document.getElementById('pass-rate').textContent = Math.floor(stats.pass_rate) + '%';
         
         // 同步配置統計
         await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/sync`);
@@ -1175,15 +1402,7 @@ function getResultText(result) {
     return textMap[result] || '{{ i18n.t("testRun.notExecuted") if i18n else "未執行" }}';
 }
 
-function showLoading() {
-    document.getElementById('loading-state').style.display = 'block';
-    document.getElementById('test-run-header').style.display = 'none';
-    document.getElementById('test-run-items-container').style.display = 'none';
-}
-
-function hideLoading() {
-    document.getElementById('loading-state').style.display = 'none';
-}
+// 全頁載入已移除，使用列表區載入動畫（showItemsLoading/hideItemsLoading）
 
 function toggleSelectAllItems() {
     const selectAll = document.getElementById('selectAllItemsCheckbox').checked;
@@ -1332,43 +1551,92 @@ async function handleBatchModifyConfirm() {
 async function batchModifyItems(modifications) {
     try {
         const itemsToModify = Array.from(selectedItems);
-        const updateData = {};
         
-        if (modifications.modifyAssignee) {
-            updateData.assignee_name = modifications.assigneeName;
-        }
+        // 為每個選中的項目建立更新資料
+        const updates = itemsToModify.map(itemId => {
+            const updateData = { id: itemId };
+            
+            if (modifications.modifyAssignee) {
+                updateData.assignee_name = modifications.assigneeName || null;
+            }
+            
+            if (modifications.modifyResult) {
+                updateData.test_result = modifications.testResult;
+                updateData.executed_at = new Date().toISOString();
+            }
+            
+            return updateData;
+        });
         
-        if (modifications.modifyResult) {
-            updateData.test_result = modifications.testResult;
-            updateData.executed_at = new Date().toISOString();
-        }
-        
-        // 批次修改 API 調用
-        const response = await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/batch`, {
-            method: 'PUT',
+        // 批次修改 API 調用（使用正確的端點）
+        const response = await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/batch-update-results`, {
+            method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
-                item_ids: itemsToModify,
-                updates: updateData
+                updates: updates
             })
         });
         
         if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(`HTTP ${response.status}: ${errorData.detail || 'Unknown error'}`);
         }
         
-        // 重新載入項目
+        // 解析API響應
+        const result = await response.json();
+        
+        // 樂觀更新本地列表（避免等待重載也能即時看到變更）
+        try {
+            updates.forEach(u => {
+                const id = u.id;
+                const idx = testRunItems.findIndex(it => it.id === id);
+                if (idx !== -1) {
+                    if ('assignee_name' in u) {
+                        testRunItems[idx].assignee_name = (u.assignee_name || null);
+                    }
+                    if ('test_result' in u) {
+                        testRunItems[idx].test_result = (u.test_result || null);
+                        testRunItems[idx].executed_at = u.executed_at || new Date().toISOString();
+                    }
+                }
+            });
+            renderTestRunItems();
+        } catch (_) {}
+
+        // 再從伺服器重載一次，確保資料正確
         await loadTestRunItems();
         await updateStatistics();
+
+        // 若詳情 Modal 開啟中則刷新 timeline（以目前顯示的 test case）
+        try {
+            const modalEl = document.getElementById('testCaseDetailModal');
+            const isShown = modalEl && modalEl.classList.contains('show');
+            if (isShown && currentDetailTestCase && currentDetailTestCase.test_case_number) {
+                renderResultHistoryTimeline({ test_case_number: currentDetailTestCase.test_case_number });
+            }
+        } catch (_) {}
         
         // 清空選擇狀態並更新 UI
         selectedItems.clear();
         updateItemSelectionUI();
         
-        const successMsg = window.i18n && window.i18n.isReady() 
-            ? window.i18n.t('testRun.batchModifySuccess', {count: itemsToModify.length})
-            : `成功修改 ${itemsToModify.length} 個測試執行項目`;
-        AppUtils.showSuccess(successMsg);
+        // 顯示成功訊息，包括處理結果
+        if (result.success) {
+            const successMsg = window.i18n && window.i18n.isReady() 
+                ? window.i18n.t('testRun.batchModifySuccess', {count: result.success_count})
+                : `成功修改 ${result.success_count} 個測試執行項目`;
+            AppUtils.showSuccess(successMsg);
+        } else {
+            // 部分成功的情況
+            const partialMsg = window.i18n && window.i18n.isReady() 
+                ? window.i18n.t('testRun.batchModifyPartial', {success: result.success_count, total: result.processed_count})
+                : `已處理 ${result.processed_count} 個項目，成功 ${result.success_count} 個`;
+            AppUtils.showWarning(partialMsg);
+            
+            if (result.error_messages && result.error_messages.length > 0) {
+                console.warn('批次修改錯誤:', result.error_messages);
+            }
+        }
         
     } catch (error) {
         const consoleMsg = window.i18n && window.i18n.isReady() 
@@ -1391,6 +1659,7 @@ function navigateToTestCase(testCaseNumber) {
 
 // Test Case 詳細資料 Modal 相關函數
 let testCaseDetailModalInstance = null;
+let currentDetailTestCase = null; // 目前顯示於執行頁 Modal 的 Test Case，用於鍵盤導航
 
 async function showTestCaseDetailModal(testCaseNumber) {
     // 初始化 Modal
@@ -1407,9 +1676,26 @@ async function showTestCaseDetailModal(testCaseNumber) {
     scrollDiv.style.display = 'none';
     document.getElementById('testCaseDetailError').style.display = 'none';
     document.getElementById('openFullTestCaseBtn').style.display = 'none';
+    // 在載入期間先隱藏/清空標頭的 Test Result，避免顯示舊資料
+    const headerResult = document.getElementById('testCaseDetailHeaderResult');
+    if (headerResult) {
+        headerResult.innerHTML = '';
+        headerResult.style.visibility = 'hidden';
+    }
     
     // 顯示 Modal
     testCaseDetailModalInstance.show();
+    // 綁定鍵盤左右鍵支援
+    const modalEl = document.getElementById('testCaseDetailModal');
+    if (!modalEl._keydownBound) {
+        modalEl.addEventListener('shown.bs.modal', function() {
+            document.addEventListener('keydown', handleExecDetailModalKeydown);
+        });
+        modalEl.addEventListener('hidden.bs.modal', function() {
+            document.removeEventListener('keydown', handleExecDetailModalKeydown);
+        });
+        modalEl._keydownBound = true;
+    }
     
     try {
         // 載入 Test Case 資料
@@ -1422,6 +1708,13 @@ async function showTestCaseDetailModal(testCaseNumber) {
 
 async function loadTestCaseDetail(testCaseNumber) {
     try {
+        // 先嘗試從 localStorage 讀取快取，若 1 小時內則直接顯示
+        const cached = getCachedTestCase(testCaseNumber);
+        if (cached && (Date.now() - cached.ts) < TEST_CASE_CACHE_TTL_MS) {
+            displayTestCaseDetail(cached.data);
+            return; // 使用快取，不發出請求
+        }
+
         // 從當前團隊的測試案例中搜尋
         const url = new URL(`/api/teams/${currentTeamId}/testcases/`, window.location.origin);
         url.searchParams.set('search', testCaseNumber);
@@ -1442,7 +1735,10 @@ async function loadTestCaseDetail(testCaseNumber) {
         if (!testCase) {
             throw new Error('找不到指定的測試案例');
         }
-        
+
+        // 寫入快取
+        setCachedTestCase(testCaseNumber, testCase);
+
         // 顯示 Test Case 詳細資料
         displayTestCaseDetail(testCase);
         
@@ -1467,20 +1763,47 @@ function displayTestCaseDetail(testCase) {
     scrollDiv.innerHTML = scrollableHtml;
     
     // 顯示內容和開啟按鈕
+    const bodyRow = document.getElementById('testCaseDetailBodyRow');
+    if (bodyRow) bodyRow.classList.remove('d-none');
     fixedDiv.style.display = 'block';
     scrollDiv.style.display = 'block';
     openBtn.style.display = 'inline-block';
+    // 記錄目前展示的 Test Case，供鍵盤導航使用
+    currentDetailTestCase = testCase;
     
     // 設定開啟按鈕的點擊事件
     openBtn.onclick = function() {
-        const url = `/test-case-management?search=${encodeURIComponent(testCase.test_case_number)}`;
-        window.open(url, '_blank');
+        const url = `/test-case-management?tc=${encodeURIComponent(testCase.test_case_number)}&team_id=${encodeURIComponent(currentTeamId)}&minimal=1&mode=edit`;
+        window.open(url, 'TestCaseEditor', 'width=1200,height=800,noopener,noreferrer');
     };
     
     // 應用 i18n 翻譯
     if (window.i18n && window.i18n.isReady()) {
         window.i18n.retranslate(fixedDiv);
         window.i18n.retranslate(scrollDiv);
+    }
+
+    // 在標頭區渲染 Test Result 下拉或唯讀 badge
+    renderModalHeaderResult(testCase);
+
+    // 渲染右側 Timeline（結果歷程）
+    renderResultHistoryTimeline(testCase);
+    // 載入完成後再顯示，避免切換時顯示上一筆資料
+    const headerResult = document.getElementById('testCaseDetailHeaderResult');
+    if (headerResult) {
+        headerResult.style.visibility = 'visible';
+    }
+
+    // 綁定上一隻、下一隻按鈕
+    const prevBtn = document.getElementById('prevExecCaseBtn');
+    const nextBtn = document.getElementById('nextExecCaseBtn');
+    if (prevBtn && nextBtn) {
+        prevBtn.onclick = () => navigateExecCase(testCase, -1);
+        nextBtn.onclick = () => navigateExecCase(testCase, 1);
+        // 依序號狀態啟用/停用
+        const idx = (testRunItems || []).findIndex(i => i.test_case_number === testCase.test_case_number);
+        prevBtn.disabled = idx <= 0;
+        nextBtn.disabled = idx < 0 || idx >= testRunItems.length - 1;
     }
 }
 
@@ -1519,30 +1842,15 @@ function createTestCaseDetailHtml(testCase) {
                     <tr>
                         <td class="fw-bold align-top" style="font-size: 0.85rem; padding: 0.15rem 0.5rem;" data-i18n="testRun.attachments">附件</td>
                         <td colspan="3" style="padding: 0.15rem 0.5rem;">
-                            <div class="d-flex flex-wrap align-items-center">
-                                ${testCase.attachments && testCase.attachments.length > 0 ? 
-                                    testCase.attachments.map((attachment, index) => {
-                                        const fileExtension = attachment.name ? attachment.name.split('.').pop().toLowerCase() : '';
-                                        let iconClass = 'fas fa-file';
-                                        let iconColor = 'text-secondary';
-                                        switch(fileExtension) {
-                                            case 'pdf': iconClass = 'fas fa-file-pdf'; iconColor = 'text-danger'; break;
-                                            case 'doc': case 'docx': iconClass = 'fas fa-file-word'; iconColor = 'text-primary'; break;
-                                            case 'xls': case 'xlsx': iconClass = 'fas fa-file-excel'; iconColor = 'text-success'; break;
-                                            case 'jpg': case 'jpeg': case 'png': case 'gif': case 'bmp': case 'webp': iconClass = 'fas fa-file-image'; iconColor = 'text-info'; break;
-                                            case 'txt': iconClass = 'fas fa-file-alt'; iconColor = 'text-secondary'; break;
-                                            case 'zip': case 'rar': case '7z': iconClass = 'fas fa-file-archive'; iconColor = 'text-warning'; break;
-                                            default: iconClass = 'fas fa-file'; iconColor = 'text-secondary';
-                                        }
-                                        return '<span class="d-inline-flex align-items-center me-3 mb-1">' +
-                                            '<i class="' + iconClass + ' ' + iconColor + ' me-1"></i>' +
-                                            '<small>' + escapeHtml(attachment.name || ('附件 ' + (index + 1))) + '</small>' +
-                                        '</span>';
-                                    }).join('')
-                                :
-                                    '<span class="text-muted"><i class="fas fa-paperclip me-1"></i>' +
-                                    attachmentCount + ' <span data-i18n="testRun.files">個文件</span></span>'
-                                }
+                            <div class="d-flex align-items-center">
+                                ${attachmentCount > 0 ? `
+                                    <a href="#" class="text-decoration-none" onclick="scrollToAttachments(); return false;" title="${escapeHtml('{{ i18n.t("testRun.attachments") if i18n else "附件" }}')}">
+                                        <i class="fas fa-paperclip me-1"></i>
+                                        ${attachmentCount} <span data-i18n="testRun.files">個文件</span>
+                                    </a>
+                                ` : `
+                                    <span class="text-muted"><i class="fas fa-paperclip me-1"></i>0 <span data-i18n="testRun.files">個文件</span></span>
+                                `}
                             </div>
                         </td>
                     </tr>
@@ -1565,24 +1873,59 @@ function createTestCaseDetailHtml(testCase) {
                 ${testCase.precondition ? `
                 <div class="mb-3">
                     <h6 class="mb-2" data-i18n="testRun.precondition">前置條件</h6>
-                    <div class="bg-light p-3 rounded">
-                        <pre class="mb-0" style="white-space: pre-wrap; font-size: 0.9rem;">${escapeHtml(testCase.precondition)}</pre>
+                    <div class="section-block section-precondition">
+                        <div class="markdown-preview mb-0" style="font-size: 0.9rem;">${renderMarkdown(testCase.precondition)}</div>
                     </div>
                 </div>
                 ` : ''}
                 ${testCase.steps ? `
                 <div class="mb-3">
                     <h6 class="mb-2" data-i18n="testRun.steps">測試步驟</h6>
-                    <div class="bg-light p-3 rounded">
-                        <pre class="mb-0" style="white-space: pre-wrap; font-size: 0.9rem;">${escapeHtml(testCase.steps)}</pre>
+                    <div class="section-block section-steps">
+                        <div class="markdown-preview mb-0" style="font-size: 0.9rem;">${renderMarkdown(testCase.steps)}</div>
                     </div>
                 </div>
                 ` : ''}
                 ${testCase.expected_result ? `
                 <div class="mb-0">
                     <h6 class="mb-2" data-i18n="testRun.expectedResult">預期結果</h6>
-                    <div class="bg-success bg-opacity-10 p-3 rounded border border-success border-opacity-25">
-                        <pre class="mb-0" style="white-space: pre-wrap; font-size: 0.9rem;">${escapeHtml(testCase.expected_result)}</pre>
+                    <div class="section-block section-expected">
+                        <div class="markdown-preview mb-0" style="font-size: 0.9rem;">${renderMarkdown(testCase.expected_result)}</div>
+                    </div>
+                </div>
+                ` : ''}
+                ${attachmentCount > 0 ? `
+                <div class="mt-3" id="attachmentsSection">
+                    <h6 class="mb-2" data-i18n="testRun.attachments">附件</h6>
+                    <div class="section-block section-attachments">
+                    <div class="d-flex flex-wrap align-items-center">
+                        ${testCase.attachments.map((attachment, index) => {
+                            const fileExtension = attachment.name ? attachment.name.split('.').pop().toLowerCase() : '';
+                            let iconClass = 'fas fa-file';
+                            let iconColor = 'text-secondary';
+                            switch(fileExtension) {
+                                case 'pdf': iconClass = 'fas fa-file-pdf'; iconColor = 'text-danger'; break;
+                                case 'doc': case 'docx': iconClass = 'fas fa-file-word'; iconColor = 'text-primary'; break;
+                                case 'xls': case 'xlsx': iconClass = 'fas fa-file-excel'; iconColor = 'text-success'; break;
+                                case 'jpg': case 'jpeg': case 'png': case 'gif': case 'bmp': case 'webp': iconClass = 'fas fa-file-image'; iconColor = 'text-info'; break;
+                                case 'txt': iconClass = 'fas fa-file-alt'; iconColor = 'text-secondary'; break;
+                                case 'zip': case 'rar': case '7z': iconClass = 'fas fa-file-archive'; iconColor = 'text-warning'; break;
+                                default: iconClass = 'fas fa-file'; iconColor = 'text-secondary';
+                            }
+                            const attachmentToken = attachment.file_token || attachment.token || '';
+                            const attachmentName = attachment.name || ('附件 ' + (index + 1));
+                            const attachmentUrl = attachment.url || '';
+                            return '<span class="d-inline-flex align-items-center me-3 mb-2 attachment-item" '
+                                + 'style="cursor: pointer; padding: 0.25rem 0.5rem; border-radius: 0.25rem; transition: background-color 0.15s;" '
+                                + 'onclick="handleAttachmentClick(\'' + escapeHtml(attachmentName) + '\', \'' + attachmentToken + '\', \'' + attachmentUrl + '\')" '
+                                + 'onmouseover="this.style.backgroundColor=\'var(--tr-bg-light)\'" '
+                                + 'onmouseout="this.style.backgroundColor=\'transparent\'" '
+                                + 'title="點擊查看附件: ' + escapeHtml(attachmentName) + '">'
+                                + '<i class="' + iconClass + ' ' + iconColor + ' me-1"></i>'
+                                + '<small style="text-decoration: underline; color: var(--tr-primary);">' + escapeHtml(attachmentName) + '</small>'
+                                + '</span>';
+                        }).join('')}
+                    </div>
                     </div>
                 </div>
                 ` : ''}
@@ -1591,6 +1934,243 @@ function createTestCaseDetailHtml(testCase) {
 
     return { fixedHtml, scrollableHtml };
 }
+
+
+function renderModalHeaderResult(testCase) {
+    const container = document.getElementById('testCaseDetailHeaderResult');
+    if (!container) return;
+
+    const item = getItemByTestCaseNumber(testCase.test_case_number);
+    const currentResult = item ? (item.test_result || '') : '';
+    const canEdit = testRunConfig && testRunConfig.status === 'active';
+
+    if (canEdit && item) {
+        container.innerHTML = `
+            <select class="form-select form-select-sm result-selector-lg ${getResultClass(currentResult)}" 
+                    onchange="updateSelectClass(this); updateTestResult(${item.id}, this.value)">
+                <option value="">${escapeHtml('{{ i18n.t("testRun.notExecuted") if i18n else "未執行" }}')}</option>
+                <option value="Passed" ${currentResult === 'Passed' ? 'selected' : ''}>${escapeHtml('{{ i18n.t("testRun.passed") if i18n else "通過" }}')}</option>
+                <option value="Failed" ${currentResult === 'Failed' ? 'selected' : ''}>${escapeHtml('{{ i18n.t("testRun.failed") if i18n else "失敗" }}')}</option>
+                <option value="Retest" ${currentResult === 'Retest' ? 'selected' : ''}>${escapeHtml('{{ i18n.t("testRun.retest") if i18n else "重測" }}')}</option>
+                <option value="Not Available" ${currentResult === 'Not Available' ? 'selected' : ''}>${escapeHtml('{{ i18n.t("testRun.notAvailable") if i18n else "不適用" }}')}</option>
+            </select>
+        `;
+        const select = container.querySelector('select');
+        if (select) updateSelectClass(select);
+    } else {
+        container.innerHTML = `
+            <span class="badge result-badge-lg ${getResultClass(currentResult)}">${getResultText(currentResult)}</span>
+        `;
+    }
+}
+
+// 依 test_case_number 找到對應 item
+function getItemByTestCaseNumber(testCaseNumber) {
+    return (testRunItems || []).find(i => i.test_case_number === testCaseNumber);
+}
+
+async function renderResultHistoryTimeline(testCase) {
+    try {
+        const pane = document.getElementById('testCaseDetailTimelinePane');
+        const loading = document.getElementById('timelineLoading');
+        const empty = document.getElementById('timelineEmpty');
+        const list = document.getElementById('timelineList');
+        if (!pane || !list) return;
+
+        // 顯示區塊與載入中
+        pane.style.display = 'block';
+        loading.style.display = 'block';
+        empty.style.display = 'none';
+        list.innerHTML = '';
+
+        const item = getItemByTestCaseNumber(testCase.test_case_number);
+        if (!item) { loading.style.display = 'none'; empty.style.display = 'block'; return; }
+
+        const resp = await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/${item.id}/result-history?limit=50`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const records = await resp.json();
+        loading.style.display = 'none';
+
+        if (!Array.isArray(records) || records.length === 0) {
+            empty.style.display = 'block';
+            return;
+        }
+
+        // 生成 timeline 項目
+        const rows = records.map(r => {
+            const time = r.changed_at ? AppUtils.formatDate(r.changed_at, 'datetime') : '';
+            const from = r.prev_result ? getResultText(r.prev_result) : '{{ i18n.t("testRun.notExecuted") if i18n else "未執行" }}';
+            const to = r.new_result ? getResultText(r.new_result) : '{{ i18n.t("testRun.notExecuted") if i18n else "未執行" }}';
+            const badgeFrom = `<span class="badge ${getResultClass(r.prev_result)}">${from}</span>`;
+            const badgeTo = `<span class="badge ${getResultClass(r.new_result)}">${to}</span>`;
+            const who = r.changed_by_name || '';
+            const reason = r.change_reason ? `<div class="text-muted small">${escapeHtml(r.change_reason)}</div>` : '';
+            return `
+                <div class="timeline-item">
+                    <div class="time">${time}${who ? ` · ${escapeHtml(who)}` : ''}</div>
+                    <div class="status">${badgeFrom} <i class="fas fa-arrow-right mx-1"></i> ${badgeTo}</div>
+                    ${reason}
+                    <div class="timeline-divider"></div>
+                </div>
+            `;
+        }).join('');
+        list.innerHTML = rows;
+
+        // 綁定刷新按鈕
+        const refreshBtn = document.getElementById('refreshTimelineBtn');
+        if (refreshBtn) refreshBtn.onclick = () => renderResultHistoryTimeline(testCase);
+    } catch (e) {
+        const loading = document.getElementById('timelineLoading');
+        const empty = document.getElementById('timelineEmpty');
+        if (loading) loading.style.display = 'none';
+        if (empty) empty.style.display = 'block';
+        console.warn('load result history failed:', e);
+    }
+}
+
+// 點擊 Basic Info 的附件摘要時，捲動到內容區的附件區塊
+function scrollToAttachments() {
+    try {
+        const container = document.getElementById('testCaseDetailScrollable');
+        const target = container ? container.querySelector('#attachmentsSection') : null;
+        if (container && target) {
+            const top = target.offsetTop - 8; // 預留一點上邊距
+            container.scrollTo({ top, behavior: 'smooth' });
+        }
+    } catch (_) {}
+}
+
+// 鍵盤支援：在執行頁的 Test Case 詳細 Modal 使用左右鍵切換
+function handleExecDetailModalKeydown(e) {
+    try {
+        const modal = document.getElementById('testCaseDetailModal');
+        if (!modal || !modal.classList.contains('show')) return;
+        // 避免在輸入元件或可編輯區域觸發
+        const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
+        const isEditable = e.target && (e.target.isContentEditable || tag === 'input' || tag === 'textarea' || tag === 'select');
+        if (isEditable) return;
+        if (!currentDetailTestCase) return;
+        if (e.key === 'ArrowLeft') {
+            e.preventDefault();
+            navigateExecCase(currentDetailTestCase, -1);
+        } else if (e.key === 'ArrowRight') {
+            e.preventDefault();
+            navigateExecCase(currentDetailTestCase, 1);
+        }
+    } catch (_) {}
+}
+
+// ====== 本地快取（localStorage）工具 ======
+function getCacheKey(testCaseNumber) {
+    // 以 teamId + testCaseNumber 組成個人快取 key
+    const team = currentTeamId || 'unknown';
+    return `${TEST_CASE_CACHE_PREFIX}:${team}:${testCaseNumber}`;
+}
+
+function getCachedTestCase(testCaseNumber) {
+    try {
+        const key = getCacheKey(testCaseNumber);
+        const raw = localStorage.getItem(key);
+        if (!raw) return null;
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed.ts !== 'number' || !parsed.data) return null;
+        return parsed;
+    } catch (_) {
+        return null;
+    }
+}
+
+function setCachedTestCase(testCaseNumber, testCaseData) {
+    try {
+        const key = getCacheKey(testCaseNumber);
+        const payload = { ts: Date.now(), data: testCaseData };
+        localStorage.setItem(key, JSON.stringify(payload));
+    } catch (_) {
+        // 忽略快取錯誤（例如超出容量）
+    }
+}
+
+// 判斷是否為新鮮快取
+function isFreshCache(cached) {
+    return cached && (Date.now() - cached.ts) < TEST_CASE_CACHE_TTL_MS;
+}
+
+// 以 test_case_number 從後端取得詳細並寫入快取
+async function fetchAndCacheTestCase(testCaseNumber) {
+    if (!testCaseNumber) return;
+    try {
+        const url = new URL(`/api/teams/${currentTeamId}/testcases/`, window.location.origin);
+        url.searchParams.set('search', testCaseNumber);
+        url.searchParams.set('limit', '1');
+        const resp = await fetch(url);
+        if (!resp.ok) return;
+        const list = await resp.json();
+        const tc = Array.isArray(list) ? list.find(t => t.test_case_number === testCaseNumber) : null;
+        if (tc) setCachedTestCase(testCaseNumber, tc);
+    } catch (_) {}
+}
+
+// 針對目前的 Test Run Items 預先載入所有 Test Case 詳細
+async function prefetchTestCasesForItems(items) {
+    try {
+        const numbers = (items || []).map(i => i.test_case_number).filter(Boolean);
+        if (numbers.length === 0) return;
+        // 過濾已新鮮快取者
+        const toFetch = numbers.filter(n => !isFreshCache(getCachedTestCase(n)));
+        if (toFetch.length === 0) return;
+        // 控制併發量，避免過多同時請求
+        const queue = Array.from(new Set(toFetch)); // 去重
+        const concurrency = 5;
+        const workers = new Array(Math.min(concurrency, queue.length)).fill(0).map(async () => {
+            while (queue.length > 0) {
+                const n = queue.pop(); // 先取出，再 await，避免競態
+                await fetchAndCacheTestCase(n);
+            }
+        });
+        await Promise.all(workers);
+    } catch (e) {
+        console.debug('prefetch test cases skipped:', e);
+    }
+}
+
+// 參考 Test Case Management 的做法：
+// 一次性抓取整個團隊的 Test Cases，將與本次 Test Run 有關的案例寫入快取
+async function preloadAllTeamTestCasesForRun(items) {
+    try {
+        const resp = await fetch(`/api/teams/${currentTeamId}/testcases/`);
+        if (!resp.ok) {
+            // 若整批抓取失敗，退回逐筆預抓策略
+            await prefetchTestCasesForItems(items);
+            return;
+        }
+        const all = await resp.json();
+        const need = new Set((items || []).map(i => i.test_case_number).filter(Boolean));
+        if (!all || !Array.isArray(all)) return;
+        for (const tc of all) {
+            if (tc && tc.test_case_number && need.has(tc.test_case_number)) {
+                setCachedTestCase(tc.test_case_number, tc);
+            }
+        }
+    } catch (e) {
+        console.debug('preloadAllTeamTestCasesForRun failed, fallback to prefetch each:', e);
+        await prefetchTestCasesForItems(items);
+    }
+}
+
+// 在 Test Run 項目清單中，根據目前 Test Case 移動到前/後一筆
+async function navigateExecCase(currentTestCase, step) {
+    if (!Array.isArray(testRunItems) || testRunItems.length === 0) return;
+    const idx = testRunItems.findIndex(i => i.test_case_number === currentTestCase.test_case_number);
+    if (idx < 0) return;
+    const newIdx = idx + step;
+    if (newIdx < 0 || newIdx >= testRunItems.length) return;
+    const nextItem = testRunItems[newIdx];
+    if (!nextItem) return;
+    // 重用現有流程：以 test_case_number 載入詳細
+    await showTestCaseDetailModal(nextItem.test_case_number);
+}
+
+// 移除 Modal 內更新結果的輔助函式（已回滾設計）
 
 function showTestCaseDetailError() {
     document.getElementById('testCaseDetailLoading').style.display = 'none';
@@ -1647,5 +2227,160 @@ function escapeHtml(text) {
     };
     return text.replace(/[&<>"']/g, function(m) { return map[m]; });
 }
+
+// Markdown 渲染輔助函數
+function renderMarkdown(content) {
+    if (!content) return '';
+    
+    if (typeof marked !== 'undefined') {
+        try {
+            return marked.parse(content);
+        } catch (error) {
+            console.error('Markdown parse error:', error);
+            // 如果 Markdown 渲染失敗，回退到純文字顯示
+            return `<pre style="white-space: pre-wrap; font-size: 0.9rem;">${escapeHtml(content)}</pre>`;
+        }
+    } else {
+        // 如果 marked 庫未載入，回退到純文字顯示
+        return `<pre style="white-space: pre-wrap; font-size: 0.9rem;">${escapeHtml(content)}</pre>`;
+    }
+}
+
+// 處理附件點擊事件
+function handleAttachmentClick(attachmentName, fileToken, fileUrl) {
+    console.log('附件點擊:', { attachmentName, fileToken, fileUrl });
+    
+    // 如果有 file_token 或 file_url，嘗試通過代理 API 下載
+    if ((fileToken && fileToken.trim() !== '') || (fileUrl && fileUrl.trim() !== '')) {
+        try {
+            // 構建代理下載 URL
+            const proxyUrl = new URL(`/api/attachments/teams/${currentTeamId}/attachments/download`, window.location.origin);
+            
+            if (fileUrl && fileUrl.trim() !== '') {
+                proxyUrl.searchParams.set('file_url', fileUrl);
+            } else if (fileToken && fileToken.trim() !== '') {
+                proxyUrl.searchParams.set('file_token', fileToken);
+            }
+            
+            if (attachmentName && attachmentName.trim() !== '') {
+                proxyUrl.searchParams.set('filename', attachmentName);
+            }
+            
+            // 在新窗口中打開代理下載 URL
+            window.open(proxyUrl.toString(), '_blank', 'noopener,noreferrer');
+            return;
+        } catch (error) {
+            console.error('構建代理下載 URL 失敗:', error);
+        }
+    }
+    
+    // 如果沒有有效的 token 或 URL，顯示附件信息
+    console.log('沒有有效的附件 token 或 URL，顯示附件信息');
+    showAttachmentInfo(attachmentName, fileToken, fileUrl);
+}
+
+// 顯示附件信息
+function showAttachmentInfo(attachmentName, fileToken, fileUrl) {
+    const modalHtml = `
+        <div class="modal fade" id="attachmentInfoModal" tabindex="-1">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">
+                            <i class="fas fa-paperclip me-2"></i>
+                            <span data-i18n="testRun.attachmentDetails">附件詳情</span>
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <table class="table table-borderless">
+                            <tr>
+                                <td class="fw-bold" data-i18n="testRun.attachmentName">附件名稱:</td>
+                                <td>${escapeHtml(attachmentName)}</td>
+                            </tr>
+                            <tr>
+                                <td class="fw-bold">File Token:</td>
+                                <td><code style="font-size: 0.8rem; word-break: break-all;">${escapeHtml(fileToken)}</code></td>
+                            </tr>
+                            ${fileUrl ? `
+                            <tr>
+                                <td class="fw-bold">URL:</td>
+                                <td><a href="${escapeHtml(fileUrl)}" target="_blank" rel="noopener">${escapeHtml(fileUrl)}</a></td>
+                            </tr>
+                            ` : ''}
+                        </table>
+                        <div class="alert alert-info">
+                            <i class="fas fa-info-circle me-2"></i>
+                            <span data-i18n="testRun.attachmentNote">此附件存儲在 Lark 中。如需下載，請前往原始 Lark 多維表格查看。</span>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.close">關閉</button>
+                        ${(fileUrl || fileToken) ? `
+                        <button type="button" class="btn btn-primary" onclick="handleAttachmentDownload('${escapeHtml(attachmentName)}', '${fileToken}', '${escapeHtml(fileUrl)}')">
+                            <i class="fas fa-download me-2"></i>
+                            <span data-i18n="testRun.downloadAttachment">下載附件</span>
+                        </button>
+                        ` : ''}
+                    </div>
+                </div>
+            </div>
+        </div>`;
+    
+    // 移除舊的模態框（如果存在）
+    const existingModal = document.getElementById('attachmentInfoModal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+    
+    // 添加新的模態框到頁面
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    // 顯示模態框
+    const modal = new bootstrap.Modal(document.getElementById('attachmentInfoModal'));
+    
+    // 應用翻譯（如果可用）
+    if (window.i18n && window.i18n.isReady()) {
+        window.i18n.retranslate(document.getElementById('attachmentInfoModal'));
+    }
+    
+    modal.show();
+    
+    // 模態框關閉後清理
+    document.getElementById('attachmentInfoModal').addEventListener('hidden.bs.modal', function() {
+        this.remove();
+    });
+}
+
+// 處理附件下載（從信息模態框中）
+function handleAttachmentDownload(attachmentName, fileToken, fileUrl) {
+    console.log('附件下載:', { attachmentName, fileToken, fileUrl });
+    
+    if ((fileToken && fileToken.trim() !== '') || (fileUrl && fileUrl.trim() !== '')) {
+        try {
+            // 構建代理下載 URL
+            const proxyUrl = new URL(`/api/attachments/teams/${currentTeamId}/attachments/download`, window.location.origin);
+            
+            if (fileUrl && fileUrl.trim() !== '') {
+                proxyUrl.searchParams.set('file_url', fileUrl);
+            } else if (fileToken && fileToken.trim() !== '') {
+                proxyUrl.searchParams.set('file_token', fileToken);
+            }
+            
+            if (attachmentName && attachmentName.trim() !== '') {
+                proxyUrl.searchParams.set('filename', attachmentName);
+            }
+            
+            // 在新窗口中打開代理下載 URL
+            window.open(proxyUrl.toString(), '_blank', 'noopener,noreferrer');
+        } catch (error) {
+            console.error('構建附件下載 URL 失敗:', error);
+            AppUtils.showError('附件下載失敗: ' + error.message);
+        }
+    } else {
+        AppUtils.showWarning('沒有可用的附件下載信息');
+    }
+}
 </script>
 {% endblock %}
+/* reverted: no fixed height for attachments list */

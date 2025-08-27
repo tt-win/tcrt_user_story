@@ -135,6 +135,7 @@ class TestRunItem(Base):
 
     # 多值/關聯/原始欄位（JSON 字串保存）
     attachments_json = Column(Text, nullable=True)
+    execution_results_json = Column(Text, nullable=True)
     user_story_map_json = Column(Text, nullable=True)
     tcg_json = Column(Text, nullable=True)
     parent_record_json = Column(Text, nullable=True)
@@ -146,12 +147,195 @@ class TestRunItem(Base):
 
     # 關聯
     config = relationship("TestRunConfig", back_populates="items")
+    # 歷程關聯（若存在）
+    histories = relationship("TestRunItemResultHistory", back_populates="item", cascade="all, delete-orphan")
 
     __table_args__ = (
         UniqueConstraint('config_id', 'test_case_number', name='uq_test_run_item_config_case'),
         Index('ix_test_run_items_team', 'team_id'),
         Index('ix_test_run_items_result', 'test_result'),
         Index('ix_test_run_items_priority', 'priority'),
+    )
+
+
+class TestRunItemResultHistory(Base):
+    """測試結果歷程表"""
+    __tablename__ = "test_run_item_result_history"
+
+    id = Column(Integer, primary_key=True, index=True)
+    team_id = Column(Integer, ForeignKey("teams.id"), nullable=False, index=True)
+    config_id = Column(Integer, ForeignKey("test_run_configs.id"), nullable=False, index=True)
+    item_id = Column(Integer, ForeignKey("test_run_items.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    prev_result = Column(Enum(TestResultStatus), nullable=True)
+    new_result = Column(Enum(TestResultStatus), nullable=True)
+    prev_executed_at = Column(DateTime, nullable=True)
+    new_executed_at = Column(DateTime, nullable=True)
+
+    changed_by_id = Column(String(64), nullable=True)
+    changed_by_name = Column(String(255), nullable=True)
+    change_source = Column(String(32), nullable=True)  # single, batch, api, sync, revert
+    change_reason = Column(Text, nullable=True)
+    changed_at = Column(DateTime, default=datetime.utcnow, index=True)
+
+    # 關聯
+    item = relationship("TestRunItem", back_populates="histories")
+
+    __table_args__ = (
+        Index('ix_result_history_team_config', 'team_id', 'config_id'),
+        Index('ix_result_history_item_time', 'item_id', 'changed_at'),
+    )
+
+
+class LarkDepartment(Base):
+    """Lark 部門信息表"""
+    __tablename__ = "lark_departments"
+    
+    # 主鍵使用 Lark 部門 ID
+    department_id = Column(String(100), primary_key=True, index=True)
+    parent_department_id = Column(String(100), nullable=True, index=True)
+    
+    # 組織層級
+    level = Column(Integer, default=0, index=True)
+    path = Column(Text, nullable=True)  # 部門路徑，如: /root/dept1/dept2
+    
+    # Lark 部門屬性（JSON 存儲原始 API 響應）
+    leaders_json = Column(Text, nullable=True)  # 部門領導信息
+    group_chat_employee_types_json = Column(Text, nullable=True)  # 群聊員工類型
+    
+    # 統計信息
+    direct_user_count = Column(Integer, default=0)  # 直屬用戶數
+    total_user_count = Column(Integer, default=0)   # 總用戶數（包含子部門）
+    
+    # 狀態與時間
+    status = Column(String(20), default='active')
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_sync_at = Column(DateTime, nullable=True)
+    
+    # 關聯關係
+    users = relationship("LarkUser", back_populates="primary_department")
+    
+    # 索引
+    __table_args__ = (
+        Index('ix_lark_dept_parent', 'parent_department_id'),
+        Index('ix_lark_dept_level', 'level'),
+        Index('ix_lark_dept_status', 'status'),
+    )
+
+
+class LarkUser(Base):
+    """Lark 用戶信息表"""
+    __tablename__ = "lark_users"
+    
+    # 主鍵使用 Lark 用戶 ID
+    user_id = Column(String(100), primary_key=True, index=True)
+    open_id = Column(String(100), nullable=True, unique=True, index=True)
+    union_id = Column(String(100), nullable=True, unique=True, index=True)
+    
+    # 基本信息
+    name = Column(String(255), nullable=True, index=True)
+    en_name = Column(String(255), nullable=True)
+    enterprise_email = Column(String(255), nullable=True, unique=True, index=True)
+    
+    # 部門歸屬
+    primary_department_id = Column(String(100), ForeignKey("lark_departments.department_id"), nullable=True, index=True)
+    department_ids_json = Column(Text, nullable=True)  # JSON 存儲所有部門ID列表
+    
+    # 職位信息
+    description = Column(String(500), nullable=True)  # 職位描述
+    job_title = Column(String(255), nullable=True)    # 職稱
+    employee_type = Column(Integer, nullable=True, index=True)    # 員工類型（1=正式，6=實習等）
+    employee_no = Column(String(100), nullable=True)  # 工號
+    
+    # 聯絡信息
+    city = Column(String(100), nullable=True)
+    country = Column(String(100), nullable=True)
+    work_station = Column(String(255), nullable=True)
+    mobile_visible = Column(Boolean, default=True)
+    
+    # 狀態信息（來自 Lark status 對象）
+    is_activated = Column(Boolean, default=True, index=True)
+    is_exited = Column(Boolean, default=False, index=True)
+    is_frozen = Column(Boolean, default=False)
+    is_resigned = Column(Boolean, default=False)
+    is_unjoin = Column(Boolean, default=False)
+    is_tenant_manager = Column(Boolean, default=False)
+    
+    # 頭像信息
+    avatar_240 = Column(String(500), nullable=True)   # 240x240 頭像 URL
+    avatar_640 = Column(String(500), nullable=True)   # 640x640 頭像 URL
+    avatar_origin = Column(String(500), nullable=True) # 原始頭像 URL
+    
+    # 時間信息
+    join_time = Column(Integer, nullable=True)  # Lark 入職時間戳
+    
+    # 系統欄位
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_sync_at = Column(DateTime, nullable=True)
+    
+    # 關聯關係
+    primary_department = relationship("LarkDepartment", back_populates="users")
+    
+    # 索引
+    __table_args__ = (
+        Index('ix_lark_user_name', 'name'),
+        Index('ix_lark_user_email', 'enterprise_email'),
+        Index('ix_lark_user_dept', 'primary_department_id'),
+        Index('ix_lark_user_type', 'employee_type'),
+        Index('ix_lark_user_status', 'is_activated', 'is_exited'),
+    )
+
+
+class SyncHistory(Base):
+    """同步歷史記錄表"""
+    __tablename__ = "sync_history"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    team_id = Column(Integer, ForeignKey("teams.id"), nullable=False, index=True)
+    
+    # 同步操作信息
+    sync_type = Column(String(20), nullable=False, index=True)  # full, departments, users
+    trigger_type = Column(String(20), nullable=False)  # manual, scheduled, api
+    trigger_user = Column(String(255), nullable=True)  # 觸發用戶（手動同步時）
+    
+    # 同步狀態
+    status = Column(String(20), nullable=False, index=True)  # started, running, completed, failed
+    start_time = Column(DateTime, nullable=False, index=True)
+    end_time = Column(DateTime, nullable=True)
+    duration_seconds = Column(Float, nullable=True)
+    
+    # 同步結果統計
+    departments_discovered = Column(Integer, default=0)
+    departments_created = Column(Integer, default=0)
+    departments_updated = Column(Integer, default=0)
+    users_discovered = Column(Integer, default=0)
+    users_created = Column(Integer, default=0)
+    users_updated = Column(Integer, default=0)
+    users_duplicated = Column(Integer, default=0)
+    api_calls = Column(Integer, default=0)
+    
+    # 錯誤信息
+    error_message = Column(Text, nullable=True)
+    error_details_json = Column(Text, nullable=True)  # JSON 存儲詳細錯誤信息
+    
+    # 同步結果詳情（JSON）
+    result_summary_json = Column(Text, nullable=True)  # 完整結果摘要
+    department_result_json = Column(Text, nullable=True)  # 部門同步結果
+    user_result_json = Column(Text, nullable=True)  # 用戶同步結果
+    
+    # 系統欄位
+    created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # 關聯關係
+    team = relationship("Team")
+    
+    # 索引
+    __table_args__ = (
+        Index('ix_sync_history_team_time', 'team_id', 'start_time'),
+        Index('ix_sync_history_status', 'status'),
+        Index('ix_sync_history_type', 'sync_type'),
     )
 
 

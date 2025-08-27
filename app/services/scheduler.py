@@ -10,6 +10,7 @@ import logging
 from typing import Dict, Any
 from datetime import datetime, timedelta
 from app.services.tcg_converter import tcg_converter
+from app.services.lark_org_sync_service import get_lark_org_sync_service
 
 
 class TaskScheduler:
@@ -35,6 +36,14 @@ class TaskScheduler:
             interval_hours=2,
             run_immediately=True  # 啟動時立即執行一次
         )
+        
+        # 註冊 Lark 組織架構同步任務已移除 - 改為手動觸發
+        # self.register_task(
+        #     name="lark_org_sync",
+        #     func=self._sync_lark_org_task,
+        #     interval_hours=24,
+        #     run_immediately=False  # 不立即執行，等到凌晨時段
+        # )
         
         # 啟動調度線程
         self.scheduler_thread = threading.Thread(target=self._scheduler_loop, daemon=True)
@@ -136,6 +145,42 @@ class TaskScheduler:
                 'success': False,
                 'sync_count': 0,
                 'message': f'同步失敗: {str(e)}'
+            }
+    
+    def _sync_lark_org_task(self) -> Dict[str, Any]:
+        """Lark 組織架構同步任務"""
+        try:
+            self.logger.info("開始執行 Lark 組織架構同步任務...")
+            
+            # 獲取組織同步服務
+            sync_service = get_lark_org_sync_service()
+            
+            # 執行完整同步
+            result = sync_service.sync_full_organization()
+            
+            if result.get('success', False):
+                # 同步成功後清理舊數據（30天前的）
+                cleanup_result = sync_service.cleanup_old_data(days_threshold=30)
+                
+                return {
+                    'success': True,
+                    'sync_result': result,
+                    'cleanup_result': cleanup_result,
+                    'message': f"Lark 組織架構同步成功: {result.get('message', '未知')}"
+                }
+            else:
+                return {
+                    'success': False,
+                    'sync_result': result,
+                    'message': f"Lark 組織架構同步失敗: {result.get('message', '未知錯誤')}"
+                }
+                
+        except Exception as e:
+            self.logger.error(f"Lark 組織架構同步任務失敗: {e}")
+            return {
+                'success': False,
+                'sync_result': None,
+                'message': f'組織架構同步失敗: {str(e)}'
             }
     
     def get_task_status(self) -> Dict[str, Any]:

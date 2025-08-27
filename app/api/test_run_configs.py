@@ -14,7 +14,12 @@ from app.models.test_run_config import (
     TestRunConfig, TestRunConfigCreate, TestRunConfigUpdate, TestRunConfigResponse,
     TestRunConfigSummary, TestRunConfigStatistics
 )
-from app.models.database_models import TestRunConfig as TestRunConfigDB, Team as TeamDB, TestRunItem as TestRunItemDB
+from app.models.database_models import (
+    TestRunConfig as TestRunConfigDB,
+    Team as TeamDB,
+    TestRunItem as TestRunItemDB,
+    TestRunItemResultHistory as ResultHistoryDB,
+)
 from datetime import datetime
 
 router = APIRouter(prefix="/teams/{team_id}/test-run-configs", tags=["test-run-configs"])
@@ -209,8 +214,13 @@ async def delete_test_run_config(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"找不到測試執行配置 ID {config_id}"
         )
-    # 先刪除本地 items，避免潛在的參照錯誤
+    # 先刪除歷程與本地 items，避免潛在的參照錯誤
     try:
+        # 保險刪除：相關歷程
+        db.query(ResultHistoryDB).filter(
+            ResultHistoryDB.config_id == config_id,
+            ResultHistoryDB.team_id == team_id
+        ).delete(synchronize_session=False)
         db.query(TestRunItemDB).filter(
             TestRunItemDB.config_id == config_id,
             TestRunItemDB.team_id == team_id
