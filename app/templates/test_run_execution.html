@@ -1,0 +1,1651 @@
+{% extends "base.html" %}
+
+{% block title %}{{ i18n.t('testRun.execution') if i18n else 'Test Run 執行' }} - Test Case Repository Web Tool{% endblock %}
+
+{% block head %}
+<!-- Test Run 執行頁面樣式 -->
+<style>
+/* Test Run 執行頁面整體布局 */
+.test-run-execution {
+    height: calc(100vh - 140px);
+    display: flex;
+    flex-direction: column;
+}
+
+/* 移除狀態指示器和控制按鈕樣式（已移至 header） */
+
+/* 統計資訊樣式 */
+.execution-stats {
+    display: flex;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+    flex-wrap: wrap;
+}
+
+.stat-item {
+    background: var(--tr-bg-light);
+    padding: 0.375rem 0.75rem;
+    border-radius: 0.375rem;
+    border: 1px solid var(--tr-border-light);
+    min-width: 120px;
+    text-align: center;
+}
+
+.stat-number {
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--tr-primary);
+    line-height: 1.2;
+}
+
+.stat-label {
+    font-size: 0.8rem;
+    color: var(--tr-text-muted);
+    line-height: 1.2;
+}
+
+/* Test Run Items 表格樣式 */
+.test-run-items-container {
+    flex: 1;
+    overflow: hidden;
+    border: 1px solid var(--tr-border-light);
+    border-radius: 0.375rem;
+}
+
+.test-run-items-table {
+    height: 100%;
+    overflow-y: auto;
+}
+
+.test-run-items-table table {
+    margin-bottom: 0;
+}
+
+.test-run-items-table th {
+    position: sticky;
+    top: 0;
+    background: var(--tr-bg-sidebar);
+    z-index: 10;
+    border-bottom: 2px solid var(--tr-border);
+    vertical-align: middle;
+    padding: 0.75rem 0.5rem;
+    font-weight: 600;
+    white-space: nowrap; /* 防止標頭折行 */
+}
+
+.test-run-items-table td {
+    vertical-align: middle;
+    padding: 0.75rem 0.5rem;
+}
+
+/* 表格欄位寬度標準化 */
+.test-run-items-table th:nth-child(1), 
+.test-run-items-table td:nth-child(1) { /* checkbox */
+    width: 25px;
+    min-width: 25px;
+    text-align: center;
+    padding: 0.5rem 0.25rem;
+}
+
+.test-run-items-table th:nth-child(2), 
+.test-run-items-table td:nth-child(2) { /* 案例編號 */
+    width: 170px;
+    min-width: 170px;
+    text-align: left;
+}
+
+.test-run-items-table th:nth-child(3), 
+.test-run-items-table td:nth-child(3) { /* 標題 */
+    min-width: 200px;
+    text-align: left;
+}
+
+.test-run-items-table th:nth-child(4), 
+.test-run-items-table td:nth-child(4) { /* 優先級 */
+    width: 120px;
+    min-width: 120px;
+    text-align: center;
+}
+
+.test-run-items-table th:nth-child(5), 
+.test-run-items-table td:nth-child(5) { /* 測試結果 */
+    width: 170px;
+    min-width: 170px;
+    text-align: center;
+}
+
+.test-run-items-table th:nth-child(6), 
+.test-run-items-table td:nth-child(6) { /* 執行者 */
+    width: 175px;
+    min-width: 175px;
+    text-align: center;
+}
+
+.test-run-items-table th:nth-child(7), 
+.test-run-items-table td:nth-child(7) { /* 執行時間 */
+    width: 160px;
+    min-width: 160px;
+    text-align: center;
+}
+
+.test-run-items-table th:nth-child(8), 
+.test-run-items-table td:nth-child(8) { /* 操作 */
+    width: 100px;
+    min-width: 100px;
+    text-align: center;
+}
+
+/* 測試結果選擇器樣式 */
+.result-selector {
+    min-width: 140px;
+}
+
+.result-selector select {
+    border: none;
+    background: transparent;
+    font-size: 0.875rem;
+    padding: 0.25rem 0.5rem;
+}
+
+/* 大尺寸測試結果選擇器 */
+.result-selector-lg {
+    min-width: 150px;
+}
+
+.result-selector-lg select {
+    font-size: 0.95rem;
+    padding: 0.375rem 0.75rem;
+    border: 1px solid var(--tr-border-light);
+    border-radius: 0.25rem;
+}
+
+/* 大尺寸優先級 badge */
+.priority-badge-lg {
+    font-size: 0.85rem;
+    padding: 0.4rem 0.8rem;
+    font-weight: 500;
+}
+
+/* 大尺寸測試結果 badge */
+.result-badge-lg {
+    font-size: 0.85rem;
+    padding: 0.4rem 0.8rem;
+    font-weight: 500;
+}
+
+/* 執行者編輯器樣式 */
+.assignee-editor {
+    border: 1px solid transparent;
+    background: transparent;
+    transition: all 0.2s ease;
+    text-align: center;
+    width: 100%;
+}
+
+.assignee-editor:hover {
+    border-color: var(--tr-border-light);
+    background: var(--tr-bg-light);
+}
+
+.assignee-editor:focus {
+    border-color: var(--tr-primary);
+    background: white;
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.1);
+}
+
+.result-passed { color: var(--tr-success-dark); background: var(--tr-success-light); }
+.result-failed { color: var(--tr-danger-dark); background: var(--tr-danger-light); }
+.result-retest { color: var(--tr-warning-dark); background: var(--tr-warning-light); }
+.result-na { color: var(--tr-secondary-dark); background: var(--tr-secondary-light); }
+.result-pending { color: var(--tr-text-muted); background: var(--tr-bg-light); }
+
+/* 操作按鈕樣式 */
+.item-actions {
+    display: flex;
+    gap: 0.25rem;
+}
+
+.btn-icon-sm {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
+}
+
+/* 可點擊項目樣式 */
+.test-run-items-table a {
+    color: var(--tr-primary);
+    cursor: pointer;
+}
+
+.test-run-items-table a:hover {
+    color: var(--tr-primary-dark, #0056b3);
+    text-decoration: underline !important;
+}
+
+.test-run-items-table code a {
+    color: inherit;
+}
+
+.test-run-items-table code a:hover {
+    color: var(--tr-primary);
+}
+
+/* 表格行 hover 效果優化 */
+.test-run-items-table tbody tr:hover {
+    background-color: var(--tr-bg-light, #f8f9fa);
+    transition: background-color 0.15s ease-in-out;
+}
+
+/* 表格整體美化 */
+.test-run-items-table table {
+    border-collapse: separate;
+    border-spacing: 0;
+}
+
+.test-run-items-table th:first-child {
+    border-top-left-radius: 0.375rem;
+}
+
+.test-run-items-table th:last-child {
+    border-top-right-radius: 0.375rem;
+}
+
+/* Checkbox 欄位狀態控制 */
+.checkbox-cell {
+    width: 25px !important;
+    padding: 0.5rem 0.25rem !important;
+}
+
+/* 隱藏 checkbox 欄位的樣式（completed 狀態） */
+.test-run-items-table.hide-checkbox #checkbox-header,
+.test-run-items-table.hide-checkbox .checkbox-cell {
+    display: none !important;
+}
+
+/* 批次操作工具區樣式 */
+#batchOperationsToolbar {
+    background: rgba(13, 110, 253, 0.1);
+    border: 1px solid rgba(13, 110, 253, 0.2);
+    border-radius: 0.375rem;
+    padding: 0.5rem 1rem;
+    white-space: nowrap;
+}
+
+/* 響應式調整 */
+@media (max-width: 768px) {
+    .execution-stats {
+        justify-content: center;
+    }
+    
+    .stat-item {
+        min-width: 100px;
+    }
+    
+    /* 小螢幕時批次操作區域換行顯示 */
+    .d-flex.flex-wrap.gap-3.align-items-center {
+        flex-direction: column;
+        align-items: stretch !important;
+        gap: 1rem !important;
+    }
+    
+    #batchOperationsToolbar {
+        justify-content: center;
+    }
+    
+    /* 小螢幕時隱藏部分欄位 */
+    .test-run-items-table th:nth-child(7),
+    .test-run-items-table td:nth-child(7),
+    .test-run-items-table th:nth-child(8),
+    .test-run-items-table td:nth-child(8) {
+        display: none;
+    }
+}
+/* Test Case 詳細資料 Modal 內部固定與捲動區域 */
+#testCaseDetailModal .modal-dialog { max-height: 90vh; }
+#testCaseDetailModal .modal-content { display: flex; max-height: 90vh; }
+#testCaseDetailModal .modal-body { display: flex; flex-direction: column; overflow: hidden; }
+#testCaseDetailFixed { flex: 0 0 auto; }
+#testCaseDetailScrollable { flex: 1 1 auto; overflow-y: auto; min-height: 0; }
+</style>
+{% endblock %}
+
+{% block page_title_text %}
+<span data-i18n="testRun.execution">Test Run 執行</span>
+{% endblock %}
+
+{% block page_subtitle_text %}
+<span id="test-run-subtitle" data-i18n="testRun.executeTestRun">執行測試案例並記錄結果</span>
+{% endblock %}
+
+{% block page_actions %}
+<div class="d-flex gap-2">
+    <button type="button" class="btn btn-success" id="startBtn" style="display: none;">
+        <i class="fas fa-play me-2"></i><span data-i18n="testRun.startExecution">開始執行</span>
+    </button>
+    <button type="button" class="btn btn-warning" id="completeBtn" style="display: none;">
+        <i class="fas fa-stop me-2"></i><span data-i18n="testRun.completeExecution">結束執行</span>
+    </button>
+    <button type="button" class="btn btn-info" id="restartBtn" style="display: none;">
+        <i class="fas fa-redo me-2"></i><span data-i18n="testRun.restartExecution">重新執行</span>
+    </button>
+    <div class="ms-auto d-flex gap-2">
+        <button type="button" class="btn btn-outline-primary" id="exportBtn">
+            <i class="fas fa-download me-2"></i><span data-i18n="testRun.exportResults">匯出結果</span>
+        </button>
+        <button type="button" class="btn btn-secondary" id="refreshBtn">
+            <i class="fas fa-sync-alt me-2"></i><span data-i18n="common.refresh">重新整理</span>
+        </button>
+        <a href="/test-run-management" class="btn btn-outline-secondary">
+            <i class="fas fa-arrow-left me-2"></i><span data-i18n="navigation.backToManagement">回到管理</span>
+        </a>
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid test-run-execution">
+    <!-- 載入狀態 -->
+    <div id="loading-state" class="text-center py-5" style="display: none;">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden" data-i18n="common.loading">載入中...</span>
+        </div>
+        <div class="mt-3 text-muted" data-i18n="testRun.loadingItems">載入測試項目中...</div>
+    </div>
+
+    <!-- Test Run 資訊與控制區 -->
+    <div id="test-run-header" style="display: none;">
+        <!-- 統計資訊區域已簡化 -->
+
+        <!-- 統計資訊和批次操作一體化區域 -->
+        <div class="d-flex flex-wrap gap-3 align-items-center">
+            <!-- 統計資訊 -->
+            <div class="execution-stats flex-grow-1">
+                <div class="stat-item">
+                    <div class="stat-number" id="total-count">0</div>
+                    <div class="stat-label" data-i18n="testRun.totalItems">總項目</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number" id="executed-count">0</div>
+                    <div class="stat-label" data-i18n="testRun.executedItems">已執行</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number text-success" id="passed-count">0</div>
+                    <div class="stat-label" data-i18n="testRun.passedItems">通過</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number text-danger" id="failed-count">0</div>
+                    <div class="stat-label" data-i18n="testRun.failedItems">失敗</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number" id="execution-rate">0%</div>
+                    <div class="stat-label" data-i18n="testRun.executionRate">執行率</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number" id="pass-rate">0%</div>
+                    <div class="stat-label" data-i18n="testRun.passRate">通過率</div>
+                </div>
+            </div>
+            
+            <!-- 批次操作工具區 -->
+            <div id="batchOperationsToolbar" class="d-none d-flex align-items-center gap-2">
+                <span class="text-muted" id="selectedItemsCount" data-i18n="testRun.selectedItemsCount" data-i18n-params='{"count": 0}'>已選取 0 個項目</span>
+                <button type="button" class="btn btn-primary btn-sm" id="batchModifyBtn">
+                    <i class="fas fa-edit me-2"></i><span data-i18n="testRun.batchModify">批次修改</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Test Run Items 表格 -->
+    <div id="test-run-items-container" class="test-run-items-container" style="display: none;">
+        <div class="test-run-items-table">
+            <table class="table table-hover table-sm">
+                <thead>
+                    <tr id="table-header-row">
+                        <th id="checkbox-header">
+                            <input type="checkbox" class="form-check-input" id="selectAllItemsCheckbox">
+                        </th>
+                        <th><span data-i18n="testRun.caseNumber">案例編號</span></th>
+                        <th><span data-i18n="testRun.caseTitle">標題</span></th>
+                        <th><span data-i18n="testRun.priority">優先級</span></th>
+                        <th><span data-i18n="testRun.testResult">測試結果</span></th>
+                        <th><span data-i18n="testRun.assignee">執行者</span></th>
+                        <th><span data-i18n="testRun.executedAt">執行時間</span></th>
+                        <th><span data-i18n="common.actions">操作</span></th>
+                    </tr>
+                </thead>
+                <tbody id="items-table-body">
+                    <!-- Test Run Items 將在此處動態載入 -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<!-- Test Run Item 詳情 Modal -->
+<div class="modal fade" id="itemDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-clipboard-list me-2"></i>
+                    <span data-i18n="testRun.itemDetails">測試項目詳情</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="item-detail-content">
+                <!-- 詳情內容將動態載入 -->
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" data-i18n="common.close">關閉</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 確認對話框 -->
+<div class="modal fade" id="confirmModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-exclamation-triangle text-warning me-2"></i>
+                    <span data-i18n="common.confirm">確認操作</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p id="confirm-message"></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">取消</button>
+                <button type="button" class="btn btn-primary" id="confirm-action-btn" data-i18n="common.confirm">確認</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 批次修改模態框 -->
+<div class="modal fade" id="batchModifyModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-edit text-primary me-2"></i>
+                    <span data-i18n="testRun.batchModify">批次修改</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-3">
+                    <span data-i18n="testRun.batchModifyDescription">將對選中的</span>
+                    <strong id="batchModifyCount">0</strong>
+                    <span data-i18n="testRun.itemsApplyChanges">個項目套用以下變更：</span>
+                </p>
+                
+                <!-- 執行者批次設定 -->
+                <div class="mb-3">
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" id="batchModifyAssignee" checked>
+                        <label class="form-check-label" for="batchModifyAssignee">
+                            <strong data-i18n="testRun.batchSetAssignee">批次設定執行者</strong>
+                        </label>
+                    </div>
+                    <input type="text" class="form-control" id="batchAssigneeInput" 
+                           data-assignee-selector
+                           placeholder="{{ i18n.t('testRun.enterAssigneeName') if i18n else '輸入執行者姓名' }}">
+                </div>
+                
+                <!-- 測試結果批次設定 -->
+                <div class="mb-3" id="batchResultSection">
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" id="batchModifyResult">
+                        <label class="form-check-label" for="batchModifyResult">
+                            <strong data-i18n="testRun.batchSetResult">批次設定測試結果</strong>
+                            <br><small class="text-muted" data-i18n="testRun.onlyActiveStatus">（僅適用於執行中狀態）</small>
+                        </label>
+                    </div>
+                    <select class="form-select" id="batchResultSelect" disabled>
+                        <option value="" data-i18n="testRun.selectResult">請選擇結果</option>
+                        <option value="Passed" data-i18n="testRun.passed">通過</option>
+                        <option value="Failed" data-i18n="testRun.failed">失敗</option>
+                        <option value="Retest" data-i18n="testRun.retest">重測</option>
+                        <option value="Not Available" data-i18n="testRun.notAvailable">不適用</option>
+                    </select>
+                </div>
+                
+                <div class="alert alert-info" role="alert">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <span data-i18n="testRun.batchModifyNote">只會套用已勾選的項目，空白值將不會變更現有資料。</span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">取消</button>
+                <button type="button" class="btn btn-primary" id="confirmBatchModifyBtn">
+                    <i class="fas fa-edit me-2"></i><span data-i18n="testRun.confirmModify">確認修改</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 重新執行模態框 -->
+<div class="modal fade" id="restartModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-redo text-info me-2"></i>
+                    <span data-i18n="testRun.restartExecution">重新執行 Test Run</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-3" data-i18n="testRun.selectRestartMode">請選擇重新執行模式：</p>
+                
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="radio" name="restartMode" id="restartAll" value="all" checked>
+                    <label class="form-check-label" for="restartAll">
+                        <strong data-i18n="testRun.restartAllItems">全部重新執行</strong>
+                        <br><small class="text-muted" data-i18n="testRun.restartAllDescription">清空所有項目的測試結果，重新開始執行</small>
+                    </label>
+                </div>
+                
+                <div class="form-check mb-2">
+                    <input class="form-check-input" type="radio" name="restartMode" id="restartFailed" value="failed">
+                    <label class="form-check-label" for="restartFailed">
+                        <strong data-i18n="testRun.restartFailedItems">只執行失敗的項目</strong>
+                        <br><small class="text-muted" data-i18n="testRun.restartFailedDescription">只清空標記為「失敗」和「重測」的項目結果</small>
+                    </label>
+                </div>
+                
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="radio" name="restartMode" id="restartPending" value="pending">
+                    <label class="form-check-label" for="restartPending">
+                        <strong data-i18n="testRun.restartPendingItems">只執行未完成的項目</strong>
+                        <br><small class="text-muted" data-i18n="testRun.restartPendingDescription">只清空尚未執行的項目，保留已通過的結果</small>
+                    </label>
+                </div>
+                
+                <div class="alert alert-warning" role="alert">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <span data-i18n="testRun.restartWarning">重新執行會將 Test Run 狀態重置為「執行中」，請確認後繼續。</span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">取消</button>
+                <button type="button" class="btn btn-info" id="confirmRestartBtn">
+                    <i class="fas fa-redo me-2"></i><span data-i18n="testRun.confirmRestart">確認重新執行</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Test Case 詳細資料 Modal -->
+<div class="modal fade" id="testCaseDetailModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-tasks me-2"></i>
+                    <span data-i18n="testRun.testCaseDetails">Test Case 詳細資料</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="testCaseDetailLoading" class="text-center py-4">
+                    <i class="fas fa-spinner fa-spin me-2"></i>
+                    <span data-i18n="common.loading">載入中...</span>
+                </div>
+                <!-- 固定區：Basic Info + 測試詳情標題 -->
+                <div id="testCaseDetailFixed" style="display:none;"></div>
+                <!-- 可捲動區：僅測試詳情內容 -->
+                <div id="testCaseDetailScrollable" style="display:none;"></div>
+                <div id="testCaseDetailError" style="display: none;">
+                    <div class="alert alert-danger">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        <span data-i18n="testRun.loadTestCaseError">載入 Test Case 詳細資料失敗</span>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times me-2"></i>
+                    <span data-i18n="common.close">關閉</span>
+                </button>
+                <button type="button" class="btn btn-primary" id="openFullTestCaseBtn" style="display: none;">
+                    <i class="fas fa-external-link-alt me-2"></i>
+                    <span data-i18n="testRun.openInTestCaseManagement">在測試案例管理中開啟</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/assignee-selector.js"></script>
+<script>
+// Test Run 執行頁面
+let currentConfigId = null;
+let currentTeamId = 1; // 暫時硬編碼
+let testRunConfig = null;
+let testRunItems = [];
+let itemDetailModal = null;
+let confirmModal = null;
+let restartModal = null;
+let batchModifyModal = null;
+let selectedItems = new Set(); // 追踪選中的測試執行項目
+
+// 頁面初始化
+document.addEventListener('DOMContentLoaded', function() {
+    // 從 URL 參數取得 config ID
+    const urlParams = new URLSearchParams(window.location.search);
+    currentConfigId = parseInt(urlParams.get('config_id'));
+    
+    if (!currentConfigId) {
+        AppUtils.showError('{{ i18n.t("testRun.missingConfigId") if i18n else "缺少測試執行配置 ID" }}');
+        window.location.href = '/test-run-management';
+        return;
+    }
+    
+    initializePage();
+    bindEventListeners();
+});
+
+function initializePage() {
+    itemDetailModal = new bootstrap.Modal(document.getElementById('itemDetailModal'));
+    confirmModal = new bootstrap.Modal(document.getElementById('confirmModal'));
+    restartModal = new bootstrap.Modal(document.getElementById('restartModal'));
+    batchModifyModal = new bootstrap.Modal(document.getElementById('batchModifyModal'));
+    
+    // 綁定重新執行確認按鈕事件
+    document.getElementById('confirmRestartBtn').addEventListener('click', handleRestartConfirm);
+    
+    // 綁定批次修改相關事件
+    document.getElementById('confirmBatchModifyBtn').addEventListener('click', handleBatchModifyConfirm);
+    document.getElementById('batchModifyAssignee').addEventListener('change', toggleBatchAssigneeInput);
+    document.getElementById('batchModifyResult').addEventListener('change', toggleBatchResultSelect);
+    
+    // 初始化 AssigneeSelector 元件（批次修改模態框中的）
+    if (window.AssigneeSelector && currentTeamId) {
+        // 為批次修改的 input 初始化 AssigneeSelector
+        const batchInput = document.getElementById('batchAssigneeInput');
+        if (batchInput && batchInput.dataset.assigneeSelector !== undefined) {
+            const options = {
+                teamId: currentTeamId,
+                allowCustomValue: true,  // 批次修改允許自定義值
+                onSelect: (contact) => {
+                    // 批次修改不需要立即更新，只需要設定值
+                    console.log('Batch assignee selected:', contact.name);
+                }
+            };
+            
+            if (batchInput._assigneeSelector) {
+                batchInput._assigneeSelector.destroy();
+            }
+            batchInput._assigneeSelector = new AssigneeSelector(batchInput, options);
+        }
+    }
+    
+    loadTestRunConfig();
+}
+
+function bindEventListeners() {
+    document.getElementById('refreshBtn').addEventListener('click', () => {
+        loadTestRunItems();
+        updateStatistics();
+    });
+    
+    document.getElementById('startBtn').addEventListener('click', () => {
+        confirmStatusChange('active', '{{ i18n.t("testRun.startExecutionConfirm") if i18n else "開始執行此 Test Run？" }}');
+    });
+    
+    document.getElementById('completeBtn').addEventListener('click', () => {
+        confirmStatusChange('completed', '{{ i18n.t("testRun.completeExecutionConfirm") if i18n else "結束此 Test Run？結束後將無法再修改測試結果。" }}');
+    });
+    
+    document.getElementById('restartBtn').addEventListener('click', showRestartModal);
+    
+    document.getElementById('exportBtn').addEventListener('click', exportResults);
+    
+    // 全選 checkbox 事件
+    document.getElementById('selectAllItemsCheckbox').addEventListener('change', toggleSelectAllItems);
+    
+    // 批次修改按鈕事件
+    document.getElementById('batchModifyBtn').addEventListener('click', showBatchModifyModal);
+    
+    // 監聽個別項目 checkbox 變化
+    document.addEventListener('change', function(e) {
+        if (e.target.classList.contains('test-run-item-checkbox')) {
+            const itemId = parseInt(e.target.value);
+            if (e.target.checked) {
+                selectedItems.add(itemId);
+            } else {
+                selectedItems.delete(itemId);
+            }
+            updateItemSelectionUI();
+        }
+    });
+}
+
+async function loadTestRunConfig() {
+    try {
+        showLoading();
+        const response = await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        
+        testRunConfig = await response.json();
+        updateHeader();
+        await loadTestRunItems();
+        await updateStatistics();
+        
+    } catch (error) {
+        console.error('Failed to load Test Run config:', error);
+        AppUtils.showError('{{ i18n.t("testRun.loadFailed") if i18n else "載入失敗" }}' + ': ' + error.message);
+    } finally {
+        hideLoading();
+    }
+}
+
+async function loadTestRunItems() {
+    try {
+        const response = await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        
+        testRunItems = await response.json();
+        renderTestRunItems();
+        
+    } catch (error) {
+        console.error('Failed to load test items:', error);
+        AppUtils.showError('{{ i18n.t("testRun.loadItemsFailed") if i18n else "載入測試項目失敗" }}' + ': ' + error.message);
+    }
+}
+
+function updateHeader() {
+    if (!testRunConfig) return;
+    
+    // 更新頁面標題
+    document.getElementById('test-run-subtitle').textContent = testRunConfig.name;
+    
+    // 顯示對應的控制按鈕
+    updateControlButtons(testRunConfig.status);
+    
+    // 顯示頁面內容
+    document.getElementById('test-run-header').style.display = 'block';
+    document.getElementById('test-run-items-container').style.display = 'block';
+}
+
+function updateControlButtons(status) {
+    // 隱藏所有按鈕
+    document.getElementById('startBtn').style.display = 'none';
+    document.getElementById('completeBtn').style.display = 'none';
+    document.getElementById('restartBtn').style.display = 'none';
+    
+    // 根據狀態顯示對應按鈕
+    switch (status) {
+        case 'draft':
+            document.getElementById('startBtn').style.display = 'inline-block';
+            break;
+        case 'active':
+            document.getElementById('completeBtn').style.display = 'inline-block';
+            break;
+        case 'completed':
+            document.getElementById('restartBtn').style.display = 'inline-block';
+            break;
+    }
+}
+
+function renderTestRunItems() {
+    const tbody = document.getElementById('items-table-body');
+    const canUpdate = testRunConfig && testRunConfig.status === 'active';
+    
+    // 更新表格標頭顯示
+    updateTableHeader();
+    
+    tbody.innerHTML = testRunItems.map((item, index) => {
+        return createItemRow(item, index + 1, canUpdate);
+    }).join('');
+    
+    // 綁定事件處理器
+    bindItemEventHandlers(canUpdate);
+}
+
+function shouldShowCheckbox(status) {
+    return status === 'draft' || status === 'active';
+}
+
+function updateTableHeader() {
+    const table = document.querySelector('.test-run-items-table');
+    const showCheckbox = shouldShowCheckbox(testRunConfig ? testRunConfig.status : 'draft');
+    
+    if (showCheckbox) {
+        table.classList.remove('hide-checkbox');
+    } else {
+        table.classList.add('hide-checkbox');
+        // 清空選擇狀態
+        selectedItems.clear();
+        updateItemSelectionUI();
+    }
+}
+
+function createItemRow(item, index, canUpdate) {
+    const resultClass = getResultClass(item.test_result);
+    const resultText = getResultText(item.test_result);
+    const executedAt = item.executed_at ? AppUtils.formatDate(item.executed_at, 'datetime') : '-';
+    const assigneeName = item.assignee_name || '-';
+    const canEditAssignee = testRunConfig && testRunConfig.status !== 'completed';
+    const showCheckbox = shouldShowCheckbox(testRunConfig ? testRunConfig.status : 'draft');
+    
+    return `
+        <tr data-item-id="${item.id}">
+            ${showCheckbox ? `
+                <td class="checkbox-cell">
+                    <input type="checkbox" class="form-check-input test-run-item-checkbox" value="${item.id}">
+                </td>
+            ` : ''}
+            <td><code><a href="#" class="text-decoration-none" onclick="navigateToTestCase('${item.test_case_number}'); return false;">${escapeHtml(item.test_case_number)}</a></code></td>
+            <td class="text-truncate" title="${escapeHtml(item.title)}"><a href="#" class="text-decoration-none" onclick="navigateToTestCase('${item.test_case_number}'); return false;">${escapeHtml(item.title)}</a></td>
+            <td><span class="badge bg-secondary priority-badge-lg">${escapeHtml(item.priority || 'Medium')}</span></td>
+            <td>
+                ${canUpdate ? `
+                    <select class="form-select result-selector-lg ${resultClass}" 
+                            data-item-id="${item.id}" onchange="updateTestResult(${item.id}, this.value)">
+                        <option value="">${escapeHtml('{{ i18n.t("testRun.notExecuted") if i18n else "未執行" }}')}</option>
+                        <option value="Passed" ${item.test_result === 'Passed' ? 'selected' : ''}>${escapeHtml('{{ i18n.t("testRun.passed") if i18n else "通過" }}')}</option>
+                        <option value="Failed" ${item.test_result === 'Failed' ? 'selected' : ''}>${escapeHtml('{{ i18n.t("testRun.failed") if i18n else "失敗" }}')}</option>
+                        <option value="Retest" ${item.test_result === 'Retest' ? 'selected' : ''}>${escapeHtml('{{ i18n.t("testRun.retest") if i18n else "重測" }}')}</option>
+                        <option value="Not Available" ${item.test_result === 'Not Available' ? 'selected' : ''}>${escapeHtml('{{ i18n.t("testRun.notAvailable") if i18n else "不適用" }}')}</option>
+                    </select>
+                ` : `
+                    <span class="badge result-badge-lg ${resultClass}">${resultText}</span>
+                `}
+            </td>
+            <td>
+                ${canEditAssignee ? `
+                    <input type="text" class="form-control form-control-sm assignee-editor" 
+                           value="${escapeHtml(assigneeName === '-' ? '' : assigneeName)}"
+                           data-item-id="${item.id}" 
+                           data-assignee-selector
+                           data-i18n-placeholder="testRun.enterAssigneeName"
+                           placeholder="{{ i18n.t('testRun.enterAssigneeName') if i18n else '輸入執行者姓名' }}"
+                           onblur="updateAssignee(${item.id}, this.value)">
+                ` : `
+                    ${assigneeName}
+                `}
+            </td>
+            <td class="small text-muted">${executedAt}</td>
+            <td>
+                <!-- 操作按鈕保留為未來擴展使用 -->
+            </td>
+        </tr>
+    `;
+}
+
+function bindItemEventHandlers(canUpdate) {
+    if (!canUpdate) return;
+    
+    // 結果選擇器樣式更新
+    document.querySelectorAll('.result-selector').forEach(select => {
+        select.addEventListener('change', function() {
+            updateSelectClass(this);
+        });
+        updateSelectClass(select);
+    });
+    
+    // 初始化新渲染的 AssigneeSelector 元件（行內編輯器）
+    if (window.initAssigneeSelectors && currentTeamId) {
+        // 清理之前的 AssigneeSelector 實例
+        document.querySelectorAll('.assignee-editor[data-assignee-selector]').forEach(input => {
+            if (input._assigneeSelector) {
+                input._assigneeSelector.destroy();
+            }
+        });
+        
+        // 為每個 assignee editor 設定自訂選項，包含選擇回調
+        document.querySelectorAll('.assignee-editor[data-assignee-selector]').forEach(input => {
+            const itemId = parseInt(input.dataset.itemId);
+            
+            if (input._assigneeSelector) {
+                input._assigneeSelector.destroy();
+            }
+            
+            const options = {
+                teamId: currentTeamId,
+                onSelect: (contact) => {
+                    // 當選擇聯絡人時，自動更新 assignee
+                    updateAssignee(itemId, contact.name);
+                },
+                onClear: () => {
+                    // 當清空選擇時，自動清空 assignee
+                    updateAssignee(itemId, '');
+                }
+            };
+            
+            input._assigneeSelector = new AssigneeSelector(input, options);
+        });
+    }
+}
+
+function updateSelectClass(select) {
+    const value = select.value;
+    select.className = `form-select result-selector-lg ${getResultClass(value)}`;
+}
+
+async function updateTestResult(itemId, result) {
+    try {
+        const executedAt = result ? new Date().toISOString() : null;
+        
+        const response = await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/${itemId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                test_result: result || null,
+                executed_at: executedAt
+            })
+        });
+        
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        
+        // 更新本地資料
+        const itemIndex = testRunItems.findIndex(item => item.id === itemId);
+        if (itemIndex !== -1) {
+            testRunItems[itemIndex].test_result = result || null;
+            testRunItems[itemIndex].executed_at = executedAt;
+        }
+        
+        // 更新統計
+        await updateStatistics();
+        
+    } catch (error) {
+        console.error('Failed to update test result:', error);
+        AppUtils.showError('{{ i18n.t("testRun.updateFailed") if i18n else "更新失敗" }}' + ': ' + error.message);
+        // 重新載入項目以恢復狀態
+        await loadTestRunItems();
+    }
+}
+
+async function updateStatistics() {
+    try {
+        const response = await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/statistics`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        
+        const stats = await response.json();
+        
+        document.getElementById('total-count').textContent = stats.total_runs;
+        document.getElementById('executed-count').textContent = stats.executed_runs;
+        document.getElementById('passed-count').textContent = stats.passed_runs;
+        document.getElementById('failed-count').textContent = stats.failed_runs;
+        document.getElementById('execution-rate').textContent = stats.execution_rate + '%';
+        document.getElementById('pass-rate').textContent = stats.pass_rate + '%';
+        
+        // 同步配置統計
+        await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/sync`);
+        
+    } catch (error) {
+        console.error('Failed to update statistics:', error);
+    }
+}
+
+function showItemDetail(itemId) {
+    const item = testRunItems.find(i => i.id === itemId);
+    if (!item) return;
+    
+    const basicInfoLabel = '{{ i18n.t("testRun.basicInfo") if i18n else "基本資訊" }}';
+    const executionInfoLabel = '{{ i18n.t("testRun.executionInfo") if i18n else "執行資訊" }}';
+    const testCaseNumberLabel = '{{ i18n.t("testRun.testCaseNumber") if i18n else "測試案例編號" }}';
+    const titleLabel = '{{ i18n.t("common.title") if i18n else "標題" }}';
+    const priorityLabel = '{{ i18n.t("testRun.priority") if i18n else "優先級" }}';
+    const testResultLabel = '{{ i18n.t("testRun.testResult") if i18n else "測試結果" }}';
+    const executorLabel = '{{ i18n.t("testRun.executor") if i18n else "執行者" }}';
+    const executionTimeLabel = '{{ i18n.t("testRun.executionTime") if i18n else "執行時間" }}';
+    const executionDurationLabel = '{{ i18n.t("testRun.executionDuration") if i18n else "執行時長" }}';
+    const attachmentCountLabel = '{{ i18n.t("testRun.attachmentCount") if i18n else "附件數量" }}';
+    const preconditionsLabel = '{{ i18n.t("testRun.preconditions") if i18n else "前置條件" }}';
+    const testStepsLabel = '{{ i18n.t("testRun.testSteps") if i18n else "測試步驟" }}';
+    const expectedResultsLabel = '{{ i18n.t("testRun.expectedResults") if i18n else "預期結果" }}';
+    const minutesLabel = '{{ i18n.t("testRun.minutes") if i18n else "分鐘" }}';
+    
+    const content = `
+        <div class="row">
+            <div class="col-md-6">
+                <h6>${basicInfoLabel}</h6>
+                <table class="table table-sm">
+                    <tr><td>${testCaseNumberLabel}</td><td><code>${escapeHtml(item.test_case_number)}</code></td></tr>
+                    <tr><td>${titleLabel}</td><td>${escapeHtml(item.title)}</td></tr>
+                    <tr><td>${priorityLabel}</td><td>${escapeHtml(item.priority || 'Medium')}</td></tr>
+                    <tr><td>${testResultLabel}</td><td><span class="badge ${getResultClass(item.test_result)}">${getResultText(item.test_result)}</span></td></tr>
+                </table>
+            </div>
+            <div class="col-md-6">
+                <h6>${executionInfoLabel}</h6>
+                <table class="table table-sm">
+                    <tr><td>${executorLabel}</td><td>${escapeHtml(item.assignee_name || '-')}</td></tr>
+                    <tr><td>${executionTimeLabel}</td><td>${item.executed_at ? AppUtils.formatDate(item.executed_at, 'datetime') : '-'}</td></tr>
+                    <tr><td>${executionDurationLabel}</td><td>${item.execution_duration ? item.execution_duration + ' ' + minutesLabel : '-'}</td></tr>
+                    <tr><td>${attachmentCountLabel}</td><td>${item.attachment_count || 0}</td></tr>
+                </table>
+            </div>
+        </div>
+        ${item.precondition ? `<div class="mt-3"><h6>${preconditionsLabel}</h6><p class="text-muted">${escapeHtml(item.precondition)}</p></div>` : ''}
+        ${item.steps ? `<div class="mt-3"><h6>${testStepsLabel}</h6><p class="text-muted">${escapeHtml(item.steps).replace(/\n/g, '<br>')}</p></div>` : ''}
+        ${item.expected_result ? `<div class="mt-3"><h6>${expectedResultsLabel}</h6><p class="text-muted">${escapeHtml(item.expected_result)}</p></div>` : ''}
+    `;
+    
+    document.getElementById('item-detail-content').innerHTML = content;
+    itemDetailModal.show();
+}
+
+function confirmStatusChange(newStatus, message) {
+    document.getElementById('confirm-message').textContent = message;
+    const confirmBtn = document.getElementById('confirm-action-btn');
+    
+    confirmBtn.onclick = async () => {
+        try {
+            await changeTestRunStatus(newStatus);
+            confirmModal.hide();
+        } catch (error) {
+            AppUtils.showError('{{ i18n.t("testRun.statusChangeFailed") if i18n else "狀態變更失敗" }}' + ': ' + error.message);
+        }
+    };
+    
+    confirmModal.show();
+}
+
+async function changeTestRunStatus(newStatus) {
+    try {
+        const response = await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: newStatus })
+        });
+        
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        
+        testRunConfig.status = newStatus;
+        updateHeader();
+        
+        // 重新渲染項目以更新 checkbox 顯示和編輯權限
+        renderTestRunItems();
+        
+        const statusMsg = {
+            'active': '{{ i18n.t("testRun.executionStarted") if i18n else "已開始執行" }}',
+            'completed': '{{ i18n.t("testRun.executionCompleted") if i18n else "已結束執行" }}'
+        };
+        
+        AppUtils.showSuccess(statusMsg[newStatus] || '{{ i18n.t("testRun.statusUpdated") if i18n else "狀態已更新" }}');
+        
+    } catch (error) {
+        console.error('Failed to change status:', error);
+        throw error;
+    }
+}
+
+function showRestartModal() {
+    if (!testRunConfig || testRunConfig.status !== 'completed') {
+        AppUtils.showWarning('{{ i18n.t("testRun.onlyCompletedCanRestart") if i18n else "只有已完成的 Test Run 才能重新執行" }}');
+        return;
+    }
+    
+    // 重置選項為默認值
+    document.getElementById('restartAll').checked = true;
+    restartModal.show();
+}
+
+async function handleRestartConfirm() {
+    const selectedMode = document.querySelector('input[name="restartMode"]:checked');
+    if (!selectedMode) {
+        AppUtils.showWarning('{{ i18n.t("testRun.selectRestartMode") if i18n else "請選擇重新執行模式" }}');
+        return;
+    }
+    
+    try {
+        await restartTestRun(selectedMode.value);
+        restartModal.hide();
+        
+    } catch (error) {
+        AppUtils.showError('{{ i18n.t("testRun.restartFailed") if i18n else "重新執行失敗" }}' + ': ' + error.message);
+    }
+}
+
+async function restartTestRun(mode) {
+    try {
+        // 調用重新執行 API
+        const response = await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/restart`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode: mode })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        
+        const result = await response.json();
+        
+        // 更新本地狀態
+        testRunConfig.status = 'active';
+        updateHeader();
+        
+        // 重新載入項目和統計
+        await loadTestRunItems();
+        await updateStatistics();
+        
+        const modeMessages = {
+            'all': '{{ i18n.t("testRun.restartAllSuccess") if i18n else "已重新執行所有項目" }}',
+            'failed': '{{ i18n.t("testRun.restartFailedSuccess") if i18n else "已重新執行失敗項目" }}',
+            'pending': '{{ i18n.t("testRun.restartPendingSuccess") if i18n else "已重新執行未完成項目" }}'
+        };
+        
+        AppUtils.showSuccess(modeMessages[mode] || '{{ i18n.t("testRun.restartSuccess") if i18n else "重新執行成功" }}');
+        
+    } catch (error) {
+        const consoleMsg = window.i18n && window.i18n.isReady() 
+            ? window.i18n.t('testRun.restartFailed')
+            : '重新執行 Test Run 失敗';
+        console.error(consoleMsg + ':', error);
+        throw error;
+    }
+}
+
+function exportResults() {
+    // TODO: 實現匯出功能
+    AppUtils.showInfo('{{ i18n.t("testRun.exportNotImplemented") if i18n else "匯出功能開發中..." }}');
+}
+
+// 輔助函數（狀態文字映射已移除，因為不再需要狀態指示器）
+
+function getResultClass(result) {
+    const classMap = {
+        'Passed': 'result-passed',
+        'Failed': 'result-failed', 
+        'Retest': 'result-retest',
+        'Not Available': 'result-na'
+    };
+    return classMap[result] || 'result-pending';
+}
+
+function getResultText(result) {
+    const textMap = {
+        'Passed': '{{ i18n.t("testRun.passed") if i18n else "通過" }}',
+        'Failed': '{{ i18n.t("testRun.failed") if i18n else "失敗" }}',
+        'Retest': '{{ i18n.t("testRun.retest") if i18n else "重測" }}', 
+        'Not Available': '{{ i18n.t("testRun.notAvailable") if i18n else "不適用" }}'
+    };
+    return textMap[result] || '{{ i18n.t("testRun.notExecuted") if i18n else "未執行" }}';
+}
+
+function showLoading() {
+    document.getElementById('loading-state').style.display = 'block';
+    document.getElementById('test-run-header').style.display = 'none';
+    document.getElementById('test-run-items-container').style.display = 'none';
+}
+
+function hideLoading() {
+    document.getElementById('loading-state').style.display = 'none';
+}
+
+function toggleSelectAllItems() {
+    const selectAll = document.getElementById('selectAllItemsCheckbox').checked;
+    const checkboxes = document.querySelectorAll('.test-run-item-checkbox');
+    
+    checkboxes.forEach(checkbox => {
+        checkbox.checked = selectAll;
+        const itemId = parseInt(checkbox.value);
+        if (selectAll) {
+            selectedItems.add(itemId);
+        } else {
+            selectedItems.delete(itemId);
+        }
+    });
+    
+    updateItemSelectionUI();
+}
+
+function updateItemSelectionUI() {
+    const totalCheckboxes = document.querySelectorAll('.test-run-item-checkbox').length;
+    const selectedCount = selectedItems.size;
+    const selectAllCheckbox = document.getElementById('selectAllItemsCheckbox');
+    const toolbar = document.getElementById('batchOperationsToolbar');
+    const countDisplay = document.getElementById('selectedItemsCount');
+    
+    // 如果不顯示 checkbox，隱藏工具列
+    if (!shouldShowCheckbox(testRunConfig ? testRunConfig.status : 'draft')) {
+        toolbar.classList.add('d-none');
+        return;
+    }
+    
+    // 更新全選 checkbox 狀態
+    if (selectedCount === 0) {
+        selectAllCheckbox.checked = false;
+        selectAllCheckbox.indeterminate = false;
+        toolbar.classList.add('d-none');
+    } else if (selectedCount === totalCheckboxes) {
+        selectAllCheckbox.checked = true;
+        selectAllCheckbox.indeterminate = false;
+        toolbar.classList.remove('d-none');
+    } else {
+        selectAllCheckbox.checked = false;
+        selectAllCheckbox.indeterminate = true;
+        toolbar.classList.remove('d-none');
+    }
+    
+    // 更新選中項目計數
+    if (window.i18n && window.i18n.isReady()) {
+        countDisplay.textContent = window.i18n.t('testRun.selectedItemsCount', {count: selectedCount});
+    } else {
+        countDisplay.textContent = `已選取 ${selectedCount} 個項目`;
+    }
+    // 更新 data-i18n-params 屬性以支持語言切換
+    countDisplay.setAttribute('data-i18n-params', JSON.stringify({count: selectedCount}));
+}
+
+function showBatchModifyModal() {
+    if (selectedItems.size === 0) {
+        const noSelectionMsg = window.i18n && window.i18n.isReady() 
+            ? window.i18n.t('testRun.noItemsSelected')
+            : '{{ i18n.t("testRun.noItemsSelected") if i18n else "請先選擇要修改的項目" }}';
+        AppUtils.showWarning(noSelectionMsg);
+        return;
+    }
+    
+    // 更新選中項目數量
+    document.getElementById('batchModifyCount').textContent = selectedItems.size;
+    
+    // 根據當前狀態顯示/隱藏測試結果選項
+    const canUpdateResult = testRunConfig && testRunConfig.status === 'active';
+    const resultSection = document.getElementById('batchResultSection');
+    
+    if (canUpdateResult) {
+        resultSection.style.display = 'block';
+    } else {
+        resultSection.style.display = 'none';
+        document.getElementById('batchModifyResult').checked = false;
+    }
+    
+    // 重置表單
+    document.getElementById('batchAssigneeInput').value = '';
+    document.getElementById('batchResultSelect').value = '';
+    document.getElementById('batchModifyAssignee').checked = true;
+    document.getElementById('batchModifyResult').checked = false;
+    
+    toggleBatchAssigneeInput();
+    toggleBatchResultSelect();
+    
+    batchModifyModal.show();
+}
+
+function toggleBatchAssigneeInput() {
+    const checkbox = document.getElementById('batchModifyAssignee');
+    const input = document.getElementById('batchAssigneeInput');
+    input.disabled = !checkbox.checked;
+}
+
+function toggleBatchResultSelect() {
+    const checkbox = document.getElementById('batchModifyResult');
+    const select = document.getElementById('batchResultSelect');
+    select.disabled = !checkbox.checked;
+}
+
+async function handleBatchModifyConfirm() {
+    try {
+        const modifyAssignee = document.getElementById('batchModifyAssignee').checked;
+        const modifyResult = document.getElementById('batchModifyResult').checked;
+        const assigneeName = document.getElementById('batchAssigneeInput').value.trim();
+        const testResult = document.getElementById('batchResultSelect').value;
+        
+        if (!modifyAssignee && !modifyResult) {
+            const selectOptionMsg = window.i18n && window.i18n.isReady() 
+                ? window.i18n.t('testRun.selectAtLeastOneOption')
+                : '{{ i18n.t("testRun.selectAtLeastOneOption") if i18n else "請至少選擇一個要修改的項目" }}';
+            AppUtils.showWarning(selectOptionMsg);
+            return;
+        }
+        
+        if (modifyAssignee && !assigneeName) {
+            const enterAssigneeMsg = window.i18n && window.i18n.isReady() 
+                ? window.i18n.t('testRun.enterAssigneeName')
+                : '{{ i18n.t("testRun.enterAssigneeName") if i18n else "請輸入執行者姓名" }}';
+            AppUtils.showWarning(enterAssigneeMsg);
+            return;
+        }
+        
+        if (modifyResult && !testResult) {
+            const selectResultMsg = window.i18n && window.i18n.isReady() 
+                ? window.i18n.t('testRun.selectTestResult')
+                : '{{ i18n.t("testRun.selectTestResult") if i18n else "請選擇測試結果" }}';
+            AppUtils.showWarning(selectResultMsg);
+            return;
+        }
+        
+        await batchModifyItems({ modifyAssignee, modifyResult, assigneeName, testResult });
+        batchModifyModal.hide();
+        
+    } catch (error) {
+        const batchFailedMsg = window.i18n && window.i18n.isReady() 
+            ? window.i18n.t('testRun.batchModifyFailed')
+            : '{{ i18n.t("testRun.batchModifyFailed") if i18n else "批次修改失敗" }}';
+        AppUtils.showError(batchFailedMsg + ': ' + error.message);
+    }
+}
+
+async function batchModifyItems(modifications) {
+    try {
+        const itemsToModify = Array.from(selectedItems);
+        const updateData = {};
+        
+        if (modifications.modifyAssignee) {
+            updateData.assignee_name = modifications.assigneeName;
+        }
+        
+        if (modifications.modifyResult) {
+            updateData.test_result = modifications.testResult;
+            updateData.executed_at = new Date().toISOString();
+        }
+        
+        // 批次修改 API 調用
+        const response = await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/batch`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                item_ids: itemsToModify,
+                updates: updateData
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        
+        // 重新載入項目
+        await loadTestRunItems();
+        await updateStatistics();
+        
+        // 清空選擇狀態並更新 UI
+        selectedItems.clear();
+        updateItemSelectionUI();
+        
+        const successMsg = window.i18n && window.i18n.isReady() 
+            ? window.i18n.t('testRun.batchModifySuccess', {count: itemsToModify.length})
+            : `成功修改 ${itemsToModify.length} 個測試執行項目`;
+        AppUtils.showSuccess(successMsg);
+        
+    } catch (error) {
+        const consoleMsg = window.i18n && window.i18n.isReady() 
+            ? window.i18n.t('testRun.batchModifyFailed')
+            : '批次修改測試執行項目失敗';
+        console.error(consoleMsg + ':', error);
+        throw error;
+    }
+}
+
+function navigateToTestCase(testCaseNumber) {
+    if (!testCaseNumber) {
+        AppUtils.showWarning('{{ i18n.t("testRun.invalidTestCaseNumber") if i18n else "無效的測試案例編號" }}');
+        return;
+    }
+    
+    // 顯示 Test Case 詳細資料 Modal
+    showTestCaseDetailModal(testCaseNumber);
+}
+
+// Test Case 詳細資料 Modal 相關函數
+let testCaseDetailModalInstance = null;
+
+async function showTestCaseDetailModal(testCaseNumber) {
+    // 初始化 Modal
+    const modalElement = document.getElementById('testCaseDetailModal');
+    if (!testCaseDetailModalInstance) {
+        testCaseDetailModalInstance = new bootstrap.Modal(modalElement);
+    }
+    
+    // 重置 Modal 狀態
+    document.getElementById('testCaseDetailLoading').style.display = 'block';
+    const fixedDiv = document.getElementById('testCaseDetailFixed');
+    const scrollDiv = document.getElementById('testCaseDetailScrollable');
+    fixedDiv.style.display = 'none';
+    scrollDiv.style.display = 'none';
+    document.getElementById('testCaseDetailError').style.display = 'none';
+    document.getElementById('openFullTestCaseBtn').style.display = 'none';
+    
+    // 顯示 Modal
+    testCaseDetailModalInstance.show();
+    
+    try {
+        // 載入 Test Case 資料
+        await loadTestCaseDetail(testCaseNumber);
+    } catch (error) {
+        console.error('Failed to load test case detail:', error);
+        showTestCaseDetailError();
+    }
+}
+
+async function loadTestCaseDetail(testCaseNumber) {
+    try {
+        // 從當前團隊的測試案例中搜尋
+        const url = new URL(`/api/teams/${currentTeamId}/testcases/`, window.location.origin);
+        url.searchParams.set('search', testCaseNumber);
+        url.searchParams.set('limit', '1');
+        
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const testCases = await response.json();
+        
+        if (testCases.length === 0) {
+            throw new Error('找不到指定的測試案例');
+        }
+        
+        const testCase = testCases.find(tc => tc.test_case_number === testCaseNumber);
+        if (!testCase) {
+            throw new Error('找不到指定的測試案例');
+        }
+        
+        // 顯示 Test Case 詳細資料
+        displayTestCaseDetail(testCase);
+        
+    } catch (error) {
+        console.error('Error loading test case detail:', error);
+        throw error;
+    }
+}
+
+function displayTestCaseDetail(testCase) {
+    // 隱藏載入狀態
+    document.getElementById('testCaseDetailLoading').style.display = 'none';
+    
+    // 準備顯示資料
+    const fixedDiv = document.getElementById('testCaseDetailFixed');
+    const scrollDiv = document.getElementById('testCaseDetailScrollable');
+    const openBtn = document.getElementById('openFullTestCaseBtn');
+    
+    // 生成詳細資料 HTML（拆分固定與可捲動內容）
+    const { fixedHtml, scrollableHtml } = createTestCaseDetailHtml(testCase);
+    fixedDiv.innerHTML = fixedHtml;
+    scrollDiv.innerHTML = scrollableHtml;
+    
+    // 顯示內容和開啟按鈕
+    fixedDiv.style.display = 'block';
+    scrollDiv.style.display = 'block';
+    openBtn.style.display = 'inline-block';
+    
+    // 設定開啟按鈕的點擊事件
+    openBtn.onclick = function() {
+        const url = `/test-case-management?search=${encodeURIComponent(testCase.test_case_number)}`;
+        window.open(url, '_blank');
+    };
+    
+    // 應用 i18n 翻譯
+    if (window.i18n && window.i18n.isReady()) {
+        window.i18n.retranslate(fixedDiv);
+        window.i18n.retranslate(scrollDiv);
+    }
+}
+
+function createTestCaseDetailHtml(testCase) {
+    const assigneeName = testCase.assignee ? testCase.assignee.name || testCase.assignee.en_name : '';
+    const tcgText = testCase.tcg && testCase.tcg.length > 0 ? testCase.tcg.map(t => t.text || t).join(', ') : '';
+    const attachmentCount = testCase.attachments ? testCase.attachments.length : 0;
+
+    const fixedHtml = `
+        <!-- Basic Info 區域 -->
+        <div class="card mb-2">
+            <div class="card-header py-1">
+                <h6 class="card-title mb-0">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <span data-i18n="testRun.basicInfo">基本資訊</span>
+                </h6>
+            </div>
+            <div class="card-body px-2" style="padding-top: 0.25rem; padding-bottom: 0.25rem;">
+                <table class="table table-sm table-borderless mb-0" style="line-height: 1.2;">
+                    <tr>
+                        <td class="fw-bold" style="width: 15%; font-size: 0.85rem; padding: 0.15rem 0.5rem;" data-i18n="testRun.testCaseNumber">編號</td>
+                        <td style="width: 35%; padding: 0.15rem 0.5rem;"><code style="font-size: 0.85rem;">${escapeHtml(testCase.test_case_number)}</code></td>
+                        <td class="fw-bold" style="width: 10%; font-size: 0.85rem; padding: 0.15rem 0.5rem;">${tcgText ? 'TCG' : ''}</td>
+                        <td style="padding: 0.15rem 0.5rem;">${tcgText ? '<code style="font-size: 0.85rem;">' + escapeHtml(tcgText) + '</code>' : ''}</td>
+                    </tr>
+                    <tr>
+                        <td class="fw-bold" style="font-size: 0.85rem; padding: 0.15rem 0.5rem;" data-i18n="testRun.title">標題</td>
+                        <td class="text-break" colspan="3" style="padding: 0.15rem 0.5rem; font-size: 0.9rem;">${escapeHtml(testCase.title)}</td>
+                    </tr>
+                    <tr>
+                        <td class="fw-bold" style="font-size: 0.85rem; padding: 0.15rem 0.5rem;" data-i18n="testRun.priority">優先級</td>
+                        <td style="padding: 0.15rem 0.5rem;"><span class="badge bg-secondary" style="font-size: 0.75rem;">${escapeHtml(testCase.priority || 'Medium')}</span></td>
+                        <td class="fw-bold" style="font-size: 0.85rem; padding: 0.15rem 0.5rem;" data-i18n="testRun.assignee">執行者</td>
+                        <td style="padding: 0.15rem 0.5rem; font-size: 0.9rem;">${escapeHtml(assigneeName || '未分配')}</td>
+                    </tr>
+                    <tr>
+                        <td class="fw-bold align-top" style="font-size: 0.85rem; padding: 0.15rem 0.5rem;" data-i18n="testRun.attachments">附件</td>
+                        <td colspan="3" style="padding: 0.15rem 0.5rem;">
+                            <div class="d-flex flex-wrap align-items-center">
+                                ${testCase.attachments && testCase.attachments.length > 0 ? 
+                                    testCase.attachments.map((attachment, index) => {
+                                        const fileExtension = attachment.name ? attachment.name.split('.').pop().toLowerCase() : '';
+                                        let iconClass = 'fas fa-file';
+                                        let iconColor = 'text-secondary';
+                                        switch(fileExtension) {
+                                            case 'pdf': iconClass = 'fas fa-file-pdf'; iconColor = 'text-danger'; break;
+                                            case 'doc': case 'docx': iconClass = 'fas fa-file-word'; iconColor = 'text-primary'; break;
+                                            case 'xls': case 'xlsx': iconClass = 'fas fa-file-excel'; iconColor = 'text-success'; break;
+                                            case 'jpg': case 'jpeg': case 'png': case 'gif': case 'bmp': case 'webp': iconClass = 'fas fa-file-image'; iconColor = 'text-info'; break;
+                                            case 'txt': iconClass = 'fas fa-file-alt'; iconColor = 'text-secondary'; break;
+                                            case 'zip': case 'rar': case '7z': iconClass = 'fas fa-file-archive'; iconColor = 'text-warning'; break;
+                                            default: iconClass = 'fas fa-file'; iconColor = 'text-secondary';
+                                        }
+                                        return '<span class="d-inline-flex align-items-center me-3 mb-1">' +
+                                            '<i class="' + iconClass + ' ' + iconColor + ' me-1"></i>' +
+                                            '<small>' + escapeHtml(attachment.name || ('附件 ' + (index + 1))) + '</small>' +
+                                        '</span>';
+                                    }).join('')
+                                :
+                                    '<span class="text-muted"><i class="fas fa-paperclip me-1"></i>' +
+                                    attachmentCount + ' <span data-i18n="testRun.files">個文件</span></span>'
+                                }
+                            </div>
+                        </td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+        <!-- Test Details 標題（固定） -->
+        <div class="card mb-2">
+            <div class="card-header py-2">
+                <h6 class="card-title mb-0">
+                    <i class="fas fa-clipboard-list me-2"></i>
+                    <span data-i18n="testRun.testDetails">測試詳情</span>
+                </h6>
+            </div>
+        </div>`;
+
+    const scrollableHtml = `
+        <div class="card">
+            <div class="card-body" style="padding: 1rem;">
+                ${testCase.precondition ? `
+                <div class="mb-3">
+                    <h6 class="mb-2" data-i18n="testRun.precondition">前置條件</h6>
+                    <div class="bg-light p-3 rounded">
+                        <pre class="mb-0" style="white-space: pre-wrap; font-size: 0.9rem;">${escapeHtml(testCase.precondition)}</pre>
+                    </div>
+                </div>
+                ` : ''}
+                ${testCase.steps ? `
+                <div class="mb-3">
+                    <h6 class="mb-2" data-i18n="testRun.steps">測試步驟</h6>
+                    <div class="bg-light p-3 rounded">
+                        <pre class="mb-0" style="white-space: pre-wrap; font-size: 0.9rem;">${escapeHtml(testCase.steps)}</pre>
+                    </div>
+                </div>
+                ` : ''}
+                ${testCase.expected_result ? `
+                <div class="mb-0">
+                    <h6 class="mb-2" data-i18n="testRun.expectedResult">預期結果</h6>
+                    <div class="bg-success bg-opacity-10 p-3 rounded border border-success border-opacity-25">
+                        <pre class="mb-0" style="white-space: pre-wrap; font-size: 0.9rem;">${escapeHtml(testCase.expected_result)}</pre>
+                    </div>
+                </div>
+                ` : ''}
+            </div>
+        </div>`;
+
+    return { fixedHtml, scrollableHtml };
+}
+
+function showTestCaseDetailError() {
+    document.getElementById('testCaseDetailLoading').style.display = 'none';
+    document.getElementById('testCaseDetailContent').style.display = 'none';
+    document.getElementById('testCaseDetailError').style.display = 'block';
+}
+
+async function updateAssignee(itemId, assigneeName) {
+    try {
+        // 清理輸入值
+        const cleanAssignee = assigneeName ? assigneeName.trim() : '';
+        
+        const response = await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/${itemId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                assignee_name: cleanAssignee || null
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        
+        // 更新本地資料
+        const itemIndex = testRunItems.findIndex(item => item.id === itemId);
+        if (itemIndex !== -1) {
+            testRunItems[itemIndex].assignee_name = cleanAssignee || null;
+        }
+        
+        // 不顯示成功訊息，讓編輯過程更流暢
+        
+    } catch (error) {
+        console.error('Failed to update assignee:', error);
+        AppUtils.showError('{{ i18n.t("testRun.updateAssigneeFailed") if i18n else "更新執行者失敗" }}' + ': ' + error.message);
+        
+        // 恢復原始值
+        const input = document.querySelector(`input[data-item-id="${itemId}"]`);
+        if (input) {
+            const originalItem = testRunItems.find(item => item.id === itemId);
+            input.value = originalItem ? (originalItem.assignee_name || '') : '';
+        }
+    }
+}
+
+function escapeHtml(text) {
+    if (!text) return '';
+    const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+    };
+    return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+}
+</script>
+{% endblock %}
