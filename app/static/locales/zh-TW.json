@@ -152,9 +152,7 @@
     "duplicateNumber": "測試案例編號重複",
     "testCaseNumberRequired": "請填寫測試案例編號",
     "previousTestCase": "上一隻測試案例",
-    "nextTestCase": "下一隻測試案例"
-  },
-  "testCase": {
+    "nextTestCase": "下一隻測試案例",
     "bulk": {
       "bulkCreateMode": "大量新增模式",
       "prefix": "前綴單號",

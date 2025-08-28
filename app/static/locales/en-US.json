@@ -152,9 +152,7 @@
     "duplicateNumber": "Test case number already exists",
     "testCaseNumberRequired": "Please enter test case number",
     "previousTestCase": "Previous test case",
-    "nextTestCase": "Next test case"
-  },
-  "testCase": {
+    "nextTestCase": "Next test case",
     "bulk": {
       "bulkCreateMode": "Bulk Create Mode",
       "prefix": "Prefix",
