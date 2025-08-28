@@ -1775,6 +1775,29 @@ function scrollToAttachments() {
     }
 }
 
+// 卷動到附件區域
+function scrollToAttachments() {
+    const attachmentsSection = document.getElementById('attachmentsSection');
+    if (attachmentsSection) {
+        // 找到可捲動的容器
+        const scrollableContainer = document.getElementById('testCaseDetailScrollable');
+        if (scrollableContainer) {
+            // 計算附件區域相對於可捲動容器的位置
+            const containerRect = scrollableContainer.getBoundingClientRect();
+            const attachmentRect = attachmentsSection.getBoundingClientRect();
+
+            // 計算需要捲動的距離
+            const scrollTop = attachmentRect.top - containerRect.top + scrollableContainer.scrollTop;
+
+            // 平滑捲動到附件區域
+            scrollableContainer.scrollTo({
+                top: scrollTop - 20, // 留一點邊距
+                behavior: 'smooth'
+            });
+        }
+    }
+}
+
 async function showTestCaseDetailModal(testCaseNumber) {
     // 初始化 Modal
     const modalElement = document.getElementById('testCaseDetailModal');
@@ -1951,16 +1974,31 @@ function createTestCaseDetailHtml(testCase) {
                         <td class="text-break" colspan="3" style="padding: 0.15rem 0.5rem; font-size: 0.9rem;">${escapeHtml(testCase.title)}</td>
                     </tr>
                     <tr>
-                        <td class="fw-bold" style="font-size: 0.85rem; padding: 0.15rem 0.5rem;" data-i18n="testRun.priority">優先級</td>
-                        <td style="padding: 0.15rem 0.5rem;"><span class="badge bg-secondary" style="font-size: 0.75rem;">${escapeHtml(testCase.priority || 'Medium')}</span></td>
-                         <td class="fw-bold" style="font-size: 0.85rem; padding: 0.15rem 0.5rem;" data-i18n="testRun.assignee">執行者</td>
-                         <td style="padding: 0.15rem 0.5rem;">
-                             <input type="text" class="form-control form-control-sm assignee-editor"
-                                    value="${escapeHtml(assigneeName || '')}"
-                                    data-assignee-selector
-                                    data-test-case-id="${testCase.test_case_number}"
-                                    placeholder="{{ i18n.t('testRun.enterAssigneeName') if i18n else '輸入執行者姓名' }}"
-                                    style="font-size: 0.9rem;">
+                         <td class="fw-bold" style="font-size: 0.85rem; padding: 0.15rem 0.5rem;" data-i18n="testRun.priority">優先級</td>
+                         <td style="padding: 0.15rem 0.5rem;"><span class="badge bg-secondary" style="font-size: 0.75rem;">${escapeHtml(testCase.priority || 'Medium')}</span></td>
+                          <td class="fw-bold" style="font-size: 0.85rem; padding: 0.15rem 0.5rem;" data-i18n="testRun.assignee">執行者</td>
+                          <td style="padding: 0.15rem 0.5rem;">
+                              <input type="text" class="form-control form-control-sm assignee-editor"
+                                     value="${escapeHtml(assigneeName || '')}"
+                                     data-assignee-selector
+                                     data-test-case-id="${testCase.test_case_number}"
+                                     placeholder="{{ i18n.t('testRun.enterAssigneeName') if i18n else '輸入執行者姓名' }}"
+                                     style="font-size: 0.9rem;">
+                          </td>
+                    </tr>
+                    <tr>
+                         <td class="fw-bold align-top" style="font-size: 0.85rem; padding: 0.15rem 0.5rem;" data-i18n="testRun.attachments">附件</td>
+                         <td colspan="3" style="padding: 0.15rem 0.5rem;">
+                             <div class="d-flex align-items-center">
+                                 ${attachmentCount > 0 ? `
+                                     <a href="#" class="text-decoration-none" onclick="scrollToAttachments(); return false;" title="${escapeHtml('{{ i18n.t("testRun.attachments") if i18n else "附件" }}')}">
+                                         <i class="fas fa-paperclip me-1"></i>
+                                         ${attachmentCount} <span data-i18n="testRun.files">個文件</span>
+                                     </a>
+                                 ` : `
+                                     <span class="text-muted"><i class="fas fa-paperclip me-1"></i>0 <span data-i18n="testRun.files">個文件</span></span>
+                                 `}
+                             </div>
                          </td>
                     </tr>
 
