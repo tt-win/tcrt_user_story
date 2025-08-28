@@ -673,6 +673,9 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
             
             <!-- 批次操作工具區 -->
             <div id="batchOperationsToolbar" class="d-none d-flex align-items-center gap-2 ms-lg-auto mb-2 mb-lg-0">
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="clearSelectionExecBtn" data-i18n-title="common.clearSelection" title="清除選取">
+                    <i class="fas fa-xmark"></i>
+                </button>
                 <span class="text-muted" id="selectedItemsCount" data-i18n="testRun.selectedItemsCount" data-i18n-params='{"count": 0}'>已選取 0 個項目</span>
                 <button type="button" class="btn btn-primary btn-sm" id="batchModifyBtn">
                     <i class="fas fa-edit me-2"></i><span data-i18n="testRun.batchModify">批次修改</span>
@@ -1101,6 +1104,9 @@ function bindEventListeners() {
 
     // 批次刪除按鈕事件
     document.getElementById('batchDeleteBtn').addEventListener('click', showBatchDeleteConfirm);
+    // 清除選取
+    const clearSelectionExecBtn = document.getElementById('clearSelectionExecBtn');
+    if (clearSelectionExecBtn) clearSelectionExecBtn.addEventListener('click', clearSelectedItems);
     
     // 監聽個別項目 checkbox 變化（單點選 or 程式設定觸發）
     document.addEventListener('change', function(e) {
@@ -1676,6 +1682,17 @@ function toggleSelectAllItems() {
     
     updateItemSelectionUI();
     // 重置 Shift 多選錨點
+    lastItemCheckboxIndex = null;
+}
+
+function clearSelectedItems() {
+    try {
+        document.querySelectorAll('.test-run-item-checkbox').forEach(cb => cb.checked = false);
+    } catch (_) {}
+    const header = document.getElementById('selectAllItemsCheckbox');
+    if (header) header.checked = false;
+    selectedItems.clear();
+    updateItemSelectionUI();
     lastItemCheckboxIndex = null;
 }
 

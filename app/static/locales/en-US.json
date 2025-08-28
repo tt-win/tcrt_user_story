@@ -12,6 +12,7 @@
     "applyFilter": "Apply Filter",
     "filtered": "Filtered ({count})",
     "clear": "Clear",
+    "clearSelection": "Clear selection",
     "close": "Close",
     "loading": "Loading...",
     "confirm": "Confirm",

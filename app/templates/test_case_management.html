@@ -309,6 +309,10 @@ html, body { height: 100%; overflow: hidden; }
                     </div>
                     <!-- 批次操作工具列（與套用篩選同一排、靠右顯示） -->
                     <div id="batchInlineToolbar" class="d-none d-flex align-items-center gap-2 ms-lg-auto mb-2 mb-lg-0">
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="clearSelectionBtnTC"
+                                data-i18n-title="common.clearSelection" title="清除選取">
+                            <i class="fas fa-xmark"></i>
+                        </button>
                         <span class="text-muted" id="selectedCountWrapper" data-i18n="testCase.selectedItems" data-i18n-params='{"count":0}'>
                             已選取 0 個項目
                         </span>
@@ -1327,6 +1331,8 @@ function bindEvents() {
     document.getElementById('selectAllCheckbox').addEventListener('change', toggleSelectAll);
     const batchDeleteBtn = document.getElementById('batchDeleteBtn');
     if (batchDeleteBtn) batchDeleteBtn.addEventListener('click', batchDeleteTestCases);
+    const clearSelectionBtnTC = document.getElementById('clearSelectionBtnTC');
+    if (clearSelectionBtnTC) clearSelectionBtnTC.addEventListener('click', deselectAll);
     
     // 上一隻/下一隻測試案例按鈕
     document.getElementById('prevTestCaseBtn').addEventListener('click', showPrevTestCase);

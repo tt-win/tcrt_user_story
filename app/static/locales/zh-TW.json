@@ -12,6 +12,7 @@
     "applyFilter": "套用篩選",
     "filtered": "已篩選 ({count})",
     "clear": "清除",
+    "clearSelection": "清除選取",
     "close": "關閉",
     "loading": "載入中...",
     "confirm": "確認",
