@@ -142,12 +142,7 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
     text-align: center;
 }
 
-.test-run-items-table th:nth-child(8), 
-.test-run-items-table td:nth-child(8) { /* 操作 */
-    width: 100px;
-    min-width: 100px;
-    text-align: center;
-}
+
 
 /* 測試結果選擇器樣式 */
 .result-selector {
@@ -319,9 +314,7 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
     
     /* 小螢幕時隱藏部分欄位 */
     .test-run-items-table th:nth-child(7),
-    .test-run-items-table td:nth-child(7),
-    .test-run-items-table th:nth-child(8),
-    .test-run-items-table td:nth-child(8) {
+    .test-run-items-table td:nth-child(7) {
         display: none;
     }
 }
@@ -344,9 +337,28 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
 .section-precondition { background: rgba(13, 110, 253, 0.06); border-color: rgba(13, 110, 253, 0.2); }
 .section-steps { background: rgba(255, 193, 7, 0.08); border-color: rgba(255, 193, 7, 0.25); }
 .section-expected { background: rgba(25, 135, 84, 0.08); border-color: rgba(25, 135, 84, 0.25); }
-/* 僅內容可捲動：限制內容高度，讓外框固定 */
-/* 外框（#testCaseDetailScrollable）負責捲動；內容區塊不產生次級卷軸 */
 .section-attachments { background: rgba(108, 117, 125, 0.06); border-color: rgba(108, 117, 125, 0.25); }
+
+/* AssigneeSelector 在 Modal 中的樣式調整 */
+#testCaseDetailModal .assignee-selector-container {
+    width: 100%;
+}
+
+#testCaseDetailModal .assignee-selector-container .form-control {
+    text-align: left;
+}
+
+#testCaseDetailModal .assignee-selector-dropdown {
+    z-index: 1060; /* 高於 Modal 的 z-index */
+    left: 0;
+    right: auto;
+    text-align: left;
+}
+
+#testCaseDetailModal .assignee-selector-item {
+    text-align: left;
+    justify-content: flex-start;
+}
 
 /* Markdown 內容樣式（Test Case Detail Modal） */
 #testCaseDetailModal .markdown-preview {
@@ -525,7 +537,6 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                         <th><span data-i18n="testRun.testResult">測試結果</span></th>
                         <th><span data-i18n="testRun.assignee">執行者</span></th>
                         <th><span data-i18n="testRun.executedAt">執行時間</span></th>
-                        <th><span data-i18n="common.actions">操作</span></th>
                     </tr>
                 </thead>
                 <tbody id="items-table-body">
@@ -1089,9 +1100,6 @@ function createItemRow(item, index, canUpdate) {
                 `}
             </td>
             <td class="small text-muted">${executedAt}</td>
-            <td>
-                <!-- 操作按鈕保留為未來擴展使用 -->
-            </td>
         </tr>
     `;
 }
@@ -1662,6 +1670,111 @@ function navigateToTestCase(testCaseNumber) {
 let testCaseDetailModalInstance = null;
 let currentDetailTestCase = null; // 目前顯示於執行頁 Modal 的 Test Case，用於鍵盤導航
 
+// 初始化 Test Case 詳細資料 Modal 中的 AssigneeSelector
+function initializeTestCaseAssigneeSelector(testCase) {
+    if (!window.AssigneeSelector || !currentTeamId) return;
+
+    const assigneeInput = document.querySelector('#testCaseDetailModal .assignee-editor[data-assignee-selector]');
+    if (!assigneeInput) return;
+
+    // 清理之前的實例
+    if (assigneeInput._assigneeSelector) {
+        assigneeInput._assigneeSelector.destroy();
+    }
+
+    const options = {
+        teamId: currentTeamId,
+        allowCustomValue: true,
+        onSelect: (contact) => {
+            // 當選擇聯絡人時，更新 Test Case 的 assignee
+            updateTestCaseAssignee(testCase.test_case_number, contact.name);
+        },
+        onClear: () => {
+            // 當清空選擇時，清空 assignee
+            updateTestCaseAssignee(testCase.test_case_number, '');
+        }
+    };
+
+    assigneeInput._assigneeSelector = new AssigneeSelector(assigneeInput, options);
+}
+
+// 更新 Test Case 的 Assignee
+async function updateTestCaseAssignee(testCaseNumber, assigneeName) {
+    try {
+        const response = await fetch(`/api/teams/${currentTeamId}/testcases/${encodeURIComponent(testCaseNumber)}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                assignee_name: assigneeName || null
+            })
+        });
+
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const result = await response.json();
+
+        // 更新本地快取
+        if (result.success && result.data) {
+            // 更新快取中的資料
+            const cacheKey = `tr_exec_tc_cache_v1_${testCaseNumber}`;
+            const cached = localStorage.getItem(cacheKey);
+            if (cached) {
+                const cacheData = JSON.parse(cached);
+                if (cacheData.data) {
+                    cacheData.data.assignee_name = assigneeName;
+                    localStorage.setItem(cacheKey, JSON.stringify(cacheData));
+                }
+            }
+
+            // 更新當前顯示的 test case 資料
+            if (currentDetailTestCase && currentDetailTestCase.test_case_number === testCaseNumber) {
+                currentDetailTestCase.assignee_name = assigneeName;
+            }
+        }
+
+        // 顯示成功訊息
+        const successMsg = window.i18n && window.i18n.isReady()
+            ? window.i18n.t('testRun.assigneeUpdated')
+            : '執行者已更新';
+        AppUtils.showSuccess(successMsg);
+
+    } catch (error) {
+        console.error('Failed to update test case assignee:', error);
+        const errorMsg = window.i18n && window.i18n.isReady()
+            ? window.i18n.t('testRun.updateAssigneeFailed')
+            : '更新執行者失敗';
+        AppUtils.showError(errorMsg + ': ' + error.message);
+
+        // 重新載入 Test Case 詳細資料以恢復狀態
+        if (currentDetailTestCase && currentDetailTestCase.test_case_number === testCaseNumber) {
+            await loadTestCaseDetail(testCaseNumber);
+        }
+    }
+}
+
+// 卷動到附件區域
+function scrollToAttachments() {
+    const attachmentsSection = document.getElementById('attachmentsSection');
+    if (attachmentsSection) {
+        // 找到可捲動的容器
+        const scrollableContainer = document.getElementById('testCaseDetailScrollable');
+        if (scrollableContainer) {
+            // 計算附件區域相對於可捲動容器的位置
+            const containerRect = scrollableContainer.getBoundingClientRect();
+            const attachmentRect = attachmentsSection.getBoundingClientRect();
+
+            // 計算需要捲動的距離
+            const scrollTop = attachmentRect.top - containerRect.top + scrollableContainer.scrollTop;
+
+            // 平滑捲動到附件區域
+            scrollableContainer.scrollTo({
+                top: scrollTop - 20, // 留一點邊距
+                behavior: 'smooth'
+            });
+        }
+    }
+}
+
 async function showTestCaseDetailModal(testCaseNumber) {
     // 初始化 Modal
     const modalElement = document.getElementById('testCaseDetailModal');
@@ -1806,6 +1919,9 @@ function displayTestCaseDetail(testCase) {
         prevBtn.disabled = idx <= 0;
         nextBtn.disabled = idx < 0 || idx >= testRunItems.length - 1;
     }
+
+    // 初始化 AssigneeSelector
+    initializeTestCaseAssigneeSelector(testCase);
 }
 
 function createTestCaseDetailHtml(testCase) {
@@ -1837,24 +1953,17 @@ function createTestCaseDetailHtml(testCase) {
                     <tr>
                         <td class="fw-bold" style="font-size: 0.85rem; padding: 0.15rem 0.5rem;" data-i18n="testRun.priority">優先級</td>
                         <td style="padding: 0.15rem 0.5rem;"><span class="badge bg-secondary" style="font-size: 0.75rem;">${escapeHtml(testCase.priority || 'Medium')}</span></td>
-                        <td class="fw-bold" style="font-size: 0.85rem; padding: 0.15rem 0.5rem;" data-i18n="testRun.assignee">執行者</td>
-                        <td style="padding: 0.15rem 0.5rem; font-size: 0.9rem;">${escapeHtml(assigneeName || '未分配')}</td>
+                         <td class="fw-bold" style="font-size: 0.85rem; padding: 0.15rem 0.5rem;" data-i18n="testRun.assignee">執行者</td>
+                         <td style="padding: 0.15rem 0.5rem;">
+                             <input type="text" class="form-control form-control-sm assignee-editor"
+                                    value="${escapeHtml(assigneeName || '')}"
+                                    data-assignee-selector
+                                    data-test-case-id="${testCase.test_case_number}"
+                                    placeholder="{{ i18n.t('testRun.enterAssigneeName') if i18n else '輸入執行者姓名' }}"
+                                    style="font-size: 0.9rem;">
+                         </td>
                     </tr>
-                    <tr>
-                        <td class="fw-bold align-top" style="font-size: 0.85rem; padding: 0.15rem 0.5rem;" data-i18n="testRun.attachments">附件</td>
-                        <td colspan="3" style="padding: 0.15rem 0.5rem;">
-                            <div class="d-flex align-items-center">
-                                ${attachmentCount > 0 ? `
-                                    <a href="#" class="text-decoration-none" onclick="scrollToAttachments(); return false;" title="${escapeHtml('{{ i18n.t("testRun.attachments") if i18n else "附件" }}')}">
-                                        <i class="fas fa-paperclip me-1"></i>
-                                        ${attachmentCount} <span data-i18n="testRun.files">個文件</span>
-                                    </a>
-                                ` : `
-                                    <span class="text-muted"><i class="fas fa-paperclip me-1"></i>0 <span data-i18n="testRun.files">個文件</span></span>
-                                `}
-                            </div>
-                        </td>
-                    </tr>
+
                 </table>
             </div>
         </div>
@@ -1869,8 +1978,16 @@ function createTestCaseDetailHtml(testCase) {
         </div>`;
 
     const scrollableHtml = `
-        <div class="card">
+        <div class="card" style="border: none;">
             <div class="card-body" style="padding: 1rem;">
+                ${testCase.precondition ? `
+                <div class="mb-3">
+                    <h6 class="mb-2" data-i18n="testRun.precondition">前置條件</h6>
+                    <div class="section-block section-precondition">
+                        <div class="markdown-preview mb-0" style="font-size: 0.9rem;">${renderMarkdown(testCase.precondition)}</div>
+                    </div>
+                </div>
+                ` : ''}
                 ${testCase.precondition ? `
                 <div class="mb-3">
                     <h6 class="mb-2" data-i18n="testRun.precondition">前置條件</h6>
@@ -1888,7 +2005,7 @@ function createTestCaseDetailHtml(testCase) {
                 </div>
                 ` : ''}
                 ${testCase.expected_result ? `
-                <div class="mb-0">
+                <div class="mb-3">
                     <h6 class="mb-2" data-i18n="testRun.expectedResult">預期結果</h6>
                     <div class="section-block section-expected">
                         <div class="markdown-preview mb-0" style="font-size: 0.9rem;">${renderMarkdown(testCase.expected_result)}</div>
