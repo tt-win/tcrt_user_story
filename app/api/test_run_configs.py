@@ -20,7 +20,10 @@ from app.models.database_models import (
     TestRunItem as TestRunItemDB,
     TestRunItemResultHistory as ResultHistoryDB,
 )
+from app.models.lark_types import TestResultStatus
+from app.models.test_run_config import TestRunStatus
 from datetime import datetime
+from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/teams/{team_id}/test-run-configs", tags=["test-run-configs"])
 
@@ -289,6 +292,135 @@ async def sync_test_run_config(
             "execution_rate": (executed_cases / total_cases * 100) if total_cases > 0 else 0,
             "pass_rate": (passed_cases / executed_cases * 100) if executed_cases > 0 else 0
         }
+    }
+
+
+class RestartRequest(BaseModel):
+    mode: str = Field(..., description="重置模式：all / failed / pending")
+    name: Optional[str] = Field(None, description="新建立的 Test Run 名稱（未提供則預設為 Rerun - 原名）")
+
+
+@router.post("/{config_id}/restart", response_model=dict)
+async def restart_test_run(
+    team_id: int,
+    config_id: int,
+    payload: RestartRequest,
+    db: Session = Depends(get_db)
+):
+    """重新執行 Test Run：建立一個新的 Test Run（複製設定），
+    並依模式挑選要帶入的新測試案例項目。
+
+    - all: 複製所有項目（結果清空）
+    - failed: 僅複製 Failed、Retest 的項目（結果清空）
+    - pending: 僅複製未執行（結果為 NULL）的項目
+    """
+    # 檢查團隊與配置存在
+    config_db = db.query(TestRunConfigDB).filter(
+        TestRunConfigDB.id == config_id,
+        TestRunConfigDB.team_id == team_id
+    ).first()
+    if not config_db:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"找不到測試執行配置 ID {config_id}")
+
+    mode = (payload.mode or '').lower()
+    if mode not in ['all', 'failed', 'pending']:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="不支援的重新執行模式")
+
+    # 選取要複製的項目
+    q = db.query(TestRunItemDB).filter(
+        TestRunItemDB.team_id == team_id,
+        TestRunItemDB.config_id == config_id,
+    )
+    if mode == 'failed':
+        q = q.filter(TestRunItemDB.test_result.in_([TestResultStatus.FAILED, TestResultStatus.RETEST]))
+    elif mode == 'pending':
+        # 定義「未完成」為狀態非 Passed/Failed（包含未執行、重測、不適用等）
+        from sqlalchemy import or_, not_
+        q = q.filter(
+            or_(
+                TestRunItemDB.test_result.is_(None),
+                not_(TestRunItemDB.test_result.in_([TestResultStatus.PASSED, TestResultStatus.FAILED]))
+            )
+        )
+
+    items = q.all()
+
+    # 準備新名稱
+    base_name = f"Rerun - {config_db.name}"
+    new_name = (payload.name or '').strip() or base_name
+
+    # 建立新的 Test Run Config（複製主要欄位）
+    new_config = TestRunConfigDB(
+        team_id=team_id,
+        name=new_name,
+        description=config_db.description,
+        table_id=None,  # 本地模式不使用 Lark 表格
+        test_version=config_db.test_version,
+        test_environment=config_db.test_environment,
+        build_number=config_db.build_number,
+        status=TestRunStatus.ACTIVE,
+        start_date=datetime.utcnow(),
+        end_date=None,
+        total_test_cases=0,
+        executed_cases=0,
+        passed_cases=0,
+        failed_cases=0,
+        last_sync_at=None,
+    )
+    db.add(new_config)
+    db.commit()
+    db.refresh(new_config)
+
+    created = 0
+    now = datetime.utcnow()
+    for item in items:
+        new_item = TestRunItemDB(
+            team_id=team_id,
+            config_id=new_config.id,
+            test_case_number=item.test_case_number,
+            title=item.title,
+            priority=item.priority,
+            precondition=item.precondition,
+            steps=item.steps,
+            expected_result=item.expected_result,
+            # 保留指派者資料（若有）
+            assignee_id=item.assignee_id,
+            assignee_name=item.assignee_name,
+            assignee_en_name=item.assignee_en_name,
+            assignee_email=item.assignee_email,
+            assignee_json=item.assignee_json,
+            # 重置結果與時間
+            test_result=None,
+            executed_at=None,
+            execution_duration=None,
+            # 附件與執行結果不沿用
+            attachments_json=None,
+            execution_results_json=None,
+            # 其餘上下文資料沿用
+            user_story_map_json=item.user_story_map_json,
+            tcg_json=item.tcg_json,
+            parent_record_json=item.parent_record_json,
+            raw_fields_json=item.raw_fields_json,
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(new_item)
+        created += 1
+
+    # 更新新配置的統計
+    new_config.total_test_cases = created
+    new_config.executed_cases = 0
+    new_config.passed_cases = 0
+    new_config.failed_cases = 0
+    new_config.last_sync_at = now
+
+    db.commit()
+
+    return {
+        "success": True,
+        "mode": mode,
+        "new_config_id": new_config.id,
+        "created_count": created,
     }
 
 
