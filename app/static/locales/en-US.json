@@ -224,6 +224,9 @@
     "createFailed": "Create failed",
     "batchStartFailed": "Batch start failed",
     "batchDeleteFailed": "Batch delete failed",
+    "batchDeleteConfirm": "Are you sure you want to delete the selected {count} test execution items?\n\n⚠️ Warning: This will also delete all related test history records. This action cannot be undone!",
+    "batchDeleteSuccess": "Successfully deleted {count} test execution items and their test history",
+    "batchDeletePartial": "Processed {total} items, successfully deleted {success} test execution items",
     "updateFailed": "Update failed",
     "notFound": "Test run record not found",
     "alreadyInProgress": "Test run is already in progress",
@@ -412,9 +415,14 @@
      "attachmentDetails": "Attachment Details",
      "attachmentName": "Attachment Name",
      "attachmentNote": "This attachment is stored in Lark. Click the button below to download directly.",
-     "downloadAttachment": "Download Attachment",
-     "title": "Title",
-     "loadContactsFailed": "Failed to load contacts"
+      "downloadAttachment": "Download Attachment",
+      "title": "Title",
+      "loadContactsFailed": "Failed to load contacts",
+      "batchDeleteConfirm": "Are you sure you want to delete the selected {count} test execution items?\n\n⚠️ Warning: This will also delete all related test history records. This action cannot be undone!",
+      "batchDeleteWarning": "Danger Operation Warning",
+      "batchDeleteSuccess": "Successfully deleted {count} test execution items and their test history",
+      "batchDeletePartial": "Processed {total} items, successfully deleted {success} test execution items",
+      "batchDeleteFailed": "Batch delete failed"
   },
   "priority": {
     "high": "High",

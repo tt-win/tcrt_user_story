@@ -510,6 +510,9 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                 <button type="button" class="btn btn-primary btn-sm" id="batchModifyBtn">
                     <i class="fas fa-edit me-2"></i><span data-i18n="testRun.batchModify">批次修改</span>
                 </button>
+                <button type="button" class="btn btn-danger btn-sm" id="batchDeleteBtn">
+                    <i class="fas fa-trash me-2"></i><span data-i18n="testRun.batchDelete">批次刪除</span>
+                </button>
             </div>
         </div>
     </div>
@@ -898,6 +901,9 @@ function bindEventListeners() {
     
     // 批次修改按鈕事件
     document.getElementById('batchModifyBtn').addEventListener('click', showBatchModifyModal);
+
+    // 批次刪除按鈕事件
+    document.getElementById('batchDeleteBtn').addEventListener('click', showBatchDeleteConfirm);
     
     // 監聽個別項目 checkbox 變化
     document.addEventListener('change', function(e) {
@@ -1181,12 +1187,19 @@ async function updateTestResult(itemId, result) {
         
         // 更新統計
         await updateStatistics();
-        // 若詳情 Modal 開啟中且為同一測試案例，刷新右側 timeline
+
+        // 重新渲染列表頁以反映更新
+        renderTestRunItems();
+
+        // 若詳情 Modal 開啟中且為同一測試案例，刷新右側 timeline 和標題區域
         try {
             const modalEl = document.getElementById('testCaseDetailModal');
             const isShown = modalEl && modalEl.classList.contains('show');
             const item = testRunItems.find(i => i.id === itemId);
             if (isShown && item && currentDetailTestCase && currentDetailTestCase.test_case_number === item.test_case_number) {
+                // 刷新標題區域的 Test Result 顯示
+                renderModalHeaderResult(currentDetailTestCase);
+                // 刷新右側 timeline
                 renderResultHistoryTimeline({ test_case_number: item.test_case_number });
             }
         } catch (_) {}
@@ -1560,40 +1573,40 @@ async function handleBatchModifyConfirm() {
 async function batchModifyItems(modifications) {
     try {
         const itemsToModify = Array.from(selectedItems);
-        
+
         // 為每個選中的項目建立更新資料
         const updates = itemsToModify.map(itemId => {
             const updateData = { id: itemId };
-            
+
             if (modifications.modifyAssignee) {
                 updateData.assignee_name = modifications.assigneeName || null;
             }
-            
+
             if (modifications.modifyResult) {
                 updateData.test_result = modifications.testResult;
                 updateData.executed_at = new Date().toISOString();
             }
-            
+
             return updateData;
         });
-        
+
         // 批次修改 API 調用（使用正確的端點）
         const response = await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/batch-update-results`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ 
+            body: JSON.stringify({
                 updates: updates
             })
         });
-        
+
         if (!response.ok) {
             const errorData = await response.json().catch(() => ({}));
             throw new Error(`HTTP ${response.status}: ${errorData.detail || 'Unknown error'}`);
         }
-        
+
         // 解析API響應
         const result = await response.json();
-        
+
         // 樂觀更新本地列表（避免等待重載也能即時看到變更）
         try {
             updates.forEach(u => {
@@ -1624,33 +1637,203 @@ async function batchModifyItems(modifications) {
                 renderResultHistoryTimeline({ test_case_number: currentDetailTestCase.test_case_number });
             }
         } catch (_) {}
-        
+
         // 清空選擇狀態並更新 UI
         selectedItems.clear();
         updateItemSelectionUI();
-        
+
         // 顯示成功訊息，包括處理結果
         if (result.success) {
-            const successMsg = window.i18n && window.i18n.isReady() 
+            const successMsg = window.i18n && window.i18n.isReady()
                 ? window.i18n.t('testRun.batchModifySuccess', {count: result.success_count})
                 : `成功修改 ${result.success_count} 個測試執行項目`;
             AppUtils.showSuccess(successMsg);
         } else {
             // 部分成功的情況
-            const partialMsg = window.i18n && window.i18n.isReady() 
+            const partialMsg = window.i18n && window.i18n.isReady()
                 ? window.i18n.t('testRun.batchModifyPartial', {success: result.success_count, total: result.processed_count})
                 : `已處理 ${result.processed_count} 個項目，成功 ${result.success_count} 個`;
             AppUtils.showWarning(partialMsg);
-            
+
             if (result.error_messages && result.error_messages.length > 0) {
                 console.warn('批次修改錯誤:', result.error_messages);
             }
         }
-        
+
     } catch (error) {
-        const consoleMsg = window.i18n && window.i18n.isReady() 
+        const consoleMsg = window.i18n && window.i18n.isReady()
             ? window.i18n.t('testRun.batchModifyFailed')
             : '批次修改測試執行項目失敗';
+        console.error(consoleMsg + ':', error);
+        throw error;
+    }
+}
+
+// 顯示批次刪除確認對話框
+function showBatchDeleteConfirm() {
+    if (selectedItems.size === 0) {
+        const noSelectionMsg = window.i18n && window.i18n.isReady()
+            ? window.i18n.t('testRun.noItemsSelected')
+            : '{{ i18n.t("testRun.noItemsSelected") if i18n else "請先選擇要刪除的項目" }}';
+        AppUtils.showWarning(noSelectionMsg);
+        return;
+    }
+
+    const confirmMessage = window.i18n && window.i18n.isReady()
+        ? window.i18n.t('testRun.batchDeleteConfirm', {count: selectedItems.size})
+        : `確定要刪除選中的 ${selectedItems.size} 個測試執行項目嗎？\n\n⚠️ 警告：此操作將同時清除所有相關的測試歷程記錄，此動作無法復原！`;
+
+    // 為批次刪除添加特殊的警告樣式
+    const modalDialog = document.querySelector('#confirmModal .modal-dialog');
+    const modalContent = document.querySelector('#confirmModal .modal-content');
+    const modalHeader = document.querySelector('#confirmModal .modal-header');
+    const confirmBtn = document.getElementById('confirm-action-btn');
+
+    // 保存原始樣式
+    const originalClasses = {
+        dialog: modalDialog.className,
+        content: modalContent.className,
+        header: modalHeader.className,
+        btn: confirmBtn.className
+    };
+
+    // 應用危險操作的樣式
+    modalDialog.className = 'modal-dialog modal-dialog-centered modal-dialog-scrollable';
+    modalContent.className = 'modal-content border-danger';
+    modalHeader.className = 'modal-header bg-danger text-white';
+    confirmBtn.className = 'btn btn-danger';
+
+    // 更新標題圖標和文字
+    const modalTitle = document.querySelector('#confirmModal .modal-title');
+    modalTitle.innerHTML = `
+        <i class="fas fa-exclamation-triangle me-2"></i>
+        <span data-i18n="testRun.batchDeleteWarning">危險操作警告</span>
+    `;
+
+    document.getElementById('confirm-message').innerHTML = confirmMessage.replace(/\n/g, '<br>');
+
+    // 設置確認按鈕事件
+    confirmBtn.onclick = async () => {
+        try {
+            await batchDeleteItems();
+            confirmModal.hide();
+        } catch (error) {
+            AppUtils.showError('{{ i18n.t("testRun.batchDeleteFailed") if i18n else "批次刪除失敗" }}' + ': ' + error.message);
+        }
+    };
+
+    // 當對話框隱藏時恢復原始樣式
+    const modalElement = document.getElementById('confirmModal');
+    modalElement.addEventListener('hidden.bs.modal', function() {
+        modalDialog.className = originalClasses.dialog;
+        modalContent.className = originalClasses.content;
+        modalHeader.className = originalClasses.header;
+        confirmBtn.className = originalClasses.btn;
+        modalTitle.innerHTML = `
+            <i class="fas fa-exclamation-triangle text-warning me-2"></i>
+            <span data-i18n="common.confirm">確認操作</span>
+        `;
+    }, { once: true });
+
+    confirmModal.show();
+}
+
+// 批次刪除測試執行項目
+async function batchDeleteItems() {
+    try {
+        const itemsToDelete = Array.from(selectedItems);
+        let successCount = 0;
+        let errorMessages = [];
+
+        // 逐個刪除項目（因為可能沒有批次刪除 API）
+        for (const itemId of itemsToDelete) {
+            try {
+                const response = await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/${itemId}`, {
+                    method: 'DELETE'
+                });
+
+                if (response.ok) {
+                    successCount++;
+                    // 從本地列表中移除已刪除的項目
+                    const idx = testRunItems.findIndex(it => it.id === itemId);
+                    if (idx !== -1) {
+                        testRunItems.splice(idx, 1);
+                    }
+                } else {
+                    let errorMessage = 'Unknown error';
+                    try {
+                        const errorData = await response.json();
+                        if (typeof errorData.detail === 'string') {
+                            errorMessage = errorData.detail;
+                        } else if (errorData.detail && typeof errorData.detail === 'object') {
+                            errorMessage = JSON.stringify(errorData.detail);
+                        } else if (errorData.message) {
+                            errorMessage = errorData.message;
+                        }
+                    } catch (e) {
+                        errorMessage = response.statusText || 'Request failed';
+                    }
+                    errorMessages.push(`項目 ${itemId}: ${errorMessage}`);
+                }
+            } catch (error) {
+                errorMessages.push(`項目 ${itemId}: ${error.message}`);
+            }
+        }
+
+        // 重新渲染列表
+        renderTestRunItems();
+
+        // 重新載入項目和統計
+        await loadTestRunItems();
+        await updateStatistics();
+
+        // 若詳情 Modal 開啟中且顯示的項目已被刪除，則關閉 Modal
+        try {
+            const modalEl = document.getElementById('testCaseDetailModal');
+            const isShown = modalEl && modalEl.classList.contains('show');
+            if (isShown && currentDetailTestCase) {
+                const item = testRunItems.find(i => i.test_case_number === currentDetailTestCase.test_case_number);
+                if (!item) {
+                    // 如果當前顯示的項目已被刪除，關閉 Modal
+                    const modal = bootstrap.Modal.getInstance(modalEl);
+                    if (modal) modal.hide();
+                }
+            }
+        } catch (_) {}
+
+        // 清空選擇狀態並更新 UI
+        selectedItems.clear();
+        updateItemSelectionUI();
+
+        // 顯示結果訊息
+        if (successCount === itemsToDelete.length) {
+            // 全部成功
+            const successMsg = window.i18n && window.i18n.isReady()
+                ? window.i18n.t('testRun.batchDeleteSuccess', {count: successCount})
+                : `成功刪除 ${successCount} 個測試執行項目及其測試歷程`;
+            AppUtils.showSuccess(successMsg);
+        } else if (successCount > 0) {
+            // 部分成功
+            const partialMsg = window.i18n && window.i18n.isReady()
+                ? window.i18n.t('testRun.batchDeletePartial', {success: successCount, total: itemsToDelete.length})
+                : `已處理 ${itemsToDelete.length} 個項目，成功刪除 ${successCount} 個測試執行項目`;
+            AppUtils.showWarning(partialMsg);
+
+            if (errorMessages.length > 0) {
+                console.warn('批次刪除錯誤:', errorMessages);
+            }
+        } else {
+            // 全部失敗
+            const failMsg = window.i18n && window.i18n.isReady()
+                ? window.i18n.t('testRun.batchDeleteFailed')
+                : '批次刪除失敗';
+            throw new Error(`${failMsg}: ${errorMessages.join(', ')}`);
+        }
+
+    } catch (error) {
+        const consoleMsg = window.i18n && window.i18n.isReady()
+            ? window.i18n.t('testRun.batchDeleteFailed')
+            : '批次刪除測試執行項目失敗';
         console.error(consoleMsg + ':', error);
         throw error;
     }
@@ -2018,14 +2201,6 @@ function createTestCaseDetailHtml(testCase) {
     const scrollableHtml = `
         <div class="card" style="border: none;">
             <div class="card-body" style="padding: 1rem;">
-                ${testCase.precondition ? `
-                <div class="mb-3">
-                    <h6 class="mb-2" data-i18n="testRun.precondition">前置條件</h6>
-                    <div class="section-block section-precondition">
-                        <div class="markdown-preview mb-0" style="font-size: 0.9rem;">${renderMarkdown(testCase.precondition)}</div>
-                    </div>
-                </div>
-                ` : ''}
                 ${testCase.precondition ? `
                 <div class="mb-3">
                     <h6 class="mb-2" data-i18n="testRun.precondition">前置條件</h6>

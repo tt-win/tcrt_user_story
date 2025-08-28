@@ -413,9 +413,14 @@
      "attachmentDetails": "附件詳情",
      "attachmentName": "附件名稱",
      "attachmentNote": "此附件存儲在 Lark 中。點擊下方按鈕可直接下載。",
-     "downloadAttachment": "下載附件",
-     "title": "標題",
-     "loadContactsFailed": "載入聯絡人失敗"
+      "downloadAttachment": "下載附件",
+      "title": "標題",
+      "loadContactsFailed": "載入聯絡人失敗",
+      "batchDeleteConfirm": "確定要刪除選中的 {count} 個測試執行項目嗎？\n\n⚠️ 警告：此操作將同時清除所有相關的測試歷程記錄，此動作無法復原！",
+      "batchDeleteWarning": "危險操作警告",
+      "batchDeleteSuccess": "成功刪除 {count} 個測試執行項目及其測試歷程",
+      "batchDeletePartial": "已處理 {total} 個項目，成功刪除 {success} 個測試執行項目",
+      "batchDeleteFailed": "批次刪除失敗"
   },
   "priority": {
     "high": "高",
