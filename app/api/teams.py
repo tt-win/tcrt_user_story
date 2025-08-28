@@ -79,7 +79,7 @@ def team_model_to_db(team: TeamCreate) -> TeamDB:
         enable_notifications=team.settings.enable_notifications if team.settings else True,
         auto_create_bugs=team.settings.auto_create_bugs if team.settings else False,
         default_priority=team.settings.default_priority if team.settings else "Medium",
-        status=team.status if team.status else "active"
+        status="active"
     )
 
 @router.get("/")
