@@ -38,6 +38,7 @@ class AssigneeSelector {
         this.loading = false;
         this.debounceTimer = null;
         this.cache = new Map(); // API 結果快取
+        this.originalValue = ''; // 存儲原來的值
         
         // 初始化
         this.init();
@@ -46,6 +47,8 @@ class AssigneeSelector {
     init() {
         this.createHTML();
         this.bindEvents();
+        // 保存原來的值
+        this.originalValue = this.originalInput.value || '';
         // 將原始 input 既有的值同步到顯示輸入框，避免初始化後顯示為空白
         if (this.originalInput && typeof this.originalInput.value === 'string' && this.originalInput.value.trim() !== '') {
             this.setValue(this.originalInput.value);
@@ -146,14 +149,15 @@ class AssigneeSelector {
                     min-width: 0;
                 }
                 
-                .assignee-selector-name {
-                    font-weight: 500;
-                    color: #212529;
-                    margin-bottom: 0.125rem;
-                    white-space: nowrap;
-                    overflow: hidden;
-                    text-overflow: ellipsis;
-                }
+                 .assignee-selector-name {
+                     font-weight: 500;
+                     color: #212529;
+                     margin-bottom: 0.125rem;
+                     white-space: nowrap;
+                     overflow: hidden;
+                     text-overflow: ellipsis;
+                     text-align: left;
+                 }
                 
                 .assignee-selector-email {
                     font-size: 0.875rem;
@@ -190,11 +194,17 @@ class AssigneeSelector {
             this.handleKeydown(e);
         });
 
-        // 失焦時，若允許自訂值且有輸入，提交目前值
+        // 失焦時處理輸入值
         this.displayInput.addEventListener('blur', () => {
             const val = (this.displayInput.value || '').trim();
-            if (this.options.allowCustomValue && val && (!this.selectedContact || (this.selectedContact && (this.selectedContact.name !== val && this.selectedContact.display_name !== val)))) {
-                // 同步到原始 input 並觸發更新
+            if (!val) {
+                // 如果輸入為空，恢復原來的值
+                this.restoreOriginalValue();
+            } else if (!this.selectedContact) {
+                // 如果有輸入但沒有選擇聯絡人，恢復原來的值
+                this.restoreOriginalValue();
+            } else if (this.options.allowCustomValue && (this.selectedContact.name !== val && this.selectedContact.display_name !== val)) {
+                // 若允許自訂值且輸入值與選擇的聯絡人不匹配，提交目前值
                 this.setValue(val);
                 if (this.options.onSelect) {
                     this.options.onSelect({ id: null, name: val, display_name: val });
@@ -287,17 +297,21 @@ class AssigneeSelector {
             this.open();
         }, this.options.debounceMs);
         
-        // 如果清空了輸入，清除選擇
-        if (!value) {
-            this.clearSelection();
-        }
+        // 清空輸入時不立即恢復，等待 blur 事件處理
     }
     
     handleFocus() {
-        this.open();
-        if (!this.contacts.length) {
-            this.loadContacts();
+        // 如果有原值，用原值進行搜尋
+        if (this.originalValue.trim()) {
+            this.searchTerm = this.originalValue;
+            this.loadContacts(this.originalValue);
+        } else {
+            // 如果沒有原值，載入所有聯絡人
+            if (!this.contacts.length) {
+                this.loadContacts();
+            }
         }
+        this.open();
     }
     
     handleKeydown(e) {
@@ -449,22 +463,23 @@ class AssigneeSelector {
     }
     
     selectContact(contactId) {
-        const contact = this.filteredContacts.find(c => c.id === contactId) || 
+        const contact = this.filteredContacts.find(c => c.id === contactId) ||
                       this.contacts.find(c => c.id === contactId);
-        
+
         if (!contact) return;
-        
+
         this.selectedContact = contact;
         this.displayInput.value = contact.display_name || contact.name;
         this.originalInput.value = contact.name; // 存儲姓名到原始 input
-        
+        this.originalValue = contact.name; // 更新原來的值
+
         this.close();
-        
+
         // 觸發選擇事件
         if (this.options.onSelect) {
             this.options.onSelect(contact);
         }
-        
+
         // 觸發原始 input 的 change 事件
         this.originalInput.dispatchEvent(new Event('change', { bubbles: true }));
     }
@@ -472,10 +487,32 @@ class AssigneeSelector {
     clearSelection() {
         this.selectedContact = null;
         this.originalInput.value = '';
-        
+
         if (this.options.onClear) {
             this.options.onClear();
         }
+    }
+
+    restoreOriginalValue() {
+        // 恢復原來的值到顯示輸入框和原始輸入框
+        this.displayInput.value = this.originalValue;
+        this.originalInput.value = this.originalValue;
+        this.selectedContact = null; // 清空選擇狀態，因為我們恢復了原值
+
+        // 如果原值不為空，嘗試找到對應的聯絡人
+        if (this.originalValue.trim()) {
+            const contact = this.contacts.find(c =>
+                c.name === this.originalValue ||
+                c.display_name === this.originalValue ||
+                c.email === this.originalValue
+            );
+            if (contact) {
+                this.selectedContact = contact;
+            }
+        }
+
+        // 關閉下拉選單
+        this.close();
     }
     
     setLoading(loading) {
@@ -501,6 +538,7 @@ class AssigneeSelector {
     setValue(value) {
         this.displayInput.value = value;
         this.originalInput.value = value;
+        this.originalValue = value; // 更新原來的值
         this.selectedContact = null;
     }
     
