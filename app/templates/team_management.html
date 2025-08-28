@@ -493,12 +493,6 @@ function renderTeamCards() {
                                     ((window.i18n && window.i18n.isReady()) ? window.i18n.t('team.configured') : '已設定') : 
                                     ((window.i18n && window.i18n.isReady()) ? window.i18n.t('team.notConfigured') : '未設定')}</small>
                             </div>
-                            <div class="d-flex align-items-center">
-                                <i class="fas fa-list me-2 text-muted"></i>
-                                <small class="text-muted">${(window.i18n && window.i18n.isReady()) ? 
-                                    window.i18n.t('team.testCaseCount', {count: team.test_case_count || 0}) : 
-                                    `${team.test_case_count || 0} 個測試案例`}</small>
-                            </div>
                         </div>
                         <div class="d-flex gap-2">
                             <button class="btn btn-primary btn-sm flex-grow-1" onclick="selectTeam(${team.id})">
