@@ -1653,7 +1653,7 @@ async function saveTestCase() {
         precondition: document.getElementById('precondition').value,
         steps: document.getElementById('test_steps').value,
         expected_result: document.getElementById('expected_result').value,
-        tcg: document.getElementById('modalTCGInput').value  // 從新的 type-to-search 輸入框取得 TCG
+        tcg: document.getElementById('modalTCGInput').value  // 從新的 type-to-search 輸入框取得 TCG（更新 API 支援字串）
         // 注意：不再包含 attachments，因為附件現在是立即附加到記錄的
     };
     
@@ -1671,6 +1671,10 @@ async function saveTestCase() {
     // 表單驗證
     if (!testCaseData.title) {
         showError(window.i18n ? window.i18n.t('errors.testCaseTitleRequired') : '請填寫測試案例標題');
+        return;
+    }
+    if (!testCaseData.test_case_number || !testCaseData.test_case_number.trim()) {
+        showError(window.i18n ? window.i18n.t('errors.testCaseNumberRequired') : '請填寫測試案例編號');
         return;
     }
     
@@ -1728,6 +1732,8 @@ async function saveTestCase() {
                 });
             } else {
                 // 新增測試案例
+                // 建立 API 不支援 tcg 字串（僅 update 支援），避免 422 將其移除
+                try { delete testCaseData.tcg; } catch (_) {}
                 response = await fetch(`/api/teams/${currentTeam.id}/testcases/`, {
                     method: 'POST',
                     headers: {
@@ -1738,8 +1744,20 @@ async function saveTestCase() {
             }
             
             if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.detail || '儲存失敗');
+                let msg = '儲存失敗';
+                try {
+                    const errorData = await response.json();
+                    if (errorData && errorData.detail) {
+                        if (Array.isArray(errorData.detail)) {
+                            msg = errorData.detail.map(d => d.msg || d.detail || JSON.stringify(d)).join('; ');
+                        } else if (typeof errorData.detail === 'string') {
+                            msg = errorData.detail;
+                        } else {
+                            msg = JSON.stringify(errorData.detail);
+                        }
+                    }
+                } catch (_) {}
+                throw new Error(msg);
             }
             
             // 如果是新增測試案例，需要取得新的記錄ID並轉為編輯模式
@@ -1816,6 +1834,10 @@ async function saveAndAddNext() {
         showError(window.i18n ? window.i18n.t('errors.testCaseTitleRequired') : '請填寫測試案例標題');
         return;
     }
+    if (!testCaseData.test_case_number || !testCaseData.test_case_number.trim()) {
+        showError(window.i18n ? window.i18n.t('errors.testCaseNumberRequired') : '請填寫測試案例編號');
+        return;
+    }
     
     // 檢查測試案例編號唯一性（新增模式不需要排除任何記錄）
     if (testCaseData.test_case_number) {
@@ -1849,6 +1871,8 @@ async function saveAndAddNext() {
     
     try {
         // 新增測試案例
+        // 建立 API 不支援 tcg 字串（僅 update 支援），避免 422 將其移除
+        try { delete testCaseData.tcg; } catch (_) {}
         const response = await fetch(`/api/teams/${currentTeam.id}/testcases/`, {
             method: 'POST',
             headers: {
@@ -1858,8 +1882,20 @@ async function saveAndAddNext() {
         });
         
         if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.detail || '儲存失敗');
+            let msg = '儲存失敗';
+            try {
+                const errorData = await response.json();
+                if (errorData && errorData.detail) {
+                    if (Array.isArray(errorData.detail)) {
+                        msg = errorData.detail.map(d => d.msg || d.detail || JSON.stringify(d)).join('; ');
+                    } else if (typeof errorData.detail === 'string') {
+                        msg = errorData.detail;
+                    } else {
+                        msg = JSON.stringify(errorData.detail);
+                    }
+                }
+            } catch (_) {}
+            throw new Error(msg);
         }
         
         // 重新載入測試案例（不顯示載入動畫）

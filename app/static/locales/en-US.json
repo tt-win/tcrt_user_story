@@ -150,6 +150,7 @@
     "loadFailed": "Load failed",
     "uniquenessCheck": "Uniqueness check",
     "duplicateNumber": "Test case number already exists",
+    "testCaseNumberRequired": "Please enter test case number",
     "previousTestCase": "Previous test case",
     "nextTestCase": "Next test case"
   },

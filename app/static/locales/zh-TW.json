@@ -150,6 +150,7 @@
     "loadFailed": "載入失敗",
     "uniquenessCheck": "唯一性檢查",
     "duplicateNumber": "測試案例編號重複",
+    "testCaseNumberRequired": "請填寫測試案例編號",
     "previousTestCase": "上一隻測試案例",
     "nextTestCase": "下一隻測試案例"
   },
