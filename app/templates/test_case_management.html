@@ -327,7 +327,7 @@ html, body { height: 100%; overflow: hidden; }
                             <th width="80" class="text-center" style="padding: 4px 8px !important; vertical-align: middle;" data-i18n="testCase.priority">優先級</th>
                             <th width="100" class="text-center" style="padding: 4px 8px !important; vertical-align: middle;" data-i18n="common.createDate">建立日期</th>
                             <th width="100" class="text-center" style="padding: 4px 8px !important; vertical-align: middle;" data-i18n="common.updateDate">更新日期</th>
-                            <th width="100" style="padding: 4px 8px !important; vertical-align: middle;" data-i18n="common.actions">操作</th>
+                            <th width="100" class="text-center" style="padding: 4px 8px !important; vertical-align: middle;" data-i18n="common.actions">操作</th>
                         </tr>
                     </thead>
                     <tbody id="testCasesTableBody">
@@ -1192,11 +1192,15 @@ function renderTestCasesTable() {
                     ${formatDate(testCase.updated_at, 'date')}
                 </div>
             </td>
-            <td class="align-middle text-center">
-                <div class="test-case-actions">
+            <td class="align-middle text-center" style="width: 100px;">
+                <div class="test-case-actions d-flex justify-content-center gap-2">
                     <button type="button" class="btn btn-sm btn-view" 
                             onclick="viewTestCase('${testCase.record_id}')" data-i18n-title="tooltips.viewEdit">
                         <i class="fas fa-eye"></i>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" 
+                            onclick="copyTestCase('${testCase.record_id}')" title="${(window.i18n && window.i18n.isReady()) ? window.i18n.t('common.copy') : '複製'}">
+                        <i class="fas fa-copy"></i>
                     </button>
                     <button type="button" class="btn btn-sm btn-danger" 
                             onclick="deleteTestCase('${testCase.record_id}')" data-i18n-title="tooltips.delete">
@@ -1263,6 +1267,53 @@ function bindEvents() {
     
     // 儲存並新增下一筆按鈕
     document.getElementById('saveAndAddNextBtn').addEventListener('click', saveAndAddNext);
+}
+
+// 複製 Test Case：開啟與「新增/編輯」相同的 Modal，預填欄位
+function copyTestCase(id) {
+    const source = testCases.find(tc => tc.record_id === id);
+    if (!source) return;
+    // 先以新增模式打開，確保狀態正確（不帶 record_id，附件清空，按鈕狀態正確）
+    showTestCaseModal(null);
+
+    // 設定 Modal 標題為「複製測試案例」
+    const modalTitle = document.getElementById('testCaseModalTitle');
+    if (modalTitle) {
+        const copyText = window.i18n ? window.i18n.t('common.copy') : '複製';
+        const baseTitle = window.i18n ? window.i18n.t('testCase.createTestCase') : '新增測試案例';
+        modalTitle.textContent = `${copyText} ${baseTitle}`;
+    }
+
+    // 預填欄位（編號留空，避免重複；標題前綴「複製 - 」）
+    const copyWord = window.i18n ? window.i18n.t('common.copy') : '複製';
+    document.getElementById('testCaseId').value = '';
+    document.getElementById('title').value = `${copyWord} - ${source.title || ''}`;
+    document.getElementById('testCaseNumber').value = '';
+    document.getElementById('priority').value = source.priority || 'Medium';
+    const tcgValue = source.tcg ? source.tcg.map(t => t.text || t).join(', ') : '';
+    document.getElementById('tcg').value = tcgValue;
+    const modalTCGInput = document.getElementById('modalTCGInput');
+    if (modalTCGInput) modalTCGInput.value = tcgValue;
+    document.getElementById('precondition').value = source.precondition || '';
+    document.getElementById('test_steps').value = source.steps || '';
+    document.getElementById('expected_result').value = source.expected_result || '';
+
+    // 更新 Markdown 預覽
+    try {
+        markdownFields.forEach(fieldId => updateMarkdownPreview(fieldId));
+    } catch (_) {}
+
+    // 新增模式下的按鈕狀態
+    const saveBtn = document.getElementById('saveTestCaseBtn');
+    const saveAndAddNextBtn = document.getElementById('saveAndAddNextBtn');
+    if (saveBtn) saveBtn.disabled = false;
+    if (saveAndAddNextBtn) {
+        saveAndAddNextBtn.disabled = false;
+        saveAndAddNextBtn.style.display = 'inline-block';
+    }
+
+    // 編輯器模式採用 split（與新增一致）
+    try { setEditorMode('split'); } catch (_) {}
 }
 
 let originalFormData = {}; // 存儲原始表單資料

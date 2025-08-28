@@ -47,7 +47,8 @@
     "languageEnUs": "English",
     "noDescription": "無描述",
     "createDate": "建立日期",
-    "updateDate": "更新日期"
+    "updateDate": "更新日期",
+    "copy": "複製"
   },
   "navigation": {
     "title": "Test Case Repository",

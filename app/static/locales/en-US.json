@@ -47,7 +47,8 @@
     "languageEnUs": "English",
     "noDescription": "No description",
     "createDate": "Created",
-    "updateDate": "Updated"
+    "updateDate": "Updated",
+    "copy": "Copy"
   },
   "navigation": {
     "title": "Test Case Repository",
