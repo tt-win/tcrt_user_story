@@ -348,6 +348,62 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
     text-align: left;
 }
 
+/* Basic Info 區域樣式 */
+.basic-info-body {
+    padding-top: 0.25rem;
+    padding-bottom: 0.25rem;
+}
+
+.basic-info-table {
+    line-height: 1.2;
+}
+
+.basic-info-label {
+    font-weight: 600;
+    width: 15%;
+    font-size: 0.85rem;
+    padding: 0.15rem 0.5rem;
+}
+
+.basic-info-label-top {
+    vertical-align: top;
+}
+
+.basic-info-value {
+    padding: 0.15rem 0.5rem;
+}
+
+.basic-info-code {
+    font-size: 0.85rem;
+}
+
+.basic-info-title {
+    word-break: break-word;
+    font-size: 0.9rem;
+}
+
+.basic-info-badge {
+    font-size: 0.75rem;
+}
+
+.basic-info-input {
+    font-size: 0.9rem;
+}
+
+/* Scrollable Content 區域樣式 */
+.scrollable-content-card {
+    border: none;
+}
+
+.scrollable-content-body {
+    padding: 1rem;
+}
+
+/* Content Markdown 樣式 */
+.content-markdown {
+    font-size: 0.9rem;
+}
+
 #testCaseDetailModal .assignee-selector-dropdown {
     z-index: 1060; /* 高於 Modal 的 z-index */
     left: 0;
@@ -2130,12 +2186,13 @@ function displayTestCaseDetail(testCase) {
     initializeTestCaseAssigneeSelector(testCase);
 }
 
-function createTestCaseDetailHtml(testCase) {
+// 生成基本資訊區域的 HTML
+function generateBasicInfoHtml(testCase) {
     const assigneeName = testCase.assignee ? testCase.assignee.name || testCase.assignee.en_name : '';
     const tcgText = testCase.tcg && testCase.tcg.length > 0 ? testCase.tcg.map(t => t.text || t).join(', ') : '';
     const attachmentCount = testCase.attachments ? testCase.attachments.length : 0;
 
-    const fixedHtml = `
+    return `
         <!-- Basic Info 區域 -->
         <div class="card mb-2">
             <div class="card-header py-1">
@@ -2144,47 +2201,45 @@ function createTestCaseDetailHtml(testCase) {
                     <span data-i18n="testRun.basicInfo">基本資訊</span>
                 </h6>
             </div>
-            <div class="card-body px-2" style="padding-top: 0.25rem; padding-bottom: 0.25rem;">
-                <table class="table table-sm table-borderless mb-0" style="line-height: 1.2;">
+            <div class="card-body px-2 basic-info-body">
+                <table class="table table-sm table-borderless mb-0 basic-info-table">
                     <tr>
-                        <td class="fw-bold" style="width: 15%; font-size: 0.85rem; padding: 0.15rem 0.5rem;" data-i18n="testRun.testCaseNumber">編號</td>
-                        <td style="width: 35%; padding: 0.15rem 0.5rem;"><code style="font-size: 0.85rem;">${escapeHtml(testCase.test_case_number)}</code></td>
-                        <td class="fw-bold" style="width: 10%; font-size: 0.85rem; padding: 0.15rem 0.5rem;">${tcgText ? 'TCG' : ''}</td>
-                        <td style="padding: 0.15rem 0.5rem;">${tcgText ? '<code style="font-size: 0.85rem;">' + escapeHtml(tcgText) + '</code>' : ''}</td>
+                        <td class="basic-info-label" data-i18n="testRun.testCaseNumber">編號</td>
+                        <td class="basic-info-value"><code class="basic-info-code">${escapeHtml(testCase.test_case_number)}</code></td>
+                        <td class="basic-info-label">${tcgText ? 'TCG' : ''}</td>
+                        <td class="basic-info-value">${tcgText ? '<code class="basic-info-code">' + escapeHtml(tcgText) + '</code>' : ''}</td>
                     </tr>
                     <tr>
-                        <td class="fw-bold" style="font-size: 0.85rem; padding: 0.15rem 0.5rem;" data-i18n="testRun.title">標題</td>
-                        <td class="text-break" colspan="3" style="padding: 0.15rem 0.5rem; font-size: 0.9rem;">${escapeHtml(testCase.title)}</td>
+                        <td class="basic-info-label" data-i18n="testRun.title">標題</td>
+                        <td class="basic-info-value basic-info-title" colspan="3">${escapeHtml(testCase.title)}</td>
                     </tr>
                     <tr>
-                         <td class="fw-bold" style="font-size: 0.85rem; padding: 0.15rem 0.5rem;" data-i18n="testRun.priority">優先級</td>
-                         <td style="padding: 0.15rem 0.5rem;"><span class="badge bg-secondary" style="font-size: 0.75rem;">${escapeHtml(testCase.priority || 'Medium')}</span></td>
-                          <td class="fw-bold" style="font-size: 0.85rem; padding: 0.15rem 0.5rem;" data-i18n="testRun.assignee">執行者</td>
-                          <td style="padding: 0.15rem 0.5rem;">
-                              <input type="text" class="form-control form-control-sm assignee-editor"
-                                     value="${escapeHtml(assigneeName || '')}"
-                                     data-assignee-selector
-                                     data-test-case-id="${testCase.test_case_number}"
-                                     placeholder="{{ i18n.t('testRun.enterAssigneeName') if i18n else '輸入執行者姓名' }}"
-                                     style="font-size: 0.9rem;">
-                          </td>
+                        <td class="basic-info-label" data-i18n="testRun.priority">優先級</td>
+                        <td class="basic-info-value"><span class="badge bg-secondary basic-info-badge">${escapeHtml(testCase.priority || 'Medium')}</span></td>
+                        <td class="basic-info-label" data-i18n="testRun.assignee">執行者</td>
+                        <td class="basic-info-value">
+                            <input type="text" class="form-control form-control-sm assignee-editor basic-info-input"
+                                   value="${escapeHtml(assigneeName || '')}"
+                                   data-assignee-selector
+                                   data-test-case-id="${testCase.test_case_number}"
+                                   placeholder="{{ i18n.t('testRun.enterAssigneeName') if i18n else '輸入執行者姓名' }}">
+                        </td>
                     </tr>
                     <tr>
-                         <td class="fw-bold align-top" style="font-size: 0.85rem; padding: 0.15rem 0.5rem;" data-i18n="testRun.attachments">附件</td>
-                         <td colspan="3" style="padding: 0.15rem 0.5rem;">
-                             <div class="d-flex align-items-center">
-                                 ${attachmentCount > 0 ? `
-                                     <a href="#" class="text-decoration-none" onclick="scrollToAttachments(); return false;" title="${escapeHtml('{{ i18n.t("testRun.attachments") if i18n else "附件" }}')}">
-                                         <i class="fas fa-paperclip me-1"></i>
-                                         ${attachmentCount} <span data-i18n="testRun.files">個文件</span>
-                                     </a>
-                                 ` : `
-                                     <span class="text-muted"><i class="fas fa-paperclip me-1"></i>0 <span data-i18n="testRun.files">個文件</span></span>
-                                 `}
-                             </div>
-                         </td>
+                        <td class="basic-info-label basic-info-label-top" data-i18n="testRun.attachments">附件</td>
+                        <td colspan="3" class="basic-info-value">
+                            <div class="d-flex align-items-center">
+                                ${attachmentCount > 0 ? `
+                                    <a href="#" class="text-decoration-none" onclick="scrollToAttachments(); return false;" title="${escapeHtml('{{ i18n.t("testRun.attachments") if i18n else "附件" }}')}">
+                                        <i class="fas fa-paperclip me-1"></i>
+                                        ${attachmentCount} <span data-i18n="testRun.files">個文件</span>
+                                    </a>
+                                ` : `
+                                    <span class="text-muted"><i class="fas fa-paperclip me-1"></i>0 <span data-i18n="testRun.files">個文件</span></span>
+                                `}
+                            </div>
+                        </td>
                     </tr>
-
                 </table>
             </div>
         </div>
@@ -2197,6 +2252,84 @@ function createTestCaseDetailHtml(testCase) {
                 </h6>
             </div>
         </div>`;
+}
+
+// 生成可捲動內容區域的 HTML
+function generateScrollableContentHtml(testCase) {
+    const attachmentCount = testCase.attachments ? testCase.attachments.length : 0;
+
+    return `
+        <div class="card scrollable-content-card">
+            <div class="card-body scrollable-content-body">
+                ${testCase.precondition ? `
+                <div class="mb-3">
+                    <h6 class="mb-2" data-i18n="testRun.precondition">前置條件</h6>
+                    <div class="section-block section-precondition">
+                        <div class="markdown-preview mb-0" style="font-size: 0.9rem;">${renderMarkdown(testCase.precondition)}</div>
+                    </div>
+                </div>
+                ` : ''}
+                ${testCase.steps ? `
+                <div class="mb-3">
+                    <h6 class="mb-2" data-i18n="testRun.steps">測試步驟</h6>
+                    <div class="section-block section-steps">
+                        <div class="markdown-preview mb-0" style="font-size: 0.9rem;">${renderMarkdown(testCase.steps)}</div>
+                    </div>
+                </div>
+                ` : ''}
+                ${testCase.expected_result ? `
+                <div class="mb-3">
+                    <h6 class="mb-2" data-i18n="testRun.expectedResult">預期結果</h6>
+                    <div class="section-block section-expected">
+                        <div class="markdown-preview mb-0" style="font-size: 0.9rem;">${renderMarkdown(testCase.expected_result)}</div>
+                    </div>
+                </div>
+                ` : ''}
+                ${attachmentCount > 0 ? `
+                <div class="mt-3" id="attachmentsSection">
+                    <h6 class="mb-2" data-i18n="testRun.attachments">附件</h6>
+                    <div class="section-block section-attachments">
+                    <div class="d-flex flex-wrap align-items-center">
+                        ${testCase.attachments.map((attachment, index) => {
+                            const fileExtension = attachment.name ? attachment.name.split('.').pop().toLowerCase() : '';
+                            let iconClass = 'fas fa-file';
+                            let iconColor = 'text-secondary';
+                            switch(fileExtension) {
+                                case 'pdf': iconClass = 'fas fa-file-pdf'; iconColor = 'text-danger'; break;
+                                case 'doc': case 'docx': iconClass = 'fas fa-file-word'; iconColor = 'text-primary'; break;
+                                case 'xls': case 'xlsx': iconClass = 'fas fa-file-excel'; iconColor = 'text-success'; break;
+                                case 'jpg': case 'jpeg': case 'png': case 'gif': case 'bmp': case 'webp': iconClass = 'fas fa-file-image'; iconColor = 'text-info'; break;
+                                case 'txt': iconClass = 'fas fa-file-alt'; iconColor = 'text-secondary'; break;
+                                case 'zip': case 'rar': case '7z': iconClass = 'fas fa-file-archive'; iconColor = 'text-warning'; break;
+                                default: iconClass = 'fas fa-file'; iconColor = 'text-secondary';
+                            }
+                            const attachmentToken = attachment.file_token || attachment.token || '';
+                            const attachmentName = attachment.name || ('附件 ' + (index + 1));
+                            const attachmentUrl = attachment.url || '';
+                            return '<span class="d-inline-flex align-items-center me-3 mb-2 attachment-item" '
+                                + 'style="cursor: pointer; padding: 0.25rem 0.5rem; border-radius: 0.25rem; transition: background-color 0.15s;" '
+                                + 'onclick="handleAttachmentClick(\'' + escapeHtml(attachmentName) + '\', \'' + attachmentToken + '\', \'' + attachmentUrl + '\')" '
+                                + 'onmouseover="this.style.backgroundColor=\'var(--tr-bg-light)\'" '
+                                + 'onmouseout="this.style.backgroundColor=\'transparent\'" '
+                                + 'title="點擊查看附件: ' + escapeHtml(attachmentName) + '">'
+                                + '<i class="' + iconClass + ' ' + iconColor + ' me-1"></i>'
+                                + '<small style="text-decoration: underline; color: var(--tr-primary);">' + escapeHtml(attachmentName) + '</small>'
+                                + '</span>';
+                        }).join('')}
+                    </div>
+                    </div>
+                </div>
+                ` : ''}
+            </div>
+        </div>`;
+}
+
+function createTestCaseDetailHtml(testCase) {
+    const fixedHtml = generateBasicInfoHtml(testCase);
+    const scrollableHtml = generateScrollableContentHtml(testCase);
+
+    return { fixedHtml, scrollableHtml };
+}
 
     const scrollableHtml = `
         <div class="card" style="border: none;">
