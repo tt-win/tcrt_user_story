@@ -221,15 +221,15 @@ html, body { height: 100%; overflow: hidden; }
 
 {% block page_actions %}
 <div class="d-flex gap-2">
-    <a href="/" class="btn btn-outline-secondary">
-        <i class="fas fa-home me-2"></i><span data-i18n="navigation.backToHome">回到首頁</span>
-    </a>
     <button type="button" class="btn btn-primary" id="addTestCaseBtn">
         <i class="fas fa-plus me-2"></i><span data-i18n="testCase.createTestCase">新增測試案例</span>
     </button>
     <button type="button" class="btn btn-secondary" id="refreshBtn">
         <i class="fas fa-sync-alt me-2"></i><span data-i18n="common.refresh">重新整理</span>
     </button>
+    <a href="/" class="btn btn-outline-secondary">
+        <i class="fas fa-home me-2"></i><span data-i18n="navigation.backToHome">回到首頁</span>
+    </a>
 </div>
 {% endblock %}
 

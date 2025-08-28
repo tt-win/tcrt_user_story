@@ -42,6 +42,7 @@ class AssigneeSelector {
         
         // 初始化
         this.init();
+        this.setupI18nWatch();
     }
     
     init() {
@@ -101,6 +102,50 @@ class AssigneeSelector {
         
         // 添加 CSS 樣式
         this.addStyles();
+    }
+
+    updateLocalizedTexts() {
+        try {
+            if (window.i18n && typeof window.i18n.t === 'function') {
+                // 重新抓取多語字串
+                this.options.placeholder = window.i18n.t('testRun.enterAssigneeName') || this.options.placeholder;
+                this.options.searchPlaceholder = window.i18n.t('testRun.searchContacts') || this.options.searchPlaceholder;
+                this.options.noResultsText = window.i18n.t('testRun.noContactsFound') || this.options.noResultsText;
+                this.options.loadingText = window.i18n.t('common.loading') || this.options.loadingText;
+                // 套用到輸入框與載入指示器
+                if (this.displayInput) this.displayInput.placeholder = this.options.placeholder;
+                if (this.loadingIndicator) this.loadingIndicator.innerHTML = `
+                    <i class="fas fa-spinner fa-spin me-1"></i>
+                    ${this.options.loadingText}
+                `;
+                // 若下拉開啟中，重新渲染以更新「無結果」文字
+                if (this.isOpen) this.renderDropdown();
+            }
+        } catch (_) {}
+    }
+
+    setupI18nWatch() {
+        try {
+            const maybeUpdate = () => this.updateLocalizedTexts();
+            // 立即嘗試一次（處理 i18n 已就緒的情況）
+            maybeUpdate();
+            // 若提供 isReady，等就緒後更新一次
+            if (window.i18n && typeof window.i18n.isReady === 'function' && !window.i18n.isReady()) {
+                const timer = setInterval(() => {
+                    if (window.i18n.isReady && window.i18n.isReady()) {
+                        clearInterval(timer);
+                        maybeUpdate();
+                    }
+                }, 200);
+                // 最多等 5 秒
+                setTimeout(() => clearInterval(timer), 5000);
+            }
+            // 若有事件 API，監聽語言切換
+            if (window.i18n && typeof window.i18n.on === 'function') {
+                try { window.i18n.on('languageChanged', maybeUpdate); } catch (_) {}
+                try { window.i18n.on('loaded', maybeUpdate); } catch (_) {}
+            }
+        } catch (_) {}
     }
     
     addStyles() {

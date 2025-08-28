@@ -282,13 +282,9 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
     display: none !important;
 }
 
-/* 批次操作工具區樣式 */
+/* 批次操作工具區樣式（統一與 Test Case Management） */
 #batchOperationsToolbar {
-    background: rgba(13, 110, 253, 0.1);
-    border: 1px solid rgba(13, 110, 253, 0.2);
-    border-radius: 0.375rem;
-    padding: 0.5rem 1rem;
-    white-space: nowrap;
+    white-space: nowrap; /* 保持單行，不加背景與邊框 */
 }
 
 /* 響應式調整 */
@@ -561,7 +557,7 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
             </div>
             
             <!-- 批次操作工具區 -->
-            <div id="batchOperationsToolbar" class="d-none d-flex align-items-center gap-2">
+            <div id="batchOperationsToolbar" class="d-none d-flex align-items-center gap-2 ms-lg-auto mb-2 mb-lg-0">
                 <span class="text-muted" id="selectedItemsCount" data-i18n="testRun.selectedItemsCount" data-i18n-params='{"count": 0}'>已選取 0 個項目</span>
                 <button type="button" class="btn btn-primary btn-sm" id="batchModifyBtn">
                     <i class="fas fa-edit me-2"></i><span data-i18n="testRun.batchModify">批次修改</span>
@@ -677,6 +673,7 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                     </div>
                     <input type="text" class="form-control" id="batchAssigneeInput" 
                            data-assignee-selector
+                           data-i18n-placeholder="testRun.enterAssigneeName"
                            placeholder="{{ i18n.t('testRun.enterAssigneeName') if i18n else '輸入執行者姓名' }}">
                 </div>
                 
@@ -749,6 +746,11 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                         <strong data-i18n="testRun.restartPendingItems">只執行未完成的項目</strong>
                         <br><small class="text-muted" data-i18n="testRun.restartPendingDescription">只清空尚未執行的項目，保留已通過的結果</small>
                     </label>
+                </div>
+                <div class="mb-3">
+                    <label for="rerunNameInput" class="form-label" data-i18n="testRun.rerunNameLabel">新的 Test Run 名稱</label>
+                    <input type="text" class="form-control" id="rerunNameInput" placeholder="Rerun - ">
+                    <small class="text-muted" data-i18n="testRun.rerunNameHint">預設為「Rerun - 原有名稱」</small>
                 </div>
                 
                 <div class="alert alert-warning" role="alert">
@@ -1000,6 +1002,14 @@ async function loadTestRunItems() {
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         
         testRunItems = await response.json();
+        // 預設按 Test Case Number 升冪排序（與 Test Case Management 一致）
+        try {
+            testRunItems.sort((a, b) => {
+                const aNumber = a && a.test_case_number ? a.test_case_number : '';
+                const bNumber = b && b.test_case_number ? b.test_case_number : '';
+                return aNumber.localeCompare(bNumber);
+            });
+        } catch (_) { /* 忽略排序中的非致命錯誤 */ }
         // 比照 Test Case Management：一次抓取整個團隊的測試案例清單，
         // 並將本次 Test Run 需要的案例寫入本地快取（改為背景預抓，不阻塞列表顯示）。
         Promise.resolve().then(() => preloadAllTeamTestCasesForRun(testRunItems)).catch(() => {});
@@ -1394,6 +1404,12 @@ function showRestartModal() {
     
     // 重置選項為默認值
     document.getElementById('restartAll').checked = true;
+    // 預設名稱：Rerun - 原有名稱
+    const input = document.getElementById('rerunNameInput');
+    if (input) {
+        const base = (testRunConfig && testRunConfig.name) ? `Rerun - ${testRunConfig.name}` : 'Rerun -';
+        input.value = base;
+    }
     restartModal.show();
 }
 
@@ -1416,10 +1432,12 @@ async function handleRestartConfirm() {
 async function restartTestRun(mode) {
     try {
         // 調用重新執行 API
+        const nameInput = document.getElementById('rerunNameInput');
+        const newName = nameInput && nameInput.value ? nameInput.value.trim() : '';
         const response = await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/restart`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ mode: mode })
+            body: JSON.stringify({ mode: mode, name: newName })
         });
         
         if (!response.ok) {
@@ -1427,22 +1445,10 @@ async function restartTestRun(mode) {
         }
         
         const result = await response.json();
-        
-        // 更新本地狀態
-        testRunConfig.status = 'active';
-        updateHeader();
-        
-        // 重新載入項目和統計
-        await loadTestRunItems();
-        await updateStatistics();
-        
-        const modeMessages = {
-            'all': '{{ i18n.t("testRun.restartAllSuccess") if i18n else "已重新執行所有項目" }}',
-            'failed': '{{ i18n.t("testRun.restartFailedSuccess") if i18n else "已重新執行失敗項目" }}',
-            'pending': '{{ i18n.t("testRun.restartPendingSuccess") if i18n else "已重新執行未完成項目" }}'
-        };
-        
-        AppUtils.showSuccess(modeMessages[mode] || '{{ i18n.t("testRun.restartSuccess") if i18n else "重新執行成功" }}');
+        const newId = result && result.new_config_id;
+        if (!newId) throw new Error('Missing new_config_id');
+        AppUtils.showSuccess('{{ i18n.t("testRun.rerunCreated") if i18n else "已建立新的 Test Run" }}');
+        window.location.href = `/test-run-execution?config_id=${encodeURIComponent(newId)}`;
         
     } catch (error) {
         const consoleMsg = window.i18n && window.i18n.isReady() 

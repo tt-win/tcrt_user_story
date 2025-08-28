@@ -115,12 +115,12 @@
 
 {% block page_actions %}
 <div class="d-flex gap-2">
-    <a href="/" class="btn btn-outline-secondary">
-        <i class="fas fa-home me-2"></i><span data-i18n="navigation.backToHome">回到首頁</span>
-    </a>
     <button type="button" class="btn btn-secondary" id="refreshBtn">
         <i class="fas fa-sync-alt me-2"></i><span data-i18n="common.refresh">重新整理</span>
     </button>
+    <a href="/" class="btn btn-outline-secondary">
+        <i class="fas fa-home me-2"></i><span data-i18n="navigation.backToHome">回到首頁</span>
+    </a>
 </div>
 {% endblock %}
 
@@ -552,8 +552,14 @@ function createConfigCard(config) {
                         <button class="btn btn-primary btn-sm flex-grow-1" onclick="event.stopPropagation(); enterTestRun(${config.id})">
                             <i class="fas fa-arrow-right me-1"></i><span data-i18n="testRun.enterButton">進入</span>
                         </button>
-                        <button class="btn btn-outline-secondary btn-sm" onclick="event.stopPropagation(); showConfigDetails(${config.id})">
-                            <i class="fas fa-info-circle"></i>
+                        <button class="btn btn-outline-secondary btn-sm" onclick="event.stopPropagation(); editBasicSettings(${config.id})">
+                            <i class="fas fa-edit me-1"></i><span data-i18n="testRun.editBasicSettings">編輯基本設定</span>
+                        </button>
+                        <button class="btn btn-outline-info btn-sm" onclick="event.stopPropagation(); editTestCases(${config.id})">
+                            <i class="fas fa-list me-1"></i><span data-i18n="testRun.editTestCases">編輯 Test Case</span>
+                        </button>
+                        <button class="btn btn-outline-danger btn-sm" onclick="event.stopPropagation(); deleteTestRun(${config.id}, '${escapeHtml(config.name)}')">
+                            <i class="fas fa-trash me-1"></i><span data-i18n="common.delete">刪除</span>
                         </button>
                     </div>
                 </div>
@@ -709,6 +715,10 @@ async function handleSaveConfig() {
           // 進入 Test Case 選擇流程（直接開啟，取消時自動回滾）
           pendingCreate = true;
           createdItemsInSession = false;
+          // 確保為全新建立流程，清空任何編輯殘留選取狀態
+          modalMode = 'create';
+          selectedCaseMap.clear();
+          existingItemIdByCaseNumber.clear();
           openCaseSelectModal(data.id);
         }
 
@@ -873,11 +883,14 @@ let availableCases = [];
 let selectedCaseMap = new Map(); // key: test_case_number, value: case object
 let pendingCreate = false; // true only for newly created config awaiting items
 let createdItemsInSession = false; // set true when items are created
+let modalMode = 'create'; // 'create' | 'edit'
+let existingItemIdByCaseNumber = new Map(); // for edit mode: case_number -> item_id
 
 // Removed confirmation step; open modal directly and rely on hidden handler for rollback
 function openCaseSelectModalWithConfirm(configId) {
   pendingCreate = true;
   createdItemsInSession = false;
+  modalMode = 'create';
   openCaseSelectModal(configId);
 }
 
@@ -886,11 +899,43 @@ function openCaseSelectModal(configId) {
   const modalEl = document.getElementById('caseSelectModal');
   if (!caseSelectModalInstance) caseSelectModalInstance = new bootstrap.Modal(modalEl);
   // reset
-  selectedCaseMap.clear();
+  if (modalMode === 'create') {
+    selectedCaseMap.clear();
+    existingItemIdByCaseNumber.clear();
+  }
   document.getElementById('selectedCount').textContent = '0';
   document.getElementById('caseListBody').innerHTML = '';
   document.getElementById('caseSearchInput').value = '';
   document.getElementById('caseSelectInfo').textContent = '';
+  // set modal title and confirm button text/handler per mode
+  const titleSpan = modalEl.querySelector('.modal-title [data-i18n]');
+  if (titleSpan) {
+    if (modalMode === 'edit') {
+      titleSpan.setAttribute('data-i18n', 'testRun.caseSelect.editTitle');
+      titleSpan.textContent = (window.i18n && window.i18n.isReady()) ? window.i18n.t('testRun.caseSelect.editTitle') : '新增／修改 Test Case';
+    } else {
+      titleSpan.setAttribute('data-i18n', 'testRun.caseSelect.title');
+      titleSpan.textContent = (window.i18n && window.i18n.isReady()) ? window.i18n.t('testRun.caseSelect.title') : '選擇要加入的 Test Case';
+    }
+  }
+  const confirmBtn = document.getElementById('confirmCreateItemsBtn');
+  const confirmTextSpan = confirmBtn.querySelector('span');
+  if (modalMode === 'edit') {
+    confirmTextSpan.setAttribute('data-i18n', 'common.update');
+    confirmTextSpan.textContent = (window.i18n && window.i18n.isReady()) ? window.i18n.t('common.update') : '更新';
+  } else {
+    confirmTextSpan.setAttribute('data-i18n', 'common.create');
+    confirmTextSpan.textContent = (window.i18n && window.i18n.isReady()) ? window.i18n.t('common.create') : '建立';
+  }
+  const newBtn = confirmBtn.cloneNode(true);
+  confirmBtn.parentNode.replaceChild(newBtn, confirmBtn);
+  document.getElementById('confirmCreateItemsBtn').addEventListener('click', async () => {
+    if (modalMode === 'edit') {
+      await saveEditedItems();
+    } else {
+      await createItemsFromSelection();
+    }
+  });
   caseSelectModalInstance.show();
   // ensure we bind a one-time hide handler for rollback if pending
   const modalDom = document.getElementById('caseSelectModal');
@@ -926,6 +971,34 @@ function openCaseSelectModal(configId) {
   bindCaseSearchBarEvents();
 }
 
+// 在卡片上提供「編輯基本設定」
+function editBasicSettings(configId) {
+  openConfigFormModal(configId);
+}
+
+// 在卡片上提供「編輯 Test Case」
+async function editTestCases(configId) {
+  try {
+    modalMode = 'edit';
+    pendingCreate = false;
+    createdItemsInSession = false;
+    currentSelectingConfigId = configId;
+    // 讀取現有 items，預設勾選
+    const resp = await fetch(`/api/teams/${currentTeamId}/test-run-configs/${configId}/items?limit=1000`);
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const items = await resp.json();
+    selectedCaseMap.clear();
+    existingItemIdByCaseNumber.clear();
+    for (const it of items) {
+      existingItemIdByCaseNumber.set(it.test_case_number, it.id);
+      selectedCaseMap.set(it.test_case_number, { test_case_number: it.test_case_number, title: it.title, priority: it.priority });
+    }
+    openCaseSelectModal(configId);
+  } catch (e) {
+    AppUtils.showError((window.i18n ? window.i18n.t('messages.loadFailed') : '載入失敗') + `: ${e.message}`);
+  }
+}
+
 async function loadTeamTestCases(search) {
   try {
     console.log('Loading test cases for team ID:', currentTeamId);
@@ -945,6 +1018,14 @@ async function loadTeamTestCases(search) {
     
     availableCases = await resp.json();
     console.log('Loaded test cases:', availableCases.length);
+    // 若為編輯模式：用完整資料覆蓋已選取的項目（確保存檔可帶出完整欄位）
+    if (modalMode === 'edit') {
+      for (const c of availableCases) {
+        if (selectedCaseMap.has(c.test_case_number)) {
+          selectedCaseMap.set(c.test_case_number, c);
+        }
+      }
+    }
     renderCaseList();
   } catch (e) {
     console.error('Load test cases error:', e);
@@ -1057,6 +1138,7 @@ function updateSelectedCount() {
   }
 }
 
+// 預設綁定為建立；開啟 modal 時會依模式改寫處理器
 document.getElementById('confirmCreateItemsBtn').addEventListener('click', createItemsFromSelection);
 
 async function createItemsFromSelection() {
@@ -1097,6 +1179,96 @@ async function createItemsFromSelection() {
   } catch (e) {
     AppUtils.showError((window.i18n ? window.i18n.t('messages.saveFailed') : '建立失敗') + `: ${e.message}`);
   }
+}
+
+// 儲存「編輯 Test Case」的差異：新增選入、刪除取消勾選
+async function saveEditedItems() {
+  if (!currentSelectingConfigId) return;
+  // 計算差異
+  const selectedNumbers = new Set(Array.from(selectedCaseMap.keys()));
+  const existingNumbers = new Set(Array.from(existingItemIdByCaseNumber.keys()));
+  const toAdd = Array.from(selectedNumbers).filter(n => !existingNumbers.has(n));
+  const toRemove = Array.from(existingNumbers).filter(n => !selectedNumbers.has(n));
+
+  try {
+    // 先新增
+    if (toAdd.length > 0) {
+      const items = toAdd.map(n => selectedCaseMap.get(n)).map(c => ({
+        test_case_number: c.test_case_number,
+        title: c.title,
+        priority: c.priority || 'Medium',
+        precondition: c.precondition || null,
+        steps: c.steps || null,
+        expected_result: c.expected_result || null,
+        assignee: c.assignee ? { id: c.assignee.id, name: c.assignee.name, en_name: c.assignee.en_name, email: c.assignee.email } : null,
+        attachments: (c.attachments || []).map(a => ({ file_token: a.file_token, name: a.name, size: a.size, type: a.type })),
+        user_story_map: c.user_story_map || [],
+        tcg: c.tcg || [],
+        parent_record: c.parent_record || [],
+        raw_fields: c.raw_fields || null,
+      }));
+      const url = `/api/teams/${currentTeamId}/test-run-configs/${currentSelectingConfigId}/items`;
+      const resp = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items }) });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      await resp.json();
+    }
+    // 再刪除（包含執行歷程刪除由後端處理）
+    for (const n of toRemove) {
+      const itemId = existingItemIdByCaseNumber.get(n);
+      if (!itemId) continue;
+      const url = `/api/teams/${currentTeamId}/test-run-configs/${currentSelectingConfigId}/items/${itemId}`;
+      const resp = await fetch(url, { method: 'DELETE' });
+      if (!resp.ok && resp.status !== 204) {
+        // 若已不存在則忽略
+        console.warn('Failed to delete item', itemId, 'status', resp.status);
+      }
+    }
+    // 完成
+    caseSelectModalInstance.hide();
+    const msg = window.i18n ? window.i18n.t('testRun.itemsUpdated') : '已更新 Test Run 的 Test Case';
+    AppUtils.showSuccess(msg);
+    try { await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentSelectingConfigId}/sync`); } catch(e) {}
+    await loadTestRunConfigs();
+  } catch (e) {
+    AppUtils.showError((window.i18n ? window.i18n.t('messages.saveFailed') : '儲存失敗') + `: ${e.message}`);
+  }
+}
+
+// 卡片上的刪除按鈕（不進入詳情也可刪除）
+function deleteTestRun(configId, name) {
+  const modal = document.getElementById('deleteConfigModal');
+  const msgEl = document.getElementById('deleteConfirmMessage');
+  const safeName = escapeHtml(name || '');
+  msgEl.textContent = window.i18n ? window.i18n.t('testRun.confirmDelete', { name: safeName }) : `您確定要刪除 Test Run 配置 "${safeName}" 嗎？此操作無法復原。`;
+  const inst = bootstrap.Modal.getOrCreateInstance(modal);
+  // Rebind confirm handler
+  const btnOld = document.getElementById('confirmDeleteConfigBtn');
+  const btnNew = btnOld.cloneNode(true);
+  btnOld.parentNode.replaceChild(btnNew, btnOld);
+  document.getElementById('confirmDeleteConfigBtn').addEventListener('click', async () => {
+    try {
+      const resp = await fetch(`/api/teams/${currentTeamId}/test-run-configs/${configId}`, { method: 'DELETE' });
+      if (resp.ok || resp.status === 204) {
+        inst.hide();
+        const successMsg = window.i18n ? window.i18n.t('testRun.deleteSuccess', { name: safeName }) : `成功刪除 "${safeName}"`;
+        AppUtils.showSuccess(successMsg);
+        await loadTestRunConfigs();
+      } else {
+        let detail = '';
+        try {
+          const text = await resp.text();
+          try { detail = JSON.parse(text).detail || text; } catch { detail = text; }
+        } catch { detail = ''; }
+        const fallbackMsg = window.i18n ? window.i18n.t('messages.deleteFailed') : '刪除失敗';
+        throw new Error(detail || fallbackMsg);
+      }
+    } catch (error) {
+      const errorMsg = window.i18n ? window.i18n.t('messages.deleteFailed') : '刪除失敗';
+      AppUtils.showError(`${errorMsg}: ${error.message}`);
+    }
+  });
+  if (window.i18n && window.i18n.isReady()) window.i18n.retranslate(modal);
+  inst.show();
 }
 </script>
 {% endblock %}

@@ -12,18 +12,18 @@
 
 {% block page_actions %}
 <div class="d-flex gap-2">
-    <a href="/" class="btn btn-outline-secondary">
-        <i class="fas fa-home me-2"></i><span data-i18n="navigation.backToHome">回到首頁</span>
-    </a>
     <button type="button" class="btn btn-primary" id="createTeamBtn">
         <i class="fas fa-plus me-2"></i><span data-i18n="team.createTeam">新增團隊</span>
+    </button>
+    <button type="button" class="btn btn-outline-primary" id="syncOrgBtn">
+        <i class="fas fa-users me-2"></i><span data-i18n="orgSync.openButton">同步組織架構</span>
     </button>
     <button type="button" class="btn btn-secondary" id="refreshBtn">
         <i class="fas fa-sync-alt me-2"></i><span data-i18n="common.refresh">重新整理</span>
     </button>
-    <button type="button" class="btn btn-secondary" id="syncOrgBtn">
-        <i class="fas fa-users me-2"></i><span data-i18n="orgSync.openButton">同步組織架構</span>
-    </button>
+    <a href="/" class="btn btn-outline-secondary">
+        <i class="fas fa-home me-2"></i><span data-i18n="navigation.backToHome">回到首頁</span>
+    </a>
 </div>
 {% endblock %}
 
