@@ -154,6 +154,25 @@
     "previousTestCase": "Previous test case",
     "nextTestCase": "Next test case"
   },
+  "testCase.bulk": {
+    "bulkCreateMode": "Bulk Create Mode",
+    "prefix": "Prefix",
+    "suffix": "Suffix",
+    "middleRanges": "Middle Ranges",
+    "addRange": "Add Range",
+    "start": "Start",
+    "end": "End",
+    "rangeHint": "Each added start defaults to 010, 020, 030...; end can be 010 to 990 (step 10).",
+    "generatePreview": "Preview numbers to be generated",
+    "totalToCreate": "Total to create",
+    "duplicatesFound": "Duplicate numbers found:",
+    "fixBeforeSave": "Please fix duplicates before saving.",
+    "startCreate": "Start Creating",
+    "creating": "Creating...",
+    "addAtLeastOne": "Please add at least one range",
+    "nothingToCreate": "Nothing to create",
+    "tempTitleSuffix": "test case"
+  },
   "testRun": {
     "management": "Test Run Management",
     "subtitle": "Manage test execution records, track test progress and results",

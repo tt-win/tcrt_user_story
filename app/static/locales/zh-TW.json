@@ -154,6 +154,25 @@
     "previousTestCase": "上一隻測試案例",
     "nextTestCase": "下一隻測試案例"
   },
+  "testCase.bulk": {
+    "bulkCreateMode": "大量新增模式",
+    "prefix": "前綴單號",
+    "suffix": "末尾單號",
+    "middleRanges": "功能分項範圍",
+    "addRange": "新增範圍",
+    "start": "起始",
+    "end": "結束",
+    "rangeHint": "每次新增的起始值依序為 010、020、030...，結束值從 010 起至 990（每 10 遞增）。",
+    "generatePreview": "預覽將產生的單號",
+    "totalToCreate": "預計建立筆數",
+    "duplicatesFound": "發現重複單號：",
+    "fixBeforeSave": "請修正後再儲存。",
+    "startCreate": "開始建立",
+    "creating": "建立中...",
+    "addAtLeastOne": "請至少新增一個範圍",
+    "nothingToCreate": "沒有可建立的單號",
+    "tempTitleSuffix": "的測試案例"
+  },
   "testRun": {
     "management": "測試執行管理",
     "subtitle": "管理測試執行記錄，追蹤測試進度和結果",
