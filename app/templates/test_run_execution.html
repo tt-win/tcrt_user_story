@@ -2265,7 +2265,7 @@ function generateScrollableContentHtml(testCase) {
                 <div class="mb-3">
                     <h6 class="mb-2" data-i18n="testRun.precondition">前置條件</h6>
                     <div class="section-block section-precondition">
-                        <div class="markdown-preview mb-0" style="font-size: 0.9rem;">${renderMarkdown(testCase.precondition)}</div>
+                        <div class="markdown-preview mb-0 content-markdown">${renderMarkdown(testCase.precondition)}</div>
                     </div>
                 </div>
                 ` : ''}
@@ -2273,7 +2273,7 @@ function generateScrollableContentHtml(testCase) {
                 <div class="mb-3">
                     <h6 class="mb-2" data-i18n="testRun.steps">測試步驟</h6>
                     <div class="section-block section-steps">
-                        <div class="markdown-preview mb-0" style="font-size: 0.9rem;">${renderMarkdown(testCase.steps)}</div>
+                        <div class="markdown-preview mb-0 content-markdown">${renderMarkdown(testCase.steps)}</div>
                     </div>
                 </div>
                 ` : ''}
@@ -2281,7 +2281,7 @@ function generateScrollableContentHtml(testCase) {
                 <div class="mb-3">
                     <h6 class="mb-2" data-i18n="testRun.expectedResult">預期結果</h6>
                     <div class="section-block section-expected">
-                        <div class="markdown-preview mb-0" style="font-size: 0.9rem;">${renderMarkdown(testCase.expected_result)}</div>
+                        <div class="markdown-preview mb-0 content-markdown">${renderMarkdown(testCase.expected_result)}</div>
                     </div>
                 </div>
                 ` : ''}
@@ -2327,74 +2327,6 @@ function generateScrollableContentHtml(testCase) {
 function createTestCaseDetailHtml(testCase) {
     const fixedHtml = generateBasicInfoHtml(testCase);
     const scrollableHtml = generateScrollableContentHtml(testCase);
-
-    return { fixedHtml, scrollableHtml };
-}
-
-    const scrollableHtml = `
-        <div class="card" style="border: none;">
-            <div class="card-body" style="padding: 1rem;">
-                ${testCase.precondition ? `
-                <div class="mb-3">
-                    <h6 class="mb-2" data-i18n="testRun.precondition">前置條件</h6>
-                    <div class="section-block section-precondition">
-                        <div class="markdown-preview mb-0" style="font-size: 0.9rem;">${renderMarkdown(testCase.precondition)}</div>
-                    </div>
-                </div>
-                ` : ''}
-                ${testCase.steps ? `
-                <div class="mb-3">
-                    <h6 class="mb-2" data-i18n="testRun.steps">測試步驟</h6>
-                    <div class="section-block section-steps">
-                        <div class="markdown-preview mb-0" style="font-size: 0.9rem;">${renderMarkdown(testCase.steps)}</div>
-                    </div>
-                </div>
-                ` : ''}
-                ${testCase.expected_result ? `
-                <div class="mb-3">
-                    <h6 class="mb-2" data-i18n="testRun.expectedResult">預期結果</h6>
-                    <div class="section-block section-expected">
-                        <div class="markdown-preview mb-0" style="font-size: 0.9rem;">${renderMarkdown(testCase.expected_result)}</div>
-                    </div>
-                </div>
-                ` : ''}
-                ${attachmentCount > 0 ? `
-                <div class="mt-3" id="attachmentsSection">
-                    <h6 class="mb-2" data-i18n="testRun.attachments">附件</h6>
-                    <div class="section-block section-attachments">
-                    <div class="d-flex flex-wrap align-items-center">
-                        ${testCase.attachments.map((attachment, index) => {
-                            const fileExtension = attachment.name ? attachment.name.split('.').pop().toLowerCase() : '';
-                            let iconClass = 'fas fa-file';
-                            let iconColor = 'text-secondary';
-                            switch(fileExtension) {
-                                case 'pdf': iconClass = 'fas fa-file-pdf'; iconColor = 'text-danger'; break;
-                                case 'doc': case 'docx': iconClass = 'fas fa-file-word'; iconColor = 'text-primary'; break;
-                                case 'xls': case 'xlsx': iconClass = 'fas fa-file-excel'; iconColor = 'text-success'; break;
-                                case 'jpg': case 'jpeg': case 'png': case 'gif': case 'bmp': case 'webp': iconClass = 'fas fa-file-image'; iconColor = 'text-info'; break;
-                                case 'txt': iconClass = 'fas fa-file-alt'; iconColor = 'text-secondary'; break;
-                                case 'zip': case 'rar': case '7z': iconClass = 'fas fa-file-archive'; iconColor = 'text-warning'; break;
-                                default: iconClass = 'fas fa-file'; iconColor = 'text-secondary';
-                            }
-                            const attachmentToken = attachment.file_token || attachment.token || '';
-                            const attachmentName = attachment.name || ('附件 ' + (index + 1));
-                            const attachmentUrl = attachment.url || '';
-                            return '<span class="d-inline-flex align-items-center me-3 mb-2 attachment-item" '
-                                + 'style="cursor: pointer; padding: 0.25rem 0.5rem; border-radius: 0.25rem; transition: background-color 0.15s;" '
-                                + 'onclick="handleAttachmentClick(\'' + escapeHtml(attachmentName) + '\', \'' + attachmentToken + '\', \'' + attachmentUrl + '\')" '
-                                + 'onmouseover="this.style.backgroundColor=\'var(--tr-bg-light)\'" '
-                                + 'onmouseout="this.style.backgroundColor=\'transparent\'" '
-                                + 'title="點擊查看附件: ' + escapeHtml(attachmentName) + '">'
-                                + '<i class="' + iconClass + ' ' + iconColor + ' me-1"></i>'
-                                + '<small style="text-decoration: underline; color: var(--tr-primary);">' + escapeHtml(attachmentName) + '</small>'
-                                + '</span>';
-                        }).join('')}
-                    </div>
-                    </div>
-                </div>
-                ` : ''}
-            </div>
-        </div>`;
 
     return { fixedHtml, scrollableHtml };
 }
