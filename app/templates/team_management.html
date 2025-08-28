@@ -241,10 +241,7 @@
                                     <div class="flex-grow-1 ms-3">
                                         <h6 class="mb-1 text-primary" data-i18n="orgSync.syncing">同步進行中</h6>
                                         <p class="mb-2 text-muted small" data-i18n="orgSync.syncingDesc">正在同步組織架構資料...</p>
-                                        <div class="progress mb-2" style="height: 6px;">
-                                            <div id="syncProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
-                                        </div>
-                                        <div id="syncProgressText" class="text-muted small" data-i18n="orgSync.preparing">準備開始...</div>
+                                <!-- 取消進度條與百分比，只保留狀態指示 -->
                                     </div>
                                 </div>
                             </div>
@@ -859,11 +856,7 @@ async function loadSyncStatus() {
                 const progressText = document.getElementById('syncProgressText');
                 const progressBar = document.getElementById('syncProgressBar');
                 
-                if (data.current_sync_id) {
-                    const idPrefix = getI18n('orgSync.syncIdPrefix', '同步ID:');
-                    progressText.textContent = `${idPrefix} ${data.current_sync_id}`;
-                    progressBar.style.width = '50%'; // 暫時顯示50%進度
-                }
+                // 僅顯示狀態，不顯示進度條或百分比
                 
                 // 開始輪詢狀態
                 startSyncPolling();
@@ -1030,9 +1023,7 @@ async function loadRecentSyncHistory() {
                                 ${new Date(record.start_time).toLocaleString()}
                             </div>
                         </div>
-                        <div class="text-end">
-                            <small class="text-muted">ID: ${record.id}</small>
-                        </div>
+                        <!-- 隱藏同步記錄 ID 顯示 -->
                     </div>
                 `;
             });
@@ -1150,20 +1141,8 @@ function startSyncPolling() {
                             localStorage.removeItem('sync_trigger_user');
                         }
                     } else {
-                        // 更新進度顯示
+                        // 僅顯示狀態指示
                         setSyncStatus('running');
-                        const progressText = document.getElementById('syncProgressText');
-                        const progressBar = document.getElementById('syncProgressBar');
-                        
-                        if (data.current_sync_id) {
-                            const syncingText = getI18n('orgSync.syncing', '同步進行中');
-                            const idPrefix = getI18n('orgSync.syncIdPrefix', '同步ID:');
-                            progressText.textContent = `${syncingText} (${idPrefix} ${data.current_sync_id})`;
-                            // 根據時間推算進度百分比
-                            const elapsed = pollCount * 5; // 5秒間隔
-                            const estimatedProgress = Math.min(50 + (elapsed / 120) * 40, 90); // 50-90%之間
-                            progressBar.style.width = `${estimatedProgress}%`;
-                        }
                     }
                 }
             }
@@ -1480,7 +1459,7 @@ function renderSyncHistoryTable(history) {
 }
 
 function showErrorDetails(recordId, errorMessage) {
-    AppUtils.showError(`${getI18n('orgSync.errorPrefix', '同步錯誤')} (ID: ${recordId})：${errorMessage}`);
+    AppUtils.showError(`${getI18n('orgSync.errorPrefix', '同步錯誤')}：${errorMessage}`);
 }
 
 // ===== i18n helper without calling window.i18n.t =====
