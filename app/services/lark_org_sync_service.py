@@ -188,20 +188,23 @@ class LarkOrgSyncService:
             return "組織架構同步完成"
     
     def get_contacts_for_team(self, team_id: int, limit: int = 100) -> Dict[str, Any]:
-        """為特定團隊獲取聯絡人列表（兼容現有 API）"""
+        """為特定團隊獲取聯絡人列表（兼容現有 API）。
+
+        無搜尋詞時，返回前 N 名活躍用戶作為預設清單（避免舊邏輯以空關鍵字搜尋導致空結果）。
+        """
         try:
-            # 獲取活躍用戶
-            all_users = self.user_service.search_users('', limit * 2)  # 獲取更多然後篩選
-            
+            # 無搜尋詞情境：從本地同步的用戶取前 N 名活躍用戶
+            top_users = self.user_service.get_top_users(limit)
+
             # 轉換為聯絡人格式
             contacts = []
-            for user in all_users[:limit]:
+            for user in top_users:
                 contacts.append({
-                    'id': user['id'],
-                    'name': user['name'],
-                    'display_name': user['display_name'],
-                    'email': user['email'],
-                    'avatar': user['avatar']
+                    'id': user.get('id'),
+                    'name': user.get('name'),
+                    'display_name': user.get('display_name'),
+                    'email': user.get('email'),
+                    'avatar': user.get('avatar')
                 })
             
             return {

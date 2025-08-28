@@ -82,6 +82,7 @@ class TestRunItemUpdate(BaseModel):
     steps: Optional[str] = None
     expected_result: Optional[str] = None
     assignee: Optional[AssigneeModel] = None
+    assignee_name: Optional[str] = None
     test_result: Optional[TestResultStatus] = None
     executed_at: Optional[datetime] = None
     execution_duration: Optional[int] = None

@@ -434,14 +434,14 @@
   "batchModifyNote": "Applies only to checked options; empty values will not change existing data.",
   "confirmModify": "Confirm Changes",
   "batchModifyFailed": "Batch modify failed",
-  "batchModifySuccess": "Modified {{count}} items",
-  "batchModifyPartial": "Processed {{total}} items, successfully modified {{success}}",
+  "batchModifySuccess": "Modified {count} items",
+  "batchModifyPartial": "Processed {total} items, successfully modified {success}",
   "batchDelete": "Batch Delete",
-  "batchDeleteConfirm": "Are you sure you want to delete the selected {{count}} test run items?\n\nWarning: This will also remove all related result history and cannot be undone!",
+  "batchDeleteConfirm": "Are you sure you want to delete the selected {count} test run items?\n\nWarning: This will also remove all related result history and cannot be undone!",
   "batchDeleteWarning": "Dangerous Operation Warning",
   "batchDeleteFailed": "Batch delete failed",
-  "batchDeleteSuccess": "Deleted {{count}} test run items and their result history",
-  "batchDeletePartial": "Processed {{total}} items, successfully deleted {{success}} test run items",
+  "batchDeleteSuccess": "Deleted {count} test run items and their result history",
+  "batchDeletePartial": "Processed {total} items, successfully deleted {success} test run items",
   "noItemsSelected": "Please select items first",
   "searchContacts": "Search contacts...",
   "noContactsFound": "No matching contacts found",
@@ -676,8 +676,11 @@
   },
   "language": {
     "current": "English",
-    "chinese": "中文",
+    "chinese": "Chinese (Traditional)",
     "english": "English"
+  },
+  "hotkeys": {
+    "quickSearch": "Press / for quick search"
   },
   "confirm": {
     "batchStartTestRuns": "Are you sure you want to start these {count} test runs?",

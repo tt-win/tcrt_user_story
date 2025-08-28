@@ -194,6 +194,13 @@ html, body { height: 100%; overflow: hidden; }
     box-shadow: 0 2px 3px rgba(0,0,0,0.05); /* 輕微陰影強化層次 */
 }
 
+/* 大量新增 Modal 固定高度與卷動區域 */
+#bulkCreateModal .modal-content { font-size: 0.9rem; }
+#bulkCreateModal .modal-body { height: 65vh; overflow: hidden; }
+#bulkCreateModal .bulk-left-scroll { max-height: 60vh; overflow: auto; padding-right: .25rem; }
+#bulkCreateModal .bulk-preview-scroll { max-height: 60vh; overflow: auto; min-width: 26ch; max-width: 56ch; }
+#bulkCreateModal #bulkPreview code { font-size: 0.875rem; }
+
 /* 專門收斂 #searchInput 的父層（col-）之上緣空白：縮小該 row 的垂直 gutter */
 #searchFilterCard .card-body .row.g-3 {
     --bs-gutter-y: 0.125rem; /* 再更緊：由 0.25rem 降為 0.125rem */
@@ -691,41 +698,58 @@ html, body { height: 100%; overflow: hidden; }
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <!-- 前綴單號清單 -->
-        <div class="d-flex align-items-center justify-content-between mb-2">
-          <label class="form-label mb-0"><span data-i18n="testCase.bulk.prefixList">前綴單號清單</span></label>
-          <button type="button" class="btn btn-outline-primary btn-sm" id="addPrefixBtn">
-            <i class="fas fa-plus me-1"></i><span data-i18n="testCase.bulk.addPrefix">新增前綴</span>
-          </button>
-        </div>
-        <div id="prefixContainer" class="mb-2"></div>
-        <div class="form-text" data-i18n="testCase.bulk.structureHint">每個前綴可新增多個中間分類與末尾單號範圍。最終單號格式：前綴.中間.末尾（末尾以 10 遞增）。</div>
+        <div class="row g-3">
+          <!-- 左側：設定表單 -->
+          <div class="col-12 col-lg-7">
+            <!-- 置頂不捲動的說明文字 -->
+            <div class="mb-2 text-muted small" data-i18n="testCase.bulk.structureHint">
+              每個前綴可新增多個中間分類與末尾單號範圍。最終單號格式：前綴.中間.末尾（末尾以 10 遞增）。
+            </div>
+            <div class="bulk-left-scroll">
+              <!-- 前綴單號清單 -->
+              <div class="d-flex align-items-center justify-content-between mb-2">
+                <label class="form-label mb-0"><span data-i18n="testCase.bulk.prefixList">前綴單號清單</span></label>
+                <button type="button" class="btn btn-outline-primary btn-sm" id="addPrefixBtn">
+                  <i class="fas fa-plus me-1"></i><span data-i18n="testCase.bulk.addPrefix">新增前綴</span>
+                </button>
+              </div>
+              <div id="prefixContainer" class="mb-2"></div>
 
-        <hr>
-        <div id="bulkValidation" style="display:none"></div>
-
-        <div id="bulkPreview" class="small text-muted">
-          <i class="fas fa-eye me-1"></i>
-          <span data-i18n="testCase.bulk.generatePreview">預覽將產生的單號</span>：
-          <span id="bulkPreviewList"></span>
-          <div class="mt-1"><span data-i18n="testCase.bulk.totalToCreate">預計建立筆數</span>：<span id="bulkTotalCount">0</span></div>
-        </div>
-
-        <div id="bulkProgress" style="display:none" class="mt-3">
-          <div class="d-flex justify-content-between align-items-center mb-1">
-            <small class="text-muted" data-i18n="testCase.bulk.creating">建立中...</small>
-            <small class="text-muted" id="bulkProgressText">0/0</small>
+              <hr>
+              <!-- 驗證提示 -->
+              <div id="bulkValidation" style="display:none"></div>
+            </div>
           </div>
-          <div class="progress" style="height:6px;">
-            <div class="progress-bar bg-primary" id="bulkProgressBar" style="width:0%"></div>
+
+          <!-- 右側：預覽 -->
+          <div class="col-12 col-lg-5">
+            <div class="border-start ps-3 h-100">
+              <div class="d-flex align-items-center mb-2">
+                <i class="fas fa-eye me-2 text-primary"></i>
+                <strong><span data-i18n="testCase.bulk.generatePreview">預覽將產生的單號</span></strong>
+              </div>
+              <div class="small text-muted mb-2"><span data-i18n="testCase.bulk.totalToCreate">預計建立筆數</span>：<span id="bulkTotalCount">0</span></div>
+              <div id="bulkPreview" class="small bulk-preview-scroll">
+                <div id="bulkPreviewList" class="text-muted"></div>
+              </div>
+              <div id="bulkProgress" style="display:none" class="mt-3">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                  <small class="text-muted" data-i18n="testCase.bulk.creating">建立中...</small>
+                  <small class="text-muted" id="bulkProgressText">0/0</small>
+                </div>
+                <div class="progress" style="height:6px;">
+                  <div class="progress-bar bg-primary" id="bulkProgressBar" style="width:0%"></div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">取消</button>
-        <button type="button" class="btn btn-primary" id="startBulkCreateBtn">
-          <i class="fas fa-check me-2"></i><span data-i18n="testCase.bulk.startCreate">開始建立</span>
-        </button>
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal" data-i18n="common.cancel">取消</button>
+                <button type="button" class="btn btn-primary btn-sm" id="startBulkCreateBtn">
+                  <i class="fas fa-check me-2"></i><span data-i18n="testCase.bulk.startCreate">開始建立</span>
+                </button>
       </div>
     </div>
   </div>
@@ -766,6 +790,8 @@ function removeExecCachedTestCase(testCaseNumber) {
 let testCases = [];
 let filteredTestCases = [];
 let selectedTestCases = new Set();
+// Shift 連續多選錨點（Test Case Management）
+let lastCaseCheckboxIndex = null;
 let currentPage = 1;
 let currentTestCaseIndex = -1; // 當前檢視測試案例在 filteredTestCases 中的索引
 let pageSize = 50;
@@ -1318,6 +1344,30 @@ function bindEvents() {
             updateBatchToolbar();
         }
     });
+
+    // 支援 Shift-點選 連續多選（同頁範圍）
+    document.addEventListener('click', function(e) {
+        const cb = e.target;
+        if (!cb.classList || !cb.classList.contains('test-case-checkbox')) return;
+        const checkboxes = Array.from(document.querySelectorAll('.test-case-checkbox'));
+        const currentIndex = checkboxes.indexOf(cb);
+        if (currentIndex === -1) return;
+
+        if (e.shiftKey && lastCaseCheckboxIndex !== null && lastCaseCheckboxIndex !== -1) {
+            const start = Math.min(lastCaseCheckboxIndex, currentIndex);
+            const end = Math.max(lastCaseCheckboxIndex, currentIndex);
+            const shouldCheck = cb.checked;
+            for (let i = start; i <= end; i++) {
+                const c = checkboxes[i];
+                if (c.checked !== shouldCheck) c.checked = shouldCheck;
+                const id = c.value; // record_id 為字串
+                if (shouldCheck) selectedTestCases.add(id); else selectedTestCases.delete(id);
+            }
+            updateBatchToolbar();
+        }
+        // 更新錨點
+        lastCaseCheckboxIndex = currentIndex;
+    });
     
     // 大量新增模式
     const openBulkBtn = document.getElementById('openBulkCreateBtn');
@@ -1332,6 +1382,8 @@ function bindEvents() {
     
     // 儲存並新增下一筆按鈕
     document.getElementById('saveAndAddNextBtn').addEventListener('click', saveAndAddNext);
+    // 啟用「/」快速搜尋
+    setupQuickSearch_TCM();
 }
 
 // ===== 大量新增模式（多前綴 / 前綴下多中間 / 末尾範圍） =====
@@ -1398,7 +1450,7 @@ function renderPrefixes() {
               <div class="d-flex gap-2 mb-2">
                 <div class="flex-grow-1">
                   <label class="form-label mb-1"><span data-i18n="testCase.bulk.prefix">前綴單號</span></label>
-                  <input type="text" class="form-control" value="${escapeHtml(p.prefix||'')}" placeholder="e.g. TCG-93178" oninput="onPrefixChange(${pi}, this.value)">
+                  <input type="text" class="form-control form-control-sm" value="${escapeHtml(p.prefix||'')}" placeholder="e.g. TCG-93178" oninput="onPrefixChange(${pi}, this.value)">
                 </div>
                 <div class="align-self-end">
                   <button type="button" class="btn btn-outline-danger" title="remove" onclick="removePrefix(${pi})"><i class="fas fa-trash"></i></button>
@@ -1439,9 +1491,16 @@ function updateBulkPreview() {
     const numbers = generateBulkNumbers();
     const previewEl = document.getElementById('bulkPreviewList');
     document.getElementById('bulkTotalCount').textContent = String(numbers.length);
-    // 預覽最多前 10 筆
-    const preview = numbers.slice(0, 10).join(', ');
-    previewEl.textContent = preview + (numbers.length > 10 ? ' ...' : '');
+    // 條列顯示（大量時限制渲染上限以避免 DOM 過大）
+    const maxRender = 2000; // 視需要可調整
+    const renderList = numbers.slice(0, maxRender);
+    let html = '<ul class="list-unstyled mb-0">';
+    html += renderList.map(n => `<li><code>${escapeHtml(n)}</code></li>`).join('');
+    if (numbers.length > maxRender) {
+        html += `<li class="text-muted">... (+${numbers.length - maxRender})</li>`;
+    }
+    html += '</ul>';
+    previewEl.innerHTML = html;
 }
 
 function generateBulkNumbers() {
@@ -1463,6 +1522,13 @@ function generateBulkNumbers() {
 }
 
 function pad3(n) { return String(n).padStart(3, '0'); }
+
+// 簡單的 HTML 轉義，供動態模板使用
+function escapeHtml(text) {
+    if (text === undefined || text === null) return '';
+    const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+    return String(text).replace(/[&<>"']/g, (m) => map[m]);
+}
 
 function showBulkValidation(html, isError = true) {
     const box = document.getElementById('bulkValidation');
@@ -1517,7 +1583,7 @@ async function startBulkCreate() {
         return;
     }
 
-    // 逐筆建立
+    // 一次性建立（批次 API）
     showBulkProgress(numbers.length);
     const saveBtn = document.getElementById('startBulkCreateBtn');
     const original = saveBtn.innerHTML;
@@ -1525,46 +1591,39 @@ async function startBulkCreate() {
     const creatingText = window.i18n ? window.i18n.t('testCase.bulk.creating') : '建立中...';
     saveBtn.innerHTML = `<i class="fas fa-spinner fa-spin me-2"></i>${creatingText}`;
 
-    let done = 0, errors = [];
-    for (const num of numbers) {
-        const payload = {
-            title: `${num} ${window.i18n ? window.i18n.t('testCase.bulk.tempTitleSuffix') : '的測試案例'}`,
-            test_case_number: num,
-            priority: 'Medium',
-            precondition: '',
-            steps: '',
-            expected_result: ''
-        };
-        try {
-            const resp = await fetch(`/api/teams/${currentTeam.id}/testcases/`, {
-                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
-            });
-            if (!resp.ok) {
-                try {
-                    const err = await resp.json();
-                    errors.push(err.detail || resp.statusText);
-                } catch (_) { errors.push(resp.statusText); }
-            }
-        } catch (e) {
-            errors.push(String(e));
-        }
-        done += 1;
-        updateBulkProgress(done, numbers.length);
-    }
-
-    saveBtn.disabled = false;
-    saveBtn.innerHTML = original;
-
-    if (errors.length > 0) {
-        showBulkValidation((window.i18n ? window.i18n.t('errors.saveFailed') : '儲存失敗') + '<br><small>' + errors.slice(0,3).join('<br>') + (errors.length>3?' ...':'') + '</small>');
-        return;
-    }
-
     try {
+        const items = numbers.map(num => ({
+            test_case_number: num,
+            title: `${num} ${window.i18n ? window.i18n.t('testCase.bulk.tempTitleSuffix') : '的測試案例'}`,
+            priority: 'Medium'
+        }));
+        const resp = await fetch(`/api/teams/${currentTeam.id}/testcases/bulk_create`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items })
+        });
+        const data = await resp.json();
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = original;
+        if (!resp.ok || !data.success) {
+            if (data && Array.isArray(data.duplicates) && data.duplicates.length) {
+                const title = window.i18n ? window.i18n.t('testCase.bulk.duplicatesFound') : '發現重複單號：';
+                const fixText = window.i18n ? window.i18n.t('testCase.bulk.fixBeforeSave') : '請修正後再儲存。';
+                showBulkValidation(`<div class="mb-1">${title}</div><code>${data.duplicates.join(', ')}</code><div class="mt-2">${fixText}</div>`, true);
+                return;
+            }
+            const errMsg = (data && data.errors && data.errors.join('; ')) || (resp.statusText || '');
+            showBulkValidation((window.i18n ? window.i18n.t('errors.saveFailed') : '儲存失敗') + (errMsg ? `：${errMsg}` : ''));
+            return;
+        }
+        updateBulkProgress(numbers.length, numbers.length);
         await loadTestCases(false);
         AppUtils.showSuccess(window.i18n ? window.i18n.t('messages.dataReloaded') : '資料已重新載入');
-    } catch (_) {}
-    if (bulkModalInstance) bulkModalInstance.hide();
+        if (bulkModalInstance) bulkModalInstance.hide();
+    } catch (e) {
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = original;
+        showBulkValidation((window.i18n ? window.i18n.t('errors.saveFailed') : '儲存失敗') + `：${e}`);
+        return;
+    }
 }
 
 // 複製 Test Case：開啟與「新增/編輯」相同的 Modal，預填欄位
@@ -2398,6 +2457,8 @@ function toggleSelectAll() {
     });
     
     updateBatchToolbar();
+    // 重置 Shift 多選錨點
+    lastCaseCheckboxIndex = null;
 }
 
 function updateBatchToolbar() {
@@ -2442,6 +2503,7 @@ function deselectAll() {
     document.querySelectorAll('.test-case-checkbox').forEach(cb => cb.checked = false);
     document.getElementById('selectAllCheckbox').checked = false;
     updateBatchToolbar();
+    lastCaseCheckboxIndex = null;
 }
 
 function batchEditTestCases() {
@@ -2614,6 +2676,130 @@ function changePage(page) {
     }
     // 工具列顯示狀態可能改變整體高度，需重新計算列表高度
     adjustTestCasesScrollHeight();
+}
+
+// ===== 快速搜尋（Test Case Management） =====
+function setupQuickSearch_TCM() {
+    if (!document.getElementById('quickSearchOverlay')) {
+        const overlay = document.createElement('div');
+        overlay.id = 'quickSearchOverlay';
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:1060;display:none;background:rgba(0,0,0,0.35)';
+        overlay.innerHTML = `
+          <div class="position-fixed" style="top:34vh; left:50%; transform: translateX(-50%); width:min(720px, 92vw);">
+            <div class="card shadow">
+              <div class="card-body p-2">
+                <input id=\"quickSearchInput\" type=\"text\" class=\"form-control form-control-lg\" placeholder=\"${window.i18n ? window.i18n.t('testCase.searchPlaceholder') : '搜尋測試案例...'}\" autocomplete=\"off\" />
+                <div id=\"quickSearchResults\" class=\"list-group list-group-flush\" style=\"max-height:30vh; overflow:auto;\"></div>
+              </div>
+            </div>
+          </div>`;
+        document.body.appendChild(overlay);
+        try {
+            const input = overlay.querySelector('#quickSearchInput');
+            if (input && window.i18n && window.i18n.isReady()) {
+                input.placeholder = window.i18n.t('testCase.searchPlaceholder');
+            }
+            document.addEventListener('languageChanged', () => {
+                if (input && window.i18n && window.i18n.isReady()) {
+                    input.placeholder = window.i18n.t('testCase.searchPlaceholder');
+                }
+            });
+        } catch (_) {}
+        overlay.addEventListener('click', (e)=>{ if(e.target===overlay) closeQuickSearch(); });
+    }
+
+    document.addEventListener('keydown', function(e){
+        const tag = (e.target && e.target.tagName || '').toLowerCase();
+        const isTyping = ['input','textarea','select'].includes(tag) || (e.target && e.target.isContentEditable);
+        if (!isTyping && e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            e.preventDefault();
+            openQuickSearch_TCM();
+        }
+    });
+}
+
+// 底部左側提示
+document.addEventListener('DOMContentLoaded', function(){
+    if (document.getElementById('quickSearchHint')) return;
+    const hint = document.createElement('div');
+    hint.id = 'quickSearchHint';
+    hint.className = 'position-fixed';
+    hint.style.cssText = 'left:12px; bottom:12px; z-index:1040; opacity:0.85; pointer-events:none;';
+    const label = window.i18n && window.i18n.isReady() ? window.i18n.t('hotkeys.quickSearch') : '按 / 開啟快速搜尋';
+    hint.innerHTML = `<span class="badge bg-secondary-subtle text-secondary border" style="--bs-bg-opacity:.65;">${label}</span>`;
+    document.body.appendChild(hint);
+    // i18n 準備完成時也同步更新
+    document.addEventListener('i18nReady', () => {
+        const text = window.i18n ? window.i18n.t('hotkeys.quickSearch') : '按 / 開啟快速搜尋';
+        const badge = document.querySelector('#quickSearchHint .badge');
+        if (badge) badge.textContent = text;
+    });
+    document.addEventListener('languageChanged', () => {
+        const text = window.i18n ? window.i18n.t('hotkeys.quickSearch') : '按 / 開啟快速搜尋';
+        const badge = document.querySelector('#quickSearchHint .badge');
+        if (badge) badge.textContent = text;
+    });
+});
+
+function openQuickSearch_TCM() {
+    const overlay = document.getElementById('quickSearchOverlay');
+    const input = document.getElementById('quickSearchInput');
+    const results = document.getElementById('quickSearchResults');
+    if (!overlay || !input || !results) return;
+    overlay.style.display = 'block';
+    input.value = '';
+    results.innerHTML = '';
+    input.focus();
+
+    const handleKey = (e) => {
+        if (e.key === 'Escape') { closeQuickSearch(); return; }
+        if (e.key === 'Enter') {
+            const active = results.querySelector('.active');
+            if (active) { active.click(); }
+        } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            const items = Array.from(results.querySelectorAll('.list-group-item'));
+            if (items.length === 0) return;
+            let idx = items.findIndex(li => li.classList.contains('active'));
+            if (idx < 0) idx = 0;
+            idx = (e.key === 'ArrowDown') ? Math.min(idx+1, items.length-1) : Math.max(idx-1, 0);
+            items.forEach(li => li.classList.remove('active'));
+            items[idx].classList.add('active');
+            items[idx].scrollIntoView({ block:'nearest' });
+        }
+    };
+    input.onkeydown = handleKey;
+    input.oninput = () => quickSearchRender_TCM(input.value, results);
+}
+
+function closeQuickSearch() {
+    const overlay = document.getElementById('quickSearchOverlay');
+    if (overlay) overlay.style.display = 'none';
+}
+
+function quickSearchRender_TCM(query, container) {
+    const q = (query || '').trim().toLowerCase();
+    let matches = [];
+    if (q.length > 0) {
+        matches = (testCases || []).filter(tc => {
+            const num = (tc.test_case_number || '').toLowerCase();
+            const title = (tc.title || '').toLowerCase();
+            return num.includes(q) || title.includes(q);
+        }).slice(0, 100);
+    }
+    if (matches.length === 0) {
+        container.innerHTML = `<div class=\"list-group-item text-muted\">${window.i18n ? window.i18n.t('errors.noMatchingTestCases') : '沒有找到符合條件的測試案例'}</div>`;
+        return;
+    }
+    container.innerHTML = matches.map((tc, idx) => `
+      <button type=\"button\" class=\"list-group-item list-group-item-action ${idx===0?'active':''}\" data-id=\"${tc.record_id}\">\n        <div class=\"d-flex justify-content-between align-items-center\">\n          <code class=\"small me-2\">${escapeHtml(tc.test_case_number || '')}</code>\n          <span class=\"text-truncate\">${escapeHtml(tc.title || '')}</span>\n        </div>\n      </button>`).join('');
+    container.querySelectorAll('.list-group-item').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const id = btn.getAttribute('data-id');
+            closeQuickSearch();
+            if (id) viewTestCase(id);
+        });
+    });
 }
 
 // 快速編輯功能

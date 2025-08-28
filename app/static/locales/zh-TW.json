@@ -432,14 +432,14 @@
   "batchModifyNote": "只會套用已勾選的項目，空白值將不會變更現有資料。",
   "confirmModify": "確認修改",
   "batchModifyFailed": "批次修改失敗",
-  "batchModifySuccess": "已批次修改 {{count}} 個項目",
-  "batchModifyPartial": "已處理 {{total}} 個項目，成功修改 {{success}} 個",
+  "batchModifySuccess": "已批次修改 {count} 個項目",
+  "batchModifyPartial": "已處理 {total} 個項目，成功修改 {success} 個",
   "batchDelete": "批次刪除",
-  "batchDeleteConfirm": "確定要刪除選中的 {{count}} 個測試執行項目嗎？\n\n⚠️ 警告：此操作將同時清除所有相關的測試歷程記錄，此動作無法復原！",
+  "batchDeleteConfirm": "確定要刪除選中的 {count} 個測試執行項目嗎？\n\n⚠️ 警告：此操作將同時清除所有相關的測試歷程記錄，此動作無法復原！",
   "batchDeleteWarning": "危險操作警告",
   "batchDeleteFailed": "批次刪除失敗",
-  "batchDeleteSuccess": "成功刪除 {{count}} 個測試執行項目及其測試歷程",
-  "batchDeletePartial": "已處理 {{total}} 個項目，成功刪除 {{success}} 個測試執行項目",
+  "batchDeleteSuccess": "成功刪除 {count} 個測試執行項目及其測試歷程",
+  "batchDeletePartial": "已處理 {total} 個項目，成功刪除 {success} 個測試執行項目",
   "noItemsSelected": "請先選擇要刪除的項目",
   "searchContacts": "搜尋聯絡人...",
   "noContactsFound": "找不到符合條件的聯絡人",
@@ -674,9 +674,12 @@
     "nextPage": "下一頁"
   },
   "language": {
-    "current": "中文",
-    "chinese": "中文",
+    "current": "繁體中文",
+    "chinese": "繁體中文",
     "english": "English"
+  },
+  "hotkeys": {
+    "quickSearch": "按 / 開啟快速搜尋"
   },
   "confirm": {
     "batchStartTestRuns": "確定要開始執行這 {count} 個測試執行嗎？",

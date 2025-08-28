@@ -240,14 +240,27 @@ class AssigneeSelector {
         });
 
         // 失焦時處理輸入值
+        this._justSelected = false;
         this.displayInput.addEventListener('blur', () => {
+            // 若剛透過選單選擇了項目，跳過這次 blur 邏輯避免還原
+            if (this._justSelected) return;
             const val = (this.displayInput.value || '').trim();
             if (!val) {
                 // 如果輸入為空，恢復原來的值
                 this.restoreOriginalValue();
             } else if (!this.selectedContact) {
-                // 如果有輸入但沒有選擇聯絡人，恢復原來的值
-                this.restoreOriginalValue();
+                // 如果有輸入但沒有選擇聯絡人
+                if (this.options.allowCustomValue) {
+                    // 允許自訂值：提交目前值
+                    this.setValue(val);
+                    if (this.options.onSelect) {
+                        this.options.onSelect({ id: null, name: val, display_name: val });
+                    }
+                    this.originalInput.dispatchEvent(new Event('change', { bubbles: true }));
+                } else {
+                    // 不允許自訂值則還原
+                    this.restoreOriginalValue();
+                }
             } else if (this.options.allowCustomValue && (this.selectedContact.name !== val && this.selectedContact.display_name !== val)) {
                 // 若允許自訂值且輸入值與選擇的聯絡人不匹配，提交目前值
                 this.setValue(val);
@@ -265,7 +278,19 @@ class AssigneeSelector {
             }
         });
         
-        // 下拉選單點擊
+        // 下拉選單預先在 mousedown 處理選擇，避免 blur 先觸發導致還原
+        this.dropdown.addEventListener('mousedown', (e) => {
+            const item = e.target.closest('.assignee-selector-item');
+            if (item && item.dataset.contactId) {
+                e.preventDefault();
+                this._justSelected = true;
+                this.selectContact(item.dataset.contactId);
+                // 下一輪事件循環後清除旗標
+                setTimeout(() => { this._justSelected = false; }, 0);
+            }
+        });
+
+        // 保留 click 以支援鍵盤操作或其他互動（冗餘安全）
         this.dropdown.addEventListener('click', (e) => {
             const item = e.target.closest('.assignee-selector-item');
             if (item && item.dataset.contactId) {
@@ -459,14 +484,8 @@ class AssigneeSelector {
             name.className = 'assignee-selector-name';
             name.textContent = contact.name;
             
-            const email = document.createElement('div');
-            email.className = 'assignee-selector-email';
-            email.textContent = contact.email;
-            
             info.appendChild(name);
-            if (contact.email) {
-                info.appendChild(email);
-            }
+            // 依需求：選單僅顯示頭像與名稱，不顯示 email
             
             item.appendChild(info);
             this.dropdown.appendChild(item);

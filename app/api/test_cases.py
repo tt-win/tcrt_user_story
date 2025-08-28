@@ -8,6 +8,7 @@ SQLite 僅用於存儲團隊配置資訊
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
+from pydantic import BaseModel
 from datetime import datetime
 
 from app.database import get_db
@@ -21,6 +22,23 @@ from app.services.tcg_converter import tcg_converter
 from app.config import settings
 
 router = APIRouter(prefix="/teams/{team_id}/testcases", tags=["test-cases"])
+
+
+class BulkTestCaseItem(BaseModel):
+    test_case_number: str
+    title: Optional[str] = None
+    priority: Optional[str] = "Medium"
+
+
+class BulkCreateRequest(BaseModel):
+    items: List[BulkTestCaseItem]
+
+
+class BulkCreateResponse(BaseModel):
+    success: bool
+    created_count: int = 0
+    duplicates: List[str] = []
+    errors: List[str] = []
 
 
 def get_lark_client_for_team(team_id: int, db: Session) -> tuple[LarkClient, TeamDB]:
@@ -136,9 +154,9 @@ async def get_test_cases(
     # 排序參數
     sort_by: Optional[str] = Query("created_at", description="排序欄位"),
     sort_order: Optional[str] = Query("desc", description="排序順序 (asc/desc)"),
-    # 分頁參數
+    # 分頁參數（為了前端客戶端分頁，預設取較大量）
     skip: int = Query(0, ge=0, description="跳過筆數"),
-    limit: int = Query(100, ge=1, le=1000, description="回傳筆數")
+    limit: int = Query(100000, ge=1, le=1000000, description="回傳筆數")
 ):
     """取得測試案例列表，支援搜尋、過濾和排序"""
     lark_client, team = get_lark_client_for_team(team_id, db)
@@ -540,6 +558,62 @@ async def delete_test_case(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"刪除測試案例失敗: {str(e)}"
         )
+
+
+@router.post("/bulk_create", response_model=BulkCreateResponse)
+async def bulk_create_test_cases(
+    team_id: int,
+    request: BulkCreateRequest,
+    db: Session = Depends(get_db)
+):
+    """批次建立測試案例（一次性寫入）"""
+    lark_client, team = get_lark_client_for_team(team_id, db)
+    try:
+        if not request.items:
+            return BulkCreateResponse(success=False, created_count=0, errors=["空的建立清單"])
+
+        # 取得現有記錄用於重複檢查
+        records = lark_client.get_all_records(team.test_case_table_id)
+        existing_numbers = set()
+        for r in records:
+            fields = r.get('fields', {})
+            num = fields.get(TestCase.FIELD_IDS['test_case_number'])
+            if num:
+                existing_numbers.add(str(num))
+
+        duplicates = [item.test_case_number for item in request.items if item.test_case_number in existing_numbers]
+        if duplicates:
+            return BulkCreateResponse(success=False, created_count=0, duplicates=duplicates)
+
+        # 準備批次建立的欄位資料
+        records_data: List[dict] = []
+        for item in request.items:
+            title = item.title.strip() if item.title else f"{item.test_case_number} 的測試案例"
+            priority = item.priority or 'Medium'
+            test_case = TestCase(
+                test_case_number=item.test_case_number,
+                title=title,
+                priority=priority,
+                precondition=None,
+                steps=None,
+                expected_result=None,
+                assignee=None,
+                test_result=None,
+                attachments=[],
+                user_story_map=[],
+                tcg=[],
+                parent_record=[],
+                team_id=team_id
+            )
+            records_data.append(test_case.to_lark_fields())
+
+        ok, ids, error_messages = lark_client.batch_create_records(team.test_case_table_id, records_data)
+        if not ok:
+            return BulkCreateResponse(success=False, created_count=len(ids), errors=error_messages)
+
+        return BulkCreateResponse(success=True, created_count=len(ids))
+    except Exception as e:
+        return BulkCreateResponse(success=False, created_count=0, errors=[str(e)])
 
 
 @router.post("/batch", response_model=TestCaseBatchResponse)
