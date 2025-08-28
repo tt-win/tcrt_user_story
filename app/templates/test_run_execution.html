@@ -1049,6 +1049,7 @@ function createItemRow(item, index, canUpdate) {
     const assigneeName = (item.assignee_name || (item.assignee && item.assignee.name)) || '-';
     const canEditAssignee = testRunConfig && testRunConfig.status !== 'completed';
     const showCheckbox = shouldShowCheckbox(testRunConfig ? testRunConfig.status : 'draft');
+    const hasExecutionHistory = item.executed_at !== null && item.executed_at !== undefined;
     
     return `
         <tr data-item-id="${item.id}">
@@ -1062,9 +1063,9 @@ function createItemRow(item, index, canUpdate) {
             <td><span class="badge bg-secondary priority-badge-lg">${escapeHtml(item.priority || 'Medium')}</span></td>
             <td>
                 ${canUpdate ? `
-                    <select class="form-select result-selector-lg ${resultClass}" 
+                    <select class="form-select result-selector-lg ${resultClass}"
                             data-item-id="${item.id}" onchange="updateTestResult(${item.id}, this.value)">
-                        <option value="">${escapeHtml('{{ i18n.t("testRun.notExecuted") if i18n else "未執行" }}')}</option>
+                        ${!hasExecutionHistory ? `<option value="">${escapeHtml('{{ i18n.t("testRun.notExecuted") if i18n else "未執行" }}')}</option>` : ''}
                         <option value="Passed" ${item.test_result === 'Passed' ? 'selected' : ''}>${escapeHtml('{{ i18n.t("testRun.passed") if i18n else "通過" }}')}</option>
                         <option value="Failed" ${item.test_result === 'Failed' ? 'selected' : ''}>${escapeHtml('{{ i18n.t("testRun.failed") if i18n else "失敗" }}')}</option>
                         <option value="Retest" ${item.test_result === 'Retest' ? 'selected' : ''}>${escapeHtml('{{ i18n.t("testRun.retest") if i18n else "重測" }}')}</option>
@@ -1943,12 +1944,13 @@ function renderModalHeaderResult(testCase) {
     const item = getItemByTestCaseNumber(testCase.test_case_number);
     const currentResult = item ? (item.test_result || '') : '';
     const canEdit = testRunConfig && testRunConfig.status === 'active';
+    const hasExecutionHistory = item && item.executed_at !== null && item.executed_at !== undefined;
 
     if (canEdit && item) {
         container.innerHTML = `
-            <select class="form-select form-select-sm result-selector-lg ${getResultClass(currentResult)}" 
+            <select class="form-select form-select-sm result-selector-lg ${getResultClass(currentResult)}"
                     onchange="updateSelectClass(this); updateTestResult(${item.id}, this.value)">
-                <option value="">${escapeHtml('{{ i18n.t("testRun.notExecuted") if i18n else "未執行" }}')}</option>
+                ${!hasExecutionHistory ? `<option value="">${escapeHtml('{{ i18n.t("testRun.notExecuted") if i18n else "未執行" }}')}</option>` : ''}
                 <option value="Passed" ${currentResult === 'Passed' ? 'selected' : ''}>${escapeHtml('{{ i18n.t("testRun.passed") if i18n else "通過" }}')}</option>
                 <option value="Failed" ${currentResult === 'Failed' ? 'selected' : ''}>${escapeHtml('{{ i18n.t("testRun.failed") if i18n else "失敗" }}')}</option>
                 <option value="Retest" ${currentResult === 'Retest' ? 'selected' : ''}>${escapeHtml('{{ i18n.t("testRun.retest") if i18n else "重測" }}')}</option>
