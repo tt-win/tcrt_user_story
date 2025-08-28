@@ -197,6 +197,25 @@
     </div>
 </div>
 
+<!-- 刪除團隊確認模態視窗 -->
+<div class="modal fade" id="deleteTeamModal" tabindex="-1" aria-labelledby="deleteTeamModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteTeamModalLabel" data-i18n="team.deleteTeam">刪除團隊</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="關閉"></button>
+            </div>
+            <div class="modal-body">
+                <p id="deleteTeamConfirmMessage" class="mb-0">確定要刪除團隊嗎？此操作無法復原。</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">取消</button>
+                <button type="button" class="btn btn-danger" id="confirmDeleteTeamBtn" data-i18n="common.delete">刪除</button>
+            </div>
+        </div>
+    </div>
+    </div>
+
 <!-- 同步功能框模態視窗 -->
 <div class="modal fade" id="syncModal" tabindex="-1" aria-labelledby="syncModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-xl">
@@ -485,7 +504,7 @@ function renderTeamCards() {
                             <button class="btn btn-outline-secondary btn-sm" onclick="editTeam(${team.id})">
                                 <i class="fas fa-edit me-1"></i><span>${(window.i18n && window.i18n.isReady()) ? window.i18n.t('common.edit') : '編輯'}</span>
                             </button>
-                            <button class="btn btn-outline-danger btn-sm" onclick="deleteTeam(${team.id})">
+                            <button class="btn btn-outline-danger btn-sm" onclick="openDeleteTeamModal(${team.id})">
                                 <i class="fas fa-trash me-1"></i><span>${(window.i18n && window.i18n.isReady()) ? window.i18n.t('common.delete') : '刪除'}</span>
                             </button>
                         </div>
@@ -670,31 +689,54 @@ function selectTeam(teamId) {
     }
 }
 
-async function deleteTeam(teamId) {
+let pendingDeleteTeamId = null;
+
+function openDeleteTeamModal(teamId) {
     const team = teams.find(t => t.id === teamId);
     if (!team) return;
-    
-    const confirmMsg = window.i18n ? 
-        window.i18n.t('team.confirmDelete', {name: team.name}) : 
+
+    pendingDeleteTeamId = teamId;
+
+    const modalEl = document.getElementById('deleteTeamModal');
+    const msgEl = document.getElementById('deleteTeamConfirmMessage');
+    msgEl.textContent = window.i18n ?
+        window.i18n.t('team.confirmDelete', { name: team.name }) :
         `確定要刪除團隊「${team.name}」嗎？此操作無法復原。`;
-    if (!confirm(confirmMsg)) {
-        return;
+
+    // 綁定確認事件（覆寫確保單一監聽）
+    const confirmBtn = document.getElementById('confirmDeleteTeamBtn');
+    confirmBtn.onclick = handleConfirmDeleteTeam;
+
+    // 套用翻譯並開啟
+    if (window.i18n && window.i18n.isReady()) {
+        window.i18n.retranslate(modalEl);
     }
-    
+    const inst = bootstrap.Modal.getOrCreateInstance(modalEl);
+    inst.show();
+}
+
+async function handleConfirmDeleteTeam() {
+    if (!pendingDeleteTeamId) return;
+    const modalEl = document.getElementById('deleteTeamModal');
+    const inst = bootstrap.Modal.getInstance(modalEl);
     try {
-        const response = await fetch(`/api/teams/${teamId}`, {
-            method: 'DELETE'
-        });
-        
+        await performDeleteTeam(pendingDeleteTeamId);
+        if (inst) inst.hide();
+    } finally {
+        pendingDeleteTeamId = null;
+    }
+}
+
+async function performDeleteTeam(teamId) {
+    try {
+        const response = await fetch(`/api/teams/${teamId}`, { method: 'DELETE' });
         if (!response.ok) {
             const errorMsg = window.i18n ? window.i18n.t('messages.deleteFailed') : '刪除失敗';
             throw new Error(errorMsg);
         }
-        
         const successMsg = window.i18n ? window.i18n.t('team.teamDeleted') : '團隊刪除成功';
         AppUtils.showSuccess(successMsg);
         await loadTeams();
-        
     } catch (error) {
         console.error('Delete team failed:', error);
         const errorMsg = window.i18n ? window.i18n.t('messages.deleteFailed') : '刪除失敗';
