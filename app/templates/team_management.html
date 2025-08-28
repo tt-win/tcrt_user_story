@@ -909,12 +909,38 @@ function setSyncStatus(mode) {
         if (startBtn) startBtn.disabled = false;
         if (deptBtn) deptBtn.disabled = false;
         if (userBtn) userBtn.disabled = false;
+        // 在同步完成後恢復按鈕原始內容（避免仍然顯示「啟動中…」並丟失 i18n 標籤）
+        restoreSyncActionButtons();
+        // 重新套用翻譯到剛恢復的按鈕文字
+        try {
+            const modal = document.getElementById('syncModal');
+            if (window.i18n && window.i18n.isReady() && modal) {
+                window.i18n.retranslate(modal);
+            }
+        } catch (_) {}
     } else {
         runningDiv.classList.add('d-none');
         idleDiv.classList.add('d-none');
         if (startBtn) startBtn.disabled = false;
         if (deptBtn) deptBtn.disabled = false;
         if (userBtn) userBtn.disabled = false;
+    }
+}
+
+// 恢復同步操作按鈕的原始圖示與文字（含 i18n 標籤）
+function restoreSyncActionButtons() {
+    const deptBtn = document.getElementById('startDeptSyncBtn');
+    const userBtn = document.getElementById('startUserSyncBtn');
+    const startBtn = document.getElementById('startSyncBtn');
+
+    if (deptBtn) {
+        deptBtn.innerHTML = '<i class="fas fa-sitemap me-2"></i><span data-i18n="orgSync.departmentsSync">部門同步</span>';
+    }
+    if (userBtn) {
+        userBtn.innerHTML = '<i class="fas fa-address-book me-2"></i><span data-i18n="orgSync.contactsSync">用戶同步</span>';
+    }
+    if (startBtn) {
+        startBtn.innerHTML = '<i class="fas fa-play me-2"></i><span data-i18n="orgSync.fullSync">完整同步</span>';
     }
 }
 
