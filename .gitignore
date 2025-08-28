@@ -122,3 +122,7 @@ spec.md
 task.md
 lark_*.md
 api_*.md
+principle.txt
+manual_sync_integration_test_report.json
+tests/
+tools/
