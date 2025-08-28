@@ -197,6 +197,28 @@
     </div>
 </div>
 
+<!-- 刪除團隊確認模態視窗 -->
+<div class="modal fade" id="deleteTeamModal" tabindex="-1" aria-labelledby="deleteTeamModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-danger">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title d-flex align-items-center" id="deleteTeamModalLabel">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <span data-i18n="team.deleteTeam">刪除團隊</span>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="關閉"></button>
+            </div>
+            <div class="modal-body">
+                <p id="deleteTeamConfirmMessage" class="mb-0">確定要刪除團隊嗎？此操作無法復原。</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">取消</button>
+                <button type="button" class="btn btn-danger" id="confirmDeleteTeamBtn" data-i18n="common.delete">刪除</button>
+            </div>
+        </div>
+    </div>
+    </div>
+
 <!-- 同步功能框模態視窗 -->
 <div class="modal fade" id="syncModal" tabindex="-1" aria-labelledby="syncModalLabel" aria-hidden="true">
     <div class="modal-dialog modal-xl">
@@ -241,10 +263,7 @@
                                     <div class="flex-grow-1 ms-3">
                                         <h6 class="mb-1 text-primary" data-i18n="orgSync.syncing">同步進行中</h6>
                                         <p class="mb-2 text-muted small" data-i18n="orgSync.syncingDesc">正在同步組織架構資料...</p>
-                                        <div class="progress mb-2" style="height: 6px;">
-                                            <div id="syncProgressBar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
-                                        </div>
-                                        <div id="syncProgressText" class="text-muted small" data-i18n="orgSync.preparing">準備開始...</div>
+                                <!-- 取消進度條與百分比，只保留狀態指示 -->
                                     </div>
                                 </div>
                             </div>
@@ -481,15 +500,15 @@ function renderTeamCards() {
                                     `${team.test_case_count || 0} 個測試案例`}</small>
                             </div>
                         </div>
-                        <div class="btn-group w-100" role="group">
-                            <button class="btn btn-outline-primary btn-sm" onclick="editTeam(${team.id})" title="${(window.i18n && window.i18n.isReady()) ? window.i18n.t('common.edit') : '編輯'}">
-                                <i class="fas fa-edit"></i>
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-primary btn-sm flex-grow-1" onclick="selectTeam(${team.id})">
+                                <i class="fas fa-arrow-right me-1"></i><span>${(window.i18n && window.i18n.isReady()) ? window.i18n.t('team.enterTeam') : '進入團隊'}</span>
                             </button>
-                            <button class="btn btn-outline-success btn-sm" onclick="selectTeam(${team.id})" title="${(window.i18n && window.i18n.isReady()) ? window.i18n.t('tooltips.enterTeam') : '進入團隊'}">
-                                <i class="fas fa-arrow-right"></i>
+                            <button class="btn btn-outline-secondary btn-sm" onclick="editTeam(${team.id})">
+                                <i class="fas fa-edit me-1"></i><span>${(window.i18n && window.i18n.isReady()) ? window.i18n.t('common.edit') : '編輯'}</span>
                             </button>
-                            <button class="btn btn-outline-danger btn-sm" onclick="deleteTeam(${team.id})" title="${(window.i18n && window.i18n.isReady()) ? window.i18n.t('common.delete') : '刪除'}">
-                                <i class="fas fa-trash"></i>
+                            <button class="btn btn-outline-danger btn-sm" onclick="openDeleteTeamModal(${team.id})">
+                                <i class="fas fa-trash me-1"></i><span>${(window.i18n && window.i18n.isReady()) ? window.i18n.t('common.delete') : '刪除'}</span>
                             </button>
                         </div>
                     </div>
@@ -673,31 +692,54 @@ function selectTeam(teamId) {
     }
 }
 
-async function deleteTeam(teamId) {
+let pendingDeleteTeamId = null;
+
+function openDeleteTeamModal(teamId) {
     const team = teams.find(t => t.id === teamId);
     if (!team) return;
-    
-    const confirmMsg = window.i18n ? 
-        window.i18n.t('team.confirmDelete', {name: team.name}) : 
+
+    pendingDeleteTeamId = teamId;
+
+    const modalEl = document.getElementById('deleteTeamModal');
+    const msgEl = document.getElementById('deleteTeamConfirmMessage');
+    msgEl.textContent = window.i18n ?
+        window.i18n.t('team.confirmDelete', { name: team.name }) :
         `確定要刪除團隊「${team.name}」嗎？此操作無法復原。`;
-    if (!confirm(confirmMsg)) {
-        return;
+
+    // 綁定確認事件（覆寫確保單一監聽）
+    const confirmBtn = document.getElementById('confirmDeleteTeamBtn');
+    confirmBtn.onclick = handleConfirmDeleteTeam;
+
+    // 套用翻譯並開啟
+    if (window.i18n && window.i18n.isReady()) {
+        window.i18n.retranslate(modalEl);
     }
-    
+    const inst = bootstrap.Modal.getOrCreateInstance(modalEl);
+    inst.show();
+}
+
+async function handleConfirmDeleteTeam() {
+    if (!pendingDeleteTeamId) return;
+    const modalEl = document.getElementById('deleteTeamModal');
+    const inst = bootstrap.Modal.getInstance(modalEl);
     try {
-        const response = await fetch(`/api/teams/${teamId}`, {
-            method: 'DELETE'
-        });
-        
+        await performDeleteTeam(pendingDeleteTeamId);
+        if (inst) inst.hide();
+    } finally {
+        pendingDeleteTeamId = null;
+    }
+}
+
+async function performDeleteTeam(teamId) {
+    try {
+        const response = await fetch(`/api/teams/${teamId}`, { method: 'DELETE' });
         if (!response.ok) {
             const errorMsg = window.i18n ? window.i18n.t('messages.deleteFailed') : '刪除失敗';
             throw new Error(errorMsg);
         }
-        
         const successMsg = window.i18n ? window.i18n.t('team.teamDeleted') : '團隊刪除成功';
         AppUtils.showSuccess(successMsg);
         await loadTeams();
-        
     } catch (error) {
         console.error('Delete team failed:', error);
         const errorMsg = window.i18n ? window.i18n.t('messages.deleteFailed') : '刪除失敗';
@@ -859,11 +901,7 @@ async function loadSyncStatus() {
                 const progressText = document.getElementById('syncProgressText');
                 const progressBar = document.getElementById('syncProgressBar');
                 
-                if (data.current_sync_id) {
-                    const idPrefix = getI18n('orgSync.syncIdPrefix', '同步ID:');
-                    progressText.textContent = `${idPrefix} ${data.current_sync_id}`;
-                    progressBar.style.width = '50%'; // 暫時顯示50%進度
-                }
+                // 僅顯示狀態，不顯示進度條或百分比
                 
                 // 開始輪詢狀態
                 startSyncPolling();
@@ -909,12 +947,38 @@ function setSyncStatus(mode) {
         if (startBtn) startBtn.disabled = false;
         if (deptBtn) deptBtn.disabled = false;
         if (userBtn) userBtn.disabled = false;
+        // 在同步完成後恢復按鈕原始內容（避免仍然顯示「啟動中…」並丟失 i18n 標籤）
+        restoreSyncActionButtons();
+        // 重新套用翻譯到剛恢復的按鈕文字
+        try {
+            const modal = document.getElementById('syncModal');
+            if (window.i18n && window.i18n.isReady() && modal) {
+                window.i18n.retranslate(modal);
+            }
+        } catch (_) {}
     } else {
         runningDiv.classList.add('d-none');
         idleDiv.classList.add('d-none');
         if (startBtn) startBtn.disabled = false;
         if (deptBtn) deptBtn.disabled = false;
         if (userBtn) userBtn.disabled = false;
+    }
+}
+
+// 恢復同步操作按鈕的原始圖示與文字（含 i18n 標籤）
+function restoreSyncActionButtons() {
+    const deptBtn = document.getElementById('startDeptSyncBtn');
+    const userBtn = document.getElementById('startUserSyncBtn');
+    const startBtn = document.getElementById('startSyncBtn');
+
+    if (deptBtn) {
+        deptBtn.innerHTML = '<i class="fas fa-sitemap me-2"></i><span data-i18n="orgSync.departmentsSync">部門同步</span>';
+    }
+    if (userBtn) {
+        userBtn.innerHTML = '<i class="fas fa-address-book me-2"></i><span data-i18n="orgSync.contactsSync">用戶同步</span>';
+    }
+    if (startBtn) {
+        startBtn.innerHTML = '<i class="fas fa-play me-2"></i><span data-i18n="orgSync.fullSync">完整同步</span>';
     }
 }
 
@@ -931,7 +995,8 @@ async function loadOrgStats() {
     
     try {
         const defaultTeamId = teams[0].id;
-        const response = await fetch(`/api/teams/${defaultTeamId}/sync/stats`);
+        // 加上時間戳避免瀏覽器快取造成數字不更新
+        const response = await fetch(`/api/teams/${defaultTeamId}/sync/stats?t=${Date.now()}`);
         
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
@@ -1003,9 +1068,7 @@ async function loadRecentSyncHistory() {
                                 ${new Date(record.start_time).toLocaleString()}
                             </div>
                         </div>
-                        <div class="text-end">
-                            <small class="text-muted">ID: ${record.id}</small>
-                        </div>
+                        <!-- 隱藏同步記錄 ID 顯示 -->
                     </div>
                 `;
             });
@@ -1113,6 +1176,8 @@ function startSyncPolling() {
                         
                         // 重新載入所有數據
                         await loadSyncModalData();
+                        // 再次刷新統計以確保數字最新（繞過快取）
+                        try { await loadOrgStats(); } catch (_) {}
                         
                         // 檢查是否是當前用戶觸發的同步
                         const triggerUser = localStorage.getItem('sync_trigger_user');
@@ -1121,26 +1186,14 @@ function startSyncPolling() {
                             localStorage.removeItem('sync_trigger_user');
                         }
                     } else {
-                        // 更新進度顯示
+                        // 僅顯示狀態指示
                         setSyncStatus('running');
-                        const progressText = document.getElementById('syncProgressText');
-                        const progressBar = document.getElementById('syncProgressBar');
-                        
-                        if (data.current_sync_id) {
-                            const syncingText = getI18n('orgSync.syncing', '同步進行中');
-                            const idPrefix = getI18n('orgSync.syncIdPrefix', '同步ID:');
-                            progressText.textContent = `${syncingText} (${idPrefix} ${data.current_sync_id})`;
-                            // 根據時間推算進度百分比
-                            const elapsed = pollCount * 5; // 5秒間隔
-                            const estimatedProgress = Math.min(50 + (elapsed / 120) * 40, 90); // 50-90%之間
-                            progressBar.style.width = `${estimatedProgress}%`;
-                        }
                     }
                 }
             }
             
             pollCount++;
-            if (pollCount >= maxPolls) {
+                    if (pollCount >= maxPolls) {
                 // 超時停止輪詢
                 clearInterval(syncPollingInterval);
                 syncPollingInterval = null;
@@ -1151,6 +1204,8 @@ function startSyncPolling() {
                 const userBtn = document.getElementById('startUserSyncBtn');
                 if (deptBtn) deptBtn.disabled = false;
                 if (userBtn) userBtn.disabled = false;
+                // 嘗試刷新統計
+                try { await loadOrgStats(); } catch (_) {}
             }
         } catch (error) {
             console.error('輪詢同步狀態失敗:', error);
@@ -1274,6 +1329,14 @@ async function pollGlobalSyncStatus(teamId) {
                         AppUtils.showSuccess(getI18n('orgSync.syncCompleted', '組織架構同步完成'));
                     } else {
                         AppUtils.showWarning(getI18n('orgSync.syncCompletedWithIssues', '同步完成，但可能有部分錯誤'));
+                    }
+                    // 若同步管理模態框開啟，刷新其中的統計與狀態
+                    const modalEl = document.getElementById('syncModal');
+                    if (modalEl && modalEl.classList.contains('show')) {
+                        try {
+                            await loadSyncModalData();
+                            await loadOrgStats();
+                        } catch (_) {}
                     }
                     
                     return; // 停止輪詢
@@ -1441,7 +1504,7 @@ function renderSyncHistoryTable(history) {
 }
 
 function showErrorDetails(recordId, errorMessage) {
-    AppUtils.showError(`${getI18n('orgSync.errorPrefix', '同步錯誤')} (ID: ${recordId})：${errorMessage}`);
+    AppUtils.showError(`${getI18n('orgSync.errorPrefix', '同步錯誤')}：${errorMessage}`);
 }
 
 // ===== i18n helper without calling window.i18n.t =====

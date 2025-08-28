@@ -47,7 +47,8 @@
     "languageEnUs": "English",
     "noDescription": "No description",
     "createDate": "Created",
-    "updateDate": "Updated"
+    "updateDate": "Updated",
+    "copy": "Copy"
   },
   "navigation": {
     "title": "Test Case Repository",
@@ -149,8 +150,34 @@
     "loadFailed": "Load failed",
     "uniquenessCheck": "Uniqueness check",
     "duplicateNumber": "Test case number already exists",
+    "testCaseNumberRequired": "Please enter test case number",
     "previousTestCase": "Previous test case",
-    "nextTestCase": "Next test case"
+    "nextTestCase": "Next test case",
+    "bulk": {
+      "bulkCreateMode": "Bulk Create Mode",
+      "prefix": "Prefix",
+      "suffix": "Suffix",
+      "middleRanges": "Middle Ranges",
+      "prefixList": "Prefix List",
+      "addPrefix": "Add Prefix",
+      "structureHint": "Each prefix can have multiple middle categories and suffix ranges. Final format: prefix.middle.suffix (suffix increments by 10).",
+      "middleCode": "Middle Code",
+      "suffixStart": "Suffix Start",
+      "suffixEnd": "Suffix End",
+      "addRange": "Add Range",
+      "start": "Start",
+      "end": "End",
+      "rangeHint": "Each added start defaults to 010, 020, 030...; end can be 010 to 990 (step 10).",
+      "generatePreview": "Preview numbers to be generated",
+      "totalToCreate": "Total to create",
+      "duplicatesFound": "Duplicate numbers found:",
+      "fixBeforeSave": "Please fix duplicates before saving.",
+      "startCreate": "Start Creating",
+      "creating": "Creating...",
+      "addAtLeastOne": "Please add at least one range",
+      "nothingToCreate": "Nothing to create",
+      "tempTitleSuffix": "test case"
+    }
   },
   "testRun": {
     "management": "Test Run Management",
@@ -407,14 +434,14 @@
   "batchModifyNote": "Applies only to checked options; empty values will not change existing data.",
   "confirmModify": "Confirm Changes",
   "batchModifyFailed": "Batch modify failed",
-  "batchModifySuccess": "Modified {{count}} items",
-  "batchModifyPartial": "Processed {{total}} items, successfully modified {{success}}",
+  "batchModifySuccess": "Modified {count} items",
+  "batchModifyPartial": "Processed {total} items, successfully modified {success}",
   "batchDelete": "Batch Delete",
-  "batchDeleteConfirm": "Are you sure you want to delete the selected {{count}} test run items?\n\nWarning: This will also remove all related result history and cannot be undone!",
+  "batchDeleteConfirm": "Are you sure you want to delete the selected {count} test run items?\n\nWarning: This will also remove all related result history and cannot be undone!",
   "batchDeleteWarning": "Dangerous Operation Warning",
   "batchDeleteFailed": "Batch delete failed",
-  "batchDeleteSuccess": "Deleted {{count}} test run items and their result history",
-  "batchDeletePartial": "Processed {{total}} items, successfully deleted {{success}} test run items",
+  "batchDeleteSuccess": "Deleted {count} test run items and their result history",
+  "batchDeletePartial": "Processed {total} items, successfully deleted {success} test run items",
   "noItemsSelected": "Please select items first",
   "searchContacts": "Search contacts...",
   "noContactsFound": "No matching contacts found",
@@ -649,8 +676,11 @@
   },
   "language": {
     "current": "English",
-    "chinese": "中文",
+    "chinese": "Chinese (Traditional)",
     "english": "English"
+  },
+  "hotkeys": {
+    "quickSearch": "Press / for quick search"
   },
   "confirm": {
     "batchStartTestRuns": "Are you sure you want to start these {count} test runs?",

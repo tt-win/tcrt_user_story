@@ -5,6 +5,121 @@
 {% block head %}
 <!-- Markdown 編輯器相關資源 -->
 <script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js"></script>
+
+<script>
+function setupQuickSearch_TR() {
+    if (!document.getElementById('quickSearchOverlay')) {
+        const overlay = document.createElement('div');
+        overlay.id = 'quickSearchOverlay';
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:1060;display:none;background:rgba(0,0,0,0.35)';
+        overlay.innerHTML = `
+          <div class="position-fixed" style="top:34vh; left:50%; transform: translateX(-50%); width:min(720px, 92vw);">
+            <div class="card shadow">
+              <div class="card-body p-2">
+                <input id="quickSearchInput" type="text" class="form-control form-control-lg" placeholder="${window.i18n ? window.i18n.t('testRun.searchTestCases') : '搜尋測試案例...'}" autocomplete="off" />
+                <div id="quickSearchResults" class="list-group list-group-flush" style="max-height:30vh; overflow:auto;"></div>
+              </div>
+            </div>
+          </div>`;
+        document.body.appendChild(overlay);
+        // 語言切換時即時更新 placeholder
+        try {
+            const applyPlaceholder = () => {
+                const el = document.getElementById('quickSearchInput');
+                if (!el) return;
+                if (window.i18n && window.i18n.isReady && window.i18n.isReady()) {
+                    let text = window.i18n.t('testRun.searchTestCases');
+                    if (!text || text === 'testRun.searchTestCases') {
+                        // 後備：沿用 testCase 的搜尋文案或硬編碼中文
+                        const alt = window.i18n.t('testCase.searchTestCases');
+                        text = (alt && alt !== 'testCase.searchTestCases') ? alt : '搜尋測試案例...';
+                    }
+                    el.placeholder = text;
+                } else {
+                    el.placeholder = '搜尋測試案例...';
+                }
+            };
+            applyPlaceholder();
+            document.addEventListener('languageChanged', applyPlaceholder);
+            document.addEventListener('i18nReady', applyPlaceholder);
+        } catch (_) {}
+        overlay.addEventListener('click', (e)=>{ if(e.target===overlay) closeQuickSearch_TR(); });
+    }
+    document.addEventListener('keydown', function(e){
+        const tag = (e.target && e.target.tagName || '').toLowerCase();
+        const isTyping = ['input','textarea','select'].includes(tag) || (e.target && e.target.isContentEditable);
+        if (!isTyping && e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            e.preventDefault();
+            openQuickSearch_TR();
+        }
+    });
+}
+function openQuickSearch_TR() {
+    const overlay = document.getElementById('quickSearchOverlay');
+    const input = document.getElementById('quickSearchInput');
+    const results = document.getElementById('quickSearchResults');
+    if (!overlay || !input || !results) return;
+    overlay.style.display = 'block';
+    input.value = '';
+    results.innerHTML = '';
+    input.focus();
+    const handleKey = (e) => {
+        if (e.key === 'Escape') { closeQuickSearch_TR(); return; }
+        if (e.key === 'Enter') {
+            const active = results.querySelector('.active');
+            if (active) { active.click(); }
+        } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            const items = Array.from(results.querySelectorAll('.list-group-item'));
+            if (items.length === 0) return;
+            let idx = items.findIndex(li => li.classList.contains('active'));
+            if (idx < 0) idx = 0;
+            idx = (e.key === 'ArrowDown') ? Math.min(idx+1, items.length-1) : Math.max(idx-1, 0);
+            items.forEach(li => li.classList.remove('active'));
+            items[idx].classList.add('active');
+            items[idx].scrollIntoView({ block:'nearest' });
+        }
+    };
+    input.onkeydown = handleKey;
+    input.oninput = () => quickSearchRender_TR(input.value, results);
+}
+function closeQuickSearch_TR() {
+    const overlay = document.getElementById('quickSearchOverlay');
+    if (overlay) overlay.style.display = 'none';
+}
+function quickSearchRender_TR(query, container) {
+    const q = (query || '').trim().toLowerCase();
+    let matches = [];
+    if (q.length > 0) {
+        matches = (testRunItems || []).filter(it => {
+            const num = (it.test_case_number || '').toLowerCase();
+            const title = (it.title || '').toLowerCase();
+            return num.includes(q) || title.includes(q);
+        }).slice(0, 100);
+    }
+    if (matches.length === 0) {
+        const noText = window.i18n ? window.i18n.t('errors.noMatchingTestCases') : '沒有找到符合條件的測試案例';
+        container.innerHTML = `<div class="list-group-item text-muted">${noText}</div>`;
+        return;
+    }
+    container.innerHTML = matches.map((it, idx) => `
+      <button type="button" class="list-group-item list-group-item-action ${idx===0?'active':''}" data-num="${it.test_case_number}">
+        <div class="d-flex justify-content-between align-items-center">
+          <code class="small me-2">${escapeHtml(it.test_case_number || '')}</code>
+          <span class="text-truncate">${escapeHtml(it.title || '')}</span>
+        </div>
+      </button>`).join('');
+    container.querySelectorAll('.list-group-item').forEach(btn => {
+        btn.addEventListener('click', async () => {
+            const tcNum = btn.getAttribute('data-num');
+            closeQuickSearch_TR();
+            if (tcNum) {
+                await showTestCaseDetailModal(tcNum);
+            }
+        });
+    });
+}
+</script>
 <script>
 // Configure marked to treat single newlines as <br> so previews show line breaks
 if (window.marked && typeof window.marked.setOptions === 'function') {
@@ -854,6 +969,8 @@ let confirmModal = null;
 let restartModal = null;
 let batchModifyModal = null;
 let selectedItems = new Set(); // 追踪選中的測試執行項目
+// Shift 連續多選的錨點索引
+let lastItemCheckboxIndex = null;
 // Test Case 詳細快取（localStorage），以測試案例編號為 key
 const TEST_CASE_CACHE_PREFIX = 'tr_exec_tc_cache_v1';
 const TEST_CASE_CACHE_TTL_MS = 60 * 60 * 1000; // 1 小時
@@ -872,6 +989,28 @@ document.addEventListener('DOMContentLoaded', function() {
     
     initializePage();
     bindEventListeners();
+    setupQuickSearch_TR();
+    // 左下角熱鍵提示
+    if (!document.getElementById('quickSearchHint')) {
+        const hint = document.createElement('div');
+        hint.id = 'quickSearchHint';
+        hint.className = 'position-fixed';
+        hint.style.cssText = 'left:12px; bottom:12px; z-index:1040; opacity:0.85; pointer-events:none;';
+        const label = window.i18n && window.i18n.isReady() ? (window.i18n.t('hotkeys.quickSearch') || 'Press / for quick search') : 'Press / for quick search';
+        hint.innerHTML = `<span class="badge bg-secondary-subtle text-secondary border" style="--bs-bg-opacity:.65;">${label}</span>`;
+        document.body.appendChild(hint);
+        // i18n 準備完成時同步更新
+        document.addEventListener('i18nReady', () => {
+            const text = window.i18n ? (window.i18n.t('hotkeys.quickSearch') || 'Press / for quick search') : 'Press / for quick search';
+            const badge = document.querySelector('#quickSearchHint .badge');
+            if (badge) badge.textContent = text;
+        });
+        document.addEventListener('languageChanged', () => {
+            const text = window.i18n ? (window.i18n.t('hotkeys.quickSearch') || 'Press / for quick search') : 'Press / for quick search';
+            const badge = document.querySelector('#quickSearchHint .badge');
+            if (badge) badge.textContent = text;
+        });
+    }
 });
 
 function initializePage() {
@@ -963,7 +1102,7 @@ function bindEventListeners() {
     // 批次刪除按鈕事件
     document.getElementById('batchDeleteBtn').addEventListener('click', showBatchDeleteConfirm);
     
-    // 監聽個別項目 checkbox 變化
+    // 監聽個別項目 checkbox 變化（單點選 or 程式設定觸發）
     document.addEventListener('change', function(e) {
         if (e.target.classList.contains('test-run-item-checkbox')) {
             const itemId = parseInt(e.target.value);
@@ -974,6 +1113,39 @@ function bindEventListeners() {
             }
             updateItemSelectionUI();
         }
+    });
+
+    // 支援 Shift-點選 連續多選
+    document.addEventListener('click', function(e) {
+        const cb = e.target;
+        if (!cb.classList || !cb.classList.contains('test-run-item-checkbox')) return;
+
+        const checkboxes = Array.from(document.querySelectorAll('.test-run-item-checkbox'));
+        const currentIndex = checkboxes.indexOf(cb);
+        if (currentIndex === -1) return;
+
+        if (e.shiftKey && lastItemCheckboxIndex !== null && lastItemCheckboxIndex !== -1) {
+            const start = Math.min(lastItemCheckboxIndex, currentIndex);
+            const end = Math.max(lastItemCheckboxIndex, currentIndex);
+            const shouldCheck = cb.checked; // 依照目前點選狀態套用整段
+
+            for (let i = start; i <= end; i++) {
+                const c = checkboxes[i];
+                if (c.checked !== shouldCheck) {
+                    c.checked = shouldCheck;
+                }
+                const id = parseInt(c.value);
+                if (shouldCheck) {
+                    selectedItems.add(id);
+                } else {
+                    selectedItems.delete(id);
+                }
+            }
+            updateItemSelectionUI();
+        }
+
+        // 更新錨點索引（不論是否有按 Shift）
+        lastItemCheckboxIndex = currentIndex;
     });
 }
 
@@ -1503,6 +1675,8 @@ function toggleSelectAllItems() {
     });
     
     updateItemSelectionUI();
+    // 重置 Shift 多選錨點
+    lastItemCheckboxIndex = null;
 }
 
 function updateItemSelectionUI() {
@@ -1931,71 +2105,20 @@ function initializeTestCaseAssigneeSelector(testCase) {
         teamId: currentTeamId,
         allowCustomValue: true,
         onSelect: (contact) => {
-            // 當選擇聯絡人時，更新 Test Case 的 assignee
-            updateTestCaseAssignee(testCase.test_case_number, contact.name);
+            // 更新當前 Test Run Item 的 assignee（以本地 SQLite 為準）
+            const item = (testRunItems || []).find(i => i.test_case_number === testCase.test_case_number);
+            if (item) updateAssignee(item.id, contact.name);
         },
         onClear: () => {
-            // 當清空選擇時，清空 assignee
-            updateTestCaseAssignee(testCase.test_case_number, '');
+            const item = (testRunItems || []).find(i => i.test_case_number === testCase.test_case_number);
+            if (item) updateAssignee(item.id, '');
         }
     };
 
     assigneeInput._assigneeSelector = new AssigneeSelector(assigneeInput, options);
 }
 
-// 更新 Test Case 的 Assignee
-async function updateTestCaseAssignee(testCaseNumber, assigneeName) {
-    try {
-        const response = await fetch(`/api/teams/${currentTeamId}/testcases/${encodeURIComponent(testCaseNumber)}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                assignee_name: assigneeName || null
-            })
-        });
-
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-
-        const result = await response.json();
-
-        // 更新本地快取
-        if (result.success && result.data) {
-            // 更新快取中的資料
-            const cacheKey = `tr_exec_tc_cache_v1_${testCaseNumber}`;
-            const cached = localStorage.getItem(cacheKey);
-            if (cached) {
-                const cacheData = JSON.parse(cached);
-                if (cacheData.data) {
-                    cacheData.data.assignee_name = assigneeName;
-                    localStorage.setItem(cacheKey, JSON.stringify(cacheData));
-                }
-            }
-
-            // 更新當前顯示的 test case 資料
-            if (currentDetailTestCase && currentDetailTestCase.test_case_number === testCaseNumber) {
-                currentDetailTestCase.assignee_name = assigneeName;
-            }
-        }
-
-        // 顯示成功訊息
-        const successMsg = window.i18n && window.i18n.isReady()
-            ? window.i18n.t('testRun.assigneeUpdated')
-            : '執行者已更新';
-        AppUtils.showSuccess(successMsg);
-
-    } catch (error) {
-        console.error('Failed to update test case assignee:', error);
-        const errorMsg = window.i18n && window.i18n.isReady()
-            ? window.i18n.t('testRun.updateAssigneeFailed')
-            : '更新執行者失敗';
-        AppUtils.showError(errorMsg + ': ' + error.message);
-
-        // 重新載入 Test Case 詳細資料以恢復狀態
-        if (currentDetailTestCase && currentDetailTestCase.test_case_number === testCaseNumber) {
-            await loadTestCaseDetail(testCaseNumber);
-        }
-    }
-}
+// 已移除：原先更新 Test Case 的 Assignee（改為只更新 Test Run Item 的本地欄位）
 
 // 卷動到附件區域
 function scrollToAttachments() {
@@ -2194,7 +2317,9 @@ function displayTestCaseDetail(testCase) {
 
 // 生成基本資訊區域的 HTML
 function generateBasicInfoHtml(testCase) {
-    const assigneeName = testCase.assignee ? testCase.assignee.name || testCase.assignee.en_name : '';
+    // 以 Test Run Item 的 assignee_name 為準（本地 DB），而非 Test Case 的 assignee
+    const itemForCase = (testRunItems || []).find(i => i.test_case_number === testCase.test_case_number);
+    const assigneeName = itemForCase ? (itemForCase.assignee_name || '') : '';
     const tcgText = testCase.tcg && testCase.tcg.length > 0 ? testCase.tcg.map(t => t.text || t).join(', ') : '';
     const attachmentCount = testCase.attachments ? testCase.attachments.length : 0;
 

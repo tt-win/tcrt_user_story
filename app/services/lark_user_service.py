@@ -436,6 +436,36 @@ class LarkUserService:
         except Exception as e:
             self.logger.error(f"搜索用戶失敗: {e}")
             return []
+
+    def get_top_users(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """返回前端可用的前 N 名活躍用戶（無搜尋詞時的預設清單）。
+
+        以本地同步的 LarkUser 為資料來源，僅返回啟用且未離職的用戶，
+        依名稱排序，取前 N 筆，並轉為前端聯絡人格式。
+        """
+        try:
+            users = self.db_session.query(LarkUser).filter(
+                LarkUser.is_activated == True,
+                LarkUser.is_exited == False
+            ).order_by(LarkUser.name.asc()).limit(limit).all()
+
+            result: List[Dict[str, Any]] = []
+            for user in users:
+                result.append({
+                    'id': user.user_id,
+                    'name': user.name,
+                    'display_name': user.name or user.en_name,
+                    'email': user.enterprise_email,
+                    'avatar': user.avatar_240,
+                    'department_id': user.primary_department_id,
+                    'job_title': user.job_title,
+                    'employee_type': user.employee_type
+                })
+
+            return result
+        except Exception as e:
+            self.logger.error(f"獲取預設用戶清單失敗: {e}")
+            return []
     
     def cleanup_inactive_users(self, days_threshold: int = 30) -> int:
         """清理超過指定天數未同步的用戶"""

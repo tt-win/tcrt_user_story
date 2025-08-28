@@ -194,6 +194,13 @@ html, body { height: 100%; overflow: hidden; }
     box-shadow: 0 2px 3px rgba(0,0,0,0.05); /* 輕微陰影強化層次 */
 }
 
+/* 大量新增 Modal 固定高度與卷動區域 */
+#bulkCreateModal .modal-content { font-size: 0.9rem; }
+#bulkCreateModal .modal-body { height: 65vh; overflow: hidden; }
+#bulkCreateModal .bulk-left-scroll { max-height: 60vh; overflow: auto; padding-right: .25rem; }
+#bulkCreateModal .bulk-preview-scroll { max-height: 60vh; overflow: auto; min-width: 26ch; max-width: 56ch; }
+#bulkCreateModal #bulkPreview code { font-size: 0.875rem; }
+
 /* 專門收斂 #searchInput 的父層（col-）之上緣空白：縮小該 row 的垂直 gutter */
 #searchFilterCard .card-body .row.g-3 {
     --bs-gutter-y: 0.125rem; /* 再更緊：由 0.25rem 降為 0.125rem */
@@ -223,6 +230,9 @@ html, body { height: 100%; overflow: hidden; }
 <div class="d-flex gap-2">
     <button type="button" class="btn btn-primary" id="addTestCaseBtn">
         <i class="fas fa-plus me-2"></i><span data-i18n="testCase.createTestCase">新增測試案例</span>
+    </button>
+    <button type="button" class="btn btn-outline-primary" id="openBulkCreateBtn">
+        <i class="fas fa-layer-group me-2"></i><span data-i18n="testCase.bulk.bulkCreateMode">大量新增模式</span>
     </button>
     <button type="button" class="btn btn-secondary" id="refreshBtn">
         <i class="fas fa-sync-alt me-2"></i><span data-i18n="common.refresh">重新整理</span>
@@ -327,7 +337,7 @@ html, body { height: 100%; overflow: hidden; }
                             <th width="80" class="text-center" style="padding: 4px 8px !important; vertical-align: middle;" data-i18n="testCase.priority">優先級</th>
                             <th width="100" class="text-center" style="padding: 4px 8px !important; vertical-align: middle;" data-i18n="common.createDate">建立日期</th>
                             <th width="100" class="text-center" style="padding: 4px 8px !important; vertical-align: middle;" data-i18n="common.updateDate">更新日期</th>
-                            <th width="100" style="padding: 4px 8px !important; vertical-align: middle;" data-i18n="common.actions">操作</th>
+                            <th width="100" class="text-center" style="padding: 4px 8px !important; vertical-align: middle;" data-i18n="common.actions">操作</th>
                         </tr>
                     </thead>
                     <tbody id="testCasesTableBody">
@@ -675,6 +685,75 @@ html, body { height: 100%; overflow: hidden; }
         </div>
     </div>
 </div>
+
+<!-- 大量新增 Test Case Modal -->
+<div class="modal fade" id="bulkCreateModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">
+          <i class="fas fa-layer-group me-2"></i>
+          <span data-i18n="testCase.bulk.bulkCreateMode">大量新增模式</span>
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="row g-3">
+          <!-- 左側：設定表單 -->
+          <div class="col-12 col-lg-7">
+            <!-- 置頂不捲動的說明文字 -->
+            <div class="mb-2 text-muted small" data-i18n="testCase.bulk.structureHint">
+              每個前綴可新增多個中間分類與末尾單號範圍。最終單號格式：前綴.中間.末尾（末尾以 10 遞增）。
+            </div>
+            <div class="bulk-left-scroll">
+              <!-- 前綴單號清單 -->
+              <div class="d-flex align-items-center justify-content-between mb-2">
+                <label class="form-label mb-0"><span data-i18n="testCase.bulk.prefixList">前綴單號清單</span></label>
+                <button type="button" class="btn btn-outline-primary btn-sm" id="addPrefixBtn">
+                  <i class="fas fa-plus me-1"></i><span data-i18n="testCase.bulk.addPrefix">新增前綴</span>
+                </button>
+              </div>
+              <div id="prefixContainer" class="mb-2"></div>
+
+              <hr>
+              <!-- 驗證提示 -->
+              <div id="bulkValidation" style="display:none"></div>
+            </div>
+          </div>
+
+          <!-- 右側：預覽 -->
+          <div class="col-12 col-lg-5">
+            <div class="border-start ps-3 h-100">
+              <div class="d-flex align-items-center mb-2">
+                <i class="fas fa-eye me-2 text-primary"></i>
+                <strong><span data-i18n="testCase.bulk.generatePreview">預覽將產生的單號</span></strong>
+              </div>
+              <div class="small text-muted mb-2"><span data-i18n="testCase.bulk.totalToCreate">預計建立筆數</span>：<span id="bulkTotalCount">0</span></div>
+              <div id="bulkPreview" class="small bulk-preview-scroll">
+                <div id="bulkPreviewList" class="text-muted"></div>
+              </div>
+              <div id="bulkProgress" style="display:none" class="mt-3">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                  <small class="text-muted" data-i18n="testCase.bulk.creating">建立中...</small>
+                  <small class="text-muted" id="bulkProgressText">0/0</small>
+                </div>
+                <div class="progress" style="height:6px;">
+                  <div class="progress-bar bg-primary" id="bulkProgressBar" style="width:0%"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal" data-i18n="common.cancel">取消</button>
+                <button type="button" class="btn btn-primary btn-sm" id="startBulkCreateBtn">
+                  <i class="fas fa-check me-2"></i><span data-i18n="testCase.bulk.startCreate">開始建立</span>
+                </button>
+      </div>
+    </div>
+  </div>
+  </div>
 {% endblock %}
 
 {% block scripts %}
@@ -711,6 +790,8 @@ function removeExecCachedTestCase(testCaseNumber) {
 let testCases = [];
 let filteredTestCases = [];
 let selectedTestCases = new Set();
+// Shift 連續多選錨點（Test Case Management）
+let lastCaseCheckboxIndex = null;
 let currentPage = 1;
 let currentTestCaseIndex = -1; // 當前檢視測試案例在 filteredTestCases 中的索引
 let pageSize = 50;
@@ -1192,11 +1273,15 @@ function renderTestCasesTable() {
                     ${formatDate(testCase.updated_at, 'date')}
                 </div>
             </td>
-            <td class="align-middle text-center">
-                <div class="test-case-actions">
+            <td class="align-middle text-center" style="width: 100px;">
+                <div class="test-case-actions d-flex justify-content-center gap-2">
                     <button type="button" class="btn btn-sm btn-view" 
                             onclick="viewTestCase('${testCase.record_id}')" data-i18n-title="tooltips.viewEdit">
                         <i class="fas fa-eye"></i>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" 
+                            onclick="copyTestCase('${testCase.record_id}')" title="${(window.i18n && window.i18n.isReady()) ? window.i18n.t('common.copy') : '複製'}">
+                        <i class="fas fa-copy"></i>
                     </button>
                     <button type="button" class="btn btn-sm btn-danger" 
                             onclick="deleteTestCase('${testCase.record_id}')" data-i18n-title="tooltips.delete">
@@ -1214,6 +1299,8 @@ function renderTestCasesTable() {
 function bindEvents() {
     // 新增按鈕
     document.getElementById('addTestCaseBtn').addEventListener('click', () => showTestCaseModal());
+    // 監聽大量新增欄位變更以更新預覽
+    // 移除舊的前綴/末尾輸入監聽；改由 renderPrefixes 中的 oninput 觸發
     
     // 重新載入按鈕
     document.getElementById('refreshBtn').addEventListener('click', refreshTestCases);
@@ -1257,12 +1344,339 @@ function bindEvents() {
             updateBatchToolbar();
         }
     });
+
+    // 支援 Shift-點選 連續多選（同頁範圍）
+    document.addEventListener('click', function(e) {
+        const cb = e.target;
+        if (!cb.classList || !cb.classList.contains('test-case-checkbox')) return;
+        const checkboxes = Array.from(document.querySelectorAll('.test-case-checkbox'));
+        const currentIndex = checkboxes.indexOf(cb);
+        if (currentIndex === -1) return;
+
+        if (e.shiftKey && lastCaseCheckboxIndex !== null && lastCaseCheckboxIndex !== -1) {
+            const start = Math.min(lastCaseCheckboxIndex, currentIndex);
+            const end = Math.max(lastCaseCheckboxIndex, currentIndex);
+            const shouldCheck = cb.checked;
+            for (let i = start; i <= end; i++) {
+                const c = checkboxes[i];
+                if (c.checked !== shouldCheck) c.checked = shouldCheck;
+                const id = c.value; // record_id 為字串
+                if (shouldCheck) selectedTestCases.add(id); else selectedTestCases.delete(id);
+            }
+            updateBatchToolbar();
+        }
+        // 更新錨點
+        lastCaseCheckboxIndex = currentIndex;
+    });
+    
+    // 大量新增模式
+    const openBulkBtn = document.getElementById('openBulkCreateBtn');
+    if (openBulkBtn) openBulkBtn.addEventListener('click', openBulkCreateModal);
+    const addPrefixBtn = document.getElementById('addPrefixBtn');
+    if (addPrefixBtn) addPrefixBtn.addEventListener('click', addPrefix);
+    const startBulkBtn = document.getElementById('startBulkCreateBtn');
+    if (startBulkBtn) startBulkBtn.addEventListener('click', startBulkCreate);
     
     // 儲存按鈕
     document.getElementById('saveTestCaseBtn').addEventListener('click', saveTestCase);
     
     // 儲存並新增下一筆按鈕
     document.getElementById('saveAndAddNextBtn').addEventListener('click', saveAndAddNext);
+    // 啟用「/」快速搜尋
+    setupQuickSearch_TCM();
+}
+
+// ===== 大量新增模式（多前綴 / 前綴下多中間 / 末尾範圍） =====
+let bulkModalInstance = null;
+// 結構：[{ prefix: string, middles: [{ middle: '110', start: 20, end: 60 }] }]
+let bulkTree = [];
+
+function openBulkCreateModal() {
+    resetBulkState();
+    const modalEl = document.getElementById('bulkCreateModal');
+    if (!bulkModalInstance) bulkModalInstance = new bootstrap.Modal(modalEl);
+    if (window.i18n && window.i18n.isReady()) window.i18n.retranslate(modalEl);
+    bulkModalInstance.show();
+}
+
+function resetBulkState() {
+    bulkTree = [];
+    renderPrefixes();
+    document.getElementById('bulkPreviewList').textContent = '';
+    document.getElementById('bulkTotalCount').textContent = '0';
+    hideBulkValidation();
+    hideBulkProgress();
+}
+
+function addPrefix() { bulkTree.push({ prefix: '', middles: [] }); renderPrefixes(); }
+
+function renderPrefixes() {
+    const container = document.getElementById('prefixContainer');
+    const optionsAll = (base=10) => Array.from({length: ((990 - base)/10)+1}, (_,i)=>base+i*10)
+          .map(v => `<option value="${v}">${pad3(v)}</option>`).join('');
+    container.innerHTML = bulkTree.map((p, pi) => {
+        const middlesHtml = (p.middles||[]).map((m, mi) => {
+            const startVal = m.start || 10;
+            const endVal = m.end || startVal;
+            const endOptions = Array.from({length: ((990 - startVal)/10)+1}, (_,i)=>startVal+i*10)
+                .map(v => `<option value="${v}" ${v===endVal?'selected':''}>${pad3(v)}</option>`).join('');
+            return `
+              <div class="row g-2 align-items-end mb-2">
+                <div class="col-12 col-md-3">
+                  <label class="form-label mb-0 small" data-i18n="testCase.bulk.middleCode">中間分類號</label>
+                  <input type="text" class="form-control form-control-sm" value="${escapeHtml(m.middle||'')}" maxlength="3" oninput="onMiddleCodeChange(${pi}, ${mi}, this.value)">
+                </div>
+                <div class="col-6 col-md-3">
+                  <label class="form-label mb-0 small" data-i18n="testCase.bulk.suffixStart">末尾起始</label>
+                  <select class="form-select form-select-sm" onchange="onSuffixChange(${pi}, ${mi}, 'start', this.value)">
+                    ${optionsAll(10).replace(`value=\"${startVal}\"`, `value=\"${startVal}\" selected`)}
+                  </select>
+                </div>
+                <div class="col-6 col-md-3">
+                  <label class="form-label mb-0 small" data-i18n="testCase.bulk.suffixEnd">末尾結束</label>
+                  <select class="form-select form-select-sm" onchange="onSuffixChange(${pi}, ${mi}, 'end', this.value)">
+                    ${endOptions}
+                  </select>
+                </div>
+                <div class="col-12 col-md-3 d-flex gap-2">
+                  <button type="button" class="btn btn-outline-danger btn-sm" title="-" onclick="removeMiddle(${pi}, ${mi})"><i class="fas fa-times"></i></button>
+                </div>
+              </div>
+            `;
+        }).join('');
+        return `
+          <div class="card mb-3">
+            <div class="card-body">
+              <div class="d-flex gap-2 mb-2">
+                <div class="flex-grow-1">
+                  <label class="form-label mb-1"><span data-i18n="testCase.bulk.prefix">前綴單號</span></label>
+                  <input type="text" class="form-control form-control-sm" value="${escapeHtml(p.prefix||'')}" placeholder="e.g. TCG-93178" oninput="onPrefixChange(${pi}, this.value)">
+                </div>
+                <div class="align-self-end">
+                  <button type="button" class="btn btn-outline-danger" title="remove" onclick="removePrefix(${pi})"><i class="fas fa-trash"></i></button>
+                </div>
+              </div>
+              <div class="d-flex align-items-center justify-content-between mt-2 mb-2">
+                <label class="form-label mb-0"><span data-i18n="testCase.bulk.middleRanges">功能分項範圍</span></label>
+                <button type="button" class="btn btn-outline-primary btn-sm" onclick="addMiddle(${pi})"><i class="fas fa-plus me-1"></i><span data-i18n="testCase.bulk.addRange">新增範圍</span></button>
+              </div>
+              <div>${middlesHtml || '<div class="text-muted small">(empty)</div>'}</div>
+            </div>
+          </div>
+        `;
+    }).join('');
+    if (window.i18n && window.i18n.isReady()) window.i18n.retranslate(container);
+}
+
+function onPrefixChange(pi, value) { bulkTree[pi].prefix = value; updateBulkPreview(); }
+function removePrefix(pi) { bulkTree.splice(pi,1); renderPrefixes(); updateBulkPreview(); }
+function addMiddle(pi) { (bulkTree[pi].middles ||= []).push({ middle: '', start: 10, end: 10 }); renderPrefixes(); updateBulkPreview(); }
+function removeMiddle(pi, mi) { bulkTree[pi].middles.splice(mi,1); renderPrefixes(); updateBulkPreview(); }
+function onMiddleCodeChange(pi, mi, value) {
+    const sanitized = (value||'').replace(/[^0-9]/g,'').slice(0,3);
+    bulkTree[pi].middles[mi].middle = sanitized;
+    updateBulkPreview();
+}
+function onSuffixChange(pi, mi, which, value) {
+    const v = parseInt(value,10);
+    if (isNaN(v)) return;
+    const m = bulkTree[pi].middles[mi];
+    if (which==='start') { m.start = v; if (!m.end || m.end < v) m.end = v; }
+    else { m.end = v; if (!m.start || m.start > v) m.start = v; }
+    renderPrefixes();
+    updateBulkPreview();
+}
+
+function updateBulkPreview() {
+    const numbers = generateBulkNumbers();
+    const previewEl = document.getElementById('bulkPreviewList');
+    document.getElementById('bulkTotalCount').textContent = String(numbers.length);
+    // 條列顯示（大量時限制渲染上限以避免 DOM 過大）
+    const maxRender = 2000; // 視需要可調整
+    const renderList = numbers.slice(0, maxRender);
+    let html = '<ul class="list-unstyled mb-0">';
+    html += renderList.map(n => `<li><code>${escapeHtml(n)}</code></li>`).join('');
+    if (numbers.length > maxRender) {
+        html += `<li class="text-muted">... (+${numbers.length - maxRender})</li>`;
+    }
+    html += '</ul>';
+    previewEl.innerHTML = html;
+}
+
+function generateBulkNumbers() {
+    const list = [];
+    bulkTree.forEach(p => {
+        const prefix = (p.prefix||'').trim();
+        (p.middles||[]).forEach(m => {
+            const mid = (m.middle||'').replace(/[^0-9]/g,'');
+            if (!prefix || mid.length===0) return;
+            const middle = pad3(parseInt(mid,10)||0);
+            const start = Math.max(10, Math.min(990, m.start||10));
+            const end = Math.max(start, Math.min(990, m.end||start));
+            for (let v=start; v<=end; v+=10) {
+                list.push(`${prefix}.${middle}.${pad3(v)}`);
+            }
+        });
+    });
+    return list;
+}
+
+function pad3(n) { return String(n).padStart(3, '0'); }
+
+// 簡單的 HTML 轉義，供動態模板使用
+function escapeHtml(text) {
+    if (text === undefined || text === null) return '';
+    const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+    return String(text).replace(/[&<>"']/g, (m) => map[m]);
+}
+
+function showBulkValidation(html, isError = true) {
+    const box = document.getElementById('bulkValidation');
+    box.className = isError ? 'alert alert-danger' : 'alert alert-warning';
+    box.innerHTML = html;
+    box.style.display = 'block';
+}
+function hideBulkValidation() {
+    const box = document.getElementById('bulkValidation');
+    box.style.display = 'none';
+    box.innerHTML = '';
+}
+
+function showBulkProgress(total) {
+    document.getElementById('bulkProgress').style.display = 'block';
+    updateBulkProgress(0, total);
+}
+function hideBulkProgress() {
+    document.getElementById('bulkProgress').style.display = 'none';
+}
+function updateBulkProgress(done, total) {
+    const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+    document.getElementById('bulkProgressText').textContent = `${done}/${total}`;
+    document.getElementById('bulkProgressBar').style.width = `${pct}%`;
+}
+
+async function startBulkCreate() {
+    hideBulkValidation();
+    const currentTeam = AppUtils.getCurrentTeam();
+    if (!currentTeam || !currentTeam.id) {
+        showBulkValidation(window.i18n ? window.i18n.t('errors.pleaseSelectTeam') : '請先選擇團隊');
+        return;
+    }
+    if (bulkTree.length === 0) {
+        showBulkValidation(window.i18n ? window.i18n.t('testCase.bulk.addAtLeastOne') : '請至少新增一個範圍');
+        return;
+    }
+
+    const numbers = generateBulkNumbers();
+    if (numbers.length === 0) {
+        showBulkValidation(window.i18n ? window.i18n.t('testCase.bulk.nothingToCreate') : '沒有可建立的單號');
+        return;
+    }
+
+    // 檢查重複
+    const existing = new Set(testCases.map(tc => tc.test_case_number).filter(Boolean));
+    const dup = numbers.filter(n => existing.has(n));
+    if (dup.length > 0) {
+        const title = window.i18n ? window.i18n.t('testCase.bulk.duplicatesFound') : '發現重複單號：';
+        const fixText = window.i18n ? window.i18n.t('testCase.bulk.fixBeforeSave') : '請修正後再儲存。';
+        showBulkValidation(`<div class="mb-1">${title}</div><code>${dup.join(', ')}</code><div class="mt-2">${fixText}</div>`, true);
+        return;
+    }
+
+    // 一次性建立（批次 API）
+    showBulkProgress(numbers.length);
+    const saveBtn = document.getElementById('startBulkCreateBtn');
+    const original = saveBtn.innerHTML;
+    saveBtn.disabled = true;
+    const creatingText = window.i18n ? window.i18n.t('testCase.bulk.creating') : '建立中...';
+    saveBtn.innerHTML = `<i class="fas fa-spinner fa-spin me-2"></i>${creatingText}`;
+
+    try {
+        const items = numbers.map(num => ({
+            test_case_number: num,
+            title: `${num} ${window.i18n ? window.i18n.t('testCase.bulk.tempTitleSuffix') : '的測試案例'}`,
+            priority: 'Medium'
+        }));
+        const resp = await fetch(`/api/teams/${currentTeam.id}/testcases/bulk_create`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items })
+        });
+        const data = await resp.json();
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = original;
+        if (!resp.ok || !data.success) {
+            if (data && Array.isArray(data.duplicates) && data.duplicates.length) {
+                const title = window.i18n ? window.i18n.t('testCase.bulk.duplicatesFound') : '發現重複單號：';
+                const fixText = window.i18n ? window.i18n.t('testCase.bulk.fixBeforeSave') : '請修正後再儲存。';
+                showBulkValidation(`<div class="mb-1">${title}</div><code>${data.duplicates.join(', ')}</code><div class="mt-2">${fixText}</div>`, true);
+                return;
+            }
+            const errMsg = (data && data.errors && data.errors.join('; ')) || (resp.statusText || '');
+            showBulkValidation((window.i18n ? window.i18n.t('errors.saveFailed') : '儲存失敗') + (errMsg ? `：${errMsg}` : ''));
+            return;
+        }
+        updateBulkProgress(numbers.length, numbers.length);
+        await loadTestCases(false);
+        AppUtils.showSuccess(window.i18n ? window.i18n.t('messages.dataReloaded') : '資料已重新載入');
+        if (bulkModalInstance) bulkModalInstance.hide();
+    } catch (e) {
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = original;
+        showBulkValidation((window.i18n ? window.i18n.t('errors.saveFailed') : '儲存失敗') + `：${e}`);
+        return;
+    }
+}
+
+// 複製 Test Case：開啟與「新增/編輯」相同的 Modal，預填欄位
+function copyTestCase(id) {
+    const source = testCases.find(tc => tc.record_id === id);
+    if (!source) return;
+    // 標記為複製模式，供 showTestCaseModal 判斷隱藏「儲存並新增下一筆」
+    try {
+        const modal = document.getElementById('testCaseModal');
+        if (modal && modal.dataset) modal.dataset.copyMode = '1';
+    } catch (_) {}
+    // 先以新增模式打開，確保狀態正確（不帶 record_id，附件清空，按鈕狀態正確）
+    showTestCaseModal(null);
+
+    // 設定 Modal 標題為「複製測試案例」
+    const modalTitle = document.getElementById('testCaseModalTitle');
+    if (modalTitle) {
+        const copyText = window.i18n ? window.i18n.t('common.copy') : '複製';
+        const baseTitle = window.i18n ? window.i18n.t('testCase.createTestCase') : '新增測試案例';
+        modalTitle.textContent = `${copyText} ${baseTitle}`;
+    }
+
+    // 預填欄位（編號留空，避免重複；標題前綴「複製 - 」）
+    const copyWord = window.i18n ? window.i18n.t('common.copy') : '複製';
+    document.getElementById('testCaseId').value = '';
+    document.getElementById('title').value = `${copyWord} - ${source.title || ''}`;
+    document.getElementById('testCaseNumber').value = '';
+    document.getElementById('priority').value = source.priority || 'Medium';
+    const tcgValue = source.tcg ? source.tcg.map(t => t.text || t).join(', ') : '';
+    document.getElementById('tcg').value = tcgValue;
+    const modalTCGInput = document.getElementById('modalTCGInput');
+    if (modalTCGInput) modalTCGInput.value = tcgValue;
+    document.getElementById('precondition').value = source.precondition || '';
+    document.getElementById('test_steps').value = source.steps || '';
+    document.getElementById('expected_result').value = source.expected_result || '';
+
+    // 更新 Markdown 預覽
+    try {
+        markdownFields.forEach(fieldId => updateMarkdownPreview(fieldId));
+    } catch (_) {}
+
+    // 新增模式下的按鈕狀態
+    const saveBtn = document.getElementById('saveTestCaseBtn');
+    const saveAndAddNextBtn = document.getElementById('saveAndAddNextBtn');
+    if (saveBtn) saveBtn.disabled = false;
+    if (saveAndAddNextBtn) {
+        // 複製模式：不提供「儲存並新增下一筆」
+        saveAndAddNextBtn.disabled = true;
+        saveAndAddNextBtn.style.display = 'none';
+    }
+
+    // 編輯器模式採用 split（與新增一致）
+    try { setEditorMode('split'); } catch (_) {}
 }
 
 let originalFormData = {}; // 存儲原始表單資料
@@ -1275,6 +1689,7 @@ function showTestCaseModal(testCase = null) {
     const form = document.getElementById('testCaseForm');
     const saveBtn = document.getElementById('saveTestCaseBtn');
     const saveAndAddNextBtn = document.getElementById('saveAndAddNextBtn');
+    const isCopyMode = (modal && modal.dataset && modal.dataset.copyMode === '1');
     
     // 重設表單和狀態
     form.reset();
@@ -1374,8 +1789,14 @@ function showTestCaseModal(testCase = null) {
         
         originalFormData = {};
         saveBtn.disabled = false; // 新增模式下儲存按鈕啟用
-        saveAndAddNextBtn.disabled = false; // 新增模式下「儲存並新增下一筆」按鈕啟用
-        saveAndAddNextBtn.style.display = 'inline-block'; // 顯示「儲存並新增下一筆」按鈕
+        if (isCopyMode) {
+            // 複製模式移除「儲存並新增下一筆」
+            saveAndAddNextBtn.disabled = true;
+            saveAndAddNextBtn.style.display = 'none';
+        } else {
+            saveAndAddNextBtn.disabled = false; // 新增模式下「儲存並新增下一筆」按鈕啟用
+            saveAndAddNextBtn.style.display = 'inline-block'; // 顯示「儲存並新增下一筆」按鈕
+        }
         currentTestCaseIndex = -1;
         updateNavigationButtons();
         
@@ -1427,6 +1848,8 @@ function showTestCaseModal(testCase = null) {
         // 關閉時移除鍵盤事件監聽
         modal.addEventListener('hidden.bs.modal', function() {
             document.removeEventListener('keydown', handleTestCaseModalKeydown);
+            // 離開時重置 copyMode 標記
+            try { modal.dataset.copyMode = '0'; } catch (_) {}
             // 最小模式：在 Modal 關閉後一併關閉彈出視窗
             if (window.__MINIMAL_MODE__) {
                 try { window.close(); } catch (e) {}
@@ -1602,7 +2025,7 @@ async function saveTestCase() {
         precondition: document.getElementById('precondition').value,
         steps: document.getElementById('test_steps').value,
         expected_result: document.getElementById('expected_result').value,
-        tcg: document.getElementById('modalTCGInput').value  // 從新的 type-to-search 輸入框取得 TCG
+        tcg: document.getElementById('modalTCGInput').value  // 從新的 type-to-search 輸入框取得 TCG（更新 API 支援字串）
         // 注意：不再包含 attachments，因為附件現在是立即附加到記錄的
     };
     
@@ -1620,6 +2043,10 @@ async function saveTestCase() {
     // 表單驗證
     if (!testCaseData.title) {
         showError(window.i18n ? window.i18n.t('errors.testCaseTitleRequired') : '請填寫測試案例標題');
+        return;
+    }
+    if (!testCaseData.test_case_number || !testCaseData.test_case_number.trim()) {
+        showError(window.i18n ? window.i18n.t('errors.testCaseNumberRequired') : '請填寫測試案例編號');
         return;
     }
     
@@ -1677,6 +2104,8 @@ async function saveTestCase() {
                 });
             } else {
                 // 新增測試案例
+                // 建立 API 不支援 tcg 字串（僅 update 支援），避免 422 將其移除
+                try { delete testCaseData.tcg; } catch (_) {}
                 response = await fetch(`/api/teams/${currentTeam.id}/testcases/`, {
                     method: 'POST',
                     headers: {
@@ -1687,8 +2116,20 @@ async function saveTestCase() {
             }
             
             if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.detail || '儲存失敗');
+                let msg = '儲存失敗';
+                try {
+                    const errorData = await response.json();
+                    if (errorData && errorData.detail) {
+                        if (Array.isArray(errorData.detail)) {
+                            msg = errorData.detail.map(d => d.msg || d.detail || JSON.stringify(d)).join('; ');
+                        } else if (typeof errorData.detail === 'string') {
+                            msg = errorData.detail;
+                        } else {
+                            msg = JSON.stringify(errorData.detail);
+                        }
+                    }
+                } catch (_) {}
+                throw new Error(msg);
             }
             
             // 如果是新增測試案例，需要取得新的記錄ID並轉為編輯模式
@@ -1765,6 +2206,10 @@ async function saveAndAddNext() {
         showError(window.i18n ? window.i18n.t('errors.testCaseTitleRequired') : '請填寫測試案例標題');
         return;
     }
+    if (!testCaseData.test_case_number || !testCaseData.test_case_number.trim()) {
+        showError(window.i18n ? window.i18n.t('errors.testCaseNumberRequired') : '請填寫測試案例編號');
+        return;
+    }
     
     // 檢查測試案例編號唯一性（新增模式不需要排除任何記錄）
     if (testCaseData.test_case_number) {
@@ -1798,6 +2243,8 @@ async function saveAndAddNext() {
     
     try {
         // 新增測試案例
+        // 建立 API 不支援 tcg 字串（僅 update 支援），避免 422 將其移除
+        try { delete testCaseData.tcg; } catch (_) {}
         const response = await fetch(`/api/teams/${currentTeam.id}/testcases/`, {
             method: 'POST',
             headers: {
@@ -1807,8 +2254,20 @@ async function saveAndAddNext() {
         });
         
         if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.detail || '儲存失敗');
+            let msg = '儲存失敗';
+            try {
+                const errorData = await response.json();
+                if (errorData && errorData.detail) {
+                    if (Array.isArray(errorData.detail)) {
+                        msg = errorData.detail.map(d => d.msg || d.detail || JSON.stringify(d)).join('; ');
+                    } else if (typeof errorData.detail === 'string') {
+                        msg = errorData.detail;
+                    } else {
+                        msg = JSON.stringify(errorData.detail);
+                    }
+                }
+            } catch (_) {}
+            throw new Error(msg);
         }
         
         // 重新載入測試案例（不顯示載入動畫）
@@ -1998,6 +2457,8 @@ function toggleSelectAll() {
     });
     
     updateBatchToolbar();
+    // 重置 Shift 多選錨點
+    lastCaseCheckboxIndex = null;
 }
 
 function updateBatchToolbar() {
@@ -2042,6 +2503,7 @@ function deselectAll() {
     document.querySelectorAll('.test-case-checkbox').forEach(cb => cb.checked = false);
     document.getElementById('selectAllCheckbox').checked = false;
     updateBatchToolbar();
+    lastCaseCheckboxIndex = null;
 }
 
 function batchEditTestCases() {
@@ -2214,6 +2676,130 @@ function changePage(page) {
     }
     // 工具列顯示狀態可能改變整體高度，需重新計算列表高度
     adjustTestCasesScrollHeight();
+}
+
+// ===== 快速搜尋（Test Case Management） =====
+function setupQuickSearch_TCM() {
+    if (!document.getElementById('quickSearchOverlay')) {
+        const overlay = document.createElement('div');
+        overlay.id = 'quickSearchOverlay';
+        overlay.style.cssText = 'position:fixed;inset:0;z-index:1060;display:none;background:rgba(0,0,0,0.35)';
+        overlay.innerHTML = `
+          <div class="position-fixed" style="top:34vh; left:50%; transform: translateX(-50%); width:min(720px, 92vw);">
+            <div class="card shadow">
+              <div class="card-body p-2">
+                <input id=\"quickSearchInput\" type=\"text\" class=\"form-control form-control-lg\" placeholder=\"${window.i18n ? window.i18n.t('testCase.searchPlaceholder') : '搜尋測試案例...'}\" autocomplete=\"off\" />
+                <div id=\"quickSearchResults\" class=\"list-group list-group-flush\" style=\"max-height:30vh; overflow:auto;\"></div>
+              </div>
+            </div>
+          </div>`;
+        document.body.appendChild(overlay);
+        try {
+            const input = overlay.querySelector('#quickSearchInput');
+            if (input && window.i18n && window.i18n.isReady()) {
+                input.placeholder = window.i18n.t('testCase.searchPlaceholder');
+            }
+            document.addEventListener('languageChanged', () => {
+                if (input && window.i18n && window.i18n.isReady()) {
+                    input.placeholder = window.i18n.t('testCase.searchPlaceholder');
+                }
+            });
+        } catch (_) {}
+        overlay.addEventListener('click', (e)=>{ if(e.target===overlay) closeQuickSearch(); });
+    }
+
+    document.addEventListener('keydown', function(e){
+        const tag = (e.target && e.target.tagName || '').toLowerCase();
+        const isTyping = ['input','textarea','select'].includes(tag) || (e.target && e.target.isContentEditable);
+        if (!isTyping && e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            e.preventDefault();
+            openQuickSearch_TCM();
+        }
+    });
+}
+
+// 底部左側提示
+document.addEventListener('DOMContentLoaded', function(){
+    if (document.getElementById('quickSearchHint')) return;
+    const hint = document.createElement('div');
+    hint.id = 'quickSearchHint';
+    hint.className = 'position-fixed';
+    hint.style.cssText = 'left:12px; bottom:12px; z-index:1040; opacity:0.85; pointer-events:none;';
+    const label = window.i18n && window.i18n.isReady() ? window.i18n.t('hotkeys.quickSearch') : '按 / 開啟快速搜尋';
+    hint.innerHTML = `<span class="badge bg-secondary-subtle text-secondary border" style="--bs-bg-opacity:.65;">${label}</span>`;
+    document.body.appendChild(hint);
+    // i18n 準備完成時也同步更新
+    document.addEventListener('i18nReady', () => {
+        const text = window.i18n ? window.i18n.t('hotkeys.quickSearch') : '按 / 開啟快速搜尋';
+        const badge = document.querySelector('#quickSearchHint .badge');
+        if (badge) badge.textContent = text;
+    });
+    document.addEventListener('languageChanged', () => {
+        const text = window.i18n ? window.i18n.t('hotkeys.quickSearch') : '按 / 開啟快速搜尋';
+        const badge = document.querySelector('#quickSearchHint .badge');
+        if (badge) badge.textContent = text;
+    });
+});
+
+function openQuickSearch_TCM() {
+    const overlay = document.getElementById('quickSearchOverlay');
+    const input = document.getElementById('quickSearchInput');
+    const results = document.getElementById('quickSearchResults');
+    if (!overlay || !input || !results) return;
+    overlay.style.display = 'block';
+    input.value = '';
+    results.innerHTML = '';
+    input.focus();
+
+    const handleKey = (e) => {
+        if (e.key === 'Escape') { closeQuickSearch(); return; }
+        if (e.key === 'Enter') {
+            const active = results.querySelector('.active');
+            if (active) { active.click(); }
+        } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            const items = Array.from(results.querySelectorAll('.list-group-item'));
+            if (items.length === 0) return;
+            let idx = items.findIndex(li => li.classList.contains('active'));
+            if (idx < 0) idx = 0;
+            idx = (e.key === 'ArrowDown') ? Math.min(idx+1, items.length-1) : Math.max(idx-1, 0);
+            items.forEach(li => li.classList.remove('active'));
+            items[idx].classList.add('active');
+            items[idx].scrollIntoView({ block:'nearest' });
+        }
+    };
+    input.onkeydown = handleKey;
+    input.oninput = () => quickSearchRender_TCM(input.value, results);
+}
+
+function closeQuickSearch() {
+    const overlay = document.getElementById('quickSearchOverlay');
+    if (overlay) overlay.style.display = 'none';
+}
+
+function quickSearchRender_TCM(query, container) {
+    const q = (query || '').trim().toLowerCase();
+    let matches = [];
+    if (q.length > 0) {
+        matches = (testCases || []).filter(tc => {
+            const num = (tc.test_case_number || '').toLowerCase();
+            const title = (tc.title || '').toLowerCase();
+            return num.includes(q) || title.includes(q);
+        }).slice(0, 100);
+    }
+    if (matches.length === 0) {
+        container.innerHTML = `<div class=\"list-group-item text-muted\">${window.i18n ? window.i18n.t('errors.noMatchingTestCases') : '沒有找到符合條件的測試案例'}</div>`;
+        return;
+    }
+    container.innerHTML = matches.map((tc, idx) => `
+      <button type=\"button\" class=\"list-group-item list-group-item-action ${idx===0?'active':''}\" data-id=\"${tc.record_id}\">\n        <div class=\"d-flex justify-content-between align-items-center\">\n          <code class=\"small me-2\">${escapeHtml(tc.test_case_number || '')}</code>\n          <span class=\"text-truncate\">${escapeHtml(tc.title || '')}</span>\n        </div>\n      </button>`).join('');
+    container.querySelectorAll('.list-group-item').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const id = btn.getAttribute('data-id');
+            closeQuickSearch();
+            if (id) viewTestCase(id);
+        });
+    });
 }
 
 // 快速編輯功能
