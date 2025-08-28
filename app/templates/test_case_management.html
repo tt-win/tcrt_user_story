@@ -1273,6 +1273,11 @@ function bindEvents() {
 function copyTestCase(id) {
     const source = testCases.find(tc => tc.record_id === id);
     if (!source) return;
+    // 標記為複製模式，供 showTestCaseModal 判斷隱藏「儲存並新增下一筆」
+    try {
+        const modal = document.getElementById('testCaseModal');
+        if (modal && modal.dataset) modal.dataset.copyMode = '1';
+    } catch (_) {}
     // 先以新增模式打開，確保狀態正確（不帶 record_id，附件清空，按鈕狀態正確）
     showTestCaseModal(null);
 
@@ -1308,8 +1313,9 @@ function copyTestCase(id) {
     const saveAndAddNextBtn = document.getElementById('saveAndAddNextBtn');
     if (saveBtn) saveBtn.disabled = false;
     if (saveAndAddNextBtn) {
-        saveAndAddNextBtn.disabled = false;
-        saveAndAddNextBtn.style.display = 'inline-block';
+        // 複製模式：不提供「儲存並新增下一筆」
+        saveAndAddNextBtn.disabled = true;
+        saveAndAddNextBtn.style.display = 'none';
     }
 
     // 編輯器模式採用 split（與新增一致）
@@ -1326,6 +1332,7 @@ function showTestCaseModal(testCase = null) {
     const form = document.getElementById('testCaseForm');
     const saveBtn = document.getElementById('saveTestCaseBtn');
     const saveAndAddNextBtn = document.getElementById('saveAndAddNextBtn');
+    const isCopyMode = (modal && modal.dataset && modal.dataset.copyMode === '1');
     
     // 重設表單和狀態
     form.reset();
@@ -1425,8 +1432,14 @@ function showTestCaseModal(testCase = null) {
         
         originalFormData = {};
         saveBtn.disabled = false; // 新增模式下儲存按鈕啟用
-        saveAndAddNextBtn.disabled = false; // 新增模式下「儲存並新增下一筆」按鈕啟用
-        saveAndAddNextBtn.style.display = 'inline-block'; // 顯示「儲存並新增下一筆」按鈕
+        if (isCopyMode) {
+            // 複製模式移除「儲存並新增下一筆」
+            saveAndAddNextBtn.disabled = true;
+            saveAndAddNextBtn.style.display = 'none';
+        } else {
+            saveAndAddNextBtn.disabled = false; // 新增模式下「儲存並新增下一筆」按鈕啟用
+            saveAndAddNextBtn.style.display = 'inline-block'; // 顯示「儲存並新增下一筆」按鈕
+        }
         currentTestCaseIndex = -1;
         updateNavigationButtons();
         
@@ -1478,6 +1491,8 @@ function showTestCaseModal(testCase = null) {
         // 關閉時移除鍵盤事件監聽
         modal.addEventListener('hidden.bs.modal', function() {
             document.removeEventListener('keydown', handleTestCaseModalKeydown);
+            // 離開時重置 copyMode 標記
+            try { modal.dataset.copyMode = '0'; } catch (_) {}
             // 最小模式：在 Modal 關閉後一併關閉彈出視窗
             if (window.__MINIMAL_MODE__) {
                 try { window.close(); } catch (e) {}
