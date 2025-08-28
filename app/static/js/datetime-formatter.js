@@ -234,5 +234,4 @@ const dateTimeFormatter = new DateTimeFormatter();
 // Export for use in other modules
 window.DateTimeFormatter = dateTimeFormatter;
 
-// Log the detected locale for debugging
-console.log('DateTimeFormatter initialized with browser locale:', dateTimeFormatter.getBrowserLocale());
+// DateTimeFormatter initialized

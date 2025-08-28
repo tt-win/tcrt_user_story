@@ -7,7 +7,6 @@ const AppUtils = {
     setCurrentTeam: function(team) {
         this.currentTeam = team;
         localStorage.setItem('currentTeam', JSON.stringify(team));
-        console.log('團隊已設定為:', team.name);
         this.triggerTeamChangeEvent();
     },
 
@@ -32,7 +31,6 @@ const AppUtils = {
     clearCurrentTeam: function() {
         this.currentTeam = null;
         localStorage.removeItem('currentTeam');
-        console.log('團隊選擇已清除');
         this.triggerTeamClearEvent();
     },
 
@@ -164,34 +162,19 @@ const AppUtils = {
 
 // 應用程式初始化
 document.addEventListener('DOMContentLoaded', function() {
-    console.log('應用程式初始化完成');
-    
     // 載入儲存的團隊選擇
     AppUtils.getCurrentTeam();
-    
-    // Debug: 顯示瀏覽器 locale 資訊
-    const browserLocale = AppUtils.getBrowserLocale();
-    console.log('瀏覽器 Locale:', browserLocale);
-    
-    // Debug: 測試日期格式化
-    const testDate = new Date('2024-08-22T14:30:00');
-    console.log('測試日期格式化:');
-    console.log('- 日期:', AppUtils.formatDate(testDate, 'date'));
-    console.log('- 時間:', AppUtils.formatDate(testDate, 'time'));
-    console.log('- 日期時間:', AppUtils.formatDate(testDate, 'datetime'));
-    if (window.DateTimeFormatter) {
-        console.log('- 相對時間:', AppUtils.formatRelativeTime(testDate));
-    }
 });
 
 // 全域函數 (向後兼容)
 function selectTeamGlobally(teamId) {
     // 這個函數會在需要時被其他頁面使用
-    console.log('全域團隊選擇:', teamId);
+    AppUtils.setCurrentTeam({ id: teamId });
 }
 
 // 全域刷新當前頁面資料的函數
 function refreshCurrentPageData() {
-    // 這個函數會被各個頁面根據需要實作
-    console.log('刷新當前頁面資料');
+    // 觸發頁面資料刷新事件
+    const event = new CustomEvent('refreshPageData');
+    window.dispatchEvent(event);
 }

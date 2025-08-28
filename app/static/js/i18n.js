@@ -44,8 +44,7 @@ class I18nSystem {
             document.dispatchEvent(new CustomEvent('i18nReady', {
                 detail: { language: this.currentLanguage }
             }));
-            
-            console.log(`i18n initialized with language: ${this.currentLanguage}`);
+
         } catch (error) {
             console.error('Failed to initialize i18n:', error);
             this.isLoaded = false;
@@ -100,7 +99,6 @@ class I18nSystem {
                 }
                 const translations = await response.json();
                 this.translations[language] = translations;
-                console.log(`Loaded translations for ${language}`);
             } catch (error) {
                 console.error(`Failed to load translations for ${language}:`, error);
                 // If current language fails to load, try fallback
@@ -165,7 +163,6 @@ class I18nSystem {
             detail: { language: language }
         }));
         
-        console.log(`Language switched to: ${language}`);
         return true;
     }
 
