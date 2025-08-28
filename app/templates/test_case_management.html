@@ -200,6 +200,8 @@ html, body { height: 100%; overflow: hidden; }
 #bulkCreateModal .bulk-left-scroll { max-height: 60vh; overflow: auto; padding-right: .25rem; }
 #bulkCreateModal .bulk-preview-scroll { max-height: 60vh; overflow: auto; min-width: 26ch; max-width: 56ch; }
 #bulkCreateModal #bulkPreview code { font-size: 0.875rem; }
+/* 讓結構說明支援換行（以 \n 分行） */
+#bulkCreateModal [data-i18n="testCase.bulk.structureHint"] { white-space: pre-line; }
 
 /* 專門收斂 #searchInput 的父層（col-）之上緣空白：縮小該 row 的垂直 gutter */
 #searchFilterCard .card-body .row.g-3 {

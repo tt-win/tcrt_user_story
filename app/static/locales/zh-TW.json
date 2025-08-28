@@ -161,7 +161,7 @@
       "middleRanges": "功能分項範圍",
       "prefixList": "前綴單號清單",
       "addPrefix": "新增前綴",
-      "structureHint": "每個前綴可新增多個中間分類與末尾單號範圍。最終單號格式：前綴.中間.末尾（末尾以 10 遞增）。",
+      "structureHint": "每個前綴可新增多個中間分類與末尾單號範圍。\n最終單號格式：前綴.中間.末尾（末尾以 10 遞增）。",
       "middleCode": "中間分類號",
       "suffixStart": "末尾起始",
       "suffixEnd": "末尾結束",
