@@ -301,6 +301,10 @@ async def create_test_case(
             attachment_tokens = [att.file_token for att in case.attachments]
         
         # 建立 TestCase 模型實例
+        # 注意：TestCase.parent_record 需要 List[LarkRecord]，而 create 模型是 Optional[LarkRecord]
+        parent_records = []
+        if case.parent_record is not None:
+            parent_records = [case.parent_record]
         test_case = TestCase(
             test_case_number=case.test_case_number,
             title=case.title,
@@ -313,7 +317,7 @@ async def create_test_case(
             attachments=[],  # 暫時為空，將在 to_lark_fields 中處理
             user_story_map=case.user_story_map or [],
             tcg=case.tcg or [],
-            parent_record=case.parent_record,
+            parent_record=parent_records,
             team_id=team_id
         )
         
