@@ -696,12 +696,14 @@ html, body { height: 100%; overflow: hidden; }
                         <input type="text" class="form-control" id="batchTCGInput" 
                                data-i18n-placeholder="testCase.enterTCGNumber"
                                placeholder="輸入 TCG 單號或搜尋關鍵字"
+                               autocomplete="off"
                                onfocus="showBatchTCGDropdown()"
                                onblur="hideBatchTCGDropdown()"
-                               oninput="handleBatchTCGSearch(this)">
+                               oninput="handleBatchTCGSearch(this)"
+                               onkeydown="handleBatchTCGKeydown(event)">
                         <div id="batchTCGDropdown" 
-                             style="position: absolute; top: 100%; left: 0; right: 0; z-index: 1060; max-height: 200px; overflow-y: auto; display: none; background: white; border: 1px solid #ccc; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-                            <!-- TCG 搜尋結果會動態載入到這裡 -->
+                             style="position: absolute; top: 100%; left: 0; right: 0; z-index: 1060; max-height: 200px; overflow-y: auto; display: none; background: white; border: 1px solid #ced4da; border-top: none; border-radius: 0 0 0.375rem 0.375rem; box-shadow: 0 2px 8px rgba(0,0,0,0.15);">
+                            <div class="p-2 text-muted small" data-i18n="testCase.tcgSearchHint">開始輸入以搜尋 TCG...</div>
                         </div>
                     </div>
                     <small class="text-muted" data-i18n="testCase.tcgClearHint">留空可清除 TCG 關聯</small>
@@ -2641,7 +2643,13 @@ function openTestCaseBatchModifyModal() {
     modal.show();
 }
 
+// 批次修改 TCG 搜尋相關變數
+let batchTCGSearchTimeout;
+
 function handleBatchTCGSearch(input) {
+    // 清除之前的超時，實現防抖動
+    clearTimeout(batchTCGSearchTimeout);
+    
     const keyword = input.value.trim();
     const dropdown = document.getElementById('batchTCGDropdown');
     
@@ -2649,11 +2657,18 @@ function handleBatchTCGSearch(input) {
     
     if (keyword.length < 2) {
         dropdown.style.display = 'none';
+        dropdown.innerHTML = '<div class="p-2 text-muted small" data-i18n="testCase.tcgSearchHint">開始輸入以搜尋 TCG...</div>';
         return;
     }
     
-    // 復用現有的 TCG 搜尋 API
-    searchBatchTCGOptions(keyword);
+    // 顯示搜尋中狀態
+    dropdown.innerHTML = '<div class="p-2 text-muted small"><i class="fas fa-spinner fa-spin me-2"></i>搜尋中...</div>';
+    dropdown.style.display = 'block';
+    
+    // 使用防抖動，300ms 後執行搜尋
+    batchTCGSearchTimeout = setTimeout(async () => {
+        await searchBatchTCGOptions(keyword);
+    }, 300);
 }
 
 async function searchBatchTCGOptions(keyword) {
@@ -2661,17 +2676,27 @@ async function searchBatchTCGOptions(keyword) {
     if (!dropdown) return;
     
     try {
-        const response = await fetch(`/api/teams/${currentTeamId}/tcg/search?q=${encodeURIComponent(keyword)}`);
+        // 獲取當前團隊 ID
+        const currentTeam = AppUtils.getCurrentTeam();
+        if (!currentTeam || !currentTeam.id) {
+            dropdown.innerHTML = '<div class="p-2 text-danger small">請先選擇團隊</div>';
+            dropdown.style.display = 'block';
+            return;
+        }
+        
+        const response = await fetch(`/api/tcg/search?keyword=${encodeURIComponent(keyword)}&limit=20`);
         const data = await response.json();
         
         if (response.ok && data.results) {
             updateBatchTCGDropdown(data.results);
         } else {
             dropdown.innerHTML = '<div class="p-2 text-muted">搜尋失敗</div>';
+            dropdown.style.display = 'block';
         }
     } catch (error) {
         console.error('TCG 搜尋錯誤:', error);
         dropdown.innerHTML = '<div class="p-2 text-muted">搜尋失敗</div>';
+        dropdown.style.display = 'block';
     }
 }
 
@@ -2686,29 +2711,107 @@ function updateBatchTCGDropdown(results) {
     }
     
     let html = '';
-    results.forEach(tcg => {
+    results.forEach((tcg, index) => {
         html += `
-            <div class="tcg-option p-2 cursor-pointer hover:bg-gray-100" 
+            <div class="tcg-option p-2" 
+                 data-tcg-number="${tcg.tcg_number}"
                  onclick="selectBatchTCG('${tcg.tcg_number}')" 
-                 style="cursor: pointer; border-bottom: 1px solid #eee;">
-                <strong>${tcg.tcg_number}</strong><br>
-                <small class="text-muted">${tcg.title || '無標題'}</small>
+                 onmouseenter="highlightBatchTCGOption(${index})"
+                 style="cursor: pointer; border-bottom: 1px solid #eee; transition: background-color 0.15s;">
+                ${tcg.tcg_number}
             </div>
         `;
     });
     dropdown.innerHTML = html;
     dropdown.style.display = 'block';
+    
+    // 添加 CSS 樣式到 dropdown
+    const style = `
+        <style id="batchTCGDropdownStyle">
+        .tcg-option:hover, .tcg-option.active {
+            background-color: #f8f9fa !important;
+        }
+        .tcg-option.active {
+            background-color: #e3f2fd !important;
+        }
+        </style>
+    `;
+    
+    if (!document.getElementById('batchTCGDropdownStyle')) {
+        document.head.insertAdjacentHTML('beforeend', style);
+    }
+}
+
+function handleBatchTCGKeydown(event) {
+    const dropdown = document.getElementById('batchTCGDropdown');
+    if (!dropdown || dropdown.style.display === 'none') return;
+    
+    const options = dropdown.querySelectorAll('.tcg-option');
+    let currentIndex = -1;
+    
+    // 找到當前選中的項目
+    options.forEach((option, index) => {
+        if (option.classList.contains('active')) {
+            currentIndex = index;
+        }
+    });
+    
+    switch (event.key) {
+        case 'ArrowDown':
+            event.preventDefault();
+            const nextIndex = Math.min(currentIndex + 1, options.length - 1);
+            highlightBatchTCGOption(nextIndex);
+            break;
+        case 'ArrowUp':
+            event.preventDefault();
+            const prevIndex = Math.max(currentIndex - 1, 0);
+            highlightBatchTCGOption(prevIndex);
+            break;
+        case 'Enter':
+            event.preventDefault();
+            if (currentIndex >= 0 && options[currentIndex]) {
+                const tcgNumber = options[currentIndex].getAttribute('data-tcg-number');
+                if (tcgNumber) {
+                    selectBatchTCG(tcgNumber);
+                }
+            }
+            break;
+        case 'Escape':
+            event.preventDefault();
+            hideBatchTCGDropdown();
+            break;
+    }
+}
+
+function highlightBatchTCGOption(index) {
+    const dropdown = document.getElementById('batchTCGDropdown');
+    if (!dropdown) return;
+    
+    const options = dropdown.querySelectorAll('.tcg-option');
+    options.forEach((option, i) => {
+        if (i === index) {
+            option.classList.add('active');
+            option.scrollIntoView({ block: 'nearest' });
+        } else {
+            option.classList.remove('active');
+        }
+    });
 }
 
 function selectBatchTCG(tcgNumber) {
     document.getElementById('batchTCGInput').value = tcgNumber;
-    document.getElementById('batchTCGDropdown').style.display = 'none';
+    hideBatchTCGDropdown();
 }
 
 function showBatchTCGDropdown() {
     const input = document.getElementById('batchTCGInput');
+    const dropdown = document.getElementById('batchTCGDropdown');
+    
     if (input.value.trim().length >= 2) {
         handleBatchTCGSearch(input);
+    } else {
+        dropdown.innerHTML = '<div class="p-2 text-muted small" data-i18n="testCase.tcgSearchHint">開始輸入以搜尋 TCG...</div>';
+        dropdown.style.display = 'block';
     }
 }
 
@@ -2719,6 +2822,59 @@ function hideBatchTCGDropdown() {
             dropdown.style.display = 'none';
         }
     }, 200);
+}
+
+// 立即更新本地測試案例資料
+function updateLocalTestCasesAfterBatchModify(selectedIds, updateData) {
+    // 更新本地 testCases 陣列
+    testCases.forEach(testCase => {
+        if (selectedIds.includes(testCase.record_id)) {
+            // 更新 TCG
+            if (updateData.tcg !== undefined) {
+                if (updateData.tcg === '') {
+                    // 清空 TCG
+                    testCase.tcg = [];
+                } else {
+                    // 更新 TCG（簡化版本，只更新顯示文字）
+                    testCase.tcg = [{
+                        text: updateData.tcg,
+                        display_text: updateData.tcg
+                    }];
+                }
+            }
+            
+            // 更新優先級
+            if (updateData.priority !== undefined) {
+                testCase.priority = updateData.priority;
+            }
+        }
+    });
+    
+    // 更新篩選後的陣列
+    filteredTestCases.forEach(testCase => {
+        if (selectedIds.includes(testCase.record_id)) {
+            // 更新 TCG
+            if (updateData.tcg !== undefined) {
+                if (updateData.tcg === '') {
+                    testCase.tcg = [];
+                } else {
+                    testCase.tcg = [{
+                        text: updateData.tcg,
+                        display_text: updateData.tcg
+                    }];
+                }
+            }
+            
+            // 更新優先級
+            if (updateData.priority !== undefined) {
+                testCase.priority = updateData.priority;
+            }
+        }
+    });
+    
+    // 立即重新渲染表格
+    renderTestCasesTable();
+    updatePagination();
 }
 
 async function performTestCaseBatchModify() {
@@ -2751,6 +2907,14 @@ async function performTestCaseBatchModify() {
     }
     
     try {
+        // 獲取當前團隊
+        const currentTeam = AppUtils.getCurrentTeam();
+        if (!currentTeam || !currentTeam.id) {
+            const msg = window.i18n ? window.i18n.t('errors.pleaseSelectTeam') : '請先選擇團隊';
+            AppUtils.showError(msg);
+            return;
+        }
+        
         // 顯示載入狀態
         const confirmBtn = document.getElementById('confirmTestCaseBatchModifyBtn');
         const originalBtnText = confirmBtn.innerHTML;
@@ -2763,7 +2927,7 @@ async function performTestCaseBatchModify() {
         
         // 分別處理 TCG 和 Priority（因為現有 API 只支援個別處理）
         if (modifyTCG) {
-            const response = await fetch(`/api/teams/${currentTeamId}/testcases/batch`, {
+            const response = await fetch(`/api/teams/${currentTeam.id}/testcases/batch`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -2783,7 +2947,7 @@ async function performTestCaseBatchModify() {
         }
         
         if (modifyPriority) {
-            const response = await fetch(`/api/teams/${currentTeamId}/testcases/batch`, {
+            const response = await fetch(`/api/teams/${currentTeam.id}/testcases/batch`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -2811,14 +2975,26 @@ async function performTestCaseBatchModify() {
             const modal = bootstrap.Modal.getInstance(document.getElementById('testCaseBatchModifyModal'));
             if (modal) modal.hide();
             
-            // 重新載入資料
-            await loadTestCases(currentTeamId);
+            // 立即更新本地資料顯示（不顯示載入動畫）
+            updateLocalTestCasesAfterBatchModify(selectedIds, updateData);
             
             // 清除選擇
             deselectAll();
             
-            const successMsg = window.i18n ? window.i18n.t('messages.batchModifySuccess') : `成功修改 ${selectedIds.length} 個測試案例`;
+            const successMsg = window.i18n ? 
+                window.i18n.t('messages.batchModifySuccess', { count: selectedIds.length }) : 
+                `成功修改 ${selectedIds.length} 個測試案例`;
             AppUtils.showSuccess(successMsg);
+            
+            // 背景重新同步資料（無載入動畫）
+            setTimeout(async () => {
+                try {
+                    await loadTestCases(false); // false = 不顯示載入動畫
+                } catch (error) {
+                    console.warn('背景同步資料失敗:', error);
+                }
+            }, 1000);
+            
         } else {
             const errorMsg = window.i18n ? window.i18n.t('errors.batchModifyFailed') : '批次修改失敗';
             AppUtils.showError(errorMsg + ': ' + errorMessages.join(', '));

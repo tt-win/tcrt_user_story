@@ -685,7 +685,39 @@ async def batch_operation_test_cases(
                 try:
                     # 轉換為 TestCase 模型
                     test_case = TestCase.from_lark_record(record, team_id)
-                    test_case.tcg = operation.update_data["tcg"]
+                    
+                    # 處理 TCG 更新：支援字串格式
+                    tcg_value = operation.update_data["tcg"]
+                    if isinstance(tcg_value, str):
+                        tcg_number = tcg_value.strip()
+                        if tcg_number:
+                            # 使用 TCG converter 查找對應的 record_id
+                            from app.services.tcg_converter import tcg_converter
+                            from app.models.lark_types import LarkRecord
+                            
+                            tcg_record_id = tcg_converter.get_record_id_by_tcg_number(tcg_number)
+                            
+                            if tcg_record_id:
+                                # 創建 LarkRecord 物件
+                                tcg_table_id = "tblcK6eF3yQCuwwl"  # TCG 表格的固定 ID
+                                tcg_record = LarkRecord(
+                                    record_ids=[tcg_record_id],
+                                    table_id=tcg_table_id,
+                                    text=tcg_number,
+                                    text_arr=[tcg_number],
+                                    display_text=tcg_number,
+                                    type="text"
+                                )
+                                test_case.tcg = [tcg_record]
+                            else:
+                                # 如果找不到對應的 TCG，清空 TCG
+                                test_case.tcg = []
+                        else:
+                            # 空字串則清空 TCG
+                            test_case.tcg = []
+                    else:
+                        # 如果是 LarkRecord 列表格式，直接使用
+                        test_case.tcg = tcg_value
                     
                     # 轉換為 Lark 格式並更新
                     lark_fields = test_case.to_lark_fields()
