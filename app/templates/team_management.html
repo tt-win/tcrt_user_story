@@ -199,11 +199,14 @@
 
 <!-- 刪除團隊確認模態視窗 -->
 <div class="modal fade" id="deleteTeamModal" tabindex="-1" aria-labelledby="deleteTeamModalLabel" aria-hidden="true">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title" id="deleteTeamModalLabel" data-i18n="team.deleteTeam">刪除團隊</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="關閉"></button>
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-danger">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title d-flex align-items-center" id="deleteTeamModalLabel">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <span data-i18n="team.deleteTeam">刪除團隊</span>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="關閉"></button>
             </div>
             <div class="modal-body">
                 <p id="deleteTeamConfirmMessage" class="mb-0">確定要刪除團隊嗎？此操作無法復原。</p>
