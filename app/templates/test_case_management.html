@@ -691,25 +691,15 @@ html, body { height: 100%; overflow: hidden; }
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <div class="row g-3 mb-2">
-          <div class="col-md-5">
-            <label class="form-label"><span data-i18n="testCase.bulk.prefix">前綴單號</span></label>
-            <input type="text" class="form-control" id="bulkPrefix" placeholder="e.g. TCG-93178.">
-          </div>
-          <div class="col-md-7">
-            <label class="form-label"><span data-i18n="testCase.bulk.suffix">末尾單號</span></label>
-            <input type="text" class="form-control" id="bulkSuffix" placeholder="e.g. .001">
-          </div>
-        </div>
-
+        <!-- 前綴單號清單 -->
         <div class="d-flex align-items-center justify-content-between mb-2">
-          <label class="form-label mb-0"><span data-i18n="testCase.bulk.middleRanges">功能分項範圍</span></label>
-          <button type="button" class="btn btn-outline-primary btn-sm" id="addMiddleRangeBtn">
-            <i class="fas fa-plus me-1"></i><span data-i18n="testCase.bulk.addRange">新增範圍</span>
+          <label class="form-label mb-0"><span data-i18n="testCase.bulk.prefixList">前綴單號清單</span></label>
+          <button type="button" class="btn btn-outline-primary btn-sm" id="addPrefixBtn">
+            <i class="fas fa-plus me-1"></i><span data-i18n="testCase.bulk.addPrefix">新增前綴</span>
           </button>
         </div>
-        <div id="middleRangesContainer" class="mb-2"></div>
-        <div class="form-text" data-i18n="testCase.bulk.rangeHint">每次新增的起始值依序為 010、020、030...，結束值從 010 起至 990（每 10 遞增）。</div>
+        <div id="prefixContainer" class="mb-2"></div>
+        <div class="form-text" data-i18n="testCase.bulk.structureHint">每個前綴可新增多個中間分類與末尾單號範圍。最終單號格式：前綴.中間.末尾（末尾以 10 遞增）。</div>
 
         <hr>
         <div id="bulkValidation" style="display:none"></div>
@@ -1284,10 +1274,7 @@ function bindEvents() {
     // 新增按鈕
     document.getElementById('addTestCaseBtn').addEventListener('click', () => showTestCaseModal());
     // 監聽大量新增欄位變更以更新預覽
-    ['bulkPrefix','bulkSuffix'].forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.addEventListener('input', updateBulkPreview);
-    });
+    // 移除舊的前綴/末尾輸入監聽；改由 renderPrefixes 中的 oninput 觸發
     
     // 重新載入按鈕
     document.getElementById('refreshBtn').addEventListener('click', refreshTestCases);
@@ -1335,8 +1322,8 @@ function bindEvents() {
     // 大量新增模式
     const openBulkBtn = document.getElementById('openBulkCreateBtn');
     if (openBulkBtn) openBulkBtn.addEventListener('click', openBulkCreateModal);
-    const addRangeBtn = document.getElementById('addMiddleRangeBtn');
-    if (addRangeBtn) addRangeBtn.addEventListener('click', addMiddleRangeRow);
+    const addPrefixBtn = document.getElementById('addPrefixBtn');
+    if (addPrefixBtn) addPrefixBtn.addEventListener('click', addPrefix);
     const startBulkBtn = document.getElementById('startBulkCreateBtn');
     if (startBulkBtn) startBulkBtn.addEventListener('click', startBulkCreate);
     
@@ -1347,9 +1334,10 @@ function bindEvents() {
     document.getElementById('saveAndAddNextBtn').addEventListener('click', saveAndAddNext);
 }
 
-// ===== 大量新增模式 =====
+// ===== 大量新增模式（多前綴 / 前綴下多中間 / 末尾範圍） =====
 let bulkModalInstance = null;
-let bulkRanges = []; // {start: 10, end: 10} 單位為整數（10..990）
+// 結構：[{ prefix: string, middles: [{ middle: '110', start: 20, end: 60 }] }]
+let bulkTree = [];
 
 function openBulkCreateModal() {
     resetBulkState();
@@ -1360,61 +1348,90 @@ function openBulkCreateModal() {
 }
 
 function resetBulkState() {
-    bulkRanges = [];
-    document.getElementById('bulkPrefix').value = '';
-    document.getElementById('bulkSuffix').value = '';
-    document.getElementById('middleRangesContainer').innerHTML = '';
+    bulkTree = [];
+    renderPrefixes();
     document.getElementById('bulkPreviewList').textContent = '';
     document.getElementById('bulkTotalCount').textContent = '0';
     hideBulkValidation();
     hideBulkProgress();
 }
 
-function addMiddleRangeRow() {
-    // 預設起始：010、020、030...（對應 10、20、30）
-    const nextStart = (bulkRanges.length + 1) * 10;
-    const startVal = Math.min(nextStart, 990);
-    const range = { start: startVal, end: startVal };
-    bulkRanges.push(range);
-    renderBulkRanges();
-    updateBulkPreview();
-}
+function addPrefix() { bulkTree.push({ prefix: '', middles: [] }); renderPrefixes(); }
 
-function renderBulkRanges() {
-    const container = document.getElementById('middleRangesContainer');
-    container.innerHTML = bulkRanges.map((r, idx) => {
-        const startStr = pad3(r.start);
-        const options = Array.from({length: ((990 - r.start) / 10) + 1}, (_, i) => r.start + i*10)
-            .map(v => `<option value="${v}" ${v===r.end?'selected':''}>${pad3(v)}</option>`).join('');
+function renderPrefixes() {
+    const container = document.getElementById('prefixContainer');
+    const optionsAll = (base=10) => Array.from({length: ((990 - base)/10)+1}, (_,i)=>base+i*10)
+          .map(v => `<option value="${v}">${pad3(v)}</option>`).join('');
+    container.innerHTML = bulkTree.map((p, pi) => {
+        const middlesHtml = (p.middles||[]).map((m, mi) => {
+            const startVal = m.start || 10;
+            const endVal = m.end || startVal;
+            const endOptions = Array.from({length: ((990 - startVal)/10)+1}, (_,i)=>startVal+i*10)
+                .map(v => `<option value="${v}" ${v===endVal?'selected':''}>${pad3(v)}</option>`).join('');
+            return `
+              <div class="row g-2 align-items-end mb-2">
+                <div class="col-12 col-md-3">
+                  <label class="form-label mb-0 small" data-i18n="testCase.bulk.middleCode">中間分類號</label>
+                  <input type="text" class="form-control form-control-sm" value="${escapeHtml(m.middle||'')}" maxlength="3" oninput="onMiddleCodeChange(${pi}, ${mi}, this.value)">
+                </div>
+                <div class="col-6 col-md-3">
+                  <label class="form-label mb-0 small" data-i18n="testCase.bulk.suffixStart">末尾起始</label>
+                  <select class="form-select form-select-sm" onchange="onSuffixChange(${pi}, ${mi}, 'start', this.value)">
+                    ${optionsAll(10).replace(`value=\"${startVal}\"`, `value=\"${startVal}\" selected`)}
+                  </select>
+                </div>
+                <div class="col-6 col-md-3">
+                  <label class="form-label mb-0 small" data-i18n="testCase.bulk.suffixEnd">末尾結束</label>
+                  <select class="form-select form-select-sm" onchange="onSuffixChange(${pi}, ${mi}, 'end', this.value)">
+                    ${endOptions}
+                  </select>
+                </div>
+                <div class="col-12 col-md-3 d-flex gap-2">
+                  <button type="button" class="btn btn-outline-danger btn-sm" title="-" onclick="removeMiddle(${pi}, ${mi})"><i class="fas fa-times"></i></button>
+                </div>
+              </div>
+            `;
+        }).join('');
         return `
-          <div class="row g-2 align-items-center mb-2" data-index="${idx}">
-            <div class="col-5 col-sm-4">
-              <label class="form-label mb-0 small" data-i18n="testCase.bulk.start">起始</label>
-              <input type="text" class="form-control form-control-sm" value="${startStr}" disabled>
-            </div>
-            <div class="col-7 col-sm-6">
-              <label class="form-label mb-0 small" data-i18n="testCase.bulk.end">結束</label>
-              <select class="form-select form-select-sm" onchange="onBulkEndChange(${idx}, this.value)">${options}</select>
-            </div>
-            <div class="col-12 col-sm-2 d-flex align-items-end">
-              <button type="button" class="btn btn-outline-danger btn-sm" onclick="removeBulkRange(${idx})"><i class="fas fa-times"></i></button>
+          <div class="card mb-3">
+            <div class="card-body">
+              <div class="d-flex gap-2 mb-2">
+                <div class="flex-grow-1">
+                  <label class="form-label mb-1"><span data-i18n="testCase.bulk.prefix">前綴單號</span></label>
+                  <input type="text" class="form-control" value="${escapeHtml(p.prefix||'')}" placeholder="e.g. TCG-93178" oninput="onPrefixChange(${pi}, this.value)">
+                </div>
+                <div class="align-self-end">
+                  <button type="button" class="btn btn-outline-danger" title="remove" onclick="removePrefix(${pi})"><i class="fas fa-trash"></i></button>
+                </div>
+              </div>
+              <div class="d-flex align-items-center justify-content-between mt-2 mb-2">
+                <label class="form-label mb-0"><span data-i18n="testCase.bulk.middleRanges">功能分項範圍</span></label>
+                <button type="button" class="btn btn-outline-primary btn-sm" onclick="addMiddle(${pi})"><i class="fas fa-plus me-1"></i><span data-i18n="testCase.bulk.addRange">新增範圍</span></button>
+              </div>
+              <div>${middlesHtml || '<div class="text-muted small">(empty)</div>'}</div>
             </div>
           </div>
         `;
     }).join('');
+    if (window.i18n && window.i18n.isReady()) window.i18n.retranslate(container);
 }
 
-function onBulkEndChange(index, value) {
-    const v = parseInt(value, 10);
-    if (!isNaN(v)) {
-        bulkRanges[index].end = v;
-        updateBulkPreview();
-    }
+function onPrefixChange(pi, value) { bulkTree[pi].prefix = value; updateBulkPreview(); }
+function removePrefix(pi) { bulkTree.splice(pi,1); renderPrefixes(); updateBulkPreview(); }
+function addMiddle(pi) { (bulkTree[pi].middles ||= []).push({ middle: '', start: 10, end: 10 }); renderPrefixes(); updateBulkPreview(); }
+function removeMiddle(pi, mi) { bulkTree[pi].middles.splice(mi,1); renderPrefixes(); updateBulkPreview(); }
+function onMiddleCodeChange(pi, mi, value) {
+    const sanitized = (value||'').replace(/[^0-9]/g,'').slice(0,3);
+    bulkTree[pi].middles[mi].middle = sanitized;
+    updateBulkPreview();
 }
-
-function removeBulkRange(index) {
-    bulkRanges.splice(index, 1);
-    renderBulkRanges();
+function onSuffixChange(pi, mi, which, value) {
+    const v = parseInt(value,10);
+    if (isNaN(v)) return;
+    const m = bulkTree[pi].middles[mi];
+    if (which==='start') { m.start = v; if (!m.end || m.end < v) m.end = v; }
+    else { m.end = v; if (!m.start || m.start > v) m.start = v; }
+    renderPrefixes();
     updateBulkPreview();
 }
 
@@ -1428,13 +1445,19 @@ function updateBulkPreview() {
 }
 
 function generateBulkNumbers() {
-    const prefix = document.getElementById('bulkPrefix').value || '';
-    const suffix = document.getElementById('bulkSuffix').value || '';
     const list = [];
-    bulkRanges.forEach(r => {
-        for (let v = r.start; v <= r.end; v += 10) {
-            list.push(prefix + pad3(v) + suffix);
-        }
+    bulkTree.forEach(p => {
+        const prefix = (p.prefix||'').trim();
+        (p.middles||[]).forEach(m => {
+            const mid = (m.middle||'').replace(/[^0-9]/g,'');
+            if (!prefix || mid.length===0) return;
+            const middle = pad3(parseInt(mid,10)||0);
+            const start = Math.max(10, Math.min(990, m.start||10));
+            const end = Math.max(start, Math.min(990, m.end||start));
+            for (let v=start; v<=end; v+=10) {
+                list.push(`${prefix}.${middle}.${pad3(v)}`);
+            }
+        });
     });
     return list;
 }
@@ -1473,7 +1496,7 @@ async function startBulkCreate() {
         showBulkValidation(window.i18n ? window.i18n.t('errors.pleaseSelectTeam') : '請先選擇團隊');
         return;
     }
-    if (bulkRanges.length === 0) {
+    if (bulkTree.length === 0) {
         showBulkValidation(window.i18n ? window.i18n.t('testCase.bulk.addAtLeastOne') : '請至少新增一個範圍');
         return;
     }
