@@ -594,13 +594,19 @@ table td:nth-child(2) {
     left: 0;
     right: 0;
     bottom: 0;
-    z-index: 1040; /* 低於語言切換按鈕 (1050) */
+    z-index: 1040; /* 低於語言切換按鈕 (1070) */
     background-color: transparent;
     padding: 0.25rem 0.75rem;
     border-top: none;
+    pointer-events: none; /* 讓容器不攔截點擊事件 */
 }
 .fixed-pagination-bar .pagination {
     margin-bottom: 0 !important;
+    pointer-events: auto; /* 只有分頁控制本身可以點擊 */
+    z-index: 1039 !important; /* 確保低於語言選擇器 (1070) */
+    /* 確保分頁控制不會超出其實際內容區域 */
+    width: fit-content !important;
+    margin: 0 auto !important; /* 置中顯示分頁控制 */
 }
 
 /* 頁面標題顏色自定義 - 使用更高權重的選擇器 */
@@ -634,6 +640,26 @@ main > .d-flex.justify-content-between.align-items-center.mb-3 p.text-muted {
   right: 0;
   height: var(--footer-height);
   z-index: 1030;
+}
+
+/* 語言選擇器層級設定 - 確保在所有內容之上 */
+#language-switcher {
+  position: relative;
+  z-index: 1070 !important;
+  pointer-events: auto !important;
+}
+
+#language-switcher .dropdown,
+#language-switcher .dropdown-toggle,
+#language-switcher .dropdown-menu {
+  z-index: 1075 !important;
+  pointer-events: auto !important;
+}
+
+/* 確保語言選擇器在 Test Case Management 頁面可點擊 */
+.app-footer #language-switcher {
+  z-index: 1070 !important;
+  pointer-events: auto !important;
 }
 
 .app-main {
