@@ -957,7 +957,8 @@ async function loadOrgStats() {
     
     try {
         const defaultTeamId = teams[0].id;
-        const response = await fetch(`/api/teams/${defaultTeamId}/sync/stats`);
+        // 加上時間戳避免瀏覽器快取造成數字不更新
+        const response = await fetch(`/api/teams/${defaultTeamId}/sync/stats?t=${Date.now()}`);
         
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
@@ -1139,6 +1140,8 @@ function startSyncPolling() {
                         
                         // 重新載入所有數據
                         await loadSyncModalData();
+                        // 再次刷新統計以確保數字最新（繞過快取）
+                        try { await loadOrgStats(); } catch (_) {}
                         
                         // 檢查是否是當前用戶觸發的同步
                         const triggerUser = localStorage.getItem('sync_trigger_user');
@@ -1166,7 +1169,7 @@ function startSyncPolling() {
             }
             
             pollCount++;
-            if (pollCount >= maxPolls) {
+                    if (pollCount >= maxPolls) {
                 // 超時停止輪詢
                 clearInterval(syncPollingInterval);
                 syncPollingInterval = null;
@@ -1177,6 +1180,8 @@ function startSyncPolling() {
                 const userBtn = document.getElementById('startUserSyncBtn');
                 if (deptBtn) deptBtn.disabled = false;
                 if (userBtn) userBtn.disabled = false;
+                // 嘗試刷新統計
+                try { await loadOrgStats(); } catch (_) {}
             }
         } catch (error) {
             console.error('輪詢同步狀態失敗:', error);
@@ -1300,6 +1305,14 @@ async function pollGlobalSyncStatus(teamId) {
                         AppUtils.showSuccess(getI18n('orgSync.syncCompleted', '組織架構同步完成'));
                     } else {
                         AppUtils.showWarning(getI18n('orgSync.syncCompletedWithIssues', '同步完成，但可能有部分錯誤'));
+                    }
+                    // 若同步管理模態框開啟，刷新其中的統計與狀態
+                    const modalEl = document.getElementById('syncModal');
+                    if (modalEl && modalEl.classList.contains('show')) {
+                        try {
+                            await loadSyncModalData();
+                            await loadOrgStats();
+                        } catch (_) {}
                     }
                     
                     return; // 停止輪詢
