@@ -1065,6 +1065,32 @@ function bindEventListeners() {
     document.getElementById('refreshBtn').addEventListener('click', async () => {
         try {
             showItemsLoading();
+            
+            // 清除 Test Case Management 的列表快取
+            try {
+                const TEST_CASES_CACHE_KEY = 'test_cases_list_cache_v1';
+                const keys = Object.keys(localStorage);
+                keys.forEach(key => {
+                    if (key.startsWith(TEST_CASES_CACHE_KEY)) {
+                        localStorage.removeItem(key);
+                    }
+                });
+            } catch (e) {
+                console.debug('清除 Test Case Management 快取失敗:', e);
+            }
+            
+            // 清除所有個別快取
+            try {
+                const keys = Object.keys(localStorage);
+                keys.forEach(key => {
+                    if (key.startsWith('tr_exec_tc_cache_v1')) {
+                        localStorage.removeItem(key);
+                    }
+                });
+            } catch (e) {
+                console.debug('清除個別快取失敗:', e);
+            }
+            
             // 重新載入 Items
             await loadTestRunItems();
             // 強制重新抓取 Test Case 詳細並更新快取
