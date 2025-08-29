@@ -492,12 +492,32 @@
       "batchDeleteWarning": "危險操作警告",
       "batchDeleteSuccess": "成功刪除 {count} 個測試執行項目及其測試歷程",
       "batchDeletePartial": "已處理 {total} 個項目，成功刪除 {success} 個測試執行項目",
-      "batchDeleteFailed": "批次刪除失敗"
+      "batchDeleteFailed": "批次刪除失敗",
+      "bugTickets": "Bug Tickets",
+      "noBugTickets": "尚無關聯的 Bug Tickets",
+      "addBugTicket": "新增 Bug Ticket",
+      "ticketNumber": "Ticket 編號",
+      "ticketNumberHelp": "請輸入 JIRA Ticket 編號",
+      "bugTicketAdded": "Bug Ticket 新增成功",
+      "bugTicketDeleted": "Bug Ticket 已刪除",
+      "bugTicketExists": "此 Bug Ticket 已存在",
+      "bugTicketNotFound": "找不到此 Bug Ticket",
+      "deleteBugTicket": "刪除 Bug Ticket",
+      "confirmDeleteBugTicket": "確定要刪除這個 Bug Ticket 嗎？",
+      "addBugTicketFailed": "新增 Bug Ticket 失敗",
+      "deleteBugTicketFailed": "刪除 Bug Ticket 失敗",
+      "loadBugTicketsFailed": "載入 Bug Tickets 失敗"
   },
   "priority": {
     "high": "高",
     "medium": "中",
     "low": "低"
+  },
+  "tooltip": {
+    "created": "建立日期",
+    "updated": "更新日期",
+    "assignedTo": "指派給",
+    "openInJira": "在 JIRA 中開啟"
   },
   "status": {
     "planning": "計劃中",

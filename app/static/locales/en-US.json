@@ -494,12 +494,32 @@
       "batchDeleteWarning": "Danger Operation Warning",
       "batchDeleteSuccess": "Successfully deleted {count} test execution items and their test history",
       "batchDeletePartial": "Processed {total} items, successfully deleted {success} test execution items",
-      "batchDeleteFailed": "Batch delete failed"
+      "batchDeleteFailed": "Batch delete failed",
+      "bugTickets": "Bug Tickets",
+      "noBugTickets": "No associated Bug Tickets yet",
+      "addBugTicket": "Add Bug Ticket",
+      "ticketNumber": "Ticket Number",
+      "ticketNumberHelp": "Please enter JIRA Ticket number",
+      "bugTicketAdded": "Bug Ticket added successfully",
+      "bugTicketDeleted": "Bug Ticket deleted",
+      "bugTicketExists": "This Bug Ticket already exists",
+      "bugTicketNotFound": "Bug Ticket not found",
+      "deleteBugTicket": "Delete Bug Ticket",
+      "confirmDeleteBugTicket": "Are you sure you want to delete this Bug Ticket?",
+      "addBugTicketFailed": "Failed to add Bug Ticket",
+      "deleteBugTicketFailed": "Failed to delete Bug Ticket",
+      "loadBugTicketsFailed": "Failed to load Bug Tickets"
   },
   "priority": {
     "high": "High",
     "medium": "Medium",
     "low": "Low"
+  },
+  "tooltip": {
+    "created": "Created Date",
+    "updated": "Updated Date",
+    "assignedTo": "Assigned To",
+    "openInJira": "Open in JIRA"
   },
   "status": {
     "planning": "Planning",

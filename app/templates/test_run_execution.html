@@ -931,7 +931,7 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                     <aside id="testCaseDetailTimelinePane" style="flex: 0 0 25%; max-width: 25%; border-left: 1px solid var(--tr-border-light); padding-left: 10px; display: none; min-width: 240px;">
                         <div class="d-flex align-items-center justify-content-between mb-2">
                             <h6 class="mb-0"><i class="fas fa-history me-2"></i><span data-i18n="testRun.resultHistory">結果歷程</span></h6>
-                            <button type="button" id="refreshTimelineBtn" class="btn btn-sm btn-outline-secondary" title="刷新"><i class="fas fa-sync-alt"></i></button>
+                            <button type="button" id="refreshTimelineBtn" class="btn btn-link text-secondary p-0" title="刷新" style="border: none; background: none;"><i class="fas fa-sync-alt"></i></button>
                         </div>
                         <div id="timelineLoading" class="text-center py-2" style="display:none;">
                             <i class="fas fa-spinner fa-spin"></i>
@@ -939,7 +939,24 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                         <div id="timelineEmpty" class="text-muted small" style="display:none;">
                             <i class="fas fa-info-circle me-1"></i><span data-i18n="testRun.noHistory">尚無歷程</span>
                         </div>
-                        <div id="timelineList" style="height: calc(100% - 28px); overflow-y: auto;"></div>
+                        <div id="timelineList" style="height: 400px; overflow-y: auto;"></div>
+                        
+                        <!-- Bug Tickets 區域 -->
+                        <div class="mt-3 border-top pt-3">
+                            <div class="d-flex align-items-center justify-content-between mb-2">
+                                <h6 class="mb-0"><i class="fas fa-bug me-2"></i><span data-i18n="testRun.bugTickets">Bug Tickets</span></h6>
+                                <button type="button" id="addBugTicketBtn" class="btn btn-link text-secondary p-0" data-i18n-title="testRun.addBugTicket" style="border: none; background: none;">
+                                    <i class="fas fa-plus"></i>
+                                </button>
+                            </div>
+                            <div id="bugTicketsLoading" class="text-center py-2" style="display:none;">
+                                <i class="fas fa-spinner fa-spin"></i>
+                            </div>
+                            <div id="bugTicketsEmpty" class="text-muted small" style="display:none;">
+                                <i class="fas fa-info-circle me-1"></i><span data-i18n="testRun.noBugTickets">尚無關聯的 Bug Tickets</span>
+                            </div>
+                            <div id="bugTicketsList" style="height: 160px; overflow-y: auto;"></div>
+                        </div>
                     </aside>
                 </div>
                 <div id="testCaseDetailError" style="display: none;">
@@ -957,6 +974,65 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                 <button type="button" class="btn btn-primary" id="openFullTestCaseBtn" style="display: none;">
                     <i class="fas fa-external-link-alt me-2"></i>
                     <span data-i18n="testRun.openInTestCaseManagement">在測試案例管理中開啟</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Bug Ticket 新增模態框 -->
+<div class="modal fade" id="addBugTicketModal" tabindex="-1" aria-labelledby="addBugTicketModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addBugTicketModalLabel">
+                    <i class="fas fa-bug me-2"></i><span data-i18n="testRun.addBugTicket">新增 Bug Ticket</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addBugTicketForm">
+                    <div class="mb-3">
+                        <label for="bugTicketNumber" class="form-label"><span data-i18n="testRun.ticketNumber">Ticket 編號</span></label>
+                        <input type="text" class="form-control" id="bugTicketNumber" placeholder="例如: PRJ-123" required>
+                        <div class="form-text"><span data-i18n="testRun.ticketNumberHelp">請輸入 JIRA Ticket 編號</span></div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <span data-i18n="common.cancel">取消</span>
+                </button>
+                <button type="button" class="btn btn-primary" id="confirmAddBugTicket">
+                    <i class="fas fa-plus me-2"></i><span data-i18n="common.create">新增</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 刪除 Bug Ticket 確認對話框 -->
+<div class="modal fade" id="deleteBugTicketModal" tabindex="-1" aria-labelledby="deleteBugTicketModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="deleteBugTicketModalLabel">
+                    <i class="fas fa-trash me-2"></i><span data-i18n="testRun.deleteBugTicket">刪除 Bug Ticket</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p><span data-i18n="testRun.confirmDeleteBugTicket">確定要刪除這個 Bug Ticket 嗎？</span></p>
+                <div class="text-center">
+                    <strong id="deleteBugTicketNumber" class="text-primary"></strong>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <span data-i18n="common.cancel">取消</span>
+                </button>
+                <button type="button" class="btn btn-danger" id="confirmDeleteBugTicket">
+                    <i class="fas fa-trash me-2"></i><span data-i18n="common.delete">刪除</span>
                 </button>
             </div>
         </div>
@@ -997,6 +1073,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     initializePage();
     bindEventListeners();
+    bindBugTicketEvents();
     setupQuickSearch_TR();
     // 左下角熱鍵提示
     if (!document.getElementById('quickSearchHint')) {
@@ -2366,6 +2443,12 @@ function displayTestCaseDetail(testCase) {
 
     // 初始化 AssigneeSelector
     initializeTestCaseAssigneeSelector(testCase);
+
+    // 載入 Bug Tickets
+    const testRunItem = (testRunItems || []).find(item => item.test_case_number === testCase.test_case_number);
+    if (testRunItem && testRunItem.id) {
+        loadBugTickets(testRunItem.id);
+    }
 }
 
 // 生成基本資訊區域的 HTML
@@ -2567,6 +2650,9 @@ async function renderResultHistoryTimeline(testCase) {
 
         const item = getItemByTestCaseNumber(testCase.test_case_number);
         if (!item) { loading.style.display = 'none'; empty.style.display = 'block'; return; }
+        
+        // 設定當前項目 ID 供 Bug Ticket 功能使用
+        currentItemIdForBugTicket = item.id;
 
         const resp = await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/${item.id}/result-history?limit=50`);
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
@@ -2597,6 +2683,8 @@ async function renderResultHistoryTimeline(testCase) {
             `;
         }).join('');
         list.innerHTML = rows;
+
+        // Bug Tickets 在 displayTestCaseDetail 中載入
 
         // 綁定刷新按鈕
         const refreshBtn = document.getElementById('refreshTimelineBtn');
@@ -3241,6 +3329,388 @@ async function showTCGPreviewInTestRun(tcgNumber) {
             }
         }, 5000);
     }
+}
+
+// ================== Bug Tickets 功能 ==================
+let addBugTicketModal = null;
+let deleteBugTicketModal = null;
+let currentItemIdForBugTicket = null;
+let currentTicketNumberForDelete = null;
+
+// 初始化 Bug Ticket Modal
+function initBugTicketModal() {
+    if (!addBugTicketModal) {
+        addBugTicketModal = new bootstrap.Modal(document.getElementById('addBugTicketModal'));
+    }
+}
+
+// 初始化刪除 Bug Ticket Modal
+function initDeleteBugTicketModal() {
+    if (!deleteBugTicketModal) {
+        deleteBugTicketModal = new bootstrap.Modal(document.getElementById('deleteBugTicketModal'));
+    }
+}
+
+// 顯示 Bug Tickets
+async function loadBugTickets(itemId) {
+    try {
+        // 顯示載入狀態
+        const bugTicketsList = document.getElementById('bugTicketsList');
+        const bugTicketsEmpty = document.getElementById('bugTicketsEmpty');
+        const bugTicketsLoading = document.getElementById('bugTicketsLoading');
+
+        if (bugTicketsLoading) bugTicketsLoading.style.display = 'block';
+        if (bugTicketsEmpty) bugTicketsEmpty.style.display = 'none';
+        if (bugTicketsList) bugTicketsList.innerHTML = '';
+        
+        const url = `/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/${itemId}/bug-tickets`;
+        
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: Failed to load bug tickets`);
+        }
+        
+        const bugTickets = await response.json();
+        
+        bugTicketsLoading.style.display = 'none';
+        
+        if (bugTickets.length === 0) {
+            bugTicketsEmpty.style.display = 'block';
+            bugTicketsList.innerHTML = '';
+        } else {
+            bugTicketsEmpty.style.display = 'none';
+            bugTicketsList.innerHTML = bugTickets.map(ticket => `
+                <div class="bug-ticket-item d-flex justify-content-between align-items-center mb-2 p-2 border rounded bg-light">
+                    <div>
+                        <strong class="bug-ticket-link" data-ticket="${ticket.ticket_number}" style="cursor: pointer; color: #0066cc;">
+                            ${ticket.ticket_number}
+                        </strong>
+                    </div>
+                    <button type="button" class="btn btn-link text-secondary p-0" onclick="confirmDeleteBugTicket(${itemId}, '${ticket.ticket_number}')" data-i18n-title="common.delete" style="border: none; background: none;">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            `).join('');
+            
+            // 重新翻譯動態添加的元素
+            if (window.i18n && window.i18n.isReady()) {
+                window.i18n.retranslate(bugTicketsList);
+            }
+        }
+        
+        return bugTickets;
+    } catch (error) {
+        console.error('載入 Bug Tickets 失敗:', error);
+        const bugTicketsLoading = document.getElementById('bugTicketsLoading');
+        const bugTicketsEmpty = document.getElementById('bugTicketsEmpty');
+        
+        bugTicketsLoading.style.display = 'none';
+        bugTicketsEmpty.style.display = 'block';
+        bugTicketsEmpty.innerHTML = '<i class="fas fa-exclamation-triangle me-1"></i><span data-i18n="testRun.loadBugTicketsFailed">載入 Bug Tickets 失敗</span>';
+        return [];
+    }
+}
+
+// 新增 Bug Ticket
+async function addBugTicket() {
+    const ticketNumber = document.getElementById('bugTicketNumber').value.trim();
+    
+    if (!ticketNumber) {
+        AppUtils.showError(window.i18n ? window.i18n.t('testRun.ticketNumberHelp') : '請輸入 JIRA Ticket 編號');
+        return;
+    }
+    
+    if (!currentItemIdForBugTicket) {
+        AppUtils.showError('Missing item ID');
+        return;
+    }
+    
+    try {
+        const response = await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/${currentItemIdForBugTicket}/bug-tickets`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                ticket_number: ticketNumber
+            })
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || 'Failed to add bug ticket');
+        }
+        
+        // 關閉模態框並清空表單
+        addBugTicketModal.hide();
+        document.getElementById('bugTicketNumber').value = '';
+        
+        // 重新載入 Bug Tickets 列表
+        await loadBugTickets(currentItemIdForBugTicket);
+        
+        AppUtils.showSuccess(window.i18n ? window.i18n.t('testRun.bugTicketAdded') : 'Bug Ticket 新增成功');
+        
+    } catch (error) {
+        console.error('新增 Bug Ticket 失敗:', error);
+        AppUtils.showError(error.message || (window.i18n ? window.i18n.t('testRun.addBugTicketFailed') : '新增 Bug Ticket 失敗'));
+    }
+}
+
+// 顯示刪除 Bug Ticket 確認對話框
+function confirmDeleteBugTicket(itemId, ticketNumber) {
+    initDeleteBugTicketModal();
+    currentItemIdForBugTicket = itemId;
+    currentTicketNumberForDelete = ticketNumber;
+    
+    // 顯示票號
+    document.getElementById('deleteBugTicketNumber').textContent = ticketNumber;
+    
+    deleteBugTicketModal.show();
+}
+
+// 刪除 Bug Ticket
+async function deleteBugTicket(itemId, ticketNumber) {
+    
+    try {
+        const response = await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/${itemId}/bug-tickets/${encodeURIComponent(ticketNumber)}`, {
+            method: 'DELETE'
+        });
+        
+        if (!response.ok) {
+            throw new Error('Failed to delete bug ticket');
+        }
+        
+        // 重新載入 Bug Tickets 列表
+        await loadBugTickets(itemId);
+        
+        AppUtils.showSuccess(window.i18n ? window.i18n.t('testRun.bugTicketDeleted') : 'Bug Ticket 已刪除');
+        
+    } catch (error) {
+        console.error('刪除 Bug Ticket 失敗:', error);
+        AppUtils.showError(error.message || (window.i18n ? window.i18n.t('testRun.deleteBugTicketFailed') : '刪除 Bug Ticket 失敗'));
+    }
+}
+
+// 綁定 Bug Ticket 相關事件
+function bindBugTicketEvents() {
+    // 新增 Bug Ticket 按鈕
+    const addBugTicketBtn = document.getElementById('addBugTicketBtn');
+    if (addBugTicketBtn) {
+        addBugTicketBtn.addEventListener('click', () => {
+            initBugTicketModal();
+            currentItemIdForBugTicket = getCurrentItemId();
+            if (currentItemIdForBugTicket) {
+                addBugTicketModal.show();
+                // 清空表單
+                document.getElementById('bugTicketNumber').value = '';
+                // 焦點到輸入框
+                setTimeout(() => {
+                    document.getElementById('bugTicketNumber').focus();
+                }, 300);
+            } else {
+                AppUtils.showError('請先選擇一個測試項目');
+            }
+        });
+    }
+    
+    // 確認新增 Bug Ticket 按鈕
+    const confirmAddBugTicket = document.getElementById('confirmAddBugTicket');
+    if (confirmAddBugTicket) {
+        confirmAddBugTicket.addEventListener('click', addBugTicket);
+    }
+
+    // 確認刪除 Bug Ticket 按鈕
+    const confirmDeleteBugTicketBtn = document.getElementById('confirmDeleteBugTicket');
+    if (confirmDeleteBugTicketBtn) {
+        confirmDeleteBugTicketBtn.addEventListener('click', async () => {
+            if (currentItemIdForBugTicket && currentTicketNumberForDelete) {
+                deleteBugTicketModal.hide();
+                await deleteBugTicket(currentItemIdForBugTicket, currentTicketNumberForDelete);
+                currentItemIdForBugTicket = null;
+                currentTicketNumberForDelete = null;
+            }
+        });
+    }
+    
+    // Enter 鍵提交表單
+    const bugTicketNumberInput = document.getElementById('bugTicketNumber');
+    if (bugTicketNumberInput) {
+        bugTicketNumberInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                addBugTicket();
+            }
+        });
+    }
+    
+    // 委託事件：Bug Ticket 點擊預覽
+    document.addEventListener('click', (e) => {
+        if (e.target.classList.contains('bug-ticket-link')) {
+            const ticketNumber = e.target.getAttribute('data-ticket');
+            if (ticketNumber) {
+                showBugTicketPreview(ticketNumber, e.target);
+            }
+        }
+    });
+}
+
+// 取得當前選中的測試項目 ID
+function getCurrentItemId() {
+    // 使用在 renderResultHistoryTimeline 中設定的 currentItemIdForBugTicket
+    return currentItemIdForBugTicket;
+}
+
+// Bug Ticket 預覽 (使用類似 TCG 預覽的方式)
+async function showBugTicketPreview(ticketNumber, triggerElement) {
+    try {
+        console.log('Loading Bug ticket preview for:', ticketNumber);
+        
+        // 檢查是否已存在 tooltip，如果存在先移除
+        const existingTooltip = document.getElementById('bugTicketTooltip');
+        if (existingTooltip) {
+            existingTooltip.remove();
+        }
+        
+        // 創建 tooltip 容器
+        const tooltip = document.createElement('div');
+        tooltip.id = 'bugTicketTooltip';
+        tooltip.style.cssText = `
+            position: absolute;
+            background: white;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            z-index: 1080;
+            max-width: 400px;
+            font-size: 14px;
+            display: none;
+            pointer-events: auto;
+        `;
+        
+        // 顯示載入中
+        tooltip.innerHTML = `
+            <div class="d-flex align-items-center">
+                <i class="fas fa-spinner fa-spin me-2"></i>
+                <span>載入 JIRA Ticket 資訊中...</span>
+            </div>
+        `;
+        
+        document.body.appendChild(tooltip);
+        
+        // 定位 tooltip
+        positionJIRATooltip(tooltip, triggerElement);
+        tooltip.style.display = 'block';
+        
+        // 獲取 JIRA ticket 資訊
+        const response = await fetch(`/api/jira/ticket/${encodeURIComponent(ticketNumber)}`);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        
+        const ticketData = await response.json();
+        
+        // 顯示 ticket 資訊
+        const createdDate = ticketData.created ? new Date(ticketData.created).toLocaleDateString() : '';
+        const updatedDate = ticketData.updated ? new Date(ticketData.updated).toLocaleDateString() : '';
+        const createdLabel = window.i18n ? window.i18n.t('tooltip.created') : '建立日期';
+        const updatedLabel = window.i18n ? window.i18n.t('tooltip.updated') : '更新日期';
+        
+        tooltip.innerHTML = `
+            <div class="mb-2">
+                <div class="d-flex align-items-center mb-1">
+                    <i class="fas fa-bug text-danger me-2"></i>
+                    <strong>${ticketData.ticket_key || ticketNumber}</strong>
+                    <span class="badge ms-2 ${getJIRAStatusBadgeClass(ticketData.status?.name)}">${ticketData.status?.name || 'Unknown'}</span>
+                </div>
+                <div class="text-muted small mb-2">${ticketData.summary || 'No summary available'}</div>
+            </div>
+            <div class="small text-muted border-top pt-2">
+                <div class="row">
+                    <div class="col-6">
+                        <strong>${createdLabel}:</strong><br>
+                        ${createdDate}
+                    </div>
+                    <div class="col-6">
+                        <strong>${updatedLabel}:</strong><br>
+                        ${updatedDate}
+                    </div>
+                </div>
+                ${ticketData.assignee?.displayName ? `<div class="mt-2"><strong>${window.i18n ? window.i18n.t('tooltip.assignedTo') : '指派給'}:</strong> ${ticketData.assignee.displayName}</div>` : ''}
+                ${ticketData.url ? `<div class="mt-2"><a href="${ticketData.url}" target="_blank" class="text-primary"><i class="fas fa-external-link-alt me-1"></i>${window.i18n ? window.i18n.t('tooltip.openInJira') : '在 JIRA 中開啟'}</a></div>` : ''}
+            </div>
+        `;
+        
+        // 重新定位
+        positionJIRATooltip(tooltip, triggerElement);
+        
+        // 添加點擊關閉事件
+        tooltip.addEventListener('click', function(e) {
+            e.stopPropagation();
+        });
+        
+        // 點擊其他地方關閉 tooltip
+        const closeTooltip = function(e) {
+            if (!tooltip.contains(e.target) && e.target !== triggerElement) {
+                tooltip.style.display = 'none';
+                document.removeEventListener('click', closeTooltip);
+            }
+        };
+        
+        setTimeout(() => {
+            document.addEventListener('click', closeTooltip);
+        }, 100);
+        
+        // 自動隱藏 tooltip
+        setTimeout(() => {
+            if (tooltip && tooltip.style.display !== 'none') {
+                tooltip.style.display = 'none';
+                document.removeEventListener('click', closeTooltip);
+            }
+        }, 8000);
+        
+    } catch (error) {
+        console.error('Bug ticket tooltip 載入失敗:', error);
+        const tooltip = document.getElementById('bugTicketTooltip');
+        if (tooltip) {
+            tooltip.innerHTML = `
+                <div class="text-danger small">
+                    <i class="fas fa-times-circle me-1"></i>
+                    載入失敗
+                </div>
+            `;
+            
+            // 重新定位
+            positionJIRATooltip(tooltip, triggerElement);
+            
+            // 自動隱藏錯誤 tooltip
+            setTimeout(() => {
+                if (tooltip && tooltip.style.display !== 'none') {
+                    tooltip.style.display = 'none';
+                }
+            }, 3000);
+        }
+    }
+}
+
+// JIRA 狀態對應的 Badge 類別
+function getJIRAStatusBadgeClass(status) {
+    if (!status) return 'bg-secondary';
+    
+    const statusLower = status.toLowerCase();
+    if (['done', 'closed', 'resolved', 'fixed'].includes(statusLower)) {
+        return 'bg-success';
+    }
+    if (['in progress', 'in-progress', 'inprogress'].includes(statusLower)) {
+        return 'bg-primary';
+    }
+    if (['open', 'to do', 'todo', 'new'].includes(statusLower)) {
+        return 'bg-info';
+    }
+    if (['blocked', 'on hold'].includes(statusLower)) {
+        return 'bg-danger';
+    }
+    return 'bg-warning';
 }
 </script>
 {% endblock %}

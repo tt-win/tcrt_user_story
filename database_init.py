@@ -32,6 +32,35 @@ def init_database():
     print("\n創建的表格:")
     for table in tables:
         print(f"  - {table}")
+        # 檢查並列出重要欄位
+        if table == "test_run_items":
+            columns = inspector.get_columns(table)
+            print(f"    重要欄位:")
+            for col in columns:
+                if col['name'] in ['id', 'test_case_number', 'bug_tickets_json']:
+                    print(f"      - {col['name']} ({col['type']})")
+    
+    # 執行資料庫結構更新（確保 bug_tickets_json 欄位存在）
+    print("\n🔄 檢查資料庫結構更新...")
+    try:
+        # 動態導入修正檔模組
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "add_bug_tickets_column", 
+            "tools/add_bug_tickets_column.py"
+        )
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        
+        # 執行修正檔
+        result = module.main()
+        if result == 0:
+            print("✅ 資料庫結構檢查完成")
+        else:
+            print("⚠️ 資料庫結構檢查時發現問題，但不影響初始化")
+    except Exception as e:
+        print(f"⚠️ 注意：無法執行結構檢查 - {e}")
+        print("建議手動執行: python tools/add_bug_tickets_column.py")
     
     return True
 

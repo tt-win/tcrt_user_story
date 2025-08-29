@@ -140,6 +140,7 @@ class TestRunItem(Base):
     tcg_json = Column(Text, nullable=True)
     parent_record_json = Column(Text, nullable=True)
     raw_fields_json = Column(Text, nullable=True)
+    bug_tickets_json = Column(Text, nullable=True)  # Bug Tickets（JSON Array 格式存多個 JIRA ticket 編號）
 
     # 系統欄位
     created_at = Column(DateTime, default=datetime.utcnow)

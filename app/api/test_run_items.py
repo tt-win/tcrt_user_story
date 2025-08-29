@@ -146,6 +146,15 @@ class BatchUpdateResultRequest(BaseModel):
     change_source: Optional[str] = None  # batch
 
 
+class BugTicketRequest(BaseModel):
+    ticket_number: str = Field(..., description="JIRA ticket number (e.g., PRJ-123)")
+
+
+class BugTicketResponse(BaseModel):
+    ticket_number: str
+    created_at: datetime
+
+
 def _to_json(value: Any) -> Optional[str]:
     if value is None:
         return None
@@ -622,3 +631,143 @@ async def get_items_statistics(
         "pass_rate": int(pass_rate // 1),
         "total_pass_rate": int(total_pass_rate // 1),
     }
+
+
+# -------------------- Bug Tickets Management --------------------
+
+@router.get("/{item_id}/bug-tickets", response_model=List[BugTicketResponse])
+async def get_bug_tickets(
+    team_id: int,
+    config_id: int,
+    item_id: int,
+    db: Session = Depends(get_db)
+):
+    """取得測試項目的 Bug Tickets 清單"""
+    _verify_team_and_config(team_id, config_id, db)
+    item = db.query(TestRunItemDB).filter(
+        TestRunItemDB.id == item_id,
+        TestRunItemDB.team_id == team_id,
+        TestRunItemDB.config_id == config_id,
+    ).first()
+    if not item:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到項目")
+    
+    # 解析 bug_tickets_json
+    bug_tickets = []
+    if item.bug_tickets_json:
+        try:
+            tickets_data = json.loads(item.bug_tickets_json)
+            if isinstance(tickets_data, list):
+                for ticket in tickets_data:
+                    if isinstance(ticket, dict) and 'ticket_number' in ticket:
+                        bug_tickets.append(BugTicketResponse(
+                            ticket_number=ticket['ticket_number'],
+                            created_at=datetime.fromisoformat(ticket.get('created_at', datetime.utcnow().isoformat()))
+                        ))
+        except Exception:
+            pass  # 如果解析失敗，返回空列表
+    
+    return bug_tickets
+
+
+@router.post("/{item_id}/bug-tickets", response_model=BugTicketResponse, status_code=status.HTTP_201_CREATED)
+async def add_bug_ticket(
+    team_id: int,
+    config_id: int,
+    item_id: int,
+    payload: BugTicketRequest,
+    db: Session = Depends(get_db)
+):
+    """新增 Bug Ticket 到測試項目"""
+    _verify_team_and_config(team_id, config_id, db)
+    item = db.query(TestRunItemDB).filter(
+        TestRunItemDB.id == item_id,
+        TestRunItemDB.team_id == team_id,
+        TestRunItemDB.config_id == config_id,
+    ).first()
+    if not item:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到項目")
+    
+    # 解析現有的 bug_tickets_json
+    existing_tickets = []
+    if item.bug_tickets_json:
+        try:
+            tickets_data = json.loads(item.bug_tickets_json)
+            if isinstance(tickets_data, list):
+                existing_tickets = tickets_data
+        except Exception:
+            existing_tickets = []
+    
+    # 檢查是否已存在相同的 ticket number
+    ticket_number = payload.ticket_number.strip().upper()
+    for ticket in existing_tickets:
+        if isinstance(ticket, dict) and ticket.get('ticket_number', '').upper() == ticket_number:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Bug ticket {ticket_number} 已存在"
+            )
+    
+    # 新增 ticket
+    new_ticket = {
+        'ticket_number': ticket_number,
+        'created_at': datetime.utcnow().isoformat()
+    }
+    existing_tickets.append(new_ticket)
+    
+    # 更新資料庫
+    item.bug_tickets_json = json.dumps(existing_tickets, ensure_ascii=False)
+    item.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(item)
+    
+    return BugTicketResponse(
+        ticket_number=new_ticket['ticket_number'],
+        created_at=datetime.fromisoformat(new_ticket['created_at'])
+    )
+
+
+@router.delete("/{item_id}/bug-tickets/{ticket_number}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_bug_ticket(
+    team_id: int,
+    config_id: int,
+    item_id: int,
+    ticket_number: str,
+    db: Session = Depends(get_db)
+):
+    """刪除測試項目的指定 Bug Ticket"""
+    _verify_team_and_config(team_id, config_id, db)
+    item = db.query(TestRunItemDB).filter(
+        TestRunItemDB.id == item_id,
+        TestRunItemDB.team_id == team_id,
+        TestRunItemDB.config_id == config_id,
+    ).first()
+    if not item:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到項目")
+    
+    # 解析現有的 bug_tickets_json
+    existing_tickets = []
+    if item.bug_tickets_json:
+        try:
+            tickets_data = json.loads(item.bug_tickets_json)
+            if isinstance(tickets_data, list):
+                existing_tickets = tickets_data
+        except Exception:
+            existing_tickets = []
+    
+    # 尋找並移除指定的 ticket
+    ticket_number_upper = ticket_number.strip().upper()
+    original_count = len(existing_tickets)
+    existing_tickets = [ticket for ticket in existing_tickets 
+                      if not (isinstance(ticket, dict) and 
+                             ticket.get('ticket_number', '').upper() == ticket_number_upper)]
+    
+    if len(existing_tickets) == original_count:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Bug ticket {ticket_number} 不存在"
+        )
+    
+    # 更新資料庫
+    item.bug_tickets_json = json.dumps(existing_tickets, ensure_ascii=False) if existing_tickets else None
+    item.updated_at = datetime.utcnow()
+    db.commit()
