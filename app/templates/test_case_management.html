@@ -2346,10 +2346,10 @@ async function saveTestCase() {
     
     // 檢查測試案例編號唯一性
     if (testCaseData.test_case_number) {
-        const testCaseId = document.getElementById('testCaseId').value;
+        const currentTestCaseId = document.getElementById('testCaseId').value;
         const isDuplicate = testCases.some(tc => 
             tc.test_case_number === testCaseData.test_case_number &&
-            tc.record_id !== testCaseId // 排除當前編輯的記錄
+            tc.record_id !== currentTestCaseId // 排除當前編輯的記錄
         );
         
         if (isDuplicate) {
