@@ -5603,19 +5603,23 @@ function formatTicketTooltip(tcgNumber, ticketData) {
     const statusLabel = window.i18n ? window.i18n.t('common.status') : '狀態';
     const assigneeLabel = window.i18n ? window.i18n.t('common.assignee') : '執行者';
 
-    // 日期標籤：使用翻譯系統，但提供簡短備用文字以節省空間
-    let createdLabel = window.i18n ? window.i18n.t('common.createDate') : '建立日期';
-    let updatedLabel = window.i18n ? window.i18n.t('common.updateDate') : '更新日期';
+    // 日期標籤：使用翻譯系統
+    const createdLabel = window.i18n ? window.i18n.t('common.createDate') : '建立';
+    const updatedLabel = window.i18n ? window.i18n.t('common.updateDate') : '更新';
     const noDataText = window.i18n ? window.i18n.t('common.noDescription') : '無';
 
-    // 如果是中文且標籤太長，使用簡短版本
-    if (createdLabel.length > 4) createdLabel = '建立';
-    if (updatedLabel.length > 4) updatedLabel = '更新';
-
+    // 組合 JIRA URL
+    const jiraUrl = ticketData.url || `https://jira.example.com/browse/${tcgNumber}`;
+    
     return `
         <div class="tcg-tooltip-content">
             <div class="mb-2">
-                <div class="fw-bold text-primary">${tcgNumber}</div>
+                <div class="fw-bold">
+                    <a href="${jiraUrl}" target="_blank" class="text-primary text-decoration-none" style="cursor: pointer;">
+                        ${tcgNumber}
+                        <i class="fas fa-external-link-alt ms-1" style="font-size: 0.8em;"></i>
+                    </a>
+                </div>
                 <div class="small text-muted mb-2" style="word-break: break-word; line-height: 1.3;">${summary}</div>
             </div>
             <div class="row g-2">
