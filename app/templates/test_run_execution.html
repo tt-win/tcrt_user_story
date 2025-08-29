@@ -1264,12 +1264,7 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                 <h5 class="modal-title" id="bugTicketsSummaryModalLabel">
                     <i class="fas fa-bug me-2"></i><span data-i18n="testRun.bugTicketsSummary">Bug Tickets 摘要</span>
                 </h5>
-                <div class="d-flex gap-2">
-                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="refreshBugTicketsStatus()">
-                        <i class="fas fa-sync-alt me-1"></i><span data-i18n="testRun.refreshBugStatus">重新整理狀態</span>
-                    </button>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
                 <div id="bugTicketsSummaryLoading" class="text-center py-4" style="display:none;">
@@ -1284,7 +1279,7 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                 
                 <div id="bugTicketsSummaryContent" style="display:none;">
                     <div class="mb-3">
-                        <div class="d-flex justify-content-center align-items-center mb-2">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
                             <div class="btn-group btn-group-sm" role="group" aria-label="Status Filter">
                                 <button type="button" class="btn btn-outline-secondary active" data-status="ALL" data-i18n="testRun.statusFilter.all" onclick="filterBugTicketsByStatus('ALL')">All</button>
                                 <button type="button" class="btn btn-outline-warning" data-status="OPEN" data-i18n="testRun.statusFilter.open" onclick="filterBugTicketsByStatus('OPEN')">Open</button>
@@ -1294,6 +1289,9 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                                 <button type="button" class="btn btn-outline-secondary" data-status="SCHEDULED" data-i18n="testRun.statusFilter.scheduled" onclick="filterBugTicketsByStatus('SCHEDULED')">Scheduled</button>
                                 <button type="button" class="btn btn-outline-dark" data-status="CLOSED" data-i18n="testRun.statusFilter.closed" onclick="filterBugTicketsByStatus('CLOSED')">Closed</button>
                             </div>
+                            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="refreshBugTicketsStatus()">
+                                <i class="fas fa-sync-alt me-1"></i><span data-i18n="testRun.refreshBugStatus">重新整理狀態</span>
+                            </button>
                         </div>
                     </div>
                     <div id="bugTicketsSummaryList" style="max-height: 500px; overflow-y: auto;">
@@ -2840,7 +2838,7 @@ function generateBasicInfoHtml(testCase) {
                         <td class="basic-info-value"><code class="basic-info-code">${escapeHtml(testCase.test_case_number)}</code></td>
                         <td class="basic-info-label">${tcgText ? 'TCG' : ''}</td>
                         <td class="basic-info-value">${tcgText ? '<code class="basic-info-code tcg-tag" data-tcg="' + escapeHtml(tcgText) + '">' + escapeHtml(tcgText) + '</code>' + 
-                            '<button type="button" title="檢視 JIRA Ticket 資訊" data-i18n-title="tooltips.viewJiraInfo" onclick="showTCGPreviewInTestRun(\'' + escapeHtml(tcgText) + '\')" style="border: none; background: none; padding: 0; margin-left: 8px; color: #6c757d; cursor: pointer; font-size: 0.8em;"><i class="fas fa-eye"></i></button>' : ''}</td>
+                            '<button type="button" title="檢視 JIRA Ticket 資訊" data-i18n-title="tooltips.viewJiraInfo" onclick="showTCGPreviewInTestRun(\'' + escapeHtml(tcgText) + '\', event)" style="border: none; background: none; padding: 0; margin-left: 8px; color: #6c757d; cursor: pointer; font-size: 0.8em;"><i class="fas fa-eye"></i></button>' : ''}</td>
                     </tr>
                     <tr>
                         <td class="basic-info-label" data-i18n="testRun.title">標題</td>
@@ -3445,7 +3443,7 @@ function createJIRATooltip() {
         box-shadow: 0 4px 12px rgba(0,0,0,0.15);
         padding: 12px;
         max-width: 300px;
-        z-index: 1070;
+        z-index: 1100;
         display: none;
         font-size: 0.875rem;
         pointer-events: auto;
@@ -3567,16 +3565,23 @@ function formatJIRATicketTooltip(tcgNumber, ticketData) {
 
 // 定位 tooltip
 function positionJIRATooltip(tooltip, element) {
+    if (!element || !tooltip) return;
+    
     const rect = element.getBoundingClientRect();
+    
+    // 先設置初始位置並確保可見，這樣才能獲取準確的尺寸
+    tooltip.style.visibility = 'hidden';
+    tooltip.style.display = 'block';
+    
     const tooltipRect = tooltip.getBoundingClientRect();
 
-    // 預設位置：元素上方
-    let top = rect.top - tooltipRect.height - 8;
+    // 預設位置：元素下方
+    let top = rect.bottom + 8;
     let left = rect.left + (rect.width / 2) - (tooltipRect.width / 2);
 
-    // 如果上方空間不足，顯示在元素下方
-    if (top < 8) {
-        top = rect.bottom + 8;
+    // 如果下方空間不足，顯示在元素上方
+    if (top + tooltipRect.height > window.innerHeight - 8) {
+        top = rect.top - tooltipRect.height - 8;
     }
 
     // 確保不超出視窗邊界
@@ -3586,18 +3591,20 @@ function positionJIRATooltip(tooltip, element) {
         left = window.innerWidth - tooltipRect.width - 8;
     }
 
+    // 應用最終位置並顯示
     tooltip.style.top = top + 'px';
     tooltip.style.left = left + 'px';
+    tooltip.style.visibility = 'visible';
 }
 
 // Test Run 頁面的 TCG 預覽函數
-async function showTCGPreviewInTestRun(tcgNumber) {
+async function showTCGPreviewInTestRun(tcgNumber, eventObj) {
     if (!tcgNumber || !tcgNumber.trim()) {
         return;
     }
     
     // 找到觸發元素（查找包含該 TCG 號碼的按鈕）
-    const triggerButton = event.target;
+    const triggerButton = eventObj ? eventObj.target : event.target;
     
     const tooltip = createJIRATooltip();
 
@@ -3612,7 +3619,6 @@ async function showTCGPreviewInTestRun(tcgNumber) {
     `;
 
     // 顯示 tooltip
-    tooltip.style.display = 'block';
     positionJIRATooltip(tooltip, triggerButton);
 
     try {
