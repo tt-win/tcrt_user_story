@@ -163,6 +163,15 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
     border: 1px solid var(--tr-border-light);
     min-width: 120px;
     text-align: center;
+    transition: all 0.2s ease;
+}
+
+/* Bug Tickets 卡片 hover 效果 */
+.stat-item.bug-tickets-card:hover {
+    background: #fff3cd;
+    border-color: #ffc107;
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(255, 193, 7, 0.2);
 }
 
 .stat-number {
@@ -441,6 +450,210 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
 #testCaseDetailFixed { flex: 0 0 auto; }
 #testCaseDetailScrollable { flex: 1 1 auto; overflow-y: auto; min-height: 0; max-height: 100%; }
 
+/* Bug Tickets Summary Modal 樣式 */
+#bugTicketsSummaryModal .modal-dialog {
+    max-width: 800px;
+    max-height: 90vh;
+}
+
+#bugTicketsSummaryModal .modal-content {
+    height: 600px;
+    display: flex;
+    flex-direction: column;
+}
+
+#bugTicketsSummaryModal .modal-body {
+    flex: 1;
+    padding: 1rem;
+    overflow-y: auto;
+}
+
+/* 確保 Bug Tickets 內容區域可見 */
+#bugTicketsSummaryContent {
+    width: 100%;
+    min-height: 200px;
+}
+
+#bugTicketsList {
+    width: 100%;
+    min-height: 100px;
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    padding: 0.5rem;
+}
+
+#bugTicketsSummaryList {
+    width: 100%;
+    min-height: 100px;
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    padding: 0.5rem;
+}
+
+/* Bug tickets 卡片樣式 */
+.bug-ticket-card {
+    border: 1px solid var(--tr-border-light);
+    border-radius: 0.5rem;
+    background: white;
+    margin-bottom: 1rem;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    transition: all 0.2s ease;
+    overflow: hidden;
+}
+
+.bug-ticket-card:hover {
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+    transform: translateY(-2px);
+}
+
+.bug-ticket-card-body {
+    display: flex;
+    min-height: 120px;
+}
+
+.bug-ticket-left-panel {
+    flex: 0 0 200px;
+    background: #f8f9fa;
+    border-right: 1px solid var(--tr-border-light);
+    padding: 1rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    text-align: center;
+}
+
+.bug-ticket-number {
+    font-weight: 600;
+    color: var(--tr-primary);
+    font-size: 1.1rem;
+    margin-bottom: 0.5rem;
+    cursor: pointer;
+    text-decoration: none;
+}
+
+.bug-ticket-number:hover {
+    text-decoration: underline;
+    color: var(--tr-primary);
+}
+
+.bug-ticket-status {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-weight: 500;
+    margin-bottom: 0.5rem;
+}
+
+.bug-ticket-summary {
+    font-size: 0.8rem;
+    color: var(--tr-text-muted);
+    line-height: 1.3;
+    text-align: center;
+}
+
+.bug-ticket-right-panel {
+    flex: 1;
+    padding: 1rem;
+}
+
+.test-cases-header {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: var(--tr-text-dark);
+    margin-bottom: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.test-cases-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.test-case-item {
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--tr-border-light);
+    border-radius: 0.25rem;
+    background: #f8f9fa;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 0.85rem;
+}
+
+.test-case-item:hover {
+    background: #e9ecef;
+    border-color: var(--tr-primary);
+    transform: translateX(2px);
+}
+
+.test-case-number {
+    font-weight: 600;
+    color: var(--tr-primary);
+}
+
+.test-case-result {
+    font-size: 0.75rem;
+    padding: 0.1rem 0.4rem;
+    border-radius: 0.2rem;
+    margin-left: auto;
+}
+
+/* 空狀態樣式 */
+.bug-tickets-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--tr-text-muted);
+    text-align: center;
+}
+
+.bug-tickets-empty-state i {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    opacity: 0.3;
+}
+
+/* 響應式設計 */
+@media (max-width: 768px) {
+    #bugTicketsSummaryModal .modal-dialog {
+        max-width: 95vw;
+        margin: 0.5rem;
+    }
+    
+    #bugTicketsSummaryModal .modal-content {
+        height: 85vh;
+    }
+    
+    .bug-ticket-card-body {
+        flex-direction: column;
+        min-height: auto;
+    }
+    
+    .bug-ticket-left-panel {
+        flex: none;
+        border-right: none;
+        border-bottom: 1px solid var(--tr-border-light);
+        padding: 0.75rem;
+    }
+    
+    .bug-ticket-right-panel {
+        padding: 0.75rem;
+    }
+    
+    .test-cases-list {
+        max-height: 150px;
+    }
+}
+
 /* Timeline 樣式 */
 .timeline-item { position: relative; padding-left: 1rem; margin-bottom: 0.75rem; }
 .timeline-item::before { content: ''; position: absolute; left: 0.38rem; top: 0.2rem; width: 8px; height: 8px; border-radius: 50%; background-color: var(--tr-primary, #0d6efd); }
@@ -673,6 +886,10 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                 <div class="stat-item">
                     <div class="stat-number" id="pass-rate">0%</div>
                     <div class="stat-label" data-i18n="testRun.passRate">通過率</div>
+                </div>
+                <div class="stat-item bug-tickets-card" onclick="showBugTicketsModal()" style="cursor: pointer;">
+                    <div class="stat-number text-warning" id="bug-tickets-count">0</div>
+                    <div class="stat-label" data-i18n="testRun.bugTicketsCount">Bug Tickets</div>
                 </div>
             </div>
             
@@ -1038,12 +1255,62 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
         </div>
     </div>
 </div>
+
+<!-- Bug Tickets 摘要 Modal -->
+<div class="modal fade" id="bugTicketsSummaryModal" tabindex="-1" aria-labelledby="bugTicketsSummaryModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="bugTicketsSummaryModalLabel">
+                    <i class="fas fa-bug me-2"></i><span data-i18n="testRun.bugTicketsSummary">Bug Tickets 摘要</span>
+                </h5>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-outline-secondary btn-sm" onclick="refreshBugTicketsStatus()">
+                        <i class="fas fa-sync-alt me-1"></i><span data-i18n="testRun.refreshBugStatus">重新整理狀態</span>
+                    </button>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+            </div>
+            <div class="modal-body">
+                <div id="bugTicketsSummaryLoading" class="text-center py-4" style="display:none;">
+                    <i class="fas fa-spinner fa-spin me-2"></i>
+                    <span data-i18n="testRun.loadingBugTickets">載入 Bug Tickets 中...</span>
+                </div>
+                
+                <div id="bugTicketsSummaryEmpty" class="text-center py-4 text-muted" style="display:none;">
+                    <i class="fas fa-info-circle me-2"></i>
+                    <span data-i18n="testRun.noBugTicketsInRun">此 Test Run 尚無 Bug Tickets</span>
+                </div>
+                
+                <div id="bugTicketsSummaryContent" style="display:none;">
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-center align-items-center mb-2">
+                            <div class="btn-group btn-group-sm" role="group" aria-label="Status Filter">
+                                <button type="button" class="btn btn-outline-secondary active" data-status="ALL" data-i18n="testRun.statusFilter.all" onclick="filterBugTicketsByStatus('ALL')">All</button>
+                                <button type="button" class="btn btn-outline-warning" data-status="OPEN" data-i18n="testRun.statusFilter.open" onclick="filterBugTicketsByStatus('OPEN')">Open</button>
+                                <button type="button" class="btn btn-outline-primary" data-status="TO DO" data-i18n="testRun.statusFilter.toDo" onclick="filterBugTicketsByStatus('TO DO')">To Do</button>
+                                <button type="button" class="btn btn-outline-info" data-status="IN PROGRESS" data-i18n="testRun.statusFilter.inProgress" onclick="filterBugTicketsByStatus('IN PROGRESS')">In Progress</button>
+                                <button type="button" class="btn btn-outline-success" data-status="RESOLVED" data-i18n="testRun.statusFilter.resolved" onclick="filterBugTicketsByStatus('RESOLVED')">Resolved</button>
+                                <button type="button" class="btn btn-outline-secondary" data-status="SCHEDULED" data-i18n="testRun.statusFilter.scheduled" onclick="filterBugTicketsByStatus('SCHEDULED')">Scheduled</button>
+                                <button type="button" class="btn btn-outline-dark" data-status="CLOSED" data-i18n="testRun.statusFilter.closed" onclick="filterBugTicketsByStatus('CLOSED')">Closed</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="bugTicketsSummaryList" style="max-height: 500px; overflow-y: auto;">
+                        <!-- Bug tickets cards will be rendered here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script src="/static/js/assignee-selector.js"></script>
 <script>
 // Test Run 執行頁面
+console.log('=== Test Run 執行頁面 JavaScript 已載入 ===');
 let currentConfigId = null;
 let currentTeamId = null; // 由 AppUtils 取得，無則退回 1
 let testRunConfig = null;
@@ -1070,6 +1337,7 @@ document.addEventListener('DOMContentLoaded', function() {
         window.location.href = '/test-run-management';
         return;
     }
+    
     
     initializePage();
     bindEventListeners();
@@ -1143,11 +1411,17 @@ function initializePage() {
     loadTestRunConfig();
 }
 
+
 function bindEventListeners() {
     document.getElementById('refreshBtn').addEventListener('click', async () => {
+        const refreshBtn = document.getElementById('refreshBtn');
+        const originalHTML = refreshBtn.innerHTML;
+        
+        // 顯示載入動畫在按鈕內（像 Test Case Management 一樣）
+        refreshBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2" role="status"></span>${window.i18n ? window.i18n.t('common.refresh') : '重新整理'}`;
+        refreshBtn.disabled = true;
+        
         try {
-            showItemsLoading();
-            
             // 清除 Test Case Management 的列表快取
             try {
                 const TEST_CASES_CACHE_KEY = 'test_cases_list_cache_v1';
@@ -1173,12 +1447,18 @@ function bindEventListeners() {
                 console.debug('清除個別快取失敗:', e);
             }
             
-            // 重新載入 Items
-            await loadTestRunItems();
+            // 重新載入 Items（不顯示 Test Case 區域載入動畫）
+            await loadTestRunItemsWithoutLoading();
             // 強制重新抓取 Test Case 詳細並更新快取
             await preloadAllTeamTestCasesForRun(testRunItems);
-            // 更新統計
+            // 更新統計（包含 Bug Tickets 數量）- 會自動顯示統計區域轉圈動畫
             await updateStatistics();
+            // 更新 Bug Tickets 狀態
+            try {
+                await refreshBugTicketsStatus();
+            } catch (e) {
+                console.debug('更新 Bug Tickets 狀態失敗:', e);
+            }
             // 若詳情 Modal 開啟中則刷新 timeline（以目前顯示的 test case）
             try {
                 const modalEl = document.getElementById('testCaseDetailModal');
@@ -1187,8 +1467,22 @@ function bindEventListeners() {
                     renderResultHistoryTimeline({ test_case_number: currentDetailTestCase.test_case_number });
                 }
             } catch (_) {}
+            // 若 Bug Tickets Summary Modal 開啟中則刷新其內容
+            try {
+                const bugModalEl = document.getElementById('bugTicketsSummaryModal');
+                const isBugModalShown = bugModalEl && bugModalEl.classList.contains('show');
+                if (isBugModalShown) {
+                    await loadBugTicketsSummary();
+                }
+            } catch (_) {}
+            
+            // 顯示成功訊息
+            AppUtils.showSuccess(window.i18n ? window.i18n.t('messages.dataReloaded') : '資料已重新載入');
+            
         } finally {
-            hideItemsLoading();
+            // 恢復按鈕原始狀態
+            refreshBtn.innerHTML = originalHTML;
+            refreshBtn.disabled = false;
         }
     });
     
@@ -1306,6 +1600,31 @@ async function loadTestRunItems() {
         console.error('Failed to load test items:', error);
         AppUtils.showError('{{ i18n.t("testRun.loadItemsFailed") if i18n else "載入測試項目失敗" }}' + ': ' + error.message);
         hideItemsLoading();
+    }
+}
+
+// 不顯示載入動畫的版本（用於 Refresh）
+async function loadTestRunItemsWithoutLoading() {
+    try {
+        const response = await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/`);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        
+        testRunItems = await response.json();
+        // 預設按 Test Case Number 升冪排序（與 Test Case Management 一致）
+        try {
+            testRunItems.sort((a, b) => {
+                const aNumber = a && a.test_case_number ? a.test_case_number : '';
+                const bNumber = b && b.test_case_number ? b.test_case_number : '';
+                return aNumber.localeCompare(bNumber);
+            });
+        } catch (_) { /* 忽略排序中的非致命錯誤 */ }
+        
+        // 直接渲染，不顯示載入動畫
+        renderTestRunItems();
+        
+    } catch (error) {
+        console.error('Failed to load test items:', error);
+        AppUtils.showError('{{ i18n.t("testRun.loadItemsFailed") if i18n else "載入測試項目失敗" }}' + ': ' + error.message);
     }
 }
 
@@ -1569,8 +1888,33 @@ async function updateTestResult(itemId, result) {
     }
 }
 
+// 顯示統計載入狀態
+function showStatsLoading() {
+    const statIds = ['total-count', 'executed-count', 'passed-count', 'failed-count', 'execution-rate', 'pass-rate', 'bug-tickets-count'];
+    statIds.forEach(id => {
+        const element = document.getElementById(id);
+        if (element) {
+            element.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        }
+    });
+}
+
+// 隱藏統計載入狀態並恢復數字顯示
+function hideStatsLoading() {
+    const statIds = ['total-count', 'executed-count', 'passed-count', 'failed-count', 'execution-rate', 'pass-rate', 'bug-tickets-count'];
+    statIds.forEach(id => {
+        const element = document.getElementById(id);
+        if (element && element.innerHTML.includes('fa-spinner')) {
+            element.textContent = '0';
+        }
+    });
+}
+
 async function updateStatistics() {
     try {
+        // 顯示載入動畫
+        showStatsLoading();
+        
         const response = await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/statistics`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         
@@ -1580,6 +1924,7 @@ async function updateStatistics() {
         document.getElementById('executed-count').textContent = stats.executed_runs;
         document.getElementById('passed-count').textContent = stats.passed_runs;
         document.getElementById('failed-count').textContent = stats.failed_runs;
+        document.getElementById('bug-tickets-count').textContent = stats.unique_bug_tickets_count || 0;
         // 顯示為無條件捨去之整數百分比
         document.getElementById('execution-rate').textContent = Math.floor(stats.execution_rate) + '%';
         // 通過率顯示為無條件捨去之整數百分比
@@ -1590,6 +1935,8 @@ async function updateStatistics() {
         
     } catch (error) {
         console.error('Failed to update statistics:', error);
+        // 錯誤時也要隱藏載入動畫
+        hideStatsLoading();
     }
 }
 
@@ -2302,6 +2649,24 @@ async function showTestCaseDetailModal(testCaseNumber) {
     if (!testCaseDetailModalInstance) {
         testCaseDetailModalInstance = new bootstrap.Modal(modalElement);
     }
+    
+    // 確保這個 Modal 有最高的 z-index (高於其他 Modal)
+    // Bug Tickets Summary Modal 預設是 1055，所以設置為 1080 確保在上層
+    modalElement.style.zIndex = '1080';
+    
+    // 設置 Modal 事件監聽器來處理 backdrop z-index
+    modalElement.addEventListener('shown.bs.modal', function() {
+        // 找到最新的 backdrop 並設置正確的 z-index
+        const backdrops = document.querySelectorAll('.modal-backdrop');
+        if (backdrops.length > 0) {
+            // 設置最新的 backdrop 有較高的 z-index
+            const latestBackdrop = backdrops[backdrops.length - 1];
+            latestBackdrop.style.zIndex = '1079';
+        }
+        
+        // 確保 Modal 本身的 z-index 是最高的
+        modalElement.style.zIndex = '1080';
+    });
     
     // 重置 Modal 狀態
     document.getElementById('testCaseDetailLoading').style.display = 'block';
@@ -3342,6 +3707,24 @@ function initBugTicketModal() {
     if (!addBugTicketModal) {
         addBugTicketModal = new bootstrap.Modal(document.getElementById('addBugTicketModal'));
     }
+    
+    // 確保 Bug Ticket Modal 有最高的 z-index (高於 Test Case Detail Modal)
+    const modalElement = document.getElementById('addBugTicketModal');
+    modalElement.style.zIndex = '1090';
+    
+    // 設置 Modal 事件監聽器來處理 backdrop z-index
+    modalElement.addEventListener('shown.bs.modal', function() {
+        // 找到最新的 backdrop 並設置正確的 z-index
+        const backdrops = document.querySelectorAll('.modal-backdrop');
+        if (backdrops.length > 0) {
+            // 設置最新的 backdrop 有較高的 z-index
+            const latestBackdrop = backdrops[backdrops.length - 1];
+            latestBackdrop.style.zIndex = '1089';
+        }
+        
+        // 確保 Modal 本身的 z-index 是最高的
+        modalElement.style.zIndex = '1090';
+    });
 }
 
 // 初始化刪除 Bug Ticket Modal
@@ -3349,6 +3732,20 @@ function initDeleteBugTicketModal() {
     if (!deleteBugTicketModal) {
         deleteBugTicketModal = new bootstrap.Modal(document.getElementById('deleteBugTicketModal'));
     }
+    
+    // 確保刪除 Bug Ticket Modal 有最高的 z-index
+    const modalElement = document.getElementById('deleteBugTicketModal');
+    modalElement.style.zIndex = '1090';
+    
+    // 設置 Modal 事件監聽器來處理 backdrop z-index
+    modalElement.addEventListener('shown.bs.modal', function() {
+        const backdrops = document.querySelectorAll('.modal-backdrop');
+        if (backdrops.length > 0) {
+            const latestBackdrop = backdrops[backdrops.length - 1];
+            latestBackdrop.style.zIndex = '1089';
+        }
+        modalElement.style.zIndex = '1090';
+    });
 }
 
 // 顯示 Bug Tickets
@@ -3712,6 +4109,319 @@ function getJIRAStatusBadgeClass(status) {
     }
     return 'bg-warning';
 }
+
+// ================== Bug Tickets Summary 功能 ==================
+let bugTicketsSummaryModal = null;
+let currentBugTicketsSummary = null;
+let currentBugStatusFilter = 'ALL';
+
+// Bug Tickets 狀態到徽章顏色的映射
+function getBugStatusBadgeClass(status) {
+    const statusName = (status || '').toUpperCase().trim();
+    
+    const statusMap = {
+        'TO DO': 'bg-primary',
+        'TODO': 'bg-primary',
+        'IN PROGRESS': 'bg-info', 
+        'INPROGRESS': 'bg-info',
+        'RESOLVED': 'bg-success',
+        'CLOSED': 'bg-dark',
+        'OPEN': 'bg-warning',
+        'SCHEDULED': 'bg-secondary'
+    };
+    
+    return statusMap[statusName] || 'bg-secondary';
+}
+
+// Bug Tickets 狀態篩選功能
+function filterBugTicketsByStatus(status) {
+    currentBugStatusFilter = status;
+    
+    // 更新按鈕狀態
+    document.querySelectorAll('[data-status]').forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.getAttribute('data-status') === status) {
+            btn.classList.add('active');
+        }
+    });
+    
+    // 重新渲染
+    if (currentBugTicketsSummary) {
+        renderBugTicketsCards(currentBugTicketsSummary, document.getElementById('bugTicketsSummaryList'));
+        // 重新翻譯動態生成的內容
+        if (window.i18n && window.i18n.isReady()) {
+            window.i18n.retranslate(document.getElementById('bugTicketsSummaryList'));
+        }
+    }
+}
+
+// 初始化 Bug Tickets Summary Modal
+function initBugTicketsSummaryModal() {
+    console.log('初始化 Bug Tickets Summary Modal');
+    const modalElement = document.getElementById('bugTicketsSummaryModal');
+    if (modalElement && !bugTicketsSummaryModal) {
+        bugTicketsSummaryModal = new bootstrap.Modal(modalElement);
+        console.log('Modal 已初始化');
+    } else if (!modalElement) {
+        console.error('找不到 bugTicketsSummaryModal 元素');
+    }
+}
+
+// 顯示 Bug Tickets Summary Modal
+async function showBugTicketsModal() {
+    console.log('=== 開始顯示 Bug Tickets Modal ===');
+    console.log('準備顯示 Bug Tickets Modal');
+    initBugTicketsSummaryModal();
+    
+    if (bugTicketsSummaryModal) {
+        bugTicketsSummaryModal.show();
+        console.log('Modal 已顯示，開始載入資料');
+        
+        // 延遲一下確保 Modal 完全打開
+        setTimeout(() => {
+            loadBugTicketsSummary();
+        }, 100);
+    } else {
+        console.error('無法顯示 Modal');
+    }
+}
+
+// 載入 Bug Tickets Summary 資料
+async function loadBugTicketsSummary() {
+    console.log('開始載入 Bug Tickets Summary 資料');
+    console.log('當前 Team ID:', currentTeamId, 'Config ID:', currentConfigId);
+    
+    const loadingEl = document.getElementById('bugTicketsSummaryLoading');
+    const emptyEl = document.getElementById('bugTicketsSummaryEmpty');
+    const contentEl = document.getElementById('bugTicketsSummaryContent');
+    
+    // 檢查所有必要元素
+    if (!loadingEl) {
+        console.error('找不到 bugTicketsSummaryLoading 元素');
+        return;
+    }
+    if (!emptyEl) {
+        console.error('找不到 bugTicketsSummaryEmpty 元素');
+        return;
+    }
+    if (!contentEl) {
+        console.error('找不到 bugTicketsSummaryContent 元素');
+        return;
+    }
+    
+    console.log('所有必要元素都存在，開始載入');
+    
+    // 重置所有狀態
+    loadingEl.style.display = 'block';
+    emptyEl.style.display = 'none';
+    contentEl.style.display = 'none';
+    
+    try {
+        const url = `/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/bug-tickets/summary`;
+        const response = await fetch(url);
+        
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        
+        const summaryData = await response.json();
+        currentBugTicketsSummary = summaryData;
+        loadingEl.style.display = 'none';
+        
+        if (!summaryData || summaryData.total_unique_tickets === 0 || !summaryData.tickets || summaryData.tickets.length === 0) {
+            emptyEl.style.display = 'block';
+            return;
+        }
+        
+        contentEl.style.display = 'block';
+        renderBugTicketsSummary(summaryData);
+        
+    } catch (error) {
+        console.error('載入失敗:', error);
+        loadingEl.style.display = 'none';
+        emptyEl.style.display = 'block';
+        emptyEl.innerHTML = '<i class="fas fa-exclamation-triangle me-2"></i><span class="text-danger">載入失敗: ' + error.message + '</span>';
+    }
+}
+
+// 渲染 Bug Tickets Summary
+function renderBugTicketsSummary(summaryData) {
+    const bugTicketsList = document.getElementById('bugTicketsSummaryList');
+    
+    if (!bugTicketsList) {
+        console.error('找不到必要的元素');
+        return;
+    }
+    
+    renderBugTicketsCards(summaryData, bugTicketsList);
+}
+
+function renderBugTicketsCards(summaryData, bugTicketsList) {
+    if (!summaryData.tickets || summaryData.tickets.length === 0) {
+        const noBugTicketsText = '{{ i18n.t("testRun.noBugTicketsInRun") if i18n else "此 Test Run 尚無 Bug Tickets" }}';
+        bugTicketsList.innerHTML = `<div class="text-muted text-center p-4"><i class="fas fa-info-circle me-2"></i>${noBugTicketsText}</div>`;
+        return;
+    }
+    
+    // 根據當前篩選條件過濾 tickets
+    let filteredTickets = summaryData.tickets;
+    if (currentBugStatusFilter !== 'ALL') {
+        filteredTickets = summaryData.tickets.filter(ticket => {
+            const statusName = (ticket.ticket_info.status.name || '').toUpperCase().trim();
+            const filterStatus = currentBugStatusFilter.toUpperCase().trim();
+            return statusName === filterStatus || 
+                   (filterStatus === 'IN PROGRESS' && statusName === 'INPROGRESS') ||
+                   (filterStatus === 'TO DO' && statusName === 'TODO');
+        });
+    }
+    
+    if (filteredTickets.length === 0) {
+        const noTicketsForStatusText = '{{ i18n.t("testRun.noTicketsForStatus") if i18n else "此狀態下無 Bug Tickets" }}';
+        bugTicketsList.innerHTML = `<div class="text-muted text-center p-4"><i class="fas fa-filter me-2"></i>${noTicketsForStatusText}</div>`;
+        return;
+    }
+    
+    let cardsHTML = '';
+    
+    filteredTickets.forEach(ticket => {
+        const ticketInfo = ticket.ticket_info;
+        const testCases = ticket.test_cases;
+        
+        let testCasesHTML = '';
+        testCases.forEach(testCase => {
+            testCasesHTML += `
+                <div class="border rounded p-2 mb-2 bg-white" style="cursor: pointer;" 
+                     onclick="showTestCaseQuickView('${testCase.test_case_number}')">
+                    <strong class="text-primary">${testCase.test_case_number}</strong><br>
+                    <small class="text-muted">${testCase.title || ''}</small>
+                </div>
+            `;
+        });
+        
+        // 使用新的狀態顏色映射函數
+        const badgeClass = getBugStatusBadgeClass(ticketInfo.status.name);
+        
+        cardsHTML += `
+            <div class="card mb-3">
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-4">
+                            <h6 class="card-title">
+                                <a href="${ticketInfo.url}" target="_blank" class="text-decoration-none">
+                                    ${ticketInfo.ticket_number} 
+                                    <i class="fas fa-external-link-alt fa-sm"></i>
+                                </a>
+                            </h6>
+                            <span class="badge ${badgeClass}">${ticketInfo.status.name}</span>
+                            <p class="card-text mt-2">
+                                <small class="text-muted">${ticketInfo.summary || 'No summary available'}</small>
+                            </p>
+                        </div>
+                        <div class="col-md-8">
+                            <h6><i class="fas fa-list-ul me-1"></i><span data-i18n="testRun.relatedTestCases">相關測試案例</span>
+                                <span class="badge bg-info">${testCases.length}</span>
+                            </h6>
+                            <div style="max-height: 200px; overflow-y: auto;">
+                                ${testCasesHTML}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+    
+    bugTicketsList.innerHTML = cardsHTML;
+}
+
+
+
+// 重新整理 Bug Tickets 狀態（呼叫 JIRA API 更新狀態）
+async function refreshBugTicketsStatus() {
+    if (!currentBugTicketsSummary || currentBugTicketsSummary.total_unique_tickets === 0) {
+        return;
+    }
+    
+    // 顯示重新整理進度
+    const refreshBtn = document.querySelector('button[onclick="refreshBugTicketsStatus()"]');
+    const originalHtml = refreshBtn.innerHTML;
+    refreshBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>更新中...';
+    refreshBtn.disabled = true;
+    
+    try {
+        // 依序呼叫 JIRA API 更新每個 ticket 的狀態
+        for (let ticket of currentBugTicketsSummary.tickets) {
+            try {
+                const response = await fetch(`/api/jira/ticket/${encodeURIComponent(ticket.ticket_info.ticket_number)}`);
+                if (response.ok) {
+                    const jiraData = await response.json();
+                    // 更新本地資料
+                    ticket.ticket_info.status = jiraData.status;
+                    ticket.ticket_info.summary = jiraData.summary;
+                }
+            } catch (error) {
+                console.warn(`Failed to update ticket ${ticket.ticket_info.ticket_number}:`, error);
+            }
+        }
+        
+        // 重新渲染
+        renderBugTicketsSummary(currentBugTicketsSummary);
+        AppUtils.showSuccess('Bug Tickets 狀態已更新');
+        
+    } catch (error) {
+        console.error('重新整理 Bug Tickets 狀態失敗:', error);
+        AppUtils.showError('更新狀態失敗: ' + error.message);
+    } finally {
+        refreshBtn.innerHTML = originalHtml;
+        refreshBtn.disabled = false;
+    }
+}
+
+// 測試案例快速預覽（使用瀏覽器 popup）
+function showTestCaseQuickView(testCaseNumber) {
+    // 直接使用現有的 Test Case Detail Modal
+    showTestCaseDetailModal(testCaseNumber);
+}
+
+// 頁面載入完成後進行基礎檢查
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('=== DOM 載入完成，開始檢查 Bug Tickets 功能 ===');
+    
+    // 檢查 Bug Tickets 卡片
+    const bugTicketsCard = document.querySelector('.bug-tickets-card');
+    if (bugTicketsCard) {
+        console.log('✓ Bug Tickets 卡片元素存在');
+        console.log('✓ 點擊事件:', bugTicketsCard.getAttribute('onclick'));
+    } else {
+        console.error('✗ 找不到 Bug Tickets 卡片元素');
+    }
+    
+    // 檢查 Modal 元素
+    const modal = document.getElementById('bugTicketsSummaryModal');
+    if (modal) {
+        console.log('✓ Bug Tickets Modal 元素存在');
+    } else {
+        console.error('✗ 找不到 Bug Tickets Modal 元素');
+    }
+    
+    // 檢查關鍵子元素
+    const loading = document.getElementById('bugTicketsSummaryLoading');
+    const empty = document.getElementById('bugTicketsSummaryEmpty');
+    const content = document.getElementById('bugTicketsSummaryContent');
+    const list = document.getElementById('bugTicketsSummaryList');
+    
+    console.log('Modal 子元素檢查:');
+    console.log('  Loading元素:', loading ? '✓存在' : '✗缺失');
+    console.log('  Empty元素:', empty ? '✓存在' : '✗缺失');
+    console.log('  Content元素:', content ? '✓存在' : '✗缺失');
+    console.log('  List元素:', list ? '✓存在' : '✗缺失');
+    
+    // 檢查函數是否存在
+    console.log('函數檢查:');
+    console.log('  showBugTicketsModal:', typeof showBugTicketsModal);
+    console.log('  loadBugTicketsSummary:', typeof loadBugTicketsSummary);
+    console.log('  renderBugTicketsSummary:', typeof renderBugTicketsSummary);
+});
 </script>
 {% endblock %}
 /* reverted: no fixed height for attachments list */

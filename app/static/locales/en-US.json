@@ -483,6 +483,7 @@
      "files": "files",
      "attachments": "Attachments",
      "loadTestCaseError": "Failed to load Test Case details",
+     "testCaseDetail": "Test Case Detail",
      "openInTestCaseManagement": "Open in Test Case Management",
      "attachmentDetails": "Attachment Details",
      "attachmentName": "Attachment Name",
@@ -508,7 +509,26 @@
       "confirmDeleteBugTicket": "Are you sure you want to delete this Bug Ticket?",
       "addBugTicketFailed": "Failed to add Bug Ticket",
       "deleteBugTicketFailed": "Failed to delete Bug Ticket",
-      "loadBugTicketsFailed": "Failed to load Bug Tickets"
+      "loadBugTicketsFailed": "Failed to load Bug Tickets",
+      "bugTicketsCount": "Bug Tickets",
+      "bugTicketsSummary": "Bug Tickets Summary",
+      "refreshBugStatus": "Refresh Status",
+      "loadingBugTickets": "Loading Bug Tickets...",
+      "noBugTicketsInRun": "No Bug Tickets in this Test Run",
+      "bugTicketsList": "Bug Tickets List",
+      "relatedTestCases": "Related Test Cases",
+      "selectTicketToView": "Click on Bug Ticket to view related test cases",
+      "statusFilter": {
+        "all": "All",
+        "open": "Open",
+        "toDo": "To Do",
+        "inProgress": "In Progress",
+        "resolved": "Resolved",
+        "scheduled": "Scheduled",
+        "closed": "Closed"
+      },
+      "noTicketsForStatus": "No Bug Tickets for this status",
+      "openInNewWindow": "Open in new window"
   },
   "priority": {
     "high": "High",

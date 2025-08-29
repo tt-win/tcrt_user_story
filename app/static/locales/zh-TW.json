@@ -481,6 +481,7 @@
      "files": "個文件",
      "attachments": "附件",
      "loadTestCaseError": "載入 Test Case 詳細資料失敗",
+     "testCaseDetail": "測試案例詳細資訊",
      "openInTestCaseManagement": "在測試案例管理中開啟",
      "attachmentDetails": "附件詳情",
      "attachmentName": "附件名稱",
@@ -506,7 +507,26 @@
       "confirmDeleteBugTicket": "確定要刪除這個 Bug Ticket 嗎？",
       "addBugTicketFailed": "新增 Bug Ticket 失敗",
       "deleteBugTicketFailed": "刪除 Bug Ticket 失敗",
-      "loadBugTicketsFailed": "載入 Bug Tickets 失敗"
+      "loadBugTicketsFailed": "載入 Bug Tickets 失敗",
+      "bugTicketsCount": "Bug Tickets",
+      "bugTicketsSummary": "Bug Tickets 摘要",
+      "refreshBugStatus": "重新整理狀態",
+      "loadingBugTickets": "載入 Bug Tickets 中...",
+      "noBugTicketsInRun": "此 Test Run 尚無 Bug Tickets",
+      "bugTicketsList": "Bug Tickets 列表",
+      "relatedTestCases": "相關測試案例",
+      "selectTicketToView": "請點擊左側 Bug Ticket 查看相關測試案例",
+      "statusFilter": {
+        "all": "全部",
+        "open": "Open",
+        "toDo": "To Do",
+        "inProgress": "In Progress",
+        "resolved": "Resolved",
+        "scheduled": "Scheduled",
+        "closed": "Closed"
+      },
+      "noTicketsForStatus": "此狀態下無 Bug Tickets",
+      "openInNewWindow": "在新視窗開啟"
   },
   "priority": {
     "high": "高",

@@ -619,6 +619,26 @@ async def get_items_statistics(
     pass_rate = (passed / executed * 100) if executed > 0 else 0.0
     total_pass_rate = (passed / total * 100) if total > 0 else 0.0
 
+    # 計算 Bug Tickets 統計
+    bug_tickets_count = 0
+    unique_bug_tickets = set()
+    
+    # 查詢所有有 bug_tickets_json 的項目
+    items_with_bugs = q.filter(TestRunItemDB.bug_tickets_json.isnot(None)).all()
+    
+    for item in items_with_bugs:
+        if item.bug_tickets_json:
+            try:
+                tickets_data = json.loads(item.bug_tickets_json)
+                if isinstance(tickets_data, list):
+                    for ticket in tickets_data:
+                        if isinstance(ticket, dict) and 'ticket_number' in ticket:
+                            unique_bug_tickets.add(ticket['ticket_number'].upper())
+            except Exception:
+                pass  # 忽略解析錯誤的項目
+    
+    bug_tickets_count = len(unique_bug_tickets)
+
     return {
         "total_runs": total,
         "executed_runs": executed,
@@ -626,6 +646,7 @@ async def get_items_statistics(
         "failed_runs": failed,
         "retest_runs": retest,
         "not_available_runs": na,
+        "unique_bug_tickets_count": bug_tickets_count,
         # 無條件捨去為整數
         "execution_rate": int(execution_rate // 1),
         "pass_rate": int(pass_rate // 1),
@@ -634,6 +655,93 @@ async def get_items_statistics(
 
 
 # -------------------- Bug Tickets Management --------------------
+
+@router.get("/bug-tickets/summary")
+async def get_bug_tickets_summary(
+    team_id: int,
+    config_id: int,
+    db: Session = Depends(get_db)
+):
+    """取得該 Test Run 的 Bug Tickets 摘要資訊"""
+    from ..config import settings
+    from ..services.jira_client import JiraClient
+    
+    _verify_team_and_config(team_id, config_id, db)
+    
+    # 查詢所有有 bug_tickets_json 的項目
+    items = db.query(TestRunItemDB).filter(
+        TestRunItemDB.team_id == team_id,
+        TestRunItemDB.config_id == config_id,
+        TestRunItemDB.bug_tickets_json.isnot(None)
+    ).all()
+    
+    bug_tickets_data = {}  # ticket_number -> {'ticket_info': {...}, 'test_cases': [...]}
+    
+    for item in items:
+        if item.bug_tickets_json:
+            try:
+                tickets_data = json.loads(item.bug_tickets_json)
+                if isinstance(tickets_data, list):
+                    for ticket in tickets_data:
+                        if isinstance(ticket, dict) and 'ticket_number' in ticket:
+                            ticket_number = ticket['ticket_number'].upper()
+                            
+                            # 初始化 ticket 資料
+                            if ticket_number not in bug_tickets_data:
+                                bug_tickets_data[ticket_number] = {
+                                    'ticket_info': {
+                                        'ticket_number': ticket_number,
+                                        'status': {'name': 'Unknown', 'id': ''},
+                                        'summary': '',
+                                        'url': f"{settings.jira.server_url}/browse/{ticket_number}" if settings.jira.server_url else ''
+                                    },
+                                    'test_cases': []
+                                }
+                            
+                            # 添加測試案例
+                            bug_tickets_data[ticket_number]['test_cases'].append({
+                                'item_id': item.id,
+                                'test_case_number': item.test_case_number,
+                                'title': item.title or '',
+                                'test_result': item.test_result
+                            })
+            except Exception:
+                pass  # 忽略解析錯誤的項目
+    
+    # 嘗試從 JIRA API 取得實際的票券資訊
+    try:
+        jira_client = JiraClient()
+        for ticket_number, ticket_data in bug_tickets_data.items():
+            try:
+                jira_info = jira_client.get_issue(
+                    ticket_number,
+                    fields=['summary', 'status']
+                )
+                if jira_info and 'fields' in jira_info:
+                    fields = jira_info['fields']
+                    if 'summary' in fields and fields['summary']:
+                        ticket_data['ticket_info']['summary'] = fields['summary']
+                    if 'status' in fields and fields['status']:
+                        ticket_data['ticket_info']['status'] = {
+                            'name': fields['status'].get('name', 'Unknown'),
+                            'id': fields['status'].get('id', '')
+                        }
+            except Exception as e:
+                # JIRA API 調用失敗時保持預設值
+                print(f"Failed to get JIRA info for {ticket_number}: {e}")
+                continue
+    except Exception as e:
+        # JIRA Client 初始化失敗時保持預設值
+        print(f"Failed to initialize JIRA client: {e}")
+        pass
+    
+    # 轉換為回應格式
+    summary_data = {
+        'total_unique_tickets': len(bug_tickets_data),
+        'tickets': list(bug_tickets_data.values())
+    }
+    
+    return summary_data
 
 @router.get("/{item_id}/bug-tickets", response_model=List[BugTicketResponse])
 async def get_bug_tickets(
