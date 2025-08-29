@@ -5599,12 +5599,18 @@ function formatTicketTooltip(tcgNumber, ticketData) {
         }
     }
 
-    // 取得翻譯文字 (使用簡短版本以節省 tooltip 空間)
+    // 取得翻譯文字
     const statusLabel = window.i18n ? window.i18n.t('common.status') : '狀態';
     const assigneeLabel = window.i18n ? window.i18n.t('common.assignee') : '執行者';
-    const createdLabel = '建立'; // 使用簡短固定文字
-    const updatedLabel = '更新'; // 使用簡短固定文字
-    const noDataText = '無'; // 使用簡短固定文字
+
+    // 日期標籤：使用翻譯系統，但提供簡短備用文字以節省空間
+    let createdLabel = window.i18n ? window.i18n.t('common.createDate') : '建立日期';
+    let updatedLabel = window.i18n ? window.i18n.t('common.updateDate') : '更新日期';
+    const noDataText = window.i18n ? window.i18n.t('common.noDescription') : '無';
+
+    // 如果是中文且標籤太長，使用簡短版本
+    if (createdLabel.length > 4) createdLabel = '建立';
+    if (updatedLabel.length > 4) updatedLabel = '更新';
 
     return `
         <div class="tcg-tooltip-content">
