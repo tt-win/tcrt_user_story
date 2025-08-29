@@ -157,7 +157,39 @@ const AppUtils = {
     },
 
     // 團隊變更回調函數 (可由外部設定)
-    onTeamChange: null
+    onTeamChange: null,
+
+    // 顯示團隊名稱標籤
+    showTeamNameBadge: function() {
+        const team = this.getCurrentTeam();
+        const badge = document.getElementById('team-name-badge');
+        const text = document.getElementById('team-name-text');
+
+        if (team && badge && text) {
+            text.textContent = team.name;
+            badge.classList.remove('d-none');
+        } else if (badge) {
+            badge.classList.add('d-none');
+        }
+    },
+
+    // 更新團隊名稱標籤
+    updateTeamNameBadge: function() {
+        const team = this.getCurrentTeam();
+        if (team) {
+            this.showTeamNameBadge();
+        } else {
+            this.hideTeamNameBadge();
+        }
+    },
+
+    // 隱藏團隊名稱標籤
+    hideTeamNameBadge: function() {
+        const badge = document.getElementById('team-name-badge');
+        if (badge) {
+            badge.classList.add('d-none');
+        }
+    }
 };
 
 // 全域翻譯監視器 - 處理動態內容的翻譯
@@ -240,6 +272,9 @@ let translationObserver = null;
 document.addEventListener('DOMContentLoaded', function() {
     // 載入儲存的團隊選擇
     AppUtils.getCurrentTeam();
+
+    // 顯示團隊名稱標籤
+    AppUtils.updateTeamNameBadge();
 
     // 初始化翻譯監視器
     if (!translationObserver) {

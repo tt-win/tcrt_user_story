@@ -719,6 +719,31 @@ main > .d-flex.justify-content-between.align-items-center.mb-3 p.text-muted {
   padding: 0.45em 0.7em;
 }
 
+/* 團隊名稱標籤樣式 */
+#team-name-badge {
+    transition: all 0.2s ease;
+    border-radius: 12px;
+    padding: 0.25rem 0.5rem;
+    font-weight: 500;
+}
+
+#team-name-badge:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* 響應式設計 */
+@media (max-width: 768px) {
+    #team-name-badge {
+        font-size: 0.7rem !important;
+        padding: 0.2rem 0.4rem !important;
+    }
+
+    #team-name-badge .fas {
+        display: none;
+    }
+}
+
 /* Fun loading animation (compact, same line-height impression) */
 .fun-loader { width: 220px; height: 28px; position: relative; }
 .fun-track { position: relative; width: 100%; height: 100%; overflow: hidden; }
