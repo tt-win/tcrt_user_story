@@ -1390,7 +1390,8 @@ async function loadTestCases(showLoadingBlock = true, updateProgress = null, for
             showLoadingState();
         }
         
-        const connectingMsg = window.i18n ? window.i18n.t('loading.connecting') : '連接伺服器...';
+        // 提供 fallback 參數確保即使 i18n 未完全載入也有正確顯示
+        const connectingMsg = window.i18n ? window.i18n.t('loading.connecting', {}, '連接伺服器...') : '連接伺服器...';
         if (updateProgress) updateProgress(30, connectingMsg);
         
         const response = await fetch(`/api/teams/${currentTeam.id}/testcases/`);
