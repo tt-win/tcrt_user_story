@@ -5599,6 +5599,13 @@ function formatTicketTooltip(tcgNumber, ticketData) {
         }
     }
 
+    // 取得翻譯文字 (使用簡短版本以節省 tooltip 空間)
+    const statusLabel = window.i18n ? window.i18n.t('common.status') : '狀態';
+    const assigneeLabel = window.i18n ? window.i18n.t('common.assignee') : '執行者';
+    const createdLabel = '建立'; // 使用簡短固定文字
+    const updatedLabel = '更新'; // 使用簡短固定文字
+    const noDataText = '無'; // 使用簡短固定文字
+
     return `
         <div class="tcg-tooltip-content">
             <div class="mb-2">
@@ -5609,30 +5616,30 @@ function formatTicketTooltip(tcgNumber, ticketData) {
                 <div class="col-6">
                     <div class="small">
                         <i class="fas fa-tasks me-1"></i>
-                        <strong>狀態:</strong>
+                        <strong>${statusLabel}:</strong>
                     </div>
                     <div class="small text-muted">${status}</div>
                 </div>
                 <div class="col-6">
                     <div class="small">
                         <i class="fas fa-user me-1"></i>
-                        <strong>指派:</strong>
+                        <strong>${assigneeLabel}:</strong>
                     </div>
                     <div class="small text-muted" style="word-break: break-word;">${assignee}</div>
                 </div>
                 <div class="col-6">
                     <div class="small">
                         <i class="fas fa-calendar me-1"></i>
-                        <strong>建立:</strong>
+                        <strong>${createdLabel}:</strong>
                     </div>
                     <div class="small text-muted">${createdDate}</div>
                 </div>
                 <div class="col-6">
                     <div class="small">
                         <i class="fas fa-clock me-1"></i>
-                        <strong>更新:</strong>
+                        <strong>${updatedLabel}:</strong>
                     </div>
-                    <div class="small text-muted">${updatedDate || '無'}</div>
+                    <div class="small text-muted">${updatedDate || noDataText}</div>
                 </div>
             </div>
         </div>
