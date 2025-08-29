@@ -581,7 +581,8 @@
     "viewEdit": "View/Edit",
     "clickEditTcg": "Click to edit TCG",
     "removeAttachment": "Remove attachment",
-    "markdownHelp": "Markdown syntax guide"
+    "markdownHelp": "Markdown syntax guide",
+    "viewJiraInfo": "View JIRA Ticket Info"
   },
   "form": {
     "testCaseTitle": "Test Case Title",
@@ -694,7 +695,8 @@
     "noTcgMatches": "No matching TCG found",
     "searchFailedRetry": "Search failed, please try again",
     "clickToEditTcg": "Click to edit TCG",
-    "testCaseNotFound": "Test case not found"
+    "testCaseNotFound": "Test case not found",
+    "noTCGNumber": "Please enter TCG number first"
   },
   "pagination": {
     "previousPage": "Previous",

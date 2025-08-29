@@ -580,7 +580,8 @@
     "viewEdit": "檢視/編輯",
     "clickEditTcg": "點擊編輯 TCG",
     "removeAttachment": "移除附件",
-    "markdownHelp": "Markdown 語法說明"
+    "markdownHelp": "Markdown 語法說明",
+    "viewJiraInfo": "檢視 JIRA Ticket 資訊"
   },
   "form": {
     "testCaseTitle": "測試案例標題",
@@ -693,7 +694,8 @@
     "noTcgMatches": "找不到匹配的 TCG",
     "searchFailedRetry": "搜尋失敗，請重試",
     "clickToEditTcg": "點擊編輯 TCG",
-    "testCaseNotFound": "找不到指定的測試案例"
+    "testCaseNotFound": "找不到指定的測試案例",
+    "noTCGNumber": "請先輸入 TCG 編號"
   },
   "pagination": {
     "previousPage": "上一頁",
