@@ -2436,7 +2436,7 @@ async function saveTestCase() {
             }
             
             // 更新快取而非重新載入全部資料
-            const testCaseId = document.getElementById('testCaseId').value;
+            // testCaseId 已在函數開頭宣告，這裡直接使用
             if (testCaseId) {
                 // 更新現有測試案例 - 先取得最新資料
                 try {
