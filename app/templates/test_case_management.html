@@ -5401,10 +5401,17 @@ document.addEventListener('languageChanged', updatePageTitle);
 // TCG tooltip 相關變數
 let currentTooltip = null;
 let tooltipTimeout = null;
+let currentHoveredElement = null;
+let isHoveringTooltip = false;
+let isInitialized = false;
 
 // 建立 TCG tooltip 元素
 function createTCGTTooltip() {
-    if (document.getElementById('tcg-tooltip')) return;
+    // 如果已經存在，先移除
+    const existingTooltip = document.getElementById('tcg-tooltip');
+    if (existingTooltip) {
+        existingTooltip.remove();
+    }
 
     const tooltip = document.createElement('div');
     tooltip.id = 'tcg-tooltip';
@@ -5420,7 +5427,7 @@ function createTCGTTooltip() {
         z-index: 1070;
         display: none;
         font-size: 0.875rem;
-        pointer-events: none;
+        pointer-events: auto;
     `;
 
     document.body.appendChild(tooltip);
@@ -5429,12 +5436,16 @@ function createTCGTTooltip() {
 
 // 顯示 TCG tooltip
 async function showTCGTTooltip(tcgNumber, element) {
-    // 清除之前的 timeout
+    // 如果正在載入其他 tooltip，先取消
     if (tooltipTimeout) {
         clearTimeout(tooltipTimeout);
+        tooltipTimeout = null;
     }
 
-    // 建立 tooltip 元素
+    // 設定當前 hover 元素
+    currentHoveredElement = element;
+
+    // 建立/取得 tooltip 元素
     const tooltip = createTCGTTooltip();
 
     // 設定載入狀態
@@ -5457,6 +5468,11 @@ async function showTCGTTooltip(tcgNumber, element) {
         // 從 JIRA 取得 ticket 資訊
         const ticketData = await fetchJIRATicketInfo(tcgNumber);
 
+        // 檢查是否還在同一個元素上
+        if (currentHoveredElement !== element) {
+            return; // 用戶已經移開，不顯示結果
+        }
+
         if (ticketData) {
             // 顯示 ticket 資訊
             tooltip.innerHTML = formatTicketTooltip(tcgNumber, ticketData);
@@ -5471,6 +5487,12 @@ async function showTCGTTooltip(tcgNumber, element) {
         }
     } catch (error) {
         console.error('TCG tooltip 載入失敗:', error);
+
+        // 檢查是否還在同一個元素上
+        if (currentHoveredElement !== element) {
+            return;
+        }
+
         tooltip.innerHTML = `
             <div class="text-danger small">
                 <i class="fas fa-times-circle me-1"></i>
@@ -5480,39 +5502,62 @@ async function showTCGTTooltip(tcgNumber, element) {
     }
 
     // 重新定位 (內容改變後)
-    positionTooltip(tooltip, element);
+    if (currentHoveredElement === element) {
+        positionTooltip(tooltip, element);
+    }
 }
 
 // 隱藏 TCG tooltip
-function hideTCGTTooltip() {
+function hideTCGTTooltip(immediate = false) {
+    // 清除之前的 timeout
     if (tooltipTimeout) {
         clearTimeout(tooltipTimeout);
+        tooltipTimeout = null;
     }
 
-    tooltipTimeout = setTimeout(() => {
+    // 如果正在 hover tooltip，不隱藏
+    if (isHoveringTooltip && !immediate) {
+        return;
+    }
+
+    const hideTooltip = () => {
         const tooltip = document.getElementById('tcg-tooltip');
         if (tooltip) {
             tooltip.style.display = 'none';
         }
-    }, 300); // 延遲隱藏，允許滑鼠移動到 tooltip 上
+        currentHoveredElement = null;
+    };
+
+    if (immediate) {
+        hideTooltip();
+    } else {
+        // 延遲隱藏，允許滑鼠移動到 tooltip 上
+        tooltipTimeout = setTimeout(hideTooltip, 200);
+    }
 }
 
 // 從 JIRA 取得 ticket 資訊
 async function fetchJIRATicketInfo(tcgNumber) {
     try {
-        // 使用現有的 JIRA 客戶端
-        if (window.jiraClient) {
-            const ticketData = window.jiraClient.get_issue(tcgNumber);
-            return ticketData;
-        }
+        // 使用 API 端點取得 ticket 資訊
+        const response = await fetch(`/api/jira/ticket/${tcgNumber}`, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
 
-        // 如果沒有全域 JIRA 客戶端，嘗試直接 API 呼叫
-        const response = await fetch(`/api/jira/ticket/${tcgNumber}`);
         if (response.ok) {
-            return await response.json();
+            const data = await response.json();
+            return data;
+        } else if (response.status === 404) {
+            // Ticket 不存在
+            return null;
+        } else {
+            // 其他錯誤
+            console.error('JIRA API 錯誤:', response.status, response.statusText);
+            return null;
         }
-
-        return null;
     } catch (error) {
         console.error('取得 JIRA ticket 資訊失敗:', error);
         return null;
@@ -5599,15 +5644,103 @@ function positionTooltip(tooltip, element) {
 
 // 初始化 TCG hover 功能
 function initializeTCGHover() {
-    // 監聽所有 TCG tag 的 hover 事件
+    // 防止重複初始化
+    if (isInitialized) {
+        return;
+    }
+    isInitialized = true;
+
+    // TCG tag hover 事件處理
     document.addEventListener('mouseover', function(e) {
-        if (e.target.classList.contains('tcg-tag')) {
-            const tcgNumber = e.target.textContent.trim();
-            if (tcgNumber) {
-                showTCGTTooltip(tcgNumber, e.target);
+        // 檢查是否是 TCG tag 或其子元素
+        const tcgTag = e.target.closest('.tcg-tag');
+        if (tcgTag) {
+            const tcgNumber = tcgTag.textContent.trim();
+            if (tcgNumber && !isHoveringTooltip) {
+                showTCGTTooltip(tcgNumber, tcgTag);
+            }
+        }
+
+        // 檢查是否移到 tooltip 上
+        if (e.target.closest('#tcg-tooltip')) {
+            isHoveringTooltip = true;
+            if (tooltipTimeout) {
+                clearTimeout(tooltipTimeout);
+                tooltipTimeout = null;
             }
         }
     });
+
+    document.addEventListener('mouseout', function(e) {
+        // 檢查是否離開 TCG tag
+        const tcgTag = e.target.closest('.tcg-tag');
+        if (tcgTag && !e.relatedTarget?.closest('.tcg-tag')) {
+            // 確保沒有移到其他 TCG tag 上
+            setTimeout(() => {
+                if (!isHoveringTooltip && !document.querySelector('.tcg-tag:hover')) {
+                    hideTCGTTooltip();
+                }
+            }, 50);
+        }
+
+        // 檢查是否離開 tooltip
+        if (e.target.closest('#tcg-tooltip') && !e.relatedTarget?.closest('#tcg-tooltip')) {
+            isHoveringTooltip = false;
+            // 延遲檢查是否需要隱藏 tooltip
+            setTimeout(() => {
+                if (!isHoveringTooltip && !document.querySelector('.tcg-tag:hover')) {
+                    hideTCGTTooltip();
+                }
+            }, 100);
+        }
+    });
+
+    // 點擊其他地方時隱藏 tooltip
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.tcg-tag') && !e.target.closest('#tcg-tooltip')) {
+            hideTCGTTooltip(true);
+        }
+    });
+
+    console.log('TCG hover tooltip initialized');
+}
+
+// 清理函數
+function cleanupTCGHover() {
+    const tooltip = document.getElementById('tcg-tooltip');
+    if (tooltip) {
+        tooltip.remove();
+    }
+
+    if (tooltipTimeout) {
+        clearTimeout(tooltipTimeout);
+        tooltipTimeout = null;
+    }
+
+    currentHoveredElement = null;
+    isHoveringTooltip = false;
+}
+
+// 頁面載入完成後初始化
+document.addEventListener('DOMContentLoaded', function() {
+    initializeTCGHover();
+});
+
+// 頁面卸載時清理
+window.addEventListener('beforeunload', function() {
+    cleanupTCGHover();
+});
+
+// 動態內容更新時重新初始化
+document.addEventListener('dynamicContentLoaded', function() {
+    // 重新初始化，但不清理由有的事件監聽器
+    const tooltip = document.getElementById('tcg-tooltip');
+    if (tooltip) {
+        tooltip.remove();
+    }
+    currentHoveredElement = null;
+    isHoveringTooltip = false;
+});
 
     document.addEventListener('mouseout', function(e) {
         if (e.target.classList.contains('tcg-tag')) {
