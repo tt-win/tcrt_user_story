@@ -5620,22 +5620,20 @@ function formatTicketTooltip(tcgNumber, ticketData) {
                     </div>
                     <div class="small text-muted" style="word-break: break-word;">${assignee}</div>
                 </div>
-                <div class="col-12">
+                <div class="col-6">
                     <div class="small">
                         <i class="fas fa-calendar me-1"></i>
                         <strong>建立:</strong>
                     </div>
                     <div class="small text-muted">${createdDate}</div>
                 </div>
-                ${updatedDate ? `
-                <div class="col-12">
+                <div class="col-6">
                     <div class="small">
                         <i class="fas fa-clock me-1"></i>
                         <strong>更新:</strong>
                     </div>
-                    <div class="small text-muted">${updatedDate}</div>
+                    <div class="small text-muted">${updatedDate || '無'}</div>
                 </div>
-                ` : ''}
             </div>
         </div>
     `;
