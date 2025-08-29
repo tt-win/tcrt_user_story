@@ -5395,5 +5395,252 @@ function updatePageTitle() {
 // 監聽 i18n 初始化和語言變更事件
 document.addEventListener('i18nReady', updatePageTitle);
 document.addEventListener('languageChanged', updatePageTitle);
+
+// ===== TCG Hover Tooltip 功能 =====
+
+// TCG tooltip 相關變數
+let currentTooltip = null;
+let tooltipTimeout = null;
+
+// 建立 TCG tooltip 元素
+function createTCGTTooltip() {
+    if (document.getElementById('tcg-tooltip')) return;
+
+    const tooltip = document.createElement('div');
+    tooltip.id = 'tcg-tooltip';
+    tooltip.className = 'tcg-tooltip';
+    tooltip.style.cssText = `
+        position: fixed;
+        background: white;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        padding: 12px;
+        max-width: 300px;
+        z-index: 1070;
+        display: none;
+        font-size: 0.875rem;
+        pointer-events: none;
+    `;
+
+    document.body.appendChild(tooltip);
+    return tooltip;
+}
+
+// 顯示 TCG tooltip
+async function showTCGTTooltip(tcgNumber, element) {
+    // 清除之前的 timeout
+    if (tooltipTimeout) {
+        clearTimeout(tooltipTimeout);
+    }
+
+    // 建立 tooltip 元素
+    const tooltip = createTCGTTooltip();
+
+    // 設定載入狀態
+    tooltip.innerHTML = `
+        <div class="d-flex align-items-center">
+            <div class="spinner-border spinner-border-sm me-2" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <span>載入中...</span>
+        </div>
+    `;
+
+    // 顯示 tooltip
+    tooltip.style.display = 'block';
+
+    // 定位 tooltip
+    positionTooltip(tooltip, element);
+
+    try {
+        // 從 JIRA 取得 ticket 資訊
+        const ticketData = await fetchJIRATicketInfo(tcgNumber);
+
+        if (ticketData) {
+            // 顯示 ticket 資訊
+            tooltip.innerHTML = formatTicketTooltip(tcgNumber, ticketData);
+        } else {
+            // 顯示錯誤訊息
+            tooltip.innerHTML = `
+                <div class="text-muted small">
+                    <i class="fas fa-exclamation-triangle me-1"></i>
+                    無法取得 ${tcgNumber} 的資訊
+                </div>
+            `;
+        }
+    } catch (error) {
+        console.error('TCG tooltip 載入失敗:', error);
+        tooltip.innerHTML = `
+            <div class="text-danger small">
+                <i class="fas fa-times-circle me-1"></i>
+                載入失敗
+            </div>
+        `;
+    }
+
+    // 重新定位 (內容改變後)
+    positionTooltip(tooltip, element);
+}
+
+// 隱藏 TCG tooltip
+function hideTCGTTooltip() {
+    if (tooltipTimeout) {
+        clearTimeout(tooltipTimeout);
+    }
+
+    tooltipTimeout = setTimeout(() => {
+        const tooltip = document.getElementById('tcg-tooltip');
+        if (tooltip) {
+            tooltip.style.display = 'none';
+        }
+    }, 300); // 延遲隱藏，允許滑鼠移動到 tooltip 上
+}
+
+// 從 JIRA 取得 ticket 資訊
+async function fetchJIRATicketInfo(tcgNumber) {
+    try {
+        // 使用現有的 JIRA 客戶端
+        if (window.jiraClient) {
+            const ticketData = window.jiraClient.get_issue(tcgNumber);
+            return ticketData;
+        }
+
+        // 如果沒有全域 JIRA 客戶端，嘗試直接 API 呼叫
+        const response = await fetch(`/api/jira/ticket/${tcgNumber}`);
+        if (response.ok) {
+            return await response.json();
+        }
+
+        return null;
+    } catch (error) {
+        console.error('取得 JIRA ticket 資訊失敗:', error);
+        return null;
+    }
+}
+
+// 格式化 ticket tooltip 內容
+function formatTicketTooltip(tcgNumber, ticketData) {
+    const fields = ticketData.fields || {};
+
+    // 基本資訊
+    const summary = fields.summary || '無標題';
+    const status = fields.status?.name || '未知狀態';
+    const assignee = fields.assignee?.displayName || '未指派';
+
+    // 建立時間
+    let createdDate = '未知';
+    if (fields.created) {
+        try {
+            const date = new Date(fields.created);
+            createdDate = date.toLocaleDateString('zh-TW');
+        } catch (e) {
+            // 忽略日期解析錯誤
+        }
+    }
+
+    return `
+        <div class="tcg-tooltip-content">
+            <div class="mb-2">
+                <div class="fw-bold text-primary">${tcgNumber}</div>
+                <div class="small text-muted mb-2">${summary}</div>
+            </div>
+            <div class="row g-2">
+                <div class="col-6">
+                    <div class="small">
+                        <i class="fas fa-tasks me-1"></i>
+                        <strong>狀態:</strong>
+                    </div>
+                    <div class="small text-muted">${status}</div>
+                </div>
+                <div class="col-6">
+                    <div class="small">
+                        <i class="fas fa-user me-1"></i>
+                        <strong>指派:</strong>
+                    </div>
+                    <div class="small text-muted">${assignee}</div>
+                </div>
+                <div class="col-12">
+                    <div class="small">
+                        <i class="fas fa-calendar me-1"></i>
+                        <strong>建立:</strong>
+                    </div>
+                    <div class="small text-muted">${createdDate}</div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+// 定位 tooltip
+function positionTooltip(tooltip, element) {
+    const rect = element.getBoundingClientRect();
+    const tooltipRect = tooltip.getBoundingClientRect();
+
+    // 預設位置：元素上方
+    let top = rect.top - tooltipRect.height - 8;
+    let left = rect.left + (rect.width / 2) - (tooltipRect.width / 2);
+
+    // 如果上方空間不足，顯示在元素下方
+    if (top < 8) {
+        top = rect.bottom + 8;
+    }
+
+    // 確保不超出視窗邊界
+    if (left < 8) {
+        left = 8;
+    } else if (left + tooltipRect.width > window.innerWidth - 8) {
+        left = window.innerWidth - tooltipRect.width - 8;
+    }
+
+    tooltip.style.top = top + 'px';
+    tooltip.style.left = left + 'px';
+}
+
+// 初始化 TCG hover 功能
+function initializeTCGHover() {
+    // 監聽所有 TCG tag 的 hover 事件
+    document.addEventListener('mouseover', function(e) {
+        if (e.target.classList.contains('tcg-tag')) {
+            const tcgNumber = e.target.textContent.trim();
+            if (tcgNumber) {
+                showTCGTTooltip(tcgNumber, e.target);
+            }
+        }
+    });
+
+    document.addEventListener('mouseout', function(e) {
+        if (e.target.classList.contains('tcg-tag')) {
+            hideTCGTTooltip();
+        }
+    });
+
+    // 當滑鼠移到 tooltip 上時，不要隱藏
+    document.addEventListener('mouseover', function(e) {
+        if (e.target.closest('#tcg-tooltip')) {
+            if (tooltipTimeout) {
+                clearTimeout(tooltipTimeout);
+                tooltipTimeout = null;
+            }
+        }
+    });
+
+    // 當滑鼠離開 tooltip 時，隱藏
+    document.addEventListener('mouseout', function(e) {
+        if (e.target.closest('#tcg-tooltip')) {
+            hideTCGTTooltip();
+        }
+    });
+}
+
+// 頁面載入完成後初始化
+document.addEventListener('DOMContentLoaded', function() {
+    initializeTCGHover();
+});
+
+// 動態內容更新時重新初始化
+document.addEventListener('dynamicContentLoaded', function() {
+    initializeTCGHover();
+});
 </script>
 {% endblock %}
