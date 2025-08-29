@@ -91,27 +91,59 @@ class I18nSystem {
      * Load translation files for all supported languages
      */
     async loadTranslations() {
-        const loadPromises = this.supportedLanguages.map(async (language) => {
+        const version = localStorage.getItem('i18n_version') || '1.0.0';
+        const cachePromises = this.supportedLanguages.map(async (language) => {
             try {
-                const response = await fetch(`/static/locales/${language}.json?v=${this.cacheBuster}`);
+                const response = await fetch(`/static/locales/${language}.json?v=${version}`);
                 if (!response.ok) {
                     throw new Error(`Failed to load ${language}: ${response.status}`);
                 }
-                const translations = await response.json();
-                this.translations[language] = translations;
+
+                // 檢查是否有更新
+                const lastModified = response.headers.get('last-modified');
+                const cachedModified = localStorage.getItem(`i18n_${language}_modified`);
+
+                if (lastModified && cachedModified !== lastModified) {
+                    // 載入新版本
+                    const translations = await response.json();
+                    this.translations[language] = translations;
+                    localStorage.setItem(`i18n_${language}_modified`, lastModified);
+                    localStorage.setItem(`i18n_${language}_cache`, JSON.stringify(translations));
+                    console.log(`Updated translations for ${language}`);
+                } else {
+                    // 使用快取版本
+                    const cached = localStorage.getItem(`i18n_${language}_cache`);
+                    if (cached) {
+                        this.translations[language] = JSON.parse(cached);
+                        console.log(`Loaded cached translations for ${language}`);
+                    } else {
+                        // 首次載入
+                        const translations = await response.json();
+                        this.translations[language] = translations;
+                        localStorage.setItem(`i18n_${language}_modified`, lastModified || new Date().toISOString());
+                        localStorage.setItem(`i18n_${language}_cache`, JSON.stringify(translations));
+                    }
+                }
             } catch (error) {
                 console.error(`Failed to load translations for ${language}:`, error);
-                // If current language fails to load, try fallback
-                if (language === this.currentLanguage && language !== this.fallbackLanguage) {
-                    console.warn(`Falling back to ${this.fallbackLanguage}`);
-                    this.currentLanguage = this.fallbackLanguage;
+                // 嘗試使用快取版本作為備用
+                const cached = localStorage.getItem(`i18n_${language}_cache`);
+                if (cached) {
+                    this.translations[language] = JSON.parse(cached);
+                    console.warn(`Using cached translations for ${language} due to load error`);
+                } else {
+                    // If current language fails to load, try fallback
+                    if (language === this.currentLanguage && language !== this.fallbackLanguage) {
+                        console.warn(`Falling back to ${this.fallbackLanguage}`);
+                        this.currentLanguage = this.fallbackLanguage;
+                    }
                 }
             }
         });
 
-        await Promise.all(loadPromises);
-        
-        // Ensure at least one language is loaded
+        await Promise.all(cachePromises);
+
+        // 確保至少有一種語言被載入
         if (Object.keys(this.translations).length === 0) {
             throw new Error('No translation files could be loaded');
         }
@@ -391,10 +423,252 @@ class I18nSystem {
 
         return observer;
     }
+
+    /**
+     * 驗證翻譯完整性
+     * @returns {Array<string>} 缺少的翻譯鍵列表
+     */
+    validateTranslations() {
+        const missingKeys = [];
+        const currentLang = this.translations[this.currentLanguage];
+        const fallbackLang = this.translations[this.fallbackLanguage];
+
+        if (!currentLang || !fallbackLang) {
+            console.warn('Cannot validate translations: missing language data');
+            return missingKeys;
+        }
+
+        // 遞歸檢查缺少的鍵
+        const checkKeys = (obj, fallbackObj, path = '') => {
+            for (const key in fallbackObj) {
+                const currentPath = path ? `${path}.${key}` : key;
+
+                if (!(key in obj)) {
+                    missingKeys.push({
+                        key: currentPath,
+                        language: this.currentLanguage,
+                        fallback: fallbackObj[key]
+                    });
+                } else if (typeof obj[key] === 'object' && typeof fallbackObj[key] === 'object') {
+                    checkKeys(obj[key], fallbackObj[key], currentPath);
+                } else if (typeof obj[key] !== typeof fallbackObj[key]) {
+                    console.warn(`Type mismatch for key ${currentPath}: expected ${typeof fallbackObj[key]}, got ${typeof obj[key]}`);
+                }
+            }
+        };
+
+        checkKeys(currentLang, fallbackLang);
+
+        if (missingKeys.length > 0) {
+            console.warn(`Found ${missingKeys.length} missing translation keys:`, missingKeys);
+
+            // 在開發環境中顯示更詳細的資訊
+            if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+                console.table(missingKeys);
+            }
+        }
+
+        return missingKeys;
+    }
+
+    /**
+     * 修復缺少的翻譯鍵
+     * @param {Array} missingKeys - 從 validateTranslations 獲得的結果
+     */
+    fixMissingTranslations(missingKeys) {
+        if (!missingKeys || missingKeys.length === 0) return;
+
+        const currentLang = this.translations[this.currentLanguage];
+        const fallbackLang = this.translations[this.fallbackLanguage];
+
+        missingKeys.forEach(({ key }) => {
+            const keys = key.split('.');
+            let currentObj = currentLang;
+            let fallbackObj = fallbackLang;
+
+            // 導航到正確的位置
+            for (let i = 0; i < keys.length - 1; i++) {
+                if (!currentObj[keys[i]]) {
+                    currentObj[keys[i]] = {};
+                }
+                currentObj = currentObj[keys[i]];
+
+                if (fallbackObj && fallbackObj[keys[i]]) {
+                    fallbackObj = fallbackObj[keys[i]];
+                }
+            }
+
+            // 設定備用值
+            const lastKey = keys[keys.length - 1];
+            if (fallbackObj && fallbackObj[lastKey]) {
+                currentObj[lastKey] = fallbackObj[lastKey];
+                console.log(`Fixed missing translation: ${key}`);
+            }
+        });
+
+        // 更新快取
+        localStorage.setItem(`i18n_${this.currentLanguage}_cache`, JSON.stringify(currentLang));
+    }
 }
 
 // Create global i18n instance
 window.i18n = new I18nSystem();
+
+// 開發者工具 - 僅在開發環境中可用
+if (window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1' ||
+    window.location.search.includes('debug=i18n')) {
+
+    window.i18nDebug = {
+        /**
+         * 顯示當前翻譯狀態
+         */
+        showStatus() {
+            console.group('🌐 i18n System Status');
+            console.log('Current Language:', window.i18n.currentLanguage);
+            console.log('Supported Languages:', window.i18n.supportedLanguages);
+            console.log('Fallback Language:', window.i18n.fallbackLanguage);
+            console.log('Is Ready:', window.i18n.isReady());
+            console.log('Translations Loaded:', Object.keys(window.i18n.translations));
+            console.log('Cache Buster:', window.i18n.cacheBuster);
+            console.groupEnd();
+        },
+
+        /**
+         * 檢查缺少的翻譯鍵
+         */
+        checkMissingKeys() {
+            console.group('🔍 Translation Validation');
+            const missingKeys = window.i18n.validateTranslations();
+            console.log(`Found ${missingKeys.length} missing keys`);
+            if (missingKeys.length > 0) {
+                console.table(missingKeys);
+            }
+            console.groupEnd();
+            return missingKeys;
+        },
+
+        /**
+         * 修復缺少的翻譯鍵
+         */
+        fixMissingKeys() {
+            console.group('🔧 Fixing Missing Translations');
+            const missingKeys = window.i18n.validateTranslations();
+            if (missingKeys.length > 0) {
+                window.i18n.fixMissingTranslations(missingKeys);
+                console.log(`Fixed ${missingKeys.length} missing translations`);
+                // 重新翻譯頁面
+                window.i18n.retranslate(document);
+            } else {
+                console.log('No missing translations found');
+            }
+            console.groupEnd();
+        },
+
+        /**
+         * 強制重新載入翻譯
+         */
+        forceReload() {
+            console.log('🔄 Force reloading translations...');
+
+            // 清除快取
+            localStorage.removeItem('language');
+            Object.keys(localStorage).forEach(key => {
+                if (key.startsWith('i18n_')) {
+                    localStorage.removeItem(key);
+                }
+            });
+
+            // 重新載入頁面
+            window.location.reload();
+        },
+
+        /**
+         * 測試特定翻譯鍵
+         */
+        testKey(keyPath, params = {}) {
+            console.group(`🧪 Testing Translation Key: ${keyPath}`);
+            const result = window.i18n.t(keyPath, params);
+            console.log('Result:', result);
+            console.log('Params:', params);
+            console.groupEnd();
+            return result;
+        },
+
+        /**
+         * 顯示所有可用翻譯鍵
+         */
+        showAllKeys(language = null) {
+            const targetLang = language || window.i18n.currentLanguage;
+            const translations = window.i18n.translations[targetLang];
+
+            if (!translations) {
+                console.error(`No translations found for language: ${targetLang}`);
+                return;
+            }
+
+            console.group(`📚 All Translation Keys (${targetLang})`);
+
+            const flattenKeys = (obj, prefix = '') => {
+                const keys = [];
+                for (const key in obj) {
+                    const fullKey = prefix ? `${prefix}.${key}` : key;
+                    if (typeof obj[key] === 'object') {
+                        keys.push(...flattenKeys(obj[key], fullKey));
+                    } else {
+                        keys.push(fullKey);
+                    }
+                }
+                return keys;
+            };
+
+            const allKeys = flattenKeys(translations);
+            console.log(`Total keys: ${allKeys.length}`);
+            console.log(allKeys.sort());
+            console.groupEnd();
+
+            return allKeys;
+        },
+
+        /**
+         * 監控翻譯效能
+         */
+        monitorPerformance() {
+            const originalTranslate = window.i18n.translatePage;
+            let callCount = 0;
+            let totalTime = 0;
+
+            window.i18n.translatePage = function(...args) {
+                const start = performance.now();
+                const result = originalTranslate.apply(this, args);
+                const end = performance.now();
+
+                callCount++;
+                totalTime += (end - start);
+
+                console.log(`📊 Translation call #${callCount}: ${(end - start).toFixed(2)}ms`);
+
+                if (callCount % 10 === 0) {
+                    console.log(`📈 Average translation time: ${(totalTime / callCount).toFixed(2)}ms`);
+                }
+
+                return result;
+            };
+
+            console.log('🎯 Translation performance monitoring enabled');
+        }
+    };
+
+    // 在控制台顯示可用指令
+    console.log('🌐 i18n Debug Tools Loaded! Available commands:');
+    console.log('  window.i18nDebug.showStatus() - Show system status');
+    console.log('  window.i18nDebug.checkMissingKeys() - Check missing translations');
+    console.log('  window.i18nDebug.fixMissingKeys() - Fix missing translations');
+    console.log('  window.i18nDebug.forceReload() - Force reload translations');
+    console.log('  window.i18nDebug.testKey(key) - Test specific key');
+    console.log('  window.i18nDebug.showAllKeys() - Show all available keys');
+    console.log('  window.i18nDebug.monitorPerformance() - Monitor performance');
+}
 
 // Export for module usage if needed
 if (typeof module !== 'undefined' && module.exports) {

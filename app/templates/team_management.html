@@ -967,12 +967,24 @@ function restoreSyncActionButtons() {
 
     if (deptBtn) {
         deptBtn.innerHTML = '<i class="fas fa-sitemap me-2"></i><span data-i18n="orgSync.departmentsSync">部門同步</span>';
+        // 重新應用翻譯到按鈕內容
+        if (window.i18n && window.i18n.isReady()) {
+            window.i18n.retranslate(deptBtn);
+        }
     }
     if (userBtn) {
         userBtn.innerHTML = '<i class="fas fa-address-book me-2"></i><span data-i18n="orgSync.contactsSync">用戶同步</span>';
+        // 重新應用翻譯到按鈕內容
+        if (window.i18n && window.i18n.isReady()) {
+            window.i18n.retranslate(userBtn);
+        }
     }
     if (startBtn) {
         startBtn.innerHTML = '<i class="fas fa-play me-2"></i><span data-i18n="orgSync.fullSync">完整同步</span>';
+        // 重新應用翻譯到按鈕內容
+        if (window.i18n && window.i18n.isReady()) {
+            window.i18n.retranslate(startBtn);
+        }
     }
 }
 

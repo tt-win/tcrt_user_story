@@ -339,11 +339,13 @@ class AssigneeSelector {
                 
                 this.filterContacts(query);
             } else {
-                this.handleError(result.message || '載入聯絡人失敗');
+                const errorMessage = window.i18n?.t('testRun.loadContactsFailed') || '載入聯絡人失敗';
+                this.handleError(result.message || errorMessage);
             }
         } catch (error) {
             console.error('AssigneeSelector: 載入聯絡人失敗', error);
-            this.handleError('載入聯絡人失敗');
+            const errorMessage = window.i18n?.t('testRun.loadContactsFailed') || '載入聯絡人失敗';
+            this.handleError(errorMessage);
         } finally {
             this.setLoading(false);
         }

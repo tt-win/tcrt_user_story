@@ -1111,7 +1111,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                     try { setEditorMode('split'); } catch (_) {}
                 }
             } else {
-                showError('找不到指定的測試案例');
+                showError(window.i18n ? window.i18n.t('errors.testCaseNotFound', {}, '找不到指定的測試案例') : '找不到指定的測試案例');
             }
         } catch (e) {
             console.error('最小模式開啟測試案例失敗:', e);
@@ -1571,6 +1571,12 @@ function renderTestCasesTable() {
             </td>
         </tr>
     `).join('');
+    
+    // 重新應用翻譯到新生成的表格內容
+    if (window.i18n && window.i18n.isReady()) {
+        window.i18n.retranslate(tbody);
+    }
+    
     // 渲染後調整列表可視高度
     adjustTestCasesScrollHeight();
 }
@@ -2354,8 +2360,10 @@ async function saveTestCase() {
         );
         
         if (isDuplicate) {
-            const existsMessage = window.i18n ? window.i18n.t('errors.testCaseNumberExists') : '已存在，請使用其他編號';
-            showError(`測試案例編號 '${testCaseData.test_case_number}' ${existsMessage}`);
+            const errorMessage = window.i18n ? 
+                window.i18n.t('errors.testCaseNumberDuplicate', {number: testCaseData.test_case_number}, `測試案例編號 '${testCaseData.test_case_number}' 已存在，請使用其他編號`) :
+                `測試案例編號 '${testCaseData.test_case_number}' 已存在，請使用其他編號`;
+            showError(errorMessage);
             return;
         }
     }
@@ -2535,8 +2543,10 @@ async function saveAndAddNext() {
         );
         
         if (isDuplicate) {
-            const existsMessage = window.i18n ? window.i18n.t('errors.testCaseNumberExists') : '已存在，請使用其他編號';
-            showError(`測試案例編號 '${testCaseData.test_case_number}' ${existsMessage}`);
+            const errorMessage = window.i18n ? 
+                window.i18n.t('errors.testCaseNumberDuplicate', {number: testCaseData.test_case_number}, `測試案例編號 '${testCaseData.test_case_number}' 已存在，請使用其他編號`) :
+                `測試案例編號 '${testCaseData.test_case_number}' 已存在，請使用其他編號`;
+            showError(errorMessage);
             return;
         }
     }
@@ -2872,11 +2882,17 @@ function handleBatchTCGSearch(input) {
     if (keyword.length < 2) {
         dropdown.style.display = 'none';
         dropdown.innerHTML = '<div class="p-2 text-muted small" data-i18n="testCase.tcgSearchHint">開始輸入以搜尋 TCG...</div>';
+        
+        // 重新應用翻譯到新生成的內容
+        if (window.i18n && window.i18n.isReady()) {
+            window.i18n.retranslate(dropdown);
+        }
         return;
     }
     
     // 顯示搜尋中狀態
-    dropdown.innerHTML = '<div class="p-2 text-muted small"><i class="fas fa-spinner fa-spin me-2"></i>搜尋中...</div>';
+    const searchingText = window.i18n ? window.i18n.t('testCase.tcgSearching', {}, '搜尋中...') : '搜尋中...';
+    dropdown.innerHTML = `<div class="p-2 text-muted small"><i class="fas fa-spinner fa-spin me-2"></i>${searchingText}</div>`;
     dropdown.style.display = 'block';
     
     // 使用防抖動，300ms 後執行搜尋
@@ -2893,7 +2909,8 @@ async function searchBatchTCGOptions(keyword) {
         // 獲取當前團隊 ID
         const currentTeam = AppUtils.getCurrentTeam();
         if (!currentTeam || !currentTeam.id) {
-            dropdown.innerHTML = '<div class="p-2 text-danger small">請先選擇團隊</div>';
+            const selectTeamText = window.i18n ? window.i18n.t('errors.pleaseSelectTeam', {}, '請先選擇團隊') : '請先選擇團隊';
+            dropdown.innerHTML = `<div class="p-2 text-danger small">${selectTeamText}</div>`;
             dropdown.style.display = 'block';
             return;
         }
@@ -2904,12 +2921,14 @@ async function searchBatchTCGOptions(keyword) {
         if (response.ok && data.results) {
             updateBatchTCGDropdown(data.results);
         } else {
-            dropdown.innerHTML = '<div class="p-2 text-muted">搜尋失敗</div>';
+            const searchFailedText = window.i18n ? window.i18n.t('errors.searchFailed', {}, '搜尋失敗') : '搜尋失敗';
+            dropdown.innerHTML = `<div class="p-2 text-muted">${searchFailedText}</div>`;
             dropdown.style.display = 'block';
         }
     } catch (error) {
         console.error('TCG 搜尋錯誤:', error);
-        dropdown.innerHTML = '<div class="p-2 text-muted">搜尋失敗</div>';
+        const searchFailedText = window.i18n ? window.i18n.t('errors.searchFailed', {}, '搜尋失敗') : '搜尋失敗';
+        dropdown.innerHTML = `<div class="p-2 text-muted">${searchFailedText}</div>`;
         dropdown.style.display = 'block';
     }
 }
@@ -3025,6 +3044,12 @@ function showBatchTCGDropdown() {
         handleBatchTCGSearch(input);
     } else {
         dropdown.innerHTML = '<div class="p-2 text-muted small" data-i18n="testCase.tcgSearchHint">開始輸入以搜尋 TCG...</div>';
+        
+        // 重新應用翻譯到新生成的內容
+        if (window.i18n && window.i18n.isReady()) {
+            window.i18n.retranslate(dropdown);
+        }
+        
         dropdown.style.display = 'block';
     }
 }
@@ -3227,6 +3252,11 @@ async function performTestCaseBatchModify() {
         confirmBtn.disabled = false;
         confirmBtn.innerHTML = '<i class="fas fa-edit me-2"></i><span data-i18n="testCase.confirmModify">確認修改</span>';
         
+        // 重新應用翻譯到按鈕內容
+        if (window.i18n && window.i18n.isReady()) {
+            window.i18n.retranslate(confirmBtn);
+        }
+        
         const errorMsg = window.i18n ? window.i18n.t('errors.batchModifyFailed') : '批次修改失敗';
         AppUtils.showError(errorMsg + ': ' + error.message);
     }
@@ -3377,6 +3407,12 @@ function updatePagination() {
     `;
     
     pagination.innerHTML = paginationHtml;
+    
+    // 重新應用翻譯到新生成的分頁內容
+    if (window.i18n && window.i18n.isReady()) {
+        window.i18n.retranslate(pagination);
+    }
+    
     // 分頁內容更新後，重新計算列表高度，避免與分頁重疊
     if (typeof adjustTestCasesScrollHeight === 'function') {
         adjustTestCasesScrollHeight();
@@ -3783,6 +3819,11 @@ function updateTCGCellDisplay(cell, tcgNumbers) {
             `<span class="tcg-tag">${tcg}</span>`
         ).join('');
         cell.innerHTML = `<div class="tcg-edit-area" onclick="editTCG('${recordId}')" data-i18n-title="tooltips.clickEditTcg">${tcgHtml}</div>`;
+    }
+    
+    // 重新應用翻譯到新生成的內容
+    if (window.i18n && window.i18n.isReady()) {
+        window.i18n.retranslate(cell);
     }
     // 工具列顯示狀態可能改變整體高度，需重新計算列表高度
     adjustTestCasesScrollHeight();
@@ -4506,8 +4547,10 @@ function handleAttachmentUpload(event) {
     // 驗證檔案
     for (let file of files) {
         if (file.size > 10 * 1024 * 1024) { // 10MB 限制
-            const fileSizeLimitMessage = window.i18n ? window.i18n.t('errors.fileSizeLimit') : '檔案超過10MB大小限制';
-            showError(`檔案 "${file.name}" ${fileSizeLimitMessage}`);
+            const errorMessage = window.i18n ? 
+                window.i18n.t('errors.fileSizeLimitExceeded', {fileName: file.name}, `檔案 "${file.name}" 超過10MB大小限制`) :
+                `檔案 "${file.name}" 超過10MB大小限制`;
+            showError(errorMessage);
             return;
         }
     }

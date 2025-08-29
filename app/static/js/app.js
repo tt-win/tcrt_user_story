@@ -160,10 +160,107 @@ const AppUtils = {
     onTeamChange: null
 };
 
+// 全域翻譯監視器 - 處理動態內容的翻譯
+class TranslationObserver {
+    constructor() {
+        this.observer = null;
+        this.debounceTimer = null;
+        this.init();
+    }
+
+    init() {
+        // 監視 DOM 變化
+        this.observer = new MutationObserver((mutations) => {
+            let needsTranslation = false;
+
+            mutations.forEach((mutation) => {
+                if (mutation.type === 'childList') {
+                    mutation.addedNodes.forEach((node) => {
+                        if (node.nodeType === Node.ELEMENT_NODE) {
+                            const element = node;
+                            if (element.hasAttribute && (
+                                element.hasAttribute('data-i18n') ||
+                                element.querySelector && element.querySelector('[data-i18n]')
+                            )) {
+                                needsTranslation = true;
+                            }
+                        }
+                    });
+                } else if (mutation.type === 'attributes') {
+                    if (mutation.attributeName && mutation.attributeName.startsWith('data-i18n')) {
+                        needsTranslation = true;
+                    }
+                }
+            });
+
+            if (needsTranslation) {
+                this.scheduleRetranslation();
+            }
+        });
+
+        // 開始監視
+        if (document.body) {
+            this.observer.observe(document.body, {
+                childList: true,
+                subtree: true,
+                attributes: true,
+                attributeFilter: ['data-i18n', 'data-i18n-params', 'data-i18n-placeholder']
+            });
+        }
+    }
+
+    scheduleRetranslation() {
+        // 防抖處理，避免頻繁重新翻譯
+        if (this.debounceTimer) {
+            clearTimeout(this.debounceTimer);
+        }
+
+        this.debounceTimer = setTimeout(() => {
+            if (window.i18n && window.i18n.isReady()) {
+                console.log('Retranslating page due to dynamic content changes');
+                window.i18n.retranslate(document);
+            }
+        }, 100);
+    }
+
+    disconnect() {
+        if (this.observer) {
+            this.observer.disconnect();
+        }
+        if (this.debounceTimer) {
+            clearTimeout(this.debounceTimer);
+        }
+    }
+}
+
+// 全域翻譯監視器實例
+let translationObserver = null;
+
 // 應用程式初始化
 document.addEventListener('DOMContentLoaded', function() {
     // 載入儲存的團隊選擇
     AppUtils.getCurrentTeam();
+
+    // 初始化翻譯監視器
+    if (!translationObserver) {
+        translationObserver = new TranslationObserver();
+    }
+});
+
+// 監聽 i18n 準備完成事件
+document.addEventListener('i18nReady', function() {
+    // 確保初始翻譯完成
+    if (window.i18n) {
+        window.i18n.retranslate(document);
+    }
+});
+
+// 監聽語言變更事件
+document.addEventListener('languageChanged', function() {
+    // 語言變更後重新翻譯
+    if (window.i18n) {
+        setTimeout(() => window.i18n.retranslate(document), 50);
+    }
 });
 
 // 全域函數 (向後兼容)

@@ -103,45 +103,110 @@
         }
     });
 
+    // 語言切換器優化
     function initLanguageSwitcher() {
-        // Add click handlers for language options
+        // 添加載入指示器
+        const switcherContainer = document.getElementById('language-switcher');
+        if (switcherContainer) {
+            const loadingIndicator = document.createElement('div');
+            loadingIndicator.id = 'language-loading';
+            loadingIndicator.className = 'position-absolute d-none';
+            loadingIndicator.style.cssText = `
+                top: 0; left: 0; right: 0; bottom: 0;
+                background: rgba(255,255,255,0.8);
+                display: flex; align-items: center; justify-content: center;
+                border-radius: 0.375rem;
+            `;
+            loadingIndicator.innerHTML = `
+                <div class="spinner-border spinner-border-sm text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+            `;
+            switcherContainer.style.position = 'relative';
+            switcherContainer.appendChild(loadingIndicator);
+        }
+
+        // 添加點擊處理器
         document.querySelectorAll('[data-language]').forEach(link => {
-            link.addEventListener('click', function(e) {
+            link.addEventListener('click', async function(e) {
                 e.preventDefault();
                 const language = this.getAttribute('data-language');
-                
+
                 if (window.i18n && window.i18n.isReady()) {
-                    window.i18n.switchLanguage(language);
+                    await switchLanguageWithFeedback(language);
                 } else {
                     console.warn('i18n system not ready yet');
+                    showLanguageSwitchError('翻譯系統尚未準備就緒');
                 }
             });
         });
     }
 
+    async function switchLanguageWithFeedback(language) {
+        const loadingIndicator = document.getElementById('language-loading');
+        const dropdown = document.querySelector('#languageDropdown');
+
+        try {
+            // 顯示載入狀態
+            if (loadingIndicator) loadingIndicator.classList.remove('d-none');
+            if (dropdown) dropdown.disabled = true;
+
+            // 切換語言
+            const success = await window.i18n.switchLanguage(language);
+
+            if (success) {
+                updateLanguageSwitcher(language);
+                showLanguageSwitchSuccess(language);
+            } else {
+                throw new Error('Language switch failed');
+            }
+
+        } catch (error) {
+            console.error('Language switch error:', error);
+            showLanguageSwitchError('語言切換失敗，請重試');
+        } finally {
+            // 隱藏載入狀態
+            if (loadingIndicator) loadingIndicator.classList.add('d-none');
+            if (dropdown) dropdown.disabled = false;
+        }
+    }
+
+    function showLanguageSwitchSuccess(language) {
+        const languageNames = {
+            'zh-TW': '繁體中文',
+            'en-US': 'English'
+        };
+
+        AppUtils.showSuccess(`已切換至 ${languageNames[language] || language}`);
+    }
+
+    function showLanguageSwitchError(message) {
+        AppUtils.showError(message);
+    }
+
     function updateLanguageSwitcher(currentLanguage) {
-        // Update current language display
+        // 更新當前語言顯示
         const currentLangSpan = document.getElementById('current-language');
         const languageNames = {
             'zh-TW': window.i18n ? window.i18n.t('language.chinese') : '中文',
             'en-US': window.i18n ? window.i18n.t('language.english') : 'English'
         };
-        
+
         if (currentLangSpan) {
             currentLangSpan.textContent = languageNames[currentLanguage] || currentLanguage;
         }
 
-        // Update check marks
+        // 更新勾選標記
         document.querySelectorAll('[id^="check-"]').forEach(check => {
             check.style.visibility = 'hidden';
         });
-        
+
         const currentCheck = document.getElementById(`check-${currentLanguage}`);
         if (currentCheck) {
             currentCheck.style.visibility = 'visible';
         }
 
-        // Update HTML lang attribute
+        // 更新 HTML lang 屬性
         document.documentElement.lang = currentLanguage;
     }
     </script>

@@ -109,6 +109,11 @@ function quickSearchRender_TR(query, container) {
           <span class="text-truncate">${escapeHtml(it.title || '')}</span>
         </div>
       </button>`).join('');
+    
+    // 重新應用翻譯到新生成的內容
+    if (window.i18n && window.i18n.isReady()) {
+        window.i18n.retranslate(container);
+    }
     container.querySelectorAll('.list-group-item').forEach(btn => {
         btn.addEventListener('click', async () => {
             const tcNum = btn.getAttribute('data-num');
@@ -1271,6 +1276,11 @@ function renderTestRunItems() {
     tbody.innerHTML = testRunItems.map((item, index) => {
         return createItemRow(item, index + 1, canUpdate);
     }).join('');
+    
+    // 重新應用翻譯到新生成的內容
+    if (window.i18n && window.i18n.isReady()) {
+        window.i18n.retranslate(tbody);
+    }
     
     // 綁定事件處理器
     bindItemEventHandlers(canUpdate);
@@ -2946,10 +2956,12 @@ function handleAttachmentDownload(attachmentName, fileToken, fileUrl) {
             window.open(proxyUrl.toString(), '_blank', 'noopener,noreferrer');
         } catch (error) {
             console.error('構建附件下載 URL 失敗:', error);
-            AppUtils.showError('附件下載失敗: ' + error.message);
+            const errorMessage = window.i18n ? window.i18n.t('errors.attachmentDownloadFailed', {}, '附件下載失敗') : '附件下載失敗';
+            AppUtils.showError(errorMessage + ': ' + error.message);
         }
     } else {
-        AppUtils.showWarning('沒有可用的附件下載信息');
+        const warningMessage = window.i18n ? window.i18n.t('errors.noAttachmentDownloadInfo', {}, '沒有可用的附件下載信息') : '沒有可用的附件下載信息';
+        AppUtils.showWarning(warningMessage);
     }
 }
 </script>
