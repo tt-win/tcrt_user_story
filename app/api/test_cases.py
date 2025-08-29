@@ -674,12 +674,16 @@ async def batch_operation_test_cases(
                 )
         
         elif operation.operation == "update_tcg":
-            # 批次更新 TCG
+            # 批次更新 TCG (使用並行處理)
             if not operation.update_data or "tcg" not in operation.update_data:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="批次更新 TCG 需要提供 tcg 資料"
                 )
+            
+            # 準備並行更新的資料
+            updates = []
+            tcg_value = operation.update_data["tcg"]
             
             for record in target_records:
                 try:
@@ -687,7 +691,6 @@ async def batch_operation_test_cases(
                     test_case = TestCase.from_lark_record(record, team_id)
                     
                     # 處理 TCG 更新：支援字串格式
-                    tcg_value = operation.update_data["tcg"]
                     if isinstance(tcg_value, str):
                         tcg_number = tcg_value.strip()
                         if tcg_number:
@@ -719,49 +722,67 @@ async def batch_operation_test_cases(
                         # 如果是 LarkRecord 列表格式，直接使用
                         test_case.tcg = tcg_value
                     
-                    # 轉換為 Lark 格式並更新
+                    # 轉換為 Lark 格式並加入更新列表
                     lark_fields = test_case.to_lark_fields()
-                    success = lark_client.update_record(
-                        team.test_case_table_id, 
-                        record.get('record_id'), 
-                        lark_fields
-                    )
-                    
-                    if success:
-                        success_count += 1
-                    else:
-                        error_messages.append(f"記錄 {record.get('record_id')} 更新失敗")
+                    updates.append({
+                        'record_id': record.get('record_id'),
+                        'fields': lark_fields
+                    })
                         
                 except Exception as e:
-                    error_messages.append(f"記錄 {record.get('record_id')}: {str(e)}")
+                    error_messages.append(f"記錄 {record.get('record_id')} 準備失敗: {str(e)}")
+            
+            # 執行並行更新
+            if updates:
+                try:
+                    success, success_count, parallel_errors = lark_client.parallel_update_records(
+                        team.test_case_table_id, 
+                        updates,
+                        max_workers=5  # 使用 5 個並行工作者，平衡效能與穩定性
+                    )
+                    error_messages.extend(parallel_errors)
+                except Exception as e:
+                    error_messages.append(f"並行更新執行失敗: {str(e)}")
+                    success_count = 0
         
         elif operation.operation == "update_priority":
-            # 批次更新優先級
+            # 批次更新優先級 (使用並行處理)
             if not operation.update_data or "priority" not in operation.update_data:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="批次更新優先級需要提供 priority 資料"
                 )
             
+            # 準備並行更新的資料
+            updates = []
+            priority_value = operation.update_data["priority"]
+            
             for record in target_records:
                 try:
                     test_case = TestCase.from_lark_record(record, team_id)
-                    test_case.priority = operation.update_data["priority"]
+                    test_case.priority = priority_value
                     
                     lark_fields = test_case.to_lark_fields()
-                    success = lark_client.update_record(
-                        team.test_case_table_id,
-                        record.get('record_id'),
-                        lark_fields
-                    )
-                    
-                    if success:
-                        success_count += 1
-                    else:
-                        error_messages.append(f"記錄 {record.get('record_id')} 更新失敗")
+                    updates.append({
+                        'record_id': record.get('record_id'),
+                        'fields': lark_fields
+                    })
                         
                 except Exception as e:
-                    error_messages.append(f"記錄 {record.get('record_id')}: {str(e)}")
+                    error_messages.append(f"記錄 {record.get('record_id')} 準備失敗: {str(e)}")
+            
+            # 執行並行更新
+            if updates:
+                try:
+                    success, success_count, parallel_errors = lark_client.parallel_update_records(
+                        team.test_case_table_id, 
+                        updates,
+                        max_workers=5  # 使用 5 個並行工作者，平衡效能與穩定性
+                    )
+                    error_messages.extend(parallel_errors)
+                except Exception as e:
+                    error_messages.append(f"並行更新執行失敗: {str(e)}")
+                    success_count = 0
         
         else:
             raise HTTPException(

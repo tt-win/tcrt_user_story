@@ -11,8 +11,12 @@ Lark Base Client
 import logging
 import requests
 import threading
-from typing import Dict, List, Optional, Tuple, Any
+import asyncio
+import aiohttp
+import time
+from typing import Dict, List, Optional, Tuple, Any, Callable
 from datetime import datetime, timedelta
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 
 class LarkAuthManager:
@@ -387,6 +391,81 @@ class LarkRecordManager:
         self.logger.info(f"批次創建完成，成功: {len(success_ids)}, 失敗: {len(error_messages)}")
         
         return overall_success, success_ids, error_messages
+    
+    def parallel_update_records(self, obj_token: str, table_id: str, 
+                              updates: List[Dict], 
+                              max_workers: int = 10,
+                              progress_callback: Optional[Callable] = None) -> Tuple[bool, int, List[str]]:
+        """並行批次更新記錄
+        
+        Args:
+            obj_token: Object Token
+            table_id: 表格 ID
+            updates: 更新資料列表 [{'record_id': str, 'fields': dict}, ...]
+            max_workers: 最大並行工作者數量
+            progress_callback: 進度回調函數 (current, total, success, errors)
+        
+        Returns:
+            (overall_success, success_count, error_messages)
+        """
+        if not updates:
+            return True, 0, []
+        
+        success_count = 0
+        error_messages = []
+        completed_count = 0
+        
+        def update_single_record(update_data: Dict) -> Tuple[bool, str]:
+            """更新單筆記錄的內部函數"""
+            try:
+                record_id = update_data['record_id']
+                fields = update_data['fields']
+                
+                success = self.update_record(obj_token, table_id, record_id, fields)
+                if success:
+                    return True, ""
+                else:
+                    return False, f"記錄 {record_id} 更新失敗"
+            except Exception as e:
+                record_id = update_data.get('record_id', 'unknown')
+                return False, f"記錄 {record_id} 更新異常: {str(e)}"
+        
+        # 使用 ThreadPoolExecutor 進行並行處理
+        self.logger.info(f"開始並行更新 {len(updates)} 筆記錄，使用 {max_workers} 個工作者")
+        
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            # 提交所有任務
+            future_to_update = {
+                executor.submit(update_single_record, update): update 
+                for update in updates
+            }
+            
+            # 處理完成的任務
+            for future in as_completed(future_to_update):
+                completed_count += 1
+                
+                try:
+                    success, error_msg = future.result()
+                    if success:
+                        success_count += 1
+                    else:
+                        error_messages.append(error_msg)
+                except Exception as e:
+                    update_data = future_to_update[future]
+                    record_id = update_data.get('record_id', 'unknown')
+                    error_messages.append(f"記錄 {record_id} 處理異常: {str(e)}")
+                
+                # 調用進度回調
+                if progress_callback:
+                    try:
+                        progress_callback(completed_count, len(updates), success_count, len(error_messages))
+                    except Exception as e:
+                        self.logger.warning(f"進度回調異常: {e}")
+        
+        overall_success = len(error_messages) == 0
+        self.logger.info(f"並行更新完成，成功: {success_count}/{len(updates)}, 失敗: {len(error_messages)}")
+        
+        return overall_success, success_count, error_messages
 
 
 class LarkUserManager:
@@ -891,6 +970,30 @@ class LarkClient:
             return False, [], ['無法取得 Obj Token']
         
         return self.record_manager.batch_create_records(obj_token, table_id, records)
+    
+    def parallel_update_records(self, table_id: str, updates: List[Dict],
+                              max_workers: int = 10,
+                              progress_callback: Optional[Callable] = None,
+                              wiki_token: str = None) -> Tuple[bool, int, List[str]]:
+        """並行批次更新記錄
+        
+        Args:
+            table_id: 表格 ID
+            updates: 更新資料列表 [{'record_id': str, 'fields': dict}, ...]
+            max_workers: 最大並行工作者數量（建議 5-15）
+            progress_callback: 進度回調函數 (current, total, success, errors)
+            wiki_token: Wiki Token（可選，使用預設值）
+        
+        Returns:
+            (overall_success, success_count, error_messages)
+        """
+        obj_token = self._get_obj_token(wiki_token)
+        if not obj_token:
+            return False, 0, ['無法取得 Obj Token']
+        
+        return self.record_manager.parallel_update_records(
+            obj_token, table_id, updates, max_workers, progress_callback
+        )
     
     def get_user_by_email(self, email: str) -> Optional[Dict]:
         """根據 Email 取得使用者資訊"""

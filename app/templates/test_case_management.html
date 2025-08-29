@@ -887,6 +887,167 @@ const TCG_CACHE_KEY = 'tcg_cache';
 const TCG_CACHE_TIMESTAMP_KEY = 'tcg_cache_timestamp';
 const TCG_CACHE_EXPIRY = 24 * 60 * 60 * 1000; // 24小時過期
 
+// ===== 統一快取管理模組 =====
+const TEST_CASES_CACHE_KEY = 'test_cases_list_cache_v1';
+const TEST_CASES_CACHE_TTL = 60 * 60 * 1000; // 1小時
+
+function getTestCasesCache() {
+    try {
+        const team = AppUtils.getCurrentTeam();
+        const teamId = team && team.id ? team.id : 'unknown';
+        const cacheKey = `${TEST_CASES_CACHE_KEY}:${teamId}`;
+        
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+            const data = JSON.parse(cached);
+            if (data && data.timestamp && data.testCases && Array.isArray(data.testCases)) {
+                const age = Date.now() - data.timestamp;
+                if (age < TEST_CASES_CACHE_TTL) {
+                    console.log(`使用快取的測試案例清單 (${data.testCases.length} 筆，${Math.round(age/1000)}秒前)`);
+                    return data.testCases;
+                }
+            }
+        }
+    } catch (error) {
+        console.debug('讀取測試案例快取失敗:', error);
+    }
+    return null;
+}
+
+function setTestCasesCache(testCases) {
+    try {
+        const team = AppUtils.getCurrentTeam();
+        const teamId = team && team.id ? team.id : 'unknown';
+        const cacheKey = `${TEST_CASES_CACHE_KEY}:${teamId}`;
+        
+        const cacheData = {
+            timestamp: Date.now(),
+            testCases: testCases || []
+        };
+        
+        localStorage.setItem(cacheKey, JSON.stringify(cacheData));
+        console.log(`測試案例清單已快取 (${testCases.length} 筆)`);
+        
+        // 同時更新個別快取
+        if (testCases && Array.isArray(testCases)) {
+            testCases.forEach(tc => {
+                if (tc.test_case_number) {
+                    setExecCachedTestCase(tc.test_case_number, tc);
+                }
+            });
+        }
+    } catch (error) {
+        console.debug('儲存測試案例快取失敗:', error);
+    }
+}
+
+function clearTestCasesCache() {
+    try {
+        const team = AppUtils.getCurrentTeam();
+        const teamId = team && team.id ? team.id : 'unknown';
+        const cacheKey = `${TEST_CASES_CACHE_KEY}:${teamId}`;
+        
+        // 清除列表快取
+        localStorage.removeItem(cacheKey);
+        
+        // 清除所有相關的個別快取
+        const keys = Object.keys(localStorage);
+        keys.forEach(key => {
+            if (key.startsWith(EXEC_TC_CACHE_PREFIX) && key.includes(`:${teamId}:`)) {
+                localStorage.removeItem(key);
+            }
+        });
+        
+        console.log('測試案例快取已清除');
+    } catch (error) {
+        console.debug('清除測試案例快取失敗:', error);
+    }
+}
+
+function updateTestCaseInCache(testCase) {
+    try {
+        const team = AppUtils.getCurrentTeam();
+        const teamId = team && team.id ? team.id : 'unknown';
+        const cacheKey = `${TEST_CASES_CACHE_KEY}:${teamId}`;
+        
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+            const data = JSON.parse(cached);
+            if (data && data.testCases && Array.isArray(data.testCases)) {
+                const index = data.testCases.findIndex(tc => tc.record_id === testCase.record_id);
+                if (index >= 0) {
+                    data.testCases[index] = testCase;
+                    localStorage.setItem(cacheKey, JSON.stringify(data));
+                    console.log(`測試案例快取已更新: ${testCase.test_case_number}`);
+                }
+            }
+        }
+        
+        // 同時更新個別快取
+        if (testCase.test_case_number) {
+            setExecCachedTestCase(testCase.test_case_number, testCase);
+        }
+    } catch (error) {
+        console.debug('更新測試案例快取失敗:', error);
+    }
+}
+
+function removeTestCaseFromCache(recordId) {
+    try {
+        const team = AppUtils.getCurrentTeam();
+        const teamId = team && team.id ? team.id : 'unknown';
+        const cacheKey = `${TEST_CASES_CACHE_KEY}:${teamId}`;
+        
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+            const data = JSON.parse(cached);
+            if (data && data.testCases && Array.isArray(data.testCases)) {
+                const removedTestCase = data.testCases.find(tc => tc.record_id === recordId);
+                data.testCases = data.testCases.filter(tc => tc.record_id !== recordId);
+                localStorage.setItem(cacheKey, JSON.stringify(data));
+                
+                // 同時清除個別快取
+                if (removedTestCase && removedTestCase.test_case_number) {
+                    removeExecCachedTestCase(removedTestCase.test_case_number);
+                }
+                
+                console.log(`測試案例已從快取移除: ${recordId}`);
+            }
+        }
+    } catch (error) {
+        console.debug('從快取移除測試案例失敗:', error);
+    }
+}
+
+function addTestCaseToCache(testCase) {
+    try {
+        const team = AppUtils.getCurrentTeam();
+        const teamId = team && team.id ? team.id : 'unknown';
+        const cacheKey = `${TEST_CASES_CACHE_KEY}:${teamId}`;
+        
+        const cached = localStorage.getItem(cacheKey);
+        if (cached) {
+            const data = JSON.parse(cached);
+            if (data && data.testCases && Array.isArray(data.testCases)) {
+                // 檢查是否已存在，避免重複
+                const exists = data.testCases.some(tc => tc.record_id === testCase.record_id);
+                if (!exists) {
+                    data.testCases.push(testCase);
+                    localStorage.setItem(cacheKey, JSON.stringify(data));
+                    console.log(`新測試案例已加入快取: ${testCase.test_case_number}`);
+                }
+            }
+        }
+        
+        // 同時更新個別快取
+        if (testCase.test_case_number) {
+            setExecCachedTestCase(testCase.test_case_number, testCase);
+        }
+    } catch (error) {
+        console.debug('加入測試案例到快取失敗:', error);
+    }
+}
+
 document.addEventListener('DOMContentLoaded', async function() {
     try {
         // 先處理 URL 的 team_id，確保後續載入不會因為未選擇團隊而中止
@@ -1187,18 +1348,46 @@ function updateTCGCacheProgress(progress, message = '') {
 }
 
 
-async function loadTestCases(showLoadingBlock = true, updateProgress = null) {
+async function loadTestCases(showLoadingBlock = true, updateProgress = null, forceRefresh = false) {
     try {
         if (updateProgress) updateProgress(0, '開始載入測試案例...');
-        
-        if (showLoadingBlock) {
-            showLoadingState();
-        }
         
         // 獲取當前選擇的團隊
         const currentTeam = AppUtils.getCurrentTeam();
         if (!currentTeam || !currentTeam.id) {
             throw new Error('請先選擇團隊');
+        }
+        
+        // 非強制刷新時先檢查快取
+        if (!forceRefresh) {
+            const cachedTestCases = getTestCasesCache();
+            if (cachedTestCases) {
+                if (updateProgress) updateProgress(90, '使用快取資料...');
+                
+                testCases = cachedTestCases;
+                
+                // 預設按 Test Case Number 升冪排序
+                testCases.sort((a, b) => {
+                    const aNumber = a.test_case_number || '';
+                    const bNumber = b.test_case_number || '';
+                    return aNumber.localeCompare(bNumber);
+                });
+                
+                filteredTestCases = [...testCases];
+                renderTestCasesTable();
+                updatePagination();
+                
+                const completedMsg = window.i18n ? 
+                    window.i18n.t('loading.completedWithCount', {count: testCases.length}) + ' (快取)' : 
+                    `載入完成 (${testCases.length} 筆，快取)`;
+                if (updateProgress) updateProgress(100, completedMsg);
+                
+                return; // 使用快取，直接返回
+            }
+        }
+        
+        if (showLoadingBlock) {
+            showLoadingState();
         }
         
         const connectingMsg = window.i18n ? window.i18n.t('loading.connecting') : '連接伺服器...';
@@ -1212,6 +1401,10 @@ async function loadTestCases(showLoadingBlock = true, updateProgress = null) {
         if (updateProgress) updateProgress(60, '解析資料...');
         
         testCases = await response.json();
+        
+        // 儲存到快取
+        if (updateProgress) updateProgress(70, '更新快取...');
+        setTestCasesCache(testCases);
         
         if (updateProgress) updateProgress(80, '處理資料...');
         
@@ -1259,8 +1452,11 @@ async function refreshTestCases() {
     refreshBtn.disabled = true;
     
     try {
-        // 調用 loadTestCases，但不顯示載入區塊
-        await loadTestCases(false);
+        // 清除所有快取，強制從伺服器重新載入
+        clearTestCasesCache();
+        
+        // 調用 loadTestCases，強制刷新且不顯示載入區塊
+        await loadTestCases(false, null, true);
         
         // 重新載入後，自動套用當前的搜尋條件
         if (hasFilters) {
@@ -2090,18 +2286,12 @@ function deleteTestCase(id) {
             // 關閉 Modal
             deleteModal.hide();
             
-            // 從本地陣列移除已刪除的項目（背景處理，不顯示載入動畫）
-            const deletedId = recordId;
-            testCases = testCases.filter(tc => tc.record_id !== deletedId);
-            filteredTestCases = filteredTestCases.filter(tc => tc.record_id !== deletedId);
+            // 從本地陣列移除已刪除的項目
+            testCases = testCases.filter(tc => tc.record_id !== id);
+            filteredTestCases = filteredTestCases.filter(tc => tc.record_id !== id);
 
-            // 同步移除執行頁快取
-            try {
-                if (testCase && (testCase.test_case_number || testCase.record_id)) {
-                    const number = testCase.test_case_number;
-                    if (number) removeExecCachedTestCase(number);
-                }
-            } catch (e) { console.debug('remove exec cache (delete) skipped:', e); }
+            // 從快取中移除
+            removeTestCaseFromCache(id);
             
             // 重新渲染表格和分頁
             renderTestCasesTable();
@@ -2245,23 +2435,45 @@ async function saveTestCase() {
                 }
             }
             
-            // 重新載入測試案例（不顯示載入動畫）
-            await loadTestCases(false);
-
-            // 同步更新執行頁快取：若編號變更則移除舊快取，並寫入新資料
-            try {
-                const oldNumber = (originalFormData && originalFormData.test_case_number) ? originalFormData.test_case_number : null;
-                const newNumber = testCaseData.test_case_number;
-                if (oldNumber && oldNumber !== newNumber) {
-                    removeExecCachedTestCase(oldNumber);
+            // 更新快取而非重新載入全部資料
+            const testCaseId = document.getElementById('testCaseId').value;
+            if (testCaseId) {
+                // 更新現有測試案例 - 先取得最新資料
+                try {
+                    const response = await fetch(`/api/teams/${currentTeam.id}/testcases/${testCaseId}`);
+                    if (response.ok) {
+                        const updatedTestCase = await response.json();
+                        
+                        // 更新本地列表
+                        const index = testCases.findIndex(tc => tc.record_id === testCaseId);
+                        if (index >= 0) {
+                            testCases[index] = updatedTestCase;
+                            filteredTestCases = [...testCases];
+                            renderTestCasesTable();
+                            updatePagination();
+                        }
+                        
+                        // 更新快取
+                        updateTestCaseInCache(updatedTestCase);
+                        
+                        // 同步更新執行頁快取：若編號變更則移除舊快取
+                        const oldNumber = (originalFormData && originalFormData.test_case_number) ? originalFormData.test_case_number : null;
+                        const newNumber = updatedTestCase.test_case_number;
+                        if (oldNumber && oldNumber !== newNumber) {
+                            removeExecCachedTestCase(oldNumber);
+                        }
+                    } else {
+                        // 單筆更新失敗，降級為重新載入全部資料
+                        await loadTestCases(false, null, true);
+                    }
+                } catch (error) {
+                    console.debug('快取更新失敗，降級為重新載入:', error);
+                    await loadTestCases(false, null, true);
                 }
-                // 從最新列表取得完整資料寫入快取
-                const updatedId = document.getElementById('testCaseId').value;
-                const updated = testCases.find(tc => (updatedId && tc.record_id === updatedId) || tc.test_case_number === newNumber);
-                if (updated && updated.test_case_number) {
-                    setExecCachedTestCase(updated.test_case_number, updated);
-                }
-            } catch (e) { console.debug('sync exec cache skipped:', e); }
+            } else {
+                // 新增測試案例 - 重新載入以取得完整列表（含新記錄）
+                await loadTestCases(false, null, true);
+            }
             
             // 恢復儲存按鈕狀態
             const saveBtn = document.getElementById('saveTestCaseBtn');
@@ -2374,13 +2586,14 @@ async function saveAndAddNext() {
             throw new Error(msg);
         }
         
-        // 重新載入測試案例（不顯示載入動畫）
-        await loadTestCases(false);
+        // 重新載入測試案例以取得新建立的記錄
+        await loadTestCases(false, null, true);
 
         // 將新建的案例寫入執行頁快取
         try {
             const created = testCases.find(tc => tc.test_case_number === testCaseData.test_case_number);
             if (created && created.test_case_number) {
+                // 新記錄會在 setTestCasesCache 中自動更新，這裡確保執行頁快取一致
                 setExecCachedTestCase(created.test_case_number, created);
             }
         } catch (e) { console.debug('set exec cache (create) skipped:', e); }
@@ -2835,10 +3048,12 @@ function updateLocalTestCasesAfterBatchModify(selectedIds, updateData) {
                     // 清空 TCG
                     testCase.tcg = [];
                 } else {
-                    // 更新 TCG（簡化版本，只更新顯示文字）
+                    // 更新 TCG（完整格式，確保與渲染邏輯相符）
                     testCase.tcg = [{
                         text: updateData.tcg,
-                        display_text: updateData.tcg
+                        text_arr: [updateData.tcg],
+                        display_text: updateData.tcg,
+                        type: 'text'
                     }];
                 }
             }
@@ -2860,7 +3075,9 @@ function updateLocalTestCasesAfterBatchModify(selectedIds, updateData) {
                 } else {
                     testCase.tcg = [{
                         text: updateData.tcg,
-                        display_text: updateData.tcg
+                        text_arr: [updateData.tcg],
+                        display_text: updateData.tcg,
+                        type: 'text'
                     }];
                 }
             }
@@ -2986,10 +3203,11 @@ async function performTestCaseBatchModify() {
                 `成功修改 ${selectedIds.length} 個測試案例`;
             AppUtils.showSuccess(successMsg);
             
-            // 背景重新同步資料（無載入動畫）
+            // 背景重新同步資料（強制刷新快取）
             setTimeout(async () => {
                 try {
-                    await loadTestCases(false); // false = 不顯示載入動畫
+                    clearTestCasesCache(); // 清除快取確保資料同步
+                    await loadTestCases(false, null, true); // 強制從伺服器重新載入
                 } catch (error) {
                     console.warn('背景同步資料失敗:', error);
                 }
