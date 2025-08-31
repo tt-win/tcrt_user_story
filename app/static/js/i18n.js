@@ -92,10 +92,20 @@ class I18nSystem {
      */
     async loadTranslations() {
         const version = localStorage.getItem('i18n_version') || '1.0.0';
-        const cachePromises = this.supportedLanguages.map(async (language) => {
+        // Load translations for each supported language with cache busting
+// Load translations for each supported language with cache busting
+this.loadingLanguages = new Set();
+// Load translations for each supported language with cache busting
+this.loadingLanguages = new Set();
+const cachePromises = this.supportedLanguages.map(async (language) => {
+            if (this.loadingLanguages.has(language)) return;
+            this.loadingLanguages.add(language);
+            // Update cache buster for each load to avoid race
+            this.cacheBuster = Date.now();
             try {
-                const response = await fetch(`/static/locales/${language}.json?v=${version}`);
+                const response = await fetch(`/static/locales/${language}.json?v=${this.cacheBuster}`);
                 if (!response.ok) {
+                    console.warn(`Translation file for ${language} returned status ${response.status}. Attempting fallback.`);
                     throw new Error(`Failed to load ${language}: ${response.status}`);
                 }
 
@@ -136,6 +146,17 @@ class I18nSystem {
                     if (language === this.currentLanguage && language !== this.fallbackLanguage) {
                         console.warn(`Falling back to ${this.fallbackLanguage}`);
                         this.currentLanguage = this.fallbackLanguage;
+                        // Load fallback translations if not already loaded
+                        if (!this.translations[this.fallbackLanguage]) {
+                            try {
+                                const resp = await fetch(`/static/locales/${this.fallbackLanguage}.json?v=${this.cacheBuster}`);
+                                if (resp.ok) {
+                                    this.translations[this.fallbackLanguage] = await resp.json();
+                                }
+                            } catch (e) {
+                                console.error('Failed to load fallback translations:', e);
+                            }
+                        }
                     }
                 }
             }
@@ -153,48 +174,53 @@ class I18nSystem {
      * Switch to a different language
      * @param {string} language - The language code to switch to
      */
-    async switchLanguage(language) {
+async switchLanguage(language) {
         if (!this.supportedLanguages.includes(language)) {
             console.error(`Unsupported language: ${language}`);
             return false;
         }
-
+ 
         if (language === this.currentLanguage) {
             return true; // Already using this language
         }
-
+ 
         // Check if translations are loaded
         if (!this.translations[language]) {
             console.warn(`Translations for ${language} not loaded, attempting to load...`);
             try {
-                const response = await fetch(`/static/locales/${language}.json`);
+                const response = await fetch(`/static/locales/${language}.json?v=${this.cacheBuster}`);
                 if (!response.ok) {
                     throw new Error(`Failed to load ${language}`);
                 }
                 this.translations[language] = await response.json();
             } catch (error) {
                 console.error(`Failed to load ${language}:`, error);
+                // Restore UI to previous language
+                if (this.currentLanguage && this.translations[this.currentLanguage]) {
+                    this.translatePage();
+                }
+                alert(`無法載入語言檔：${language}`);
                 return false;
             }
         }
-
+ 
         // Switch language
         this.currentLanguage = language;
-        
+         
         // Save to localStorage
         localStorage.setItem('language', language);
-        
+ 
         // Update HTML lang attribute
         document.documentElement.lang = language;
-        
+ 
         // Retranslate the page
         this.translatePage();
-        
+ 
         // Dispatch language change event
         document.dispatchEvent(new CustomEvent('languageChanged', {
             detail: { language: language }
         }));
-        
+ 
         return true;
     }
 
@@ -220,7 +246,7 @@ class I18nSystem {
         let value = currentTranslations;
         
         for (const key of keys) {
-            if (value && typeof value === 'object' && key in value) {
+if (value && typeof value === 'object' && key in value) {
                 value = value[key];
             } else {
                 // Try fallback language if current language doesn't have the key
@@ -236,13 +262,13 @@ class I18nSystem {
                                 break;
                             }
                         }
-                        if (fallbackValue && typeof fallbackValue === 'string') {
+                        if (typeof fallbackValue === 'string') {
                             value = fallbackValue;
                             break;
                         }
                     }
                 }
-                
+                 
                 // Return fallback text or key path if no translation found
                 return fallbackText || keyPath;
             }
@@ -263,9 +289,11 @@ class I18nSystem {
      * @returns {string} The interpolated text
      */
     interpolate(text, params) {
-        if (!params || Object.keys(params).length === 0) {
-            return text;
+        // If the translation contains placeholders but no params provided, warn
+        if (text.includes('{') && (!params || Object.keys(params).length === 0)) {
+            console.warn(`Missing parameters for translation key: ${keyPath}`);
         }
+        return text;
 
         return text.replace(/\{(\w+)\}/g, (match, key) => {
             return params.hasOwnProperty(key) ? params[key] : match;
@@ -322,10 +350,10 @@ class I18nSystem {
     /**
      * Translate elements with attribute-specific data-i18n attributes
      */
-    translateAttributes(root = document) {
-        const attributeTypes = ['placeholder', 'title', 'alt', 'aria-label'];
-        
-        attributeTypes.forEach(attrType => {
+translateAttributes(root = document) {
+        const attributeTypes = ['placeholder', 'title', 'alt', 'aria-label', 'value'];
+
+attributeTypes.forEach(attrType => {
             const elements = (root instanceof HTMLElement ? root : document).querySelectorAll(`[data-i18n-${attrType}]`);
             
             elements.forEach(element => {
@@ -393,9 +421,16 @@ class I18nSystem {
             return;
         }
 
-        const observer = new MutationObserver((mutations) => {
+        const observer = new MutationObserver((mutations, obs) => {
+// Handle attribute changes for existing nodes
+            mutations.forEach((mutation) => {
+                if (mutation.type === 'attributes' && mutation.attributeName.startsWith('data-i18n')) {
+                    const element = mutation.target;
+                    this.translateElement(element);
+                }
+            });
+            // Existing childList handling remains
             let shouldRetranslate = false;
-            
             mutations.forEach((mutation) => {
                 if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
                     // Check if any added nodes have i18n attributes
@@ -475,49 +510,55 @@ class I18nSystem {
      * 修復缺少的翻譯鍵
      * @param {Array} missingKeys - 從 validateTranslations 獲得的結果
      */
-    fixMissingTranslations(missingKeys) {
+fixMissingTranslations(missingKeys) {
         if (!missingKeys || missingKeys.length === 0) return;
-
-        const currentLang = this.translations[this.currentLanguage];
-        const fallbackLang = this.translations[this.fallbackLanguage];
-
-        missingKeys.forEach(({ key }) => {
-            const keys = key.split('.');
-            let currentObj = currentLang;
-            let fallbackObj = fallbackLang;
-
-            // 導航到正確的位置
-            for (let i = 0; i < keys.length - 1; i++) {
-                if (!currentObj[keys[i]]) {
-                    currentObj[keys[i]] = {};
-                }
-                currentObj = currentObj[keys[i]];
-
-                if (fallbackObj && fallbackObj[keys[i]]) {
-                    fallbackObj = fallbackObj[keys[i]];
-                }
-            }
-
-            // 設定備用值
-            const lastKey = keys[keys.length - 1];
-            if (fallbackObj && fallbackObj[lastKey]) {
-                currentObj[lastKey] = fallbackObj[lastKey];
-                console.log(`Fixed missing translation: ${key}`);
-            }
-        });
-
-        // 更新快取
-        localStorage.setItem(`i18n_${this.currentLanguage}_cache`, JSON.stringify(currentLang));
-    }
+ 
+         const currentLang = this.translations[this.currentLanguage];
+         const fallbackLang = this.translations[this.fallbackLanguage];
+ 
+         missingKeys.forEach(({ key }) => {
+             const keys = key.split('.');
+             let currentObj = currentLang;
+             let fallbackObj = fallbackLang;
+ 
+             // 導航到正確的位置，遞迴建立缺失結構
+             for (let i = 0; i < keys.length - 1; i++) {
+                 const part = keys[i];
+                 if (!currentObj[part]) {
+                     currentObj[part] = {};
+                 }
+                 currentObj = currentObj[part];
+ 
+                 if (fallbackObj && fallbackObj[part]) {
+                     fallbackObj = fallbackObj[part];
+                 } else {
+                     fallbackObj = null;
+                 }
+             }
+ 
+             // 設定備用值
+             const lastKey = keys[keys.length - 1];
+             if (fallbackObj && fallbackObj[lastKey]) {
+                 currentObj[lastKey] = fallbackObj[lastKey];
+                 console.log(`Fixed missing translation: ${key}`);
+             }
+         });
+ 
+         // 更新快取
+         localStorage.setItem(`i18n_${this.currentLanguage}_cache`, JSON.stringify(currentLang));
+     }
 }
+
+// Global debug flag for test environments
+window.i18nDebugEnabled = false;
 
 // Create global i18n instance
 window.i18n = new I18nSystem();
 
 // 開發者工具 - 僅在開發環境中可用
-if (window.location.hostname === 'localhost' ||
-    window.location.hostname === '127.0.0.1' ||
-    window.location.search.includes('debug=i18n')) {
+if ((window.location.hostname === 'localhost' ||
+            window.location.hostname === '127.0.0.1') && window.i18nDebugEnabled) {
+
 
     window.i18nDebug = {
         /**
