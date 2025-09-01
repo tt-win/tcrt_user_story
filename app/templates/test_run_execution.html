@@ -873,11 +873,11 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                 </div>
                 <div class="stat-item">
                     <div class="stat-number text-success" id="passed-count">0</div>
-                    <div class="stat-label" data-i18n="testRun.passedItems">通過</div>
+                    <div class="stat-label" data-i18n="testRun.passedItems">Passed</div>
                 </div>
                 <div class="stat-item">
                     <div class="stat-number text-danger" id="failed-count">0</div>
-                    <div class="stat-label" data-i18n="testRun.failedItems">失敗</div>
+                    <div class="stat-label" data-i18n="testRun.failedItems">Failed</div>
                 </div>
                 <div class="stat-item">
                     <div class="stat-number" id="execution-rate">0%</div>
@@ -1028,10 +1028,10 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                     </div>
                     <select class="form-select" id="batchResultSelect" disabled>
                         <option value="" data-i18n="testRun.selectResult">請選擇結果</option>
-                        <option value="Passed" data-i18n="testRun.passed">通過</option>
-                        <option value="Failed" data-i18n="testRun.failed">失敗</option>
-                        <option value="Retest" data-i18n="testRun.retest">重測</option>
-                        <option value="Not Available" data-i18n="testRun.notAvailable">不適用</option>
+                        <option value="Passed" data-i18n="testRun.passed">Passed</option>
+                        <option value="Failed" data-i18n="testRun.failed">Failed</option>
+                        <option value="Retest" data-i18n="testRun.retest">Retest</option>
+                        <option value="Not Available" data-i18n="testRun.notAvailable">Not Available</option>
                     </select>
                 </div>
                 
@@ -1756,11 +1756,11 @@ function createItemRow(item, index, canUpdate) {
                 ${canUpdate ? `
                     <select class="form-select result-selector-lg ${resultClass}"
                             data-item-id="${item.id}" onchange="updateTestResult(${item.id}, this.value)">
-                        ${!hasExecutionHistory ? `<option value="">${escapeHtml('{{ i18n.t("testRun.notExecuted") if i18n else "未執行" }}')}</option>` : ''}
-                        <option value="Passed" ${item.test_result === 'Passed' ? 'selected' : ''}>${escapeHtml('{{ i18n.t("testRun.passed") if i18n else "通過" }}')}</option>
-                        <option value="Failed" ${item.test_result === 'Failed' ? 'selected' : ''}>${escapeHtml('{{ i18n.t("testRun.failed") if i18n else "失敗" }}')}</option>
-                        <option value="Retest" ${item.test_result === 'Retest' ? 'selected' : ''}>${escapeHtml('{{ i18n.t("testRun.retest") if i18n else "重測" }}')}</option>
-                        <option value="Not Available" ${item.test_result === 'Not Available' ? 'selected' : ''}>${escapeHtml('{{ i18n.t("testRun.notAvailable") if i18n else "不適用" }}')}</option>
+                        ${!hasExecutionHistory ? `<option value="">${escapeHtml('{{ i18n.t("testRun.notExecuted") if i18n else "Not Executed" }}')}</option>` : ''}
+                        <option value="Passed" ${item.test_result === 'Passed' ? 'selected' : ''}>${escapeHtml('{{ i18n.t("testRun.passed") if i18n else "Passed" }}')}</option>
+                        <option value="Failed" ${item.test_result === 'Failed' ? 'selected' : ''}>${escapeHtml('{{ i18n.t("testRun.failed") if i18n else "Failed" }}')}</option>
+                        <option value="Retest" ${item.test_result === 'Retest' ? 'selected' : ''}>${escapeHtml('{{ i18n.t("testRun.retest") if i18n else "Retest" }}')}</option>
+                        <option value="Not Available" ${item.test_result === 'Not Available' ? 'selected' : ''}>${escapeHtml('{{ i18n.t("testRun.notAvailable") if i18n else "Not Available" }}')}</option>
                     </select>
                 ` : `
                     <span class="badge result-badge-lg ${resultClass}">${resultText}</span>
@@ -2114,12 +2114,12 @@ function getResultClass(result) {
 
 function getResultText(result) {
     const textMap = {
-        'Passed': '{{ i18n.t("testRun.passed") if i18n else "通過" }}',
-        'Failed': '{{ i18n.t("testRun.failed") if i18n else "失敗" }}',
-        'Retest': '{{ i18n.t("testRun.retest") if i18n else "重測" }}', 
-        'Not Available': '{{ i18n.t("testRun.notAvailable") if i18n else "不適用" }}'
+        'Passed': '{{ i18n.t("testRun.passed") if i18n else "Passed" }}',
+        'Failed': '{{ i18n.t("testRun.failed") if i18n else "Failed" }}',
+        'Retest': '{{ i18n.t("testRun.retest") if i18n else "Retest" }}', 
+        'Not Available': '{{ i18n.t("testRun.notAvailable") if i18n else "Not Available" }}'
     };
-    return textMap[result] || '{{ i18n.t("testRun.notExecuted") if i18n else "未執行" }}';
+    return textMap[result] || '{{ i18n.t("testRun.notExecuted") if i18n else "Not Executed" }}';
 }
 
 // 全頁載入已移除，使用列表區載入動畫（showItemsLoading/hideItemsLoading）
@@ -2976,11 +2976,11 @@ function renderModalHeaderResult(testCase) {
         container.innerHTML = `
             <select class="form-select form-select-sm result-selector-lg ${getResultClass(currentResult)}"
                     onchange="updateSelectClass(this); updateTestResult(${item.id}, this.value)">
-                ${!hasExecutionHistory ? `<option value="">${escapeHtml('{{ i18n.t("testRun.notExecuted") if i18n else "未執行" }}')}</option>` : ''}
-                <option value="Passed" ${currentResult === 'Passed' ? 'selected' : ''}>${escapeHtml('{{ i18n.t("testRun.passed") if i18n else "通過" }}')}</option>
-                <option value="Failed" ${currentResult === 'Failed' ? 'selected' : ''}>${escapeHtml('{{ i18n.t("testRun.failed") if i18n else "失敗" }}')}</option>
-                <option value="Retest" ${currentResult === 'Retest' ? 'selected' : ''}>${escapeHtml('{{ i18n.t("testRun.retest") if i18n else "重測" }}')}</option>
-                <option value="Not Available" ${currentResult === 'Not Available' ? 'selected' : ''}>${escapeHtml('{{ i18n.t("testRun.notAvailable") if i18n else "不適用" }}')}</option>
+                ${!hasExecutionHistory ? `<option value="">${escapeHtml('{{ i18n.t("testRun.notExecuted") if i18n else "Not Executed" }}')}</option>` : ''}
+                <option value="Passed" ${currentResult === 'Passed' ? 'selected' : ''}>${escapeHtml('{{ i18n.t("testRun.passed") if i18n else "Passed" }}')}</option>
+                <option value="Failed" ${currentResult === 'Failed' ? 'selected' : ''}>${escapeHtml('{{ i18n.t("testRun.failed") if i18n else "Failed" }}')}</option>
+                <option value="Retest" ${currentResult === 'Retest' ? 'selected' : ''}>${escapeHtml('{{ i18n.t("testRun.retest") if i18n else "Retest" }}')}</option>
+                <option value="Not Available" ${currentResult === 'Not Available' ? 'selected' : ''}>${escapeHtml('{{ i18n.t("testRun.notAvailable") if i18n else "Not Available" }}')}</option>
             </select>
         `;
         const select = container.querySelector('select');
@@ -3030,8 +3030,8 @@ async function renderResultHistoryTimeline(testCase) {
         // 生成 timeline 項目
         const rows = records.map(r => {
             const time = r.changed_at ? AppUtils.formatDate(r.changed_at, 'datetime') : '';
-            const from = r.prev_result ? getResultText(r.prev_result) : '{{ i18n.t("testRun.notExecuted") if i18n else "未執行" }}';
-            const to = r.new_result ? getResultText(r.new_result) : '{{ i18n.t("testRun.notExecuted") if i18n else "未執行" }}';
+            const from = r.prev_result ? getResultText(r.prev_result) : '{{ i18n.t("testRun.notExecuted") if i18n else "Not Executed" }}';
+            const to = r.new_result ? getResultText(r.new_result) : '{{ i18n.t("testRun.notExecuted") if i18n else "Not Executed" }}';
             const badgeFrom = `<span class="badge ${getResultClass(r.prev_result)}">${from}</span>`;
             const badgeTo = `<span class="badge ${getResultClass(r.new_result)}">${to}</span>`;
             const who = r.changed_by_name || '';
@@ -4609,7 +4609,7 @@ async function renderTestRunCharts(statsData) {
         testRunCharts.statusPie = new Chart(statusCtx, {
             type: 'pie',
             data: {
-                labels: ['通過', '失敗', '重測', '不適用', '未執行'],
+                labels: ['Passed', 'Failed', 'Retest', 'Not Available', 'Not Executed'],
                 datasets: [{
                     data: [
                         statsData.statusData.passed,
@@ -4887,7 +4887,7 @@ function downloadReportAsPDF() {
                                         <td id="reportExecutionRate">0%</td>
                                     </tr>
                                     <tr>
-                                        <td><span data-i18n="testRun.passRate">通過率</span></td>
+                                        <td><span data-i18n="testRun.passRate">Pass Rate</span></td>
                                         <td id="reportPassRate">0%</td>
                                     </tr>
                                 </table>
@@ -4933,7 +4933,7 @@ function downloadReportAsPDF() {
                         <div class="card text-center border-left-success">
                             <div class="card-body">
                                 <div class="h4 text-success mb-1" id="chartPassedCount">0</div>
-                                <div class="text-muted" data-i18n="testRun.passedItems">通過</div>
+                                <div class="text-muted" data-i18n="testRun.passedItems">Passed</div>
                             </div>
                         </div>
                     </div>
@@ -4941,7 +4941,7 @@ function downloadReportAsPDF() {
                         <div class="card text-center border-left-danger">
                             <div class="card-body">
                                 <div class="h4 text-danger mb-1" id="chartFailedCount">0</div>
-                                <div class="text-muted" data-i18n="testRun.failedItems">失敗</div>
+                                <div class="text-muted" data-i18n="testRun.failedItems">Failed</div>
                             </div>
                         </div>
                     </div>
@@ -4949,7 +4949,7 @@ function downloadReportAsPDF() {
                         <div class="card text-center border-left-warning">
                             <div class="card-body">
                                 <div class="h4 text-warning mb-1" id="chartRetestCount">0</div>
-                                <div class="text-muted" data-i18n="testRun.retestItems">重測</div>
+                                <div class="text-muted" data-i18n="testRun.retestItems">Retest</div>
                             </div>
                         </div>
                     </div>
@@ -4957,7 +4957,7 @@ function downloadReportAsPDF() {
                         <div class="card text-center border-left-secondary">
                             <div class="card-body">
                                 <div class="h4 text-secondary mb-1" id="chartNotAvailableCount">0</div>
-                                <div class="text-muted" data-i18n="testRun.notAvailableItems">不適用</div>
+                                <div class="text-muted" data-i18n="testRun.notAvailableItems">Not Available</div>
                             </div>
                         </div>
                     </div>

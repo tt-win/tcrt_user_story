@@ -397,7 +397,7 @@
         "passed": "Passed",
         "failed": "Failed",
         "retest": "Retest",
-        "notAvailable": "N/A",
+        "notAvailable": "Not Available",
         "executionInfo": "Execution Info",
         "testCaseNumber": "Test Case Number",
         "executor": "Executor",
