@@ -11,10 +11,13 @@ LOG_FILE="/var/log/backup_and_clean.log"
 FILE_PATTERN="*.db"   # change to desired pattern or list of files
 
 mkdir -p "$DEST_DIR"
+TIMESTAMP=$(date '+%Y%m%d_%H%M%S')
+TARGET_DIR="$DEST_DIR/$TIMESTAMP"
+mkdir -p "$TARGET_DIR"
 
-echo "$(date '+%Y-%m-%d %H:%M:%S') - Starting backup" >> "$LOG_FILE"
+echo "$(date '+%Y-%m-%d %H:%M:%S') - Starting backup to $TARGET_DIR" >> "$LOG_FILE"
 # Copy matching files preserving attributes
-rsync -av --include="$FILE_PATTERN" --exclude='*' "$SOURCE_DIR/" "$DEST_DIR/" >> "$LOG_FILE" 2>&1 || true
+rsync -av --include="$FILE_PATTERN" --exclude='*' "$SOURCE_DIR/" "$TARGET_DIR/" >> "$LOG_FILE" 2>&1 || true
 
 echo "$(date '+%Y-%m-%d %H:%M:%S') - Backup completed" >> "$LOG_FILE"
 
