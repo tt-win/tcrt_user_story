@@ -104,6 +104,7 @@ venv.bak/
 
 # Configuration files with sensitive data
 config.yaml
+# backup_script.sh
 
 # IDEs
 .idea/

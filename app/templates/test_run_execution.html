@@ -839,7 +839,7 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
     </button>
     <div class="ms-auto d-flex gap-2">
         <button type="button" class="btn btn-outline-primary" id="exportBtn">
-            <i class="fas fa-download me-2"></i><span data-i18n="testRun.exportResults">匯出結果</span>
+            <i class="fas fa-chart-pie me-2"></i><span data-i18n="testRun.chartsReports">Charts & Reports</span>
         </button>
         <button type="button" class="btn btn-secondary" id="refreshBtn">
             <i class="fas fa-sync-alt me-2"></i><span data-i18n="common.refresh">重新整理</span>
@@ -4428,6 +4428,583 @@ document.addEventListener('DOMContentLoaded', function() {
     console.log('  loadBugTicketsSummary:', typeof loadBugTicketsSummary);
     console.log('  renderBugTicketsSummary:', typeof renderBugTicketsSummary);
 });
+
+// Charts & Reports 功能
+document.getElementById('exportBtn').addEventListener('click', function() {
+    showChartsReportsModal();
+});
+
+function showChartsReportsModal() {
+    const modal = new bootstrap.Modal(document.getElementById('chartsReportsModal'));
+    modal.show();
+    
+    console.log('準備顯示 Charts & Reports modal');
+    
+    // Modal 顯示後載入圖表
+    document.getElementById('chartsReportsModal').addEventListener('shown.bs.modal', function() {
+        console.log('Modal 已完全顯示，開始初始化圖表');
+        // 稍微延遲以確保所有元素都已渲染
+        setTimeout(() => {
+            initializeChartsAndReports();
+        }, 200);
+    }, { once: true });
+}
+
+async function initializeChartsAndReports() {
+    console.log('開始初始化 Charts & Reports');
+    
+    try {
+        // 顯示載入狀態
+        showChartsLoading();
+        console.log('顯示載入狀態');
+        
+        // 收集統計資料
+        console.log('開始收集統計資料...');
+        const statsData = collectTestRunStats();
+        console.log('收集到的統計資料:', statsData);
+        
+        // 更新基本資訊
+        console.log('更新基本資訊...');
+        updateReportBasicInfo(statsData);
+        
+        // 渲染圖表
+        console.log('開始渲染圖表...');
+        await renderTestRunCharts(statsData);
+        console.log('圖表渲染完成');
+        
+        // 隱藏載入狀態
+        hideChartsLoading();
+        console.log('Charts & Reports 初始化完成');
+        
+    } catch (error) {
+        console.error('初始化圖表失敗:', error);
+        hideChartsLoading();
+        showChartsError();
+    }
+}
+
+function collectTestRunStats() {
+    const stats = {
+        statusData: {
+            passed: parseInt(document.getElementById('passed-count')?.textContent || '0'),
+            failed: parseInt(document.getElementById('failed-count')?.textContent || '0'),
+            retest: 0, // 需要從 testRunItems 中計算
+            notAvailable: 0, // 需要從 testRunItems 中計算
+            notExecuted: parseInt(document.getElementById('total-count')?.textContent || '0') - parseInt(document.getElementById('executed-count')?.textContent || '0')
+        },
+        priorityData: {
+            high: 0,
+            medium: 0,
+            low: 0
+        },
+        testRunInfo: {
+            name: testRunConfig?.name || 'Test Run',
+            environment: testRunConfig?.test_environment || '',
+            buildNumber: testRunConfig?.build_number || '',
+            version: testRunConfig?.test_version || '',
+            totalItems: parseInt(document.getElementById('total-count')?.textContent || '0'),
+            executedItems: parseInt(document.getElementById('executed-count')?.textContent || '0'),
+            executionRate: document.getElementById('execution-rate')?.textContent || '0%',
+            passRate: document.getElementById('pass-rate')?.textContent || '0%'
+        }
+    };
+    
+    // 從 testRunItems 計算詳細統計
+    if (testRunItems && Array.isArray(testRunItems)) {
+        testRunItems.forEach(item => {
+            // 計算測試結果分布
+            switch (item.test_result) {
+                case 'Retest':
+                    stats.statusData.retest++;
+                    break;
+                case 'Not Available':
+                    stats.statusData.notAvailable++;
+                    break;
+            }
+            
+            // 計算優先級分布
+            switch (item.priority) {
+                case 'High':
+                    stats.priorityData.high++;
+                    break;
+                case 'Medium':
+                    stats.priorityData.medium++;
+                    break;
+                case 'Low':
+                    stats.priorityData.low++;
+                    break;
+            }
+        });
+    }
+    
+    return stats;
+}
+
+function updateReportBasicInfo(statsData) {
+    // 更新基本資訊
+    document.getElementById('reportTestRunName').textContent = statsData.testRunInfo.name;
+    document.getElementById('reportEnvironment').textContent = statsData.testRunInfo.environment || '-';
+    document.getElementById('reportBuildNumber').textContent = statsData.testRunInfo.buildNumber || '-';
+    
+    // 更新執行摘要
+    document.getElementById('reportTotalItems').textContent = statsData.testRunInfo.totalItems;
+    document.getElementById('reportExecutedItems').textContent = statsData.testRunInfo.executedItems;
+    document.getElementById('reportExecutionRate').textContent = statsData.testRunInfo.executionRate;
+    document.getElementById('reportPassRate').textContent = statsData.testRunInfo.passRate;
+    
+    // 更新統計卡片
+    document.getElementById('chartPassedCount').textContent = statsData.statusData.passed;
+    document.getElementById('chartFailedCount').textContent = statsData.statusData.failed;
+    document.getElementById('chartRetestCount').textContent = statsData.statusData.retest;
+    document.getElementById('chartNotAvailableCount').textContent = statsData.statusData.notAvailable;
+}
+
+let testRunCharts = {};
+
+async function renderTestRunCharts(statsData) {
+    console.log('開始渲染圖表，統計資料:', statsData);
+    
+    // 清理舊圖表
+    Object.values(testRunCharts).forEach(chart => {
+        if (chart) chart.destroy();
+    });
+    testRunCharts = {};
+    
+    // 確保 Chart.js 已載入
+    if (typeof Chart === 'undefined') {
+        throw new Error('Chart.js not loaded');
+    }
+    
+    console.log('Chart.js 已載入，版本:', Chart.version);
+    
+    // 註冊 DataLabels 插件（如果可用）
+    try {
+        if (typeof ChartDataLabels !== 'undefined') {
+            Chart.register(ChartDataLabels);
+            console.log('ChartDataLabels 插件已註冊');
+        } else {
+            console.warn('ChartDataLabels 插件未載入，圖表將不顯示數據標籤');
+        }
+    } catch (error) {
+        console.warn('註冊 ChartDataLabels 插件時出錯:', error);
+    }
+    
+    // 圖表配色
+    const colorScheme = {
+        passed: '#28a745',
+        failed: '#dc3545',
+        retest: '#ffc107',
+        notAvailable: '#6c757d',
+        notExecuted: '#adb5bd',
+        high: '#dc3545',
+        medium: '#ffc107',
+        low: '#28a745'
+    };
+    
+    // 1. 測試狀態分布圓餅圖
+    const statusCtx = document.getElementById('statusPieChart');
+    console.log('圓餅圖 Canvas 元素:', statusCtx);
+    if (statusCtx) {
+        console.log('開始創建圓餅圖...');
+        testRunCharts.statusPie = new Chart(statusCtx, {
+            type: 'pie',
+            data: {
+                labels: ['通過', '失敗', '重測', '不適用', '未執行'],
+                datasets: [{
+                    data: [
+                        statsData.statusData.passed,
+                        statsData.statusData.failed,
+                        statsData.statusData.retest,
+                        statsData.statusData.notAvailable,
+                        statsData.statusData.notExecuted
+                    ],
+                    backgroundColor: [
+                        colorScheme.passed,
+                        colorScheme.failed,
+                        colorScheme.retest,
+                        colorScheme.notAvailable,
+                        colorScheme.notExecuted
+                    ],
+                    borderWidth: 2,
+                    borderColor: '#ffffff'
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            padding: 20,
+                            usePointStyle: true
+                        }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                const percentage = ((context.raw / total) * 100).toFixed(1);
+                                return `${context.label}: ${context.raw} (${percentage}%)`;
+                            }
+                        }
+                    },
+                    ...(typeof ChartDataLabels !== 'undefined' ? {
+                        datalabels: {
+                            color: 'white',
+                            font: {
+                                weight: 'bold',
+                                size: 14
+                            },
+                            formatter: (value, context) => {
+                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                const percentage = ((value / total) * 100).toFixed(1);
+                                return percentage > 5 ? percentage + '%' : '';
+                            }
+                        }
+                    } : {})
+                }
+            }
+        });
+        console.log('圓餅圖創建完成');
+    }
+    
+    // 2. 優先級分布長條圖
+    const priorityCtx = document.getElementById('priorityBarChart');
+    console.log('長條圖 Canvas 元素:', priorityCtx);
+    if (priorityCtx) {
+        console.log('開始創建長條圖...');
+        testRunCharts.priorityBar = new Chart(priorityCtx, {
+            type: 'bar',
+            data: {
+                labels: ['高', '中', '低'],
+                datasets: [{
+                    label: '測試案例數量',
+                    data: [
+                        statsData.priorityData.high,
+                        statsData.priorityData.medium,
+                        statsData.priorityData.low
+                    ],
+                    backgroundColor: [
+                        colorScheme.high,
+                        colorScheme.medium,
+                        colorScheme.low
+                    ],
+                    borderColor: [
+                        colorScheme.high,
+                        colorScheme.medium,
+                        colorScheme.low
+                    ],
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            stepSize: 1
+                        }
+                    }
+                }
+            }
+        });
+        console.log('長條圖創建完成');
+    }
+}
+
+function showChartsLoading() {
+    const loadingElement = document.getElementById('chartsLoadingOverlay');
+    console.log('準備顯示載入畫面，元素:', loadingElement);
+    if (loadingElement) {
+        // 確保載入畫面可以顯示
+        loadingElement.style.display = 'flex';
+        loadingElement.style.visibility = 'visible';
+        loadingElement.classList.remove('d-none');
+        console.log('載入畫面已顯示');
+    } else {
+        console.error('找不到載入畫面元素 chartsLoadingOverlay');
+    }
+}
+
+function hideChartsLoading() {
+    const loadingElement = document.getElementById('chartsLoadingOverlay');
+    console.log('準備隱藏載入畫面，元素:', loadingElement);
+    console.log('當前 display 樣式:', loadingElement?.style.display);
+    if (loadingElement) {
+        // 使用多種方式確保載入畫面被隱藏
+        loadingElement.style.display = 'none';
+        loadingElement.style.visibility = 'hidden';
+        loadingElement.classList.add('d-none');
+        // 強制刷新樣式
+        loadingElement.offsetHeight;
+        console.log('載入畫面已隱藏，新的 display 樣式:', loadingElement.style.display);
+        console.log('是否有 d-none 類:', loadingElement.classList.contains('d-none'));
+    } else {
+        console.error('找不到載入畫面元素 chartsLoadingOverlay');
+    }
+}
+
+function showChartsError() {
+    const errorElement = document.getElementById('chartsErrorMessage');
+    if (errorElement) {
+        errorElement.style.display = 'block';
+    }
+}
+
+// PDF 下載功能
+function downloadReportAsPDF() {
+    // 隱藏不需要列印的元素
+    const elementsToHide = document.querySelectorAll('#chartsReportsModal .modal-header, #chartsReportsModal .modal-footer');
+    elementsToHide.forEach(el => el.style.display = 'none');
+    
+    // 設置列印樣式
+    const printStyles = document.createElement('style');
+    printStyles.textContent = `
+        @media print {
+            body * { visibility: hidden; }
+            #chartsReportsModal, #chartsReportsModal * { visibility: visible; }
+            #chartsReportsModal { 
+                position: fixed !important; 
+                left: 0 !important; 
+                top: 0 !important; 
+                width: 100% !important; 
+                height: 100% !important; 
+                z-index: 999999 !important;
+                background: white !important;
+            }
+            .modal-dialog { 
+                max-width: 100% !important; 
+                margin: 0 !important; 
+                padding: 20px !important; 
+            }
+            .chart-container { 
+                page-break-inside: avoid; 
+                margin-bottom: 20px !important; 
+            }
+        }
+    `;
+    document.head.appendChild(printStyles);
+    
+    // 執行列印
+    window.print();
+    
+    // 列印完成後恢復元素
+    setTimeout(() => {
+        elementsToHide.forEach(el => el.style.display = '');
+        document.head.removeChild(printStyles);
+    }, 1000);
+}
+
 </script>
+
+<!-- Charts & Reports Modal -->
+<div class="modal fade" id="chartsReportsModal" tabindex="-1" aria-labelledby="chartsReportsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="chartsReportsModalLabel">
+                    <i class="fas fa-chart-pie me-2"></i>
+                    <span data-i18n="testRun.chartsReports">Charts & Reports</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body" style="position: relative;">
+                <!-- 載入覆蓋層 -->
+                <div id="chartsLoadingOverlay" class="position-absolute w-100 h-100 d-flex align-items-center justify-content-center bg-white" style="z-index: 1000; display: none; top: 0; left: 0;">
+                    <div class="text-center">
+                        <div class="spinner-border text-primary mb-3" role="status"></div>
+                        <div data-i18n="testRun.loadingCharts">載入圖表中...</div>
+                    </div>
+                </div>
+                
+                <!-- 錯誤訊息 -->
+                <div id="chartsErrorMessage" class="alert alert-danger text-center" style="display: none;">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <span data-i18n="testRun.chartsLoadError">圖表載入失敗，請重新整理後再試</span>
+                </div>
+                
+                <!-- 報告標題區域 -->
+                <div class="text-center mb-4">
+                    <h2 class="display-6">
+                        <i class="fas fa-chart-pie me-3 text-primary"></i>
+                        <span data-i18n="testRun.executionAnalytics">Test Run 執行分析報告</span>
+                    </h2>
+                    <p class="lead text-muted" data-i18n="testRun.analyticsSubtitle">測試執行狀態分布與統計分析</p>
+                </div>
+                
+                <!-- 基本資訊區域 -->
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-body">
+                                <h6 class="card-title">
+                                    <i class="fas fa-info-circle me-2"></i>
+                                    <span data-i18n="testRun.basicInfo">基本資訊</span>
+                                </h6>
+                                <table class="table table-sm">
+                                    <tr>
+                                        <td><span data-i18n="testRun.configName">名稱</span></td>
+                                        <td id="reportTestRunName">-</td>
+                                    </tr>
+                                    <tr>
+                                        <td><span data-i18n="testRun.testEnvironment">測試環境</span></td>
+                                        <td id="reportEnvironment">-</td>
+                                    </tr>
+                                    <tr>
+                                        <td><span data-i18n="testRun.buildNumber">建置版本</span></td>
+                                        <td id="reportBuildNumber">-</td>
+                                    </tr>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-body">
+                                <h6 class="card-title">
+                                    <i class="fas fa-chart-bar me-2"></i>
+                                    <span data-i18n="testRun.executionSummary">執行摘要</span>
+                                </h6>
+                                <table class="table table-sm">
+                                    <tr>
+                                        <td><span data-i18n="testRun.totalItems">總項目</span></td>
+                                        <td id="reportTotalItems">0</td>
+                                    </tr>
+                                    <tr>
+                                        <td><span data-i18n="testRun.executedItems">已執行</span></td>
+                                        <td id="reportExecutedItems">0</td>
+                                    </tr>
+                                    <tr>
+                                        <td><span data-i18n="testRun.executionRate">執行率</span></td>
+                                        <td id="reportExecutionRate">0%</td>
+                                    </tr>
+                                    <tr>
+                                        <td><span data-i18n="testRun.passRate">通過率</span></td>
+                                        <td id="reportPassRate">0%</td>
+                                    </tr>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 圖表區域 -->
+                <div class="row">
+                    <div class="col-lg-6 mb-4">
+                        <div class="card chart-container">
+                            <div class="card-body">
+                                <h6 class="card-title">
+                                    <i class="fas fa-chart-pie me-2 text-primary"></i>
+                                    <span data-i18n="testRun.statusDistribution">測試結果狀態分布</span>
+                                </h6>
+                                <div style="position: relative; height: 400px;">
+                                    <canvas id="statusPieChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="col-lg-6 mb-4">
+                        <div class="card chart-container">
+                            <div class="card-body">
+                                <h6 class="card-title">
+                                    <i class="fas fa-chart-bar me-2 text-success"></i>
+                                    <span data-i18n="testRun.priorityDistribution">優先級分布</span>
+                                </h6>
+                                <div style="position: relative; height: 400px;">
+                                    <canvas id="priorityBarChart"></canvas>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 統計卡片 -->
+                <div class="row">
+                    <div class="col-md-3 mb-3">
+                        <div class="card text-center border-left-success">
+                            <div class="card-body">
+                                <div class="h4 text-success mb-1" id="chartPassedCount">0</div>
+                                <div class="text-muted" data-i18n="testRun.passedItems">通過</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <div class="card text-center border-left-danger">
+                            <div class="card-body">
+                                <div class="h4 text-danger mb-1" id="chartFailedCount">0</div>
+                                <div class="text-muted" data-i18n="testRun.failedItems">失敗</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <div class="card text-center border-left-warning">
+                            <div class="card-body">
+                                <div class="h4 text-warning mb-1" id="chartRetestCount">0</div>
+                                <div class="text-muted" data-i18n="testRun.retestItems">重測</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <div class="card text-center border-left-secondary">
+                            <div class="card-body">
+                                <div class="h4 text-secondary mb-1" id="chartNotAvailableCount">0</div>
+                                <div class="text-muted" data-i18n="testRun.notAvailableItems">不適用</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" onclick="downloadReportAsPDF()">
+                    <i class="fas fa-download me-2"></i>
+                    <span data-i18n="testRun.downloadPDF">下載 PDF 報告</span>
+                </button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <span data-i18n="common.close">關閉</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Chart.js 相關 CDN -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+
+<style>
+.chart-container {
+    transition: all 0.2s ease;
+}
+
+.chart-container:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+    transform: translateY(-1px);
+}
+
+.border-left-success { border-left: 4px solid #28a745; }
+.border-left-danger { border-left: 4px solid #dc3545; }
+.border-left-warning { border-left: 4px solid #ffc107; }
+.border-left-secondary { border-left: 4px solid #6c757d; }
+
+@media print {
+    .modal-dialog { 
+        max-width: 100% !important; 
+        margin: 0 !important; 
+    }
+    .chart-container { 
+        page-break-inside: avoid; 
+    }
+}
+</style>
+
 {% endblock %}
 /* reverted: no fixed height for attachments list */

@@ -329,6 +329,7 @@
         "descriptionPlaceholder": "\u63cf\u8ff0\u9019\u6b21\u6e2c\u8a66\u57f7\u884c\u914d\u7f6e\u7684\u76ee\u7684\u548c\u7bc4\u570d",
         "itemsCreated": "\u5df2\u65b0\u589e {count} \u500b\u6e2c\u8a66\u57f7\u884c\u9805\u76ee\u3002",
         "itemsUpdated": "\u5df2\u66f4\u65b0 Test Run \u7684 Test Case",
+        "editConfig": "\u7de8\u8f2f\u914d\u7f6e",
         "editBasicSettings": "\u7de8\u8f2f\u57fa\u672c\u8a2d\u5b9a",
         "editTestCases": "\u7de8\u8f2f Test Case",
         "caseSelect": {
@@ -495,7 +496,28 @@
             "closed": "Closed"
         },
         "noTicketsForStatus": "\u6b64\u72c0\u614b\u4e0b\u7121 Bug Tickets",
-        "openInNewWindow": "\u5728\u65b0\u8996\u7a97\u958b\u555f"
+        "openInNewWindow": "\u5728\u65b0\u8996\u7a97\u958b\u555f",
+        "chartsReports": "\u5716\u8868\uff06\u5831\u544a",
+        "loadingCharts": "\u8f09\u5165\u5716\u8868\u4e2d...",
+        "chartsLoadError": "\u5716\u8868\u8f09\u5165\u5931\u6557\uff0c\u8acb\u91cd\u65b0\u6574\u7406\u5f8c\u518d\u8a66",
+        "executionAnalytics": "Test Run \u57f7\u884c\u5206\u6790\u5831\u544a",
+        "analyticsSubtitle": "\u6e2c\u8a66\u57f7\u884c\u72c0\u614b\u5206\u5e03\u8207\u7d71\u8a08\u5206\u6790",
+        "basicInfo": "\u57fa\u672c\u8cc7\u8a0a",
+        "configName": "\u540d\u7a31",
+        "testEnvironment": "\u6e2c\u8a66\u74b0\u5883",
+        "buildNumber": "\u5efa\u7f6e\u7248\u672c",
+        "executionSummary": "\u57f7\u884c\u6458\u8981",
+        "totalItems": "\u7e3d\u9805\u76ee",
+        "executedItems": "\u5df2\u57f7\u884c",
+        "executionRate": "\u57f7\u884c\u7387",
+        "passRate": "\u901a\u904e\u7387",
+        "statusDistribution": "\u6e2c\u8a66\u7d50\u679c\u72c0\u614b\u5206\u5e03",
+        "priorityDistribution": "\u512a\u5148\u7d1a\u5206\u5e03",
+        "passedItems": "\u901a\u904e",
+        "failedItems": "\u5931\u6557",
+        "retestItems": "\u91cd\u6e2c",
+        "notAvailableItems": "\u4e0d\u9069\u7528",
+        "downloadPDF": "\u4e0b\u8f09 PDF \u5831\u544a"
     },
     "priority": {
         "high": "\u9ad8",

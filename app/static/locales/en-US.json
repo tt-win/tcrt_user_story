@@ -332,6 +332,7 @@
         "descriptionPlaceholder": "Describe the purpose and scope of this test run configuration",
         "itemsCreated": "Added {count} test run item(s).",
         "itemsUpdated": "Updated Test Run test cases",
+        "editConfig": "Edit Configuration",
         "editBasicSettings": "Edit Basic Settings",
         "editTestCases": "Edit Test Cases",
         "caseSelect": {
@@ -495,7 +496,28 @@
             "closed": "Closed"
         },
         "noTicketsForStatus": "No Bug Tickets for this status",
-        "openInNewWindow": "Open in new window"
+        "openInNewWindow": "Open in new window",
+        "chartsReports": "Charts & Reports",
+        "loadingCharts": "Loading charts...",
+        "chartsLoadError": "Failed to load charts, please refresh and try again",
+        "executionAnalytics": "Test Run Execution Analytics Report",
+        "analyticsSubtitle": "Test execution status distribution and statistical analysis",
+        "basicInfo": "Basic Information",
+        "configName": "Name",
+        "testEnvironment": "Test Environment",
+        "buildNumber": "Build Number",
+        "executionSummary": "Execution Summary",
+        "totalItems": "Total Items",
+        "executedItems": "Executed",
+        "executionRate": "Execution Rate",
+        "passRate": "Pass Rate",
+        "statusDistribution": "Test Result Status Distribution",
+        "priorityDistribution": "Priority Distribution",
+        "passedItems": "Passed",
+        "failedItems": "Failed",
+        "retestItems": "Retest",
+        "notAvailableItems": "Not Available",
+        "downloadPDF": "Download PDF Report"
     },
     "priority": {
         "high": "High",
