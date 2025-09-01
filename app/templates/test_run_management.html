@@ -184,17 +184,6 @@
                                placeholder="輸入 Test Run 名稱">
                     </div>
                     
-                    <div class="mb-3">
-                        <label for="tableId" class="form-label">
-                            <span data-i18n="testRun.larkTableId">Lark 表格 ID</span>
-                            <span class="badge bg-secondary ms-2" style="font-weight: 500;" data-i18n="common.optional">選填</span>
-                        </label>
-                        <input type="text" class="form-control" id="tableId" name="table_id"
-                               placeholder="tbl...">
-                        <div class="form-text" data-i18n="testRun.tableIdOptionalHint">
-                            本地模式可留空；若需同步 Lark，請填入以 "tbl" 開頭的 Table ID
-                        </div>
-                    </div>
                     
                     <div class="mb-3">
                         <label for="configDescription" class="form-label" data-i18n="common.description">描述</label>
@@ -643,7 +632,6 @@ function openConfigFormModal(configId = null) {
             saveBtnTextEl.setAttribute('data-i18n', 'common.update');
             document.getElementById('configId').value = config.id;
             document.getElementById('configName').value = config.name;
-            document.getElementById('tableId').value = config.table_id;
             document.getElementById('configDescription').value = config.description || '';
             // 嘗試載入詳細配置以填入可選欄位
             fetch(`/api/teams/${currentTeamId}/test-run-configs/${configId}`)
@@ -676,11 +664,9 @@ async function handleSaveConfig() {
     const isEdit = !!configId;
 
     const configData = { name: document.getElementById('configName').value };
-    const tableIdVal = (document.getElementById('tableId').value || '').trim();
     const descVal = (document.getElementById('configDescription').value || '').trim();
     const envVal = (document.getElementById('testEnvironment').value || '').trim();
     const buildVal = (document.getElementById('buildNumber').value || '').trim();
-    if (tableIdVal) configData.table_id = tableIdVal;
     if (descVal) configData.description = descVal;
     if (envVal) configData.test_environment = envVal;
     if (buildVal) configData.build_number = buildVal;
@@ -816,7 +802,6 @@ function createConfigDetailContent(config) {
                 <h6 data-i18n="testRun.configBasicInfo">基本資訊</h6>
                 <table class="table table-sm">
                     <tr><td data-i18n="testRun.configNameLabel">名稱</td><td>${escapeHtml(config.name)}</td></tr>
-                    <tr><td data-i18n="testRun.configTableIdLabel">Table ID</td><td><code>${escapeHtml(config.table_id)}</code></td></tr>
                     <tr><td data-i18n="testRun.testEnvironment">測試環境</td><td>${escapeHtml(config.test_environment || '')}</td></tr>
                     <tr><td data-i18n="testRun.buildNumber">建置版本</td><td>${escapeHtml(config.build_number || '')}</td></tr>
                     <tr><td data-i18n="testRun.configStatusLabel">狀態</td><td><span class="status-badge ${getStatusClass(config.status)}">${getStatusText(config.status)}</span></td></tr>

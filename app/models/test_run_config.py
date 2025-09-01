@@ -25,9 +25,6 @@ class TestRunConfig(BaseModel):
     name: str = Field(..., description="測試執行名稱", max_length=100)
     description: Optional[str] = Field(None, description="測試執行描述")
     
-    # Lark 表格配置（已不再依賴，可為可選）
-    table_id: Optional[str] = Field(None, description="(Deprecated) Lark 測試執行表格 ID")
-    
     # 測試執行元資料
     test_version: Optional[str] = Field(None, description="測試版本")
     test_environment: Optional[str] = Field(None, description="測試環境")
@@ -89,7 +86,6 @@ class TestRunConfigCreate(BaseModel):
     team_id: Optional[int] = Field(None, description="所屬團隊 ID（由路徑參數指定）")
     name: str = Field(..., description="測試執行名稱", max_length=100)
     description: Optional[str] = Field(None, description="測試執行描述")
-    table_id: Optional[str] = Field(None, description="(Deprecated) Lark 測試執行表格 ID")
     test_version: Optional[str] = Field(None, description="測試版本")
     test_environment: Optional[str] = Field(None, description="測試環境")
     build_number: Optional[str] = Field(None, description="建置編號")
@@ -101,7 +97,6 @@ class TestRunConfigUpdate(BaseModel):
     """更新測試執行配置的資料模型"""
     name: Optional[str] = Field(None, description="測試執行名稱", max_length=100)
     description: Optional[str] = Field(None, description="測試執行描述")
-    table_id: Optional[str] = Field(None, description="(Deprecated) Lark 測試執行表格 ID")
     test_version: Optional[str] = Field(None, description="測試版本")
     test_environment: Optional[str] = Field(None, description="測試環境")
     build_number: Optional[str] = Field(None, description="建置編號")
@@ -119,7 +114,6 @@ class TestRunConfigSummary(BaseModel):
     """測試執行配置摘要（用於列表顯示）"""
     id: int = Field(..., description="配置 ID")
     name: str = Field(..., description="測試執行名稱")
-    table_id: Optional[str] = Field(None, description="(Deprecated) Lark 測試執行表格 ID")
     test_environment: Optional[str] = Field(None, description="測試環境")
     build_number: Optional[str] = Field(None, description="建置編號")
     test_version: Optional[str] = Field(None, description="測試版本")

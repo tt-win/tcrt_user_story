@@ -35,7 +35,6 @@ def test_run_config_db_to_model(config_db: TestRunConfigDB) -> TestRunConfig:
         team_id=config_db.team_id,
         name=config_db.name,
         description=config_db.description,
-        table_id=getattr(config_db, 'table_id', None),
         test_version=config_db.test_version,
         test_environment=config_db.test_environment,
         build_number=config_db.build_number,
@@ -58,7 +57,6 @@ def test_run_config_model_to_db(config: TestRunConfigCreate) -> TestRunConfigDB:
         team_id=config.team_id,
         name=config.name,
         description=config.description,
-        table_id=config.table_id if hasattr(config, 'table_id') else None,
         test_version=config.test_version,
         test_environment=config.test_environment,
         build_number=config.build_number,
@@ -101,7 +99,6 @@ async def get_test_run_configs(
         summary = TestRunConfigSummary(
             id=config.id,
             name=config.name,
-            table_id=config.table_id,
             test_environment=config.test_environment,
             build_number=config.build_number,
             test_version=config.test_version,
@@ -354,7 +351,6 @@ async def restart_test_run(
         team_id=team_id,
         name=new_name,
         description=config_db.description,
-        table_id=None,  # 本地模式不使用 Lark 表格
         test_version=config_db.test_version,
         test_environment=config_db.test_environment,
         build_number=config_db.build_number,

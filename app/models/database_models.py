@@ -63,7 +63,6 @@ class TestRunConfig(Base):
     # 基本資訊
     name = Column(String(100), nullable=False)
     description = Column(Text, nullable=True)
-    table_id = Column(String(255), nullable=True)
     
     # 測試執行元資料
     test_version = Column(String(50), nullable=True)
