@@ -1,0 +1,1313 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Run Execution 統計圖表範例</title>
+    
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>
+    <!-- Chart.js Datalabels Plugin -->
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.2.0/dist/chartjs-plugin-datalabels.min.js"></script>
+    
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    
+    <style>
+        body {
+            background-color: #F8F9FA; /* 與系統一致的背景色 */
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            font-size: 14px;
+            line-height: 1.5;
+            color: #212529; /* TestRail 主要文字色 */
+        }
+        
+        .chart-container {
+            background-color: #FFFFFF; /* 純白色卡片背景 */
+            border-radius: 8px; /* 系統標準圓角 */
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08); /* 輕微陰影 */
+            border: 1px solid #DEE2E6; /* 系統標準邊框 */
+            padding: 0.75rem; /* 緊湊間距 */
+            margin-bottom: 1rem;
+            transition: all 0.2s ease; /* 系統標準過渡效果 */
+        }
+        
+        .chart-container:hover {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+            transform: translateY(-1px); /* 系統標準 hover 效果 */
+        }
+        
+        .chart-title {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #212529; /* TestRail 主要文字色 */
+            margin-bottom: 0.75rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid #DEE2E6; /* 系統標準邊框色 */
+        }
+        
+        .stats-card {
+            background-color: #4A90E2; /* TestRail 主色 */
+            color: white;
+            border-radius: 8px;
+            padding: 1rem;
+            text-align: center;
+            margin-bottom: 1rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            transition: all 0.2s ease;
+        }
+        
+        .stats-card:hover {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+            transform: translateY(-1px);
+        }
+        
+        .stats-number {
+            font-size: 2rem;
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+        
+        .stats-label {
+            font-size: 0.875rem;
+            opacity: 0.9;
+        }
+        
+        .header-section {
+            background-color: #4A90E2; /* TestRail 主色 */
+            color: white;
+            padding: 2rem 0;
+            margin-bottom: 1.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+        }
+        
+        .chart-wrapper {
+            position: relative;
+            height: 400px;
+            margin: 20px 0;
+        }
+        
+        .chart-wrapper canvas {
+            max-height: 100%;
+            width: 100% !important;
+        }
+        
+        .chart-wrapper.small {
+            height: 280px;
+        }
+        
+        .language-toggle {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            z-index: 1050; /* 與系統一致的 z-index */
+        }
+        
+        .language-toggle .btn {
+            border-radius: 6px; /* 系統標準按鈕圓角 */
+            font-weight: 500;
+            padding: 0.25rem 0.5rem;
+            font-size: 0.875rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            border: 1px solid #4A90E2;
+        }
+        
+        .language-toggle .btn:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+        
+        .metric-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        
+        .metric-card {
+            background-color: #FFFFFF;
+            border-radius: 8px;
+            padding: 1rem;
+            text-align: center;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            border: 1px solid #DEE2E6;
+            border-left: 4px solid;
+            transition: all 0.2s ease;
+        }
+        
+        .metric-card:hover {
+            box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+            transform: translateY(-1px);
+        }
+        
+        .metric-card.passed { border-left-color: #5CB85C; } /* TestRail success 色 */
+        .metric-card.failed { border-left-color: #D9534F; } /* TestRail danger 色 */
+        .metric-card.retest { border-left-color: #F0AD4E; } /* TestRail warning 色 */
+        .metric-card.not-available { border-left-color: #6C757D; } /* TestRail 次要文字色 */
+        
+        /* 響應式設計 */
+        @media (max-width: 768px) {
+            .header-section {
+                padding: 20px 0;
+                margin-bottom: 20px;
+            }
+            
+            .header-section h1 {
+                font-size: 2rem;
+            }
+            
+            .chart-container {
+                padding: 15px;
+                margin-bottom: 20px;
+            }
+            
+            .chart-wrapper {
+                height: 300px;
+            }
+            
+            .metric-cards {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 10px;
+            }
+            
+            .metric-card {
+                padding: 15px;
+            }
+            
+            .bug-impact-grid {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 15px;
+            }
+            
+            .bug-tickets-stats {
+                padding: 20px;
+                margin: 20px 0;
+            }
+            
+            
+            .bug-tickets-title {
+                font-size: 1.2rem;
+            }
+            
+            .language-toggle {
+                position: fixed;
+                top: 10px;
+                right: 10px;
+            }
+        }
+        
+        @media (max-width: 576px) {
+            .metric-cards {
+                grid-template-columns: 1fr;
+            }
+            
+            .bug-impact-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .chart-wrapper {
+                height: 250px;
+            }
+            
+            .bug-ticket-item {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 8px;
+            }
+            
+            .bug-ticket-count {
+                align-self: flex-end;
+            }
+        }
+        
+        /* Bug Tickets 統計區域樣式 */
+        .bug-tickets-stats {
+            background-color: #FFFFFF;
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1.5rem 0;
+            border: 1px solid #DEE2E6;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+            position: relative;
+        }
+        
+        /* 載入動畫 */
+        .loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(255, 255, 255, 0.9);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+            border-radius: 8px;
+        }
+        
+        .loading-spinner {
+            width: 32px;
+            height: 32px;
+            border: 2px solid #DEE2E6;
+            border-radius: 50%;
+            border-top-color: #4A90E2;
+            animation: spin 1s ease-in-out infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .fade-in {
+            animation: fadeIn 0.5s ease-in;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .bug-tickets-title {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+            color: #212529;
+            padding-bottom: 0.5rem;
+            border-bottom: 2px solid #DEE2E6;
+        }
+        
+        .bug-impact-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        
+        .bug-impact-card {
+            background-color: #F8F9FA;
+            border-radius: 8px;
+            padding: 1rem;
+            text-align: center;
+            border: 1px solid #DEE2E6;
+            transition: all 0.2s ease;
+        }
+        
+        .bug-impact-card:hover {
+            background-color: #E9ECEF;
+            transform: translateY(-1px);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+        }
+        
+        .bug-impact-number {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+            color: #4A90E2; /* TestRail 主色 */
+        }
+        
+        .bug-impact-label {
+            font-size: 0.875rem;
+            color: #6C757D;
+            line-height: 1.3;
+        }
+        
+        .bug-tickets-summary {
+            background-color: #F8F9FA;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-top: 1rem;
+            border: 1px solid #DEE2E6;
+        }
+        
+        .bug-ticket-id {
+            font-weight: 600;
+            color: #4A90E2; /* TestRail 主色 */
+        }
+        
+        .bug-ticket-count {
+            font-weight: 600;
+            background-color: #E3F2FD; /* TestRail 主色淺色 */
+            color: #4A90E2;
+            padding: 0.25rem 0.5rem;
+            border-radius: 6px;
+            font-size: 0.75rem;
+        }
+        
+        /* 可展開的 Bug Ticket 樣式 */
+        .expandable-ticket {
+            border-bottom: 1px solid #DEE2E6;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .expandable-ticket:hover {
+            background-color: rgba(74, 144, 226, 0.05); /* 輕微的 TestRail 主色 */
+        }
+        
+        .ticket-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem 0;
+        }
+        
+        .expand-icon {
+            transition: transform 0.2s ease;
+            margin-left: 0.5rem;
+            color: #6C757D;
+        }
+        
+        .expand-icon.expanded {
+            transform: rotate(180deg);
+        }
+        
+        .ticket-details {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.2s ease;
+            background-color: #FFFFFF;
+            border-radius: 6px;
+            margin-top: 0.5rem;
+            border: 1px solid #E1E5E9;
+        }
+        
+        .ticket-details.expanded {
+            max-height: 400px;
+            padding: 0.75rem;
+        }
+        
+        .affected-test-case {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.5rem 0;
+            font-size: 0.875rem;
+            border-bottom: 1px solid #F8F9FA;
+        }
+        
+        .affected-test-case:last-child {
+            border-bottom: none;
+        }
+        
+        .test-case-id {
+            font-weight: 600;
+            color: #4A90E2; /* TestRail 主色 */
+            min-width: 60px;
+            font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+        }
+        
+        .test-case-name {
+            flex: 1;
+            margin: 0 0.75rem;
+            color: #212529;
+        }
+        
+        .test-case-status {
+            padding: 0.125rem 0.5rem;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+        
+        .test-case-status.failed {
+            background-color: #F2DEDE; /* TestRail danger 淺色 */
+            color: #D9534F; /* TestRail danger 色 */
+        }
+        
+        .test-case-status.retest {
+            background-color: #FCF8E3; /* TestRail warning 淺色 */
+            color: #F0AD4E; /* TestRail warning 色 */
+        }
+        
+        .test-case-status.passed {
+            background-color: #DFF0D8; /* TestRail success 淺色 */
+            color: #5CB85C; /* TestRail success 色 */
+        }
+    </style>
+</head>
+<body>
+    <!-- 語言切換按鈕 -->
+    <div class="language-toggle">
+        <button class="btn btn-outline-primary btn-sm" onclick="toggleLanguage()">
+            <i class="fas fa-language"></i>
+            <span id="lang-text">English</span>
+        </button>
+    </div>
+
+    <!-- 標題區域 -->
+    <div class="header-section">
+        <div class="container">
+            <div class="row">
+                <div class="col-12 text-center">
+                    <h1 class="display-4 mb-3">
+                        <i class="fas fa-chart-pie me-3"></i>
+                        <span data-i18n="title">Test Run Execution 統計分析</span>
+                    </h1>
+                    <p class="lead" data-i18n="subtitle">
+                        測試執行狀態分布與趨勢分析報告
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- 統計數據總覽 -->
+        <div class="metric-cards">
+            <div class="metric-card passed">
+                <div class="stats-number" id="total-passed">156</div>
+                <div class="stats-label" data-i18n="metrics.passed">測試通過</div>
+            </div>
+            <div class="metric-card failed">
+                <div class="stats-number" id="total-failed">23</div>
+                <div class="stats-label" data-i18n="metrics.failed">測試失敗</div>
+            </div>
+            <div class="metric-card retest">
+                <div class="stats-number" id="total-retest">12</div>
+                <div class="stats-label" data-i18n="metrics.retest">需要重測</div>
+            </div>
+            <div class="metric-card not-available">
+                <div class="stats-number" id="total-not-available">8</div>
+                <div class="stats-label" data-i18n="metrics.notAvailable">不適用</div>
+            </div>
+        </div>
+
+        <!-- 第一行：測試結果狀態分布圓餅圖 -->
+        <div class="row">
+            <div class="col-lg-6">
+                <div class="chart-container">
+                    <div class="chart-title">
+                        <i class="fas fa-chart-pie me-2 text-primary"></i>
+                        <span data-i18n="charts.statusDistribution">測試結果狀態分布</span>
+                    </div>
+                    <div class="chart-wrapper">
+                        <canvas id="statusPieChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-lg-6">
+                <div class="chart-container">
+                    <div class="chart-title">
+                        <i class="fas fa-chart-bar me-2 text-success"></i>
+                        <span data-i18n="charts.priorityDistribution">優先級分布</span>
+                    </div>
+                    <div class="chart-wrapper">
+                        <canvas id="priorityBarChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Bug Tickets 影響統計區域 - 全寬度 -->
+        <div class="row">
+            <div class="col-12">
+                <!-- Bug Tickets 影響統計區域 -->
+                <div class="bug-tickets-stats" id="bugTicketsStatsContainer">
+                    <!-- 載入狀態 -->
+                    <div class="loading-overlay" id="bugTicketsLoading" style="display: none;">
+                        <div class="loading-spinner"></div>
+                    </div>
+                    
+                    <div class="bug-tickets-title">
+                        <i class="fas fa-bug me-2"></i>
+                        <span data-i18n="bugTickets.title">Bug Tickets 影響分析</span>
+                        <button class="btn btn-sm btn-outline-primary ms-3" onclick="refreshBugTicketsData()" title="重新載入 (Ctrl+R)"
+                                data-i18n-title="bugTickets.refreshTooltip">
+                            <i class="fas fa-sync-alt" id="refreshIcon"></i>
+                        </button>
+                    </div>
+                    
+                    <div class="bug-impact-grid">
+                        <div class="bug-impact-card">
+                            <div class="bug-impact-number" id="totalBugTickets">12</div>
+                            <div class="bug-impact-label" data-i18n="bugTickets.totalTickets">總 Bug Tickets</div>
+                        </div>
+                        <div class="bug-impact-card">
+                            <div class="bug-impact-number" id="affectedTestCases">45</div>
+                            <div class="bug-impact-label" data-i18n="bugTickets.affectedTestCases">受影響測試案例</div>
+                        </div>
+                        <div class="bug-impact-card">
+                            <div class="bug-impact-number" id="highImpactTickets">3</div>
+                            <div class="bug-impact-label" data-i18n="bugTickets.highImpactTickets">高影響 Tickets</div>
+                        </div>
+                        <div class="bug-impact-card">
+                            <div class="bug-impact-number" id="averageImpact">3.8</div>
+                            <div class="bug-impact-label" data-i18n="bugTickets.averageImpact">平均影響案例數</div>
+                        </div>
+                    </div>
+                    
+                    <div class="bug-tickets-summary">
+                        <h6 class="mb-3">
+                            <i class="fas fa-list me-2"></i>
+                            <span data-i18n="bugTickets.ticketDetails">Bug Ticket 詳細影響</span>
+                        </h6>
+                        <div id="bugTicketsList">
+                            <!-- Bug tickets 列表將由 JavaScript 動態產生 -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 移除執行趨勢和團隊對比圖表 -->
+    </div>
+
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        // 多語言支援
+        const translations = {
+            'zh-TW': {
+                title: 'Test Run Execution 統計分析',
+                subtitle: '測試執行狀態分布與趨勢分析報告',
+                'metrics.passed': '測試通過',
+                'metrics.failed': '測試失敗', 
+                'metrics.retest': '需要重測',
+                'metrics.notAvailable': '不適用',
+                'charts.statusDistribution': '測試結果狀態分布',
+                'charts.priorityDistribution': '優先級分布',
+                'charts.completionRate': '執行完成率',
+                'charts.executionTrend': '執行趨勢 (最近7天)',
+                'charts.teamComparison': '各團隊測試執行狀態對比',
+                'status.passed': '通過',
+                'status.failed': '失敗',
+                'status.retest': '重測',
+                'status.notAvailable': '不適用',
+                'status.notExecuted': '未執行',
+                'priority.high': '高',
+                'priority.medium': '中',
+                'priority.low': '低',
+                'completion.executed': '已執行',
+                'completion.notExecuted': '未執行',
+                'teams.frontend': '前端團隊',
+                'teams.backend': '後端團隊',
+                'teams.mobile': '移動團隊',
+                'teams.qa': 'QA團隊',
+                'bugTickets.title': 'Bug Tickets 影響分析',
+                'bugTickets.totalTickets': '總 Bug Tickets',
+                'bugTickets.affectedTestCases': '受影響測試案例',
+                'bugTickets.highImpactTickets': '高影響 Tickets',
+                'bugTickets.averageImpact': '平均影響案例數',
+                'bugTickets.ticketDetails': 'Bug Ticket 詳細影響',
+                'bugTickets.noData': '暫無 Bug Tickets 資料',
+                'bugTickets.refreshTooltip': '重新載入 (Ctrl+R)',
+                'bugTickets.dataUpdated': '資料已更新',
+                'bugTickets.loadingFailed': '資料載入失敗，請稍後再試'
+            },
+            'en-US': {
+                title: 'Test Run Execution Analytics',
+                subtitle: 'Test execution status distribution and trend analysis report',
+                'metrics.passed': 'Tests Passed',
+                'metrics.failed': 'Tests Failed',
+                'metrics.retest': 'Retest Required',
+                'metrics.notAvailable': 'Not Available',
+                'charts.statusDistribution': 'Test Result Status Distribution',
+                'charts.priorityDistribution': 'Priority Distribution',
+                'charts.completionRate': 'Execution Completion Rate',
+                'charts.executionTrend': 'Execution Trend (Last 7 Days)',
+                'charts.teamComparison': 'Team Test Execution Status Comparison',
+                'status.passed': 'Passed',
+                'status.failed': 'Failed',
+                'status.retest': 'Retest',
+                'status.notAvailable': 'Not Available',
+                'status.notExecuted': 'Not Executed',
+                'priority.high': 'High',
+                'priority.medium': 'Medium',
+                'priority.low': 'Low',
+                'completion.executed': 'Executed',
+                'completion.notExecuted': 'Not Executed',
+                'teams.frontend': 'Frontend Team',
+                'teams.backend': 'Backend Team',
+                'teams.mobile': 'Mobile Team',
+                'teams.qa': 'QA Team',
+                'bugTickets.title': 'Bug Tickets Impact Analysis',
+                'bugTickets.totalTickets': 'Total Bug Tickets',
+                'bugTickets.affectedTestCases': 'Affected Test Cases',
+                'bugTickets.highImpactTickets': 'High Impact Tickets',
+                'bugTickets.averageImpact': 'Average Impact per Ticket',
+                'bugTickets.ticketDetails': 'Bug Ticket Impact Details',
+                'bugTickets.noData': 'No Bug Tickets Data Available',
+                'bugTickets.refreshTooltip': 'Refresh Data (Ctrl+R)',
+                'bugTickets.dataUpdated': 'Data Updated',
+                'bugTickets.loadingFailed': 'Data loading failed, please try again later'
+            }
+        };
+        
+        let currentLang = 'zh-TW';
+        
+        function t(key) {
+            return translations[currentLang][key] || key;
+        }
+        
+        function updateTexts() {
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.getAttribute('data-i18n');
+                el.textContent = t(key);
+            });
+            
+            // 更新語言切換按鈕
+            document.getElementById('lang-text').textContent = currentLang === 'zh-TW' ? 'English' : '中文';
+            
+            // 重新渲染圖表以更新標籤
+            renderCharts();
+            
+            // 更新 Bug Tickets 区域的翻譯
+            const bugTicketsElements = document.querySelectorAll('[data-i18n^="bugTickets."]');
+            bugTicketsElements.forEach(el => {
+                const key = el.getAttribute('data-i18n');
+                el.textContent = t(key);
+            });
+            
+            // 更新 title 屬性的翻譯
+            const titleElements = document.querySelectorAll('[data-i18n-title]');
+            titleElements.forEach(el => {
+                const key = el.getAttribute('data-i18n-title');
+                el.title = t(key);
+            });
+            
+            // 重新渲染 Bug Tickets 資料以更新錯誤訊息
+            if (sampleData.bugTicketsData) {
+                renderBugTicketsStats(sampleData.bugTicketsData);
+            }
+        }
+        
+        function toggleLanguage() {
+            currentLang = currentLang === 'zh-TW' ? 'en-US' : 'zh-TW';
+            updateTexts();
+        }
+
+        // 測試數據
+        const sampleData = {
+            statusData: {
+                passed: 156,
+                failed: 23, 
+                retest: 12,
+                notAvailable: 8,
+                notExecuted: 45
+            },
+            priorityData: {
+                high: 87,
+                medium: 142,
+                low: 65
+            },
+            trendData: {
+                dates: ['2025-08-25', '2025-08-26', '2025-08-27', '2025-08-28', '2025-08-29', '2025-08-30', '2025-08-31'],
+                executed: [23, 31, 28, 35, 29, 42, 38],
+                passed: [18, 25, 22, 28, 23, 35, 32],
+                failed: [3, 4, 4, 5, 4, 5, 4],
+                retest: [2, 2, 2, 2, 2, 2, 2]
+            },
+            teamData: {
+                teams: ['frontend', 'backend', 'mobile', 'qa'],
+                data: {
+                    passed: [45, 52, 34, 25],
+                    failed: [8, 6, 5, 4],
+                    retest: [3, 4, 2, 3],
+                    notAvailable: [2, 3, 2, 1]
+                }
+            },
+            bugTicketsData: {
+                totalTickets: 12,
+                affectedTestCases: 45,
+                highImpactTickets: 3,
+                averageImpact: 3.8,
+                ticketDetails: [
+                    { 
+                        id: 'PROJ-1234', 
+                        affectedCases: 8, 
+                        severity: 'high', 
+                        title: '登入功能異常',
+                        affectedTestCases: [
+                            { id: 'TC-001', name: '使用者登入功能測試', status: 'failed' },
+                            { id: 'TC-002', name: '密碼驗證測試', status: 'failed' },
+                            { id: 'TC-003', name: 'Session 管理測試', status: 'retest' },
+                            { id: 'TC-004', name: '登入歷程記錄測試', status: 'failed' },
+                            { id: 'TC-005', name: '多重登入封鎖測試', status: 'retest' },
+                            { id: 'TC-006', name: 'SSO 整合測試', status: 'failed' },
+                            { id: 'TC-007', name: '登入頁面 UI 測試', status: 'failed' },
+                            { id: 'TC-008', name: '羑路連線中斷測試', status: 'retest' }
+                        ]
+                    },
+                    { 
+                        id: 'PROJ-1235', 
+                        affectedCases: 12, 
+                        severity: 'high', 
+                        title: '資料底庫連線失敗',
+                        affectedTestCases: [
+                            { id: 'TC-101', name: '資料庫連線測試', status: 'failed' },
+                            { id: 'TC-102', name: '交易資料存取測試', status: 'failed' },
+                            { id: 'TC-103', name: '用戶資料查詢測試', status: 'failed' },
+                            { id: 'TC-104', name: '資料備份測試', status: 'retest' },
+                            { id: 'TC-105', name: '資料復元測試', status: 'failed' },
+                            { id: 'TC-106', name: '併發處理測試', status: 'failed' },
+                            { id: 'TC-107', name: '效能壓力測試', status: 'retest' },
+                            { id: 'TC-108', name: '連線池管理測試', status: 'failed' },
+                            { id: 'TC-109', name: 'SQL 查詢最佳化測試', status: 'retest' },
+                            { id: 'TC-110', name: '異常處理測試', status: 'failed' },
+                            { id: 'TC-111', name: '資料一致性測試', status: 'failed' },
+                            { id: 'TC-112', name: '網路中斷重連測試', status: 'retest' }
+                        ]
+                    },
+                    { 
+                        id: 'PROJ-1236', 
+                        affectedCases: 6, 
+                        severity: 'medium', 
+                        title: 'UI 顯示錯誤',
+                        affectedTestCases: [
+                            { id: 'TC-201', name: '主頁布局測試', status: 'failed' },
+                            { id: 'TC-202', name: '按鈕樣式測試', status: 'retest' },
+                            { id: 'TC-203', name: '表格顯示測試', status: 'failed' },
+                            { id: 'TC-204', name: '對話框測試', status: 'failed' },
+                            { id: 'TC-205', name: '導航選單測試', status: 'retest' },
+                            { id: 'TC-206', name: '響應式設計測試', status: 'failed' }
+                        ]
+                    },
+                    { 
+                        id: 'PROJ-1237', 
+                        affectedCases: 4, 
+                        severity: 'medium', 
+                        title: '效能問題',
+                        affectedTestCases: [
+                            { id: 'TC-301', name: '頁面載入效能測試', status: 'failed' },
+                            { id: 'TC-302', name: 'API 響應時間測試', status: 'retest' },
+                            { id: 'TC-303', name: '資料查詢效能測試', status: 'failed' },
+                            { id: 'TC-304', name: '大量資料處理測試', status: 'retest' }
+                        ]
+                    },
+                    { 
+                        id: 'PROJ-1238', 
+                        affectedCases: 3, 
+                        severity: 'low', 
+                        title: '文字錯誤',
+                        affectedTestCases: [
+                            { id: 'TC-401', name: '錯誤訊息顯示測試', status: 'failed' },
+                            { id: 'TC-402', name: '表單標籤測試', status: 'retest' },
+                            { id: 'TC-403', name: '提示文字測試', status: 'failed' }
+                        ]
+                    }
+                ]
+            }
+        };
+
+        // TestRail 風格圖表配色方案
+        const colorScheme = {
+            passed: '#5CB85C',      // TestRail success 色 - 通過
+            failed: '#D9534F',      // TestRail danger 色 - 失敗
+            retest: '#F0AD4E',      // TestRail warning 色 - 重測
+            notAvailable: '#6C757D', // TestRail 次要文字色 - 不適用
+            notExecuted: '#ADB5BD', // TestRail 淺色文字 - 未執行
+            high: '#D9534F',        // TestRail danger 色 - 高優先級
+            medium: '#F0AD4E',      // TestRail warning 色 - 中優先級
+            low: '#5CB85C'          // TestRail success 色 - 低優先級
+        };
+
+        let charts = {};
+
+        function renderCharts() {
+            // 銷毀現有圖表
+            Object.values(charts).forEach(chart => {
+                if (chart) chart.destroy();
+            });
+            charts = {};
+
+            // 1. 測試狀態分布圓餅圖
+            const statusCtx = document.getElementById('statusPieChart');
+            if (statusCtx) {
+                try {
+                    console.log('正在創建圓餅圖...');
+                    // 註冊 datalabels 插件
+                    Chart.register(ChartDataLabels);
+                    charts.statusPie = new Chart(statusCtx, {
+                        type: 'pie',
+                        data: {
+                            labels: [
+                                t('status.passed'),
+                                t('status.failed'), 
+                                t('status.retest'),
+                                t('status.notAvailable'),
+                                t('status.notExecuted')
+                            ],
+                            datasets: [{
+                                data: [
+                                    sampleData.statusData.passed,
+                                    sampleData.statusData.failed,
+                                    sampleData.statusData.retest,
+                                    sampleData.statusData.notAvailable,
+                                    sampleData.statusData.notExecuted
+                                ],
+                                backgroundColor: [
+                                    colorScheme.passed,
+                                    colorScheme.failed,
+                                    colorScheme.retest,
+                                    colorScheme.notAvailable,
+                                    colorScheme.notExecuted
+                                ],
+                                borderWidth: 2,
+                                borderColor: '#ffffff',
+                                hoverOffset: 10
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            animation: {
+                                animateRotate: true,
+                                duration: 1000
+                            },
+                            plugins: {
+                                legend: {
+                                    position: 'bottom',
+                                    labels: {
+                                        padding: 20,
+                                        usePointStyle: true
+                                    }
+                                },
+                                tooltip: {
+                                    backgroundColor: 'rgba(33, 37, 41, 0.95)', // TestRail 深色背景
+                                    titleColor: '#FFFFFF',
+                                    bodyColor: '#FFFFFF',
+                                    borderColor: '#DEE2E6',
+                                    borderWidth: 1,
+                                    cornerRadius: 6,
+                                    callbacks: {
+                                        label: function(context) {
+                                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                            const percentage = ((context.raw / total) * 100).toFixed(1);
+                                            return `${context.label}: ${context.raw} (${percentage}%)`;
+                                        }
+                                    }
+                                },
+                                // 添加數據標籤顯示百分比
+                                datalabels: {
+                                    color: 'white',
+                                    font: {
+                                        weight: 'bold',
+                                        size: 14
+                                    },
+                                    formatter: (value, context) => {
+                                        const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                        const percentage = ((value / total) * 100).toFixed(1);
+                                        // 只顯示大於5%的標籤，避免小區塊擠迫
+                                        return percentage > 5 ? percentage + '%' : '';
+                                    },
+                                    anchor: 'center',
+                                    align: 'center'
+                                }
+                            },
+                            onHover: (event, activeElements, chart) => {
+                                if (chart && chart.canvas) {
+                                    chart.canvas.style.cursor = activeElements.length > 0 ? 'pointer' : 'default';
+                                }
+                            }
+                        }
+                    });
+                    console.log('圓餅圖創建成功');
+                } catch (error) {
+                    console.error('圓餅圖創建失敗:', error);
+                }
+            } else {
+                console.error('找不到 statusPieChart canvas 元素');
+            }
+
+            // 2. 優先級分布長條圖
+            const priorityCtx = document.getElementById('priorityBarChart');
+            charts.priorityBar = new Chart(priorityCtx, {
+                type: 'bar',
+                data: {
+                    labels: [t('priority.high'), t('priority.medium'), t('priority.low')],
+                    datasets: [{
+                        label: t('charts.priorityDistribution'),
+                        data: [
+                            sampleData.priorityData.high,
+                            sampleData.priorityData.medium,
+                            sampleData.priorityData.low
+                        ],
+                        backgroundColor: [
+                            colorScheme.high,
+                            colorScheme.medium,
+                            colorScheme.low
+                        ],
+                        borderColor: [
+                            colorScheme.high,
+                            colorScheme.medium,
+                            colorScheme.low
+                        ],
+                        borderWidth: 1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                stepSize: 20
+                            }
+                        }
+                    }
+                }
+            });
+
+            // 移除不需要的圖表
+        }
+
+        // 模擬 API 調用獲取 Bug Tickets 資料
+        async function fetchBugTicketsData(testRunId = null) {
+            // 模擬 API 調用延遲
+            await new Promise(resolve => setTimeout(resolve, 1500 + Math.random() * 1000));
+            
+            // 模擬随機資料變化
+            const baseData = sampleData.bugTicketsData;
+            const variation = Math.random() * 0.3 - 0.15; // -15% to +15% 變化
+            
+            return {
+                ...baseData,
+                totalTickets: Math.max(1, Math.round(baseData.totalTickets * (1 + variation))),
+                affectedTestCases: Math.max(1, Math.round(baseData.affectedTestCases * (1 + variation))),
+                highImpactTickets: Math.max(0, Math.round(baseData.highImpactTickets * (1 + variation))),
+                averageImpact: Math.max(0.1, (baseData.averageImpact * (1 + variation * 0.5)).toFixed(1)),
+                // 随機調整 ticket 數量
+                ticketDetails: baseData.ticketDetails.slice(0, Math.max(3, Math.round(baseData.ticketDetails.length * (1 + variation))))
+            };
+        }
+        
+        // 顯示載入狀態
+        function showBugTicketsLoading() {
+            const loadingOverlay = document.getElementById('bugTicketsLoading');
+            const refreshIcon = document.getElementById('refreshIcon');
+            
+            if (loadingOverlay) loadingOverlay.style.display = 'flex';
+            if (refreshIcon) {
+                refreshIcon.classList.add('fa-spin');
+            }
+        }
+        
+        // 隱藏載入狀態
+        function hideBugTicketsLoading() {
+            const loadingOverlay = document.getElementById('bugTicketsLoading');
+            const refreshIcon = document.getElementById('refreshIcon');
+            
+            if (loadingOverlay) {
+                setTimeout(() => {
+                    loadingOverlay.style.display = 'none';
+                }, 300);
+            }
+            if (refreshIcon) {
+                refreshIcon.classList.remove('fa-spin');
+            }
+        }
+        
+        // 渲染 Bug Tickets 統計資料
+        function renderBugTicketsStats(data = null) {
+            const statsData = data || sampleData.bugTicketsData;
+            
+            // 更新統計數據（加入動畫效果）
+            const elements = {
+                totalBugTickets: statsData.totalTickets,
+                affectedTestCases: statsData.affectedTestCases,
+                highImpactTickets: statsData.highImpactTickets,
+                averageImpact: statsData.averageImpact
+            };
+            
+            Object.entries(elements).forEach(([id, value]) => {
+                const element = document.getElementById(id);
+                if (element) {
+                    element.style.transform = 'scale(0.8)';
+                    element.style.transition = 'transform 0.3s ease';
+                    
+                    setTimeout(() => {
+                        element.textContent = value;
+                        element.style.transform = 'scale(1)';
+                        element.classList.add('fade-in');
+                    }, 150);
+                }
+            });
+            
+            // 渲染 Bug Tickets 詳細列表
+            const listContainer = document.getElementById('bugTicketsList');
+            if (statsData.ticketDetails && statsData.ticketDetails.length > 0) {
+                listContainer.innerHTML = statsData.ticketDetails.map((ticket, index) => {
+                    const severityColor = {
+                        'high': '#ff6b6b',
+                        'medium': '#ffd93d',
+                        'low': '#6bcf7f'
+                    }[ticket.severity] || '#6c757d';
+                    
+                    const severityIcon = {
+                        'high': 'fa-exclamation-triangle',
+                        'medium': 'fa-exclamation-circle',
+                        'low': 'fa-info-circle'
+                    }[ticket.severity] || 'fa-bug';
+                    
+                    // 渲染受影響的測試案例列表
+                    const affectedCasesHtml = ticket.affectedTestCases ? 
+                        ticket.affectedTestCases.map(testCase => `
+                            <div class="affected-test-case">
+                                <span class="test-case-id">${testCase.id}</span>
+                                <span class="test-case-name">${testCase.name}</span>
+                                <span class="test-case-status ${testCase.status}">${
+                                    testCase.status === 'failed' ? '失敗' :
+                                    testCase.status === 'retest' ? '重測' :
+                                    testCase.status === 'passed' ? '通過' : testCase.status
+                                }</span>
+                            </div>
+                        `).join('') : '<div class="text-center text-muted py-2">無詳細資料</div>';
+                    
+                    return `
+                        <div class="expandable-ticket fade-in" style="animation-delay: ${index * 0.1}s">
+                            <div class="ticket-header" onclick="toggleTicketDetails('${ticket.id}')">
+                                <div>
+                                    <span class="bug-ticket-id" style="color: ${severityColor}">
+                                        <i class="fas ${severityIcon} me-1"></i>${ticket.id}
+                                    </span>
+                                    <div style="font-size: 0.8rem; opacity: 0.8; margin-top: 2px;">${ticket.title}</div>
+                                </div>
+                                <div style="display: flex; align-items: center;">
+                                    <div class="bug-ticket-count">${ticket.affectedCases}</div>
+                                    <i class="fas fa-chevron-down expand-icon" id="icon-${ticket.id}"></i>
+                                </div>
+                            </div>
+                            <div class="ticket-details" id="details-${ticket.id}">
+                                <div style="font-size: 0.85rem; opacity: 0.9; margin-bottom: 8px;">
+                                    <i class="fas fa-list me-1"></i>受影響的測試案例：
+                                </div>
+                                ${affectedCasesHtml}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            } else {
+                listContainer.innerHTML = `
+                    <div class="text-center py-3 fade-in">
+                        <i class="fas fa-info-circle me-2"></i>
+                        <span data-i18n="bugTickets.noData">暫無 Bug Tickets 資料</span>
+                    </div>
+                `;
+            }
+        }
+        
+        // 切換 Bug Ticket 詳細資訊的展開/收合
+        function toggleTicketDetails(ticketId) {
+            const detailsElement = document.getElementById(`details-${ticketId}`);
+            const iconElement = document.getElementById(`icon-${ticketId}`);
+            
+            if (!detailsElement || !iconElement) return;
+            
+            const isExpanded = detailsElement.classList.contains('expanded');
+            
+            if (isExpanded) {
+                // 收合
+                detailsElement.classList.remove('expanded');
+                iconElement.classList.remove('expanded');
+            } else {
+                // 展開
+                detailsElement.classList.add('expanded');
+                iconElement.classList.add('expanded');
+            }
+        }
+        
+        // 重新載入 Bug Tickets 資料
+        async function refreshBugTicketsData() {
+            try {
+                showBugTicketsLoading();
+                const newData = await fetchBugTicketsData();
+                renderBugTicketsStats(newData);
+                
+                // 更新全域資料以供其他功能使用
+                sampleData.bugTicketsData = newData;
+                
+                // 顯示成功通知
+                showNotification(t('bugTickets.dataUpdated') || '資料已更新', 'success');
+                
+            } catch (error) {
+                console.error('獲取 Bug Tickets 資料失敗:', error);
+                // 顯示錯誤狀態
+                const errorMessage = t('bugTickets.loadingFailed') || '資料載入失敗，請稍後再試';
+                document.getElementById('bugTicketsList').innerHTML = `
+                    <div class="text-center py-3 text-danger">
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        ${errorMessage}
+                    </div>
+                `;
+                
+                // 顯示錯誤通知
+                showNotification(errorMessage, 'danger');
+            } finally {
+                hideBugTicketsLoading();
+            }
+        }
+        
+        // 檢查必要元素和資源
+        function checkRequirements() {
+            console.log('=== 系統檢查開始 ===');
+            
+            // 檢查 Chart.js 是否載入
+            if (typeof Chart === 'undefined') {
+                console.error('❌ Chart.js 未載入');
+                return false;
+            }
+            console.log('✅ Chart.js 已載入，版本:', Chart.version);
+            
+            // 檢查必要的 canvas 元素
+            const requiredElements = ['statusPieChart', 'priorityBarChart'];
+            for (const id of requiredElements) {
+                const element = document.getElementById(id);
+                if (!element) {
+                    console.error(`❌ 找不到元素: ${id}`);
+                    return false;
+                }
+                console.log(`✅ 找到元素: ${id}`);
+            }
+            
+            // 檢查資料
+            if (!sampleData || !sampleData.statusData) {
+                console.error('❌ 缺少測試資料');
+                return false;
+            }
+            console.log('✅ 測試資料完整');
+            
+            console.log('=== 系統檢查通過 ===');
+            return true;
+        }
+        
+        // 初始化所有內容
+        async function initializeDashboard() {
+            console.log('開始初始化儀表板...');
+            
+            // 系統檢查
+            if (!checkRequirements()) {
+                console.error('系統檢查失敗，無法繼續初始化');
+                return;
+            }
+            
+            // 渲染圖表
+            try {
+                renderCharts();
+                console.log('圖表初始化完成');
+            } catch (error) {
+                console.error('圖表初始化失敗:', error);
+            }
+            
+            // 初次載入 Bug Tickets 資料
+            try {
+                showBugTicketsLoading();
+                const initialData = await fetchBugTicketsData();
+                renderBugTicketsStats(initialData);
+                sampleData.bugTicketsData = initialData;
+                console.log('Bug Tickets 資料載入完成');
+            } catch (error) {
+                console.error('初始化 Bug Tickets 資料失敗:', error);
+                renderBugTicketsStats(); // 使用預設資料
+            } finally {
+                hideBugTicketsLoading();
+            }
+            
+            // 初始化事件監聽
+            setupEventListeners();
+            
+            console.log('儀表板初始化完成！');
+        }
+        
+        // 設置事件監聽器
+        function setupEventListeners() {
+            // 鍵盤快捷鍵
+            document.addEventListener('keydown', function(event) {
+                // Ctrl+R 或 Cmd+R 重新載入 Bug Tickets
+                if ((event.ctrlKey || event.metaKey) && event.key === 'r') {
+                    event.preventDefault();
+                    refreshBugTicketsData();
+                }
+                
+                // Ctrl+L 或 Cmd+L 切換語言
+                if ((event.ctrlKey || event.metaKey) && event.key === 'l') {
+                    event.preventDefault();
+                    toggleLanguage();
+                }
+            });
+            
+            // 滿滿滑动效果
+            const links = document.querySelectorAll('a[href^="#"]');
+            links.forEach(link => {
+                link.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const target = document.querySelector(this.getAttribute('href'));
+                    if (target) {
+                        target.scrollIntoView({
+                            behavior: 'smooth',
+                            block: 'start'
+                        });
+                    }
+                });
+            });
+        }
+        
+        // 顯示通知訊息
+        function showNotification(message, type = 'success') {
+            // 創建通知元素
+            const notification = document.createElement('div');
+            notification.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+            notification.style.cssText = `
+                top: 80px;
+                right: 20px;
+                z-index: 9999;
+                min-width: 300px;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            `;
+            notification.innerHTML = `
+                <i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-triangle'} me-2"></i>
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            
+            document.body.appendChild(notification);
+            
+            // 自動移除
+            setTimeout(() => {
+                if (notification.parentNode) {
+                    notification.remove();
+                }
+            }, 4000);
+        }
+        
+        // 確保所有資源載入完成後再初始化
+        function waitForResources() {
+            if (typeof Chart !== 'undefined' && document.readyState === 'complete') {
+                initializeDashboard();
+            } else {
+                setTimeout(waitForResources, 100);
+            }
+        }
+        
+        // 頁面載入完成後初始化圖表
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', waitForResources);
+        } else {
+            waitForResources();
+        }
+        
+        // 額外的載入完成檢查
+        window.addEventListener('load', function() {
+            console.log('窗口完全載入完成');
+            // 如果還沒初始化，再試一次
+            if (Object.keys(charts).length === 0) {
+                console.log('重新嘗試初始化...');
+                setTimeout(initializeDashboard, 500);
+            }
+        });
+        
+    </script>
+</body>
+</html>

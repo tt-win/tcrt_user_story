@@ -63,6 +63,9 @@
                         <li><a class="dropdown-item" href="#" data-language="zh-TW">
                             <i class="fas fa-check me-2 text-success" id="check-zh-TW" style="visibility: visible;"></i><span data-i18n="common.languageZhTw" data-i18n-fallback="繁體中文">繁體中文</span>
                         </a></li>
+                        <li><a class="dropdown-item" href="#" data-language="zh-CN">
+                            <i class="fas fa-check me-2 text-success" id="check-zh-CN" style="visibility: hidden;"></i><span data-i18n="common.languageZhCn" data-i18n-fallback="简体中文">简体中文</span>
+                        </a></li>
                         <li><a class="dropdown-item" href="#" data-language="en-US">
                             <i class="fas fa-check me-2 text-success" id="check-en-US" style="visibility: hidden;"></i><span data-i18n="common.languageEnUs" data-i18n-fallback="English">English</span>
                         </a></li>
@@ -181,6 +184,7 @@
     function showLanguageSwitchSuccess(language) {
         const languageNames = {
             'zh-TW': '繁體中文',
+            'zh-CN': '简体中文',
             'en-US': 'English'
         };
 
@@ -195,7 +199,8 @@
         // 更新當前語言顯示
         const currentLangSpan = document.getElementById('current-language');
         const languageNames = {
-            'zh-TW': window.i18n ? window.i18n.t('language.chinese') : '中文',
+            'zh-TW': window.i18n ? window.i18n.t('language.traditional') : '繁體中文',
+            'zh-CN': window.i18n ? window.i18n.t('language.chinese') : '简体中文',
             'en-US': window.i18n ? window.i18n.t('language.english') : 'English'
         };
 

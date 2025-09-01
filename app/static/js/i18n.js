@@ -14,7 +14,7 @@ class I18nSystem {
     constructor() {
         this.currentLanguage = 'zh-TW';
         this.translations = {};
-        this.supportedLanguages = ['zh-TW', 'en-US'];
+        this.supportedLanguages = ['zh-TW', 'zh-CN', 'en-US'];
         this.fallbackLanguage = 'zh-TW';
         this.isLoaded = false;
         this.cacheBuster = String(Date.now());
@@ -73,10 +73,15 @@ class I18nSystem {
             
             // Try language code without region
             const languageCode = browserLanguage.split('-')[0];
-            const matchedLanguage = this.supportedLanguages.find(lang => 
-                lang.startsWith(languageCode)
-            );
-            
+            const matchedLanguage = this.supportedLanguages.find(lang => {
+                // Special handling for Chinese variants
+                if (languageCode === 'zh') {
+                    // If browser language is just 'zh', prefer zh-CN for Simplified Chinese
+                    return lang === 'zh-CN';
+                }
+                return lang.startsWith(languageCode);
+            });
+
             if (matchedLanguage) {
                 this.currentLanguage = matchedLanguage;
                 return;
@@ -289,12 +294,15 @@ if (value && typeof value === 'object' && key in value) {
      * @returns {string} The interpolated text
      */
     interpolate(text, params) {
+        if (!text) return text;
+        
         // If the translation contains placeholders but no params provided, warn
         if (text.includes('{') && (!params || Object.keys(params).length === 0)) {
-            console.warn(`Missing parameters for translation key: ${keyPath}`);
+            console.warn(`Missing parameters for translation: text contains placeholders but no params provided`);
+            return text; // Return original text with placeholders as fallback
         }
-        return text;
 
+        // Perform parameter substitution
         return text.replace(/\{(\w+)\}/g, (match, key) => {
             return params.hasOwnProperty(key) ? params[key] : match;
         });
