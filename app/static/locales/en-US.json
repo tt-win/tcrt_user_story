@@ -49,7 +49,12 @@
         "noDescription": "No description",
         "createDate": "Created",
         "updateDate": "Updated",
-        "copy": "Copy"
+        "copy": "Copy",
+        "searching": "Searching..."
+    },
+    "search": {
+        "noHistory": "No search history",
+        "recent": "Recent"
     },
     "navigation": {
         "title": "Test Case Repository",
@@ -416,6 +421,7 @@
         "batchModifySuccess": "Modified {count} items",
         "enterAssigneeName": "Enter assignee name",
         "noItemsSelected": "Please select items first",
+        "cannotEditCompleted": "Cannot edit Test Cases in completed Test Run",
         "selectAtLeastOneOption": "Please select at least one item to modify",
         "selectTestResult": "Please select test result",
         "batchModifyFailed": "Batch modify failed",
@@ -730,7 +736,9 @@
         "searchFailedRetry": "Search failed, please try again",
         "clickToEditTcg": "Click to edit TCG",
         "testCaseNotFound": "Test case not found",
-        "noTCGNumber": "Please enter TCG number first"
+        "noTCGNumber": "Please enter TCG number first",
+        "noTeamSelected": "Please select a team first",
+        "noMatchingTPConfigs": "No matching TP ticket configurations found"
     },
     "pagination": {
         "previousPage": "Previous",
@@ -743,12 +751,16 @@
         "english": "English"
     },
     "hotkeys": {
-        "quickSearch": "Press / for quick search"
+        "quickSearch": "Press / for quick search",
+        "quickSearchTP": "Press / to search TP tickets"
     },
     "confirm": {
         "batchStartTestRuns": "Are you sure you want to start these {count} test runs?",
         "batchDeleteTestRuns": "Are you sure you want to delete these {count} test runs? This action cannot be undone.",
         "deleteAttachment": "Are you sure you want to delete attachment \"{filename}\"?"
+    },
+    "tp": {
+        "searchPlaceholder": "Search TP tickets..."
     },
     "orgSync": {
         "openButton": "Sync Organization",

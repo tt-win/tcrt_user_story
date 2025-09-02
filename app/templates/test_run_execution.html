@@ -1656,6 +1656,22 @@ function updateControlButtons(status) {
             document.getElementById('restartBtn').style.display = 'inline-block';
             break;
     }
+    
+    // 更新批量修改按鈕狀態
+    const batchModifyBtn = document.getElementById('batchModifyBtn');
+    if (batchModifyBtn) {
+        if (status === 'completed') {
+            batchModifyBtn.disabled = true;
+            batchModifyBtn.classList.add('disabled');
+            batchModifyBtn.title = window.i18n && window.i18n.isReady() 
+                ? window.i18n.t('testRun.cannotEditCompleted')
+                : '已完成的 Test Run 不可編輯 Test Case';
+        } else {
+            batchModifyBtn.disabled = false;
+            batchModifyBtn.classList.remove('disabled');
+            batchModifyBtn.removeAttribute('title');
+        }
+    }
 }
 
 function renderTestRunItems() {
@@ -2191,6 +2207,15 @@ function showBatchModifyModal() {
             ? window.i18n.t('testRun.noItemsSelected')
             : '{{ i18n.t("testRun.noItemsSelected") if i18n else "請先選擇要修改的項目" }}';
         AppUtils.showWarning(noSelectionMsg);
+        return;
+    }
+    
+    // 檢查 Test Run 狀態，已完成的不允許編輯
+    if (testRunConfig && testRunConfig.status === 'completed') {
+        const completedEditMsg = window.i18n && window.i18n.isReady() 
+            ? window.i18n.t('testRun.cannotEditCompleted')
+            : '{{ i18n.t("testRun.cannotEditCompleted") if i18n else "已完成的 Test Run 不可編輯 Test Case" }}';
+        AppUtils.showWarning(completedEditMsg);
         return;
     }
     
