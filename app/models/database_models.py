@@ -69,6 +69,12 @@ class TestRunConfig(Base):
     test_environment = Column(String(100), nullable=True)
     build_number = Column(String(100), nullable=True)
     
+    # TP 開發單票號欄位
+    related_tp_tickets_json = Column(Text, nullable=True, 
+                                   comment="相關 TP 開發單票號 JSON 陣列")
+    tp_tickets_search = Column(String(1000), nullable=True, index=True,
+                             comment="TP 票號搜尋索引欄位")
+    
     # 狀態與時間
     status = Column(Enum(TestRunStatus), default=TestRunStatus.DRAFT)
     start_date = Column(DateTime, nullable=True)

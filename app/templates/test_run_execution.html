@@ -1494,8 +1494,6 @@ function bindEventListeners() {
     
     document.getElementById('restartBtn').addEventListener('click', showRestartModal);
     
-    document.getElementById('exportBtn').addEventListener('click', exportResults);
-    
     // 全選 checkbox 事件
     document.getElementById('selectAllItemsCheckbox').addEventListener('change', toggleSelectAllItems);
     
@@ -2093,11 +2091,6 @@ async function restartTestRun(mode) {
         console.error(consoleMsg + ':', error);
         throw error;
     }
-}
-
-function exportResults() {
-    // TODO: 實現匯出功能
-    AppUtils.showInfo('{{ i18n.t("testRun.exportNotImplemented") if i18n else "匯出功能開發中..." }}');
 }
 
 // 輔助函數（狀態文字映射已移除，因為不再需要狀態指示器）
@@ -4760,47 +4753,215 @@ function showChartsError() {
 }
 
 // PDF 下載功能
-function downloadReportAsPDF() {
-    // 隱藏不需要列印的元素
-    const elementsToHide = document.querySelectorAll('#chartsReportsModal .modal-header, #chartsReportsModal .modal-footer');
-    elementsToHide.forEach(el => el.style.display = 'none');
+// 將 Chart.js 圖表轉換為靜態圖片以支援 PDF 列印
+async function convertChartsToImages() {
+    const conversions = [];
+    const canvasElements = document.querySelectorAll('#chartsReportsModal canvas');
     
-    // 設置列印樣式
-    const printStyles = document.createElement('style');
-    printStyles.textContent = `
-        @media print {
-            body * { visibility: hidden; }
-            #chartsReportsModal, #chartsReportsModal * { visibility: visible; }
-            #chartsReportsModal { 
-                position: fixed !important; 
-                left: 0 !important; 
-                top: 0 !important; 
-                width: 100% !important; 
-                height: 100% !important; 
-                z-index: 999999 !important;
-                background: white !important;
+    console.log(`找到 ${canvasElements.length} 個圖表需要轉換`);
+    
+    canvasElements.forEach((canvas, index) => {
+        try {
+            // 等待圖表完全渲染
+            const chart = Chart.getChart(canvas);
+            if (chart) {
+                // 獲取高品質的圖片資料
+                const imageData = canvas.toDataURL('image/png', 1.0);
+                
+                // 創建 img 元素替換 canvas
+                const img = document.createElement('img');
+                img.src = imageData;
+                img.style.width = canvas.style.width || '100%';
+                img.style.height = canvas.style.height || '400px';
+                img.style.maxWidth = '100%';
+                img.classList.add('chart-image-replacement');
+                
+                // 保存原始 canvas 以便後續恢復
+                canvas.style.display = 'none';
+                canvas.dataset.originalDisplay = 'block';
+                canvas.parentNode.insertBefore(img, canvas.nextSibling);
+                
+                conversions.push({ canvas, img, chart });
+                console.log(`圖表 ${index + 1} 轉換成功`);
             }
-            .modal-dialog { 
-                max-width: 100% !important; 
-                margin: 0 !important; 
-                padding: 20px !important; 
-            }
-            .chart-container { 
-                page-break-inside: avoid; 
-                margin-bottom: 20px !important; 
-            }
+        } catch (error) {
+            console.error(`圖表 ${index + 1} 轉換失敗:`, error);
         }
-    `;
-    document.head.appendChild(printStyles);
+    });
     
-    // 執行列印
-    window.print();
+    return conversions;
+}
+
+// PDF 下載狀態管理
+function showPDFLoadingState() {
+    const button = document.getElementById('downloadPDFBtn');
+    const icon = document.getElementById('downloadIcon');
+    const text = document.getElementById('downloadText');
     
-    // 列印完成後恢復元素
-    setTimeout(() => {
-        elementsToHide.forEach(el => el.style.display = '');
-        document.head.removeChild(printStyles);
-    }, 1000);
+    if (button && icon && text) {
+        button.disabled = true;
+        button.classList.add('disabled');
+        icon.className = 'fas fa-spinner fa-spin me-2';
+        text.textContent = window.i18n ? window.i18n.t('testRun.generatingPDF', {}, '正在生成 PDF...') : '正在生成 PDF...';
+    }
+}
+
+function hidePDFLoadingState() {
+    const button = document.getElementById('downloadPDFBtn');
+    const icon = document.getElementById('downloadIcon');
+    const text = document.getElementById('downloadText');
+    
+    if (button && icon && text) {
+        button.disabled = false;
+        button.classList.remove('disabled');
+        icon.className = 'fas fa-download me-2';
+        text.textContent = window.i18n ? window.i18n.t('testRun.downloadPDF', {}, '下載 PDF 報告') : '下載 PDF 報告';
+    }
+}
+
+// 恢復 Canvas 圖表元素
+function restoreChartsFromImages(conversions) {
+    conversions.forEach(({ canvas, img }) => {
+        try {
+            // 移除替換的圖片
+            if (img && img.parentNode) {
+                img.parentNode.removeChild(img);
+            }
+            
+            // 恢復原始 canvas
+            canvas.style.display = canvas.dataset.originalDisplay || 'block';
+            delete canvas.dataset.originalDisplay;
+        } catch (error) {
+            console.error('恢復圖表時發生錯誤:', error);
+        }
+    });
+}
+
+async function downloadReportAsPDF() {
+    let conversions = [];
+    let printStyles = null;
+    const elementsToHide = document.querySelectorAll('#chartsReportsModal .modal-header, #chartsReportsModal .modal-footer');
+    
+    // 顯示載入狀態
+    showPDFLoadingState();
+    
+    try {
+        console.log('開始準備 PDF 下載...');
+        
+        // 1. 先隱藏不需要列印的元素
+        elementsToHide.forEach(el => el.style.display = 'none');
+        
+        // 2. 將圖表轉換為靜態圖片
+        console.log('轉換圖表為圖片...');
+        conversions = await convertChartsToImages();
+        
+        // 3. 設置優化的列印樣式（針對圖片優化）
+        printStyles = document.createElement('style');
+        printStyles.textContent = `
+            @media print {
+                body * { visibility: hidden; }
+                #chartsReportsModal, #chartsReportsModal * { visibility: visible; }
+                #chartsReportsModal { 
+                    position: fixed !important; 
+                    left: 0 !important; 
+                    top: 0 !important; 
+                    width: 100% !important; 
+                    height: 100% !important; 
+                    z-index: 999999 !important;
+                    background: white !important;
+                    overflow: visible !important;
+                }
+                .modal-dialog { 
+                    max-width: 100% !important; 
+                    margin: 0 !important; 
+                    padding: 20px !important; 
+                }
+                .chart-container { 
+                    page-break-inside: avoid; 
+                    margin-bottom: 20px !important; 
+                }
+                .chart-image-replacement {
+                    display: block !important;
+                    width: 100% !important;
+                    height: auto !important;
+                    max-width: 100% !important;
+                    margin: 0 auto !important;
+                }
+                canvas {
+                    display: none !important;
+                }
+                .card {
+                    border: 1px solid #dee2e6 !important;
+                    margin-bottom: 1rem !important;
+                }
+                .table {
+                    border-collapse: collapse !important;
+                }
+                .table td, .table th {
+                    border: 1px solid #dee2e6 !important;
+                    padding: 8px !important;
+                }
+            }
+        `;
+        document.head.appendChild(printStyles);
+        
+        // 4. 等待圖片完全載入
+        const imgElements = document.querySelectorAll('#chartsReportsModal .chart-image-replacement');
+        await Promise.all(Array.from(imgElements).map(img => {
+            return new Promise((resolve) => {
+                if (img.complete) {
+                    resolve();
+                } else {
+                    img.onload = resolve;
+                    img.onerror = resolve; // 即使載入失敗也要繼續
+                }
+            });
+        }));
+        
+        console.log('圖片載入完成，開始列印...');
+        
+        // 5. 執行列印
+        window.print();
+        
+        console.log('PDF 列印完成');
+        
+    } catch (error) {
+        console.error('PDF 下載過程中發生錯誤:', error);
+        
+        // 使用 i18n 友好的錯誤提示
+        const errorMessage = window.i18n ? 
+            window.i18n.t('testRun.pdfGenerationFailed', {}, 'PDF 生成失敗，請重試或聯繫管理員') : 
+            'PDF 生成失敗，請重試或聯繫管理員';
+        
+        alert(errorMessage);
+    } finally {
+        // 6. 清理：恢復所有元素
+        setTimeout(() => {
+            try {
+                // 恢復載入狀態
+                hidePDFLoadingState();
+                
+                // 恢復圖表
+                if (conversions.length > 0) {
+                    restoreChartsFromImages(conversions);
+                }
+                
+                // 恢復隱藏的元素
+                elementsToHide.forEach(el => el.style.display = '');
+                
+                // 移除列印樣式
+                if (printStyles && printStyles.parentNode) {
+                    document.head.removeChild(printStyles);
+                }
+                
+                console.log('PDF 下載清理完成');
+            } catch (cleanupError) {
+                console.error('清理過程中發生錯誤:', cleanupError);
+                // 即使清理失敗也要恢復載入狀態
+                hidePDFLoadingState();
+            }
+        }, 1000);
+    }
 }
 
 </script>
@@ -4964,9 +5125,9 @@ function downloadReportAsPDF() {
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-primary" onclick="downloadReportAsPDF()">
-                    <i class="fas fa-download me-2"></i>
-                    <span data-i18n="testRun.downloadPDF">下載 PDF 報告</span>
+                <button type="button" class="btn btn-primary" id="downloadPDFBtn" onclick="downloadReportAsPDF()">
+                    <i class="fas fa-download me-2" id="downloadIcon"></i>
+                    <span data-i18n="testRun.downloadPDF" id="downloadText">下載 PDF 報告</span>
                 </button>
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
                     <span data-i18n="common.close">關閉</span>
@@ -4995,15 +5156,7 @@ function downloadReportAsPDF() {
 .border-left-warning { border-left: 4px solid #ffc107; }
 .border-left-secondary { border-left: 4px solid #6c757d; }
 
-@media print {
-    .modal-dialog { 
-        max-width: 100% !important; 
-        margin: 0 !important; 
-    }
-    .chart-container { 
-        page-break-inside: avoid; 
-    }
-}
+/* Print styles moved to dynamic PDF generation function for better control */
 </style>
 
 {% endblock %}

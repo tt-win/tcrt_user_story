@@ -250,6 +250,10 @@
         "searchTestCases": "Search test cases...",
         "selectAll": "Select All",
         "testRunDescriptionPlaceholder": "Describe the purpose, scope or special considerations of this test run",
+        "relatedTpTickets": "Related TP Tickets",
+        "relatedTpTicketsPlaceholder": "Enter TP ticket number, e.g.: TP-12345",
+        "tpTicketInputHint": "Press Enter to add ticket",
+        "addedTpTickets": "Added TP Tickets",
         "testRunCreated": "Test run created successfully",
         "testRunDeleted": "Test run deleted successfully",
         "loadingTestRuns": "Loading test run records...",
@@ -391,7 +395,6 @@
         "updateStatsFailed": "Failed to update statistics",
         "statusChangeFailed": "Status change failed",
         "statusUpdated": "Status updated",
-        "exportNotImplemented": "Export feature under development...",
         "changeStatusFailed": "Failed to change status",
         "notExecuted": "Not Executed",
         "passed": "Passed",
@@ -517,7 +520,9 @@
         "failedItems": "Failed",
         "retestItems": "Retest",
         "notAvailableItems": "Not Available",
-        "downloadPDF": "Download PDF Report"
+        "downloadPDF": "Download PDF Report",
+        "generatingPDF": "Generating PDF...",
+        "pdfGenerationFailed": "PDF generation failed, please try again or contact administrator"
     },
     "priority": {
         "high": "High",

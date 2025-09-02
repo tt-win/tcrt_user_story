@@ -8,6 +8,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
+import json
 
 from app.database import get_db
 from app.models.test_run_config import (
@@ -27,9 +28,70 @@ from pydantic import BaseModel, Field
 
 router = APIRouter(prefix="/teams/{team_id}/test-run-configs", tags=["test-run-configs"])
 
+# 搜尋 API 路由器（不依賴 team_id 路徑參數）
+search_router = APIRouter(prefix="/test-run-configs/search", tags=["test-run-configs-search"])
+
+
+def serialize_tp_tickets(tp_tickets: Optional[List[str]]) -> tuple[Optional[str], Optional[str]]:
+    """
+    序列化 TP 票號為 JSON 字串和搜尋索引
+    
+    Args:
+        tp_tickets: TP 票號列表
+        
+    Returns:
+        tuple: (json_string, search_string)
+    """
+    if not tp_tickets:
+        return None, None
+    
+    # JSON 序列化
+    json_string = json.dumps(tp_tickets)
+    
+    # 搜尋索引（空格分隔）
+    search_string = " ".join(tp_tickets)
+    
+    return json_string, search_string
+
+
+def deserialize_tp_tickets(json_string: Optional[str]) -> List[str]:
+    """
+    反序列化 JSON 字串為 TP 票號列表
+    
+    Args:
+        json_string: JSON 字串
+        
+    Returns:
+        TP 票號列表
+    """
+    if not json_string:
+        return []
+    
+    try:
+        tickets = json.loads(json_string)
+        return tickets if isinstance(tickets, list) else []
+    except (json.JSONDecodeError, TypeError):
+        return []
+
+
+def sync_tp_tickets_to_db(config_db: TestRunConfigDB, tp_tickets: Optional[List[str]]) -> None:
+    """
+    同步 TP 票號到資料庫欄位
+    
+    Args:
+        config_db: 資料庫模型實例
+        tp_tickets: TP 票號列表
+    """
+    json_string, search_string = serialize_tp_tickets(tp_tickets)
+    config_db.related_tp_tickets_json = json_string
+    config_db.tp_tickets_search = search_string
+
 
 def test_run_config_db_to_model(config_db: TestRunConfigDB) -> TestRunConfig:
     """將資料庫 TestRunConfig 模型轉換為 API 模型"""
+    # 反序列化 TP 票號
+    related_tp_tickets = deserialize_tp_tickets(config_db.related_tp_tickets_json)
+    
     return TestRunConfig(
         id=config_db.id,
         team_id=config_db.team_id,
@@ -38,6 +100,7 @@ def test_run_config_db_to_model(config_db: TestRunConfigDB) -> TestRunConfig:
         test_version=config_db.test_version,
         test_environment=config_db.test_environment,
         build_number=config_db.build_number,
+        related_tp_tickets=related_tp_tickets,
         status=config_db.status,
         start_date=config_db.start_date,
         end_date=config_db.end_date,
@@ -53,6 +116,9 @@ def test_run_config_db_to_model(config_db: TestRunConfigDB) -> TestRunConfig:
 
 def test_run_config_model_to_db(config: TestRunConfigCreate) -> TestRunConfigDB:
     """將 API TestRunConfig 模型轉換為資料庫模型"""
+    # 序列化 TP 票號
+    tp_json, tp_search = serialize_tp_tickets(config.related_tp_tickets)
+    
     return TestRunConfigDB(
         team_id=config.team_id,
         name=config.name,
@@ -60,6 +126,8 @@ def test_run_config_model_to_db(config: TestRunConfigCreate) -> TestRunConfigDB:
         test_version=config.test_version,
         test_environment=config.test_environment,
         build_number=config.build_number,
+        related_tp_tickets_json=tp_json,
+        tp_tickets_search=tp_search,
         status=config.status,
         start_date=config.start_date
     )
@@ -102,6 +170,8 @@ async def get_test_run_configs(
             test_environment=config.test_environment,
             build_number=config.build_number,
             test_version=config.test_version,
+            related_tp_tickets=config.related_tp_tickets,
+            tp_tickets_count=len(config.related_tp_tickets) if config.related_tp_tickets else 0,
             status=config.status,
             execution_rate=config.get_execution_rate(),
             pass_rate=config.get_pass_rate(),
@@ -185,6 +255,13 @@ async def update_test_run_config(
     
     # 更新欄位
     update_data = config_update.dict(exclude_unset=True)
+    
+    # 特殊處理 TP 票號欄位
+    if 'related_tp_tickets' in update_data:
+        tp_tickets = update_data.pop('related_tp_tickets')
+        sync_tp_tickets_to_db(config_db, tp_tickets)
+    
+    # 更新其他欄位
     for key, value in update_data.items():
         setattr(config_db, key, value)
     
@@ -346,7 +423,7 @@ async def restart_test_run(
     base_name = f"Rerun - {config_db.name}"
     new_name = (payload.name or '').strip() or base_name
 
-    # 建立新的 Test Run Config（複製主要欄位）
+    # 建立新的 Test Run Config（複製主要欄位，包括 TP 票號）
     new_config = TestRunConfigDB(
         team_id=team_id,
         name=new_name,
@@ -354,6 +431,8 @@ async def restart_test_run(
         test_version=config_db.test_version,
         test_environment=config_db.test_environment,
         build_number=config_db.build_number,
+        related_tp_tickets_json=config_db.related_tp_tickets_json,
+        tp_tickets_search=config_db.tp_tickets_search,
         status=TestRunStatus.ACTIVE,
         start_date=datetime.utcnow(),
         end_date=None,
@@ -432,3 +511,198 @@ async def get_test_run_statistics(
     configs = [test_run_config_db_to_model(config_db) for config_db in configs_db]
     
     return TestRunConfigStatistics.from_configs(configs)
+
+
+# ========== TP 票號搜尋 API ==========
+
+@search_router.get("/tp", response_model=List[TestRunConfigSummary])
+async def search_configs_by_tp_tickets(
+    q: str = Query(..., min_length=2, max_length=50, description="搜尋查詢字串（TP 票號）"),
+    team_id: int = Query(..., description="團隊 ID"),
+    limit: int = Query(20, ge=1, le=100, description="最大返回結果數"),
+    db: Session = Depends(get_db)
+):
+    """
+    根據 TP 票號搜尋 Test Run Configs
+    
+    Args:
+        q: 搜尋查詢字串，支援 TP 票號的模糊搜尋
+        team_id: 團隊 ID，限制搜尋範圍
+        limit: 最大返回結果數（1-100）
+        db: 資料庫會話
+        
+    Returns:
+        List[TestRunConfigSummary]: 匹配的 Test Run Config 列表
+    """
+    # 驗證團隊存在
+    verify_team_exists(team_id, db)
+    
+    # 清理搜尋查詢
+    search_query = q.strip().upper()
+    
+    # 驗證搜尋查詢格式（基本的 TP 票號格式檢查）
+    if not _is_valid_tp_search_query(search_query):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="搜尋查詢必須包含 TP 票號相關內容"
+        )
+    
+    try:
+        # 使用 tp_tickets_search 欄位進行模糊搜尋
+        query = db.query(TestRunConfigDB).filter(
+            TestRunConfigDB.team_id == team_id,
+            TestRunConfigDB.tp_tickets_search.isnot(None),
+            TestRunConfigDB.tp_tickets_search.contains(search_query)
+        ).order_by(
+            TestRunConfigDB.updated_at.desc()
+        ).limit(limit)
+        
+        configs_db = query.all()
+        
+        # 轉換為摘要格式
+        summaries = []
+        for config_db in configs_db:
+            config = test_run_config_db_to_model(config_db)
+            
+            # 過濾匹配的 TP 票號 (highlight matching tickets)
+            matching_tickets = _filter_matching_tp_tickets(config.related_tp_tickets, search_query)
+            
+            summary = TestRunConfigSummary(
+                id=config.id,
+                name=config.name,
+                test_environment=config.test_environment,
+                build_number=config.build_number,
+                test_version=config.test_version,
+                related_tp_tickets=matching_tickets,  # 只返回匹配的票號
+                tp_tickets_count=len(matching_tickets),
+                status=config.status,
+                execution_rate=config.get_execution_rate(),
+                pass_rate=config.get_pass_rate(),
+                total_test_cases=config.total_test_cases,
+                executed_cases=config.executed_cases,
+                start_date=config.start_date,
+                end_date=config.end_date,
+                created_at=config.created_at
+            )
+            summaries.append(summary)
+        
+        return summaries
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"搜尋 TP 票號時發生錯誤: {str(e)}"
+        )
+
+
+def _is_valid_tp_search_query(query: str) -> bool:
+    """
+    驗證搜尋查詢是否為有效的 TP 票號搜尋
+    
+    Args:
+        query: 搜尋查詢字串
+        
+    Returns:
+        bool: 是否為有效的搜尋查詢
+    """
+    # 轉為大寫進行檢查，確保大小寫不敏感
+    query_upper = query.upper()
+    
+    # 基本檢查：必須包含 "TP"
+    if "TP" not in query_upper:
+        return False
+    
+    # 檢查是否包含數字（TP 票號應該包含數字）
+    import re
+    if not re.search(r'\d', query):
+        return False
+    
+    return True
+
+
+def _filter_matching_tp_tickets(tp_tickets: List[str], search_query: str) -> List[str]:
+    """
+    過濾出匹配搜尋查詢的 TP 票號
+    
+    Args:
+        tp_tickets: 所有 TP 票號列表
+        search_query: 搜尋查詢字串
+        
+    Returns:
+        List[str]: 匹配的 TP 票號列表
+    """
+    if not tp_tickets:
+        return []
+    
+    matching_tickets = []
+    for ticket in tp_tickets:
+        if search_query in ticket.upper():
+            matching_tickets.append(ticket)
+    
+    # 如果沒有精確匹配，返回所有票號（表示整個配置匹配）
+    return matching_tickets if matching_tickets else tp_tickets
+
+
+@search_router.get("/tp/stats")
+async def get_tp_search_statistics(
+    team_id: int = Query(..., description="團隊 ID"),
+    db: Session = Depends(get_db)
+):
+    """
+    取得 TP 票號搜尋相關統計資訊
+    
+    Args:
+        team_id: 團隊 ID
+        db: 資料庫會話
+        
+    Returns:
+        Dict: TP 票號搜尋統計資訊
+    """
+    # 驗證團隊存在
+    verify_team_exists(team_id, db)
+    
+    try:
+        # 查詢該團隊的 TP 票號統計
+        total_configs = db.query(TestRunConfigDB).filter(
+            TestRunConfigDB.team_id == team_id
+        ).count()
+        
+        configs_with_tp = db.query(TestRunConfigDB).filter(
+            TestRunConfigDB.team_id == team_id,
+            TestRunConfigDB.tp_tickets_search.isnot(None),
+            TestRunConfigDB.tp_tickets_search != ""
+        ).count()
+        
+        # 取得所有 TP 票號進行分析
+        configs_db = db.query(TestRunConfigDB).filter(
+            TestRunConfigDB.team_id == team_id,
+            TestRunConfigDB.tp_tickets_search.isnot(None)
+        ).all()
+        
+        all_tp_tickets = set()
+        for config_db in configs_db:
+            tp_tickets = deserialize_tp_tickets(config_db.related_tp_tickets_json)
+            all_tp_tickets.update(tp_tickets)
+        
+        return {
+            "team_id": team_id,
+            "total_configs": total_configs,
+            "configs_with_tp_tickets": configs_with_tp,
+            "searchable_configs_percentage": round(
+                (configs_with_tp / total_configs * 100) if total_configs > 0 else 0, 2
+            ),
+            "unique_tp_tickets": len(all_tp_tickets),
+            "tp_tickets_list": sorted(list(all_tp_tickets)),
+            "search_tips": [
+                "使用完整的 TP 票號進行精確搜尋 (例如: TP-12345)",
+                "使用部分 TP 票號進行模糊搜尋 (例如: TP-123)",
+                "搜尋查詢至少需要 2 個字符",
+                "搜尋結果按更新時間排序，最多返回 100 筆"
+            ]
+        }
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"取得搜尋統計時發生錯誤: {str(e)}"
+        )

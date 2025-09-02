@@ -250,6 +250,10 @@
         "searchTestCases": "\u641c\u5c0b\u6e2c\u8a66\u6848\u4f8b...",
         "selectAll": "\u5168\u9078",
         "testRunDescriptionPlaceholder": "\u63cf\u8ff0\u9019\u6b21\u6e2c\u8a66\u57f7\u884c\u7684\u76ee\u7684\u3001\u7bc4\u570d\u6216\u7279\u6b8a\u6ce8\u610f\u4e8b\u9805",
+        "relatedTpTickets": "\u76f8\u95dc TP \u958b\u767c\u55ae",
+        "relatedTpTicketsPlaceholder": "\u8f38\u5165 TP \u7968\u865f\uff0c\u4f8b\u5982\uff1aTP-12345",
+        "tpTicketInputHint": "\u6309 Enter \u9375\u65b0\u589e\u7968\u865f",
+        "addedTpTickets": "\u5df2\u65b0\u589e\u7684 TP \u958b\u767c\u55ae",
         "testRunCreated": "\u6e2c\u8a66\u57f7\u884c\u5efa\u7acb\u6210\u529f",
         "testRunDeleted": "\u6e2c\u8a66\u57f7\u884c\u522a\u9664\u6210\u529f",
         "loadingTestRuns": "\u8f09\u5165\u6e2c\u8a66\u57f7\u884c\u8a18\u9304\u4e2d...",
@@ -388,7 +392,6 @@
         "updateStatsFailed": "\u66f4\u65b0\u7d71\u8a08\u5931\u6557",
         "statusChangeFailed": "\u72c0\u614b\u8b8a\u66f4\u5931\u6557",
         "statusUpdated": "\u72c0\u614b\u5df2\u66f4\u65b0",
-        "exportNotImplemented": "\u532f\u51fa\u529f\u80fd\u958b\u767c\u4e2d...",
         "changeStatusFailed": "\u8b8a\u66f4\u72c0\u614b\u5931\u6557",
         "notExecuted": "Not Executed",
         "passed": "Passed",
@@ -517,7 +520,9 @@
         "failedItems": "Failed",
         "retestItems": "Retest",
         "notAvailableItems": "Not Available",
-        "downloadPDF": "\u4e0b\u8f09 PDF \u5831\u544a"
+        "downloadPDF": "\u4e0b\u8f09 PDF \u5831\u544a",
+        "generatingPDF": "\u6b63\u5728\u751f\u6210 PDF...",
+        "pdfGenerationFailed": "PDF \u751f\u6210\u5931\u6557\uff0c\u8acb\u91cd\u8a66\u6216\u806f\u7e6b\u7ba1\u7406\u54e1"
     },
     "priority": {
         "high": "\u9ad8",

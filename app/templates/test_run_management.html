@@ -80,8 +80,14 @@
     margin-bottom: 0.5rem;
 }
 
+
 .stats-item:last-child {
     margin-bottom: 0;
+}
+
+/* TP 標籤間距調整 */
+.stats-item .tp-tag {
+    margin-left: 0.25rem;
 }
 
 .stats-icon {
@@ -89,6 +95,36 @@
     text-align: center;
     margin-right: 0.5rem;
     opacity: 0.7;
+}
+
+/* TP 標籤樣式 */
+.tp-tag {
+    transition: all 0.2s ease;
+    font-size: 0.75rem !important;
+    font-weight: 500;
+    border-radius: 0.375rem;
+    padding: 0.25rem 0.5rem;
+    margin: 0.125rem 0.25rem 0.125rem 0;
+    display: inline-block;
+    max-width: 100px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tp-tag:hover {
+    background-color: #495057 !important;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.tp-tag:active {
+    transform: translateY(0);
+}
+
+/* TP 標籤容器樣式 */
+.stats-item .tp-tag {
+    vertical-align: middle;
 }
 
 /* Loading animation */
@@ -101,6 +137,280 @@
 @keyframes loading {
     0% { background-position: 200% 0; }
     100% { background-position: -200% 0; }
+}
+
+/* TP 票號標籤樣式 */
+.tp-ticket-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.375rem 0.75rem;
+    background-color: var(--tr-primary-light);
+    color: var(--tr-primary-dark);
+    border: 1px solid var(--tr-primary);
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    text-decoration: none;
+    transition: all 0.2s ease;
+    cursor: pointer;
+}
+
+.tp-ticket-tag:hover {
+    background-color: var(--tr-primary);
+    color: white;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.tp-ticket-tag .remove-btn {
+    margin-left: 0.25rem;
+    padding: 0;
+    border: none;
+    background: none;
+    color: inherit;
+    cursor: pointer;
+    opacity: 0.7;
+    transition: opacity 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+}
+
+.tp-ticket-tag .remove-btn:hover {
+    opacity: 1;
+}
+
+.tp-ticket-tag .remove-btn:focus {
+    outline: none;
+    opacity: 1;
+}
+
+/* 響應式設計 - 小螢幕適配 */
+@media (max-width: 768px) {
+    .tp-ticket-tag {
+        font-size: 0.8rem;
+        padding: 0.25rem 0.5rem;
+    }
+    
+    #tpTicketTags {
+        gap: 0.375rem !important;
+    }
+}
+
+/* 輸入欄位提示樣式 */
+.form-text .fas {
+    opacity: 0.6;
+}
+
+/* JIRA 預覽 tooltip 樣式 */
+.jira-preview-tooltip {
+    position: absolute;
+    z-index: 9999;
+    background: #ffffff;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.12);
+    max-width: 380px;
+    min-width: 320px;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-8px);
+    transition: all 0.2s ease;
+    pointer-events: auto;
+}
+
+.jira-preview-tooltip.show {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+}
+
+.jira-preview-tooltip .tooltip-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #eee;
+}
+
+.jira-preview-tooltip .ticket-number {
+    font-weight: 600;
+    color: var(--tr-primary);
+    font-size: 0.875rem;
+}
+
+.jira-preview-tooltip .ticket-status {
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    text-transform: uppercase;
+}
+
+.jira-preview-tooltip .status-todo {
+    background-color: #e3f2fd;
+    color: #1976d2;
+}
+
+.jira-preview-tooltip .status-in-progress {
+    background-color: #fff3e0;
+    color: #f57c00;
+}
+
+.jira-preview-tooltip .status-done {
+    background-color: #e8f5e8;
+    color: #388e3c;
+}
+
+.jira-preview-tooltip .ticket-title {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: #333;
+    margin-bottom: 8px;
+    line-height: 1.4;
+}
+
+.jira-preview-tooltip .ticket-details {
+    font-size: 0.8rem;
+    color: #666;
+    margin-bottom: 8px;
+}
+
+.jira-preview-tooltip .assignee-info {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+.jira-preview-tooltip .assignee-info .fas {
+    color: #666;
+    width: 14px;
+}
+
+.jira-preview-tooltip .jira-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--tr-primary);
+    text-decoration: none;
+    font-size: 0.8rem;
+    font-weight: 500;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid #eee;
+}
+
+.jira-preview-tooltip .jira-link:hover {
+    color: var(--tr-primary-dark);
+    text-decoration: underline;
+}
+
+.jira-preview-tooltip .loading-spinner {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    color: #666;
+}
+
+.jira-preview-tooltip .error-message {
+    color: #dc3545;
+    font-size: 0.8rem;
+    text-align: center;
+    padding: 8px;
+}
+
+/* TCG 風格的 tooltip 樣式 */
+.jira-preview-tooltip .tcg-tooltip-header {
+    background: #f8fafc;
+    padding: 12px 16px;
+    border-bottom: 1px solid #e2e8f0;
+    margin: 0;
+}
+
+.jira-preview-tooltip .tcg-ticket-info {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.jira-preview-tooltip .tcg-ticket-number {
+    font-weight: 600;
+    color: #1e40af;
+    font-size: 0.9rem;
+}
+
+.jira-preview-tooltip .tcg-ticket-status {
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+}
+
+.jira-preview-tooltip .tcg-ticket-content {
+    padding: 14px 16px;
+}
+
+.jira-preview-tooltip .tcg-ticket-title {
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: #1f2937;
+    margin-bottom: 12px;
+    line-height: 1.4;
+}
+
+.jira-preview-tooltip .tcg-ticket-meta {
+    display: grid;
+    gap: 8px;
+}
+
+.jira-preview-tooltip .tcg-assignee,
+.jira-preview-tooltip .tcg-priority {
+    display: flex;
+    align-items: center;
+}
+
+.jira-preview-tooltip .tcg-label {
+    font-size: 0.8rem;
+    color: #6b7280;
+    font-weight: 500;
+    min-width: 65px;
+    margin-right: 8px;
+}
+
+.jira-preview-tooltip .tcg-value {
+    font-size: 0.8rem;
+    color: #374151;
+    font-weight: 400;
+}
+
+.jira-preview-tooltip .tcg-tooltip-footer {
+    background: #f8fafc;
+    padding: 10px 16px;
+    border-top: 1px solid #e2e8f0;
+    margin: 0;
+}
+
+.jira-preview-tooltip .tcg-jira-link {
+    display: inline-flex;
+    align-items: center;
+    color: #3b82f6;
+    text-decoration: none;
+    font-size: 0.8rem;
+    font-weight: 500;
+    transition: color 0.15s ease;
+}
+
+.jira-preview-tooltip .tcg-jira-link:hover {
+    color: #1d4ed8;
+    text-decoration: underline;
 }
 </style>
 {% endblock %}
@@ -193,18 +503,44 @@
                     </div>
 
                     <div class="row">
-                      <div class="col-md-6">
+                      <div class="col-md-4">
                         <div class="mb-3">
                           <label for="testEnvironment" class="form-label"><span data-i18n="testRun.testEnvironment">測試環境</span> <span class="badge bg-secondary ms-2" data-i18n="common.optional">選填</span></label>
                           <input type="text" class="form-control" id="testEnvironment" name="test_environment" data-i18n-placeholder="testRun.testEnvironmentPlaceholder" placeholder="例如：Staging / UAT / Prod Sandbox">
                         </div>
                       </div>
-                      <div class="col-md-6">
+                      <div class="col-md-4">
                         <div class="mb-3">
                           <label for="buildNumber" class="form-label"><span data-i18n="testRun.buildNumber">建置版本</span> <span class="badge bg-secondary ms-2" data-i18n="common.optional">選填</span></label>
                           <input type="text" class="form-control" id="buildNumber" name="build_number" data-i18n-placeholder="testRun.buildNumberPlaceholder" placeholder="例如：v1.2.3 / build #4567">
                         </div>
                       </div>
+                      <div class="col-md-4">
+                        <div class="mb-3">
+                          <label for="relatedTpTickets" class="form-label">
+                            <span data-i18n="testRun.relatedTpTickets">相關 TP 開發單</span> 
+                            <span class="badge bg-secondary ms-2" data-i18n="common.optional">選填</span>
+                          </label>
+                          <input type="text" class="form-control" id="relatedTpTicketsInput" 
+                                 data-i18n-placeholder="testRun.relatedTpTicketsPlaceholder" 
+                                 placeholder="輸入 TP 票號，例如：TP-12345"
+                                 autocomplete="off">
+                          <div class="form-text">
+                            <i class="fas fa-info-circle me-1"></i>
+                            <span data-i18n="testRun.tpTicketInputHint">按 Enter 鍵新增票號</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- TP 標籤顯示區域 -->
+                    <div class="mb-3" id="tpTicketsDisplay" style="display: none;">
+                        <label class="form-label">
+                            <span data-i18n="testRun.addedTpTickets">已新增的 TP 開發單</span>
+                        </label>
+                        <div id="tpTicketTags" class="d-flex flex-wrap gap-2">
+                            <!-- TP 票號標籤將在這裡動態生成 -->
+                        </div>
                     </div>
                 </form>
             </div>
@@ -489,6 +825,28 @@ function createConfigCard(config) {
     const passPercentage = config.pass_rate || 0;
     const createdDate = AppUtils.formatDate(config.created_at, 'datetime-tz');
     const envLine = config.test_environment ? `<div class=\"stats-item\"><i class=\"fas fa-server stats-icon\"></i><small class=\"text-muted\"><span data-i18n=\"testRun.testEnvironment\">測試環境</span>: ${escapeHtml(config.test_environment)}</small></div>` : '';
+    
+    // TP 標籤顯示邏輯
+    let tpLine = '';
+    if (config.related_tp_tickets && Array.isArray(config.related_tp_tickets) && config.related_tp_tickets.length > 0) {
+        const maxDisplay = 5; // 最多顯示5個標籤
+        const visibleTickets = config.related_tp_tickets.slice(0, maxDisplay);
+        const remainingCount = config.related_tp_tickets.length - maxDisplay;
+        
+        const tpTags = visibleTickets.map(ticket => 
+            `<span class="tp-tag badge bg-secondary me-1" data-tp-ticket="${escapeHtml(ticket)}" 
+                   onmouseenter="showJiraPreview(event, '${escapeHtml(ticket)}')" 
+                   onmouseleave="hideJiraPreview()" 
+                   onclick="event.stopPropagation(); openJiraTicket('${escapeHtml(ticket)}')" 
+                   style="cursor: pointer; font-size: 0.75rem;">${escapeHtml(ticket)}</span>`
+        ).join('');
+        
+        const remainingTag = remainingCount > 0 ? 
+            `<span class="badge bg-light text-dark" style="font-size: 0.75rem;">+${remainingCount}</span>` : '';
+            
+        tpLine = `<div class="stats-item"><i class="fas fa-ticket-alt stats-icon"></i><small class="text-muted"><span data-i18n="testRun.relatedTpTickets">相關 TP 開發單</span>: <span class="ms-1">${tpTags}${remainingTag}</span></small></div>`;
+    }
+    
     const buildLine = config.build_number ? `<div class=\"stats-item\"><i class=\"fas fa-code-branch stats-icon\"></i><small class=\"text-muted\"><span data-i18n=\"testRun.buildNumber\">建置版本</span>: ${escapeHtml(config.build_number)}</small></div>` : '';
     
     return `
@@ -527,6 +885,7 @@ function createConfigCard(config) {
                     </div>
                     <div class="mb-3">
                         ${envLine}
+                        ${tpLine}
                         ${buildLine}
                         <div class="stats-item">
                             <i class="fas fa-list-ul stats-icon"></i>
@@ -633,13 +992,16 @@ function openConfigFormModal(configId = null) {
             document.getElementById('configId').value = config.id;
             document.getElementById('configName').value = config.name;
             document.getElementById('configDescription').value = config.description || '';
-            // 嘗試載入詳細配置以填入可選欄位
+            // 嘗試載入詳細配置以填入可選欄位和 TP 票號
             fetch(`/api/teams/${currentTeamId}/test-run-configs/${configId}`)
               .then(r => r.ok ? r.json() : null)
               .then(full => {
                 if (full) {
                   document.getElementById('testEnvironment').value = full.test_environment || '';
                   document.getElementById('buildNumber').value = full.build_number || '';
+                  // 載入 TP 票號
+                  const tpTickets = full.related_tp_tickets || [];
+                  setTpTickets(tpTickets);
                 }
               }).catch(() => {});
         }
@@ -647,7 +1009,17 @@ function openConfigFormModal(configId = null) {
         // Create mode
         titleEl.setAttribute('data-i18n', 'testRun.createConfig');
         saveBtnTextEl.setAttribute('data-i18n', 'common.create');
+        // 清空 TP 票號
+        clearAllTpTickets();
     }
+    
+    // 初始化 TP 標籤輸入功能
+    initTpTicketInput();
+    
+    // 監聽 Modal 關閉事件，清理 TP 標籤狀態
+    modalElement.addEventListener('hidden.bs.modal', function() {
+        clearAllTpTickets();
+    }, { once: true }); // 只監聽一次，避免重複綁定
     
     if (window.i18n) window.i18n.retranslate(modalElement);
     configFormModalInstance.show();
@@ -655,6 +1027,16 @@ function openConfigFormModal(configId = null) {
 
 async function handleSaveConfig() {
     const form = document.getElementById('testRunConfigForm');
+    
+    // 執行綜合表單驗證
+    const validationResult = validateTestRunConfigForm();
+    if (!validationResult.isValid) {
+        // 顯示第一個錯誤並聚焦到對應欄位
+        showFormValidationError(validationResult);
+        return;
+    }
+    
+    // HTML5 基礎驗證
     if (!form.checkValidity()) {
         form.reportValidity();
         return;
@@ -667,9 +1049,12 @@ async function handleSaveConfig() {
     const descVal = (document.getElementById('configDescription').value || '').trim();
     const envVal = (document.getElementById('testEnvironment').value || '').trim();
     const buildVal = (document.getElementById('buildNumber').value || '').trim();
+    const tpTickets = getCurrentTpTickets(); // 獲取當前 TP 票號列表
+    
     if (descVal) configData.description = descVal;
     if (envVal) configData.test_environment = envVal;
     if (buildVal) configData.build_number = buildVal;
+    configData.related_tp_tickets = tpTickets;  // 總是傳送，即使是空陣列
 
     const url = isEdit ? `/api/teams/${currentTeamId}/test-run-configs/${configId}` : `/api/teams/${currentTeamId}/test-run-configs/`;
     const method = isEdit ? 'PUT' : 'POST';
@@ -1254,6 +1639,690 @@ function deleteTestRun(configId, name) {
   });
   if (window.i18n && window.i18n.isReady()) window.i18n.retranslate(modal);
   inst.show();
+}
+
+// ===== TP 標籤管理功能 =====
+
+// 存儲當前的 TP 票號列表
+let currentTpTickets = [];
+
+// TP 票號格式驗證函數
+function validateTpTicketFormat(ticketNumber) {
+    // TP 票號格式：TP-XXXXX（TP- 後接 1-10 位數字或字母）
+    const tpTicketPattern = /^TP-[A-Z0-9]{1,10}$/i;
+    return tpTicketPattern.test(ticketNumber.trim());
+}
+
+// 檢查重複票號
+function isDuplicateTicket(ticketNumber) {
+    return currentTpTickets.includes(ticketNumber.trim().toUpperCase());
+}
+
+// 新增 TP 票號標籤
+function addTpTicket(ticketNumber) {
+    const trimmedTicket = ticketNumber.trim().toUpperCase();
+    
+    // 驗證格式
+    if (!validateTpTicketFormat(trimmedTicket)) {
+        showTpInputError('TP 票號格式無效，請使用格式：TP-XXXXX');
+        return false;
+    }
+    
+    // 檢查重複
+    if (isDuplicateTicket(trimmedTicket)) {
+        showTpInputError('此 TP 票號已存在');
+        return false;
+    }
+    
+    // 添加到列表
+    currentTpTickets.push(trimmedTicket);
+    
+    // 更新顯示
+    renderTpTags();
+    
+    // 清空輸入欄位
+    const inputElement = document.getElementById('relatedTpTicketsInput');
+    if (inputElement) {
+        inputElement.value = '';
+        clearTpInputError();
+    }
+    
+    return true;
+}
+
+// 移除 TP 票號標籤
+function removeTpTicket(ticketNumber) {
+    const index = currentTpTickets.indexOf(ticketNumber);
+    if (index > -1) {
+        currentTpTickets.splice(index, 1);
+        renderTpTags();
+    }
+}
+
+// 渲染 TP 標籤列表
+function renderTpTags() {
+    const tagsContainer = document.getElementById('tpTicketTags');
+    const displayContainer = document.getElementById('tpTicketsDisplay');
+    
+    if (!tagsContainer || !displayContainer) return;
+    
+    // 如果沒有標籤，隱藏顯示區域
+    if (currentTpTickets.length === 0) {
+        displayContainer.style.display = 'none';
+        tagsContainer.innerHTML = '';
+        return;
+    }
+    
+    // 顯示標籤區域
+    displayContainer.style.display = 'block';
+    
+    // 生成標籤 HTML
+    const tagsHtml = currentTpTickets.map(ticket => `
+        <div class="tp-ticket-tag" data-ticket="${ticket}">
+            <i class="fas fa-ticket-alt me-1"></i>
+            <span>${ticket}</span>
+            <button type="button" class="remove-btn" 
+                    onclick="removeTpTicket('${ticket}')"
+                    title="移除此票號"
+                    aria-label="移除 ${ticket}">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+    `).join('');
+    
+    tagsContainer.innerHTML = tagsHtml;
+    
+    // 為所有 TP 標籤添加 hover 事件監聽器
+    const ticketTags = tagsContainer.querySelectorAll('.tp-ticket-tag');
+    ticketTags.forEach(tag => {
+        const ticketNumber = tag.getAttribute('data-ticket');
+        // 添加 hover 事件
+        tag.addEventListener('mouseenter', (e) => showJiraPreview(e, ticketNumber));
+        tag.addEventListener('mouseleave', hideJiraPreview);
+        // 添加點擊跳轉事件
+        tag.addEventListener('click', (e) => {
+            // 如果點擊的是刪除按鈕，不執行跳轉
+            if (e.target.closest('.remove-btn')) return;
+            openJiraTicket(ticketNumber);
+        });
+    });
+}
+
+// 顯示輸入錯誤提示
+function showTpInputError(message) {
+    const inputElement = document.getElementById('relatedTpTicketsInput');
+    if (!inputElement) return;
+    
+    // 移除現有的錯誤樣式
+    clearTpInputError();
+    
+    // 添加錯誤樣式
+    inputElement.classList.add('is-invalid');
+    
+    // 創建或更新錯誤訊息元素
+    let errorElement = document.getElementById('tpTicketInputError');
+    if (!errorElement) {
+        errorElement = document.createElement('div');
+        errorElement.id = 'tpTicketInputError';
+        errorElement.className = 'invalid-feedback d-block';
+        inputElement.parentNode.appendChild(errorElement);
+    }
+    
+    errorElement.textContent = message;
+    
+    // 3秒後自動清除錯誤
+    setTimeout(clearTpInputError, 3000);
+}
+
+// 清除輸入錯誤提示
+function clearTpInputError() {
+    const inputElement = document.getElementById('relatedTpTicketsInput');
+    const errorElement = document.getElementById('tpTicketInputError');
+    
+    if (inputElement) {
+        inputElement.classList.remove('is-invalid');
+    }
+    
+    if (errorElement) {
+        errorElement.remove();
+    }
+}
+
+// 初始化 TP 標籤輸入功能
+function initTpTicketInput() {
+    const inputElement = document.getElementById('relatedTpTicketsInput');
+    if (!inputElement) return;
+    
+    // Enter 鍵監聽
+    inputElement.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const value = this.value.trim();
+            if (value) {
+                addTpTicket(value);
+            }
+        }
+    });
+    
+    // 失去焦點時也可以添加標籤（可選）
+    inputElement.addEventListener('blur', function() {
+        const value = this.value.trim();
+        if (value && validateTpTicketFormat(value) && !isDuplicateTicket(value)) {
+            addTpTicket(value);
+        }
+    });
+    
+    // 清除錯誤樣式當用戶開始輸入
+    inputElement.addEventListener('input', function() {
+        if (this.classList.contains('is-invalid')) {
+            clearTpInputError();
+        }
+    });
+}
+
+// 獲取當前 TP 票號列表（用於表單提交）
+function getCurrentTpTickets() {
+    return [...currentTpTickets]; // 返回副本避免意外修改
+}
+
+// 設置 TP 票號列表（用於編輯模式）
+function setTpTickets(tickets) {
+    currentTpTickets = Array.isArray(tickets) ? [...tickets] : [];
+    renderTpTags();
+}
+
+// 清空所有 TP 票號
+function clearAllTpTickets() {
+    currentTpTickets = [];
+    renderTpTags();
+    clearTpInputError();
+}
+
+// === TP 票號 JIRA 預覽功能 ===
+
+// JIRA 票號資料快取
+const jiraDataCache = new Map();
+
+// 創建或獲取 tooltip 元素
+function getOrCreateJiraTooltip() {
+    let tooltip = document.getElementById('jira-preview-tooltip');
+    if (!tooltip) {
+        tooltip = document.createElement('div');
+        tooltip.id = 'jira-preview-tooltip';
+        tooltip.className = 'jira-preview-tooltip';
+        
+        // 添加鼠標事件，讓用戶可以移動到 tooltip 上而不會消失
+        tooltip.addEventListener('mouseenter', cancelHideTooltip);
+        tooltip.addEventListener('mouseleave', hideJiraPreview);
+        
+        document.body.appendChild(tooltip);
+    }
+    return tooltip;
+}
+
+// 顯示 JIRA 預覽
+async function showJiraPreview(event, ticketNumber) {
+    const tooltip = getOrCreateJiraTooltip();
+    const targetElement = event.currentTarget;
+    
+    // 設定 tooltip 位置（現在 positionTooltip 能正確處理隱藏元素）
+    positionTooltip(tooltip, targetElement);
+    
+    // 顯示載入中狀態
+    tooltip.innerHTML = `
+        <div class="loading-spinner">
+            <i class="fas fa-spinner fa-spin me-2"></i>
+            載入中...
+        </div>
+    `;
+    tooltip.classList.add('show');
+    
+    try {
+        // 檢查快取
+        if (jiraDataCache.has(ticketNumber)) {
+            const cachedData = jiraDataCache.get(ticketNumber);
+            displayJiraData(tooltip, ticketNumber, cachedData);
+            return;
+        }
+        
+        // 呼叫 JIRA API
+        const response = await fetch(`/api/jira/tp/${ticketNumber}/details`);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        // 快取資料（5分鐘）
+        jiraDataCache.set(ticketNumber, data);
+        setTimeout(() => jiraDataCache.delete(ticketNumber), 5 * 60 * 1000);
+        
+        // 顯示資料
+        displayJiraData(tooltip, ticketNumber, data);
+        
+    } catch (error) {
+        console.error('載入 JIRA 資料失敗:', error);
+        tooltip.innerHTML = `
+            <div class="error-message">
+                <i class="fas fa-exclamation-triangle me-2"></i>
+                載入失敗，請稍後再試
+            </div>
+        `;
+    }
+}
+
+// 隱藏 JIRA 預覽（延遲機制避免誤觸發）
+let hideTooltipTimer = null;
+
+function hideJiraPreview() {
+    // 設定延遲隱藏，讓用戶有時間移動到 tooltip 上
+    hideTooltipTimer = setTimeout(() => {
+        const tooltip = document.getElementById('jira-preview-tooltip');
+        if (tooltip) {
+            tooltip.classList.remove('show');
+        }
+    }, 150); // 150ms 延遲
+}
+
+// 取消隱藏 tooltip（用戶移動到 tooltip 上時）
+function cancelHideTooltip() {
+    if (hideTooltipTimer) {
+        clearTimeout(hideTooltipTimer);
+        hideTooltipTimer = null;
+    }
+}
+
+// 顯示 JIRA 資料
+function displayJiraData(tooltip, ticketNumber, data) {
+    // 安全地獲取狀態文字 - status 可能是物件或字串
+    let statusText = 'unknown';
+    if (data.status) {
+        if (typeof data.status === 'object' && data.status.name) {
+            statusText = data.status.name;
+        } else if (typeof data.status === 'string') {
+            statusText = data.status;
+        }
+    }
+    
+    const statusClass = getStatusClass(statusText);
+    
+    // 安全地獲取負責人資訊 - assignee 也可能是物件
+    let assigneeDisplay = '未指派';
+    if (data.assignee) {
+        if (typeof data.assignee === 'object') {
+            assigneeDisplay = data.assignee.display_name || data.assignee.displayName || '未指派';
+        } else if (typeof data.assignee === 'string') {
+            assigneeDisplay = data.assignee;
+        }
+    }
+    
+    tooltip.innerHTML = `
+        <div class="tcg-tooltip-header">
+            <div class="tcg-ticket-info">
+                <span class="tcg-ticket-number">${ticketNumber}</span>
+                <span class="tcg-ticket-status ${statusClass}">${statusText || 'Unknown'}</span>
+            </div>
+        </div>
+        
+        <div class="tcg-ticket-content">
+            <div class="tcg-ticket-title">${data.summary || '無標題'}</div>
+            
+            <div class="tcg-ticket-meta">
+                <div class="tcg-assignee">
+                    <span class="tcg-label">負責人:</span>
+                    <span class="tcg-value">${assigneeDisplay}</span>
+                </div>
+                ${data.priority ? `
+                <div class="tcg-priority">
+                    <span class="tcg-label">優先級:</span>
+                    <span class="tcg-value">${typeof data.priority === 'object' ? (data.priority.name || '未設定') : data.priority}</span>
+                </div>
+                ` : ''}
+            </div>
+        </div>
+        
+        <div class="tcg-tooltip-footer">
+            <a href="${data.url || '#'}" target="_blank" class="tcg-jira-link">
+                <i class="fas fa-external-link-alt me-1"></i>
+                在 JIRA 中檢視
+            </a>
+        </div>
+    `;
+}
+
+// 根據狀態獲取 CSS 類別
+function getStatusClass(status) {
+    // 安全檢查：確保 status 是字符串
+    if (!status || typeof status !== 'string') {
+        return 'status-todo';
+    }
+    
+    const statusLower = status.toLowerCase();
+    if (statusLower.includes('done') || statusLower.includes('完成')) {
+        return 'status-done';
+    } else if (statusLower.includes('progress') || statusLower.includes('進行')) {
+        return 'status-in-progress';
+    } else {
+        return 'status-todo';
+    }
+}
+
+// 定位 tooltip
+function positionTooltip(tooltip, targetElement) {
+    const targetRect = targetElement.getBoundingClientRect();
+    
+    // 臨時顯示 tooltip 以獲得正確尺寸
+    const wasVisible = tooltip.classList.contains('show');
+    if (!wasVisible) {
+        tooltip.style.visibility = 'hidden';
+        tooltip.style.opacity = '1';
+        tooltip.classList.add('show');
+    }
+    
+    const tooltipRect = tooltip.getBoundingClientRect();
+    const windowWidth = window.innerWidth;
+    const windowHeight = window.innerHeight;
+    
+    // 如果之前是隱藏的，恢復隱藏狀態
+    if (!wasVisible) {
+        tooltip.classList.remove('show');
+        tooltip.style.visibility = '';
+        tooltip.style.opacity = '';
+    }
+    
+    // 預設放在目標元素下方
+    let left = targetRect.left + (targetRect.width / 2) - (tooltipRect.width / 2);
+    let top = targetRect.bottom + 8;
+    
+    // 調整水平位置避免超出視窗
+    if (left < 8) {
+        left = 8;
+    } else if (left + tooltipRect.width > windowWidth - 8) {
+        left = windowWidth - tooltipRect.width - 8;
+    }
+    
+    // 調整垂直位置避免超出視窗
+    if (top + tooltipRect.height > windowHeight - 8) {
+        top = targetRect.top - tooltipRect.height - 8;
+    }
+    
+    tooltip.style.left = `${left}px`;
+    tooltip.style.top = `${top}px`;
+}
+
+// 開啟 JIRA 票號
+function openJiraTicket(ticketNumber) {
+    // 嘗試從快取獲取 URL，否則使用預設格式
+    const cachedData = jiraDataCache.get(ticketNumber);
+    if (cachedData && cachedData.url) {
+        window.open(cachedData.url, '_blank');
+        return;
+    }
+    
+    // 使用 API 獲取正確的 JIRA URL
+    fetch(`/api/jira/tp/${ticketNumber}/details`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.url) {
+                window.open(data.url, '_blank');
+            } else {
+                console.error('無法獲取 JIRA URL');
+            }
+        })
+        .catch(error => {
+            console.error('開啟 JIRA 票號失敗:', error);
+        });
+}
+
+// === T022 JIRA 整合工具函數 ===
+
+// 獲取 TP 票號詳情
+async function fetchTPDetails(ticketNumber) {
+    try {
+        // 檢查快取
+        if (jiraDataCache.has(ticketNumber)) {
+            return jiraDataCache.get(ticketNumber);
+        }
+        
+        // 呼叫 JIRA API
+        const response = await fetch(`/api/jira/tp/${ticketNumber}/details`);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+        
+        const data = await response.json();
+        
+        // 快取資料（5分鐘）
+        jiraDataCache.set(ticketNumber, data);
+        setTimeout(() => jiraDataCache.delete(ticketNumber), 5 * 60 * 1000);
+        
+        return data;
+        
+    } catch (error) {
+        console.error('獲取 JIRA 資料失敗:', error);
+        throw error;
+    }
+}
+
+// 顯示 TP 票號預覽（T022 兼容介面）
+async function showTPPreview(element, ticketNumber) {
+    // 創建兼容的 event 物件
+    const fakeEvent = {
+        currentTarget: element
+    };
+    
+    // 使用現有的 showJiraPreview 函數
+    return showJiraPreview(fakeEvent, ticketNumber);
+}
+
+// 開啟 JIRA 連結（T022 別名函數）
+function openJiraLink(ticketNumber) {
+    return openJiraTicket(ticketNumber);
+}
+
+// === Modal 表單驗證系統 ===
+
+// 綜合表單驗證函數
+function validateTestRunConfigForm() {
+    const errors = [];
+    
+    // 1. 必填欄位驗證
+    const configName = document.getElementById('configName').value.trim();
+    if (!configName) {
+        errors.push({
+            field: 'configName',
+            message: '測試執行配置名稱為必填欄位',
+            type: 'required'
+        });
+    } else if (configName.length < 2) {
+        errors.push({
+            field: 'configName',
+            message: '配置名稱至少需要2個字元',
+            type: 'minLength'
+        });
+    } else if (configName.length > 100) {
+        errors.push({
+            field: 'configName',
+            message: '配置名稱不能超過100個字元',
+            type: 'maxLength'
+        });
+    }
+    
+    // 2. TP 票號綜合驗證
+    const tpTickets = getCurrentTpTickets();
+    const tpValidationResult = validateAllTpTickets(tpTickets);
+    if (!tpValidationResult.isValid) {
+        errors.push(...tpValidationResult.errors);
+    }
+    
+    // 3. 可選欄位格式驗證
+    const description = document.getElementById('configDescription').value.trim();
+    if (description && description.length > 1000) {
+        errors.push({
+            field: 'configDescription',
+            message: '描述不能超過1000個字元',
+            type: 'maxLength'
+        });
+    }
+    
+    const testEnvironment = document.getElementById('testEnvironment').value.trim();
+    if (testEnvironment && testEnvironment.length > 100) {
+        errors.push({
+            field: 'testEnvironment',
+            message: '測試環境名稱不能超過100個字元',
+            type: 'maxLength'
+        });
+    }
+    
+    const buildNumber = document.getElementById('buildNumber').value.trim();
+    if (buildNumber && buildNumber.length > 100) {
+        errors.push({
+            field: 'buildNumber',
+            message: '建置版本號不能超過100個字元',
+            type: 'maxLength'
+        });
+    }
+    
+    return {
+        isValid: errors.length === 0,
+        errors: errors
+    };
+}
+
+// 驗證所有 TP 票號
+function validateAllTpTickets(tpTickets) {
+    const errors = [];
+    
+    if (tpTickets.length > 100) {
+        errors.push({
+            field: 'tpTickets',
+            message: 'TP 票號數量不能超過100個',
+            type: 'maxCount'
+        });
+    }
+    
+    // 驗證每個票號格式
+    const invalidTickets = [];
+    const duplicateTickets = [];
+    const ticketCounts = {};
+    
+    tpTickets.forEach(ticket => {
+        // 格式驗證
+        if (!validateTpTicketFormat(ticket)) {
+            invalidTickets.push(ticket);
+        }
+        
+        // 重複檢查
+        if (ticketCounts[ticket]) {
+            duplicateTickets.push(ticket);
+        } else {
+            ticketCounts[ticket] = 1;
+        }
+    });
+    
+    if (invalidTickets.length > 0) {
+        errors.push({
+            field: 'tpTickets',
+            message: `以下 TP 票號格式無效：${invalidTickets.join(', ')}`,
+            type: 'invalidFormat',
+            details: invalidTickets
+        });
+    }
+    
+    if (duplicateTickets.length > 0) {
+        errors.push({
+            field: 'tpTickets',
+            message: `發現重複的 TP 票號：${duplicateTickets.join(', ')}`,
+            type: 'duplicate',
+            details: duplicateTickets
+        });
+    }
+    
+    return {
+        isValid: errors.length === 0,
+        errors: errors
+    };
+}
+
+// 顯示表單驗證錯誤
+function showFormValidationError(validationResult) {
+    if (validationResult.errors.length === 0) return;
+    
+    const firstError = validationResult.errors[0];
+    
+    // 清除所有現有的錯誤樣式
+    clearAllFormErrors();
+    
+    // 根據錯誤類型處理
+    if (firstError.field === 'tpTickets') {
+        // TP 票號相關錯誤
+        showTpInputError(firstError.message);
+        const tpInput = document.getElementById('relatedTpTicketsInput');
+        if (tpInput) tpInput.focus();
+    } else {
+        // 其他欄位錯誤
+        const fieldElement = document.getElementById(firstError.field);
+        if (fieldElement) {
+            fieldElement.classList.add('is-invalid');
+            fieldElement.focus();
+            
+            // 創建或更新錯誤訊息
+            let errorElement = document.getElementById(`${firstError.field}Error`);
+            if (!errorElement) {
+                errorElement = document.createElement('div');
+                errorElement.id = `${firstError.field}Error`;
+                errorElement.className = 'invalid-feedback d-block';
+                fieldElement.parentNode.appendChild(errorElement);
+            }
+            errorElement.textContent = firstError.message;
+            
+            // 自動清除錯誤（當用戶開始輸入時）
+            const clearErrorHandler = () => {
+                fieldElement.classList.remove('is-invalid');
+                if (errorElement) errorElement.remove();
+                fieldElement.removeEventListener('input', clearErrorHandler);
+            };
+            fieldElement.addEventListener('input', clearErrorHandler);
+        }
+    }
+    
+    // 顯示綜合錯誤訊息（如果有多個錯誤）
+    if (validationResult.errors.length > 1) {
+        const remainingErrors = validationResult.errors.length - 1;
+        setTimeout(() => {
+            const message = `發現 ${validationResult.errors.length} 個驗證錯誤，請檢查表單內容`;
+            showNotification(message, 'warning');
+        }, 100);
+    }
+}
+
+// 清除所有表單錯誤樣式
+function clearAllFormErrors() {
+    // 清除一般欄位錯誤
+    const errorFields = ['configName', 'configDescription', 'testEnvironment', 'buildNumber'];
+    errorFields.forEach(fieldId => {
+        const fieldElement = document.getElementById(fieldId);
+        const errorElement = document.getElementById(`${fieldId}Error`);
+        
+        if (fieldElement) {
+            fieldElement.classList.remove('is-invalid');
+        }
+        if (errorElement) {
+            errorElement.remove();
+        }
+    });
+    
+    // 清除 TP 票號錯誤
+    clearTpInputError();
+}
+
+// 顯示通知訊息
+function showNotification(message, type = 'info') {
+    // 簡單的通知實現，可以後續改進
+    console.log(`[${type.toUpperCase()}] ${message}`);
+    
+    // 如果有現有的通知系統，可以在這裡整合
+    // 目前使用 console.log 作為後備方案
 }
 </script>
 {% endblock %}
