@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
-資料庫初始化腳本
+資料庫初始化腳本 - 現代化版本
 
-創建測試案例管理系統所需的資料庫表格。
+使用新的遷移系統來安全地初始化和更新資料庫結構。
+此腳本是 migrate.py 的簡化封裝，專門用於快速初始化。
 """
 
 import os
@@ -13,56 +14,85 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 from app.database import engine
-from app.models.database_models import Base
 
 def init_database():
-    """初始化資料庫表格"""
-    print("正在創建資料庫表格...")
+    """使用現代化遷移系統初始化資料庫"""
+    print("=" * 50)
+    print("🗃️  資料庫初始化系統 (基於現代化遷移)")
+    print("=" * 50)
     
-    # 創建所有表格
+    try:
+        # 導入現代化遷移系統
+        from migrate import DatabaseMigrator
+        
+        # 創建遷移器
+        migrator = DatabaseMigrator(engine)
+        
+        print("🚀 開始資料庫初始化...")
+        
+        # 執行所有遷移
+        migrator.run_all_migrations()
+        
+        # 顯示最終統計
+        print("\n📊 初始化完成統計:")
+        stats = migrator.get_database_stats()
+        print(f"  總表格數: {stats['tables']}")
+        
+        # 顯示重要表格的詳細資訊
+        important_tables = ['teams', 'test_run_configs', 'test_run_items', 
+                          'test_run_item_result_history', 'lark_users', 'lark_departments']
+        
+        print("\n重要表格狀態:")
+        for table in important_tables:
+            if table in stats['table_details']:
+                details = stats['table_details'][table]
+                if 'error' not in details:
+                    print(f"  ✅ {table}: {details['rows']} 筆記錄, {details['columns']} 欄位")
+                else:
+                    print(f"  ❌ {table}: {details['error']}")
+            else:
+                print(f"  ⚠️ {table}: 表格不存在")
+        
+        print("\n✅ 資料庫初始化完成!")
+        print(f"📂 資料庫位置: {engine.url}")
+        print("\n💡 提示:")
+        print("  - 使用 'python migrate.py' 來執行完整的遷移程序")
+        print("  - 遷移歷史記錄保存在 migration_history 表格中")
+        
+        return True
+        
+    except ImportError as e:
+        print(f"❌ 無法導入遷移系統: {e}")
+        print("請確保 migrate.py 文件存在且可以正常運行")
+        return False
+        
+    except Exception as e:
+        print(f"❌ 初始化過程中發生錯誤: {e}")
+        print("\n🔄 回退選項:")
+        print("  - 檢查資料庫連接是否正常")
+        print("  - 使用 'python migrate.py' 來診斷問題")
+        return False
+
+def legacy_init():
+    """舊版本的簡單初始化方法（僅用於緊急情況）"""
+    print("⚠️ 使用舊版本初始化方法...")
+    
+    from app.models.database_models import Base
     Base.metadata.create_all(bind=engine)
     
-    print("資料庫表格創建完成！")
-    
-    # 顯示創建的表格
     from sqlalchemy import inspect
     inspector = inspect(engine)
     tables = inspector.get_table_names()
     
-    print("\n創建的表格:")
+    print(f"創建了 {len(tables)} 個表格:")
     for table in tables:
         print(f"  - {table}")
-        # 檢查並列出重要欄位
-        if table == "test_run_items":
-            columns = inspector.get_columns(table)
-            print(f"    重要欄位:")
-            for col in columns:
-                if col['name'] in ['id', 'test_case_number', 'bug_tickets_json']:
-                    print(f"      - {col['name']} ({col['type']})")
     
-    # 執行資料庫結構更新（確保 bug_tickets_json 欄位存在）
-    print("\n🔄 檢查資料庫結構更新...")
-    try:
-        # 動態導入修正檔模組
-        import importlib.util
-        spec = importlib.util.spec_from_file_location(
-            "add_bug_tickets_column", 
-            "tools/add_bug_tickets_column.py"
-        )
-        module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
-        
-        # 執行修正檔
-        result = module.main()
-        if result == 0:
-            print("✅ 資料庫結構檢查完成")
-        else:
-            print("⚠️ 資料庫結構檢查時發現問題，但不影響初始化")
-    except Exception as e:
-        print(f"⚠️ 注意：無法執行結構檢查 - {e}")
-        print("建議手動執行: python tools/add_bug_tickets_column.py")
-    
-    return True
+    print("⚠️ 注意: 舊版本不包含遷移追蹤和備份功能")
 
 if __name__ == "__main__":
-    init_database()
+    success = init_database()
+    if not success:
+        print("\n🆘 如果需要緊急初始化，可以嘗試:")
+        print("   python -c \"from database_init import legacy_init; legacy_init()\"")
+        sys.exit(1)

@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime
+import io
 
 from app.database import get_db
 from app.models.test_run import (
@@ -631,4 +632,59 @@ async def batch_update_test_results(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"批次更新測試結果失敗: {str(e)}"
+        )
+
+
+@router.get("/{config_id}/generate-pdf")
+async def generate_pdf_report(
+    team_id: int,
+    config_id: int,
+    db: Session = Depends(get_db)
+):
+    """生成 Test Run PDF 報告"""
+    from fastapi.responses import StreamingResponse
+    from ..services.pdf_report_service import PDFReportService
+    
+    try:
+        # 驗證團隊和配置存在（不需要 Lark API 驗證）
+        team = db.query(TeamDB).filter(TeamDB.id == team_id).first()
+        if not team:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"找不到團隊 ID {team_id}"
+            )
+        
+        config = db.query(TestRunConfigDB).filter(
+            TestRunConfigDB.id == config_id,
+            TestRunConfigDB.team_id == team_id
+        ).first()
+        if not config:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"找不到測試執行配置 ID {config_id}"
+            )
+        
+        # 生成 PDF
+        pdf_service = PDFReportService(db)
+        pdf_content = pdf_service.generate_test_run_report(team_id, config_id)
+        
+        # 準備檔案名稱（避免中文字元編碼問題）
+        safe_name = config.name.encode('ascii', 'ignore').decode('ascii') if config.name else 'report'
+        filename = f"test_run_report_{safe_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
+        
+        return StreamingResponse(
+            io.BytesIO(pdf_content),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename=\"{filename}\""}
+        )
+        
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"PDF 生成失敗: {str(e)}"
         )

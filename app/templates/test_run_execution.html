@@ -4664,6 +4664,13 @@ async function renderTestRunCharts(statsData) {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                animation: {
+                    duration: 1500,
+                    easing: 'easeInOutQuart',
+                    onComplete: function() {
+                        console.log('圓餅圖動畫完成');
+                    }
+                },
                 plugins: {
                     legend: {
                         position: 'bottom',
@@ -4733,6 +4740,13 @@ async function renderTestRunCharts(statsData) {
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                animation: {
+                    duration: 1200,
+                    easing: 'easeInOutQuart',
+                    onComplete: function() {
+                        console.log('長條圖動畫完成');
+                    }
+                },
                 plugins: {
                     legend: {
                         display: false
@@ -4799,36 +4813,134 @@ async function convertChartsToImages() {
     
     console.log(`找到 ${canvasElements.length} 個圖表需要轉換`);
     
-    canvasElements.forEach((canvas, index) => {
-        try {
-            // 等待圖表完全渲染
-            const chart = Chart.getChart(canvas);
-            if (chart) {
-                // 獲取高品質的圖片資料
-                const imageData = canvas.toDataURL('image/png', 1.0);
-                
-                // 創建 img 元素替換 canvas
-                const img = document.createElement('img');
-                img.src = imageData;
-                img.style.width = canvas.style.width || '100%';
-                img.style.height = canvas.style.height || '400px';
-                img.style.maxWidth = '100%';
-                img.classList.add('chart-image-replacement');
-                
-                // 保存原始 canvas 以便後續恢復
-                canvas.style.display = 'none';
-                canvas.dataset.originalDisplay = 'block';
-                canvas.parentNode.insertBefore(img, canvas.nextSibling);
-                
-                conversions.push({ canvas, img, chart });
-                console.log(`圖表 ${index + 1} 轉換成功`);
+    // 首先等待所有圖表完全渲染（包括動畫和插件）
+    await waitForAllChartsToRender(canvasElements);
+    console.log('所有圖表渲染完成，開始轉換...');
+    
+    // 使用 Promise.all 確保所有轉換都完成
+    const conversionPromises = Array.from(canvasElements).map((canvas, index) => {
+        return new Promise(async (resolve) => {
+            try {
+                // 確認圖表存在且已渲染
+                const chart = Chart.getChart(canvas);
+                if (chart) {
+                    // 確保圖表處於靜止狀態（禁用動畫效果）
+                    const originalAnimation = chart.options.animation;
+                    chart.options.animation = false;
+                    chart.update('none'); // 立即更新，不使用動畫
+                    
+                    // 等待更新完成
+                    await new Promise(resolve => setTimeout(resolve, 200));
+                    
+                    // 獲取高品質的圖片資料，考慮高DPI顯示
+                    const deviceRatio = window.devicePixelRatio || 1;
+                    const imageData = canvas.toDataURL('image/png', 1.0);
+                    
+                    console.log(`圖表 ${index + 1} 轉換 - 裝置比率: ${deviceRatio}, 圖片大小: ${imageData.length}`);
+                    
+                    // 驗證圖片數據是否有效
+                    if (!imageData || imageData === 'data:,' || imageData.length < 100) {
+                        throw new Error(`圖表 ${index + 1} 轉換產生無效圖片數據`);
+                    }
+                    
+                    // 創建 img 元素替換 canvas
+                    const img = document.createElement('img');
+                    img.src = imageData;
+                    img.style.width = '100%';
+                    img.style.height = 'auto';
+                    img.style.maxWidth = '100%';
+                    img.style.display = 'block';
+                    img.classList.add('chart-image-replacement');
+                    
+                    // 等待圖片載入完成
+                    await new Promise((imgResolve) => {
+                        if (img.complete) {
+                            imgResolve();
+                        } else {
+                            img.onload = imgResolve;
+                            img.onerror = imgResolve;
+                        }
+                    });
+                    
+                    // 保存原始 canvas 以便後續恢復
+                    canvas.style.display = 'none';
+                    canvas.dataset.originalDisplay = 'block';
+                    canvas.dataset.originalAnimation = JSON.stringify(originalAnimation);
+                    canvas.parentNode.insertBefore(img, canvas.nextSibling);
+                    
+                    const conversionResult = { canvas, img, chart, originalAnimation };
+                    console.log(`圖表 ${index + 1} 轉換成功`);
+                    conversions.push(conversionResult);
+                    resolve(conversionResult);
+                } else {
+                    console.warn(`Canvas ${index + 1} 沒有對應的 Chart 實例`);
+                    resolve(null);
+                }
+            } catch (error) {
+                console.error(`圖表 ${index + 1} 轉換失敗:`, error);
+                resolve(null);
             }
-        } catch (error) {
-            console.error(`圖表 ${index + 1} 轉換失敗:`, error);
-        }
+        });
     });
     
+    // 等待所有轉換完成
+    await Promise.all(conversionPromises);
+    console.log(`完成轉換，成功轉換 ${conversions.length} 個圖表`);
+    
     return conversions;
+}
+
+// 等待所有圖表完全渲染的輔助函數
+async function waitForAllChartsToRender(canvasElements) {
+    console.log('開始等待圖表渲染完成...');
+    
+    const chartPromises = Array.from(canvasElements).map(async (canvas, index) => {
+        const chart = Chart.getChart(canvas);
+        if (chart) {
+            return waitForSingleChartRender(chart, index);
+        }
+        return Promise.resolve();
+    });
+    
+    await Promise.all(chartPromises);
+    
+    // 額外等待時間確保插件（如 DataLabels）完全渲染
+    await new Promise(resolve => setTimeout(resolve, 800));
+    console.log('所有圖表和插件渲染等待完成');
+}
+
+// 等待單個圖表渲染完成
+async function waitForSingleChartRender(chart, index) {
+    return new Promise(resolve => {
+        console.log(`等待圖表 ${index + 1} 渲染完成...`);
+        
+        // 檢查圖表是否正在動畫中
+        if (chart.isAnimating && chart.isAnimating()) {
+            console.log(`圖表 ${index + 1} 正在動畫中，等待完成...`);
+            
+            // Chart.js 3.x 使用 onAnimationComplete
+            const originalOnComplete = chart.options.animation?.onComplete;
+            chart.options.animation = chart.options.animation || {};
+            chart.options.animation.onComplete = function(context) {
+                console.log(`圖表 ${index + 1} 動畫完成`);
+                // 恢復原始回調
+                if (originalOnComplete) {
+                    originalOnComplete.call(this, context);
+                }
+                resolve();
+            };
+            
+            // 超時保護機制（3秒）
+            setTimeout(() => {
+                console.warn(`圖表 ${index + 1} 動畫等待超時，強制繼續`);
+                resolve();
+            }, 3000);
+        } else {
+            // 如果沒有動畫，短暫等待確保渲染穩定
+            console.log(`圖表 ${index + 1} 沒有動畫，直接等待渲染穩定`);
+            setTimeout(resolve, 300);
+        }
+    });
 }
 
 // PDF 下載狀態管理
@@ -4860,7 +4972,7 @@ function hidePDFLoadingState() {
 
 // 恢復 Canvas 圖表元素
 function restoreChartsFromImages(conversions) {
-    conversions.forEach(({ canvas, img }) => {
+    conversions.forEach(({ canvas, img, chart, originalAnimation }, index) => {
         try {
             // 移除替換的圖片
             if (img && img.parentNode) {
@@ -4870,6 +4982,21 @@ function restoreChartsFromImages(conversions) {
             // 恢復原始 canvas
             canvas.style.display = canvas.dataset.originalDisplay || 'block';
             delete canvas.dataset.originalDisplay;
+            
+            // 恢復原始動畫設置
+            if (chart && originalAnimation !== undefined) {
+                chart.options.animation = originalAnimation;
+                // 如果需要，重新啟用動畫
+                if (originalAnimation) {
+                    chart.update(); // 使用預設動畫重新渲染
+                }
+                console.log(`圖表 ${index + 1} 動畫設置已恢復`);
+            }
+            
+            // 清理 dataset
+            if (canvas.dataset.originalAnimation) {
+                delete canvas.dataset.originalAnimation;
+            }
         } catch (error) {
             console.error('恢復圖表時發生錯誤:', error);
         }
@@ -4877,129 +5004,69 @@ function restoreChartsFromImages(conversions) {
 }
 
 async function downloadReportAsPDF() {
-    let conversions = [];
-    let printStyles = null;
-    const elementsToHide = document.querySelectorAll('#chartsReportsModal .modal-header, #chartsReportsModal .modal-footer');
-    
     // 顯示載入狀態
     showPDFLoadingState();
     
     try {
-        console.log('開始準備 PDF 下載...');
+        console.log('開始生成 PDF 報告...');
         
-        // 1. 先隱藏不需要列印的元素
-        elementsToHide.forEach(el => el.style.display = 'none');
+        // 檢查必要參數
+        if (!currentTeamId || !currentConfigId) {
+            throw new Error('缺少必要參數：team_id 或 config_id');
+        }
         
-        // 2. 將圖表轉換為靜態圖片
-        console.log('轉換圖表為圖片...');
-        conversions = await convertChartsToImages();
-        
-        // 3. 設置優化的列印樣式（針對圖片優化）
-        printStyles = document.createElement('style');
-        printStyles.textContent = `
-            @media print {
-                body * { visibility: hidden; }
-                #chartsReportsModal, #chartsReportsModal * { visibility: visible; }
-                #chartsReportsModal { 
-                    position: fixed !important; 
-                    left: 0 !important; 
-                    top: 0 !important; 
-                    width: 100% !important; 
-                    height: 100% !important; 
-                    z-index: 999999 !important;
-                    background: white !important;
-                    overflow: visible !important;
-                }
-                .modal-dialog { 
-                    max-width: 100% !important; 
-                    margin: 0 !important; 
-                    padding: 20px !important; 
-                }
-                .chart-container { 
-                    page-break-inside: avoid; 
-                    margin-bottom: 20px !important; 
-                }
-                .chart-image-replacement {
-                    display: block !important;
-                    width: 100% !important;
-                    height: auto !important;
-                    max-width: 100% !important;
-                    margin: 0 auto !important;
-                }
-                canvas {
-                    display: none !important;
-                }
-                .card {
-                    border: 1px solid #dee2e6 !important;
-                    margin-bottom: 1rem !important;
-                }
-                .table {
-                    border-collapse: collapse !important;
-                }
-                .table td, .table th {
-                    border: 1px solid #dee2e6 !important;
-                    padding: 8px !important;
-                }
+        // 呼叫後端 API 生成 PDF
+        const response = await fetch(`/api/teams/${currentTeamId}/test-runs/${currentConfigId}/generate-pdf`, {
+            method: 'GET',
+            headers: {
+                'Accept': 'application/pdf'
             }
-        `;
-        document.head.appendChild(printStyles);
+        });
         
-        // 4. 等待圖片完全載入
-        const imgElements = document.querySelectorAll('#chartsReportsModal .chart-image-replacement');
-        await Promise.all(Array.from(imgElements).map(img => {
-            return new Promise((resolve) => {
-                if (img.complete) {
-                    resolve();
-                } else {
-                    img.onload = resolve;
-                    img.onerror = resolve; // 即使載入失敗也要繼續
-                }
-            });
-        }));
+        if (!response.ok) {
+            if (response.status === 404) {
+                throw new Error('找不到指定的 Test Run 配置');
+            } else if (response.status === 500) {
+                throw new Error('伺服器內部錯誤，請重試或聯繫管理員');
+            } else {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+        }
         
-        console.log('圖片載入完成，開始列印...');
+        // 獲取 PDF 內容
+        const pdfBlob = await response.blob();
         
-        // 5. 執行列印
-        window.print();
+        // 創建下載連結並自動下載
+        const url = window.URL.createObjectURL(pdfBlob);
+        const link = document.createElement('a');
+        link.href = url;
         
-        console.log('PDF 列印完成');
+        // 設定檔案名稱（包含時間戳記）
+        const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, '');
+        link.download = `test-run-report-${currentConfigId}-${timestamp}.pdf`;
+        
+        // 觸發下載
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        // 釋放記憶體
+        window.URL.revokeObjectURL(url);
+        
+        console.log('PDF 報告下載完成');
         
     } catch (error) {
-        console.error('PDF 下載過程中發生錯誤:', error);
+        console.error('PDF 生成錯誤:', error);
         
         // 使用 i18n 友好的錯誤提示
         const errorMessage = window.i18n ? 
             window.i18n.t('testRun.pdfGenerationFailed', {}, 'PDF 生成失敗，請重試或聯繫管理員') : 
             'PDF 生成失敗，請重試或聯繫管理員';
         
-        alert(errorMessage);
+        alert(errorMessage + '\n\n錯誤詳情：' + error.message);
     } finally {
-        // 6. 清理：恢復所有元素
-        setTimeout(() => {
-            try {
-                // 恢復載入狀態
-                hidePDFLoadingState();
-                
-                // 恢復圖表
-                if (conversions.length > 0) {
-                    restoreChartsFromImages(conversions);
-                }
-                
-                // 恢復隱藏的元素
-                elementsToHide.forEach(el => el.style.display = '');
-                
-                // 移除列印樣式
-                if (printStyles && printStyles.parentNode) {
-                    document.head.removeChild(printStyles);
-                }
-                
-                console.log('PDF 下載清理完成');
-            } catch (cleanupError) {
-                console.error('清理過程中發生錯誤:', cleanupError);
-                // 即使清理失敗也要恢復載入狀態
-                hidePDFLoadingState();
-            }
-        }, 1000);
+        // 恢復載入狀態
+        hidePDFLoadingState();
     }
 }
 
@@ -5041,7 +5108,7 @@ async function downloadReportAsPDF() {
                 </div>
                 
                 <!-- 基本資訊區域 -->
-                <div class="row mb-4">
+                <div class="row mb-4 report-section">
                     <div class="col-md-6">
                         <div class="card">
                             <div class="card-body">
@@ -5097,7 +5164,7 @@ async function downloadReportAsPDF() {
                 </div>
                 
                 <!-- 圖表區域 -->
-                <div class="row">
+                <div class="row report-section">
                     <div class="col-lg-6 mb-4">
                         <div class="card chart-container">
                             <div class="card-body">
@@ -5128,7 +5195,7 @@ async function downloadReportAsPDF() {
                 </div>
                 
                 <!-- 統計卡片 -->
-                <div class="row">
+                <div class="row report-section">
                     <div class="col-md-3 mb-3">
                         <div class="card text-center border-left-success">
                             <div class="card-body">
