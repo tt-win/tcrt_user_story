@@ -1752,7 +1752,7 @@ function createItemRow(item, index, canUpdate) {
     const resultText = getResultText(item.test_result);
     const executedAt = item.executed_at ? AppUtils.formatDate(item.executed_at, 'datetime') : '-';
     const assigneeName = (item.assignee_name || (item.assignee && item.assignee.name)) || '-';
-    const canEditAssignee = testRunConfig && testRunConfig.status !== 'completed';
+    const canEditAssignee = testRunConfig && testRunConfig.status !== 'completed' && testRunConfig.status !== 'archived';
     const showCheckbox = shouldShowCheckbox(testRunConfig ? testRunConfig.status : 'draft');
     const hasExecutionHistory = item.executed_at !== null && item.executed_at !== undefined;
     
@@ -2824,6 +2824,15 @@ function displayTestCaseDetail(testCase) {
 
     // 初始化 AssigneeSelector
     initializeTestCaseAssigneeSelector(testCase);
+
+    // 控制 Bug Tickets 新增按鈕狀態
+    const addBugTicketBtn = document.getElementById('addBugTicketBtn');
+    if (addBugTicketBtn && testRunConfig) {
+        const canAddBugTickets = testRunConfig.status !== 'completed' && testRunConfig.status !== 'archived';
+        addBugTicketBtn.disabled = !canAddBugTickets;
+        addBugTicketBtn.style.opacity = canAddBugTickets ? '1' : '0.3';
+        addBugTicketBtn.style.cursor = canAddBugTickets ? 'pointer' : 'not-allowed';
+    }
 
     // 載入 Bug Tickets
     const testRunItem = (testRunItems || []).find(item => item.test_case_number === testCase.test_case_number);
@@ -3918,6 +3927,11 @@ function bindBugTicketEvents() {
     const addBugTicketBtn = document.getElementById('addBugTicketBtn');
     if (addBugTicketBtn) {
         addBugTicketBtn.addEventListener('click', () => {
+            // 檢查按鈕是否被禁用
+            if (addBugTicketBtn.disabled) {
+                return;
+            }
+            
             initBugTicketModal();
             currentItemIdForBugTicket = getCurrentItemId();
             if (currentItemIdForBugTicket) {
