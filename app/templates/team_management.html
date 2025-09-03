@@ -448,14 +448,17 @@ function showLoading() {
 }
 
 function hideLoading() {
+    // 僅隱藏載入狀態，實際可見區域由 renderTeams()/showNoTeams() 控制
     document.getElementById('loading-state').style.display = 'none';
-    document.getElementById('teams-section').style.display = 'block';
 }
 
 function showNoTeams() {
     document.getElementById('loading-state').style.display = 'none';
     document.getElementById('teams-section').style.display = 'none';
     document.getElementById('no-teams-section').style.display = 'block';
+    // 清空舊的卡片內容，避免殘留
+    const container = document.getElementById('teams-container');
+    if (container) container.innerHTML = '';
 }
 
 function showTeamsList() {
@@ -733,6 +736,14 @@ async function performDeleteTeam(teamId) {
         }
         const successMsg = window.i18n ? window.i18n.t('team.teamDeleted') : '團隊刪除成功';
         AppUtils.showSuccess(successMsg);
+        // 若刪除的是目前選取的團隊，清除選取並隱藏徽章
+        try {
+            const current = AppUtils.getCurrentTeam && AppUtils.getCurrentTeam();
+            if (current && current.id === teamId && AppUtils.clearCurrentTeam) {
+                AppUtils.clearCurrentTeam();
+                AppUtils.hideTeamNameBadge && AppUtils.hideTeamNameBadge();
+            }
+        } catch (_) {}
         await loadTeams();
     } catch (error) {
         console.error('Delete team failed:', error);

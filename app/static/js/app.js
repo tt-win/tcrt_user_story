@@ -275,6 +275,29 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // 顯示團隊名稱標籤
     AppUtils.updateTeamNameBadge();
+    // 背景驗證當前團隊是否仍存在，避免顯示過期的徽章
+    (async () => {
+        try {
+            const team = AppUtils.getCurrentTeam();
+            if (!team || !team.id) {
+                AppUtils.hideTeamNameBadge();
+                return;
+            }
+            const resp = await fetch(`/api/teams/${team.id}`);
+            if (!resp.ok) {
+                // 團隊不存在或取得失敗，清除並隱藏徽章
+                AppUtils.clearCurrentTeam();
+                AppUtils.hideTeamNameBadge();
+            } else {
+                // 團隊仍存在，確保徽章內容正確
+                AppUtils.updateTeamNameBadge();
+            }
+        } catch (e) {
+            // 網路或其他錯誤時，不干擾頁面；若沒有選擇團隊則維持隱藏
+            const team = AppUtils.getCurrentTeam();
+            if (!team || !team.id) AppUtils.hideTeamNameBadge();
+        }
+    })();
 
     // 初始化翻譯監視器
     if (!translationObserver) {

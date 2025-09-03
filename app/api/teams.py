@@ -9,7 +9,13 @@ from pydantic import BaseModel
 
 from app.database import get_db
 from app.models.team import Team, TeamCreate, TeamUpdate, TeamResponse
-from app.models.database_models import Team as TeamDB
+from app.models.database_models import (
+    Team as TeamDB,
+    TestRunConfig as TestRunConfigDB,
+    TestRunItem as TestRunItemDB,
+    TestRunItemResultHistory as ResultHistoryDB,
+    SyncHistory as SyncHistoryDB,
+)
 from app.services.lark_client import LarkClient
 from app.config import settings
 
@@ -227,14 +233,29 @@ async def update_team(team_id: int, team_update: TeamUpdate, db: Session = Depen
 
 @router.delete("/{team_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_team(team_id: int, db: Session = Depends(get_db)):
-    """刪除指定的團隊"""
+    """刪除指定的團隊，並清理相關資料避免參照完整性錯誤"""
     team_db = db.query(TeamDB).filter(TeamDB.id == team_id).first()
-    
+
     if not team_db:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"找不到團隊 ID {team_id}"
         )
-    
-    db.delete(team_db)
-    db.commit()
+
+    try:
+        # 先刪除與該團隊相關的歷程與本地項目與配置，避免 FK 參照錯誤
+        # 1) 測試結果歷程
+        db.query(ResultHistoryDB).filter(ResultHistoryDB.team_id == team_id).delete(synchronize_session=False)
+        # 2) 本地測試執行項目
+        db.query(TestRunItemDB).filter(TestRunItemDB.team_id == team_id).delete(synchronize_session=False)
+        # 3) 測試執行配置
+        db.query(TestRunConfigDB).filter(TestRunConfigDB.team_id == team_id).delete(synchronize_session=False)
+        # 4) 同步歷史
+        db.query(SyncHistoryDB).filter(SyncHistoryDB.team_id == team_id).delete(synchronize_session=False)
+
+        # 最後刪除團隊
+        db.delete(team_db)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"刪除團隊失敗：{str(e)}")
