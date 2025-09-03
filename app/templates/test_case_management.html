@@ -660,6 +660,9 @@ html, body { height: 100%; overflow: hidden; }
                             <!-- 操作按鈕 -->
                             <div class="d-flex gap-2">
                                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">取消</button>
+                                <button type="button" class="btn btn-outline-success" id="cloneAndAddNextBtn" style="display: none;">
+                                    <i class="fas fa-clone me-2"></i><span data-i18n="testCase.cloneAndAddNext">複製並新增下一筆</span>
+                                </button>
                                 <button type="button" class="btn btn-success" id="saveAndAddNextBtn" disabled style="display: none;">
                                     <i class="fas fa-plus me-2"></i><span data-i18n="form.saveAndNext">儲存並新增下一筆</span>
                                 </button>
@@ -1698,6 +1701,9 @@ function bindEvents() {
     
     // 儲存並新增下一筆按鈕
     document.getElementById('saveAndAddNextBtn').addEventListener('click', saveAndAddNext);
+    
+    // 複製並新增下一筆按鈕
+    document.getElementById('cloneAndAddNextBtn').addEventListener('click', showCloneSelector);
     // 啟用「/」快速搜尋
     setupQuickSearch_TCM();
 }
@@ -1995,6 +2001,276 @@ function copyTestCase(id) {
     try { setEditorMode('split'); } catch (_) {}
 }
 
+// 顯示複製選擇器：在 Modal 中選擇要複製的測試案例
+function showCloneSelector() {
+    if (testCases.length === 0) {
+        const message = window.i18n ? window.i18n.t('errors.noTestCasesAvailable') : '沒有可用的測試案例';
+        AppUtils.showError(message);
+        return;
+    }
+    
+    // 創建動態 modal 來選擇測試案例
+    const modalId = 'cloneSelectorModal';
+    const existingModal = document.getElementById(modalId);
+    if (existingModal) {
+        existingModal.remove();
+    }
+    
+    // 創建選擇器 modal HTML
+    const modalHtml = `
+        <div class="modal fade" id="${modalId}" tabindex="-1" aria-hidden="true">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">
+                            <i class="fas fa-clone me-2"></i>
+                            ${window.i18n ? window.i18n.t('testCase.cloneAndAddNext') : '複製並新增下一筆'}
+                        </h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="mb-3">
+                            <label class="form-label">${window.i18n ? window.i18n.t('testCase.selectSourceTestCase') : '選擇要複製的測試案例'}</label>
+                            <select class="form-select" id="cloneSourceSelect">
+                                <option value="">${window.i18n ? window.i18n.t('common.pleaseSelect') : '請選擇...'}</option>
+                                ${testCases.map(tc => 
+                                    `<option value="${tc.record_id}">${tc.test_case_number || 'N/A'} - ${tc.title || 'No Title'}</option>`
+                                ).join('')}
+                            </select>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                            ${window.i18n ? window.i18n.t('common.cancel') : '取消'}
+                        </button>
+                        <button type="button" class="btn btn-primary" id="confirmCloneBtn">
+                            <i class="fas fa-check me-2"></i>
+                            ${window.i18n ? window.i18n.t('common.confirm') : '確認'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    // 將 modal 添加到頁面
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    
+    // 初始化 modal
+    const cloneSelectorModal = new bootstrap.Modal(document.getElementById(modalId));
+    
+    // 綁定確認按鈕事件
+    document.getElementById('confirmCloneBtn').addEventListener('click', function() {
+        const selectedId = document.getElementById('cloneSourceSelect').value;
+        if (!selectedId) {
+            AppUtils.showError(window.i18n ? window.i18n.t('errors.pleaseSelectTestCase') : '請選擇測試案例');
+            return;
+        }
+        
+        // 檢查是否有未儲存的變更
+        if (hasUnsavedChanges()) {
+            // 關閉選擇器 modal 先
+            cloneSelectorModal.hide();
+            
+            // 顯示儲存確認對話框
+            const confirmTitle = window.i18n ? window.i18n.t('common.confirm') : '確認';
+            const confirmMessage = window.i18n ? window.i18n.t('testCase.unsavedChangesPrompt') : '您有未儲存的變更，是否要先儲存？';
+            const saveAndContinue = window.i18n ? window.i18n.t('testCase.saveAndContinue') : '儲存並繼續';
+            const continueWithoutSave = window.i18n ? window.i18n.t('testCase.continueWithoutSave') : '不儲存直接繼續';
+            const cancelAction = window.i18n ? window.i18n.t('common.cancel') : '取消';
+            
+            const confirmModalHtml = `
+                <div class="modal fade" id="saveConfirmModal" tabindex="-1" aria-hidden="true">
+                    <div class="modal-dialog modal-dialog-centered">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title">
+                                    <i class="fas fa-exclamation-triangle text-warning me-2"></i>
+                                    ${confirmTitle}
+                                </h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <p>${confirmMessage}</p>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">${cancelAction}</button>
+                                <button type="button" class="btn btn-outline-danger" id="continueWithoutSaveBtn">${continueWithoutSave}</button>
+                                <button type="button" class="btn btn-primary" id="saveAndContinueBtn">
+                                    <i class="fas fa-save me-2"></i>${saveAndContinue}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // 移除舊的確認 modal
+            const existingConfirmModal = document.getElementById('saveConfirmModal');
+            if (existingConfirmModal) {
+                existingConfirmModal.remove();
+            }
+            
+            // 添加確認 modal
+            document.body.insertAdjacentHTML('beforeend', confirmModalHtml);
+            const saveConfirmModal = new bootstrap.Modal(document.getElementById('saveConfirmModal'));
+            saveConfirmModal.show();
+            
+            // 綁定按鈕事件
+            document.getElementById('saveAndContinueBtn').addEventListener('click', async function() {
+                saveConfirmModal.hide();
+                
+                // 嘗試儲存當前表單
+                try {
+                    const saveBtn = document.getElementById('saveTestCaseBtn');
+                    if (saveBtn) {
+                        saveBtn.click();
+                        
+                        // 等待儲存完成，然後執行複製
+                        setTimeout(() => {
+                            executeCloneAction(selectedId);
+                        }, 500);
+                    }
+                } catch (error) {
+                    console.error('儲存失敗:', error);
+                    AppUtils.showError(window.i18n ? window.i18n.t('errors.saveFailed') : '儲存失敗');
+                }
+            });
+            
+            document.getElementById('continueWithoutSaveBtn').addEventListener('click', function() {
+                saveConfirmModal.hide();
+                executeCloneAction(selectedId);
+            });
+            
+        } else {
+            // 沒有未儲存變更，直接執行複製
+            executeCloneAction(selectedId);
+        }
+    });
+    
+    // 執行複製操作的共用函數
+    function executeCloneAction(selectedId) {
+        // 關閉選擇器 modal（如果還開著）
+        if (cloneSelectorModal) {
+            cloneSelectorModal.hide();
+        }
+        
+        // 關閉當前測試案例 modal
+        const testCaseModal = document.getElementById('testCaseModal');
+        const testCaseModalInstance = bootstrap.Modal.getInstance(testCaseModal);
+        if (testCaseModalInstance) {
+            testCaseModalInstance.hide();
+        }
+        
+        // 延遲執行複製，確保 modal 完全關閉
+        setTimeout(() => {
+            cloneAndAddNext(selectedId);
+        }, 300);
+    }
+    
+    // Modal 關閉後清理
+    document.getElementById(modalId).addEventListener('hidden.bs.modal', function() {
+        this.remove();
+    });
+    
+    // 顯示 modal
+    cloneSelectorModal.show();
+}
+
+// 複製並新增下一筆 Test Case：基於 copyTestCase 邏輯，但保持「儲存並新增下一筆」功能
+function cloneAndAddNext(id) {
+    const source = testCases.find(tc => tc.record_id === id);
+    if (!source) return;
+    
+    // 先以新增模式打開，確保狀態正確（不帶 record_id，附件清空，按鈕狀態正確）
+    showTestCaseModal(null);
+
+    // 設定 Modal 標題為「複製並新增下一筆測試案例」
+    const modalTitle = document.getElementById('testCaseModalTitle');
+    if (modalTitle) {
+        const cloneText = window.i18n ? window.i18n.t('testCase.cloneAndAddNext') : '複製並新增下一筆';
+        const baseTitle = window.i18n ? window.i18n.t('testCase.testCase') : '測試案例';
+        modalTitle.textContent = `${cloneText} ${baseTitle}`;
+    }
+
+    // 預填欄位（編號自動遞增，標題保持原樣）
+    document.getElementById('testCaseId').value = '';
+    document.getElementById('title').value = source.title || '';
+    
+    // 自動生成下一個測試案例編號
+    const nextNumber = generateNextTestCaseNumber(source.test_case_number);
+    document.getElementById('testCaseNumber').value = nextNumber;
+    
+    document.getElementById('priority').value = source.priority || 'MEDIUM';
+    document.getElementById('precondition').value = source.precondition || '';
+    document.getElementById('test_steps').value = source.test_steps || '';
+    document.getElementById('expected_result').value = source.expected_result || '';
+
+    // 更新 Markdown 預覽
+    try {
+        const markdownFields = ['precondition', 'test_steps', 'expected_result'];
+        markdownFields.forEach(fieldId => updateMarkdownPreview(fieldId));
+    } catch (_) {}
+
+    // 新增模式下的按鈕狀態（保持「儲存並新增下一筆」可用）
+    const saveBtn = document.getElementById('saveTestCaseBtn');
+    const saveAndAddNextBtn = document.getElementById('saveAndAddNextBtn');
+    if (saveBtn) saveBtn.disabled = false;
+    if (saveAndAddNextBtn) {
+        // 與一般新增模式相同，保持「儲存並新增下一筆」可用
+        saveAndAddNextBtn.disabled = false;
+        saveAndAddNextBtn.style.display = 'inline-block';
+        // 重置按鈕文字為正常狀態
+        const saveAndNextText = window.i18n ? window.i18n.t('form.saveAndNext') : '儲存並新增下一筆';
+        saveAndAddNextBtn.innerHTML = `<i class="fas fa-plus me-2"></i>${saveAndNextText}`;
+    }
+
+    // 編輯器模式採用 split（與新增一致）
+    try { setEditorMode('split'); } catch (_) {}
+}
+
+// 生成下一個測試案例編號的輔助函數
+function generateNextTestCaseNumber(currentNumber) {
+    if (!currentNumber) return '';
+    
+    // 嘗試匹配常見的測試案例編號格式
+    const patterns = [
+        /^([A-Z]+)(\d+)$/,           // TC001, TEST123
+        /^([A-Z]+)-(\d+)$/,         // TC-001, TEST-123
+        /^([A-Z]+)_(\d+)$/,         // TC_001, TEST_123
+        /^(\d+)$/,                  // 001, 123
+        /^([A-Z\d]+)\.(\d+)$/,      // TC.001, V1.123
+    ];
+    
+    for (let pattern of patterns) {
+        const match = currentNumber.match(pattern);
+        if (match) {
+            const prefix = match[1] || '';
+            const number = parseInt(match[2] || match[1]);
+            const nextNum = number + 1;
+            
+            // 保持原有的數字位數（零填充）
+            const originalNumStr = match[2] || match[1];
+            const paddedNext = nextNum.toString().padStart(originalNumStr.length, '0');
+            
+            if (pattern.source.includes('-')) {
+                return `${prefix}-${paddedNext}`;
+            } else if (pattern.source.includes('_')) {
+                return `${prefix}_${paddedNext}`;
+            } else if (pattern.source.includes('\\.')) {
+                return `${prefix}.${paddedNext}`;
+            } else if (prefix) {
+                return `${prefix}${paddedNext}`;
+            } else {
+                return paddedNext;
+            }
+        }
+    }
+    
+    // 如果沒有匹配到任何模式，返回原編號 + "_NEXT"
+    return currentNumber + '_NEXT';
+}
+
 let originalFormData = {}; // 存儲原始表單資料
 let isFormChanged = false; // 追蹤表單是否有變更
 let testCaseModalInstance = null; // 全域 Modal 實例
@@ -2010,7 +2286,7 @@ function showTestCaseModal(testCase = null) {
     // 重設表單和狀態
     form.reset();
     isFormChanged = false;
-    saveBtn.disabled = true;
+    saveBtn.disabled = false; // 儲存按鈕始終啟用
     
     if (testCase) {
         // 編輯現有測試案例時，初始化附件資料
@@ -2081,6 +2357,10 @@ function showTestCaseModal(testCase = null) {
         // 隱藏「儲存並新增下一筆」按鈕（編輯模式不需要）
         saveAndAddNextBtn.style.display = 'none';
         
+        // 隱藏「複製並新增下一筆」按鈕（編輯模式不需要）
+        const cloneAndAddNextBtn = document.getElementById('cloneAndAddNextBtn');
+        if (cloneAndAddNextBtn) cloneAndAddNextBtn.style.display = 'none';
+        
     } else {
         title.textContent = window.i18n ? window.i18n.t('testCase.createTestCase') : '新增測試案例';
         
@@ -2104,14 +2384,24 @@ function showTestCaseModal(testCase = null) {
         modal.dataset.recordId = '';
         
         originalFormData = {};
-        saveBtn.disabled = false; // 新增模式下儲存按鈕啟用
+        saveBtn.disabled = false; // 儲存按鈕始終啟用
+        // 獲取「複製並新增下一筆」按鈕
+        const cloneAndAddNextBtn = document.getElementById('cloneAndAddNextBtn');
+        
         if (isCopyMode) {
             // 複製模式移除「儲存並新增下一筆」
             saveAndAddNextBtn.disabled = true;
             saveAndAddNextBtn.style.display = 'none';
+            // 複製模式也隱藏「複製並新增下一筆」按鈕
+            if (cloneAndAddNextBtn) cloneAndAddNextBtn.style.display = 'none';
         } else {
             saveAndAddNextBtn.disabled = false; // 新增模式下「儲存並新增下一筆」按鈕啟用
             saveAndAddNextBtn.style.display = 'inline-block'; // 顯示「儲存並新增下一筆」按鈕
+            // 重置按鈕文字為正常狀態
+            const saveAndNextText = window.i18n ? window.i18n.t('form.saveAndNext') : '儲存並新增下一筆';
+            saveAndAddNextBtn.innerHTML = `<i class="fas fa-plus me-2"></i>${saveAndNextText}`;
+            // 新增模式顯示「複製並新增下一筆」按鈕
+            if (cloneAndAddNextBtn) cloneAndAddNextBtn.style.display = 'inline-block';
         }
         currentTestCaseIndex = -1;
         updateNavigationButtons();
@@ -2185,6 +2475,16 @@ function showTestCaseModal(testCase = null) {
     }
     
     testCaseModalInstance.show();
+    
+    // 確保按鈕狀態正確（解決可能的時序問題）
+    setTimeout(() => {
+        const saveBtn = document.getElementById('saveTestCaseBtn');
+        const saveAndAddNextBtn = document.getElementById('saveAndAddNextBtn');
+        if (saveBtn) saveBtn.disabled = false;
+        if (saveAndAddNextBtn && saveAndAddNextBtn.style.display !== 'none') {
+            saveAndAddNextBtn.disabled = false;
+        }
+    }, 50);
 }
 
 // 鍵盤支援：在檢視 Test Case Modal 時使用左右鍵切換
@@ -2237,16 +2537,17 @@ function checkFormChanges() {
     const saveAndAddNextBtn = document.getElementById('saveAndAddNextBtn');
     const formData = new FormData(form);
     
+    // 儲存按鈕始終保持啟用狀態
+    saveBtn.disabled = false;
+    saveAndAddNextBtn.disabled = false;
+    
     // 檢查新增模式
     if (!document.getElementById('testCaseId').value) {
-        // 新增模式：檢查是否有填入必要欄位
-        const hasTitle = formData.get('title') && formData.get('title').trim();
-        saveBtn.disabled = !hasTitle;
-        saveAndAddNextBtn.disabled = !hasTitle;
+        // 新增模式：所有儲存按鈕都保持啟用
         return;
     }
     
-    // 編輯模式：比較與原始資料的差異
+    // 編輯模式：比較與原始資料的差異（僅用於追蹤，不影響按鈕狀態）
     let hasChanges = false;
     
     for (const [key, value] of Object.entries(originalFormData)) {
@@ -2258,7 +2559,38 @@ function checkFormChanges() {
     }
     
     isFormChanged = hasChanges;
-    saveBtn.disabled = !hasChanges;
+    // 編輯模式下不再禁用儲存按鈕
+}
+
+// 檢查是否有未儲存的變更
+function hasUnsavedChanges() {
+    const form = document.getElementById('testCaseForm');
+    if (!form) return false;
+    
+    const testCaseId = document.getElementById('testCaseId').value;
+    
+    // 新增模式：檢查是否有輸入任何內容
+    if (!testCaseId) {
+        const formData = new FormData(form);
+        const title = formData.get('title') || '';
+        const testCaseNumber = formData.get('test_case_number') || '';
+        const steps = formData.get('steps') || '';
+        const expectedResults = formData.get('expected_results') || '';
+        
+        // 如果任何欄位有內容，就認為有變更
+        return title.trim() || testCaseNumber.trim() || steps.trim() || expectedResults.trim();
+    }
+    
+    // 編輯模式：比較與原始資料的差異
+    const formData = new FormData(form);
+    for (const [key, value] of Object.entries(originalFormData)) {
+        const currentValue = formData.get(key) || '';
+        if (currentValue !== value) {
+            return true;
+        }
+    }
+    
+    return false;
 }
 
 function deleteTestCase(id) {
@@ -2495,9 +2827,24 @@ async function saveTestCase() {
             
             // 恢復儲存按鈕狀態
             const saveBtn = document.getElementById('saveTestCaseBtn');
-            saveBtn.disabled = false;
+            saveBtn.disabled = false; // 儲存按鈕始終啟用
             const saveText = window.i18n ? window.i18n.t('common.save') : '儲存';
             saveBtn.innerHTML = `<i class="fas fa-save me-2"></i>${saveText}`;
+            
+            // 如果是編輯模式，更新 originalFormData 以反映當前保存的狀態
+            if (testCaseId) {
+                const form = document.getElementById('testCaseForm');
+                const currentFormData = new FormData(form);
+                originalFormData = {
+                    title: currentFormData.get('title') || '',
+                    test_case_number: currentFormData.get('test_case_number') || '',
+                    priority: currentFormData.get('priority') || 'Medium',
+                    tcg: document.getElementById('modalTCGInput') ? document.getElementById('modalTCGInput').value : '',
+                    precondition: document.getElementById('precondition') ? document.getElementById('precondition').value : '',
+                    steps: document.getElementById('test_steps') ? document.getElementById('test_steps').value : '',
+                    expected_result: document.getElementById('expected_result') ? document.getElementById('expected_result').value : ''
+                };
+            }
             
             // 更新成功訊息
             const completedMessage = testCaseId ? 
