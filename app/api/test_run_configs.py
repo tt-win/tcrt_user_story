@@ -373,6 +373,75 @@ class RestartRequest(BaseModel):
     mode: str = Field(..., description="重置模式：all / failed / pending")
     name: Optional[str] = Field(None, description="新建立的 Test Run 名稱（未提供則預設為 Rerun - 原名）")
 
+class StatusChangeRequest(BaseModel):
+    status: TestRunStatus = Field(..., description="目標狀態")
+    reason: Optional[str] = Field(None, description="狀態變更原因")
+
+
+@router.put("/{config_id}/status", response_model=TestRunConfigResponse)
+async def change_test_run_status(
+    team_id: int,
+    config_id: int,
+    status_request: StatusChangeRequest,
+    db: Session = Depends(get_db)
+):
+    """更改測試執行狀態"""
+    verify_team_exists(team_id, db)
+    
+    config_db = db.query(TestRunConfigDB).filter(
+        TestRunConfigDB.id == config_id,
+        TestRunConfigDB.team_id == team_id
+    ).first()
+    
+    if not config_db:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"找不到測試執行配置 ID {config_id}"
+        )
+    
+    # 驗證狀態轉換是否合法
+    old_status = config_db.status
+    new_status = status_request.status
+    
+    # 定義允許的狀態轉換規則
+    allowed_transitions = {
+        TestRunStatus.DRAFT: [TestRunStatus.ACTIVE, TestRunStatus.ARCHIVED],
+        TestRunStatus.ACTIVE: [TestRunStatus.COMPLETED, TestRunStatus.ARCHIVED],  # 進行中不可回到草稿
+        TestRunStatus.COMPLETED: [TestRunStatus.ARCHIVED],  # 已完成只能歸檔
+        TestRunStatus.ARCHIVED: [TestRunStatus.ACTIVE, TestRunStatus.DRAFT]
+    }
+    
+    if new_status not in allowed_transitions.get(old_status, []):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"不允許從 {old_status} 轉換到 {new_status}"
+        )
+    
+    # 執行狀態變更
+    config_db.status = new_status
+    
+    # 如果從 archived 狀態切換到 active，重新設定開始時間
+    if old_status == TestRunStatus.ARCHIVED and new_status == TestRunStatus.ACTIVE:
+        config_db.start_date = datetime.utcnow()
+        config_db.end_date = None
+    
+    # 如果切換到 completed 狀態，設定結束時間
+    if new_status == TestRunStatus.COMPLETED and not config_db.end_date:
+        config_db.end_date = datetime.utcnow()
+    
+    # 如果切換到 active 狀態，清除結束時間
+    if new_status == TestRunStatus.ACTIVE:
+        config_db.end_date = None
+        if not config_db.start_date:
+            config_db.start_date = datetime.utcnow()
+    
+    config_db.updated_at = datetime.utcnow()
+    
+    db.commit()
+    db.refresh(config_db)
+    
+    return test_run_config_db_to_model(config_db)
+
 
 @router.post("/{config_id}/restart", response_model=dict)
 async def restart_test_run(

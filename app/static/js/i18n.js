@@ -251,7 +251,7 @@ async switchLanguage(language) {
         let value = currentTranslations;
         
         for (const key of keys) {
-if (value && typeof value === 'object' && key in value) {
+            if (value && typeof value === 'object' && key in value) {
                 value = value[key];
             } else {
                 // Try fallback language if current language doesn't have the key
@@ -274,7 +274,7 @@ if (value && typeof value === 'object' && key in value) {
                     }
                 }
                  
-                // Return fallback text or key path if no translation found
+                // Return fallback text first, then key path if no fallback provided
                 return fallbackText || keyPath;
             }
         }

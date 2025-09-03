@@ -5,17 +5,59 @@
 {% block head %}
 <!-- Test Run 入口頁面樣式 -->
 <style>
-/* Test Run 卡片樣式 */
+/* Test Run 卡片樣式 - 增強狀態視覺標示 */
 .test-run-card {
-    transition: all 0.2s ease;
+    transition: all 0.3s ease;
     border: 1px solid var(--tr-border-light);
     cursor: pointer;
+    position: relative;
+    border-left-width: 4px;
+}
+
+/* 狀態顏色左邊框標示 */
+.test-run-card.status-draft {
+    border-left-color: #F57C00;
+    background: linear-gradient(135deg, #FFFEF7 0%, #FFF9E1 100%);
+}
+
+.test-run-card.status-active {
+    border-left-color: #1976D2;
+    background: linear-gradient(135deg, #F8FBFF 0%, #E3F2FD 100%);
+    animation: card-glow-active 3s infinite;
+}
+
+.test-run-card.status-completed {
+    border-left-color: #388E3C;
+    background: linear-gradient(135deg, #F9FDF9 0%, #E8F5E8 100%);
+}
+
+.test-run-card.status-archived {
+    border-left-color: #757575;
+    background: linear-gradient(135deg, #FAFAFA 0%, #F5F5F5 100%);
+    opacity: 0.85;
+}
+
+/* 狀態光暈動畫 - Active 狀態 */
+@keyframes card-glow-active {
+    0%, 100% { box-shadow: 0 2px 8px rgba(25,118,210,0.1); }
+    50% { box-shadow: 0 4px 16px rgba(25,118,210,0.2); }
 }
 
 .test-run-card:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--tr-shadow-md);
-    border-color: var(--tr-primary);
+    transform: translateY(-3px);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+}
+
+.test-run-card.status-active:hover {
+    box-shadow: 0 8px 25px rgba(25,118,210,0.3);
+}
+
+.test-run-card.status-completed:hover {
+    box-shadow: 0 8px 25px rgba(56,142,60,0.2);
+}
+
+.test-run-card.status-draft:hover {
+    box-shadow: 0 8px 25px rgba(245,124,0,0.2);
 }
 
 .test-run-card:hover .card-title {
@@ -25,6 +67,24 @@
 .test-run-card .card-body {
     padding: 1.25rem;
 }
+
+/* 狀態指示角標 */
+.test-run-card::before {
+    content: '';
+    position: absolute;
+    top: -1px;
+    right: -1px;
+    width: 0;
+    height: 0;
+    border-style: solid;
+    border-width: 0 12px 12px 0;
+    opacity: 0.7;
+}
+
+.test-run-card.status-draft::before { border-color: transparent #F57C00 transparent transparent; }
+.test-run-card.status-active::before { border-color: transparent #1976D2 transparent transparent; }
+.test-run-card.status-completed::before { border-color: transparent #388E3C transparent transparent; }
+.test-run-card.status-archived::before { border-color: transparent #757575 transparent transparent; }
 
 /* 新增 Test Run 卡片樣式 */
 .add-test-run-card {
@@ -60,18 +120,138 @@
     border-radius: 4px;
 }
 
-/* 狀態標籤樣式 */
+/* 狀態標籤樣式 - 增強視覺識別 */
 .status-badge {
     font-size: 0.75rem;
-    padding: 0.25rem 0.5rem;
-    border-radius: 0.375rem;
-    font-weight: 500;
+    padding: 0.25rem 0.6rem;
+    border-radius: 0.5rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    transition: all 0.2s ease;
 }
 
-.status-draft { background-color: #FFF3CD; color: #856404; border: 1px solid #FFEAA7; }
-.status-active { background-color: #CCE5FF; color: #0056B3; border: 1px solid #99D6FF; }
-.status-completed { background-color: #D4EDDA; color: #155724; border: 1px solid #A3E4A3; }
-.status-archived { background-color: #E2E3E5; color: #495057; border: 1px solid #CED4DA; }
+.status-badge:hover {
+    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    transform: translateY(-1px);
+}
+
+/* 狀態顏色系統 - 更直覺的色彩語意 */
+.status-badge.status-draft { 
+    background: linear-gradient(135deg, #FFF3CD 0%, #FFE69C 100%);
+    color: #856404; 
+    border: 1px solid #F0C419;
+}
+
+.status-badge.status-active { 
+    background: linear-gradient(135deg, #E3F2FD 0%, #BBDEFB 100%);
+    color: #0D47A1; 
+    border: 1px solid #2196F3;
+    animation: pulse-active 2s infinite;
+}
+
+.status-badge.status-completed { 
+    background: linear-gradient(135deg, #E8F5E8 0%, #C8E6C9 100%);
+    color: #2E7D32; 
+    border: 1px solid #4CAF50;
+}
+
+.status-badge.status-archived { 
+    background: linear-gradient(135deg, #F5F5F5 0%, #E0E0E0 100%);
+    color: #616161; 
+    border: 1px solid #9E9E9E;
+    opacity: 0.8;
+}
+
+/* 狀態脈動動畫 - 強調進行中狀態 */
+@keyframes pulse-active {
+    0%, 100% { box-shadow: 0 1px 3px rgba(33,150,243,0.2); }
+    50% { box-shadow: 0 1px 8px rgba(33,150,243,0.4); }
+}
+
+/* 狀態圖示 */
+.status-badge::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 0.25rem;
+}
+
+.status-badge.status-draft::before { background-color: #F57C00; }
+.status-badge.status-active::before { background-color: #1976D2; animation: blink-dot 1.5s infinite; }
+.status-badge.status-completed::before { background-color: #388E3C; }
+.status-badge.status-archived::before { background-color: #757575; }
+
+/* 閃爍點 - 進行中狀態指示器 */
+@keyframes blink-dot {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0.3; }
+}
+/* 自訂狀態下拉選單 - 使用 fixed positioning 解決層級問題 */
+.custom-status-dropdown {
+    position: fixed !important;
+    z-index: 999999 !important;
+    background: white;
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    box-shadow: 0 0.5rem 1rem rgba(0,0,0,.15);
+    min-width: 120px;
+    padding: 0.5rem 0;
+    display: none;
+}
+
+.custom-status-dropdown.show {
+    display: block !important;
+}
+
+.custom-status-dropdown-item {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    padding: 0.5rem 1rem;
+    clear: both;
+    font-weight: 400;
+    color: #212529;
+    text-align: inherit;
+    text-decoration: none;
+    white-space: nowrap;
+    background-color: transparent;
+    border: 0;
+    cursor: pointer;
+    transition: all 0.15s ease-in-out;
+    line-height: 1.5;
+}
+
+.custom-status-dropdown-item i {
+    width: 16px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.custom-status-dropdown-item:hover {
+    background-color: #f8f9fa;
+    color: #1e2125;
+}
+
+.custom-status-dropdown-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 999998;
+    display: none;
+}
+
+.custom-status-dropdown-overlay.show {
+    display: block;
+}
 
 /* 統計資訊樣式 */
 .stats-item {
@@ -470,13 +650,44 @@
 {% endblock %}
 
 {% block page_actions %}
-<div class="d-flex gap-2">
-    <button type="button" class="btn btn-secondary" id="refreshBtn">
-        <i class="fas fa-sync-alt me-2"></i><span data-i18n="common.refresh">重新整理</span>
-    </button>
-    <a href="/" class="btn btn-outline-secondary">
-        <i class="fas fa-home me-2"></i><span data-i18n="navigation.backToHome">回到首頁</span>
-    </a>
+<div class="d-flex flex-column flex-md-row gap-3">
+    <!-- 狀態過濾按鈕群組 -->
+    <div class="btn-group" role="group" aria-label="Status filter buttons">
+        <input type="radio" class="btn-check" name="statusFilter" id="filterAll" value="all" checked>
+        <label class="btn btn-outline-secondary" for="filterAll">
+            <i class="fas fa-list me-1"></i><span data-i18n="testRun.filter.all">全部</span>
+        </label>
+
+        <input type="radio" class="btn-check" name="statusFilter" id="filterDraft" value="draft">
+        <label class="btn btn-outline-warning" for="filterDraft">
+            <i class="fas fa-edit me-1"></i><span data-i18n="testRun.filter.draft">草稿</span>
+        </label>
+
+        <input type="radio" class="btn-check" name="statusFilter" id="filterActive" value="active">
+        <label class="btn btn-outline-primary" for="filterActive">
+            <i class="fas fa-play me-1"></i><span data-i18n="testRun.filter.active">進行中</span>
+        </label>
+
+        <input type="radio" class="btn-check" name="statusFilter" id="filterCompleted" value="completed">
+        <label class="btn btn-outline-success" for="filterCompleted">
+            <i class="fas fa-check me-1"></i><span data-i18n="testRun.filter.completed">已完成</span>
+        </label>
+
+        <input type="radio" class="btn-check" name="statusFilter" id="filterArchived" value="archived">
+        <label class="btn btn-outline-secondary" for="filterArchived">
+            <i class="fas fa-archive me-1"></i><span data-i18n="testRun.filter.archived">已歸檔</span>
+        </label>
+    </div>
+
+    <!-- 其他操作按鈕 -->
+    <div class="d-flex gap-2">
+        <button type="button" class="btn btn-secondary" id="refreshBtn">
+            <i class="fas fa-sync-alt me-2"></i><span data-i18n="common.refresh">重新整理</span>
+        </button>
+        <a href="/" class="btn btn-outline-secondary">
+            <i class="fas fa-home me-2"></i><span data-i18n="navigation.backToHome">回到首頁</span>
+        </a>
+    </div>
 </div>
 {% endblock %}
 
@@ -731,6 +942,12 @@
     </div>
   </div>
 </div>
+
+<!-- 自訂狀態下拉選單 - Fixed positioning -->
+<div class="custom-status-dropdown-overlay" id="statusDropdownOverlay" onclick="hideCustomStatusDropdown()"></div>
+<div class="custom-status-dropdown" id="customStatusDropdown">
+    <!-- 選項將由 JavaScript 動態生成 -->
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -783,6 +1000,17 @@ function bindEventListeners() {
     });
     
     document.getElementById('saveConfigBtn').addEventListener('click', handleSaveConfig);
+    
+    // 狀態過濾事件監聽器
+    document.querySelectorAll('input[name="statusFilter"]').forEach(radio => {
+        radio.addEventListener('change', function() {
+            if (this.checked) {
+                const filterValue = this.value;
+                console.log('過濾狀態變更為:', filterValue);
+                renderConfigCards(filterValue);
+            }
+        });
+    });
 }
 
 async function loadTestRunConfigs() {
@@ -841,9 +1069,16 @@ function showConfigsSection() {
     document.getElementById('test-run-configs-section').style.display = 'block';
 }
 
-function renderConfigCards() {
+function renderConfigCards(filterStatus = 'all') {
     const container = document.getElementById('test-run-configs-container');
-    const configsHtml = testRunConfigs.map(config => createConfigCard(config)).join('');
+    
+    // 過濾配置
+    let filteredConfigs = testRunConfigs;
+    if (filterStatus !== 'all') {
+        filteredConfigs = testRunConfigs.filter(config => config.status === filterStatus);
+    }
+    
+    const configsHtml = filteredConfigs.map(config => createConfigCard(config)).join('');
     const addConfigCard = `
         <div class="col-md-6 col-lg-4 mb-4">
             <div class="card h-100 add-test-run-card text-center" onclick="openConfigFormModal()">
@@ -859,6 +1094,7 @@ function renderConfigCards() {
         </div>
     `;
     container.innerHTML = configsHtml + addConfigCard;
+    
     if (window.i18n && window.i18n.isReady()) {
         window.i18n.retranslate(container);
     }
@@ -897,7 +1133,7 @@ function createConfigCard(config) {
     
     return `
         <div class="col-md-6 col-lg-4 mb-4">
-            <div class="card h-100 test-run-card" onclick="enterTestRun(${config.id})">
+            <div class="card h-100 test-run-card ${getStatusClass(config.status)}" onclick="enterTestRun(${config.id})">
                 <div class="card-body d-flex flex-column h-100">
                     <div class="d-flex align-items-start mb-3">
                         <div class="flex-shrink-0 me-3">
@@ -946,18 +1182,27 @@ function createConfigCard(config) {
                         <button class="btn btn-primary btn-sm flex-grow-1" onclick="event.stopPropagation(); enterTestRun(${config.id})">
                             <i class="fas fa-arrow-right me-1"></i><span data-i18n="testRun.enterButton">進入</span>
                         </button>
-                        <button class="btn btn-outline-secondary btn-sm${config.status === 'completed' ? ' disabled' : ''}" 
-                                ${config.status === 'completed' ? 'disabled' : ''} 
-                                ${config.status === 'completed' ? `title="${window.i18n && window.i18n.isReady() ? window.i18n.t('testRun.cannotEditCompleted') : '已完成的 Test Run 不可編輯 Test Case'}"` : ''}
+                        <button class="btn btn-outline-secondary btn-sm${(config.status === 'completed' || config.status === 'archived') ? ' disabled' : ''}" 
+                                ${(config.status === 'completed' || config.status === 'archived') ? 'disabled' : ''} 
+                                ${(config.status === 'completed' || config.status === 'archived') ? `title="${window.i18n && window.i18n.isReady() ? window.i18n.t('testRun.cannotEditCompleted') : '已完成或已歸檔的 Test Run 不可編輯'}"` : ''}
                                 onclick="event.stopPropagation(); editBasicSettings(${config.id})">
                             <i class="fas fa-edit me-1"></i><span data-i18n="testRun.editBasicSettings">編輯基本設定</span>
                         </button>
-                        <button class="btn btn-outline-info btn-sm${config.status === 'completed' ? ' disabled' : ''}" 
-                                ${config.status === 'completed' ? 'disabled' : ''} 
-                                ${config.status === 'completed' ? `title="${window.i18n && window.i18n.isReady() ? window.i18n.t('testRun.cannotEditCompleted') : '已完成的 Test Run 不可編輯 Test Case'}"` : ''}
+                        <button class="btn btn-outline-info btn-sm${(config.status === 'completed' || config.status === 'archived') ? ' disabled' : ''}" 
+                                ${(config.status === 'completed' || config.status === 'archived') ? 'disabled' : ''} 
+                                ${(config.status === 'completed' || config.status === 'archived') ? `title="${window.i18n && window.i18n.isReady() ? window.i18n.t('testRun.cannotEditCompleted') : '已完成或已歸檔的 Test Run 不可編輯 Test Case'}"` : ''}
                                 onclick="event.stopPropagation(); editTestCases(${config.id})">
                             <i class="fas fa-list me-1"></i><span data-i18n="testRun.editTestCases">編輯 Test Case</span>
                         </button>
+                        <!-- 自訂狀態切換下拉選單 -->
+                        <div class="position-relative" onclick="event.stopPropagation()">
+                            <button type="button" class="btn btn-outline-warning btn-sm custom-status-btn" 
+                                    data-config-id="${config.id}" 
+                                    onclick="event.stopPropagation(); toggleCustomStatusDropdown(this, ${config.id})">
+                                <i class="fas fa-exchange-alt me-1"></i><span data-i18n="testRun.changeStatus">狀態</span>
+                                <i class="fas fa-chevron-down ms-1"></i>
+                            </button>
+                        </div>
                         <button class="btn btn-outline-danger btn-sm" onclick="event.stopPropagation(); deleteTestRun(${config.id}, '${escapeHtml(config.name)}')">
                             <i class="fas fa-trash me-1"></i><span data-i18n="common.delete">刪除</span>
                         </button>
@@ -982,7 +1227,8 @@ function getStatusText(status) {
     if (window.i18n && window.i18n.isReady && window.i18n.isReady()) {
         const statusKey = `testRun.status.${status}`;
         const translated = window.i18n.t(statusKey);
-        if (translated === statusKey) {
+        // 如果翻譯失敗（返回原始鍵），使用預設文字
+        if (translated === statusKey || !translated) {
             return getDefaultStatusText(status);
         }
         return translated;
@@ -999,6 +1245,165 @@ function getDefaultStatusText(status) {
         'unknown': '未知'
     };
     return defaultTexts[status] || '未知';
+}
+
+// 自訂下拉選單邏輯
+let currentDropdownConfig = null;
+
+function toggleCustomStatusDropdown(button, configId) {
+    const dropdown = document.getElementById('customStatusDropdown');
+    const overlay = document.getElementById('statusDropdownOverlay');
+    
+    // 如果已經打開，則關閉
+    if (dropdown.classList.contains('show')) {
+        hideCustomStatusDropdown();
+        return;
+    }
+    
+    // 找到對應的配置
+    const config = testRunConfigs.find(c => c.id === configId);
+    if (!config) return;
+    
+    currentDropdownConfig = config;
+    
+    // 生成下拉選單內容
+    generateCustomStatusDropdownItems(config, dropdown);
+    
+    // 計算位置
+    const rect = button.getBoundingClientRect();
+    dropdown.style.left = rect.left + 'px';
+    dropdown.style.top = (rect.bottom + 5) + 'px';
+    
+    // 顯示下拉選單和覆蓋層
+    overlay.classList.add('show');
+    dropdown.classList.add('show');
+}
+
+function hideCustomStatusDropdown() {
+    const dropdown = document.getElementById('customStatusDropdown');
+    const overlay = document.getElementById('statusDropdownOverlay');
+    
+    dropdown.classList.remove('show');
+    overlay.classList.remove('show');
+    currentDropdownConfig = null;
+}
+
+function generateCustomStatusDropdownItems(config, dropdown) {
+    const currentStatus = config.status;
+    
+    // 定義狀態轉換規則
+    const statusTransitions = {
+        'draft': ['active', 'archived'],
+        'active': ['completed', 'archived'],  // 進行中不可回到草稿
+        'completed': ['archived'],  // 已完成只能歸檔
+        'archived': ['active', 'draft']
+    };
+    
+    const availableStatuses = statusTransitions[currentStatus] || [];
+    
+    let html = '';
+    
+    availableStatuses.forEach(status => {
+        const statusText = getStatusText(status);
+        const icon = getStatusIcon(status);
+        
+        html += `
+            <div class="custom-status-dropdown-item" onclick="handleCustomStatusChange('${status}')">
+                <i class="${icon} me-2"></i>${statusText}
+            </div>
+        `;
+    });
+    
+    dropdown.innerHTML = html;
+}
+
+function handleCustomStatusChange(newStatus) {
+    if (currentDropdownConfig) {
+        changeTestRunStatus(currentDropdownConfig.id, newStatus, currentDropdownConfig.name);
+        hideCustomStatusDropdown();
+    }
+}
+
+function generateStatusDropdownItems(config) {
+    const currentStatus = config.status;
+    
+    // 定義狀態轉換規則
+    const statusTransitions = {
+        'draft': ['active', 'archived'],
+        'active': ['completed', 'archived'],  // 進行中不可回到草稿
+        'completed': ['archived'],  // 已完成只能歸檔
+        'archived': ['active', 'draft']
+    };
+    
+    const availableStatuses = statusTransitions[currentStatus] || [];
+    
+    let items = [];
+    
+    availableStatuses.forEach(status => {
+        const statusText = getStatusText(status);
+        const icon = getStatusIcon(status);
+        
+        items.push(`
+            <li><a class="dropdown-item" href="#" onclick="event.stopPropagation(); changeTestRunStatus(${config.id}, '${status}', '${escapeHtml(config.name)}')">
+                <i class="${icon} me-2"></i>${statusText}
+            </a></li>
+        `);
+    });
+    
+    return items.join('');
+}
+
+function getStatusIcon(status) {
+    const icons = {
+        'active': 'fas fa-play text-primary',
+        'completed': 'fas fa-check text-success',
+        'draft': 'fas fa-edit text-warning',
+        'archived': 'fas fa-archive text-secondary'
+    };
+    return icons[status] || 'fas fa-question text-muted';
+}
+
+async function changeTestRunStatus(configId, newStatus, configName) {
+    // 直接執行狀態變更，不需要輸入原因
+    
+    try {
+        const teamId = currentTeamId; // 使用全域變數
+        const response = await fetch(`/api/teams/${teamId}/test-run-configs/${configId}/status`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                status: newStatus
+            })
+        });
+        
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.detail || '狀態變更失敗');
+        }
+        
+        const updatedConfig = await response.json();
+        
+        // 顯示成功訊息 - 使用 fallback 參數確保有預設文字
+        const successMsg = (window.i18n && window.i18n.isReady()) ? 
+            window.i18n.t('testRun.statusChangedSuccess', {name: configName, status: getStatusText(newStatus)}, 
+                         `Test Run "${configName}" 狀態已變更為 ${getStatusText(newStatus)}`) : 
+            `Test Run "${configName}" 狀態已變更為 ${getStatusText(newStatus)}`;
+        
+        AppUtils.showSuccess(successMsg);
+        
+        // 重新載入 Test Run 列表
+        await loadTestRunConfigs();
+        
+    } catch (error) {
+        console.error('Change status error:', error);
+        const errorMsg = (window.i18n && window.i18n.isReady()) ? 
+            window.i18n.t('testRun.statusChangeFailed', {}, '狀態變更失敗：' + error.message) : 
+            '狀態變更失敗：' + error.message;
+        
+        AppUtils.showError(errorMsg);
+    }
 }
 
 function refreshStatusTexts() {
@@ -1395,12 +1800,12 @@ function openCaseSelectModal(configId) {
 
 // 在卡片上提供「編輯基本設定」
 function editBasicSettings(configId) {
-  // 檢查 Test Run 狀態，已完成的不允許編輯
+  // 檢查 Test Run 狀態，已完成或已歸檔的不允許編輯
   const config = testRunConfigs.find(c => c.id === configId);
-  if (config && config.status === 'completed') {
+  if (config && (config.status === 'completed' || config.status === 'archived')) {
     const completedEditMsg = window.i18n && window.i18n.isReady() 
       ? window.i18n.t('testRun.cannotEditCompleted')
-      : '已完成的 Test Run 不可編輯 Test Case';
+      : '已完成或已歸檔的 Test Run 不可編輯';
     AppUtils.showWarning(completedEditMsg);
     return;
   }
@@ -2061,22 +2466,6 @@ function displayJiraData(tooltip, ticketNumber, data) {
     `;
 }
 
-// 根據狀態獲取 CSS 類別
-function getStatusClass(status) {
-    // 安全檢查：確保 status 是字符串
-    if (!status || typeof status !== 'string') {
-        return 'status-todo';
-    }
-    
-    const statusLower = status.toLowerCase();
-    if (statusLower.includes('done') || statusLower.includes('完成')) {
-        return 'status-done';
-    } else if (statusLower.includes('progress') || statusLower.includes('進行')) {
-        return 'status-in-progress';
-    } else {
-        return 'status-todo';
-    }
-}
 
 // 定位 tooltip
 function positionTooltip(tooltip, targetElement) {

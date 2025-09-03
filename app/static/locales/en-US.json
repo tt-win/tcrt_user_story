@@ -528,7 +528,14 @@
         "notAvailableItems": "Not Available",
         "downloadPDF": "Download PDF Report",
         "generatingPDF": "Generating PDF...",
-        "pdfGenerationFailed": "PDF generation failed, please try again or contact administrator"
+        "pdfGenerationFailed": "PDF generation failed, please try again or contact administrator",
+        "filter": {
+            "all": "All",
+            "draft": "Draft",
+            "active": "Active",
+            "completed": "Completed",
+            "archived": "Archived"
+        }
     },
     "priority": {
         "high": "High",
