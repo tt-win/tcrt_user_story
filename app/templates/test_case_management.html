@@ -2970,6 +2970,9 @@ async function saveAndAddNext() {
         // 保存當前資料用於產生下一筆
         const currentNumber = testCaseData.test_case_number;
         const currentTitle = testCaseData.title;
+        const currentPrecondition = testCaseData.precondition;
+        const currentSteps = testCaseData.steps;
+        const currentExpectedResult = testCaseData.expected_result;
         
         // 重置表單為新增下一筆狀態
         showTestCaseModal(null); // 呼叫新增模式，會自動清空所有欄位並設定為編輯模式
@@ -2985,6 +2988,16 @@ async function saveAndAddNext() {
             }
             if (titlePrefix) {
                 document.getElementById('title').value = titlePrefix;
+            }
+            // 保留 Precondition, Steps, Expected Results
+            if (currentPrecondition) {
+                document.getElementById('precondition').value = currentPrecondition;
+            }
+            if (currentSteps) {
+                document.getElementById('test_steps').value = currentSteps;
+            }
+            if (currentExpectedResult) {
+                document.getElementById('expected_result').value = currentExpectedResult;
             }
         }, 100);
         
