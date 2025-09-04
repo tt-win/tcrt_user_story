@@ -9,6 +9,9 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 from app.database import get_db
 from app.models.test_run_config import (
