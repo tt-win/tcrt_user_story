@@ -1145,7 +1145,7 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                         <div id="testCaseDetailScrollable" style="display:none;"></div>
                     </div>
                     <!-- 右側：結果歷程 Timeline（1/4 寬） -->
-                    <aside id="testCaseDetailTimelinePane" style="flex: 0 0 25%; max-width: 25%; border-left: 1px solid var(--tr-border-light); padding-left: 10px; display: none; min-width: 240px;">
+                    <aside id="testCaseDetailTimelinePane" style="flex: 0 0 28%; max-width: 28%; border-left: 1px solid var(--tr-border-light); padding-left: 10px; display: none; min-width: 240px;">
                         <div class="d-flex align-items-center justify-content-between mb-2">
                             <h6 class="mb-0"><i class="fas fa-history me-2"></i><span data-i18n="testRun.resultHistory">結果歷程</span></h6>
                             <button type="button" id="refreshTimelineBtn" class="btn btn-link text-secondary p-0" title="刷新" style="border: none; background: none;"><i class="fas fa-sync-alt"></i></button>
@@ -1156,7 +1156,7 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                         <div id="timelineEmpty" class="text-muted small" style="display:none;">
                             <i class="fas fa-info-circle me-1"></i><span data-i18n="testRun.noHistory">尚無歷程</span>
                         </div>
-                        <div id="timelineList" style="height: 400px; overflow-y: auto;"></div>
+                        <div id="timelineList" style="height: 180px; overflow-y: auto;"></div>
                         
                         <!-- Bug Tickets 區域 -->
                         <div class="mt-3 border-top pt-3">
@@ -1172,7 +1172,50 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                             <div id="bugTicketsEmpty" class="text-muted small" style="display:none;">
                                 <i class="fas fa-info-circle me-1"></i><span data-i18n="testRun.noBugTickets">尚無關聯的 Bug Tickets</span>
                             </div>
-                            <div id="bugTicketsList" style="height: 160px; overflow-y: auto;"></div>
+                            <div id="bugTicketsList" style="height: 120px; overflow-y: auto;"></div>
+                        </div>
+                        
+                        <!-- Test Results 區域 -->
+                        <div class="mt-3 border-top pt-3">
+                            <div class="d-flex align-items-center justify-content-between mb-2">
+                                <h6 class="mb-0">
+                                    <i class="fas fa-file-alt me-2"></i>
+                                    <span data-i18n="testRun.testResults">Test Results</span>
+                                </h6>
+                                <button type="button" id="uploadTestResultsBtn" class="btn btn-link text-secondary p-0" 
+                                        data-i18n-title="testRun.uploadTestResults" style="border: none; background: none;">
+                                    <i class="fas fa-upload"></i>
+                                </button>
+                            </div>
+                            
+                            <!-- 檔案列表區域 -->
+                            <div id="testResultsLoading" class="text-center py-2" style="display:none;">
+                                <i class="fas fa-spinner fa-spin"></i>
+                            </div>
+                            <div id="testResultsEmpty" class="text-muted small mb-2" style="display:none;">
+                                <i class="fas fa-info-circle me-1"></i><span data-i18n="testRun.noTestResults">尚無測試結果檔案</span>
+                            </div>
+                            <div id="testResultsList" style="height: 180px; overflow-y: auto;"></div>
+                            
+                            <!-- 上傳狀態區 -->
+                            <div id="testResultsUploadArea" class="test-results-upload-zone mb-2" style="display:none;">
+                                <div class="upload-dropzone border-2 border-dashed border-secondary rounded p-3 text-center">
+                                    <div id="uploadDropText">
+                                        <i class="fas fa-cloud-upload-alt fa-2x text-muted mb-2"></i>
+                                        <p class="mb-1" data-i18n="testRun.dropFilesHere">拖曳檔案到此處或點擊上傳</p>
+                                        <small class="text-muted" data-i18n="testRun.supportedFormats">支援 PNG, JPG, PDF, TXT, LOG, ZIP (最大 50MB)</small>
+                                    </div>
+                                    <input type="file" id="testResultsFileInput" multiple accept=".png,.jpg,.jpeg,.gif,.pdf,.txt,.log,.zip,.json,.xml" style="display:none;">
+                                </div>
+                                
+                                <!-- 上傳進度區 -->
+                                <div id="uploadProgressArea" style="display:none;">
+                                    <div class="progress mb-2" style="height: 20px;">
+                                        <div id="uploadProgressBar" class="progress-bar" role="progressbar" style="width: 0%"></div>
+                                    </div>
+                                    <div id="uploadStatus" class="small text-center"></div>
+                                </div>
+                            </div>
                         </div>
                     </aside>
                 </div>
@@ -2804,6 +2847,20 @@ function displayTestCaseDetail(testCase) {
 
     // 渲染右側 Timeline（結果歷程）
     renderResultHistoryTimeline(testCase);
+    
+    // 載入 Bug Tickets 和 Test Results
+    const testRunItem = (testRunItems || []).find(item => item.test_case_number === testCase.test_case_number);
+    if (testRunItem && testRunItem.id) {
+        loadBugTickets(testRunItem.id);
+        
+        // 初始化 Test Results 管理器
+        initializeTestResults(
+            testRunItem.id,
+            testCase.test_case_number,
+            currentTeamId,
+            currentConfigId
+        );
+    }
     // 載入完成後再顯示，避免切換時顯示上一筆資料
     const headerResult = document.getElementById('testCaseDetailHeaderResult');
     if (headerResult) {
@@ -2832,12 +2889,6 @@ function displayTestCaseDetail(testCase) {
         addBugTicketBtn.disabled = !canAddBugTickets;
         addBugTicketBtn.style.opacity = canAddBugTickets ? '1' : '0.3';
         addBugTicketBtn.style.cursor = canAddBugTickets ? 'pointer' : 'not-allowed';
-    }
-
-    // 載入 Bug Tickets
-    const testRunItem = (testRunItems || []).find(item => item.test_case_number === testCase.test_case_number);
-    if (testRunItem && testRunItem.id) {
-        loadBugTickets(testRunItem.id);
     }
 }
 
@@ -5263,6 +5314,411 @@ async function downloadReportAsPDF() {
 .border-left-secondary { border-left: 4px solid #6c757d; }
 
 /* Print styles moved to dynamic PDF generation function for better control */
+
+/* Test Results 區塊樣式 */
+.test-results-upload-zone {
+    transition: all 0.3s ease;
+}
+.upload-dropzone {
+    transition: border-color 0.3s ease, background-color 0.3s ease;
+    cursor: pointer;
+}
+.upload-dropzone:hover {
+    border-color: #0d6efd !important;
+    background-color: rgba(13, 110, 253, 0.05);
+}
+.upload-dropzone.drag-over {
+    border-color: #0d6efd !important;
+    background-color: rgba(13, 110, 253, 0.1);
+}
+.test-result-file-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    margin: 4px 0;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    background-color: #f8f9fa;
+    transition: background-color 0.2s ease;
+}
+.test-result-file-item:hover {
+    background-color: #e9ecef;
+}
+.clickable-file:hover {
+    background-color: #d1ecf1 !important;
+    border-color: #bee5eb !important;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+.file-info {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+}
+.file-icon {
+    width: 24px;
+    margin-right: 8px;
+}
+.file-info .fw-medium {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 0.6rem;
+    max-width: 100%;
+}
+.file-actions {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+    min-width: 30px;
+    margin-left: 8px;
+    justify-content: flex-end;
+    align-items: center;
+}
+.upload-progress-item {
+    border-left: 4px solid #0d6efd;
+    background-color: rgba(13, 110, 253, 0.05);
+}
+.upload-success-item {
+    border-left: 4px solid #198754;
+    background-color: rgba(25, 135, 84, 0.05);
+}
+.upload-error-item {
+    border-left: 4px solid #dc3545;
+    background-color: rgba(220, 53, 69, 0.05);
+}
+</style>
+
+<script>
+// ================== Test Results 功能 ==================
+class TestResultsManager {
+    constructor(testRunItemId, testCaseNumber, teamId, configId) {
+        this.testRunItemId = testRunItemId;
+        this.testCaseNumber = testCaseNumber;
+        this.teamId = teamId;
+        this.configId = configId;
+        this.currentFiles = [];
+        this.isUploading = false;
+        
+        this.initializeElements();
+        this.bindEvents();
+        this.loadExistingResults();
+    }
+    
+    initializeElements() {
+        this.uploadBtn = document.getElementById('uploadTestResultsBtn');
+        this.uploadArea = document.getElementById('testResultsUploadArea');
+        this.fileInput = document.getElementById('testResultsFileInput');
+        this.dropzone = document.querySelector('.upload-dropzone');
+        this.progressArea = document.getElementById('uploadProgressArea');
+        this.progressBar = document.getElementById('uploadProgressBar');
+        this.uploadStatus = document.getElementById('uploadStatus');
+        this.resultsList = document.getElementById('testResultsList');
+        this.loading = document.getElementById('testResultsLoading');
+        this.empty = document.getElementById('testResultsEmpty');
+    }
+    
+    bindEvents() {
+        // 上傳按鈕點擊
+        this.uploadBtn?.addEventListener('click', () => this.toggleUploadArea());
+        
+        // 拖拽上傳
+        this.dropzone?.addEventListener('dragover', (e) => this.handleDragOver(e));
+        this.dropzone?.addEventListener('dragleave', (e) => this.handleDragLeave(e));
+        this.dropzone?.addEventListener('drop', (e) => this.handleDrop(e));
+        this.dropzone?.addEventListener('click', () => this.fileInput?.click());
+        
+        // 檔案選擇
+        this.fileInput?.addEventListener('change', (e) => this.handleFileSelect(e));
+    }
+    
+    async loadExistingResults() {
+        try {
+            this.showLoading(true);
+            
+            const response = await fetch(`/api/teams/${this.teamId}/test-run-configs/${this.configId}/items/${this.testRunItemId}/test-results`);
+            
+            if (response.ok) {
+                const data = await response.json();
+                this.renderResultsList(data.test_results_files || []);
+            } else {
+                console.error('載入測試結果失敗:', response.statusText);
+                this.showEmpty(true);
+            }
+        } catch (error) {
+            console.error('載入測試結果異常:', error);
+            this.showEmpty(true);
+        } finally {
+            this.showLoading(false);
+        }
+    }
+    
+    toggleUploadArea() {
+        const isVisible = this.uploadArea.style.display !== 'none';
+        this.uploadArea.style.display = isVisible ? 'none' : 'block';
+        
+        if (!isVisible) {
+            this.uploadBtn.querySelector('i').className = 'fas fa-minus';
+        } else {
+            this.uploadBtn.querySelector('i').className = 'fas fa-upload';
+        }
+    }
+    
+    async handleFileSelect(event) {
+        const files = Array.from(event.target.files);
+        if (files.length > 0) {
+            await this.uploadFiles(files);
+        }
+    }
+    
+    async handleDrop(event) {
+        event.preventDefault();
+        this.dropzone.classList.remove('drag-over');
+        
+        const files = Array.from(event.dataTransfer.files);
+        if (files.length > 0) {
+            await this.uploadFiles(files);
+        }
+    }
+    
+    handleDragOver(event) {
+        event.preventDefault();
+        this.dropzone.classList.add('drag-over');
+    }
+    
+    handleDragLeave(event) {
+        event.preventDefault();
+        this.dropzone.classList.remove('drag-over');
+    }
+    
+    async uploadFiles(files) {
+        if (this.isUploading) {
+            AppUtils.showWarning(i18n.t('testRun.uploadInProgress'));
+            return;
+        }
+        
+        this.isUploading = true;
+        this.showProgress(true);
+        
+        try {
+            const formData = new FormData();
+            files.forEach(file => formData.append('files', file));
+            
+            const response = await fetch(`/api/teams/${this.teamId}/test-run-configs/${this.configId}/items/${this.testRunItemId}/upload-results`, {
+                method: 'POST',
+                body: formData
+            });
+            
+            const result = await response.json();
+            
+            if (response.ok && result.success) {
+                AppUtils.showSuccess(i18n.t('testRun.uploadSuccess'));
+                this.loadExistingResults();
+                this.toggleUploadArea();
+                
+                if (window.updateStatistics) {
+                    window.updateStatistics();
+                }
+            } else {
+                const errorMsg = result.error_messages?.join('; ') || i18n.t('testRun.uploadFailed');
+                AppUtils.showError(errorMsg);
+            }
+        } catch (error) {
+            console.error('上傳異常:', error);
+            AppUtils.showError(i18n.t('testRun.uploadError'));
+        } finally {
+            this.isUploading = false;
+            this.showProgress(false);
+            this.fileInput.value = '';
+        }
+    }
+    
+    renderResultsList(files) {
+        if (!files || files.length === 0) {
+            this.showEmpty(true);
+            return;
+        }
+        
+        this.showEmpty(false);
+        this.currentFiles = files;
+        
+        const filesHtml = files.map(file => this.renderFileItem(file)).join('');
+        this.resultsList.innerHTML = filesHtml;
+        
+        this.bindFileItemEvents();
+    }
+    
+    renderFileItem(file) {
+        const fileIcon = this.getFileIcon(file.name);
+        
+        return `
+            <div class="test-result-file-item clickable-file" 
+                 data-file-token="${file.file_token}"
+                 data-file-name="${this.escapeHtml(file.name)}"
+                 style="cursor: pointer;" 
+                 title="點擊下載 ${this.escapeHtml(file.name)}">
+                <div class="file-info">
+                    <i class="${fileIcon} file-icon"></i>
+                    <div>
+                        <div class="fw-medium">${this.escapeHtml(file.name)}</div>
+                    </div>
+                </div>
+                <div class="file-actions">
+                    <button type="button" class="btn btn-xs btn-outline-danger delete-file-btn" 
+                            data-file-token="${file.file_token}"
+                            data-file-name="${this.escapeHtml(file.name)}" 
+                            data-i18n-title="testRun.deleteFile"
+                            style="font-size: 0.6rem; padding: 2px 4px;"
+                            onclick="event.stopPropagation();">
+                        <i class="fas fa-trash" style="font-size: 0.7rem;"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+    }
+    
+    getFileIcon(filename) {
+        const ext = filename.split('.').pop().toLowerCase();
+        const iconMap = {
+            'png': 'fas fa-image text-primary',
+            'jpg': 'fas fa-image text-primary',
+            'jpeg': 'fas fa-image text-primary',
+            'gif': 'fas fa-image text-primary',
+            'pdf': 'fas fa-file-pdf text-danger',
+            'txt': 'fas fa-file-alt text-secondary',
+            'log': 'fas fa-file-alt text-secondary',
+            'json': 'fas fa-file-code text-warning',
+            'xml': 'fas fa-file-code text-warning',
+            'zip': 'fas fa-file-archive text-info',
+            'rar': 'fas fa-file-archive text-info'
+        };
+        return iconMap[ext] || 'fas fa-file text-secondary';
+    }
+    
+    bindFileItemEvents() {
+        // 檔案項目點擊下載事件
+        document.querySelectorAll('.clickable-file').forEach(item => {
+            item.addEventListener('click', (e) => {
+                const fileToken = e.currentTarget.dataset.fileToken;
+                this.downloadFile(fileToken);
+            });
+        });
+        
+        // 刪除按鈕事件
+        document.querySelectorAll('.delete-file-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const fileToken = e.currentTarget.dataset.fileToken;
+                const fileName = e.currentTarget.dataset.fileName;
+                this.deleteFile(fileToken, fileName);
+            });
+        });
+    }
+    
+    async downloadFile(fileToken) {
+        try {
+            const downloadUrl = `/api/attachments/teams/${this.teamId}/attachments/download?file_token=${fileToken}`;
+            window.open(downloadUrl, '_blank');
+        } catch (error) {
+            console.error('下載檔案失敗:', error);
+            AppUtils.showError('下載檔案失敗');
+        }
+    }
+    
+    async deleteFile(fileToken, fileName) {
+        const confirmed = await AppUtils.showConfirm(
+            i18n.t('testRun.confirmDeleteFile', { fileName })
+        );
+        
+        if (!confirmed) return;
+        
+        try {
+            const response = await fetch(`/api/teams/${this.teamId}/test-run-configs/${this.configId}/items/${this.testRunItemId}/test-results/${fileToken}`, {
+                method: 'DELETE'
+            });
+            
+            const result = await response.json();
+            
+            if (response.ok && result.success) {
+                AppUtils.showSuccess(i18n.t('testRun.fileDeleteSuccess'));
+                
+                const fileItem = document.querySelector(`[data-file-token="${fileToken}"]`);
+                if (fileItem) {
+                    fileItem.remove();
+                }
+                
+                setTimeout(() => {
+                    this.loadExistingResults();
+                }, 1000);
+                
+                if (window.updateStatistics) {
+                    window.updateStatistics();
+                }
+            } else {
+                const errorMsg = result.error || i18n.t('testRun.fileDeleteFailed');
+                AppUtils.showError(errorMsg);
+            }
+        } catch (error) {
+            console.error('刪除檔案異常:', error);
+            AppUtils.showError(i18n.t('testRun.fileDeleteFailed'));
+        }
+    }
+    
+    showLoading(show) {
+        this.loading.style.display = show ? 'block' : 'none';
+        if (show) {
+            this.showEmpty(false);
+            this.resultsList.style.display = 'none';
+        } else {
+            this.resultsList.style.display = 'block';
+        }
+    }
+    
+    showEmpty(show) {
+        this.empty.style.display = show ? 'block' : 'none';
+        this.resultsList.style.display = show ? 'none' : 'block';
+    }
+    
+    showProgress(show) {
+        this.progressArea.style.display = show ? 'block' : 'none';
+        if (!show) {
+            this.progressBar.style.width = '0%';
+            this.uploadStatus.textContent = '';
+        }
+    }
+    
+    escapeHtml(unsafe) {
+        return unsafe
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#039;");
+    }
+}
+
+// 全局變量
+let currentTestResultsManager = null;
+
+// 初始化 Test Results 管理器 (with setTimeout fix)
+function initializeTestResults(testRunItemId, testCaseNumber, teamId, configId) {
+    if (currentTestResultsManager) {
+        currentTestResultsManager = null;
+    }
+    
+    // 確保 DOM 元素存在後再初始化
+    setTimeout(() => {
+        currentTestResultsManager = new TestResultsManager(
+            testRunItemId, 
+            testCaseNumber, 
+            teamId, 
+            configId
+        );
+    }, 100);
+}
+</script>
 </style>
 
 {% endblock %}
