@@ -24,7 +24,7 @@
         "filtered": "Filtered ({count})",
         "home": "Home",
         "languageEnUs": "English",
-        "languageZhCn": "Chinese (Simplified)",
+        "languageZhCn": "简体中文",
         "languageZhTw": "繁體中文",
         "loading": "Loading...",
         "name": "Name",
@@ -237,17 +237,12 @@
     "orgSync": {
         "active": "Active",
         "addTeamFirst": "Please create a team before syncing",
-        "addTeamFirstForHistory": "Please create a team before viewing sync history",
         "contactsSync": "Contact Sync",
         "currentStatus": "Current Sync Status",
         "departmentsStats": "Department Stats",
         "departmentsSync": "Department Sync",
         "errorPrefix": "Sync Error",
         "fullSync": "Full Sync",
-        "historyLoading": "Loading sync history...",
-        "historyModalTitle": "Sync History",
-        "historyNoRecordsHint": "Please run organization sync first",
-        "historyNoRecordsTitle": "No sync records",
         "idle": "Idle",
         "labels": {
             "departments": "Departments",
@@ -256,11 +251,9 @@
         "lastSyncPrefix": "Last sync:",
         "loadingStatus": "Loading status...",
         "modalTitle": "Organization Sync Management",
-        "noRecentHistory": "No sync history yet",
         "openButton": "Sync Organization",
         "preparing": "Preparing...",
         "readyToRun": "Ready to run a new sync",
-        "recentHistory": "Recent Sync History",
         "startFailedPrefix": "Failed to start sync",
         "startSync": "Start Sync",
         "statsError": "Failed to load statistics",
@@ -298,8 +291,7 @@
             "users": "Users"
         },
         "usersStats": "User Stats",
-        "viewErrorDetails": "View error details",
-        "viewFullHistory": "View Full History"
+        "viewErrorDetails": "View error details"
     },
     "pagination": {
         "nextPage": "Next",

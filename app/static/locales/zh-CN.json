@@ -237,17 +237,12 @@
     "orgSync": {
         "active": "活跃",
         "addTeamFirst": "请先新增团队后再执行同步",
-        "addTeamFirstForHistory": "请先新增团队后再查看同步历史",
         "contactsSync": "用户同步",
         "currentStatus": "当前同步状态",
         "departmentsStats": "部门统计",
         "departmentsSync": "部门同步",
         "errorPrefix": "同步错误",
         "fullSync": "完整同步",
-        "historyLoading": "加载历史记录中...",
-        "historyModalTitle": "同步历史记录",
-        "historyNoRecordsHint": "请先执行组织架构同步",
-        "historyNoRecordsTitle": "尚无同步记录",
         "idle": "系统空闲",
         "labels": {
             "departments": "部门",
@@ -256,11 +251,9 @@
         "lastSyncPrefix": "最后同步:",
         "loadingStatus": "加载状态中...",
         "modalTitle": "组织架构同步管理",
-        "noRecentHistory": "尚无同步记录",
         "openButton": "同步组织架构",
         "preparing": "准备开始...",
         "readyToRun": "准备执行新的同步作业",
-        "recentHistory": "最近同步记录",
         "startFailedPrefix": "启动同步失败",
         "startSync": "开始同步",
         "statsError": "统计数据加载失败",
@@ -298,8 +291,7 @@
             "users": "用户同步"
         },
         "usersStats": "用户统计",
-        "viewErrorDetails": "查看错误详情",
-        "viewFullHistory": "查看完整历史"
+        "viewErrorDetails": "查看错误详情"
     },
     "pagination": {
         "nextPage": "下一页",

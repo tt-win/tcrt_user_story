@@ -236,48 +236,6 @@ async def trigger_sync(
         raise HTTPException(status_code=500, detail=f"觸發同步失敗: {str(e)}")
 
 
-@router.get("/{team_id}/sync/history")
-async def get_sync_history(
-    team_id: int,
-    limit: int = 10,
-    db: Session = Depends(get_db)
-):
-    """
-    獲取團隊同步歷史記錄
-    
-    Args:
-        team_id: 團隊 ID
-        limit: 記錄數量限制
-        db: 資料庫連線
-        
-    Returns:
-        同步歷史記錄列表
-    """
-    try:
-        # 檢查團隊是否存在
-        team = db.query(Team).filter(Team.id == team_id).first()
-        if not team:
-            raise HTTPException(status_code=404, detail="團隊不存在")
-        
-        # 獲取同步服務
-        sync_service = get_lark_org_sync_service()
-        
-        # 獲取同步歷史
-        history = sync_service.get_sync_history(team_id, limit)
-        
-        return {
-            "success": True,
-            "data": {
-                "history": history,
-                "total": len(history),
-                "limit": limit
-            },
-            "message": f"找到 {len(history)} 條同步記錄"
-        }
-        
-    except Exception as e:
-        logger.error(f"獲取同步歷史失敗: {e}")
-        raise HTTPException(status_code=500, detail=f"獲取同步歷史失敗: {str(e)}")
 
 
 @router.get("/{team_id}/sync/progress/{sync_id}")
@@ -323,27 +281,8 @@ async def get_sync_progress(
                 }
             }
         
-        # 從歷史記錄中查找
-        history = sync_service.get_sync_history(team_id, 50)  # 搜尋更多記錄
-        sync_record = next((h for h in history if h['id'] == sync_id), None)
-        
-        if not sync_record:
-            raise HTTPException(status_code=404, detail="找不到指定的同步記錄")
-        
-        return {
-            "success": True,
-            "data": {
-                "sync_id": sync_id,
-                "status": sync_record['status'],
-                "is_syncing": sync_record['status'] in ['started', 'running'],
-                "progress": f"狀態: {sync_record['status']}",
-                "start_time": sync_record['start_time'],
-                "end_time": sync_record['end_time'],
-                "duration_seconds": sync_record['duration_seconds'],
-                "result_summary": sync_record.get('result_summary'),
-                "error_message": sync_record.get('error_message')
-            }
-        }
+        # 由於移除了同步歷史功能，無法從歷史記錄查找
+        raise HTTPException(status_code=404, detail="同步記錄功能已移除")
         
     except HTTPException:
         raise

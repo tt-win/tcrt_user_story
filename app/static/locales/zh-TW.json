@@ -238,17 +238,12 @@
     "orgSync": {
         "active": "活躍",
         "addTeamFirst": "請先新增團隊後再執行同步",
-        "addTeamFirstForHistory": "請先新增團隊後再查看同步歷史",
         "contactsSync": "用戶同步",
         "currentStatus": "當前同步狀態",
         "departmentsStats": "部門統計",
         "departmentsSync": "部門同步",
         "errorPrefix": "同步錯誤",
         "fullSync": "完整同步",
-        "historyLoading": "載入歷史記錄中...",
-        "historyModalTitle": "同步歷史記錄",
-        "historyNoRecordsHint": "請先執行組織架構同步",
-        "historyNoRecordsTitle": "尚無同步記錄",
         "idle": "系統空閒",
         "labels": {
             "departments": "部門",
@@ -257,11 +252,9 @@
         "lastSyncPrefix": "最後同步:",
         "loadingStatus": "載入狀態中...",
         "modalTitle": "組織架構同步管理",
-        "noRecentHistory": "尚無同步記錄",
         "openButton": "同步組織架構",
         "preparing": "準備開始...",
         "readyToRun": "準備執行新的同步作業",
-        "recentHistory": "最近同步記錄",
         "startFailedPrefix": "啟動同步失敗",
         "startSync": "開始同步",
         "statsError": "統計資料載入失敗",
@@ -299,8 +292,7 @@
             "users": "用戶同步"
         },
         "usersStats": "用戶統計",
-        "viewErrorDetails": "查看錯誤詳情",
-        "viewFullHistory": "查看完整歷史"
+        "viewErrorDetails": "查看錯誤詳情"
     },
     "pagination": {
         "nextPage": "下一頁",
