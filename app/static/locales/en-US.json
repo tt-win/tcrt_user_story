@@ -548,7 +548,7 @@
             "title": "Select Test Cases to Add"
         },
         "caseTitle": "Title",
-        "changeStatus": "狀態",
+        "changeStatus": "Status",
         "changeStatusFailed": "Failed to change status",
         "chartsLoadError": "Failed to load charts, please refresh and try again",
         "chartsReports": "Charts & Reports",
