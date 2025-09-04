@@ -109,7 +109,7 @@ async def upload_test_run_results(
         
         if result['success']:
             # 更新本地 Test Run Item 記錄
-            test_run_item.result_files_uploaded = True
+            test_run_item.result_files_uploaded = 1
             test_run_item.result_files_count = result['uploaded_files']
             test_run_item.upload_history_json = json.dumps(result['upload_history'], ensure_ascii=False)
             
@@ -1214,7 +1214,7 @@ async def delete_test_result_file(
                 
                 item.upload_history_json = json.dumps(upload_history, ensure_ascii=False) if uploads else None
                 item.result_files_count = len(uploads)
-                item.result_files_uploaded = len(uploads) > 0
+                item.result_files_uploaded = 1 if len(uploads) > 0 else 0
                 item.updated_at = datetime.utcnow()
                 
                 db.commit()

@@ -48,7 +48,7 @@ class TestResultCleanupService:
             test_run_items = db.query(TestRunItemDB).filter(
                 TestRunItemDB.team_id == team_id,
                 TestRunItemDB.config_id == config_id,
-                TestRunItemDB.result_files_uploaded == True,
+                TestRunItemDB.result_files_uploaded == 1,
                 TestRunItemDB.upload_history_json.isnot(None)
             ).all()
             
@@ -97,7 +97,7 @@ class TestResultCleanupService:
                 TestRunItemDB.id == item_id,
                 TestRunItemDB.team_id == team_id,
                 TestRunItemDB.config_id == config_id,
-                TestRunItemDB.result_files_uploaded == True,
+                TestRunItemDB.result_files_uploaded == 1,
                 TestRunItemDB.upload_history_json.isnot(None)
             ).first()
             

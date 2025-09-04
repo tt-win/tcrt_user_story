@@ -529,7 +529,7 @@ async def delete_test_run(
                     TestRunItemDB.team_id == team_id,
                     TestRunItemDB.config_id == config_id,
                     TestRunItemDB.test_case_number == test_case_number,
-                    TestRunItemDB.result_files_uploaded == True,
+                    TestRunItemDB.result_files_uploaded == 1,
                     TestRunItemDB.upload_history_json.isnot(None)
                 ).first()
 
@@ -562,7 +562,7 @@ async def delete_test_run(
                             )
 
                             # 同步更新本地 TestRunItem 的狀態（清空檔案上傳紀錄）
-                            test_run_item.result_files_uploaded = False
+                            test_run_item.result_files_uploaded = 0
                             test_run_item.result_files_count = 0
                             test_run_item.upload_history_json = None
                             db.add(test_run_item)
