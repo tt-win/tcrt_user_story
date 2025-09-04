@@ -2967,8 +2967,26 @@ async function saveAndAddNext() {
         
         showSuccess(window.i18n ? window.i18n.t('messages.testCaseCreatedNext') : '測試案例新增完成，準備下一筆');
         
+        // 保存當前資料用於產生下一筆
+        const currentNumber = testCaseData.test_case_number;
+        const currentTitle = testCaseData.title;
+        
         // 重置表單為新增下一筆狀態
         showTestCaseModal(null); // 呼叫新增模式，會自動清空所有欄位並設定為編輯模式
+        
+        // 產生下一筆的預填資料
+        const nextNumber = generateNextTestCaseNumber(currentNumber);
+        const titlePrefix = extractTitlePrefix(currentTitle);
+        
+        // 設定預填值
+        setTimeout(() => {
+            if (nextNumber !== currentNumber) {
+                document.getElementById('testCaseNumber').value = nextNumber;
+            }
+            if (titlePrefix) {
+                document.getElementById('title').value = titlePrefix;
+            }
+        }, 100);
         
     } catch (error) {
         console.error('儲存測試案例失敗:', error);
@@ -2985,6 +3003,27 @@ async function saveAndAddNext() {
 }
 
 // 工具函數
+function generateNextTestCaseNumber(currentNumber) {
+    // 解析格式：TCG-93178.020.050
+    const match = currentNumber.match(/^(.+\.)(\d+)$/);
+    if (match) {
+        const prefix = match[1];  // TCG-93178.020.
+        const lastNumber = parseInt(match[2]);  // 050 → 50
+        const nextNumber = (lastNumber + 10).toString().padStart(3, '0');  // 060
+        return prefix + nextNumber;
+    }
+    return currentNumber;  // 無法解析則返回原值
+}
+
+function extractTitlePrefix(title) {
+    // 找到最後一個 hyphen 並保留前面部分
+    const lastHyphenIndex = title.lastIndexOf(' - ');
+    if (lastHyphenIndex > 0) {
+        return title.substring(0, lastHyphenIndex + 3);  // 保留 " - "
+    }
+    return '';  // 沒有 hyphen 則返回空字串
+}
+
 function getStatusBadgeClass(status) {
     const classes = {
         'Draft': 'bg-secondary',
