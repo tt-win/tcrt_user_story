@@ -5,11 +5,16 @@ Local CRUD for test run items stored in SQLite, detached from Lark.
 Items are created by selecting Test Cases and copying necessary fields.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
 from sqlalchemy.orm import Session
 from typing import List, Optional, Any, Dict
 from datetime import datetime
 import json
+import logging
+
+from app.services.lark_client import LarkClient
+from app.config import settings
+from app.models.test_case import TestCase
 
 from app.database import get_db
 from app.models.database_models import (
@@ -23,6 +28,110 @@ from pydantic import BaseModel, Field
 
 
 router = APIRouter(prefix="/teams/{team_id}/test-run-configs/{config_id}/items", tags=["test-run-items"])
+
+@router.post("/{item_id}/upload-results")
+async def upload_test_run_results(
+    team_id: int,
+    config_id: int,
+    item_id: int,
+    files: List[UploadFile] = File(...),
+    db: Session = Depends(get_db)
+):
+    """
+    上傳測試執行結果檔案到對應的 Test Case
+    
+    流程：
+    1. 驗證 Test Run Item 存在
+    2. 取得團隊和表格配置
+    3. 轉換檔案名稱使用標準格式
+    4. 上傳檔案到 Lark Drive
+    5. 更新對應 Test Case 的 Test Results Files 欄位
+    6. 記錄上傳歷史到本地資料庫
+    """
+    from fastapi import File, UploadFile
+    from app.services.test_result_file_service import TestCaseResultFileManager
+    import json
+    
+    # 驗證 Test Run Item 存在
+    test_run_item = db.query(TestRunItemDB).filter(
+        TestRunItemDB.id == item_id,
+        TestRunItemDB.config_id == config_id,
+        TestRunItemDB.team_id == team_id
+    ).first()
+    
+    if not test_run_item:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"找不到測試執行項目 ID {item_id}"
+        )
+    
+    # 取得團隊配置
+    team = db.query(TeamDB).filter(TeamDB.id == team_id).first()
+    if not team:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"找不到團隊 ID {team_id}"
+        )
+    
+    try:
+        # 使用共用輔助函數初始化 Lark 服務
+        lark_client, team_config = _get_lark_client_for_team(team_id, db)
+        result_file_manager = TestCaseResultFileManager(lark_client)
+        
+        # 查詢 Test Case 以取得 record_id
+        records = lark_client.get_all_records(team.test_case_table_id)
+        
+        target_record = None
+        for record in records:
+            fields = record.get('fields', {})
+            if fields.get(TestCase.FIELD_IDS['test_case_number']) == test_run_item.test_case_number:
+                target_record = record
+                break
+        
+        if not target_record:
+            return {
+                "success": False,
+                "message": "檔案上傳失敗",
+                "error_messages": [f"找不到 Test Case {test_run_item.test_case_number}"]
+            }
+        
+        # 上傳結果檔案
+        result = await result_file_manager.attach_test_run_results(
+            test_run_item_id=item_id,
+            test_case_number=test_run_item.test_case_number,
+            test_case_record_id=target_record.get('record_id', ''),
+            files=files,
+            team_wiki_token=team.wiki_token,
+            test_case_table_id=team.test_case_table_id
+        )
+        
+        if result['success']:
+            # 更新本地 Test Run Item 記錄
+            test_run_item.result_files_uploaded = True
+            test_run_item.result_files_count = result['uploaded_files']
+            test_run_item.upload_history_json = json.dumps(result['upload_history'], ensure_ascii=False)
+            
+            db.commit()
+            
+            return {
+                "success": True,
+                "message": f"成功上傳 {result['uploaded_files']} 個結果檔案到 Test Case {test_run_item.test_case_number}",
+                "uploaded_files": result['uploaded_files'],
+                "upload_details": result['upload_results']
+            }
+        else:
+            return {
+                "success": False,
+                "message": "檔案上傳失敗",
+                "error_messages": result['error_messages']
+            }
+            
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"上傳結果檔案時發生錯誤: {str(e)}"
+        )
 
 
 # -------------------- Pydantic Schemas --------------------
@@ -182,6 +291,22 @@ def _verify_team_and_config(team_id: int, config_id: int, db: Session) -> TestRu
     if not config:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"找不到測試執行配置 ID {config_id}")
     return config
+
+def _get_lark_client_for_team(team_id: int, db: Session):
+    """獲取配置好的 LarkClient 實例"""
+    team_config = db.query(TeamDB).filter(TeamDB.id == team_id).first()
+    if not team_config:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="團隊配置不存在"
+        )
+    
+    lark_client = LarkClient(
+        app_id=settings.lark.app_id,
+        app_secret=settings.lark.app_secret
+    )
+    lark_client.set_wiki_token(team_config.wiki_token)
+    return lark_client, team_config
 
 
 def _db_to_response(item: TestRunItemDB) -> TestRunItemResponse:
@@ -879,3 +1004,214 @@ async def delete_bug_ticket(
     item.bug_tickets_json = json.dumps(existing_tickets, ensure_ascii=False) if existing_tickets else None
     item.updated_at = datetime.utcnow()
     db.commit()
+
+
+# -------------------- Test Results Management --------------------
+
+@router.get("/{item_id}/test-results")
+async def get_test_run_results(
+    team_id: int,
+    config_id: int,
+    item_id: int,
+    db: Session = Depends(get_db)
+):
+    """
+    獲取 Test Run Item 的測試結果檔案
+    
+    Returns:
+        測試結果檔案列表和統計資訊
+    """
+    _verify_team_and_config(team_id, config_id, db)
+    
+    # 驗證 Test Run Item 存在
+    item = db.query(TestRunItemDB).filter(
+        TestRunItemDB.team_id == team_id,
+        TestRunItemDB.config_id == config_id,
+        TestRunItemDB.id == item_id
+    ).first()
+    
+    if not item:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Test Run Item 不存在"
+        )
+    
+    try:
+        # 使用共用輔助函數初始化 Lark 服務
+        lark_client, team_config = _get_lark_client_for_team(team_id, db)
+        
+        # 從 Lark 取得所有記錄，然後找到指定的記錄
+        records = lark_client.get_all_records(team_config.test_case_table_id)
+        
+        target_record = None
+        for record in records:
+            fields = record.get('fields', {})
+            if fields.get(TestCase.FIELD_IDS['test_case_number']) == item.test_case_number:
+                target_record = record
+                break
+        
+        if not target_record:
+            return {
+                "test_results_files": [],
+                "files_count": 0,
+                "total_size": 0
+            }
+        
+        # 轉換為 TestCase 模型
+        test_case = TestCase.from_lark_record(target_record, team_config.id)
+        
+        # 提取測試結果檔案
+        test_results_files = test_case.test_results_files or []
+        
+        # 計算統計資訊
+        files_count = len(test_results_files)
+        total_size = sum(file.size for file in test_results_files if hasattr(file, 'size') and file.size)
+        
+        return {
+            "test_results_files": [
+                {
+                    "file_token": file.file_token,
+                    "name": file.name,
+                    "size": getattr(file, 'size', 0),
+                    "uploaded_at": getattr(file, 'uploaded_at', None) or getattr(file, 'created_at', None),
+                    "content_type": getattr(file, 'content_type', 'application/octet-stream')
+                }
+                for file in test_results_files
+            ],
+            "files_count": files_count,
+            "total_size": total_size
+        }
+        
+    except Exception as e:
+        logging.error(f"獲取測試結果檔案失敗: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"獲取測試結果檔案失敗: {str(e)}"
+        )
+
+
+@router.delete("/{item_id}/test-results/{file_token}")
+async def delete_test_result_file(
+    team_id: int,
+    config_id: int,
+    item_id: int,
+    file_token: str,
+    db: Session = Depends(get_db)
+):
+    """
+    刪除單一測試結果檔案
+    
+    Flow:
+    1. 驗證檔案屬於該 Test Run Item
+    2. 從 Test Case 的 Test Results Files 欄位中移除檔案
+    3. 更新本地追蹤記錄
+    """
+    _verify_team_and_config(team_id, config_id, db)
+    
+    # 驗證 Test Run Item 存在
+    item = db.query(TestRunItemDB).filter(
+        TestRunItemDB.team_id == team_id,
+        TestRunItemDB.config_id == config_id,
+        TestRunItemDB.id == item_id
+    ).first()
+    
+    if not item:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Test Run Item 不存在"
+        )
+    
+    try:
+        # 使用共用輔助函數初始化 Lark 服務
+        lark_client, team_config = _get_lark_client_for_team(team_id, db)
+        
+        # 從 Lark 取得所有記錄，然後找到指定的記錄
+        records = lark_client.get_all_records(team_config.test_case_table_id)
+        
+        target_record = None
+        for record in records:
+            fields = record.get('fields', {})
+            if fields.get(TestCase.FIELD_IDS['test_case_number']) == item.test_case_number:
+                target_record = record
+                break
+        
+        if not target_record:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Test Case 不存在"
+            )
+        
+        # 轉換為 TestCase 模型
+        test_case = TestCase.from_lark_record(target_record, team_config.id)
+        
+        # 檢查檔案是否存在於 Test Results Files 中
+        test_results_files = test_case.test_results_files or []
+        file_to_remove = None
+        
+        for file in test_results_files:
+            if file.file_token == file_token:
+                file_to_remove = file
+                break
+        
+        if not file_to_remove:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="檔案不存在於測試結果中"
+            )
+        
+        # 從列表中移除檔案
+        remaining_files = [f for f in test_results_files if f.file_token != file_token]
+        
+        # 更新 Lark Test Case 記錄的 Test Results Files 欄位
+        success = lark_client.update_record_attachment(
+            team_config.test_case_table_id,
+            test_case.record_id,
+            'Test Results Files',
+            [f.file_token for f in remaining_files],
+            team_config.wiki_token
+        )
+        
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="更新 Test Case 記錄失敗"
+            )
+        
+        # 更新本地追蹤記錄
+        if item.upload_history_json:
+            try:
+                upload_history = json.loads(item.upload_history_json)
+                uploads = upload_history.get('uploads', [])
+                
+                # 從上傳歷史中移除該檔案
+                uploads = [upload for upload in uploads if upload.get('file_token') != file_token]
+                
+                # 更新統計
+                upload_history['uploads'] = uploads
+                upload_history['total_uploads'] = len(uploads)
+                
+                item.upload_history_json = json.dumps(upload_history, ensure_ascii=False) if uploads else None
+                item.result_files_count = len(uploads)
+                item.result_files_uploaded = len(uploads) > 0
+                item.updated_at = datetime.utcnow()
+                
+                db.commit()
+                
+            except Exception as e:
+                logging.warning(f"更新上傳歷史記錄失敗: {e}")
+                # 不影響主要功能
+        
+        return {
+            "success": True,
+            "message": "檔案刪除成功",
+            "remaining_files_count": len(remaining_files)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logging.error(f"刪除測試結果檔案失敗: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"刪除檔案失敗: {str(e)}"
+        )

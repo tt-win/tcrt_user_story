@@ -87,7 +87,7 @@ def sync_tp_tickets_to_db(config_db: TestRunConfigDB, tp_tickets: Optional[List[
     config_db.tp_tickets_search = search_string
 
 
-def test_run_config_db_to_model(config_db: TestRunConfigDB) -> TestRunConfig:
+def convert_db_to_model(config_db: TestRunConfigDB) -> TestRunConfig:
     """將資料庫 TestRunConfig 模型轉換為 API 模型"""
     # 反序列化 TP 票號
     related_tp_tickets = deserialize_tp_tickets(config_db.related_tp_tickets_json)
@@ -114,7 +114,7 @@ def test_run_config_db_to_model(config_db: TestRunConfigDB) -> TestRunConfig:
     )
 
 
-def test_run_config_model_to_db(config: TestRunConfigCreate) -> TestRunConfigDB:
+def convert_model_to_db(config: TestRunConfigCreate) -> TestRunConfigDB:
     """將 API TestRunConfig 模型轉換為資料庫模型"""
     # 序列化 TP 票號
     tp_json, tp_search = serialize_tp_tickets(config.related_tp_tickets)
@@ -163,7 +163,7 @@ async def get_test_run_configs(
     # 轉換為摘要格式（execution_rate/pass_rate 由模型方法計算）
     summaries = []
     for config_db in configs_db:
-        config = test_run_config_db_to_model(config_db)
+        config = convert_db_to_model(config_db)
         summary = TestRunConfigSummary(
             id=config.id,
             name=config.name,
@@ -199,14 +199,14 @@ async def create_test_run_config(
     config.team_id = team_id
     
     # 建立資料庫模型
-    config_db = test_run_config_model_to_db(config)
+    config_db = convert_model_to_db(config)
     
     # 儲存到資料庫
     db.add(config_db)
     db.commit()
     db.refresh(config_db)
     
-    return test_run_config_db_to_model(config_db)
+    return convert_db_to_model(config_db)
 
 
 @router.get("/{config_id}", response_model=TestRunConfigResponse)
@@ -229,7 +229,7 @@ async def get_test_run_config(
             detail=f"找不到測試執行配置 ID {config_id}"
         )
     
-    return test_run_config_db_to_model(config_db)
+    return convert_db_to_model(config_db)
 
 
 @router.put("/{config_id}", response_model=TestRunConfigResponse)
@@ -269,7 +269,7 @@ async def update_test_run_config(
     db.commit()
     db.refresh(config_db)
     
-    return test_run_config_db_to_model(config_db)
+    return convert_db_to_model(config_db)
 
 
 @router.delete("/{config_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -278,7 +278,9 @@ async def delete_test_run_config(
     config_id: int,
     db: Session = Depends(get_db)
 ):
-    """刪除測試執行配置"""
+    """刪除測試執行配置及相關附件"""
+    from ..services.test_result_cleanup_service import TestResultCleanupService
+    
     verify_team_exists(team_id, db)
     
     config_db = db.query(TestRunConfigDB).filter(
@@ -291,19 +293,34 @@ async def delete_test_run_config(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"找不到測試執行配置 ID {config_id}"
         )
-    # 先刪除歷程與本地 items，避免潛在的參照錯誤
+    
+    # 先清理測試結果檔案，再刪除歷程與本地 items
     try:
-        # 保險刪除：相關歷程
+        # 1. 清理測試結果檔案
+        cleanup_service = TestResultCleanupService()
+        cleaned_files_count = await cleanup_service.cleanup_test_run_config_files(
+            team_id, config_id, db
+        )
+        
+        if cleaned_files_count > 0:
+            logger.info(f"Test Run Config {config_id} 已清理 {cleaned_files_count} 個測試結果檔案")
+        
+        # 2. 保險刪除：相關歷程
         db.query(ResultHistoryDB).filter(
             ResultHistoryDB.config_id == config_id,
             ResultHistoryDB.team_id == team_id
         ).delete(synchronize_session=False)
+        
+        # 3. 刪除 Test Run Items
         db.query(TestRunItemDB).filter(
             TestRunItemDB.config_id == config_id,
             TestRunItemDB.team_id == team_id
         ).delete(synchronize_session=False)
+        
+        # 4. 刪除 Test Run Config
         db.delete(config_db)
         db.commit()
+        
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
@@ -440,7 +457,7 @@ async def change_test_run_status(
     db.commit()
     db.refresh(config_db)
     
-    return test_run_config_db_to_model(config_db)
+    return convert_db_to_model(config_db)
 
 
 @router.post("/{config_id}/restart", response_model=dict)
@@ -577,7 +594,7 @@ async def get_test_run_statistics(
     verify_team_exists(team_id, db)
     
     configs_db = db.query(TestRunConfigDB).filter(TestRunConfigDB.team_id == team_id).all()
-    configs = [test_run_config_db_to_model(config_db) for config_db in configs_db]
+    configs = [convert_db_to_model(config_db) for config_db in configs_db]
     
     return TestRunConfigStatistics.from_configs(configs)
 
@@ -631,7 +648,7 @@ async def search_configs_by_tp_tickets(
         # 轉換為摘要格式
         summaries = []
         for config_db in configs_db:
-            config = test_run_config_db_to_model(config_db)
+            config = convert_db_to_model(config_db)
             
             # 過濾匹配的 TP 票號 (highlight matching tickets)
             matching_tickets = _filter_matching_tp_tickets(config.related_tp_tickets, search_query)

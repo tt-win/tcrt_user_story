@@ -55,6 +55,9 @@ class TestCase(BaseModel):
     test_result: Optional[TestResultStatus] = Field(None, description="測試結果")
     attachments: List[LarkAttachment] = Field(default_factory=list, description="附件列表")
     
+    # 測試結果檔案欄位
+    test_results_files: List[LarkAttachment] = Field(default_factory=list, description="測試結果檔案（來自 Test Run 執行結果）")
+    
     # 關聯欄位
     user_story_map: List[LarkRecord] = Field(default_factory=list, description="User Story Map 關聯")
     tcg: List[LarkRecord] = Field(default_factory=list, description="TCG 關聯")
@@ -80,6 +83,7 @@ class TestCase(BaseModel):
         'attachments': 'Attachment',
         'assignee': 'Assignee',
         'test_result': 'Test Result',
+        'test_results_files': 'Test Results Files',  # 新增測試結果檔案欄位
         'user_story_map': 'User Story Map',
         'tcg': 'TCG',
         'parent_record': '父記錄'
@@ -146,6 +150,10 @@ class TestCase(BaseModel):
         # 解析附件欄位
         attachments_raw = fields.get(cls.FIELD_IDS['attachments'])
         test_case_data['attachments'] = parse_lark_attachments(attachments_raw)
+        
+        # 解析測試結果檔案欄位
+        test_results_files_raw = fields.get(cls.FIELD_IDS['test_results_files'])
+        test_case_data['test_results_files'] = parse_lark_attachments(test_results_files_raw)
         
         # 解析關聯記錄欄位
         test_case_data['user_story_map'] = parse_lark_records(
@@ -214,6 +222,16 @@ class TestCase(BaseModel):
             # 允許傳空陣列以清空附件
             lark_fields[self.FIELD_IDS['attachments']] = attachment_items
         
+        # 處理測試結果檔案欄位
+        if self.test_results_files is not None:
+            # 測試結果檔案欄位也是 Attachment 類型
+            result_file_items = []
+            for result_file in self.test_results_files:
+                token = getattr(result_file, 'file_token', None)
+                if token:
+                    result_file_items.append({'file_token': token})
+            lark_fields[self.FIELD_IDS['test_results_files']] = result_file_items
+        
         return lark_fields
     
     # 便利方法
@@ -277,6 +295,18 @@ class TestCase(BaseModel):
                 steps.append(line)
         
         return steps if steps else [self.steps]
+
+    def has_test_results_files(self) -> bool:
+        """檢查是否有測試結果檔案"""
+        return len(self.test_results_files) > 0
+    
+    def get_test_results_file_count(self) -> int:
+        """取得測試結果檔案數量"""
+        return len(self.test_results_files)
+    
+    def get_test_results_screenshots(self) -> List[LarkAttachment]:
+        """取得測試結果檔案中的截圖"""
+        return [file for file in self.test_results_files if file.is_image]
 
 
 # API 交互模型

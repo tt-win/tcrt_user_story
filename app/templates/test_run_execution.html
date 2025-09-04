@@ -1197,8 +1197,8 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                             </div>
                             <div id="testResultsList" style="height: 180px; overflow-y: auto;"></div>
                             
-                            <!-- 上傳狀態區 -->
-                            <div id="testResultsUploadArea" class="test-results-upload-zone mb-2" style="display:none;">
+                            <!-- 上傳狀態區（覆蓋檔案列表區域） -->
+                            <div id="testResultsUploadArea" class="test-results-upload-zone mb-2" style="display:none; height: 180px;">
                                 <div class="upload-dropzone border-2 border-dashed border-secondary rounded p-3 text-center">
                                     <div id="uploadDropText">
                                         <i class="fas fa-cloud-upload-alt fa-2x text-muted mb-2"></i>
@@ -5417,6 +5417,7 @@ class TestResultsManager {
         this.progressBar = document.getElementById('uploadProgressBar');
         this.uploadStatus = document.getElementById('uploadStatus');
         this.resultsList = document.getElementById('testResultsList');
+        this.filesList = document.getElementById('testResultsList'); // 檔案列表區域引用
         this.loading = document.getElementById('testResultsLoading');
         this.empty = document.getElementById('testResultsEmpty');
     }
@@ -5458,11 +5459,16 @@ class TestResultsManager {
     
     toggleUploadArea() {
         const isVisible = this.uploadArea.style.display !== 'none';
-        this.uploadArea.style.display = isVisible ? 'none' : 'block';
         
         if (!isVisible) {
-            this.uploadBtn.querySelector('i').className = 'fas fa-minus';
+            // 顯示上傳區域，隱藏檔案列表
+            this.filesList.style.display = 'none';
+            this.uploadArea.style.display = 'block';
+            this.uploadBtn.querySelector('i').className = 'fas fa-times';
         } else {
+            // 隱藏上傳區域，重新顯示檔案列表
+            this.uploadArea.style.display = 'none';
+            this.filesList.style.display = 'block';
             this.uploadBtn.querySelector('i').className = 'fas fa-upload';
         }
     }

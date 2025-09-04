@@ -147,6 +147,14 @@ class TestRunItem(Base):
     raw_fields_json = Column(Text, nullable=True)
     bug_tickets_json = Column(Text, nullable=True)  # Bug Tickets（JSON Array 格式存多個 JIRA ticket 編號）
 
+    # 結果檔案追蹤欄位
+    result_files_uploaded = Column(Boolean, default=False, nullable=False, 
+                                 comment="測試結果檔案是否已上傳到對應 Test Case")
+    result_files_count = Column(Integer, default=0, nullable=False,
+                              comment="上傳的結果檔案數量")
+    upload_history_json = Column(Text, nullable=True,
+                               comment="檔案上傳歷史記錄（JSON 格式）")
+
     # 系統欄位
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -161,6 +169,7 @@ class TestRunItem(Base):
         Index('ix_test_run_items_team', 'team_id'),
         Index('ix_test_run_items_result', 'test_result'),
         Index('ix_test_run_items_priority', 'priority'),
+        Index('ix_test_run_items_files_uploaded', 'result_files_uploaded'),
     )
 
 

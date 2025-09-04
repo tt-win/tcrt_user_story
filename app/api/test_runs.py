@@ -513,6 +513,64 @@ async def delete_test_run(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"找不到測試執行記錄 {record_id}"
             )
+
+        # 在刪除前，嘗試清理該 Test Run 對應的 Test Case 上的測試結果檔案
+        try:
+            from app.models.database_models import TestRunItem as TestRunItemDB
+            from app.models.test_case import TestCase
+            import json as _json
+
+            fields = target_record.get('fields', {})
+            test_case_number = fields.get('Test Case Number')
+
+            if test_case_number:
+                # 查找對應的本地 TestRunItem 以取得上傳的檔案 token 清單
+                test_run_item = db.query(TestRunItemDB).filter(
+                    TestRunItemDB.team_id == team_id,
+                    TestRunItemDB.config_id == config_id,
+                    TestRunItemDB.test_case_number == test_case_number,
+                    TestRunItemDB.result_files_uploaded == True,
+                    TestRunItemDB.upload_history_json.isnot(None)
+                ).first()
+
+                if test_run_item and test_run_item.upload_history_json:
+                    upload_history = _json.loads(test_run_item.upload_history_json)
+                    file_tokens_to_remove = [u.get('file_token') for u in upload_history.get('uploads', []) if u.get('file_token')]
+
+                    if file_tokens_to_remove:
+                        # 取得 Test Case 記錄，找出當前的測試結果檔案
+                        test_case_records = lark_client.get_all_records(team.test_case_table_id)
+                        target_tc = None
+                        for r in test_case_records:
+                            rf = r.get('fields', {})
+                            if rf.get(TestCase.FIELD_IDS['test_case_number']) == test_case_number:
+                                target_tc = r
+                                break
+
+                        if target_tc:
+                            existing_attachments = target_tc.get('fields', {}).get(TestCase.FIELD_IDS['test_results_files'], []) or []
+                            existing_tokens = [att.get('file_token') for att in existing_attachments if att and att.get('file_token')]
+                            remaining_tokens = [t for t in existing_tokens if t not in file_tokens_to_remove]
+
+                            # 更新 Test Case 的測試結果檔案欄位（移除本次 Test Run 上傳的檔案）
+                            lark_client.update_record_attachment(
+                                team.test_case_table_id,
+                                target_tc.get('record_id'),
+                                TestCase.FIELD_IDS['test_results_files'],
+                                remaining_tokens,
+                                team.wiki_token
+                            )
+
+                            # 同步更新本地 TestRunItem 的狀態（清空檔案上傳紀錄）
+                            test_run_item.result_files_uploaded = False
+                            test_run_item.result_files_count = 0
+                            test_run_item.upload_history_json = None
+                            db.add(test_run_item)
+                            db.commit()
+        except Exception as cleanup_err:
+            # 清理失敗不應阻止主要刪除流程，記錄警告即可
+            import logging as _logging
+            _logging.getLogger(__name__).warning(f"刪除 Test Run 前清理測試結果檔案失敗: {cleanup_err}")
         
         # 執行刪除
         success = lark_client.delete_record(config.table_id, record_id)

@@ -68,6 +68,14 @@ const AppUtils = {
         this.showMessage(message, 'warning');
     },
 
+    // 顯示確認對話框
+    showConfirm: function(message) {
+        return new Promise((resolve) => {
+            const confirmed = window.confirm(message);
+            resolve(confirmed);
+        });
+    },
+
     // 通用訊息顯示函數
     showMessage: function(message, type = 'info') {
         const container = document.getElementById('flash-messages');
