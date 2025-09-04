@@ -65,6 +65,57 @@ class TestResultCleanupService:
         except Exception as e:
             self.logger.error(f"清理 Test Run Config {config_id} 檔案失敗: {e}")
             return 0
+
+    async def cleanup_test_run_item_files(
+        self, 
+        team_id: int, 
+        config_id: int,
+        item_id: int,
+        db: Session
+    ) -> int:
+        """
+        清理單個 Test Run Item 的測試結果檔案
+        
+        Args:
+            team_id: 團隊 ID
+            config_id: Test Run Config ID
+            item_id: Test Run Item ID
+            db: 資料庫會話
+            
+        Returns:
+            清理的檔案數量
+        """
+        try:
+            # 1. 獲取團隊配置
+            team_config = db.query(TeamDB).filter(TeamDB.id == team_id).first()
+            if not team_config:
+                self.logger.warning(f"找不到團隊配置 {team_id}")
+                return 0
+            
+            # 2. 獲取特定的 Test Run Item
+            test_run_item = db.query(TestRunItemDB).filter(
+                TestRunItemDB.id == item_id,
+                TestRunItemDB.team_id == team_id,
+                TestRunItemDB.config_id == config_id,
+                TestRunItemDB.result_files_uploaded == True,
+                TestRunItemDB.upload_history_json.isnot(None)
+            ).first()
+            
+            if not test_run_item:
+                self.logger.info(f"Test Run Item {item_id} 沒有需要清理的附件")
+                return 0
+            
+            # 3. 清理該 Item 的檔案
+            cleaned_count = await self._cleanup_item_files(test_run_item, team_config)
+            
+            if cleaned_count > 0:
+                self.logger.info(f"Test Run Item {item_id} 清理完成，共清理 {cleaned_count} 個檔案")
+            
+            return cleaned_count
+            
+        except Exception as e:
+            self.logger.error(f"清理 Test Run Item {item_id} 檔案失敗: {e}")
+            return 0
     
     async def _cleanup_item_files(
         self, 

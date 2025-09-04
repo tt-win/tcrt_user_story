@@ -12,6 +12,8 @@ from datetime import datetime
 import json
 import logging
 
+logger = logging.getLogger(__name__)
+
 from app.services.lark_client import LarkClient
 from app.config import settings
 from app.models.test_case import TestCase
@@ -571,6 +573,9 @@ async def delete_item(
     item_id: int,
     db: Session = Depends(get_db)
 ):
+    """刪除測試執行項目及相關附件"""
+    from ..services.test_result_cleanup_service import TestResultCleanupService
+    
     _verify_team_and_config(team_id, config_id, db)
     item = db.query(TestRunItemDB).filter(
         TestRunItemDB.id == item_id,
@@ -579,14 +584,31 @@ async def delete_item(
     ).first()
     if not item:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到項目")
-    # 保險刪除對應歷程（避免 DB 未啟用 FK 級聯時殘留）
-    db.query(ResultHistoryDB).filter(
-        ResultHistoryDB.team_id == team_id,
-        ResultHistoryDB.config_id == config_id,
-        ResultHistoryDB.item_id == item_id,
-    ).delete(synchronize_session=False)
-    db.delete(item)
-    db.commit()
+    
+    try:
+        # 1. 先清理測試結果檔案
+        cleanup_service = TestResultCleanupService()
+        cleaned_files_count = await cleanup_service.cleanup_test_run_item_files(
+            team_id, config_id, item_id, db
+        )
+        
+        if cleaned_files_count > 0:
+            logger.info(f"Test Run Item {item_id} 已清理 {cleaned_files_count} 個測試結果檔案")
+        
+        # 2. 保險刪除對應歷程（避免 DB 未啟用 FK 級聯時殘留）
+        db.query(ResultHistoryDB).filter(
+            ResultHistoryDB.team_id == team_id,
+            ResultHistoryDB.config_id == config_id,
+            ResultHistoryDB.item_id == item_id,
+        ).delete(synchronize_session=False)
+        
+        # 3. 刪除 Test Run Item
+        db.delete(item)
+        db.commit()
+        
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
 @router.post("/batch-update-results", response_model=Dict[str, Any])
