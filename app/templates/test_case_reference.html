@@ -1,0 +1,302 @@
+{% extends "base.html" %}
+
+{% block title %}{{ i18n.t('testCase.referenceTestCasePopupTitle') if i18n else '參考測試案例' }} - Test Case Repository Web Tool{% endblock %}
+
+{% block head %}
+<style>
+  body.popup-minimal .app-header, body.popup-minimal .app-footer { display: none !important; }
+  body.popup-minimal { overflow: hidden !important; } /* 防止頁面捲動 */
+  body.popup-minimal .app-main { 
+    padding: 0 !important; /* 移除 main 的內邊距 */
+    margin: 0 !important;
+    height: 100vh !important;
+  }
+  body.popup-minimal .container-fluid { 
+    padding: 0 !important; /* 移除 container-fluid 的內邊距 */
+    height: 100vh !important;
+  }
+  #referencePageRoot { 
+    height: 100vh; 
+    overflow: hidden; 
+    padding: 0 !important;
+  }
+  .reference-results-container { 
+    height: calc(100vh - 160px); /* 調整高度計算 */
+    overflow-y: auto; 
+  }
+  /* 隱藏快速搜尋提示 */
+  body.popup-minimal #quickSearchHint { 
+    display: none !important; 
+  }
+</style>
+{% endblock %}
+
+{% block page_title_text %}<span data-i18n="testCase.referenceTestCasePopupTitle">參考測試案例</span>{% endblock %}
+{% block page_subtitle_text %}{% endblock %}
+{% block page_actions %}
+<button type="button" class="btn btn-outline-secondary btn-sm" onclick="window.close()">
+  <i class="fas fa-times me-1"></i><span data-i18n="common.close">關閉</span>
+</button>
+{% endblock %}
+
+{% block content %}
+<div id="referencePageRoot" class="container-fluid">
+  <div class="d-flex h-100">
+    <!-- 左側搜尋區域 -->
+    <div class="border-end" style="width: 400px; flex-shrink: 0;">
+      <div class="p-3 border-bottom">
+        <div class="mb-3">
+          <label class="form-label" data-i18n="testCase.referenceTestCaseSearch">搜尋參考測試案例</label>
+          <input type="text" class="form-control" id="referenceSearchInputPage" 
+                 data-i18n-placeholder="testCase.referenceTestCaseSearchPlaceholder"
+                 placeholder="輸入測試案例編號或標題...">
+        </div>
+        <div class="text-muted small" data-i18n="testCase.selectReferenceTestCase">選擇一個測試案例進行參考</div>
+      </div>
+      <!-- 搜尋結果列表 -->
+      <div class="reference-results-container">
+        <div id="referenceSearchResultsPage" class="p-3">
+          <div class="text-center text-muted" id="referenceInitialMessagePage">
+            <i class="fas fa-search fa-2x mb-2"></i>
+            <div data-i18n="testCase.selectReferenceTestCase">選擇一個測試案例進行參考</div>
+          </div>
+          <div class="text-center" id="referenceLoadingMessagePage" style="display: none;">
+            <i class="fas fa-spinner fa-spin fa-2x mb-2"></i>
+            <div data-i18n="testCase.loadingReferenceTestCases">載入參考測試案例中...</div>
+          </div>
+          <div class="text-center text-muted" id="referenceNoResultsMessagePage" style="display: none;">
+            <i class="fas fa-exclamation-triangle fa-2x mb-2"></i>
+            <div data-i18n="testCase.noReferenceTestCases">找不到符合條件的測試案例</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- 右側顯示區域 -->
+    <div class="flex-grow-1" style="position: relative;">
+      <div id="referenceDisplayAreaPage" class="h-100" style="position: relative;">
+        <div id="referencePlaceholderPage" class="d-flex align-items-center justify-content-center h-100 text-muted" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 1;">
+          <div class="text-center">
+            <i class="fas fa-eye fa-3x mb-3"></i>
+            <h5 data-i18n="testCase.selectReferenceTestCase">選擇一個測試案例進行參考</h5>
+          </div>
+        </div>
+        <iframe id="referenceTestCaseFramePage" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; display: none; z-index: 2;"></iframe>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // 讓頁面更像彈窗：隱藏 Header/Footer
+  document.addEventListener('DOMContentLoaded', function() {
+    document.body.classList.add('popup-minimal');
+    
+    // 從 URL 設定 team_id 到 AppUtils（若未設定）
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const teamIdParam = urlParams.get('team_id');
+      if (teamIdParam && (!AppUtils.getCurrentTeam() || !AppUtils.getCurrentTeam().id)) {
+        const teamId = parseInt(teamIdParam);
+        if (!isNaN(teamId)) {
+          AppUtils.setCurrentTeam({ id: teamId, name: 'Popup Reference' });
+        }
+      }
+    } catch (_) {}
+
+    // i18n 應用
+    if (window.i18n && window.i18n.isReady()) {
+      window.i18n.retranslate(document);
+    }
+
+    // 綁定搜尋
+    const searchInput = document.getElementById('referenceSearchInputPage');
+    if (searchInput) {
+      let debounce;
+      searchInput.addEventListener('input', function() {
+        const q = this.value.trim();
+        if (debounce) clearTimeout(debounce);
+        if (!q) { showInitial(); hideFrame(); return; }
+        debounce = setTimeout(() => doSearch(q), 400);
+      });
+      setTimeout(() => searchInput.focus(), 200);
+    }
+  });
+
+  function showInitial() {
+    document.getElementById('referenceInitialMessagePage').style.display = 'block';
+    document.getElementById('referenceLoadingMessagePage').style.display = 'none';
+    document.getElementById('referenceNoResultsMessagePage').style.display = 'none';
+    clearResults();
+  }
+  function showLoading() {
+    document.getElementById('referenceInitialMessagePage').style.display = 'none';
+    document.getElementById('referenceLoadingMessagePage').style.display = 'block';
+    document.getElementById('referenceNoResultsMessagePage').style.display = 'none';
+  }
+  function showNoResults() {
+    document.getElementById('referenceInitialMessagePage').style.display = 'none';
+    document.getElementById('referenceLoadingMessagePage').style.display = 'none';
+    document.getElementById('referenceNoResultsMessagePage').style.display = 'block';
+  }
+  function clearResults() {
+    const container = document.getElementById('referenceSearchResultsPage');
+    container.querySelectorAll('.reference-result-item').forEach(n => n.remove());
+  }
+  function hideFrame() {
+    const frame = document.getElementById('referenceTestCaseFramePage');
+    const holder = document.getElementById('referencePlaceholderPage');
+    if (frame) {
+      frame.style.display = 'none';
+      frame.src = 'about:blank'; // 清空 iframe
+    }
+    if (holder) holder.style.display = 'flex';  // 顯示占位區
+  }
+  function showFrame() {
+    const frame = document.getElementById('referenceTestCaseFramePage');
+    const holder = document.getElementById('referencePlaceholderPage');
+    if (holder) holder.style.display = 'none'; // 先隱藏占位區
+    if (frame) frame.style.display = 'block';  // 再顯示 iframe
+  }
+
+  async function doSearch(query) {
+    try {
+      showLoading();
+      hideFrame();
+      const team = AppUtils.getCurrentTeam();
+      if (!team || !team.id) throw new Error('請先選擇團隊');
+      const resp = await fetch(`/api/teams/${team.id}/testcases/?search=${encodeURIComponent(query)}&limit=50`);
+      if (!resp.ok) throw new Error('搜尋失敗');
+      const arr = await resp.json();
+      renderResults(arr || []);
+    } catch (e) {
+      console.error('搜尋參考測試案例失敗:', e);
+      showNoResults();
+      const msg = window.i18n ? window.i18n.t('testCase.referenceTestCaseError', {}, '載入參考測試案例失敗') : '載入參考測試案例失敗';
+      AppUtils.showError(msg + ': ' + (e.message || e));
+    }
+  }
+
+  function renderResults(testCases) {
+    const container = document.getElementById('referenceSearchResultsPage');
+    clearResults();
+    document.getElementById('referenceInitialMessagePage').style.display = 'none';
+    document.getElementById('referenceLoadingMessagePage').style.display = 'none';
+    document.getElementById('referenceNoResultsMessagePage').style.display = testCases.length ? 'none' : 'block';
+    
+    testCases.forEach(tc => {
+      const div = document.createElement('div');
+      div.className = 'reference-result-item border-bottom p-2';
+      div.style.cursor = 'pointer';
+      div.innerHTML = `
+        <div class="mb-1"><strong class="text-primary">${escapeHtml(tc.test_case_number || '無編號')}</strong></div>
+        <div class="text-dark" style="font-size:0.9em;line-height:1.3;">${escapeHtml(tc.title || '無標題')}</div>`;
+      div.addEventListener('click', () => selectTestCase(tc, div));
+      div.addEventListener('mouseenter', ()=>{ div.style.backgroundColor = '#f8f9fa'; });
+      div.addEventListener('mouseleave', ()=>{ if (!div.classList.contains('selected')) div.style.backgroundColor = ''; });
+      container.appendChild(div);
+    });
+  }
+
+  function selectTestCase(tc, el) {
+    document.querySelectorAll('.reference-result-item.selected').forEach(n=>{ n.classList.remove('selected'); n.style.backgroundColor=''; });
+    el.classList.add('selected');
+    el.style.backgroundColor = '#e3f2fd';
+    showTestCaseInFrame(tc);
+  }
+
+  function showTestCaseInFrame(tc) {
+    try {
+      const team = AppUtils.getCurrentTeam();
+      if (!team || !team.id) throw new Error('請先選擇團隊');
+      const frame = document.getElementById('referenceTestCaseFramePage');
+      const url = `/test-case-management?tc=${encodeURIComponent(tc.test_case_number)}&team_id=${team.id}&minimal=1&mode=browse`;
+
+      // 在 onload 隱藏底部固定按鈕區並禁用所有輸入欄位
+      frame.onload = function() {
+        try {
+          const doc = frame.contentDocument || frame.contentWindow?.document;
+          if (!doc) return;
+          
+          // 隱藏底部固定按鈕區
+          const fixed = doc.querySelector('.fixed-buttons');
+          if (fixed) fixed.style.display = 'none';
+          
+          // 隱藏個別按鈕（若有殘留）
+          const refBtn = doc.getElementById('referenceTestCaseBtn');
+          if (refBtn) refBtn.style.display = 'none';
+
+          // 移除/隱藏快速搜尋提示（在 iframe 內）
+          try {
+            const hint = doc.getElementById('quickSearchHint');
+            if (hint) hint.remove();
+            const style = doc.createElement('style');
+            style.textContent = `#quickSearchHint{display:none!important}`;
+            doc.head.appendChild(style);
+          } catch (_) {}
+          
+          // 禁用所有輸入欄位（input、textarea、select）
+          doc.querySelectorAll('input, textarea, select').forEach(el => {
+            el.disabled = true;
+            el.readOnly = true;
+            el.style.pointerEvents = 'none';
+            el.style.backgroundColor = '#f8f9fa';
+          });
+          
+          // 禁用所有按鈕
+          doc.querySelectorAll('button').forEach(btn => {
+            btn.disabled = true;
+            btn.style.pointerEvents = 'none';
+          });
+          
+          // 禁用所有可編輯區域
+          doc.querySelectorAll('[contenteditable="true"]').forEach(el => {
+            el.contentEditable = 'false';
+            el.style.pointerEvents = 'none';
+          });
+          
+          // 禁用檔案上傳
+          doc.querySelectorAll('input[type="file"]').forEach(el => {
+            el.style.display = 'none';
+          });
+          
+          // 移除所有點擊事件（TCG編輯等）
+          doc.querySelectorAll('.tcg-edit-area').forEach(el => {
+            el.style.cursor = 'default';
+            el.onclick = null;
+          });
+          
+          // 確保 modal 內的 body 也不能捲動
+          const modalBody = doc.querySelector('.modal-body');
+          if (modalBody) {
+            modalBody.style.userSelect = 'text'; // 允許文字選擇但不能編輯
+          }
+          
+        } catch (err) {
+          console.debug('iframe post-load adjustments failed:', err);
+        }
+      };
+
+      frame.src = url;
+      showFrame();
+    } catch (e) {
+      console.error('顯示參考測試案例失敗:', e);
+      const msg = window.i18n ? window.i18n.t('testCase.referenceTestCaseError', {}, '載入參考測試案例失敗') : '載入參考測試案例失敗';
+      AppUtils.showError(msg + ': ' + (e.message || e));
+    }
+  }
+
+  function getPriorityColor(p) {
+    switch (p) { case 'High': return 'danger'; case 'Medium': return 'warning'; case 'Low': return 'success'; default: return 'secondary'; }
+  }
+  function escapeHtml(text){
+    return String(text||'')
+      .replace(/&/g,'&amp;')
+      .replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;')
+      .replace(/"/g,'&quot;')
+      .replace(/'/g,'&#039;');
+  }
+</script>
+{% endblock %}

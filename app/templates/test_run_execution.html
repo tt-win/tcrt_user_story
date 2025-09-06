@@ -1227,14 +1227,22 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
-                    <i class="fas fa-times me-2"></i>
-                    <span data-i18n="common.close">關閉</span>
-                </button>
-                <button type="button" class="btn btn-primary" id="openFullTestCaseBtn" style="display: none;">
-                    <i class="fas fa-external-link-alt me-2"></i>
-                    <span data-i18n="testRun.openInTestCaseManagement">在測試案例管理中開啟</span>
-                </button>
+                <div class="me-auto">
+                    <button type="button" class="btn btn-outline-info" id="referenceTestCaseExecBtn" style="display: none;">
+                        <i class="fas fa-search me-2"></i>
+                        <span data-i18n="testCase.referenceTestCaseButton">參考測試案例</span>
+                    </button>
+                </div>
+                <div>
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                        <i class="fas fa-times me-2"></i>
+                        <span data-i18n="common.close">關閉</span>
+                    </button>
+                    <button type="button" class="btn btn-primary" id="openFullTestCaseBtn" style="display: none;">
+                        <i class="fas fa-external-link-alt me-2"></i>
+                        <span data-i18n="testRun.openInTestCaseManagement">在測試案例管理中開啟</span>
+                    </button>
+                </div>
             </div>
         </div>
     </div>
@@ -1345,6 +1353,7 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
         </div>
     </div>
 </div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -2823,10 +2832,12 @@ function displayTestCaseDetail(testCase) {
     
     // 顯示內容和開啟按鈕
     const bodyRow = document.getElementById('testCaseDetailBodyRow');
+    const referenceBtn = document.getElementById('referenceTestCaseExecBtn');
     if (bodyRow) bodyRow.classList.remove('d-none');
     fixedDiv.style.display = 'block';
     scrollDiv.style.display = 'block';
     openBtn.style.display = 'inline-block';
+    if (referenceBtn) referenceBtn.style.display = 'inline-block';
     // 記錄目前展示的 Test Case，供鍵盤導航使用
     currentDetailTestCase = testCase;
     
@@ -2835,6 +2846,14 @@ function displayTestCaseDetail(testCase) {
         const url = `/test-case-management?tc=${encodeURIComponent(testCase.test_case_number)}&team_id=${encodeURIComponent(currentTeamId)}&minimal=1&mode=edit`;
         window.open(url, 'TestCaseEditor', 'width=1200,height=800,noopener,noreferrer');
     };
+    
+    // 設定參考測試案例按鈕的點擊事件（改為開啟瀏覽器彈窗）
+    if (referenceBtn) {
+        referenceBtn.onclick = function() {
+            const url = `/test-case-reference?team_id=${encodeURIComponent(currentTeamId)}`;
+            window.open(url, 'TestCaseReference', 'width=1200,height=800,noopener,noreferrer');
+        };
+    }
     
     // 應用 i18n 翻譯
     if (window.i18n && window.i18n.isReady()) {
@@ -5724,6 +5743,7 @@ function initializeTestResults(testRunItemId, testCaseNumber, teamId, configId) 
         );
     }, 100);
 }
+
 </script>
 </style>
 

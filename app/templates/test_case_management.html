@@ -649,12 +649,17 @@ html, body { height: 100%; overflow: hidden; }
                     <div class="fixed-buttons" style="flex-shrink: 0; padding: 1rem; border-top: 1px solid #dee2e6; background: #ffffff;">
                         <div class="d-flex justify-content-between align-items-center">
                             <!-- 模式切換按鈕 -->
-                            <div class="btn-group btn-group-sm" role="group">
-                                <button type="button" class="btn btn-secondary active" id="previewModeBtn">
-                                    <i class="fas fa-eye me-1"></i><span data-i18n="form.browse">瀏覽</span>
-                                </button>
-                                <button type="button" class="btn btn-outline-secondary" id="splitModeBtn">
-                                    <i class="fas fa-edit me-1"></i><span data-i18n="form.editMode">編輯</span>
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="btn-group btn-group-sm" role="group">
+                                    <button type="button" class="btn btn-secondary active" id="previewModeBtn">
+                                        <i class="fas fa-eye me-1"></i><span data-i18n="form.browse">瀏覽</span>
+                                    </button>
+                                    <button type="button" class="btn btn-outline-secondary" id="splitModeBtn">
+                                        <i class="fas fa-edit me-1"></i><span data-i18n="form.editMode">編輯</span>
+                                    </button>
+                                </div>
+                                <button type="button" class="btn btn-outline-info btn-sm" id="referenceTestCaseBtn">
+                                    <i class="fas fa-search me-1"></i><span data-i18n="testCase.referenceTestCaseButton">參考測試案例</span>
                                 </button>
                             </div>
                             <!-- 操作按鈕 -->
@@ -776,6 +781,65 @@ html, body { height: 100%; overflow: hidden; }
                 <button type="button" class="btn btn-danger" id="confirmDeleteBtn">
                     <i class="fas fa-trash me-2"></i><span data-i18n="common.delete">確認刪除</span>
                 </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 參考測試案例 Modal -->
+<div class="modal fade" id="referenceTestCaseModal" tabindex="-1">
+    <div class="modal-dialog modal-fullscreen">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-search text-info me-2"></i><span data-i18n="testCase.referenceTestCasePopupTitle">參考測試案例</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" style="padding: 0; height: calc(100vh - 120px);">
+                <div class="d-flex h-100">
+                    <!-- 左側搜尋區域 -->
+                    <div class="border-end" style="width: 400px; flex-shrink: 0;">
+                        <div class="p-3 border-bottom">
+                            <div class="mb-3">
+                                <label class="form-label" data-i18n="testCase.referenceTestCaseSearch">搜尋參考測試案例</label>
+                                <input type="text" class="form-control" id="referenceSearchInput" 
+                                       data-i18n-placeholder="testCase.referenceTestCaseSearchPlaceholder"
+                                       placeholder="輸入測試案例編號或標題...">
+                            </div>
+                            <div class="text-muted small" data-i18n="testCase.selectReferenceTestCase">選擇一個測試案例進行參考</div>
+                        </div>
+                        <!-- 搜尋結果列表 -->
+                        <div class="reference-results-container" style="height: calc(100vh - 240px); overflow-y: auto;">
+                            <div id="referenceSearchResults" class="p-3">
+                                <div class="text-center text-muted" id="referenceInitialMessage">
+                                    <i class="fas fa-search fa-2x mb-2"></i>
+                                    <div data-i18n="testCase.selectReferenceTestCase">選擇一個測試案例進行參考</div>
+                                </div>
+                                <div class="text-center" id="referenceLoadingMessage" style="display: none;">
+                                    <i class="fas fa-spinner fa-spin fa-2x mb-2"></i>
+                                    <div data-i18n="testCase.loadingReferenceTestCases">載入參考測試案例中...</div>
+                                </div>
+                                <div class="text-center text-muted" id="referenceNoResultsMessage" style="display: none;">
+                                    <i class="fas fa-exclamation-triangle fa-2x mb-2"></i>
+                                    <div data-i18n="testCase.noReferenceTestCases">找不到符合條件的測試案例</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- 右側顯示區域 -->
+                    <div class="flex-grow-1" style="position: relative;">
+                        <div id="referenceDisplayArea" class="h-100">
+                            <div class="d-flex align-items-center justify-content-center h-100 text-muted">
+                                <div class="text-center">
+                                    <i class="fas fa-eye fa-3x mb-3"></i>
+                                    <h5 data-i18n="testCase.selectReferenceTestCase">選擇一個測試案例進行參考</h5>
+                                </div>
+                            </div>
+                            <iframe id="referenceTestCaseFrame" style="width: 100%; height: 100%; border: none; display: none;"></iframe>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -1077,6 +1141,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     const minimal = urlParams.get('minimal') === '1' || urlParams.get('editor') === '1';
     const tcNumber = urlParams.get('tc') || urlParams.get('test_case_number');
     const mode = urlParams.get('mode') || 'preview';
+    const openReference = urlParams.get('ref') === '1' || urlParams.get('ref') === 'true';
 
     if (minimal && tcNumber) {
         // 最小模式：不載入列表，直接開啟指定測試案例
@@ -1153,6 +1218,13 @@ document.addEventListener('DOMContentLoaded', async function() {
                 setTimeout(openAfterLoad, 0);
             }
         } catch (_) {}
+
+        // 若指定 ref=1，載入完成後開啟參考測試案例模態框
+        if (openReference) {
+            setTimeout(() => {
+                try { openReferenceTestCaseModal(); } catch (e) { console.debug('openReferenceTestCaseModal error:', e); }
+            }, 0);
+        }
     }
 });
 
@@ -1633,6 +1705,12 @@ function bindEvents() {
     // 上一隻/下一隻測試案例按鈕
     document.getElementById('prevTestCaseBtn').addEventListener('click', showPrevTestCase);
     document.getElementById('nextTestCaseBtn').addEventListener('click', showNextTestCase);
+    
+    // 參考測試案例按鈕
+    const referenceTestCaseBtn = document.getElementById('referenceTestCaseBtn');
+    if (referenceTestCaseBtn) {
+        referenceTestCaseBtn.addEventListener('click', openReferenceTestCaseModal);
+    }
     
     // 批次修改模態框事件綁定
     const batchModifyPriorityCheckbox = document.getElementById('batchModifyPriority');
@@ -6403,5 +6481,248 @@ document.addEventListener('DOMContentLoaded', function() {
 document.addEventListener('dynamicContentLoaded', function() {
     initializeTCGHover();
 });
+
+// ===== 參考測試案例功能 =====
+let referenceModalInstance = null;
+let referenceSearchTimeout = null;
+
+function openReferenceTestCaseModal() {
+    const modalEl = document.getElementById('referenceTestCaseModal');
+    if (!referenceModalInstance) {
+        referenceModalInstance = new bootstrap.Modal(modalEl);
+    }
+    
+    // 重設模態框狀態
+    resetReferenceModal();
+    
+    // 翻譯模態框內容
+    if (window.i18n && window.i18n.isReady()) {
+        window.i18n.retranslate(modalEl);
+    }
+    
+    referenceModalInstance.show();
+    
+    // 焦點設在搜尋框
+    setTimeout(() => {
+        const searchInput = document.getElementById('referenceSearchInput');
+        if (searchInput) {
+            searchInput.focus();
+        }
+    }, 300);
+}
+
+function resetReferenceModal() {
+    // 清除搜尋框
+    const searchInput = document.getElementById('referenceSearchInput');
+    if (searchInput) {
+        searchInput.value = '';
+    }
+    
+    // 顯示初始狀態
+    showReferenceInitialState();
+    
+    // 隱藏 iframe
+    hideReferenceFrame();
+}
+
+function showReferenceInitialState() {
+    document.getElementById('referenceInitialMessage').style.display = 'block';
+    document.getElementById('referenceLoadingMessage').style.display = 'none';
+    document.getElementById('referenceNoResultsMessage').style.display = 'none';
+    
+    // 清除搜尋結果
+    const resultsContainer = document.getElementById('referenceSearchResults');
+    const resultItems = resultsContainer.querySelectorAll('.reference-result-item');
+    resultItems.forEach(item => item.remove());
+}
+
+function showReferenceLoadingState() {
+    document.getElementById('referenceInitialMessage').style.display = 'none';
+    document.getElementById('referenceLoadingMessage').style.display = 'block';
+    document.getElementById('referenceNoResultsMessage').style.display = 'none';
+}
+
+function showReferenceNoResultsState() {
+    document.getElementById('referenceInitialMessage').style.display = 'none';
+    document.getElementById('referenceLoadingMessage').style.display = 'none';
+    document.getElementById('referenceNoResultsMessage').style.display = 'block';
+}
+
+function hideReferenceFrame() {
+    const frame = document.getElementById('referenceTestCaseFrame');
+    const displayArea = document.getElementById('referenceDisplayArea');
+    
+    frame.style.display = 'none';
+    displayArea.querySelector('.d-flex').style.display = 'flex';
+}
+
+function showReferenceFrame() {
+    const frame = document.getElementById('referenceTestCaseFrame');
+    const displayArea = document.getElementById('referenceDisplayArea');
+    
+    frame.style.display = 'block';
+    displayArea.querySelector('.d-flex').style.display = 'none';
+}
+
+// 搜尋功能
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('referenceSearchInput');
+    if (searchInput) {
+        searchInput.addEventListener('input', function() {
+            const query = this.value.trim();
+            
+            // 清除之前的延遲搜尋
+            if (referenceSearchTimeout) {
+                clearTimeout(referenceSearchTimeout);
+            }
+            
+            // 如果為空，顯示初始狀態
+            if (!query) {
+                showReferenceInitialState();
+                hideReferenceFrame();
+                return;
+            }
+            
+            // 延遲 500ms 搜尋
+            referenceSearchTimeout = setTimeout(() => {
+                searchReferenceTestCases(query);
+            }, 500);
+        });
+    }
+});
+
+async function searchReferenceTestCases(query) {
+    try {
+        showReferenceLoadingState();
+        hideReferenceFrame();
+        
+        const currentTeam = AppUtils.getCurrentTeam();
+        if (!currentTeam || !currentTeam.id) {
+            throw new Error('請先選擇團隊');
+        }
+        
+        const response = await fetch(`/api/teams/${currentTeam.id}/testcases/?search=${encodeURIComponent(query)}&limit=50`);
+        
+        if (!response.ok) {
+            throw new Error(`搜尋失敗: ${response.status}`);
+        }
+        
+        const testCases = await response.json();
+        
+        displayReferenceResults(testCases);
+        
+    } catch (error) {
+        console.error('搜尋參考測試案例失敗:', error);
+        showReferenceNoResultsState();
+        hideReferenceFrame();
+        
+        // 顯示錯誤訊息
+        const errorMsg = window.i18n ? window.i18n.t('testCase.referenceTestCaseError', {}, '載入參考測試案例失敗') : '載入參考測試案例失敗';
+        showError(errorMsg + ': ' + error.message);
+    }
+}
+
+function displayReferenceResults(testCases) {
+    const resultsContainer = document.getElementById('referenceSearchResults');
+    
+    // 清除既有結果
+    const existingResults = resultsContainer.querySelectorAll('.reference-result-item');
+    existingResults.forEach(item => item.remove());
+    
+    // 隱藏所有狀態訊息
+    document.getElementById('referenceInitialMessage').style.display = 'none';
+    document.getElementById('referenceLoadingMessage').style.display = 'none';
+    document.getElementById('referenceNoResultsMessage').style.display = 'none';
+    
+    if (!testCases || testCases.length === 0) {
+        showReferenceNoResultsState();
+        return;
+    }
+    
+    // 創建結果項目
+    testCases.forEach(testCase => {
+        const resultItem = document.createElement('div');
+        resultItem.className = 'reference-result-item border-bottom p-2 cursor-pointer';
+        resultItem.style.cursor = 'pointer';
+        
+        resultItem.innerHTML = `
+            <div class="mb-1">
+                <strong class="text-primary">${escapeHtml(testCase.test_case_number || '無編號')}</strong>
+            </div>
+            <div class="text-dark mb-1" style="font-size: 0.9em; line-height: 1.3;">
+                ${escapeHtml(testCase.title || '無標題')}
+            </div>
+            <div class="d-flex justify-content-between align-items-center">
+                <small class="text-muted">
+                    ${testCase.priority ? `<span class="badge bg-${getPriorityColor(testCase.priority)} me-1">${testCase.priority}</span>` : ''}
+                    ${testCase.tcg && testCase.tcg.length > 0 ? `<span class="text-muted">TCG: ${testCase.tcg.length}</span>` : ''}
+                </small>
+            </div>
+        `;
+        
+        // 點擊事件
+        resultItem.addEventListener('click', () => {
+            selectReferenceTestCase(testCase, resultItem);
+        });
+        
+        // hover 效果
+        resultItem.addEventListener('mouseenter', () => {
+            resultItem.style.backgroundColor = '#f8f9fa';
+        });
+        
+        resultItem.addEventListener('mouseleave', () => {
+            if (!resultItem.classList.contains('selected')) {
+                resultItem.style.backgroundColor = '';
+            }
+        });
+        
+        resultsContainer.appendChild(resultItem);
+    });
+}
+
+function selectReferenceTestCase(testCase, resultItemElement) {
+    // 清除之前的選中狀態
+    const previousSelected = document.querySelectorAll('.reference-result-item.selected');
+    previousSelected.forEach(item => {
+        item.classList.remove('selected');
+        item.style.backgroundColor = '';
+    });
+    
+    // 設置當前選中
+    resultItemElement.classList.add('selected');
+    resultItemElement.style.backgroundColor = '#e3f2fd';
+    
+    // 在 iframe 中顯示測試案例
+    displayReferenceTestCase(testCase);
+}
+
+function displayReferenceTestCase(testCase) {
+    try {
+        const currentTeam = AppUtils.getCurrentTeam();
+        if (!currentTeam || !currentTeam.id) {
+            throw new Error('請先選擇團隊');
+        }
+        
+        const frame = document.getElementById('referenceTestCaseFrame');
+        const url = `/test-case-management?tc=${encodeURIComponent(testCase.test_case_number)}&team_id=${currentTeam.id}&minimal=1&mode=browse`;
+        
+        frame.src = url;
+        showReferenceFrame();
+        
+    } catch (error) {
+        console.error('顯示參考測試案例失敗:', error);
+        const errorMsg = window.i18n ? window.i18n.t('testCase.referenceTestCaseError', {}, '載入參考測試案例失敗') : '載入參考測試案例失敗';
+        showError(errorMsg + ': ' + error.message);
+    }
+}
+
+function getPriorityColor(priority) {
+    switch (priority) {
+        case 'High': return 'danger';
+        case 'Medium': return 'warning';
+        case 'Low': return 'success';
+        default: return 'secondary';
+    }
+}
 </script>
 {% endblock %}

@@ -47,6 +47,10 @@ async def test_run_management(request: Request):
 async def test_run_execution(request: Request):
     return templates.TemplateResponse("test_run_execution.html", {"request": request})
 
+@app.get("/test-case-reference", response_class=HTMLResponse)
+async def test_case_reference(request: Request):
+    return templates.TemplateResponse("test_case_reference.html", {"request": request})
+
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
