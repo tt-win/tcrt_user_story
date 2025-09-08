@@ -110,6 +110,7 @@
         "uploadFailed": "Upload failed"
     },
     "form": {
+        "title": "Title",
         "allAssignees": "All Assignees",
         "assignee": "Assignee",
         "attachmentHint": "Supports images, PDF, Office documents, max 10MB per file",
@@ -432,7 +433,10 @@
             "confirmTitle": "Confirm Items to Create",
             "confirmDesc": "The following {count} test cases will be created:",
             "noCommaInTitle": "Title cannot contain commas",
-            "statusText": "Parsed {valid} items, {errors} errors"
+            "statusText": "Parsed {valid} items, {errors} errors",
+            "emptyCaseNo": "Case number cannot be empty",
+            "emptyTitle": "Title cannot be empty",
+            "missingComma": "Missing comma separator"
         },
         "bulkTextToast": {
             "conflict": "Conflicting case numbers found: {count}. Marked with \"(Conflict)\" in the editor.",

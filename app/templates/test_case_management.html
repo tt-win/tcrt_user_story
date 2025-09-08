@@ -794,7 +794,7 @@ html, body { height: 100%; overflow: hidden; }
             <div class="modal-header">
                 <h5 class="modal-title">
                     <i class="fas fa-layer-group me-2"></i>
-                    <span data-i18n="bulkText.title">批次建立測試案例（文字模式）</span>
+                    <span data-i18n="testCase.bulkText.title">批次建立測試案例（文字模式）</span>
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
@@ -802,7 +802,7 @@ html, body { height: 100%; overflow: hidden; }
                 <!-- 說明文字 -->
                 <div class="alert alert-info" role="alert">
                     <i class="fas fa-info-circle me-2"></i>
-                    <span data-i18n="bulkText.help">每行一筆資料，格式為「單號,標題」。單號可不連續。</span>
+                    <span data-i18n="testCase.bulkText.help">每行一筆資料，格式為「單號,標題」。單號可不連續。</span>
                 </div>
                 
                 <!-- 文字輸入區 -->
@@ -811,7 +811,7 @@ html, body { height: 100%; overflow: hidden; }
                         id="bulkTextInput" 
                         class="form-control font-monospace" 
                         rows="14" 
-                        data-i18n-placeholder="bulkText.placeholder"
+                        data-i18n-placeholder="testCase.bulkText.placeholder"
                         placeholder="TCG-93178.010.020,登入功能測試
 TCG-93178.010.030,使用者權限驗證
 TCG-93178.010.060,資料同步測試"></textarea>
@@ -839,9 +839,9 @@ TCG-93178.010.060,資料同步測試"></textarea>
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="bulkTextButton.cancel">取消</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="testCase.bulkTextButton.cancel">取消</button>
                 <button type="button" class="btn btn-primary" id="startBulkCreateBtn">
-                    <i class="fas fa-save me-2"></i><span data-i18n="bulkTextButton.save">儲存</span>
+                    <i class="fas fa-save me-2"></i><span data-i18n="testCase.bulkTextButton.save">儲存</span>
                 </button>
             </div>
         </div>
@@ -855,7 +855,7 @@ TCG-93178.010.060,資料同步測試"></textarea>
             <div class="modal-header">
                 <h5 class="modal-title">
                     <i class="fas fa-list-check me-2"></i>
-                    <span data-i18n="bulkText.confirmTitle">確認新增列表</span>
+                    <span data-i18n="testCase.bulkText.confirmTitle">確認新增列表</span>
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
@@ -879,9 +879,9 @@ TCG-93178.010.060,資料同步測試"></textarea>
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="bulkTextButton.cancel">取消</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="testCase.bulkTextButton.cancel">取消</button>
                 <button type="button" class="btn btn-primary" id="confirmBulkCreateBtn">
-                    <i class="fas fa-check me-2"></i><span data-i18n="bulkTextButton.confirm">確認新增</span>
+                    <i class="fas fa-check me-2"></i><span data-i18n="testCase.bulkTextButton.confirm">確認新增</span>
                 </button>
             </div>
         </div>
@@ -1737,13 +1737,25 @@ function bindEvents() {
         lastCaseCheckboxIndex = currentIndex;
     });
     
-    // 大量新增模式
+    // 大量新增模式（文字輸入）
     const openBulkBtn = document.getElementById('openBulkCreateBtn');
     if (openBulkBtn) openBulkBtn.addEventListener('click', openBulkCreateModal);
-    const addPrefixBtn = document.getElementById('addPrefixBtn');
-    if (addPrefixBtn) addPrefixBtn.addEventListener('click', addPrefix);
     const startBulkBtn = document.getElementById('startBulkCreateBtn');
-    if (startBulkBtn) startBulkBtn.addEventListener('click', startBulkCreate);
+    if (startBulkBtn) startBulkBtn.addEventListener('click', startBulkTextCreate);
+    const confirmBulkBtn = document.getElementById('confirmBulkCreateBtn');
+    if (confirmBulkBtn) confirmBulkBtn.addEventListener('click', confirmBulkTextCreate);
+    
+    // 文字輸入區鍵盤快捷鍵支援
+    const bulkTextInput = document.getElementById('bulkTextInput');
+    if (bulkTextInput) {
+        bulkTextInput.addEventListener('keydown', function(e) {
+            // Ctrl+Enter 或 Cmd+Enter 觸發儲存
+            if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                e.preventDefault();
+                startBulkTextCreate();
+            }
+        });
+    }
     
     // 儲存按鈕
     document.getElementById('saveTestCaseBtn').addEventListener('click', saveTestCase);
@@ -1757,160 +1769,431 @@ function bindEvents() {
     setupQuickSearch_TCM();
 }
 
-// ===== 大量新增模式（多前綴 / 前綴下多中間 / 末尾範圍） =====
+// ===== 大量新增模式（文字輸入） =====
 let bulkModalInstance = null;
-// 結構：[{ prefix: string, middles: [{ middle: '110', start: 20, end: 60 }] }]
-let bulkTree = [];
+let bulkPreviewModalInstance = null;
+let bulkTextParsedItems = []; // 已解析的項目
 
 function openBulkCreateModal() {
-    resetBulkState();
+    resetBulkTextState();
     const modalEl = document.getElementById('bulkCreateModal');
     if (!bulkModalInstance) bulkModalInstance = new bootstrap.Modal(modalEl);
     if (window.i18n && window.i18n.isReady()) window.i18n.retranslate(modalEl);
     bulkModalInstance.show();
+    
+    // 聚焦到 textarea
+    setTimeout(() => {
+        const textarea = document.getElementById('bulkTextInput');
+        if (textarea) textarea.focus();
+    }, 150);
 }
 
-function resetBulkState() {
-    bulkTree = [];
-    renderPrefixes();
-    document.getElementById('bulkPreviewList').textContent = '';
-    document.getElementById('bulkTotalCount').textContent = '0';
-    hideBulkValidation();
+function resetBulkTextState() {
+    // 清除文字輸入區內容
+    const textarea = document.getElementById('bulkTextInput');
+    if (textarea) textarea.value = '';
+    
+    // 清除狀態顯示
+    const statusEl = document.getElementById('bulkTextStatus');
+    const validationEl = document.getElementById('bulkTextValidation');
+    if (statusEl) statusEl.textContent = '';
+    if (validationEl) validationEl.textContent = '';
+    
+    // 隱藏進度條
     hideBulkProgress();
+    
+    // 重設解析結果
+    bulkTextParsedItems = [];
 }
 
-function addPrefix() { bulkTree.push({ prefix: '', middles: [] }); renderPrefixes(); }
-
-function renderPrefixes() {
-    const container = document.getElementById('prefixContainer');
-    const optionsAll = (base=10) => Array.from({length: ((990 - base)/10)+1}, (_,i)=>base+i*10)
-          .map(v => `<option value="${v}">${pad3(v)}</option>`).join('');
-    container.innerHTML = bulkTree.map((p, pi) => {
-        const middlesHtml = (p.middles||[]).map((m, mi) => {
-            const startVal = m.start || 10;
-            const endVal = m.end || startVal;
-            const endOptions = Array.from({length: ((990 - startVal)/10)+1}, (_,i)=>startVal+i*10)
-                .map(v => `<option value="${v}" ${v===endVal?'selected':''}>${pad3(v)}</option>`).join('');
-            return `
-              <div class="row g-2 align-items-end mb-2">
-                <div class="col-3">
-                  <label class="form-label mb-0 small" data-i18n="testCase.bulk.middleCode">中間分類號</label>
-                  <input type="text" class="form-control form-control-sm" value="${escapeHtml(m.middle||'')}" maxlength="3" oninput="onMiddleCodeChange(${pi}, ${mi}, this.value)">
-                </div>
-                <div class="col-3">
-                  <label class="form-label mb-0 small" data-i18n="testCase.bulk.suffixStart">末尾起始</label>
-                  <select class="form-select form-select-sm" onchange="onSuffixChange(${pi}, ${mi}, 'start', this.value)">
-                    ${optionsAll(10).replace(`value=\"${startVal}\"`, `value=\"${startVal}\" selected`)}
-                  </select>
-                </div>
-                <div class="col-3">
-                  <label class="form-label mb-0 small" data-i18n="testCase.bulk.suffixEnd">末尾結束</label>
-                  <select class="form-select form-select-sm" onchange="onSuffixChange(${pi}, ${mi}, 'end', this.value)">
-                    ${endOptions}
-                  </select>
-                </div>
-                <div class="col-3 d-flex justify-content-end">
-                  <button type="button" class="btn btn-outline-danger btn-sm" title="-" onclick="removeMiddle(${pi}, ${mi})"><i class="fas fa-times"></i></button>
-                </div>
-              </div>
-            `;
-        }).join('');
-        return `
-          <div class="card mb-3">
-            <div class="card-body">
-              <div class="d-flex gap-2 mb-2">
-                <div class="flex-grow-1">
-                  <label class="form-label mb-1"><span data-i18n="testCase.bulk.prefix">前綴單號</span></label>
-                  <input type="text" class="form-control form-control-sm" value="${escapeHtml(p.prefix||'')}" placeholder="e.g. TCG-93178" oninput="onPrefixChange(${pi}, this.value)">
-                </div>
-                <div class="align-self-end">
-                  <button type="button" class="btn btn-outline-danger" title="remove" onclick="removePrefix(${pi})"><i class="fas fa-trash"></i></button>
-                </div>
-              </div>
-              <div class="d-flex align-items-center justify-content-between mt-2 mb-2">
-                <label class="form-label mb-0"><span data-i18n="testCase.bulk.middleRanges">功能分項範圍</span></label>
-                <button type="button" class="btn btn-outline-primary btn-sm" onclick="addMiddle(${pi})"><i class="fas fa-plus me-1"></i><span data-i18n="testCase.bulk.addRange">新增範圍</span></button>
-              </div>
-              <div>${middlesHtml || '<div class="text-muted small">(empty)</div>'}</div>
-            </div>
-          </div>
-        `;
-    }).join('');
-    if (window.i18n && window.i18n.isReady()) window.i18n.retranslate(container);
-}
-
-function onPrefixChange(pi, value) { bulkTree[pi].prefix = value; updateBulkPreview(); }
-function removePrefix(pi) { bulkTree.splice(pi,1); renderPrefixes(); updateBulkPreview(); }
-function addMiddle(pi) { (bulkTree[pi].middles ||= []).push({ middle: '', start: 10, end: 10 }); renderPrefixes(); updateBulkPreview(); }
-function removeMiddle(pi, mi) { bulkTree[pi].middles.splice(mi,1); renderPrefixes(); updateBulkPreview(); }
-function onMiddleCodeChange(pi, mi, value) {
-    const sanitized = (value||'').replace(/[^0-9]/g,'').slice(0,3);
-    bulkTree[pi].middles[mi].middle = sanitized;
-    updateBulkPreview();
-}
-function onSuffixChange(pi, mi, which, value) {
-    const v = parseInt(value,10);
-    if (isNaN(v)) return;
-    const m = bulkTree[pi].middles[mi];
-    if (which==='start') { m.start = v; if (!m.end || m.end < v) m.end = v; }
-    else { m.end = v; if (!m.start || m.start > v) m.start = v; }
-    renderPrefixes();
-    updateBulkPreview();
-}
-
-function updateBulkPreview() {
-    const numbers = generateBulkNumbers();
-    const previewEl = document.getElementById('bulkPreviewList');
-    document.getElementById('bulkTotalCount').textContent = String(numbers.length);
-    // 條列顯示（大量時限制渲染上限以避免 DOM 過大）
-    const maxRender = 2000; // 視需要可調整
-    const renderList = numbers.slice(0, maxRender);
-    let html = '<ul class="list-unstyled mb-0">';
-    html += renderList.map(n => `<li><code>${escapeHtml(n)}</code></li>`).join('');
-    if (numbers.length > maxRender) {
-        html += `<li class="text-muted">... (+${numbers.length - maxRender})</li>`;
+/**
+ * 解析文字輸入的 CSV 格式資料
+ * @param {string} rawText - 原始文字輸入
+ * @returns {object} - { items: [{line, case_no, title}], errors: [{line, code, message, raw}], duplicates: [{case_no, lines}] }
+ */
+function parseBulkText(rawText) {
+    const lines = rawText.split('\n').map((line, index) => ({ 
+        line: index + 1, 
+        raw: line, 
+        content: line.trim() 
+    }));
+    
+    const items = [];
+    const errors = [];
+    const caseNumbers = new Map(); // case_no -> [line numbers]
+    
+    for (const lineObj of lines) {
+        const { line, raw, content } = lineObj;
+        
+        // 空行跳過
+        if (!content) continue;
+        
+        // 移除 (Conflict) 標記
+        let cleanContent = content;
+        if (content.startsWith('(Conflict)')) {
+            cleanContent = content.replace(/^\(Conflict\)\s*/, '').trim();
+        }
+        
+        // 找到第一個逗號
+        const commaIndex = cleanContent.indexOf(',');
+        if (commaIndex === -1) {
+            errors.push({
+                line,
+                code: 'missing_comma',
+                message: window.i18n ? window.i18n.t('testCase.bulkText.noCommaInTitle') : '缺少逗號分隔',
+                raw
+            });
+            continue;
+        }
+        
+        const case_no = cleanContent.substring(0, commaIndex).trim();
+        const title = cleanContent.substring(commaIndex + 1).trim();
+        
+        // 檢查單號是否為空
+        if (!case_no) {
+            errors.push({
+                line,
+                code: 'empty_case_no',
+                message: window.i18n ? window.i18n.t('testCase.bulkText.emptyCaseNo') : '單號不可為空',
+                raw
+            });
+            continue;
+        }
+        
+        // 檢查標題是否為空
+        if (!title) {
+            errors.push({
+                line,
+                code: 'empty_title',
+                message: window.i18n ? window.i18n.t('testCase.bulkText.emptyTitle') : '標題不可為空',
+                raw
+            });
+            continue;
+        }
+        
+        // 檢查標題是否含有逗號
+        if (title.includes(',')) {
+            errors.push({
+                line,
+                code: 'comma_in_title',
+                message: window.i18n ? window.i18n.t('testCase.bulkText.noCommaInTitle') : '標題不可包含逗號',
+                raw
+            });
+            continue;
+        }
+        
+        // 記錄重複單號
+        if (!caseNumbers.has(case_no)) {
+            caseNumbers.set(case_no, []);
+        }
+        caseNumbers.get(case_no).push(line);
+        
+        items.push({ line, case_no, title });
     }
-    html += '</ul>';
-    previewEl.innerHTML = html;
+    
+    // 找出重複的單號
+    const duplicates = [];
+    for (const [case_no, lines] of caseNumbers) {
+        if (lines.length > 1) {
+            duplicates.push({ case_no, lines });
+        }
+    }
+    
+    return { items, errors, duplicates };
 }
 
-function generateBulkNumbers() {
-    const list = [];
-    bulkTree.forEach(p => {
-        const prefix = (p.prefix||'').trim();
-        (p.middles||[]).forEach(m => {
-            const mid = (m.middle||'').replace(/[^0-9]/g,'');
-            if (!prefix || mid.length===0) return;
-            const middle = pad3(parseInt(mid,10)||0);
-            const start = Math.max(10, Math.min(990, m.start||10));
-            const end = Math.max(start, Math.min(990, m.end||start));
-            for (let v=start; v<=end; v+=10) {
-                list.push(`${prefix}.${middle}.${pad3(v)}`);
-            }
-        });
+/**
+ * 更新狀態顯示
+ */
+function updateBulkTextStatus(parseResult) {
+    const statusEl = document.getElementById('bulkTextStatus');
+    const validationEl = document.getElementById('bulkTextValidation');
+    
+    if (!statusEl || !validationEl) return;
+    
+    const { items, errors, duplicates } = parseResult;
+    
+    // 顯示基本統計
+    if (items.length > 0 || errors.length > 0) {
+        const statusText = window.i18n ? 
+            window.i18n.t('testCase.bulkText.statusText', { valid: items.length, errors: errors.length }) :
+            `已解析 ${items.length} 筆，${errors.length} 筆錯誤`;
+        statusEl.textContent = statusText;
+    } else {
+        statusEl.textContent = '';
+    }
+    
+    // 顯示錯誤訊息
+    if (errors.length > 0 || duplicates.length > 0) {
+        const messages = [];
+        if (errors.length > 0) {
+            messages.push(`${errors.length} 行格式錯誤`);
+        }
+        if (duplicates.length > 0) {
+            const dupCount = duplicates.reduce((sum, d) => sum + d.lines.length, 0);
+            messages.push(`${dupCount} 筆重複單號`);
+        }
+        validationEl.textContent = messages.join('，');
+        validationEl.className = 'text-danger small';
+    } else {
+        validationEl.textContent = '';
+    }
+}
+
+/**
+ * 在編輯器中標記衝突的行
+ */
+function annotateConflictsInEditor(conflicts) {
+    const textarea = document.getElementById('bulkTextInput');
+    if (!textarea || !conflicts.length) return;
+    
+    const lines = textarea.value.split('\n');
+    const conflictNumbers = new Set(conflicts);
+    
+    // 先移除所有現有的 (Conflict) 標記
+    const cleanedLines = lines.map(line => 
+        line.replace(/^\(Conflict\)\s*/, '')
+    );
+    
+    // 重新加上衝突標記
+    const annotatedLines = cleanedLines.map(line => {
+        if (!line.trim()) return line;
+        
+        const commaIndex = line.indexOf(',');
+        if (commaIndex === -1) return line;
+        
+        const case_no = line.substring(0, commaIndex).trim();
+        if (conflictNumbers.has(case_no)) {
+            return `(Conflict) ${line}`;
+        }
+        return line;
     });
-    return list;
+    
+    textarea.value = annotatedLines.join('\n');
 }
 
-function pad3(n) { return String(n).padStart(3, '0'); }
+/**
+ * 開始文字模式批次建立
+ */
+async function startBulkTextCreate() {
+    const textarea = document.getElementById('bulkTextInput');
+    if (!textarea) return;
+    
+    const rawText = textarea.value.trim();
+    if (!rawText) {
+        AppUtils.showWarning('請輸入資料');
+        return;
+    }
+    
+    // 解析輸入
+    const parseResult = parseBulkText(rawText);
+    updateBulkTextStatus(parseResult);
+    
+    const { items, errors, duplicates } = parseResult;
+    
+    // 檢查格式錯誤
+    if (errors.length > 0) {
+        const message = window.i18n ? 
+            window.i18n.t('testCase.bulkTextToast.invalid', { count: errors.length }) :
+            `有 ${errors.length} 行格式錯誤，請修正後再試。`;
+        AppUtils.showError(message);
+        return;
+    }
+    
+    // 檢查輸入內部重複
+    if (duplicates.length > 0) {
+        const message = window.i18n ? 
+            window.i18n.t('testCase.bulkTextToast.duplicateInInput') :
+            '輸入中有重複的單號';
+        AppUtils.showError(message);
+        return;
+    }
+    
+    if (items.length === 0) {
+        AppUtils.showWarning('沒有有效的資料可以建立');
+        return;
+    }
+    
+    // 檢查與資料庫的衝突
+    try {
+        const conflicts = await checkBulkConflicts(items.map(item => item.case_no));
+        
+        if (conflicts.length > 0) {
+            // 標記衝突的行
+            annotateConflictsInEditor(conflicts);
+            
+            const message = window.i18n ? 
+                window.i18n.t('testCase.bulkTextToast.conflict', { count: conflicts.length }) :
+                `發現單號衝突，共 ${conflicts.length} 筆。已在文字前加上「(Conflict)」標記。`;
+            AppUtils.showWarning(message);
+            return;
+        }
+        
+        // 無衝突，顯示預覽
+        bulkTextParsedItems = items;
+        showBulkPreviewModal(items);
+        
+    } catch (error) {
+        console.error('Check conflicts failed:', error);
+        const message = window.i18n ? 
+            window.i18n.t('testCase.bulkTextToast.networkError') :
+            '網路錯誤，請稍後再試';
+        AppUtils.showError(message);
+    }
+}
+
+/**
+ * 檢查與資料庫的衝突
+ */
+async function checkBulkConflicts(caseNumbers) {
+    const currentTeam = AppUtils.getCurrentTeam();
+    if (!currentTeam || !currentTeam.id) {
+        throw new Error('請先選擇團隊');
+    }
+    
+    // 簡化版：直接檢查現有 testCases 陣列
+    const existing = new Set(testCases.map(tc => tc.test_case_number).filter(Boolean));
+    return caseNumbers.filter(caseNo => existing.has(caseNo));
+}
+
+/**
+ * 顯示預覽對話框
+ */
+function showBulkPreviewModal(items) {
+    const modalEl = document.getElementById('bulkPreviewModal');
+    const descEl = document.getElementById('bulkPreviewDesc');
+    const listEl = document.getElementById('bulkPreviewList');
+    
+    if (!modalEl || !descEl || !listEl) return;
+    
+    // 設定描述
+        const descText = window.i18n ? 
+        window.i18n.t('testCase.bulkText.confirmDesc', { count: items.length }) :
+        `將新增以下 ${items.length} 筆測試案例：`;
+    descEl.textContent = descText;
+    
+    // 渲染列表
+    listEl.innerHTML = items.map((item, index) => `
+        <tr>
+            <td>${index + 1}</td>
+            <td><code>${escapeHtml(item.case_no)}</code></td>
+            <td>${escapeHtml(item.title)}</td>
+        </tr>
+    `).join('');
+    
+    // 顯示 Modal
+    if (!bulkPreviewModalInstance) {
+        bulkPreviewModalInstance = new bootstrap.Modal(modalEl);
+    }
+    
+    if (window.i18n && window.i18n.isReady()) {
+        window.i18n.retranslate(modalEl);
+    }
+    
+    bulkPreviewModalInstance.show();
+}
+
+/**
+ * 確認建立批次測試案例
+ */
+async function confirmBulkTextCreate() {
+    if (!bulkTextParsedItems.length) {
+        AppUtils.showError('沒有項目可以建立');
+        return;
+    }
+    
+    const currentTeam = AppUtils.getCurrentTeam();
+    if (!currentTeam || !currentTeam.id) {
+        AppUtils.showError('請先選擇團隊');
+        return;
+    }
+    
+    // 顯示進度條
+    showBulkProgress(bulkTextParsedItems.length);
+    
+    // 更新按鈕狀態
+    const confirmBtn = document.getElementById('confirmBulkCreateBtn');
+    const originalHtml = confirmBtn ? confirmBtn.innerHTML : '';
+    
+    if (confirmBtn) {
+        confirmBtn.disabled = true;
+        const creatingText = window.i18n ? window.i18n.t('testCase.bulk.creating') : '建立中...';
+        confirmBtn.innerHTML = `<i class="fas fa-spinner fa-spin me-2"></i>${creatingText}`;
+    }
+    
+    try {
+        const items = bulkTextParsedItems.map(item => ({
+            test_case_number: item.case_no,
+            title: item.title,
+            priority: 'Medium'
+        }));
+        
+        const response = await fetch(`/api/teams/${currentTeam.id}/testcases/bulk_create`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ items })
+        });
+        
+        const data = await response.json();
+        
+        if (!response.ok || !data.success) {
+            // 檢查是否有新的衝突
+            if (data.duplicates && data.duplicates.length > 0) {
+                // 關閉預覽對話框，回到編輯模式
+                if (bulkPreviewModalInstance) {
+                    bulkPreviewModalInstance.hide();
+                }
+                
+                // 標記衝突
+                annotateConflictsInEditor(data.duplicates);
+                
+                const message = window.i18n ? 
+                    window.i18n.t('testCase.bulkTextToast.conflict', { count: data.duplicates.length }) :
+                    `發現單號衝突，共 ${data.duplicates.length} 筆。已在文字前加上「(Conflict)」標記。`;
+                AppUtils.showWarning(message);
+                return;
+            }
+            
+            const errorMsg = (data.errors && data.errors.join('; ')) || response.statusText || '未知錯誤';
+            throw new Error(errorMsg);
+        }
+        
+        // 成功建立
+        updateBulkProgress(bulkTextParsedItems.length, bulkTextParsedItems.length);
+        
+        const message = window.i18n ? 
+            window.i18n.t('testCase.bulkTextToast.success', { count: data.created_count || bulkTextParsedItems.length }) :
+            `已成功新增 ${data.created_count || bulkTextParsedItems.length} 筆測試案例`;
+        AppUtils.showSuccess(message);
+        
+        // 關閉所有 Modal
+        if (bulkPreviewModalInstance) bulkPreviewModalInstance.hide();
+        if (bulkModalInstance) bulkModalInstance.hide();
+        
+        // 清除快取並強制重新載入測試案例列表，確保顯示最新新增資料
+        clearTestCasesCache();
+        await loadTestCases(false, null, true);
+        
+    } catch (error) {
+        console.error('Bulk create failed:', error);
+        const message = error.message || '建立失敗';
+        AppUtils.showError(message);
+        
+    } finally {
+        // 恢復按鈕狀態
+        if (confirmBtn) {
+            confirmBtn.disabled = false;
+            confirmBtn.innerHTML = originalHtml;
+        }
+        hideBulkProgress();
+    }
+}
 
 // 簡單的 HTML 轉義，供動態模板使用
 function escapeHtml(text) {
     if (text === undefined || text === null) return '';
     const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
     return String(text).replace(/[&<>"']/g, (m) => map[m]);
-}
-
-function showBulkValidation(html, isError = true) {
-    const box = document.getElementById('bulkValidation');
-    box.className = isError ? 'alert alert-danger' : 'alert alert-warning';
-    box.innerHTML = html;
-    box.style.display = 'block';
-}
-function hideBulkValidation() {
-    const box = document.getElementById('bulkValidation');
-    box.style.display = 'none';
-    box.innerHTML = '';
 }
 
 function showBulkProgress(total) {
@@ -1926,76 +2209,7 @@ function updateBulkProgress(done, total) {
     document.getElementById('bulkProgressBar').style.width = `${pct}%`;
 }
 
-async function startBulkCreate() {
-    hideBulkValidation();
-    const currentTeam = AppUtils.getCurrentTeam();
-    if (!currentTeam || !currentTeam.id) {
-        showBulkValidation(window.i18n ? window.i18n.t('errors.pleaseSelectTeam') : '請先選擇團隊');
-        return;
-    }
-    if (bulkTree.length === 0) {
-        showBulkValidation(window.i18n ? window.i18n.t('testCase.bulk.addAtLeastOne') : '請至少新增一個範圍');
-        return;
-    }
-
-    const numbers = generateBulkNumbers();
-    if (numbers.length === 0) {
-        showBulkValidation(window.i18n ? window.i18n.t('testCase.bulk.nothingToCreate') : '沒有可建立的單號');
-        return;
-    }
-
-    // 檢查重複
-    const existing = new Set(testCases.map(tc => tc.test_case_number).filter(Boolean));
-    const dup = numbers.filter(n => existing.has(n));
-    if (dup.length > 0) {
-        const title = window.i18n ? window.i18n.t('testCase.bulk.duplicatesFound') : '發現重複單號：';
-        const fixText = window.i18n ? window.i18n.t('testCase.bulk.fixBeforeSave') : '請修正後再儲存。';
-        showBulkValidation(`<div class="mb-1">${title}</div><code>${dup.join(', ')}</code><div class="mt-2">${fixText}</div>`, true);
-        return;
-    }
-
-    // 一次性建立（批次 API）
-    showBulkProgress(numbers.length);
-    const saveBtn = document.getElementById('startBulkCreateBtn');
-    const original = saveBtn.innerHTML;
-    saveBtn.disabled = true;
-    const creatingText = window.i18n ? window.i18n.t('testCase.bulk.creating') : '建立中...';
-    saveBtn.innerHTML = `<i class="fas fa-spinner fa-spin me-2"></i>${creatingText}`;
-
-    try {
-        const items = numbers.map(num => ({
-            test_case_number: num,
-            title: `${num} ${window.i18n ? window.i18n.t('testCase.bulk.tempTitleSuffix') : '的測試案例'}`,
-            priority: 'Medium'
-        }));
-        const resp = await fetch(`/api/teams/${currentTeam.id}/testcases/bulk_create`, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items })
-        });
-        const data = await resp.json();
-        saveBtn.disabled = false;
-        saveBtn.innerHTML = original;
-        if (!resp.ok || !data.success) {
-            if (data && Array.isArray(data.duplicates) && data.duplicates.length) {
-                const title = window.i18n ? window.i18n.t('testCase.bulk.duplicatesFound') : '發現重複單號：';
-                const fixText = window.i18n ? window.i18n.t('testCase.bulk.fixBeforeSave') : '請修正後再儲存。';
-                showBulkValidation(`<div class="mb-1">${title}</div><code>${data.duplicates.join(', ')}</code><div class="mt-2">${fixText}</div>`, true);
-                return;
-            }
-            const errMsg = (data && data.errors && data.errors.join('; ')) || (resp.statusText || '');
-            showBulkValidation((window.i18n ? window.i18n.t('errors.saveFailed') : '儲存失敗') + (errMsg ? `：${errMsg}` : ''));
-            return;
-        }
-        updateBulkProgress(numbers.length, numbers.length);
-        await loadTestCases(false);
-        AppUtils.showSuccess(window.i18n ? window.i18n.t('messages.dataReloaded') : '資料已重新載入');
-        if (bulkModalInstance) bulkModalInstance.hide();
-    } catch (e) {
-        saveBtn.disabled = false;
-        saveBtn.innerHTML = original;
-        showBulkValidation((window.i18n ? window.i18n.t('errors.saveFailed') : '儲存失敗') + `：${e}`);
-        return;
-    }
-}
+// 舊的 startBulkCreate 函式已移除，使用 startBulkTextCreate 取代
 
 // 複製 Test Case：開啟與「新增/編輯」相同的 Modal，預填欄位
 function copyTestCase(id) {

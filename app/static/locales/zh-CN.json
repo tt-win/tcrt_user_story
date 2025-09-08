@@ -110,6 +110,7 @@
         "uploadFailed": "上传失败"
     },
     "form": {
+        "title": "标题",
         "allAssignees": "全部执行者",
         "assignee": "执行者",
         "attachmentHint": "支持图片、PDF、Office 文档，单文件最大 10MB",
@@ -432,7 +433,10 @@
             "confirmTitle": "确认新增列表",
             "confirmDesc": "将新增以下 {count} 条测试案例：",
             "noCommaInTitle": "标题不可包含逗号",
-            "statusText": "已解析 {valid} 条，{errors} 条错误"
+            "statusText": "已解析 {valid} 条，{errors} 条错误",
+            "emptyCaseNo": "单号不可为空",
+            "emptyTitle": "标题不可为空",
+            "missingComma": "缺少逗号分隔"
         },
         "bulkTextToast": {
             "conflict": "发现单号冲突，共 {count} 条。已在文本前加上\"(Conflict)\"标记。",

@@ -111,6 +111,7 @@
         "uploadFailed": "上傳失敗"
     },
     "form": {
+        "title": "標題",
         "allAssignees": "全部執行者",
         "assignee": "執行者",
         "attachmentHint": "支援圖片、PDF、Office 文件，單檔最大 10MB",
@@ -433,7 +434,10 @@
             "confirmTitle": "確認新增列表",
             "confirmDesc": "將新增以下 {count} 筆測試案例：",
             "noCommaInTitle": "標題不可包含逗號",
-            "statusText": "已解析 {valid} 筆，{errors} 筆錯誤"
+            "statusText": "已解析 {valid} 筆，{errors} 筆錯誤",
+            "emptyCaseNo": "單號不可為空",
+            "emptyTitle": "標題不可為空",
+            "missingComma": "缺少逗號分隔"
         },
         "bulkTextToast": {
             "conflict": "發現單號衝突，共 {count} 筆。已在文字前加上「(Conflict)」標記。",
