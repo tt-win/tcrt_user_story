@@ -111,6 +111,7 @@
         "uploadFailed": "上傳失敗"
     },
     "form": {
+        "title": "標題",
         "allAssignees": "全部執行者",
         "assignee": "執行者",
         "attachmentHint": "支援圖片、PDF、Office 文件，單檔最大 10MB",
@@ -424,6 +425,31 @@
             "suffixStart": "末尾起始",
             "tempTitleSuffix": "的測試案例",
             "totalToCreate": "預計建立筆數"
+        },
+        "bulkText": {
+            "title": "批次建立測試案例（文字模式）",
+            "help": "每行一筆資料，格式為「單號,標題」。單號可不連續。",
+            "placeholder": "TCG-93178.010.020,登入功能測試\nTCG-93178.010.030,使用者權限驗證\nTCG-93178.010.060,資料同步測試",
+            "parsing": "解析中...",
+            "confirmTitle": "確認新增列表",
+            "confirmDesc": "將新增以下 {count} 筆測試案例：",
+            "noCommaInTitle": "標題不可包含逗號",
+            "statusText": "已解析 {valid} 筆，{errors} 筆錯誤",
+            "emptyCaseNo": "單號不可為空",
+            "emptyTitle": "標題不可為空",
+            "missingComma": "缺少逗號分隔"
+        },
+        "bulkTextToast": {
+            "conflict": "發現單號衝突，共 {count} 筆。已在文字前加上「(Conflict)」標記。",
+            "invalid": "有 {count} 行格式錯誤，請修正後再試。",
+            "success": "已成功新增 {count} 筆測試案例",
+            "duplicateInInput": "輸入中有重複的單號",
+            "networkError": "網路錯誤，請稍後再試"
+        },
+        "bulkTextButton": {
+            "save": "儲存",
+            "cancel": "取消",
+            "confirm": "確認新增"
         },
         "category": "分類",
         "cloneAndAddNext": "複製並新增下一筆",
