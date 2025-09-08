@@ -4,10 +4,12 @@ TCG 單號轉換服務
 負責將 Lark record_id 轉換為實際的 TCG 單號顯示，參照 auto_tools 的實現方式
 """
 
-import sqlite3
 import logging
 from typing import Optional, List, Dict, Any
 from pathlib import Path
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
+from app.database import SessionLocal
 
 
 class TCGConverter:
@@ -21,10 +23,10 @@ class TCGConverter:
     def _init_database(self):
         """初始化數據庫表格"""
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
+            db = SessionLocal()
+            try:
                 # 使用 TCG 單號作為主鍵避免重複
-                cursor.execute('''
+                db.execute(text('''
                     CREATE TABLE IF NOT EXISTS tcg_records (
                         tcg_number TEXT PRIMARY KEY,
                         record_id TEXT NOT NULL,
@@ -32,61 +34,138 @@ class TCGConverter:
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     )
-                ''')
+                '''))
                 # 為 record_id 建立索引
-                cursor.execute('''
+                db.execute(text('''
                     CREATE INDEX IF NOT EXISTS idx_record_id ON tcg_records(record_id)
-                ''')
-                conn.commit()
+                '''))
+                db.commit()
                 self.logger.info("TCG 映射資料庫初始化完成")
+            finally:
+                db.close()
         except Exception as e:
             self.logger.error(f"初始化 TCG 映射資料庫失敗: {e}")
     
     def sync_tcg_from_lark(self) -> int:
         """
         從 Lark 同步所有 TCG 資料到本地資料庫
+        使用單一交易確保原子性
         
         Returns:
             同步的記錄數量
         """
         try:
             from app.services.lark_client import LarkClient
-            from app.config import settings            
-            # 初始化 Lark 客戶端
-            lark_client = LarkClient(
-                app_id=settings.lark.app_id,
-                app_secret=settings.lark.app_secret
-            )
+            from app.config import settings
+            import threading
             
-            tcg_wiki_token = "Q4XxwaS2Cif80DkAku9lMKuAgof"
-            tcg_table_id = "tblcK6eF3yQCuwwl"
+            # 使用線程鎖避免同一進程內重複同步
+            if not hasattr(self, '_sync_lock'):
+                self._sync_lock = threading.Lock()
             
-            if not lark_client.set_wiki_token(tcg_wiki_token):
-                self.logger.error("無法設定 Lark Wiki Token")
+            if not self._sync_lock.acquire(blocking=False):
+                self.logger.warning("TCG 同步正在進行中，跳過此次同步")
                 return 0
             
-            self.logger.info("開始從 Lark 同步 TCG 資料...")
-            
-            # 從 Lark 取得所有 TCG 資料（不指定欄位，避免 InvalidFieldNames 錯誤）
-            records = lark_client.get_all_records(tcg_table_id)
-            
-            if not records:
-                self.logger.warning("未從 Lark 取得到任何 TCG 記錄")
-                return 0
-            
-            # 清空舊資料
-            self.clear_all_mappings()
-            
-            # 批量插入新資料
-            return self.update_tcg_mapping_from_lark_records(records)
+            try:
+                # 初始化 Lark 客戶端
+                lark_client = LarkClient(
+                    app_id=settings.lark.app_id,
+                    app_secret=settings.lark.app_secret
+                )
+                
+                tcg_wiki_token = "Q4XxwaS2Cif80DkAku9lMKuAgof"
+                tcg_table_id = "tblcK6eF3yQCuwwl"
+                
+                if not lark_client.set_wiki_token(tcg_wiki_token):
+                    self.logger.error("無法設定 Lark Wiki Token")
+                    return 0
+                
+                self.logger.info("開始從 Lark 同步 TCG 資料...")
+                
+                # 從 Lark 取得所有 TCG 資料
+                records = lark_client.get_all_records(tcg_table_id)
+                
+                if not records:
+                    self.logger.warning("未從 Lark 取得到任何 TCG 記錄")
+                    return 0
+                
+                # 在單一交易中完成清空和重建
+                return self._atomic_sync_records(records)
+            finally:
+                self._sync_lock.release()
             
         except Exception as e:
             self.logger.error(f"從 Lark 同步 TCG 資料失敗: {e}")
             return 0
     
+    def _atomic_sync_records(self, records: List[Dict[str, Any]]) -> int:
+        """在單一交易中完成 TCG 記錄同步"""
+        db = SessionLocal()
+        try:
+            # 開始交易
+            db.begin()
+            
+            # 清空舊資料
+            db.execute(text("DELETE FROM tcg_records"))
+            
+            # 批量插入新資料
+            updated_count = 0
+            for record in records:
+                record_id = record.get('record_id')
+                fields = record.get('fields', {})
+                
+                # 提取 TCG 號碼
+                raw_tcg = (
+                    fields.get('TCG Tickets') or
+                    fields.get('TCG Number') or 
+                    fields.get('TCG') or 
+                    fields.get('Ticket Number')
+                )
+                
+                tcg_number = self._extract_text_from_field(raw_tcg)
+                
+                if updated_count == 0:
+                    self.logger.info(f"第一個記錄的所有欄位: {list(fields.keys())}")
+                    if raw_tcg:
+                        self.logger.info(f"第一個 TCG 記錄結構: {raw_tcg}")
+                        self.logger.info(f"解析後的 TCG 號碼: {tcg_number}")
+                
+                title = (
+                    fields.get('Title') or
+                    fields.get('標題') or
+                    fields.get('名稱') or
+                    self._extract_text_from_field(fields.get('Title'))
+                )
+                
+                if record_id and tcg_number:
+                    # 使用 INSERT OR REPLACE
+                    db.execute(text('''
+                        INSERT OR REPLACE INTO tcg_records 
+                        (tcg_number, record_id, title, updated_at)
+                        VALUES (:tcg_number, :record_id, :title, CURRENT_TIMESTAMP)
+                    '''), {
+                        'tcg_number': tcg_number,
+                        'record_id': record_id,
+                        'title': title
+                    })
+                    updated_count += 1
+            
+            # 提交交易
+            db.commit()
+            self.logger.info(f"更新了 {updated_count} 個 TCG 映射記錄")
+            return updated_count
+            
+        except Exception as e:
+            db.rollback()
+            self.logger.error(f"同步 TCG 記錄失敗: {e}")
+            return 0
+        finally:
+            db.close()
+    
     def update_tcg_mapping_from_lark_records(self, lark_records: List[Dict[str, Any]]) -> int:
         """
-        從 Lark 記錄更新 TCG 映射
+        從 Lark 記錄更新 TCG 映射（已棄用，請使用 sync_tcg_from_lark）
         
         Args:
             lark_records: Lark API 返回的記錄列表
@@ -94,146 +173,107 @@ class TCGConverter:
         Returns:
             更新的記錄數量
         """
-        updated_count = 0
-        
-        try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                
-                for record in lark_records:
-                    record_id = record.get('record_id')
-                    fields = record.get('fields', {})
-                    
-                    # 提取 TCG 號碼，支援多種可能的欄位名稱
-                    raw_tcg = (
-                        fields.get('TCG Tickets') or
-                        fields.get('TCG Number') or 
-                        fields.get('TCG') or 
-                        fields.get('Ticket Number')
-                    )
-                    
-                    tcg_number = self._extract_text_from_field(raw_tcg)
-                    
-                    # 調試：打印第一個記錄的結構
-                    if updated_count == 0:
-                        self.logger.info(f"第一個記錄的所有欄位: {list(fields.keys())}")
-                        if raw_tcg:
-                            self.logger.info(f"第一個 TCG 記錄結構: {raw_tcg}")
-                            self.logger.info(f"解析後的 TCG 號碼: {tcg_number}")
-                    
-                    title = (
-                        fields.get('Title') or
-                        fields.get('標題') or
-                        fields.get('名稱') or
-                        self._extract_text_from_field(fields.get('Title'))
-                    )
-                    
-                    if record_id and tcg_number:
-                        # 使用 REPLACE 來處理 UPSERT（以 tcg_number 為主鍵）
-                        cursor.execute('''
-                            INSERT OR REPLACE INTO tcg_records 
-                            (tcg_number, record_id, title, updated_at)
-                            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-                        ''', (tcg_number, record_id, title))
-                        updated_count += 1
-                
-                conn.commit()
-                self.logger.info(f"更新了 {updated_count} 個 TCG 映射記錄")
-                
-        except Exception as e:
-            self.logger.error(f"更新 TCG 映射失敗: {e}")
-        
-        return updated_count
+        # 這個方法保留是為了向後相容，實際上呼叫新的原子同步方法
+        return self._atomic_sync_records(lark_records)
     
     def get_tcg_number_by_record_id(self, record_id: str) -> Optional[str]:
         """將單個 record_id 轉換為 TCG 單號"""
         if not record_id:
             return None
         
+        db = SessionLocal()
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute(
-                    "SELECT tcg_number FROM tcg_records WHERE record_id = ?",
-                    (record_id,)
-                )
-                result = cursor.fetchone()
-                return result[0] if result else None
+            result = db.execute(
+                text("SELECT tcg_number FROM tcg_records WHERE record_id = :record_id"),
+                {'record_id': record_id}
+            ).fetchone()
+            return result[0] if result else None
         except Exception as e:
             self.logger.error(f"查詢 record_id {record_id} 對應的 TCG 單號失敗: {e}")
             return None
+        finally:
+            db.close()
     
     def get_tcg_numbers_by_record_ids(self, record_ids: List[str]) -> Dict[str, str]:
         """批量轉換多個 record_id"""
         if not record_ids:
             return {}
         
+        db = SessionLocal()
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                placeholders = ",".join("?" * len(record_ids))
-                cursor.execute(
-                    f"SELECT record_id, tcg_number FROM tcg_records WHERE record_id IN ({placeholders})",
-                    record_ids
-                )
-                results = cursor.fetchall()
-                return {record_id: tcg_number for record_id, tcg_number in results}
+            # 使用參數化查詢避免 SQL 注入
+            placeholders = ", ".join([f":id{i}" for i in range(len(record_ids))])
+            params = {f"id{i}": record_id for i, record_id in enumerate(record_ids)}
+            
+            results = db.execute(
+                text(f"SELECT record_id, tcg_number FROM tcg_records WHERE record_id IN ({placeholders})"),
+                params
+            ).fetchall()
+            return {record_id: tcg_number for record_id, tcg_number in results}
         except Exception as e:
             self.logger.error(f"批量查詢 record_ids 對應的 TCG 單號失敗: {e}")
             return {}
+        finally:
+            db.close()
     
     def get_record_id_by_tcg_number(self, tcg_number: str) -> Optional[str]:
         """根據 TCG 單號查找 record_id（用於搜尋功能）"""
         if not tcg_number:
             return None
         
+        db = SessionLocal()
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute(
-                    "SELECT record_id FROM tcg_records WHERE tcg_number = ?",
-                    (tcg_number,)
-                )
-                result = cursor.fetchone()
-                return result[0] if result else None
+            result = db.execute(
+                text("SELECT record_id FROM tcg_records WHERE tcg_number = :tcg_number"),
+                {'tcg_number': tcg_number}
+            ).fetchone()
+            return result[0] if result else None
         except Exception as e:
             self.logger.error(f"查詢 TCG 單號 {tcg_number} 對應的 record_id 失敗: {e}")
             return None
+        finally:
+            db.close()
     
     def search_tcg_numbers(self, keyword: str = "", limit: int = 50) -> List[Dict[str, str]]:
         """搜尋 TCG 單號"""
+        db = SessionLocal()
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                if keyword:
-                    cursor.execute('''
+            if keyword:
+                results = db.execute(
+                    text('''
                         SELECT record_id, tcg_number, title 
                         FROM tcg_records 
-                        WHERE tcg_number LIKE ? OR title LIKE ?
+                        WHERE tcg_number LIKE :keyword OR title LIKE :keyword
                         ORDER BY tcg_number
-                        LIMIT ?
-                    ''', (f'%{keyword}%', f'%{keyword}%', limit))
-                else:
-                    cursor.execute('''
+                        LIMIT :limit
+                    '''),
+                    {'keyword': f'%{keyword}%', 'limit': limit}
+                ).fetchall()
+            else:
+                results = db.execute(
+                    text('''
                         SELECT record_id, tcg_number, title 
                         FROM tcg_records 
                         ORDER BY tcg_number
-                        LIMIT ?
-                    ''', (limit,))
-                
-                results = cursor.fetchall()
-                return [
-                    {
-                        'record_id': record_id,
-                        'tcg_number': tcg_number,
-                        'title': title or '',
-                        'display_text': tcg_number
-                    }
-                    for record_id, tcg_number, title in results
-                ]
+                        LIMIT :limit
+                    '''),
+                    {'limit': limit}
+                ).fetchall()
+            
+            return [
+                {
+                    'record_id': record_id,
+                    'tcg_number': tcg_number,
+                    'title': title or '',
+                    'display_text': tcg_number
+                }
+                for record_id, tcg_number, title in results
+            ]
         except Exception as e:
             self.logger.error(f"搜尋 TCG 單號失敗: {e}")
             return []
+        finally:
+            db.close()
     
     def get_popular_tcg_numbers(self, limit: int = 20) -> List[Dict[str, str]]:
         """取得熱門的 TCG 單號（按使用頻率）"""
@@ -242,28 +282,32 @@ class TCGConverter:
     
     def get_all_tcg_mappings(self) -> Dict[str, str]:
         """取得所有 TCG 映射（用於同步檢查）"""
+        db = SessionLocal()
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT record_id, tcg_number FROM tcg_records")
-                results = cursor.fetchall()
-                return {record_id: tcg_number for record_id, tcg_number in results}
+            results = db.execute(
+                text("SELECT record_id, tcg_number FROM tcg_records")
+            ).fetchall()
+            return {record_id: tcg_number for record_id, tcg_number in results}
         except Exception as e:
             self.logger.error(f"取得所有 TCG 映射失敗: {e}")
             return {}
+        finally:
+            db.close()
     
     def clear_all_mappings(self) -> bool:
         """清除所有映射（用於重新同步）"""
+        db = SessionLocal()
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.cursor()
-                cursor.execute("DELETE FROM tcg_records")
-                conn.commit()
-                self.logger.info("已清除所有 TCG 映射")
-                return True
+            db.execute(text("DELETE FROM tcg_records"))
+            db.commit()
+            self.logger.info("已清除所有 TCG 映射")
+            return True
         except Exception as e:
+            db.rollback()
             self.logger.error(f"清除 TCG 映射失敗: {e}")
             return False
+        finally:
+            db.close()
     
     @staticmethod
     def _extract_text_from_field(field_value: Any) -> Optional[str]:
