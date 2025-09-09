@@ -616,6 +616,106 @@ async def bulk_create_test_cases(
         return BulkCreateResponse(success=False, created_count=0, errors=[str(e)])
 
 
+# ===== 批次複製（Bulk Clone）API 定義 =====
+class BulkCloneItem(BaseModel):
+    source_record_id: str
+    test_case_number: str
+    title: Optional[str] = None
+
+
+class BulkCloneRequest(BaseModel):
+    items: List[BulkCloneItem]
+
+
+class BulkCloneResponse(BaseModel):
+    success: bool
+    created_count: int = 0
+    duplicates: List[str] = []
+    errors: List[str] = []
+
+
+@router.post("/bulk_clone", response_model=BulkCloneResponse)
+async def bulk_clone_test_cases(
+    team_id: int,
+    request: BulkCloneRequest,
+    db: Session = Depends(get_db)
+):
+    """批次複製測試案例：
+    - 從來源記錄複製以下欄位：Precondition、Steps、Expected Result、Priority
+    - 不複製：TCG、附件、測試結果檔案、User Story Map、Parent Record
+    - 新的 Test Case Number 與 Title 由請求提供（Title 缺省時沿用來源）
+    """
+    lark_client, team = get_lark_client_for_team(team_id, db)
+
+    try:
+        if not request.items:
+            return BulkCloneResponse(success=False, created_count=0, errors=["空的建立清單"])
+
+        # 取得所有現有記錄與編號集合，做外部重複檢查
+        records = lark_client.get_all_records(team.test_case_table_id)
+        existing_numbers = set()
+        for r in records:
+            fields = r.get('fields', {})
+            num = fields.get(TestCase.FIELD_IDS['test_case_number'])
+            if num:
+                existing_numbers.add(str(num))
+
+        req_numbers = [it.test_case_number for it in request.items]
+        duplicates = [num for num in req_numbers if num in existing_numbers]
+        if duplicates:
+            return BulkCloneResponse(success=False, created_count=0, duplicates=duplicates, errors=[])
+
+        # 快速索引來源記錄方便查找
+        record_map = {r.get('record_id'): r for r in records}
+
+        # 準備批次建立資料
+        records_data: List[dict] = []
+        errors: List[str] = []
+
+        for it in request.items:
+            src = record_map.get(it.source_record_id)
+            if not src:
+                errors.append(f"來源記錄不存在: {it.source_record_id}")
+                continue
+
+            try:
+                src_case = TestCase.from_lark_record(src, team_id)
+
+                # 構建新 TestCase（依規格僅複製指定欄位）
+                new_title = (it.title.strip() if (it.title is not None and it.title.strip()) else src_case.title)
+                new_case = TestCase(
+                    test_case_number=it.test_case_number,
+                    title=new_title,
+                    priority=src_case.priority,
+                    precondition=src_case.precondition,
+                    steps=src_case.steps,
+                    expected_result=src_case.expected_result,
+                    assignee=None,
+                    test_result=None,
+                    attachments=[],
+                    user_story_map=[],
+                    tcg=[],
+                    parent_record=[],
+                    team_id=team_id
+                )
+                records_data.append(new_case.to_lark_fields())
+            except Exception as e:
+                errors.append(f"來源 {it.source_record_id} 複製失敗: {str(e)}")
+
+        if errors and not records_data:
+            return BulkCloneResponse(success=False, created_count=0, duplicates=[], errors=errors)
+
+        ok, ids, error_messages = lark_client.batch_create_records(team.test_case_table_id, records_data)
+        if not ok:
+            # 合併 batch_create 的錯誤
+            errors.extend(error_messages)
+            return BulkCloneResponse(success=False, created_count=len(ids), duplicates=[], errors=errors)
+
+        return BulkCloneResponse(success=True, created_count=len(ids), duplicates=[], errors=[])
+    except Exception as e:
+        return BulkCloneResponse(success=False, created_count=0, duplicates=[], errors=[str(e)])
+
+
 @router.post("/batch", response_model=TestCaseBatchResponse)
 async def batch_operation_test_cases(
     team_id: int,

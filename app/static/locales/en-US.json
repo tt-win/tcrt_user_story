@@ -107,7 +107,15 @@
         "testRunNotFound": "Test run record not found",
         "updateFailed": "Update failed",
         "uploadAttachmentFailed": "Failed to upload attachment",
-        "uploadFailed": "Upload failed"
+        "uploadFailed": "Upload failed",
+        "fullNumberFormat": "Format must be Prefix.Middle.Suffix",
+        "prefixFormatInvalid": "Invalid Prefix format",
+        "middleInvalid": "Middle must be a three-digit number 001–999",
+        "suffixInvalid": "Suffix start must be a three-digit number 000–990",
+        "suffixOutOfRange": "Suffix exceeds 990, cannot apply",
+        "batchCopyNoSelection": "Please select items to apply",
+        "duplicateInternal": "Duplicate case numbers in the list",
+        "duplicateExternal": "Conflicts with existing case numbers: {numbers}"
     },
     "form": {
         "title": "Title",
@@ -223,7 +231,8 @@
         "updateSuccess": "更新成功",
         "uploadingFile": "Uploading",
         "validationFailed": "Validation failed",
-        "warning": "Warning"
+        "warning": "Warning",
+        "batchCopySuccess": "Successfully copied {count} test cases"
     },
     "navigation": {
         "backToHome": "Back to Home",
@@ -508,7 +517,22 @@
         "testCaseTitle": "Test Case Title",
         "uniquenessCheck": "Uniqueness check",
         "validationFailed": "Validation failed",
-        "viewTestCase": "View Test Case"
+        "viewTestCase": "View Test Case",
+        "batchCopy": {
+            "title": "Batch Copy",
+            "applyPrefix": "Replace Prefix",
+            "applyMiddle": "Replace Middle Code",
+            "applySuffixStart": "Replace Suffix (Start)",
+            "apply": "Apply",
+            "save": "Save",
+            "previewTitle": "Confirm Items to Create",
+            "prefixHint": "Format: alphanumeric + hyphen + digits, e.g. ABC-12345",
+            "middleHint": "Three digits 001–999",
+            "suffixHint": "Start from the given value, increase by 10; max 990, show error if exceeded",
+            "prefix": "Prefix",
+            "middleCode": "Middle Code",
+            "suffixStart": "Suffix (Start)"
+        }
     },
     "testRun": {
         "addBugTicket": "Add Bug Ticket",

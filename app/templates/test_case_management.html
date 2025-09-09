@@ -321,6 +321,9 @@ html, body { height: 100%; overflow: hidden; }
                         <button type="button" class="btn btn-primary btn-sm" id="batchModifyBtn">
                             <i class="fas fa-edit me-2"></i><span data-i18n="testCase.batchModify">批次修改</span>
                         </button>
+                        <button type="button" class="btn btn-outline-primary btn-sm" id="batchCopyBtn">
+                            <i class="fas fa-copy me-2"></i><span data-i18n="testCase.batchCopy.title">批次複製</span>
+                        </button>
                         <button type="button" class="btn btn-danger btn-sm" id="batchDeleteBtn">
                             <i class="fas fa-trash me-2"></i><span data-i18n="testCase.batchDelete">批次刪除</span>
                         </button>
@@ -780,6 +783,107 @@ html, body { height: 100%; overflow: hidden; }
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">取消</button>
                 <button type="button" class="btn btn-danger" id="confirmDeleteBtn">
                     <i class="fas fa-trash me-2"></i><span data-i18n="common.delete">確認刪除</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<!-- 批次複製 Modal -->
+<div class="modal fade" id="testCaseBatchCopyModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-copy me-2"></i>
+                    <span data-i18n="testCase.batchCopy.title">批次複製</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <!-- 功能列 -->
+                <div class="row g-3 align-items-end mb-3">
+                    <div class="col-md-auto">
+                        <div class="input-group">
+                            <span class="input-group-text py-1" data-i18n="testCase.batchCopy.prefix">Prefix</span>
+                            <input type="text" class="form-control form-control-sm flex-grow-0 w-auto" id="copyPrefixInput" placeholder="TCG-93178" style="max-width:16ch;" />
+                            <button class="btn btn-outline-primary btn-sm" id="applyCopyPrefixBtn"><span data-i18n="testCase.batchCopy.apply">Apply</span></button>
+                        </div>
+                    </div>
+                    <div class="col-md-auto">
+                        <div class="input-group">
+                            <span class="input-group-text py-1" data-i18n="testCase.batchCopy.middleCode">Middle Code</span>
+                            <input type="text" class="form-control form-control-sm flex-grow-0 w-auto" id="copyMiddleInput" placeholder="010" style="max-width:6ch;" />
+                            <button class="btn btn-outline-primary btn-sm" id="applyCopyMiddleBtn"><span data-i18n="testCase.batchCopy.apply">Apply</span></button>
+                        </div>
+                    </div>
+                    <div class="col-md-auto">
+                        <div class="input-group">
+                            <span class="input-group-text py-1" data-i18n="testCase.batchCopy.suffixStart">Suffix (Start)</span>
+                            <input type="text" class="form-control form-control-sm flex-grow-0 w-auto" id="copySuffixStartInput" placeholder="020" style="max-width:6ch;" />
+                            <button class="btn btn-outline-primary btn-sm" id="applyCopySuffixBtn"><span data-i18n="testCase.batchCopy.apply">Apply</span></button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- 選取統計：移除顯示數量 -->
+
+                <!-- 列表 -->
+                <div class="table-responsive" style="max-height: 52vh; overflow: auto;">
+                    <table class="table table-hover table-sm align-middle">
+                        <thead class="table-light sticky-top">
+                            <tr>
+                                <th style="width:40px;" class="text-center">
+                                    <input type="checkbox" class="form-check-input" id="batchCopySelectAllTop">
+                                </th>
+                                <th style="width:220px;" data-i18n="testCase.testCaseNumber">Test Case Number</th>
+                                <th data-i18n="form.title">標題</th>
+                            </tr>
+                        </thead>
+                        <tbody id="batchCopyTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">取消</button>
+                <button type="button" class="btn btn-primary" id="saveBatchCopyBtn">
+                    <i class="fas fa-save me-2"></i><span data-i18n="testCase.batchCopy.save">儲存</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 批次複製預覽 Modal -->
+<div class="modal fade" id="batchCopyPreviewModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-list-check me-2"></i>
+                    <span data-i18n="testCase.batchCopy.previewTitle">確認新增列表</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="table-responsive" style="max-height: 400px;">
+                    <table class="table table-hover table-sm">
+                        <thead class="table-light sticky-top">
+                            <tr>
+                                <th style="width: 40px;">#</th>
+                                <th style="width: 200px;" data-i18n="testCase.testCaseNumber">測試案例編號</th>
+                                <th data-i18n="form.title">標題</th>
+                            </tr>
+                        </thead>
+                        <tbody id="batchCopyPreviewList"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">取消</button>
+                <button type="button" class="btn btn-primary" id="confirmBatchCopyBtn">
+                    <i class="fas fa-check me-2"></i><span data-i18n="common.confirm">確認</span>
                 </button>
             </div>
         </div>
@@ -1648,6 +1752,10 @@ function bindEvents() {
     
     // 重新載入按鈕
     document.getElementById('refreshBtn').addEventListener('click', refreshTestCases);
+
+    // 批次複製按鈕
+    const batchCopyBtn = document.getElementById('batchCopyBtn');
+    if (batchCopyBtn) batchCopyBtn.addEventListener('click', openTestCaseBatchCopyModal);
     
     // 搜尋與篩選
     document.getElementById('applyFiltersBtn').addEventListener('click', applyFilters);
@@ -1767,6 +1875,333 @@ function bindEvents() {
     document.getElementById('cloneAndAddNextBtn').addEventListener('click', showCloneSelector);
     // 啟用「/」快速搜尋
     setupQuickSearch_TCM();
+
+    // 批次複製 Modal 內部事件
+    bindBatchCopyModalEvents();
+}
+
+// ===== 批次複製（Batch Copy） =====
+let batchCopyModalInstance = null;
+let batchCopyPreviewModalInstance = null;
+let batchCopyItems = []; // { source_record_id, original_number, original_title, new_number, new_title, selected, conflict, errors }
+let lastBatchCopyCheckboxIndex = null;
+
+function openTestCaseBatchCopyModal() {
+    try {
+        const selectedIds = Array.from(selectedTestCases || []);
+        if (!selectedIds.length) {
+            const msg = window.i18n ? window.i18n.t('errors.pleaseSelectTestCases') : '請至少選擇一個測試案例';
+            AppUtils.showError(msg);
+            return;
+        }
+        // 準備資料來源
+        const map = new Map((testCases || []).map(tc => [tc.record_id, tc]));
+        batchCopyItems = selectedIds
+            .map(id => map.get(id))
+            .filter(Boolean)
+            .map(tc => ({
+                source_record_id: tc.record_id,
+                original_number: tc.test_case_number || '',
+                original_title: tc.title || '',
+                new_number: tc.test_case_number || '',
+                new_title: tc.title || '',
+                selected: false,
+                conflict: false,
+                errors: {}
+            }));
+
+        // 開啟 Modal
+        const el = document.getElementById('testCaseBatchCopyModal');
+    if (!batchCopyModalInstance) batchCopyModalInstance = new bootstrap.Modal(el);
+        renderBatchCopyTable();
+        if (window.i18n && window.i18n.isReady()) window.i18n.retranslate(el);
+        batchCopyModalInstance.show();
+    } catch (e) {
+        console.error('openTestCaseBatchCopyModal error:', e);
+        AppUtils.showError('開啟批次複製失敗');
+    }
+}
+
+function bindBatchCopyModalEvents() {
+    const selectAllTop = document.getElementById('batchCopySelectAllTop');
+    if (selectAllTop) selectAllTop.addEventListener('change', () => {
+        const checked = !!selectAllTop.checked;
+        batchCopyItems.forEach(item => item.selected = checked);
+        renderBatchCopyTable();
+    });
+
+    // 表頭 checkbox 控制全選
+
+    // 套用 Prefix
+    const applyPrefixBtn = document.getElementById('applyCopyPrefixBtn');
+    if (applyPrefixBtn) applyPrefixBtn.addEventListener('click', () => {
+        const input = document.getElementById('copyPrefixInput');
+        const prefix = (input.value || '').trim();
+        const reg = /^[A-Za-z0-9]+-[0-9]+$/;
+        if (!reg.test(prefix)) { AppUtils.showError(window.i18n ? window.i18n.t('errors.prefixFormatInvalid') : 'Prefix 格式不正確'); return; }
+        const targets = getBatchCopySelectedIndexes();
+        if (!targets.length) { AppUtils.showError(window.i18n ? window.i18n.t('errors.batchCopyNoSelection') : '請先選擇要套用的項目'); return; }
+        targets.forEach(idx => {
+            const parts = (batchCopyItems[idx].new_number || '').split('.');
+            if (parts.length === 3) {
+                parts[0] = prefix;
+                batchCopyItems[idx].new_number = parts.join('.');
+                batchCopyItems[idx].conflict = false;
+                batchCopyItems[idx].errors = {};
+            }
+        });
+        renderBatchCopyTable();
+    });
+
+    // 套用 Middle
+    const applyMiddleBtn = document.getElementById('applyCopyMiddleBtn');
+    if (applyMiddleBtn) applyMiddleBtn.addEventListener('click', () => {
+        const val = (document.getElementById('copyMiddleInput').value || '').trim();
+        if (!/^\d{3}$/.test(val) || parseInt(val,10) < 1 || parseInt(val,10) > 999) {
+            AppUtils.showError(window.i18n ? window.i18n.t('errors.middleInvalid') : 'Middle 必須為 001～999 的三位數'); return;
+        }
+        const targets = getBatchCopySelectedIndexes();
+        if (!targets.length) { AppUtils.showError(window.i18n ? window.i18n.t('errors.batchCopyNoSelection') : '請先選擇要套用的項目'); return; }
+        targets.forEach(idx => {
+            const parts = (batchCopyItems[idx].new_number || '').split('.');
+            if (parts.length === 3) {
+                parts[1] = val;
+                batchCopyItems[idx].new_number = parts.join('.');
+                batchCopyItems[idx].conflict = false;
+                batchCopyItems[idx].errors = {};
+            }
+        });
+        renderBatchCopyTable();
+    });
+
+    // 套用 Suffix 起始（依 10 遞增）
+    const applySuffixBtn = document.getElementById('applyCopySuffixBtn');
+    if (applySuffixBtn) applySuffixBtn.addEventListener('click', () => {
+        const startStr = (document.getElementById('copySuffixStartInput').value || '').trim();
+        if (!/^\d{3}$/.test(startStr)) { AppUtils.showError(window.i18n ? window.i18n.t('errors.suffixInvalid') : 'Suffix 起始需為 000～990 的三位數'); return; }
+        const start = parseInt(startStr,10);
+        if (start < 0 || start > 990) { AppUtils.showError(window.i18n ? window.i18n.t('errors.suffixInvalid') : 'Suffix 起始需為 000～990 的三位數'); return; }
+        const targets = getBatchCopySelectedIndexes();
+        if (!targets.length) { AppUtils.showError(window.i18n ? window.i18n.t('errors.batchCopyNoSelection') : '請先選擇要套用的項目'); return; }
+        const need = targets.length;
+        const last = start + (need - 1) * 10;
+        if (last > 990) { AppUtils.showError(window.i18n ? window.i18n.t('errors.suffixOutOfRange') : '末尾單號超出 990，無法套用'); return; }
+        targets.forEach((idx, i) => {
+            const suf = String(start + i*10).padStart(3,'0');
+            const parts = (batchCopyItems[idx].new_number || '').split('.');
+            if (parts.length === 3) {
+                parts[2] = suf;
+                batchCopyItems[idx].new_number = parts.join('.');
+                batchCopyItems[idx].conflict = false;
+                batchCopyItems[idx].errors = {};
+            }
+        });
+        renderBatchCopyTable();
+    });
+
+    // Save：先檢查重複，通過則開預覽
+    const saveBtn = document.getElementById('saveBatchCopyBtn');
+    if (saveBtn) saveBtn.addEventListener('click', onSaveBatchCopy);
+
+    const confirmBtn = document.getElementById('confirmBatchCopyBtn');
+    if (confirmBtn) confirmBtn.addEventListener('click', confirmBatchCopyRequest);
+}
+
+function getBatchCopySelectedIndexes() {
+    const res = [];
+    batchCopyItems.forEach((it, idx) => { if (it.selected) res.push(idx); });
+    return res;
+}
+
+
+function renderBatchCopyTable() {
+    const tbody = document.getElementById('batchCopyTableBody');
+    if (!tbody) return;
+    tbody.innerHTML = batchCopyItems.map((it, idx) => `
+        <tr class="${it.conflict ? 'table-danger' : ''}">
+            <td class="text-center">
+                <input type="checkbox" class="form-check-input batch-copy-checkbox" data-idx="${idx}" ${it.selected ? 'checked' : ''}>
+            </td>
+            <td>
+                <div class="d-flex align-items-center gap-2">
+                    <input type="text" class="form-control form-control-sm" value="${escapeHtml(it.new_number)}" data-idx="${idx}" data-field="number" />
+                </div>
+                ${it.errors.number ? `<div class="text-danger small">${escapeHtml(it.errors.number)}</div>` : ''}
+            </td>
+            <td>
+                <input type="text" class="form-control form-control-sm" value="${escapeHtml(it.new_title)}" data-idx="${idx}" data-field="title" />
+            </td>
+        </tr>
+    `).join('');
+
+    // 事件繫結
+    tbody.querySelectorAll('.batch-copy-checkbox').forEach(cb => {
+        cb.addEventListener('click', (e) => {
+            const checkboxes = Array.from(tbody.querySelectorAll('.batch-copy-checkbox'));
+            const currentIndex = checkboxes.indexOf(e.target);
+            const idx = parseInt(e.target.getAttribute('data-idx'), 10);
+            const checked = e.target.checked;
+            if (e.shiftKey && lastBatchCopyCheckboxIndex !== null && lastBatchCopyCheckboxIndex !== -1) {
+                const start = Math.min(lastBatchCopyCheckboxIndex, currentIndex);
+                const end = Math.max(lastBatchCopyCheckboxIndex, currentIndex);
+                for (let i = start; i <= end; i++) {
+                    const c = checkboxes[i];
+                    const idxx = parseInt(c.getAttribute('data-idx'),10);
+                    c.checked = checked;
+                    batchCopyItems[idxx].selected = checked;
+                }
+            } else {
+                batchCopyItems[idx].selected = checked;
+            }
+            lastBatchCopyCheckboxIndex = currentIndex;
+        });
+    });
+
+    tbody.querySelectorAll('input[data-field="number"]').forEach(inp => {
+        inp.addEventListener('input', (e) => {
+            const idx = parseInt(e.target.getAttribute('data-idx'),10);
+            batchCopyItems[idx].new_number = e.target.value.trim();
+            // 內部重複即時標示
+            markInternalDuplicates();
+        });
+    });
+    tbody.querySelectorAll('input[data-field="title"]').forEach(inp => {
+        inp.addEventListener('input', (e) => {
+            const idx = parseInt(e.target.getAttribute('data-idx'),10);
+            batchCopyItems[idx].new_title = e.target.value;
+        });
+    });
+}
+
+function validateFullNumberForBatch(num) {
+    const parts = (num || '').split('.');
+    if (parts.length !== 3) return window.i18n ? window.i18n.t('errors.fullNumberFormat') : '格式須為 Prefix.Middle.Suffix';
+    const [prefix, middle, suffix] = parts;
+    if (!/^[A-Za-z0-9]+-[0-9]+$/.test(prefix)) return window.i18n ? window.i18n.t('errors.prefixFormatInvalid') : 'Prefix 格式不正確';
+    if (!/^\d{3}$/.test(middle) || parseInt(middle,10) < 1 || parseInt(middle,10) > 999) return window.i18n ? window.i18n.t('errors.middleInvalid') : 'Middle 必須為 001～999';
+    if (!/^\d{3}$/.test(suffix) || parseInt(suffix,10) < 0 || parseInt(suffix,10) > 990) return window.i18n ? window.i18n.t('errors.suffixInvalid') : 'Suffix 必須為 000～990';
+    return '';
+}
+
+function markInternalDuplicates() {
+    const seen = new Map();
+    batchCopyItems.forEach((it, idx) => {
+        it.conflict = false;
+        if (it.new_number) {
+            const arr = seen.get(it.new_number) || [];
+            arr.push(idx);
+            seen.set(it.new_number, arr);
+        }
+    });
+    for (const [k, arr] of seen.entries()) {
+        if (arr.length > 1) arr.forEach(i => batchCopyItems[i].conflict = true);
+    }
+}
+
+function onSaveBatchCopy() {
+    // 內部重複
+    markInternalDuplicates();
+    if (batchCopyItems.some(it => it.conflict)) {
+        AppUtils.showError(window.i18n ? window.i18n.t('errors.duplicateInternal') : '清單內有重複的 Case Number');
+        renderBatchCopyTable();
+        return;
+    }
+    // 外部重複（以目前快取資料檢查）
+    const existing = new Set((testCases || []).map(tc => tc.test_case_number).filter(Boolean));
+    const externalDup = [];
+    batchCopyItems.forEach(it => { if (existing.has(it.new_number)) externalDup.push(it.new_number); });
+    if (externalDup.length) {
+        AppUtils.showError((window.i18n ? window.i18n.t('errors.duplicateExternal', {numbers: externalDup.join(', ')}) : `與既有 Case Number 衝突：${externalDup.join(', ')}`));
+        batchCopyItems.forEach(it => { if (externalDup.includes(it.new_number)) it.conflict = true; });
+        renderBatchCopyTable();
+        return;
+    }
+
+    // 預覽
+    const list = document.getElementById('batchCopyPreviewList');
+    if (list) {
+        list.innerHTML = batchCopyItems.map((it, i) => `
+            <tr>
+                <td>${i+1}</td>
+                <td><code>${escapeHtml(it.new_number)}</code></td>
+                <td>${escapeHtml(it.new_title)}</td>
+            </tr>
+        `).join('');
+    }
+    const el = document.getElementById('batchCopyPreviewModal');
+    if (!batchCopyPreviewModalInstance) batchCopyPreviewModalInstance = new bootstrap.Modal(el);
+    if (window.i18n && window.i18n.isReady()) window.i18n.retranslate(el);
+    batchCopyPreviewModalInstance.show();
+}
+
+async function confirmBatchCopyRequest() {
+    try {
+        const currentTeam = AppUtils.getCurrentTeam();
+        if (!currentTeam || !currentTeam.id) throw new Error('請先選擇團隊');
+
+        const btn = document.getElementById('confirmBatchCopyBtn');
+        const originalHtml = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fas fa-spinner fa-spin me-2"></i>${window.i18n ? window.i18n.t('messages.saving') : '儲存中...'}`;
+
+        const payload = {
+            items: batchCopyItems.map(it => ({
+                source_record_id: it.source_record_id,
+                test_case_number: it.new_number,
+                title: it.new_title
+            }))
+        };
+        const resp = await fetch(`/api/teams/${currentTeam.id}/testcases/bulk_clone`, {
+            method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
+        });
+        const data = await resp.json();
+        // 關閉預覽
+        if (batchCopyPreviewModalInstance) batchCopyPreviewModalInstance.hide();
+
+        if (!resp.ok || !data || data.success === false) {
+            if (data && Array.isArray(data.duplicates) && data.duplicates.length) {
+                // 標記外部衝突
+                const setDup = new Set(data.duplicates);
+                batchCopyItems.forEach(it => { if (setDup.has(it.new_number)) it.conflict = true; });
+                AppUtils.showError((window.i18n ? window.i18n.t('errors.duplicateExternal', {numbers: data.duplicates.join(', ')}) : `與既有 Case Number 衝突：${data.duplicates.join(', ')}`));
+                // 回到編輯
+                if (batchCopyModalInstance) batchCopyModalInstance.show();
+                renderBatchCopyTable();
+                return;
+            }
+            const msg = (data && data.errors && data.errors.join('; ')) || (resp.statusText || '建立失敗');
+            AppUtils.showError(msg);
+            // 回到編輯
+            if (batchCopyModalInstance) batchCopyModalInstance.show();
+            return;
+        }
+
+        // 成功
+        AppUtils.showSuccess(window.i18n ? window.i18n.t('messages.batchCopySuccess', {count: data.created_count || payload.items.length}) : `已成功複製 ${data.created_count || payload.items.length} 筆測試案例`);
+        if (batchCopyModalInstance) batchCopyModalInstance.hide();
+        // 刷新列表
+        clearTestCasesCache();
+        await loadTestCases(false, null, true);
+        // 清除主列表的選取
+        try {
+            if (selectedTestCases && typeof selectedTestCases.clear === 'function') {
+                selectedTestCases.clear();
+            }
+            const selectAll = document.getElementById('selectAllCheckbox');
+            if (selectAll) selectAll.checked = false;
+            if (typeof updateBatchToolbar === 'function') updateBatchToolbar();
+        } catch (_) {}
+    } catch (e) {
+        console.error('confirmBatchCopyRequest error:', e);
+        AppUtils.showError('批次複製失敗');
+        if (batchCopyModalInstance) batchCopyModalInstance.show();
+    } finally {
+        const btn = document.getElementById('confirmBatchCopyBtn');
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = `<i class="fas fa-check me-2"></i>${window.i18n ? window.i18n.t('common.confirm') : '確認'}`;
+        }
+    }
 }
 
 // ===== 大量新增模式（文字輸入） =====

@@ -107,7 +107,15 @@
         "testRunNotFound": "找不到测试执行记录",
         "updateFailed": "更新失败",
         "uploadAttachmentFailed": "上传附件失败",
-        "uploadFailed": "上传失败"
+        "uploadFailed": "上传失败",
+        "fullNumberFormat": "格式须为 Prefix.Middle.Suffix",
+        "prefixFormatInvalid": "Prefix 格式不正确",
+        "middleInvalid": "Middle 必须为 001～999 的三位数",
+        "suffixInvalid": "Suffix 起始需为 000～990 的三位数",
+        "suffixOutOfRange": "末尾单号超过 990，无法套用",
+        "batchCopyNoSelection": "请先选择要套用的项目",
+        "duplicateInternal": "列表内存在重复的 Case Number",
+        "duplicateExternal": "与既有 Case Number 冲突：{numbers}"
     },
     "form": {
         "title": "标题",
@@ -223,7 +231,8 @@
         "updateSuccess": "更新成功",
         "uploadingFile": "正在上传",
         "validationFailed": "验证失败",
-        "warning": "警告"
+        "warning": "警告",
+        "batchCopySuccess": "已成功复制 {count} 条测试案例"
     },
     "navigation": {
         "backToHome": "回到首页",
@@ -508,7 +517,22 @@
         "testCaseTitle": "测试案例标题",
         "uniquenessCheck": "唯一性检查",
         "validationFailed": "验证失败",
-        "viewTestCase": "查看测试案例"
+        "viewTestCase": "查看测试案例",
+        "batchCopy": {
+            "title": "批次复制",
+            "applyPrefix": "替换主单号（Prefix）",
+            "applyMiddle": "替换中间号（Middle Code）",
+            "applySuffixStart": "替换末尾单号（起始）",
+            "apply": "套用",
+            "save": "保存",
+            "previewTitle": "确认新增列表",
+            "prefixHint": "格式：字母数字 + 连字符 + 数字，例如 ABC-12345",
+            "middleHint": "三位数 001～999",
+            "suffixHint": "从起始值开始，以 10 递增；最大 990，超出将提示错误",
+            "prefix": "主单号",
+            "middleCode": "中间号",
+            "suffixStart": "末尾单号（开始号）"
+        }
     },
     "testRun": {
         "addBugTicket": "新增 Bug Ticket",
