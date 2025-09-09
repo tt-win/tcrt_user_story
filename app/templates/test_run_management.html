@@ -960,38 +960,99 @@ let configDetailModalInstance = null;
 let configFormModalInstance = null;
 // delete config modal is handled via bootstrap instance on demand
 
+// 頁面狀態旗標，避免競態與重複綁定
+let teamIdReady = false;      // 取得有效 teamId 後才為 true
+let dataLoadedOnce = false;   // 成功載入過資料後為 true
+let eventsBound = false;      // 避免重複綁定 i18n/page 事件
+
 document.addEventListener('DOMContentLoaded', function() {
     initializePage();
     bindEventListeners();
-    
-    // Ensure translations applied after DOM is ready
+
+    // 綁定 i18n 事件（僅重翻譯，不觸發資料重載）
+    if (!eventsBound) {
+        document.addEventListener('i18nReady', onI18nEventOnce);
+        document.addEventListener('languageChanged', onI18nEvent);
+        // 處理 bfcache 返回
+        window.addEventListener('pageshow', onPageShow);
+        eventsBound = true;
+    }
+
+    // DOM 就緒且 i18n 已就緒時，僅重翻譯
     if (window.i18n && window.i18n.isReady && window.i18n.isReady()) {
         refreshStatusTexts();
     }
 });
 
-// Listen for i18n ready event
-document.addEventListener('i18nReady', function(event) {
+function onI18nEventOnce() {
+    // i18n 初始化完成後，不重打 API，僅更新文案
     refreshStatusTexts();
-});
+}
 
-// Listen for language changes
-document.addEventListener('languageChanged', function(event) {
+function onI18nEvent() {
+    // 語言切換後，不重打 API，僅更新文案
     refreshStatusTexts();
-});
+}
+
+function onPageShow(event) {
+    // bfcache 或一般顯示時，確認 teamId 狀態
+    const latestTeamId = AppUtils.getCurrentTeamId ? AppUtils.getCurrentTeamId() : (AppUtils.getCurrentTeam()?.id ?? null);
+    if (latestTeamId && latestTeamId !== currentTeamId) {
+        currentTeamId = latestTeamId;
+        teamIdReady = true;
+        // 只有在尚未載入過資料時才載入，避免返回頁面時不必要的 API 呼叫
+        if (!dataLoadedOnce) {
+            loadTestRunConfigs();
+        } else {
+            refreshStatusTexts();
+        }
+    } else if (!latestTeamId) {
+        teamIdReady = false;
+        console.warn('pageshow: Skip loading due to missing teamId');
+        // 可選：顯示需選擇團隊的提示
+    } else {
+        // teamId 未變更
+        refreshStatusTexts();
+    }
+}
 
 function initializePage() {
-    currentTeamId = AppUtils.getCurrentTeam()?.id;
-    if (!currentTeamId) {
-        // Temporarily use hardcoded team ID for testing
-        currentTeamId = 1;
-        console.log('Using temporary hardcoded team ID:', currentTeamId);
+    // 以 AppUtils.getCurrentTeamId 為單一資料源
+    currentTeamId = (typeof AppUtils.getCurrentTeamId === 'function')
+        ? AppUtils.getCurrentTeamId()
+        : (AppUtils.getCurrentTeam()?.id ?? null);
+
+    if (currentTeamId) {
+        teamIdReady = true;
+        loadTestRunConfigs();
+    } else {
+        teamIdReady = false;
+        console.warn('initializePage: teamId not ready, skip loading');
+        // 不打 API；可選：顯示需先選擇團隊的 UI 狀態
+        showNoConfigs();
     }
-    loadTestRunConfigs();
 }
 
 function bindEventListeners() {
-    document.getElementById('refreshBtn').addEventListener('click', loadTestRunConfigs);
+    const refreshBtn = document.getElementById('refreshBtn');
+    if (refreshBtn) refreshBtn.addEventListener('click', () => {
+        if (!teamIdReady) {
+            // 嘗試延遲取得 teamId
+            const latestTeamId = (typeof AppUtils.getCurrentTeamId === 'function')
+                ? AppUtils.getCurrentTeamId()
+                : (AppUtils.getCurrentTeam()?.id ?? null);
+            if (latestTeamId) {
+                currentTeamId = latestTeamId;
+                teamIdReady = true;
+            }
+        }
+        if (teamIdReady) {
+            loadTestRunConfigs();
+        } else {
+            console.warn('Refresh skipped: teamId not ready');
+            AppUtils.showWarning && AppUtils.showWarning((window.i18n && window.i18n.isReady()) ? window.i18n.t('errors.teamNotSelected') : '請先選擇團隊');
+        }
+    });
     
     document.addEventListener('click', function(e) {
         if (e.target.closest('.add-test-run-card')) {
@@ -999,7 +1060,8 @@ function bindEventListeners() {
         }
     });
     
-    document.getElementById('saveConfigBtn').addEventListener('click', handleSaveConfig);
+    const saveBtn = document.getElementById('saveConfigBtn');
+    if (saveBtn) saveBtn.addEventListener('click', handleSaveConfig);
     
     // 狀態過濾事件監聽器
     document.querySelectorAll('input[name="statusFilter"]').forEach(radio => {
@@ -1015,6 +1077,22 @@ function bindEventListeners() {
 
 async function loadTestRunConfigs() {
     try {
+        // 防護：若 teamId 尚未就緒，嘗試回填，否則中止
+        if (!currentTeamId) {
+            const latestTeamId = (typeof AppUtils.getCurrentTeamId === 'function')
+                ? AppUtils.getCurrentTeamId()
+                : (AppUtils.getCurrentTeam()?.id ?? null);
+            if (latestTeamId) {
+                currentTeamId = latestTeamId;
+                teamIdReady = true;
+            }
+        }
+        if (!currentTeamId) {
+            console.warn('loadTestRunConfigs: Skip loading due to missing teamId');
+            showNoConfigs();
+            return;
+        }
+
         console.log('Loading Test Run configurations, Team ID:', currentTeamId);
         showLoading();
         const response = await fetch(`/api/teams/${currentTeamId}/test-run-configs/`);
@@ -1023,6 +1101,7 @@ async function loadTestRunConfigs() {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
         testRunConfigs = await response.json();
+        dataLoadedOnce = true;
         console.log('Loaded configurations count:', testRunConfigs.length);
         console.log('Configuration data:', testRunConfigs);
         renderTestRunConfigs();
@@ -1407,15 +1486,18 @@ async function changeTestRunStatus(configId, newStatus, configName) {
 }
 
 function refreshStatusTexts() {
-    // Refresh status texts in config cards by reloading the configs
-    if (typeof loadTestRunConfigs === 'function') {
-        loadTestRunConfigs();
+    // 僅做文案重翻譯，不重打 API，避免 teams/null 之類錯誤
+    try {
+        if (window.i18n && window.i18n.isReady && window.i18n.isReady()) {
+            window.i18n.retranslate(document);
+        }
+    } catch (e) {
+        console.warn('refreshStatusTexts: retranslate failed', e);
     }
     
-    // Also refresh any status text in modals if they're visible
+    // 同步更新已開啟的詳情視窗中的狀態徽章文案
     const detailModal = document.getElementById('configDetailModal');
     if (detailModal && detailModal.classList.contains('show')) {
-        // Find all status badges in the detail modal and update them
         const statusBadges = detailModal.querySelectorAll('.status-badge');
         statusBadges.forEach(badge => {
             const statusClass = badge.className.match(/status-(\w+)/);
