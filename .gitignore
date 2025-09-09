@@ -113,6 +113,16 @@ config.yaml
 # SQLite
 *.sqlite3
 *.db
+# SQLite WAL/SHM sidecars
+*.db-shm
+*.db-wal
+
+# PIDs
+*.pid
+server.pid
+
+# Local test html pages
+i18n_test.html
 
 # Design and documentation files
 *.md
