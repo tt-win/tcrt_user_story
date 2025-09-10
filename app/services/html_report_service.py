@@ -97,6 +97,27 @@ class HTMLReportService:
                 "execution_time": i.executed_at.strftime('%Y-%m-%d %H:%M') if i.executed_at else "",
             })
 
+        # Bug tickets summary（不請 JIRA，直接顯示票號與關聯測試案例）
+        bug_map: Dict[str, Dict[str, Any]] = {}
+        for i in items:
+            if getattr(i, 'bug_tickets_json', None):
+                try:
+                    tickets_data = json.loads(i.bug_tickets_json)
+                    if isinstance(tickets_data, list):
+                        for t in tickets_data:
+                            if isinstance(t, dict) and 'ticket_number' in t:
+                                ticket_no = str(t['ticket_number']).upper()
+                                if ticket_no not in bug_map:
+                                    bug_map[ticket_no] = { 'ticket_number': ticket_no, 'test_cases': [] }
+                                bug_map[ticket_no]['test_cases'].append({
+                                    'test_case_number': i.test_case_number or '',
+                                    'title': i.title or '',
+                                    'test_result': i.test_result.value if getattr(i.test_result, 'value', None) else (i.test_result or '未執行')
+                                })
+                except Exception:
+                    pass
+        bug_tickets = list(bug_map.values())
+
         return {
             "team_id": team_id,
             "config_id": config_id,
@@ -133,6 +154,7 @@ class HTMLReportService:
                 "Not Executed": not_executed_count,
             },
             "test_results": test_results,
+            "bug_tickets": bug_tickets,
         }
 
     # ---------------- Rendering ----------------
@@ -271,6 +293,42 @@ class HTMLReportService:
         </div>
         """
 
+        # Bug tickets section
+        bt = data.get('bug_tickets', [])
+        if bt:
+            bug_rows = []
+            for t in bt:
+                cases_html = "".join([
+                    f"<tr><td><code>{esc(c.get('test_case_number'))}</code></td><td>{esc(c.get('title'))}</td><td><span class='pill {self._status_class(c.get('test_result'))}'>{esc(c.get('test_result'))}</span></td></tr>"
+                    for c in t.get('test_cases', [])
+                ])
+                bug_rows.append(
+                    f"""
+                    <div class=\"card\" style=\"margin-bottom:12px;\">
+                      <div><strong>Ticket</strong>: <span class=\"badge\">{esc(t.get('ticket_number'))}</span></div>
+                      <div class=\"section\" style=\"margin-top:8px;\">
+                        <table>
+                          <tr><th style=\"width:180px;\">Test Case Number</th><th>Title</th><th style=\"width:140px;\">Result</th></tr>
+                          {cases_html}
+                        </table>
+                      </div>
+                    </div>
+                    """
+                )
+            bugs_html = f"""
+            <div class=\"section card\">
+              <h2>Bug Tickets</h2>
+              {''.join(bug_rows)}
+            </div>
+            """
+        else:
+            bugs_html = f"""
+            <div class=\"section card\">
+              <h2>Bug Tickets</h2>
+              <div class=\"muted\">無關聯的 Bug Tickets</div>
+            </div>
+            """
+
         rows = []
         rows.append("<tr><th style=\"width:160px;\">Test Case Number</th><th>Title</th><th style=\"width:100px;\">Priority</th><th style=\"width:140px;\">Result</th><th style=\"width:160px;\">Executor</th><th style=\"width:160px;\">Executed At</th></tr>")
         for r in data.get("test_results", []):
@@ -314,6 +372,7 @@ class HTMLReportService:
 <body>
   {header_html}
   {stats_html}
+  {bugs_html}
   {details_html}
   {footer}
 </body>
