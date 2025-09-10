@@ -5369,13 +5369,42 @@ function copyReportLink() {
   const btn = document.getElementById('copyReportLinkBtn');
   const url = btn && btn.dataset && btn.dataset.url;
   if (!url) return;
-  navigator.clipboard.writeText(url).then(() => {
-    btn.textContent = '已複製';
-    setTimeout(() => { btn.textContent = '複製'; }, 1500);
-  }).catch(() => {
-    // fallback
-    prompt('複製這個連結：', url);
-  });
+
+  // 優先使用 Clipboard API（需 HTTPS 或特定環境）
+  if (navigator && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+    navigator.clipboard.writeText(url).then(() => {
+      btn.textContent = '已複製';
+      setTimeout(() => { btn.textContent = '複製'; }, 1500);
+    }).catch(() => {
+      // 備援：使用暫時輸入欄位 + execCommand
+      try {
+        const temp = document.createElement('input');
+        temp.value = url;
+        document.body.appendChild(temp);
+        temp.select();
+        document.execCommand('copy');
+        document.body.removeChild(temp);
+        btn.textContent = '已複製';
+        setTimeout(() => { btn.textContent = '複製'; }, 1500);
+      } catch (e) {
+        prompt('複製這個連結：', url);
+      }
+    });
+  } else {
+    // 備援：使用暫時輸入欄位 + execCommand
+    try {
+      const temp = document.createElement('input');
+      temp.value = url;
+      document.body.appendChild(temp);
+      temp.select();
+      document.execCommand('copy');
+      document.body.removeChild(temp);
+      btn.textContent = '已複製';
+      setTimeout(() => { btn.textContent = '複製'; }, 1500);
+    } catch (e) {
+      prompt('複製這個連結：', url);
+    }
+  }
 }
 
 // 生成 HTML 報告並複製連結
