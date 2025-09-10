@@ -746,3 +746,33 @@ async def generate_html_report(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"HTML 報告生成失敗: {str(e)}"
         )
+
+
+@router.get("/{config_id}/report", response_model=dict)
+async def get_html_report_status(
+    team_id: int,
+    config_id: int,
+    request: Request,
+    db: Session = Depends(get_db)
+):
+    """查詢 HTML 報告是否已存在，存在則回傳完整連結"""
+    # 驗證團隊與配置存在
+    team = db.query(TeamDB).filter(TeamDB.id == team_id).first()
+    if not team:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"找不到團隊 ID {team_id}")
+    config = db.query(TestRunConfigDB).filter(
+        TestRunConfigDB.id == config_id,
+        TestRunConfigDB.team_id == team_id
+    ).first()
+    if not config:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"找不到測試執行配置 ID {config_id}")
+
+    # 檢查檔案存在
+    from pathlib import Path
+    report_path = Path.cwd() / "generated_report" / f"team-{team_id}-config-{config_id}.html"
+    if report_path.exists():
+        base = str(request.base_url).rstrip('/')
+        url = f"{base}/reports/team-{team_id}-config-{config_id}.html"
+        return {"exists": True, "report_url": url}
+    else:
+        return {"exists": False}

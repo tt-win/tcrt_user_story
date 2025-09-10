@@ -5301,19 +5301,83 @@ async function downloadReportAsPDF() {
                 </div>
             </div>
             <div class="modal-footer">
-<button type="button" class="btn btn-primary" id="generateHTMLBtn" onclick="generateHtmlReport()">
-                    <i class="fas fa-file-alt me-2" id="generateIcon"></i>
-                    <span id="generateText">生成 HTML 報告並複製連結</span>
+              <div class="d-flex align-items-center w-100 gap-3 flex-wrap">
+                <button type="button" class="btn btn-primary" id="generateHTMLBtn" onclick="generateHtmlReport()">
+                  <i class="fas fa-file-alt me-2" id="generateIcon"></i>
+                  <span id="generateText">生成 HTML 報告並複製連結</span>
                 </button>
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-                    <span data-i18n="common.close">關閉</span>
+                <div id="reportLinkArea" class="flex-grow-1 text-truncate">
+                  <span class="text-muted" id="reportLinkText">尚未生成報告</span>
+                  <button type="button" id="copyReportLinkBtn" class="btn btn-outline-secondary btn-sm ms-2" onclick="copyReportLink()" disabled>複製</button>
+                </div>
+                <button type="button" class="btn btn-secondary ms-auto" data-bs-dismiss="modal">
+                  <span data-i18n="common.close">關閉</span>
                 </button>
+              </div>
             </div>
         </div>
     </div>
 </div>
 
 <script>
+// 在 Charts & Reports 開啟時查詢報告狀態
+(function(){
+  const modal = document.getElementById('chartsReportsModal');
+  if (modal) {
+    modal.addEventListener('show.bs.modal', fetchReportStatus);
+    modal.addEventListener('shown.bs.modal', fetchReportStatus);
+  }
+})();
+
+async function fetchReportStatus() {
+  try {
+    let teamId = (typeof currentTeamId !== 'undefined' && currentTeamId) ? currentTeamId : null;
+    let configId = (typeof currentConfigId !== 'undefined' && currentConfigId) ? currentConfigId : null;
+    if (!teamId || !configId) {
+      const params = new URLSearchParams(window.location.search);
+      teamId = teamId || params.get('team_id') || params.get('teamId') || params.get('team');
+      configId = configId || params.get('config_id') || params.get('configId') || params.get('config');
+    }
+    if (!teamId || !configId) return;
+
+    const resp = await fetch(`/api/teams/${encodeURIComponent(teamId)}/test-runs/${encodeURIComponent(configId)}/report`);
+    const data = await resp.json();
+    const linkTextEl = document.getElementById('reportLinkText');
+    const copyBtn = document.getElementById('copyReportLinkBtn');
+    if (data.exists && data.report_url) {
+      linkTextEl.textContent = data.report_url;
+      linkTextEl.classList.remove('text-muted');
+      linkTextEl.classList.add('text-primary');
+      linkTextEl.style.cursor = 'pointer';
+      linkTextEl.onclick = () => window.open(data.report_url, '_blank');
+      copyBtn.disabled = false;
+      copyBtn.dataset.url = data.report_url;
+    } else {
+      linkTextEl.textContent = '尚未生成報告';
+      linkTextEl.classList.add('text-muted');
+      linkTextEl.classList.remove('text-primary');
+      linkTextEl.onclick = null;
+      copyBtn.disabled = true;
+      delete copyBtn.dataset.url;
+    }
+  } catch (e) {
+    // 靜默失敗，維持原本顯示
+  }
+}
+
+function copyReportLink() {
+  const btn = document.getElementById('copyReportLinkBtn');
+  const url = btn && btn.dataset && btn.dataset.url;
+  if (!url) return;
+  navigator.clipboard.writeText(url).then(() => {
+    btn.textContent = '已複製';
+    setTimeout(() => { btn.textContent = '複製'; }, 1500);
+  }).catch(() => {
+    // fallback
+    prompt('複製這個連結：', url);
+  });
+}
+
 // 生成 HTML 報告並複製連結
 async function generateHtmlReport() {
   const btn = document.getElementById('generateHTMLBtn');
@@ -5354,6 +5418,19 @@ async function generateHtmlReport() {
     const url = data.report_url;
     // 嘗試寫入剪貼簿
     try { await navigator.clipboard.writeText(url); } catch (e) {}
+
+    // 更新下方連結顯示
+    const linkTextEl = document.getElementById('reportLinkText');
+    const copyBtn = document.getElementById('copyReportLinkBtn');
+    if (linkTextEl && copyBtn) {
+      linkTextEl.textContent = url;
+      linkTextEl.classList.remove('text-muted');
+      linkTextEl.classList.add('text-primary');
+      linkTextEl.style.cursor = 'pointer';
+      linkTextEl.onclick = () => window.open(url, '_blank');
+      copyBtn.disabled = false;
+      copyBtn.dataset.url = url;
+    }
 
     alert(`HTML 報告已生成：\n${url}\n\n連結已複製到剪貼簿（若瀏覽器允許）`);
   } catch (err) {
