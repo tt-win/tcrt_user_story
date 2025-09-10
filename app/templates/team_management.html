@@ -473,15 +473,26 @@ async function saveTeam() {
         const response = await fetch(url, {
             method: method,
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
             },
             body: JSON.stringify(teamData)
         });
         
         if (!response.ok) {
-            const error = await response.json();
+            let errMsg = '';
+            try {
+                const error = await response.clone().json();
+                errMsg = error?.detail || error?.message || '';
+            } catch (_) {
+                try {
+                    errMsg = (await response.text()) || '';
+                } catch (_) {
+                    errMsg = '';
+                }
+            }
             const defaultMsg = window.i18n ? window.i18n.t('messages.saveFailed') : '儲存失敗';
-            throw new Error(error.detail || defaultMsg);
+            throw new Error(errMsg || `${defaultMsg} (HTTP ${response.status})`);
         }
         
         const successMsg = currentEditTeam ? 

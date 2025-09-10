@@ -103,15 +103,22 @@ async def get_teams(db: Session = Depends(get_db)):
 @router.post("/", status_code=status.HTTP_201_CREATED)
 async def create_team(team: TeamCreate, db: Session = Depends(get_db)):
     """新增一個團隊"""
-    # 創建資料庫模型
-    team_db = team_model_to_db(team)
-    
-    # 儲存到資料庫
-    db.add(team_db)
-    db.commit()
-    db.refresh(team_db)
-    
-    return team_db_to_model(team_db)
+    try:
+        # 創建資料庫模型
+        team_db = team_model_to_db(team)
+        
+        # 儲存到資料庫
+        db.add(team_db)
+        db.commit()
+        db.refresh(team_db)
+        
+        return team_db_to_model(team_db)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"建立團隊失敗：{str(e)}"
+        )
 
 @router.post("/validate", response_model=dict)
 async def validate_lark_repo(team: TeamCreate):
@@ -200,36 +207,42 @@ async def update_team(team_id: int, team_update: TeamUpdate, db: Session = Depen
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"找不到團隊 ID {team_id}"
         )
-    
-    # 更新資料庫模型
-    if team_update.name is not None:
-        team_db.name = team_update.name
-    
-    if team_update.description is not None:
-        team_db.description = team_update.description
-    
-    if team_update.lark_config is not None:
-        team_db.wiki_token = team_update.lark_config.wiki_token
-        team_db.test_case_table_id = team_update.lark_config.test_case_table_id
-    
-    if team_update.jira_config is not None:
-        team_db.jira_project_key = team_update.jira_config.project_key
-        team_db.default_assignee = team_update.jira_config.default_assignee
-        team_db.issue_type = team_update.jira_config.issue_type
-    
-    if team_update.settings is not None:
-        team_db.enable_notifications = team_update.settings.enable_notifications
-        team_db.auto_create_bugs = team_update.settings.auto_create_bugs
-        team_db.default_priority = team_update.settings.default_priority
-    
-    if team_update.status is not None:
-        team_db.status = team_update.status
-    
-    # 提交更新
-    db.commit()
-    db.refresh(team_db)
-    
-    return team_db_to_model(team_db)
+    try:
+        # 更新資料庫模型
+        if team_update.name is not None:
+            team_db.name = team_update.name
+        
+        if team_update.description is not None:
+            team_db.description = team_update.description
+        
+        if team_update.lark_config is not None:
+            team_db.wiki_token = team_update.lark_config.wiki_token
+            team_db.test_case_table_id = team_update.lark_config.test_case_table_id
+        
+        if team_update.jira_config is not None:
+            team_db.jira_project_key = team_update.jira_config.project_key
+            team_db.default_assignee = team_update.jira_config.default_assignee
+            team_db.issue_type = team_update.jira_config.issue_type
+        
+        if team_update.settings is not None:
+            team_db.enable_notifications = team_update.settings.enable_notifications
+            team_db.auto_create_bugs = team_update.settings.auto_create_bugs
+            team_db.default_priority = team_update.settings.default_priority
+        
+        if team_update.status is not None:
+            team_db.status = team_update.status
+        
+        # 提交更新
+        db.commit()
+        db.refresh(team_db)
+        
+        return team_db_to_model(team_db)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"更新團隊失敗：{str(e)}"
+        )
 
 @router.delete("/{team_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_team(team_id: int, db: Session = Depends(get_db)):
