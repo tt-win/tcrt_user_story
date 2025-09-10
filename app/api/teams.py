@@ -234,13 +234,13 @@ async def update_team(team_id: int, team_update: TeamUpdate, db: Session = Depen
             team_db.default_assignee = team_update.jira_config.default_assignee
             team_db.issue_type = team_update.jira_config.issue_type
         
-    if team_update.settings is not None:
-        # 僅更新 default_priority（其他設定已移除）
-        if getattr(team_update.settings, 'default_priority', None):
-            try:
-                team_db.default_priority = Priority(team_update.settings.default_priority)
-            except Exception:
-                team_db.default_priority = Priority.MEDIUM
+        if team_update.settings is not None:
+            # 僅更新 default_priority（其他設定已移除）
+            if getattr(team_update.settings, 'default_priority', None):
+                try:
+                    team_db.default_priority = Priority(team_update.settings.default_priority)
+                except Exception:
+                    team_db.default_priority = Priority.MEDIUM
         
         if team_update.status is not None:
             team_db.status = team_update.status
