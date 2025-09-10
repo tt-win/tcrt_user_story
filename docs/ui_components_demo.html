@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>UI Components Demo</title>
+  <!-- Bootstrap & Icons -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" />
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet" />
+  <!-- Project styles (relative path from docs/) -->
+  <link href="../app/static/css/style.css" rel="stylesheet" />
+  <style>
+    /* Demo page helpers (non-intrusive) */
+    .demo-section { margin-bottom: 1.25rem; }
+    .demo-title { font-size: 1rem; font-weight: 600; margin-bottom: .5rem; color: #334155; }
+    .demo-card { border: 1px dashed #e2e8f0; border-radius: .5rem; padding: .75rem; background: #fff; }
+    .demo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: .75rem; }
+  </style>
+  <link rel="icon" type="image/svg+xml" href="../app/static/favicon.svg">
+  <link rel="icon" type="image/x-icon" href="../app/static/favicon.ico">
+  <script>
+    // Minimal helper to demo the input clear button behavior
+    document.addEventListener('DOMContentLoaded', () => {
+      document.querySelectorAll('[data-clear-target]')?.forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          const id = e.currentTarget.getAttribute('data-clear-target');
+          const input = document.getElementById(id);
+          if (input) { input.value = ''; input.focus(); }
+        });
+      });
+    });
+  </script>
+  <style>
+    /* Lightweight header/footer for demo layout */
+    .demo-header, .demo-footer { position: sticky; z-index: 1020; background: #fff; }
+    .demo-header { top: 0; border-bottom: 1px solid #e5e7eb; }
+    .demo-footer { bottom: 0; border-top: 1px solid #e5e7eb; }
+  </style>
+  <meta name="robots" content="noindex" />
+  <meta name="description" content="UI components demo for Test Case Repository Web Tool styles." />
+</head>
+<body class="bg-light">
+  <!-- Simple header using project style tokens -->
+  <header class="demo-header py-2">
+    <div class="container-fluid d-flex justify-content-between align-items-center">
+      <div class="d-flex align-items-center gap-2">
+        <h1 class="h5 mb-0 text-primary">UI Components Demo</h1>
+        <span id="team-name-badge" class="badge bg-primary" style="font-size: 0.75rem;">
+          <i class="fas fa-users me-1"></i><span id="team-name-text">Demo Team</span>
+        </span>
+      </div>
+      <div class="d-flex gap-2">
+        <button class="btn btn-secondary btn-sm"><i class="fas fa-book me-1"></i>Docs</button>
+        <button class="btn btn-primary btn-sm"><i class="fas fa-play me-1"></i>Run</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Flash messages container (example alerts shown below) -->
+  <div id="flash-messages" class="position-fixed" style="z-index: 1060; top: 72px; right: 12px;"></div>
+
+  <main class="container-fluid my-3">
+    <!-- Buttons -->
+    <section class="demo-section">
+      <div class="demo-title">Buttons</div>
+      <div class="demo-card d-flex flex-wrap gap-2">
+        <button class="btn btn-primary">Primary</button>
+        <button class="btn btn-secondary">Secondary</button>
+        <button class="btn btn-view">View</button>
+        <button class="btn btn-edit">Edit</button>
+        <button class="btn btn-danger">Danger</button>
+        <button class="btn btn-primary btn-xs">XS Primary</button>
+        <button class="btn btn-outline-secondary btn-sm">Outline</button>
+      </div>
+    </section>
+
+    <!-- Badges -->
+    <section class="demo-section">
+      <div class="demo-title">Status Badges</div>
+      <div class="demo-card d-flex flex-wrap align-items-center gap-2">
+        <span class="badge bg-secondary badge-status-lg">Queued</span>
+        <span class="badge bg-info badge-status-lg">Running</span>
+        <span class="badge bg-success badge-status-lg">Passed</span>
+        <span class="badge bg-warning text-dark badge-status-lg">Flaky</span>
+        <span class="badge bg-danger badge-status-lg">Failed</span>
+        <span class="badge bg-dark">Default</span>
+      </div>
+    </section>
+
+    <!-- Inputs -->
+    <section class="demo-section">
+      <div class="demo-title">Inputs</div>
+      <div class="demo-card">
+        <div class="row g-2 align-items-center">
+          <div class="col-sm-6">
+            <label class="form-label">Name</label>
+            <input type="text" class="form-control" placeholder="Enter name" />
+          </div>
+          <div class="col-sm-6">
+            <label class="form-label">Priority</label>
+            <select class="form-select">
+              <option>Low</option>
+              <option selected>Medium</option>
+              <option>High</option>
+            </select>
+          </div>
+        </div>
+        <div class="mt-3 input-group input-group-search">
+          <div class="position-relative flex-grow-1">
+            <input id="demoSearch" type="text" class="form-control" placeholder="Search test cases" />
+            <button class="input-clear-btn" type="button" aria-label="Clear" data-clear-target="demoSearch">
+              <i class="fa-solid fa-xmark"></i>
+            </button>
+          </div>
+          <button class="btn btn-primary" type="button"><i class="fa fa-search me-1"></i>Search</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Cards & Table -->
+    <section class="demo-section">
+      <div class="demo-title">Card + Table</div>
+      <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <span class="fw-semibold">Recent Test Cases</span>
+          <div class="d-flex gap-2">
+            <button class="btn btn-secondary btn-sm"><i class="fa fa-filter me-1"></i>Filter</button>
+            <button class="btn btn-primary btn-sm"><i class="fa fa-plus me-1"></i>Add</button>
+          </div>
+        </div>
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-hover mb-0">
+              <thead>
+                <tr>
+                  <th style="width: 60px;">#</th>
+                  <th>Test Case Number</th>
+                  <th>Title</th>
+                  <th>Priority</th>
+                  <th>Status</th>
+                  <th style="width: 120px;" class="text-center">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>1</td>
+                  <td data-field="test_case_number"><code class="small">TCG-93178.001.020</code></td>
+                  <td>登入功能基本流程</td>
+                  <td><span class="badge bg-warning text-dark">Medium</span></td>
+                  <td><span class="badge bg-success">Active</span></td>
+                  <td>
+                    <div class="test-case-actions">
+                      <button class="btn btn-view btn-xs" title="View"><i class="fa fa-eye"></i></button>
+                      <button class="btn btn-edit btn-xs" title="Edit"><i class="fa fa-pen"></i></button>
+                      <button class="btn btn-danger btn-xs" title="Delete"><i class="fa fa-trash"></i></button>
+                    </div>
+                  </td>
+                </tr>
+                <tr>
+                  <td>2</td>
+                  <td data-field="test_case_number"><span class="tcg-tag">ICR-2133.010.030</span></td>
+                  <td>報表導出權限驗證</td>
+                  <td><span class="badge bg-success">High</span></td>
+                  <td><span class="badge bg-secondary">Draft</span></td>
+                  <td>
+                    <div class="test-case-actions">
+                      <button class="btn btn-view btn-xs"><i class="fa fa-eye"></i></button>
+                      <button class="btn btn-edit btn-xs"><i class="fa fa-pen"></i></button>
+                      <button class="btn btn-danger btn-xs"><i class="fa fa-trash"></i></button>
+                    </div>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card-footer d-flex justify-content-between align-items-center py-2">
+          <small class="text-muted">2 items</small>
+          <nav>
+            <ul class="pagination pagination-sm mb-0">
+              <li class="page-item disabled"><span class="page-link">Prev</span></li>
+              <li class="page-item active"><span class="page-link">1</span></li>
+              <li class="page-item"><a class="page-link" href="#">2</a></li>
+              <li class="page-item"><a class="page-link" href="#">3</a></li>
+              <li class="page-item"><a class="page-link" href="#">Next</a></li>
+            </ul>
+          </nav>
+        </div>
+      </div>
+    </section>
+
+    <!-- TCG edit area (static demo) -->
+    <section class="demo-section">
+      <div class="demo-title">TCG Tags & Edit Area</div>
+      <div class="demo-card d-flex flex-wrap align-items-center gap-3">
+        <span class="tcg-tag" title="點擊查看詳細">TCG-93178.001.010</span>
+        <span class="tcg-tag">ICR-2133.015.040</span>
+
+        <div class="tcg-edit-area border p-2 rounded">
+          <span class="tcg-tag">TCG-90001.010.010</span>
+          <span class="text-muted small">+ Add more…</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Alerts (flash message styles) -->
+    <section class="demo-section">
+      <div class="demo-title">Alerts</div>
+      <div class="demo-card">
+        <div class="alert alert-success mb-2" role="alert">操作成功</div>
+        <div class="alert alert-info mb-2" role="alert">提示資訊</div>
+        <div class="alert alert-warning mb-2" role="alert">注意事項</div>
+        <div class="alert alert-danger mb-0" role="alert">錯誤發生</div>
+      </div>
+    </section>
+
+    <!-- Fun loader -->
+    <section class="demo-section">
+      <div class="demo-title">Fun Loader</div>
+      <div class="demo-card d-flex align-items-center gap-2">
+        <div class="fun-loader">
+          <div class="fun-track">
+            <div class="fun-ground"></div>
+            <div class="fun-dot" aria-hidden="true"></div>
+            <div class="fun-runner" aria-hidden="true">🏃‍♂️</div>
+          </div>
+        </div>
+        <span class="text-muted small">Loading test results…</span>
+      </div>
+    </section>
+
+    <!-- Fixed pagination bar sample -->
+    <div class="fixed-pagination-bar">
+      <ul class="pagination pagination-sm bg-white shadow-sm px-2 py-1 rounded">
+        <li class="page-item disabled"><span class="page-link">Prev</span></li>
+        <li class="page-item active"><span class="page-link">1</span></li>
+        <li class="page-item"><a class="page-link" href="#">2</a></li>
+        <li class="page-item"><a class="page-link" href="#">3</a></li>
+        <li class="page-item"><a class="page-link" href="#">Next</a></li>
+      </ul>
+    </div>
+  </main>
+
+  <!-- Simple footer -->
+  <footer class="demo-footer py-2 bg-white">
+    <div class="container-fluid d-flex justify-content-end">
+      <span class="text-muted small">Demo only · Uses project style.css</span>
+    </div>
+  </footer>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
+

@@ -19,11 +19,25 @@ from reportlab.graphics.charts.piecharts import Pie
 from reportlab.graphics.charts.barcharts import VerticalBarChart
 from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 
+import os
+
+# Ensure matplotlib can write its cache in restricted environments
+try:
+    os.environ.setdefault('MPLCONFIGDIR', '/tmp/mplconfig')
+    os.makedirs(os.environ['MPLCONFIGDIR'], exist_ok=True)
+except Exception:
+    # If /tmp isn't writable for some reason, ignore; matplotlib will attempt defaults
+    pass
+
+import matplotlib
+# Use non-GUI backend to avoid server-side rendering issues
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
 from sqlalchemy.orm import Session
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 import os
 
 
@@ -102,10 +116,24 @@ class PDFReportService:
                     print(f"Failed to register font {font_path}: {e}")
                     continue
         
-        # 如果找不到合適字型，使用 Helvetica 作為備用
-        print("Warning: No suitable Chinese font found, falling back to Helvetica")
-        self.chinese_font = 'Helvetica'
-        return 'Helvetica'
+        # 如果找不到合適字型，嘗試使用 ReportLab 內建 CID 字型（支援 CJK）
+        try:
+            # STSong-Light 主要為簡體中文；MSung-Light 支援繁體
+            # 優先嘗試 MSung-Light，若不可用則退回 STSong-Light
+            try:
+                cid_font_name = 'MSung-Light'
+                pdfmetrics.registerFont(UnicodeCIDFont(cid_font_name))
+            except Exception:
+                cid_font_name = 'STSong-Light'
+                pdfmetrics.registerFont(UnicodeCIDFont(cid_font_name))
+            self.chinese_font = cid_font_name
+            print(f"Info: Using CID font as fallback: {cid_font_name}")
+            return cid_font_name
+        except Exception as e:
+            # 最後退回 Helvetica（可能無法顯示 CJK，僅保證不崩潰）
+            print(f"Warning: No suitable Chinese font found, falling back to Helvetica. Reason: {e}")
+            self.chinese_font = 'Helvetica'
+            return 'Helvetica'
     
     def generate_test_run_report(self, team_id: int, config_id: int) -> bytes:
         """
