@@ -5,7 +5,7 @@
 內容由本系統從團隊的 Test Case 中挑選並儲存於本地資料庫。
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import json
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 from app.database import get_db
 from app.models.test_run_config import (
     TestRunConfig, TestRunConfigCreate, TestRunConfigUpdate, TestRunConfigResponse,
-    TestRunConfigSummary, TestRunConfigStatistics
+    TestRunConfigSummary
 )
 from app.models.database_models import (
     TestRunConfig as TestRunConfigDB,
@@ -26,6 +26,7 @@ from app.models.database_models import (
 )
 from app.models.lark_types import TestResultStatus
 from app.models.test_run_config import TestRunStatus
+from app.services.lark_notify_service import get_lark_notify_service
 from datetime import datetime
 from pydantic import BaseModel, Field
 
@@ -77,6 +78,65 @@ def deserialize_tp_tickets(json_string: Optional[str]) -> List[str]:
         return []
 
 
+def serialize_notify_chats(ids: Optional[List[str]], names: Optional[List[str]]) -> tuple[Optional[str], Optional[str], Optional[str]]:
+    """
+    序列化通知群組資料
+    
+    Args:
+        ids: 群組 Chat ID 列表
+        names: 群組名稱快照列表
+        
+    Returns:
+        tuple: (ids_json, names_json, search_string)
+    """
+    ids_json = None
+    names_json = None
+    search_string = None
+    
+    if ids:
+        ids_json = json.dumps(ids, ensure_ascii=False)
+    
+    if names:
+        names_json = json.dumps(names, ensure_ascii=False)
+        # 以空白連接作為搜尋索引
+        search_string = ' '.join(names)
+    
+    return ids_json, names_json, search_string
+
+
+def deserialize_notify_chats(ids_json: Optional[str], names_json: Optional[str]) -> tuple[List[str], List[str]]:
+    """
+    反序列化通知群組資料
+    
+    Args:
+        ids_json: 群組 Chat ID JSON 字串
+        names_json: 群組名稱快照 JSON 字串
+        
+    Returns:
+        tuple: (ids: List[str], names: List[str])
+    """
+    ids = []
+    names = []
+    
+    if ids_json:
+        try:
+            parsed_ids = json.loads(ids_json)
+            if isinstance(parsed_ids, list):
+                ids = parsed_ids
+        except (json.JSONDecodeError, TypeError):
+            pass
+    
+    if names_json:
+        try:
+            parsed_names = json.loads(names_json)
+            if isinstance(parsed_names, list):
+                names = parsed_names
+        except (json.JSONDecodeError, TypeError):
+            pass
+    
+    return ids, names
+
+
 def sync_tp_tickets_to_db(config_db: TestRunConfigDB, tp_tickets: Optional[List[str]]) -> None:
     """
     同步 TP 票號到資料庫欄位
@@ -90,10 +150,31 @@ def sync_tp_tickets_to_db(config_db: TestRunConfigDB, tp_tickets: Optional[List[
     config_db.tp_tickets_search = search_string
 
 
+def sync_notify_chats_to_db(config_db: TestRunConfigDB, chat_ids: Optional[List[str]], chat_names: Optional[List[str]]) -> None:
+    """
+    同步通知群組到資料庫欄位
+    
+    Args:
+        config_db: 資料庫模型實例
+        chat_ids: 群組 Chat ID 列表
+        chat_names: 群組名稱快照列表
+    """
+    ids_json, names_json, search_string = serialize_notify_chats(chat_ids, chat_names)
+    config_db.notify_chat_ids_json = ids_json
+    config_db.notify_chat_names_snapshot = names_json
+    config_db.notify_chats_search = search_string
+
+
 def convert_db_to_model(config_db: TestRunConfigDB) -> TestRunConfig:
     """將資料庫 TestRunConfig 模型轉換為 API 模型"""
     # 反序列化 TP 票號
     related_tp_tickets = deserialize_tp_tickets(config_db.related_tp_tickets_json)
+    
+    # 反序列化通知群組
+    notify_chat_ids, notify_chat_names_snapshot = deserialize_notify_chats(
+        config_db.notify_chat_ids_json, 
+        config_db.notify_chat_names_snapshot
+    )
     
     return TestRunConfig(
         id=config_db.id,
@@ -104,6 +185,11 @@ def convert_db_to_model(config_db: TestRunConfigDB) -> TestRunConfig:
         test_environment=config_db.test_environment,
         build_number=config_db.build_number,
         related_tp_tickets=related_tp_tickets,
+        # 通知設定
+        notifications_enabled=config_db.notifications_enabled or False,
+        notify_chat_ids=notify_chat_ids if notify_chat_ids else None,
+        notify_chat_names_snapshot=notify_chat_names_snapshot if notify_chat_names_snapshot else None,
+        # 狀態與時間
         status=config_db.status,
         start_date=config_db.start_date,
         end_date=config_db.end_date,
@@ -122,6 +208,11 @@ def convert_model_to_db(config: TestRunConfigCreate) -> TestRunConfigDB:
     # 序列化 TP 票號
     tp_json, tp_search = serialize_tp_tickets(config.related_tp_tickets)
     
+    # 序列化通知群組
+    ids_json, names_json, chats_search = serialize_notify_chats(
+        config.notify_chat_ids, config.notify_chat_names_snapshot
+    )
+    
     return TestRunConfigDB(
         team_id=config.team_id,
         name=config.name,
@@ -131,6 +222,12 @@ def convert_model_to_db(config: TestRunConfigCreate) -> TestRunConfigDB:
         build_number=config.build_number,
         related_tp_tickets_json=tp_json,
         tp_tickets_search=tp_search,
+        # 通知設定
+        notifications_enabled=config.notifications_enabled or False,
+        notify_chat_ids_json=ids_json,
+        notify_chat_names_snapshot=names_json,
+        notify_chats_search=chats_search,
+        # 狀態
         status=config.status,
         start_date=config.start_date
     )
@@ -240,6 +337,7 @@ async def update_test_run_config(
     team_id: int,
     config_id: int,
     config_update: TestRunConfigUpdate,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
     """更新測試執行配置"""
@@ -256,6 +354,9 @@ async def update_test_run_config(
             detail=f"找不到測試執行配置 ID {config_id}"
         )
     
+    # 記錄更新前的狀態（用於觸發通知）
+    old_status = config_db.status
+    
     # 更新欄位
     update_data = config_update.dict(exclude_unset=True)
     
@@ -264,6 +365,12 @@ async def update_test_run_config(
         tp_tickets = update_data.pop('related_tp_tickets')
         sync_tp_tickets_to_db(config_db, tp_tickets)
     
+    # 特殊處理通知群組欄位
+    if 'notify_chat_ids' in update_data or 'notify_chat_names_snapshot' in update_data:
+        chat_ids = update_data.pop('notify_chat_ids', None)
+        chat_names = update_data.pop('notify_chat_names_snapshot', None)
+        sync_notify_chats_to_db(config_db, chat_ids, chat_names)
+    
     # 更新其他欄位
     for key, value in update_data.items():
         setattr(config_db, key, value)
@@ -271,6 +378,35 @@ async def update_test_run_config(
     # 提交更新
     db.commit()
     db.refresh(config_db)
+    
+    # 狀態變更通知觸發
+    new_status = config_db.status
+    if old_status != new_status and config_db.notifications_enabled:
+        # 確認有設定通知群組
+        if config_db.notify_chat_ids_json:
+            try:
+                chat_ids = json.loads(config_db.notify_chat_ids_json)
+                if chat_ids:
+                    lark_service = get_lark_notify_service()
+                    
+                    # 觸發開始執行通知
+                    if new_status == TestRunStatus.ACTIVE and old_status != TestRunStatus.ACTIVE:
+                        logger.info(f"Test Run Config {config_id} 狀態變更為 ACTIVE，觸發開始通知")
+                        background_tasks.add_task(
+                            lark_service.send_execution_started,
+                            config_id, team_id
+                        )
+                    
+                    # 觸發結束執行通知
+                    elif new_status == TestRunStatus.COMPLETED and old_status != TestRunStatus.COMPLETED:
+                        logger.info(f"Test Run Config {config_id} 狀態變更為 COMPLETED，觸發結束通知")
+                        background_tasks.add_task(
+                            lark_service.send_execution_ended,
+                            config_id, team_id
+                        )
+                        
+            except (json.JSONDecodeError, TypeError) as e:
+                logger.warning(f"Test Run Config {config_id} 的 notify_chat_ids_json 解析失敗: {e}")
     
     return convert_db_to_model(config_db)
 
@@ -468,6 +604,7 @@ async def restart_test_run(
     team_id: int,
     config_id: int,
     payload: RestartRequest,
+    background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
 ):
     """重新執行 Test Run：建立一個新的 Test Run（複製設定），
@@ -512,7 +649,7 @@ async def restart_test_run(
     base_name = f"Rerun - {config_db.name}"
     new_name = (payload.name or '').strip() or base_name
 
-    # 建立新的 Test Run Config（複製主要欄位，包括 TP 票號）
+    # 建立新的 Test Run Config（複製主要欄位，包括 TP 票號和通知設定）
     new_config = TestRunConfigDB(
         team_id=team_id,
         name=new_name,
@@ -522,6 +659,10 @@ async def restart_test_run(
         build_number=config_db.build_number,
         related_tp_tickets_json=config_db.related_tp_tickets_json,
         tp_tickets_search=config_db.tp_tickets_search,
+        # 複製通知設定
+        notifications_enabled=config_db.notifications_enabled,
+        notify_chat_ids_json=config_db.notify_chat_ids_json,
+        notify_chat_names_snapshot=config_db.notify_chat_names_snapshot,
         status=TestRunStatus.ACTIVE,
         start_date=datetime.utcnow(),
         end_date=None,
@@ -579,6 +720,20 @@ async def restart_test_run(
     new_config.last_sync_at = now
 
     db.commit()
+    
+    # 發送開始執行通知（新配置直接進入 ACTIVE 狀態）
+    if new_config.notifications_enabled and new_config.notify_chat_ids_json:
+        try:
+            from ..services.lark_notify_service import get_lark_notify_service
+            lark_service = get_lark_notify_service()
+            background_tasks.add_task(
+                lark_service.send_execution_started,
+                new_config.id,
+                team_id
+            )
+        except Exception as e:
+            # 通知失敗不影響主流程
+            pass
 
     return {
         "success": True,
@@ -588,18 +743,18 @@ async def restart_test_run(
     }
 
 
-@router.get("/statistics", response_model=TestRunConfigStatistics)
-async def get_test_run_statistics(
-    team_id: int,
-    db: Session = Depends(get_db)
-):
-    """取得團隊測試執行統計資訊"""
-    verify_team_exists(team_id, db)
-    
-    configs_db = db.query(TestRunConfigDB).filter(TestRunConfigDB.team_id == team_id).all()
-    configs = [convert_db_to_model(config_db) for config_db in configs_db]
-    
-    return TestRunConfigStatistics.from_configs(configs)
+# @router.get("/statistics", response_model=TestRunConfigStatistics)
+# async def get_test_run_statistics(
+#     team_id: int,
+#     db: Session = Depends(get_db)
+# ):
+#     """取得團隊測試執行統計資訊"""
+#     verify_team_exists(team_id, db)
+#     
+#     configs_db = db.query(TestRunConfigDB).filter(TestRunConfigDB.team_id == team_id).all()
+#     configs = [convert_db_to_model(config_db) for config_db in configs_db]
+#     
+#     return TestRunConfigStatistics.from_configs(configs)
 
 
 # ========== TP 票號搜尋 API ==========

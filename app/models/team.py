@@ -49,8 +49,6 @@ class JiraConfig(BaseModel):
 
 class TeamSettings(BaseModel):
     """團隊設定"""
-    enable_notifications: bool = Field(True, description="啟用通知")
-    auto_create_bugs: bool = Field(False, description="自動建立 Bug")
     default_priority: str = Field("Medium", description="預設優先級")
     custom_fields: Dict[str, Any] = Field(default_factory=dict, description="自訂欄位")
 
@@ -98,8 +96,6 @@ class Team(BaseModel):
                     "issue_type": "Bug"
                 },
                 "settings": {
-                    "enable_notifications": True,
-                    "auto_create_bugs": False,
                     "default_priority": "High"
                 },
                 "status": "active"

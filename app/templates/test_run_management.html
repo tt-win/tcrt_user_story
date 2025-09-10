@@ -638,6 +638,163 @@
     text-decoration: underline;
 }
 
+/* 通知設定區域樣式 */
+#notificationGroupsSection {
+    transition: all 0.3s ease;
+}
+
+#groupSearchResults {
+    background-color: #ffffff;
+    border-color: #dee2e6;
+    transition: all 0.2s ease;
+}
+
+#groupSearchResults:empty {
+    display: none !important;
+}
+
+.group-search-item {
+    padding: 0.5rem 0.75rem;
+    cursor: pointer;
+    border-bottom: 1px solid #f1f3f4;
+    transition: background-color 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.group-search-item:last-child {
+    border-bottom: none;
+}
+
+.group-search-item:hover {
+    background-color: #f8f9fa;
+}
+
+.group-search-item .group-icon {
+    color: #6c757d;
+    width: 16px;
+    text-align: center;
+}
+
+.group-search-item .group-name {
+    font-weight: 500;
+    color: #212529;
+    flex-grow: 1;
+}
+
+.group-search-item .group-id {
+    font-size: 0.75rem;
+    color: #6c757d;
+    font-family: 'Courier New', monospace;
+}
+
+/* 已選群組標籤樣式 */
+.selected-group-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.375rem 0.75rem;
+    background-color: var(--tr-primary-light);
+    color: var(--tr-primary-dark);
+    border: 1px solid var(--tr-primary);
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    text-decoration: none;
+    transition: all 0.2s ease;
+    cursor: default;
+}
+
+.selected-group-tag:hover {
+    background-color: var(--tr-primary);
+    color: white;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.selected-group-tag .group-remove-btn {
+    margin-left: 0.25rem;
+    padding: 0;
+    border: none;
+    background: none;
+    color: inherit;
+    cursor: pointer;
+    opacity: 0.7;
+    transition: opacity 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+}
+
+.selected-group-tag .group-remove-btn:hover {
+    opacity: 1;
+}
+
+.selected-group-tag .group-remove-btn:focus {
+    outline: none;
+    opacity: 1;
+}
+
+/* 群組設定动画 */
+.notification-groups-entering {
+    opacity: 0;
+    transform: translateY(-10px);
+}
+
+.notification-groups-entered {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.notification-groups-exiting {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.notification-groups-exited {
+    opacity: 0;
+    transform: translateY(-10px);
+}
+
+/* 群組標認欄位呼呼效果 */
+.notifications-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.125rem 0.5rem;
+    background-color: #e3f2fd;
+    color: #1976d2;
+    border: 1px solid #bbdefb;
+    border-radius: 0.375rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.notifications-indicator .fas {
+    animation: bell-ring 2s infinite;
+}
+
+@keyframes bell-ring {
+    0%, 50%, 100% {
+        transform: rotate(0deg);
+    }
+    10% {
+        transform: rotate(10deg);
+    }
+    20% {
+        transform: rotate(-10deg);
+    }
+    30% {
+        transform: rotate(8deg);
+    }
+    40% {
+        transform: rotate(-8deg);
+    }
+}
+
 </style>
 {% endblock %}
 
@@ -797,6 +954,59 @@
                         </label>
                         <div id="tpTicketTags" class="d-flex flex-wrap gap-2">
                             <!-- TP 票號標籤將在這裡動態生成 -->
+                        </div>
+                    </div>
+
+                    <!-- 通知設定區域 -->
+                    <div class="mb-3">
+                        <h6 class="mb-3">
+                            <i class="fas fa-bell me-2"></i>
+                            <span data-i18n="testRun.notifications.title">通知設定</span>
+                            <span class="badge bg-secondary ms-2" data-i18n="common.optional">選填</span>
+                        </h6>
+                        <div class="form-check mb-3">
+                            <input type="checkbox" class="form-check-input" id="notificationsEnabled" name="notifications_enabled">
+                            <label class="form-check-label" for="notificationsEnabled">
+                                <span data-i18n="testRun.notifications.enable">啟用 Lark 群組通知</span>
+                            </label>
+                            <div class="form-text">
+                                <i class="fas fa-info-circle me-1"></i>
+                                <span data-i18n="testRun.notifications.enableHint">在測試執行狀態變更時發送通知到選定的 Lark 群組</span>
+                            </div>
+                        </div>
+                        
+                        <!-- 群組選擇區域，預設隱藏 -->
+                        <div id="notificationGroupsSection" style="display: none;">
+                            <label for="notifyGroupsSelect" class="form-label">
+                                <span data-i18n="testRun.notifications.selectGroups">選擇通知群組</span>
+                            </label>
+                            <div class="input-group mb-2">
+                                <input type="text" class="form-control" id="notifyGroupsInput" 
+                                       data-i18n-placeholder="testRun.notifications.searchPlaceholder" 
+                                       placeholder="搜尋群組名稱..." 
+                                       autocomplete="off">
+                                <button class="btn btn-outline-secondary" type="button" id="searchGroupsBtn">
+                                    <i class="fas fa-search"></i>
+                                </button>
+                            </div>
+                            <div id="groupSearchResults" class="border rounded p-2" style="max-height: 200px; overflow-y: auto; display: none;">
+                                <!-- 群組搜尋結果將在這裡顯示 -->
+                            </div>
+                            <div class="form-text mb-3">
+                                <i class="fas fa-info-circle me-1"></i>
+                                <span data-i18n="testRun.notifications.selectHint">輸入群組名稱關鍵字搜尋並選擇通知群組，最多可選 100 個</span>
+                            </div>
+                            
+                            <!-- 已選群組顯示區域 -->
+                            <div id="selectedGroupsDisplay" class="mb-3" style="display: none;">
+                                <label class="form-label">
+                                    <span data-i18n="testRun.notifications.selectedGroups">已選群組</span>
+                                    <span class="badge bg-primary ms-2" id="selectedGroupsCount">0</span>
+                                </label>
+                                <div id="selectedGroupsTags" class="d-flex flex-wrap gap-2">
+                                    <!-- 已選群組標籤將在這裡動態生成 -->
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </form>
@@ -1541,6 +1751,8 @@ function openConfigFormModal(configId = null) {
                   // 載入 TP 票號
                   const tpTickets = full.related_tp_tickets || [];
                   setTpTickets(tpTickets);
+                  // 載入通知設定
+                  loadNotificationSettings(full.notifications_enabled || false, full.notify_chat_ids || [], full.notify_chat_names_snapshot || []);
                 }
               }).catch(() => {});
         }
@@ -1555,9 +1767,13 @@ function openConfigFormModal(configId = null) {
     // 初始化 TP 標籤輸入功能
     initTpTicketInput();
     
-    // 監聽 Modal 關閉事件，清理 TP 標籤狀態
+    // 初始化通知設定功能
+    initNotificationSettings();
+    
+    // 監聽 Modal 關閉事件，清理 TP 標籤狀態和通知設定
     modalElement.addEventListener('hidden.bs.modal', function() {
         clearAllTpTickets();
+        clearNotificationSettings();
     }, { once: true }); // 只監聽一次，避免重複綁定
     
     if (window.i18n) window.i18n.retranslate(modalElement);
@@ -1589,11 +1805,18 @@ async function handleSaveConfig() {
     const envVal = (document.getElementById('testEnvironment').value || '').trim();
     const buildVal = (document.getElementById('buildNumber').value || '').trim();
     const tpTickets = getCurrentTpTickets(); // 獲取當前 TP 票號列表
+    const notificationSettings = getCurrentNotificationSettings(); // 獲取當前通知設定
     
     if (descVal) configData.description = descVal;
     if (envVal) configData.test_environment = envVal;
     if (buildVal) configData.build_number = buildVal;
     configData.related_tp_tickets = tpTickets;  // 總是傳送，即使是空陣列
+    // 加入通知設定
+    configData.notifications_enabled = notificationSettings.enabled;
+    if (notificationSettings.enabled && notificationSettings.chatIds.length > 0) {
+        configData.notify_chat_ids = notificationSettings.chatIds;
+        configData.notify_chat_names_snapshot = notificationSettings.chatNames;
+    }
 
     const url = isEdit ? `/api/teams/${currentTeamId}/test-run-configs/${configId}` : `/api/teams/${currentTeamId}/test-run-configs/`;
     const method = isEdit ? 'PUT' : 'POST';
@@ -3337,5 +3560,187 @@ function renderSearchResults(data, container, searchTerm = '') {
 document.addEventListener('DOMContentLoaded', function() {
     setupQuickSearch_TPTicket();
 });
+
+// ===== 通知設定相關功能 =====
+function initNotificationSettings() {
+    const enabledEl = document.getElementById('notificationsEnabled');
+    const sectionEl = document.getElementById('notificationGroupsSection');
+    const searchBtn = document.getElementById('searchGroupsBtn');
+    const searchInput = document.getElementById('notifyGroupsInput');
+
+    if (!enabledEl || !sectionEl) return;
+
+    const toggleSection = () => {
+        if (enabledEl.checked) {
+            sectionEl.style.display = '';
+            sectionEl.classList.add('notification-groups-entering');
+            requestAnimationFrame(() => {
+                sectionEl.classList.remove('notification-groups-entering');
+                sectionEl.classList.add('notification-groups-entered');
+            });
+        } else {
+            sectionEl.classList.remove('notification-groups-entered');
+            sectionEl.classList.add('notification-groups-exiting');
+            setTimeout(() => {
+                sectionEl.classList.remove('notification-groups-exiting');
+                sectionEl.style.display = 'none';
+            }, 150);
+        }
+    };
+
+    enabledEl.onchange = toggleSection;
+    toggleSection();
+
+    if (searchBtn && searchInput) {
+        searchBtn.onclick = () => performGroupSearch(searchInput.value.trim());
+        searchInput.onkeydown = (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                performGroupSearch(searchInput.value.trim());
+            }
+        };
+    }
+}
+
+function clearNotificationSettings() {
+    const enabledEl = document.getElementById('notificationsEnabled');
+    const sectionEl = document.getElementById('notificationGroupsSection');
+    const resultsEl = document.getElementById('groupSearchResults');
+    const tagsEl = document.getElementById('selectedGroupsTags');
+    const countEl = document.getElementById('selectedGroupsCount');
+    const displayEl = document.getElementById('selectedGroupsDisplay');
+    const searchInput = document.getElementById('notifyGroupsInput');
+
+    if (enabledEl) enabledEl.checked = false;
+    if (sectionEl) sectionEl.style.display = 'none';
+    if (resultsEl) resultsEl.style.display = 'none', resultsEl.innerHTML = '';
+    if (tagsEl) tagsEl.innerHTML = '';
+    if (countEl) countEl.textContent = '0';
+    if (displayEl) displayEl.style.display = 'none';
+    if (searchInput) searchInput.value = '';
+
+    selectedNotifyGroups = [];
+}
+
+let selectedNotifyGroups = [];
+
+function loadNotificationSettings(enabled, chatIds, chatNames) {
+    const enabledEl = document.getElementById('notificationsEnabled');
+    const sectionEl = document.getElementById('notificationGroupsSection');
+    enabledEl.checked = !!enabled;
+    if (enabled) {
+        sectionEl.style.display = '';
+    }
+    selectedNotifyGroups = [];
+    if (Array.isArray(chatIds)) {
+        for (let i = 0; i < chatIds.length; i++) {
+            const id = chatIds[i];
+            const name = (Array.isArray(chatNames) && chatNames[i]) ? chatNames[i] : id;
+            selectedNotifyGroups.push({ chat_id: id, name });
+        }
+    }
+    renderSelectedGroups();
+}
+
+async function performGroupSearch(keyword) {
+    const resultsEl = document.getElementById('groupSearchResults');
+    resultsEl.style.display = '';
+    resultsEl.innerHTML = `<div class="text-muted small"><i class="fas fa-spinner fa-spin me-2"></i>${window.i18n ? window.i18n.t('testRun.notifications.searchingGroups') : '搜尋群組中...'}</div>`;
+    try {
+        const url = new URL('/api/integrations/lark/groups', window.location.origin);
+        if (keyword) url.searchParams.set('q', keyword);
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const data = await resp.json();
+        if (!Array.isArray(data) || data.length === 0) {
+            resultsEl.innerHTML = `<div class="text-muted small"><i class="fas fa-info-circle me-2"></i>${window.i18n ? window.i18n.t('testRun.notifications.noGroupsFound') : '找不到符合條件的群組'}</div>`;
+            return;
+        }
+        resultsEl.innerHTML = data.map(g => renderGroupSearchItem(g)).join('');
+        // 綁定點擊事件
+        resultsEl.querySelectorAll('.group-search-item').forEach(el => {
+            el.addEventListener('click', () => {
+                const id = el.getAttribute('data-chat-id');
+                const name = el.getAttribute('data-name');
+                addSelectedGroup({ chat_id: id, name });
+            });
+        });
+    } catch (e) {
+        resultsEl.innerHTML = `<div class="text-danger small"><i class="fas fa-exclamation-triangle me-2"></i>${window.i18n ? window.i18n.t('testRun.notifications.searchError') : '搜尋群組失敗'}</div>`;
+    }
+}
+
+function renderGroupSearchItem(group) {
+    const id = escapeHtml(group.chat_id || '');
+    const name = escapeHtml(group.name || id);
+    return `
+        <div class="group-search-item" data-chat-id="${id}" data-name="${name}">
+            <i class="fas fa-users group-icon"></i>
+            <span class="group-name">${name}</span>
+            <code class="group-id">${id}</code>
+        </div>
+    `;
+}
+
+function addSelectedGroup(group) {
+    if (!group || !group.chat_id) return;
+    // 去重
+    const exists = selectedNotifyGroups.some(g => g.chat_id === group.chat_id);
+    if (exists) return;
+    if (selectedNotifyGroups.length >= 100) {
+        AppUtils.showWarning && AppUtils.showWarning(window.i18n ? window.i18n.t('testRun.notifications.maxGroupsReached') : '最多選擇 100 個群組');
+        return;
+    }
+    selectedNotifyGroups.push({ chat_id: group.chat_id, name: group.name || group.chat_id });
+    renderSelectedGroups();
+}
+
+function removeSelectedGroup(chatId) {
+    selectedNotifyGroups = selectedNotifyGroups.filter(g => g.chat_id !== chatId);
+    renderSelectedGroups();
+}
+
+function renderSelectedGroups() {
+    const displayEl = document.getElementById('selectedGroupsDisplay');
+    const tagsEl = document.getElementById('selectedGroupsTags');
+    const countEl = document.getElementById('selectedGroupsCount');
+    if (!tagsEl || !countEl || !displayEl) return;
+
+    if (selectedNotifyGroups.length === 0) {
+        displayEl.style.display = 'none';
+        tagsEl.innerHTML = '';
+        countEl.textContent = '0';
+        return;
+    }
+    displayEl.style.display = '';
+    countEl.textContent = String(selectedNotifyGroups.length);
+    tagsEl.innerHTML = selectedNotifyGroups.map(g => renderSelectedGroupTag(g)).join('');
+    // 綁定移除按鈕
+    tagsEl.querySelectorAll('.group-remove-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const id = btn.getAttribute('data-chat-id');
+            removeSelectedGroup(id);
+        });
+    });
+}
+
+function renderSelectedGroupTag(group) {
+    const id = escapeHtml(group.chat_id || '');
+    const name = escapeHtml(group.name || id);
+    return `
+        <span class="selected-group-tag">
+            <i class="fas fa-users"></i>${name}
+            <button type="button" class="group-remove-btn" data-chat-id="${id}" title="${window.i18n ? window.i18n.t('testRun.notifications.removeGroup') : '移除群組'}"><i class="fas fa-times"></i></button>
+        </span>
+    `;
+}
+
+function getCurrentNotificationSettings() {
+    const enabled = !!document.getElementById('notificationsEnabled')?.checked;
+    const chatIds = selectedNotifyGroups.map(g => g.chat_id);
+    const chatNames = selectedNotifyGroups.map(g => g.name || g.chat_id);
+    return { enabled, chatIds, chatNames };
+}
+
 </script>
 {% endblock %}

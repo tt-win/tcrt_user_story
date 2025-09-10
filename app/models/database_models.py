@@ -36,8 +36,8 @@ class Team(Base):
     issue_type = Column(String(50), default="Bug")
     
     # 團隊設定
-    enable_notifications = Column(Boolean, default=True)
-    auto_create_bugs = Column(Boolean, default=False)
+    enable_notifications = Column(Boolean, default=True, nullable=False)
+    auto_create_bugs = Column(Boolean, default=False, nullable=False)
     default_priority = Column(Enum(Priority), default=Priority.MEDIUM)
     
     # 狀態與時間
@@ -74,6 +74,16 @@ class TestRunConfig(Base):
                                    comment="相關 TP 開發單票號 JSON 陣列")
     tp_tickets_search = Column(String(1000), nullable=True, index=True,
                              comment="TP 票號搜尋索引欄位")
+    
+    # 通知設定
+    notifications_enabled = Column(Boolean, default=False, nullable=False,
+                                 comment="是否啟用通知")
+    notify_chat_ids_json = Column(Text, nullable=True,
+                                comment="選擇的 Lark chat IDs（JSON 陣列）")
+    notify_chat_names_snapshot = Column(Text, nullable=True,
+                                      comment="群組名稱快照（JSON 陣列）")
+    notify_chats_search = Column(String(1000), nullable=True, index=True,
+                               comment="群組名稱搜尋索引")
     
     # 狀態與時間
     status = Column(Enum(TestRunStatus), default=TestRunStatus.DRAFT)

@@ -881,7 +881,22 @@
         "fileDeleteFailed": "Failed to delete file",
         "fileSizeLimit": "File \"{fileName}\" exceeds 50MB size limit",
         "unsupportedFileType": "Unsupported file type: {fileType}",
-        "testResultsCount": "Test Results Files Count"
+        "testResultsCount": "Test Results File Count",
+        "notifications": {
+            "title": "Notification Settings",
+            "enable": "Enable Lark Group Notifications",
+            "enableHint": "Send notifications to selected Lark groups when test run status changes",
+            "selectGroups": "Select Notification Groups",
+            "searchPlaceholder": "Search group names...",
+            "selectHint": "Enter group name keywords to search and select notification groups, up to 100 groups",
+            "selectedGroups": "Selected Groups",
+            "searchingGroups": "Searching groups...",
+            "noGroupsFound": "No groups found matching criteria",
+            "searchError": "Failed to search groups",
+            "removeGroup": "Remove Group",
+            "maxGroupsReached": "Maximum 100 groups can be selected",
+            "noResults": "No results"
+        }
     },
     "tooltip": {
         "assignedTo": "Assigned To",

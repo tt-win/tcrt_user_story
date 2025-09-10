@@ -882,7 +882,22 @@
         "fileDeleteFailed": "檔案刪除失敗",
         "fileSizeLimit": "檔案 \"{fileName}\" 超過 50MB 大小限制",
         "unsupportedFileType": "不支援的檔案格式: {fileType}",
-        "testResultsCount": "測試結果檔案數量"
+        "testResultsCount": "測試結果檔案數量",
+        "notifications": {
+            "title": "通知設定",
+            "enable": "啟用 Lark 群組通知",
+            "enableHint": "在測試執行狀態變更時發送通知到選定的 Lark 群組",
+            "selectGroups": "選擇通知群組",
+            "searchPlaceholder": "搜尋群組名稱...",
+            "selectHint": "輸入群組名稱關鍵字搜尋並選擇通知群組，最多可選 100 個",
+            "selectedGroups": "已選群組",
+            "searchingGroups": "搜尋群組中...",
+            "noGroupsFound": "找不到符合條件的群組",
+            "searchError": "搜尋群組失敗",
+            "removeGroup": "移除群組",
+            "maxGroupsReached": "最多選擇 100 個群組",
+            "noResults": "沒有結果"
+        }
     },
     "tooltip": {
         "assignedTo": "指派給",

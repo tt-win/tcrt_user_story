@@ -53,7 +53,7 @@ def team_db_to_model(team_db: TeamDB) -> dict:
     settings = TeamSettings(
         enable_notifications=team_db.enable_notifications if team_db.enable_notifications is not None else True,
         auto_create_bugs=team_db.auto_create_bugs if team_db.auto_create_bugs is not None else False,
-        default_priority=team_db.default_priority.value if team_db.default_priority else "Medium"
+        default_priority=team_db.default_priority.value if hasattr(team_db.default_priority, 'value') and team_db.default_priority else (team_db.default_priority if team_db.default_priority else "Medium")
     )
     
     return {
@@ -63,7 +63,7 @@ def team_db_to_model(team_db: TeamDB) -> dict:
         "lark_config": lark_config.dict(),
         "jira_config": jira_config.dict() if jira_config else None,
         "settings": settings.dict(),
-        "status": team_db.status.value if team_db.status else "active",
+        "status": team_db.status.value if hasattr(team_db.status, 'value') and team_db.status else (team_db.status if team_db.status else "active"),
         "created_at": team_db.created_at,
         "updated_at": team_db.updated_at,
         "test_case_count": team_db.test_case_count or 0,

@@ -46,6 +46,11 @@ class TestRunConfig(BaseModel):
     passed_cases: int = Field(0, description="通過案例數")
     failed_cases: int = Field(0, description="失敗案例數")
     
+    # 通知設定
+    notifications_enabled: bool = Field(False, description="是否啟用通知")
+    notify_chat_ids: Optional[List[str]] = Field(None, description="通知群組 Chat IDs")
+    notify_chat_names_snapshot: Optional[List[str]] = Field(None, description="群組名稱快照（UI 顯示用）")
+    
     # 系統欄位
     created_at: Optional[datetime] = Field(None, description="建立時間")
     updated_at: Optional[datetime] = Field(None, description="更新時間")
@@ -84,6 +89,53 @@ class TestRunConfig(BaseModel):
             if ticket in seen_tickets:
                 raise ValueError(f'Duplicate TP ticket: {ticket}')
             seen_tickets.add(ticket)
+            
+        return v
+    
+    @validator('notify_chat_ids')
+    def validate_notify_chat_ids(cls, v):
+        if v is None:
+            return v
+        
+        # 檢查資料型態
+        if not isinstance(v, list):
+            raise ValueError('notify_chat_ids must be a list')
+        
+        # 去除空值並 strip
+        cleaned_ids = []
+        for chat_id in v:
+            if not isinstance(chat_id, str):
+                raise ValueError(f'chat_id must be string, got: {type(chat_id)}')
+            cleaned_id = chat_id.strip()
+            if cleaned_id:
+                cleaned_ids.append(cleaned_id)
+        
+        # 檢查數量限制
+        if len(cleaned_ids) > 100:
+            raise ValueError('最多支援 100 個群組')
+        
+        # 檢查長度限制
+        for chat_id in cleaned_ids:
+            if len(chat_id) < 5 or len(chat_id) > 128:
+                raise ValueError(f'chat_id 長度必須在 5-128 字元之間: {chat_id}')
+        
+        # 去重
+        unique_ids = list(dict.fromkeys(cleaned_ids))  # 保持順序的去重
+        
+        return unique_ids if unique_ids else None
+    
+    @validator('notify_chat_names_snapshot')
+    def validate_notify_chat_names_snapshot(cls, v, values):
+        if v is None:
+            return v
+            
+        if not isinstance(v, list):
+            raise ValueError('notify_chat_names_snapshot must be a list')
+        
+        # 檢查是否與 notify_chat_ids 長度一致
+        notify_chat_ids = values.get('notify_chat_ids')
+        if notify_chat_ids and len(v) != len(notify_chat_ids):
+            raise ValueError('notify_chat_names_snapshot 長度必須與 notify_chat_ids 一致')
             
         return v
     
@@ -129,6 +181,53 @@ class TestRunConfigCreate(BaseModel):
     status: TestRunStatus = Field(TestRunStatus.DRAFT, description="初始狀態")
     start_date: Optional[datetime] = Field(None, description="開始日期")
     
+    # 通知設定
+    notifications_enabled: bool = Field(False, description="是否啟用通知")
+    notify_chat_ids: Optional[List[str]] = Field(None, description="通知群組 Chat IDs")
+    notify_chat_names_snapshot: Optional[List[str]] = Field(None, description="群組名稱快照（UI 顯示用）")
+    
+    @validator('notify_chat_ids')
+    def validate_notify_chat_ids(cls, v):
+        """沿用基礎模型的驗證邏輯"""
+        if v is None:
+            return v
+        
+        if not isinstance(v, list):
+            raise ValueError('notify_chat_ids must be a list')
+        
+        cleaned_ids = []
+        for chat_id in v:
+            if not isinstance(chat_id, str):
+                raise ValueError(f'chat_id must be string, got: {type(chat_id)}')
+            cleaned_id = chat_id.strip()
+            if cleaned_id:
+                cleaned_ids.append(cleaned_id)
+        
+        if len(cleaned_ids) > 100:
+            raise ValueError('最多支援 100 個群組')
+        
+        for chat_id in cleaned_ids:
+            if len(chat_id) < 5 or len(chat_id) > 128:
+                raise ValueError(f'chat_id 長度必須在 5-128 字元之間: {chat_id}')
+        
+        unique_ids = list(dict.fromkeys(cleaned_ids))
+        return unique_ids if unique_ids else None
+    
+    @validator('notify_chat_names_snapshot')
+    def validate_notify_chat_names_snapshot(cls, v, values):
+        """沿用基礎模型的驗證邏輯"""
+        if v is None:
+            return v
+            
+        if not isinstance(v, list):
+            raise ValueError('notify_chat_names_snapshot must be a list')
+        
+        notify_chat_ids = values.get('notify_chat_ids')
+        if notify_chat_ids and len(v) != len(notify_chat_ids):
+            raise ValueError('notify_chat_names_snapshot 長度必須與 notify_chat_ids 一致')
+            
+        return v
+    
     @validator('related_tp_tickets')
     def validate_tp_tickets(cls, v):
         """TP 票號驗證邏輯 - 複用基礎模型驗證"""
@@ -173,6 +272,53 @@ class TestRunConfigUpdate(BaseModel):
     status: Optional[TestRunStatus] = Field(None, description="執行狀態")
     start_date: Optional[datetime] = Field(None, description="開始日期")
     end_date: Optional[datetime] = Field(None, description="結束日期")
+    
+    # 通知設定
+    notifications_enabled: Optional[bool] = Field(None, description="是否啟用通知")
+    notify_chat_ids: Optional[List[str]] = Field(None, description="通知群組 Chat IDs")
+    notify_chat_names_snapshot: Optional[List[str]] = Field(None, description="群組名稱快照（UI 顯示用）")
+    
+    @validator('notify_chat_ids')
+    def validate_notify_chat_ids(cls, v):
+        """沿用基礎模型的驗證邏輯"""
+        if v is None:
+            return v
+        
+        if not isinstance(v, list):
+            raise ValueError('notify_chat_ids must be a list')
+        
+        cleaned_ids = []
+        for chat_id in v:
+            if not isinstance(chat_id, str):
+                raise ValueError(f'chat_id must be string, got: {type(chat_id)}')
+            cleaned_id = chat_id.strip()
+            if cleaned_id:
+                cleaned_ids.append(cleaned_id)
+        
+        if len(cleaned_ids) > 100:
+            raise ValueError('最多支援 100 個群組')
+        
+        for chat_id in cleaned_ids:
+            if len(chat_id) < 5 or len(chat_id) > 128:
+                raise ValueError(f'chat_id 長度必須在 5-128 字元之間: {chat_id}')
+        
+        unique_ids = list(dict.fromkeys(cleaned_ids))
+        return unique_ids if unique_ids else None
+    
+    @validator('notify_chat_names_snapshot')
+    def validate_notify_chat_names_snapshot(cls, v, values):
+        """沿用基礎模型的驗證邏輯"""
+        if v is None:
+            return v
+            
+        if not isinstance(v, list):
+            raise ValueError('notify_chat_names_snapshot must be a list')
+        
+        notify_chat_ids = values.get('notify_chat_ids')
+        if notify_chat_ids and len(v) != len(notify_chat_ids):
+            raise ValueError('notify_chat_names_snapshot 長度必須與 notify_chat_ids 一致')
+            
+        return v
     
     @validator('related_tp_tickets')
     def validate_tp_tickets(cls, v):

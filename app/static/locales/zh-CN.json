@@ -881,7 +881,22 @@
         "fileDeleteFailed": "文件删除失败",
         "fileSizeLimit": "文件 \"{fileName}\" 超过 50MB 大小限制",
         "unsupportedFileType": "不支持的文件格式: {fileType}",
-        "testResultsCount": "测试结果文件数量"
+        "testResultsCount": "测试结果文件数量",
+        "notifications": {
+            "title": "通知设定",
+            "enable": "启用 Lark 群组通知",
+            "enableHint": "在测试执行状态变更时发送通知到选定的 Lark 群组",
+            "selectGroups": "选择通知群组",
+            "searchPlaceholder": "搜索群组名称...",
+            "selectHint": "输入群组名称关键字搜索并选择通知群组，最多可选 100 个",
+            "selectedGroups": "已选群组",
+            "searchingGroups": "搜索群组中...",
+            "noGroupsFound": "找不到符合条件的群组",
+            "searchError": "搜索群组失败",
+            "removeGroup": "移除群组",
+            "maxGroupsReached": "最多选择 100 个群组",
+            "noResults": "没有结果"
+        }
     },
     "tooltip": {
         "assignedTo": "指派给",
