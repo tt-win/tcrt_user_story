@@ -7,6 +7,7 @@ jinja2==3.1.4
 # Data Validation & Models
 pydantic==2.11.7
 pydantic-settings==2.7.0
+python-dotenv==1.0.1
 
 # Database
 SQLAlchemy==2.0.43
@@ -17,13 +18,16 @@ requests==2.32.5
 # Configuration & Data Parsing
 PyYAML==6.0.2
 
-# File Handling & Utilities
-python-magic==0.4.27
-aiofiles==24.1.0
-
 # PDF Generation
 reportlab==4.2.5
 matplotlib==3.9.2
 
-# Development & Logging
-logging-config==1.0.3
+# HTTP Client & Utilities
+requests==2.32.5
+
+# Database
+SQLAlchemy==2.0.43
+
+# Notes:
+# - python-dotenv is required by app/config.py (load_dotenv())
+# - JS assets are pulled via CDN by default; see scripts/install_dependencies.sh for local JS setup
