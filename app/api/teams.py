@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from app.database import get_db
 from app.models.team import Team, TeamCreate, TeamUpdate, TeamResponse
+from app.models.lark_types import Priority
 from app.models.database_models import (
     Team as TeamDB,
     TestRunConfig as TestRunConfigDB,
@@ -50,10 +51,15 @@ def team_db_to_model(team_db: TeamDB) -> dict:
             issue_type=team_db.issue_type
         )
     
+    # 僅保留目前使用中的設定欄位（其他已從 TeamSettings 移除）
+    db_default_priority = team_db.default_priority
+    if hasattr(db_default_priority, 'value'):
+        default_priority_str = db_default_priority.value
+    else:
+        default_priority_str = db_default_priority or "Medium"
+
     settings = TeamSettings(
-        enable_notifications=team_db.enable_notifications if team_db.enable_notifications is not None else True,
-        auto_create_bugs=team_db.auto_create_bugs if team_db.auto_create_bugs is not None else False,
-        default_priority=team_db.default_priority.value if hasattr(team_db.default_priority, 'value') and team_db.default_priority else (team_db.default_priority if team_db.default_priority else "Medium")
+        default_priority=default_priority_str
     )
     
     return {
@@ -74,6 +80,7 @@ def team_db_to_model(team_db: TeamDB) -> dict:
 
 def team_model_to_db(team: TeamCreate) -> TeamDB:
     """將 API 團隊模型轉換為資料庫模型"""
+    # 將 API 模型轉換為資料庫模型（映射現行欄位）
     return TeamDB(
         name=team.name,
         description=team.description,
@@ -82,9 +89,12 @@ def team_model_to_db(team: TeamCreate) -> TeamDB:
         jira_project_key=team.jira_config.project_key if team.jira_config else None,
         default_assignee=team.jira_config.default_assignee if team.jira_config else None,
         issue_type=team.jira_config.issue_type if team.jira_config else "Bug",
-        enable_notifications=team.settings.enable_notifications if team.settings else True,
-        auto_create_bugs=team.settings.auto_create_bugs if team.settings else False,
-        default_priority=team.settings.default_priority if team.settings else "Medium",
+        # 從 TeamSettings 只保留 default_priority；其餘欄位已移除
+        default_priority=(
+            Priority(team.settings.default_priority)
+            if (team.settings and team.settings.default_priority)
+            else Priority.MEDIUM
+        ),
         status="active"
     )
 
@@ -224,10 +234,13 @@ async def update_team(team_id: int, team_update: TeamUpdate, db: Session = Depen
             team_db.default_assignee = team_update.jira_config.default_assignee
             team_db.issue_type = team_update.jira_config.issue_type
         
-        if team_update.settings is not None:
-            team_db.enable_notifications = team_update.settings.enable_notifications
-            team_db.auto_create_bugs = team_update.settings.auto_create_bugs
-            team_db.default_priority = team_update.settings.default_priority
+    if team_update.settings is not None:
+        # 僅更新 default_priority（其他設定已移除）
+        if getattr(team_update.settings, 'default_priority', None):
+            try:
+                team_db.default_priority = Priority(team_update.settings.default_priority)
+            except Exception:
+                team_db.default_priority = Priority.MEDIUM
         
         if team_update.status is not None:
             team_db.status = team_update.status
