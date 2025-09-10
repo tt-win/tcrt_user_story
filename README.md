@@ -1,100 +1,181 @@
-Test Case Repository Web Tool
-================================
+# Test Case Repository Web Tool
 
-A comprehensive FastAPI + Bootstrap web application for managing Test Cases, executing Test Runs, and tracking Bug Tickets. Features enterprise-grade JIRA integration, real-time status updates, and full internationalization (zh-TW / en-US).
+整合式測試案例管理系統，提供完整的測試案例生命週期管理、執行追蹤與缺陷單管理功能。基於 FastAPI 與 Bootstrap 建置，支援多語系（繁中/英文），並整合 Lark 多維表格與 JIRA。
 
-Features
-- **Test Case Management**: Smart search, advanced filtering, inline editing, batch operations
-- **Test Run Management**: Complete lifecycle management with flexible Test Case assignment
-- **Test Run Execution**:
-  - Real-time result tracking with comprehensive history
-  - Restart flow with multiple modes (all/failed/pending) and custom naming
-  - Advanced batch operations (modify assignee/results, bulk delete)
-  - Integrated assignee selector with team management
-- **Bug Tickets Management** ✨ NEW:
-  - Full CRUD operations for bug ticket tracking per test case
-  - JIRA integration with real-time status updates
-  - Bug Tickets Summary with advanced status filtering
-  - Interactive tooltips with ticket details and direct JIRA links
-- **JIRA Integration**:
-  - Real-time ticket information fetching
-  - Status synchronization and updates
-  - Hover previews in Test Case Details
-  - Direct links to JIRA tickets
-- **Internationalization**: Complete zh-TW and en-US support with runtime language switching
+## 主要功能
 
-Getting Started
-1) Requirements
-- Python 3.10+
-- pip
+### 測試案例管理
+- 智慧搜尋與進階篩選
+- 即時編輯與批次操作
+- Lark 多維表格同步
+- 版本歷程追蹤
 
-2) Install dependencies
-```
+### 測試執行管理
+- 完整的生命週期管理
+  - 建立：從既有案例庫選取測試項目
+  - 執行：彈性指派與進度追蹤
+  - 結案：完整的結果統計與報表
+- 多模式重測流程
+  - 全部重測
+  - 僅失敗項目
+  - 待測項目
+- 批次操作功能
+  - 更新執行者
+  - 修改測試結果
+  - 批次刪除
+
+### 團隊管理
+- 團隊基本資訊設定
+- Lark 多維表格來源配置
+- JIRA 專案整合設定
+
+### Bug 單管理 ✨
+- 每個測試案例的 Bug 單完整 CRUD 操作
+- 即時 JIRA 狀態同步
+- Bug 單摘要與狀態篩選
+- 懸停預覽與直接跳轉
+
+### 國際化支援
+- 完整繁體中文與英文支援
+- 執行階段語言切換
+- 使用者偏好儲存
+
+## 開始使用
+
+### 系統需求
+- Python 3.10 以上版本
+- pip 套件管理工具
+
+### 安裝相依套件
+```bash
 pip install -r requirements.txt
 ```
 
-3) (Optional) Configure Lark/test-case sources
-- See `config.yaml.example` and `README_DATABASE.md` for context.
-- Local mode works out of the box with SQLite files in repo root (e.g., `test_case_repo.db`).
-
-4) Run the app
+### 設定專案
+1. 複製設定範本
+```bash
+cp config.yaml.example config.yaml
 ```
+
+2. 設定必要參數（擇一即可）
+- Lark 多維表格（非必要）
+  - `lark.app_id`
+  - `lark.app_secret`
+- JIRA（非必要）
+  - `jira.url`
+  - `jira.username`
+  - `jira.api_token`
+
+3. 啟動應用程式
+```bash
 uvicorn app.main:app --reload --port 9999
 ```
-Then open http://localhost:9999
 
-Project Structure (high-level)
-- `app/main.py`: FastAPI app + page routes.
-- `app/api/`: REST endpoints (teams, test cases, test run configs, items, attachments, etc.).
-- `app/templates/`: Jinja HTML templates for pages.
-- `app/static/`: CSS/JS assets and i18n JSON files.
-- `app/models/`: Pydantic and SQLAlchemy models.
-- `app/database.py`: DB engine and session.
+4. 開啟瀏覽器
+```
+http://localhost:9999
+```
 
-Key Endpoints
-- **Test Run Configs**: `/api/teams/{team_id}/test-run-configs`
-  - `POST /{config_id}/restart`: Clone a new Test Run from an existing config
-    - Body: `{ "mode": "all" | "failed" | "pending", "name"?: "Rerun - Original" }`
-    - Response: `{ success, mode, new_config_id, created_count }`
-- **Test Run Items**: `/api/teams/{team_id}/test-run-configs/{config_id}/items`
-  - `GET /`: List items with sorting and filtering
-  - `PUT /{item_id}`: Update assignee/result with history tracking
-  - `POST /batch-update-results`: Batch update operations
-- **Bug Tickets**: `/api/teams/{team_id}/test-run-configs/{config_id}/items`
-  - `POST /{item_id}/bug-tickets`: Add bug ticket to test case
-  - `DELETE /{item_id}/bug-tickets/{ticket_number}`: Remove bug ticket
-  - `GET /bug-tickets/summary`: Get aggregated bug tickets summary with status
-- **JIRA Integration**: `/api/jira`
-  - `GET /ticket/{ticket_key}`: Fetch ticket details with real-time status
-  - `GET /connection-test`: Test JIRA connectivity
-  - `GET /projects`: List available JIRA projects
+## 專案結構
+```
+app/
+├── api/            # REST API 端點
+├── models/         # 資料模型（Pydantic + SQLAlchemy）
+├── services/       # 業務邏輯服務層
+├── static/         # 靜態資源（JS、CSS、i18n）
+├── templates/      # 頁面模板
+├── database.py    # 資料庫引擎與連線
+└── main.py        # FastAPI 應用程式入口
+```
 
-Notable UI Features
-- **Unified Interface**: Consistent batch action bars across Test Case and Test Run management
-- **Smart Navigation**: Ascending Test Case Number sorting for logical flow
-- **Modal Management**: Advanced z-index handling for multiple modal layers
-- **Bug Tickets Integration**:
-  - Summary modal with status filtering (All, Open, To Do, In Progress, Resolved, Scheduled, Closed)
-  - Real-time JIRA status updates with refresh functionality
-  - Interactive tooltips in Test Case Details with hover previews
-- **Internationalization**: Complete runtime language switching with persistent preferences
-- **Advanced Interactions**: 
-  - Restart modal with custom naming (defaults to "Rerun - {original name}")
-  - Batch operations with comprehensive validation and feedback
+## API 端點說明
 
-Development Notes
-- **Database**: SQLite with auto-creation on startup (see `app/models/database_models.py`)
-- **Logging**: Console output; configure via `logging.basicConfig` in `app/main.py`
-- **JIRA Configuration**: Set up JIRA credentials in `config.yaml` for Bug Tickets functionality
-- **Frontend Architecture**: Bootstrap 5 + vanilla JavaScript with modular components
-- **Testing**: Run with `pytest -q` (add tests under `tests/` directory)
+### 測試執行配置
+- `GET /api/teams/{team_id}/test-run-configs`
+  - 列出團隊所有測試執行
+- `POST /api/teams/{team_id}/test-run-configs/{config_id}/restart`
+  - 從既有配置複製新測試執行
+  - 請求：`{ "mode": "all" | "failed" | "pending", "name"?: "重測 - 原名稱" }`
+  - 回應：`{ success, mode, new_config_id, created_count }`
 
-## Recent Updates (2025)
-- ✅ **Bug Tickets Management**: Complete JIRA integration with CRUD operations
-- ✅ **Advanced Modal System**: Multi-layer modal management with proper z-index handling  
-- ✅ **JIRA Tooltips**: Interactive hover previews with real-time ticket information
-- ✅ **UI/UX Improvements**: Status filtering, layout optimizations, enhanced user interactions
-- ✅ **Internationalization**: Full i18n support for all new Bug Tickets features
+### 測試執行項目
+- `GET /api/teams/{team_id}/test-run-configs/{config_id}/items`
+  - 列出執行項目（支援排序與篩選）
+- `PUT /api/teams/{team_id}/test-run-configs/{config_id}/items/{item_id}`
+  - 更新執行者/結果（自動記錄歷程）
+- `POST /api/teams/{team_id}/test-run-configs/{config_id}/items/batch-update`
+  - 批次更新操作
 
-License
-- Internal project; no public license headers added.
+### Bug 單管理
+- `POST /api/teams/{team_id}/test-run-configs/{config_id}/items/{item_id}/bug-tickets`
+  - 新增 Bug 單
+- `DELETE /api/teams/{team_id}/test-run-configs/{config_id}/items/{item_id}/bug-tickets/{ticket_number}`
+  - 移除 Bug 單
+- `GET /api/teams/{team_id}/test-run-configs/{config_id}/items/bug-tickets/summary`
+  - 取得 Bug 單摘要與狀態統計
+
+### JIRA 整合
+- `GET /api/jira/ticket/{ticket_key}`
+  - 取得即時票單資訊
+- `GET /api/jira/projects`
+  - 列出可用的 JIRA 專案
+
+## 前端特色功能
+
+### 智慧介面
+- 統一的批次操作列
+- 邏輯性的案例編號排序
+- 多層 Modal 管理系統
+
+### Bug 單整合
+- 狀態分類篩選器
+  - 全部、待辦、進行中
+  - 已解決、已排程、已關閉
+- 即時狀態更新與重整
+- 測試案例中的懸停預覽
+
+### 在地化支援
+- 完整的雙語介面
+- 即時語言切換
+- 使用者偏好記憶
+
+### 進階互動
+- 重測命名建議
+- 批次操作驗證
+- 即時操作回饋
+
+## 開發資訊
+
+### 資料庫
+- SQLite（自動建立）
+- 資料模型：`app/models/database_models.py`
+
+### 日誌
+- 主控台輸出
+- 配置：`app/main.py` 中的 `logging.basicConfig`
+
+### 前端架構
+- Bootstrap 5
+- 原生 JavaScript
+- 模組化元件設計
+
+### 測試
+- 執行：`pytest -q`
+- 測試碼：`tests/` 目錄
+
+## 最新更新（2025.09）
+
+### 功能更新
+- ✨ Bug 單管理系統上線
+- 🔄 多層 Modal 系統優化
+- 🎯 JIRA 整合強化
+- 🌐 雙語系統完善
+- 🎨 介面優化與互動提升
+
+### 移除功能
+- 團隊設定中移除通知與自動建 Bug 開關
+  - 改由後端統一控管，提升一致性
+  - 降低設定複雜度
+
+## 授權說明
+- 內部專案，未加入公開授權聲明

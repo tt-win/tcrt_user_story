@@ -5301,9 +5301,9 @@ async function downloadReportAsPDF() {
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-primary" id="downloadPDFBtn" onclick="downloadReportAsPDF()">
-                    <i class="fas fa-download me-2" id="downloadIcon"></i>
-                    <span data-i18n="testRun.downloadPDF" id="downloadText">下載 PDF 報告</span>
+<button type="button" class="btn btn-primary" id="generateHTMLBtn" onclick="generateHtmlReport()">
+                    <i class="fas fa-file-alt me-2" id="generateIcon"></i>
+                    <span id="generateText">生成 HTML 報告並複製連結</span>
                 </button>
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
                     <span data-i18n="common.close">關閉</span>
@@ -5312,6 +5312,60 @@ async function downloadReportAsPDF() {
         </div>
     </div>
 </div>
+
+<script>
+// 生成 HTML 報告並複製連結
+async function generateHtmlReport() {
+  const btn = document.getElementById('generateHTMLBtn');
+  const icon = document.getElementById('generateIcon');
+  const text = document.getElementById('generateText');
+  if (!btn) return;
+
+  // 優先使用頁面內已初始化的 currentTeamId/currentConfigId
+  let teamId = (typeof currentTeamId !== 'undefined' && currentTeamId) ? currentTeamId : null;
+  let configId = (typeof currentConfigId !== 'undefined' && currentConfigId) ? currentConfigId : null;
+
+  // 後備：從 URL 參數取得
+  if (!teamId || !configId) {
+    const params = new URLSearchParams(window.location.search);
+    teamId = teamId || params.get('team_id') || params.get('teamId') || params.get('team');
+    configId = configId || params.get('config_id') || params.get('configId') || params.get('config');
+  }
+
+  if (!teamId || !configId) {
+    alert('無法取得 team_id 或 config_id，請從管理頁進入執行頁面。');
+    return;
+  }
+
+  try {
+    btn.disabled = true;
+    icon.classList.add('fa-spinner', 'fa-spin');
+    text.textContent = '生成中...';
+
+    const resp = await fetch(`/api/teams/${encodeURIComponent(teamId)}/test-runs/${encodeURIComponent(configId)}/generate-html`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' }
+    });
+    const data = await resp.json();
+    if (!resp.ok || !data.success) {
+      throw new Error(data?.detail || '生成失敗');
+    }
+
+    const url = data.report_url;
+    // 嘗試寫入剪貼簿
+    try { await navigator.clipboard.writeText(url); } catch (e) {}
+
+    alert(`HTML 報告已生成：\n${url}\n\n連結已複製到剪貼簿（若瀏覽器允許）`);
+  } catch (err) {
+    alert('生成 HTML 報告時發生錯誤：' + (err?.message || err));
+  } finally {
+    btn.disabled = false;
+    icon.classList.remove('fa-spinner', 'fa-spin');
+    icon.classList.add('fa-file-alt');
+    text.textContent = '生成 HTML 報告並複製連結';
+  }
+}
+</script>
 
 <!-- Chart.js 相關 CDN -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js@3.9.1/dist/chart.min.js"></script>

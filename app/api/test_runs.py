@@ -5,7 +5,7 @@
 基於 test_run_configs 中配置的測試執行表格進行操作
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime
@@ -693,16 +693,14 @@ async def batch_update_test_results(
         )
 
 
-@router.get("/{config_id}/generate-pdf")
-async def generate_pdf_report(
+@router.post("/{config_id}/generate-html")
+async def generate_html_report(
     team_id: int,
     config_id: int,
+    request: Request,
     db: Session = Depends(get_db)
 ):
-    """生成 Test Run PDF 報告"""
-    from fastapi.responses import StreamingResponse
-    from ..services.pdf_report_service import PDFReportService
-    
+    """生成 Test Run HTML 報告（靜態檔），並回傳可存取的連結"""
     try:
         # 驗證團隊和配置存在（不需要 Lark API 驗證）
         team = db.query(TeamDB).filter(TeamDB.id == team_id).first()
@@ -722,19 +720,21 @@ async def generate_pdf_report(
                 detail=f"找不到測試執行配置 ID {config_id}"
             )
         
-        # 生成 PDF
-        pdf_service = PDFReportService(db)
-        pdf_content = pdf_service.generate_test_run_report(team_id, config_id)
+        # 生成 HTML
+        from ..services.html_report_service import HTMLReportService
+        service = HTMLReportService(db_session=db)
+        result = service.generate_test_run_report(team_id=team_id, config_id=config_id)
         
-        # 準備檔案名稱（避免中文字元編碼問題）
-        safe_name = config.name.encode('ascii', 'ignore').decode('ascii') if config.name else 'report'
-        filename = f"test_run_report_{safe_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf"
-        
-        return StreamingResponse(
-            io.BytesIO(pdf_content),
-            media_type="application/pdf",
-            headers={"Content-Disposition": f"attachment; filename=\"{filename}\""}
-        )
+        # 將相對路徑轉為完整網址
+        base = str(request.base_url).rstrip('/')
+        absolute_url = f"{base}{result['report_url']}"
+        return {
+            "success": True,
+            "report_id": result["report_id"],
+            "report_url": absolute_url,
+            "overwritten": result.get("overwritten", True),
+            "generated_at": result.get("generated_at")
+        }
         
     except ValueError as e:
         raise HTTPException(
@@ -744,5 +744,5 @@ async def generate_pdf_report(
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"PDF 生成失敗: {str(e)}"
+            detail=f"HTML 報告生成失敗: {str(e)}"
         )

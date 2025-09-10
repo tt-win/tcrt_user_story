@@ -4,6 +4,7 @@ from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
 from pathlib import Path
 import logging
+import os
 
 app = FastAPI(
     title="Test Case Repository Web Tool",
@@ -18,8 +19,13 @@ logging.basicConfig(level=logging.INFO)
 BASE_DIR = Path.cwd()
 STATIC_DIR = BASE_DIR / "app" / "static"
 TEMPLATES_DIR = BASE_DIR / "app" / "templates"
+REPORT_DIR = BASE_DIR / "generated_report"
+TMP_REPORT_DIR = REPORT_DIR / ".tmp"
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
+# 對外提供報告的靜態目錄
+app.mount("/reports", StaticFiles(directory=str(REPORT_DIR), html=True), name="reports")
+
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 # 包含 API 路由
@@ -63,6 +69,11 @@ async def startup_event():
         from app.models.database_models import create_database_tables
         create_database_tables()
         logging.info("資料表檢查/建立完成")
+
+        # 確保報告資料夾存在
+        os.makedirs(REPORT_DIR, exist_ok=True)
+        os.makedirs(TMP_REPORT_DIR, exist_ok=True)
+        logging.info("報告目錄已就緒: %s", REPORT_DIR)
 
         # 啟動定時任務調度器
         from app.services.scheduler import task_scheduler
