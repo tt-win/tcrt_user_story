@@ -133,10 +133,16 @@ COLUMN_CHECKS: Dict[str, List[ColumnSpec]] = {
         ColumnSpec("tcg_json", "TEXT", nullable=True, default=None),
         ColumnSpec("bug_tickets_json", "TEXT", nullable=True, default=None),
     ],
-    # TestRunConfig 的 TP 票欄位
+    # TestRunConfig 的 TP 票欄位與通知欄位
     "test_run_configs": [
+        # TP 票相關
         ColumnSpec("related_tp_tickets_json", "TEXT", nullable=True, default=None),
         ColumnSpec("tp_tickets_search", "TEXT", nullable=True, default=None),
+        # 通知相關（對應 ORM：notifications_enabled, notify_chat_ids_json, notify_chat_names_snapshot, notify_chats_search）
+        ColumnSpec("notifications_enabled", "INTEGER", nullable=False, default=0),  # Boolean -> INTEGER(0/1)
+        ColumnSpec("notify_chat_ids_json", "TEXT", nullable=True, default=None),
+        ColumnSpec("notify_chat_names_snapshot", "TEXT", nullable=True, default=None),
+        ColumnSpec("notify_chats_search", "TEXT", nullable=True, default=None),
     ],
     # Lark Users 重要索引欄位（若缺少欄位則僅報告，不強制新增 NOT NULL）
     "lark_users": [
@@ -150,8 +156,13 @@ INDEX_SPECS: List[Dict[str, Any]] = [
     {"name": "idx_tri_configid_testcaseno", "table": "test_run_items", "columns": ["config_id", "test_case_number"]},
     {"name": "idx_tri_teamid_result", "table": "test_run_items", "columns": ["team_id", "test_result"]},
     {"name": "idx_tri_result_files_uploaded", "table": "test_run_items", "columns": ["result_files_uploaded"]},
+    # test_run_configs 相關搜尋欄位索引（若 ORM 已建立，這裡以 IF NOT EXISTS 形式補強）
+    {"name": "idx_trc_tp_tickets_search", "table": "test_run_configs", "columns": ["tp_tickets_search"]},
+    {"name": "idx_trc_notify_chats_search", "table": "test_run_configs", "columns": ["notify_chats_search"]},
+    # Lark Users 常用索引
     {"name": "idx_lu_enterprise_email", "table": "lark_users", "columns": ["enterprise_email"]},
     {"name": "idx_lu_primary_department_id", "table": "lark_users", "columns": ["primary_department_id"]},
+    # Sync History
     {"name": "idx_sh_teamid_starttime", "table": "sync_history", "columns": ["team_id", "start_time"]},
 ]
 
