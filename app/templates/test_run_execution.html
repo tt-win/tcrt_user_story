@@ -1121,6 +1121,9 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                 <div id="testCaseDetailHeaderResult" class="ms-3" style="min-width: 170px;"></div>
                 <!-- 標頭靠右：上一隻 / 下一隻 / 關閉 -->
                 <div class="d-flex align-items-center gap-2 ms-auto">
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="copyExecCaseLinkBtn">
+                        <i class="fas fa-link me-1"></i><span data-i18n="common.copyLink">複製連結</span>
+                    </button>
                     <button type="button" class="btn btn-outline-secondary btn-sm" id="prevExecCaseBtn" title="上一隻">
                         <i class="fas fa-chevron-left"></i>
                     </button>
@@ -1378,17 +1381,27 @@ const TEST_CASE_CACHE_TTL_MS = 60 * 60 * 1000; // 1 小時
 
 // 頁面初始化
 document.addEventListener('DOMContentLoaded', function() {
-    // 從 URL 參數取得 config ID
+    // 從 URL 參數取得必要參數
     const urlParams = new URLSearchParams(window.location.search);
     currentConfigId = parseInt(urlParams.get('config_id'));
-    
+    const teamParam = urlParams.get('team_id') || urlParams.get('teamId') || urlParams.get('team');
+    window.__PENDING_TC_FROM_URL__ = urlParams.get('tc') || urlParams.get('test_case_number') || null;
+
     if (!currentConfigId) {
         AppUtils.showError('{{ i18n.t("testRun.missingConfigId") if i18n else "缺少測試執行配置 ID" }}');
         window.location.href = '/test-run-management';
         return;
     }
-    
-    
+
+    // 若 URL 有 team_id 且目前尚未設定 current team，先寫入
+    try {
+        const cur = AppUtils.getCurrentTeam && AppUtils.getCurrentTeam();
+        if (teamParam && (!cur || !cur.id) && AppUtils.setCurrentTeam) {
+            const parsedTeam = parseInt(teamParam);
+            if (!isNaN(parsedTeam)) AppUtils.setCurrentTeam({ id: parsedTeam });
+        }
+    } catch (_) {}
+
     initializePage();
     bindEventListeners();
     bindBugTicketEvents();
@@ -1417,12 +1430,23 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 function initializePage() {
+    // 監聽全域 team 變更事件，隨時更新 URL 的 team_id
+    try {
+        window.addEventListener('teamChanged', function(e) {
+            const newTeam = e && e.detail && e.detail.team;
+            if (newTeam && newTeam.id) {
+                ensureTeamIdInUrl_TRE(newTeam.id);
+            }
+        });
+    } catch (_) {}
     // 取得目前團隊 ID（與管理頁一致），無則暫用 1
     currentTeamId = AppUtils.getCurrentTeam()?.id;
     if (!currentTeamId) {
         currentTeamId = 1;
         console.log('Using temporary hardcoded team ID:', currentTeamId);
     }
+    // 確保網址列包含 team_id（不重新載入頁面）
+    try { ensureTeamIdInUrl_TRE(currentTeamId); } catch (_) {}
 
     itemDetailModal = new bootstrap.Modal(document.getElementById('itemDetailModal'));
     confirmModal = new bootstrap.Modal(document.getElementById('confirmModal'));
@@ -1744,6 +1768,9 @@ function renderTestRunItems() {
     
     // 綁定事件處理器
     bindItemEventHandlers(canUpdate);
+
+    // 嘗試處理從 URL 帶入的 tc（只執行一次）
+    tryOpenTcFromUrlOnce();
 
     // 確保載入動畫關閉，顯示列表
     hideItemsLoading();
@@ -2897,6 +2924,22 @@ function displayTestCaseDetail(testCase) {
         prevBtn.disabled = idx <= 0;
         nextBtn.disabled = idx < 0 || idx >= testRunItems.length - 1;
     }
+
+    // 綁定複製連結按鈕
+    try {
+        const copyBtn = document.getElementById('copyExecCaseLinkBtn');
+        if (copyBtn) {
+            copyBtn.onclick = () => {
+                const teamId = getCurrentTeamId();
+                const cfgId = (typeof currentConfigId !== 'undefined' && currentConfigId) ? currentConfigId : new URLSearchParams(window.location.search).get('config_id');
+                const url = buildTreUrl(cfgId, teamId, testCase.test_case_number);
+                safeCopyToClipboard(url, () => {
+                    copyBtn.innerHTML = '<i class="fas fa-check me-1"></i>' + (window.i18n ? window.i18n.t('common.copied') : '已複製');
+                    setTimeout(() => { copyBtn.innerHTML = '<i class="fas fa-link me-1"></i>' + (window.i18n ? window.i18n.t('common.copyLink') : '複製連結'); }, 1500);
+                });
+            };
+        }
+    } catch (_) {}
 
     // 初始化 AssigneeSelector
     initializeTestCaseAssigneeSelector(testCase);
@@ -5470,6 +5513,79 @@ async function generateHtmlReport() {
     icon.classList.add('fa-file-alt');
     text.textContent = '生成 HTML 報告並複製連結';
   }
+}
+// ===== 深連結與剪貼簿工具 =====
+let __tcOpenedFromUrl = false;
+function tryOpenTcFromUrlOnce() {
+    if (__tcOpenedFromUrl) return;
+    const tc = window.__PENDING_TC_FROM_URL__;
+    if (!tc) { __tcOpenedFromUrl = true; return; }
+    if (!Array.isArray(testRunItems) || testRunItems.length === 0) return;
+    const exists = testRunItems.some(i => i && i.test_case_number === tc);
+    if (exists) {
+        __tcOpenedFromUrl = true;
+        showTestCaseDetailModal(tc);
+    } else {
+        // 一次性嘗試即可，避免影響後續流程
+        __tcOpenedFromUrl = true;
+        console.warn('tc from URL not found in current testRunItems:', tc);
+    }
+}
+
+function getCurrentTeamId() {
+    try {
+        const cur = AppUtils.getCurrentTeam && AppUtils.getCurrentTeam();
+        if (cur && cur.id) return cur.id;
+    } catch (_) {}
+    const p = new URLSearchParams(window.location.search);
+    const t = p.get('team_id') || p.get('teamId') || p.get('team');
+    return t ? parseInt(t) : undefined;
+}
+
+function buildTreUrl(configId, teamId, tcNumber) {
+    const origin = window.location.origin;
+    const params = new URLSearchParams();
+    if (configId) params.set('config_id', configId);
+    if (teamId) params.set('team_id', teamId);
+    if (tcNumber) params.set('tc', tcNumber);
+    return `${origin}/test-run-execution?${params.toString()}`;
+}
+
+function safeCopyToClipboard(text, onSuccess, onError) {
+    if (navigator && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        navigator.clipboard.writeText(text).then(() => { if (onSuccess) onSuccess(); }).catch(err => {
+            try {
+                const temp = document.createElement('input');
+                temp.value = text;
+                document.body.appendChild(temp);
+                temp.select();
+                document.execCommand('copy');
+                document.body.removeChild(temp);
+                if (onSuccess) onSuccess();
+            } catch (e) { if (onError) onError(e); }
+        });
+    } else {
+        try {
+            const temp = document.createElement('input');
+            temp.value = text;
+            document.body.appendChild(temp);
+            temp.select();
+            document.execCommand('copy');
+            document.body.removeChild(temp);
+            if (onSuccess) onSuccess();
+        } catch (e) { if (onError) onError(e); }
+    }
+}
+
+function ensureTeamIdInUrl_TRE(teamId) {
+    try {
+        const url = new URL(window.location.href);
+        const before = url.searchParams.get('team_id');
+        if (String(before || '') !== String(teamId)) {
+            url.searchParams.set('team_id', teamId);
+            history.replaceState(null, '', `${url.pathname}?${url.searchParams.toString()}`);
+        }
+    } catch (_) {}
 }
 </script>
 

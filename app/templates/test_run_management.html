@@ -1176,6 +1176,16 @@ let dataLoadedOnce = false;   // 成功載入過資料後為 true
 let eventsBound = false;      // 避免重複綁定 i18n/page 事件
 
 document.addEventListener('DOMContentLoaded', function() {
+    // 監聽全域 team 變更事件，隨時更新 URL 的 team_id
+    try {
+        window.addEventListener('teamChanged', function(e) {
+            const newTeam = e && e.detail && e.detail.team;
+            if (newTeam && newTeam.id) {
+                ensureTeamIdInUrl_TRM(newTeam.id);
+            }
+        });
+    } catch (_) {}
+
     initializePage();
     bindEventListeners();
 
@@ -1231,6 +1241,9 @@ function initializePage() {
     currentTeamId = (typeof AppUtils.getCurrentTeamId === 'function')
         ? AppUtils.getCurrentTeamId()
         : (AppUtils.getCurrentTeam()?.id ?? null);
+
+    // 確保網址列包含 team_id（不重新載入頁面）
+    try { if (currentTeamId) ensureTeamIdInUrl_TRM(currentTeamId); } catch (_) {}
 
     if (currentTeamId) {
         teamIdReady = true;
@@ -3550,7 +3563,10 @@ function renderSearchResults(data, container, searchTerm = '') {
             closeQuickSearchTP();
             if (configId) {
                 // 跳轉到 Test Run 執行頁面
-                window.location.href = `/test-run-execution?config_id=${configId}`;
+const teamId = (typeof AppUtils.getCurrentTeamId === 'function') ? AppUtils.getCurrentTeamId() : (AppUtils.getCurrentTeam()?.id ?? '');
+                const params = new URLSearchParams({ config_id: String(configId) });
+                if (teamId) params.set('team_id', String(teamId));
+                window.location.href = `/test-run-execution?${params.toString()}`;
             }
         });
     });
@@ -3600,6 +3616,18 @@ function initNotificationSettings() {
             }
         };
     }
+}
+
+// ===== URL 工具：確保 team_id 反映在網址列（不重新載入頁面） =====
+function ensureTeamIdInUrl_TRM(teamId) {
+    try {
+        const url = new URL(window.location.href);
+        const before = url.searchParams.get('team_id');
+        if (String(before || '') !== String(teamId)) {
+            url.searchParams.set('team_id', teamId);
+            history.replaceState(null, '', `${url.pathname}?${url.searchParams.toString()}`);
+        }
+    } catch (_) {}
 }
 
 function clearNotificationSettings() {

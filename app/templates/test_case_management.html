@@ -378,6 +378,9 @@ html, body { height: 100%; overflow: hidden; }
                     <span id="testCaseModalTitle" data-i18n="testCase.createTestCase">新增測試案例</span>
                 </h5>
                 <div class="d-flex align-items-center gap-2">
+                    <button type="button" class="btn btn-outline-primary btn-sm" id="copyTcmCaseLinkBtn">
+                        <i class="fas fa-link me-1"></i><span data-i18n="common.copyLink">複製連結</span>
+                    </button>
                     <button type="button" class="btn btn-outline-secondary btn-sm" id="prevTestCaseBtn" data-i18n-title="testCase.previousTestCase">
                         <i class="fas fa-chevron-left"></i>
                     </button>
@@ -1203,6 +1206,15 @@ function addTestCaseToCache(testCase) {
 }
 
 document.addEventListener('DOMContentLoaded', async function() {
+    // 監聽全域 team 變更事件，隨時更新 URL 的 team_id
+    try {
+        window.addEventListener('teamChanged', function(e) {
+            const newTeam = e && e.detail && e.detail.team;
+            if (newTeam && newTeam.id) {
+                ensureTeamIdInUrl_TCM(newTeam.id);
+            }
+        });
+    } catch (_) {}
     try {
         // 先處理 URL 的 team_id，確保後續載入不會因為未選擇團隊而中止
         const urlParams = new URLSearchParams(window.location.search);
@@ -1213,9 +1225,14 @@ document.addEventListener('DOMContentLoaded', async function() {
                 AppUtils.setCurrentTeam({ id: teamId, name: 'From Test Run' });
             }
         }
+        // 確保網址列包含 team_id（不重新載入頁面）
+        try {
+            const cur = AppUtils.getCurrentTeam && AppUtils.getCurrentTeam();
+            if (cur && cur.id) ensureTeamIdInUrl_TCM(cur.id);
+        } catch (_) {}
     } catch (_) {}
 
-    const urlParams = new URLSearchParams(window.location.search);
+const urlParams = new URLSearchParams(window.location.search);
     const minimal = urlParams.get('minimal') === '1' || urlParams.get('editor') === '1';
     const tcNumber = urlParams.get('tc') || urlParams.get('test_case_number');
     const mode = urlParams.get('mode') || 'preview';
@@ -3172,6 +3189,23 @@ function showTestCaseModal(testCase = null) {
         }
     }
     
+    // 綁定複製連結按鈕（使用當前測試案例/表單值）
+    try {
+        const btn = document.getElementById('copyTcmCaseLinkBtn');
+        if (btn) {
+            btn.onclick = () => {
+                const teamId = getCurrentTeamId_TCM();
+                // 優先從 testCase 物件，其次從表單欄位讀取
+                const tcNumber = (testCase && testCase.test_case_number) || document.getElementById('testCaseNumber')?.value || '';
+                const url = buildTcmUrl(teamId, tcNumber);
+                safeCopyToClipboard_TCM(url, () => {
+                    btn.innerHTML = '<i class="fas fa-check me-1"></i>' + (window.i18n ? window.i18n.t('common.copied') : '已複製');
+                    setTimeout(() => { btn.innerHTML = '<i class="fas fa-link me-1"></i>' + (window.i18n ? window.i18n.t('common.copyLink') : '複製連結'); }, 1500);
+                });
+            };
+        }
+    } catch (_) {}
+
     testCaseModalInstance.show();
     
     // 確保按鈕狀態正確（解決可能的時序問題）
@@ -6496,6 +6530,62 @@ function updatePageTitle() {
     const pageTitle = window.i18n ? window.i18n.t('testCase.management') : '測試案例管理';
     const siteTitle = window.i18n ? window.i18n.t('navigation.title') : 'Test Case Repository';
     document.title = `${pageTitle} - ${siteTitle} Web Tool`;
+}
+
+// ===== 深連結與剪貼簿工具（TCM） =====
+function getCurrentTeamId_TCM() {
+    try {
+        const cur = AppUtils.getCurrentTeam && AppUtils.getCurrentTeam();
+        if (cur && cur.id) return cur.id;
+    } catch (_) {}
+    const p = new URLSearchParams(window.location.search);
+    const t = p.get('team_id') || p.get('teamId') || p.get('team');
+    return t ? parseInt(t) : undefined;
+}
+
+function buildTcmUrl(teamId, tcNumber) {
+    const origin = window.location.origin;
+    const params = new URLSearchParams();
+    if (teamId) params.set('team_id', teamId);
+    if (tcNumber) params.set('tc', tcNumber);
+    return `${origin}/test-case-management?${params.toString()}`;
+}
+
+function safeCopyToClipboard_TCM(text, onSuccess, onError) {
+    if (navigator && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        navigator.clipboard.writeText(text).then(() => { if (onSuccess) onSuccess(); }).catch(err => {
+            try {
+                const temp = document.createElement('input');
+                temp.value = text;
+                document.body.appendChild(temp);
+                temp.select();
+                document.execCommand('copy');
+                document.body.removeChild(temp);
+                if (onSuccess) onSuccess();
+            } catch (e) { if (onError) onError(e); }
+        });
+    } else {
+        try {
+            const temp = document.createElement('input');
+            temp.value = text;
+            document.body.appendChild(temp);
+            temp.select();
+            document.execCommand('copy');
+            document.body.removeChild(temp);
+            if (onSuccess) onSuccess();
+        } catch (e) { if (onError) onError(e); }
+    }
+}
+
+function ensureTeamIdInUrl_TCM(teamId) {
+    try {
+        const url = new URL(window.location.href);
+        const before = url.searchParams.get('team_id');
+        if (String(before || '') !== String(teamId)) {
+            url.searchParams.set('team_id', teamId);
+            history.replaceState(null, '', `${url.pathname}?${url.searchParams.toString()}`);
+        }
+    } catch (_) {}
 }
 
 // 監聽 i18n 初始化和語言變更事件
