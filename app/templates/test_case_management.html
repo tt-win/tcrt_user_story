@@ -3198,10 +3198,12 @@ function showTestCaseModal(testCase = null) {
                 // 優先從 testCase 物件，其次從表單欄位讀取
                 const tcNumber = (testCase && testCase.test_case_number) || document.getElementById('testCaseNumber')?.value || '';
                 const url = buildTcmUrl(teamId, tcNumber);
-                safeCopyToClipboard_TCM(url, () => {
-                    btn.innerHTML = '<i class="fas fa-check me-1"></i>' + (window.i18n ? window.i18n.t('common.copied') : '已複製');
-                    setTimeout(() => { btn.innerHTML = '<i class="fas fa-link me-1"></i>' + (window.i18n ? window.i18n.t('common.copyLink') : '複製連結'); }, 1500);
-                });
+                if (window.AppUtils && typeof AppUtils.showCopyModal === 'function') {
+                    AppUtils.showCopyModal(url, { title: (window.i18n ? window.i18n.t('common.copyLink') : '手動複製連結') });
+                } else {
+                    // 最簡回退
+                    window.prompt('請手動複製此連結：', url);
+                }
             };
         }
     } catch (_) {}

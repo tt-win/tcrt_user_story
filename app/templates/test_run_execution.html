@@ -2925,7 +2925,7 @@ function displayTestCaseDetail(testCase) {
         nextBtn.disabled = idx < 0 || idx >= testRunItems.length - 1;
     }
 
-    // 綁定複製連結按鈕
+    // 綁定複製連結按鈕（Test Case 詳情）
     try {
         const copyBtn = document.getElementById('copyExecCaseLinkBtn');
         if (copyBtn) {
@@ -2933,10 +2933,11 @@ function displayTestCaseDetail(testCase) {
                 const teamId = getCurrentTeamId();
                 const cfgId = (typeof currentConfigId !== 'undefined' && currentConfigId) ? currentConfigId : new URLSearchParams(window.location.search).get('config_id');
                 const url = buildTreUrl(cfgId, teamId, testCase.test_case_number);
-                safeCopyToClipboard(url, () => {
-                    copyBtn.innerHTML = '<i class="fas fa-check me-1"></i>' + (window.i18n ? window.i18n.t('common.copied') : '已複製');
-                    setTimeout(() => { copyBtn.innerHTML = '<i class="fas fa-link me-1"></i>' + (window.i18n ? window.i18n.t('common.copyLink') : '複製連結'); }, 1500);
-                });
+                if (window.AppUtils && typeof AppUtils.showCopyModal === 'function') {
+                    AppUtils.showCopyModal(url, { title: (window.i18n ? window.i18n.t('common.copyLink') : '手動複製連結') });
+                } else {
+                    window.prompt('請手動複製此連結：', url);
+                }
             };
         }
     } catch (_) {}
@@ -5347,12 +5348,8 @@ async function downloadReportAsPDF() {
               <div class="d-flex align-items-center w-100 gap-3 flex-wrap">
                 <button type="button" class="btn btn-primary" id="generateHTMLBtn" onclick="generateHtmlReport()">
                   <i class="fas fa-file-alt me-2" id="generateIcon"></i>
-                  <span id="generateText">生成 HTML 報告並複製連結</span>
+                  <span id="generateText">生成並複製連結</span>
                 </button>
-                <div id="reportLinkArea" class="flex-grow-1 text-truncate">
-                  <span class="text-muted" id="reportLinkText">尚未生成報告</span>
-                  <button type="button" id="copyReportLinkBtn" class="btn btn-outline-secondary btn-sm ms-2" onclick="copyReportLink()" disabled>複製</button>
-                </div>
                 <button type="button" class="btn btn-secondary ms-auto" data-bs-dismiss="modal">
                   <span data-i18n="common.close">關閉</span>
                 </button>
@@ -5365,90 +5362,14 @@ async function downloadReportAsPDF() {
 <script>
 // 在 Charts & Reports 開啟時查詢報告狀態
 (function(){
+  // 保留掛鉤以後續擴充狀態展示，但目前不顯示或保存 URL
   const modal = document.getElementById('chartsReportsModal');
   if (modal) {
-    modal.addEventListener('show.bs.modal', fetchReportStatus);
-    modal.addEventListener('shown.bs.modal', fetchReportStatus);
+    modal.addEventListener('show.bs.modal', () => {});
   }
 })();
 
-async function fetchReportStatus() {
-  try {
-    let teamId = (typeof currentTeamId !== 'undefined' && currentTeamId) ? currentTeamId : null;
-    let configId = (typeof currentConfigId !== 'undefined' && currentConfigId) ? currentConfigId : null;
-    if (!teamId || !configId) {
-      const params = new URLSearchParams(window.location.search);
-      teamId = teamId || params.get('team_id') || params.get('teamId') || params.get('team');
-      configId = configId || params.get('config_id') || params.get('configId') || params.get('config');
-    }
-    if (!teamId || !configId) return;
-
-    const resp = await fetch(`/api/teams/${encodeURIComponent(teamId)}/test-runs/${encodeURIComponent(configId)}/report`);
-    const data = await resp.json();
-    const linkTextEl = document.getElementById('reportLinkText');
-    const copyBtn = document.getElementById('copyReportLinkBtn');
-    if (data.exists && data.report_url) {
-      linkTextEl.textContent = data.report_url;
-      linkTextEl.classList.remove('text-muted');
-      linkTextEl.classList.add('text-primary');
-      linkTextEl.style.cursor = 'pointer';
-      linkTextEl.onclick = () => window.open(data.report_url, '_blank');
-      copyBtn.disabled = false;
-      copyBtn.dataset.url = data.report_url;
-    } else {
-      linkTextEl.textContent = '尚未生成報告';
-      linkTextEl.classList.add('text-muted');
-      linkTextEl.classList.remove('text-primary');
-      linkTextEl.onclick = null;
-      copyBtn.disabled = true;
-      delete copyBtn.dataset.url;
-    }
-  } catch (e) {
-    // 靜默失敗，維持原本顯示
-  }
-}
-
-function copyReportLink() {
-  const btn = document.getElementById('copyReportLinkBtn');
-  const url = btn && btn.dataset && btn.dataset.url;
-  if (!url) return;
-
-  // 優先使用 Clipboard API（需 HTTPS 或特定環境）
-  if (navigator && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-    navigator.clipboard.writeText(url).then(() => {
-      btn.textContent = '已複製';
-      setTimeout(() => { btn.textContent = '複製'; }, 1500);
-    }).catch(() => {
-      // 備援：使用暫時輸入欄位 + execCommand
-      try {
-        const temp = document.createElement('input');
-        temp.value = url;
-        document.body.appendChild(temp);
-        temp.select();
-        document.execCommand('copy');
-        document.body.removeChild(temp);
-        btn.textContent = '已複製';
-        setTimeout(() => { btn.textContent = '複製'; }, 1500);
-      } catch (e) {
-        prompt('複製這個連結：', url);
-      }
-    });
-  } else {
-    // 備援：使用暫時輸入欄位 + execCommand
-    try {
-      const temp = document.createElement('input');
-      temp.value = url;
-      document.body.appendChild(temp);
-      temp.select();
-      document.execCommand('copy');
-      document.body.removeChild(temp);
-      btn.textContent = '已複製';
-      setTimeout(() => { btn.textContent = '複製'; }, 1500);
-    } catch (e) {
-      prompt('複製這個連結：', url);
-    }
-  }
-}
+// copyReportLink 移除：改由單一按鈕在生成後彈出手動複製視窗
 
 // 生成 HTML 報告並複製連結
 async function generateHtmlReport() {
@@ -5488,30 +5409,18 @@ async function generateHtmlReport() {
     }
 
     const url = data.report_url;
-    // 嘗試寫入剪貼簿
-    try { await navigator.clipboard.writeText(url); } catch (e) {}
-
-    // 更新下方連結顯示
-    const linkTextEl = document.getElementById('reportLinkText');
-    const copyBtn = document.getElementById('copyReportLinkBtn');
-    if (linkTextEl && copyBtn) {
-      linkTextEl.textContent = url;
-      linkTextEl.classList.remove('text-muted');
-      linkTextEl.classList.add('text-primary');
-      linkTextEl.style.cursor = 'pointer';
-      linkTextEl.onclick = () => window.open(url, '_blank');
-      copyBtn.disabled = false;
-      copyBtn.dataset.url = url;
+    if (window.AppUtils && typeof AppUtils.showCopyModal === 'function') {
+      AppUtils.showCopyModal(url, { title: (window.i18n ? window.i18n.t('common.copyLink') : '手動複製連結') });
+    } else {
+      window.prompt('請手動複製此連結：', url);
     }
-
-    alert(`HTML 報告已生成：\n${url}\n\n連結已複製到剪貼簿（若瀏覽器允許）`);
   } catch (err) {
     alert('生成 HTML 報告時發生錯誤：' + (err?.message || err));
   } finally {
     btn.disabled = false;
     icon.classList.remove('fa-spinner', 'fa-spin');
     icon.classList.add('fa-file-alt');
-    text.textContent = '生成 HTML 報告並複製連結';
+    text.textContent = '生成並複製連結';
   }
 }
 // ===== 深連結與剪貼簿工具 =====

@@ -197,6 +197,67 @@ const AppUtils = {
         if (badge) {
             badge.classList.add('d-none');
         }
+    },
+
+    // 顯示手動複製連結對話框（統一介面）
+    showCopyModal: function(text, options = {}) {
+        const title = options.title || '手動複製連結';
+        const instruction = options.instruction || '請使用 Ctrl/Cmd + C 進行複製';
+
+        try {
+            const existing = document.getElementById('copyModal');
+            if (existing && existing.closest('.modal')) {
+                const inst = bootstrap.Modal.getInstance(existing.closest('.modal'));
+                if (inst) inst.hide();
+                existing.closest('.modal').remove();
+            }
+        } catch (_) {}
+
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = `
+            <div class="modal fade" id="copyModal" tabindex="-1" aria-hidden="true">
+              <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                  <div class="modal-header">
+                    <h5 class="modal-title">${title}</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                  </div>
+                  <div class="modal-body">
+                    <div class="mb-2">
+                      <label class="form-label">URL</label>
+                      <input id="copyModalInput" type="text" class="form-control" readonly value="${text || ''}">
+                    </div>
+                    <small class="text-muted">${instruction}</small>
+                  </div>
+                  <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">關閉</button>
+                    <button type="button" class="btn btn-primary" id="copySelectBtn">選取</button>
+                  </div>
+                </div>
+              </div>
+            </div>`;
+        document.body.appendChild(wrapper);
+        const modalEl = wrapper.querySelector('#copyModal');
+        const modal = new bootstrap.Modal(modalEl);
+        const inputEl = wrapper.querySelector('#copyModalInput');
+        const selectBtn = wrapper.querySelector('#copySelectBtn');
+
+        const selectAll = () => {
+            try {
+                inputEl.focus();
+                inputEl.select();
+                inputEl.setSelectionRange(0, (inputEl.value || '').length);
+            } catch (_) {}
+        };
+
+        modalEl.addEventListener('shown.bs.modal', selectAll);
+        selectBtn.addEventListener('click', selectAll);
+        modalEl.addEventListener('hidden.bs.modal', () => {
+            // 移除包裹節點避免殘留
+            wrapper.remove();
+        });
+
+        modal.show();
     }
 };
 

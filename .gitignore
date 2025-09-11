@@ -124,6 +124,9 @@ server.pid
 # Local test html pages
 i18n_test.html
 
+# Generated reports (static HTML); do not track
+/generated_report/
+
 # Design and documentation files
 *.md
 !README.md
