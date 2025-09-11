@@ -3483,6 +3483,7 @@ async function saveTestCase() {
             } else {
                 // 新增測試案例
                 // 建立 API 不支援 tcg 字串（僅 update 支援），避免 422 將其移除
+                const tcgNumberForCreate = testCaseData.tcg ? String(testCaseData.tcg).trim() : '';
                 try { delete testCaseData.tcg; } catch (_) {}
                 response = await fetch(`/api/teams/${currentTeam.id}/testcases/`, {
                     method: 'POST',
@@ -3516,6 +3517,21 @@ async function saveTestCase() {
                 if (newTestCase && newTestCase.record_id) {
                     document.getElementById('testCaseId').value = newTestCase.record_id;
                     document.getElementById('testCaseModalTitle').textContent = window.i18n ? window.i18n.t('testCase.viewTestCase') : '檢視測試案例';
+
+                    // 如果使用者有輸入 TCG，於建立後立即更新一次（後端支援字串）
+                    try {
+                        const tcgInputEl = document.getElementById('modalTCGInput');
+                        const tcgStr = (tcgInputEl && tcgInputEl.value) ? tcgInputEl.value.trim() : '';
+                        if (tcgStr) {
+                            await fetch(`/api/teams/${currentTeam.id}/testcases/${newTestCase.record_id}`, {
+                                method: 'PUT',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ tcg: tcgStr })
+                            });
+                        }
+                    } catch (e) {
+                        console.warn('建立後更新 TCG 失敗（將繼續流程）:', e);
+                    }
                 }
             }
             
@@ -3661,6 +3677,7 @@ async function saveAndAddNext() {
     try {
         // 新增測試案例
         // 建立 API 不支援 tcg 字串（僅 update 支援），避免 422 將其移除
+        const tcgNumberForCreate = testCaseData.tcg ? String(testCaseData.tcg).trim() : '';
         try { delete testCaseData.tcg; } catch (_) {}
         const response = await fetch(`/api/teams/${currentTeam.id}/testcases/`, {
             method: 'POST',
@@ -3687,6 +3704,26 @@ async function saveAndAddNext() {
             throw new Error(msg);
         }
         
+        // 取得新建記錄資訊以便更新 TCG（若有）
+        let createdRecordId = null;
+        try {
+            const createdJson = await response.json();
+            createdRecordId = createdJson && createdJson.record_id ? createdJson.record_id : null;
+        } catch (_) {}
+
+        // 若有 TCG 輸入，建立完成後立即更新 TCG（以字串）
+        if (createdRecordId && tcgNumberForCreate) {
+            try {
+                await fetch(`/api/teams/${currentTeam.id}/testcases/${createdRecordId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ tcg: tcgNumberForCreate })
+                });
+            } catch (e) {
+                console.warn('建立後更新 TCG 失敗（將繼續流程）:', e);
+            }
+        }
+
         // 重新載入測試案例以取得新建立的記錄
         await loadTestCases(false, null, true);
 
