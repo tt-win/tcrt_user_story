@@ -926,12 +926,30 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                         <th id="checkbox-header">
                             <input type="checkbox" class="form-check-input" id="selectAllItemsCheckbox">
                         </th>
-                        <th><span data-i18n="testRun.caseNumber">案例編號</span></th>
-                        <th><span data-i18n="testRun.caseTitle">標題</span></th>
-                        <th><span data-i18n="testRun.priority">優先級</span></th>
-                        <th><span data-i18n="testRun.testResult">測試結果</span></th>
-                        <th><span data-i18n="testRun.assignee">執行者</span></th>
-                        <th><span data-i18n="testRun.executedAt">執行時間</span></th>
+                        <th id="th-tre-number" class="sortable" style="cursor: pointer;">
+                            <span data-i18n="testRun.caseNumber">案例編號</span>
+                            <span class="sort-indicator ms-1"></span>
+                        </th>
+                        <th id="th-tre-title" class="sortable" style="cursor: pointer;">
+                            <span data-i18n="testRun.caseTitle">標題</span>
+                            <span class="sort-indicator ms-1"></span>
+                        </th>
+                        <th id="th-tre-priority" class="sortable" style="cursor: pointer;">
+                            <span data-i18n="testRun.priority">優先級</span>
+                            <span class="sort-indicator ms-1"></span>
+                        </th>
+                        <th id="th-tre-result" class="sortable" style="cursor: pointer;">
+                            <span data-i18n="testRun.testResult">測試結果</span>
+                            <span class="sort-indicator ms-1"></span>
+                        </th>
+                        <th id="th-tre-assignee" class="sortable" style="cursor: pointer;">
+                            <span data-i18n="testRun.assignee">執行者</span>
+                            <span class="sort-indicator ms-1"></span>
+                        </th>
+                        <th id="th-tre-executed" class="sortable" style="cursor: pointer;">
+                            <span data-i18n="testRun.executedAt">執行時間</span>
+                            <span class="sort-indicator ms-1"></span>
+                        </th>
                     </tr>
                 </thead>
                 <tbody id="items-table-body">
@@ -1368,6 +1386,65 @@ let currentConfigId = null;
 let currentTeamId = null; // 由 AppUtils 取得，無則退回 1
 let testRunConfig = null;
 let testRunItems = [];
+// ===== 排序狀態（TRE） =====
+let treSortField = 'number'; // number|title|priority|result|assignee|executed
+let treSortOrder = 'asc';
+
+function setTreSort(field) {
+    if (treSortField === field) {
+        treSortOrder = (treSortOrder === 'asc') ? 'desc' : 'asc';
+    } else {
+        treSortField = field;
+        treSortOrder = 'asc';
+    }
+    renderTestRunItems();
+}
+
+function updateTreSortIndicators() {
+    try {
+        const map = {
+            number: document.querySelector('#th-tre-number .sort-indicator'),
+            title: document.querySelector('#th-tre-title .sort-indicator'),
+            priority: document.querySelector('#th-tre-priority .sort-indicator'),
+            result: document.querySelector('#th-tre-result .sort-indicator'),
+            assignee: document.querySelector('#th-tre-assignee .sort-indicator'),
+            executed: document.querySelector('#th-tre-executed .sort-indicator')
+        };
+        Object.values(map).forEach(el => { if (el) el.textContent = ''; });
+        const target = map[treSortField];
+        if (target) target.textContent = (treSortOrder === 'asc') ? '▲' : '▼';
+    } catch (_) {}
+}
+
+function sortTestRunItems() {
+    const priRank = v => ({ High: 3, Medium: 2, Low: 1 }[v] || 0);
+    const resRank = v => ({ Passed: 4, Failed: 3, Retest: 2, 'Not Available': 1 }[v] || 0);
+    const assigneeOf = it => (it.assignee_name || (it.assignee && it.assignee.name) || '').toLowerCase();
+    const cmp = (a, b) => {
+        switch (treSortField) {
+            case 'number':
+                return (a.test_case_number || '').localeCompare(b.test_case_number || '');
+            case 'title':
+                return (a.title || '').toLowerCase().localeCompare((b.title || '').toLowerCase());
+            case 'priority':
+                return priRank(a.priority) - priRank(b.priority);
+            case 'result':
+                return resRank(a.test_result) - resRank(b.test_result);
+            case 'assignee':
+                return assigneeOf(a).localeCompare(assigneeOf(b));
+            case 'executed':
+                return new Date(a.executed_at || 0) - new Date(b.executed_at || 0);
+            default:
+                return 0;
+        }
+    };
+    try {
+        testRunItems.sort((a, b) => {
+            const r = cmp(a, b);
+            return treSortOrder === 'asc' ? r : -r;
+        });
+    } catch (_) {}
+}
 let itemDetailModal = null;
 let confirmModal = null;
 let restartModal = null;
@@ -1756,6 +1833,9 @@ function renderTestRunItems() {
     
     // 更新表格標頭顯示
     updateTableHeader();
+    // 依排序設定排序並更新指示
+    sortTestRunItems();
+    updateTreSortIndicators();
     
     tbody.innerHTML = testRunItems.map((item, index) => {
         return createItemRow(item, index + 1, canUpdate);
@@ -1775,6 +1855,23 @@ function renderTestRunItems() {
     // 確保載入動畫關閉，顯示列表
     hideItemsLoading();
 }
+
+// 初始化表頭排序點擊事件（一次性）
+(function initTreHeaderSorting(){
+  const bind = (id, field) => {
+    const el = document.getElementById(id);
+    if (el && !el._sortBound) {
+      el.addEventListener('click', () => setTreSort(field));
+      el._sortBound = true;
+    }
+  };
+  bind('th-tre-number', 'number');
+  bind('th-tre-title', 'title');
+  bind('th-tre-priority', 'priority');
+  bind('th-tre-result', 'result');
+  bind('th-tre-assignee', 'assignee');
+  bind('th-tre-executed', 'executed');
+})();
 
 // 列表區載入動畫控制（顯示空框 + spinner）
 function showItemsLoading() {

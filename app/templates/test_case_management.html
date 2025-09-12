@@ -343,12 +343,30 @@ html, body { height: 100%; overflow: hidden; }
                             <th width="30" class="text-center" style="padding: 4px 8px !important; vertical-align: middle;">
                                 <input type="checkbox" class="form-check-input" id="selectAllCheckbox">
                             </th>
-                            <th width="220" style="padding: 4px 8px !important; vertical-align: middle;" data-i18n="testCase.testCaseNumber">Test Case Number</th>
-                            <th style="padding: 4px 8px !important; vertical-align: middle;" data-i18n="common.title">標題</th>
-                            <th width="120" class="text-center" style="padding: 4px 8px !important; vertical-align: middle;">TCG</th>
-                            <th width="80" class="text-center" style="padding: 4px 8px !important; vertical-align: middle;" data-i18n="testCase.priority">優先級</th>
-                            <th width="100" class="text-center" style="padding: 4px 8px !important; vertical-align: middle;" data-i18n="common.createDate">建立日期</th>
-                            <th width="100" class="text-center" style="padding: 4px 8px !important; vertical-align: middle;" data-i18n="common.updateDate">更新日期</th>
+                            <th id="th-tcm-number" class="sortable" width="220" style="padding: 4px 8px !important; vertical-align: middle; cursor: pointer;">
+                                <span data-i18n="testCase.testCaseNumber">Test Case Number</span>
+                                <span class="sort-indicator ms-1"></span>
+                            </th>
+                            <th id="th-tcm-title" class="sortable" style="padding: 4px 8px !important; vertical-align: middle; cursor: pointer;">
+                                <span data-i18n="common.title">標題</span>
+                                <span class="sort-indicator ms-1"></span>
+                            </th>
+                            <th id="th-tcm-tcg" class="sortable text-center" width="120" style="padding: 4px 8px !important; vertical-align: middle; cursor: pointer;">
+                                <span>TCG</span>
+                                <span class="sort-indicator ms-1"></span>
+                            </th>
+                            <th id="th-tcm-priority" class="sortable text-center" width="80" style="padding: 4px 8px !important; vertical-align: middle; cursor: pointer;">
+                                <span data-i18n="testCase.priority">優先級</span>
+                                <span class="sort-indicator ms-1"></span>
+                            </th>
+                            <th id="th-tcm-created" class="sortable text-center" width="100" style="padding: 4px 8px !important; vertical-align: middle; cursor: pointer;">
+                                <span data-i18n="common.createDate">建立日期</span>
+                                <span class="sort-indicator ms-1"></span>
+                            </th>
+                            <th id="th-tcm-updated" class="sortable text-center" width="100" style="padding: 4px 8px !important; vertical-align: middle; cursor: pointer;">
+                                <span data-i18n="common.updateDate">更新日期</span>
+                                <span class="sort-indicator ms-1"></span>
+                            </th>
                             <th width="100" class="text-center" style="padding: 4px 8px !important; vertical-align: middle;" data-i18n="common.actions">操作</th>
                         </tr>
                     </thead>
@@ -1044,6 +1062,83 @@ const TCG_CACHE_KEY = 'tcg_cache';
 const TCG_CACHE_TIMESTAMP_KEY = 'tcg_cache_timestamp';
 const TCG_CACHE_EXPIRY = 24 * 60 * 60 * 1000; // 24小時過期
 
+// ===== 排序狀態（TCM） =====
+let tcmSortField = 'number'; // number|title|tcg|priority|created|updated
+let tcmSortOrder = 'asc';    // asc|desc
+
+function setTcmSort(field) {
+    if (tcmSortField === field) {
+        tcmSortOrder = (tcmSortOrder === 'asc') ? 'desc' : 'asc';
+    } else {
+        tcmSortField = field;
+        tcmSortOrder = 'asc';
+    }
+    renderTestCasesTable();
+}
+
+function updateTcmSortIndicators() {
+    try {
+        const map = {
+            number: document.querySelector('#th-tcm-number .sort-indicator'),
+            title: document.querySelector('#th-tcm-title .sort-indicator'),
+            tcg: document.querySelector('#th-tcm-tcg .sort-indicator'),
+            priority: document.querySelector('#th-tcm-priority .sort-indicator'),
+            created: document.querySelector('#th-tcm-created .sort-indicator'),
+            updated: document.querySelector('#th-tcm-updated .sort-indicator')
+        };
+        Object.values(map).forEach(el => { if (el) el.textContent = ''; });
+        const target = map[tcmSortField];
+        if (target) target.textContent = (tcmSortOrder === 'asc') ? '▲' : '▼';
+    } catch (_) {}
+}
+
+function sortFilteredTestCases() {
+    const priRank = v => ({ High: 3, Medium: 2, Low: 1 }[v] || 0);
+    const getTCGText = tc => {
+        try {
+            if (!tc || !tc.tcg) return '';
+            // 使用畫面顯示邏輯：優先 text/text_arr
+            const arr = [];
+            for (const r of tc.tcg) {
+                if (r && Array.isArray(r.text_arr) && r.text_arr.length) arr.push(...r.text_arr);
+                else if (r && r.text) arr.push(r.text);
+            }
+            return arr.join(',');
+        } catch (_) { return ''; }
+    };
+    const cmp = (a, b) => {
+        let av = '', bv = '';
+        switch (tcmSortField) {
+            case 'number':
+                av = a.test_case_number || '';
+                bv = b.test_case_number || '';
+                return av.localeCompare(bv);
+            case 'title':
+                av = (a.title || '').toLowerCase();
+                bv = (b.title || '').toLowerCase();
+                return av.localeCompare(bv);
+            case 'tcg':
+                av = getTCGText(a);
+                bv = getTCGText(b);
+                return av.localeCompare(bv);
+            case 'priority':
+                return priRank(a.priority) - priRank(b.priority);
+            case 'created':
+                return new Date(a.created_at || 0) - new Date(b.created_at || 0);
+            case 'updated':
+                return new Date(a.updated_at || 0) - new Date(b.updated_at || 0);
+            default:
+                return 0;
+        }
+    };
+    try {
+        filteredTestCases.sort((a, b) => {
+            const r = cmp(a, b);
+            return tcmSortOrder === 'asc' ? r : -r;
+        });
+    } catch (_) {}
+}
+
 // ===== 統一快取管理模組 =====
 const TEST_CASES_CACHE_KEY = 'test_cases_list_cache_v1';
 const TEST_CASES_CACHE_TTL = 60 * 60 * 1000; // 1小時
@@ -1706,6 +1801,9 @@ function hasAnyFilters() {
 
 function renderTestCasesTable() {
     const tbody = document.getElementById('testCasesTableBody');
+    // 依目前排序設定排序並更新指示
+    sortFilteredTestCases();
+    updateTcmSortIndicators();
     const startIndex = (currentPage - 1) * pageSize;
     const endIndex = startIndex + pageSize;
     const pageTestCases = filteredTestCases.slice(startIndex, endIndex);
@@ -1816,6 +1914,20 @@ function bindEvents() {
     // 搜尋與篩選
     document.getElementById('applyFiltersBtn').addEventListener('click', applyFilters);
     document.getElementById('clearFiltersBtn').addEventListener('click', clearFilters);
+
+    // 表頭排序點擊事件
+    const hNum = document.getElementById('th-tcm-number');
+    const hTitle = document.getElementById('th-tcm-title');
+    const hTcg = document.getElementById('th-tcm-tcg');
+    const hPri = document.getElementById('th-tcm-priority');
+    const hCreated = document.getElementById('th-tcm-created');
+    const hUpdated = document.getElementById('th-tcm-updated');
+    if (hNum) hNum.addEventListener('click', () => setTcmSort('number'));
+    if (hTitle) hTitle.addEventListener('click', () => setTcmSort('title'));
+    if (hTcg) hTcg.addEventListener('click', () => setTcmSort('tcg'));
+    if (hPri) hPri.addEventListener('click', () => setTcmSort('priority'));
+    if (hCreated) hCreated.addEventListener('click', () => setTcmSort('created'));
+    if (hUpdated) hUpdated.addEventListener('click', () => setTcmSort('updated'));
     
     // 搜尋欄位 Enter 鍵支援
     document.getElementById('testCaseNumberSearch').addEventListener('keydown', function(e) {
