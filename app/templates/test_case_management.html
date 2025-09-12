@@ -1345,11 +1345,50 @@ function loadTCGCacheFromStorage() {
 }
 
 function saveTCGCacheToStorage() {
+    // 將資料壓縮為必要欄位，減少 localStorage 佔用
+    const compact = Array.isArray(tcgCache)
+        ? tcgCache.map(item => ({ tcg_number: item.tcg_number, title: item.title }))
+        : [];
+
+    const trySave = (list) => {
+        localStorage.setItem(TCG_CACHE_KEY, JSON.stringify(list));
+        localStorage.setItem(TCG_CACHE_TIMESTAMP_KEY, String(tcgCacheTimestamp || Date.now()));
+    };
+
     try {
-        localStorage.setItem(TCG_CACHE_KEY, JSON.stringify(tcgCache));
-        localStorage.setItem(TCG_CACHE_TIMESTAMP_KEY, tcgCacheTimestamp.toString());
-    } catch (error) {
-        console.error('儲存 TCG 快取失敗:', error);
+        trySave(compact);
+    } catch (e) {
+        // Quota 超限時，採降級策略：逐步縮減快取數量，最少保留 1000 筆；仍失敗則不持久化
+        console.warn('TCG 快取容量不足，嘗試縮減後儲存...', e);
+        let max = compact.length;
+        let saved = false;
+        for (let i = 0; i < 6 && max > 1000; i++) { // 最多 6 次，每次縮 30%
+            max = Math.floor(max * 0.7);
+            try {
+                trySave(compact.slice(0, max));
+                console.warn(`已縮減並儲存部分 TCG 快取 (${max} 筆)`);
+                saved = true;
+                break;
+            } catch (_) {}
+        }
+        if (!saved) {
+            try {
+                // 最後嘗試寫入最小數量
+                trySave(compact.slice(0, 1000));
+                console.warn('已縮減至最小集 (1000) 並成功儲存');
+                saved = true;
+            } catch (_) {}
+        }
+        if (!saved) {
+            // 放棄持久化，改為記憶體快取
+            try {
+                localStorage.removeItem(TCG_CACHE_KEY);
+                localStorage.removeItem(TCG_CACHE_TIMESTAMP_KEY);
+            } catch (_) {}
+            if (window.AppUtils && AppUtils.showWarning) {
+                AppUtils.showWarning('本機儲存空間不足，TCG 快取僅在此頁有效');
+            }
+        }
     }
     // 工具列顯示狀態可能改變整體高度，需重新計算列表高度
     adjustTestCasesScrollHeight();
