@@ -1094,16 +1094,30 @@ function updateTcmSortIndicators() {
 
 function sortFilteredTestCases() {
     const priRank = v => ({ High: 3, Medium: 2, Low: 1 }[v] || 0);
-    const getTCGText = tc => {
+    const parseNumberSegments = str => {
         try {
-            if (!tc || !tc.tcg) return '';
-            // 使用畫面顯示邏輯：優先 text/text_arr
-            const arr = [];
+            if (!str) return [];
+            const ms = String(str).match(/\d+/g);
+            return ms ? ms.map(s => parseInt(s, 10)) : [];
+        } catch (_) { return []; }
+    };
+    const compareByNumericParts = (aStr, bStr) => {
+        const aSeg = parseNumberSegments(aStr);
+        const bSeg = parseNumberSegments(bStr);
+        const len = Math.min(aSeg.length, bSeg.length);
+        for (let i = 0; i < len; i++) {
+            if (aSeg[i] !== bSeg[i]) return aSeg[i] - bSeg[i];
+        }
+        return aSeg.length - bSeg.length;
+    };
+    const getFirstTCGNumber = tc => {
+        try {
+            if (!tc || !tc.tcg || !tc.tcg.length) return '';
             for (const r of tc.tcg) {
-                if (r && Array.isArray(r.text_arr) && r.text_arr.length) arr.push(...r.text_arr);
-                else if (r && r.text) arr.push(r.text);
+                if (r && Array.isArray(r.text_arr) && r.text_arr.length) return r.text_arr[0];
+                if (r && r.text) return r.text;
             }
-            return arr.join(',');
+            return '';
         } catch (_) { return ''; }
     };
     const cmp = (a, b) => {
@@ -1112,15 +1126,15 @@ function sortFilteredTestCases() {
             case 'number':
                 av = a.test_case_number || '';
                 bv = b.test_case_number || '';
-                return av.localeCompare(bv);
+                return compareByNumericParts(av, bv);
             case 'title':
                 av = (a.title || '').toLowerCase();
                 bv = (b.title || '').toLowerCase();
                 return av.localeCompare(bv);
             case 'tcg':
-                av = getTCGText(a);
-                bv = getTCGText(b);
-                return av.localeCompare(bv);
+                av = getFirstTCGNumber(a);
+                bv = getFirstTCGNumber(b);
+                return compareByNumericParts(av, bv);
             case 'priority':
                 return priRank(a.priority) - priRank(b.priority);
             case 'created':

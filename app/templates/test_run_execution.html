@@ -1420,10 +1420,26 @@ function sortTestRunItems() {
     const priRank = v => ({ High: 3, Medium: 2, Low: 1 }[v] || 0);
     const resRank = v => ({ Passed: 4, Failed: 3, Retest: 2, 'Not Available': 1 }[v] || 0);
     const assigneeOf = it => (it.assignee_name || (it.assignee && it.assignee.name) || '').toLowerCase();
+    const parseNumberSegments = str => {
+        try {
+            if (!str) return [];
+            const ms = String(str).match(/\d+/g);
+            return ms ? ms.map(s => parseInt(s, 10)) : [];
+        } catch (_) { return []; }
+    };
+    const compareByNumericParts = (aStr, bStr) => {
+        const aSeg = parseNumberSegments(aStr);
+        const bSeg = parseNumberSegments(bStr);
+        const len = Math.min(aSeg.length, bSeg.length);
+        for (let i = 0; i < len; i++) {
+            if (aSeg[i] !== bSeg[i]) return aSeg[i] - bSeg[i];
+        }
+        return aSeg.length - bSeg.length;
+    };
     const cmp = (a, b) => {
         switch (treSortField) {
             case 'number':
-                return (a.test_case_number || '').localeCompare(b.test_case_number || '');
+                return compareByNumericParts(a.test_case_number || '', b.test_case_number || '');
             case 'title':
                 return (a.title || '').toLowerCase().localeCompare((b.title || '').toLowerCase());
             case 'priority':
