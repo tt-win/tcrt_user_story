@@ -5,7 +5,7 @@
   const DB_VERSION = 4; // 回到單一storage + 改進key策略
   const STORE_TCG = 'tcg'; // TCG共用
   const STORE_EXEC = 'exec_unified'; // 統一的執行資料store
-  const EXEC_LRU_MAX = 5000; // 全域LRU限制
+  const EXEC_LRU_MAX = 100000; // 全域LRU限制
 
   const TRCache = {
     _dbPromise: null,
