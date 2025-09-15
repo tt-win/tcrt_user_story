@@ -30,7 +30,7 @@ from app.services.lark_client import LarkClient
 from app.services.test_case_sync_service import TestCaseSyncService
 
 
-def run_for_team(db, team_id: int, mode: str, dry_run: bool = False) -> Dict[str, Any]:
+def run_for_team(db, team_id: int, mode: str, dry_run: bool = False, prune: bool = False) -> Dict[str, Any]:
     # 讀取團隊配置
     team = db.query(TeamDB).filter(TeamDB.id == team_id).first()
     if not team:
@@ -51,9 +51,9 @@ def run_for_team(db, team_id: int, mode: str, dry_run: bool = False) -> Dict[str
         if dry_run:
             # 目前提供簡單提示，詳細 dry-run 需要在 service 層模擬上傳
             print(f"[DRY-RUN][team={team_id}] full-update 將以本地資料覆蓋 Lark（實際上不會上傳）")
-            result = {"mode": "full-update", "dry_run": True}
+            result = {"mode": "full-update", "dry_run": True, "prune": prune}
         else:
-            result = svc.full_update()
+            result = svc.full_update(prune=prune)
     else:
         raise SystemExit(f"不支援的模式：{mode}")
 
@@ -74,6 +74,7 @@ def main():
     parser.add_argument('--all', action='store_true', help='同步所有團隊（若提供則忽略 --team-id）')
     parser.add_argument('--mode', choices=['init', 'full-update'], required=True, help='同步模式')
     parser.add_argument('--dry-run', action='store_true', help='試 run，不提交變更（僅對 full-update 有效）')
+    parser.add_argument('--prune', action='store_true', help='在 full-update 模式下，刪除 Lark 上本地不存在的案例（務必小心）')
     args = parser.parse_args()
 
     _ensure_db_schema()
@@ -84,11 +85,11 @@ def main():
             teams = db.query(TeamDB).all()
             aggregated = []
             for t in teams:
-                r = run_for_team(db, t.id, args.mode, args.dry_run)
+                r = run_for_team(db, t.id, args.mode, args.dry_run, args.prune)
                 aggregated.append({"team_id": t.id, "team_name": t.name, **r})
             results = aggregated
         else:
-            results = run_for_team(db, args.team_id, args.mode, args.dry_run)
+            results = run_for_team(db, args.team_id, args.mode, args.dry_run, args.prune)
     finally:
         db.close()
 

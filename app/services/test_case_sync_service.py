@@ -243,8 +243,10 @@ class TestCaseSyncService:
         self.db.commit()
         return {'mode': 'diff', **stats.to_dict(), 'total_lark_records': len(records)}
 
-    def full_update(self) -> Dict[str, Any]:
-        """以本地覆蓋 Lark：將本地資料（team）全部上傳到 Lark（create 或 update）。"""
+    def full_update(self, prune: bool = False) -> Dict[str, Any]:
+        """以本地覆蓋 Lark：將本地資料（team）全部上傳到 Lark（create 或 update）。
+        若 prune=True，同步完成後會刪除 Lark 上本地不存在的記錄（依 Test Case Number 比對）。
+        """
         stats = TestCaseSyncStats()
 
         # 準備本地資料
@@ -312,10 +314,35 @@ class TestCaseSyncService:
         else:
             stats.updated += updated_count
 
+        pruned = 0
+        prune_errors: List[str] = []
+        if prune:
+            try:
+                # 取得 Lark 現況
+                lark_records = self._get_all_lark_records()
+                lark_by_num: Dict[str, Dict[str, Any]] = {}
+                for r in lark_records:
+                    f = r.get('fields', {}) or {}
+                    num = f.get('Test Case Number')
+                    if num:
+                        lark_by_num[str(num)] = r
+                local_numbers = {item.test_case_number for item in locals_list if item.test_case_number}
+                # 找出 Lark 多餘的（不在本地）
+                to_delete_ids = [rec.get('record_id') for num, rec in lark_by_num.items() if num not in local_numbers and rec.get('record_id')]
+                if to_delete_ids:
+                    ok_del, del_count, del_errors = self.lark.batch_delete_records(self.table_id, to_delete_ids)
+                    pruned += del_count if ok_del else 0
+                    prune_errors.extend(del_errors or [])
+            except Exception as e:
+                prune_errors.append(str(e))
+
         # 將本地 sync_status 標記為 SYNCED
         for item in locals_list:
             item.sync_status = SyncStatus.SYNCED
             item.last_sync_at = datetime.utcnow()
 
         self.db.commit()
-        return {'mode': 'full-update', **stats.to_dict(), 'created': len(created_ids) if creates else 0, 'updated': stats.updated}
+        result = {'mode': 'full-update', **stats.to_dict(), 'created': len(created_ids) if creates else 0, 'updated': stats.updated}
+        if prune:
+            result.update({'pruned': pruned, 'prune_errors': prune_errors})
+        return result

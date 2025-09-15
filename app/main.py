@@ -12,6 +12,14 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# 啟用 GZip 壓縮（預設對 >= 1KB 的回應進行壓縮）
+try:
+    from starlette.middleware.gzip import GZipMiddleware
+    # 注意：對於已壓縮格式（如 png/jpg/zip）壓縮收益有限；minimum_size 提高可避免浪費 CPU
+    app.add_middleware(GZipMiddleware, minimum_size=1024)
+except Exception as _e:
+    logging.warning(f"GZipMiddleware 啟用失敗（不影響服務）：{_e}")
+
 # 配置日誌
 logging.basicConfig(level=logging.INFO)
 
