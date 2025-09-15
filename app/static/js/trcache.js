@@ -12,6 +12,7 @@
     debug: false,
     enableErrorLogging: true, // 啟用詳細錯誤日志記錄
     _sessionId: null, // 會話唯一標識符，避免快取衝突
+    _monitoringEnabled: false, // 監控狀態旗標
 
     async _openDB() {
       if (this._dbPromise) return this._dbPromise;
@@ -568,22 +569,48 @@
 
     // 監控cache操作
     monitorCache: (enable = true) => {
-      if (enable) {
+      if (enable && !TRCache._monitoringEnabled) {
         const originalSetExec = TRCache.setExecDetail;
         TRCache.setExecDetail = function(teamId, testCaseNumber, obj) {
           const key = TRCache._execKey(teamId, testCaseNumber);
-          console.log(`[Cache Monitor] setExecDetail - teamId: ${teamId}, key: ${key}`);
+          const validTeamId = TRCache._getValidTeamId(teamId);
+          console.log(`%c[Cache Monitor] 寫入`, 'color: #4CAF50; font-weight: bold', {
+            原始TeamId: teamId,
+            有效TeamId: validTeamId,
+            測試案例: testCaseNumber,
+            快取Key: key,
+            數據大小: JSON.stringify(obj).length + ' bytes'
+          });
           return originalSetExec.call(this, teamId, testCaseNumber, obj);
         };
 
         const originalGetExec = TRCache.getExecDetail;
         TRCache.getExecDetail = function(teamId, testCaseNumber, ttl) {
           const key = TRCache._execKey(teamId, testCaseNumber);
-          console.log(`[Cache Monitor] getExecDetail - teamId: ${teamId}, key: ${key}`);
+          const validTeamId = TRCache._getValidTeamId(teamId);
+          console.log(`%c[Cache Monitor] 讀取`, 'color: #2196F3; font-weight: bold', {
+            原始TeamId: teamId,
+            有效TeamId: validTeamId,
+            測試案例: testCaseNumber,
+            快取Key: key,
+            TTL: ttl ? (ttl/1000/60).toFixed(1) + '分鐘' : '無限制'
+          });
           return originalGetExec.call(this, teamId, testCaseNumber, ttl);
         };
 
-        console.log('[Cache Monitor] 已啟用cache操作監控');
+        const originalSetTCG = TRCache.setTCG;
+        TRCache.setTCG = function(list) {
+          console.log(`%c[Cache Monitor] TCG寫入`, 'color: #FF9800; font-weight: bold', {
+            項目數量: Array.isArray(list) ? list.length : 0,
+            數據大小: JSON.stringify(list || []).length + ' bytes'
+          });
+          return originalSetTCG.call(this, list);
+        };
+
+        TRCache._monitoringEnabled = true;
+        console.log('%c[Cache Monitor] 已啟用cache操作監控', 'color: #4CAF50; font-weight: bold; background: #E8F5E8; padding: 4px 8px; border-radius: 4px');
+      } else if (enable && TRCache._monitoringEnabled) {
+        console.log('[Cache Monitor] 監控已經啟用');
       } else {
         console.log('[Cache Monitor] 監控功能需要重新載入頁面來停用');
       }
@@ -647,8 +674,13 @@
     }
   };
 
-  // 初始化時顯示版本信息
+  // 初始化時顯示版本信息和啟用監控
   if (TRCache.enableErrorLogging) {
-    console.log('[TRCache] 已載入，版本: v2.2 (強化衝突防護)', '\n調試指令: TRCacheDebug.diagnoseTeam()\n衝突檢查: TRCacheDebug.checkTeamConflict(teamId1, teamId2)');
+    console.log('[TRCache] 已載入，版本: v2.3 (預設監控)', '\n調試指令: TRCacheDebug.diagnoseTeam()\n衝突檢查: TRCacheDebug.checkTeamConflict(teamId1, teamId2)');
+
+    // 預設啟用快取操作監控
+    setTimeout(() => {
+      TRCacheDebug.monitorCache(true);
+    }, 100);
   }
 })(window);
