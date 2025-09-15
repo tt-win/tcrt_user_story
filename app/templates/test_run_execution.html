@@ -1528,6 +1528,8 @@ function initializePage() {
         window.addEventListener('teamChanged', function(e) {
             const newTeam = e && e.detail && e.detail.team;
             if (newTeam && newTeam.id) {
+                // 更新目前使用中的 teamId，確保後續快取用正確的 key 寫入
+                currentTeamId = newTeam.id;
                 ensureTeamIdInUrl_TRE(newTeam.id);
             }
         });
