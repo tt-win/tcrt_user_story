@@ -1022,8 +1022,18 @@ const EXEC_TC_CACHE_TTL_MS = 60 * 60 * 1000; // 1 小時
 
 function setExecCachedTestCase(testCaseNumber, data) {
     try {
-        const team = AppUtils.getCurrentTeam();
-        const teamId = team && team.id ? team.id : 'unknown';
+        let teamId = 'unknown';
+        try {
+            const t = AppUtils.getCurrentTeam && AppUtils.getCurrentTeam();
+            if (t && t.id) teamId = t.id;
+        } catch (_) {}
+        if (teamId === 'unknown') {
+            try {
+                const p = new URLSearchParams(window.location.search);
+                const t = p.get('team_id') || p.get('teamId') || p.get('team');
+                if (t) teamId = t;
+            } catch (_) {}
+        }
         // 非阻塞寫入 TRCache（IndexedDB + gzip）
         Promise.resolve().then(() => TRCache.setExecDetail(teamId, testCaseNumber, data)).catch(()=>{});
     } catch (_) {}

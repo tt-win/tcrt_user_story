@@ -9,10 +9,16 @@
 
   const TRCache = {
     _dbPromise: null,
+    debug: false,
 
     async _openDB() {
       if (this._dbPromise) return this._dbPromise;
       this._dbPromise = new Promise((resolve, reject) => {
+        if (!('indexedDB' in global)) {
+          console.error('[TRCache] indexedDB not supported');
+          reject(new Error('indexedDB not supported'));
+          return;
+        }
         const req = indexedDB.open(DB_NAME, DB_VERSION);
         req.onupgradeneeded = (e) => {
           const db = e.target.result;
@@ -26,9 +32,10 @@
             s2.createIndex('ts', 'ts');
             s2.createIndex('lastAccess', 'lastAccess');
           }
+          if (TRCache.debug) console.debug('[TRCache] onupgradeneeded');
         };
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error);
+        req.onsuccess = () => { if (TRCache.debug) console.debug('[TRCache] DB opened'); resolve(req.result); };
+        req.onerror = () => { console.error('[TRCache] DB open error:', req.error); reject(req.error); };
       });
       return this._dbPromise;
     },
@@ -52,9 +59,10 @@
       const db = await this._openDB();
       return new Promise((resolve, reject) => {
         const tx = db.transaction(store, 'readwrite');
-        tx.oncomplete = () => resolve(true);
-        tx.onerror = () => reject(tx.error);
-        tx.objectStore(store).put(record);
+        tx.oncomplete = () => { if (TRCache.debug) console.debug('[TRCache] put complete', store, record.key); resolve(true); };
+        tx.onerror = () => { console.error('[TRCache] put tx error:', tx.error); reject(tx.error); };
+        const req = tx.objectStore(store).put(record);
+        req.onerror = () => { console.error('[TRCache] put req error:', req.error); };
       });
     },
 
@@ -62,10 +70,10 @@
       const db = await this._openDB();
       return new Promise((resolve, reject) => {
         const tx = db.transaction(store, 'readonly');
-        tx.onerror = () => reject(tx.error);
+        tx.onerror = () => { console.error('[TRCache] get tx error:', tx.error); reject(tx.error); };
         const req = tx.objectStore(store).get(key);
-        req.onsuccess = () => resolve(req.result || null);
-        req.onerror = () => reject(req.error);
+        req.onsuccess = () => { if (TRCache.debug) console.debug('[TRCache] get ok', store, key, !!req.result); resolve(req.result || null); };
+        req.onerror = () => { console.error('[TRCache] get req error:', req.error); reject(req.error); };
       });
     },
 
@@ -140,6 +148,7 @@
         const jsonStr = JSON.stringify(obj);
         const gz = this._gzip(jsonStr, 5);
         const rec = { key, ts: Date.now(), lastAccess: Date.now(), data: new Blob([gz], { type: 'application/octet-stream' }), size: gz.length };
+        if (TRCache.debug) console.debug('[TRCache] setExecDetail', key, 'size', rec.size);
         await this._put(STORE_EXEC, rec);
         await this._lruEvict(STORE_EXEC, EXEC_LRU_MAX);
       } catch (_) { /* ignore */ }
@@ -166,9 +175,20 @@
         const jsonStr = JSON.stringify(list || []);
         const gz = this._gzip(jsonStr, 5);
         const rec = { key: 'tcg', ts: Date.now(), lastAccess: Date.now(), data: new Blob([gz], { type: 'application/octet-stream' }), size: gz.length };
+        if (TRCache.debug) console.debug('[TRCache] setTCG size', rec.size);
         await this._put(STORE_TCG, rec);
       } catch (_) { /* ignore */ }
     },
+
+    async selfTest() {
+      try {
+        TRCache.debug = true;
+        await TRCache.setExecDetail('selftest', 'DEMO', { ok: true, at: Date.now() });
+        const d = await TRCache.getExecDetail('selftest', 'DEMO', 60*60*1000);
+        console.log('[TRCache] selfTest result:', d);
+        return d;
+      } catch (e) { console.error('[TRCache] selfTest error', e); return null; }
+    }
 
     async clearTeam(teamId) {
       try {
@@ -201,4 +221,3 @@
 
   global.TRCache = TRCache;
 })(window);
-
