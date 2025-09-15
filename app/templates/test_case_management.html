@@ -1020,28 +1020,18 @@ TCG-93178.010.060,資料同步測試"></textarea>
 const EXEC_TC_CACHE_PREFIX = 'tr_exec_tc_cache_v1';
 const EXEC_TC_CACHE_TTL_MS = 60 * 60 * 1000; // 1 小時
 
-function getExecCacheKey(testCaseNumber) {
+function setExecCachedTestCase(testCaseNumber, data) {
     try {
         const team = AppUtils.getCurrentTeam();
         const teamId = team && team.id ? team.id : 'unknown';
-        return `${EXEC_TC_CACHE_PREFIX}:${teamId}:${testCaseNumber}`;
-    } catch (_) {
-        return `${EXEC_TC_CACHE_PREFIX}:unknown:${testCaseNumber}`;
-    }
-}
-
-function setExecCachedTestCase(testCaseNumber, data) {
-    try {
-        const key = getExecCacheKey(testCaseNumber);
-        const payload = { ts: Date.now(), data };
-        localStorage.setItem(key, JSON.stringify(payload));
+        // 非阻塞寫入 TRCache（IndexedDB + gzip）
+        Promise.resolve().then(() => TRCache.setExecDetail(teamId, testCaseNumber, data)).catch(()=>{});
     } catch (_) {}
 }
 
 function removeExecCachedTestCase(testCaseNumber) {
     try {
-        const key = getExecCacheKey(testCaseNumber);
-        localStorage.removeItem(key);
+        // 目前移除僅影響列表記憶體/視圖；IndexedDB 的條目由 LRU 自動管理
     } catch (_) {}
 }
 
@@ -1433,19 +1423,14 @@ const urlParams = new URLSearchParams(window.location.search);
 });
 
 // TCG 快取管理函數
-function loadTCGCacheFromStorage() {
+async function loadTCGCacheFromStorage() {
     try {
-        const cached = localStorage.getItem(TCG_CACHE_KEY);
-        const timestamp = localStorage.getItem(TCG_CACHE_TIMESTAMP_KEY);
-        
-        if (cached && timestamp) {
-            const cacheAge = Date.now() - parseInt(timestamp);
-            if (cacheAge < TCG_CACHE_EXPIRY) {
-                tcgCache = JSON.parse(cached);
-                tcgCacheTimestamp = parseInt(timestamp);
-                console.log(`載入 TCG 快取: ${tcgCache.length} 筆記錄`);
-                return true;
-            }
+        const cached = await TRCache.getTCG(TCG_CACHE_EXPIRY);
+        if (cached && Array.isArray(cached.data)) {
+            tcgCache = cached.data;
+            tcgCacheTimestamp = cached.ts || Date.now();
+            console.log(`載入 TCG 快取 (IndexedDB): ${tcgCache.length} 筆記錄`);
+            return true;
         }
     } catch (error) {
         console.error('載入 TCG 快取失敗:', error);
@@ -1453,80 +1438,26 @@ function loadTCGCacheFromStorage() {
     return false;
 }
 
-function saveTCGCacheToStorage() {
-    // 將資料壓縮為必要欄位，減少 localStorage 佔用
+async function saveTCGCacheToStorage() {
+    // 僅保存必要欄位，並以 TRCache（IndexedDB + gzip）存放
     const compact = Array.isArray(tcgCache)
         ? tcgCache.map(item => ({ tcg_number: item.tcg_number, title: item.title }))
         : [];
-
-    const trySave = (list) => {
-        localStorage.setItem(TCG_CACHE_KEY, JSON.stringify(list));
-        localStorage.setItem(TCG_CACHE_TIMESTAMP_KEY, String(tcgCacheTimestamp || Date.now()));
-    };
-
-    try {
-        trySave(compact);
-    } catch (e) {
-        // Quota 超限時，採降級策略：逐步縮減快取數量，最少保留 1000 筆；仍失敗則不持久化
-        console.warn('TCG 快取容量不足，嘗試縮減後儲存...', e);
-        let max = compact.length;
-        let saved = false;
-        for (let i = 0; i < 6 && max > 1000; i++) { // 最多 6 次，每次縮 30%
-            max = Math.floor(max * 0.7);
-            try {
-                trySave(compact.slice(0, max));
-                console.warn(`已縮減並儲存部分 TCG 快取 (${max} 筆)`);
-                saved = true;
-                break;
-            } catch (_) {}
-        }
-        if (!saved) {
-            try {
-                // 最後嘗試寫入最小數量
-                trySave(compact.slice(0, 1000));
-                console.warn('已縮減至最小集 (1000) 並成功儲存');
-                saved = true;
-            } catch (_) {}
-        }
-        if (!saved) {
-            // 放棄持久化，改為記憶體快取
-            try {
-                localStorage.removeItem(TCG_CACHE_KEY);
-                localStorage.removeItem(TCG_CACHE_TIMESTAMP_KEY);
-            } catch (_) {}
-            if (window.AppUtils && AppUtils.showWarning) {
-                AppUtils.showWarning('本機儲存空間不足，TCG 快取僅在此頁有效');
-            }
-        }
-    }
-    // 工具列顯示狀態可能改變整體高度，需重新計算列表高度
+    await TRCache.setTCG(compact);
     adjustTestCasesScrollHeight();
 }
 
 function clearTCGCache() {
     tcgCache = null;
     tcgCacheTimestamp = null;
-    localStorage.removeItem(TCG_CACHE_KEY);
-    localStorage.removeItem(TCG_CACHE_TIMESTAMP_KEY);
+    // 覆蓋為空陣列，避免讀到舊資料
+    Promise.resolve().then(() => TRCache.setTCG([])).catch(() => {});
 }
 
 function shouldUpdateTCGCache() {
     // 檢查是否需要更新快取
-    // 1. 沒有快取
-    if (!tcgCache) return true;
-    
-    // 2. 快取過期
-    if (tcgCacheTimestamp && (Date.now() - tcgCacheTimestamp) > TCG_CACHE_EXPIRY) {
-        return true;
-    }
-    
-    // 3. 強制重新載入 (檢查 URL 參數或其他條件)
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get('refresh') === 'true') return true;
-    
-    // 4. 頁面完全重新載入 (performance.navigation.type === 1 for reload)
-    if (performance.navigation && performance.navigation.type === 1) return true;
-    
+    if (!tcgCache) return true; // 沒有快取
+    if (tcgCacheTimestamp && (Date.now() - tcgCacheTimestamp) > TCG_CACHE_EXPIRY) return true; // 過期
     return false;
 }
 
@@ -1549,7 +1480,7 @@ async function loadTCGCache(updateProgress = null) {
         tcgCacheTimestamp = Date.now();
         
         if (updateProgress) updateProgress(90, '儲存快取...');
-        saveTCGCacheToStorage();
+        await saveTCGCacheToStorage();
         
         if (updateProgress) {
             const tcgCompletedMsg = window.i18n ? window.i18n.t('loading.completedWithCount', {count: tcgCache.length}) : `載入完成 (${tcgCache.length} 筆)`;
@@ -1590,7 +1521,7 @@ async function initTestCaseManagement() {
     
     try {
         // 載入 TCG 快取 (如果需要)
-        const hasCachedTCG = loadTCGCacheFromStorage();
+        const hasCachedTCG = await loadTCGCacheFromStorage();
         if (!hasCachedTCG || shouldUpdateTCGCache()) {
             await loadTCGCache((progress, message) => {
                 updateTCGCacheProgress(progress, message);
