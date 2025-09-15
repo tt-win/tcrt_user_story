@@ -1153,6 +1153,16 @@ const TEST_CASES_CACHE_TTL = 60 * 60 * 1000; // 1小時
 // - 最後可選用 sessionStorage('lastTeamId') 作為容錯
 // strict=true: 無法解析就回傳 null（不讀不寫）
 function getTeamIdForCache(strict = true) {
+    // 1) 以 URL 為權威（使用者導航後最準確）
+    try {
+        const p = new URLSearchParams(window.location.search);
+        const id = p.get('team_id') || p.get('teamId') || p.get('team');
+        if (id) {
+            try { sessionStorage.setItem('lastTeamId', String(id)); } catch (_) {}
+            return String(id);
+        }
+    } catch (_) {}
+    // 2) 次選 AppUtils（有時初始化較慢或不同步）
     try {
         if (typeof AppUtils !== 'undefined' && AppUtils.getCurrentTeam) {
             const t = AppUtils.getCurrentTeam();
@@ -1162,14 +1172,7 @@ function getTeamIdForCache(strict = true) {
             }
         }
     } catch (_) {}
-    try {
-        const p = new URLSearchParams(window.location.search);
-        const id = p.get('team_id') || p.get('teamId') || p.get('team');
-        if (id) {
-            try { sessionStorage.setItem('lastTeamId', String(id)); } catch (_) {}
-            return String(id);
-        }
-    } catch (_) {}
+    // 3) 非嚴格模式時，退回上一個已知值
     if (!strict) {
         try {
             const last = sessionStorage.getItem('lastTeamId');
