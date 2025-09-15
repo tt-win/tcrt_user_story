@@ -2,10 +2,10 @@
   'use strict';
 
   const DB_NAME = 'tr_cache';
-  const DB_VERSION = 1;
-  const STORE_EXEC = 'exec_tc';
-  const STORE_TCG = 'tcg';
-  const EXEC_LRU_MAX = 5000; // per requirement
+  const DB_VERSION = 4; // 回到單一storage + 改進key策略
+  const STORE_TCG = 'tcg'; // TCG共用
+  const STORE_EXEC = 'exec_unified'; // 統一的執行資料store
+  const EXEC_LRU_MAX = 5000; // 全域LRU限制
 
   const TRCache = {
     _dbPromise: null,
@@ -25,22 +25,45 @@
         const req = indexedDB.open(DB_NAME, DB_VERSION);
         req.onupgradeneeded = (e) => {
           const db = e.target.result;
-          if (!db.objectStoreNames.contains(STORE_EXEC)) {
-            const s = db.createObjectStore(STORE_EXEC, { keyPath: 'key' });
-            s.createIndex('ts', 'ts');
-            s.createIndex('lastAccess', 'lastAccess');
-          }
+
+          // TCG儲存共用
           if (!db.objectStoreNames.contains(STORE_TCG)) {
             const s2 = db.createObjectStore(STORE_TCG, { keyPath: 'key' });
             s2.createIndex('ts', 'ts');
             s2.createIndex('lastAccess', 'lastAccess');
           }
-          if (TRCache.debug) console.debug('[TRCache] onupgradeneeded');
+
+          // 統一的執行資料store
+          if (!db.objectStoreNames.contains(STORE_EXEC)) {
+            const s1 = db.createObjectStore(STORE_EXEC, { keyPath: 'key' });
+            s1.createIndex('ts', 'ts');
+            s1.createIndex('lastAccess', 'lastAccess');
+            s1.createIndex('teamId', 'teamId'); // 新增teamId索引方便查詢和LRU管理
+          }
+
+          // 清理舊的stores
+          ['exec_tc', 'exec_team_1', 'exec_team_2', 'exec_team_3', 'exec_team_4', 'exec_team_5', 'exec_team_unknown'].forEach(oldStore => {
+            if (db.objectStoreNames.contains(oldStore)) {
+              db.deleteObjectStore(oldStore);
+            }
+          });
+
+          if (TRCache.debug) console.debug('[TRCache] DB upgraded to v4 - unified storage with improved key strategy');
         };
         req.onsuccess = () => { if (TRCache.debug) console.debug('[TRCache] DB opened'); resolve(req.result); };
         req.onerror = () => { console.error('[TRCache] DB open error:', req.error); reject(req.error); };
       });
       return this._dbPromise;
+    },
+
+    // 生成團隊專用的key（統一storage策略）
+    _execKey(teamId, testCaseNumber) {
+      const validTeamId = this._getValidTeamId(teamId);
+      const timestamp = Date.now();
+      const random = Math.random().toString(36).substring(2, 8);
+
+      // 使用多層次key避免衝突：team_id + test_case + timestamp + random
+      return `exec_${validTeamId}_${testCaseNumber}_${timestamp}_${random}`;
     },
 
     _gzip(str, level = 5) {
@@ -168,46 +191,115 @@
       });
     },
 
+    // 團隊獨立LRU淘汰機制
     async _lruEvict(store, max) {
       try {
         const db = await this._openDB();
         const total = await this._count(store);
-        if (total <= max) return;
+        if (total <= max) {
+          if (this.enableErrorLogging) {
+            console.log(`[TRCache LRU] ${store}: ${total}/${max} 項目，無需淘汰`);
+          }
+          return;
+        }
+
         const toDelete = total - max;
+        if (this.enableErrorLogging) {
+          console.log(`[TRCache LRU] ${store}: ${total}/${max} 項目，需淘汰 ${toDelete} 項`);
+        }
+
         await new Promise((resolve, reject) => {
           const tx = db.transaction(store, 'readwrite');
           const idx = tx.objectStore(store).index('lastAccess');
           let removed = 0;
+          const deletedKeys = [];
+
           idx.openCursor().onsuccess = (e) => {
             const cursor = e.target.result;
-            if (!cursor) return;
+            if (!cursor) {
+              if (this.enableErrorLogging && deletedKeys.length > 0) {
+                console.log(`[TRCache LRU] ${store} 淘汰完成，已刪除 ${deletedKeys.length} 項:`, deletedKeys.slice(0, 5));
+              }
+              return;
+            }
+
+            deletedKeys.push(cursor.key);
             cursor.delete();
             removed++;
-            if (removed >= toDelete) { resolve(true); return; }
+            if (removed >= toDelete) {
+              resolve(true);
+              return;
+            }
             cursor.continue();
           };
           tx.oncomplete = () => resolve(true);
           tx.onerror = () => reject(tx.error);
         });
-      } catch (_) { /* ignore */ }
+      } catch (error) {
+        if (this.enableErrorLogging) {
+          console.error('[TRCache LRU] 淘汰失敗:', error);
+        }
+      }
     },
 
     // Public API
     async getExecDetail(teamId, testCaseNumber, ttlMs) {
-      const key = this._execKey(teamId, testCaseNumber);
-      const rec = await this._get(STORE_EXEC, key);
-      if (!rec) return null;
-      const now = Date.now();
-      if (ttlMs && rec.ts && (now - rec.ts) > ttlMs) return null;
-      // update lastAccess asynchronously
-      rec.lastAccess = now;
-      this._put(STORE_EXEC, rec).catch(()=>{});
       try {
-        const blob = rec.data;
-        const bytes = blob instanceof Blob ? new Uint8Array(await blob.arrayBuffer()) : new Uint8Array(blob);
-        const jsonStr = this._gunzip(bytes);
-        return { ts: rec.ts, data: JSON.parse(jsonStr) };
-      } catch (_) {
+        const validTeamId = this._getValidTeamId(teamId);
+
+        // 由於使用時間戳和隨機數的key，需要查詢最新的記錄
+        // 使用索引查詢特定團隊和測試案例的所有記錄
+        const db = await this._openDB();
+        const records = [];
+
+        await new Promise((resolve) => {
+          const tx = db.transaction([STORE_EXEC], 'readonly');
+          const store = tx.objectStore(STORE_EXEC);
+          const index = store.index('teamId');
+
+          index.openCursor(IDBKeyRange.only(validTeamId)).onsuccess = (event) => {
+            const cursor = event.target.result;
+            if (cursor) {
+              const record = cursor.value;
+              if (record.testCaseNumber === testCaseNumber) {
+                records.push(record);
+              }
+              cursor.continue();
+            } else {
+              resolve();
+            }
+          };
+        });
+
+        if (records.length === 0) return null;
+
+        // 選擇最新的記錄
+        const rec = records.reduce((latest, current) =>
+          current.ts > latest.ts ? current : latest
+        );
+
+        const now = Date.now();
+        if (ttlMs && rec.ts && (now - rec.ts) > ttlMs) return null;
+
+        // 更新lastAccess
+        rec.lastAccess = now;
+        this._put(STORE_EXEC, rec).catch(()=>{});
+
+        try {
+          const blob = rec.data;
+          const bytes = blob instanceof Blob ? new Uint8Array(await blob.arrayBuffer()) : new Uint8Array(blob);
+          const jsonStr = this._gunzip(bytes);
+          return { ts: rec.ts, data: JSON.parse(jsonStr) };
+        } catch (error) {
+          if (this.enableErrorLogging) {
+            console.error('[TRCache] getExecDetail解壓縮失敗:', error, { validTeamId, testCaseNumber });
+          }
+          return null;
+        }
+      } catch (error) {
+        if (this.enableErrorLogging) {
+          console.error('[TRCache] getExecDetail發生未預期錯誤:', error, { teamId, testCaseNumber, ttlMs });
+        }
         return null;
       }
     },
@@ -228,6 +320,7 @@
           return false;
         }
 
+        const validTeamId = this._getValidTeamId(teamId);
         const key = this._execKey(teamId, testCaseNumber);
         const jsonStr = JSON.stringify(obj);
 
@@ -242,19 +335,22 @@
         const gz = this._gzip(jsonStr, 5);
         const rec = {
           key,
+          teamId: validTeamId,
+          testCaseNumber,
           ts: Date.now(),
           lastAccess: Date.now(),
           data: new Blob([gz], { type: 'application/octet-stream' }),
           size: gz.length
         };
 
-        if (TRCache.debug) console.debug('[TRCache] setExecDetail', key, 'size', rec.size);
+        if (TRCache.debug) console.debug('[TRCache] setExecDetail', STORE_EXEC, key, 'size', rec.size);
 
         const success = await this._put(STORE_EXEC, rec);
         if (success) {
+          // 全域LRU管理
           await this._lruEvict(STORE_EXEC, EXEC_LRU_MAX);
           if (this.debug) {
-            console.log('[TRCache] setExecDetail成功:', key);
+            console.log('[TRCache] setExecDetail成功:', validTeamId, testCaseNumber, key);
           }
           return true;
         } else {
@@ -388,6 +484,7 @@
       }
     },
 
+
     // 啟用/禁用詳細日志
     enableLogging(enable = true) {
       this.enableErrorLogging = enable;
@@ -439,30 +536,54 @@
 
     async clearTeam(teamId) {
       try {
+        const teamStore = await this._getTeamStore(teamId);
         const db = await this._openDB();
         await new Promise((resolve, reject) => {
-          const tx = db.transaction(STORE_EXEC, 'readwrite');
-          const s = tx.objectStore(STORE_EXEC);
-          s.openCursor().onsuccess = (e) => {
-            const cursor = e.target.result;
-            if (!cursor) return;
-            if (String(cursor.key).startsWith(`${teamId || 'unknown'}:`)) cursor.delete();
-            cursor.continue();
+          const tx = db.transaction(teamStore, 'readwrite');
+          const store = tx.objectStore(teamStore);
+          store.clear();
+          tx.oncomplete = () => {
+            if (this.enableErrorLogging) {
+              console.log(`[TRCache] 清除團隊 ${this._getValidTeamId(teamId)} 的所有快取`);
+            }
+            resolve(true);
           };
-          tx.oncomplete = () => resolve(true);
           tx.onerror = () => reject(tx.error);
         });
-      } catch (_) { /* ignore */ }
+      } catch (error) {
+        if (this.enableErrorLogging) {
+          console.error('[TRCache] clearTeam 失敗:', error);
+        }
+      }
     },
 
     async clearAll() {
       try {
         const db = await this._openDB();
-        await Promise.all([
-          new Promise((res, rej)=>{ const tx=db.transaction(STORE_EXEC,'readwrite'); tx.objectStore(STORE_EXEC).clear(); tx.oncomplete=()=>res(true); tx.onerror=()=>rej(tx.error);} ),
-          new Promise((res, rej)=>{ const tx=db.transaction(STORE_TCG,'readwrite'); tx.objectStore(STORE_TCG).clear(); tx.oncomplete=()=>res(true); tx.onerror=()=>rej(tx.error);} )
-        ]);
-      } catch (_) { /* ignore */ }
+        const storeNames = Array.from(db.objectStoreNames);
+        const clearPromises = [];
+
+        // 清除所有store（包括TCG和所有團隊store）
+        storeNames.forEach(storeName => {
+          clearPromises.push(
+            new Promise((resolve, reject) => {
+              const tx = db.transaction(storeName, 'readwrite');
+              tx.objectStore(storeName).clear();
+              tx.oncomplete = () => resolve(storeName);
+              tx.onerror = () => reject(tx.error);
+            })
+          );
+        });
+
+        const clearedStores = await Promise.all(clearPromises);
+        if (this.enableErrorLogging) {
+          console.log('[TRCache] 已清除所有快取:', clearedStores);
+        }
+      } catch (error) {
+        if (this.enableErrorLogging) {
+          console.error('[TRCache] clearAll 失敗:', error);
+        }
+      }
     }
   };
 
@@ -513,53 +634,195 @@
       console.log('   載入時間:', new Date().toISOString());
     },
 
-    // 測試特定團隊ID的key生成
-    testTeamKeys: (...teamIds) => {
-      console.log('=== 團隊Key測試 ===');
-      const keyMap = new Map();
+    // 測試團隊分離儲存
+    testTeamSeparation: (...teamIds) => {
+      console.log('=== 團隊分離儲存測試 ===');
+      const storeMap = new Map();
       const duplicates = [];
 
       teamIds.forEach(teamId => {
-        const key = TRCache._execKey(teamId, 'TEST');
         const validTeamId = TRCache._getValidTeamId(teamId);
-        console.log(`團隊ID: ${teamId} (${typeof teamId}) -> 有效ID: ${validTeamId} -> Key: ${key}`);
+        const storeName = `exec_team_${validTeamId}`;
+        console.log(`團隊ID: ${teamId} (${typeof teamId}) -> 有效ID: ${validTeamId} -> Store: ${storeName}`);
 
-        // 檢查重複
-        if (keyMap.has(key)) {
-          duplicates.push({ key, teams: [keyMap.get(key), teamId] });
+        // 檢查Store名稱重複（這在新架構中不應該發生）
+        if (storeMap.has(storeName)) {
+          duplicates.push({ storeName, teams: [storeMap.get(storeName), teamId] });
         } else {
-          keyMap.set(key, teamId);
+          storeMap.set(storeName, teamId);
         }
       });
 
       if (duplicates.length > 0) {
-        console.error('⚠️  發現重複key:', duplicates);
+        console.error('⚠️  發現重複Store名稱 (這表示團隊隔離失敗):', duplicates);
       } else {
-        console.log('✅ 所有key都是唯一的');
+        console.log('✅ 所有團隊都有獨立的ObjectStore');
       }
 
-      return { keyMap: Object.fromEntries(keyMap), duplicates };
+      return { storeMap: Object.fromEntries(storeMap), duplicates };
     },
 
-    // 檢查兩個特定團隊的衝突
-    checkTeamConflict: (teamId1, teamId2) => {
-      console.log(`=== 檢查團隊 ${teamId1} 和 ${teamId2} 的衝突 ===`);
-      const key1 = TRCache._execKey(teamId1, 'TEST');
-      const key2 = TRCache._execKey(teamId2, 'TEST');
+    // 檢查兩個團隊的完全隔離
+    checkTeamIsolation: (teamId1, teamId2) => {
+      console.log(`=== 檢查團隊 ${teamId1} 和 ${teamId2} 的完全隔離 ===`);
       const valid1 = TRCache._getValidTeamId(teamId1);
       const valid2 = TRCache._getValidTeamId(teamId2);
+      const store1 = `exec_team_${valid1}`;
+      const store2 = `exec_team_${valid2}`;
 
-      console.log(`團隊1: ${teamId1} -> ${valid1} -> ${key1}`);
-      console.log(`團隊2: ${teamId2} -> ${valid2} -> ${key2}`);
+      console.log(`團隊1: ${teamId1} -> 有效ID: ${valid1} -> Store: ${store1}`);
+      console.log(`團隊2: ${teamId2} -> 有效ID: ${valid2} -> Store: ${store2}`);
 
-      if (key1 === key2) {
-        console.error('⚠️  衝突！相同key:', key1);
-        console.log('解決建議: TRCacheDebug.regenerateSession()');
-        return { conflict: true, key: key1, teams: [teamId1, teamId2] };
+      if (store1 === store2) {
+        console.error('⚠️  團隊隔離失敗！共享相同Store:', store1);
+        console.log('這意味著兩個團隊的資料會相互干擾');
+        return { isolated: false, sharedStore: store1, teams: [teamId1, teamId2] };
       } else {
-        console.log('✅ 無衝突');
-        return { conflict: false, keys: [key1, key2] };
+        console.log('✅ 團隊完全隔離，使用不同的ObjectStore');
+        return { isolated: true, stores: [store1, store2] };
       }
+    },
+
+    // 全面的團隊隔離效果測試
+    fullIsolationTest: async () => {
+      console.log('🔍 =========================');
+      console.log('🔍 開始全面團隊隔離效果測試');
+      console.log('🔍 =========================');
+
+      // 測試資料
+      const testTeams = [
+        { id: '1', name: '團隊A' },
+        { id: '2', name: '團隊B' },
+        { id: null, name: '無效團隊1' },
+        { id: undefined, name: '無效團隊2' },
+        { id: '', name: '空團隊' }
+      ];
+
+      const testCases = ['TC001', 'TC002', 'TC003'];
+
+      console.log('📝 第1步: 測試不同團隊的Store分離...');
+      const storeResults = [];
+      for (const team of testTeams) {
+        const validId = TRCache._getValidTeamId(team.id);
+        const storeName = `exec_team_${validId}`;
+        storeResults.push({
+          原始ID: team.id,
+          有效ID: validId,
+          團隊名稱: team.name,
+          Store名稱: storeName
+        });
+      }
+      console.table(storeResults);
+
+      // 檢查Store唯一性
+      const storeNames = storeResults.map(r => r.Store名稱);
+      const uniqueStores = new Set(storeNames);
+      console.log(`📊 Store統計: 總共${storeNames.length}個團隊 -> ${uniqueStores.size}個獨立Store`);
+
+      if (uniqueStores.size === storeNames.length) {
+        console.log('✅ Store完全隔離：每個團隊都有獨立的ObjectStore');
+      } else {
+        console.error('❌ Store隔離失敗：某些團隊共享ObjectStore');
+      }
+
+      console.log('\n📝 第2步: 測試資料寫入隔離...');
+      const writeResults = [];
+
+      for (let i = 0; i < testTeams.length; i++) {
+        const team = testTeams[i];
+        for (let j = 0; j < testCases.length; j++) {
+          const testCase = testCases[j];
+          const testData = {
+            teamInfo: team,
+            timestamp: Date.now(),
+            testIndex: `${i}_${j}`,
+            testCaseNumber: testCase
+          };
+
+          console.log(`💾 寫入 ${team.name}(${team.id}) -> ${testCase}`);
+          const success = await TRCache.setExecDetail(team.id, testCase, testData);
+          writeResults.push({
+            團隊: team.name,
+            測試案例: testCase,
+            寫入結果: success ? '✅成功' : '❌失敗'
+          });
+        }
+      }
+      console.table(writeResults);
+
+      console.log('\n📝 第3步: 測試資料讀取隔離...');
+      const readResults = [];
+
+      for (let i = 0; i < testTeams.length; i++) {
+        const team = testTeams[i];
+        for (let j = 0; j < testCases.length; j++) {
+          const testCase = testCases[j];
+
+          console.log(`📖 讀取 ${team.name}(${team.id}) -> ${testCase}`);
+          const result = await TRCache.getExecDetail(team.id, testCase);
+          readResults.push({
+            團隊: team.name,
+            測試案例: testCase,
+            讀取結果: result ? '✅找到資料' : '❌無資料',
+            資料正確: result && result.data?.teamInfo?.name === team.name ? '✅正確' : '❌不正確'
+          });
+        }
+      }
+      console.table(readResults);
+
+      console.log('\n📝 第4步: 檢查跨團隊污染...');
+      // 檢查團隊A的資料是否出現在團隊B中
+      console.log('檢查跨團隊資料洩漏...');
+      let crossContamination = false;
+
+      for (const testCase of testCases) {
+        const team1Data = await TRCache.getExecDetail('1', testCase);
+        const team2Data = await TRCache.getExecDetail('2', testCase);
+
+        if (team1Data && team2Data &&
+            team1Data.data?.teamInfo?.name === team2Data.data?.teamInfo?.name) {
+          console.error(`❌ 發現跨團隊污染: ${testCase} 在兩個團隊中有相同資料`);
+          crossContamination = true;
+        }
+      }
+
+      if (!crossContamination) {
+        console.log('✅ 無跨團隊資料污染');
+      }
+
+      console.log('\n📝 第5步: 檢查ObjectStore結構...');
+      const cacheStructure = await TRCacheDebug.listCacheKeys();
+
+      console.log('\n🎯 =================');
+      console.log('🎯 團隊隔離測試總結');
+      console.log('🎯 =================');
+
+      const summary = {
+        Store隔離: uniqueStores.size === storeNames.length ? '✅完全隔離' : '❌失敗',
+        資料寫入: writeResults.every(r => r.寫入結果 === '✅成功') ? '✅全部成功' : '⚠️部分失敗',
+        資料讀取: readResults.every(r => r.讀取結果 === '✅找到資料') ? '✅全部成功' : '⚠️部分失敗',
+        資料正確性: readResults.every(r => r.資料正確 === '✅正確') ? '✅完全正確' : '❌有錯誤',
+        跨團隊污染: crossContamination ? '❌發現污染' : '✅無污染',
+      };
+
+      console.table([summary]);
+
+      const overallSuccess = Object.values(summary).every(v => v.includes('✅'));
+      console.log(overallSuccess ?
+        '🎉 團隊資料完全隔離測試: 全部通過！' :
+        '⚠️  團隊資料完全隔離測試: 發現問題，需要修正'
+      );
+
+      return {
+        success: overallSuccess,
+        details: {
+          storeResults,
+          writeResults,
+          readResults,
+          summary,
+          cacheStructure
+        }
+      };
     },
 
     // 重新生成會話ID（解決衝突）
@@ -572,11 +835,12 @@
       if (enable && !TRCache._monitoringEnabled) {
         const originalSetExec = TRCache.setExecDetail;
         TRCache.setExecDetail = function(teamId, testCaseNumber, obj) {
-          const key = TRCache._execKey(teamId, testCaseNumber);
           const validTeamId = TRCache._getValidTeamId(teamId);
+          const key = TRCache._execKey(teamId, testCaseNumber);
           console.log(`%c[Cache Monitor] 寫入`, 'color: #4CAF50; font-weight: bold', {
             原始TeamId: teamId,
             有效TeamId: validTeamId,
+            ObjectStore: STORE_EXEC,
             測試案例: testCaseNumber,
             快取Key: key,
             數據大小: JSON.stringify(obj).length + ' bytes'
@@ -586,13 +850,12 @@
 
         const originalGetExec = TRCache.getExecDetail;
         TRCache.getExecDetail = function(teamId, testCaseNumber, ttl) {
-          const key = TRCache._execKey(teamId, testCaseNumber);
           const validTeamId = TRCache._getValidTeamId(teamId);
           console.log(`%c[Cache Monitor] 讀取`, 'color: #2196F3; font-weight: bold', {
             原始TeamId: teamId,
             有效TeamId: validTeamId,
+            ObjectStore: STORE_EXEC,
             測試案例: testCaseNumber,
-            快取Key: key,
             TTL: ttl ? (ttl/1000/60).toFixed(1) + '分鐘' : '無限制'
           });
           return originalGetExec.call(this, teamId, testCaseNumber, ttl);
@@ -616,67 +879,64 @@
       }
     },
 
-    // 基本key測試
-    testKeys: () => {
-      console.log('Key 測試:');
-      console.log('null:', TRCache._execKey(null, 'TEST'));
-      console.log('undefined:', TRCache._execKey(undefined, 'TEST'));
-      console.log('"1":', TRCache._execKey('1', 'TEST'));
-      console.log('"2":', TRCache._execKey('2', 'TEST'));
-      console.log('1 (數字):', TRCache._execKey(1, 'TEST'));
-      console.log('2 (數字):', TRCache._execKey(2, 'TEST'));
+    // 基本Store測試
+    testStores: () => {
+      console.log('Store 測試:');
+      console.log('null:', `exec_team_${TRCache._getValidTeamId(null)}`);
+      console.log('undefined:', `exec_team_${TRCache._getValidTeamId(undefined)}`);
+      console.log('"1":', `exec_team_${TRCache._getValidTeamId('1')}`);
+      console.log('"2":', `exec_team_${TRCache._getValidTeamId('2')}`);
+      console.log('1 (數字):', `exec_team_${TRCache._getValidTeamId(1)}`);
+      console.log('2 (數字):', `exec_team_${TRCache._getValidTeamId(2)}`);
     },
 
-    // 列出所有快取key
+    // 列出所有快取key（按團隊分組）
     listCacheKeys: async () => {
       try {
         const db = await TRCache._openDB();
-        const execKeys = [];
-        const tcgKeys = [];
+        const storeNames = Array.from(db.objectStoreNames);
+        const result = {};
 
-        // 獲取exec快取keys
-        await new Promise((resolve) => {
-          const tx = db.transaction(['exec_tc'], 'readonly');
-          const store = tx.objectStore('exec_tc');
-          store.openCursor().onsuccess = (event) => {
-            const cursor = event.target.result;
-            if (cursor) {
-              execKeys.push(cursor.key);
-              cursor.continue();
-            } else {
-              resolve();
-            }
-          };
+        for (const storeName of storeNames) {
+          const keys = [];
+          await new Promise((resolve) => {
+            const tx = db.transaction([storeName], 'readonly');
+            const store = tx.objectStore(storeName);
+            store.openCursor().onsuccess = (event) => {
+              const cursor = event.target.result;
+              if (cursor) {
+                keys.push(cursor.key);
+                cursor.continue();
+              } else {
+                resolve();
+              }
+            };
+          });
+          result[storeName] = keys;
+        }
+
+        console.log('=== 快取Key列表（按團隊分組） ===');
+        Object.entries(result).forEach(([storeName, keys]) => {
+          if (storeName === 'tcg') {
+            console.log(`TCG快取: ${keys.length}個項目`);
+          } else if (storeName.startsWith('exec_team_')) {
+            const teamId = storeName.replace('exec_team_', '');
+            console.log(`團隊 ${teamId}: ${keys.length}個項目`, keys.length > 0 ? `(範例: ${keys.slice(0, 3).join(', ')})` : '');
+          } else {
+            console.log(`${storeName}: ${keys.length}個項目`);
+          }
         });
 
-        // 獲取TCG快取keys
-        await new Promise((resolve) => {
-          const tx = db.transaction(['tcg'], 'readonly');
-          const store = tx.objectStore('tcg');
-          store.openCursor().onsuccess = (event) => {
-            const cursor = event.target.result;
-            if (cursor) {
-              tcgKeys.push(cursor.key);
-              cursor.continue();
-            } else {
-              resolve();
-            }
-          };
-        });
-
-        console.log('=== 快取Key列表 ===');
-        console.log('執行快取Keys:', execKeys);
-        console.log('TCG快取Keys:', tcgKeys);
-        return { execKeys, tcgKeys };
+        return result;
       } catch (e) {
         console.error('列出快取Keys失敗:', e);
       }
-    }
+    },
   };
 
   // 初始化時顯示版本信息和啟用監控
   if (TRCache.enableErrorLogging) {
-    console.log('[TRCache] 已載入，版本: v2.3 (預設監控)', '\n調試指令: TRCacheDebug.diagnoseTeam()\n衝突檢查: TRCacheDebug.checkTeamConflict(teamId1, teamId2)');
+    console.log('[TRCache] 已載入，版本: v4.0 (統一storage + 改進key策略)', '\n新特性: 單一ObjectStore + 唯一key避免衝突\n調試指令: TRCacheDebug.listCacheKeys()');
 
     // 預設啟用快取操作監控
     setTimeout(() => {

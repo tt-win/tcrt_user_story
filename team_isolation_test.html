@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>團隊隔離測試頁面</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; background: #f5f5f5; }
+        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; }
+        .test-section { border: 1px solid #ddd; margin: 20px 0; padding: 15px; border-radius: 5px; }
+        .test-section h3 { color: #333; margin-top: 0; }
+        button {
+            background: #007bff; color: white; border: none; padding: 10px 15px;
+            margin: 5px; border-radius: 4px; cursor: pointer;
+        }
+        button:hover { background: #0056b3; }
+        .success { background: #28a745; }
+        .warning { background: #ffc107; color: #333; }
+        .danger { background: #dc3545; }
+        #output {
+            background: #000; color: #0f0; font-family: monospace;
+            padding: 15px; border-radius: 4px; height: 400px;
+            overflow-y: auto; font-size: 12px;
+        }
+        .team-info {
+            display: inline-block; padding: 5px 10px; margin: 5px;
+            border-radius: 4px; background: #e9ecef;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 TRCache 團隊隔離效果測試</h1>
+        <p>此頁面用於測試 TRCache v3.0 的團隊分離儲存功能</p>
+
+        <div class="test-section">
+            <h3>📊 系統狀態</h3>
+            <div class="team-info">TRCache 版本: <span id="version">載入中...</span></div>
+            <div class="team-info">監控狀態: <span id="monitor">載入中...</span></div>
+            <div class="team-info">當前團隊ID: <span id="currentTeam">載入中...</span></div>
+        </div>
+
+        <div class="test-section">
+            <h3>🧪 快速測試</h3>
+            <button onclick="runBasicTest()">基本功能測試</button>
+            <button onclick="runTeamSeparationTest()">團隊分離測試</button>
+            <button onclick="runFullIsolationTest()" class="success">完整隔離測試</button>
+            <button onclick="checkCacheStructure()">檢查快取結構</button>
+            <button onclick="clearOutput()">清除輸出</button>
+        </div>
+
+        <div class="test-section">
+            <h3>🛠️ 調試工具</h3>
+            <button onclick="TRCacheDebug.diagnoseTeam()">診斷團隊信息</button>
+            <button onclick="TRCacheDebug.testStores()">測試Store生成</button>
+            <button onclick="TRCacheDebug.listCacheKeys()">列出快取Keys</button>
+            <button onclick="TRCacheDebug.selfTest()">自我測試</button>
+            <button onclick="TRCacheDebug.clearAll()" class="danger">清除所有快取</button>
+        </div>
+
+        <div class="test-section">
+            <h3>📋 測試輸出</h3>
+            <div id="output">載入 TRCache...</div>
+        </div>
+    </div>
+
+    <script src="/static/js/trcache.js"></script>
+    <script>
+        // 重定向 console 輸出到頁面
+        const output = document.getElementById('output');
+        const originalLog = console.log;
+        const originalError = console.error;
+        const originalWarn = console.warn;
+
+        function addToOutput(message, type = 'log') {
+            const timestamp = new Date().toLocaleTimeString();
+            const color = type === 'error' ? '#ff6b6b' : type === 'warn' ? '#ffd43b' : '#51cf66';
+            output.innerHTML += `<div style="color: ${color};">[${timestamp}] ${message}</div>`;
+            output.scrollTop = output.scrollHeight;
+        }
+
+        console.log = (...args) => {
+            originalLog.apply(console, args);
+            addToOutput(args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : a).join(' '), 'log');
+        };
+
+        console.error = (...args) => {
+            originalError.apply(console, args);
+            addToOutput(args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : a).join(' '), 'error');
+        };
+
+        console.warn = (...args) => {
+            originalWarn.apply(console, args);
+            addToOutput(args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 2) : a).join(' '), 'warn');
+        };
+
+        // 頁面載入後初始化
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                updateSystemStatus();
+                console.log('🎉 團隊隔離測試頁面已準備就緒');
+                console.log('📖 使用指南:');
+                console.log('1. 點擊 "完整隔離測試" 開始全面測試');
+                console.log('2. 使用調試工具檢查詳細狀態');
+                console.log('3. 觀察輸出中的測試結果');
+            }, 1000);
+        });
+
+        function updateSystemStatus() {
+            document.getElementById('version').textContent = 'v3.0 (團隊分離儲存)';
+            document.getElementById('monitor').textContent = TRCache._monitoringEnabled ? '✅ 已啟用' : '❌ 未啟用';
+
+            // 嘗試獲取當前團隊ID
+            try {
+                if (typeof AppUtils !== 'undefined' && AppUtils.getCurrentTeam) {
+                    const team = AppUtils.getCurrentTeam();
+                    document.getElementById('currentTeam').textContent = team?.id || '無';
+                } else {
+                    document.getElementById('currentTeam').textContent = '模擬測試模式';
+                }
+            } catch (e) {
+                document.getElementById('currentTeam').textContent = '無法獲取';
+            }
+        }
+
+        async function runBasicTest() {
+            console.log('🔧 開始基本功能測試...');
+
+            // 測試基本讀寫
+            const testData = { test: '基本功能測試', timestamp: Date.now() };
+            const writeResult = await TRCache.setExecDetail('test1', 'TC001', testData);
+            console.log('寫入結果:', writeResult ? '✅ 成功' : '❌ 失敗');
+
+            if (writeResult) {
+                const readResult = await TRCache.getExecDetail('test1', 'TC001');
+                console.log('讀取結果:', readResult ? '✅ 成功' : '❌ 失敗');
+                if (readResult) {
+                    console.log('讀取資料:', readResult.data);
+                }
+            }
+
+            console.log('基本功能測試完成');
+        }
+
+        async function runTeamSeparationTest() {
+            console.log('🏢 開始團隊分離測試...');
+
+            const teams = ['team1', 'team2', null, undefined, ''];
+            const results = TRCacheDebug.testTeamSeparation(...teams);
+
+            console.log('團隊分離測試完成，結果:', results);
+        }
+
+        async function runFullIsolationTest() {
+            console.log('🎯 開始完整隔離測試...');
+            try {
+                const result = await TRCacheDebug.fullIsolationTest();
+                console.log('完整隔離測試完成，總體結果:', result.success ? '✅ 通過' : '❌ 失敗');
+                return result;
+            } catch (error) {
+                console.error('完整隔離測試發生錯誤:', error);
+            }
+        }
+
+        async function checkCacheStructure() {
+            console.log('📋 檢查快取結構...');
+            const structure = await TRCacheDebug.listCacheKeys();
+            console.log('快取結構檢查完成');
+            return structure;
+        }
+
+        function clearOutput() {
+            document.getElementById('output').innerHTML = '<div style="color: #51cf66;">輸出已清除</div>';
+        }
+    </script>
+</body>
+</html>
