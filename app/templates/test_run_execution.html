@@ -2916,8 +2916,8 @@ async function showTestCaseDetailModal(testCaseNumber) {
 
 async function loadTestCaseDetail(testCaseNumber) {
     try {
-        // 先嘗試從 localStorage 讀取快取，若 1 小時內則直接顯示
-        const cached = getCachedTestCase(testCaseNumber);
+        // 先嘗試從跨頁快取讀取，若 1 小時內則直接顯示
+        const cached = await getCachedTestCase(testCaseNumber);
         if (cached && (Date.now() - cached.ts) < TEST_CASE_CACHE_TTL_MS) {
             displayTestCaseDetail(cached.data);
             return; // 使用快取，不發出請求
@@ -3347,34 +3347,13 @@ function handleExecDetailModalKeydown(e) {
     } catch (_) {}
 }
 
-// ====== 本地快取（localStorage）工具 ======
-function getCacheKey(testCaseNumber) {
-    // 以 teamId + testCaseNumber 組成個人快取 key
-    const team = currentTeamId || 'unknown';
-    return `${TEST_CASE_CACHE_PREFIX}:${team}:${testCaseNumber}`;
+// ====== 跨頁快取（IndexedDB + gzip）工具 ======
+async function getCachedTestCase(testCaseNumber) {
+    try { return await TRCache.getExecDetail(currentTeamId, testCaseNumber, TEST_CASE_CACHE_TTL_MS); } catch (_) { return null; }
 }
 
-function getCachedTestCase(testCaseNumber) {
-    try {
-        const key = getCacheKey(testCaseNumber);
-        const raw = localStorage.getItem(key);
-        if (!raw) return null;
-        const parsed = JSON.parse(raw);
-        if (!parsed || typeof parsed.ts !== 'number' || !parsed.data) return null;
-        return parsed;
-    } catch (_) {
-        return null;
-    }
-}
-
-function setCachedTestCase(testCaseNumber, testCaseData) {
-    try {
-        const key = getCacheKey(testCaseNumber);
-        const payload = { ts: Date.now(), data: testCaseData };
-        localStorage.setItem(key, JSON.stringify(payload));
-    } catch (_) {
-        // 忽略快取錯誤（例如超出容量）
-    }
+async function setCachedTestCase(testCaseNumber, testCaseData) {
+    try { await TRCache.setExecDetail(currentTeamId, testCaseNumber, testCaseData); } catch (_) {}
 }
 
 // 判斷是否為新鮮快取
@@ -3393,7 +3372,7 @@ async function fetchAndCacheTestCase(testCaseNumber) {
         if (!resp.ok) return;
         const list = await resp.json();
         const tc = Array.isArray(list) ? list.find(t => t.test_case_number === testCaseNumber) : null;
-        if (tc) setCachedTestCase(testCaseNumber, tc);
+        if (tc) await setCachedTestCase(testCaseNumber, tc);
     } catch (_) {}
 }
 
@@ -3402,8 +3381,12 @@ async function prefetchTestCasesForItems(items) {
     try {
         const numbers = (items || []).map(i => i.test_case_number).filter(Boolean);
         if (numbers.length === 0) return;
-        // 過濾已新鮮快取者
-        const toFetch = numbers.filter(n => !isFreshCache(getCachedTestCase(n)));
+        // 過濾已新鮮快取者（非同步檢查）
+        const toFetch = [];
+        for (const n of numbers) {
+            const cached = await getCachedTestCase(n);
+            if (!isFreshCache(cached)) toFetch.push(n);
+        }
         if (toFetch.length === 0) return;
         // 控制併發量，避免過多同時請求
         const queue = Array.from(new Set(toFetch)); // 去重
@@ -3435,7 +3418,7 @@ async function preloadAllTeamTestCasesForRun(items) {
         if (!all || !Array.isArray(all)) return;
         for (const tc of all) {
             if (tc && tc.test_case_number && need.has(tc.test_case_number)) {
-                setCachedTestCase(tc.test_case_number, tc);
+                await setCachedTestCase(tc.test_case_number, tc);
             }
         }
     } catch (e) {

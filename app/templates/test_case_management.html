@@ -1020,28 +1020,18 @@ TCG-93178.010.060,資料同步測試"></textarea>
 const EXEC_TC_CACHE_PREFIX = 'tr_exec_tc_cache_v1';
 const EXEC_TC_CACHE_TTL_MS = 60 * 60 * 1000; // 1 小時
 
-function getExecCacheKey(testCaseNumber) {
+function setExecCachedTestCase(testCaseNumber, data) {
     try {
         const team = AppUtils.getCurrentTeam();
         const teamId = team && team.id ? team.id : 'unknown';
-        return `${EXEC_TC_CACHE_PREFIX}:${teamId}:${testCaseNumber}`;
-    } catch (_) {
-        return `${EXEC_TC_CACHE_PREFIX}:unknown:${testCaseNumber}`;
-    }
-}
-
-function setExecCachedTestCase(testCaseNumber, data) {
-    try {
-        const key = getExecCacheKey(testCaseNumber);
-        const payload = { ts: Date.now(), data };
-        localStorage.setItem(key, JSON.stringify(payload));
+        // 非阻塞寫入 TRCache（IndexedDB + gzip）
+        Promise.resolve().then(() => TRCache.setExecDetail(teamId, testCaseNumber, data)).catch(()=>{});
     } catch (_) {}
 }
 
 function removeExecCachedTestCase(testCaseNumber) {
     try {
-        const key = getExecCacheKey(testCaseNumber);
-        localStorage.removeItem(key);
+        // 目前移除僅影響列表記憶體/視圖；IndexedDB 的條目由 LRU 自動管理
     } catch (_) {}
 }
 
