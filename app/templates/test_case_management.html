@@ -1215,9 +1215,78 @@ function setTestCasesCache(testCases, teamIdOverride = null) {
         if (!teamId) { console.debug('[CACHE] SKIP WRITE list: no valid teamId', { count: Array.isArray(testCases) ? testCases.length : 0 }); return; }
         const cacheKey = `${TEST_CASES_CACHE_KEY}:${teamId}`;
         const cacheData = { timestamp: Date.now(), testCases: testCases || [] };
-        localStorage.setItem(cacheKey, JSON.stringify(cacheData));
-        console.log(`測試案例清單已快取 (${testCases.length} 筆)`);
-        console.debug('[CACHE] WRITE list', { teamId, cacheKey, count: testCases ? testCases.length : 0 });
+
+        const trySet = (dataObj) => {
+            localStorage.setItem(cacheKey, JSON.stringify(dataObj));
+        };
+
+        let wrote = false;
+        try {
+            trySet(cacheData);
+            wrote = true;
+        } catch (err) {
+            if (err && (err.name === 'QuotaExceededError' || err.code === 22)) {
+                console.warn('[CACHE] WRITE list failed: quota exceeded. Trying compact payload...', { teamId, cacheKey });
+                // 1) 建立精簡版 payload（只保留列表需要欄位）
+                const compactCases = (testCases || []).map(tc => ({
+                    record_id: tc.record_id,
+                    test_case_number: tc.test_case_number,
+                    title: tc.title,
+                    priority: tc.priority,
+                    created_at: tc.created_at,
+                    updated_at: tc.updated_at,
+                    // 精簡 TCG 結構，保留必要顯示資訊
+                    tcg: Array.isArray(tc.tcg) ? tc.tcg.map(r => ({
+                        text: r && r.text ? r.text : undefined,
+                        text_arr: r && Array.isArray(r.text_arr) ? r.text_arr.slice(0, 3) : undefined
+                    })) : []
+                }));
+                const compactData = { timestamp: Date.now(), testCases: compactCases };
+                try {
+                    trySet(compactData);
+                    wrote = true;
+                    console.warn('[CACHE] WRITE list using compact payload succeeded', { teamId, count: compactCases.length });
+                } catch (err2) {
+                    if (err2 && (err2.name === 'QuotaExceededError' || err2.code === 22)) {
+                        console.warn('[CACHE] Compact payload still exceeds quota. Trying to shrink list size...', { teamId });
+                        // 2) 逐步縮減筆數直到可以寫入或降到 0
+                        let low = 0;
+                        let high = compactCases.length;
+                        let best = -1;
+                        while (low <= high) {
+                            const mid = Math.floor((low + high) / 2);
+                            const sliceData = { timestamp: Date.now(), testCases: compactCases.slice(0, mid) };
+                            try {
+                                trySet(sliceData);
+                                best = mid;
+                                low = mid + 1; // 試更大
+                            } catch (e3) {
+                                if (e3 && (e3.name === 'QuotaExceededError' || e3.code === 22)) {
+                                    high = mid - 1; // 試更小
+                                } else {
+                                    throw e3;
+                                }
+                            }
+                        }
+                        if (best >= 0) {
+                            wrote = true;
+                            console.warn('[CACHE] WRITE list succeeded after shrinking', { teamId, writtenCount: best });
+                        } else {
+                            console.warn('[CACHE] WRITE list failed even after shrinking. Skipping persistent cache.', { teamId });
+                        }
+                    } else {
+                        console.debug('儲存測試案例快取失敗:', err2);
+                    }
+                }
+            } else {
+                console.debug('儲存測試案例快取失敗:', err);
+            }
+        }
+
+        if (wrote) {
+            console.log(`測試案例清單已快取 (${(testCases && testCases.length) || 0} 筆)`);
+            console.debug('[CACHE] WRITE list', { teamId, cacheKey, count: testCases ? testCases.length : 0 });
+        }
         // 同時更新個別快取
         if (testCases && Array.isArray(testCases)) {
             testCases.forEach(tc => {
