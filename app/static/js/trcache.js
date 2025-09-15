@@ -188,7 +188,7 @@
         console.log('[TRCache] selfTest result:', d);
         return d;
       } catch (e) { console.error('[TRCache] selfTest error', e); return null; }
-    }
+    },
 
     async clearTeam(teamId) {
       try {
