@@ -1179,9 +1179,9 @@ function getTeamIdForCache(strict = true) {
     return null;
 }
 
-function getTestCasesCache() {
+function getTestCasesCache(teamIdOverride = null) {
     try {
-        const teamId = getTeamIdForCache(true);
+        const teamId = teamIdOverride ? String(teamIdOverride) : getTeamIdForCache(true);
         if (!teamId) return null; // 無有效 teamId，避免讀取共享或錯誤快取
         const cacheKey = `${TEST_CASES_CACHE_KEY}:${teamId}`;
         const cached = localStorage.getItem(cacheKey);
@@ -1201,9 +1201,9 @@ function getTestCasesCache() {
     return null;
 }
 
-function setTestCasesCache(testCases) {
+function setTestCasesCache(testCases, teamIdOverride = null) {
     try {
-        const teamId = getTeamIdForCache(true);
+        const teamId = teamIdOverride ? String(teamIdOverride) : getTeamIdForCache(true);
         if (!teamId) { console.debug('儲存測試案例快取略過：無有效 teamId'); return; }
         const cacheKey = `${TEST_CASES_CACHE_KEY}:${teamId}`;
         const cacheData = { timestamp: Date.now(), testCases: testCases || [] };
@@ -1619,10 +1619,11 @@ async function loadTestCases(showLoadingBlock = true, updateProgress = null, for
         if (!currentTeam || !currentTeam.id) {
             throw new Error('請先選擇團隊');
         }
+        const teamIdForLoad = String(currentTeam.id);
         
         // 非強制刷新時先檢查快取
         if (!forceRefresh) {
-            const cachedTestCases = getTestCasesCache();
+            const cachedTestCases = getTestCasesCache(teamIdForLoad);
             if (cachedTestCases) {
                 if (updateProgress) updateProgress(90, '使用快取資料...');
                 
@@ -1656,7 +1657,7 @@ async function loadTestCases(showLoadingBlock = true, updateProgress = null, for
         const connectingMsg = window.i18n ? window.i18n.t('loading.connecting', {}, '連接伺服器...') : '連接伺服器...';
         if (updateProgress) updateProgress(30, connectingMsg);
         
-        const response = await fetch(`/api/teams/${currentTeam.id}/testcases/`);
+        const response = await fetch(`/api/teams/${teamIdForLoad}/testcases/`);
         if (!response.ok) {
             throw new Error(`載入測試案例失敗: ${response.status} ${response.statusText}`);
         }
@@ -1667,7 +1668,7 @@ async function loadTestCases(showLoadingBlock = true, updateProgress = null, for
         
         // 儲存到快取
         if (updateProgress) updateProgress(70, '更新快取...');
-        setTestCasesCache(testCases);
+        setTestCasesCache(testCases, teamIdForLoad);
         
         if (updateProgress) updateProgress(80, '處理資料...');
         
