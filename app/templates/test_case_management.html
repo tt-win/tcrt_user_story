@@ -5609,9 +5609,69 @@ function bindMarkdownEvents() {
                     }, 300);
                 }
             });
+
+            // 按下 Enter 時自動新增下一項（列表狀態）
+            textarea.addEventListener('keydown', (e) => {
+                // Shift+Enter 保持預設換行
+                if (e.key !== 'Enter' || e.shiftKey) return;
+                const handled = handleMarkdownListEnter(e, textarea);
+                if (handled) {
+                    // 由我們處理插入，阻止預設行為
+                    e.preventDefault();
+                }
+            });
         }
     });
     
+}
+
+// 在列表行中按下 Enter 自動建立下一個項目
+function handleMarkdownListEnter(event, textarea) {
+    if (!textarea) return false;
+    // 僅處理插入點（無選取範圍）情況
+    if (textarea.selectionStart !== textarea.selectionEnd) return false;
+
+    const value = textarea.value;
+    const pos = textarea.selectionStart;
+
+    // 取得當前行的起訖與文本
+    const lineStart = value.lastIndexOf('\n', pos - 1) + 1; // 若找不到回傳 -1，加 1 後變 0
+    const nextNewline = value.indexOf('\n', pos);
+    const lineEnd = nextNewline === -1 ? value.length : nextNewline;
+    const lineText = value.slice(lineStart, lineEnd);
+
+    // 偵測無序與有序清單項目前綴
+    const unorderedMatch = lineText.match(/^(\s*)([-*+])\s+/);
+    const orderedMatch = lineText.match(/^(\s*)(\d+)\.\s+/);
+
+    if (!unorderedMatch && !orderedMatch) {
+        return false; // 非清單行，交給瀏覽器預設行為
+    }
+
+    let nextMarker = '';
+    if (unorderedMatch) {
+        const indent = unorderedMatch[1] || '';
+        const bullet = unorderedMatch[2]; // -, *, +
+        nextMarker = `${indent}${bullet} `;
+    } else if (orderedMatch) {
+        const indent = orderedMatch[1] || '';
+        const num = parseInt(orderedMatch[2], 10) || 1;
+        nextMarker = `${indent}${num + 1}. `;
+    }
+
+    // 插入換行與下一個標記，並將游標置於新項目之後
+    const before = value.slice(0, pos);
+    const after = value.slice(pos);
+    const insertion = `\n${nextMarker}`;
+    textarea.value = before + insertion + after;
+
+    const newCaret = pos + insertion.length;
+    textarea.setSelectionRange(newCaret, newCaret);
+    textarea.focus();
+
+    // 觸發 input 事件以更新預覽
+    textarea.dispatchEvent(new Event('input'));
+    return true;
 }
 
 // 安全地添加幫助按鈕到現有工具列
