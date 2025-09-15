@@ -40,101 +40,113 @@ async def upload_test_run_results(
     db: Session = Depends(get_db)
 ):
     """
-    上傳測試執行結果檔案到對應的 Test Case
-    
-    流程：
+    上傳測試執行結果檔案到本地 attachments 目錄，並記錄到本地資料庫。
+
+    調整後流程：
     1. 驗證 Test Run Item 存在
-    2. 取得團隊和表格配置
-    3. 轉換檔案名稱使用標準格式
-    4. 上傳檔案到 Lark Drive
-    5. 更新對應 Test Case 的 Test Results Files 欄位
-    6. 記錄上傳歷史到本地資料庫
+    2. 建立存放路徑：attachments/<team_id>/<config_id>/<item_id>/
+    3. 儲存檔案到檔案系統，檔名：{timestamp}-{sanitized-name}
+    4. 更新 test_run_items.execution_results_json 與統計欄位
+    5. 回傳上傳明細
     """
-    from fastapi import File, UploadFile
-    from app.services.test_result_file_service import TestCaseResultFileManager
+    import os
+    import re
     import json
-    
+    from pathlib import Path
+    from datetime import datetime
+
     # 驗證 Test Run Item 存在
     test_run_item = db.query(TestRunItemDB).filter(
         TestRunItemDB.id == item_id,
         TestRunItemDB.config_id == config_id,
         TestRunItemDB.team_id == team_id
     ).first()
-    
+
     if not test_run_item:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"找不到測試執行項目 ID {item_id}"
         )
-    
-    # 取得團隊配置
-    team = db.query(TeamDB).filter(TeamDB.id == team_id).first()
-    if not team:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"找不到團隊 ID {team_id}"
-        )
-    
+
     try:
-        # 使用共用輔助函數初始化 Lark 服務
-        lark_client, team_config = _get_lark_client_for_team(team_id, db)
-        result_file_manager = TestCaseResultFileManager(lark_client)
-        
-        # 查詢 Test Case 以取得 record_id
-        records = lark_client.get_all_records(team.test_case_table_id)
-        
-        target_record = None
-        for record in records:
-            fields = record.get('fields', {})
-            if fields.get(TestCase.FIELD_IDS['test_case_number']) == test_run_item.test_case_number:
-                target_record = record
-                break
-        
-        if not target_record:
-            return {
-                "success": False,
-                "message": "檔案上傳失敗",
-                "error_messages": [f"找不到 Test Case {test_run_item.test_case_number}"]
+# 固定以專案根做為 base，避免受啟動目錄影響
+        project_root = Path(__file__).resolve().parents[2]
+        base_dir = project_root / "attachments"
+        # 將測試結果檔案統一放在 attachments/test-runs/{team_id}/{config_id}/{item_id}/
+        target_dir = base_dir / "test-runs" / str(team_id) / str(config_id) / str(item_id)
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        # 既存的結果 JSON
+        existing = []
+        if test_run_item.execution_results_json:
+            try:
+                data = json.loads(test_run_item.execution_results_json)
+                if isinstance(data, list):
+                    existing = data
+            except Exception:
+                existing = []
+
+        upload_results = []
+        ts = datetime.utcnow().strftime("%Y%m%d-%H%M%S-%f")
+        safe_re = re.compile(r"[^A-Za-z0-9_.\-]+")
+
+        for f in files:
+            orig_name = f.filename or "unnamed"
+            name_part = safe_re.sub("_", orig_name)
+            stored_name = f"{ts}-{name_part}"
+            stored_path = target_dir / stored_name
+
+            # 寫檔
+            content = await f.read()
+            with open(stored_path, "wb") as out:
+                out.write(content)
+
+            item_meta = {
+                "name": orig_name,
+                "stored_name": stored_name,
+                "size": len(content),
+                "type": f.content_type or "application/octet-stream",
+                "relative_path": str(stored_path.relative_to(base_dir)),
+                "absolute_path": str(stored_path),
+                "uploaded_at": datetime.utcnow().isoformat(),
             }
-        
-        # 上傳結果檔案
-        result = await result_file_manager.attach_test_run_results(
-            test_run_item_id=item_id,
-            test_case_number=test_run_item.test_case_number,
-            test_case_record_id=target_record.get('record_id', ''),
-            files=files,
-            team_wiki_token=team.wiki_token,
-            test_case_table_id=team.test_case_table_id
-        )
-        
-        if result['success']:
-            # 更新本地 Test Run Item 記錄
-            test_run_item.result_files_uploaded = 1
-            test_run_item.result_files_count = result['uploaded_files']
-            test_run_item.upload_history_json = json.dumps(result['upload_history'], ensure_ascii=False)
-            
-            db.commit()
-            
-            return {
-                "success": True,
-                "message": f"成功上傳 {result['uploaded_files']} 個結果檔案到 Test Case {test_run_item.test_case_number}",
-                "uploaded_files": result['uploaded_files'],
-                "upload_details": result['upload_results']
-            }
-        else:
-            return {
-                "success": False,
-                "message": "檔案上傳失敗",
-                "error_messages": result['error_messages']
-            }
-            
+            existing.append(item_meta)
+            upload_results.append(item_meta)
+
+        # 更新 DB 欄位
+        test_run_item.execution_results_json = json.dumps(existing, ensure_ascii=False)
+        test_run_item.result_files_uploaded = 1 if len(existing) > 0 else 0
+        test_run_item.result_files_count = len(existing)
+        # 追加上傳歷史
+        history = []
+        if test_run_item.upload_history_json:
+            try:
+                history = json.loads(test_run_item.upload_history_json) or []
+            except Exception:
+                history = []
+        history.append({
+            "uploaded": len(upload_results),
+            "at": datetime.utcnow().isoformat(),
+            "files": upload_results,
+        })
+        test_run_item.upload_history_json = json.dumps(history, ensure_ascii=False)
+
+        db.commit()
+
+        return {
+            "success": True,
+            "message": f"成功上傳 {len(upload_results)} 個結果檔案（本地）",
+            "uploaded_files": len(upload_results),
+            "upload_details": upload_results,
+            "base_url": "/attachments",
+        }
+
     except Exception as e:
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"上傳結果檔案時發生錯誤: {str(e)}"
         )
-
 
 # -------------------- Pydantic Schemas --------------------
 
@@ -1038,10 +1050,9 @@ async def get_test_run_results(
     db: Session = Depends(get_db)
 ):
     """
-    獲取 Test Run Item 的測試結果檔案
-    
-    Returns:
-        測試結果檔案列表和統計資訊
+    獲取 Test Run Item 的測試結果檔案（本地）
+    - 來源：test_run_items.execution_results_json
+    - URL：/attachments/{relative_path}
     """
     _verify_team_and_config(team_id, config_id, db)
     
@@ -1059,48 +1070,38 @@ async def get_test_run_results(
         )
     
     try:
-        # 使用共用輔助函數初始化 Lark 服務
-        lark_client, team_config = _get_lark_client_for_team(team_id, db)
+        # 從本地 execution_results_json 讀取
+        import json
+        files = []
+        try:
+            if item.execution_results_json:
+                data = json.loads(item.execution_results_json)
+                if isinstance(data, list):
+                    files = data
+        except Exception:
+            files = []
         
-        # 從 Lark 取得所有記錄，然後找到指定的記錄
-        records = lark_client.get_all_records(team_config.test_case_table_id)
-        
-        target_record = None
-        for record in records:
-            fields = record.get('fields', {})
-            if fields.get(TestCase.FIELD_IDS['test_case_number']) == item.test_case_number:
-                target_record = record
-                break
-        
-        if not target_record:
-            return {
-                "test_results_files": [],
-                "files_count": 0,
-                "total_size": 0
-            }
-        
-        # 轉換為 TestCase 模型
-        test_case = TestCase.from_lark_record(target_record, team_config.id)
-        
-        # 提取測試結果檔案
-        test_results_files = test_case.test_results_files or []
-        
-        # 計算統計資訊
-        files_count = len(test_results_files)
-        total_size = sum(file.size for file in test_results_files if hasattr(file, 'size') and file.size)
+        base_url = "/attachments"
+        result_files = []
+        total_size = 0
+        for f in files:
+            name = f.get('name') or f.get('stored_name') or 'file'
+            size = int(f.get('size') or 0)
+            total_size += size
+            rel = f.get('relative_path') or ''
+            content_type = f.get('type') or 'application/octet-stream'
+            result_files.append({
+                "file_token": f.get('stored_name') or name,
+                "name": name,
+                "size": size,
+                "url": f"{base_url}/{rel}" if rel else None,
+                "uploaded_at": f.get('uploaded_at'),
+                "content_type": content_type,
+            })
         
         return {
-            "test_results_files": [
-                {
-                    "file_token": file.file_token,
-                    "name": file.name,
-                    "size": getattr(file, 'size', 0),
-                    "uploaded_at": getattr(file, 'uploaded_at', None) or getattr(file, 'created_at', None),
-                    "content_type": getattr(file, 'content_type', 'application/octet-stream')
-                }
-                for file in test_results_files
-            ],
-            "files_count": files_count,
+            "test_results_files": result_files,
+            "files_count": len(result_files),
             "total_size": total_size
         }
         
@@ -1121,119 +1122,104 @@ async def delete_test_result_file(
     db: Session = Depends(get_db)
 ):
     """
-    刪除單一測試結果檔案
-    
-    Flow:
-    1. 驗證檔案屬於該 Test Run Item
-    2. 從 Test Case 的 Test Results Files 欄位中移除檔案
-    3. 更新本地追蹤記錄
+    刪除單一測試結果檔案（本地）
+    - 從 test_run_items.execution_results_json 移除
+    - 刪除磁碟檔案（attachments/test-runs/{team}/{config}/{item}/{stored_name}）
     """
     _verify_team_and_config(team_id, config_id, db)
-    
+
     # 驗證 Test Run Item 存在
     item = db.query(TestRunItemDB).filter(
         TestRunItemDB.team_id == team_id,
         TestRunItemDB.config_id == config_id,
         TestRunItemDB.id == item_id
     ).first()
-    
+
     if not item:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Test Run Item 不存在"
-        )
-    
+        raise HTTPException(status_code=404, detail="Test Run Item 不存在")
+
+    import json
+    import urllib.parse
+    import unicodedata
+    from pathlib import Path
+
+    # 讀取現有 execution_results_json
+    files = []
     try:
-        # 使用共用輔助函數初始化 Lark 服務
-        lark_client, team_config = _get_lark_client_for_team(team_id, db)
-        
-        # 從 Lark 取得所有記錄，然後找到指定的記錄
-        records = lark_client.get_all_records(team_config.test_case_table_id)
-        
-        target_record = None
-        for record in records:
-            fields = record.get('fields', {})
-            if fields.get(TestCase.FIELD_IDS['test_case_number']) == item.test_case_number:
-                target_record = record
-                break
-        
-        if not target_record:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Test Case 不存在"
-            )
-        
-        # 轉換為 TestCase 模型
-        test_case = TestCase.from_lark_record(target_record, team_config.id)
-        
-        # 檢查檔案是否存在於 Test Results Files 中
-        test_results_files = test_case.test_results_files or []
-        file_to_remove = None
-        
-        for file in test_results_files:
-            if file.file_token == file_token:
-                file_to_remove = file
-                break
-        
-        if not file_to_remove:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="檔案不存在於測試結果中"
-            )
-        
-        # 從列表中移除檔案
-        remaining_files = [f for f in test_results_files if f.file_token != file_token]
-        
-        # 更新 Lark Test Case 記錄的 Test Results Files 欄位
-        success = lark_client.update_record_attachment(
-            team_config.test_case_table_id,
-            test_case.record_id,
-            'Test Results Files',
-            [f.file_token for f in remaining_files],
-            team_config.wiki_token
-        )
-        
-        if not success:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="更新 Test Case 記錄失敗"
-            )
-        
-        # 更新本地追蹤記錄
-        if item.upload_history_json:
-            try:
-                upload_history = json.loads(item.upload_history_json)
-                uploads = upload_history.get('uploads', [])
-                
-                # 從上傳歷史中移除該檔案
-                uploads = [upload for upload in uploads if upload.get('file_token') != file_token]
-                
-                # 更新統計
-                upload_history['uploads'] = uploads
-                upload_history['total_uploads'] = len(uploads)
-                
-                item.upload_history_json = json.dumps(upload_history, ensure_ascii=False) if uploads else None
-                item.result_files_count = len(uploads)
-                item.result_files_uploaded = 1 if len(uploads) > 0 else 0
-                item.updated_at = datetime.utcnow()
-                
-                db.commit()
-                
-            except Exception as e:
-                logging.warning(f"更新上傳歷史記錄失敗: {e}")
-                # 不影響主要功能
-        
-        return {
-            "success": True,
-            "message": "檔案刪除成功",
-            "remaining_files_count": len(remaining_files)
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logging.error(f"刪除測試結果檔案失敗: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"刪除檔案失敗: {str(e)}"
-        )
+        if item.execution_results_json:
+            data = json.loads(item.execution_results_json)
+            if isinstance(data, list):
+                files = data
+    except Exception:
+        files = []
+
+    # 準備比較（處理 URL decode 與 Unicode 正規化、尾綴比對）
+    candidates = set()
+    try:
+        candidates.add(file_token)
+        candidates.add(urllib.parse.unquote(file_token))
+        for form in ("NFC", "NFD"):
+            candidates.add(unicodedata.normalize(form, file_token))
+            candidates.add(unicodedata.normalize(form, urllib.parse.unquote(file_token)))
+    except Exception:
+        candidates.add(file_token)
+
+    def matches(name: str) -> bool:
+        if not name:
+            return False
+        variants = {unicodedata.normalize(form, name) for form in ("NFC", "NFD")}
+        for cand in candidates:
+            if cand in variants:
+                return True
+            for v in variants:
+                if v.endswith(cand):
+                    return True
+        return False
+
+    # 找到目標索引
+    idx = None
+    for i, f in enumerate(files):
+        if matches(f.get('stored_name') or '') or matches(f.get('name') or ''):
+            idx = i
+            break
+
+    if idx is None:
+        raise HTTPException(status_code=404, detail="檔案不存在於測試結果中")
+
+    # 刪除磁碟檔案
+    project_root = Path(__file__).resolve().parents[2]
+    base_dir = project_root / "attachments"
+    disk_path = files[idx].get('absolute_path')
+    # 若沒有絕對路徑，嘗試用新制定的 test-runs 目錄拼出
+    if not disk_path:
+        rel = files[idx].get('relative_path') or ''
+        try:
+            from pathlib import PurePosixPath
+            rel_path = PurePosixPath(rel)
+            disk_path = str(base_dir / rel_path)
+        except Exception:
+            disk_path = None
+    try:
+        if disk_path:
+            p = Path(disk_path)
+            # 只允許刪除 attachments 下的檔案
+            if (base_dir in p.parents or base_dir == p.parent) and p.exists():
+                p.unlink()
+    except Exception:
+        pass
+
+    # 從 JSON 移除並更新計數
+    deleted = files.pop(idx)
+    item.execution_results_json = json.dumps(files, ensure_ascii=False) if files else None
+    item.result_files_count = len(files)
+    item.result_files_uploaded = 1 if len(files) > 0 else 0
+    item.updated_at = datetime.utcnow()
+
+    db.commit()
+
+    return {
+        "success": True,
+        "message": "檔案刪除成功",
+        "deleted": deleted.get('stored_name') or deleted.get('name'),
+        "remaining_files_count": len(files)
+    }

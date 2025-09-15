@@ -2,12 +2,16 @@ from sqlalchemy import create_engine, MetaData, event
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 import os
+from pathlib import Path
 
-DATABASE_URL = "sqlite:///./test_case_repo.db"
+# 固定使用專案根目錄下的資料庫檔案，避免工作目錄差異
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+DB_FILE = PROJECT_ROOT / "test_case_repo.db"
+DATABASE_URL = f"sqlite:///{DB_FILE}"
 
 # 改善 SQLite 並發設定
 engine = create_engine(
-    DATABASE_URL, 
+    DATABASE_URL,
     connect_args={
         "check_same_thread": False,
         "timeout": 30  # 30 秒 busy timeout

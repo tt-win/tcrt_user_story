@@ -1750,7 +1750,7 @@ async function loadTestCases(showLoadingBlock = true, updateProgress = null, for
         const connectingMsg = window.i18n ? window.i18n.t('loading.connecting', {}, '連接伺服器...') : '連接伺服器...';
         if (updateProgress) updateProgress(30, connectingMsg);
         
-        const response = await fetch(`/api/teams/${teamIdForLoad}/testcases/`);
+        const response = await fetch(`/api/teams/${teamIdForLoad}/testcases/?load_all=true`);
         if (!response.ok) {
             throw new Error(`載入測試案例失敗: ${response.status} ${response.statusText}`);
         }
@@ -3199,12 +3199,14 @@ function showTestCaseModal(testCase = null) {
     
     if (testCase) {
         // 編輯現有測試案例時，初始化附件資料
-        if (testCase.attachments && testCase.attachments.length > 0) {
+        if (Array.isArray(testCase.attachments) && testCase.attachments.length > 0) {
             uploadedAttachments = testCase.attachments.map(att => ({
                 file_token: att.file_token,
                 name: att.name,
                 size: att.size,
-                type: att.type || 'application/octet-stream'
+                type: att.type || 'application/octet-stream',
+                url: att.url || '',
+                stored_name: att.file_token || att.stored_name || att.name || ''
             }));
         } else {
             uploadedAttachments = [];
@@ -3241,8 +3243,29 @@ function showTestCaseModal(testCase = null) {
         document.getElementById('test_steps').value = testCase.steps || '';
         document.getElementById('expected_result').value = testCase.expected_result || '';
         
-        // 渲染附件列表
+        // 渲染附件列表（若列表資料沒有附件，補打一筆詳情以取得附件）
         renderAttachmentsList();
+        try {
+            const currentTeam = AppUtils.getCurrentTeam();
+            if (currentTeam && currentTeam.id && (!Array.isArray(testCase.attachments) || testCase.attachments.length === 0)) {
+                fetch(`/api/teams/${currentTeam.id}/testcases/${encodeURIComponent(testCase.record_id)}`)
+                    .then(r => r.ok ? r.json() : null)
+                    .then(data => {
+                        if (data && Array.isArray(data.attachments)) {
+                            uploadedAttachments = data.attachments.map(att => ({
+                                file_token: att.file_token,
+                                name: att.name,
+                                size: att.size,
+                                type: att.type || 'application/octet-stream',
+                                url: att.url || '',
+                                stored_name: att.file_token || att.stored_name || att.name || ''
+                            }));
+                            renderAttachmentsList();
+                        }
+                    })
+                    .catch(() => {});
+            }
+        } catch (_) {}
         
         // 儲存原始資料用於比較
         originalFormData = {
@@ -6057,96 +6080,65 @@ async function uploadFilesToServer(files) {
             const uploadingMessage = window.i18n ? window.i18n.t('messages.uploadingFile') : '正在上傳';
             statusText.textContent = `${uploadingMessage}: ${file.name}`;
             
-            const formData = new FormData();
-            formData.append('file', file);
-            
             try {
-                const response = await fetch(`/api/attachments/teams/${currentTeam.id}/upload-file-token`, {
+                // 新後端：直接一次性將多檔傳到該測試案例
+                // 為了顯示每檔進度，這裡逐檔傳送（也可改成一次多檔 FormData）
+                const currentRecordKey = getCurrentRecordKeyForUpload();
+                if (!currentRecordKey) throw new Error('請先填寫 Test Case Number 再上傳附件');
+
+                const fd = new FormData();
+                fd.append('files', file);
+
+                // 若 currentRecordKey 是純數字，使用 id 路由；否則使用 by-number 路由避免 422
+                const isNumericId = /^\d+$/.test(String(currentRecordKey));
+                const url = isNumericId
+                    ? `/api/teams/${currentTeam.id}/testcases/${encodeURIComponent(currentRecordKey)}/attachments`
+                    : `/api/teams/${currentTeam.id}/testcases/by-number/${encodeURIComponent(currentRecordKey)}/attachments`;
+                const response = await fetch(url, {
                     method: 'POST',
-                    body: formData
+                    body: fd
                 });
-                
-                if (response.ok) {
+
+        if (response.ok) {
                     const result = await response.json();
-                    
-                    // 立即附加到測試案例記錄
-                    const currentRecordId = getCurrentRecordId();
-                    if (currentRecordId) {
-                        const statusText = attachmentsList.querySelector('.mt-2 small');
-                        const attachingMessage = window.i18n ? window.i18n.t('messages.attachingFile') : '正在附加';
-                        statusText.textContent = `${attachingMessage}: ${file.name}`;
-                        
-                        const attachFormData = new FormData();
-                        attachFormData.append('file_token', result.file_token);
-                        attachFormData.append('field_name', 'Attachment');
-                        attachFormData.append('append', 'true');
-                        
-                        const attachResponse = await fetch(`/api/attachments/teams/${currentTeam.id}/testcases/${currentRecordId}/attach-token`, {
-                            method: 'POST',
-                            body: attachFormData
-                        });
-                        
-                        if (attachResponse.ok) {
-                            const attachResult = await attachResponse.json();
-                            console.log(`附件 ${file.name} 已成功附加到記錄`);
-                            
-                            // 加到本地數組以供顯示
-                            uploadedFiles.push({
-                                file_token: result.file_token,
-                                name: result.file_name,
-                                size: result.file_size,
-                                type: file.type || 'application/octet-stream'
-                            });
-                            
-                            // 同時更新原始資料中的附件
-                            const testCaseIndex = testCases.findIndex(tc => tc.record_id === currentRecordId);
-                            if (testCaseIndex !== -1) {
-                                if (!testCases[testCaseIndex].attachments) {
-                                    testCases[testCaseIndex].attachments = [];
-                                }
-                                testCases[testCaseIndex].attachments.push({
-                                    file_token: result.file_token,
-                                    name: result.file_name,
-                                    size: result.file_size,
-                                    type: file.type || 'application/octet-stream'
-                                });
-                            }
-                            
-                            // 更新 filteredTestCases
-                            const filteredIndex = filteredTestCases.findIndex(tc => tc.record_id === currentRecordId);
-                            if (filteredIndex !== -1) {
-                                if (!filteredTestCases[filteredIndex].attachments) {
-                                    filteredTestCases[filteredIndex].attachments = [];
-                                }
-                                filteredTestCases[filteredIndex].attachments.push({
-                                    file_token: result.file_token,
-                                    name: result.file_name,
-                                    size: result.file_size,
-                                    type: file.type || 'application/octet-stream'
-                                });
-                            }
-                        } else {
-                            const attachError = await attachResponse.json();
-                            throw new Error(`附加檔案失敗: ${attachError.detail || '未知錯誤'}`);
-                        }
-                    } else {
-                        throw new Error('無法取得當前記錄ID，無法附加檔案');
+                    const statusText = attachmentsList.querySelector('.mt-2 small');
+                    const attachingMessage = window.i18n ? window.i18n.t('messages.attachingFile') : '正在附加';
+                    statusText.textContent = `${attachingMessage}: ${file.name}`;
+
+                    // 從回應中找出剛上傳的那個
+                    const meta = Array.isArray(result.files) ? result.files.find(m => m.name === file.name || (m.stored_name && m.stored_name.includes(file.name))) : null;
+                    const metaEntry = meta || { name: file.name, size: file.size, type: file.type || 'application/octet-stream' };
+
+                    uploadedFiles.push(metaEntry);
+
+                    // 更新本地列表資料（同時嘗試以 record_id 或 test_case_number 對應）
+                    const rid = getCurrentRecordId();
+                    const tcNumberEl2 = document.getElementById('testCaseNumber');
+                    const tcn = tcNumberEl2 && tcNumberEl2.value ? tcNumberEl2.value.trim() : '';
+
+                    let testCaseIndex = -1;
+                    if (rid) testCaseIndex = testCases.findIndex(tc => tc.record_id === rid);
+                    if (testCaseIndex === -1 && tcn) testCaseIndex = testCases.findIndex(tc => tc.test_case_number === tcn);
+                    if (testCaseIndex !== -1) {
+                        if (!testCases[testCaseIndex].attachments) testCases[testCaseIndex].attachments = [];
+                        testCases[testCaseIndex].attachments.push(metaEntry);
                     }
-                    
+                    let filteredIndex = -1;
+                    if (rid) filteredIndex = filteredTestCases.findIndex(tc => tc.record_id === rid);
+                    if (filteredIndex === -1 && tcn) filteredIndex = filteredTestCases.findIndex(tc => tc.test_case_number === tcn);
+                    if (filteredIndex !== -1) {
+                        if (!filteredTestCases[filteredIndex].attachments) filteredTestCases[filteredIndex].attachments = [];
+                        filteredTestCases[filteredIndex].attachments.push(metaEntry);
+                    }
+
                     completedFiles++;
-                    
-                    // 更新進度條
                     const progress = (completedFiles / totalFiles) * 100;
-                    if (progressBar) {
-                        progressBar.style.width = progress + '%';
-                    }
-                    if (progressText) {
-                        progressText.textContent = `${completedFiles}/${totalFiles}`;
-                    }
-                    
+                    if (progressBar) progressBar.style.width = progress + '%';
+                    if (progressText) progressText.textContent = `${completedFiles}/${totalFiles}`;
                 } else {
-                    const errorData = await response.json();
-                    throw new Error(errorData.detail || `上傳 "${file.name}" 失敗`);
+                    let errorText = '上傳失敗';
+                    try { const err = await response.json(); errorText = err.detail || errorText; } catch (_e) {}
+                    throw new Error(`${errorText}`);
                 }
             } catch (fileError) {
                 console.error(`上傳檔案 ${file.name} 失敗:`, fileError);
@@ -6195,7 +6187,10 @@ function renderAttachmentsList() {
         return;
     }
     
-    const attachmentsHtml = uploadedAttachments.map((attachment, index) => `
+    const attachmentsHtml = uploadedAttachments.map((attachment, index) => {
+        const stored = attachment.stored_name || attachment.file_token || attachment.name;
+        const link = attachment.url ? `<a href="${attachment.url}" target="_blank" class="text-decoration-none me-2"><i class=\"fas fa-link\"></i></a>` : '';
+        return `
         <div class="attachment-item d-flex align-items-center justify-content-between p-2 border rounded mb-2 bg-light">
             <div class="d-flex align-items-center">
                 <i class="fas fa-file me-2 text-primary"></i>
@@ -6205,13 +6200,14 @@ function renderAttachmentsList() {
                 </div>
             </div>
             <div>
+                ${link}
                 <button type="button" class="btn btn-sm btn-outline-danger" 
-                        onclick="removeAttachment('${attachment.file_token}', '${attachment.name}', ${index})" data-i18n-title="tooltips.removeAttachment">
+                        onclick="removeAttachment('${stored}', '${attachment.name}', ${index})" data-i18n-title="tooltips.removeAttachment">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
-        </div>
-    `).join('');
+        </div>`;
+    }).join('');
     
     attachmentsList.innerHTML = `
         <div class="attachments-header mb-2">
@@ -6237,9 +6233,19 @@ function formatFileSize(bytes) {
 }
 
 // 下載附件
-function downloadAttachment(filename) {
-    // 實際應該呼叫 API 來下載檔案
-    console.log(`下載附件: ${filename}`);
+function downloadAttachment(storedName) {
+    try {
+        const currentTeam = AppUtils.getCurrentTeam();
+        const tcNumberEl = document.getElementById('testCaseNumber');
+        if (!currentTeam || !currentTeam.id || !tcNumberEl || !tcNumberEl.value) {
+            showError('無法判定附件路徑');
+            return;
+        }
+        const url = `/attachments/test-cases/${encodeURIComponent(currentTeam.id)}/${encodeURIComponent(tcNumberEl.value.trim())}/${encodeURIComponent(storedName)}`;
+        window.open(url, '_blank');
+    } catch (e) {
+        console.error('downloadAttachment error:', e);
+    }
 }
 
 // 移除附件
@@ -6258,7 +6264,11 @@ async function removeAttachment(fileToken, filename, index) {
             }
             
             // 呼叫後端 API 刪除附件
-            const response = await fetch(`/api/attachments/teams/1/testcases/${currentRecordId}/attachments/${fileToken}`, {
+            const currentTeam = AppUtils.getCurrentTeam();
+            if (!currentTeam || !currentTeam.id) {
+                throw new Error('請先選擇團隊');
+            }
+            const response = await fetch(`/api/teams/${currentTeam.id}/testcases/${currentRecordId}/attachments/${encodeURIComponent(filename)}`, {
                 method: 'DELETE',
                 headers: {
                     'Content-Type': 'application/json'
@@ -6287,7 +6297,7 @@ async function removeAttachment(fileToken, filename, index) {
                         }
                         // 從原始資料中移除該附件
                         testCases[testCaseIndex].attachments = testCases[testCaseIndex].attachments.filter(
-                            att => att.file_token !== fileToken
+att => (att.stored_name !== filename && att.name !== filename)
                         );
                     }
                     
@@ -6298,7 +6308,7 @@ async function removeAttachment(fileToken, filename, index) {
                             filteredTestCases[filteredIndex].attachments = [];
                         }
                         filteredTestCases[filteredIndex].attachments = filteredTestCases[filteredIndex].attachments.filter(
-                            att => att.file_token !== fileToken
+att => (att.stored_name !== filename && att.name !== filename)
                         );
                     }
                 }
@@ -6356,19 +6366,32 @@ function resetModalScrollPositions(modal) {
 
 // 取得當前記錄 ID 的輔助函數
 function getCurrentRecordId() {
-    // 從 modal 或其他地方取得當前記錄的 ID
+    // 從 modal 或其他地方取得當前記錄的 ID（可能是 lark_record_id 或本地 id）
     const modal = document.getElementById('testCaseModal');
     if (modal && modal.dataset.recordId) {
         return modal.dataset.recordId;
     }
-    
-    // 如果沒有 modal，可能在其他地方，需要根據實際情況調整
     const recordIdElement = document.querySelector('[data-record-id]');
     if (recordIdElement) {
         return recordIdElement.dataset.recordId;
     }
-    
     return null;
+}
+
+// 供附件上傳使用的記錄識別：一律使用測試案例編號（與後端規則一致）
+function getCurrentRecordKeyForUpload() {
+    // 首選：若當前記錄有本地 id（record_id 為純數字），就用本地 id
+    try {
+        const modal = document.getElementById('testCaseModal');
+        const rid = modal && modal.dataset ? modal.dataset.recordId : null;
+        if (rid && /^\d+$/.test(String(rid))) {
+            return rid;
+        }
+    } catch (_) {}
+    // 次選：使用 Test Case Number（後端兼容）
+    const tcNumberEl = document.getElementById('testCaseNumber');
+    const val = tcNumberEl && tcNumberEl.value ? tcNumberEl.value.trim() : '';
+    return val || null;
 }
 
 // Modal TCG 編輯功能

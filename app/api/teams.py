@@ -16,6 +16,7 @@ from app.models.database_models import (
     TestRunItem as TestRunItemDB,
     TestRunItemResultHistory as ResultHistoryDB,
     SyncHistory as SyncHistoryDB,
+    TestCaseLocal as TestCaseLocalDB,
 )
 from app.services.lark_client import LarkClient
 from app.config import settings
@@ -269,7 +270,7 @@ async def delete_team(team_id: int, db: Session = Depends(get_db)):
         )
 
     try:
-        # 先刪除與該團隊相關的歷程與本地項目與配置，避免 FK 參照錯誤
+        # 先刪除與該團隊相關的歷程與本地項目與配置與測試案例，避免 FK 參照錯誤
         # 1) 測試結果歷程
         db.query(ResultHistoryDB).filter(ResultHistoryDB.team_id == team_id).delete(synchronize_session=False)
         # 2) 本地測試執行項目
@@ -278,10 +279,28 @@ async def delete_team(team_id: int, db: Session = Depends(get_db)):
         db.query(TestRunConfigDB).filter(TestRunConfigDB.team_id == team_id).delete(synchronize_session=False)
         # 4) 同步歷史
         db.query(SyncHistoryDB).filter(SyncHistoryDB.team_id == team_id).delete(synchronize_session=False)
+        # 5) 本地測試案例
+        db.query(TestCaseLocalDB).filter(TestCaseLocalDB.team_id == team_id).delete(synchronize_session=False)
 
         # 最後刪除團隊
         db.delete(team_db)
         db.commit()
+
+        # 嘗試移除磁碟附件資料夾（非致命）
+        try:
+            from pathlib import Path
+            import shutil
+            project_root = Path(__file__).resolve().parents[2]
+            # test-cases/{team_id}
+            tc_dir = project_root / "attachments" / "test-cases" / str(team_id)
+            if tc_dir.exists():
+                shutil.rmtree(tc_dir, ignore_errors=True)
+            # test-runs/{team_id}
+            tr_dir = project_root / "attachments" / "test-runs" / str(team_id)
+            if tr_dir.exists():
+                shutil.rmtree(tr_dir, ignore_errors=True)
+        except Exception:
+            pass
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"刪除團隊失敗：{str(e)}")

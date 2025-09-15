@@ -144,6 +144,11 @@ COLUMN_CHECKS: Dict[str, List[ColumnSpec]] = {
         ColumnSpec("notify_chat_names_snapshot", "TEXT", nullable=True, default=None),
         ColumnSpec("notify_chats_search", "TEXT", nullable=True, default=None),
     ],
+    # TestCaseLocal 需要新增的附件標記欄位
+    "test_cases": [
+        ColumnSpec("has_attachments", "INTEGER", nullable=False, default=0, notes="是否有附件（0/1）"),
+        ColumnSpec("attachment_count", "INTEGER", nullable=False, default=0, notes="附件數量"),
+    ],
     # Lark Users 重要索引欄位（若缺少欄位則僅報告，不強制新增 NOT NULL）
     "lark_users": [
         ColumnSpec("enterprise_email", "TEXT", nullable=True, default=None),

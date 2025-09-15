@@ -2918,39 +2918,40 @@ async function showTestCaseDetailModal(testCaseNumber) {
 
 async function loadTestCaseDetail(testCaseNumber) {
     try {
-        // 先嘗試從跨頁快取讀取，若 1 小時內則直接顯示
+        // 先嘗試從跨頁快取讀取
         const cached = await getCachedTestCase(testCaseNumber);
-        if (cached && (Date.now() - cached.ts) < TEST_CASE_CACHE_TTL_MS) {
+        const isFresh = cached && (Date.now() - cached.ts) < TEST_CASE_CACHE_TTL_MS;
+        const hasAttachments = cached && cached.data && Array.isArray(cached.data.attachments) && cached.data.attachments.length > 0;
+        // 若快取新鮮且包含附件，直接使用；否則改以 by-number 拉完整詳情（含附件）
+        if (isFresh && hasAttachments) {
             displayTestCaseDetail(cached.data);
-            return; // 使用快取，不發出請求
+            return;
         }
 
-        // 從當前團隊的測試案例中搜尋
+        // 先以 by-number 取得完整詳情（含附件）
+        const resp = await fetch(`/api/teams/${currentTeamId}/testcases/by-number/${encodeURIComponent(testCaseNumber)}`);
+        if (resp.ok) {
+            const testCase = await resp.json();
+            setCachedTestCase(testCaseNumber, testCase);
+            displayTestCaseDetail(testCase);
+            return;
+        }
+
+        // 後備：用列表搜尋（可能不含附件，僅避免完全失敗）
         const url = new URL(`/api/teams/${currentTeamId}/testcases/`, window.location.origin);
         url.searchParams.set('search', testCaseNumber);
         url.searchParams.set('limit', '1');
-        
         const response = await fetch(url);
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
-        
         const testCases = await response.json();
-        
-        if (testCases.length === 0) {
+        if (!Array.isArray(testCases) || testCases.length === 0) {
             throw new Error('找不到指定的測試案例');
         }
-        
-        const testCase = testCases.find(tc => tc.test_case_number === testCaseNumber);
-        if (!testCase) {
-            throw new Error('找不到指定的測試案例');
-        }
-
-        // 寫入快取
-        setCachedTestCase(testCaseNumber, testCase);
-
-        // 顯示 Test Case 詳細資料
-        displayTestCaseDetail(testCase);
+        const fallback = testCases.find(tc => tc.test_case_number === testCaseNumber) || testCases[0];
+        setCachedTestCase(testCaseNumber, fallback);
+        displayTestCaseDetail(fallback);
         
     } catch (error) {
         console.error('Error loading test case detail:', error);
@@ -3369,6 +3370,31 @@ async function setCachedTestCase(testCaseNumber, testCaseData) {
     try {
         if (!currentTeamId) { console.debug('[CACHE][EXEC] SKIP WRITE: no teamId', { testCaseNumber }); return; }
         if (!testCaseNumber) { console.debug('[CACHE][EXEC] SKIP WRITE: no testCaseNumber'); return; }
+
+        // 若快取已存在且內容相同，避免重覆寫入
+        try {
+            const existing = await TRCache.getExecDetail(currentTeamId, testCaseNumber, TEST_CASE_CACHE_TTL_MS);
+            const pick = (tc) => {
+                if (!tc) return null;
+                return {
+                    record_id: tc.record_id || null,
+                    test_case_number: tc.test_case_number || null,
+                    title: tc.title || null,
+                    priority: tc.priority || null,
+                    precondition: tc.precondition || null,
+                    steps: tc.steps || null,
+                    expected_result: tc.expected_result || null,
+                    updated_at: tc.updated_at || null,
+                    attachment_count: Array.isArray(tc.attachments) ? tc.attachments.length : 0,
+                };
+            };
+            const eq = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+            if (existing && eq(pick(existing.data), pick(testCaseData))) {
+                console.debug('[CACHE][EXEC] SKIP WRITE: identical', { teamId: currentTeamId, testCaseNumber });
+                return;
+            }
+        } catch (_) {}
+
         console.debug('[CACHE][EXEC] WRITE', { teamId: currentTeamId, testCaseNumber });
         await TRCache.setExecDetail(currentTeamId, testCaseNumber, testCaseData);
     } catch (e) {
@@ -3544,23 +3570,30 @@ function renderMarkdown(content) {
 function handleAttachmentClick(attachmentName, fileToken, fileUrl) {
     console.log('附件點擊:', { attachmentName, fileToken, fileUrl });
     
-    // 如果有 file_token 或 file_url，嘗試通過代理 API 下載
+    // 1) 本地附件：直接打開 /attachments 相對路徑
+    if (fileUrl && fileUrl.trim().startsWith('/attachments')) {
+        window.open(fileUrl, '_blank', 'noopener,noreferrer');
+        return;
+    }
+    
+    // 2) 絕對 URL：直接開啟
+    if (fileUrl && /^(https?:)?\/\//i.test(fileUrl.trim())) {
+        window.open(fileUrl, '_blank', 'noopener,noreferrer');
+        return;
+    }
+
+    // 3) 仍需走代理（保留相容）
     if ((fileToken && fileToken.trim() !== '') || (fileUrl && fileUrl.trim() !== '')) {
         try {
-            // 構建代理下載 URL
             const proxyUrl = new URL(`/api/attachments/teams/${currentTeamId}/attachments/download`, window.location.origin);
-            
             if (fileUrl && fileUrl.trim() !== '') {
                 proxyUrl.searchParams.set('file_url', fileUrl);
             } else if (fileToken && fileToken.trim() !== '') {
                 proxyUrl.searchParams.set('file_token', fileToken);
             }
-            
             if (attachmentName && attachmentName.trim() !== '') {
                 proxyUrl.searchParams.set('filename', attachmentName);
             }
-            
-            // 在新窗口中打開代理下載 URL
             window.open(proxyUrl.toString(), '_blank', 'noopener,noreferrer');
             return;
         } catch (error) {
@@ -3568,7 +3601,7 @@ function handleAttachmentClick(attachmentName, fileToken, fileUrl) {
         }
     }
     
-    // 如果沒有有效的 token 或 URL，顯示附件信息
+    // 4) 沒有可用資訊：顯示說明
     console.log('沒有有效的附件 token 或 URL，顯示附件信息');
     showAttachmentInfo(attachmentName, fileToken, fileUrl);
 }
@@ -3649,23 +3682,30 @@ function showAttachmentInfo(attachmentName, fileToken, fileUrl) {
 // 處理附件下載（從信息模態框中）
 function handleAttachmentDownload(attachmentName, fileToken, fileUrl) {
     console.log('附件下載:', { attachmentName, fileToken, fileUrl });
-    
+
+    // 1) 本地附件：直接開啟 /attachments 相對路徑
+    if (fileUrl && fileUrl.trim().startsWith('/attachments')) {
+        window.open(fileUrl, '_blank', 'noopener,noreferrer');
+        return;
+    }
+    // 2) 絕對 URL：直接開啟
+    if (fileUrl && /^(https?:)?\/\//i.test(fileUrl.trim())) {
+        window.open(fileUrl, '_blank', 'noopener,noreferrer');
+        return;
+    }
+
+    // 3) 走代理（保留相容）
     if ((fileToken && fileToken.trim() !== '') || (fileUrl && fileUrl.trim() !== '')) {
         try {
-            // 構建代理下載 URL
             const proxyUrl = new URL(`/api/attachments/teams/${currentTeamId}/attachments/download`, window.location.origin);
-            
             if (fileUrl && fileUrl.trim() !== '') {
                 proxyUrl.searchParams.set('file_url', fileUrl);
             } else if (fileToken && fileToken.trim() !== '') {
                 proxyUrl.searchParams.set('file_token', fileToken);
             }
-            
             if (attachmentName && attachmentName.trim() !== '') {
                 proxyUrl.searchParams.set('filename', attachmentName);
             }
-            
-            // 在新窗口中打開代理下載 URL
             window.open(proxyUrl.toString(), '_blank', 'noopener,noreferrer');
         } catch (error) {
             console.error('構建附件下載 URL 失敗:', error);
@@ -5758,6 +5798,39 @@ class TestResultsManager {
         
         // 檔案選擇
         this.fileInput?.addEventListener('change', (e) => this.handleFileSelect(e));
+    }
+    
+    async loadTestCaseAttachments_REMOVED() {
+        try {
+            if (!this.tcAttachmentsContainer) return;
+            const listDiv = this.tcAttachmentsContainer.querySelector('[data-role="attachments-list"]');
+            if (listDiv) listDiv.innerHTML = `<div class="text-muted small">${window.i18n ? window.i18n.t('messages.loading') : '載入中...'}</div>`;
+            const resp = await fetch(`/api/teams/${this.teamId}/testcases/by-number/${encodeURIComponent(this.testCaseNumber)}`);
+            if (!resp.ok) {
+                if (listDiv) listDiv.innerHTML = `<div class="text-muted small">${window.i18n ? window.i18n.t('errors.noAttachments') : '尚無附件'}</div>`;
+                return;
+            }
+            const data = await resp.json();
+            const attachments = Array.isArray(data.attachments) ? data.attachments : [];
+            if (!attachments.length) {
+                if (listDiv) listDiv.innerHTML = `<div class="text-muted small">${window.i18n ? window.i18n.t('errors.noAttachments') : '尚無附件'}</div>`;
+                return;
+            }
+            const html = attachments.map(att => {
+                const name = att.name || att.file_token || 'file';
+                const size = att.size || 0;
+                const url = att.url || '#';
+                return `
+                    <a class="list-group-item list-group-item-action d-flex justify-content-between align-items-center" href="${url}" target="_blank">
+                        <span><i class="fas fa-file text-primary me-2"></i>${name}</span>
+                        <small class="text-muted">${(size/1024/1024).toFixed(2)} MB</small>
+                    </a>
+                `;
+            }).join('');
+            if (listDiv) listDiv.innerHTML = html;
+        } catch (e) {
+            console.error('載入 Test Case 附件失敗:', e);
+        }
     }
     
     async loadExistingResults() {

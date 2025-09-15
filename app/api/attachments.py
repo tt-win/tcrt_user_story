@@ -460,14 +460,63 @@ async def download_attachment_proxy(
     """
     附件下載代理 API
     
-    代理 Lark 文件下載請求，自動附加正確的 Authorization header
-    
-    Args:
-        team_id: 團隊 ID
-        file_url: Lark 文件下載 URL（優先使用）
-        file_token: 文件 token（如果沒有 file_url）
-        filename: 建議的檔案名稱
+    現在優先支援本地附件：
+    - 若 file_url 以 /attachments 開頭，直接從本地檔案系統讀取並回傳
+    - 若只有 file_token，嘗試在本地 attachments 目錄中以檔名搜尋
+    - 其餘情況才代理 Lark 下載
     """
+    import os
+    import mimetypes
+    from pathlib import Path
+    import urllib.parse
+
+    # 1) 本地附件：/attachments 相對路徑
+    try:
+        if file_url and file_url.strip().startswith('/attachments'):
+            project_root = Path(__file__).resolve().parents[2]
+            attachments_root = project_root / 'attachments'
+            # 防止目錄穿越
+            rel = file_url[len('/attachments/'):].lstrip('/') if file_url else ''
+            rel = urllib.parse.unquote(rel)
+            disk_path = attachments_root / rel
+            if not disk_path.exists() or not disk_path.is_file():
+                raise HTTPException(status_code=404, detail="附件不存在")
+            # 僅允許服務 attachments_root 之下的檔案
+            if attachments_root not in disk_path.parents:
+                raise HTTPException(status_code=403, detail="禁止存取")
+            media_type = mimetypes.guess_type(str(disk_path))[0] or 'application/octet-stream'
+            def iterfile():
+                with open(disk_path, 'rb') as f:
+                    yield from f
+            return StreamingResponse(iterfile(), media_type=media_type)
+    except HTTPException:
+        raise
+    except Exception:
+        # 本地嘗試失敗則進入下一步
+        pass
+
+    # 2) 只有 token：嘗試在本地 attachments 目錄以檔名搜尋
+    try:
+        if file_token and (not file_url):
+            project_root = Path(__file__).resolve().parents[2]
+            attachments_root = project_root / 'attachments'
+            # 在整個 attachments 目錄中搜尋相符檔名（stored_name）
+            target = None
+            if attachments_root.exists():
+                for p in attachments_root.rglob('*'):
+                    if p.is_file() and p.name == file_token:
+                        target = p
+                        break
+            if target and target.exists():
+                media_type = mimetypes.guess_type(str(target))[0] or 'application/octet-stream'
+                def iterfile():
+                    with open(target, 'rb') as f:
+                        yield from f
+                return StreamingResponse(iterfile(), media_type=media_type)
+    except Exception:
+        pass
+
+    # 3) 代理 Lark 下載
     lark_client, team = get_lark_client_for_team(team_id, db)
     
     try:

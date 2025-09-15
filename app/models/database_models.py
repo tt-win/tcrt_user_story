@@ -9,6 +9,7 @@ from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum
 from sqlalchemy.orm import relationship, declarative_base
 from datetime import datetime
 from typing import Optional
+from enum import Enum as PyEnum
 
 # 從現有的資料模型導入枚舉類型
 from .lark_types import Priority, TestResultStatus
@@ -16,6 +17,13 @@ from .team import TeamStatus
 from .test_run_config import TestRunStatus
 
 Base = declarative_base()
+
+
+class SyncStatus(PyEnum):
+    """本地與遠端（Lark）同步狀態"""
+    SYNCED = "synced"
+    PENDING = "pending"         # 本地有變更，待推送到 Lark
+    CONFLICT = "conflict"       # 本地與遠端同時修改，需人工處理
 
 class Team(Base):
     """團隊表格"""
@@ -246,6 +254,64 @@ class LarkDepartment(Base):
         Index('ix_lark_dept_parent', 'parent_department_id'),
         Index('ix_lark_dept_level', 'level'),
         Index('ix_lark_dept_status', 'status'),
+    )
+
+
+class TestCaseLocal(Base):
+    """測試案例本地中介資料表
+
+    作為所有對 Lark Test Case 表的操作中介層，支援本地 upsert/update、索引查詢與差異同步。
+    """
+    __tablename__ = "test_cases"
+
+    # 主鍵與關聯
+    id = Column(Integer, primary_key=True, index=True)
+    team_id = Column(Integer, ForeignKey("teams.id"), nullable=False, index=True)
+
+    # 與 Lark 的關聯鍵
+    lark_record_id = Column(String(255), nullable=True, unique=True, index=True)
+
+    # 核心欄位
+    test_case_number = Column(String(100), nullable=False)
+    title = Column(Text, nullable=False)
+    priority = Column(Enum(Priority), default=Priority.MEDIUM)
+    precondition = Column(Text, nullable=True)
+    steps = Column(Text, nullable=True)
+    expected_result = Column(Text, nullable=True)
+
+    # 測試結果與人員（對應 Lark 欄位，必要時使用 JSON 紀錄詳細結構）
+    test_result = Column(Enum(TestResultStatus), nullable=True)
+    assignee_json = Column(Text, nullable=True)
+
+    # 關聯與多值欄位（JSON 字串保存）
+    attachments_json = Column(Text, nullable=True)
+    test_results_files_json = Column(Text, nullable=True)
+    user_story_map_json = Column(Text, nullable=True)
+    tcg_json = Column(Text, nullable=True)
+    parent_record_json = Column(Text, nullable=True)
+    raw_fields_json = Column(Text, nullable=True)
+
+    # 版本與同步控制
+    sync_status = Column(Enum(SyncStatus), default=SyncStatus.SYNCED, nullable=False, index=True)
+    local_version = Column(Integer, default=1, nullable=False)
+    lark_version = Column(Integer, nullable=True)
+    checksum = Column(String(64), nullable=True, index=True)  # 可用來快速比較內容變更（例如 sha256 前 64）
+
+    # 時間欄位策略
+    # 注意：除初始同步（init）外，created_at/updated_at 以本地為主，不從 Lark 覆蓋
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    last_sync_at = Column(DateTime, nullable=True)
+
+    # 保留 Lark 系統時間戳做為參考（毫秒 epoch 轉換後的 UTC）
+    lark_created_at = Column(DateTime, nullable=True)
+    lark_updated_at = Column(DateTime, nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint('team_id', 'test_case_number', name='uq_test_cases_team_case_number'),
+        Index('ix_test_cases_team_result', 'team_id', 'test_result'),
+        Index('ix_test_cases_team_priority', 'team_id', 'priority'),
+        Index('ix_test_cases_number', 'test_case_number'),
     )
 
 

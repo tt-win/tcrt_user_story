@@ -25,6 +25,12 @@ TMP_REPORT_DIR = REPORT_DIR / ".tmp"
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 # 對外提供報告的靜態目錄
 app.mount("/reports", StaticFiles(directory=str(REPORT_DIR), html=True), name="reports")
+# 對外提供附件的靜態目錄（本地上傳檔案）
+# 以專案根目錄為基準，避免受啟動工作目錄影響
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+ATTACHMENTS_DIR = PROJECT_ROOT / "attachments"
+ATTACHMENTS_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/attachments", StaticFiles(directory=str(ATTACHMENTS_DIR), html=False), name="attachments")
 
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
