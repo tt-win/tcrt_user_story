@@ -3351,11 +3351,29 @@ function handleExecDetailModalKeydown(e) {
 
 // ====== 跨頁快取（IndexedDB + gzip）工具 ======
 async function getCachedTestCase(testCaseNumber) {
-    try { return await TRCache.getExecDetail(currentTeamId, testCaseNumber, TEST_CASE_CACHE_TTL_MS); } catch (_) { return null; }
+    try {
+        const res = await TRCache.getExecDetail(currentTeamId, testCaseNumber, TEST_CASE_CACHE_TTL_MS);
+        if (res) {
+            console.debug('[CACHE][EXEC] HIT', { teamId: currentTeamId, testCaseNumber, ts: res.ts });
+        } else {
+            console.debug('[CACHE][EXEC] MISS', { teamId: currentTeamId, testCaseNumber });
+        }
+        return res;
+    } catch (e) {
+        console.debug('[CACHE][EXEC] MISS (error)', { teamId: currentTeamId, testCaseNumber, error: e && e.message });
+        return null;
+    }
 }
 
 async function setCachedTestCase(testCaseNumber, testCaseData) {
-    try { await TRCache.setExecDetail(currentTeamId, testCaseNumber, testCaseData); } catch (_) {}
+    try {
+        if (!currentTeamId) { console.debug('[CACHE][EXEC] SKIP WRITE: no teamId', { testCaseNumber }); return; }
+        if (!testCaseNumber) { console.debug('[CACHE][EXEC] SKIP WRITE: no testCaseNumber'); return; }
+        console.debug('[CACHE][EXEC] WRITE', { teamId: currentTeamId, testCaseNumber });
+        await TRCache.setExecDetail(currentTeamId, testCaseNumber, testCaseData);
+    } catch (e) {
+        console.debug('[CACHE][EXEC] WRITE FAILED', { teamId: currentTeamId, testCaseNumber, error: e && e.message });
+    }
 }
 
 // 判斷是否為新鮮快取
@@ -3389,6 +3407,7 @@ async function prefetchTestCasesForItems(items) {
             const cached = await getCachedTestCase(n);
             if (!isFreshCache(cached)) toFetch.push(n);
         }
+        console.debug('[CACHE][EXEC] Prefetch plan', { teamId: currentTeamId, total: numbers.length, needFetch: toFetch.length });
         if (toFetch.length === 0) return;
         // 控制併發量，避免過多同時請求
         const queue = Array.from(new Set(toFetch)); // 去重
@@ -3418,11 +3437,14 @@ async function preloadAllTeamTestCasesForRun(items) {
         const all = await resp.json();
         const need = new Set((items || []).map(i => i.test_case_number).filter(Boolean));
         if (!all || !Array.isArray(all)) return;
+        let writeCount = 0;
         for (const tc of all) {
             if (tc && tc.test_case_number && need.has(tc.test_case_number)) {
                 await setCachedTestCase(tc.test_case_number, tc);
+                writeCount++;
             }
         }
+        console.debug('[CACHE][EXEC] Preloaded team cases for run', { teamId: currentTeamId, totalFetched: all.length || 0, writes: writeCount });
     } catch (e) {
         console.debug('preloadAllTeamTestCasesForRun failed, fallback to prefetch each:', e);
         await prefetchTestCasesForItems(items);
