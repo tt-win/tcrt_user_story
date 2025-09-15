@@ -57,9 +57,18 @@
 
     _execKey(teamId, number) {
       const validTeamId = this._getValidTeamId(teamId);
-      const key = `${validTeamId}:${number}`;
+
+      // 加入頁面路徑作為附加區別信息，進一步避免衝突
+      const pagePath = window.location.pathname.replace(/\//g, '_');
+      const key = `${validTeamId}:${pagePath}:${number}`;
+
       if (this.debug) {
-        console.debug('[TRCache] 產生key:', key, { originalTeamId: teamId, validTeamId });
+        console.debug('[TRCache] 產生key:', key, {
+          originalTeamId: teamId,
+          validTeamId,
+          pagePath,
+          fullUrl: window.location.href
+        });
       }
       return key;
     },
@@ -103,11 +112,13 @@
         }
       }
 
-      // 4. 最後使用會話唯一ID，避免與其他會話衝突
+      // 4. 最後使用會話唯一ID + 時間戳，確保絕對唯一
       if (!this._sessionId) {
-        this._sessionId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+        // 加入頁面標題和時間戳作為額外區別信息
+        const pageHash = btoa(document.title + window.location.href).substring(0, 10);
+        this._sessionId = `session_${Date.now()}_${pageHash}_${Math.random().toString(36).substring(2, 11)}`;
         if (this.enableErrorLogging) {
-          console.warn('[TRCache] teamId無效，使用會話ID避免衝突:', this._sessionId, '原始teamId:', teamId);
+          console.warn('[TRCache] teamId無效，使用增強會話ID避免衝突:', this._sessionId, '原始teamId:', teamId);
         }
       }
       return this._sessionId;
@@ -388,6 +399,43 @@
       console.log('[TRCache] 調試模式', enable ? '已啟用' : '已禁用');
     },
 
+    // 衝突檢測和解決
+    async detectConflicts(teamIds) {
+      console.log('[TRCache] 檢測團隊衝突:', teamIds);
+      const keyMap = new Map();
+      const conflicts = [];
+
+      for (const teamId of teamIds) {
+        const key = this._execKey(teamId, 'CONFLICT_TEST');
+        if (keyMap.has(key)) {
+          conflicts.push({
+            key,
+            conflictingTeams: [keyMap.get(key), teamId]
+          });
+        } else {
+          keyMap.set(key, teamId);
+        }
+      }
+
+      if (conflicts.length > 0) {
+        console.error('[TRCache] 發現衝突:', conflicts);
+        console.log('建議解決方案: 清除快取或使用更具體的teamId');
+      } else {
+        console.log('[TRCache] 未發現衝突');
+      }
+
+      return conflicts;
+    },
+
+    // 強制更新會話ID（解決衝突時使用）
+    regenerateSession() {
+      const oldSessionId = this._sessionId;
+      this._sessionId = null; // 清除舊的
+      const newSessionId = this._getValidTeamId(null); // 重新生成
+      console.log('[TRCache] 會話ID更新:', { old: oldSessionId, new: newSessionId });
+      return newSessionId;
+    },
+
     async clearTeam(teamId) {
       try {
         const db = await this._openDB();
@@ -429,17 +477,178 @@
     selfTest: () => TRCache.selfTest(),
     clearAll: () => TRCache.clearAll(),
     showSession: () => console.log('Session ID:', TRCache._sessionId),
+
+    // 詳細的團隊信息調試
+    diagnoseTeam: () => {
+      console.log('=== 團隊診斷信息 ===');
+      console.log('1. AppUtils 狀態:');
+      try {
+        if (typeof AppUtils !== 'undefined') {
+          const currentTeam = AppUtils.getCurrentTeam();
+          console.log('   AppUtils.getCurrentTeam():', currentTeam);
+          console.log('   團隊ID:', currentTeam?.id);
+          console.log('   團隊名稱:', currentTeam?.name);
+        } else {
+          console.log('   AppUtils 未定義');
+        }
+      } catch (e) {
+        console.error('   AppUtils 錯誤:', e);
+      }
+
+      console.log('2. URL 參數:');
+      try {
+        const params = new URLSearchParams(window.location.search);
+        console.log('   team_id:', params.get('team_id'));
+        console.log('   teamId:', params.get('teamId'));
+        console.log('   team:', params.get('team'));
+        console.log('   完整URL:', window.location.href);
+      } catch (e) {
+        console.error('   URL 解析錯誤:', e);
+      }
+
+      console.log('3. 會話信息:');
+      console.log('   會話ID:', TRCache._sessionId);
+      console.log('   頁面標題:', document.title);
+      console.log('   載入時間:', new Date().toISOString());
+    },
+
+    // 測試特定團隊ID的key生成
+    testTeamKeys: (...teamIds) => {
+      console.log('=== 團隊Key測試 ===');
+      const keyMap = new Map();
+      const duplicates = [];
+
+      teamIds.forEach(teamId => {
+        const key = TRCache._execKey(teamId, 'TEST');
+        const validTeamId = TRCache._getValidTeamId(teamId);
+        console.log(`團隊ID: ${teamId} (${typeof teamId}) -> 有效ID: ${validTeamId} -> Key: ${key}`);
+
+        // 檢查重複
+        if (keyMap.has(key)) {
+          duplicates.push({ key, teams: [keyMap.get(key), teamId] });
+        } else {
+          keyMap.set(key, teamId);
+        }
+      });
+
+      if (duplicates.length > 0) {
+        console.error('⚠️  發現重複key:', duplicates);
+      } else {
+        console.log('✅ 所有key都是唯一的');
+      }
+
+      return { keyMap: Object.fromEntries(keyMap), duplicates };
+    },
+
+    // 檢查兩個特定團隊的衝突
+    checkTeamConflict: (teamId1, teamId2) => {
+      console.log(`=== 檢查團隊 ${teamId1} 和 ${teamId2} 的衝突 ===`);
+      const key1 = TRCache._execKey(teamId1, 'TEST');
+      const key2 = TRCache._execKey(teamId2, 'TEST');
+      const valid1 = TRCache._getValidTeamId(teamId1);
+      const valid2 = TRCache._getValidTeamId(teamId2);
+
+      console.log(`團隊1: ${teamId1} -> ${valid1} -> ${key1}`);
+      console.log(`團隊2: ${teamId2} -> ${valid2} -> ${key2}`);
+
+      if (key1 === key2) {
+        console.error('⚠️  衝突！相同key:', key1);
+        console.log('解決建議: TRCacheDebug.regenerateSession()');
+        return { conflict: true, key: key1, teams: [teamId1, teamId2] };
+      } else {
+        console.log('✅ 無衝突');
+        return { conflict: false, keys: [key1, key2] };
+      }
+    },
+
+    // 重新生成會話ID（解決衝突）
+    regenerateSession: () => {
+      return TRCache.regenerateSession();
+    },
+
+    // 監控cache操作
+    monitorCache: (enable = true) => {
+      if (enable) {
+        const originalSetExec = TRCache.setExecDetail;
+        TRCache.setExecDetail = function(teamId, testCaseNumber, obj) {
+          const key = TRCache._execKey(teamId, testCaseNumber);
+          console.log(`[Cache Monitor] setExecDetail - teamId: ${teamId}, key: ${key}`);
+          return originalSetExec.call(this, teamId, testCaseNumber, obj);
+        };
+
+        const originalGetExec = TRCache.getExecDetail;
+        TRCache.getExecDetail = function(teamId, testCaseNumber, ttl) {
+          const key = TRCache._execKey(teamId, testCaseNumber);
+          console.log(`[Cache Monitor] getExecDetail - teamId: ${teamId}, key: ${key}`);
+          return originalGetExec.call(this, teamId, testCaseNumber, ttl);
+        };
+
+        console.log('[Cache Monitor] 已啟用cache操作監控');
+      } else {
+        console.log('[Cache Monitor] 監控功能需要重新載入頁面來停用');
+      }
+    },
+
+    // 基本key測試
     testKeys: () => {
       console.log('Key 測試:');
       console.log('null:', TRCache._execKey(null, 'TEST'));
       console.log('undefined:', TRCache._execKey(undefined, 'TEST'));
       console.log('"1":', TRCache._execKey('1', 'TEST'));
       console.log('"2":', TRCache._execKey('2', 'TEST'));
+      console.log('1 (數字):', TRCache._execKey(1, 'TEST'));
+      console.log('2 (數字):', TRCache._execKey(2, 'TEST'));
+    },
+
+    // 列出所有快取key
+    listCacheKeys: async () => {
+      try {
+        const db = await TRCache._openDB();
+        const execKeys = [];
+        const tcgKeys = [];
+
+        // 獲取exec快取keys
+        await new Promise((resolve) => {
+          const tx = db.transaction(['exec_tc'], 'readonly');
+          const store = tx.objectStore('exec_tc');
+          store.openCursor().onsuccess = (event) => {
+            const cursor = event.target.result;
+            if (cursor) {
+              execKeys.push(cursor.key);
+              cursor.continue();
+            } else {
+              resolve();
+            }
+          };
+        });
+
+        // 獲取TCG快取keys
+        await new Promise((resolve) => {
+          const tx = db.transaction(['tcg'], 'readonly');
+          const store = tx.objectStore('tcg');
+          store.openCursor().onsuccess = (event) => {
+            const cursor = event.target.result;
+            if (cursor) {
+              tcgKeys.push(cursor.key);
+              cursor.continue();
+            } else {
+              resolve();
+            }
+          };
+        });
+
+        console.log('=== 快取Key列表 ===');
+        console.log('執行快取Keys:', execKeys);
+        console.log('TCG快取Keys:', tcgKeys);
+        return { execKeys, tcgKeys };
+      } catch (e) {
+        console.error('列出快取Keys失敗:', e);
+      }
     }
   };
 
   // 初始化時顯示版本信息
   if (TRCache.enableErrorLogging) {
-    console.log('[TRCache] 已載入，版本: v2.0 (修復key衝突)', '\n調試指令: TRCacheDebug.selfTest()');
+    console.log('[TRCache] 已載入，版本: v2.2 (強化衝突防護)', '\n調試指令: TRCacheDebug.diagnoseTeam()\n衝突檢查: TRCacheDebug.checkTeamConflict(teamId1, teamId2)');
   }
 })(window);
