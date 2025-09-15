@@ -1023,7 +1023,8 @@ const EXEC_TC_CACHE_TTL_MS = 60 * 60 * 1000; // 1 小時
 function setExecCachedTestCase(testCaseNumber, data) {
     try {
         const teamId = getTeamIdForCache(false);
-        if (!teamId) return; // 沒有有效 teamId 就不寫入，避免污染
+        if (!teamId) { console.debug('[CACHE] SKIP WRITE exec: no valid teamId', { testCaseNumber }); return; } // 沒有有效 teamId 就不寫入，避免污染
+        console.debug('[CACHE] QUEUE WRITE exec', { teamId, testCaseNumber });
         // 非阻塞寫入 TRCache（IndexedDB + gzip）
         Promise.resolve().then(() => TRCache.setExecDetail(teamId, testCaseNumber, data)).catch(()=>{});
     } catch (_) {}
@@ -1194,10 +1195,14 @@ function getTestCasesCache(teamIdOverride = null) {
                 const age = Date.now() - data.timestamp;
                 if (age < TEST_CASES_CACHE_TTL) {
                     console.log(`使用快取的測試案例清單 (${data.testCases.length} 筆，${Math.round(age/1000)}秒前)`);
+                    console.debug('[CACHE] HIT list', { teamId, cacheKey, ageMs: age, count: data.testCases.length });
                     return data.testCases;
                 }
+                console.debug('[CACHE] MISS list: expired', { teamId, cacheKey, ageMs: age });
             }
+            else { console.debug('[CACHE] MISS list: malformed cache payload', { teamId, cacheKey }); }
         }
+        else { console.debug('[CACHE] MISS list: not found', { teamId, cacheKey }); }
     } catch (error) {
         console.debug('讀取測試案例快取失敗:', error);
     }
@@ -1207,11 +1212,12 @@ function getTestCasesCache(teamIdOverride = null) {
 function setTestCasesCache(testCases, teamIdOverride = null) {
     try {
         const teamId = teamIdOverride ? String(teamIdOverride) : getTeamIdForCache(true);
-        if (!teamId) { console.debug('儲存測試案例快取略過：無有效 teamId'); return; }
+        if (!teamId) { console.debug('[CACHE] SKIP WRITE list: no valid teamId', { count: Array.isArray(testCases) ? testCases.length : 0 }); return; }
         const cacheKey = `${TEST_CASES_CACHE_KEY}:${teamId}`;
         const cacheData = { timestamp: Date.now(), testCases: testCases || [] };
         localStorage.setItem(cacheKey, JSON.stringify(cacheData));
         console.log(`測試案例清單已快取 (${testCases.length} 筆)`);
+        console.debug('[CACHE] WRITE list', { teamId, cacheKey, count: testCases ? testCases.length : 0 });
         // 同時更新個別快取
         if (testCases && Array.isArray(testCases)) {
             testCases.forEach(tc => {
@@ -1226,7 +1232,7 @@ function setTestCasesCache(testCases, teamIdOverride = null) {
 function clearTestCasesCache() {
     try {
         const teamId = getTeamIdForCache(true);
-        if (!teamId) return;
+        if (!teamId) { console.debug('[CACHE] SKIP CLEAR list: no valid teamId'); return; }
         const cacheKey = `${TEST_CASES_CACHE_KEY}:${teamId}`;
         // 清除列表快取
         localStorage.removeItem(cacheKey);
@@ -1246,7 +1252,7 @@ function clearTestCasesCache() {
 function updateTestCaseInCache(testCase) {
     try {
         const teamId = getTeamIdForCache(true);
-        if (!teamId) return;
+        if (!teamId) { console.debug('[CACHE] SKIP UPDATE list: no valid teamId', { testCase: testCase && testCase.test_case_number }); return; }
         const cacheKey = `${TEST_CASES_CACHE_KEY}:${teamId}`;
         const cached = localStorage.getItem(cacheKey);
         if (cached) {
@@ -1257,9 +1263,13 @@ function updateTestCaseInCache(testCase) {
                     data.testCases[index] = testCase;
                     localStorage.setItem(cacheKey, JSON.stringify(data));
                     console.log(`測試案例快取已更新: ${testCase.test_case_number}`);
+                    console.debug('[CACHE] UPDATE list item', { teamId, cacheKey, testCase: testCase.test_case_number });
                 }
+                else { console.debug('[CACHE] UPDATE skipped: record not found in cache list', { teamId, recordId: testCase.record_id }); }
             }
+            else { console.debug('[CACHE] UPDATE skipped: malformed cache payload', { teamId }); }
         }
+        else { console.debug('[CACHE] UPDATE skipped: list cache not found', { teamId }); }
         if (testCase.test_case_number) setExecCachedTestCase(testCase.test_case_number, testCase);
     } catch (error) {
         console.debug('更新測試案例快取失敗:', error);
@@ -1269,7 +1279,7 @@ function updateTestCaseInCache(testCase) {
 function removeTestCaseFromCache(recordId) {
     try {
         const teamId = getTeamIdForCache(true);
-        if (!teamId) return;
+        if (!teamId) { console.debug('[CACHE] SKIP REMOVE list: no valid teamId', { recordId }); return; }
         const cacheKey = `${TEST_CASES_CACHE_KEY}:${teamId}`;
         const cached = localStorage.getItem(cacheKey);
         if (cached) {
@@ -1280,8 +1290,11 @@ function removeTestCaseFromCache(recordId) {
                 localStorage.setItem(cacheKey, JSON.stringify(data));
                 if (removedTestCase && removedTestCase.test_case_number) removeExecCachedTestCase(removedTestCase.test_case_number);
                 console.log(`測試案例已從快取移除: ${recordId}`);
+                console.debug('[CACHE] REMOVE list item', { teamId, cacheKey, recordId });
             }
+            else { console.debug('[CACHE] REMOVE skipped: malformed cache payload', { teamId }); }
         }
+        else { console.debug('[CACHE] REMOVE skipped: list cache not found', { teamId, recordId }); }
     } catch (error) {
         console.debug('從快取移除測試案例失敗:', error);
     }
@@ -1290,7 +1303,7 @@ function removeTestCaseFromCache(recordId) {
 function addTestCaseToCache(testCase) {
     try {
         const teamId = getTeamIdForCache(true);
-        if (!teamId) return;
+        if (!teamId) { console.debug('[CACHE] SKIP ADD list: no valid teamId', { testCase: testCase && testCase.test_case_number }); return; }
         const cacheKey = `${TEST_CASES_CACHE_KEY}:${teamId}`;
         const cached = localStorage.getItem(cacheKey);
         if (cached) {
@@ -1301,9 +1314,13 @@ function addTestCaseToCache(testCase) {
                     data.testCases.push(testCase);
                     localStorage.setItem(cacheKey, JSON.stringify(data));
                     console.log(`新測試案例已加入快取: ${testCase.test_case_number}`);
+                    console.debug('[CACHE] ADD list item', { teamId, cacheKey, testCase: testCase.test_case_number });
                 }
+                else { console.debug('[CACHE] ADD skipped: already exists', { teamId, recordId: testCase.record_id }); }
             }
+            else { console.debug('[CACHE] ADD skipped: malformed cache payload', { teamId }); }
         }
+        else { console.debug('[CACHE] ADD skipped: list cache not found (will be created on next full set)', { teamId }); }
         if (testCase.test_case_number) setExecCachedTestCase(testCase.test_case_number, testCase);
     } catch (error) {
         console.debug('加入測試案例到快取失敗:', error);
@@ -1631,6 +1648,7 @@ async function loadTestCases(showLoadingBlock = true, updateProgress = null, for
                 if (updateProgress) updateProgress(90, '使用快取資料...');
                 
                 testCases = cachedTestCases;
+                console.debug('[CACHE] LOAD list from cache', { teamId: teamIdForLoad, count: testCases.length });
                 
                 // 預設按 Test Case Number 升冪排序
                 testCases.sort((a, b) => {
@@ -1650,6 +1668,9 @@ async function loadTestCases(showLoadingBlock = true, updateProgress = null, for
                 
                 return; // 使用快取，直接返回
             }
+            console.debug('[CACHE] BYPASS: no cache hit for list', { teamId: teamIdForLoad });
+        } else {
+            console.debug('[CACHE] BYPASS: forceRefresh=true, skip cache', { teamId: teamIdForLoad });
         }
         
         if (showLoadingBlock) {
