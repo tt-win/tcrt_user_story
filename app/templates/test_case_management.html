@@ -5610,10 +5610,17 @@ function bindMarkdownEvents() {
                 }
             });
 
+            // 追蹤輸入法組字狀態（IME），避免 Enter 造成內容重複
+            textarea._isIMEComposing = false;
+            textarea.addEventListener('compositionstart', () => { textarea._isIMEComposing = true; });
+            textarea.addEventListener('compositionend', () => { textarea._isIMEComposing = false; });
+
             // 按下 Enter 時自動新增下一項（列表狀態）
             textarea.addEventListener('keydown', (e) => {
                 // Shift+Enter 保持預設換行
                 if (e.key !== 'Enter' || e.shiftKey) return;
+                // 若正在使用輸入法組字（中文/日文等），讓瀏覽器處理（避免複製上一項內容）
+                if (e.isComposing || e.keyCode === 229 || textarea._isIMEComposing) return;
                 const handled = handleMarkdownListEnter(e, textarea);
                 if (handled) {
                     // 由我們處理插入，阻止預設行為
