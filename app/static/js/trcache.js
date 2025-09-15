@@ -10,6 +10,8 @@
   const TRCache = {
     _dbPromise: null,
     debug: false,
+    enableErrorLogging: true, // 啟用詳細錯誤日志記錄
+    _sessionId: null, // 會話唯一標識符，避免快取衝突
 
     async _openDB() {
       if (this._dbPromise) return this._dbPromise;
@@ -53,7 +55,63 @@
       return new TextDecoder().decode(bytes);
     },
 
-    _execKey(teamId, number) { return `${teamId || 'unknown'}:${number}`; },
+    _execKey(teamId, number) {
+      const validTeamId = this._getValidTeamId(teamId);
+      const key = `${validTeamId}:${number}`;
+      if (this.debug) {
+        console.debug('[TRCache] 產生key:', key, { originalTeamId: teamId, validTeamId });
+      }
+      return key;
+    },
+
+    _getValidTeamId(teamId) {
+      // 1. 使用有效的teamId
+      if (teamId && teamId !== 'null' && teamId !== 'undefined' && teamId !== '') {
+        return String(teamId);
+      }
+
+      // 2. 嘗試從AppUtils獲取
+      try {
+        if (typeof AppUtils !== 'undefined' && AppUtils.getCurrentTeam) {
+          const team = AppUtils.getCurrentTeam();
+          if (team && team.id) {
+            if (this.debug || this.enableErrorLogging) {
+              console.log('[TRCache] 使用AppUtils獲取teamId:', team.id);
+            }
+            return String(team.id);
+          }
+        }
+      } catch (e) {
+        if (this.enableErrorLogging) {
+          console.warn('[TRCache] AppUtils獲取teamId失敗:', e);
+        }
+      }
+
+      // 3. 嘗試從URL參數獲取
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const urlTeamId = params.get('team_id') || params.get('teamId') || params.get('team');
+        if (urlTeamId) {
+          if (this.debug || this.enableErrorLogging) {
+            console.log('[TRCache] 使用URL參數獲取teamId:', urlTeamId);
+          }
+          return String(urlTeamId);
+        }
+      } catch (e) {
+        if (this.enableErrorLogging) {
+          console.warn('[TRCache] URL參數獲取teamId失敗:', e);
+        }
+      }
+
+      // 4. 最後使用會話唯一ID，避免與其他會話衝突
+      if (!this._sessionId) {
+        this._sessionId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+        if (this.enableErrorLogging) {
+          console.warn('[TRCache] teamId無效，使用會話ID避免衝突:', this._sessionId, '原始teamId:', teamId);
+        }
+      }
+      return this._sessionId;
+    },
 
     async _put(store, record) {
       const db = await this._openDB();
@@ -144,14 +202,61 @@
 
     async setExecDetail(teamId, testCaseNumber, obj) {
       try {
+        // 輸入驗證
+        if (!testCaseNumber) {
+          if (this.enableErrorLogging) {
+            console.error('[TRCache] setExecDetail: testCaseNumber為空', { teamId, testCaseNumber, obj });
+          }
+          return false;
+        }
+        if (!obj || typeof obj !== 'object') {
+          if (this.enableErrorLogging) {
+            console.error('[TRCache] setExecDetail: 無效的數據對象', { teamId, testCaseNumber, obj });
+          }
+          return false;
+        }
+
         const key = this._execKey(teamId, testCaseNumber);
         const jsonStr = JSON.stringify(obj);
+
+        // 檢查JSON序列化結果
+        if (!jsonStr || jsonStr === 'null' || jsonStr === 'undefined') {
+          if (this.enableErrorLogging) {
+            console.error('[TRCache] setExecDetail: JSON序列化失敗', { key, obj });
+          }
+          return false;
+        }
+
         const gz = this._gzip(jsonStr, 5);
-        const rec = { key, ts: Date.now(), lastAccess: Date.now(), data: new Blob([gz], { type: 'application/octet-stream' }), size: gz.length };
+        const rec = {
+          key,
+          ts: Date.now(),
+          lastAccess: Date.now(),
+          data: new Blob([gz], { type: 'application/octet-stream' }),
+          size: gz.length
+        };
+
         if (TRCache.debug) console.debug('[TRCache] setExecDetail', key, 'size', rec.size);
-        await this._put(STORE_EXEC, rec);
-        await this._lruEvict(STORE_EXEC, EXEC_LRU_MAX);
-      } catch (_) { /* ignore */ }
+
+        const success = await this._put(STORE_EXEC, rec);
+        if (success) {
+          await this._lruEvict(STORE_EXEC, EXEC_LRU_MAX);
+          if (this.debug) {
+            console.log('[TRCache] setExecDetail成功:', key);
+          }
+          return true;
+        } else {
+          if (this.enableErrorLogging) {
+            console.error('[TRCache] setExecDetail: _put失敗', key);
+          }
+          return false;
+        }
+      } catch (error) {
+        if (this.enableErrorLogging) {
+          console.error('[TRCache] setExecDetail發生未預期錯誤:', error, { teamId, testCaseNumber, obj });
+        }
+        return false;
+      }
     },
 
     async getTCG(ttlMs) {
@@ -172,22 +277,115 @@
 
     async setTCG(list) {
       try {
+        if (!Array.isArray(list) && list !== null && list !== undefined) {
+          if (this.enableErrorLogging) {
+            console.error('[TRCache] setTCG: 無效的列表數據', list);
+          }
+          return false;
+        }
+
         const jsonStr = JSON.stringify(list || []);
+        if (!jsonStr) {
+          if (this.enableErrorLogging) {
+            console.error('[TRCache] setTCG: JSON序列化失敗', list);
+          }
+          return false;
+        }
+
         const gz = this._gzip(jsonStr, 5);
-        const rec = { key: 'tcg', ts: Date.now(), lastAccess: Date.now(), data: new Blob([gz], { type: 'application/octet-stream' }), size: gz.length };
+        const rec = {
+          key: 'tcg',
+          ts: Date.now(),
+          lastAccess: Date.now(),
+          data: new Blob([gz], { type: 'application/octet-stream' }),
+          size: gz.length
+        };
+
         if (TRCache.debug) console.debug('[TRCache] setTCG size', rec.size);
-        await this._put(STORE_TCG, rec);
-      } catch (_) { /* ignore */ }
+
+        const success = await this._put(STORE_TCG, rec);
+        if (success) {
+          if (this.debug) {
+            console.log('[TRCache] setTCG成功，大小:', rec.size);
+          }
+          return true;
+        } else {
+          if (this.enableErrorLogging) {
+            console.error('[TRCache] setTCG: _put失敗');
+          }
+          return false;
+        }
+      } catch (error) {
+        if (this.enableErrorLogging) {
+          console.error('[TRCache] setTCG發生未預期錯誤:', error, list);
+        }
+        return false;
+      }
     },
 
     async selfTest() {
       try {
+        const originalDebug = TRCache.debug;
+        const originalErrorLogging = TRCache.enableErrorLogging;
         TRCache.debug = true;
-        await TRCache.setExecDetail('selftest', 'DEMO', { ok: true, at: Date.now() });
-        const d = await TRCache.getExecDetail('selftest', 'DEMO', 60*60*1000);
-        console.log('[TRCache] selfTest result:', d);
-        return d;
-      } catch (e) { console.error('[TRCache] selfTest error', e); return null; }
+        TRCache.enableErrorLogging = true;
+
+        console.log('[TRCache] 開始自我測試...');
+
+        // 測試基本寫入讀取
+        const testData = { ok: true, at: Date.now(), test: '中文測試數據' };
+        console.log('[TRCache] 測試數據:', testData);
+
+        const writeSuccess = await TRCache.setExecDetail('selftest', 'DEMO', testData);
+        console.log('[TRCache] 寫入結果:', writeSuccess);
+
+        const readResult = await TRCache.getExecDetail('selftest', 'DEMO', 60*60*1000);
+        console.log('[TRCache] 讀取結果:', readResult);
+
+        // 測試TCG功能
+        const testTcgData = [{id: 1, name: 'test'}, {id: 2, name: '測試'}];
+        const tcgWriteSuccess = await TRCache.setTCG(testTcgData);
+        console.log('[TRCache] TCG寫入結果:', tcgWriteSuccess);
+
+        const tcgRead = await TRCache.getTCG(60*60*1000);
+        console.log('[TRCache] TCG讀取結果:', tcgRead);
+
+        // 測試衝突場景：不同的teamId是否獲得不同的key
+        const key1 = TRCache._execKey(null, 'TEST');
+        const key2 = TRCache._execKey(undefined, 'TEST');
+        const key3 = TRCache._execKey('', 'TEST');
+        const key4 = TRCache._execKey('1', 'TEST');
+        console.log('[TRCache] Key衝突測試:');
+        console.log('  null -> ', key1);
+        console.log('  undefined -> ', key2);
+        console.log('  empty -> ', key3);
+        console.log('  "1" -> ', key4);
+        console.log('  會話ID:', TRCache._sessionId);
+
+        // 恢復原始設定
+        TRCache.debug = originalDebug;
+        TRCache.enableErrorLogging = originalErrorLogging;
+
+        const success = writeSuccess && readResult && tcgWriteSuccess && tcgRead;
+        console.log('[TRCache] 自我測試結果:', success ? '成功' : '失敗');
+
+        return { success, execTest: readResult, tcgTest: tcgRead, keys: { key1, key2, key3, key4 } };
+      } catch (e) {
+        console.error('[TRCache] selfTest error', e);
+        return { success: false, error: e.message };
+      }
+    },
+
+    // 啟用/禁用詳細日志
+    enableLogging(enable = true) {
+      this.enableErrorLogging = enable;
+      console.log('[TRCache] 錯誤日志', enable ? '已啟用' : '已禁用');
+    },
+
+    // 啟用/禁用調試模式
+    enableDebug(enable = true) {
+      this.debug = enable;
+      console.log('[TRCache] 調試模式', enable ? '已啟用' : '已禁用');
     },
 
     async clearTeam(teamId) {
@@ -219,5 +417,29 @@
     }
   };
 
+  // 暴露全域方法
   global.TRCache = TRCache;
+
+  // 快速設定函數（方便控制台調試）
+  global.TRCacheDebug = {
+    enable: () => TRCache.enableDebug(true),
+    disable: () => TRCache.enableDebug(false),
+    enableLogging: () => TRCache.enableLogging(true),
+    disableLogging: () => TRCache.enableLogging(false),
+    selfTest: () => TRCache.selfTest(),
+    clearAll: () => TRCache.clearAll(),
+    showSession: () => console.log('Session ID:', TRCache._sessionId),
+    testKeys: () => {
+      console.log('Key 測試:');
+      console.log('null:', TRCache._execKey(null, 'TEST'));
+      console.log('undefined:', TRCache._execKey(undefined, 'TEST'));
+      console.log('"1":', TRCache._execKey('1', 'TEST'));
+      console.log('"2":', TRCache._execKey('2', 'TEST'));
+    }
+  };
+
+  // 初始化時顯示版本信息
+  if (TRCache.enableErrorLogging) {
+    console.log('[TRCache] 已載入，版本: v2.0 (修復key衝突)', '\n調試指令: TRCacheDebug.selfTest()');
+  }
 })(window);
