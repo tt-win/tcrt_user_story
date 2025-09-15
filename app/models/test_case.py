@@ -104,16 +104,18 @@ class TestCase(BaseModel):
     @field_validator('test_case_number')
     @classmethod
     def validate_test_case_number(cls, v):
-        if not v:
-            raise ValueError('Test case number cannot be empty')
-        return v.strip()
+        # 顯示時允許空值；建立/更新時由 TestCaseCreate/TestCaseUpdate 另行約束
+        if v is None:
+            return ''
+        return str(v).strip()
     
     @field_validator('title')
     @classmethod
     def validate_title(cls, v):
-        if not v or not v.strip():
-            raise ValueError('Title cannot be empty')
-        return v.strip()
+        # 顯示時允許空值；建立/更新時由 TestCaseCreate/TestCaseUpdate 另行約束
+        if v is None:
+            return ''
+        return str(v).strip()
     
     @classmethod
     def from_lark_record(cls, record: Dict[str, Any], team_id: Optional[int] = None) -> 'TestCase':
