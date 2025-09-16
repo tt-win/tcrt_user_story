@@ -30,15 +30,17 @@ class I18nSystem {
         try {
             // Detect and set initial language
             this.detectLanguage();
+            // Reflect on <html lang>
+            try { document.documentElement.lang = this.currentLanguage; } catch (_) {}
             
             // Load translation files
             await this.loadTranslations();
             
-            // Mark as loaded
-            this.isLoaded = true;
-            
             // Apply translations to current page
             this.translatePage();
+            
+            // Mark as loaded AFTER translation applied
+            this.isLoaded = true;
             
             // Dispatch ready event
             document.dispatchEvent(new CustomEvent('i18nReady', {
@@ -113,32 +115,12 @@ const cachePromises = this.supportedLanguages.map(async (language) => {
                     console.warn(`Translation file for ${language} returned status ${response.status}. Attempting fallback.`);
                     throw new Error(`Failed to load ${language}: ${response.status}`);
                 }
-
-                // 檢查是否有更新
-                const lastModified = response.headers.get('last-modified');
-                const cachedModified = localStorage.getItem(`i18n_${language}_modified`);
-
-                if (lastModified && cachedModified !== lastModified) {
-                    // 載入新版本
-                    const translations = await response.json();
-                    this.translations[language] = translations;
-                    localStorage.setItem(`i18n_${language}_modified`, lastModified);
-                    localStorage.setItem(`i18n_${language}_cache`, JSON.stringify(translations));
-                    console.log(`Updated translations for ${language}`);
-                } else {
-                    // 使用快取版本
-                    const cached = localStorage.getItem(`i18n_${language}_cache`);
-                    if (cached) {
-                        this.translations[language] = JSON.parse(cached);
-                        console.log(`Loaded cached translations for ${language}`);
-                    } else {
-                        // 首次載入
-                        const translations = await response.json();
-                        this.translations[language] = translations;
-                        localStorage.setItem(`i18n_${language}_modified`, lastModified || new Date().toISOString());
-                        localStorage.setItem(`i18n_${language}_cache`, JSON.stringify(translations));
-                    }
-                }
+                // 一律以網路回應覆蓋快取，避免 Last-Modified 缺失造成快取不更新
+                const translations = await response.json();
+                this.translations[language] = translations;
+                localStorage.setItem(`i18n_${language}_cache`, JSON.stringify(translations));
+                localStorage.setItem(`i18n_${language}_modified`, new Date().toISOString());
+                console.log(`Loaded translations for ${language} (network)`);
             } catch (error) {
                 console.error(`Failed to load translations for ${language}:`, error);
                 // 嘗試使用快取版本作為備用

@@ -392,7 +392,10 @@
         "wikiTokenPlaceholder": "例：Q4XxwaS2Cif80DkAku9lMKuAgof"
     },
     "testCase": {
-        "batchActions": "批次操作",
+        "tcgFilterPlaceholder": "输入 TCG 单号",
+        "testCaseNumberPlaceholder": "输入 Test Case Number",
+        "searchPlaceholder": "输入关键字搜索",
+        "batchActions":
         "batchDelete": "批次删除",
         "batchModify": "批次修改",
         "batchModifyDescription": "将对选中的",

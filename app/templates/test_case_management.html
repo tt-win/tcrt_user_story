@@ -287,11 +287,15 @@ html, body { height: 100%; overflow: hidden; }
                     <label for="testCaseNumberSearch" class="form-label" data-i18n="testCase.testCaseNumber">Test Case Number</label>
                     <input type="text" class="form-control" id="testCaseNumberSearch" data-i18n-placeholder="testCase.testCaseNumberPlaceholder">
                 </div>
-                <div class="col-md-4 col-lg-3">
+                <div class="col-md-3 col-lg-2">
                     <label for="searchInput" class="form-label" data-i18n="common.search">關鍵字搜尋</label>
                     <input type="text" class="form-control" id="searchInput" data-i18n-placeholder="testCase.searchPlaceholder">
                 </div>
                 <div class="col-md-2 col-lg-1">
+                    <label for="tcgFilter" class="form-label">TCG</label>
+                    <input type="text" class="form-control" id="tcgFilter" data-i18n-placeholder="testCase.tcgFilterPlaceholder" data-i18n-placeholder-fallback="輸入 TCG 單號">
+                </div>
+                <div class="col-md-1 col-lg-1">
                     <label for="priorityFilter" class="form-label" data-i18n="testCase.priority">優先級</label>
                     <select class="form-select" id="priorityFilter">
                         <option value="" data-i18n="common.all">全部</option>
@@ -1075,6 +1079,7 @@ function saveTcmFiltersToStorage(filters) {
         const payload = {
             testCaseNumberSearch: String(filters.testCaseNumberSearch || ''),
             searchInput: String(filters.searchInput || ''),
+            tcgFilter: String(filters.tcgFilter || ''),
             priorityFilter: String(filters.priorityFilter || ''),
             ts: Date.now()
         };
@@ -1093,6 +1098,7 @@ function loadTcmFiltersFromStorage() {
         return {
             testCaseNumberSearch: obj.testCaseNumberSearch || '',
             searchInput: obj.searchInput || '',
+            tcgFilter: obj.tcgFilter || '',
             priorityFilter: obj.priorityFilter || ''
         };
     } catch (_) { return null; }
@@ -1112,42 +1118,58 @@ function restoreTcmFiltersToUI() {
     try {
         const elNum = document.getElementById('testCaseNumberSearch');
         const elSearch = document.getElementById('searchInput');
+        const elTCG = document.getElementById('tcgFilter');
         const elPri = document.getElementById('priorityFilter');
         if (elNum) elNum.value = saved.testCaseNumberSearch || '';
         if (elSearch) elSearch.value = saved.searchInput || '';
+        if (elTCG) elTCG.value = saved.tcgFilter || '';
         if (elPri) elPri.value = saved.priorityFilter || '';
         updateFilterStatus();
         // 同步到記憶體中的目前過濾器
         tcmCurrentFilters.testCaseNumberSearch = saved.testCaseNumberSearch || '';
         tcmCurrentFilters.searchInput = saved.searchInput || '';
+        tcmCurrentFilters.tcgFilter = saved.tcgFilter || '';
         tcmCurrentFilters.priorityFilter = saved.priorityFilter || '';
-        return (saved.testCaseNumberSearch || saved.searchInput || saved.priorityFilter) ? true : false;
+        return (saved.testCaseNumberSearch || saved.searchInput || saved.tcgFilter || saved.priorityFilter) ? true : false;
     } catch (_) { return false; }
 }
 
 // 目前過濾器（常駐於記憶體，不依賴 UI）
-let tcmCurrentFilters = { testCaseNumberSearch: '', searchInput: '', priorityFilter: '' };
+let tcmCurrentFilters = { testCaseNumberSearch: '', searchInput: '', tcgFilter: '', priorityFilter: '' };
 
 function computeFilteredTestCases(list) {
     try {
         const numKW = String(tcmCurrentFilters.testCaseNumberSearch || '').toLowerCase();
         const kw = String(tcmCurrentFilters.searchInput || '').toLowerCase();
+        const tcgKW = String(tcmCurrentFilters.tcgFilter || '').toLowerCase();
         const pri = String(tcmCurrentFilters.priorityFilter || '');
         const res = (list || []).filter(testCase => {
-            // Test Case Number 或 TCG 搜尋
+            // Test Case Number 或 TCG（綜合）搜尋
             const matchNum = !numKW ||
                 (testCase.test_case_number && String(testCase.test_case_number).toLowerCase().includes(numKW)) ||
                 (testCase.tcg && testCase.tcg.some(tcgItem => {
                     const tcgText = (tcgItem && (tcgItem.text || tcgItem)) || '';
                     return String(tcgText).toLowerCase().includes(numKW);
                 }));
+            // 專用 TCG 單號過濾器（精確針對 TCG 欄位）
+            const matchTCG = !tcgKW || (testCase.tcg && testCase.tcg.some(tcgItem => {
+                // 支援 text 與 text_arr
+                const texts = [];
+                if (tcgItem && Array.isArray(tcgItem.text_arr) && tcgItem.text_arr.length) {
+                    texts.push(...tcgItem.text_arr);
+                }
+                if (tcgItem && tcgItem.text) {
+                    texts.push(tcgItem.text);
+                }
+                return texts.some(t => String(t || '').toLowerCase().includes(tcgKW));
+            }));
             // 標題/描述關鍵字
             const matchSearch = !kw ||
                 (testCase.title && String(testCase.title).toLowerCase().includes(kw)) ||
                 (testCase.description && String(testCase.description).toLowerCase().includes(kw));
             // 優先級
             const matchPri = !pri || testCase.priority === pri;
-            return matchNum && matchSearch && matchPri;
+            return matchNum && matchTCG && matchSearch && matchPri;
         });
         return res;
     } catch (_) { return Array.isArray(list) ? list.slice() : []; }
@@ -1193,6 +1215,19 @@ function updateTcmSortIndicators() {
         Object.values(map).forEach(el => { if (el) el.textContent = ''; });
         const target = map[tcmSortField];
         if (target) target.textContent = (tcmSortOrder === 'asc') ? '▲' : '▼';
+    } catch (_) {}
+}
+
+// 強制同步篩選欄位的 placeholder（防止極端情境未翻譯）
+function updateTcmPlaceholders() {
+    try {
+        if (!window.i18n || !window.i18n.isReady()) return;
+        const elNum = document.getElementById('testCaseNumberSearch');
+        const elSearch = document.getElementById('searchInput');
+        const elTCG = document.getElementById('tcgFilter');
+        if (elNum) elNum.setAttribute('placeholder', window.i18n.t('testCase.testCaseNumberPlaceholder', {}, elNum.getAttribute('data-i18n-placeholder-fallback') || ''));
+        if (elSearch) elSearch.setAttribute('placeholder', window.i18n.t('testCase.searchPlaceholder', {}, elSearch.getAttribute('data-i18n-placeholder-fallback') || ''));
+        if (elTCG) elTCG.setAttribute('placeholder', window.i18n.t('testCase.tcgFilterPlaceholder', {}, elTCG.getAttribute('data-i18n-placeholder-fallback') || ''));
     } catch (_) {}
 }
 
@@ -1544,12 +1579,13 @@ document.addEventListener('DOMContentLoaded', async function() {
         // 先處理 URL 的 team_id，確保後續載入不會因為未選擇團隊而中止
         const urlParams = new URLSearchParams(window.location.search);
         const teamIdParam = urlParams.get('team_id');
-        if (teamIdParam && (!AppUtils.getCurrentTeam() || !AppUtils.getCurrentTeam().id)) {
+        // 嘗試立即更新 placeholder（若 i18n 已就緒）
+        updateTcmPlaceholders();
+        const mode = urlParams.get('mode') || 'preview';
             const teamId = parseInt(teamIdParam);
             if (!isNaN(teamId)) {
                 AppUtils.setCurrentTeam({ id: teamId, name: 'From Test Run' });
             }
-        }
         // 確保網址列包含 team_id（不重新載入頁面）
         try {
             const cur = AppUtils.getCurrentTeam && AppUtils.getCurrentTeam();
@@ -1839,7 +1875,7 @@ function reapplyPersistedFiltersIfAny() {
     try {
         const uiHasFilters = !!hasAnyFilters();
         const saved = loadTcmFiltersFromStorage();
-        const savedHasFilters = !!(saved && (saved.testCaseNumberSearch || saved.searchInput || saved.priorityFilter));
+        const savedHasFilters = !!(saved && (saved.testCaseNumberSearch || saved.searchInput || saved.tcgFilter || saved.priorityFilter));
         if (uiHasFilters) {
             // 以目前 UI 為準直接套用
             applyFilters();
@@ -1990,9 +2026,10 @@ async function refreshTestCases() {
 function hasAnyFilters() {
     const testCaseNumberSearch = document.getElementById('testCaseNumberSearch').value.trim();
     const search = document.getElementById('searchInput').value.trim();
+    const tcg = (document.getElementById('tcgFilter')?.value || '').trim();
     const priority = document.getElementById('priorityFilter').value;
     
-    return testCaseNumberSearch || search || priority;
+    return testCaseNumberSearch || search || tcg || priority;
 }
 
 function renderTestCasesTable() {
@@ -4294,17 +4331,20 @@ function getTCGTags(testCase) {
 function applyFilters() {
     const testCaseNumberSearchEl = document.getElementById('testCaseNumberSearch');
     const searchEl = document.getElementById('searchInput');
+    const tcgEl = document.getElementById('tcgFilter');
     const priorityEl = document.getElementById('priorityFilter');
 
     // 更新記憶體中的過濾器
     tcmCurrentFilters.testCaseNumberSearch = testCaseNumberSearchEl ? (testCaseNumberSearchEl.value || '') : '';
     tcmCurrentFilters.searchInput = searchEl ? (searchEl.value || '') : '';
+    tcmCurrentFilters.tcgFilter = tcgEl ? (tcgEl.value || '') : '';
     tcmCurrentFilters.priorityFilter = priorityEl ? (priorityEl.value || '') : '';
 
     // 保存到持久化儲存（依 team 隔離）
     saveTcmFiltersToStorage({
         testCaseNumberSearch: tcmCurrentFilters.testCaseNumberSearch,
         searchInput: tcmCurrentFilters.searchInput,
+        tcgFilter: tcmCurrentFilters.tcgFilter,
         priorityFilter: tcmCurrentFilters.priorityFilter
     });
 
@@ -4320,16 +4360,18 @@ function applyFilters() {
 function clearFilters() {
     const elNum = document.getElementById('testCaseNumberSearch');
     const elSearch = document.getElementById('searchInput');
+    const elTCG = document.getElementById('tcgFilter');
     const elPri = document.getElementById('priorityFilter');
     if (elNum) elNum.value = '';
     if (elSearch) elSearch.value = '';
+    if (elTCG) elTCG.value = '';
     if (elPri) elPri.value = '';
 
     // 清除此 team 的持久化篩選
     clearTcmFiltersInStorage();
 
     // 重置記憶體過濾器
-    tcmCurrentFilters = { testCaseNumberSearch: '', searchInput: '', priorityFilter: '' };
+    tcmCurrentFilters = { testCaseNumberSearch: '', searchInput: '', tcgFilter: '', priorityFilter: '' };
     
     filteredTestCases = [...testCases];
     currentPage = 1;
@@ -6974,6 +7016,12 @@ window.addEventListener('resize', function() {
     // 視窗尺寸改變時，調整列表高度
     adjustTestCasesScrollHeight();
 });
+
+// 當 i18n 準備就緒或語言變更時，強制刷新 placeholder
+try {
+    document.addEventListener('i18nReady', function(){ updateTcmPlaceholders(); });
+    document.addEventListener('languageChanged', function(){ updateTcmPlaceholders(); });
+} catch (_) {}
 
 // 更新導航按鈕狀態
 function updateNavigationButtons() {
