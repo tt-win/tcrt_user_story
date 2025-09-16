@@ -291,12 +291,14 @@ async def delete_team(team_id: int, db: Session = Depends(get_db)):
             from pathlib import Path
             import shutil
             project_root = Path(__file__).resolve().parents[2]
+            from app.config import settings
+            root_dir = Path(settings.attachments.root_dir) if settings.attachments.root_dir else (project_root / "attachments")
             # test-cases/{team_id}
-            tc_dir = project_root / "attachments" / "test-cases" / str(team_id)
+            tc_dir = root_dir / "test-cases" / str(team_id)
             if tc_dir.exists():
                 shutil.rmtree(tc_dir, ignore_errors=True)
             # test-runs/{team_id}
-            tr_dir = project_root / "attachments" / "test-runs" / str(team_id)
+            tr_dir = root_dir / "test-runs" / str(team_id)
             if tr_dir.exists():
                 shutil.rmtree(tr_dir, ignore_errors=True)
         except Exception:

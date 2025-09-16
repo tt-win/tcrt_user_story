@@ -7,11 +7,12 @@
 - 建立/更新/刪除（若後續需要）：先寫本地、標記 pending，再由同步流程推送到 Lark
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Response
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Response, Form
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from pydantic import BaseModel
 from datetime import datetime
+import uuid
 
 from app.database import get_db
 from app.models.test_case import (
@@ -259,8 +260,15 @@ async def create_test_case(
     case: TestCaseCreate,
     db: Session = Depends(get_db)
 ):
-    """建立新的測試案例（只寫本地 DB）"""
+    """建立新的測試案例（只寫本地 DB）
+    - 若 case.temp_upload_id 存在，將 attachments/staging/{temp_upload_id} 下檔案搬移到最終路徑
+      attachments/test-cases/{team_id}/{test_case_number}/ 並寫入 attachments_json。
+    """
     try:
+        import json
+        from pathlib import Path
+        from shutil import move
+
         # 檢查重複 test_case_number
         exists = db.query(TestCaseLocalDB).filter(
             TestCaseLocalDB.team_id == team_id,
@@ -290,6 +298,39 @@ async def create_test_case(
         )
         db.add(item)
         db.flush()  # 取得自增 id
+
+        # 如有暫存附件，搬移並記錄
+        if getattr(case, 'temp_upload_id', None):
+            project_root = Path(__file__).resolve().parents[2]
+            from app.config import settings
+            root_dir = Path(settings.attachments.root_dir) if settings.attachments.root_dir else (project_root / "attachments")
+            staging_dir = root_dir / "staging" / case.temp_upload_id
+            if staging_dir.exists() and staging_dir.is_dir():
+                final_dir = root_dir / "test-cases" / str(team_id) / item.test_case_number
+                final_dir.mkdir(parents=True, exist_ok=True)
+
+                metas = []
+                for p in sorted(staging_dir.iterdir()):
+                    if not p.is_file():
+                        continue
+                    dest = final_dir / p.name
+                    move(str(p), str(dest))
+                    metas.append({
+                        "name": p.name,
+                        "stored_name": p.name,
+                        "size": dest.stat().st_size,
+                        "type": "application/octet-stream",
+                        "relative_path": str(dest.relative_to(root_dir)),
+                        "absolute_path": str(dest),
+                        "uploaded_at": datetime.utcnow().isoformat(),
+                    })
+                item.attachments_json = json.dumps(metas, ensure_ascii=False)
+                # 清掉空 staging 目錄（非致命）
+                try:
+                    staging_dir.rmdir()
+                except Exception:
+                    pass
+
         db.commit()
         # 回傳本地物件
         return TestCaseResponse(
@@ -331,6 +372,9 @@ async def update_test_case(
     規則：優先以本地 id（純數字）尋找；否則以 lark_record_id 尋找。
     """
     try:
+        import json
+        from pathlib import Path
+        from shutil import move
         item = None
         # 優先：本地數字 id
         try:
@@ -363,6 +407,121 @@ async def update_test_case(
             item.expected_result = case_update.expected_result
         if case_update.test_result is not None:
             item.test_result = case_update.test_result
+
+        # 處理 TCG 欄位更新：支援字串（單號或逗號/空白/換行分隔多號）或 LarkRecord 陣列
+        if hasattr(case_update, 'tcg') and case_update.tcg is not None:
+            try:
+                tcg_table_id = "tblcK6eF3yQCuwwl"  # 與批次更新所用表格一致
+                tcg_items: list[dict] = []
+
+                def build_items_from_pairs(pairs: list[tuple[str, str]]):
+                    return [{
+                        "record_ids": [rid],
+                        "table_id": tcg_table_id,
+                        "text": tcg_no,
+                        "text_arr": [tcg_no] if tcg_no else [],
+                        "type": "text",
+                    } for rid, tcg_no in pairs]
+
+                if isinstance(case_update.tcg, str):
+                    s = case_update.tcg.strip()
+                    if not s:
+                        # 清空
+                        item.tcg_json = json.dumps([], ensure_ascii=False)
+                    else:
+                        # 解析多個單號
+                        parts = [p.strip() for p in s.replace('\n', ',').replace(' ', ',').split(',')]
+                        nums = [p for p in parts if p]
+                        pairs: list[tuple[str, str]] = []
+                        try:
+                            from app.services.tcg_converter import tcg_converter
+                            for n in nums:
+                                rid = tcg_converter.get_record_id_by_tcg_number(n)
+                                if rid:
+                                    pairs.append((rid, n))
+                                else:
+                                    # 若找不到對應 record_id，仍保留文字但 record_ids 留空，利於後續同步再補
+                                    pairs.append(("", n))
+                        except Exception:
+                            # 轉換器不可用時，仍以純文字保存
+                            pairs = [("", n) for n in nums]
+                        tcg_items = build_items_from_pairs(pairs)
+                        item.tcg_json = json.dumps(tcg_items, ensure_ascii=False)
+                else:
+                    # 嘗試將 LarkRecord 結構序列化
+                    try:
+                        # 允許傳入簡化物件，僅擷取必要欄位
+                        incoming = []
+                        for it in (case_update.tcg or []):
+                            rid_list = []
+                            try:
+                                rid_list = list(getattr(it, 'record_ids', None) or it.get('record_ids') or [])
+                            except Exception:
+                                rid_list = []
+                            text_val = None
+                            text_arr = []
+                            try:
+                                text_val = getattr(it, 'text', None)
+                            except Exception:
+                                text_val = it.get('text') if isinstance(it, dict) else None
+                            try:
+                                text_arr = list(getattr(it, 'text_arr', None) or it.get('text_arr') or ([] if not text_val else [text_val]))
+                            except Exception:
+                                text_arr = ([] if not text_val else [text_val])
+                            incoming.append({
+                                "record_ids": rid_list,
+                                "table_id": tcg_table_id,
+                                "text": text_val or (text_arr[0] if text_arr else ""),
+                                "text_arr": text_arr,
+                                "type": "text",
+                            })
+                        item.tcg_json = json.dumps(incoming, ensure_ascii=False)
+                    except Exception:
+                        # 無法解析時，清空避免壞資料
+                        item.tcg_json = json.dumps([], ensure_ascii=False)
+            except Exception as e:
+                # 若 TCG 處理失敗，丟出 400 錯誤較精確
+                raise HTTPException(status_code=400, detail=f"更新 TCG 欄位失敗: {e}")
+
+        # 如有暫存附件，搬移並與既存附件合併
+        if getattr(case_update, 'temp_upload_id', None):
+            project_root = Path(__file__).resolve().parents[2]
+            from app.config import settings
+            root_dir = Path(settings.attachments.root_dir) if settings.attachments.root_dir else (project_root / "attachments")
+            staging_dir = root_dir / "staging" / case_update.temp_upload_id
+            if staging_dir.exists() and staging_dir.is_dir():
+                final_dir = root_dir / "test-cases" / str(team_id) / (item.test_case_number or str(item.id))
+                final_dir.mkdir(parents=True, exist_ok=True)
+
+                existing = []
+                try:
+                    if item.attachments_json:
+                        data = json.loads(item.attachments_json)
+                        if isinstance(data, list):
+                            existing = data
+                except Exception:
+                    existing = []
+
+                for p in sorted(staging_dir.iterdir()):
+                    if not p.is_file():
+                        continue
+                    dest = final_dir / p.name
+                    move(str(p), str(dest))
+                    existing.append({
+                        "name": p.name,
+                        "stored_name": p.name,
+                        "size": dest.stat().st_size,
+                        "type": "application/octet-stream",
+                        "relative_path": str(dest.relative_to(root_dir)),
+                        "absolute_path": str(dest),
+                        "uploaded_at": datetime.utcnow().isoformat(),
+                    })
+                item.attachments_json = json.dumps(existing, ensure_ascii=False)
+                try:
+                    staging_dir.rmdir()
+                except Exception:
+                    pass
+
         # 變更後標為待同步
         item.sync_status = SyncStatus.PENDING
         db.commit()
@@ -396,6 +555,55 @@ async def update_test_case(
 
 
 # 規則：首選 DB 本地 id 版本（更精準更快）
+@router.post("/staging/upload", response_model=dict)
+async def upload_test_case_attachments_staging(
+    team_id: int,
+    files: List[UploadFile] = File(...),
+    temp_upload_id: Optional[str] = Form(None),
+    db: Session = Depends(get_db)
+):
+    """暫存上傳附件（未決定或尚未建立 Test Case 時使用）
+    - 回傳 temp_upload_id，前端於建立/更新 Test Case 時帶回即可完成搬移與綁定。
+    目錄：attachments/staging/{temp_upload_id}/
+    """
+    import re, json
+    from pathlib import Path
+    from datetime import datetime
+
+    # 生成或沿用 staging id
+    sid = temp_upload_id or uuid.uuid4().hex
+
+    project_root = Path(__file__).resolve().parents[2]
+    from app.config import settings
+    root_dir = Path(settings.attachments.root_dir) if settings.attachments.root_dir else (project_root / "attachments")
+    staging_dir = root_dir / "staging" / sid
+    staging_dir.mkdir(parents=True, exist_ok=True)
+
+    safe_re = re.compile(r"[^A-Za-z0-9_.\-]+")
+    ts_prefix = datetime.utcnow().strftime("%Y%m%d-%H%M%S-%f")
+
+    uploaded = []
+    for f in files:
+        orig = f.filename or "unnamed"
+        safe = safe_re.sub("_", orig)
+        stored = f"{ts_prefix}-{safe}"
+        path = staging_dir / stored
+        content = await f.read()
+        with open(path, "wb") as out:
+            out.write(content)
+        uploaded.append({
+            "name": orig,
+            "stored_name": stored,
+            "size": len(content),
+            "type": f.content_type or "application/octet-stream",
+            "relative_path": str(path.relative_to(root_dir)),
+            "absolute_path": str(path),
+            "uploaded_at": datetime.utcnow().isoformat(),
+        })
+
+    return {"success": True, "temp_upload_id": sid, "count": len(uploaded), "files": uploaded, "base_url": "/attachments"}
+
+
 @router.post("/{test_case_id:int}/attachments", response_model=dict)
 async def upload_test_case_attachments_by_id(
     team_id: int,
@@ -420,7 +628,9 @@ async def upload_test_case_attachments_by_id(
 
     # 固定專案根
     project_root = Path(__file__).resolve().parents[2]
-    base_dir = project_root / "attachments" / "test-cases" / str(team_id) / item.test_case_number
+    from app.config import settings
+    root_dir = Path(settings.attachments.root_dir) if settings.attachments.root_dir else (project_root / "attachments")
+    base_dir = root_dir / "test-cases" / str(team_id) / item.test_case_number
     base_dir.mkdir(parents=True, exist_ok=True)
 
     # 既存附件
@@ -450,7 +660,7 @@ async def upload_test_case_attachments_by_id(
             "stored_name": stored_name,
             "size": len(content),
             "type": f.content_type or "application/octet-stream",
-            "relative_path": str(stored_path.relative_to(project_root / "attachments")),
+            "relative_path": str(stored_path.relative_to(root_dir)),
             "absolute_path": str(stored_path),
             "uploaded_at": datetime.utcnow().isoformat(),
         }
@@ -615,11 +825,13 @@ async def _delete_attachment_common(
 
     # 刪除檔案
     project_root = Path(__file__).resolve().parents[2]
+    from app.config import settings
+    root_dir = Path(settings.attachments.root_dir) if settings.attachments.root_dir else (project_root / "attachments")
     disk_path = files[idx].get('absolute_path')
     try:
         if disk_path:
             p = Path(disk_path)
-            if (project_root / "attachments") in p.parents and p.exists():
+            if root_dir in p.parents and p.exists():
                 p.unlink()
     except Exception:
         pass
@@ -661,7 +873,9 @@ async def upload_test_case_attachments(
 
 # 固定以專案根做為 base，避免受啟動目錄影響
     project_root = Path(__file__).resolve().parents[2]
-    base_dir = project_root / "attachments" / "test-cases" / str(team_id) / item.test_case_number
+    from app.config import settings
+    root_dir = Path(settings.attachments.root_dir) if settings.attachments.root_dir else (project_root / "attachments")
+    base_dir = root_dir / "test-cases" / str(team_id) / item.test_case_number
     base_dir.mkdir(parents=True, exist_ok=True)
 
     # 既存附件
@@ -691,7 +905,7 @@ async def upload_test_case_attachments(
             "stored_name": stored_name,
             "size": len(content),
             "type": f.content_type or "application/octet-stream",
-"relative_path": str(stored_path.relative_to(project_root / "attachments")),
+"relative_path": str(stored_path.relative_to(root_dir)),
             "absolute_path": str(stored_path),
             "uploaded_at": datetime.utcnow().isoformat(),
         }
@@ -749,6 +963,8 @@ async def delete_test_case(
         # 先嘗試刪除附件檔案（非致命）
         try:
             project_root = Path(__file__).resolve().parents[2]
+            from app.config import settings
+            root_dir = Path(settings.attachments.root_dir) if settings.attachments.root_dir else (project_root / 'attachments')
             if item.attachments_json:
                 data = json.loads(item.attachments_json)
                 if isinstance(data, list):
@@ -756,10 +972,10 @@ async def delete_test_case(
                         ap = f.get('absolute_path')
                         if ap:
                             p = Path(ap)
-                            if (project_root / 'attachments') in p.parents and p.exists():
+                            if root_dir in p.parents and p.exists():
                                 p.unlink()
             # 刪除整個目錄（attachments/test-cases/{team_id}/{test_case_number}）
-            base_dir = project_root / 'attachments' / 'test-cases' / str(team_id) / (item.test_case_number or '')
+            base_dir = root_dir / 'test-cases' / str(team_id) / (item.test_case_number or '')
             if base_dir.exists() and base_dir.is_dir():
                 import shutil
                 shutil.rmtree(base_dir, ignore_errors=True)

@@ -69,9 +69,10 @@ async def upload_test_run_results(
         )
 
     try:
-# 固定以專案根做為 base，避免受啟動目錄影響
+        # 使用設定的附件根目錄（未設定則回退到專案 attachments）
         project_root = Path(__file__).resolve().parents[2]
-        base_dir = project_root / "attachments"
+        from app.config import settings
+        base_dir = Path(settings.attachments.root_dir) if settings.attachments.root_dir else (project_root / "attachments")
         # 將測試結果檔案統一放在 attachments/test-runs/{team_id}/{config_id}/{item_id}/
         target_dir = base_dir / "test-runs" / str(team_id) / str(config_id) / str(item_id)
         target_dir.mkdir(parents=True, exist_ok=True)
@@ -1188,9 +1189,10 @@ async def delete_test_result_file(
 
     # 刪除磁碟檔案
     project_root = Path(__file__).resolve().parents[2]
-    base_dir = project_root / "attachments"
+    from app.config import settings
+    base_dir = Path(settings.attachments.root_dir) if settings.attachments.root_dir else (project_root / "attachments")
     disk_path = files[idx].get('absolute_path')
-    # 若沒有絕對路徑，嘗試用新制定的 test-runs 目錄拼出
+    # 若沒有絕對路徑，嘗試用 root_dir + relative_path 組出
     if not disk_path:
         rel = files[idx].get('relative_path') or ''
         try:
@@ -1202,7 +1204,7 @@ async def delete_test_result_file(
     try:
         if disk_path:
             p = Path(disk_path)
-            # 只允許刪除 attachments 下的檔案
+            # 只允許刪除附件根目錄下的檔案
             if (base_dir in p.parents or base_dir == p.parent) and p.exists():
                 p.unlink()
     except Exception:

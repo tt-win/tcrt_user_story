@@ -46,11 +46,23 @@ class AppConfig(BaseModel):
             base_url=os.getenv('APP_BASE_URL', getattr(fallback, 'base_url', 'http://localhost:8000') if fallback else 'http://localhost:8000'),
             lark_dry_run=os.getenv('LARK_DRY_RUN', str(getattr(fallback, 'lark_dry_run', False)).lower() if fallback else 'false').lower() == 'true'
         )
+
+class AttachmentsConfig(BaseModel):
+    # 若留空，則預設使用專案根目錄下的 attachments 子目錄
+    root_dir: str = ""
+
+    @classmethod
+    def from_env(cls, fallback: 'AttachmentsConfig' = None) -> 'AttachmentsConfig':
+        env_root = os.getenv('ATTACHMENTS_ROOT_DIR')
+        return cls(
+            root_dir=env_root if env_root else (fallback.root_dir if fallback else '')
+        )
     
 class Settings(BaseModel):
     app: AppConfig = AppConfig()
     lark: LarkConfig = LarkConfig()
     jira: JiraConfig = JiraConfig()
+    attachments: AttachmentsConfig = AttachmentsConfig()
     
     @classmethod
     def from_env_and_file(cls, config_path: str = "config.yaml") -> 'Settings':
@@ -67,7 +79,8 @@ class Settings(BaseModel):
         return cls(
             app=AppConfig.from_env(base_settings.app),
             lark=LarkConfig.from_env(base_settings.lark),
-            jira=base_settings.jira  # JIRA 保持檔案設定
+            jira=base_settings.jira,  # JIRA 保持檔案設定
+            attachments=AttachmentsConfig.from_env(base_settings.attachments)
         )
 
 def load_config(config_path: str = "config.yaml") -> Settings:
@@ -91,6 +104,9 @@ def create_default_config(config_path: str = "config.yaml") -> None:
             "server_url": "",
             "username": "",
             "api_token": ""
+        },
+        "attachments": {
+            "root_dir": ""  # 留空代表使用專案內 attachments 目錄
         }
     }
     

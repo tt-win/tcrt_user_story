@@ -2123,7 +2123,7 @@ function openTestCaseBatchCopyModal() {
 
         // 開啟 Modal
         const el = document.getElementById('testCaseBatchCopyModal');
-    if (!batchCopyModalInstance) batchCopyModalInstance = new bootstrap.Modal(el);
+        if (!batchCopyModalInstance) batchCopyModalInstance = new bootstrap.Modal(el);
         renderBatchCopyTable();
         if (window.i18n && window.i18n.isReady()) window.i18n.retranslate(el);
         batchCopyModalInstance.show();
@@ -2393,6 +2393,7 @@ async function confirmBatchCopyRequest() {
         // 刷新列表
         clearTestCasesCache();
         await loadTestCases(false, null, true);
+
         // 清除主列表的選取
         try {
             if (selectedTestCases && typeof selectedTestCases.clear === 'function') {
@@ -2883,10 +2884,13 @@ function copyTestCase(id) {
     document.getElementById('title').value = `${copyWord} - ${source.title || ''}`;
     document.getElementById('testCaseNumber').value = '';
     document.getElementById('priority').value = source.priority || 'Medium';
+
+    // 保留來源 TCG 單號（單一或多個以逗號分隔的字串）
     const tcgValue = source.tcg ? source.tcg.map(t => t.text || t).join(', ') : '';
     document.getElementById('tcg').value = tcgValue;
     const modalTCGInput = document.getElementById('modalTCGInput');
     if (modalTCGInput) modalTCGInput.value = tcgValue;
+
     document.getElementById('precondition').value = source.precondition || '';
     document.getElementById('test_steps').value = source.steps || '';
     document.getElementById('expected_result').value = source.expected_result || '';
@@ -3111,6 +3115,14 @@ function cloneAndAddNext(id) {
     document.getElementById('testCaseNumber').value = nextNumber;
     
     document.getElementById('priority').value = source.priority || 'MEDIUM';
+
+    // 保留來源 TCG 單號（單一或多個以逗號分隔的字串）
+    const tcgValue = source.tcg ? source.tcg.map(t => t.text || t).join(', ') : '';
+    const modalTCGInput = document.getElementById('modalTCGInput');
+    if (modalTCGInput) modalTCGInput.value = tcgValue;
+    const tcgDisplay = document.getElementById('tcg');
+    if (tcgDisplay) tcgDisplay.value = tcgValue;
+
     document.getElementById('precondition').value = source.precondition || '';
     document.getElementById('test_steps').value = source.steps || '';
     document.getElementById('expected_result').value = source.expected_result || '';
@@ -3131,7 +3143,7 @@ function cloneAndAddNext(id) {
         saveAndAddNextBtn.style.display = 'inline-block';
         // 重置按鈕文字為正常狀態
         const saveAndNextText = window.i18n ? window.i18n.t('form.saveAndNext') : '儲存並新增下一筆';
-        saveAndAddNextBtn.innerHTML = `<i class="fas fa-plus me-2"></i>${saveAndNextText}`;
+        saveAndAddNextBtn.innerHTML = `<i class=\"fas fa-plus me-2\"></i>${saveAndNextText}`;
     }
 
     // 編輯器模式採用 split（與新增一致）
@@ -3197,6 +3209,9 @@ function showTestCaseModal(testCase = null) {
     isFormChanged = false;
     saveBtn.disabled = false; // 儲存按鈕始終啟用
     
+    // 每次開啟 modal 重置暫存上傳 id（避免跨記錄汙染）
+    currentTempUploadId = null;
+
     if (testCase) {
         // 編輯現有測試案例時，初始化附件資料
         if (Array.isArray(testCase.attachments) && testCase.attachments.length > 0) {
@@ -3621,6 +3636,11 @@ async function saveTestCase() {
         tcg: document.getElementById('modalTCGInput').value  // 從新的 type-to-search 輸入框取得 TCG（更新 API 支援字串）
         // 注意：不再包含 attachments，因為附件現在是立即附加到記錄的
     };
+
+    // 若存在暫存上傳，帶入 temp_upload_id 讓後端在建立/更新後搬移到正式資料夾
+    if (currentTempUploadId) {
+        testCaseData.temp_upload_id = currentTempUploadId;
+    }
     
     // 除錯：檢查 test_steps 是否被正確收集
     const testStepsElement = document.getElementById('test_steps');
@@ -3813,6 +3833,9 @@ async function saveTestCase() {
                 };
             }
             
+            // 成功後清空暫存上傳識別碼（避免影響下一次操作）
+            currentTempUploadId = null;
+
             // 更新成功訊息
             const completedMessage = testCaseId ? 
                 (window.i18n ? window.i18n.t('messages.testCaseUpdated') : '測試案例更新完成') : 
@@ -3846,8 +3869,14 @@ async function saveAndAddNext() {
         precondition: document.getElementById('precondition').value,
         steps: document.getElementById('test_steps').value,
         expected_result: document.getElementById('expected_result').value,
+        // 直接取用 modalTCGInput 的字串（單號或多號逗號分隔），建立後再以 PUT 更新
         tcg: document.getElementById('modalTCGInput').value
     };
+
+    // 若存在暫存上傳，帶入 temp_upload_id
+    if (currentTempUploadId) {
+        testCaseData.temp_upload_id = currentTempUploadId;
+    }
     
     // 表單驗證
     if (!testCaseData.title) {
@@ -3961,7 +3990,11 @@ async function saveAndAddNext() {
         const currentPrecondition = testCaseData.precondition;
         const currentSteps = testCaseData.steps;
         const currentExpectedResult = testCaseData.expected_result;
+        // 重要：在重置表單前先暫存當前 TCG 單號（建立時不傳，建立後會用於 PUT）
+        const currentTCG = (typeof tcgNumberForCreate === 'string' && tcgNumberForCreate.trim()) ? tcgNumberForCreate.trim() : '';
         
+        // 成功新增後清空暫存上傳識別碼
+        currentTempUploadId = null;
         // 重置表單為新增下一筆狀態
         showTestCaseModal(null); // 呼叫新增模式，會自動清空所有欄位並設定為編輯模式
         
@@ -3987,6 +4020,11 @@ async function saveAndAddNext() {
             if (currentExpectedResult) {
                 document.getElementById('expected_result').value = currentExpectedResult;
             }
+            // 保留相同 TCG 單號
+            const modalTCGInputNext = document.getElementById('modalTCGInput');
+            if (modalTCGInputNext) modalTCGInputNext.value = currentTCG || '';
+            const tcgDisplayNext = document.getElementById('tcg');
+            if (tcgDisplayNext) tcgDisplayNext.value = currentTCG || '';
         }, 100);
         
     } catch (error) {
@@ -6002,6 +6040,8 @@ function updateSingleFieldPreview(fieldId) {
 // 附件管理功能
 // 全域變數來儲存上傳的附件
 let uploadedAttachments = [];
+// 新增：用於新增/更新尚未有正式記錄時，暫存上傳的識別碼
+let currentTempUploadId = null;
 
 function handleAttachmentUpload(event) {
     const files = event.target.files;
@@ -6071,81 +6111,92 @@ async function uploadFilesToServer(files) {
         const progressBar = attachmentsList.querySelector('.progress-bar');
         const progressText = attachmentsList.querySelector('span.text-muted');
         
-        // 逐個上傳檔案並顯示進度
-        for (let i = 0; i < files.length; i++) {
-            const file = files[i];
-            
-            // 更新當前上傳的檔案名稱
-            const statusText = attachmentsList.querySelector('.mt-2 small');
-            const uploadingMessage = window.i18n ? window.i18n.t('messages.uploadingFile') : '正在上傳';
-            statusText.textContent = `${uploadingMessage}: ${file.name}`;
-            
-            try {
-                // 新後端：直接一次性將多檔傳到該測試案例
-                // 為了顯示每檔進度，這裡逐檔傳送（也可改成一次多檔 FormData）
-                const currentRecordKey = getCurrentRecordKeyForUpload();
-                if (!currentRecordKey) throw new Error('請先填寫 Test Case Number 再上傳附件');
+        const isEditingExisting = !!(document.getElementById('testCaseId') && document.getElementById('testCaseId').value);
+        const rid = getCurrentRecordId();
+        const tcNumberEl2 = document.getElementById('testCaseNumber');
+        const tcn = tcNumberEl2 && tcNumberEl2.value ? tcNumberEl2.value.trim() : '';
 
-                const fd = new FormData();
-                fd.append('files', file);
-
-                // 若 currentRecordKey 是純數字，使用 id 路由；否則使用 by-number 路由避免 422
-                const isNumericId = /^\d+$/.test(String(currentRecordKey));
-                const url = isNumericId
-                    ? `/api/teams/${currentTeam.id}/testcases/${encodeURIComponent(currentRecordKey)}/attachments`
-                    : `/api/teams/${currentTeam.id}/testcases/by-number/${encodeURIComponent(currentRecordKey)}/attachments`;
-                const response = await fetch(url, {
-                    method: 'POST',
-                    body: fd
-                });
-
-        if (response.ok) {
-                    const result = await response.json();
-                    const statusText = attachmentsList.querySelector('.mt-2 small');
-                    const attachingMessage = window.i18n ? window.i18n.t('messages.attachingFile') : '正在附加';
-                    statusText.textContent = `${attachingMessage}: ${file.name}`;
-
-                    // 從回應中找出剛上傳的那個
-                    const meta = Array.isArray(result.files) ? result.files.find(m => m.name === file.name || (m.stored_name && m.stored_name.includes(file.name))) : null;
-                    const metaEntry = meta || { name: file.name, size: file.size, type: file.type || 'application/octet-stream' };
-
-                    uploadedFiles.push(metaEntry);
-
-                    // 更新本地列表資料（同時嘗試以 record_id 或 test_case_number 對應）
-                    const rid = getCurrentRecordId();
-                    const tcNumberEl2 = document.getElementById('testCaseNumber');
-                    const tcn = tcNumberEl2 && tcNumberEl2.value ? tcNumberEl2.value.trim() : '';
-
-                    let testCaseIndex = -1;
-                    if (rid) testCaseIndex = testCases.findIndex(tc => tc.record_id === rid);
-                    if (testCaseIndex === -1 && tcn) testCaseIndex = testCases.findIndex(tc => tc.test_case_number === tcn);
-                    if (testCaseIndex !== -1) {
-                        if (!testCases[testCaseIndex].attachments) testCases[testCaseIndex].attachments = [];
-                        testCases[testCaseIndex].attachments.push(metaEntry);
+        if (isEditingExisting) {
+            // 舊邏輯：已存在的記錄，直接附加到該記錄
+            for (let i = 0; i < files.length; i++) {
+                const file = files[i];
+                const statusText = attachmentsList.querySelector('.mt-2 small');
+                const uploadingMessage = window.i18n ? window.i18n.t('messages.uploadingFile') : '正在上傳';
+                statusText.textContent = `${uploadingMessage}: ${file.name}`;
+                try {
+                    const currentRecordKey = getCurrentRecordKeyForUpload();
+                    if (!currentRecordKey) throw new Error('請先填寫 Test Case Number 再上傳附件');
+                    const fd = new FormData();
+                    fd.append('files', file);
+                    const isNumericId = /^\d+$/.test(String(currentRecordKey));
+                    const url = isNumericId
+                        ? `/api/teams/${currentTeam.id}/testcases/${encodeURIComponent(currentRecordKey)}/attachments`
+                        : `/api/teams/${currentTeam.id}/testcases/by-number/${encodeURIComponent(currentRecordKey)}/attachments`;
+                    const response = await fetch(url, { method: 'POST', body: fd });
+                    if (response.ok) {
+                        const result = await response.json();
+                        const statusText = attachmentsList.querySelector('.mt-2 small');
+                        const attachingMessage = window.i18n ? window.i18n.t('messages.attachingFile') : '正在附加';
+                        statusText.textContent = `${attachingMessage}: ${file.name}`;
+                        const meta = Array.isArray(result.files) ? result.files.find(m => m.name === file.name || (m.stored_name && m.stored_name.includes(file.name))) : null;
+                        const metaEntry = meta || { name: file.name, size: file.size, type: file.type || 'application/octet-stream' };
+                        uploadedFiles.push(metaEntry);
+                        let testCaseIndex = -1;
+                        if (rid) testCaseIndex = testCases.findIndex(tc => tc.record_id === rid);
+                        if (testCaseIndex === -1 && tcn) testCaseIndex = testCases.findIndex(tc => tc.test_case_number === tcn);
+                        if (testCaseIndex !== -1) {
+                            if (!testCases[testCaseIndex].attachments) testCases[testCaseIndex].attachments = [];
+                            testCases[testCaseIndex].attachments.push(metaEntry);
+                        }
+                        let filteredIndex = -1;
+                        if (rid) filteredIndex = filteredTestCases.findIndex(tc => tc.record_id === rid);
+                        if (filteredIndex === -1 && tcn) filteredIndex = filteredTestCases.findIndex(tc => tc.test_case_number === tcn);
+                        if (filteredIndex !== -1) {
+                            if (!filteredTestCases[filteredIndex].attachments) filteredTestCases[filteredIndex].attachments = [];
+                            filteredTestCases[filteredIndex].attachments.push(metaEntry);
+                        }
+                        completedFiles++;
+                        const progress = (completedFiles / totalFiles) * 100;
+                        if (progressBar) progressBar.style.width = progress + '%';
+                        if (progressText) progressText.textContent = `${completedFiles}/${totalFiles}`;
+                    } else {
+                        let errorText = '上傳失敗';
+                        try { const err = await response.json(); errorText = err.detail || errorText; } catch (_e) {}
+                        throw new Error(`${errorText}`);
                     }
-                    let filteredIndex = -1;
-                    if (rid) filteredIndex = filteredTestCases.findIndex(tc => tc.record_id === rid);
-                    if (filteredIndex === -1 && tcn) filteredIndex = filteredTestCases.findIndex(tc => tc.test_case_number === tcn);
-                    if (filteredIndex !== -1) {
-                        if (!filteredTestCases[filteredIndex].attachments) filteredTestCases[filteredIndex].attachments = [];
-                        filteredTestCases[filteredIndex].attachments.push(metaEntry);
-                    }
-
-                    completedFiles++;
-                    const progress = (completedFiles / totalFiles) * 100;
-                    if (progressBar) progressBar.style.width = progress + '%';
-                    if (progressText) progressText.textContent = `${completedFiles}/${totalFiles}`;
-                } else {
-                    let errorText = '上傳失敗';
-                    try { const err = await response.json(); errorText = err.detail || errorText; } catch (_e) {}
-                    throw new Error(`${errorText}`);
+                } catch (fileError) {
+                    console.error(`上傳檔案 ${file.name} 失敗:`, fileError);
+                    const uploadFailedMessage = window.i18n ? window.i18n.t('errors.uploadFailed') : '上傳失敗';
+                    showError(`${uploadFailedMessage} "${file.name}": ${fileError.message}`);
                 }
-            } catch (fileError) {
-                console.error(`上傳檔案 ${file.name} 失敗:`, fileError);
-                // 繼續上傳其他檔案，但記錄錯誤
-                const uploadFailedMessage = window.i18n ? window.i18n.t('errors.uploadFailed') : '上傳失敗';
-                showError(`${uploadFailedMessage} "${file.name}": ${fileError.message}`);
             }
+        } else {
+            // 新邏輯：新增模式，先暫存上傳，待建立/更新成功後由後端搬移到正式位置
+            const fd = new FormData();
+            for (let i = 0; i < files.length; i++) {
+                fd.append('files', files[i]);
+            }
+            if (currentTempUploadId) fd.append('temp_upload_id', currentTempUploadId);
+            const response = await fetch(`/api/teams/${currentTeam.id}/testcases/staging/upload`, { method: 'POST', body: fd });
+            if (!response.ok) {
+                let errorText = '上傳失敗';
+                try { const err = await response.json(); errorText = err.detail || errorText; } catch (_e) {}
+                throw new Error(errorText);
+            }
+            const result = await response.json();
+            currentTempUploadId = result.temp_upload_id || currentTempUploadId;
+            const newFiles = Array.isArray(result.files) ? result.files.map(m => ({
+                name: m.name,
+                stored_name: m.stored_name || m.name,
+                size: m.size || 0,
+                type: m.type || 'application/octet-stream',
+                url: m.url || m.tmp_url || '',
+            })) : [];
+            uploadedFiles.push(...newFiles);
+            completedFiles = totalFiles; // 暫存上傳為一次性批次
+            const progress = (completedFiles / totalFiles) * 100;
+            if (progressBar) progressBar.style.width = progress + '%';
+            if (progressText) progressText.textContent = `${completedFiles}/${totalFiles}`;
         }
         
         // 將上傳成功的檔案加到全域變數
