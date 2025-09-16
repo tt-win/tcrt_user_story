@@ -402,3 +402,192 @@ function refreshCurrentPageData() {
     const event = new CustomEvent('refreshPageData');
     window.dispatchEvent(event);
 }
+
+// ----------------------------------------------
+// 隱藏模式：Konami Code（上上下下左右左右BA）
+// 偵測到後顯示一個 Bootstrap Modal（先佈署外觀，功能後續再設計）
+// ----------------------------------------------
+(function setupHiddenMode() {
+    // 定義序列（最後兩個按鍵接受 A/a 與 B/b）
+    const KONAMI_SEQUENCE = [
+        'ArrowUp','ArrowUp','ArrowDown','ArrowDown',
+        'ArrowLeft','ArrowRight','ArrowLeft','ArrowRight',
+        'b','a'
+    ];
+
+    let buffer = [];
+
+    function normalizeKey(e) {
+        const k = e.key;
+        // 僅接受方向鍵與 a/b，忽略其他組合鍵
+        if (k.startsWith('Arrow')) return k;
+        if (k === 'a' || k === 'A') return 'a';
+        if (k === 'b' || k === 'B') return 'b';
+        return null;
+    }
+
+function showHiddenModeModal() {
+        // 如已存在同名 modal，先移除避免重覆
+        try {
+            const existing = document.getElementById('hiddenModeModal');
+            if (existing && existing.closest('.modal')) {
+                const inst = bootstrap.Modal.getInstance(existing.closest('.modal'));
+                if (inst) inst.hide();
+                existing.closest('.modal').remove();
+            }
+        } catch (_) {}
+
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = `
+            <div class="modal fade" id="hiddenModeModal" tabindex="-1" aria-hidden="true">
+              <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                  <div class="modal-header">
+                    <h5 class="modal-title">隱藏模式</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                  </div>
+                  <div class="modal-body">
+                    <div class="border rounded p-2">
+                      <div class="d-flex justify-content-between align-items-center mb-2">
+                        <div class="fw-semibold">伺服器資源監控</div>
+                        <div>
+                          <span id="hm-last-updated" class="text-muted small">—</span>
+                        </div>
+                      </div>
+                      <div id="hm-metrics" class="small">
+                        <div class="text-muted">讀取中…</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">關閉</button>
+                  </div>
+                </div>
+              </div>
+            </div>`;
+
+        document.body.appendChild(wrapper);
+        const modalEl = wrapper.querySelector('#hiddenModeModal');
+        const modal = new bootstrap.Modal(modalEl, { backdrop: true });
+
+        let timer = null;
+        let abortCtrl = null;
+
+        function fmtBytes(bytes) {
+            if (bytes == null) return '—';
+            const units = ['B','KB','MB','GB','TB'];
+            let u = 0; let val = Number(bytes);
+            while (val >= 1024 && u < units.length - 1) { val /= 1024; u++; }
+            return `${val.toFixed(val >= 10 ? 0 : 1)} ${units[u]}`;
+        }
+
+        function fmtPct(p) { return (p == null) ? '—' : `${Number(p).toFixed(1)}%`; }
+        function fmtUptime(s) {
+            if (s == null) return '—';
+            s = Math.floor(s);
+            const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+            return `${h}h ${m}m ${sec}s`;
+        }
+
+        async function fetchMetrics() {
+            try {
+                if (abortCtrl) abortCtrl.abort();
+                abortCtrl = new AbortController();
+                const resp = await fetch('/api/admin/system_metrics', { signal: abortCtrl.signal });
+                if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+                const data = await resp.json();
+                renderMetrics(data);
+            } catch (e) {
+                const box = modalEl.querySelector('#hm-metrics');
+                if (box) box.innerHTML = `<div class="text-danger">讀取失敗：${e?.message || e}</div>`;
+            } finally {
+                modalEl.querySelector('#hm-last-updated').textContent = new Date().toLocaleTimeString();
+            }
+        }
+
+        function renderMetrics(data) {
+            const load = data?.load || {};
+            const cpu = data?.cpu || {};
+            const mem = data?.memory || {};
+            const box = modalEl.querySelector('#hm-metrics');
+            if (!box) return;
+            box.innerHTML = `
+              <div class="row g-2">
+                <div class="col-6">
+                  <div class="text-muted">Uptime</div>
+                  <div>${(function(){
+                    const s = Math.floor(data?.uptime_seconds || 0);
+                    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+                    return `${h}h ${m}m ${sec}s`;
+                  })()}</div>
+                </div>
+                <div class="col-6">
+                  <div class="text-muted">CPU</div>
+                  <div>${(cpu.percent == null) ? '—' : `${Number(cpu.percent).toFixed(1)}%`}</div>
+                </div>
+                <div class="col-6">
+                  <div class="text-muted">Load Avg (1/5/15)</div>
+                  <div>${[load['1m'], load['5m'], load['15m']].map(v => (v==null? '—' : Number(v).toFixed(2))).join(' / ')}</div>
+                </div>
+                <div class="col-6">
+                  <div class="text-muted">Process RSS</div>
+                  <div>${fmtBytes(mem.process_rss)}</div>
+                </div>
+                <div class="col-6">
+                  <div class="text-muted">Memory Used</div>
+                  <div>${fmtBytes(mem.used)} (${(mem.percent == null) ? '—' : `${Number(mem.percent).toFixed(1)}%`})</div>
+                </div>
+                <div class="col-6">
+                  <div class="text-muted">Memory Avail / Total</div>
+                  <div>${fmtBytes(mem.available)} / ${fmtBytes(mem.total)}</div>
+                </div>
+              </div>
+            `;
+        }
+
+        function start() {
+            fetchMetrics();
+            timer = setInterval(fetchMetrics, 2000);
+        }
+        function stop() {
+            if (timer) { clearInterval(timer); timer = null; }
+            if (abortCtrl) { abortCtrl.abort(); abortCtrl = null; }
+        }
+
+        modalEl.addEventListener('shown.bs.modal', start);
+        modalEl.addEventListener('hidden.bs.modal', () => {
+            stop();
+            // 關閉後移除節點，保持整潔
+            wrapper.remove();
+        });
+
+        modal.show();
+    }
+
+    function onKeydown(e) {
+        // 避免在輸入框影響使用者輸入
+        const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
+        if (tag === 'input' || tag === 'textarea' || tag === 'select' || e.isComposing) {
+            return; 
+        }
+
+        const key = normalizeKey(e);
+        if (!key) return;
+
+        buffer.push(key);
+        // 只保留最近 N 個
+        if (buffer.length > KONAMI_SEQUENCE.length) {
+            buffer.shift();
+        }
+
+        // 檢查是否完全匹配
+        const matched = KONAMI_SEQUENCE.every((k, idx) => buffer[idx] === k);
+        if (matched) {
+            // 重置並顯示 modal
+            buffer = [];
+            showHiddenModeModal();
+        }
+    }
+
+    document.addEventListener('keydown', onKeydown, { passive: true });
+})();

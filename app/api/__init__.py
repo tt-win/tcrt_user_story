@@ -15,6 +15,7 @@ from .team_sync import router as team_sync_router
 from .organization_sync import router as organization_sync_router
 from .jira import router as jira_router
 from .lark_groups import router as lark_groups_router
+from .admin import router as admin_router
 
 # 創建主 API 路由器
 api_router = APIRouter()
@@ -33,5 +34,6 @@ api_router.include_router(team_sync_router)
 api_router.include_router(organization_sync_router)
 api_router.include_router(jira_router)
 api_router.include_router(lark_groups_router)
+api_router.include_router(admin_router)
 
 # 可以在此添加其他 API 路由
