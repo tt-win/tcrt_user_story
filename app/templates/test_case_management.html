@@ -1057,6 +1057,119 @@ const TCG_CACHE_EXPIRY = 24 * 60 * 60 * 1000; // 24小時過期
 let tcmSortField = 'number'; // number|title|tcg|priority|created|updated
 let tcmSortOrder = 'asc';    // asc|desc
 
+// ===== 篩選器持久化（依 team 隔離） =====
+const TCM_FILTERS_STORAGE_PREFIX = 'tcm_filters_v1';
+
+function getTcmFiltersStorageKey() {
+    try {
+        // 與快取相同邏輯取 teamId（優先 URL，再 AppUtils，再 sessionStorage 容錯）
+        const teamId = getTeamIdForCache(false);
+        return teamId ? `${TCM_FILTERS_STORAGE_PREFIX}:${String(teamId)}` : null;
+    } catch (_) { return null; }
+}
+
+function saveTcmFiltersToStorage(filters) {
+    try {
+        const key = getTcmFiltersStorageKey();
+        if (!key) return;
+        const payload = {
+            testCaseNumberSearch: String(filters.testCaseNumberSearch || ''),
+            searchInput: String(filters.searchInput || ''),
+            priorityFilter: String(filters.priorityFilter || ''),
+            ts: Date.now()
+        };
+        localStorage.setItem(key, JSON.stringify(payload));
+    } catch (_) {}
+}
+
+function loadTcmFiltersFromStorage() {
+    try {
+        const key = getTcmFiltersStorageKey();
+        if (!key) return null;
+        const raw = localStorage.getItem(key);
+        if (!raw) return null;
+        const obj = JSON.parse(raw);
+        if (!obj || typeof obj !== 'object') return null;
+        return {
+            testCaseNumberSearch: obj.testCaseNumberSearch || '',
+            searchInput: obj.searchInput || '',
+            priorityFilter: obj.priorityFilter || ''
+        };
+    } catch (_) { return null; }
+}
+
+function clearTcmFiltersInStorage() {
+    try {
+        const key = getTcmFiltersStorageKey();
+        if (!key) return;
+        localStorage.removeItem(key);
+    } catch (_) {}
+}
+
+function restoreTcmFiltersToUI() {
+    const saved = loadTcmFiltersFromStorage();
+    if (!saved) return false;
+    try {
+        const elNum = document.getElementById('testCaseNumberSearch');
+        const elSearch = document.getElementById('searchInput');
+        const elPri = document.getElementById('priorityFilter');
+        if (elNum) elNum.value = saved.testCaseNumberSearch || '';
+        if (elSearch) elSearch.value = saved.searchInput || '';
+        if (elPri) elPri.value = saved.priorityFilter || '';
+        updateFilterStatus();
+        // 同步到記憶體中的目前過濾器
+        tcmCurrentFilters.testCaseNumberSearch = saved.testCaseNumberSearch || '';
+        tcmCurrentFilters.searchInput = saved.searchInput || '';
+        tcmCurrentFilters.priorityFilter = saved.priorityFilter || '';
+        return (saved.testCaseNumberSearch || saved.searchInput || saved.priorityFilter) ? true : false;
+    } catch (_) { return false; }
+}
+
+// 目前過濾器（常駐於記憶體，不依賴 UI）
+let tcmCurrentFilters = { testCaseNumberSearch: '', searchInput: '', priorityFilter: '' };
+
+function computeFilteredTestCases(list) {
+    try {
+        const numKW = String(tcmCurrentFilters.testCaseNumberSearch || '').toLowerCase();
+        const kw = String(tcmCurrentFilters.searchInput || '').toLowerCase();
+        const pri = String(tcmCurrentFilters.priorityFilter || '');
+        const res = (list || []).filter(testCase => {
+            // Test Case Number 或 TCG 搜尋
+            const matchNum = !numKW ||
+                (testCase.test_case_number && String(testCase.test_case_number).toLowerCase().includes(numKW)) ||
+                (testCase.tcg && testCase.tcg.some(tcgItem => {
+                    const tcgText = (tcgItem && (tcgItem.text || tcgItem)) || '';
+                    return String(tcgText).toLowerCase().includes(numKW);
+                }));
+            // 標題/描述關鍵字
+            const matchSearch = !kw ||
+                (testCase.title && String(testCase.title).toLowerCase().includes(kw)) ||
+                (testCase.description && String(testCase.description).toLowerCase().includes(kw));
+            // 優先級
+            const matchPri = !pri || testCase.priority === pri;
+            return matchNum && matchSearch && matchPri;
+        });
+        return res;
+    } catch (_) { return Array.isArray(list) ? list.slice() : []; }
+}
+
+function applyCurrentFiltersAndRender() {
+    try {
+        filteredTestCases = computeFilteredTestCases(testCases);
+        currentPage = 1;
+        renderTestCasesTable();
+        updatePagination();
+        updateFilterStatus();
+    } catch (_) {
+        // 回退：顯示全量
+        filteredTestCases = Array.isArray(testCases) ? testCases.slice() : [];
+        currentPage = 1;
+        renderTestCasesTable();
+        updatePagination();
+        updateFilterStatus();
+    }
+}
+
 function setTcmSort(field) {
     if (tcmSortField === field) {
         tcmSortOrder = (tcmSortOrder === 'asc') ? 'desc' : 'asc';
@@ -1404,6 +1517,26 @@ document.addEventListener('DOMContentLoaded', async function() {
             if (newTeam && newTeam.id) {
                 ensureTeamIdInUrl_TCM(newTeam.id);
                 try { sessionStorage.setItem('lastTeamId', String(newTeam.id)); } catch (_) {}
+                // 切換 team 後：依新 team 的儲存狀態還原（若無儲存則等同清空），並重新渲染
+                try {
+                    // 嘗試載入該 team 的列表資料（若已載入則僅套用 UI 與篩選）
+                    // 先重置 UI 欄位，再依新 team 的儲存覆蓋
+                    const elNum = document.getElementById('testCaseNumberSearch');
+                    const elSearch = document.getElementById('searchInput');
+                    const elPri = document.getElementById('priorityFilter');
+                    if (elNum) elNum.value = '';
+                    if (elSearch) elSearch.value = '';
+                    if (elPri) elPri.value = '';
+                    updateFilterStatus();
+                    // 還原新 team 的持久化條件（若有）並同步到記憶體
+                    restoreTcmFiltersToUI();
+                    // 依記憶體中的過濾器立即渲染（不清除快取、不重打 API）
+                    filteredTestCases = computeFilteredTestCases(testCases);
+                    currentPage = 1;
+                    renderTestCasesTable();
+                    updatePagination();
+                    updateFilterStatus();
+                } catch (_) {}
             }
         });
     } catch (_) {}
@@ -1635,6 +1768,8 @@ async function initTestCaseManagement() {
         hideLoadingProgress();
         // 初始化篩選狀態
         updateFilterStatus();
+        // 還原持久化過濾條件到 UI 與記憶體（實際套用延至列表載入完成時）
+        try { restoreTcmFiltersToUI(); } catch (_) {}
     }
     // 工具列顯示狀態可能改變整體高度，需重新計算列表高度
     adjustTestCasesScrollHeight();
@@ -1699,6 +1834,27 @@ function updateTCGCacheProgress(progress, message = '') {
 }
 
 
+// 在載入列表後重新套用（或還原並套用）持久化的過濾條件
+function reapplyPersistedFiltersIfAny() {
+    try {
+        const uiHasFilters = !!hasAnyFilters();
+        const saved = loadTcmFiltersFromStorage();
+        const savedHasFilters = !!(saved && (saved.testCaseNumberSearch || saved.searchInput || saved.priorityFilter));
+        if (uiHasFilters) {
+            // 以目前 UI 為準直接套用
+            applyFilters();
+        } else if (savedHasFilters) {
+            // UI 無條件但有持久化條件，先還原 UI 再套用
+            if (restoreTcmFiltersToUI()) {
+                applyFilters();
+            }
+        } else {
+            // 都沒有條件，維持全部列表與狀態
+            updateFilterStatus();
+        }
+    } catch (_) {}
+}
+
 async function loadTestCases(showLoadingBlock = true, updateProgress = null, forceRefresh = false) {
     try {
         if (updateProgress) updateProgress(0, '開始載入測試案例...');
@@ -1726,9 +1882,8 @@ async function loadTestCases(showLoadingBlock = true, updateProgress = null, for
                     return aNumber.localeCompare(bNumber);
                 });
                 
-                filteredTestCases = [...testCases];
-                renderTestCasesTable();
-                updatePagination();
+                // 依目前記憶體中的過濾器計算顯示清單
+                applyCurrentFiltersAndRender();
                 
                 const completedMsg = window.i18n ? 
                     window.i18n.t('loading.completedWithCount', {count: testCases.length}) + ' (快取)' : 
@@ -1772,12 +1927,10 @@ async function loadTestCases(showLoadingBlock = true, updateProgress = null, for
             return aNumber.localeCompare(bNumber);
         });
         
-        filteredTestCases = [...testCases];
-        
+        // 依目前記憶體中的過濾器計算顯示清單
         if (updateProgress) updateProgress(95, '渲染表格...');
         
-        renderTestCasesTable();
-        updatePagination();
+        applyCurrentFiltersAndRender();
         if (showLoadingBlock) {
             hideLoadingState();
         }
@@ -3602,7 +3755,8 @@ function deleteTestCase(id) {
             
             // 從本地陣列移除已刪除的項目
             testCases = testCases.filter(tc => tc.record_id !== id);
-            filteredTestCases = filteredTestCases.filter(tc => tc.record_id !== id);
+            // 依目前過濾器重新渲染
+            applyCurrentFiltersAndRender();
 
             // 從快取中移除
             removeTestCaseFromCache(id);
@@ -3785,9 +3939,7 @@ async function saveTestCase() {
                         const index = testCases.findIndex(tc => tc.record_id === testCaseId);
                         if (index >= 0) {
                             testCases[index] = updatedTestCase;
-                            filteredTestCases = [...testCases];
-                            renderTestCasesTable();
-                            updatePagination();
+                            applyCurrentFiltersAndRender();
                         }
                         
                         // 更新快取
@@ -4140,29 +4292,24 @@ function getTCGTags(testCase) {
 }
 
 function applyFilters() {
-    const testCaseNumberSearch = document.getElementById('testCaseNumberSearch').value.toLowerCase();
-    const search = document.getElementById('searchInput').value.toLowerCase();
-    const priority = document.getElementById('priorityFilter').value;
-    
-    filteredTestCases = testCases.filter(testCase => {
-        // Test Case Number 搜尋（包含 TCG 編號和測試案例編號）
-        const matchTestCaseNumber = !testCaseNumberSearch || 
-            (testCase.test_case_number && testCase.test_case_number.toLowerCase().includes(testCaseNumberSearch)) ||
-            (testCase.tcg && testCase.tcg.some(tcgItem => {
-                const tcgText = tcgItem.text || tcgItem;
-                return tcgText && tcgText.toLowerCase().includes(testCaseNumberSearch);
-            }));
-        
-        // 關鍵字搜尋（標題和描述）
-        const matchSearch = !search || 
-            testCase.title.toLowerCase().includes(search) ||
-            (testCase.description && testCase.description.toLowerCase().includes(search));
-        
-        // 優先級篩選
-        const matchPriority = !priority || testCase.priority === priority;
-        
-        return matchTestCaseNumber && matchSearch && matchPriority;
+    const testCaseNumberSearchEl = document.getElementById('testCaseNumberSearch');
+    const searchEl = document.getElementById('searchInput');
+    const priorityEl = document.getElementById('priorityFilter');
+
+    // 更新記憶體中的過濾器
+    tcmCurrentFilters.testCaseNumberSearch = testCaseNumberSearchEl ? (testCaseNumberSearchEl.value || '') : '';
+    tcmCurrentFilters.searchInput = searchEl ? (searchEl.value || '') : '';
+    tcmCurrentFilters.priorityFilter = priorityEl ? (priorityEl.value || '') : '';
+
+    // 保存到持久化儲存（依 team 隔離）
+    saveTcmFiltersToStorage({
+        testCaseNumberSearch: tcmCurrentFilters.testCaseNumberSearch,
+        searchInput: tcmCurrentFilters.searchInput,
+        priorityFilter: tcmCurrentFilters.priorityFilter
     });
+
+    // 依記憶體過濾器重新計算
+    filteredTestCases = computeFilteredTestCases(testCases);
     
     currentPage = 1;
     renderTestCasesTable();
@@ -4171,9 +4318,18 @@ function applyFilters() {
 }
 
 function clearFilters() {
-    document.getElementById('testCaseNumberSearch').value = '';
-    document.getElementById('searchInput').value = '';
-    document.getElementById('priorityFilter').value = '';
+    const elNum = document.getElementById('testCaseNumberSearch');
+    const elSearch = document.getElementById('searchInput');
+    const elPri = document.getElementById('priorityFilter');
+    if (elNum) elNum.value = '';
+    if (elSearch) elSearch.value = '';
+    if (elPri) elPri.value = '';
+
+    // 清除此 team 的持久化篩選
+    clearTcmFiltersInStorage();
+
+    // 重置記憶體過濾器
+    tcmCurrentFilters = { testCaseNumberSearch: '', searchInput: '', priorityFilter: '' };
     
     filteredTestCases = [...testCases];
     currentPage = 1;
@@ -4549,9 +4705,8 @@ function updateLocalTestCasesAfterBatchModify(selectedIds, updateData) {
         }
     });
     
-    // 立即重新渲染表格
-    renderTestCasesTable();
-    updatePagination();
+    // 立即依目前過濾器重新渲染
+    applyCurrentFiltersAndRender();
 }
 
 async function performTestCaseBatchModify() {
