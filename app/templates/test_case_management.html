@@ -217,6 +217,90 @@ html, body { height: 100%; overflow: hidden; }
     padding-bottom: 0.25rem;
 }
 
+/* Modal 和 Batch TCG 標籤樣式 */
+.tcg-tag {
+    display: inline-block;
+    background-color: #e3f2fd;
+    color: #1976d2;
+    padding: 2px 6px;
+    margin: 1px 2px;
+    border-radius: 10px;
+    font-size: 0.7rem;
+    font-weight: 500;
+    border: 1px solid #bbdefb;
+    white-space: nowrap;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.tcg-tags-container:hover {
+    border-color: #86b7fe;
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+.tcg-option:hover {
+    background-color: #f8f9fa !important;
+}
+
+.tcg-option.active {
+    background-color: #e3f2fd !important;
+}
+
+/* TCG 容器的響應式設計 */
+.tcg-tags-container {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+/* Modal 響應式設計 */
+@media (max-width: 1500px) {
+    #testCaseModal .modal-dialog {
+        max-width: 90vw !important;
+        width: 90vw !important;
+    }
+}
+
+@media (max-width: 1200px) {
+    #testCaseModal .modal-dialog {
+        max-width: 95vw !important;
+        width: 95vw !important;
+    }
+    
+    #testCaseModal .col-md-5 {
+        flex: 0 0 60%;
+        max-width: 60%;
+    }
+    
+    #testCaseModal .col-md-3 {
+        flex: 0 0 40%;
+        max-width: 40%;
+    }
+}
+
+@media (max-width: 768px) {
+    #testCaseModal .modal-dialog {
+        max-width: 100vw !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        max-height: 100vh !important;
+        margin: 0 !important;
+        border-radius: 0 !important;
+    }
+    
+    #testCaseModal .col-md-2,
+    #testCaseModal .col-md-3,
+    #testCaseModal .col-md-5 {
+        flex: 0 0 100%;
+        max-width: 100%;
+        margin-bottom: 1rem;
+    }
+    
+    .tcg-tags-container {
+        max-height: 80px !important;
+    }
+}
+
 </style>
 {% endblock %}
 
@@ -355,7 +439,7 @@ html, body { height: 100%; overflow: hidden; }
                                 <span data-i18n="common.title">標題</span>
                                 <span class="sort-indicator ms-1"></span>
                             </th>
-                            <th id="th-tcm-tcg" class="sortable text-center" width="120" style="padding: 4px 8px !important; vertical-align: middle; cursor: pointer;">
+                            <th id="th-tcm-tcg" class="sortable text-center" width="180" style="padding: 4px 8px !important; vertical-align: middle; cursor: pointer;">
                                 <span>TCG</span>
                                 <span class="sort-indicator ms-1"></span>
                             </th>
@@ -392,7 +476,7 @@ html, body { height: 100%; overflow: hidden; }
 
 <!-- 測試案例詳情/編輯 Modal -->
 <div class="modal fade" id="testCaseModal" tabindex="-1" data-bs-backdrop="static">
-    <div class="modal-dialog modal-xl" style="height: 90vh; max-height: 90vh;">
+    <div class="modal-dialog" style="max-width: 85vw; width: 1400px; height: 90vh; max-height: 90vh;">
         <div class="modal-content" style="height: 100%; display: flex; flex-direction: column;">
             <div class="modal-header">
                 <h5 class="modal-title">
@@ -424,7 +508,7 @@ html, body { height: 100%; overflow: hidden; }
                                 <label for="testCaseNumber" class="form-label">Test Case Number <span class="text-danger">*</span></label>
                                 <input type="text" class="form-control" id="testCaseNumber" name="test_case_number" required>
                             </div>
-                            <div class="col-md-6">
+                            <div class="col-md-5">
                                 <label for="title" class="form-label"><span data-i18n="form.testCaseTitle">測試案例標題</span> <span class="text-danger">*</span></label>
                                 <input type="text" class="form-control" id="title" name="title" required>
                             </div>
@@ -436,7 +520,7 @@ html, body { height: 100%; overflow: hidden; }
                                     <option value="Low">Low</option>
                                 </select>
                             </div>
-                            <div class="col-md-2">
+                            <div class="col-md-3">
                                 <label for="tcg" class="form-label d-flex align-items-center">
                                     TCG
                                     <button type="button" class="btn-icon-only" 
@@ -447,20 +531,9 @@ html, body { height: 100%; overflow: hidden; }
                                         <i class="fas fa-eye"></i>
                                     </button>
                                 </label>
-                                <div class="tcg-search-container" style="position: relative;">
-                                    <input type="text" 
-                                           id="modalTCGInput" 
-                                           class="form-control" 
-                                           data-i18n-placeholder="testCase.tcgPlaceholder"
-                                           autocomplete="off"
-                                           onkeyup="handleTCGSearch(this)"
-                                           onfocus="showTCGDropdown()"
-                                           onblur="hideTCGDropdown()"
-                                           oncontextmenu="clearModalTCGDirect(event)">
-                                    <div id="modalTCGDropdown" 
-                                         style="position: absolute; top: 100%; left: 0; right: 0; z-index: 1045; max-height: 200px; overflow-y: auto; display: none; background: white; border: 1px solid #ccc; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-                                        <!-- 搜尋結果會動態載入到這裡 -->
-                                    </div>
+                                <div class="tcg-tags-container" id="modalTcgContainer" 
+                                     style="min-height: 32px; padding: 4px 8px; border: 1px solid #dee2e6; border-radius: 4px; background-color: #fff; cursor: text; display: flex; align-items: center; flex-wrap: wrap; gap: 4px; position: relative; max-height: 120px; overflow-y: auto;">
+                                    <!-- TCG 標籤會顯示在這裡 -->
                                 </div>
                             </div>
                         </div>
@@ -738,16 +811,13 @@ html, body { height: 100%; overflow: hidden; }
                         </label>
                     </div>
                     <div class="position-relative">
-                        <input type="text" class="form-control" id="batchTCGInput" 
-                               data-i18n-placeholder="testCase.enterTCGNumber"
-                               placeholder="輸入 TCG 單號或搜尋關鍵字"
-                               autocomplete="off"
-                               onfocus="showBatchTCGDropdown()"
-                               onblur="hideBatchTCGDropdown()"
-                               oninput="handleBatchTCGSearch(this)"
-                               onkeydown="handleBatchTCGKeydown(event)">
+                        <!-- 顯示已選 TCG 的 tag 區塊，點擊可進入編輯 -->
+                        <div id="batchTCGContainer" class="tcg-edit-area" data-i18n-title="tooltips.clickEditTcg" style="min-height: 32px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; cursor: pointer;"></div>
+                        <!-- 隱藏欄位：儲存多選值，以逗號+空白串接，沿用既有提交流程 -->
+                        <input type="hidden" id="batchTCGInput" value="">
+                        <!-- Dropdown 區塊（與列表一致） -->
                         <div id="batchTCGDropdown" 
-                             style="position: absolute; top: 100%; left: 0; right: 0; z-index: 1060; max-height: 200px; overflow-y: auto; display: none; background: white; border: 1px solid #ced4da; border-top: none; border-radius: 0 0 0.375rem 0.375rem; box-shadow: 0 2px 8px rgba(0,0,0,0.15);">
+                             style="position: fixed; z-index: 1070; max-height: 220px; overflow-y: auto; display: none; background: white; border: 1px solid #ced4da; border-radius: 0.375rem; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
                             <div class="p-2 text-muted small" data-i18n="testCase.tcgSearchHint">開始輸入以搜尋 TCG...</div>
                         </div>
                     </div>
@@ -1682,7 +1752,281 @@ const urlParams = new URLSearchParams(window.location.search);
             }, 0);
         }
     }
+    
+    // 添加Modal TCG容器的事件委託（與列表一致）
+    document.addEventListener('click', function(e) {
+        if (e.target.closest('#modalTcgContainer')) {
+            editModalTCG();
+        }
+    });
 });
+
+// Modal TCG 編輯器（與列表一致的體驗）
+let currentModalTCGEditor = null;
+let modalTCGSearchTimeout = null;
+let modalTCGSelected = [];
+
+async function editModalTCG() {
+    const container = document.getElementById('modalTcgContainer');
+    if (!container) return;
+    
+    // 如果已經有編輯器在運行，先關閉
+    if (currentModalTCGEditor) {
+        await finishModalTCGEdit();
+    }
+    
+    // 獲取當前 TCG
+    const currentTCGs = Array.isArray(modalTCGSelected) ? [...modalTCGSelected] : [];
+    
+    // 設置編輯器狀態
+    currentModalTCGEditor = {
+        container: container,
+        originalTCGs: [...currentTCGs],
+        currentTCGs: [...currentTCGs],
+        originalContent: container.innerHTML,
+        mode: 'search'
+    };
+    
+    // 直接進入搜尋模式
+    startModalTCGSearch();
+}
+
+async function startModalTCGSearch() {
+    if (!currentModalTCGEditor) return;
+    
+    const { container, currentTCGs } = currentModalTCGEditor;
+    
+    // 直接顯示搜尋框 - 隱藏原標籤
+    const searchHtml = `
+        <div class="tcg-search-container position-relative" style="min-height: 32px; height: 32px; display: flex; align-items: center; overflow: hidden;">
+            <input type="text" class="form-control form-control-sm tcg-search-input" 
+                   data-i18n-placeholder="testCase.tcgPlaceholder" autocomplete="off" 
+                   onkeydown="handleModalTCGSearchKeydown(event)" 
+                   oninput="handleModalTCGSearchInput(event)"
+                   onclick="event.stopPropagation()"
+                   style="height: 28px; width: 100%; font-size: 0.75rem; padding: 0.125rem 0.375rem; border: 1px solid #dee2e6; box-shadow: none; outline: none;">
+            <div class="tcg-dropdown" 
+                 style="position: fixed; z-index: 1050; max-height: 300px; overflow-y: auto; display: none; background: white; border: 1px solid #ccc; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
+                <div class="p-2 text-muted small">開始輸入以搜尋 TCG...</div>
+            </div>
+        </div>
+    `;
+    
+    container.innerHTML = searchHtml;
+    container.classList.add('editing');
+    
+    // 更新全域狀態
+    modalTCGSelected = [...currentTCGs];
+    
+    // 聚焦搜尋框並立即載入選項
+    const searchInput = container.querySelector('.tcg-search-input');
+    searchInput.focus();
+    
+    // 立即載入 TCG 選項並顯示下拉選單
+    await searchModalTCGOptions('');
+    const dropdown = container.querySelector('.tcg-dropdown');
+    if (dropdown) {
+        // 計算輸入框的位置
+        const rect = searchInput.getBoundingClientRect();
+        
+        // 設定 fixed 定位的座標
+        dropdown.style.top = (rect.bottom + window.scrollY) + 'px';
+        dropdown.style.left = rect.left + 'px';
+        dropdown.style.width = Math.max(300, rect.width) + 'px';
+        dropdown.style.display = 'block';
+    }
+    
+    // 添加點擊外部結束編輯的監聽器
+    setTimeout(() => {
+        document.addEventListener('click', handleModalTCGOutsideClick, true);
+    }, 100);
+}
+
+function handleModalTCGOutsideClick(event) {
+    if (!currentModalTCGEditor) return;
+    
+    const { container } = currentModalTCGEditor;
+    
+    // 檢查點擊是否在編輯區域外
+    const dropdown = container.querySelector('.tcg-dropdown');
+    if (!container.contains(event.target) && (!dropdown || !dropdown.contains(event.target))) {
+        finishModalTCGEdit();
+    }
+}
+
+async function finishModalTCGEdit() {
+    if (!currentModalTCGEditor) return;
+    
+    const { container, currentTCGs } = currentModalTCGEditor;
+    
+    // 移除全域點擊監聽器
+    document.removeEventListener('click', handleModalTCGOutsideClick, true);
+    
+    // 立即更新 UI 顯示
+    container.classList.remove('editing');
+    renderModalTCGDisplay();
+    
+    // 更新隱藏 input 值
+    const hidden = document.getElementById('tcg');
+    if (hidden) hidden.value = modalTCGSelected.join(', ');
+    
+    // 清除編輯器狀態
+    currentModalTCGEditor = null;
+}
+
+function renderModalTCGDisplay() {
+    const container = document.getElementById('modalTcgContainer');
+    if (!container) return;
+    
+    if (!Array.isArray(modalTCGSelected) || modalTCGSelected.length === 0) {
+        // 清除後留白，但保留點擊事件
+        container.innerHTML = '<span class="text-muted" style="font-size: 0.875rem;">點擊選擇 TCG 單號</span>';
+    } else {
+        // 顯示 TCG 標籤，保留點擊事件
+        const tcgHtml = modalTCGSelected.map(tcg => 
+            `<span class="tcg-tag">${tcg}</span>`
+        ).join('');
+        container.innerHTML = tcgHtml;
+    }
+}
+
+// 兼容新的函數名
+function updateModalTCGDisplay() {
+    renderModalTCGDisplay();
+}
+
+function handleModalTCGSearchInput(event) {
+    clearTimeout(modalTCGSearchTimeout);
+    modalTCGSearchTimeout = setTimeout(async () => {
+        await searchModalTCGOptions(event.target.value);
+    }, 300);
+}
+
+function handleModalTCGSearchKeydown(event) {
+    if (event.key === 'Enter') {
+        event.preventDefault();
+        finishModalTCGEdit();
+    } else if (event.key === 'Escape') {
+        event.preventDefault();
+        // 取消變更
+        if (currentModalTCGEditor) {
+            modalTCGSelected = [...currentModalTCGEditor.originalTCGs];
+        }
+        finishModalTCGEdit();
+    }
+}
+
+async function searchModalTCGOptions(keyword) {
+    if (!currentModalTCGEditor) return;
+    
+    const dropdown = currentModalTCGEditor.container.querySelector('.tcg-dropdown');
+    if (!dropdown) return;
+    
+    try {
+        console.log('搜尋 Modal TCG:', keyword);
+        
+        // 優先使用快取
+        let results = [];
+        if (tcgCache) {
+            results = searchTCGFromCache(keyword, 20);
+            console.log('從快取取得 Modal TCG 搜尋結果:', results.length, '筆');
+        } else {
+            // 如果沒有快取，使用 API
+            const response = await fetch(`/api/tcg/search?keyword=${encodeURIComponent(keyword)}&limit=20`);
+            if (!response.ok) {
+                console.error('Modal TCG 搜尋失敗:', response.status, response.statusText);
+                throw new Error(`搜尋 TCG 失敗: ${response.status}`);
+            }
+            const data = await response.json();
+            results = data.results;
+            console.log('從 API 取得 Modal TCG 搜尋結果:', results.length, '筆');
+        }
+        
+        // 始終顯示清除選項作為第一項
+        let dropdownHtml = `
+            <div class="tcg-option p-2 border-bottom" 
+                  onclick="event.stopPropagation(); clearModalTCGValue()" 
+                  style="cursor: pointer; border-bottom: 1px solid #f8f9fa; background-color: #fff3cd;" 
+                  onmouseover="this.style.backgroundColor='#ffeaa7'" 
+                  onmouseout="this.style.backgroundColor='#fff3cd'">
+                <div class="fw-medium text-warning">
+                    <i class="fas fa-times me-2"></i>清除 TCG 單號
+                </div>
+            </div>
+        `;
+        
+        if (results.length === 0) {
+            dropdownHtml += '<div class="p-2 text-muted small">沒有找到其他結果</div>';
+        } else {
+            dropdownHtml += results.map(tcg => {
+                const selected = modalTCGSelected && modalTCGSelected.includes(tcg.tcg_number);
+                return `
+                <div class="tcg-option p-2 border-bottom d-flex justify-content-between align-items-center" 
+                      onclick="event.stopPropagation(); selectModalTCGOption('${tcg.tcg_number}')" 
+                      style="cursor: pointer; border-bottom: 1px solid #f8f9fa; padding: 0.25rem 0.75rem;" 
+                      onmouseover="this.style.backgroundColor='#f8f9fa'" 
+                      onmouseout="this.style.backgroundColor='white'">
+                    <div class="fw-medium">${tcg.tcg_number}</div>
+                    ${selected ? '<i class="fas fa-check text-success"></i>' : ''}
+                </div>`;
+            }).join('');
+        }
+        
+        dropdown.innerHTML = dropdownHtml;
+        
+        // 更新位置並顯示
+        const searchInput = currentModalTCGEditor.container.querySelector('.tcg-search-input');
+        if (searchInput) {
+            const rect = searchInput.getBoundingClientRect();
+            dropdown.style.top = (rect.bottom + window.scrollY) + 'px';
+            dropdown.style.left = rect.left + 'px';
+            dropdown.style.width = Math.max(300, rect.width) + 'px';
+        }
+        dropdown.style.display = 'block';
+        
+    } catch (error) {
+        console.error('搜尋 Modal TCG 失敗:', error);
+        const searchFailedMessage = window.i18n ? window.i18n.t('errors.searchFailed') : '搜尋失敗';
+        dropdown.innerHTML = `<div class="p-2 text-danger small">${searchFailedMessage}</div>`;
+        
+        // 更新位置並顯示
+        const searchInput = currentModalTCGEditor.container.querySelector('.tcg-search-input');
+        if (searchInput) {
+            const rect = searchInput.getBoundingClientRect();
+            dropdown.style.top = (rect.bottom + window.scrollY) + 'px';
+            dropdown.style.left = rect.left + 'px';
+            dropdown.style.width = Math.max(300, rect.width) + 'px';
+        }
+        dropdown.style.display = 'block';
+    }
+}
+
+function selectModalTCGOption(tcgNumber) {
+    if (!currentModalTCGEditor) return;
+    
+    // 多選切換：存在則移除，不存在則加入
+    const idx = modalTCGSelected.indexOf(tcgNumber);
+    if (idx >= 0) {
+        modalTCGSelected.splice(idx, 1);
+    } else {
+        modalTCGSelected.push(tcgNumber);
+    }
+    
+    // 重新渲染下拉，反映選取狀態（不結束編輯）
+    const inputEl = currentModalTCGEditor.container.querySelector('.tcg-search-input');
+    const kw = inputEl ? inputEl.value : '';
+    searchModalTCGOptions(kw || '');
+}
+
+function clearModalTCGValue() {
+    if (!currentModalTCGEditor) return;
+    
+    // 清空 TCG 值
+    modalTCGSelected = [];
+    
+    // 立即完成編輯
+    finishModalTCGEdit();
+}
 
 // TCG 快取管理函數
 async function loadTCGCacheFromStorage() {
@@ -2084,8 +2428,9 @@ function renderTestCasesTable() {
                     <i class="fas fa-edit"></i>
                 </button>
             </td>
-            <td class="align-middle text-center position-relative" data-field="tcg" data-record-id="${testCase.record_id}">
-                <div class="tcg-edit-area" onclick="editTCG('${testCase.record_id}')" data-i18n-title="tooltips.clickEditTcg">
+            <td class="align-middle text-center position-relative" data-field="tcg" data-record-id="${testCase.record_id}" style="max-width: 180px;">
+                <div class="tcg-edit-area" onclick="editTCG('${testCase.record_id}')" data-i18n-title="tooltips.clickEditTcg" 
+                     style="display: flex; flex-wrap: wrap; gap: 2px; justify-content: center; align-items: center; min-height: 24px; padding: 2px; cursor: pointer;">
                     ${getTCGTags(testCase)}
                 </div>
             </td>
@@ -2139,6 +2484,9 @@ function bindEvents() {
     
     // 重新載入按鈕
     document.getElementById('refreshBtn').addEventListener('click', refreshTestCases);
+
+    // Modal TCG 事件已在 DOMContentLoaded 中統一處理
+    // 避免重複繫定
 
     // 批次複製按鈕
     const batchCopyBtn = document.getElementById('batchCopyBtn');
@@ -3078,8 +3426,6 @@ function copyTestCase(id) {
     // 保留來源 TCG 單號（單一或多個以逗號分隔的字串）
     const tcgValue = source.tcg ? source.tcg.map(t => t.text || t).join(', ') : '';
     document.getElementById('tcg').value = tcgValue;
-    const modalTCGInput = document.getElementById('modalTCGInput');
-    if (modalTCGInput) modalTCGInput.value = tcgValue;
 
     document.getElementById('precondition').value = source.precondition || '';
     document.getElementById('test_steps').value = source.steps || '';
@@ -3308,8 +3654,6 @@ function cloneAndAddNext(id) {
 
     // 保留來源 TCG 單號（單一或多個以逗號分隔的字串）
     const tcgValue = source.tcg ? source.tcg.map(t => t.text || t).join(', ') : '';
-    const modalTCGInput = document.getElementById('modalTCGInput');
-    if (modalTCGInput) modalTCGInput.value = tcgValue;
     const tcgDisplay = document.getElementById('tcg');
     if (tcgDisplay) tcgDisplay.value = tcgValue;
 
@@ -3438,12 +3782,9 @@ function showTestCaseModal(testCase = null) {
         const tcgValue = testCase.tcg ? testCase.tcg.map(t => t.text || t).join(', ') : '';
         document.getElementById('tcg').value = tcgValue;
         
-        // 更新 Modal TCG 輸入框
-        const modalTCGInput = document.getElementById('modalTCGInput');
-        if (modalTCGInput) {
-            modalTCGInput.value = tcgValue || '';
-            // 不自動顯示下拉選單，只設定值
-        }
+        // 初始化 Modal TCG 多選顯示
+        modalTCGSelected = testCase.tcg ? testCase.tcg.map(t => t.text || t) : [];
+        renderModalTCGDisplay();
         document.getElementById('precondition').value = testCase.precondition || '';
         document.getElementById('test_steps').value = testCase.steps || '';
         document.getElementById('expected_result').value = testCase.expected_result || '';
@@ -3511,11 +3852,9 @@ function showTestCaseModal(testCase = null) {
         document.getElementById('test_steps').value = '';
         document.getElementById('expected_result').value = '';
         
-        // 清空 Modal TCG 輸入框
-        const modalTCGInput = document.getElementById('modalTCGInput');
-        if (modalTCGInput) {
-            modalTCGInput.value = '';
-        }
+        // 清空 Modal TCG 多選顯示
+        modalTCGSelected = [];
+        renderModalTCGDisplay();
         
         // 清除 modal 的 recordId dataset
         modal.dataset.recordId = '';
@@ -3824,7 +4163,7 @@ async function saveTestCase() {
         precondition: document.getElementById('precondition').value,
         steps: document.getElementById('test_steps').value,
         expected_result: document.getElementById('expected_result').value,
-        tcg: document.getElementById('modalTCGInput').value  // 從新的 type-to-search 輸入框取得 TCG（更新 API 支援字串）
+        tcg: document.getElementById('tcg').value  // 從隱藏欄位取得 TCG（由 Modal 多選系統維護）
         // 注意：不再包含 attachments，因為附件現在是立即附加到記錄的
     };
 
@@ -3948,7 +4287,7 @@ async function saveTestCase() {
 
                     // 如果使用者有輸入 TCG，於建立後立即更新一次（後端支援字串）
                     try {
-                        const tcgInputEl = document.getElementById('modalTCGInput');
+                        const tcgInputEl = document.getElementById('tcg');
                         const tcgStr = (tcgInputEl && tcgInputEl.value) ? tcgInputEl.value.trim() : '';
                         if (tcgStr) {
                             await fetch(`/api/teams/${currentTeam.id}/testcases/${newTestCase.record_id}`, {
@@ -4015,7 +4354,7 @@ async function saveTestCase() {
                     title: currentFormData.get('title') || '',
                     test_case_number: currentFormData.get('test_case_number') || '',
                     priority: currentFormData.get('priority') || 'Medium',
-                    tcg: document.getElementById('modalTCGInput') ? document.getElementById('modalTCGInput').value : '',
+                    tcg: document.getElementById('tcg') ? document.getElementById('tcg').value : '',
                     precondition: document.getElementById('precondition') ? document.getElementById('precondition').value : '',
                     steps: document.getElementById('test_steps') ? document.getElementById('test_steps').value : '',
                     expected_result: document.getElementById('expected_result') ? document.getElementById('expected_result').value : ''
@@ -4058,8 +4397,8 @@ async function saveAndAddNext() {
         precondition: document.getElementById('precondition').value,
         steps: document.getElementById('test_steps').value,
         expected_result: document.getElementById('expected_result').value,
-        // 直接取用 modalTCGInput 的字串（單號或多號逗號分隔），建立後再以 PUT 更新
-        tcg: document.getElementById('modalTCGInput').value
+        // 直接取用 tcg 的字串（單號或多號逗號分隔），建立後再以 PUT 更新
+        tcg: document.getElementById('tcg').value
     };
 
     // 若存在暫存上傳，帶入 temp_upload_id
@@ -4210,8 +4549,6 @@ async function saveAndAddNext() {
                 document.getElementById('expected_result').value = currentExpectedResult;
             }
             // 保留相同 TCG 單號
-            const modalTCGInputNext = document.getElementById('modalTCGInput');
-            if (modalTCGInputNext) modalTCGInputNext.value = currentTCG || '';
             const tcgDisplayNext = document.getElementById('tcg');
             if (tcgDisplayNext) tcgDisplayNext.value = currentTCG || '';
         }, 100);
@@ -4494,43 +4831,194 @@ function openTestCaseBatchModifyModal() {
     document.getElementById('batchPrioritySelect').value = '';
     document.getElementById('batchPrioritySelect').disabled = true;
     
+    // 初始化批次 TCG 編輯器
+    initializeBatchTCGEditor();
+    
     // 顯示模態框
     const modal = new bootstrap.Modal(document.getElementById('testCaseBatchModifyModal'));
     modal.show();
+    
+    // 模態框顯示後確保 TCG 容器正確顯示
+    setTimeout(() => {
+        const container = document.getElementById('batchTCGContainer');
+        if (container) {
+            container.style.border = '1px solid #ced4da';
+            container.style.borderRadius = '0.375rem';
+            container.style.padding = '0.375rem';
+            container.style.backgroundColor = '#ffffff';
+            container.style.cursor = 'pointer';
+            container.setAttribute('title', '點擊編輯 TCG 單號');
+            
+            // 新增一個提示文字當沒有選擇時
+            if (batchTCGSelected.length === 0) {
+                container.innerHTML = '<span class="text-muted small">點擊此處選擇 TCG 單號...</span>';
+            }
+            
+            // **關鍵修正**：重新綁定點擊事件，因為 innerHTML 會清除事件監聽器
+            container.removeEventListener('click', openBatchTCGEditor); // 移除舊的（如果有）
+            container.addEventListener('click', openBatchTCGEditor); // 重新綁定
+        }
+        
+        // 綁定模態框關閉事件
+        const modal = document.getElementById('testCaseBatchModifyModal');
+        if (modal) {
+            modal.addEventListener('hidden.bs.modal', function() {
+                // 清理 TCG 編輯器狀態
+                if (batchTCGEditing) {
+                    finishBatchTCGEdit();
+                }
+                // 隱藏下拉選單
+                const dropdown = document.getElementById('batchTCGDropdown');
+                if (dropdown) {
+                    dropdown.style.display = 'none';
+                }
+            }, { once: true });
+        }
+    }, 100);
 }
 
-// 批次修改 TCG 搜尋相關變數
+// 批次修改 TCG 多選顯示與搜尋（與列表一致）
 let batchTCGSearchTimeout;
+let batchTCGEditing = false;
+let batchTCGSelected = [];
 
-function handleBatchTCGSearch(input) {
-    // 清除之前的超時，實現防抖動
-    clearTimeout(batchTCGSearchTimeout);
+// 初始化批次 TCG 編輯器
+function initializeBatchTCGEditor() {
+    console.log('Initializing batch TCG editor...'); // 調試用
+    // 重置狀態
+    batchTCGSelected = [];
+    batchTCGEditing = false;
     
-    const keyword = input.value.trim();
-    const dropdown = document.getElementById('batchTCGDropdown');
+    // 清理任何存在的監聽器
+    document.removeEventListener('click', handleBatchTCGOutsideClick, true);
     
-    if (!dropdown) return;
+    // 重置顯示
+    renderBatchTCGDisplay();
     
-    if (keyword.length < 2) {
-        dropdown.style.display = 'none';
-        dropdown.innerHTML = '<div class="p-2 text-muted small" data-i18n="testCase.tcgSearchHint">開始輸入以搜尋 TCG...</div>';
-        
-        // 重新應用翻譯到新生成的內容
-        if (window.i18n && window.i18n.isReady()) {
-            window.i18n.retranslate(dropdown);
-        }
+    // 確保點擊事件正確綁定
+    const container = document.getElementById('batchTCGContainer');
+    if (container) {
+        container.removeEventListener('click', openBatchTCGEditor);
+        container.addEventListener('click', openBatchTCGEditor);
+        console.log('Batch TCG container click event bound'); // 調試用
+    } else {
+        console.error('Batch TCG container not found!'); // 調試用
+    }
+}
+
+function renderBatchTCGDisplay() {
+    const container = document.getElementById('batchTCGContainer');
+    if (!container) return;
+    
+    if (!Array.isArray(batchTCGSelected) || batchTCGSelected.length === 0) {
+        // 顯示提示文字當沒有選擇時
+        container.innerHTML = '<span class="text-muted small">點擊此處選擇 TCG 單號...</span>';
+        // 重新綁定點擊事件（因為 innerHTML 會清除事件）
+        container.removeEventListener('click', openBatchTCGEditor);
+        container.addEventListener('click', openBatchTCGEditor);
         return;
     }
     
-    // 顯示搜尋中狀態
-    const searchingText = window.i18n ? window.i18n.t('testCase.tcgSearching', {}, '搜尋中...') : '搜尋中...';
-    dropdown.innerHTML = `<div class="p-2 text-muted small"><i class="fas fa-spinner fa-spin me-2"></i>${searchingText}</div>`;
-    dropdown.style.display = 'block';
-    
-    // 使用防抖動，300ms 後執行搜尋
-    batchTCGSearchTimeout = setTimeout(async () => {
-        await searchBatchTCGOptions(keyword);
-    }, 300);
+    const tags = batchTCGSelected.map(t => `<span class="tcg-tag">${t}</span>`).join(' ');
+    container.innerHTML = tags;
+    // 重新綁定點擊事件（因為 innerHTML 會清除事件）
+    container.removeEventListener('click', openBatchTCGEditor);
+    container.addEventListener('click', openBatchTCGEditor);
+}
+
+function openBatchTCGEditor() {
+    console.log('openBatchTCGEditor called'); // 調試用
+    const container = document.getElementById('batchTCGContainer');
+    if (!container) {
+        console.error('Batch TCG container not found!'); // 調試用
+        return;
+    }
+    if (batchTCGEditing) {
+        console.log('Already editing, skipping...'); // 調試用
+        return;
+    }
+    batchTCGEditing = true;
+    // 建立與列表一致的搜尋輸入與下拉
+    const searchHtml = `
+        <div class="tcg-search-container position-relative" style="min-height: 32px; height: 32px; display: flex; align-items: center; overflow: hidden;">
+            <input type="text" class="form-control form-control-sm tcg-search-input" 
+                   data-i18n-placeholder="testCase.tcgPlaceholder" autocomplete="off" 
+                   onkeydown="handleBatchTCGSearchKeydown(event)" 
+                   oninput="handleBatchTCGSearchInput(event)"
+                   onclick="event.stopPropagation()"
+                   style="height: 28px; width: 100%; font-size: 0.75rem; padding: 0.125rem 0.375rem; border: 1px solid #dee2e6; box-shadow: none; outline: none;">
+        </div>`;
+    container.innerHTML = searchHtml;
+    const input = container.querySelector('.tcg-search-input');
+    input.focus();
+    // 立刻調整 dropdown 位置並顯示
+    positionBatchTCGDropdown();
+    searchBatchTCGOptions('');
+    // 監聽外部點擊以結束編輯
+    setTimeout(() => { document.addEventListener('click', handleBatchTCGOutsideClick, true); }, 50);
+}
+
+function positionBatchTCGDropdown() {
+    try {
+        const host = document.getElementById('batchTCGContainer');
+        const dropdown = document.getElementById('batchTCGDropdown');
+        if (!host || !dropdown) return;
+        const rect = host.getBoundingClientRect();
+        // 使用 fixed 定位，相對於 viewport 準確定位
+        dropdown.style.position = 'fixed';
+        dropdown.style.top = (rect.bottom + 2) + 'px';
+        dropdown.style.left = rect.left + 'px';
+        dropdown.style.width = rect.width + 'px';
+        dropdown.style.maxHeight = '220px';
+        dropdown.style.overflowY = 'auto';
+        dropdown.style.zIndex = '1070'; // 提高 z-index 確保在 modal 之上
+        dropdown.style.display = 'block';
+    } catch(_){}
+}
+
+function handleBatchTCGOutsideClick(e) {
+    const container = document.getElementById('batchTCGContainer');
+    const dropdown = document.getElementById('batchTCGDropdown');
+    if (!container) return;
+    const insideContainer = container.contains(e.target);
+    const insideDropdown = dropdown && dropdown.contains(e.target);
+    if (!insideContainer && !insideDropdown) {
+        // 點擊在外部：結束編輯並收起下拉
+        if (dropdown) dropdown.style.display = 'none';
+        finishBatchTCGEdit();
+    }
+}
+
+function finishBatchTCGEdit() {
+    document.removeEventListener('click', handleBatchTCGOutsideClick, true);
+    batchTCGEditing = false;
+    // 回寫隱藏 input 值（逗號+空白）
+    const hidden = document.getElementById('batchTCGInput');
+    if (hidden) hidden.value = batchTCGSelected.join(', ');
+    // 收起下拉
+    const dropdown = document.getElementById('batchTCGDropdown');
+    if (dropdown) dropdown.style.display = 'none';
+    renderBatchTCGDisplay();
+}
+
+function handleBatchTCGSearchInput(event) {
+    clearTimeout(batchTCGSearchTimeout);
+    const raw = String(event.target.value || '').trim();
+    // 取最後一段作為搜尋鍵，避免多值逗號影響查詢
+    const parts = raw.replace(/\n/g, ',').split(',').map(s => s.trim()).filter(Boolean);
+    const keyword = parts.length ? parts[parts.length - 1] : '';
+    batchTCGSearchTimeout = setTimeout(async () => { await searchBatchTCGOptions(keyword); }, 150);
+}
+
+function handleBatchTCGSearchKeydown(event) {
+    if (event.key === 'Enter') {
+        event.preventDefault();
+        finishBatchTCGEdit();
+    } else if (event.key === 'Escape') {
+        event.preventDefault();
+        // 取消變更：不做特別處理，直接結束編輯
+        finishBatchTCGEdit();
+    }
 }
 
 async function searchBatchTCGOptions(keyword) {
@@ -4538,7 +5026,6 @@ async function searchBatchTCGOptions(keyword) {
     if (!dropdown) return;
     
     try {
-        // 獲取當前團隊 ID
         const currentTeam = AppUtils.getCurrentTeam();
         if (!currentTeam || !currentTeam.id) {
             const selectTeamText = window.i18n ? window.i18n.t('errors.pleaseSelectTeam', {}, '請先選擇團隊') : '請先選擇團隊';
@@ -4546,10 +5033,9 @@ async function searchBatchTCGOptions(keyword) {
             dropdown.style.display = 'block';
             return;
         }
-        
-        const response = await fetch(`/api/tcg/search?keyword=${encodeURIComponent(keyword)}&limit=20`);
+        // 搜尋 API：允許空字串（顯示熱門/全部）
+        const response = await fetch(`/api/tcg/search?keyword=${encodeURIComponent(keyword || '')}&limit=20`);
         const data = await response.json();
-        
         if (response.ok && data.results) {
             updateBatchTCGDropdown(data.results);
         } else {
@@ -4566,30 +5052,54 @@ async function searchBatchTCGOptions(keyword) {
 }
 
 function updateBatchTCGDropdown(results) {
+    // 防止點擊下拉內部觸發外部關閉
+    const dropdownEl = document.getElementById('batchTCGDropdown');
+    if (dropdownEl && !dropdownEl.__boundStop) {
+        // 使用冒泡階段阻止事件往外層傳遞，避免影響外部點擊處理
+        dropdownEl.addEventListener('mousedown', function(e){ e.stopPropagation(); }, false);
+        dropdownEl.addEventListener('click', function(e){ e.stopPropagation(); }, false);
+        dropdownEl.__boundStop = true;
+    }
+    positionBatchTCGDropdown();
     const dropdown = document.getElementById('batchTCGDropdown');
     if (!dropdown) return;
     
-    if (results.length === 0) {
-        dropdown.innerHTML = '<div class="p-2 text-muted">無符合的結果</div>';
+    let html = '';
+    // 清除選取選項
+    html += `
+        <div class="tcg-option p-2 border-bottom" 
+             onclick="event.stopPropagation(); clearBatchTCG()" 
+             style="cursor: pointer; border-bottom: 1px solid #f8f9fa; background-color: #fff3cd;" 
+             onmouseover="this.style.backgroundColor='#ffeaa7'" 
+             onmouseout="this.style.backgroundColor='#fff3cd'">
+          <div class="fw-medium text-warning">
+            <i class="fas fa-times me-2"></i>清除 TCG 單號
+          </div>
+        </div>`;
+    
+    if (!Array.isArray(results) || results.length === 0) {
+        html += '<div class="p-2 text-muted">無符合的結果</div>';
+        dropdown.innerHTML = html;
         dropdown.style.display = 'block';
         return;
     }
-    
-    let html = '';
-    results.forEach((tcg, index) => {
-        html += `
-            <div class="tcg-option p-2" 
+
+    html += results.map((tcg, index) => {
+        const selected = Array.isArray(batchTCGSelected) && batchTCGSelected.includes(tcg.tcg_number);
+        return `
+            <div class="tcg-option p-2 border-bottom d-flex justify-content-between align-items-center" 
                  data-tcg-number="${tcg.tcg_number}"
-                 onclick="selectBatchTCG('${tcg.tcg_number}')" 
+                 onclick="event.stopPropagation(); toggleBatchTCG('${tcg.tcg_number}')"
                  onmouseenter="highlightBatchTCGOption(${index})"
                  style="cursor: pointer; border-bottom: 1px solid #eee; transition: background-color 0.15s;">
-                ${tcg.tcg_number}
-            </div>
-        `;
-    });
+                <div class="fw-medium">${tcg.tcg_number}</div>
+                ${selected ? '<i class="fas fa-check text-success"></i>' : ''}
+            </div>`;
+    }).join('');
+
     dropdown.innerHTML = html;
     dropdown.style.display = 'block';
-    
+
     // 添加 CSS 樣式到 dropdown
     const style = `
         <style id="batchTCGDropdownStyle">
@@ -4601,7 +5111,6 @@ function updateBatchTCGDropdown(results) {
         }
         </style>
     `;
-    
     if (!document.getElementById('batchTCGDropdownStyle')) {
         document.head.insertAdjacentHTML('beforeend', style);
     }
@@ -4663,9 +5172,38 @@ function highlightBatchTCGOption(index) {
     });
 }
 
-function selectBatchTCG(tcgNumber) {
-    document.getElementById('batchTCGInput').value = tcgNumber;
-    hideBatchTCGDropdown();
+function toggleBatchTCG(tcgNumber) {
+    if (!Array.isArray(batchTCGSelected)) batchTCGSelected = [];
+    const idx = batchTCGSelected.indexOf(tcgNumber);
+    if (idx >= 0) batchTCGSelected.splice(idx, 1); else batchTCGSelected.push(tcgNumber);
+
+    // 同步隱藏欄位，確保按下「確認修改」時可以讀到最新選擇
+    const hidden = document.getElementById('batchTCGInput');
+    if (hidden) hidden.value = batchTCGSelected.join(', ');
+    
+    // 編輯狀態下不要重繪容器，避免將搜尋輸入框移除導致後續無法點擊
+    if (!batchTCGEditing) {
+        renderBatchTCGDisplay();
+    }
+    
+    // 重新搜尋並更新下拉選單，但不先清空避免閃爍
+    const inputEl = document.querySelector('#batchTCGContainer .tcg-search-input');
+    const kw = inputEl ? inputEl.value : '';
+    searchBatchTCGOptions(kw || '');
+}
+
+function clearBatchTCG() {
+    batchTCGSelected = [];
+    // 同步隱藏欄位
+    const hidden = document.getElementById('batchTCGInput');
+    if (hidden) hidden.value = '';
+    
+    if (!batchTCGEditing) {
+        renderBatchTCGDisplay();
+    }
+    const inputEl = document.querySelector('#batchTCGContainer .tcg-search-input');
+    const kw = inputEl ? inputEl.value : '';
+    searchBatchTCGOptions(kw || '');
 }
 
 function showBatchTCGDropdown() {
@@ -4695,6 +5233,12 @@ function hideBatchTCGDropdown() {
     }, 200);
 }
 
+// 鍵盤選取支援（Enter 使用的函式）
+function selectBatchTCG(tcgNumber) {
+    // 與點擊效果一致
+    toggleBatchTCG(tcgNumber);
+}
+
 // 立即更新本地測試案例資料
 function updateLocalTestCasesAfterBatchModify(selectedIds, updateData) {
     // 更新本地 testCases 陣列
@@ -4705,14 +5249,11 @@ function updateLocalTestCasesAfterBatchModify(selectedIds, updateData) {
                 if (updateData.tcg === '') {
                     // 清空 TCG
                     testCase.tcg = [];
+                } else if (Array.isArray(updateData.tcg)) {
+                    testCase.tcg = updateData.tcg.map(n => ({ text: n, text_arr: [n], display_text: n, type: 'text' }));
                 } else {
-                    // 更新 TCG（完整格式，確保與渲染邏輯相符）
-                    testCase.tcg = [{
-                        text: updateData.tcg,
-                        text_arr: [updateData.tcg],
-                        display_text: updateData.tcg,
-                        type: 'text'
-                    }];
+                    // 單一值
+                    testCase.tcg = [{ text: updateData.tcg, text_arr: [updateData.tcg], display_text: updateData.tcg, type: 'text' }];
                 }
             }
             
@@ -4730,13 +5271,10 @@ function updateLocalTestCasesAfterBatchModify(selectedIds, updateData) {
             if (updateData.tcg !== undefined) {
                 if (updateData.tcg === '') {
                     testCase.tcg = [];
+                } else if (Array.isArray(updateData.tcg)) {
+                    testCase.tcg = updateData.tcg.map(n => ({ text: n, text_arr: [n], display_text: n, type: 'text' }));
                 } else {
-                    testCase.tcg = [{
-                        text: updateData.tcg,
-                        text_arr: [updateData.tcg],
-                        display_text: updateData.tcg,
-                        type: 'text'
-                    }];
+                    testCase.tcg = [{ text: updateData.tcg, text_arr: [updateData.tcg], display_text: updateData.tcg, type: 'text' }];
                 }
             }
             
@@ -4766,8 +5304,15 @@ async function performTestCaseBatchModify() {
     
     // 收集要修改的資料
     if (modifyTCG) {
-        const tcgValue = document.getElementById('batchTCGInput').value.trim();
-        updateData.tcg = tcgValue; // 可以是空字串（清除TCG）
+        const raw = document.getElementById('batchTCGInput').value || '';
+        const parts = raw.replace(/\n/g, ',').replace(/\s+/g, ',').split(',').map(s => s.trim()).filter(Boolean);
+        if (parts.length === 0) {
+            updateData.tcg = '';
+        } else if (parts.length === 1) {
+            updateData.tcg = parts[0];
+        } else {
+            updateData.tcg = parts;
+        }
     }
     
     if (modifyPriority) {
@@ -5536,15 +6081,18 @@ async function searchTCGOptions(keyword) {
         if (results.length === 0) {
             dropdownHtml += '<div class="p-2 text-muted small">沒有找到其他結果</div>';
         } else {
-            dropdownHtml += results.map(tcg => 
-                `<div class="tcg-option p-2 border-bottom" 
+            dropdownHtml += results.map(tcg => {
+                const selected = currentTCGEditor.currentTCGs && currentTCGEditor.currentTCGs.includes(tcg.tcg_number);
+                return `
+                <div class="tcg-option p-2 border-bottom d-flex justify-content-between align-items-center" 
                       onclick="event.stopPropagation(); selectTCGOption('${tcg.tcg_number}')" 
                       style="cursor: pointer; border-bottom: 1px solid #f8f9fa; padding: 0.25rem 0.75rem;" 
                       onmouseover="this.style.backgroundColor='#f8f9fa'" 
                       onmouseout="this.style.backgroundColor='white'">
                     <div class="fw-medium">${tcg.tcg_number}</div>
-                </div>`
-            ).join('');
+                    ${selected ? '<i class="fas fa-check text-success"></i>' : ''}
+                </div>`;
+            }).join('');
         }
         
         dropdown.innerHTML = dropdownHtml;
@@ -5581,11 +6129,18 @@ async function searchTCGOptions(keyword) {
 function selectTCGOption(tcgNumber) {
     if (!currentTCGEditor) return;
     
-    // 設置單一 TCG 值
-    currentTCGEditor.currentTCGs = [tcgNumber];
+    // 多選切換：存在則移除，不存在則加入
+    const idx = currentTCGEditor.currentTCGs.indexOf(tcgNumber);
+    if (idx >= 0) {
+        currentTCGEditor.currentTCGs.splice(idx, 1);
+    } else {
+        currentTCGEditor.currentTCGs.push(tcgNumber);
+    }
     
-    // 立即完成編輯並儲存
-    finishTCGEdit();
+    // 重新渲染下拉，反映選取狀態（不結束編輯）
+    const inputEl = currentTCGEditor.cell.querySelector('.tcg-search-input');
+    const kw = inputEl ? inputEl.value : '';
+    searchTCGOptions(kw || '');
 }
 
 function clearTCGValue() {
@@ -6642,237 +7197,9 @@ function getCurrentRecordKeyForUpload() {
     return val || null;
 }
 
-// Modal TCG 編輯功能
-let currentModalTCGEditor = null;
+// 舊的 Modal TCG 編輯功能已移除，使用新的統一實作
 
-async function editModalTCG() {
-    const container = document.getElementById('modalTCGContainer');
-    if (!container) return;
-    
-    // 如果已經在編輯中，直接返回
-    if (currentModalTCGEditor) return;
-    
-    // 獲取當前 TCG 值
-    const tcgInput = document.getElementById('tcg');
-    const currentTCGText = tcgInput ? tcgInput.value : '';
-    const currentTCGs = currentTCGText ? currentTCGText.split(', ').filter(t => t.trim()) : [];
-    
-    // 設置編輯器狀態
-    currentModalTCGEditor = {
-        container: container,
-        originalTCGs: [...currentTCGs],
-        currentTCGs: [...currentTCGs],
-        originalContent: container.innerHTML
-    };
-    
-    // 直接進入搜尋模式
-    startModalTCGSearch();
-}
-
-async function startModalTCGSearch() {
-    if (!currentModalTCGEditor) return;
-    
-    const { container, currentTCGs } = currentModalTCGEditor;
-    
-    // 顯示搜尋框
-    const searchHtml = `
-        <div class="tcg-modal-search-container position-relative" style="width: 100%;">
-            <input type="text" class="form-control tcg-modal-search-input" 
-                   data-i18n-placeholder="testCase.tcgPlaceholder" autocomplete="off" 
-                   onkeydown="handleModalTCGSearchKeydown(event)" 
-                   oninput="handleModalTCGSearchInput(event)"
-                   onclick="event.stopPropagation()"
-                   style="width: 100%;">
-            <div class="tcg-modal-dropdown" 
-                 style="display: none; position: absolute; top: 100%; left: 0; right: 0; z-index: 1050; background: white; border: 1px solid #ced4da; border-top: none; border-radius: 0 0 0.375rem 0.375rem; max-height: 200px; overflow-y: auto;">
-                <div class="p-2 text-muted small">開始輸入以搜尋 TCG...</div>
-            </div>
-        </div>
-    `;
-    
-    container.innerHTML = searchHtml;
-    container.classList.add('editing');
-    
-    // 聚焦搜尋框
-    const searchInput = container.querySelector('.tcg-modal-search-input');
-    searchInput.focus();
-    
-    // 立即載入 TCG 選項
-    await searchModalTCGOptions('');
-    const dropdown = container.querySelector('.tcg-modal-dropdown');
-    if (dropdown) {
-        dropdown.style.display = 'block';
-    }
-    
-    // 添加點擊外部結束編輯的監聽器
-    setTimeout(() => {
-        document.addEventListener('click', handleModalTCGOutsideClick, true);
-    }, 100);
-}
-
-function handleModalTCGOutsideClick(event) {
-    if (!currentModalTCGEditor) return;
-    
-    const { container } = currentModalTCGEditor;
-    
-    // 檢查點擊是否在編輯區域外
-    if (!container.contains(event.target)) {
-        finishModalTCGEdit();
-    }
-    // 工具列顯示狀態可能改變整體高度，需重新計算列表高度
-    adjustTestCasesScrollHeight();
-}
-
-async function finishModalTCGEdit() {
-    if (!currentModalTCGEditor) return;
-    
-    const { container, currentTCGs, originalTCGs } = currentModalTCGEditor;
-    
-    // 移除全域點擊監聽器
-    document.removeEventListener('click', handleModalTCGOutsideClick, true);
-    
-    // 更新隱藏的 input 值 (為了向後兼容)
-    const tcgInput = document.getElementById('tcg');
-    if (tcgInput) {
-        tcgInput.value = currentTCGs.join(', ');
-    }
-    
-    // 更新顯示
-    container.classList.remove('editing');
-    updateModalTCGDisplay(container, currentTCGs);
-    
-    // 清除編輯器狀態
-    currentModalTCGEditor = null;
-    
-    // 觸發表單變更檢查
-    checkFormChanges();
-}
-
-function updateModalTCGDisplay(container, tcgs) {
-    if (tcgs.length === 0) {
-        const clickToEditMessage = window.i18n ? window.i18n.t('errors.clickToEditTcg') : '點擊編輯 TCG';
-        container.innerHTML = `<span class="text-muted">${clickToEditMessage}</span>`;
-    } else {
-        container.innerHTML = tcgs.join(', ');
-    }
-    // 工具列顯示狀態可能改變整體高度，需重新計算列表高度
-    adjustTestCasesScrollHeight();
-}
-
-async function searchModalTCGOptions(keyword) {
-    if (!currentModalTCGEditor) return;
-    
-    const container = currentModalTCGEditor.container;
-    const dropdown = container.querySelector('.tcg-modal-dropdown');
-    if (!dropdown) return;
-    
-    try {
-        // 使用相同的 TCG 搜尋邏輯
-        const results = searchTCGFromCache(keyword, 20);
-        
-        if (results.length === 0) {
-            dropdown.innerHTML = `
-                <div class="p-2 text-muted small">沒有找到匹配的 TCG</div>
-                ${currentModalTCGEditor.currentTCGs.length > 0 ? 
-                  `<div class="p-2 border-top">
-                     <button class="btn btn-sm btn-outline-danger" onclick="clearModalTCG()">清除目前選擇</button>
-                   </div>` : ''}
-            `;
-        } else {
-            const optionsHtml = results.map(tcg => {
-                const isSelected = currentModalTCGEditor.currentTCGs.includes(tcg.tcg_number);
-                return `
-                    <div class="tcg-modal-option p-2 d-flex justify-content-between align-items-center" 
-                         style="cursor: pointer; border-bottom: 1px solid #f0f0f0;" 
-                         onclick="selectModalTCG('${tcg.tcg_number}')"
-                         onmouseover="this.style.backgroundColor='#f8f9fa'" 
-                         onmouseout="this.style.backgroundColor='white'">
-                        <div>
-                            <strong class="text-primary">${tcg.tcg_number}</strong>
-                        </div>
-                        ${isSelected ? '<i class="fas fa-check text-success"></i>' : ''}
-                    </div>
-                `;
-            }).join('');
-            
-            dropdown.innerHTML = optionsHtml + `
-                <div class="p-2 border-top">
-                    <small class="text-muted">
-                        找到 ${results.length} 個結果
-                        ${currentModalTCGEditor.currentTCGs.length > 0 ? 
-                          `<button class="btn btn-sm btn-outline-danger ms-2" onclick="clearModalTCG()">清除目前選擇</button>` : ''}
-                    </small>
-                </div>
-            `;
-        }
-    } catch (error) {
-        console.error('搜尋 TCG 失敗:', error);
-        const searchFailedRetryMessage = window.i18n ? window.i18n.t('errors.searchFailedRetry') : '搜尋失敗，請重試';
-        dropdown.innerHTML = `<div class="p-2 text-danger small">${searchFailedRetryMessage}</div>`;
-    }
-    // 工具列顯示狀態可能改變整體高度，需重新計算列表高度
-    adjustTestCasesScrollHeight();
-}
-
-function handleModalTCGSearchKeydown(event) {
-    if (event.key === 'Escape') {
-        finishModalTCGEdit();
-    } else if (event.key === 'Enter') {
-        event.preventDefault();
-        // Enter 直接選擇第一個結果
-        const firstOption = document.querySelector('.tcg-modal-option');
-        if (firstOption) {
-            firstOption.click();
-        }
-    }
-    // 工具列顯示狀態可能改變整體高度，需重新計算列表高度
-    adjustTestCasesScrollHeight();
-}
-
-function handleModalTCGSearchInput(event) {
-    const keyword = event.target.value;
-    searchModalTCGOptions(keyword);
-}
-
-function selectModalTCG(tcgNumber) {
-    if (!currentModalTCGEditor) return;
-    
-    // 單選模式：只選擇一個 TCG
-    currentModalTCGEditor.currentTCGs = [tcgNumber];
-    
-    // 完成編輯
-    finishModalTCGEdit();
-}
-
-function clearModalTCG() {
-    if (!currentModalTCGEditor) return;
-    
-    // 清空選擇
-    currentModalTCGEditor.currentTCGs = [];
-    
-    // 完成編輯
-    finishModalTCGEdit();
-}
-
-function clearModalTCGDirect(event) {
-    event.preventDefault(); // 阻止右鍵選單
-    event.stopPropagation(); // 阻止冒泡
-    
-    // 清空新的 TCG 輸入框
-    const modalTCGInput = document.getElementById('modalTCGInput');
-    const tcgInput = document.getElementById('tcg');
-    
-    if (modalTCGInput) {
-        modalTCGInput.value = '';
-    }
-    if (tcgInput) {
-        tcgInput.value = '';
-    }
-    
-    // 隱藏下拉選單
-    hideTCGDropdown();
-    checkFormChanges();
-}
+// 舊的 Modal TCG 相關函數已移除
 
 // 新的 type-to-search 支援函數
 function handleTCGSearch(input) {
@@ -6946,12 +7273,8 @@ function updateTCGDropdown(results) {
 }
 
 function selectTCG(tcgNumber, title) {
-    const modalTCGInput = document.getElementById('modalTCGInput');
     const tcgInput = document.getElementById('tcg');
     
-    if (modalTCGInput) {
-        modalTCGInput.value = tcgNumber;
-    }
     if (tcgInput) {
         tcgInput.value = tcgNumber;
     }
@@ -7537,7 +7860,7 @@ function cleanupTCGHover() {
 async function showTCGPreviewForModal() {
     console.log('showTCGPreviewForModal called'); // 調試用
     
-    const tcgInput = document.getElementById('modalTCGInput');
+    const tcgInput = document.getElementById('tcg');
     if (!tcgInput || !tcgInput.value.trim()) {
         alert(window.i18n ? window.i18n.t('errors.noTCGNumber') : '請先輸入 TCG 編號');
         return;
