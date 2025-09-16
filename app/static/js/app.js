@@ -440,13 +440,13 @@ function showHiddenModeModal() {
         const wrapper = document.createElement('div');
         wrapper.innerHTML = `
             <div class="modal fade" id="hiddenModeModal" tabindex="-1" aria-hidden="true">
-              <div class="modal-dialog modal-dialog-centered">
-                <div class="modal-content">
+              <div class="modal-dialog modal-dialog-centered" style="max-width: 1000px; width: 1000px;">
+                <div class="modal-content" style="height: 700px; display: flex; flex-direction: column;">
                   <div class="modal-header">
                     <h5 class="modal-title">隱藏模式</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                   </div>
-                  <div class="modal-body">
+                  <div class="modal-body" style="flex: 1 1 auto; overflow: auto;">
                     <!-- Tabs -->
                     <ul class="nav nav-tabs" id="hiddenModeTabs" role="tablist">
                       <li class="nav-item" role="presentation">
