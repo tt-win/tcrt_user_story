@@ -961,189 +961,114 @@ async def batch_operation_test_cases(
     operation: TestCaseBatchOperation,
     db: Session = Depends(get_db)
 ):
-    """批次操作 Lark 表格中的測試案例"""
-    lark_client, team = get_lark_client_for_team(team_id, db)
-    
+    """批次操作本地測試案例（不呼叫 Lark）。
+    支援：delete、update_priority。update_tcg 暫不支援（需另定規格）。
+    record_ids 可為本地整數 id、lark_record_id 或 test_case_number。
+    """
+    import json
+    from pathlib import Path
+
     if not operation.record_ids:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="記錄 ID 列表不能為空"
-        )
-    
+        raise HTTPException(status_code=400, detail="記錄 ID 列表不能為空")
+
+    def resolve_one(rid: str) -> Optional[TestCaseLocalDB]:
+        # 1) 本地整數 id
+        try:
+            rid_int = int(rid)
+            item = db.query(TestCaseLocalDB).filter(TestCaseLocalDB.id == rid_int).first()
+            if item and item.team_id == team_id:
+                return item
+        except ValueError:
+            pass
+        # 2) lark_record_id
+        item = db.query(TestCaseLocalDB).filter(
+            TestCaseLocalDB.team_id == team_id,
+            TestCaseLocalDB.lark_record_id == rid
+        ).first()
+        if item:
+            return item
+        # 3) test_case_number
+        item = db.query(TestCaseLocalDB).filter(
+            TestCaseLocalDB.team_id == team_id,
+            TestCaseLocalDB.test_case_number == rid
+        ).first()
+        return item
+
+    processed = 0
+    success_count = 0
+    errors: list[str] = []
+
     try:
-        # 取得所有記錄
-        records = lark_client.get_all_records(team.test_case_table_id)
-        target_records = [
-            record for record in records 
-            if record.get('record_id') in operation.record_ids
-        ]
-        
-        if len(target_records) != len(operation.record_ids):
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="部分測試案例不存在"
-            )
-        
-        success_count = 0
-        error_messages = []
-        
         if operation.operation == "delete":
-            # 批次刪除
-            try:
-                success, deleted_count, error_messages = lark_client.batch_delete_records(
-                    team.test_case_table_id, 
-                    operation.record_ids
-                )
-                
-                return TestCaseBatchResponse(
-                    success=success,
-                    processed_count=len(operation.record_ids),
-                    success_count=deleted_count,
-                    error_count=len(error_messages),
-                    error_messages=error_messages
-                )
-                
-            except Exception as e:
-                return TestCaseBatchResponse(
-                    success=False,
-                    processed_count=len(operation.record_ids),
-                    success_count=0,
-                    error_count=len(operation.record_ids),
-                    error_messages=[str(e)]
-                )
-        
-        elif operation.operation == "update_tcg":
-            # 批次更新 TCG (使用並行處理)
-            if not operation.update_data or "tcg" not in operation.update_data:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="批次更新 TCG 需要提供 tcg 資料"
-                )
-            
-            # 準備並行更新的資料
-            updates = []
-            tcg_value = operation.update_data["tcg"]
-            
-            for record in target_records:
+            for rid in operation.record_ids:
+                processed += 1
+                item = resolve_one(rid)
+                if not item:
+                    errors.append(f"找不到測試案例 {rid}")
+                    continue
+                # 刪檔（非致命）
                 try:
-                    # 轉換為 TestCase 模型
-                    test_case = TestCase.from_lark_record(record, team_id)
-                    
-                    # 處理 TCG 更新：支援字串格式
-                    if isinstance(tcg_value, str):
-                        tcg_number = tcg_value.strip()
-                        if tcg_number:
-                            # 使用 TCG converter 查找對應的 record_id
-                            from app.services.tcg_converter import tcg_converter
-                            from app.models.lark_types import LarkRecord
-                            
-                            tcg_record_id = tcg_converter.get_record_id_by_tcg_number(tcg_number)
-                            
-                            if tcg_record_id:
-                                # 創建 LarkRecord 物件
-                                tcg_table_id = "tblcK6eF3yQCuwwl"  # TCG 表格的固定 ID
-                                tcg_record = LarkRecord(
-                                    record_ids=[tcg_record_id],
-                                    table_id=tcg_table_id,
-                                    text=tcg_number,
-                                    text_arr=[tcg_number],
-                                    display_text=tcg_number,
-                                    type="text"
-                                )
-                                test_case.tcg = [tcg_record]
-                            else:
-                                # 如果找不到對應的 TCG，清空 TCG
-                                test_case.tcg = []
-                        else:
-                            # 空字串則清空 TCG
-                            test_case.tcg = []
-                    else:
-                        # 如果是 LarkRecord 列表格式，直接使用
-                        test_case.tcg = tcg_value
-                    
-                    # 轉換為 Lark 格式並加入更新列表
-                    lark_fields = test_case.to_lark_fields()
-                    updates.append({
-                        'record_id': record.get('record_id'),
-                        'fields': lark_fields
-                    })
-                        
-                except Exception as e:
-                    error_messages.append(f"記錄 {record.get('record_id')} 準備失敗: {str(e)}")
-            
-            # 執行並行更新
-            if updates:
-                try:
-                    success, success_count, parallel_errors = lark_client.parallel_update_records(
-                        team.test_case_table_id, 
-                        updates,
-                        max_workers=5  # 使用 5 個並行工作者，平衡效能與穩定性
-                    )
-                    error_messages.extend(parallel_errors)
-                except Exception as e:
-                    error_messages.append(f"並行更新執行失敗: {str(e)}")
-                    success_count = 0
-        
+                    if item.attachments_json:
+                        data = json.loads(item.attachments_json)
+                        if isinstance(data, list):
+                            project_root = Path(__file__).resolve().parents[2]
+                            for f in data:
+                                ap = f.get('absolute_path')
+                                if ap:
+                                    p = Path(ap)
+                                    if (project_root / 'attachments') in p.parents and p.exists():
+                                        p.unlink()
+                    # 刪除目錄
+                    project_root = Path(__file__).resolve().parents[2]
+                    base_dir = project_root / 'attachments' / 'test-cases' / str(team_id) / (item.test_case_number or '')
+                    if base_dir.exists():
+                        import shutil
+                        shutil.rmtree(base_dir, ignore_errors=True)
+                except Exception:
+                    pass
+                db.delete(item)
+                success_count += 1
+            db.commit()
+
         elif operation.operation == "update_priority":
-            # 批次更新優先級 (使用並行處理)
-            if not operation.update_data or "priority" not in operation.update_data:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="批次更新優先級需要提供 priority 資料"
-                )
-            
-            # 準備並行更新的資料
-            updates = []
-            priority_value = operation.update_data["priority"]
-            
-            for record in target_records:
+            pr = (operation.update_data or {}).get('priority') if operation.update_data else None
+            if not pr:
+                raise HTTPException(status_code=400, detail="批次更新優先級需要提供 priority")
+            for rid in operation.record_ids:
+                processed += 1
+                item = resolve_one(rid)
+                if not item:
+                    errors.append(f"找不到測試案例 {rid}")
+                    continue
                 try:
-                    test_case = TestCase.from_lark_record(record, team_id)
-                    test_case.priority = priority_value
-                    
-                    lark_fields = test_case.to_lark_fields()
-                    updates.append({
-                        'record_id': record.get('record_id'),
-                        'fields': lark_fields
-                    })
-                        
+                    item.priority = pr
+                    item.sync_status = SyncStatus.PENDING
+                    success_count += 1
                 except Exception as e:
-                    error_messages.append(f"記錄 {record.get('record_id')} 準備失敗: {str(e)}")
-            
-            # 執行並行更新
-            if updates:
-                try:
-                    success, success_count, parallel_errors = lark_client.parallel_update_records(
-                        team.test_case_table_id, 
-                        updates,
-                        max_workers=5  # 使用 5 個並行工作者，平衡效能與穩定性
-                    )
-                    error_messages.extend(parallel_errors)
-                except Exception as e:
-                    error_messages.append(f"並行更新執行失敗: {str(e)}")
-                    success_count = 0
-        
+                    errors.append(f"{rid}: {e}")
+            db.commit()
+
+        elif operation.operation == "update_tcg":
+            raise HTTPException(status_code=400, detail="update_tcg 尚未支援（請提供規格）")
         else:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"不支援的批次操作: {operation.operation}"
-            )
-        
+            raise HTTPException(status_code=400, detail=f"不支援的批次操作: {operation.operation}")
+
         return TestCaseBatchResponse(
-            success=len(error_messages) == 0,
-            processed_count=len(operation.record_ids),
+            success=len(errors) == 0,
+            processed_count=processed,
             success_count=success_count,
-            error_count=len(error_messages),
-            error_messages=error_messages
+            error_count=len(errors),
+            error_messages=errors
         )
-        
+
     except HTTPException:
         raise
     except Exception as e:
+        db.rollback()
         return TestCaseBatchResponse(
             success=False,
-            processed_count=len(operation.record_ids),
-            success_count=0,
-            error_count=len(operation.record_ids),
-            error_messages=[str(e)]
+            processed_count=processed,
+            success_count=success_count,
+            error_count=len(errors) + 1,
+            error_messages=errors + [str(e)]
         )
