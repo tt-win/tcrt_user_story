@@ -394,6 +394,9 @@
         "wikiTokenPlaceholder": "e.g., Q4XxwaS2Cif80DkAku9lMKuAgof"
     },
     "testCase": {
+        "tcgFilterPlaceholder": "Enter TCG number",
+        "testCaseNumberPlaceholder": "Enter Test Case Number",
+        "searchPlaceholder": "Search keywords",
         "batchActions": "Batch Actions",
         "batchDelete": "Batch Delete",
         "batchModify": "Batch Modify",

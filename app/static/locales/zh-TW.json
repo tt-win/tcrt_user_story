@@ -395,6 +395,9 @@
         "wikiTokenPlaceholder": "例：Q4XxwaS2Cif80DkAku9lMKuAgof"
     },
     "testCase": {
+        "tcgFilterPlaceholder": "輸入 TCG 單號",
+        "testCaseNumberPlaceholder": "輸入 Test Case Number",
+        "searchPlaceholder": "輸入關鍵字搜尋",
         "batchActions": "批次操作",
         "batchDelete": "批次刪除",
         "batchModify": "批次修改",
