@@ -33,8 +33,6 @@ def _to_response(row: TestCaseLocal, include_attachments: bool = False) -> TestC
         try:
             data = json.loads(row.attachments_json) if row.attachments_json else []
             base_url = "/attachments"
-            # 轉成與前端相容的 LarkAttachment 形狀
-            # 必填: file_token, name, size, type, url
             for it in data if isinstance(data, list) else []:
                 file_token = it.get("stored_name") or it.get("name") or ""
                 name = it.get("name") or it.get("stored_name") or "file"
@@ -53,6 +51,29 @@ def _to_response(row: TestCaseLocal, include_attachments: bool = False) -> TestC
         except Exception:
             attachments = []
 
+    # 解析 TCG（Lark 相容格式）
+    tcg_items: list = []
+    try:
+        if row.tcg_json:
+            data = json.loads(row.tcg_json)
+            if isinstance(data, list):
+                from app.models.lark_types import LarkRecord
+                for it in data:
+                    try:
+                        # 僅保留必要字段
+                        rec = LarkRecord(
+                            record_ids=it.get('record_ids') or [],
+                            table_id=it.get('table_id') or '',
+                            text=it.get('text') or '',
+                            text_arr=it.get('text_arr') or [],
+                            type=it.get('type') or 'text',
+                        )
+                        tcg_items.append(rec)
+                    except Exception:
+                        continue
+    except Exception:
+        tcg_items = []
+
     return TestCaseResponse(
         record_id=row.lark_record_id or str(row.id),
         test_case_number=row.test_case_number,
@@ -66,7 +87,7 @@ def _to_response(row: TestCaseLocal, include_attachments: bool = False) -> TestC
         attachments=attachments,
         test_results_files=[],
         user_story_map=[],
-        tcg=[],
+        tcg=tcg_items,
         parent_record=[],
         team_id=row.team_id,
         created_at=row.created_at,

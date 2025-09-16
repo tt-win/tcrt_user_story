@@ -199,6 +199,28 @@ async def get_test_case(
             except Exception:
                 attachments = []
 
+            # 解析 TCG
+            tcg_items = []
+            try:
+                if item.tcg_json:
+                    data = json.loads(item.tcg_json)
+                    if isinstance(data, list):
+                        from app.models.lark_types import LarkRecord
+                        for it in data:
+                            try:
+                                rec = LarkRecord(
+                                    record_ids=it.get('record_ids') or [],
+                                    table_id=it.get('table_id') or '',
+                                    text=it.get('text') or '',
+                                    text_arr=it.get('text_arr') or [],
+                                    type=it.get('type') or 'text',
+                                )
+                                tcg_items.append(rec)
+                            except Exception:
+                                continue
+            except Exception:
+                tcg_items = []
+
             return TestCaseResponse(
                 record_id=item.lark_record_id or str(item.id),
                 test_case_number=item.test_case_number or '',
@@ -212,7 +234,7 @@ async def get_test_case(
                 attachments=attachments,
                 test_results_files=[],
                 user_story_map=[],
-                tcg=[],
+                tcg=tcg_items,
                 parent_record=[],
                 team_id=item.team_id,
                 executed_at=None,
@@ -793,6 +815,28 @@ async def get_test_case_by_number(
                 })
         except Exception:
             attachments = []
+        # 解析 TCG
+        tcg_items = []
+        try:
+            if item.tcg_json:
+                data = json.loads(item.tcg_json)
+                if isinstance(data, list):
+                    from app.models.lark_types import LarkRecord
+                    for it in data:
+                        try:
+                            rec = LarkRecord(
+                                record_ids=it.get('record_ids') or [],
+                                table_id=it.get('table_id') or '',
+                                text=it.get('text') or '',
+                                text_arr=it.get('text_arr') or [],
+                                type=it.get('type') or 'text',
+                            )
+                            tcg_items.append(rec)
+                        except Exception:
+                            continue
+        except Exception:
+            tcg_items = []
+
         return TestCaseResponse(
             record_id=item.lark_record_id or str(item.id),
             test_case_number=item.test_case_number or '',
@@ -806,7 +850,7 @@ async def get_test_case_by_number(
             attachments=attachments,
             test_results_files=[],
             user_story_map=[],
-            tcg=[],
+            tcg=tcg_items,
             parent_record=[],
             team_id=item.team_id,
             executed_at=None,
@@ -1049,7 +1093,88 @@ async def batch_operation_test_cases(
             db.commit()
 
         elif operation.operation == "update_tcg":
-            raise HTTPException(status_code=400, detail="update_tcg 尚未支援（請提供規格）")
+            # 批次更新 TCG：在 DB 的 tcg_json 存 Lark 相容格式（LarkRecord 物件陣列），
+            # 顯示時可透過 TCG 快取將 record_id 轉為單號顯示。
+            payload = operation.update_data or {}
+            tcg_value = payload.get('tcg')  # 支援字串（單號或以逗號分隔）、或字串陣列
+            tcg_ids = payload.get('tcg_record_ids')  # 可直接提供 record_id 陣列（跳過轉換）
+
+            # 標準化：取得目標 record_ids 陣列
+            def normalize_tcgs():
+                pairs: list[tuple[str, str]] = []  # (record_id, tcg_number)
+                nonlocal tcg_value, tcg_ids
+                # 若直接提供 record_ids，嘗試回填單號；若不可得，單號留空
+                if tcg_ids and isinstance(tcg_ids, list):
+                    for x in tcg_ids:
+                        rid = str(x).strip()
+                        if not rid:
+                            continue
+                        tcg_no = ""
+                        try:
+                            from app.services.tcg_converter import tcg_converter
+                            # 若有反向查詢方法可嘗試（不存在則忽略）
+                            if hasattr(tcg_converter, 'get_tcg_number_by_record_id'):
+                                tcg_no = tcg_converter.get_tcg_number_by_record_id(rid) or ""
+                        except Exception:
+                            pass
+                        pairs.append((rid, tcg_no))
+                    return pairs
+                # 解析 tcg_value 中的單號
+                nums: list[str] = []
+                if isinstance(tcg_value, str):
+                    s = tcg_value.strip()
+                    if not s:
+                        return []  # 清空
+                    # 允許用逗號/空白/換行分隔
+                    parts = [p.strip() for p in s.replace('\n', ',').replace(' ', ',').split(',')]
+                    nums = [p for p in parts if p]
+                elif isinstance(tcg_value, list):
+                    nums = [str(x).strip() for x in tcg_value if str(x).strip()]
+                else:
+                    return []  # 清空或未提供
+                # 透過快取轉成 record_id
+                try:
+                    from app.services.tcg_converter import tcg_converter
+                    for n in nums:
+                        rid = tcg_converter.get_record_id_by_tcg_number(n)
+                        if rid:
+                            pairs.append((rid, n))
+                        else:
+                            errors.append(f"找不到 TCG 單號對應的 record_id: {n}")
+                except Exception as e:
+                    errors.append(f"TCG 轉換失敗: {e}")
+                return pairs
+
+            rid_pairs = normalize_tcgs()
+            # 構造 Lark 相容 TCG 陣列（每筆用 LarkRecord 格式）
+            tcg_table_id = "tblcK6eF3yQCuwwl"  # 既有代碼使用的 TCG 表格固定 ID
+            def build_tcg_items(pairs: list[tuple[str, str]]):
+                items = []
+                for rid, tcg_no in pairs:
+                    items.append({
+                        "record_ids": [rid],
+                        "table_id": tcg_table_id,
+                        "text": tcg_no,
+                        "text_arr": [tcg_no] if tcg_no else [],
+                        "type": "text",
+                    })
+                return items
+
+            for rid in operation.record_ids:
+                processed += 1
+                item = resolve_one(rid)
+                if not item:
+                    errors.append(f"找不到測試案例 {rid}")
+                    continue
+                # 寫入 tcg_json
+                try:
+                    items = build_tcg_items(rid_pairs)
+                    item.tcg_json = json.dumps(items, ensure_ascii=False) if items else json.dumps([], ensure_ascii=False)
+                    item.sync_status = SyncStatus.PENDING
+                    success_count += 1
+                except Exception as e:
+                    errors.append(f"{rid}: {e}")
+            db.commit()
         else:
             raise HTTPException(status_code=400, detail=f"不支援的批次操作: {operation.operation}")
 
