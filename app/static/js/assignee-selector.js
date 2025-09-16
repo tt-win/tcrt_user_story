@@ -37,8 +37,25 @@ class AssigneeSelector {
         this.currentIndex = -1;
         this.loading = false;
         this.debounceTimer = null;
-        this.cache = new Map(); // API 結果快取
+        this.cache = new Map(); // API 結果快取（元件級）
         this.originalValue = ''; // 存儲原來的值
+        
+        // 全域共享快取（頁面生命週期內）+ in-flight 去重
+        if (!window.AssigneeSelectorCache) {
+            window.AssigneeSelectorCache = {
+                store: new Map(),
+                inflight: new Map(),
+                get(key) { return this.store.get(key); },
+                set(key, val) { this.store.set(key, val); },
+                getInflight(key) { return this.inflight.get(key); },
+                setInflight(key, p) { this.inflight.set(key, p); },
+                clearInflight(key) { this.inflight.delete(key); }
+            };
+        }
+        
+        // TRCache 持久化：與 TCG 單號同策略，每小時更新一次
+        this._persistNs = 'contacts';
+        this._persistTTLms = 60 * 60 * 1000; // 1 小時 TTL
         
         // 初始化
         this.init();
@@ -54,7 +71,7 @@ class AssigneeSelector {
         if (this.originalInput && typeof this.originalInput.value === 'string' && this.originalInput.value.trim() !== '') {
             this.setValue(this.originalInput.value);
         }
-        this.loadContacts(); // 預載聯絡人列表
+        this.loadContacts(); // 預載聯絡人列表（快取優先）
     }
     
     createHTML() {
@@ -312,41 +329,87 @@ class AssigneeSelector {
             return;
         }
         
-        // 檢查快取
-        const cacheKey = `contacts_${this.options.teamId}_${query}`;
+        // 建立快取 key（依 team、query 與 limit）
+        const normQuery = (query || '').trim().toLowerCase();
+        const cacheKey = `team:${this.options.teamId}|q:${normQuery}|limit:${this.options.maxResults}`;
+        
+        // 1) 元件級快取
         if (this.cache.has(cacheKey)) {
             this.contacts = this.cache.get(cacheKey);
             this.filterContacts(query);
             return;
         }
-        
-        this.setLoading(true);
-        
+        // 2) 全域記憶體快取
+        const globalHit = window.AssigneeSelectorCache.get(cacheKey);
+        if (globalHit) {
+            this.contacts = globalHit;
+            this.cache.set(cacheKey, globalHit);
+            this.filterContacts(query);
+            return;
+        }
+        // 3) TRCache（持久化，TTL 1 小時）
         try {
-            const url = query 
-                ? `/api/teams/${this.options.teamId}/contacts/search/suggestions?q=${encodeURIComponent(query)}&limit=${this.options.maxResults}`
-                : `/api/teams/${this.options.teamId}/contacts?limit=${this.options.maxResults}`;
-            
+            if (window.TRCache && typeof window.TRCache.get === 'function') {
+                const persisted = await window.TRCache.get(this._persistNs, cacheKey);
+                if (persisted && persisted.value && persisted.expiresAt && Date.now() < persisted.expiresAt) {
+                    this.contacts = persisted.value;
+                    this.cache.set(cacheKey, this.contacts);
+                    window.AssigneeSelectorCache.set(cacheKey, this.contacts);
+                    this.filterContacts(query);
+                    return;
+                }
+            }
+        } catch (_) {}
+        
+        // 4) in-flight 去重：同一 key 的請求共用
+        const inflight = window.AssigneeSelectorCache.getInflight(cacheKey);
+        if (inflight) {
+            this.setLoading(true);
+            try {
+                const contacts = await inflight;
+                this.contacts = contacts || [];
+                this.cache.set(cacheKey, this.contacts);
+                this.filterContacts(query);
+                return;
+            } finally {
+                this.setLoading(false);
+            }
+        }
+        
+        // 5) 發出請求
+        this.setLoading(true);
+        const url = normQuery
+            ? `/api/teams/${this.options.teamId}/contacts/search/suggestions?q=${encodeURIComponent(normQuery)}&limit=${this.options.maxResults}`
+            : `/api/teams/${this.options.teamId}/contacts?limit=${this.options.maxResults}`;
+        const p = (async () => {
             const response = await fetch(url);
             const result = await response.json();
-            
             if (result.success) {
-                const contacts = query ? result.data.suggestions : result.data.contacts;
-                this.contacts = contacts || [];
-                
-                // 快取結果
-                this.cache.set(cacheKey, this.contacts);
-                
-                this.filterContacts(query);
-            } else {
-                const errorMessage = window.i18n?.t('testRun.loadContactsFailed') || '載入聯絡人失敗';
-                this.handleError(result.message || errorMessage);
+                return normQuery ? (result.data.suggestions || []) : (result.data.contacts || []);
             }
+            const errorMessage = window.i18n?.t('testRun.loadContactsFailed') || '載入聯絡人失敗';
+            throw new Error(result.message || errorMessage);
+        })();
+        window.AssigneeSelectorCache.setInflight(cacheKey, p);
+        try {
+            const contacts = await p;
+            this.contacts = contacts;
+            // 記憶體快取
+            this.cache.set(cacheKey, contacts);
+            window.AssigneeSelectorCache.set(cacheKey, contacts);
+            // 持久化快取（TTL 1 小時）
+            try {
+                if (window.TRCache && typeof window.TRCache.put === 'function') {
+                    await window.TRCache.put(this._persistNs, cacheKey, contacts, { ttl: this._persistTTLms });
+                }
+            } catch (_) {}
+            this.filterContacts(query);
         } catch (error) {
             console.error('AssigneeSelector: 載入聯絡人失敗', error);
             const errorMessage = window.i18n?.t('testRun.loadContactsFailed') || '載入聯絡人失敗';
             this.handleError(errorMessage);
         } finally {
+            window.AssigneeSelectorCache.clearInflight(cacheKey);
             this.setLoading(false);
         }
     }
