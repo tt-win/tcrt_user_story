@@ -447,15 +447,45 @@ function showHiddenModeModal() {
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                   </div>
                   <div class="modal-body">
-                    <div class="border rounded p-2">
-                      <div class="d-flex justify-content-between align-items-center mb-2">
-                        <div class="fw-semibold">伺服器資源監控</div>
-                        <div>
-                          <span id="hm-last-updated" class="text-muted small">—</span>
+                    <!-- Tabs -->
+                    <ul class="nav nav-tabs" id="hiddenModeTabs" role="tablist">
+                      <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="sys-tab" data-bs-toggle="tab" data-bs-target="#sys-pane" type="button" role="tab" aria-controls="sys-pane" aria-selected="true">系統監控</button>
+                      </li>
+                      <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="stats-tab" data-bs-toggle="tab" data-bs-target="#stats-pane" type="button" role="tab" aria-controls="stats-pane" aria-selected="false">數據統計</button>
+                      </li>
+                    </ul>
+                    <div class="tab-content pt-3">
+                      <!-- 系統監控 -->
+                      <div class="tab-pane fade show active" id="sys-pane" role="tabpanel" aria-labelledby="sys-tab">
+                        <div class="border rounded p-2">
+                          <div class="d-flex justify-content-between align-items-center mb-2">
+                            <div class="fw-semibold">伺服器資源監控</div>
+                            <div>
+                              <span id="hm-last-updated" class="text-muted small">—</span>
+                            </div>
+                          </div>
+                          <div id="hm-metrics" class="small">
+                            <div class="text-muted">讀取中…</div>
+                          </div>
                         </div>
                       </div>
-                      <div id="hm-metrics" class="small">
-                        <div class="text-muted">讀取中…</div>
+
+                      <!-- 數據統計 -->
+                      <div class="tab-pane fade" id="stats-pane" role="tabpanel" aria-labelledby="stats-tab">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                          <div class="fw-semibold">過去 30 天</div>
+                          <div class="text-muted small" id="stats-last-updated">—</div>
+                        </div>
+                        <div class="mb-3">
+                          <div class="small text-muted mb-1">各 Team 每日新增 Test Case</div>
+                          <canvas id="hm-chart-tc-daily" height="140"></canvas>
+                        </div>
+                        <div>
+                          <div class="small text-muted mb-1">每日 Test Run 操作次數</div>
+                          <canvas id="hm-chart-tr-daily" height="140"></canvas>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -472,6 +502,10 @@ function showHiddenModeModal() {
 
         let timer = null;
         let abortCtrl = null;
+
+        // Chart instances
+        let tcDailyChart = null;
+        let trDailyChart = null;
 
         function fmtBytes(bytes) {
             if (bytes == null) return '—';
@@ -545,13 +579,77 @@ function showHiddenModeModal() {
             `;
         }
 
+        async function ensureChartJs() {
+            if (window.Chart) return;
+            await new Promise((resolve, reject) => {
+                const s = document.createElement('script');
+                s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js';
+                s.onload = resolve; s.onerror = reject;
+                document.head.appendChild(s);
+            });
+        }
+
+        function groupByDayAndTeam(rows) {
+            const labelsSet = new Set();
+            const teamsSet = new Set();
+            rows.forEach(r => { labelsSet.add(r.day); if (r.team_name) teamsSet.add(r.team_name); });
+            const labels = Array.from(labelsSet).sort();
+            const teams = Array.from(teamsSet);
+            const datasets = teams.map((t, idx) => {
+                const color = `hsl(${(idx*67)%360} 70% 50%)`;
+                const data = labels.map(d => {
+                    const found = rows.find(r => r.team_name===t && r.day===d);
+                    return found ? found.count : 0;
+                });
+                return { label: t, data, borderColor: color, backgroundColor: color, tension: 0.2 };
+            });
+            return { labels, datasets };
+        }
+
+        async function loadStats(days = 30) {
+            try {
+                await ensureChartJs();
+                const [tcResp, trResp] = await Promise.all([
+                    fetch(`/api/admin/stats/test_cases_created_daily?days=${days}`),
+                    fetch(`/api/admin/stats/test_run_actions_daily?days=${days}`)
+                ]);
+                const [tcJson, trJson] = await Promise.all([tcResp.json(), trResp.json()]);
+                const tcCtx = modalEl.querySelector('#hm-chart-tc-daily');
+                const trCtx = modalEl.querySelector('#hm-chart-tr-daily');
+                if (tcDailyChart) { tcDailyChart.destroy(); }
+                if (trDailyChart) { trDailyChart.destroy(); }
+                const tcGrouped = groupByDayAndTeam(tcJson.data || []);
+                const trGrouped = groupByDayAndTeam(trJson.data || []);
+                tcDailyChart = new Chart(tcCtx, {
+                    type: 'line',
+                    data: tcGrouped,
+                    options: { responsive: true, plugins: { legend: { position: 'bottom' }}, scales: { y: { beginAtZero: true }}}
+                });
+                trDailyChart = new Chart(trCtx, {
+                    type: 'line',
+                    data: trGrouped,
+                    options: { responsive: true, plugins: { legend: { position: 'bottom' }}, scales: { y: { beginAtZero: true }}}
+                });
+                const statsStamp = modalEl.querySelector('#stats-last-updated');
+                if (statsStamp) statsStamp.textContent = new Date().toLocaleTimeString();
+            } catch (e) {
+                console.error('loadStats error', e);
+                const statsStamp = modalEl.querySelector('#stats-last-updated');
+                if (statsStamp) statsStamp.textContent = '讀取失敗';
+            }
+        }
+
         function start() {
             fetchMetrics();
             timer = setInterval(fetchMetrics, 2000);
+            // 延遲載入統計，避免阻塞 modal 開啟
+            setTimeout(() => loadStats(30), 200);
         }
         function stop() {
             if (timer) { clearInterval(timer); timer = null; }
             if (abortCtrl) { abortCtrl.abort(); abortCtrl = null; }
+            if (tcDailyChart) { tcDailyChart.destroy(); tcDailyChart = null; }
+            if (trDailyChart) { trDailyChart.destroy(); trDailyChart = null; }
         }
 
         modalEl.addEventListener('shown.bs.modal', start);
