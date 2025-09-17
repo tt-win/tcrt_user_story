@@ -474,7 +474,8 @@ async def download_attachment_proxy(
     try:
         if file_url and file_url.strip().startswith('/attachments'):
             project_root = Path(__file__).resolve().parents[2]
-            attachments_root = project_root / 'attachments'
+            cfg_root = getattr(settings, 'attachments', None)
+            attachments_root = Path(cfg_root.root_dir) if (cfg_root and cfg_root.root_dir) else (project_root / 'attachments')
             # 防止目錄穿越
             rel = file_url[len('/attachments/'):].lstrip('/') if file_url else ''
             rel = urllib.parse.unquote(rel)
@@ -499,7 +500,8 @@ async def download_attachment_proxy(
     try:
         if file_token and (not file_url):
             project_root = Path(__file__).resolve().parents[2]
-            attachments_root = project_root / 'attachments'
+            cfg_root = getattr(settings, 'attachments', None)
+            attachments_root = Path(cfg_root.root_dir) if (cfg_root and cfg_root.root_dir) else (project_root / 'attachments')
             # 在整個 attachments 目錄中搜尋相符檔名（stored_name）
             target = None
             if attachments_root.exists():
