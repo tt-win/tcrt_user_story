@@ -261,6 +261,14 @@ class TestCaseSyncService:
 
         # 先組裝 Lark 欄位資料
         for item in locals_list:
+            # 還原 TCG 資料
+            try:
+                tcg_data = json.loads(item.tcg_json) if item.tcg_json else []
+                from app.models.lark_types import parse_lark_records
+                tcg = parse_lark_records(tcg_data)
+            except (json.JSONDecodeError, TypeError):
+                tcg = []
+
             tc = TestCase(
                 test_case_number=item.test_case_number,
                 title=item.title,
@@ -272,11 +280,11 @@ class TestCaseSyncService:
                 test_result=item.test_result,
                 attachments=[],
                 user_story_map=[],
-                tcg=[],
+                tcg=tcg,  # 使用還原的 TCG 資料
                 parent_record=[],
                 team_id=self.team_id,
             )
-            fields = tc.to_lark_fields()
+            fields = tc.to_lark_sync_fields()
             if item.lark_record_id:
                 updates.append({'record_id': item.lark_record_id, 'fields': fields})
             else:

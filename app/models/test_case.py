@@ -235,7 +235,43 @@ class TestCase(BaseModel):
             lark_fields[self.FIELD_IDS['test_results_files']] = result_file_items
         
         return lark_fields
-    
+
+    def to_lark_sync_fields(self) -> Dict[str, Any]:
+        """轉換為 Lark 同步所需的欄位格式（僅包含基本欄位和 TCG）"""
+        lark_fields = {}
+
+        if self.test_case_number:
+            lark_fields[self.FIELD_IDS['test_case_number']] = self.test_case_number
+        if self.title:
+            lark_fields[self.FIELD_IDS['title']] = self.title
+        if self.precondition:
+            lark_fields[self.FIELD_IDS['precondition']] = self.precondition
+        if self.steps:
+            lark_fields[self.FIELD_IDS['steps']] = self.steps
+        if self.expected_result:
+            lark_fields[self.FIELD_IDS['expected_result']] = self.expected_result
+        if self.priority:
+            priority_value = self.priority.value if hasattr(self.priority, 'value') else self.priority
+            lark_fields[self.FIELD_IDS['priority']] = priority_value
+        if self.test_result:
+            test_result_value = self.test_result.value if hasattr(self.test_result, 'value') else self.test_result
+            lark_fields[self.FIELD_IDS['test_result']] = test_result_value
+
+        # 處理 TCG 欄位
+        if self.tcg is not None:
+            # TCG 欄位是 Duplex Link 類型，需要字串陣列
+            tcg_record_ids = []
+            for tcg_record in self.tcg:
+                # 使用 record_ids[0] 而不是 record_id
+                record_id = tcg_record.record_ids[0] if tcg_record.record_ids else None
+                if record_id:
+                    tcg_record_ids.append(record_id)
+            lark_fields[self.FIELD_IDS['tcg']] = tcg_record_ids
+
+        # 注意：不包含 assignee, attachments, test_results_files, user_story_map, parent_record
+
+        return lark_fields
+
     # 便利方法
     def get_tcg_number(self) -> Optional[str]:
         """取得 TCG 編號"""
