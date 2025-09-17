@@ -610,6 +610,63 @@ function showHiddenModeModal() {
             return { labels, datasets };
         }
 
+        const chartHiddenState = {
+            tc: new Set(),
+            tr: new Set()
+        };
+
+        function buildLineChart(ctx, grouped, key) {
+            const hiddenSet = chartHiddenState[key] || new Set();
+            const datasets = grouped.datasets.map(ds => ({
+                ...ds,
+                hidden: hiddenSet.has(ds.label)
+            }));
+
+            return new Chart(ctx, {
+                type: 'line',
+                data: { labels: grouped.labels, datasets },
+                options: {
+                    responsive: true,
+                    interaction: { intersect: false, mode: 'nearest' },
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                            labels: { usePointStyle: true },
+                            onClick: (evt, legendItem, legend) => {
+                                const chart = legend.chart;
+                                const index = legendItem.datasetIndex;
+                                const meta = chart.getDatasetMeta(index);
+                                chart.toggleDataVisibility(index);
+                                chart.update();
+
+                                const label = legendItem.text;
+                                const state = chartHiddenState[key] || new Set();
+                                const nowHidden = chart.getDatasetMeta(index).hidden;
+                                if (nowHidden) {
+                                    state.add(label);
+                                } else {
+                                    state.delete(label);
+                                }
+                                chartHiddenState[key] = state;
+                            }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                title: (items) => items?.[0]?.label || '',
+                                label: (item) => `${item.dataset.label || 'Team'}: ${item.formattedValue}`
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: { precision: 0 }
+                        }
+                    }
+                }
+            });
+        }
+
         async function loadStats(days = 30) {
             try {
                 await ensureChartJs();
@@ -624,16 +681,8 @@ function showHiddenModeModal() {
                 if (trDailyChart) { trDailyChart.destroy(); }
                 const tcGrouped = groupByDayAndTeam(tcJson.data || []);
                 const trGrouped = groupByDayAndTeam(trJson.data || []);
-                tcDailyChart = new Chart(tcCtx, {
-                    type: 'line',
-                    data: tcGrouped,
-                    options: { responsive: true, plugins: { legend: { position: 'bottom' }}, scales: { y: { beginAtZero: true }}}
-                });
-                trDailyChart = new Chart(trCtx, {
-                    type: 'line',
-                    data: trGrouped,
-                    options: { responsive: true, plugins: { legend: { position: 'bottom' }}, scales: { y: { beginAtZero: true }}}
-                });
+                tcDailyChart = buildLineChart(tcCtx, tcGrouped, 'tc');
+                trDailyChart = buildLineChart(trCtx, trGrouped, 'tr');
                 const statsStamp = modalEl.querySelector('#stats-last-updated');
                 if (statsStamp) statsStamp.textContent = new Date().toLocaleTimeString();
             } catch (e) {
