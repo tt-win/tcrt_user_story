@@ -3050,9 +3050,12 @@ function displayTestCaseDetail(testCase) {
                 const cfgId = (typeof currentConfigId !== 'undefined' && currentConfigId) ? currentConfigId : new URLSearchParams(window.location.search).get('config_id');
                 const url = buildTreUrl(cfgId, teamId, testCase.test_case_number);
                 if (window.AppUtils && typeof AppUtils.showCopyModal === 'function') {
-                    AppUtils.showCopyModal(url, { title: (window.i18n ? window.i18n.t('common.copyLink') : '手動複製連結') });
+                    AppUtils.showCopyModal(url);
                 } else {
-                    window.prompt('請手動複製此連結：', url);
+                    const promptLabel = (window.i18n && typeof window.i18n.t === 'function')
+                        ? window.i18n.t('copyModal.prompt', {}, '請手動複製此連結：')
+                        : '請手動複製此連結：';
+                    window.prompt(promptLabel, url);
                 }
             };
         }
@@ -5508,7 +5511,7 @@ async function downloadReportAsPDF() {
               <div class="d-flex align-items-center w-100 gap-3 flex-wrap">
                 <button type="button" class="btn btn-primary" id="generateHTMLBtn" onclick="generateHtmlReport()">
                   <i class="fas fa-file-alt me-2" id="generateIcon"></i>
-                  <span id="generateText">生成並複製連結</span>
+                  <span id="generateText" data-i18n="testRun.generateHtmlButton">生成並複製連結</span>
                 </button>
                 <button type="button" class="btn btn-secondary ms-auto" data-bs-dismiss="modal">
                   <span data-i18n="common.close">關閉</span>
@@ -5538,6 +5541,17 @@ async function generateHtmlReport() {
   const text = document.getElementById('generateText');
   if (!btn) return;
 
+  const translate = (key, params, fallback) => {
+    if (window.i18n && typeof window.i18n.t === 'function') {
+      return window.i18n.t(key, params || {}, fallback);
+    }
+    return typeof fallback !== 'undefined' ? fallback : key;
+  };
+
+  const defaultButtonLabel = translate('testRun.generateHtmlButton', {}, '生成並複製連結');
+  const generatingLabel = translate('testRun.generatingHtml', {}, '生成中...');
+  const generateFailed = translate('testRun.generateHtmlFailed', {}, '生成失敗');
+
   // 優先使用頁面內已初始化的 currentTeamId/currentConfigId
   let teamId = (typeof currentTeamId !== 'undefined' && currentTeamId) ? currentTeamId : null;
   let configId = (typeof currentConfigId !== 'undefined' && currentConfigId) ? currentConfigId : null;
@@ -5550,14 +5564,14 @@ async function generateHtmlReport() {
   }
 
   if (!teamId || !configId) {
-    alert('無法取得 team_id 或 config_id，請從管理頁進入執行頁面。');
+    alert(translate('testRun.generateHtmlMissingParams', {}, '無法取得 team_id 或 config_id，請從管理頁進入執行頁面。'));
     return;
   }
 
   try {
     btn.disabled = true;
     icon.classList.add('fa-spinner', 'fa-spin');
-    text.textContent = '生成中...';
+    text.textContent = generatingLabel;
 
     const resp = await fetch(`/api/teams/${encodeURIComponent(teamId)}/test-runs/${encodeURIComponent(configId)}/generate-html`, {
       method: 'POST',
@@ -5565,22 +5579,25 @@ async function generateHtmlReport() {
     });
     const data = await resp.json();
     if (!resp.ok || !data.success) {
-      throw new Error(data?.detail || '生成失敗');
+      throw new Error(data?.detail || generateFailed);
     }
 
     const url = data.report_url;
     if (window.AppUtils && typeof AppUtils.showCopyModal === 'function') {
-      AppUtils.showCopyModal(url, { title: (window.i18n ? window.i18n.t('common.copyLink') : '手動複製連結') });
+      AppUtils.showCopyModal(url);
     } else {
-      window.prompt('請手動複製此連結：', url);
+      const promptLabel = translate('copyModal.prompt', {}, '請手動複製此連結：');
+      window.prompt(promptLabel, url);
     }
   } catch (err) {
-    alert('生成 HTML 報告時發生錯誤：' + (err?.message || err));
+    const errorMessage = err?.message || err;
+    const alertMessage = translate('testRun.generateHtmlError', { error: errorMessage }, `生成 HTML 報告時發生錯誤：${errorMessage}`);
+    alert(alertMessage);
   } finally {
     btn.disabled = false;
     icon.classList.remove('fa-spinner', 'fa-spin');
     icon.classList.add('fa-file-alt');
-    text.textContent = '生成並複製連結';
+    text.textContent = defaultButtonLabel;
   }
 }
 // ===== 深連結與剪貼簿工具 =====

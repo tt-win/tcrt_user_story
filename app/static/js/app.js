@@ -201,8 +201,12 @@ const AppUtils = {
 
     // 顯示手動複製連結對話框（統一介面）
     showCopyModal: function(text, options = {}) {
-        const title = options.title || '手動複製連結';
-        const instruction = options.instruction || '請使用 Ctrl/Cmd + C 進行複製';
+        const translate = (key) => (window.i18n && typeof window.i18n.t === 'function') ? window.i18n.t(key) : null;
+        const title = options.title || translate('copyModal.title') || '手動複製連結';
+        const instruction = options.instruction || translate('copyModal.instruction') || '請使用 Ctrl/Cmd + C 進行複製';
+        const selectLabel = options.selectLabel || translate('copyModal.select') || '選取';
+        const closeLabel = options.closeLabel || translate('common.close') || '關閉';
+        const urlLabel = options.urlLabel || translate('copyModal.url') || 'URL';
 
         try {
             const existing = document.getElementById('copyModal');
@@ -224,14 +228,14 @@ const AppUtils = {
                   </div>
                   <div class="modal-body">
                     <div class="mb-2">
-                      <label class="form-label">URL</label>
+                      <label class="form-label">${urlLabel}</label>
                       <input id="copyModalInput" type="text" class="form-control" readonly value="${text || ''}">
                     </div>
                     <small class="text-muted">${instruction}</small>
                   </div>
                   <div class="modal-footer">
-                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">關閉</button>
-                    <button type="button" class="btn btn-primary" id="copySelectBtn">選取</button>
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">${closeLabel}</button>
+                    <button type="button" class="btn btn-primary" id="copySelectBtn">${selectLabel}</button>
                   </div>
                 </div>
               </div>

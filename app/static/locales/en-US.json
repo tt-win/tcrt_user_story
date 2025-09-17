@@ -11,7 +11,7 @@
         "clearSelection": "Clear selection",
         "close": "Close",
         "confirm": "Confirm",
-"copy": "Copy",
+        "copy": "Copy",
         "copyLink": "Copy link",
         "copied": "Copied",
         "create": "Create",
@@ -35,6 +35,7 @@
         "noDescription": "No description",
         "none": "None",
         "optional": "Optional",
+        "pleaseSelect": "Please select...",
         "passed": "Passed",
         "previous": "Previous",
         "progress": "Progress",
@@ -118,6 +119,13 @@
         "batchCopyNoSelection": "Please select items to apply",
         "duplicateInternal": "Duplicate case numbers in the list",
         "duplicateExternal": "Conflicts with existing case numbers: {numbers}"
+    },
+    "copyModal": {
+        "title": "Copy link manually",
+        "instruction": "Use Ctrl/Cmd + C to copy",
+        "select": "Select",
+        "url": "URL",
+        "prompt": "Please copy this link manually:"
     },
     "form": {
         "title": "Title",
@@ -230,7 +238,7 @@
         "testRunCreated": "Test run created successfully",
         "testRunDeleted": "Test run deleted successfully",
         "updateFailed": "Update failed",
-        "updateSuccess": "更新成功",
+        "updateSuccess": "Update successful",
         "uploadingFile": "Uploading",
         "validationFailed": "Validation failed",
         "warning": "Warning",
@@ -395,8 +403,8 @@
     },
     "testCase": {
         "tcgFilterPlaceholder": "Enter TCG number",
-        "testCaseNumberPlaceholder": "Enter Test Case Number",
-        "searchPlaceholder": "Search keywords",
+        "testCaseNumberPlaceholder": "Enter test case number",
+        "searchPlaceholder": "Search title, description...",
         "batchActions": "Batch Actions",
         "batchDelete": "Batch Delete",
         "batchModify": "Batch Modify",
@@ -498,7 +506,6 @@
         "quickEdit": "Quick Edit",
         "saveAndNext": "Save and Add Next",
         "saveFailed": "Save failed",
-        "searchPlaceholder": "Search title, description...",
         "selectPriority": "Please select priority",
         "selectSourceTestCase": "Select Source Test Case",
         "selectedItems": "{count} items selected",
@@ -515,7 +522,6 @@
         "continueWithoutSave": "Continue Without Saving",
         "testCaseDeleted": "Test case deleted successfully",
         "testCaseNumber": "Test Case Number",
-        "testCaseNumberPlaceholder": "Enter test case number",
         "testCaseNumberRequired": "Please enter test case number",
         "testCaseSaved": "Test case saved",
         "testCaseSavedContinue": "Test case saved, you can continue adding the next one",
@@ -817,8 +823,8 @@
         },
         "statusChangeConfirm": "Confirm Status Change",
         "statusChangeFailed": "Status change failed",
-        "statusChangeReason": "請輸入狀態變更原因（可選）：",
-        "statusChangedSuccess": "Test Run \"{name}\" 狀態已變更為 {status}",
+        "statusChangeReason": "Please enter the status change reason (optional):",
+        "statusChangedSuccess": "Test run \"{name}\" status updated to {status}",
         "statusDistribution": "Test Result Status Distribution",
         "statusFilter": {
             "all": "All",
@@ -901,7 +907,12 @@
             "removeGroup": "Remove Group",
             "maxGroupsReached": "Maximum 100 groups can be selected",
             "noResults": "No results"
-        }
+        },
+        "generateHtmlButton": "Generate & Copy Link",
+        "generatingHtml": "Generating...",
+        "generateHtmlFailed": "Generation failed",
+        "generateHtmlError": "Error generating HTML report: {error}",
+        "generateHtmlMissingParams": "Unable to determine team or configuration. Please open this page from the management view."
     },
     "tooltip": {
         "assignedTo": "Assigned To",

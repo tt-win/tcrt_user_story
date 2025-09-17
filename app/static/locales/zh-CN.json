@@ -12,6 +12,8 @@
         "close": "关闭",
         "confirm": "确认",
         "copy": "复制",
+        "copyLink": "复制链接",
+        "copied": "已复制",
         "create": "新增",
         "createDate": "创建日期",
         "delete": "删除",
@@ -33,6 +35,7 @@
         "noDescription": "无描述",
         "none": "无",
         "optional": "选填",
+        "pleaseSelect": "请选择...",
         "passed": "通过",
         "previous": "上一页",
         "progress": "进度",
@@ -40,7 +43,7 @@
         "required": "必填",
         "save": "保存",
         "search": "搜索",
-        "searching": "搜尋中...",
+        "searching": "搜索中...",
         "select": "选择",
         "selectAll": "全选",
         "skipped": "跳过",
@@ -117,6 +120,13 @@
         "duplicateInternal": "列表内存在重复的 Case Number",
         "duplicateExternal": "与既有 Case Number 冲突：{numbers}"
     },
+    "copyModal": {
+        "title": "手动复制链接",
+        "instruction": "请使用 Ctrl/Cmd + C 进行复制",
+        "select": "选择",
+        "url": "链接",
+        "prompt": "请手动复制此链接："
+    },
     "form": {
         "title": "标题",
         "allAssignees": "全部执行者",
@@ -158,7 +168,7 @@
     },
     "hotkeys": {
         "quickSearch": "按 / 开启快速搜索",
-        "quickSearchTP": "按 / 快速搜尋 TP 票號"
+        "quickSearchTP": "按 / 快速搜索 TP 票号"
     },
     "language": {
         "chinese": "简体中文",
@@ -393,8 +403,8 @@
     },
     "testCase": {
         "tcgFilterPlaceholder": "输入 TCG 单号",
-        "testCaseNumberPlaceholder": "输入 Test Case Number",
-        "searchPlaceholder": "输入关键字搜索",
+        "testCaseNumberPlaceholder": "输入测试案例编号",
+        "searchPlaceholder": "搜索标题、描述...",
         "batchActions": "批次操作",
         "batchDelete": "批次删除",
         "batchModify": "批次修改",
@@ -496,7 +506,6 @@
         "quickEdit": "快速编辑",
         "saveAndNext": "保存并新增下一笔",
         "saveFailed": "保存失败",
-        "searchPlaceholder": "搜索标题、描述...",
         "selectPriority": "请选择优先级",
         "selectSourceTestCase": "选择要复制的测试案例",
         "selectedItems": "已选 {count} 个项目",
@@ -513,7 +522,6 @@
         "continueWithoutSave": "不保存直接继续",
         "testCaseDeleted": "测试案例删除成功",
         "testCaseNumber": "测试案例编号",
-        "testCaseNumberPlaceholder": "输入测试案例编号",
         "testCaseNumberRequired": "请填写测试案例编号",
         "testCaseSaved": "测试案例已保存",
         "testCaseSavedContinue": "测试案例已保存，可继续新增下一笔",
@@ -546,7 +554,7 @@
         "allAssignees": "全部执行者",
         "allStatuses": "全部状态",
         "alreadyInProgress": "测试执行已在进行中",
-        "analyticsSubtitle": "測試執行狀態分布與統計分析",
+        "analyticsSubtitle": "测试执行状态分布与统计分析",
         "applyFilter": "应用筛选",
         "archiveRun": "归档",
         "archiveRunConfirm": "归档此 Test Run？归档后将无法再修改。",
@@ -604,8 +612,8 @@
         "caseTitle": "标题",
         "changeStatus": "狀態",
         "changeStatusFailed": "变更状态失败",
-        "chartsLoadError": "圖表載入失敗，請重新整理後再試",
-        "chartsReports": "圖表＆報告",
+        "chartsLoadError": "图表加载失败，请刷新后重试",
+        "chartsReports": "图表与报告",
         "clearFilter": "清除",
         "completeExecution": "结束执行",
         "completeExecutionConfirm": "结束此 Test Run？结束后将无法再修改测试结果。",
@@ -664,7 +672,7 @@
         "executedAt": "执行时间",
         "executedItems": "已执行",
         "execution": "Test Run 执行",
-        "executionAnalytics": "Test Run 執行分析報告",
+        "executionAnalytics": "Test Run 执行分析报告",
         "executionArchived": "测试执行已归档",
         "executionCompleted": "已结束执行",
         "executionDuration": "执行时长",
@@ -676,7 +684,7 @@
         "executionResultNotImplemented": "保存执行结果功能尚未实现",
         "executionStarted": "已开始执行",
         "executionStatus": "执行状态",
-        "executionSummary": "執行摘要",
+        "executionSummary": "执行摘要",
         "executionTime": "执行时间",
         "executor": "执行者",
         "expectedResult": "预期结果",
@@ -715,7 +723,7 @@
         "loadItemsFailed": "加载测试项目失败",
         "loadTestCaseError": "加载 Test Case 详细信息失败",
         "loadingBugTickets": "加载 Bug Tickets 中...",
-        "loadingCharts": "載入圖表中...",
+        "loadingCharts": "加载图表中...",
         "loadingConfigs": "加载测试执行配置中...",
         "loadingItems": "加载测试项目中...",
         "loadingTestRuns": "加载测试执行记录中...",
@@ -730,7 +738,7 @@
         "noTestRuns": "没有找到符合条件的测试执行记录",
         "noTicketsForStatus": "此状态下无 Bug Tickets",
         "notAvailable": "不适用",
-        "notAvailableItems": "Not Available",
+        "notAvailableItems": "不适用",
         "notConfigured": "未设置",
         "notExecuted": "未执行",
         "notFound": "找不到测试执行记录",
@@ -756,7 +764,7 @@
         "precondition": "前置条件",
         "preconditions": "前置条件",
         "priority": "优先级",
-        "priorityDistribution": "優先級分布",
+        "priorityDistribution": "优先级分布",
         "processingData": "处理数据...",
         "progress": "{passed}/{total} 通过",
         "progressLabel": "执行进度",
@@ -781,11 +789,11 @@
         "restartPendingItems": "只执行未完成的项目",
         "restartPendingSuccess": "已重新执行未完成项目",
         "restartSuccess": "重新执行成功",
-        "restartWarning": "重新执行会建立新的 Test Run 并将其状态设为「执行中」，请确认后继续。",
+        "restartWarning": "重新执行会建立新的 Test Run 并将其状态设为“进行中”，请确认后继续。",
         "result": "结果",
         "resultHistory": "结果历史",
         "retest": "重测",
-        "retestItems": "Retest",
+        "retestItems": "重测",
         "saveResult": "保存结果",
         "screenshots": "结果截图",
         "screenshotsHint": "可上传多张截图作为执行结果证明",
@@ -815,17 +823,17 @@
         },
         "statusChangeConfirm": "确认状态变更",
         "statusChangeFailed": "状态变更失败",
-        "statusChangeReason": "請輸入狀態變更原因（可選）：",
-        "statusChangedSuccess": "Test Run \"{name}\" 狀態已變更為 {status}",
-        "statusDistribution": "測試結果狀態分布",
+        "statusChangeReason": "请输入状态变更原因（可选）：",
+        "statusChangedSuccess": "Test Run \"{name}\" 状态已变更为 {status}",
+        "statusDistribution": "测试结果状态分布",
         "statusFilter": {
             "all": "全部",
-            "closed": "Closed",
-            "inProgress": "In Progress",
-            "open": "Open",
-            "resolved": "Resolved",
-            "scheduled": "Scheduled",
-            "toDo": "To Do"
+            "closed": "已关闭",
+            "inProgress": "进行中",
+            "open": "未开始",
+            "resolved": "已解决",
+            "scheduled": "已排程",
+            "toDo": "待处理"
         },
         "statusUpdated": "状态已更新",
         "steps": "测试步骤",
@@ -899,7 +907,12 @@
             "removeGroup": "移除群组",
             "maxGroupsReached": "最多选择 100 个群组",
             "noResults": "没有结果"
-        }
+        },
+        "generateHtmlButton": "生成并复制链接",
+        "generatingHtml": "生成中...",
+        "generateHtmlFailed": "生成失败",
+        "generateHtmlError": "生成 HTML 报告时发生错误：{error}",
+        "generateHtmlMissingParams": "无法取得 team_id 或 config_id，请从管理页进入执行页面。"
     },
     "tooltip": {
         "assignedTo": "指派给",
@@ -925,6 +938,6 @@
         "viewJiraInfo": "查看 JIRA Ticket 信息"
     },
     "tp": {
-        "searchPlaceholder": "搜尋 TP 票號..."
+        "searchPlaceholder": "搜索 TP 票号..."
     }
 }

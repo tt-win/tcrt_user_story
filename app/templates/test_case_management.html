@@ -3960,10 +3960,13 @@ function showTestCaseModal(testCase = null) {
                 const tcNumber = (testCase && testCase.test_case_number) || document.getElementById('testCaseNumber')?.value || '';
                 const url = buildTcmUrl(teamId, tcNumber);
                 if (window.AppUtils && typeof AppUtils.showCopyModal === 'function') {
-                    AppUtils.showCopyModal(url, { title: (window.i18n ? window.i18n.t('common.copyLink') : '手動複製連結') });
+                    AppUtils.showCopyModal(url);
                 } else {
                     // 最簡回退
-                    window.prompt('請手動複製此連結：', url);
+                    const promptLabel = (window.i18n && typeof window.i18n.t === 'function')
+                        ? window.i18n.t('copyModal.prompt', {}, '請手動複製此連結：')
+                        : '請手動複製此連結：';
+                    window.prompt(promptLabel, url);
                 }
             };
         }
