@@ -300,7 +300,7 @@ class TestCaseLocal(Base):
     # 時間欄位策略
     # 注意：除初始同步（init）外，created_at/updated_at 以本地為主，不從 Lark 覆蓋
     created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow)
     last_sync_at = Column(DateTime, nullable=True)
 
     # 保留 Lark 系統時間戳做為參考（毫秒 epoch 轉換後的 UTC）

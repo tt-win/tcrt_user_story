@@ -396,20 +396,29 @@ async def update_test_case(
         if not item:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"找不到測試案例 {record_id}")
 
+        changed = False
+
         if case_update.test_case_number is not None:
             item.test_case_number = case_update.test_case_number
+            changed = True
         if case_update.title is not None:
             item.title = case_update.title
+            changed = True
         if case_update.priority is not None:
             item.priority = case_update.priority
+            changed = True
         if case_update.precondition is not None:
             item.precondition = case_update.precondition
+            changed = True
         if case_update.steps is not None:
             item.steps = case_update.steps
+            changed = True
         if case_update.expected_result is not None:
             item.expected_result = case_update.expected_result
+            changed = True
         if case_update.test_result is not None:
             item.test_result = case_update.test_result
+            changed = True
 
         # 處理 TCG 欄位更新：支援字串（單號或逗號/空白/換行分隔多號）或 LarkRecord 陣列
         if hasattr(case_update, 'tcg') and case_update.tcg is not None:
@@ -431,6 +440,7 @@ async def update_test_case(
                     if not s:
                         # 清空
                         item.tcg_json = json.dumps([], ensure_ascii=False)
+                        changed = True
                     else:
                         # 解析多個單號
                         parts = [p.strip() for p in s.replace('\n', ',').replace(' ', ',').split(',')]
@@ -450,6 +460,7 @@ async def update_test_case(
                             pairs = [("", n) for n in nums]
                         tcg_items = build_items_from_pairs(pairs)
                         item.tcg_json = json.dumps(tcg_items, ensure_ascii=False)
+                        changed = True
                 else:
                     # 嘗試將 LarkRecord 結構序列化
                     try:
@@ -479,9 +490,11 @@ async def update_test_case(
                                 "type": "text",
                             })
                         item.tcg_json = json.dumps(incoming, ensure_ascii=False)
+                        changed = True
                     except Exception:
                         # 無法解析時，清空避免壞資料
                         item.tcg_json = json.dumps([], ensure_ascii=False)
+                        changed = True
             except Exception as e:
                 # 若 TCG 處理失敗，丟出 400 錯誤較精確
                 raise HTTPException(status_code=400, detail=f"更新 TCG 欄位失敗: {e}")
@@ -524,9 +537,11 @@ async def update_test_case(
                     staging_dir.rmdir()
                 except Exception:
                     pass
+                changed = True
 
-        # 變更後標為待同步
-        item.sync_status = SyncStatus.PENDING
+        if changed:
+            item.updated_at = datetime.utcnow()
+            item.sync_status = SyncStatus.PENDING
         db.commit()
 
         return TestCaseResponse(
@@ -1308,6 +1323,7 @@ async def batch_operation_test_cases(
                     continue
                 try:
                     item.priority = pr
+                    item.updated_at = datetime.utcnow()
                     item.sync_status = SyncStatus.PENDING
                     success_count += 1
                 except Exception as e:
@@ -1392,6 +1408,7 @@ async def batch_operation_test_cases(
                 try:
                     items = build_tcg_items(rid_pairs)
                     item.tcg_json = json.dumps(items, ensure_ascii=False) if items else json.dumps([], ensure_ascii=False)
+                    item.updated_at = datetime.utcnow()
                     item.sync_status = SyncStatus.PENDING
                     success_count += 1
                 except Exception as e:
