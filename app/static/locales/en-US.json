@@ -922,7 +922,15 @@
         "generatingHtml": "Generating...",
         "generateHtmlFailed": "Generation failed",
         "generateHtmlError": "Error generating HTML report: {error}",
-        "generateHtmlMissingParams": "Unable to determine team or configuration. Please open this page from the management view."
+        "generateHtmlMissingParams": "Unable to determine team or configuration. Please open this page from the management view.",
+        "filterCaseNumberPlaceholder": "Search by case number",
+        "filterTitlePlaceholder": "Search by title",
+        "filterPriorityAll": "All priorities",
+        "filterAssigneePlaceholder": "Search and select assignees",
+        "filterReset": "Clear filters",
+        "filterMatchCount": "{matched} of {total} items",
+        "noItemsAfterFilter": "No test run items match the current filters",
+        "filtersApplied": "Filtered"
     },
     "tooltip": {
         "assignedTo": "Assigned To",

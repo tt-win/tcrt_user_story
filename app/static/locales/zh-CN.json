@@ -922,7 +922,15 @@
         "generatingHtml": "生成中...",
         "generateHtmlFailed": "生成失败",
         "generateHtmlError": "生成 HTML 报告时发生错误：{error}",
-        "generateHtmlMissingParams": "无法取得 team_id 或 config_id，请从管理页进入执行页面。"
+        "generateHtmlMissingParams": "无法取得 team_id 或 config_id，请从管理页进入执行页面。",
+        "filterCaseNumberPlaceholder": "输入案例编号关键字",
+        "filterTitlePlaceholder": "输入标题关键字",
+        "filterPriorityAll": "全部优先级",
+        "filterAssigneePlaceholder": "搜索并选择执行者",
+        "filterReset": "清除筛选",
+        "filterMatchCount": "显示 {matched} 条，共 {total} 条",
+        "noItemsAfterFilter": "目前没有符合筛选条件的项目",
+        "filtersApplied": "已筛选"
     },
     "tooltip": {
         "assignedTo": "指派给",

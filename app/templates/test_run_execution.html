@@ -149,11 +149,286 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
 
 
 /* 統計資訊樣式 */
+
+.execution-stats-wrapper {
+    position: relative;
+    width: 100%;
+}
+
 .execution-stats {
     display: flex;
     gap: 0.75rem;
     margin-bottom: 0.75rem;
     flex-wrap: wrap;
+    align-items: stretch;
+}
+
+.filter-status-options {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 0.5rem;
+    align-items: center;
+}
+
+.filter-status-options .form-check {
+    margin-bottom: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.25rem;
+    white-space: nowrap;
+}
+
+@media (max-width: 576px) {
+    .filter-status-options {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.5rem;
+    }
+}
+
+.filter-search-controls {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    align-items: start;
+}
+
+.filter-search-controls .form-label {
+    font-size: 0.75rem;
+    color: var(--tr-text-muted);
+    margin-bottom: 0.25rem;
+}
+
+.filter-field {
+    display: flex;
+    flex-direction: column;
+    min-width: 200px;
+}
+
+.case-field {
+    min-width: 200px;
+}
+
+.title-field {
+    min-width: 250px;
+}
+
+.priority-field {
+    min-width: 160px;
+}
+
+.priority-field select {
+    width: 100%;
+}
+
+.assignee-field {
+    min-width: 250px;
+}
+
+/* 優先級和執行者專用行樣式 */
+.filter-priority-assignee-row {
+    display: grid;
+    grid-template-columns: 1fr 2fr;
+    gap: 1rem;
+    align-items: start;
+}
+
+.filter-priority-assignee-row .priority-field {
+    min-width: 160px;
+}
+
+.filter-priority-assignee-row .assignee-field {
+    min-width: 250px;
+}
+
+@media (max-width: 992px) {
+    .filter-search-controls {
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: 0.75rem;
+    }
+
+    .filter-field {
+        min-width: 180px;
+    }
+
+    .title-field,
+    .assignee-field {
+        min-width: 200px;
+    }
+
+    .filter-priority-assignee-row {
+        grid-template-columns: 1fr 1.5fr;
+        gap: 0.75rem;
+    }
+}
+
+@media (max-width: 768px) {
+    .filter-search-controls {
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
+    }
+
+    .filter-field {
+        min-width: 0;
+        width: 100%;
+    }
+
+    .filter-priority-assignee-row {
+        grid-template-columns: 1fr;
+        gap: 0.75rem;
+    }
+}
+
+.filter-assignee-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    min-height: 1.5rem;
+    width: 100%;
+    margin-top: 0.25rem;
+    padding: 0.25rem 0;
+}
+
+.filter-chip {
+    background: var(--tr-bg-light);
+    border: 1px solid var(--tr-border-light);
+    border-radius: 999px;
+    padding: 0.15rem 0.6rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.75rem;
+    line-height: 1.1;
+}
+
+.filter-chip-remove {
+    border: none;
+    background: transparent;
+    color: inherit;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    cursor: pointer;
+}
+
+.filter-chip-remove i {
+    pointer-events: none;
+}
+
+.stat-item.filter-stat {
+    cursor: pointer;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.stat-item.filter-stat:hover,
+.stat-item.filter-stat:focus {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(13, 110, 253, 0.2);
+    outline: none;
+}
+
+.stat-item.filter-stat.active {
+    border-color: var(--tr-primary);
+    box-shadow: 0 4px 10px rgba(13, 110, 253, 0.25);
+}
+
+.execution-filter-panel {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: min(680px, 100%);
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(12px) saturate(1.2);
+    -webkit-backdrop-filter: blur(12px) saturate(1.2);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    border-radius: 0.75rem;
+    padding: 1rem;
+    box-shadow:
+        0 8px 32px rgba(15, 23, 42, 0.12),
+        0 2px 8px rgba(15, 23, 42, 0.08),
+        inset 0 1px 0 rgba(255, 255, 255, 0.6);
+    display: none;
+    z-index: 1050;
+    box-sizing: border-box;
+}
+
+.execution-filter-panel.show {
+    display: block;
+    animation: glassPanelFadeIn 0.3s ease-out;
+}
+
+@keyframes glassPanelFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px) scale(0.95);
+        backdrop-filter: blur(0px);
+        -webkit-backdrop-filter: blur(0px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+        backdrop-filter: blur(12px) saturate(1.2);
+        -webkit-backdrop-filter: blur(12px) saturate(1.2);
+    }
+}
+
+.filter-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid rgba(222, 226, 230, 0.6);
+    background: rgba(255, 255, 255, 0.1);
+    margin: -1rem -1rem 1rem -1rem;
+    padding: 0.75rem 1rem 0.5rem 1rem;
+    border-radius: 0.75rem 0.75rem 0 0;
+}
+
+.filter-panel-body {
+    max-height: 65vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+/* 磨砂玻璃面板內的表單元素樣式 */
+.execution-filter-panel .form-control,
+.execution-filter-panel .form-select {
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid rgba(222, 226, 230, 0.5);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    transition: all 0.2s ease;
+}
+
+.execution-filter-panel .form-control:focus,
+.execution-filter-panel .form-select:focus {
+    background: rgba(255, 255, 255, 0.9);
+    border-color: rgba(74, 144, 226, 0.6);
+    box-shadow: 0 0 0 0.2rem rgba(74, 144, 226, 0.15);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+}
+
+.execution-filter-panel .form-check-input {
+    background-color: rgba(255, 255, 255, 0.8);
+    border: 1px solid rgba(222, 226, 230, 0.6);
+}
+
+.execution-filter-panel .form-check-input:checked {
+    background-color: var(--tr-primary);
+    border-color: var(--tr-primary);
+}
+
+@media (max-width: 767.98px) {
+    .execution-filter-panel {
+        width: calc(100% - 1rem);
+        left: 0.5rem;
+        right: 0.5rem;
+        max-width: none;
+    }
 }
 
 .stat-item {
@@ -245,8 +520,8 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
 
 .test-run-items-table th:nth-child(4), 
 .test-run-items-table td:nth-child(4) { /* 優先級 */
-    width: 120px;
-    min-width: 120px;
+    width: 160px;
+    min-width: 160px;
     text-align: center;
 }
 
@@ -311,6 +586,7 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
     font-size: 0.85rem;
     padding: 0.4rem 0.8rem;
     font-weight: 500;
+    min-width: 150px;
 }
 
 /* 大尺寸測試結果 badge */
@@ -860,7 +1136,8 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
         <!-- 統計資訊區域已簡化 -->
 
         <!-- 統計資訊和批次操作一體化區域 -->
-        <div class="d-flex flex-wrap gap-3 align-items-center">
+        <div class="execution-stats-wrapper">
+            <div class="d-flex flex-wrap gap-3 align-items-stretch">
             <!-- 統計資訊 -->
             <div class="execution-stats flex-grow-1">
                 <div class="stat-item">
@@ -891,8 +1168,11 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                     <div class="stat-number text-warning" id="bug-tickets-count">0</div>
                     <div class="stat-label" data-i18n="testRun.bugTicketsCount">Bug Tickets</div>
                 </div>
+                <div class="stat-item filter-stat" id="executionFilterToggle" role="button" tabindex="0" aria-haspopup="true" aria-expanded="false" aria-controls="executionFilterPanel">
+                    <div class="stat-number" id="executionFilterMatched">0</div>
+                    <div class="stat-label" data-i18n="testRun.filtersApplied">已篩選</div>
+                </div>
             </div>
-            
             <!-- 批次操作工具區 -->
             <div id="batchOperationsToolbar" class="d-none d-flex align-items-center gap-2 ms-lg-auto mb-2 mb-lg-0">
                 <button type="button" class="btn btn-outline-secondary btn-sm" id="clearSelectionExecBtn" data-i18n-title="common.clearSelection" title="清除選取">
@@ -905,6 +1185,85 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                 <button type="button" class="btn btn-danger btn-sm" id="batchDeleteBtn">
                     <i class="fas fa-trash me-2"></i><span data-i18n="testRun.batchDelete">批次刪除</span>
                 </button>
+            </div>
+        </div>
+            <div id="executionFilterPanel" class="execution-filter-panel shadow-sm">
+            <div class="filter-panel-header">
+                <div class="d-flex align-items-center gap-2">
+                    <i class="fas fa-filter text-secondary"></i>
+                    <span data-i18n="common.filter">篩選</span>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <button type="button" class="btn btn-link btn-sm p-0" id="resetExecutionFiltersBtn">
+                        <i class="fas fa-undo-alt me-1"></i><span data-i18n="testRun.filterReset">清除篩選</span>
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary btn-sm" id="closeExecutionFiltersBtn" aria-label="Close">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+            </div>
+            <div class="filter-panel-body">
+                <div class="filter-section mb-3">
+                    <div class="filter-status-options mt-2">
+                        <label class="form-check form-check-inline">
+                            <input class="form-check-input execution-status-filter" type="checkbox" value="ALL" checked>
+                            <span class="form-check-label" data-i18n="testRun.statusFilter.all">All</span>
+                        </label>
+                        <label class="form-check form-check-inline">
+                            <input class="form-check-input execution-status-filter" type="checkbox" value="Passed" checked>
+                            <span class="form-check-label" data-i18n="testRun.passed">Passed</span>
+                        </label>
+                        <label class="form-check form-check-inline">
+                            <input class="form-check-input execution-status-filter" type="checkbox" value="Failed" checked>
+                            <span class="form-check-label" data-i18n="testRun.failed">Failed</span>
+                        </label>
+                        <label class="form-check form-check-inline">
+                            <input class="form-check-input execution-status-filter" type="checkbox" value="Retest" checked>
+                            <span class="form-check-label" data-i18n="testRun.retest">Retest</span>
+                        </label>
+                        <label class="form-check form-check-inline">
+                            <input class="form-check-input execution-status-filter" type="checkbox" value="Not Available" checked>
+                            <span class="form-check-label" data-i18n="testRun.notAvailable">Not Available</span>
+                        </label>
+                        <label class="form-check form-check-inline">
+                            <input class="form-check-input execution-status-filter" type="checkbox" value="Not Executed" checked>
+                            <span class="form-check-label" data-i18n="testRun.notExecuted">Not Executed</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="filter-section">
+                    <!-- 第一排：案例編號和標題 -->
+                    <div class="filter-search-controls mt-2">
+                        <div class="filter-field case-field">
+                            <label class="form-label form-label-sm" data-i18n="testRun.caseNumber">案例編號</label>
+                            <input type="text" class="form-control form-control-sm" id="filterCaseNumberInput" data-i18n-placeholder="testRun.filterCaseNumberPlaceholder" placeholder="輸入案例編號關鍵字">
+                        </div>
+                        <div class="filter-field title-field">
+                            <label class="form-label form-label-sm" data-i18n="form.title">標題</label>
+                            <input type="text" class="form-control form-control-sm" id="filterTitleInput" data-i18n-placeholder="testRun.filterTitlePlaceholder" placeholder="輸入標題關鍵字">
+                        </div>
+                    </div>
+
+                    <!-- 第二排：優先級和執行者 -->
+                    <div class="filter-search-controls filter-priority-assignee-row mt-2">
+                        <div class="filter-field priority-field">
+                            <label class="form-label form-label-sm" data-i18n="testRun.priority">優先級</label>
+                            <select class="form-select form-select-sm" id="filterPrioritySelect">
+                                <option value="ALL" data-i18n="testRun.filterPriorityAll">全部優先級</option>
+                                <option value="High" data-i18n="testRun.priorityHigh">High</option>
+                                <option value="Medium" data-i18n="testRun.priorityMedium">Medium</option>
+                                <option value="Low" data-i18n="testRun.priorityLow">Low</option>
+                            </select>
+                        </div>
+                        <div class="filter-field assignee-field">
+                            <label class="form-label form-label-sm" data-i18n="testRun.assignee">執行者</label>
+                            <input type="text" class="form-control form-control-sm" id="filterAssigneeInput" data-i18n-placeholder="testRun.filterAssigneePlaceholder" placeholder="搜尋並選擇執行者">
+                            <div id="filterAssigneeChips" class="filter-assignee-chips mt-2"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
             </div>
         </div>
     </div>
@@ -1386,9 +1745,459 @@ let currentConfigId = null;
 let currentTeamId = null; // 由 AppUtils 取得，無則退回 1
 let testRunConfig = null;
 let testRunItems = [];
+const EXECUTION_STATUS_VALUES = ['Passed', 'Failed', 'Retest', 'Not Available', 'Not Executed'];
+const executionFilterState = {
+    statuses: new Set(['ALL']),
+    searchNumber: '',
+    searchTitle: '',
+    priority: 'ALL',
+    assignees: []
+};
+let executionFilterInitialized = false;
+let executionFilterAssigneeSelector = null;
+let executionFilterPanelEl = null;
+let executionFilterToggleBtn = null;
+let executionFilterIsOpen = false;
+let executionFilterResizeHandler = null;
+let executionFilterI18nBound = false;
+let executionFilterOriginalSelectTexts = new Map();
+const debounceExecutionFilter = (fn, delay = 250) => {
+    let timer;
+    return (...args) => {
+        clearTimeout(timer);
+        timer = setTimeout(() => fn.apply(null, args), delay);
+    };
+};
 // ===== 排序狀態（TRE） =====
 let treSortField = 'number'; // number|title|priority|result|assignee|executed
 let treSortOrder = 'asc';
+
+function initializeExecutionFilters() {
+    if (executionFilterInitialized) return;
+
+    executionFilterPanelEl = document.getElementById('executionFilterPanel');
+    executionFilterToggleBtn = document.getElementById('executionFilterToggle');
+
+    if (!executionFilterPanelEl || !executionFilterToggleBtn) {
+        return;
+    }
+
+    executionFilterPanelEl.addEventListener('click', (event) => event.stopPropagation());
+    executionFilterToggleBtn.addEventListener('click', toggleExecutionFilterPanel);
+    executionFilterToggleBtn.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            toggleExecutionFilterPanel();
+        }
+    });
+    executionFilterToggleBtn.setAttribute('aria-expanded', 'false');
+
+    const closeBtn = document.getElementById('closeExecutionFiltersBtn');
+    if (closeBtn) {
+        closeBtn.addEventListener('click', () => closeExecutionFilterPanel());
+    }
+
+    executionFilterInitialized = true;
+    retranslateExecutionFilterUI();
+
+    if (!executionFilterI18nBound) {
+        executionFilterI18nBound = true;
+        try {
+            document.addEventListener('i18nReady', retranslateExecutionFilterUI);
+        } catch (_) {}
+        try {
+            document.addEventListener('languageChanged', retranslateExecutionFilterUI);
+        } catch (_) {}
+        if (window.i18n && typeof window.i18n.on === 'function') {
+            try { window.i18n.on('languageChanged', retranslateExecutionFilterUI); } catch (_) {}
+            try { window.i18n.on('loaded', retranslateExecutionFilterUI); } catch (_) {}
+        }
+    }
+
+    const statusCheckboxes = document.querySelectorAll('.execution-status-filter');
+    statusCheckboxes.forEach(cb => {
+        cb.addEventListener('change', handleExecutionStatusChange);
+    });
+    updateExecutionStatusFiltersFromUI();
+
+    const caseInput = document.getElementById('filterCaseNumberInput');
+    if (caseInput) {
+        caseInput.addEventListener('input', debounceExecutionFilter(event => {
+            const value = (event && event.target && event.target.value) ? event.target.value : '';
+            executionFilterState.searchNumber = value.trim().toLowerCase();
+            renderTestRunItems();
+        }));
+    }
+
+    const titleInput = document.getElementById('filterTitleInput');
+    if (titleInput) {
+        titleInput.addEventListener('input', debounceExecutionFilter(event => {
+            const value = (event && event.target && event.target.value) ? event.target.value : '';
+            executionFilterState.searchTitle = value.trim().toLowerCase();
+            renderTestRunItems();
+        }));
+    }
+
+    const prioritySelect = document.getElementById('filterPrioritySelect');
+    if (prioritySelect) {
+        if (!executionFilterOriginalSelectTexts.has(prioritySelect)) {
+            const defaultTexts = {};
+            Array.from(prioritySelect.options).forEach(option => {
+                defaultTexts[option.value || option.textContent] = option.textContent;
+            });
+            executionFilterOriginalSelectTexts.set(prioritySelect, defaultTexts);
+        }
+        prioritySelect.addEventListener('change', (event) => {
+            executionFilterState.priority = event.target.value || 'ALL';
+            renderTestRunItems();
+        });
+    }
+
+    const resetBtn = document.getElementById('resetExecutionFiltersBtn');
+    if (resetBtn) {
+        resetBtn.addEventListener('click', resetExecutionFilters);
+    }
+
+    const chipsContainer = document.getElementById('filterAssigneeChips');
+    if (chipsContainer) {
+        chipsContainer.addEventListener('click', (event) => {
+            const target = event.target.closest('[data-remove-index]');
+            if (!target) return;
+            const index = parseInt(target.dataset.removeIndex, 10);
+            if (!isNaN(index)) {
+                removeExecutionFilterAssignee(index);
+            }
+        });
+    }
+
+    const assigneeInput = document.getElementById('filterAssigneeInput');
+    if (assigneeInput && window.AssigneeSelector) {
+        if (executionFilterAssigneeSelector) {
+            try { executionFilterAssigneeSelector.destroy(); } catch (_) {}
+        }
+        executionFilterAssigneeSelector = new AssigneeSelector(assigneeInput, {
+            teamId: currentTeamId,
+            allowCustomValue: false,
+            placeholder: (window.i18n && typeof window.i18n.t === 'function')
+                ? window.i18n.t('testRun.filterAssigneePlaceholder')
+                : '搜尋並選擇執行者',
+            searchPlaceholder: (window.i18n && typeof window.i18n.t === 'function')
+                ? window.i18n.t('testRun.filterAssigneePlaceholder')
+                : '搜尋並選擇執行者',
+            onSelect: (contact) => {
+                addExecutionFilterAssignee(contact);
+                try { executionFilterAssigneeSelector.setValue(''); } catch (_) {}
+                executionFilterAssigneeSelector.selectedContact = null;
+                executionFilterAssigneeSelector.originalValue = '';
+            }
+        });
+        executionFilterAssigneeSelector.setValue('');
+        executionFilterAssigneeSelector.selectedContact = null;
+        executionFilterAssigneeSelector.originalValue = '';
+    }
+
+    renderExecutionFilterAssigneeChips();
+    updateExecutionFilterSummary(testRunItems.length, testRunItems.length);
+    applyExecutionFilterTranslations();
+}
+
+function toggleExecutionFilterPanel() {
+    if (executionFilterIsOpen) {
+        closeExecutionFilterPanel();
+    } else {
+        openExecutionFilterPanel();
+    }
+}
+
+function positionExecutionFilterPanel() {
+    if (!executionFilterPanelEl || !executionFilterToggleBtn) return;
+
+    const wrapper = executionFilterPanelEl.closest('.execution-stats-wrapper') || executionFilterPanelEl.parentElement;
+    const wrapperRect = wrapper ? wrapper.getBoundingClientRect() : null;
+    const toggleRect = executionFilterToggleBtn.getBoundingClientRect();
+    const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
+
+    const availableWidth = wrapperRect ? wrapperRect.width : viewportWidth;
+    const maxPanelWidth = 680;
+    const baseWidth = Math.min(maxPanelWidth, availableWidth);
+    const minWidth = Math.min(360, availableWidth);
+    const targetWidth = Math.max(minWidth, baseWidth);
+    const panelWidth = Math.min(viewportWidth, targetWidth);
+    executionFilterPanelEl.style.width = `${panelWidth}px`;
+    executionFilterPanelEl.style.right = '';
+
+    const referenceLeft = wrapperRect ? wrapperRect.left : 0;
+    const desiredLeft = (toggleRect.right - referenceLeft) + 12; // 與卡片保持一些間距
+    const maxLeft = Math.max(0, (wrapperRect ? wrapperRect.width : viewportWidth) - panelWidth);
+    const clampedLeft = Math.max(0, Math.min(desiredLeft, maxLeft));
+    executionFilterPanelEl.style.left = `${clampedLeft}px`;
+
+    const topOffset = wrapperRect ? toggleRect.top - wrapperRect.top : 0;
+    executionFilterPanelEl.style.top = `${topOffset}px`;
+}
+
+function openExecutionFilterPanel() {
+    if (!executionFilterPanelEl || executionFilterIsOpen) return;
+    retranslateExecutionFilterUI();
+    executionFilterPanelEl.classList.add('show');
+    positionExecutionFilterPanel();
+    executionFilterIsOpen = true;
+    if (executionFilterToggleBtn) {
+        executionFilterToggleBtn.classList.add('active');
+        executionFilterToggleBtn.setAttribute('aria-expanded', 'true');
+    }
+    document.addEventListener('click', handleExecutionFilterOutsideClick);
+    document.addEventListener('keydown', handleExecutionFilterKeydown);
+    executionFilterResizeHandler = () => positionExecutionFilterPanel();
+    window.addEventListener('resize', executionFilterResizeHandler, { passive: true });
+    setTimeout(() => {
+        try {
+            const firstInput = executionFilterPanelEl.querySelector('input, select, button');
+            if (firstInput) firstInput.focus({ preventScroll: true });
+        } catch (_) {}
+    }, 20);
+}
+
+function retranslateExecutionFilterUI() {
+    if (!window.i18n || typeof window.i18n.retranslate !== 'function') return;
+    try {
+        if (executionFilterPanelEl) {
+            window.i18n.retranslate(executionFilterPanelEl);
+        }
+    } catch (_) {}
+    try {
+        if (executionFilterToggleBtn) {
+            window.i18n.retranslate(executionFilterToggleBtn);
+        }
+    } catch (_) {}
+    applyExecutionFilterTranslations();
+}
+
+function applyExecutionFilterTranslations() {
+    const prioritySelect = document.getElementById('filterPrioritySelect');
+    if (!prioritySelect) return;
+
+    const originalTexts = executionFilterOriginalSelectTexts.get(prioritySelect) || {};
+    Array.from(prioritySelect.options).forEach(option => {
+        const key = option.getAttribute('data-i18n');
+        if (!key) return;
+        const translated = (window.i18n && typeof window.i18n.t === 'function')
+            ? window.i18n.t(key)
+            : null;
+        const isTranslated = translated && translated !== key;
+        const fallback = originalTexts[option.value || option.textContent] || option.textContent;
+        option.textContent = isTranslated ? translated : fallback;
+    });
+}
+
+function closeExecutionFilterPanel() {
+    if (!executionFilterPanelEl || !executionFilterIsOpen) return;
+    executionFilterPanelEl.classList.remove('show');
+    executionFilterIsOpen = false;
+    if (executionFilterToggleBtn) {
+        executionFilterToggleBtn.classList.remove('active');
+        executionFilterToggleBtn.setAttribute('aria-expanded', 'false');
+    }
+    document.removeEventListener('click', handleExecutionFilterOutsideClick);
+    document.removeEventListener('keydown', handleExecutionFilterKeydown);
+    if (executionFilterResizeHandler) {
+        window.removeEventListener('resize', executionFilterResizeHandler);
+        executionFilterResizeHandler = null;
+    }
+}
+
+function handleExecutionFilterOutsideClick(event) {
+    if (!executionFilterPanelEl || !executionFilterIsOpen) return;
+    const target = event.target;
+    if (executionFilterPanelEl.contains(target)) return;
+    if (executionFilterToggleBtn && executionFilterToggleBtn.contains(target)) return;
+    closeExecutionFilterPanel();
+}
+
+function handleExecutionFilterKeydown(event) {
+    if (event.key === 'Escape') {
+        closeExecutionFilterPanel();
+    }
+}
+
+function handleExecutionStatusChange(event) {
+    const value = event.target.value;
+    if (value === 'ALL') {
+        const shouldSelectAll = event.target.checked;
+        document.querySelectorAll('.execution-status-filter').forEach(cb => {
+            if (cb.value !== 'ALL') cb.checked = shouldSelectAll;
+        });
+    } else if (!event.target.checked) {
+        const allCheckbox = document.querySelector('.execution-status-filter[value="ALL"]');
+        if (allCheckbox) allCheckbox.checked = false;
+    }
+    updateExecutionStatusFiltersFromUI();
+    renderTestRunItems();
+}
+
+function updateExecutionStatusFiltersFromUI() {
+    const checkboxes = Array.from(document.querySelectorAll('.execution-status-filter'));
+    if (!checkboxes.length) return;
+    const allCheckbox = checkboxes.find(cb => cb.value === 'ALL');
+    const specificCheckboxes = checkboxes.filter(cb => cb.value !== 'ALL');
+    const selectedSpecific = specificCheckboxes.filter(cb => cb.checked).map(cb => cb.value);
+
+    if (!selectedSpecific.length) {
+        specificCheckboxes.forEach(cb => { cb.checked = true; });
+        if (allCheckbox) allCheckbox.checked = true;
+        executionFilterState.statuses = new Set(['ALL']);
+        return;
+    }
+
+    if (selectedSpecific.length === specificCheckboxes.length) {
+        if (allCheckbox) allCheckbox.checked = true;
+        executionFilterState.statuses = new Set(['ALL']);
+    } else {
+        if (allCheckbox) allCheckbox.checked = false;
+        executionFilterState.statuses = new Set(selectedSpecific);
+    }
+}
+
+function addExecutionFilterAssignee(contact) {
+    if (!contact) return;
+    const displayName = (contact.display_name || contact.name || '').trim();
+    if (!displayName) return;
+    const identifier = contact.id || displayName;
+    const normalized = displayName.toLowerCase();
+
+    const exists = executionFilterState.assignees.some(a => a.id === identifier || a.lowercase === normalized);
+    if (exists) return;
+
+    executionFilterState.assignees.push({
+        id: identifier,
+        name: displayName,
+        lowercase: normalized
+    });
+
+    renderExecutionFilterAssigneeChips();
+    renderTestRunItems();
+}
+
+function removeExecutionFilterAssignee(index) {
+    if (index < 0 || index >= executionFilterState.assignees.length) return;
+    executionFilterState.assignees.splice(index, 1);
+    renderExecutionFilterAssigneeChips();
+    renderTestRunItems();
+}
+
+function renderExecutionFilterAssigneeChips() {
+    const container = document.getElementById('filterAssigneeChips');
+    if (!container) return;
+
+    if (!executionFilterState.assignees.length) {
+        container.innerHTML = '';
+        if (executionFilterAssigneeSelector) {
+            executionFilterAssigneeSelector.setValue('');
+            executionFilterAssigneeSelector.selectedContact = null;
+            executionFilterAssigneeSelector.originalValue = '';
+        }
+        return;
+    }
+
+    const chipsHtml = executionFilterState.assignees
+        .map((assignee, index) => `
+            <span class="filter-chip" data-chip-index="${index}">
+                <span>${escapeHtml(assignee.name)}</span>
+                <button type="button" class="filter-chip-remove" data-remove-index="${index}" aria-label="Remove">
+                    <i class="fas fa-times"></i>
+                </button>
+            </span>
+        `)
+        .join('');
+    container.innerHTML = chipsHtml;
+}
+
+function resetExecutionFilters() {
+    const statusCheckboxes = document.querySelectorAll('.execution-status-filter');
+    statusCheckboxes.forEach(cb => { cb.checked = true; });
+    const allCheckbox = document.querySelector('.execution-status-filter[value="ALL"]');
+    if (allCheckbox) allCheckbox.checked = true;
+    updateExecutionStatusFiltersFromUI();
+    executionFilterState.statuses = new Set(['ALL']);
+
+    executionFilterState.searchNumber = '';
+    executionFilterState.searchTitle = '';
+    executionFilterState.priority = 'ALL';
+    executionFilterState.assignees = [];
+
+    const caseInput = document.getElementById('filterCaseNumberInput');
+    if (caseInput) caseInput.value = '';
+    const titleInput = document.getElementById('filterTitleInput');
+    if (titleInput) titleInput.value = '';
+    const prioritySelect = document.getElementById('filterPrioritySelect');
+    if (prioritySelect) prioritySelect.value = 'ALL';
+    if (executionFilterAssigneeSelector) {
+        executionFilterAssigneeSelector.setValue('');
+        executionFilterAssigneeSelector.selectedContact = null;
+        executionFilterAssigneeSelector.originalValue = '';
+    }
+
+    renderExecutionFilterAssigneeChips();
+    renderTestRunItems();
+}
+
+function updateExecutionFilterSummary(matched, total) {
+    const matchedEl = document.getElementById('executionFilterMatched');
+    if (matchedEl) {
+        matchedEl.textContent = String(matched);
+    }
+
+    const tooltipText = (window.i18n && typeof window.i18n.t === 'function')
+        ? window.i18n.t('testRun.filterMatchCount', { matched, total })
+        : `${matched} / ${total}`;
+
+    if (executionFilterToggleBtn) {
+        executionFilterToggleBtn.setAttribute('title', tooltipText);
+        executionFilterToggleBtn.setAttribute('aria-label', tooltipText);
+    }
+}
+
+function getExecutionItemStatus(item) {
+    const result = (item && item.test_result) ? String(item.test_result).trim() : '';
+    return result ? result : 'Not Executed';
+}
+
+function getFilteredTestRunItems() {
+    const numberKeyword = executionFilterState.searchNumber;
+    const titleKeyword = executionFilterState.searchTitle;
+    const priorityFilter = executionFilterState.priority;
+    const assigneeFilters = executionFilterState.assignees.map(a => a.lowercase);
+    const matchAllStatuses = executionFilterState.statuses.has('ALL');
+
+    return (testRunItems || []).filter(item => {
+        const itemStatus = getExecutionItemStatus(item);
+        if (!matchAllStatuses && !executionFilterState.statuses.has(itemStatus)) {
+            return false;
+        }
+
+        if (numberKeyword) {
+            const numberValue = (item.test_case_number || '').toLowerCase();
+            if (!numberValue.includes(numberKeyword)) return false;
+        }
+
+        if (titleKeyword) {
+            const titleValue = (item.title || '').toLowerCase();
+            if (!titleValue.includes(titleKeyword)) return false;
+        }
+
+        if (priorityFilter !== 'ALL') {
+            if ((item.priority || '') !== priorityFilter) return false;
+        }
+
+        if (assigneeFilters.length) {
+            const assigneeName = (item.assignee_name || (item.assignee && item.assignee.name) || '').toLowerCase();
+            if (!assigneeName) return false;
+            if (!assigneeFilters.some(name => assigneeName === name)) return false;
+        }
+
+        return true;
+    });
+}
 
 function setTreSort(field) {
     if (treSortField === field) {
@@ -1499,6 +2308,13 @@ document.addEventListener('DOMContentLoaded', function() {
     bindEventListeners();
     bindBugTicketEvents();
     setupQuickSearch_TR();
+
+    // 確保 i18n 系統準備好後立即套用翻譯
+    setTimeout(() => {
+        if (typeof applyExecutionFilterTranslations === 'function') {
+            applyExecutionFilterTranslations();
+        }
+    }, 100);
     // 左下角熱鍵提示
     if (!document.getElementById('quickSearchHint')) {
         const hint = document.createElement('div');
@@ -1513,11 +2329,19 @@ document.addEventListener('DOMContentLoaded', function() {
             const text = window.i18n ? (window.i18n.t('hotkeys.quickSearch') || 'Press / for quick search') : 'Press / for quick search';
             const badge = document.querySelector('#quickSearchHint .badge');
             if (badge) badge.textContent = text;
+            // 同時更新執行過濾器的翻譯
+            if (typeof applyExecutionFilterTranslations === 'function') {
+                applyExecutionFilterTranslations();
+            }
         });
         document.addEventListener('languageChanged', () => {
             const text = window.i18n ? (window.i18n.t('hotkeys.quickSearch') || 'Press / for quick search') : 'Press / for quick search';
             const badge = document.querySelector('#quickSearchHint .badge');
             if (badge) badge.textContent = text;
+            // 同時更新執行過濾器的翻譯
+            if (typeof applyExecutionFilterTranslations === 'function') {
+                applyExecutionFilterTranslations();
+            }
         });
     }
 });
@@ -1531,6 +2355,10 @@ function initializePage() {
                 // 更新目前使用中的 teamId，確保後續快取用正確的 key 寫入
                 currentTeamId = newTeam.id;
                 ensureTeamIdInUrl_TRE(newTeam.id);
+                if (executionFilterAssigneeSelector) {
+                    executionFilterAssigneeSelector.options.teamId = currentTeamId;
+                    try { executionFilterAssigneeSelector.refresh(); } catch (_) {}
+                }
             }
         });
     } catch (_) {}
@@ -1542,6 +2370,8 @@ function initializePage() {
     }
     // 確保網址列包含 team_id（不重新載入頁面）
     try { ensureTeamIdInUrl_TRE(currentTeamId); } catch (_) {}
+
+    initializeExecutionFilters();
 
     itemDetailModal = new bootstrap.Modal(document.getElementById('itemDetailModal'));
     confirmModal = new bootstrap.Modal(document.getElementById('confirmModal'));
@@ -1854,8 +2684,30 @@ function renderTestRunItems() {
     // 依排序設定排序並更新指示
     sortTestRunItems();
     updateTreSortIndicators();
-    
-    tbody.innerHTML = testRunItems.map((item, index) => {
+
+    const filteredItems = getFilteredTestRunItems();
+    updateExecutionFilterSummary(filteredItems.length, testRunItems.length);
+
+    const showCheckbox = shouldShowCheckbox(testRunConfig ? testRunConfig.status : 'draft');
+
+    if (!filteredItems.length) {
+        const colspan = showCheckbox ? 7 : 6;
+        tbody.innerHTML = `
+            <tr class="no-items">
+                <td colspan="${colspan}" class="text-center text-muted py-4" data-i18n="testRun.noItemsAfterFilter">
+                    目前沒有符合篩選條件的項目
+                </td>
+            </tr>
+        `;
+        if (window.i18n && window.i18n.isReady()) {
+            window.i18n.retranslate(tbody);
+        }
+        updateItemSelectionUI();
+        hideItemsLoading();
+        return;
+    }
+
+    tbody.innerHTML = filteredItems.map((item, index) => {
         return createItemRow(item, index + 1, canUpdate);
     }).join('');
     
@@ -1866,6 +2718,7 @@ function renderTestRunItems() {
     
     // 綁定事件處理器
     bindItemEventHandlers(canUpdate);
+    updateItemSelectionUI();
 
     // 嘗試處理從 URL 帶入的 tc（只執行一次）
     tryOpenTcFromUrlOnce();
