@@ -6127,6 +6127,38 @@ class TestResultsManager {
             .replace(/"/g, "&quot;")
             .replace(/'/g, "&#039;");
     }
+
+    // 清理 DOM 狀態方法
+    cleanup() {
+        // 清理檔案列表
+        if (this.resultsList) {
+            this.resultsList.innerHTML = '';
+        }
+
+        // 隱藏上傳區域
+        if (this.uploadArea) {
+            this.uploadArea.style.display = 'none';
+        }
+
+        // 顯示空狀態
+        this.showEmpty(true);
+        this.showLoading(false);
+        this.showProgress(false);
+
+        // 重置上傳按鈕狀態
+        if (this.uploadBtn && this.uploadBtn.querySelector('i')) {
+            this.uploadBtn.querySelector('i').className = 'fas fa-upload';
+        }
+
+        // 清理檔案輸入
+        if (this.fileInput) {
+            this.fileInput.value = '';
+        }
+
+        // 重置內部狀態
+        this.currentFiles = [];
+        this.isUploading = false;
+    }
 }
 
 // 全局變量
@@ -6134,16 +6166,18 @@ let currentTestResultsManager = null;
 
 // 初始化 Test Results 管理器 (with setTimeout fix)
 function initializeTestResults(testRunItemId, testCaseNumber, teamId, configId) {
+    // 清理前一個 manager 的 DOM 狀態
     if (currentTestResultsManager) {
+        currentTestResultsManager.cleanup();
         currentTestResultsManager = null;
     }
-    
+
     // 確保 DOM 元素存在後再初始化
     setTimeout(() => {
         currentTestResultsManager = new TestResultsManager(
-            testRunItemId, 
-            testCaseNumber, 
-            teamId, 
+            testRunItemId,
+            testCaseNumber,
+            teamId,
             configId
         );
     }, 100);

@@ -127,19 +127,34 @@ async def upload_testrun_attachment(
     db: Session = Depends(get_db)
 ):
     """
-    上傳檔案到測試執行記錄的附件欄位
-    
+    上傳檔案到測試執行記錄（使用本地檔案系統）
+
+    本函式已重構為使用本地檔案系統，與 test_run_items.py 的架構保持一致。
+    檔案會存儲在 attachments/test-runs/{team_id}/{config_id}/{item_id}/ 目錄下。
+
     Args:
         team_id: 團隊 ID
         config_id: 測試執行配置 ID
-        record_id: 測試執行記錄 ID
+        record_id: 測試執行記錄 ID（實際為 item_id）
         file: 上傳的檔案
         field_name: 附件欄位名稱（預設: "Execution Result"）
         append: 是否追加到現有附件（預設: True）
     """
-    lark_client, team = get_lark_client_for_team(team_id, db)
-    
-    # 取得測試執行配置
+    from app.models.database_models import TestRunItem as TestRunItemDB
+    import os
+    import re
+    import json
+    from pathlib import Path
+    from datetime import datetime
+
+    # 驗證團隊和配置存在
+    team = db.query(TeamDB).filter(TeamDB.id == team_id).first()
+    if not team:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"找不到團隊 ID {team_id}"
+        )
+
     config = db.query(TestRunConfigDB).filter(
         TestRunConfigDB.id == config_id,
         TestRunConfigDB.team_id == team_id
@@ -149,17 +164,39 @@ async def upload_testrun_attachment(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"找不到測試執行配置 ID {config_id}"
         )
-    
+
+    # record_id 實際對應 TestRunItem 的 ID
+    try:
+        item_id = int(record_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="無效的記錄 ID 格式"
+        )
+
+    # 驗證 Test Run Item 存在
+    test_run_item = db.query(TestRunItemDB).filter(
+        TestRunItemDB.id == item_id,
+        TestRunItemDB.config_id == config_id,
+        TestRunItemDB.team_id == team_id
+    ).first()
+
+    if not test_run_item:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"找不到測試執行項目 ID {item_id}"
+        )
+
     try:
         # 讀取檔案內容
         file_content = await file.read()
-        
+
         if not file_content:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="檔案內容不能為空"
             )
-        
+
         # 檢查檔案大小（限制 10MB）
         max_size = 10 * 1024 * 1024  # 10MB
         if len(file_content) > max_size:
@@ -167,35 +204,91 @@ async def upload_testrun_attachment(
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
                 detail=f"檔案大小超過限制 ({max_size // (1024*1024)}MB)"
             )
-        
-        # 上傳檔案並附加到記錄
-        success = lark_client.upload_and_attach_file(
-            table_id=config.table_id,
-            record_id=record_id,
-            field_name=field_name,
-            file_content=file_content,
-            file_name=file.filename or "unknown_file",
-            append=append
-        )
-        
-        if success:
-            return {
-                "success": True,
-                "message": f"檔案 '{file.filename}' 上傳成功",
-                "file_name": file.filename,
-                "file_size": len(file_content),
-                "append_mode": append,
-                "field_name": field_name
-            }
+
+        # 使用與 test_run_items.py 相同的檔案存儲邏輯
+        project_root = Path(__file__).resolve().parents[2]
+        base_dir = Path(settings.attachments.root_dir) if settings.attachments.root_dir else (project_root / "attachments")
+        target_dir = base_dir / "test-runs" / str(team_id) / str(config_id) / str(item_id)
+        target_dir.mkdir(parents=True, exist_ok=True)
+
+        # 解析現有的執行結果檔案
+        existing = []
+        if test_run_item.execution_results_json:
+            try:
+                data = json.loads(test_run_item.execution_results_json)
+                if isinstance(data, list):
+                    existing = data
+            except Exception:
+                existing = []
+
+        # 生成唯一檔名
+        ts = datetime.utcnow().strftime("%Y%m%d-%H%M%S-%f")
+        safe_re = re.compile(r"[^A-Za-z0-9_.\-]+")
+        orig_name = file.filename or "unnamed"
+        name_part = safe_re.sub("_", orig_name)
+        stored_name = f"{ts}-{name_part}"
+        stored_path = target_dir / stored_name
+
+        # 寫入檔案
+        with open(stored_path, "wb") as out:
+            out.write(file_content)
+
+        # 準備檔案元資料
+        item_meta = {
+            "name": orig_name,
+            "stored_name": stored_name,
+            "size": len(file_content),
+            "type": file.content_type or "application/octet-stream",
+            "relative_path": str(stored_path.relative_to(base_dir)),
+            "absolute_path": str(stored_path),
+            "uploaded_at": datetime.utcnow().isoformat(),
+        }
+
+        # 根據 append 參數決定是否追加
+        if append:
+            existing.append(item_meta)
         else:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="檔案上傳失敗"
-            )
-        
+            existing = [item_meta]
+
+        # 更新資料庫記錄
+        test_run_item.execution_results_json = json.dumps(existing, ensure_ascii=False)
+        test_run_item.result_files_uploaded = 1 if len(existing) > 0 else 0
+        test_run_item.result_files_count = len(existing)
+
+        # 更新上傳歷史
+        history = []
+        if test_run_item.upload_history_json:
+            try:
+                history = json.loads(test_run_item.upload_history_json) or []
+            except Exception:
+                history = []
+
+        history.append({
+            "uploaded": 1,
+            "at": datetime.utcnow().isoformat(),
+            "files": [item_meta],
+        })
+        test_run_item.upload_history_json = json.dumps(history, ensure_ascii=False)
+        test_run_item.updated_at = datetime.utcnow()
+
+        db.commit()
+
+        return {
+            "success": True,
+            "message": f"檔案 '{file.filename}' 上傳成功",
+            "file_name": file.filename,
+            "file_size": len(file_content),
+            "append_mode": append,
+            "field_name": field_name,
+            "file_token": stored_name,
+            "total_files": len(existing),
+            "base_url": "/attachments"
+        }
+
     except HTTPException:
         raise
     except Exception as e:
+        db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"檔案上傳過程發生錯誤: {str(e)}"
@@ -211,9 +304,9 @@ async def upload_testrun_screenshot(
     db: Session = Depends(get_db)
 ):
     """
-    上傳測試執行結果截圖
-    
-    專門用於上傳測試執行的截圖檔案，會自動附加到 "Execution Result" 欄位
+    上傳測試執行結果截圖（使用本地檔案系統）
+
+    專門用於上傳測試執行的截圖檔案，會自動附加到執行結果中
     """
     # 檢查檔案類型
     allowed_image_types = ["image/jpeg", "image/jpg", "image/png", "image/gif", "image/bmp"]
@@ -222,8 +315,8 @@ async def upload_testrun_screenshot(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"不支援的圖片格式，支援格式: {', '.join(allowed_image_types)}"
         )
-    
-    # 使用通用的測試執行附件上傳功能
+
+    # 使用修正後的測試執行附件上傳功能
     return await upload_testrun_attachment(
         team_id=team_id,
         config_id=config_id,
