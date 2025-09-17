@@ -933,7 +933,7 @@ html, body { height: 100%; overflow: hidden; }
                                     <input type="checkbox" class="form-check-input" id="batchCopySelectAllTop">
                                 </th>
                                 <th style="width:220px;" data-i18n="testCase.testCaseNumber">Test Case Number</th>
-                                <th data-i18n="form.title">標題</th>
+                                <th style="width: 220px;" data-i18n="form.title">標題</th>
                             </tr>
                         </thead>
                         <tbody id="batchCopyTableBody"></tbody>
@@ -992,7 +992,7 @@ html, body { height: 100%; overflow: hidden; }
 
 <!-- 大量新增 Test Case Modal (文字模式) -->
 <div class="modal fade" id="bulkCreateModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-scrollable modal-fullscreen-md-down">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable modal-fullscreen-md-down" style="max-width: 90vw;">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">
@@ -1056,7 +1056,7 @@ TC-1003,API 健康檢查,\"服務已啟動\",\"發送 GET /health\",\"回傳 200
 
 <!-- 預覽確認 Modal -->
 <div class="modal fade" id="bulkPreviewModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable" style="max-width: 90vw;">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">
@@ -1069,7 +1069,7 @@ TC-1003,API 健康檢查,\"服務已啟動\",\"發送 GET /health\",\"回傳 200
                 <p class="text-muted" id="bulkPreviewDesc">
                     <!-- 動態顯示數量 -->
                 </p>
-                <div class="table-responsive" style="max-height: 400px;">
+                <div class="table-responsive" style="max-height: 560px;">
                     <table class="table table-hover table-sm">
                         <thead class="table-light sticky-top">
                             <tr>
@@ -1079,6 +1079,7 @@ TC-1003,API 健康檢查,\"服務已啟動\",\"發送 GET /health\",\"回傳 200
                                 <th style="width: 180px;" data-i18n="testCase.preconditions">前置條件</th>
                                 <th style="width: 220px;" data-i18n="testCase.steps">測試步驟</th>
                                 <th style="width: 220px;" data-i18n="testCase.expectedResults">預期結果</th>
+                                <th style="width: 280px; min-width: 21ch;" data-i18n="testCase.tcgColumn">TCG 單號</th>
                                 <th style="width: 100px;" data-i18n="testCase.priority">優先級</th>
                             </tr>
                         </thead>
@@ -2969,6 +2970,63 @@ async function confirmBatchCopyRequest() {
 let bulkModalInstance = null;
 let bulkPreviewModalInstance = null;
 let bulkTextParsedItems = []; // 已解析的項目
+
+function normalizeBulkTcgNumbers(rawValue) {
+    const result = {
+        tcgNumbers: [],
+        invalidTokens: []
+    };
+
+    if (!rawValue) {
+        return result;
+    }
+
+    const parts = rawValue
+        .split('|')
+        .map(part => part.trim())
+        .filter(Boolean);
+
+    if (!parts.length) {
+        return result;
+    }
+
+    const seen = new Set();
+
+    for (const part of parts) {
+        const normalized = normalizeSingleTcg(part);
+        if (!normalized) {
+            result.invalidTokens.push(part);
+            continue;
+        }
+        if (!seen.has(normalized)) {
+            seen.add(normalized);
+            result.tcgNumbers.push(normalized);
+        }
+    }
+
+    return result;
+}
+
+function normalizeSingleTcg(input) {
+    if (!input) return null;
+
+    const upper = String(input).trim().toUpperCase().replace(/\s+/g, '');
+    if (!upper) return null;
+
+    let digits = '';
+
+    if (/^TCG-?\d+$/.test(upper)) {
+        digits = upper.replace(/^TCG-?/, '');
+    } else if (/^\d+$/.test(upper)) {
+        digits = upper;
+    } else {
+        return null;
+    }
+
+    if (!digits) return null;
+
+    return `TCG-${digits}`;
+}
 const BULK_PRIORITY_ALLOWED = ['High', 'Medium', 'Low'];
 
 function parseCsvLine(line) {
@@ -3045,7 +3103,7 @@ function resetBulkTextState() {
 /**
  * 解析文字輸入的 CSV 格式資料
  * @param {string} rawText - 原始文字輸入
- * @returns {object} - { items: [{line, case_no, title}], errors: [{line, code, message, raw}], duplicates: [{case_no, lines}] }
+ * @returns {object} - { items: [{line, case_no, title, tcg_numbers}], errors: [{line, code, message, raw}], duplicates: [{case_no, lines}] }
  */
 function parseBulkText(rawText) {
     const normalizedText = rawText.replace(/\r\n?/g, '\n');
@@ -3081,7 +3139,7 @@ function parseBulkText(rawText) {
             continue;
         }
 
-        if (columns.length > 6) {
+        if (columns.length > 7) {
             errors.push({
                 line,
                 code: 'too_many_columns',
@@ -3091,11 +3149,11 @@ function parseBulkText(rawText) {
             continue;
         }
 
-        while (columns.length < 6) {
+        while (columns.length < 7) {
             columns.push('');
         }
 
-        const [caseNoRaw, titleRaw, preconditionRaw, stepsRaw, expectedRaw, priorityRaw] = columns;
+        const [caseNoRaw, titleRaw, preconditionRaw, stepsRaw, expectedRaw, tcgRaw, priorityRaw] = columns;
 
         const case_no = (caseNoRaw || '').trim();
         const title = (titleRaw || '').trim();
@@ -3103,6 +3161,7 @@ function parseBulkText(rawText) {
         const steps = (stepsRaw || '').trim();
         const expected_result = (expectedRaw || '').trim();
         const normalizedPriority = normalizePriority(priorityRaw);
+        const tcgInput = (tcgRaw || '').trim();
 
         if (!case_no) {
             errors.push({
@@ -3134,6 +3193,20 @@ function parseBulkText(rawText) {
             continue;
         }
 
+        const { tcgNumbers, invalidTokens } = normalizeBulkTcgNumbers(tcgInput);
+        if (invalidTokens.length > 0) {
+            const invalidMessage = window.i18n ?
+                window.i18n.t('testCase.bulkText.invalidTcg', { numbers: invalidTokens.join(' | ') }) :
+                `TCG 單號格式錯誤：${invalidTokens.join(' | ')}`;
+            errors.push({
+                line,
+                code: 'invalid_tcg',
+                message: invalidMessage,
+                raw
+            });
+            continue;
+        }
+
         if (!caseNumbers.has(case_no)) {
             caseNumbers.set(case_no, []);
         }
@@ -3146,7 +3219,8 @@ function parseBulkText(rawText) {
             precondition,
             steps,
             expected_result,
-            priority: normalizedPriority || 'Medium'
+            priority: normalizedPriority || 'Medium',
+            tcg_numbers: tcgNumbers
         });
     }
 
@@ -3346,14 +3420,16 @@ function showBulkPreviewModal(items) {
         const precondition = item.precondition || '';
         const steps = item.steps || '';
         const expected = item.expected_result || '';
+        const tcgDisplay = (item.tcg_numbers || []).join(', ');
         return `
         <tr>
             <td>${index + 1}</td>
             <td><code>${escapeHtml(item.case_no)}</code></td>
-            <td title="${escapeHtml(title)}">${escapeHtml(truncateText(title))}</td>
+            <td style="width: 220px;" title="${escapeHtml(title)}">${escapeHtml(truncateText(title))}</td>
             <td title="${escapeHtml(precondition)}">${escapeHtml(truncateText(precondition))}</td>
             <td title="${escapeHtml(steps)}">${escapeHtml(truncateText(steps))}</td>
             <td title="${escapeHtml(expected)}">${escapeHtml(truncateText(expected))}</td>
+            <td style="width: 280px; min-width: 21ch;" title="${escapeHtml(tcgDisplay)}">${escapeHtml(truncateText(tcgDisplay, 120))}</td>
             <td>${escapeHtml(priorityLabel)}</td>
         </tr>
         `;
@@ -3406,7 +3482,8 @@ async function confirmBulkTextCreate() {
             precondition: item.precondition || null,
             steps: item.steps || null,
             expected_result: item.expected_result || null,
-            priority: item.priority || 'Medium'
+            priority: item.priority || 'Medium',
+            tcg_numbers: Array.isArray(item.tcg_numbers) ? item.tcg_numbers : []
         }));
         
         const response = await fetch(`/api/teams/${currentTeam.id}/testcases/bulk_create`, {

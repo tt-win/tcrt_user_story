@@ -13,6 +13,7 @@ from typing import List, Optional
 from pydantic import BaseModel
 from datetime import datetime
 import uuid
+import json
 
 from app.database import get_db
 from app.models.test_case import (
@@ -21,6 +22,7 @@ from app.models.test_case import (
 )
 from app.models.database_models import Team as TeamDB, TestCaseLocal as TestCaseLocalDB, SyncStatus
 from app.services.test_case_repo_service import TestCaseRepoService
+from app.services.tcg_converter import tcg_converter
 
 router = APIRouter(prefix="/teams/{team_id}/testcases", tags=["test-cases"])
 
@@ -32,6 +34,7 @@ class BulkTestCaseItem(BaseModel):
     precondition: Optional[str] = None
     steps: Optional[str] = None
     expected_result: Optional[str] = None
+    tcg_numbers: Optional[List[str]] = None
 
 
 class BulkCreateRequest(BaseModel):
@@ -43,6 +46,59 @@ class BulkCreateResponse(BaseModel):
     created_count: int = 0
     duplicates: List[str] = []
     errors: List[str] = []
+
+
+TCG_TABLE_ID_DEFAULT = "tblcK6eF3yQCuwwl"
+
+
+def normalize_tcg_number(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    upper = str(value).strip().upper().replace(' ', '')
+    if not upper:
+        return None
+
+    if upper.startswith('TCG'):
+        upper = upper[3:]
+        if upper.startswith('-'):
+            upper = upper[1:]
+
+    if upper.isdigit():
+        return f"TCG-{upper}"
+    return None
+
+
+def build_tcg_items(numbers: List[str]) -> List[dict]:
+    items: List[dict] = []
+    seen: set[str] = set()
+    table_id = getattr(tcg_converter, 'table_id', TCG_TABLE_ID_DEFAULT)
+
+    for raw in numbers:
+        normalized = normalize_tcg_number(raw)
+        if not normalized:
+            continue
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+
+        record_id: Optional[str] = None
+        try:
+            record_id = tcg_converter.get_record_id_by_tcg_number(normalized)
+        except Exception:
+            record_id = None
+
+        if not record_id:
+            record_id = f"tcg_{normalized.replace('-', '')}"
+
+        items.append({
+            "record_ids": [record_id],
+            "table_id": table_id,
+            "text": normalized,
+            "text_arr": [normalized],
+            "type": "text",
+        })
+
+    return items
 
 
 
@@ -1137,6 +1193,11 @@ async def bulk_create_test_cases(
                 sync_status=SyncStatus.PENDING,
                 local_version=1,
             )
+
+            tcg_items = build_tcg_items(it.tcg_numbers or [])
+            if tcg_items:
+                item.tcg_json = json.dumps(tcg_items, ensure_ascii=False)
+
             db.add(item)
             created_count += 1
         db.commit()

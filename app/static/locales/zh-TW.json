@@ -449,8 +449,8 @@
         },
         "bulkText": {
             "title": "批次建立測試案例（文字模式）",
-            "help": "每行一筆資料，格式為「單號,標題,前置條件,步驟,預期結果,優先級」。標題後的欄位可以留空；內容包含逗號時請使用引號包住。優先級支援 High / Medium / Low（預設 Medium）。",
-            "placeholder": "TC-1001,登入驗證,\"確認測試帳號存在\",\"1. 開啟登入頁; 2. 輸入正確帳密\",\"顯示主控台\",High\nTC-1002,錯誤密碼流程,,輸入錯誤密碼,顯示錯誤訊息,Low\nTC-1003,API 健康檢查,\"服務已啟動\",\"發送 GET /health\",\"回傳 200\",Medium",
+            "help": "每行一筆資料，格式為「單號,標題,前置條件,步驟,預期結果,TCG,優先級」。標題後的欄位可以留空；內容包含逗號時請使用引號包住。TCG 欄位可留空或輸入多個號碼，以 | 分隔；優先級支援 High / Medium / Low（預設 Medium）。",
+            "placeholder": "TC-1001,登入驗證,\"確認測試帳號存在\",\"1. 開啟登入頁; 2. 輸入正確帳密\",\"顯示主控台\",TCG-10001,High\nTC-1002,錯誤密碼流程,,輸入錯誤密碼,顯示錯誤訊息,,Low\nTC-1003,API 健康檢查,\"服務已啟動\",\"發送 GET /health\",\"回傳 200\",TCG-10003|TCG-10005,Medium",
             "parsing": "解析中...",
             "confirmTitle": "確認新增列表",
             "confirmDesc": "將新增以下 {count} 筆測試案例：",
@@ -462,6 +462,7 @@
             "notEnoughColumns": "每行至少需要包含單號與標題。",
             "tooManyColumns": "偵測到過多欄位，請確認格式是否正確。",
             "invalidPriority": "優先級僅支援 High、Medium、Low。",
+            "invalidTcg": "TCG 單號格式錯誤：{numbers}",
             "validationErrors": "{count} 行格式錯誤",
             "validationDuplicates": "{count} 筆重複單號",
             "sampleLink": "下載範例 CSV"
@@ -521,6 +522,7 @@
         "stepsPlaceholder": "詳細的測試執行步驟，支援 Markdown 格式\n\n範例：\n1. 開啟應用程式\n2. 點擊 **登入** 按鈕\n3. 輸入有效的使用者名稱和密碼\n4. 確認畫面顯示歡迎訊息",
         "subtitle": "建立、編輯和管理測試案例",
         "tcgClearHint": "留空可清除 TCG 關聯",
+        "tcgColumn": "TCG 單號",
         "tcgPlaceholder": "輸入搜尋 TCG...",
         "testCase": "測試案例",
         "unsavedChangesPrompt": "您有未儲存的變更，是否要先儲存？",

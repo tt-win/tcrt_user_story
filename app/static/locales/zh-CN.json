@@ -449,8 +449,8 @@
         },
         "bulkText": {
             "title": "批量创建测试案例（文字模式）",
-            "help": "每行一条数据，格式为“单号,标题,前置条件,步骤,预期结果,优先级”。标题后的字段可留空；内容包含逗号时请使用引号包住。优先级支持 High / Medium / Low（默认 Medium）。",
-            "placeholder": "TC-1001,登录验证,\"确认测试账号存在\",\"1. 打开登录页; 2. 输入正确账号密码\",\"显示主控台\",High\nTC-1002,错误密码流程,,输入错误密码,显示错误提示,Low\nTC-1003,API 健康检查,\"服务已启动\",\"发送 GET /health\",\"返回 200\",Medium",
+            "help": "每行一条记录，格式为“编号,标题,前置条件,步骤,预期结果,TCG,优先级”。标题后的字段可以留空；内容包含逗号时请使用引号包裹。TCG 字段可留空或使用 | 分隔多个单号；优先级支持 High / Medium / Low（默认 Medium）。",
+            "placeholder": "TC-1001,登录验证,\"确认测试账号存在\",\"1. 打开登录页; 2. 输入正确账号密码\",\"显示主控台\",TCG-10001,High\nTC-1002,错误密码流程,,输入错误密码,显示错误信息,,Low\nTC-1003,API 健康检查,\"服务已启动\",\"发送 GET /health\",\"返回 200\",TCG-10003|TCG-10005,Medium",
             "parsing": "解析中...",
             "confirmTitle": "确认新增列表",
             "confirmDesc": "将新增以下 {count} 条测试案例：",
@@ -462,6 +462,7 @@
             "notEnoughColumns": "每行至少需要包含单号与标题。",
             "tooManyColumns": "检测到过多栏位，请确认格式是否正确。",
             "invalidPriority": "优先级仅支持 High、Medium、Low。",
+            "invalidTcg": "TCG 单号格式错误：{numbers}",
             "validationErrors": "{count} 行格式错误",
             "validationDuplicates": "{count} 条重复的单号",
             "sampleLink": "下载范例 CSV"
@@ -521,6 +522,7 @@
         "stepsPlaceholder": "详细的测试执行步骤，支持 Markdown 格式\n\n示例：\n1. 打开应用程序\n2. 点击 **登录** 按钮\n3. 输入有效的用户名和密码\n4. 确认画面显示欢迎信息",
         "subtitle": "建立、编辑和管理测试案例",
         "tcgClearHint": "留空可清除 TCG 关联",
+        "tcgColumn": "TCG 单号",
         "tcgPlaceholder": "输入搜索 TCG...",
         "tcgSearchHint": "开始输入以搜索 TCG...",
         "tcgSearching": "搜索中...",
