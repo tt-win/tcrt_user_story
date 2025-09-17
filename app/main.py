@@ -23,6 +23,11 @@ except Exception as _e:
 # 配置日誌
 logging.basicConfig(level=logging.INFO)
 
+# 初始化版本服務
+from app.services.version_service import get_version_service
+version_service = get_version_service()
+logging.info(f"應用啟動，伺服器版本時間戳: {version_service.get_server_timestamp()}")
+
 # 設置靜態文件和模板路徑 - 必須在其他路由之前
 BASE_DIR = Path.cwd()
 STATIC_DIR = BASE_DIR / "app" / "static"

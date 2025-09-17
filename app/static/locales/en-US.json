@@ -949,5 +949,11 @@
     },
     "tp": {
         "searchPlaceholder": "Search TP tickets..."
+    },
+    "version": {
+        "updateAvailable": "Update Available",
+        "updating": "Updating...",
+        "checkFailed": "Version check failed",
+        "switchFailed": "Switch failed, please retry"
     }
 }

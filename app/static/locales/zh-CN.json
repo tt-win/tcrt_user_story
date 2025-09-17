@@ -949,5 +949,11 @@
     },
     "tp": {
         "searchPlaceholder": "搜索 TP 票号..."
+    },
+    "version": {
+        "updateAvailable": "有新版本",
+        "updating": "更新中...",
+        "checkFailed": "版本检查失败",
+        "switchFailed": "切换失败，请重试"
     }
 }

@@ -41,8 +41,13 @@
                 {% endblock %}
             </div>
             {% block page_actions %}
-            <div class="d-flex gap-2 py-2">
-                <!-- 工具按鈕區域 -->
+            <div class="d-flex gap-2 py-2 header-toolbar">
+                <!-- 全域工具按鈕區域 -->
+                <!-- 版本更新按鈕將動態插入到這裡 -->
+
+                <!-- 頁面特定工具按鈕 -->
+                {% block page_specific_actions %}{% endblock %}
+
             </div>
             {% endblock %}
         </div>
@@ -87,6 +92,7 @@
     <script src="/static/js/datetime-formatter.js"></script>
     <script src="/static/js/app.js"></script>
     <script src="/static/js/trcache.js"></script>
+    <script src="/static/js/version-checker.js"></script>
     {% block scripts %}{% endblock %}
 
     <!-- Language Switcher Script -->
