@@ -213,54 +213,83 @@ class LarkRecordManager:
         self.base_url = "https://open.larksuite.com/open-apis"
         self.timeout = 60
         self.max_page_size = 500
+        self.max_retries = 3
     
     def _make_request(self, method: str, url: str, **kwargs) -> Optional[Dict]:
-        """統一的 HTTP 請求方法"""
-        try:
-            token = self.auth_manager.get_tenant_access_token()
-            if not token:
-                self.logger.error("無法取得 Access Token")
-                return None
-            
-            headers = kwargs.pop('headers', {})
-            headers.update({
-                'Authorization': f'Bearer {token}',
-                'Content-Type': 'application/json'
-            })
-            
-            response = requests.request(
-                method, url, 
-                headers=headers, 
-                timeout=self.timeout,
-                **kwargs
-            )
-            
-            if response.status_code != 200:
-                self.logger.error(f"API 請求失敗，HTTP {response.status_code}: {response.text}")
-                return None
-            
-            result = response.json()
-            
-            if result.get('code') != 0:
-                error_msg = result.get('msg', 'Unknown error')
-                self.logger.error(f"API 請求失敗: {error_msg}")
-                # 如果是 FieldNameNotFound 錯誤，嘗試提取更多資訊
-                if 'FieldNameNotFound' in error_msg or 'field' in error_msg.lower():
-                    self.logger.error(f"API 完整回應: {result}")
-                    self.logger.error(f"請求 URL: {url}")
-                    self.logger.error(f"請求方法: {method}")
-                    if method in ['POST', 'PUT'] and 'json' in kwargs:
-                        request_data = kwargs.get('json', {})
-                        if 'fields' in request_data:
-                            self.logger.error(f"請求的欄位列表: {list(request_data['fields'].keys())}")
-                            self.logger.error(f"請求的欄位資料: {request_data['fields']}")
-                return None
-            
-            return result.get('data', {})
-            
-        except Exception as e:
-            self.logger.error(f"API 請求異常: {e}")
-            return None
+        """統一的 HTTP 請求方法（帶重試與退避機制）"""
+        last_exception: Optional[Exception] = None
+
+        for attempt in range(1, self.max_retries + 1):
+            try:
+                token = self.auth_manager.get_tenant_access_token()
+                if not token:
+                    self.logger.error("無法取得 Access Token")
+                    return None
+
+                headers = kwargs.pop('headers', {})
+                headers.update({
+                    'Authorization': f'Bearer {token}',
+                    'Content-Type': 'application/json'
+                })
+
+                response = requests.request(
+                    method,
+                    url,
+                    headers=headers,
+                    timeout=self.timeout,
+                    **kwargs
+                )
+
+                if response.status_code != 200:
+                    self.logger.error(f"API 請求失敗，HTTP {response.status_code}: {response.text}")
+                    if attempt < self.max_retries and response.status_code in {429, 500, 502, 503, 504}:
+                        sleep_seconds = min(2 ** attempt, 5)
+                        self.logger.info(f"將於 {sleep_seconds}s 後重試 ({attempt}/{self.max_retries})")
+                        time.sleep(sleep_seconds)
+                        continue
+                    return None
+
+                result = response.json()
+
+                if result.get('code') != 0:
+                    error_msg = result.get('msg', 'Unknown error')
+                    self.logger.error(f"API 請求失敗: {error_msg}")
+                    if 'FieldNameNotFound' in error_msg or 'field' in error_msg.lower():
+                        self.logger.error(f"API 完整回應: {result}")
+                        self.logger.error(f"請求 URL: {url}")
+                        self.logger.error(f"請求方法: {method}")
+                        if method in ['POST', 'PUT'] and 'json' in kwargs:
+                            request_data = kwargs.get('json', {})
+                            if 'fields' in request_data:
+                                self.logger.error(f"請求的欄位列表: {list(request_data['fields'].keys())}")
+                                self.logger.error(f"請求的欄位資料: {request_data['fields']}")
+                    if attempt < self.max_retries:
+                        sleep_seconds = min(2 ** attempt, 5)
+                        self.logger.info(f"將於 {sleep_seconds}s 後重試 ({attempt}/{self.max_retries})")
+                        time.sleep(sleep_seconds)
+                        continue
+                    return None
+
+                return result.get('data', {})
+
+            except (requests.exceptions.SSLError, requests.exceptions.ConnectionError, requests.exceptions.Timeout) as exc:
+                last_exception = exc
+                if attempt < self.max_retries:
+                    sleep_seconds = min(2 ** attempt, 5)
+                    self.logger.warning(
+                        f"API 請求異常 (第 {attempt}/{self.max_retries} 次): {exc}，{sleep_seconds}s 後重試"
+                    )
+                    time.sleep(sleep_seconds)
+                    continue
+                self.logger.error(f"API 請求異常: {exc}")
+            except Exception as exc:
+                last_exception = exc
+                self.logger.error(f"API 請求異常: {exc}")
+                break
+
+        if last_exception:
+            self.logger.error(f"API 請求最終失敗: {last_exception}")
+        return None
     
     def get_all_records(self, obj_token: str, table_id: str) -> List[Dict]:
         """

@@ -316,7 +316,10 @@ class TestCaseSyncService:
                 stats.errors.append(f"回填 lark_record_id 失敗: {e}")
 
         # 並行批次更新
-        ok_update, updated_count, update_errors = self.lark.parallel_update_records(self.table_id, updates) if updates else (True, 0, [])
+        ok_update, updated_count, update_errors = (
+            self.lark.parallel_update_records(self.table_id, updates, max_workers=5)
+            if updates else (True, 0, [])
+        )
         if not ok_update:
             stats.errors.extend(update_errors)
         else:
