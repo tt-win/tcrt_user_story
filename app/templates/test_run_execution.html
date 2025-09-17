@@ -1166,7 +1166,7 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                         <div id="testCaseDetailScrollable" style="display:none;"></div>
                     </div>
                     <!-- 右側：結果歷程 Timeline（1/4 寬） -->
-                    <aside id="testCaseDetailTimelinePane" style="flex: 0 0 28%; max-width: 28%; border-left: 1px solid var(--tr-border-light); padding-left: 10px; display: none; min-width: 240px;">
+                    <aside id="testCaseDetailTimelinePane" style="flex: 0 0 28%; max-width: 28%; border-left: 1px solid var(--tr-border-light); padding-left: 10px; display: none; min-width: 240px; height: 80vh; flex-direction: column;">
                         <div class="d-flex align-items-center justify-content-between mb-2">
                             <h6 class="mb-0"><i class="fas fa-history me-2"></i><span data-i18n="testRun.resultHistory">結果歷程</span></h6>
                             <button type="button" id="refreshTimelineBtn" class="btn btn-link text-secondary p-0" title="刷新" style="border: none; background: none;"><i class="fas fa-sync-alt"></i></button>
@@ -1177,10 +1177,10 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                         <div id="timelineEmpty" class="text-muted small" style="display:none;">
                             <i class="fas fa-info-circle me-1"></i><span data-i18n="testRun.noHistory">尚無歷程</span>
                         </div>
-                        <div id="timelineList" style="height: 180px; overflow-y: auto;"></div>
-                        
+                        <div id="timelineList" style="height: 150px; overflow-y: auto; flex-shrink: 0;"></div>
+
                         <!-- Bug Tickets 區域 -->
-                        <div class="mt-3 border-top pt-3">
+                        <div class="mt-3 border-top pt-3" style="flex-shrink: 0;">
                             <div class="d-flex align-items-center justify-content-between mb-2">
                                 <h6 class="mb-0"><i class="fas fa-bug me-2"></i><span data-i18n="testRun.bugTickets">Bug Tickets</span></h6>
                                 <button type="button" id="addBugTicketBtn" class="btn btn-link text-secondary p-0" data-i18n-title="testRun.addBugTicket" style="border: none; background: none;">
@@ -1193,11 +1193,11 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                             <div id="bugTicketsEmpty" class="text-muted small" style="display:none;">
                                 <i class="fas fa-info-circle me-1"></i><span data-i18n="testRun.noBugTickets">尚無關聯的 Bug Tickets</span>
                             </div>
-                            <div id="bugTicketsList" style="height: 120px; overflow-y: auto;"></div>
+                            <div id="bugTicketsList" style="height: 100px; overflow-y: auto;"></div>
                         </div>
-                        
+
                         <!-- Test Results 區域 -->
-                        <div class="mt-3 border-top pt-3">
+                        <div class="mt-3 border-top pt-3" style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
                             <div class="d-flex align-items-center justify-content-between mb-2">
                                 <h6 class="mb-0">
                                     <i class="fas fa-file-alt me-2"></i>
@@ -1216,10 +1216,10 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                             <div id="testResultsEmpty" class="text-muted small mb-2" style="display:none;">
                                 <i class="fas fa-info-circle me-1"></i><span data-i18n="testRun.noTestResults">尚無測試結果檔案</span>
                             </div>
-                            <div id="testResultsList" style="height: 180px; overflow-y: auto;"></div>
-                            
+                            <div id="testResultsList" style="flex: 1; overflow-y: auto; min-height: 200px;"></div>
+
                             <!-- 上傳狀態區（覆蓋檔案列表區域） -->
-                            <div id="testResultsUploadArea" class="test-results-upload-zone mb-2" style="display:none; height: 180px;">
+                            <div id="testResultsUploadArea" class="test-results-upload-zone mb-2" style="display:none; flex: 1; min-height: 200px;">
                                 <div class="upload-dropzone border-2 border-dashed border-secondary rounded p-3 text-center">
                                     <div id="uploadDropText">
                                         <i class="fas fa-cloud-upload-alt fa-2x text-muted mb-2"></i>
@@ -3275,8 +3275,8 @@ async function renderResultHistoryTimeline(testCase) {
         const list = document.getElementById('timelineList');
         if (!pane || !list) return;
 
-        // 顯示區塊與載入中
-        pane.style.display = 'block';
+        // 顯示區塊與載入中 (使用 flex 佈局)
+        pane.style.display = 'flex';
         loading.style.display = 'block';
         empty.style.display = 'none';
         list.innerHTML = '';
@@ -5948,9 +5948,14 @@ class TestResultsManager {
                 AppUtils.showSuccess(i18n.t('testRun.uploadSuccess'));
                 this.loadExistingResults();
                 this.toggleUploadArea();
-                
+
                 if (window.updateStatistics) {
                     window.updateStatistics();
+                }
+
+                // 更新 Test Case 詳細資料中的附件數量顯示
+                if (window.updateTestCaseAttachmentDisplay) {
+                    window.updateTestCaseAttachmentDisplay(this.testRunItemId);
                 }
             } else {
                 const errorMsg = result.error_messages?.join('; ') || i18n.t('testRun.uploadFailed');
@@ -6082,9 +6087,14 @@ class TestResultsManager {
                 setTimeout(() => {
                     this.loadExistingResults();
                 }, 1000);
-                
+
                 if (window.updateStatistics) {
                     window.updateStatistics();
+                }
+
+                // 更新 Test Case 詳細資料中的附件數量顯示
+                if (window.updateTestCaseAttachmentDisplay) {
+                    window.updateTestCaseAttachmentDisplay(this.testRunItemId);
                 }
             } else {
                 const errorMsg = result.error || i18n.t('testRun.fileDeleteFailed');
@@ -6135,9 +6145,12 @@ class TestResultsManager {
             this.resultsList.innerHTML = '';
         }
 
-        // 隱藏上傳區域
+        // 重置上傳區域和檔案列表的顯示狀態
         if (this.uploadArea) {
             this.uploadArea.style.display = 'none';
+        }
+        if (this.filesList) {
+            this.filesList.style.display = 'block';
         }
 
         // 顯示空狀態
@@ -6153,6 +6166,11 @@ class TestResultsManager {
         // 清理檔案輸入
         if (this.fileInput) {
             this.fileInput.value = '';
+        }
+
+        // 重置拖放區域狀態
+        if (this.dropzone) {
+            this.dropzone.classList.remove('drag-over');
         }
 
         // 重置內部狀態
@@ -6181,6 +6199,84 @@ function initializeTestResults(testRunItemId, testCaseNumber, teamId, configId) 
             configId
         );
     }, 100);
+}
+
+// 更新 Test Case 詳細資料中的附件數量顯示
+window.updateTestCaseAttachmentDisplay = function(testRunItemId) {
+    try {
+        // 找到對應的 Test Run Item
+        const item = testRunItems.find(i => i.id === testRunItemId);
+        if (!item) return;
+
+        // 獲取最新的附件數量
+        fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/${testRunItemId}/test-results`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success && Array.isArray(data.files)) {
+                    const attachmentCount = data.files.length;
+
+                    // 更新本地數據
+                    item.execution_result_count = attachmentCount;
+                    if (item.execution_results) {
+                        item.execution_results = data.files;
+                    }
+
+                    // 如果當前顯示的是這個 test case，更新 UI
+                    const modal = document.getElementById('testCaseDetailModal');
+                    if (modal && modal.style.display !== 'none') {
+                        const testCaseNumber = item.test_case_number;
+                        const currentTestCase = getCurrentDisplayedTestCase();
+
+                        if (currentTestCase && currentTestCase.test_case_number === testCaseNumber) {
+                            // 重新生成基本資訊區域 HTML
+                            const basicInfoContainer = document.querySelector('#testCaseDetailScrollable').previousElementSibling;
+                            if (basicInfoContainer) {
+                                const testCase = currentTestCase;
+                                basicInfoContainer.innerHTML = generateBasicInfoHtml(testCase);
+
+                                // 重新應用 i18n 翻譯
+                                if (window.i18n && window.i18n.isReady()) {
+                                    window.i18n.retranslate(basicInfoContainer);
+                                }
+
+                                // 重新初始化 assignee selector
+                                if (window.initAssigneeSelectors && currentTeamId) {
+                                    initAssigneeSelectors(currentTeamId);
+                                }
+                            }
+
+                            // 同時更新可捲動內容區域
+                            const scrollableContainer = document.getElementById('testCaseDetailScrollable');
+                            if (scrollableContainer) {
+                                scrollableContainer.innerHTML = generateScrollableContentHtml(testCase);
+                                if (window.i18n && window.i18n.isReady()) {
+                                    window.i18n.retranslate(scrollableContainer);
+                                }
+                            }
+                        }
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('更新附件數量顯示時發生錯誤:', error);
+            });
+    } catch (error) {
+        console.error('updateTestCaseAttachmentDisplay 錯誤:', error);
+    }
+};
+
+// 獲取當前顯示的 Test Case
+function getCurrentDisplayedTestCase() {
+    const modal = document.getElementById('testCaseDetailModal');
+    if (!modal || modal.style.display === 'none') return null;
+
+    // 從模態框的某個元素中獲取當前顯示的 test case number
+    const testCaseElement = modal.querySelector('[data-test-case-id]');
+    if (testCaseElement) {
+        const testCaseNumber = testCaseElement.getAttribute('data-test-case-id');
+        return getCurrentTestCaseByNumber ? getCurrentTestCaseByNumber(testCaseNumber) : null;
+    }
+    return null;
 }
 
 </script>
