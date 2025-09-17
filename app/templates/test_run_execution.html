@@ -3078,9 +3078,10 @@ function displayTestCaseDetail(testCase) {
 function generateBasicInfoHtml(testCase) {
     // 以 Test Run Item 的 assignee_name 為準（本地 DB），而非 Test Case 的 assignee
     const itemForCase = (testRunItems || []).find(i => i.test_case_number === testCase.test_case_number);
+    const attachments = itemForCase && Array.isArray(itemForCase.execution_results) ? itemForCase.execution_results : (testCase.attachments || []);
     const assigneeName = itemForCase ? (itemForCase.assignee_name || '') : '';
     const tcgText = testCase.tcg && testCase.tcg.length > 0 ? testCase.tcg.map(t => t.text || t).join(', ') : '';
-    const attachmentCount = testCase.attachments ? testCase.attachments.length : 0;
+    const attachmentCount = attachments.length;
 
     return `
         <!-- Basic Info 區域 -->
@@ -3147,7 +3148,17 @@ function generateBasicInfoHtml(testCase) {
 
 // 生成可捲動內容區域的 HTML
 function generateScrollableContentHtml(testCase) {
-    const attachmentCount = testCase.attachments ? testCase.attachments.length : 0;
+    const attachments = (() => {
+        if (Array.isArray(testCase.attachments) && testCase.attachments.length) {
+            return testCase.attachments;
+        }
+        const item = getItemByTestCaseNumber(testCase.test_case_number);
+        if (item && Array.isArray(item.execution_results) && item.execution_results.length) {
+            return item.execution_results;
+        }
+        return [];
+    })();
+    const attachmentCount = attachments.length;
 
     return `
         <div class="card scrollable-content-card">
@@ -3181,7 +3192,7 @@ function generateScrollableContentHtml(testCase) {
                     <h6 class="mb-2" data-i18n="testRun.attachments">附件</h6>
                     <div class="section-block section-attachments">
                     <div class="d-flex flex-wrap align-items-center">
-                        ${testCase.attachments.map((attachment, index) => {
+                        ${attachments.map((attachment, index) => {
                             const fileExtension = attachment.name ? attachment.name.split('.').pop().toLowerCase() : '';
                             let iconClass = 'fas fa-file';
                             let iconColor = 'text-secondary';
