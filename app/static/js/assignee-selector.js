@@ -39,6 +39,9 @@ class AssigneeSelector {
         this.debounceTimer = null;
         this.cache = new Map(); // API 結果快取（元件級）
         this.originalValue = ''; // 存儲原來的值
+        this._handleI18nUpdate = null;
+        this._i18nReadyPoller = null;
+        this._i18nReadyPollerTimeout = null;
         
         // 全域共享快取（頁面生命週期內）+ in-flight 去重
         if (!window.AssigneeSelectorCache) {
@@ -143,24 +146,43 @@ class AssigneeSelector {
 
     setupI18nWatch() {
         try {
-            const maybeUpdate = () => this.updateLocalizedTexts();
+            this._handleI18nUpdate = () => this.updateLocalizedTexts();
+
             // 立即嘗試一次（處理 i18n 已就緒的情況）
-            maybeUpdate();
+            this._handleI18nUpdate();
+
+            // 監聽全域語言事件（i18n 系統透過 document.dispatchEvent 發出）
+            document.addEventListener('languageChanged', this._handleI18nUpdate);
+            document.addEventListener('i18nReady', this._handleI18nUpdate);
+
             // 若提供 isReady，等就緒後更新一次
             if (window.i18n && typeof window.i18n.isReady === 'function' && !window.i18n.isReady()) {
-                const timer = setInterval(() => {
+                this._i18nReadyPoller = setInterval(() => {
                     if (window.i18n.isReady && window.i18n.isReady()) {
-                        clearInterval(timer);
-                        maybeUpdate();
+                        clearInterval(this._i18nReadyPoller);
+                        this._i18nReadyPoller = null;
+                        if (this._i18nReadyPollerTimeout) {
+                            clearTimeout(this._i18nReadyPollerTimeout);
+                            this._i18nReadyPollerTimeout = null;
+                        }
+                        this._handleI18nUpdate();
                     }
                 }, 200);
+
                 // 最多等 5 秒
-                setTimeout(() => clearInterval(timer), 5000);
+                this._i18nReadyPollerTimeout = setTimeout(() => {
+                    if (this._i18nReadyPoller) {
+                        clearInterval(this._i18nReadyPoller);
+                        this._i18nReadyPoller = null;
+                    }
+                    this._i18nReadyPollerTimeout = null;
+                }, 5000);
             }
-            // 若有事件 API，監聽語言切換
+
+            // 若有事件 API（例如支援 on/off），仍嘗試註冊，作為兼容方案
             if (window.i18n && typeof window.i18n.on === 'function') {
-                try { window.i18n.on('languageChanged', maybeUpdate); } catch (_) {}
-                try { window.i18n.on('loaded', maybeUpdate); } catch (_) {}
+                try { window.i18n.on('languageChanged', this._handleI18nUpdate); } catch (_) {}
+                try { window.i18n.on('loaded', this._handleI18nUpdate); } catch (_) {}
             }
         } catch (_) {}
     }
@@ -689,10 +711,23 @@ class AssigneeSelector {
         if (this.debounceTimer) {
             clearTimeout(this.debounceTimer);
         }
-        
+
+        if (this._handleI18nUpdate) {
+            document.removeEventListener('languageChanged', this._handleI18nUpdate);
+            document.removeEventListener('i18nReady', this._handleI18nUpdate);
+        }
+        if (this._i18nReadyPoller) {
+            clearInterval(this._i18nReadyPoller);
+            this._i18nReadyPoller = null;
+        }
+        if (this._i18nReadyPollerTimeout) {
+            clearTimeout(this._i18nReadyPollerTimeout);
+            this._i18nReadyPollerTimeout = null;
+        }
+
         this.originalInput.style.display = '';
         this.container.remove();
-        
+
         // 移除樣式（如果沒有其他實例）
         const selectors = document.querySelectorAll('.assignee-selector-container');
         if (selectors.length === 0) {
