@@ -969,6 +969,10 @@ html, body { height: 100%; overflow: hidden; }
                                 <th style="width: 40px;">#</th>
                                 <th style="width: 200px;" data-i18n="testCase.testCaseNumber">測試案例編號</th>
                                 <th data-i18n="form.title">標題</th>
+                                <th style="width: 180px;" data-i18n="testCase.preconditions">前置條件</th>
+                                <th style="width: 220px;" data-i18n="testCase.steps">測試步驟</th>
+                                <th style="width: 220px;" data-i18n="testCase.expectedResults">預期結果</th>
+                                <th style="width: 100px;" data-i18n="testCase.priority">優先級</th>
                             </tr>
                         </thead>
                         <tbody id="batchCopyPreviewList"></tbody>
@@ -1002,6 +1006,9 @@ html, body { height: 100%; overflow: hidden; }
                 <div class="alert alert-info" role="alert">
                     <i class="fas fa-info-circle me-2"></i>
                     <span data-i18n="testCase.bulkText.help">每行一筆資料，格式為「單號,標題」。單號可不連續。</span>
+                    <div class="mt-2">
+                        <a href="/static/samples/bulk_test_cases_sample.csv" class="link-dark text-decoration-underline" download data-i18n="testCase.bulkText.sampleLink">下載範例 CSV</a>
+                    </div>
                 </div>
                 
                 <!-- 文字輸入區 -->
@@ -1011,9 +1018,9 @@ html, body { height: 100%; overflow: hidden; }
                         class="form-control font-monospace" 
                         rows="14" 
                         data-i18n-placeholder="testCase.bulkText.placeholder"
-                        placeholder="TCG-93178.010.020,登入功能測試
-TCG-93178.010.030,使用者權限驗證
-TCG-93178.010.060,資料同步測試"></textarea>
+                        placeholder="TC-1001,登入驗證,\"確認測試帳號存在\",\"1. 開啟登入頁; 2. 輸入正確帳密\",\"顯示主控台\",High
+TC-1002,錯誤密碼流程,,輸入錯誤密碼,顯示錯誤訊息,Low
+TC-1003,API 健康檢查,\"服務已啟動\",\"發送 GET /health\",\"回傳 200\",Medium"></textarea>
                 </div>
                 
                 <!-- 狀態列 -->
@@ -1069,6 +1076,10 @@ TCG-93178.010.060,資料同步測試"></textarea>
                                 <th style="width: 40px;">#</th>
                                 <th style="width: 200px;" data-i18n="testCase.testCaseNumber">測試案例編號</th>
                                 <th data-i18n="form.title">標題</th>
+                                <th style="width: 180px;" data-i18n="testCase.preconditions">前置條件</th>
+                                <th style="width: 220px;" data-i18n="testCase.steps">測試步驟</th>
+                                <th style="width: 220px;" data-i18n="testCase.expectedResults">預期結果</th>
+                                <th style="width: 100px;" data-i18n="testCase.priority">優先級</th>
                             </tr>
                         </thead>
                         <tbody id="bulkPreviewList">
@@ -2958,6 +2969,46 @@ async function confirmBatchCopyRequest() {
 let bulkModalInstance = null;
 let bulkPreviewModalInstance = null;
 let bulkTextParsedItems = []; // 已解析的項目
+const BULK_PRIORITY_ALLOWED = ['High', 'Medium', 'Low'];
+
+function parseCsvLine(line) {
+    const result = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        if (char === '"') {
+            if (inQuotes && line[i + 1] === '"') {
+                current += '"';
+                i++; // skip escaped quote
+            } else {
+                inQuotes = !inQuotes;
+            }
+        } else if (char === ',' && !inQuotes) {
+            result.push(current.trim());
+            current = '';
+        } else {
+            current += char;
+        }
+    }
+    result.push(current.trim());
+    return result;
+}
+
+function normalizePriority(value) {
+    if (!value) return 'Medium';
+    const trimmed = value.trim();
+    if (!trimmed) return 'Medium';
+    const matched = BULK_PRIORITY_ALLOWED.find(opt => opt.toLowerCase() === trimmed.toLowerCase());
+    return matched || null;
+}
+
+function truncateText(text, maxLength = 80) {
+    if (!text) return '';
+    const value = text.trim();
+    if (value.length <= maxLength) return value;
+    return `${value.slice(0, maxLength - 1)}…`;
+}
 
 function openBulkCreateModal() {
     resetBulkTextState();
@@ -2997,44 +3048,62 @@ function resetBulkTextState() {
  * @returns {object} - { items: [{line, case_no, title}], errors: [{line, code, message, raw}], duplicates: [{case_no, lines}] }
  */
 function parseBulkText(rawText) {
-    const lines = rawText.split('\n').map((line, index) => ({ 
-        line: index + 1, 
-        raw: line, 
-        content: line.trim() 
+    const normalizedText = rawText.replace(/\r\n?/g, '\n');
+    const lines = normalizedText.split('\n').map((line, index) => ({
+        line: index + 1,
+        raw: line,
+        content: line.trim()
     }));
-    
+
     const items = [];
     const errors = [];
     const caseNumbers = new Map(); // case_no -> [line numbers]
-    
+
     for (const lineObj of lines) {
         const { line, raw, content } = lineObj;
-        
-        // 空行跳過
+
         if (!content) continue;
-        
-        // 移除 (Conflict) 標記
+
         let cleanContent = content;
-        if (content.startsWith('(Conflict)')) {
-            cleanContent = content.replace(/^\(Conflict\)\s*/, '').trim();
+        if (cleanContent.startsWith('(Conflict)')) {
+            cleanContent = cleanContent.replace(/^\(Conflict\)\s*/, '').trim();
         }
-        
-        // 找到第一個逗號
-        const commaIndex = cleanContent.indexOf(',');
-        if (commaIndex === -1) {
+
+        const columns = parseCsvLine(cleanContent);
+
+        if (columns.length < 2) {
             errors.push({
                 line,
-                code: 'missing_comma',
-                message: window.i18n ? window.i18n.t('testCase.bulkText.noCommaInTitle') : '缺少逗號分隔',
+                code: 'not_enough_columns',
+                message: window.i18n ? window.i18n.t('testCase.bulkText.notEnoughColumns') : '格式需包含至少「單號,標題」兩欄',
                 raw
             });
             continue;
         }
-        
-        const case_no = cleanContent.substring(0, commaIndex).trim();
-        const title = cleanContent.substring(commaIndex + 1).trim();
-        
-        // 檢查單號是否為空
+
+        if (columns.length > 6) {
+            errors.push({
+                line,
+                code: 'too_many_columns',
+                message: window.i18n ? window.i18n.t('testCase.bulkText.tooManyColumns') : '欄位數量過多，請確認格式',
+                raw
+            });
+            continue;
+        }
+
+        while (columns.length < 6) {
+            columns.push('');
+        }
+
+        const [caseNoRaw, titleRaw, preconditionRaw, stepsRaw, expectedRaw, priorityRaw] = columns;
+
+        const case_no = (caseNoRaw || '').trim();
+        const title = (titleRaw || '').trim();
+        const precondition = (preconditionRaw || '').trim();
+        const steps = (stepsRaw || '').trim();
+        const expected_result = (expectedRaw || '').trim();
+        const normalizedPriority = normalizePriority(priorityRaw);
+
         if (!case_no) {
             errors.push({
                 line,
@@ -3044,8 +3113,7 @@ function parseBulkText(rawText) {
             });
             continue;
         }
-        
-        // 檢查標題是否為空
+
         if (!title) {
             errors.push({
                 line,
@@ -3055,35 +3123,40 @@ function parseBulkText(rawText) {
             });
             continue;
         }
-        
-        // 檢查標題是否含有逗號
-        if (title.includes(',')) {
+
+        if (priorityRaw && !normalizedPriority) {
             errors.push({
                 line,
-                code: 'comma_in_title',
-                message: window.i18n ? window.i18n.t('testCase.bulkText.noCommaInTitle') : '標題不可包含逗號',
+                code: 'invalid_priority',
+                message: window.i18n ? window.i18n.t('testCase.bulkText.invalidPriority') : '優先級僅支援 High / Medium / Low',
                 raw
             });
             continue;
         }
-        
-        // 記錄重複單號
+
         if (!caseNumbers.has(case_no)) {
             caseNumbers.set(case_no, []);
         }
         caseNumbers.get(case_no).push(line);
-        
-        items.push({ line, case_no, title });
+
+        items.push({
+            line,
+            case_no,
+            title,
+            precondition,
+            steps,
+            expected_result,
+            priority: normalizedPriority || 'Medium'
+        });
     }
-    
-    // 找出重複的單號
+
     const duplicates = [];
-    for (const [case_no, lines] of caseNumbers) {
-        if (lines.length > 1) {
-            duplicates.push({ case_no, lines });
+    for (const [case_no, occupiedLines] of caseNumbers) {
+        if (occupiedLines.length > 1) {
+            duplicates.push({ case_no, lines: occupiedLines });
         }
     }
-    
+
     return { items, errors, duplicates };
 }
 
@@ -3112,16 +3185,23 @@ function updateBulkTextStatus(parseResult) {
     if (errors.length > 0 || duplicates.length > 0) {
         const messages = [];
         if (errors.length > 0) {
-            messages.push(`${errors.length} 行格式錯誤`);
+            const errorMsg = window.i18n ?
+                window.i18n.t('testCase.bulkText.validationErrors', { count: errors.length }) :
+                `${errors.length} 行格式錯誤`;
+            messages.push(errorMsg);
         }
         if (duplicates.length > 0) {
             const dupCount = duplicates.reduce((sum, d) => sum + d.lines.length, 0);
-            messages.push(`${dupCount} 筆重複單號`);
+            const dupMsg = window.i18n ?
+                window.i18n.t('testCase.bulkText.validationDuplicates', { count: dupCount }) :
+                `${dupCount} 筆重複單號`;
+            messages.push(dupMsg);
         }
-        validationEl.textContent = messages.join('，');
+        validationEl.textContent = messages.join(' / ');
         validationEl.className = 'text-danger small';
     } else {
         validationEl.textContent = '';
+        validationEl.className = 'text-muted small';
     }
 }
 
@@ -3144,10 +3224,9 @@ function annotateConflictsInEditor(conflicts) {
     const annotatedLines = cleanedLines.map(line => {
         if (!line.trim()) return line;
         
-        const commaIndex = line.indexOf(',');
-        if (commaIndex === -1) return line;
-        
-        const case_no = line.substring(0, commaIndex).trim();
+        const columns = parseCsvLine(line.trim());
+        if (!columns.length) return line;
+        const case_no = (columns[0] || '').trim();
         if (conflictNumbers.has(case_no)) {
             return `(Conflict) ${line}`;
         }
@@ -3166,7 +3245,8 @@ async function startBulkTextCreate() {
     
     const rawText = textarea.value.trim();
     if (!rawText) {
-        AppUtils.showWarning('請輸入資料');
+        const emptyMessage = window.i18n ? window.i18n.t('testCase.bulkTextToast.emptyInput') : '請輸入資料';
+        AppUtils.showWarning(emptyMessage);
         return;
     }
     
@@ -3195,7 +3275,8 @@ async function startBulkTextCreate() {
     }
     
     if (items.length === 0) {
-        AppUtils.showWarning('沒有有效的資料可以建立');
+        const noItemsMessage = window.i18n ? window.i18n.t('testCase.bulkTextToast.noValidItems') : '沒有有效的資料可以建立';
+        AppUtils.showWarning(noItemsMessage);
         return;
     }
     
@@ -3258,13 +3339,25 @@ function showBulkPreviewModal(items) {
     descEl.textContent = descText;
     
     // 渲染列表
-    listEl.innerHTML = items.map((item, index) => `
+    listEl.innerHTML = items.map((item, index) => {
+        const prioritySuffix = (item.priority || 'Medium');
+        const priorityLabel = window.i18n ? window.i18n.t(`testCase.priority${prioritySuffix}`, {}, prioritySuffix) : prioritySuffix;
+        const title = item.title || '';
+        const precondition = item.precondition || '';
+        const steps = item.steps || '';
+        const expected = item.expected_result || '';
+        return `
         <tr>
             <td>${index + 1}</td>
             <td><code>${escapeHtml(item.case_no)}</code></td>
-            <td>${escapeHtml(item.title)}</td>
+            <td title="${escapeHtml(title)}">${escapeHtml(truncateText(title))}</td>
+            <td title="${escapeHtml(precondition)}">${escapeHtml(truncateText(precondition))}</td>
+            <td title="${escapeHtml(steps)}">${escapeHtml(truncateText(steps))}</td>
+            <td title="${escapeHtml(expected)}">${escapeHtml(truncateText(expected))}</td>
+            <td>${escapeHtml(priorityLabel)}</td>
         </tr>
-    `).join('');
+        `;
+    }).join('');
     
     // 顯示 Modal
     if (!bulkPreviewModalInstance) {
@@ -3310,7 +3403,10 @@ async function confirmBulkTextCreate() {
         const items = bulkTextParsedItems.map(item => ({
             test_case_number: item.case_no,
             title: item.title,
-            priority: 'Medium'
+            precondition: item.precondition || null,
+            steps: item.steps || null,
+            expected_result: item.expected_result || null,
+            priority: item.priority || 'Medium'
         }));
         
         const response = await fetch(`/api/teams/${currentTeam.id}/testcases/bulk_create`, {

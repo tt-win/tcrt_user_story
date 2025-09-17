@@ -449,8 +449,8 @@
         },
         "bulkText": {
             "title": "批次建立測試案例（文字模式）",
-            "help": "每行一筆資料，格式為「單號,標題」。單號可不連續。",
-            "placeholder": "TCG-93178.010.020,登入功能測試\nTCG-93178.010.030,使用者權限驗證\nTCG-93178.010.060,資料同步測試",
+            "help": "每行一筆資料，格式為「單號,標題,前置條件,步驟,預期結果,優先級」。標題後的欄位可以留空；內容包含逗號時請使用引號包住。優先級支援 High / Medium / Low（預設 Medium）。",
+            "placeholder": "TC-1001,登入驗證,\"確認測試帳號存在\",\"1. 開啟登入頁; 2. 輸入正確帳密\",\"顯示主控台\",High\nTC-1002,錯誤密碼流程,,輸入錯誤密碼,顯示錯誤訊息,Low\nTC-1003,API 健康檢查,\"服務已啟動\",\"發送 GET /health\",\"回傳 200\",Medium",
             "parsing": "解析中...",
             "confirmTitle": "確認新增列表",
             "confirmDesc": "將新增以下 {count} 筆測試案例：",
@@ -458,14 +458,22 @@
             "statusText": "已解析 {valid} 筆，{errors} 筆錯誤",
             "emptyCaseNo": "單號不可為空",
             "emptyTitle": "標題不可為空",
-            "missingComma": "缺少逗號分隔"
+            "missingComma": "缺少逗號分隔",
+            "notEnoughColumns": "每行至少需要包含單號與標題。",
+            "tooManyColumns": "偵測到過多欄位，請確認格式是否正確。",
+            "invalidPriority": "優先級僅支援 High、Medium、Low。",
+            "validationErrors": "{count} 行格式錯誤",
+            "validationDuplicates": "{count} 筆重複單號",
+            "sampleLink": "下載範例 CSV"
         },
         "bulkTextToast": {
             "conflict": "發現單號衝突，共 {count} 筆。已在文字前加上「(Conflict)」標記。",
             "invalid": "有 {count} 行格式錯誤，請修正後再試。",
             "success": "已成功新增 {count} 筆測試案例",
             "duplicateInInput": "輸入中有重複的單號",
-            "networkError": "網路錯誤，請稍後再試"
+            "networkError": "網路錯誤，請稍後再試",
+            "emptyInput": "請輸入資料。",
+            "noValidItems": "沒有有效的資料可建立。"
         },
         "bulkTextButton": {
             "save": "儲存",
