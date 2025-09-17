@@ -236,6 +236,7 @@ class TestRunItemResponse(BaseModel):
     execution_duration: Optional[int]
     attachment_count: int = Field(0)
     execution_result_count: int = Field(0)
+    execution_results: List[Dict[str, Any]] = Field(default_factory=list)
     created_at: Optional[datetime]
     updated_at: Optional[datetime]
 
@@ -295,6 +296,34 @@ def _len_json_list(text: Optional[str]) -> int:
         return 0
 
 
+def _parse_execution_results(text: Optional[str]) -> List[Dict[str, Any]]:
+    if not text:
+        return []
+    try:
+        data = json.loads(text)
+        if not isinstance(data, list):
+            return []
+        results = []
+        base_url = "/attachments"
+        for entry in data:
+            if not isinstance(entry, dict):
+                continue
+            name = entry.get('name') or entry.get('stored_name') or 'file'
+            rel = entry.get('relative_path') or ''
+            stored = entry.get('stored_name') or name
+            results.append({
+                "file_token": stored,
+                "name": name,
+                "size": int(entry.get('size') or 0),
+                "url": f"{base_url}/{rel}" if rel else None,
+                "uploaded_at": entry.get('uploaded_at'),
+                "content_type": entry.get('type') or 'application/octet-stream',
+            })
+        return results
+    except Exception:
+        return []
+
+
 def _verify_team_and_config(team_id: int, config_id: int, db: Session) -> TestRunConfigDB:
     team = db.query(TeamDB).filter(TeamDB.id == team_id).first()
     if not team:
@@ -325,6 +354,8 @@ def _get_lark_client_for_team(team_id: int, db: Session):
 
 
 def _db_to_response(item: TestRunItemDB) -> TestRunItemResponse:
+    exec_results = _parse_execution_results(item.execution_results_json)
+
     return TestRunItemResponse(
         id=item.id,
         team_id=item.team_id,
@@ -343,7 +374,8 @@ def _db_to_response(item: TestRunItemDB) -> TestRunItemResponse:
         executed_at=item.executed_at,
         execution_duration=item.execution_duration,
         attachment_count=_len_json_list(item.attachments_json),
-        execution_result_count=_len_json_list(item.execution_results_json),
+        execution_result_count=len(exec_results),
+        execution_results=exec_results,
         created_at=item.created_at,
         updated_at=item.updated_at,
     )

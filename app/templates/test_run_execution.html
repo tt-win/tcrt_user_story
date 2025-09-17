@@ -3078,10 +3078,17 @@ function displayTestCaseDetail(testCase) {
 function generateBasicInfoHtml(testCase) {
     // 以 Test Run Item 的 assignee_name 為準（本地 DB），而非 Test Case 的 assignee
     const itemForCase = (testRunItems || []).find(i => i.test_case_number === testCase.test_case_number);
-    const attachments = itemForCase && Array.isArray(itemForCase.execution_results) ? itemForCase.execution_results : (testCase.attachments || []);
     const assigneeName = itemForCase ? (itemForCase.assignee_name || '') : '';
     const tcgText = testCase.tcg && testCase.tcg.length > 0 ? testCase.tcg.map(t => t.text || t).join(', ') : '';
-    const attachmentCount = attachments.length;
+    const attachmentCount = (() => {
+        if (itemForCase && Array.isArray(itemForCase.execution_results)) {
+            return itemForCase.execution_results.length;
+        }
+        if (itemForCase && typeof itemForCase.execution_result_count === 'number') {
+            return itemForCase.execution_result_count;
+        }
+        return 0;
+    })();
 
     return `
         <!-- Basic Info 區域 -->
@@ -3148,16 +3155,8 @@ function generateBasicInfoHtml(testCase) {
 
 // 生成可捲動內容區域的 HTML
 function generateScrollableContentHtml(testCase) {
-    const attachments = (() => {
-        if (Array.isArray(testCase.attachments) && testCase.attachments.length) {
-            return testCase.attachments;
-        }
-        const item = getItemByTestCaseNumber(testCase.test_case_number);
-        if (item && Array.isArray(item.execution_results) && item.execution_results.length) {
-            return item.execution_results;
-        }
-        return [];
-    })();
+    const item = getItemByTestCaseNumber(testCase.test_case_number);
+    const attachments = (item && Array.isArray(item.execution_results)) ? item.execution_results : [];
     const attachmentCount = attachments.length;
 
     return `
