@@ -5882,8 +5882,9 @@ class TestResultsManager {
     }
     
     toggleUploadArea() {
-        const isVisible = this.uploadArea.style.display !== 'none';
-        
+        // 修正判斷邏輯：只有明確設定為 'block' 才算可見
+        const isVisible = this.uploadArea.style.display === 'block';
+
         if (!isVisible) {
             // 顯示上傳區域，隱藏檔案列表
             this.filesList.style.display = 'none';
@@ -5953,9 +5954,9 @@ class TestResultsManager {
                     window.updateStatistics();
                 }
 
-                // 更新 Test Case 詳細資料中的附件數量顯示
-                if (window.updateTestCaseAttachmentDisplay) {
-                    window.updateTestCaseAttachmentDisplay(this.testRunItemId);
+                // 重新載入 Test Run Items 數據以更新附件相關資訊
+                if (window.loadTestRunItemsWithoutLoading) {
+                    window.loadTestRunItemsWithoutLoading();
                 }
             } else {
                 const errorMsg = result.error_messages?.join('; ') || i18n.t('testRun.uploadFailed');
@@ -6092,9 +6093,9 @@ class TestResultsManager {
                     window.updateStatistics();
                 }
 
-                // 更新 Test Case 詳細資料中的附件數量顯示
-                if (window.updateTestCaseAttachmentDisplay) {
-                    window.updateTestCaseAttachmentDisplay(this.testRunItemId);
+                // 重新載入 Test Run Items 數據以更新附件相關資訊
+                if (window.loadTestRunItemsWithoutLoading) {
+                    window.loadTestRunItemsWithoutLoading();
                 }
             } else {
                 const errorMsg = result.error || i18n.t('testRun.fileDeleteFailed');
@@ -6201,83 +6202,6 @@ function initializeTestResults(testRunItemId, testCaseNumber, teamId, configId) 
     }, 100);
 }
 
-// 更新 Test Case 詳細資料中的附件數量顯示
-window.updateTestCaseAttachmentDisplay = function(testRunItemId) {
-    try {
-        // 找到對應的 Test Run Item
-        const item = testRunItems.find(i => i.id === testRunItemId);
-        if (!item) return;
-
-        // 獲取最新的附件數量
-        fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/${testRunItemId}/test-results`)
-            .then(response => response.json())
-            .then(data => {
-                if (data.success && Array.isArray(data.files)) {
-                    const attachmentCount = data.files.length;
-
-                    // 更新本地數據
-                    item.execution_result_count = attachmentCount;
-                    if (item.execution_results) {
-                        item.execution_results = data.files;
-                    }
-
-                    // 如果當前顯示的是這個 test case，更新 UI
-                    const modal = document.getElementById('testCaseDetailModal');
-                    if (modal && modal.style.display !== 'none') {
-                        const testCaseNumber = item.test_case_number;
-                        const currentTestCase = getCurrentDisplayedTestCase();
-
-                        if (currentTestCase && currentTestCase.test_case_number === testCaseNumber) {
-                            // 重新生成基本資訊區域 HTML
-                            const basicInfoContainer = document.querySelector('#testCaseDetailScrollable').previousElementSibling;
-                            if (basicInfoContainer) {
-                                const testCase = currentTestCase;
-                                basicInfoContainer.innerHTML = generateBasicInfoHtml(testCase);
-
-                                // 重新應用 i18n 翻譯
-                                if (window.i18n && window.i18n.isReady()) {
-                                    window.i18n.retranslate(basicInfoContainer);
-                                }
-
-                                // 重新初始化 assignee selector
-                                if (window.initAssigneeSelectors && currentTeamId) {
-                                    initAssigneeSelectors(currentTeamId);
-                                }
-                            }
-
-                            // 同時更新可捲動內容區域
-                            const scrollableContainer = document.getElementById('testCaseDetailScrollable');
-                            if (scrollableContainer) {
-                                scrollableContainer.innerHTML = generateScrollableContentHtml(testCase);
-                                if (window.i18n && window.i18n.isReady()) {
-                                    window.i18n.retranslate(scrollableContainer);
-                                }
-                            }
-                        }
-                    }
-                }
-            })
-            .catch(error => {
-                console.error('更新附件數量顯示時發生錯誤:', error);
-            });
-    } catch (error) {
-        console.error('updateTestCaseAttachmentDisplay 錯誤:', error);
-    }
-};
-
-// 獲取當前顯示的 Test Case
-function getCurrentDisplayedTestCase() {
-    const modal = document.getElementById('testCaseDetailModal');
-    if (!modal || modal.style.display === 'none') return null;
-
-    // 從模態框的某個元素中獲取當前顯示的 test case number
-    const testCaseElement = modal.querySelector('[data-test-case-id]');
-    if (testCaseElement) {
-        const testCaseNumber = testCaseElement.getAttribute('data-test-case-id');
-        return getCurrentTestCaseByNumber ? getCurrentTestCaseByNumber(testCaseNumber) : null;
-    }
-    return null;
-}
 
 </script>
 </style>
