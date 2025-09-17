@@ -449,8 +449,8 @@
         },
         "bulkText": {
             "title": "Bulk Create Test Cases (Text Mode)",
-            "help": "One entry per line in the format \"CaseNo,Title\". Case numbers need not be sequential.",
-            "placeholder": "TCG-93178.010.020,Login Function Test\nTCG-93178.010.030,User Permission Validation\nTCG-93178.010.060,Data Sync Test",
+            "help": "One entry per line in the format \"CaseNo,Title,Precondition,Steps,Expected Result,Priority\". Fields after Title are optional. Use quotes if values contain commas. Priority supports High / Medium / Low (defaults to Medium).",
+            "placeholder": "TC-1001,User Login,\"Ensure test account exists\",\"1. Open login page; 2. Enter valid credentials\",\"Dashboard is displayed\",High\nTC-1002,Invalid Password,,Enter wrong password,Error message displayed,Low\nTC-1003,API Health Check,\"Service is running\",\"Send GET /health\",\"Service returns 200\",Medium",
             "parsing": "Parsing...",
             "confirmTitle": "Confirm Items to Create",
             "confirmDesc": "The following {count} test cases will be created:",
@@ -458,14 +458,22 @@
             "statusText": "Parsed {valid} items, {errors} errors",
             "emptyCaseNo": "Case number cannot be empty",
             "emptyTitle": "Title cannot be empty",
-            "missingComma": "Missing comma separator"
+            "missingComma": "Missing comma separator",
+            "notEnoughColumns": "Each line must include at least case number and title.",
+            "tooManyColumns": "Too many columns detected. Expected up to 6 values.",
+            "invalidPriority": "Priority must be High, Medium, or Low.",
+            "validationErrors": "{count} lines have format errors",
+            "validationDuplicates": "{count} duplicate case numbers",
+            "sampleLink": "Download sample CSV"
         },
         "bulkTextToast": {
             "conflict": "Conflicting case numbers found: {count}. Marked with \"(Conflict)\" in the editor.",
             "invalid": "There are {count} invalid lines. Please fix them and try again.",
             "success": "Successfully created {count} test cases",
             "duplicateInInput": "Duplicate case numbers in input",
-            "networkError": "Network error, please try again later"
+            "networkError": "Network error, please try again later",
+            "emptyInput": "Please enter at least one line.",
+            "noValidItems": "No valid rows to create."
         },
         "bulkTextButton": {
             "save": "Save",

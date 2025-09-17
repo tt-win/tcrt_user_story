@@ -29,6 +29,9 @@ class BulkTestCaseItem(BaseModel):
     test_case_number: str
     title: Optional[str] = None
     priority: Optional[str] = "Medium"
+    precondition: Optional[str] = None
+    steps: Optional[str] = None
+    expected_result: Optional[str] = None
 
 
 class BulkCreateRequest(BaseModel):
@@ -1101,17 +1104,20 @@ async def bulk_create_test_cases(
             return BulkCreateResponse(success=False, created_count=0, duplicates=duplicates)
 
         created_count = 0
+        priority_map = {"high": "High", "medium": "Medium", "low": "Low"}
         for it in request.items:
             title = it.title.strip() if it.title else f"{it.test_case_number} 的測試案例"
+            priority_key = (it.priority or 'Medium').strip().lower()
+            priority_value = priority_map.get(priority_key, 'Medium')
             item = TestCaseLocalDB(
                 team_id=team_id,
                 lark_record_id=None,
                 test_case_number=it.test_case_number,
                 title=title,
-                priority=it.priority or 'Medium',
-                precondition=None,
-                steps=None,
-                expected_result=None,
+                priority=priority_value,
+                precondition=it.precondition.strip() if it.precondition else None,
+                steps=it.steps.strip() if it.steps else None,
+                expected_result=it.expected_result.strip() if it.expected_result else None,
                 test_result=None,
                 sync_status=SyncStatus.PENDING,
                 local_version=1,
