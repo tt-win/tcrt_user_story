@@ -616,6 +616,7 @@ function showHiddenModeModal() {
         };
 
         function buildLineChart(ctx, grouped, key) {
+            const defaultLegendClick = Chart.defaults.plugins?.legend?.onClick;
             const hiddenSet = chartHiddenState[key] || new Set();
             const datasets = grouped.datasets.map(ds => ({
                 ...ds,
@@ -633,16 +634,19 @@ function showHiddenModeModal() {
                             position: 'bottom',
                             labels: { usePointStyle: true },
                             onClick: (evt, legendItem, legend) => {
-                                const chart = legend.chart;
-                                const index = legendItem.datasetIndex;
-                                const meta = chart.getDatasetMeta(index);
-                                chart.toggleDataVisibility(index);
-                                chart.update();
+                                if (typeof defaultLegendClick === 'function') {
+                                    defaultLegendClick.call(this, evt, legendItem, legend);
+                                } else {
+                                    const chart = legend.chart;
+                                    chart.toggleDataVisibility(legendItem.datasetIndex);
+                                    chart.update();
+                                }
 
+                                const chart = legend.chart;
+                                const meta = chart.getDatasetMeta(legendItem.datasetIndex);
                                 const label = legendItem.text;
                                 const state = chartHiddenState[key] || new Set();
-                                const nowHidden = chart.getDatasetMeta(index).hidden;
-                                if (nowHidden) {
+                                if (meta && meta.hidden) {
                                     state.add(label);
                                 } else {
                                     state.delete(label);
