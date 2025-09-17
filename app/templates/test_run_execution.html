@@ -2918,26 +2918,25 @@ async function showTestCaseDetailModal(testCaseNumber) {
 
 async function loadTestCaseDetail(testCaseNumber) {
     try {
-        // 先嘗試從跨頁快取讀取
         const cached = await getCachedTestCase(testCaseNumber);
         const isFresh = cached && (Date.now() - cached.ts) < TEST_CASE_CACHE_TTL_MS;
-        const hasAttachments = cached && cached.data && Array.isArray(cached.data.attachments) && cached.data.attachments.length > 0;
-        // 若快取新鮮且包含附件，直接使用；否則改以 by-number 拉完整詳情（含附件）
-        if (isFresh && hasAttachments) {
-            displayTestCaseDetail(cached.data);
-            return;
-        }
-
-        // 先以 by-number 取得完整詳情（含附件）
-        const resp = await fetch(`/api/teams/${currentTeamId}/testcases/by-number/${encodeURIComponent(testCaseNumber)}`);
-        if (resp.ok) {
-            const testCase = await resp.json();
+        if (isFresh && cached?.data) {
+            const testCase = JSON.parse(JSON.stringify(cached.data));
+            await enrichTestCaseWithExecutionResults(testCaseNumber, testCase);
             setCachedTestCase(testCaseNumber, testCase);
             displayTestCaseDetail(testCase);
             return;
         }
 
-        // 後備：用列表搜尋（可能不含附件，僅避免完全失敗）
+        const resp = await fetch(`/api/teams/${currentTeamId}/testcases/by-number/${encodeURIComponent(testCaseNumber)}`);
+        if (resp.ok) {
+            const testCase = await resp.json();
+            await enrichTestCaseWithExecutionResults(testCaseNumber, testCase);
+            setCachedTestCase(testCaseNumber, testCase);
+            displayTestCaseDetail(testCase);
+            return;
+        }
+
         const url = new URL(`/api/teams/${currentTeamId}/testcases/`, window.location.origin);
         url.searchParams.set('search', testCaseNumber);
         url.searchParams.set('limit', '1');
@@ -2950,12 +2949,14 @@ async function loadTestCaseDetail(testCaseNumber) {
             throw new Error('找不到指定的測試案例');
         }
         const fallback = testCases.find(tc => tc.test_case_number === testCaseNumber) || testCases[0];
+        await enrichTestCaseWithExecutionResults(testCaseNumber, fallback);
         setCachedTestCase(testCaseNumber, fallback);
         displayTestCaseDetail(fallback);
-        
+
     } catch (error) {
-        console.error('Error loading test case detail:', error);
-        throw error;
+        console.error('載入測試案例詳情失敗:', error);
+        document.getElementById('testCaseDetailLoading').style.display = 'none';
+        AppUtils.showError('{{ i18n.t("errors.loadTestCaseError") if i18n else "載入測試案例失敗" }}');
     }
 }
 
@@ -3231,6 +3232,38 @@ function createTestCaseDetailHtml(testCase) {
     const scrollableHtml = generateScrollableContentHtml(testCase);
 
     return { fixedHtml, scrollableHtml };
+}
+
+async function enrichTestCaseWithExecutionResults(testCaseNumber, testCase) {
+    try {
+        const item = getItemByTestCaseNumber(testCaseNumber);
+        if (!item || !item.id || !currentTeamId || !currentConfigId) {
+            testCase.attachments = [];
+            return;
+        }
+
+        const resp = await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/${item.id}/test-results`);
+        if (!resp.ok) {
+            testCase.attachments = [];
+            item.execution_results = [];
+            item.execution_result_count = 0;
+            return;
+        }
+
+        const payload = await resp.json();
+        const files = Array.isArray(payload.test_results_files) ? payload.test_results_files : [];
+        item.execution_results = files;
+        item.execution_result_count = files.length;
+        testCase.attachments = files;
+    } catch (error) {
+        console.warn('載入測試結果附件失敗:', error);
+        const item = getItemByTestCaseNumber(testCaseNumber);
+        if (item) {
+            item.execution_results = item.execution_results || [];
+            item.execution_result_count = item.execution_results.length;
+        }
+        testCase.attachments = [];
+    }
 }
 
 
@@ -5975,6 +6008,26 @@ class TestResultsManager {
         
         this.showEmpty(false);
         this.currentFiles = files;
+        
+        const item = (testRunItems || []).find(i => i.id === this.testRunItemId);
+        if (item) {
+            item.execution_results = files;
+            item.execution_result_count = files.length;
+        }
+        if (currentDetailTestCase && currentDetailTestCase.test_case_number === this.testCaseNumber) {
+            currentDetailTestCase.attachments = files;
+            const fixedDiv = document.getElementById('testCaseDetailFixed');
+            const scrollDiv = document.getElementById('testCaseDetailScrollable');
+            if (fixedDiv && scrollDiv) {
+                const { fixedHtml, scrollableHtml } = createTestCaseDetailHtml(currentDetailTestCase);
+                fixedDiv.innerHTML = fixedHtml;
+                scrollDiv.innerHTML = scrollableHtml;
+                if (window.i18n && window.i18n.isReady()) {
+                    window.i18n.retranslate(fixedDiv);
+                    window.i18n.retranslate(scrollDiv);
+                }
+            }
+        }
         
         const filesHtml = files.map(file => this.renderFileItem(file)).join('');
         this.resultsList.innerHTML = filesHtml;
