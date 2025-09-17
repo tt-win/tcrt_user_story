@@ -1745,7 +1745,7 @@ async function loadTestRunConfig() {
 async function loadTestRunItems() {
     try {
         showItemsLoading();
-        const response = await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/`);
+        const response = await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/?limit=10000`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         
         testRunItems = await response.json();
@@ -1773,7 +1773,7 @@ async function loadTestRunItems() {
 // 不顯示載入動畫的版本（用於 Refresh）
 async function loadTestRunItemsWithoutLoading() {
     try {
-        const response = await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/`);
+        const response = await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/?limit=1000`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         
         testRunItems = await response.json();
@@ -2807,50 +2807,21 @@ function initializeTestCaseAssigneeSelector(testCase) {
 
 // 已移除：原先更新 Test Case 的 Assignee（改為只更新 Test Run Item 的本地欄位）
 
-// 卷動到附件區域
-function scrollToAttachments() {
-    const attachmentsSection = document.getElementById('attachmentsSection');
-    if (attachmentsSection) {
-        // 找到可捲動的容器
-        const scrollableContainer = document.getElementById('testCaseDetailScrollable');
-        if (scrollableContainer) {
-            // 計算附件區域相對於可捲動容器的位置
-            const containerRect = scrollableContainer.getBoundingClientRect();
-            const attachmentRect = attachmentsSection.getBoundingClientRect();
-
-            // 計算需要捲動的距離
-            const scrollTop = attachmentRect.top - containerRect.top + scrollableContainer.scrollTop;
-
-            // 平滑捲動到附件區域
-            scrollableContainer.scrollTo({
-                top: scrollTop - 20, // 留一點邊距
-                behavior: 'smooth'
-            });
+function handleAttachmentSummaryClick(event) {
+    try {
+        if (event) {
+            event.preventDefault();
         }
-    }
-}
-
-// 卷動到附件區域
-function scrollToAttachments() {
-    const attachmentsSection = document.getElementById('attachmentsSection');
-    if (attachmentsSection) {
-        // 找到可捲動的容器
-        const scrollableContainer = document.getElementById('testCaseDetailScrollable');
-        if (scrollableContainer) {
-            // 計算附件區域相對於可捲動容器的位置
-            const containerRect = scrollableContainer.getBoundingClientRect();
-            const attachmentRect = attachmentsSection.getBoundingClientRect();
-
-            // 計算需要捲動的距離
-            const scrollTop = attachmentRect.top - containerRect.top + scrollableContainer.scrollTop;
-
-            // 平滑捲動到附件區域
-            scrollableContainer.scrollTo({
-                top: scrollTop - 20, // 留一點邊距
-                behavior: 'smooth'
-            });
+        const link = event && event.currentTarget ? event.currentTarget : null;
+        const canScroll = link && link.dataset ? link.dataset.canScroll === 'true' : true;
+        if (!canScroll) {
+            return false;
         }
+        scrollToAttachments();
+    } catch (_) {
+        return false;
     }
+    return false;
 }
 
 async function showTestCaseDetailModal(testCaseNumber) {
@@ -3080,15 +3051,7 @@ function generateBasicInfoHtml(testCase) {
     const itemForCase = (testRunItems || []).find(i => i.test_case_number === testCase.test_case_number);
     const assigneeName = itemForCase ? (itemForCase.assignee_name || '') : '';
     const tcgText = testCase.tcg && testCase.tcg.length > 0 ? testCase.tcg.map(t => t.text || t).join(', ') : '';
-    const attachmentCount = (() => {
-        if (itemForCase && Array.isArray(itemForCase.execution_results)) {
-            return itemForCase.execution_results.length;
-        }
-        if (itemForCase && typeof itemForCase.execution_result_count === 'number') {
-            return itemForCase.execution_result_count;
-        }
-        return 0;
-    })();
+    const attachmentCount = Array.isArray(testCase.attachments) ? testCase.attachments.length : 0;
 
     return `
         <!-- Basic Info 區域 -->
@@ -3128,14 +3091,17 @@ function generateBasicInfoHtml(testCase) {
                         <td class="basic-info-label basic-info-label-top" data-i18n="testRun.attachments">附件</td>
                         <td colspan="3" class="basic-info-value">
                             <div class="d-flex align-items-center">
-                                ${attachmentCount > 0 ? `
-                                    <a href="#" class="text-decoration-none" onclick="scrollToAttachments(); return false;" title="${escapeHtml('{{ i18n.t("testRun.attachments") if i18n else "附件" }}')}">
-                                        <i class="fas fa-paperclip me-1"></i>
-                                        ${attachmentCount} <span data-i18n="testRun.files">個文件</span>
-                                    </a>
-                                ` : `
-                                    <span class="text-muted"><i class="fas fa-paperclip me-1"></i>0 <span data-i18n="testRun.files">個文件</span></span>
-                                `}
+                                <a href="#"
+                                   id="attachmentCountLink"
+                                   class="text-decoration-none ${attachmentCount > 0 ? '' : 'text-muted disabled-attachment-link'}"
+                                   data-can-scroll="${attachmentCount > 0 ? 'true' : 'false'}"
+                                   ${attachmentCount > 0 ? '' : 'aria-disabled="true" tabindex="-1"'}
+                                   onclick="return handleAttachmentSummaryClick(event);"
+                                   title="${escapeHtml('{{ i18n.t("testRun.attachments") if i18n else "附件" }}')}">
+                                    <i class="fas fa-paperclip me-1"></i>
+                                    <span id="attachmentCountValue">${attachmentCount}</span>
+                                    <span data-i18n="testRun.files">個文件</span>
+                                </a>
                             </div>
                         </td>
                     </tr>
@@ -3155,8 +3121,7 @@ function generateBasicInfoHtml(testCase) {
 
 // 生成可捲動內容區域的 HTML
 function generateScrollableContentHtml(testCase) {
-    const item = getItemByTestCaseNumber(testCase.test_case_number);
-    const attachments = (item && Array.isArray(item.execution_results)) ? item.execution_results : [];
+    const attachments = Array.isArray(testCase.attachments) ? testCase.attachments : [];
     const attachmentCount = attachments.length;
 
     return `
@@ -5707,6 +5672,12 @@ function ensureTeamIdInUrl_TRE(teamId) {
 /* Print styles moved to dynamic PDF generation function for better control */
 
 /* Test Results 區塊樣式 */
+.disabled-attachment-link {
+    pointer-events: none;
+    cursor: default;
+    text-decoration: none;
+}
+
 .test-results-upload-zone {
     transition: all 0.3s ease;
 }
@@ -5793,6 +5764,12 @@ class TestResultsManager {
         this.configId = configId;
         this.currentFiles = [];
         this.isUploading = false;
+        this.handleUploadButtonClick = null;
+        this.handleDropzoneDragOver = null;
+        this.handleDropzoneDragLeave = null;
+        this.handleDropzoneDrop = null;
+        this.handleDropzoneClick = null;
+        this.handleFileInputChange = null;
         
         this.initializeElements();
         this.bindEvents();
@@ -5811,20 +5788,71 @@ class TestResultsManager {
         this.filesList = document.getElementById('testResultsList'); // 檔案列表區域引用
         this.loading = document.getElementById('testResultsLoading');
         this.empty = document.getElementById('testResultsEmpty');
+
+        this.resetViewState();
     }
     
     bindEvents() {
-        // 上傳按鈕點擊
-        this.uploadBtn?.addEventListener('click', () => this.toggleUploadArea());
-        
-        // 拖拽上傳
-        this.dropzone?.addEventListener('dragover', (e) => this.handleDragOver(e));
-        this.dropzone?.addEventListener('dragleave', (e) => this.handleDragLeave(e));
-        this.dropzone?.addEventListener('drop', (e) => this.handleDrop(e));
-        this.dropzone?.addEventListener('click', () => this.fileInput?.click());
-        
-        // 檔案選擇
-        this.fileInput?.addEventListener('change', (e) => this.handleFileSelect(e));
+        this.unbindEvents();
+
+        if (this.uploadBtn) {
+            this.handleUploadButtonClick = () => this.toggleUploadArea();
+            this.uploadBtn.addEventListener('click', this.handleUploadButtonClick);
+        }
+
+        if (this.dropzone) {
+            this.handleDropzoneDragOver = (e) => this.handleDragOver(e);
+            this.handleDropzoneDragLeave = (e) => this.handleDragLeave(e);
+            this.handleDropzoneDrop = (e) => this.handleDrop(e);
+            this.handleDropzoneClick = () => this.fileInput?.click();
+
+            this.dropzone.addEventListener('dragover', this.handleDropzoneDragOver);
+            this.dropzone.addEventListener('dragleave', this.handleDropzoneDragLeave);
+            this.dropzone.addEventListener('drop', this.handleDropzoneDrop);
+            this.dropzone.addEventListener('click', this.handleDropzoneClick);
+        }
+
+        if (this.fileInput) {
+            this.handleFileInputChange = (e) => this.handleFileSelect(e);
+            this.fileInput.addEventListener('change', this.handleFileInputChange);
+        }
+    }
+
+    unbindEvents() {
+        if (this.uploadBtn && this.handleUploadButtonClick) {
+            this.uploadBtn.removeEventListener('click', this.handleUploadButtonClick);
+        }
+        if (this.dropzone) {
+            if (this.handleDropzoneDragOver) this.dropzone.removeEventListener('dragover', this.handleDropzoneDragOver);
+            if (this.handleDropzoneDragLeave) this.dropzone.removeEventListener('dragleave', this.handleDropzoneDragLeave);
+            if (this.handleDropzoneDrop) this.dropzone.removeEventListener('drop', this.handleDropzoneDrop);
+            if (this.handleDropzoneClick) this.dropzone.removeEventListener('click', this.handleDropzoneClick);
+        }
+        if (this.fileInput && this.handleFileInputChange) {
+            this.fileInput.removeEventListener('change', this.handleFileInputChange);
+        }
+
+        this.handleUploadButtonClick = null;
+        this.handleDropzoneDragOver = null;
+        this.handleDropzoneDragLeave = null;
+        this.handleDropzoneDrop = null;
+        this.handleDropzoneClick = null;
+        this.handleFileInputChange = null;
+    }
+
+    resetViewState() {
+        if (this.uploadArea) {
+            this.uploadArea.style.display = 'none';
+        }
+        if (this.filesList) {
+            this.filesList.style.display = 'block';
+        }
+        if (this.empty) {
+            this.empty.style.display = 'none';
+        }
+        if (this.uploadBtn && this.uploadBtn.querySelector('i')) {
+            this.uploadBtn.querySelector('i').className = 'fas fa-upload';
+        }
     }
     
     async loadTestCaseAttachments_REMOVED() {
@@ -5868,33 +5896,42 @@ class TestResultsManager {
             
             if (response.ok) {
                 const data = await response.json();
-                this.renderResultsList(data.test_results_files || []);
+                const files = Array.isArray(data.test_results_files) ? data.test_results_files : [];
+                this.renderResultsList(files);
             } else {
                 console.error('載入測試結果失敗:', response.statusText);
-                this.showEmpty(true);
+                this.renderResultsList([]);
             }
         } catch (error) {
             console.error('載入測試結果異常:', error);
-            this.showEmpty(true);
+            this.renderResultsList([]);
         } finally {
             this.showLoading(false);
         }
     }
     
     toggleUploadArea() {
+        if (!this.uploadArea) {
+            return;
+        }
         // 修正判斷邏輯：只有明確設定為 'block' 才算可見
         const isVisible = this.uploadArea.style.display === 'block';
+        const hasFiles = Array.isArray(this.currentFiles) && this.currentFiles.length > 0;
 
         if (!isVisible) {
             // 顯示上傳區域，隱藏檔案列表
-            this.filesList.style.display = 'none';
-            this.uploadArea.style.display = 'block';
-            this.uploadBtn.querySelector('i').className = 'fas fa-times';
+            if (this.filesList) this.filesList.style.display = 'none';
+            if (this.empty) this.empty.style.display = 'none';
+            if (this.uploadArea) this.uploadArea.style.display = 'block';
+            const icon = this.uploadBtn?.querySelector('i');
+            if (icon) icon.className = 'fas fa-times';
         } else {
             // 隱藏上傳區域，重新顯示檔案列表
-            this.uploadArea.style.display = 'none';
-            this.filesList.style.display = 'block';
-            this.uploadBtn.querySelector('i').className = 'fas fa-upload';
+            if (this.uploadArea) this.uploadArea.style.display = 'none';
+            if (this.filesList) this.filesList.style.display = hasFiles ? 'block' : 'none';
+            if (this.empty) this.empty.style.display = hasFiles ? 'none' : 'block';
+            const icon = this.uploadBtn?.querySelector('i');
+            if (icon) icon.className = 'fas fa-upload';
         }
     }
     
@@ -5973,20 +6010,26 @@ class TestResultsManager {
     }
     
     renderResultsList(files) {
-        if (!files || files.length === 0) {
+        const safeFiles = Array.isArray(files) ? files : [];
+        this.currentFiles = safeFiles;
+
+        if (!safeFiles.length) {
+            if (this.resultsList) {
+                this.resultsList.innerHTML = '';
+            }
             this.showEmpty(true);
             return;
         }
         
         this.showEmpty(false);
-        this.currentFiles = files;
-        
-        const filesHtml = files.map(file => this.renderFileItem(file)).join('');
-        this.resultsList.innerHTML = filesHtml;
+        const filesHtml = safeFiles.map(file => this.renderFileItem(file)).join('');
+        if (this.resultsList) {
+            this.resultsList.innerHTML = filesHtml;
+        }
         
         this.bindFileItemEvents();
     }
-    
+
     renderFileItem(file) {
         const fileIcon = this.getFileIcon(file.name);
         
@@ -6084,6 +6127,13 @@ class TestResultsManager {
                 if (fileItem) {
                     fileItem.remove();
                 }
+
+                if (Array.isArray(this.currentFiles)) {
+                    this.currentFiles = this.currentFiles.filter(file => file && file.file_token !== fileToken);
+                    if (this.currentFiles.length === 0) {
+                        this.showEmpty(true);
+                    }
+                }
                 
                 setTimeout(() => {
                     this.loadExistingResults();
@@ -6118,8 +6168,12 @@ class TestResultsManager {
     }
     
     showEmpty(show) {
-        this.empty.style.display = show ? 'block' : 'none';
-        this.resultsList.style.display = show ? 'none' : 'block';
+        if (this.empty) {
+            this.empty.style.display = show ? 'block' : 'none';
+        }
+        if (this.resultsList) {
+            this.resultsList.style.display = show ? 'none' : 'block';
+        }
     }
     
     showProgress(show) {
@@ -6141,6 +6195,10 @@ class TestResultsManager {
 
     // 清理 DOM 狀態方法
     cleanup() {
+        this.unbindEvents();
+        this.currentFiles = [];
+        this.isUploading = false;
+
         // 清理檔案列表
         if (this.resultsList) {
             this.resultsList.innerHTML = '';

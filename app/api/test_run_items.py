@@ -423,7 +423,7 @@ async def list_items(
     sort_order: Optional[str] = Query("desc"),
     # Pagination
     skip: int = Query(0, ge=0),
-    limit: int = Query(100, ge=1, le=1000),
+    limit: int = Query(100, ge=1, le=10000),
 ):
     _verify_team_and_config(team_id, config_id, db)
 
