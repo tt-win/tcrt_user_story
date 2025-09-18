@@ -2278,6 +2278,17 @@ let lastItemCheckboxIndex = null;
 // Test Case 詳細快取（localStorage），以測試案例編號為 key
 const TEST_CASE_CACHE_PREFIX = 'tr_exec_tc_cache_v1';
 const TEST_CASE_CACHE_TTL_MS = 60 * 60 * 1000; // 1 小時
+const TEST_CASE_UPDATE_EVENT_KEY = 'testCaseUpdatedEvent';
+
+window.addEventListener('storage', (event) => {
+    if (event.key !== TEST_CASE_UPDATE_EVENT_KEY || !event.newValue) return;
+    try {
+        const data = JSON.parse(event.newValue);
+        applyExternalTestCaseUpdate(data);
+    } catch (err) {
+        console.debug('忽略無法解析的 test case 更新事件:', err);
+    }
+});
 
 // 頁面初始化
 document.addEventListener('DOMContentLoaded', function() {
@@ -2800,7 +2811,17 @@ function createItemRow(item, index, canUpdate) {
     const canEditAssignee = testRunConfig && testRunConfig.status !== 'completed' && testRunConfig.status !== 'archived';
     const showCheckbox = shouldShowCheckbox(testRunConfig ? testRunConfig.status : 'draft');
     const hasExecutionHistory = item.executed_at !== null && item.executed_at !== undefined;
-    
+    const isDeleted = !!item.__testCaseDeleted;
+    const deletedBadge = `<span class="badge bg-danger-subtle text-danger ms-2">已刪除</span>`;
+
+    const safeTitle = escapeHtml(item.title || '');
+    const titleCellContent = isDeleted
+        ? `<span class="text-muted" title="${safeTitle || '測試案例已刪除'}">${safeTitle || '測試案例已刪除'}</span>${deletedBadge}`
+        : `<a href="#" class="text-decoration-none" onclick="navigateToTestCase('${item.test_case_number}'); return false;">${safeTitle}</a>`;
+
+    const priorityLabel = isDeleted ? '-' : (item.priority || 'Medium');
+    const priorityBadgeClass = isDeleted ? 'badge bg-secondary-subtle text-muted priority-badge-lg border border-secondary-subtle' : 'badge bg-secondary priority-badge-lg';
+
     return `
         <tr data-item-id="${item.id}">
             ${showCheckbox ? `
@@ -2809,8 +2830,8 @@ function createItemRow(item, index, canUpdate) {
                 </td>
             ` : ''}
             <td><code><a href="#" class="text-decoration-none" onclick="navigateToTestCase('${item.test_case_number}'); return false;">${escapeHtml(item.test_case_number)}</a></code></td>
-            <td class="text-truncate" title="${escapeHtml(item.title)}"><a href="#" class="text-decoration-none" onclick="navigateToTestCase('${item.test_case_number}'); return false;">${escapeHtml(item.title)}</a></td>
-            <td><span class="badge bg-secondary priority-badge-lg">${escapeHtml(item.priority || 'Medium')}</span></td>
+            <td class="text-truncate" title="${safeTitle || (isDeleted ? '測試案例已刪除' : '')}">${titleCellContent}</td>
+            <td><span class="${priorityBadgeClass}">${escapeHtml(priorityLabel)}</span></td>
             <td>
                 ${canUpdate ? `
                     <select class="form-select result-selector-lg ${resultClass}"
@@ -3015,6 +3036,10 @@ function showItemDetail(itemId) {
     const testStepsLabel = '{{ i18n.t("testRun.testSteps") if i18n else "測試步驟" }}';
     const expectedResultsLabel = '{{ i18n.t("testRun.expectedResults") if i18n else "預期結果" }}';
     const minutesLabel = '{{ i18n.t("testRun.minutes") if i18n else "分鐘" }}';
+    const isDeleted = !!item.__testCaseDeleted;
+    const titleValue = escapeHtml(item.title || (isDeleted ? '測試案例已刪除' : ''));
+    const priorityValue = isDeleted ? '-' : (item.priority || 'Medium');
+    const deletedNote = isDeleted ? `<span class="badge bg-danger-subtle text-danger ms-2">已刪除</span>` : '';
     
     const content = `
         <div class="row">
@@ -3022,8 +3047,8 @@ function showItemDetail(itemId) {
                 <h6>${basicInfoLabel}</h6>
                 <table class="table table-sm">
                     <tr><td>${testCaseNumberLabel}</td><td><code>${escapeHtml(item.test_case_number)}</code></td></tr>
-                    <tr><td>${titleLabel}</td><td>${escapeHtml(item.title)}</td></tr>
-                    <tr><td>${priorityLabel}</td><td>${escapeHtml(item.priority || 'Medium')}</td></tr>
+                    <tr><td>${titleLabel}</td><td><span class="${isDeleted ? 'text-muted' : ''}">${titleValue || '-'}</span>${deletedNote}</td></tr>
+                    <tr><td>${priorityLabel}</td><td>${escapeHtml(priorityValue)}</td></tr>
                     <tr><td>${testResultLabel}</td><td><span class="badge ${getResultClass(item.test_result)}">${getResultText(item.test_result)}</span></td></tr>
                 </table>
             </div>
@@ -3037,9 +3062,9 @@ function showItemDetail(itemId) {
                 </table>
             </div>
         </div>
-        ${item.precondition ? `<div class="mt-3"><h6>${preconditionsLabel}</h6><p class="text-muted">${escapeHtml(item.precondition)}</p></div>` : ''}
-        ${item.steps ? `<div class="mt-3"><h6>${testStepsLabel}</h6><p class="text-muted">${escapeHtml(item.steps).replace(/\n/g, '<br>')}</p></div>` : ''}
-        ${item.expected_result ? `<div class="mt-3"><h6>${expectedResultsLabel}</h6><p class="text-muted">${escapeHtml(item.expected_result)}</p></div>` : ''}
+        ${!isDeleted && item.precondition ? `<div class="mt-3"><h6>${preconditionsLabel}</h6><p class="text-muted">${escapeHtml(item.precondition)}</p></div>` : ''}
+        ${!isDeleted && item.steps ? `<div class="mt-3"><h6>${testStepsLabel}</h6><p class="text-muted">${escapeHtml(item.steps).replace(/\n/g, '<br>')}</p></div>` : ''}
+        ${!isDeleted && item.expected_result ? `<div class="mt-3"><h6>${expectedResultsLabel}</h6><p class="text-muted">${escapeHtml(item.expected_result)}</p></div>` : ''}
     `;
     
     document.getElementById('item-detail-content').innerHTML = content;
@@ -3618,6 +3643,16 @@ function navigateToTestCase(testCaseNumber) {
         AppUtils.showWarning('{{ i18n.t("testRun.invalidTestCaseNumber") if i18n else "無效的測試案例編號" }}');
         return;
     }
+
+    try {
+        if (Array.isArray(testRunItems)) {
+            const item = testRunItems.find(it => it.test_case_number === testCaseNumber);
+            if (item && item.__testCaseDeleted) {
+                AppUtils.showWarning('此測試案例已刪除');
+                return;
+            }
+        }
+    } catch (_) {}
     
     // 顯示 Test Case 詳細資料 Modal
     showTestCaseDetailModal(testCaseNumber);
@@ -5673,6 +5708,74 @@ function collectTestRunStats() {
     }
     
     return stats;
+}
+
+function applyExternalTestCaseUpdate(update) {
+    try {
+        if (!update || !update.test_case_number) return;
+        if (update.teamId && currentTeamId && String(update.teamId) !== String(currentTeamId)) return;
+        if (!Array.isArray(testRunItems)) return;
+
+        const index = testRunItems.findIndex(it => it.test_case_number === update.test_case_number);
+        if (index === -1) return;
+
+        const item = testRunItems[index];
+
+        if (update.deleted) {
+            ['title', 'priority', 'precondition', 'steps', 'expected_result'].forEach(field => {
+                if (Object.prototype.hasOwnProperty.call(update, field)) {
+                    item[field] = update[field] ?? '';
+                } else if (field !== 'title') {
+                    item[field] = '';
+                }
+            });
+            item.__testCaseDeleted = true;
+            try {
+                TRCache.removeExecDetail(currentTeamId, item.test_case_number);
+            } catch (_) {}
+
+            if (currentDetailTestCase && currentDetailTestCase.test_case_number === update.test_case_number) {
+                try {
+                    const modalEl = document.getElementById('testCaseDetailModal');
+                    if (modalEl) {
+                        const modalInstance = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+                        modalInstance.hide();
+                    }
+                } catch (_) {}
+                currentDetailTestCase = null;
+            }
+        } else {
+            ['title', 'priority', 'precondition', 'steps', 'expected_result'].forEach(field => {
+                if (Object.prototype.hasOwnProperty.call(update, field)) {
+                    const value = update[field];
+                    if (typeof value !== 'undefined' && value !== null) {
+                        item[field] = value;
+                    }
+                }
+            });
+            item.__testCaseDeleted = false;
+        }
+
+        renderTestRunItems();
+
+        try {
+            initializeChartsAndReports();
+        } catch (chartError) {
+            console.debug('重新整理圖表失敗（忽略）:', chartError);
+        }
+
+        if (!update.deleted && currentDetailTestCase && currentDetailTestCase.test_case_number === update.test_case_number) {
+            loadTestCaseDetail(update.test_case_number).catch(detailError => {
+                console.debug('重新載入測試案例詳情失敗（忽略）:', detailError);
+            });
+        }
+
+        try {
+            updateStatistics();
+        } catch (_) {}
+    } catch (error) {
+        console.debug('處理測試案例更新事件失敗:', error);
+    }
 }
 
 function updateReportBasicInfo(statsData) {

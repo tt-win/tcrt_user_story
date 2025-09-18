@@ -683,11 +683,6 @@ async def restart_test_run(
             team_id=team_id,
             config_id=new_config.id,
             test_case_number=item.test_case_number,
-            title=item.title,
-            priority=item.priority,
-            precondition=item.precondition,
-            steps=item.steps,
-            expected_result=item.expected_result,
             # 保留指派者資料（若有）
             assignee_id=item.assignee_id,
             assignee_name=item.assignee_name,

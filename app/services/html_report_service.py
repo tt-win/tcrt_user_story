@@ -17,7 +17,7 @@ import os
 import json
 from pathlib import Path
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 
 class HTMLReportService:
@@ -63,7 +63,7 @@ class HTMLReportService:
             raise ValueError(f"找不到 Test Run 配置 (team_id={team_id}, config_id={config_id})")
 
         # Items
-        items = self.db_session.query(TestRunItemDB).filter(
+        items = self.db_session.query(TestRunItemDB).options(joinedload(TestRunItemDB.test_case)).filter(
             TestRunItemDB.team_id == team_id,
             TestRunItemDB.config_id == config_id,
         ).all()
@@ -81,17 +81,32 @@ class HTMLReportService:
         pass_rate = (passed_count / executed_count * 100) if executed_count > 0 else 0.0
 
         # Priority
-        high_priority = len([i for i in items if i.priority == Priority.HIGH])
-        medium_priority = len([i for i in items if i.priority == Priority.MEDIUM])
-        low_priority = len([i for i in items if i.priority == Priority.LOW])
+        def _item_priority(itm):
+            case = getattr(itm, 'test_case', None)
+            pri = getattr(case, 'priority', None)
+            if pri is None:
+                return None
+            return pri.value if hasattr(pri, 'value') else pri
+
+        priority_map = [_item_priority(i) for i in items]
+        high_priority = len([pri for pri in priority_map if pri == Priority.HIGH.value])
+        medium_priority = len([pri for pri in priority_map if pri == Priority.MEDIUM.value])
+        low_priority = len([pri for pri in priority_map if pri == Priority.LOW.value])
 
         # Results list (all, 不限 100 筆)
         test_results: List[Dict[str, Any]] = []
         for i in items:
+            case = getattr(i, 'test_case', None)
+            case_title = getattr(case, 'title', None)
+            case_priority = getattr(case, 'priority', None)
+            priority_str = None
+            if case_priority is not None:
+                priority_str = case_priority.value if hasattr(case_priority, 'value') else case_priority
+
             test_results.append({
                 "test_case_number": i.test_case_number or "",
-                "title": i.title or "",
-                "priority": i.priority.value if getattr(i.priority, 'value', None) else (i.priority or ""),
+                "title": case_title or "",
+                "priority": priority_str or "",
                 "status": i.test_result.value if getattr(i.test_result, 'value', None) else (i.test_result or "未執行"),
                 "executor": i.assignee_name or "",
                 "execution_time": i.executed_at.strftime('%Y-%m-%d %H:%M') if i.executed_at else "",
@@ -109,9 +124,11 @@ class HTMLReportService:
                                 ticket_no = str(t['ticket_number']).upper()
                                 if ticket_no not in bug_map:
                                     bug_map[ticket_no] = { 'ticket_number': ticket_no, 'test_cases': [] }
+                                case = getattr(i, 'test_case', None)
+                                case_title = getattr(case, 'title', None)
                                 bug_map[ticket_no]['test_cases'].append({
                                     'test_case_number': i.test_case_number or '',
-                                    'title': i.title or '',
+                                    'title': case_title or '',
                                     'test_result': i.test_result.value if getattr(i.test_result, 'value', None) else (i.test_result or '未執行')
                                 })
                 except Exception:
@@ -379,4 +396,3 @@ class HTMLReportService:
 </html>
 """
         return html
-

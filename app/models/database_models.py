@@ -5,8 +5,8 @@
 以及相關的關聯表格。
 """
 
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum, Boolean, Float, UniqueConstraint, Index
-from sqlalchemy.orm import relationship, declarative_base
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum, Boolean, Float, UniqueConstraint, Index, and_
+from sqlalchemy.orm import relationship, declarative_base, foreign
 from datetime import datetime
 from typing import Optional
 from enum import Enum as PyEnum
@@ -145,13 +145,8 @@ class TestRunItem(Base):
     team_id = Column(Integer, ForeignKey("teams.id"), nullable=False)
     config_id = Column(Integer, ForeignKey("test_run_configs.id"), nullable=False, index=True)
 
-    # 從 Test Case 複製的重要欄位（建立時擷取）
+    # 使用 Test Case 編號建立唯一識別，其他詳情從 Test Case 讀取
     test_case_number = Column(String(100), nullable=False, index=True)
-    title = Column(Text, nullable=False)
-    priority = Column(Enum(Priority), default=Priority.MEDIUM)
-    precondition = Column(Text, nullable=True)
-    steps = Column(Text, nullable=True)
-    expected_result = Column(Text, nullable=True)
 
     # 執行資訊
     assignee_id = Column(String(64), nullable=True)
@@ -194,8 +189,16 @@ class TestRunItem(Base):
         UniqueConstraint('config_id', 'test_case_number', name='uq_test_run_item_config_case'),
         Index('ix_test_run_items_team', 'team_id'),
         Index('ix_test_run_items_result', 'test_result'),
-        Index('ix_test_run_items_priority', 'priority'),
         Index('ix_test_run_items_files_uploaded', 'result_files_uploaded'),
+    )
+
+    # 只讀關聯：提供即時 Test Case 詳細資料
+    test_case = relationship(
+        "TestCaseLocal",
+        primaryjoin="and_(TestRunItem.test_case_number == foreign(TestCaseLocal.test_case_number), "
+                    "TestRunItem.team_id == foreign(TestCaseLocal.team_id))",
+        viewonly=True,
+        uselist=False,
     )
 
 

@@ -1118,7 +1118,9 @@ function setExecCachedTestCase(testCaseNumber, data) {
 
 function removeExecCachedTestCase(testCaseNumber) {
     try {
-        // 目前移除僅影響列表記憶體/視圖；IndexedDB 的條目由 LRU 自動管理
+        const teamId = getTeamIdForCache(false);
+        if (!teamId || !testCaseNumber) return;
+        Promise.resolve().then(() => TRCache.removeExecDetail(teamId, testCaseNumber)).catch(()=>{});
     } catch (_) {}
 }
 
@@ -1145,6 +1147,38 @@ let tcmSortOrder = 'asc';    // asc|desc
 
 // ===== 篩選器持久化（依 team 隔離） =====
 const TCM_FILTERS_STORAGE_PREFIX = 'tcm_filters_v1';
+
+const TEST_CASE_UPDATE_EVENT_KEY = 'testCaseUpdatedEvent';
+
+function broadcastTestCaseUpdate(testCase, overrides = {}) {
+    try {
+        const teamId = getTeamIdForCache(true);
+        if (!teamId || !testCase || !testCase.test_case_number) return;
+        const priorityValue = (() => {
+            if (!testCase.priority) return '';
+            if (typeof testCase.priority === 'string') return testCase.priority;
+            if (testCase.priority && typeof testCase.priority === 'object') {
+                if (typeof testCase.priority.value === 'string') return testCase.priority.value;
+                if (typeof testCase.priority.name === 'string') return testCase.priority.name;
+            }
+            return '';
+        })();
+        const payload = {
+            teamId: String(teamId),
+            test_case_number: testCase.test_case_number,
+            title: testCase.title || '',
+            priority: priorityValue,
+            precondition: testCase.precondition || '',
+            steps: testCase.steps || '',
+            expected_result: testCase.expected_result || '',
+            timestamp: Date.now(),
+            ...overrides
+        };
+        localStorage.setItem(TEST_CASE_UPDATE_EVENT_KEY, JSON.stringify(payload));
+    } catch (err) {
+        console.debug('broadcastTestCaseUpdate skipped:', err);
+    }
+}
 
 function getTcmFiltersStorageKey() {
     try {
@@ -1570,12 +1604,13 @@ function updateTestCaseInCache(testCase) {
         }
         else { console.debug('[CACHE] UPDATE skipped: list cache not found', { teamId }); }
         if (testCase.test_case_number) setExecCachedTestCase(testCase.test_case_number, testCase);
+        broadcastTestCaseUpdate(testCase);
     } catch (error) {
         console.debug('更新測試案例快取失敗:', error);
     }
 }
 
-function removeTestCaseFromCache(recordId) {
+function removeTestCaseFromCache(recordId, fallbackTestCase = null) {
     try {
         const teamId = getTeamIdForCache(true);
         if (!teamId) { console.debug('[CACHE] SKIP REMOVE list: no valid teamId', { recordId }); return; }
@@ -1587,13 +1622,24 @@ function removeTestCaseFromCache(recordId) {
                 const removedTestCase = data.testCases.find(tc => tc.record_id === recordId);
                 data.testCases = data.testCases.filter(tc => tc.record_id !== recordId);
                 localStorage.setItem(cacheKey, JSON.stringify(data));
-                if (removedTestCase && removedTestCase.test_case_number) removeExecCachedTestCase(removedTestCase.test_case_number);
+                let payloadCase = removedTestCase || fallbackTestCase || null;
+                if (payloadCase && payloadCase.test_case_number) {
+                    removeExecCachedTestCase(payloadCase.test_case_number);
+                    broadcastTestCaseUpdate(payloadCase, { deleted: true });
+                }
                 console.log(`測試案例已從快取移除: ${recordId}`);
                 console.debug('[CACHE] REMOVE list item', { teamId, cacheKey, recordId });
             }
             else { console.debug('[CACHE] REMOVE skipped: malformed cache payload', { teamId }); }
         }
-        else { console.debug('[CACHE] REMOVE skipped: list cache not found', { teamId, recordId }); }
+        else {
+            const payloadCase = fallbackTestCase || null;
+            if (payloadCase && payloadCase.test_case_number) {
+                removeExecCachedTestCase(payloadCase.test_case_number);
+                broadcastTestCaseUpdate(payloadCase, { deleted: true });
+            }
+            console.debug('[CACHE] REMOVE skipped: list cache not found', { teamId, recordId });
+        }
     } catch (error) {
         console.debug('從快取移除測試案例失敗:', error);
     }
@@ -1621,6 +1667,7 @@ function addTestCaseToCache(testCase) {
         }
         else { console.debug('[CACHE] ADD skipped: list cache not found (will be created on next full set)', { teamId }); }
         if (testCase.test_case_number) setExecCachedTestCase(testCase.test_case_number, testCase);
+        broadcastTestCaseUpdate(testCase);
     } catch (error) {
         console.debug('加入測試案例到快取失敗:', error);
     }
@@ -4311,7 +4358,7 @@ function deleteTestCase(id) {
             applyCurrentFiltersAndRender();
 
             // 從快取中移除
-            removeTestCaseFromCache(id);
+            removeTestCaseFromCache(id, testCase);
             
             // 重新渲染表格和分頁
             renderTestCasesTable();

@@ -56,16 +56,6 @@
       return this._dbPromise;
     },
 
-    // 生成團隊專用的key（統一storage策略）
-    _execKey(teamId, testCaseNumber) {
-      const validTeamId = this._getValidTeamId(teamId);
-      const timestamp = Date.now();
-      const random = Math.random().toString(36).substring(2, 8);
-
-      // 使用多層次key避免衝突：team_id + test_case + timestamp + random
-      return `exec_${validTeamId}_${testCaseNumber}_${timestamp}_${random}`;
-    },
-
     _gzip(str, level = 5) {
       // returns Uint8Array
       return global.pako ? global.pako.gzip(str, { level }) : new TextEncoder().encode(str);
@@ -79,19 +69,17 @@
       return new TextDecoder().decode(bytes);
     },
 
+    // 生成團隊專用的 key：僅依 teamId + testCaseNumber，確保跨頁共用
     _execKey(teamId, number) {
       const validTeamId = this._getValidTeamId(teamId);
-
-      // 加入頁面路徑作為附加區別信息，進一步避免衝突
-      const pagePath = window.location.pathname.replace(/\//g, '_');
-      const key = `${validTeamId}:${pagePath}:${number}`;
+      const normalizedNumber = String(number || '').trim();
+      const key = `${validTeamId}:${normalizedNumber}`;
 
       if (this.debug) {
         console.debug('[TRCache] 產生key:', key, {
           originalTeamId: teamId,
           validTeamId,
-          pagePath,
-          fullUrl: window.location.href
+          testCaseNumber: normalizedNumber
         });
       }
       return key;
@@ -362,6 +350,22 @@
       } catch (error) {
         if (this.enableErrorLogging) {
           console.error('[TRCache] setExecDetail發生未預期錯誤:', error, { teamId, testCaseNumber, obj });
+        }
+        return false;
+      }
+    },
+
+    async removeExecDetail(teamId, testCaseNumber) {
+      try {
+        const key = this._execKey(teamId, testCaseNumber);
+        await this._delete(STORE_EXEC, key);
+        if (this.debug) {
+          console.debug('[TRCache] removeExecDetail', STORE_EXEC, key);
+        }
+        return true;
+      } catch (error) {
+        if (this.enableErrorLogging) {
+          console.error('[TRCache] removeExecDetail 發生錯誤:', error, { teamId, testCaseNumber });
         }
         return false;
       }
