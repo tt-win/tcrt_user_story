@@ -28,8 +28,12 @@ class SyncStatus(PyEnum):
 class Team(Base):
     """團隊表格"""
     __tablename__ = "teams"
+    __table_args__ = {
+        # 確保 SQLite 使用 AUTOINCREMENT，避免刪除紀錄後重複使用既有 ID
+        'sqlite_autoincrement': True
+    }
     
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True)
     name = Column(String(100), nullable=False)
     description = Column(Text, nullable=True)
     
@@ -64,8 +68,12 @@ class Team(Base):
 class TestRunConfig(Base):
     """測試執行配置表格"""
     __tablename__ = "test_run_configs"
+    __table_args__ = {
+        # 持續遞增 ID，避免後續建立的配置重複既有編號
+        'sqlite_autoincrement': True
+    }
     
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True)
     team_id = Column(Integer, ForeignKey("teams.id"), nullable=False)
     
     # 基本資訊
@@ -120,7 +128,7 @@ class TCGRecord(Base):
     __tablename__ = "tcg_records"
     
     # 使用 TCG 單號作為主鍵，避免重複
-    tcg_number = Column(String(50), primary_key=True, index=True)
+    tcg_number = Column(String(50), primary_key=True)
     record_id = Column(String(255), nullable=False, index=True)
     title = Column(Text, nullable=True)
     
@@ -133,7 +141,7 @@ class TestRunItem(Base):
     """本地儲存的測試執行項目（來自本產品挑選的 Test Case）"""
     __tablename__ = "test_run_items"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True)
     team_id = Column(Integer, ForeignKey("teams.id"), nullable=False)
     config_id = Column(Integer, ForeignKey("test_run_configs.id"), nullable=False, index=True)
 
@@ -195,7 +203,7 @@ class TestRunItemResultHistory(Base):
     """測試結果歷程表"""
     __tablename__ = "test_run_item_result_history"
 
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True)
     team_id = Column(Integer, ForeignKey("teams.id"), nullable=False, index=True)
     config_id = Column(Integer, ForeignKey("test_run_configs.id"), nullable=False, index=True)
     item_id = Column(Integer, ForeignKey("test_run_items.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -225,7 +233,7 @@ class LarkDepartment(Base):
     __tablename__ = "lark_departments"
     
     # 主鍵使用 Lark 部門 ID
-    department_id = Column(String(100), primary_key=True, index=True)
+    department_id = Column(String(100), primary_key=True)
     parent_department_id = Column(String(100), nullable=True, index=True)
     
     # 組織層級
@@ -251,8 +259,6 @@ class LarkDepartment(Base):
     
     # 索引
     __table_args__ = (
-        Index('ix_lark_dept_parent', 'parent_department_id'),
-        Index('ix_lark_dept_level', 'level'),
         Index('ix_lark_dept_status', 'status'),
     )
 
@@ -265,7 +271,7 @@ class TestCaseLocal(Base):
     __tablename__ = "test_cases"
 
     # 主鍵與關聯
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True)
     team_id = Column(Integer, ForeignKey("teams.id"), nullable=False, index=True)
 
     # 與 Lark 的關聯鍵
@@ -320,7 +326,7 @@ class LarkUser(Base):
     __tablename__ = "lark_users"
     
     # 主鍵使用 Lark 用戶 ID
-    user_id = Column(String(100), primary_key=True, index=True)
+    user_id = Column(String(100), primary_key=True)
     open_id = Column(String(100), nullable=True, unique=True, index=True)
     union_id = Column(String(100), nullable=True, unique=True, index=True)
     
@@ -371,10 +377,6 @@ class LarkUser(Base):
     
     # 索引
     __table_args__ = (
-        Index('ix_lark_user_name', 'name'),
-        Index('ix_lark_user_email', 'enterprise_email'),
-        Index('ix_lark_user_dept', 'primary_department_id'),
-        Index('ix_lark_user_type', 'employee_type'),
         Index('ix_lark_user_status', 'is_activated', 'is_exited'),
     )
 
@@ -383,7 +385,7 @@ class SyncHistory(Base):
     """同步歷史記錄表"""
     __tablename__ = "sync_history"
     
-    id = Column(Integer, primary_key=True, index=True)
+    id = Column(Integer, primary_key=True)
     team_id = Column(Integer, ForeignKey("teams.id"), nullable=False, index=True)
     
     # 同步操作信息
@@ -425,8 +427,6 @@ class SyncHistory(Base):
     # 索引
     __table_args__ = (
         Index('ix_sync_history_team_time', 'team_id', 'start_time'),
-        Index('ix_sync_history_status', 'status'),
-        Index('ix_sync_history_type', 'sync_type'),
     )
 
 
