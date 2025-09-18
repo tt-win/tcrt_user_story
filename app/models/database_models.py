@@ -5,8 +5,8 @@
 以及相關的關聯表格。
 """
 
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum, Boolean, Float, UniqueConstraint, Index, and_
-from sqlalchemy.orm import relationship, declarative_base, foreign
+from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum, Boolean, Float, UniqueConstraint, Index, and_, select
+from sqlalchemy.orm import relationship, declarative_base, foreign, column_property
 from datetime import datetime
 from typing import Optional
 from enum import Enum as PyEnum
@@ -322,6 +322,58 @@ class TestCaseLocal(Base):
         Index('ix_test_cases_team_priority', 'team_id', 'priority'),
         Index('ix_test_cases_number', 'test_case_number'),
     )
+
+
+# Backward-compatible computed columns for TestRunItem snapshots
+TestRunItem.title = column_property(
+    select(TestCaseLocal.title)
+    .where(
+        TestCaseLocal.team_id == TestRunItem.team_id,
+        TestCaseLocal.test_case_number == TestRunItem.test_case_number
+    )
+    .correlate_except(TestCaseLocal)
+    .scalar_subquery()
+)
+
+TestRunItem.priority = column_property(
+    select(TestCaseLocal.priority)
+    .where(
+        TestCaseLocal.team_id == TestRunItem.team_id,
+        TestCaseLocal.test_case_number == TestRunItem.test_case_number
+    )
+    .correlate_except(TestCaseLocal)
+    .scalar_subquery()
+)
+
+TestRunItem.precondition = column_property(
+    select(TestCaseLocal.precondition)
+    .where(
+        TestCaseLocal.team_id == TestRunItem.team_id,
+        TestCaseLocal.test_case_number == TestRunItem.test_case_number
+    )
+    .correlate_except(TestCaseLocal)
+    .scalar_subquery()
+)
+
+TestRunItem.steps = column_property(
+    select(TestCaseLocal.steps)
+    .where(
+        TestCaseLocal.team_id == TestRunItem.team_id,
+        TestCaseLocal.test_case_number == TestRunItem.test_case_number
+    )
+    .correlate_except(TestCaseLocal)
+    .scalar_subquery()
+)
+
+TestRunItem.expected_result = column_property(
+    select(TestCaseLocal.expected_result)
+    .where(
+        TestCaseLocal.team_id == TestRunItem.team_id,
+        TestCaseLocal.test_case_number == TestRunItem.test_case_number
+    )
+    .correlate_except(TestCaseLocal)
+    .scalar_subquery()
+)
 
 
 class LarkUser(Base):
