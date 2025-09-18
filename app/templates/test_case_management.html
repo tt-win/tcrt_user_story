@@ -4726,9 +4726,18 @@ async function saveAndAddNext() {
             }
             // 保留相同 TCG 單號
             const tcgDisplayNext = document.getElementById('tcg');
-            if (tcgDisplayNext) tcgDisplayNext.value = currentTCG || '';
+            if (tcgDisplayNext) {
+                tcgDisplayNext.value = currentTCG || '';
+            }
+            // 同步更新多選標籤狀態，確保 UI 與隱藏欄位一致
+            if (typeof currentTCG === 'string' && currentTCG.trim()) {
+                modalTCGSelected = currentTCG.split(',').map(t => t.trim()).filter(Boolean);
+            } else {
+                modalTCGSelected = [];
+            }
+            renderModalTCGDisplay();
         }, 100);
-        
+
     } catch (error) {
         console.error('儲存測試案例失敗:', error);
         
