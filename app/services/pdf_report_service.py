@@ -200,7 +200,7 @@ class PDFReportService:
             raise ValueError(f"找不到 Test Run 配置 (team_id={team_id}, config_id={config_id})")
         
         # 獲取所有測試項目
-        items_query = self.db_session.query(TestRunItemDB).filter(
+        items_query = self.db_session.query(TestRunItemDB).options(joinedload(TestRunItemDB.test_case)).filter(
             TestRunItemDB.team_id == team_id,
             TestRunItemDB.config_id == config_id
         )
@@ -219,9 +219,17 @@ class PDFReportService:
         pass_rate = (passed_count / executed_count * 100) if executed_count > 0 else 0.0
         
         # 計算優先級分佈
-        high_priority = len([item for item in items if item.priority == Priority.HIGH])
-        medium_priority = len([item for item in items if item.priority == Priority.MEDIUM])
-        low_priority = len([item for item in items if item.priority == Priority.LOW])
+        def _item_priority(itm):
+            case = getattr(itm, 'test_case', None)
+            pri = getattr(case, 'priority', None)
+            if pri is None:
+                return None
+            return pri.value if hasattr(pri, 'value') else pri
+
+        priority_values = [_item_priority(item) for item in items]
+        high_priority = len([pri for pri in priority_values if pri == Priority.HIGH.value])
+        medium_priority = len([pri for pri in priority_values if pri == Priority.MEDIUM.value])
+        low_priority = len([pri for pri in priority_values if pri == Priority.LOW.value])
         
         # 計算 Bug Tickets 統計
         unique_bug_tickets = set()
@@ -239,10 +247,16 @@ class PDFReportService:
         # 準備詳細測試結果數據（限制前 100 筆）
         test_results = []
         for item in items[:100]:
+            case = getattr(item, 'test_case', None)
+            case_title = getattr(case, 'title', None)
+            case_priority = getattr(case, 'priority', None)
+            priority_str = None
+            if case_priority is not None:
+                priority_str = case_priority.value if hasattr(case_priority, 'value') else case_priority
             test_results.append({
                 'test_case_number': item.test_case_number or '',
-                'title': item.title or '',
-                'priority': item.priority.value if item.priority else '',
+                'title': case_title or '',
+                'priority': priority_str or '',
                 'status': item.test_result.value if item.test_result else '未執行',
                 'executor': item.assignee_name or '',
                 'execution_time': item.executed_at.strftime('%Y-%m-%d %H:%M') if item.executed_at else ''

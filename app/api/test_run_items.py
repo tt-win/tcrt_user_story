@@ -6,7 +6,8 @@ Items are created by selecting Test Cases and copying necessary fields.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased, contains_eager, joinedload
+from sqlalchemy import and_, or_
 from typing import List, Optional, Any, Dict
 from datetime import datetime
 import json
@@ -16,14 +17,13 @@ logger = logging.getLogger(__name__)
 
 from app.services.lark_client import LarkClient
 from app.config import settings
-from app.models.test_case import TestCase
-
 from app.database import get_db
 from app.models.database_models import (
     TestRunItem as TestRunItemDB,
     TestRunConfig as TestRunConfigDB,
     Team as TeamDB,
     TestRunItemResultHistory as ResultHistoryDB,
+    TestCaseLocal as TestCaseLocalDB,
 )
 from app.models.lark_types import Priority, TestResultStatus
 from pydantic import BaseModel, Field
@@ -174,10 +174,10 @@ class AssigneeModel(BaseModel):
 
 
 class TestRunItemCreate(BaseModel):
-    # Core fields from Test Case
+    # Core fields from Test Case（僅紀錄編號，其他欄位僅作為兼容性輸入）
     test_case_number: str
-    title: str
-    priority: Optional[Priority] = Priority.MEDIUM
+    title: Optional[str] = None
+    priority: Optional[Priority] = None
     precondition: Optional[str] = None
     steps: Optional[str] = None
     expected_result: Optional[str] = None
@@ -200,6 +200,7 @@ class TestRunItemCreate(BaseModel):
 
 
 class TestRunItemUpdate(BaseModel):
+    # Snapshot 欄位保留兼容性，但後端將忽略這些變更
     title: Optional[str] = None
     priority: Optional[Priority] = None
     precondition: Optional[str] = None
@@ -222,7 +223,7 @@ class TestRunItemResponse(BaseModel):
     team_id: int
     config_id: int
     test_case_number: str
-    title: str
+    title: Optional[str]
     priority: Optional[str]
     precondition: Optional[str]
     steps: Optional[str]
@@ -353,19 +354,35 @@ def _get_lark_client_for_team(team_id: int, db: Session):
     return lark_client, team_config
 
 
-def _db_to_response(item: TestRunItemDB) -> TestRunItemResponse:
+def _db_to_response(item: TestRunItemDB, case: Optional[TestCaseLocalDB] = None) -> TestRunItemResponse:
     exec_results = _parse_execution_results(item.execution_results_json)
+    test_case = case or getattr(item, 'test_case', None)
+
+    title = None
+    priority = None
+    precondition = None
+    steps = None
+    expected_result = None
+
+    if test_case is not None:
+        title = getattr(test_case, 'title', None)
+        pri_value = getattr(test_case, 'priority', None)
+        if pri_value is not None:
+            priority = pri_value.value if hasattr(pri_value, 'value') else pri_value
+        precondition = getattr(test_case, 'precondition', None)
+        steps = getattr(test_case, 'steps', None)
+        expected_result = getattr(test_case, 'expected_result', None)
 
     return TestRunItemResponse(
         id=item.id,
         team_id=item.team_id,
         config_id=item.config_id,
         test_case_number=item.test_case_number,
-        title=item.title,
-        priority=item.priority.value if hasattr(item.priority, 'value') else item.priority,
-        precondition=item.precondition,
-        steps=item.steps,
-        expected_result=item.expected_result,
+        title=title,
+        priority=priority,
+        precondition=precondition,
+        steps=steps,
+        expected_result=expected_result,
         assignee_id=item.assignee_id,
         assignee_name=item.assignee_name,
         assignee_en_name=item.assignee_en_name,
@@ -427,17 +444,32 @@ async def list_items(
 ):
     _verify_team_and_config(team_id, config_id, db)
 
-    q = db.query(TestRunItemDB).filter(
+    Tc = aliased(TestCaseLocalDB)
+    q = db.query(TestRunItemDB).outerjoin(
+        Tc,
+        and_(
+            TestRunItemDB.team_id == Tc.team_id,
+            TestRunItemDB.test_case_number == Tc.test_case_number,
+        )
+    ).filter(
         TestRunItemDB.team_id == team_id,
         TestRunItemDB.config_id == config_id,
-    )
+    ).options(contains_eager(TestRunItemDB.test_case, alias=Tc))
 
     if search:
         s = f"%{search}%"
-        q = q.filter((TestRunItemDB.title.like(s)) | (TestRunItemDB.test_case_number.like(s)))
+        q = q.filter(
+            or_(
+                TestRunItemDB.test_case_number.like(s),
+                Tc.title.like(s)
+            )
+        )
 
     if priority_filter:
-        q = q.filter(TestRunItemDB.priority == priority_filter)
+        priority_lookup = {p.value.lower(): p for p in Priority}
+        priority_value = priority_lookup.get(priority_filter.lower()) if isinstance(priority_filter, str) else None
+        if priority_value is not None:
+            q = q.filter(Tc.priority == priority_value)
     if test_result_filter:
         q = q.filter(TestRunItemDB.test_result == test_result_filter)
     if executed_only:
@@ -447,9 +479,9 @@ async def list_items(
     sort_map = {
         'created_at': TestRunItemDB.created_at,
         'updated_at': TestRunItemDB.updated_at,
-        'priority': TestRunItemDB.priority,
+        'priority': Tc.priority,
         'test_result': TestRunItemDB.test_result,
-        'title': TestRunItemDB.title,
+        'title': Tc.title,
     }
     sort_col = sort_map.get(sort_by, TestRunItemDB.created_at)
     if sort_order.lower() == 'asc':
@@ -458,7 +490,7 @@ async def list_items(
         q = q.order_by(sort_col.desc())
 
     items = q.offset(skip).limit(limit).all()
-    return [_db_to_response(i) for i in items]
+    return [_db_to_response(i, getattr(i, 'test_case', None)) for i in items]
 
 
 @router.post("/", response_model=BatchCreateResponse, status_code=status.HTTP_201_CREATED)
@@ -486,15 +518,18 @@ async def batch_create_items(
                 skipped += 1
                 continue
 
+            test_case = db.query(TestCaseLocalDB).filter(
+                TestCaseLocalDB.team_id == team_id,
+                TestCaseLocalDB.test_case_number == item.test_case_number
+            ).first()
+            if not test_case:
+                errors.append(f"index {idx}: 找不到測試案例 {item.test_case_number}")
+                continue
+
             db_item = TestRunItemDB(
                 team_id=team_id,
                 config_id=config_id,
                 test_case_number=item.test_case_number,
-                title=item.title,
-                priority=item.priority,
-                precondition=item.precondition,
-                steps=item.steps,
-                expected_result=item.expected_result,
                 assignee_id=item.assignee.id if item.assignee else None,
                 assignee_name=item.assignee.name if item.assignee else None,
                 assignee_en_name=item.assignee.en_name if item.assignee else None,
@@ -544,15 +579,16 @@ async def update_item(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到項目")
 
     data = payload.model_dump(exclude_unset=True)
+    # 移除快照類欄位（僅保留兼容性輸入）
+    for legacy_field in ['title', 'priority', 'precondition', 'steps', 'expected_result']:
+        data.pop(legacy_field, None)
     prev_result = item.test_result
     prev_executed_at = item.executed_at
     # Simple field updates
-    for key in ['title', 'precondition', 'steps', 'expected_result', 'execution_duration']:
+    for key in ['execution_duration']:
         if key in data:
             setattr(item, key, data[key])
 
-    if 'priority' in data and data['priority'] is not None:
-        item.priority = data['priority']
     if 'test_result' in data and data['test_result'] is not None:
         item.test_result = data['test_result']
     if 'executed_at' in data:
@@ -608,7 +644,7 @@ async def update_item(
     item.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(item)
-    return _db_to_response(item)
+    return _db_to_response(item, item.test_case)
 
 
 @router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -861,7 +897,7 @@ async def get_bug_tickets_summary(
     _verify_team_and_config(team_id, config_id, db)
     
     # 查詢所有有 bug_tickets_json 的項目
-    items = db.query(TestRunItemDB).filter(
+    items = db.query(TestRunItemDB).options(joinedload(TestRunItemDB.test_case)).filter(
         TestRunItemDB.team_id == team_id,
         TestRunItemDB.config_id == config_id,
         TestRunItemDB.bug_tickets_json.isnot(None)
@@ -891,10 +927,12 @@ async def get_bug_tickets_summary(
                                 }
                             
                             # 添加測試案例
+                            case = getattr(item, 'test_case', None)
+                            case_title = getattr(case, 'title', None)
                             bug_tickets_data[ticket_number]['test_cases'].append({
                                 'item_id': item.id,
                                 'test_case_number': item.test_case_number,
-                                'title': item.title or '',
+                                'title': case_title or '',
                                 'test_result': item.test_result
                             })
             except Exception:
