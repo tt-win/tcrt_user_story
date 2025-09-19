@@ -5,7 +5,24 @@
 以及相關的關聯表格。
 """
 
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey, Enum, Boolean, Float, UniqueConstraint, Index, and_, select
+import logging
+
+from sqlalchemy import (
+    Column,
+    Integer,
+    String,
+    Text,
+    DateTime,
+    ForeignKey,
+    Enum,
+    Boolean,
+    Float,
+    UniqueConstraint,
+    Index,
+    and_,
+    select,
+    text,
+)
 from sqlalchemy.orm import relationship, declarative_base, foreign, column_property
 from datetime import datetime
 from typing import Optional
@@ -486,8 +503,84 @@ class SyncHistory(Base):
 
 
 # 建立資料庫表格的函數
+logger = logging.getLogger(__name__)
+
+
 def create_database_tables():
     """創建所有資料庫表格"""
     from app.database import engine
     Base.metadata.create_all(bind=engine)
-    print("資料庫表格已創建完成")
+    try:
+        ensure_test_run_item_history_fk(engine)
+    except Exception as exc:
+        logger.exception("修正 test_run_item_result_history 外鍵失敗: %s", exc)
+    logger.info("資料庫表格已創建完成")
+
+
+def ensure_test_run_item_history_fk(engine) -> None:
+    """修復 test_run_item_result_history 表格仍引用舊備份表的外鍵。"""
+    if engine.dialect.name != "sqlite":
+        return
+
+    with engine.begin() as connection:
+        row = connection.execute(
+            text(
+                "SELECT sql FROM sqlite_master "
+                "WHERE type='table' AND name='test_run_item_result_history'"
+            )
+        ).fetchone()
+        if not row or not row[0] or "test_run_items_backup_snapshot" not in row[0]:
+            return
+
+        logger.info("偵測到 test_run_item_result_history 外鍵引用備份表，開始修復")
+        legacy_name = "test_run_item_result_history_legacy_fk"
+        connection.execute(text("PRAGMA foreign_keys=OFF"))
+        try:
+            connection.execute(text(f"ALTER TABLE test_run_item_result_history RENAME TO {legacy_name}"))
+
+            indexes = connection.execute(
+                text(
+                    "SELECT name FROM sqlite_master "
+                    "WHERE type='index' AND tbl_name=:tbl AND name NOT LIKE 'sqlite_autoindex%'"
+                ),
+                {"tbl": legacy_name},
+            ).fetchall()
+            for (index_name,) in indexes:
+                if index_name:
+                    connection.execute(text(f'DROP INDEX IF EXISTS "{index_name}"'))
+
+            TestRunItemResultHistory.__table__.create(bind=connection)
+
+            available_cols = connection.execute(
+                text(f"PRAGMA table_info('{legacy_name}')")
+            ).fetchall()
+            available = {row[1] for row in available_cols}
+            target_columns = [
+                col.name
+                for col in TestRunItemResultHistory.__table__.c
+                if col.name in available
+            ]
+            if target_columns:
+                columns_csv = ", ".join(f'"{col}"' for col in target_columns)
+                connection.execute(
+                    text(
+                        f'INSERT INTO test_run_item_result_history ({columns_csv}) '
+                        f'SELECT {columns_csv} FROM {legacy_name}'
+                    )
+                )
+
+            connection.execute(text(f"DROP TABLE {legacy_name}"))
+
+            try:
+                connection.execute(
+                    text(
+                        "UPDATE sqlite_sequence SET seq = "
+                        "COALESCE((SELECT MAX(id) FROM test_run_item_result_history), 0) "
+                        "WHERE name='test_run_item_result_history'"
+                    )
+                )
+            except Exception:
+                pass
+            logger.info("test_run_item_result_history 外鍵修復完成")
+        finally:
+            connection.execute(text("PRAGMA foreign_keys=ON"))
