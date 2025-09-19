@@ -22,12 +22,6 @@ PyYAML==6.0.2
 reportlab==4.2.5
 matplotlib==3.9.2
 
-# HTTP Client & Utilities
-requests==2.32.5
-
-# Database
-SQLAlchemy==2.0.43
-
 # Notes:
 # - python-dotenv is required by app/config.py (load_dotenv())
 # - JS assets are pulled via CDN by default; see scripts/install_dependencies.sh for local JS setup

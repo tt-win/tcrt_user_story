@@ -2112,12 +2112,6 @@ async function saveTCGCacheToStorage() {
     adjustTestCasesScrollHeight();
 }
 
-function clearTCGCache() {
-    tcgCache = null;
-    tcgCacheTimestamp = null;
-    // 覆蓋為空陣列，避免讀到舊資料
-    Promise.resolve().then(() => TRCache.setTCG([])).catch(() => {});
-}
 
 function shouldUpdateTCGCache() {
     // 檢查是否需要更新快取
