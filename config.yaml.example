@@ -10,3 +10,16 @@ jira:
 lark:
   app_id: 'YOUR_LARK_APP_ID'
   app_secret: 'YOUR_LARK_APP_SECRET'
+auth:
+  enable_auth: true
+  jwt_secret_key: '${JWT_SECRET_KEY}'  # 必須由環境變數提供
+  jwt_expire_days: 7
+  password_reset_expire_hours: 24
+  session_cleanup_days: 30
+audit:
+  enable_audit: true
+  database_url: 'sqlite:///./audit.db'
+  batch_size: 100
+  cleanup_days: 365
+attachments:
+  root_dir: ''  # 留空使用專案內 attachments 目錄

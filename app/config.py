@@ -47,6 +47,48 @@ class AppConfig(BaseModel):
             lark_dry_run=os.getenv('LARK_DRY_RUN', str(getattr(fallback, 'lark_dry_run', False)).lower() if fallback else 'false').lower() == 'true'
         )
 
+class AuthConfig(BaseModel):
+    """認證系統設定"""
+    enable_auth: bool = True
+    jwt_secret_key: str = ""
+    jwt_expire_days: int = 7
+    password_reset_expire_hours: int = 24
+    session_cleanup_days: int = 30
+    
+    @classmethod
+    def from_env(cls, fallback: 'AuthConfig' = None) -> 'AuthConfig':
+        """從環境變數載入認證設定"""
+        # JWT_SECRET_KEY 必須來自環境變數
+        jwt_secret = os.getenv('JWT_SECRET_KEY')
+        if not jwt_secret:
+            # 如果沒有環境變數，使用 fallback，但在生產環境會有警告
+            jwt_secret = fallback.jwt_secret_key if fallback else ''
+            
+        return cls(
+            enable_auth=os.getenv('ENABLE_AUTH', str(fallback.enable_auth if fallback else True)).lower() == 'true',
+            jwt_secret_key=jwt_secret,
+            jwt_expire_days=int(os.getenv('JWT_EXPIRE_DAYS', str(fallback.jwt_expire_days if fallback else 7))),
+            password_reset_expire_hours=int(os.getenv('PASSWORD_RESET_EXPIRE_HOURS', str(fallback.password_reset_expire_hours if fallback else 24))),
+            session_cleanup_days=int(os.getenv('SESSION_CLEANUP_DAYS', str(fallback.session_cleanup_days if fallback else 30)))
+        )
+
+class AuditConfig(BaseModel):
+    """審計系統設定"""
+    enable_audit: bool = True
+    database_url: str = "sqlite:///./audit.db"
+    batch_size: int = 100
+    cleanup_days: int = 365
+    
+    @classmethod
+    def from_env(cls, fallback: 'AuditConfig' = None) -> 'AuditConfig':
+        """從環境變數載入審計設定"""
+        return cls(
+            enable_audit=os.getenv('ENABLE_AUDIT', str(fallback.enable_audit if fallback else True)).lower() == 'true',
+            database_url=os.getenv('AUDIT_DATABASE_URL', fallback.database_url if fallback else 'sqlite:///./audit.db'),
+            batch_size=int(os.getenv('AUDIT_BATCH_SIZE', str(fallback.batch_size if fallback else 100))),
+            cleanup_days=int(os.getenv('AUDIT_CLEANUP_DAYS', str(fallback.cleanup_days if fallback else 365)))
+        )
+
 class AttachmentsConfig(BaseModel):
     # 若留空，則預設使用專案根目錄下的 attachments 子目錄
     root_dir: str = ""
@@ -63,6 +105,8 @@ class Settings(BaseModel):
     lark: LarkConfig = LarkConfig()
     jira: JiraConfig = JiraConfig()
     attachments: AttachmentsConfig = AttachmentsConfig()
+    auth: AuthConfig = AuthConfig()
+    audit: AuditConfig = AuditConfig()
     
     @classmethod
     def from_env_and_file(cls, config_path: str = "config.yaml") -> 'Settings':
@@ -80,7 +124,9 @@ class Settings(BaseModel):
             app=AppConfig.from_env(base_settings.app),
             lark=LarkConfig.from_env(base_settings.lark),
             jira=base_settings.jira,  # JIRA 保持檔案設定
-            attachments=AttachmentsConfig.from_env(base_settings.attachments)
+            attachments=AttachmentsConfig.from_env(base_settings.attachments),
+            auth=AuthConfig.from_env(base_settings.auth),
+            audit=AuditConfig.from_env(base_settings.audit)
         )
 
 def load_config(config_path: str = "config.yaml") -> Settings:
@@ -107,6 +153,19 @@ def create_default_config(config_path: str = "config.yaml") -> None:
         },
         "attachments": {
             "root_dir": ""  # 留空代表使用專案內 attachments 目錄
+        },
+        "auth": {
+            "enable_auth": True,
+            "jwt_secret_key": "${JWT_SECRET_KEY}",  # 必須由環境變數提供
+            "jwt_expire_days": 7,
+            "password_reset_expire_hours": 24,
+            "session_cleanup_days": 30
+        },
+        "audit": {
+            "enable_audit": True,
+            "database_url": "sqlite:///./audit.db",
+            "batch_size": 100,
+            "cleanup_days": 365
         }
     }
     
