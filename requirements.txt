@@ -18,6 +18,10 @@ requests==2.32.5
 # Configuration & Data Parsing
 PyYAML==6.0.2
 
+# Authentication & Security
+PyJWT==2.8.0
+passlib[bcrypt]==1.7.4
+
 # PDF Generation
 reportlab==4.2.5
 matplotlib==3.9.2
