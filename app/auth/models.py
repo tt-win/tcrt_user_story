@@ -30,6 +30,8 @@ class PermissionType(str, Enum):
 class UserBase(BaseModel):
     """使用者基礎模型"""
     username: str = Field(..., min_length=3, max_length=50, description="使用者名稱")
+    email: Optional[str] = Field(None, description="電子信箱")
+    full_name: Optional[str] = Field(None, description="全名")
     lark_user_id: Optional[str] = Field(None, description="關聯的 Lark 使用者 ID")
     role: UserRole = Field(..., description="使用者角色")
     primary_team_id: Optional[int] = Field(None, description="主要團隊 ID")

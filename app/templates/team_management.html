@@ -536,7 +536,7 @@ async function validateLarkConnection() {
     validateBtn.innerHTML = `<i class="fas fa-spinner fa-spin me-2"></i>${validatingMsg}`;
     
     try {
-        const response = await fetch('/api/teams/validate', {
+        const response = await window.AuthClient.fetch('/api/teams/validate', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -625,7 +625,7 @@ async function handleConfirmDeleteTeam() {
 
 async function performDeleteTeam(teamId) {
     try {
-        const response = await fetch(`/api/teams/${teamId}`, { method: 'DELETE' });
+        const response = await window.AuthClient.fetch(`/api/teams/${teamId}`, { method: 'DELETE' });
         if (!response.ok) {
             const errorMsg = window.i18n ? window.i18n.t('messages.deleteFailed') : '刪除失敗';
             throw new Error(errorMsg);
@@ -775,7 +775,7 @@ async function loadSyncStatus() {
     runningDiv.classList.add('d-none');
     
     try {
-        const response = await fetch('/api/organization/sync/status');
+        const response = await window.AuthClient.fetch('/api/organization/sync/status');
         
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
@@ -901,7 +901,7 @@ async function loadOrgStats() {
     
     try {
         // 加上時間戳避免瀏覽器快取造成數字不更新
-        const response = await fetch(`/api/organization/stats?t=${Date.now()}`);
+        const response = await window.AuthClient.fetch(`/api/organization/stats?t=${Date.now()}`);
         
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
@@ -941,7 +941,7 @@ async function startSyncFromModal(syncType = 'full') {
     try {
         // Guard: ensure not already syncing
         try {
-            const statusResp = await fetch('/api/organization/sync/status');
+            const statusResp = await window.AuthClient.fetch('/api/organization/sync/status');
             if (statusResp.ok) {
                 const statusJson = await statusResp.json();
                 if (statusJson.success && statusJson.data && statusJson.data.is_syncing) {
@@ -953,7 +953,7 @@ async function startSyncFromModal(syncType = 'full') {
             }
         } catch (_) {}
         
-        const response = await fetch(`/api/organization/sync?sync_type=${syncType}`, {
+        const response = await window.AuthClient.fetch(`/api/organization/sync?sync_type=${syncType}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -997,7 +997,7 @@ function startSyncPolling() {
     
     const poll = async () => {
         try {
-            const response = await fetch('/api/organization/sync/status');
+            const response = await window.AuthClient.fetch('/api/organization/sync/status');
             
             if (response.ok) {
                 const result = await response.json();
@@ -1093,7 +1093,7 @@ async function triggerGlobalSync() {
         statusDiv.style.display = 'block';
         
         // 觸發全域組織同步
-        const response = await fetch('/api/organization/sync?sync_type=full', {
+        const response = await window.AuthClient.fetch('/api/organization/sync?sync_type=full', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -1131,7 +1131,7 @@ async function pollGlobalSyncStatus() {
     
     const poll = async () => {
         try {
-            const response = await fetch('/api/organization/sync/status');
+            const response = await window.AuthClient.fetch('/api/organization/sync/status');
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             
             const result = await response.json();

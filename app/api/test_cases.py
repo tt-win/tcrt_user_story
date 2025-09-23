@@ -16,6 +16,9 @@ import uuid
 import json
 
 from app.database import get_db
+from app.auth.dependencies import get_current_user, require_team_permission
+from app.auth.models import PermissionType
+from app.models.database_models import User
 from app.models.test_case import (
     TestCase, TestCaseCreate, TestCaseUpdate, TestCaseResponse,
     TestCaseBatchOperation, TestCaseBatchResponse
@@ -107,6 +110,7 @@ async def get_test_cases(
     team_id: int,
     response: Response,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     # 搜尋參數
     search: Optional[str] = Query(None, description="標題模糊搜尋"),
     tcg_filter: Optional[str] = Query(None, description="TCG 單號過濾"),
@@ -122,12 +126,26 @@ async def get_test_cases(
     with_meta: bool = Query(False, description="是否回傳分頁中繼資料"),
     load_all: bool = Query(False, description="忽略分頁，一次載入全部資料並回傳")
 ):
-    """取得測試案例列表，支援搜尋、過濾和排序（改為本地 DB）
+    """取得測試案例列表（需要對該團隊的讀取權限）
     - 回應標頭包含:
       - X-Total-Count: 總筆數
       - X-Has-Next: 是否尚有下一頁（true/false）
     - 若 with_meta=true，回傳 { items, page: { skip, limit, total, hasNext } }
     """
+    # 權限檢查
+    from app.auth.models import UserRole
+    from app.auth.permission_service import permission_service
+    
+    if current_user.role != UserRole.SUPER_ADMIN:
+        permission_check = await permission_service.check_team_permission(
+            current_user.id, team_id, PermissionType.READ, current_user.role
+        )
+        if not permission_check.has_permission:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="無權限存取此團隊的測試案例"
+            )
+    
     try:
         service = TestCaseRepoService(db)
         # 先取 total 以便計算 hasNext
@@ -183,6 +201,7 @@ async def get_test_cases(
 async def get_test_cases_count(
     team_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     # 搜尋參數（與 get_test_cases 相同）
     search: Optional[str] = Query(None, description="標題模糊搜尋"),
     tcg_filter: Optional[str] = Query(None, description="TCG 單號過濾"),
@@ -190,7 +209,21 @@ async def get_test_cases_count(
     test_result_filter: Optional[str] = Query(None, description="測試結果過濾"),
     assignee_filter: Optional[str] = Query(None, description="指派人過濾")
 ):
-    """取得符合條件的測試案例數量（改為本地 DB）"""
+    """取得符合條件的測試案例數量（需要對該團隊的讀取權限）"""
+    # 權限檢查
+    from app.auth.models import UserRole
+    from app.auth.permission_service import permission_service
+    
+    if current_user.role != UserRole.SUPER_ADMIN:
+        permission_check = await permission_service.check_team_permission(
+            current_user.id, team_id, PermissionType.READ, current_user.role
+        )
+        if not permission_check.has_permission:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="無權限存取此團隊的測試案例數量"
+            )
+    
     try:
         service = TestCaseRepoService(db)
         total = service.count(
@@ -213,11 +246,26 @@ async def get_test_cases_count(
 async def get_test_case(
     team_id: int,
     record_id: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
-    """取得特定測試案例（改為本地 DB）。預設會載入附件清單。
+    """取得特定測試案例（需要對該團隊的讀取權限）。預設會載入附件清單。
     支援：record_id 為 lark_record_id 或本地數字 id
     """
+    # 權限檢查
+    from app.auth.models import UserRole
+    from app.auth.permission_service import permission_service
+    
+    if current_user.role != UserRole.SUPER_ADMIN:
+        permission_check = await permission_service.check_team_permission(
+            current_user.id, team_id, PermissionType.READ, current_user.role
+        )
+        if not permission_check.has_permission:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="無權限存取此團隊的測試案例"
+            )
+    
     try:
         service = TestCaseRepoService(db)
         result = service.get_by_lark_record_id(team_id, record_id, include_attachments=True)
@@ -317,12 +365,27 @@ async def get_test_case(
 async def create_test_case(
     team_id: int,
     case: TestCaseCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
-    """建立新的測試案例（只寫本地 DB）
+    """建立新的測試案例（需要對該團隊的寫入權限）
     - 若 case.temp_upload_id 存在，將 attachments/staging/{temp_upload_id} 下檔案搬移到最終路徑
       attachments/test-cases/{team_id}/{test_case_number}/ 並寫入 attachments_json。
     """
+    # 權限檢查
+    from app.auth.models import UserRole
+    from app.auth.permission_service import permission_service
+    
+    if current_user.role != UserRole.SUPER_ADMIN:
+        permission_check = await permission_service.check_team_permission(
+            current_user.id, team_id, PermissionType.WRITE, current_user.role
+        )
+        if not permission_check.has_permission:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="無權限在此團隊建立測試案例"
+            )
+    
     try:
         import json
         from pathlib import Path
@@ -425,11 +488,26 @@ async def update_test_case(
     team_id: int,
     record_id: str,
     case_update: TestCaseUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
-    """更新測試案例（只寫本地 DB）。
+    """更新測試案例（需要對該團隊的寫入權限）。
     規則：優先以本地 id（純數字）尋找；否則以 lark_record_id 尋找。
     """
+    # 權限檢查
+    from app.auth.models import UserRole
+    from app.auth.permission_service import permission_service
+    
+    if current_user.role != UserRole.SUPER_ADMIN:
+        permission_check = await permission_service.check_team_permission(
+            current_user.id, team_id, PermissionType.WRITE, current_user.role
+        )
+        if not permission_check.has_permission:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="無權限修改此團隊的測試案例"
+            )
+    
     try:
         import json
         from pathlib import Path

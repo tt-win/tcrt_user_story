@@ -1318,7 +1318,7 @@ async function loadTestRunConfigs() {
 
         console.log('Loading Test Run configurations, Team ID:', currentTeamId);
         showLoading();
-        const response = await fetch(`/api/teams/${currentTeamId}/test-run-configs/`);
+        const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/`);
         console.log('API 回應狀態:', response.status);
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -1670,7 +1670,7 @@ async function changeTestRunStatus(configId, newStatus, configName) {
     
     try {
         const teamId = currentTeamId; // 使用全域變數
-        const response = await fetch(`/api/teams/${teamId}/test-run-configs/${configId}/status`, {
+        const response = await window.AuthClient.fetch(`/api/teams/${teamId}/test-run-configs/${configId}/status`, {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json',
@@ -1755,7 +1755,7 @@ function openConfigFormModal(configId = null) {
             document.getElementById('configName').value = config.name;
             document.getElementById('configDescription').value = config.description || '';
             // 嘗試載入詳細配置以填入可選欄位和 TP 票號
-            fetch(`/api/teams/${currentTeamId}/test-run-configs/${configId}`)
+            window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${configId}`)
               .then(r => r.ok ? r.json() : null)
               .then(full => {
                 if (full) {
@@ -1837,7 +1837,7 @@ async function handleSaveConfig() {
     const saveBtn = document.getElementById('saveConfigBtn');
     try {
         saveBtn.disabled = true;
-        const response = await fetch(url, {
+        const response = await window.AuthClient.fetch(url, {
             method: method,
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(configData)
@@ -1929,7 +1929,7 @@ async function handleDeleteConfig(event) {
     btnOld.parentNode.replaceChild(btnNew, btnOld);
     document.getElementById('confirmDeleteConfigBtn').addEventListener('click', async () => {
         try {
-            const resp = await fetch(`/api/teams/${currentTeamId}/test-run-configs/${configId}`, { method: 'DELETE' });
+            const resp = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${configId}`, { method: 'DELETE' });
             if (resp.ok || resp.status === 204) {
                 if (configDetailModalInstance) configDetailModalInstance.hide();
                 inst.hide();
@@ -2089,7 +2089,7 @@ function openCaseSelectModal(configId) {
     // This will be called whenever modal hides. If pending and no items created, rollback
     if (pendingCreate && !createdItemsInSession && currentSelectingConfigId) {
       try {
-        await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentSelectingConfigId}`, { method: 'DELETE' });
+        await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentSelectingConfigId}`, { method: 'DELETE' });
         const warnMsg = window.i18n ? window.i18n.t('testRun.configDeletedDueToCancel') : '已取消選擇，設定已刪除';
         AppUtils.showInfo(warnMsg);
         await loadTestRunConfigs();
@@ -2148,7 +2148,7 @@ async function editTestCases(configId) {
     createdItemsInSession = false;
     currentSelectingConfigId = configId;
     // 讀取現有 items，預設勾選
-    const resp = await fetch(`/api/teams/${currentTeamId}/test-run-configs/${configId}/items?limit=1000`);
+    const resp = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${configId}/items?limit=1000`);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const items = await resp.json();
     selectedCaseMap.clear();
@@ -2171,7 +2171,7 @@ async function loadTeamTestCases(search) {
     url.searchParams.set('limit', '200');
     console.log('API URL:', url.toString());
     
-    const resp = await fetch(url);
+    const resp = await window.AuthClient.fetch(url);
     console.log('API Response Status:', resp.status);
     
     if (!resp.ok) {
@@ -2329,7 +2329,7 @@ async function createItemsFromSelection() {
 
   try {
     const url = `/api/teams/${currentTeamId}/test-run-configs/${currentSelectingConfigId}/items`;
-    const resp = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items }) });
+    const resp = await window.AuthClient.fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items }) });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const res = await resp.json();
     createdItemsInSession = true;
@@ -2338,7 +2338,7 @@ async function createItemsFromSelection() {
     const msg = window.i18n ? window.i18n.t('testRun.itemsCreated', { count: res.created_count || items.length }) : `建立成功 (${res.created_count || items.length} 筆)`;
     AppUtils.showSuccess(msg);
     // 同步統計後刷新管理頁
-    try { await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentSelectingConfigId}/sync`); } catch(e) {}
+    try { await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentSelectingConfigId}/sync`); } catch(e) {}
     await loadTestRunConfigs();
   } catch (e) {
     AppUtils.showError((window.i18n ? window.i18n.t('messages.saveFailed') : '建立失敗') + `: ${e.message}`);
@@ -2372,7 +2372,7 @@ async function saveEditedItems() {
         raw_fields: c.raw_fields || null,
       }));
       const url = `/api/teams/${currentTeamId}/test-run-configs/${currentSelectingConfigId}/items`;
-      const resp = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items }) });
+      const resp = await window.AuthClient.fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items }) });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       await resp.json();
     }
@@ -2381,7 +2381,7 @@ async function saveEditedItems() {
       const itemId = existingItemIdByCaseNumber.get(n);
       if (!itemId) continue;
       const url = `/api/teams/${currentTeamId}/test-run-configs/${currentSelectingConfigId}/items/${itemId}`;
-      const resp = await fetch(url, { method: 'DELETE' });
+      const resp = await window.AuthClient.fetch(url, { method: 'DELETE' });
       if (!resp.ok && resp.status !== 204) {
         // 若已不存在則忽略
         console.warn('Failed to delete item', itemId, 'status', resp.status);
@@ -2391,7 +2391,7 @@ async function saveEditedItems() {
     caseSelectModalInstance.hide();
     const msg = window.i18n ? window.i18n.t('testRun.itemsUpdated') : '已更新 Test Run 的 Test Case';
     AppUtils.showSuccess(msg);
-    try { await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentSelectingConfigId}/sync`); } catch(e) {}
+    try { await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentSelectingConfigId}/sync`); } catch(e) {}
     await loadTestRunConfigs();
   } catch (e) {
     AppUtils.showError((window.i18n ? window.i18n.t('messages.saveFailed') : '儲存失敗') + `: ${e.message}`);
@@ -2411,7 +2411,7 @@ function deleteTestRun(configId, name) {
   btnOld.parentNode.replaceChild(btnNew, btnOld);
   document.getElementById('confirmDeleteConfigBtn').addEventListener('click', async () => {
     try {
-      const resp = await fetch(`/api/teams/${currentTeamId}/test-run-configs/${configId}`, { method: 'DELETE' });
+      const resp = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${configId}`, { method: 'DELETE' });
       if (resp.ok || resp.status === 204) {
         inst.hide();
         const successMsg = window.i18n ? window.i18n.t('testRun.deleteSuccess', { name: safeName }) : `成功刪除 "${safeName}"`;
@@ -2680,7 +2680,7 @@ async function showJiraPreview(event, ticketNumber) {
         }
         
         // 呼叫 JIRA API
-        const response = await fetch(`/api/jira/tp/${ticketNumber}/details`);
+        const response = await window.AuthClient.fetch(`/api/jira/tp/${ticketNumber}/details`);
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
         }
@@ -2838,7 +2838,7 @@ function openJiraTicket(ticketNumber) {
     }
     
     // 使用 API 獲取正確的 JIRA URL
-    fetch(`/api/jira/tp/${ticketNumber}/details`)
+    window.AuthClient.fetch(`/api/jira/tp/${ticketNumber}/details`)
         .then(response => response.json())
         .then(data => {
             if (data.url) {
@@ -2863,7 +2863,7 @@ async function fetchTPDetails(ticketNumber) {
         }
         
         // 呼叫 JIRA API
-        const response = await fetch(`/api/jira/tp/${ticketNumber}/details`);
+        const response = await window.AuthClient.fetch(`/api/jira/tp/${ticketNumber}/details`);
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
         }
@@ -3475,7 +3475,7 @@ function quickSearchRenderTP(query, container) {
     </div>`;
     
     // T027: 呼叫 TP 搜尋 API (含快取儲存)
-    fetch(`/api/test-run-configs/search/tp?q=${encodeURIComponent(q)}&team_id=${currentTeamId}&limit=${limit}`)
+    window.AuthClient.fetch(`/api/test-run-configs/search/tp?q=${encodeURIComponent(q)}&team_id=${currentTeamId}&limit=${limit}`)
         .then(response => response.json())
         .then(data => {
             // 儲存到快取
@@ -3677,7 +3677,7 @@ async function performGroupSearch(keyword) {
     try {
         const url = new URL('/api/integrations/lark/groups', window.location.origin);
         if (keyword) url.searchParams.set('q', keyword);
-        const resp = await fetch(url);
+        const resp = await window.AuthClient.fetch(url);
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const data = await resp.json();
         if (!Array.isArray(data) || data.length === 0) {

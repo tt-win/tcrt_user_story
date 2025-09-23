@@ -516,7 +516,7 @@ class User(Base):
     
     id = Column(Integer, primary_key=True)
     username = Column(String(50), unique=True, nullable=False, index=True)
-    email = Column(String(255), unique=True, nullable=False, index=True)
+    email = Column(String(255), unique=True, nullable=True, index=True)
     hashed_password = Column(String(255), nullable=False)
     
     # 基本資訊

@@ -3,11 +3,15 @@
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, delete
 from typing import List
 from pydantic import BaseModel
 
 from app.database import get_db
+from app.auth.dependencies import get_current_user, require_admin, require_super_admin, require_team_permission
+from app.auth.models import PermissionType
+from app.models.database_models import User
 from app.models.team import Team, TeamCreate, TeamUpdate, TeamResponse
 from app.models.lark_types import Priority
 from app.models.database_models import (
@@ -100,40 +104,72 @@ def team_model_to_db(team: TeamCreate) -> TeamDB:
     )
 
 @router.get("/")
-async def get_teams(db: Session = Depends(get_db)):
-    """取得所有團隊列表"""
+async def get_teams(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """取得當前使用者可存取的團隊列表
+    
+    - SUPER_ADMIN: 可以查看所有團隊
+    - ADMIN/USER: 只能查看有權限的團隊
+    """
     try:
-        teams_db = db.query(TeamDB).all()
+        from app.auth.models import UserRole
+        from app.auth.permission_service import permission_service
+        
+        if current_user.role == UserRole.SUPER_ADMIN:
+            # 超管可以查看所有團隊
+            result = await db.execute(select(TeamDB))
+            teams_db = result.scalars().all()
+        else:
+            # 一般使用者只能查看有權限的團隊
+            accessible_team_ids = await permission_service.get_user_accessible_teams(current_user.id)
+            if not accessible_team_ids:
+                return []
+            
+            result = await db.execute(select(TeamDB).where(TeamDB.id.in_(accessible_team_ids)))
+            teams_db = result.scalars().all()
+        
         if not teams_db:
             return []
         return [team_db_to_model(team) for team in teams_db]
     except Exception as e:
         print(f"Error loading teams: {e}")
-        return []
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="取得團隊列表時發生錯誤"
+        )
 
 @router.post("/", status_code=status.HTTP_201_CREATED)
-async def create_team(team: TeamCreate, db: Session = Depends(get_db)):
-    """新增一個團隊"""
+async def create_team(
+    team: TeamCreate, 
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_super_admin())
+):
+    """新增一個團隊（僅 SUPER_ADMIN 可以建立團隊）"""
     try:
         # 創建資料庫模型
         team_db = team_model_to_db(team)
         
         # 儲存到資料庫
         db.add(team_db)
-        db.commit()
-        db.refresh(team_db)
+        await db.commit()
+        await db.refresh(team_db)
         
         return team_db_to_model(team_db)
     except Exception as e:
-        db.rollback()
+        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"建立團隊失敗：{str(e)}"
         )
 
 @router.post("/validate", response_model=dict)
-async def validate_lark_repo(team: TeamCreate):
-    """驗證 Lark Repo 的連線"""
+async def validate_lark_repo(
+    team: TeamCreate,
+    current_user: User = Depends(require_admin())
+):
+    """驗證 Lark Repo 的連線（需要 ADMIN+ 權限）"""
     try:
         # 創建 Lark Client 來驗證連線
         lark_client = LarkClient(
@@ -159,8 +195,11 @@ async def validate_lark_repo(team: TeamCreate):
 
 
 @router.post("/validate-table", response_model=ValidationResponse)
-async def validate_table(request: SimpleTableValidationRequest):
-    """簡單的表格驗證 API（不依賴完整團隊資料）"""
+async def validate_table(
+    request: SimpleTableValidationRequest,
+    current_user: User = Depends(require_admin())
+):
+    """簡單的表格驗證 API（需要 ADMIN+ 權限）"""
     try:
         # 創建 Lark Client 來驗證表格
         lark_client = LarkClient(
@@ -196,28 +235,66 @@ async def validate_table(request: SimpleTableValidationRequest):
         )
 
 @router.get("/{team_id}")
-async def get_team(team_id: int, db: Session = Depends(get_db)):
-    """根據 ID 取得特定團隊"""
-    team_db = db.query(TeamDB).filter(TeamDB.id == team_id).first()
+async def get_team(
+    team_id: int, 
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """根據 ID 取得特定團隊（需要對該團隊的讀取權限）"""
+    from app.auth.models import UserRole
+    from app.auth.permission_service import permission_service
     
+    # 檢查團隊是否存在
+    result = await db.execute(select(TeamDB).where(TeamDB.id == team_id))
+    team_db = result.scalar_one_or_none()
     if not team_db:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"找不到團隊 ID {team_id}"
         )
+    
+    # 權限檢查
+    if current_user.role != UserRole.SUPER_ADMIN:
+        permission_check = await permission_service.check_team_permission(
+            current_user.id, team_id, PermissionType.READ, current_user.role
+        )
+        if not permission_check.has_permission:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="無權限存取此團隊"
+            )
     
     return team_db_to_model(team_db)
 
 @router.put("/{team_id}")
-async def update_team(team_id: int, team_update: TeamUpdate, db: Session = Depends(get_db)):
-    """更新指定的團隊"""
-    team_db = db.query(TeamDB).filter(TeamDB.id == team_id).first()
+async def update_team(
+    team_id: int, 
+    team_update: TeamUpdate, 
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """更新指定的團隊（需要對該團隊的寫入權限）"""
+    from app.auth.models import UserRole
+    from app.auth.permission_service import permission_service
     
+    result = await db.execute(select(TeamDB).where(TeamDB.id == team_id))
+    team_db = result.scalar_one_or_none()
     if not team_db:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"找不到團隊 ID {team_id}"
         )
+    
+    # 權限檢查
+    if current_user.role != UserRole.SUPER_ADMIN:
+        permission_check = await permission_service.check_team_permission(
+            current_user.id, team_id, PermissionType.WRITE, current_user.role
+        )
+        if not permission_check.has_permission:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="無權限修改此團隊"
+            )
     try:
         # 更新資料庫模型
         if team_update.name is not None:
@@ -247,21 +324,26 @@ async def update_team(team_id: int, team_update: TeamUpdate, db: Session = Depen
             team_db.status = team_update.status
         
         # 提交更新
-        db.commit()
-        db.refresh(team_db)
+        await db.commit()
+        await db.refresh(team_db)
         
         return team_db_to_model(team_db)
     except Exception as e:
-        db.rollback()
+        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"更新團隊失敗：{str(e)}"
         )
 
 @router.delete("/{team_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_team(team_id: int, db: Session = Depends(get_db)):
-    """刪除指定的團隊，並清理相關資料避免參照完整性錯誤"""
-    team_db = db.query(TeamDB).filter(TeamDB.id == team_id).first()
+async def delete_team(
+    team_id: int, 
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_super_admin())
+):
+    """刪除指定的團隊（僅 SUPER_ADMIN 可以刪除團隊）"""
+    result = await db.execute(select(TeamDB).where(TeamDB.id == team_id))
+    team_db = result.scalar_one_or_none()
 
     if not team_db:
         raise HTTPException(
@@ -272,19 +354,19 @@ async def delete_team(team_id: int, db: Session = Depends(get_db)):
     try:
         # 先刪除與該團隊相關的歷程與本地項目與配置與測試案例，避免 FK 參照錯誤
         # 1) 測試結果歷程
-        db.query(ResultHistoryDB).filter(ResultHistoryDB.team_id == team_id).delete(synchronize_session=False)
+        await db.execute(delete(ResultHistoryDB).where(ResultHistoryDB.team_id == team_id))
         # 2) 本地測試執行項目
-        db.query(TestRunItemDB).filter(TestRunItemDB.team_id == team_id).delete(synchronize_session=False)
+        await db.execute(delete(TestRunItemDB).where(TestRunItemDB.team_id == team_id))
         # 3) 測試執行配置
-        db.query(TestRunConfigDB).filter(TestRunConfigDB.team_id == team_id).delete(synchronize_session=False)
+        await db.execute(delete(TestRunConfigDB).where(TestRunConfigDB.team_id == team_id))
         # 4) 同步歷史
-        db.query(SyncHistoryDB).filter(SyncHistoryDB.team_id == team_id).delete(synchronize_session=False)
+        await db.execute(delete(SyncHistoryDB).where(SyncHistoryDB.team_id == team_id))
         # 5) 本地測試案例
-        db.query(TestCaseLocalDB).filter(TestCaseLocalDB.team_id == team_id).delete(synchronize_session=False)
+        await db.execute(delete(TestCaseLocalDB).where(TestCaseLocalDB.team_id == team_id))
 
         # 最後刪除團隊
-        db.delete(team_db)
-        db.commit()
+        await db.delete(team_db)
+        await db.commit()
 
         # 嘗試移除磁碟附件資料夾（非致命）
         try:
@@ -304,5 +386,5 @@ async def delete_team(team_id: int, db: Session = Depends(get_db)):
         except Exception:
             pass
     except Exception as e:
-        db.rollback()
+        await db.rollback()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"刪除團隊失敗：{str(e)}")

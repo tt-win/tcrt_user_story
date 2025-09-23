@@ -54,7 +54,9 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
 # 包含 API 路由
 from app.api import api_router
+from app.api.system import router as system_router
 app.include_router(api_router, prefix="/api")
+app.include_router(system_router)
 
 # 前端頁面路由
 @app.get("/", response_class=HTMLResponse)
@@ -80,6 +82,15 @@ async def test_run_execution(request: Request):
 @app.get("/test-case-reference", response_class=HTMLResponse)
 async def test_case_reference(request: Request):
     return templates.TemplateResponse("test_case_reference.html", {"request": request})
+
+@app.get("/login", response_class=HTMLResponse)
+async def login(request: Request):
+    return templates.TemplateResponse("login.html", {"request": request})
+
+@app.get("/setup", response_class=HTMLResponse)
+async def setup(request: Request):
+    """系統初始化設置頁面"""
+    return templates.TemplateResponse("system_setup_standalone.html", {"request": request})
 
 @app.get("/health")
 async def health_check():

@@ -356,7 +356,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 AppUtils.hideTeamNameBadge();
                 return;
             }
-            const resp = await fetch(`/api/teams/${team.id}`);
+            const resp = await window.AuthClient.fetch(`/api/teams/${team.id}`);
             if (!resp.ok) {
                 // 團隊不存在或取得失敗，清除並隱藏徽章
                 AppUtils.clearCurrentTeam();
@@ -531,7 +531,7 @@ function showHiddenModeModal() {
             try {
                 if (abortCtrl) abortCtrl.abort();
                 abortCtrl = new AbortController();
-                const resp = await fetch('/api/admin/system_metrics', { signal: abortCtrl.signal });
+                const resp = await window.AuthClient.fetch('/api/admin/system_metrics', { signal: abortCtrl.signal });
                 if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
                 const data = await resp.json();
                 renderMetrics(data);
@@ -675,8 +675,8 @@ function showHiddenModeModal() {
             try {
                 await ensureChartJs();
                 const [tcResp, trResp] = await Promise.all([
-                    fetch(`/api/admin/stats/test_cases_created_daily?days=${days}`),
-                    fetch(`/api/admin/stats/test_run_actions_daily?days=${days}`)
+                    window.AuthClient.fetch(`/api/admin/stats/test_cases_created_daily?days=${days}`),
+                    window.AuthClient.fetch(`/api/admin/stats/test_run_actions_daily?days=${days}`)
                 ]);
                 const [tcJson, trJson] = await Promise.all([tcResp.json(), trResp.json()]);
                 const tcCtx = modalEl.querySelector('#hm-chart-tc-daily');

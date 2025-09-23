@@ -36,9 +36,10 @@ from sqlalchemy import inspect
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import SQLAlchemyError
 
-from app.database import engine  # 僅匯入 engine，保留該檔的 SQLite 優化設定
+from app.database import get_sync_engine  # 使用同步引擎為 database_init.py
 from app.models.database_models import (
     Base,
+    User, UserTeamPermission, ActiveSession, PasswordResetToken,  # 認證系統相關表
     Team, TestRunConfig, TestRunItem, TestRunItemResultHistory,
     TCGRecord, LarkDepartment, LarkUser, SyncHistory,
 )
@@ -70,6 +71,12 @@ class Logger:
 # 通用工具
 # -----------------------------
 IMPORTANT_TABLES: List[str] = [
+    # 認證系統相關表
+    "users",
+    "user_team_permissions", 
+    "active_sessions",
+    "password_reset_tokens",
+    # 測試系統相關表
     "teams",
     "test_run_configs",
     "test_run_items",
@@ -120,6 +127,41 @@ class ColumnSpec:
             return "NULL"
         return str(self.default)
 
+
+# 欄位約束修改規格
+class ColumnConstraintChange:
+    def __init__(self, table: str, column: str, old_constraint: str, new_constraint: str, notes: str = ""):
+        self.table = table
+        self.column = column
+        self.old_constraint = old_constraint  # 例如 "NOT NULL"
+        self.new_constraint = new_constraint  # 例如 "NULL"
+        self.notes = notes
+
+    def needs_migration(self, engine: Engine) -> bool:
+        """檢查是否需要進行約束遷移"""
+        try:
+            existing_cols = get_existing_columns(engine, self.table)
+            col_info = existing_cols.get(self.column.lower())
+            if not col_info:
+                return False
+            
+            # 檢查 NOT NULL 約束
+            if self.old_constraint == "NOT NULL" and self.new_constraint == "NULL":
+                return col_info.get("notnull", False)  # 如果目前是 NOT NULL，需要遷移
+            return False
+        except Exception:
+            return False
+
+# 欄位約束變更清單
+COLUMN_CONSTRAINT_CHANGES: List[ColumnConstraintChange] = [
+    ColumnConstraintChange(
+        table="users",
+        column="email",
+        old_constraint="NOT NULL",
+        new_constraint="NULL",
+        notes="系統初始化時允許不提供 email"
+    ),
+]
 
 # 欄位檢查清單（僅列出可能在既有 DB 缺少、且可由我們輕量補上的欄位）
 COLUMN_CHECKS: Dict[str, List[ColumnSpec]] = {
@@ -261,6 +303,99 @@ def check_missing_columns(engine: Engine, logger: Logger) -> Dict[str, List[Colu
         logger.info("未發現需補充的欄位")
     return missing
 
+
+def check_constraint_changes(engine: Engine, logger: Logger) -> List[ColumnConstraintChange]:
+    """檢查需要進行約束變更的欄位"""
+    needed_changes = []
+    for change in COLUMN_CONSTRAINT_CHANGES:
+        if change.needs_migration(engine):
+            needed_changes.append(change)
+    
+    if needed_changes:
+        logger.warn("偵測到需要約束變更的欄位（預設僅報告，不自動修復）：")
+        for change in needed_changes:
+            logger.warn(f"  - {change.table}.{change.column}: {change.old_constraint} -> {change.new_constraint} {'｜' + change.notes if change.notes else ''}")
+    else:
+        logger.info("未發現需要約束變更的欄位")
+    
+    return needed_changes
+
+def auto_fix_constraint_changes(engine: Engine, logger: Logger, constraint_changes: List[ColumnConstraintChange]):
+    """自動修復欄位約束變更（僅限 SQLite）"""
+    if not constraint_changes:
+        logger.info("無約束變更需要修復")
+        return
+    
+    if not is_sqlite(engine):
+        logger.warn("約束變更修復目前僅支援 SQLite資料庫")
+        return
+    
+    logger.info("開始自動修復欄位約束變更...")
+    
+    for change in constraint_changes:
+        if change.table == "users" and change.column == "email" and change.old_constraint == "NOT NULL":
+            try:
+                _migrate_users_email_to_nullable(engine, logger)
+                logger.info(f"已修復約束：{change.table}.{change.column}")
+            except Exception as e:
+                logger.error(f"修復約束失敗：{change.table}.{change.column} -> {e}")
+        else:
+            logger.warn(f"跳過不支援的約束變更：{change.table}.{change.column}")
+
+def _migrate_users_email_to_nullable(engine: Engine, logger: Logger):
+    """將 users.email 欄位從 NOT NULL 改為 nullable"""
+    logger.info("開始遷移 users.email 欄位約束...")
+    
+    with engine.begin() as conn:
+        # 備份原始表結構為临時表
+        conn.exec_driver_sql("""
+            CREATE TABLE users_backup AS 
+            SELECT * FROM users
+        """)
+        
+        # 建立新的 users 表結構（email 可為 NULL）
+        conn.exec_driver_sql("DROP TABLE users")
+        conn.exec_driver_sql("""
+            CREATE TABLE users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username VARCHAR(50) UNIQUE NOT NULL,
+                email VARCHAR(255) UNIQUE,
+                hashed_password VARCHAR(255) NOT NULL,
+                full_name VARCHAR(255),
+                role VARCHAR(50) NOT NULL DEFAULT 'user',
+                is_active BOOLEAN NOT NULL DEFAULT 1,
+                is_verified BOOLEAN NOT NULL DEFAULT 0,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                last_login_at DATETIME
+            )
+        """)
+        
+        # 復原資料（空字串 email 轉為 NULL）
+        conn.exec_driver_sql("""
+            INSERT INTO users (
+                id, username, email, hashed_password, full_name, 
+                role, is_active, is_verified, created_at, updated_at, last_login_at
+            )
+            SELECT 
+                id, username, 
+                CASE WHEN email = '' OR email IS NULL THEN NULL ELSE email END,
+                hashed_password, full_name, 
+                role, is_active, is_verified, created_at, updated_at, last_login_at
+            FROM users_backup
+        """)
+        
+        # 重建索引
+        conn.exec_driver_sql("CREATE INDEX ix_users_username ON users (username)")
+        conn.exec_driver_sql("CREATE INDEX ix_users_email ON users (email)")
+        conn.exec_driver_sql("CREATE INDEX ix_users_role_active ON users (role, is_active)")
+        conn.exec_driver_sql("CREATE INDEX ix_users_email_active ON users (email, is_active)")
+        conn.exec_driver_sql("CREATE INDEX ix_users_is_active ON users (is_active)")
+        
+        # 清理備份表
+        conn.exec_driver_sql("DROP TABLE users_backup")
+    
+    logger.info("users.email 欄位約束遷移完成")
 
 def auto_fix_columns(engine: Engine, logger: Logger, missing: Dict[str, List[ColumnSpec]]):
     if not missing:
@@ -407,6 +542,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     print("=" * 60)
 
     try:
+        # 獲取同步引擎
+        engine = get_sync_engine()
         db_url = str(engine.url)
         db_kind = engine.dialect.name
         logger.info(f"偵測到資料庫：{db_kind} | URL={db_url}")
@@ -432,12 +569,21 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         # 欄位檢查
         missing_cols = check_missing_columns(engine, logger)
+        
+        # 約束變更檢查
+        constraint_changes = check_constraint_changes(engine, logger)
 
         # 自動補欄位（僅安全新增）
         if args.auto_fix and missing_cols:
             auto_fix_columns(engine, logger, missing_cols)
         elif missing_cols:
             logger.info("如需自動補上可安全新增的欄位，可使用 --auto-fix 參數。")
+        
+        # 自動修復約束變更
+        if args.auto_fix and constraint_changes:
+            auto_fix_constraint_changes(engine, logger, constraint_changes)
+        elif constraint_changes:
+            logger.info("如需自動修復約束變更，可使用 --auto-fix 參數。")
 
         # 索引確保
         ensure_indexes(engine, logger)

@@ -62,7 +62,7 @@ class VersionChecker {
         try {
             console.log('正在檢查伺服器版本...');
 
-            const response = await fetch('/api/version/', {
+            const response = await window.AuthClient.fetch('/api/version/', {
                 method: 'GET',
                 headers: {
                     'Content-Type': 'application/json'

@@ -3,6 +3,8 @@ API 路由初始化
 """
 
 from fastapi import APIRouter
+from .auth import router as auth_router
+from .users import router as users_router
 from .teams import router as teams_router
 from .test_run_configs import router as test_run_configs_router, search_router as test_run_configs_search_router
 from .test_cases import router as test_cases_router
@@ -22,6 +24,8 @@ from .version import router as version_router
 api_router = APIRouter()
 
 # 包含所有子路由
+api_router.include_router(auth_router)
+api_router.include_router(users_router)
 api_router.include_router(teams_router)
 api_router.include_router(test_run_configs_router)
 api_router.include_router(test_run_configs_search_router)  # 新增搜尋路由

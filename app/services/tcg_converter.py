@@ -9,7 +9,8 @@ from typing import Optional, List, Dict, Any
 from pathlib import Path
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
-from app.database import SessionLocal
+from app.database import get_sync_engine
+from sqlalchemy.orm import sessionmaker
 
 
 class TCGConverter:
@@ -18,12 +19,16 @@ class TCGConverter:
     def __init__(self, db_path: str = "test_case_repo.db"):
         self.db_path = db_path
         self.logger = logging.getLogger(__name__)
+        # 使用同步引擎
+        self.engine = get_sync_engine()
+        from sqlalchemy.orm import sessionmaker
+        self.SessionLocal = sessionmaker(bind=self.engine)
         self._init_database()
     
     def _init_database(self):
         """初始化數據庫表格"""
         try:
-            db = SessionLocal()
+            db = self.SessionLocal()
             try:
                 # 使用 TCG 單號作為主鍵避免重複
                 db.execute(text('''
@@ -101,7 +106,7 @@ class TCGConverter:
     
     def _atomic_sync_records(self, records: List[Dict[str, Any]]) -> int:
         """在單一交易中完成 TCG 記錄同步"""
-        db = SessionLocal()
+        db = self.SessionLocal()
         try:
             # 開始交易
             db.begin()
@@ -181,7 +186,7 @@ class TCGConverter:
         if not record_id:
             return None
         
-        db = SessionLocal()
+        db = self.SessionLocal()
         try:
             result = db.execute(
                 text("SELECT tcg_number FROM tcg_records WHERE record_id = :record_id"),
@@ -199,7 +204,7 @@ class TCGConverter:
         if not record_ids:
             return {}
         
-        db = SessionLocal()
+        db = self.SessionLocal()
         try:
             # 使用參數化查詢避免 SQL 注入
             placeholders = ", ".join([f":id{i}" for i in range(len(record_ids))])
@@ -221,7 +226,7 @@ class TCGConverter:
         if not tcg_number:
             return None
         
-        db = SessionLocal()
+        db = self.SessionLocal()
         try:
             result = db.execute(
                 text("SELECT record_id FROM tcg_records WHERE tcg_number = :tcg_number"),
@@ -236,7 +241,7 @@ class TCGConverter:
     
     def search_tcg_numbers(self, keyword: str = "", limit: int = 50) -> List[Dict[str, str]]:
         """搜尋 TCG 單號"""
-        db = SessionLocal()
+        db = self.SessionLocal()
         try:
             if keyword:
                 results = db.execute(
@@ -282,7 +287,7 @@ class TCGConverter:
     
     def get_all_tcg_mappings(self) -> Dict[str, str]:
         """取得所有 TCG 映射（用於同步檢查）"""
-        db = SessionLocal()
+        db = self.SessionLocal()
         try:
             results = db.execute(
                 text("SELECT record_id, tcg_number FROM tcg_records")
@@ -296,7 +301,7 @@ class TCGConverter:
     
     def clear_all_mappings(self) -> bool:
         """清除所有映射（用於重新同步）"""
-        db = SessionLocal()
+        db = self.SessionLocal()
         try:
             db.execute(text("DELETE FROM tcg_records"))
             db.commit()

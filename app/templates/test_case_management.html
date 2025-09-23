@@ -1760,7 +1760,7 @@ const urlParams = new URLSearchParams(window.location.search);
             // 直接從 API 抓此測試案例
             const currentTeam = AppUtils.getCurrentTeam();
             if (!currentTeam || !currentTeam.id) throw new Error('請先選擇團隊');
-            const resp = await fetch(`/api/teams/${currentTeam.id}/testcases/?search=${encodeURIComponent(tcNumber)}&limit=1`);
+            const resp = await window.AuthClient.fetch(`/api/teams/${currentTeam.id}/testcases/?search=${encodeURIComponent(tcNumber)}&limit=1`);
             if (!resp.ok) throw new Error('載入測試案例失敗');
             const arr = await resp.json();
             const target = Array.isArray(arr) ? arr.find(tc => tc.test_case_number === tcNumber) : null;
@@ -1991,7 +1991,7 @@ async function searchModalTCGOptions(keyword) {
             console.log('從快取取得 Modal TCG 搜尋結果:', results.length, '筆');
         } else {
             // 如果沒有快取，使用 API
-            const response = await fetch(`/api/tcg/search?keyword=${encodeURIComponent(keyword)}&limit=20`);
+            const response = await window.AuthClient.fetch(`/api/tcg/search?keyword=${encodeURIComponent(keyword)}&limit=20`);
             if (!response.ok) {
                 console.error('Modal TCG 搜尋失敗:', response.status, response.statusText);
                 throw new Error(`搜尋 TCG 失敗: ${response.status}`);
@@ -2127,7 +2127,7 @@ async function loadTCGCache(updateProgress = null) {
         if (updateProgress) updateProgress(30, '從本地資料庫載入...');
         
         // 一次性從本地 SQLite 載入所有資料（極快）
-        const response = await fetch('/api/tcg/search?keyword=&limit=50000');
+        const response = await window.AuthClient.fetch('/api/tcg/search?keyword=&limit=50000');
         if (!response.ok) {
             throw new Error(`載入 TCG 失敗: ${response.status} ${response.statusText}`);
         }
@@ -2338,7 +2338,7 @@ async function loadTestCases(showLoadingBlock = true, updateProgress = null, for
         const connectingMsg = window.i18n ? window.i18n.t('loading.connecting', {}, '連接伺服器...') : '連接伺服器...';
         if (updateProgress) updateProgress(30, connectingMsg);
         
-        const response = await fetch(`/api/teams/${teamIdForLoad}/testcases/?load_all=true`);
+        const response = await window.AuthClient.fetch(`/api/teams/${teamIdForLoad}/testcases/?load_all=true`);
         if (!response.ok) {
             throw new Error(`載入測試案例失敗: ${response.status} ${response.statusText}`);
         }
@@ -2953,7 +2953,7 @@ async function confirmBatchCopyRequest() {
                 title: it.new_title
             }))
         };
-        const resp = await fetch(`/api/teams/${currentTeam.id}/testcases/bulk_clone`, {
+        const resp = await window.AuthClient.fetch(`/api/teams/${currentTeam.id}/testcases/bulk_clone`, {
             method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload)
         });
         const data = await resp.json();
@@ -3527,7 +3527,7 @@ async function confirmBulkTextCreate() {
             tcg_numbers: Array.isArray(item.tcg_numbers) ? item.tcg_numbers : []
         }));
         
-        const response = await fetch(`/api/teams/${currentTeam.id}/testcases/bulk_create`, {
+        const response = await window.AuthClient.fetch(`/api/teams/${currentTeam.id}/testcases/bulk_create`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ items })
@@ -4008,7 +4008,7 @@ function showTestCaseModal(testCase = null) {
         try {
             const currentTeam = AppUtils.getCurrentTeam();
             if (currentTeam && currentTeam.id && (!Array.isArray(testCase.attachments) || testCase.attachments.length === 0)) {
-                fetch(`/api/teams/${currentTeam.id}/testcases/${encodeURIComponent(testCase.record_id)}`)
+                window.AuthClient.fetch(`/api/teams/${currentTeam.id}/testcases/${encodeURIComponent(testCase.record_id)}`)
                     .then(r => r.ok ? r.json() : null)
                     .then(data => {
                         if (data && Array.isArray(data.attachments)) {
@@ -4334,7 +4334,7 @@ function deleteTestCase(id) {
             }
             
             // 發送刪除請求
-            const response = await fetch(`/api/teams/${currentTeam.id}/testcases/${id}`, {
+            const response = await window.AuthClient.fetch(`/api/teams/${currentTeam.id}/testcases/${id}`, {
                 method: 'DELETE'
             });
             
@@ -4457,7 +4457,7 @@ async function saveTestCase() {
             
             if (testCaseId) {
                 // 更新現有測試案例
-                response = await fetch(`/api/teams/${currentTeam.id}/testcases/${testCaseId}`, {
+                response = await window.AuthClient.fetch(`/api/teams/${currentTeam.id}/testcases/${testCaseId}`, {
                     method: 'PUT',
                     headers: {
                         'Content-Type': 'application/json',
@@ -4469,7 +4469,7 @@ async function saveTestCase() {
                 // 建立 API 不支援 tcg 字串（僅 update 支援），避免 422 將其移除
                 const tcgNumberForCreate = testCaseData.tcg ? String(testCaseData.tcg).trim() : '';
                 try { delete testCaseData.tcg; } catch (_) {}
-                response = await fetch(`/api/teams/${currentTeam.id}/testcases/`, {
+                response = await window.AuthClient.fetch(`/api/teams/${currentTeam.id}/testcases/`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -4507,7 +4507,7 @@ async function saveTestCase() {
                         const tcgInputEl = document.getElementById('tcg');
                         const tcgStr = (tcgInputEl && tcgInputEl.value) ? tcgInputEl.value.trim() : '';
                         if (tcgStr) {
-                            await fetch(`/api/teams/${currentTeam.id}/testcases/${newTestCase.record_id}`, {
+                            await window.AuthClient.fetch(`/api/teams/${currentTeam.id}/testcases/${newTestCase.record_id}`, {
                                 method: 'PUT',
                                 headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ tcg: tcgStr })
@@ -4524,7 +4524,7 @@ async function saveTestCase() {
             if (testCaseId) {
                 // 更新現有測試案例 - 先取得最新資料
                 try {
-                    const response = await fetch(`/api/teams/${currentTeam.id}/testcases/${testCaseId}`);
+                    const response = await window.AuthClient.fetch(`/api/teams/${currentTeam.id}/testcases/${testCaseId}`);
                     if (response.ok) {
                         const updatedTestCase = await response.json();
                         
@@ -4670,7 +4670,7 @@ async function saveAndAddNext() {
         // 建立 API 不支援 tcg 字串（僅 update 支援），避免 422 將其移除
         const tcgNumberForCreate = testCaseData.tcg ? String(testCaseData.tcg).trim() : '';
         try { delete testCaseData.tcg; } catch (_) {}
-        const response = await fetch(`/api/teams/${currentTeam.id}/testcases/`, {
+        const response = await window.AuthClient.fetch(`/api/teams/${currentTeam.id}/testcases/`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -4705,7 +4705,7 @@ async function saveAndAddNext() {
         // 若有 TCG 輸入，建立完成後立即更新 TCG（以字串）
         if (createdRecordId && tcgNumberForCreate) {
             try {
-                await fetch(`/api/teams/${currentTeam.id}/testcases/${createdRecordId}`, {
+                await window.AuthClient.fetch(`/api/teams/${currentTeam.id}/testcases/${createdRecordId}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ tcg: tcgNumberForCreate })
@@ -5260,7 +5260,7 @@ async function searchBatchTCGOptions(keyword) {
             return;
         }
         // 搜尋 API：允許空字串（顯示熱門/全部）
-        const response = await fetch(`/api/tcg/search?keyword=${encodeURIComponent(keyword || '')}&limit=20`);
+        const response = await window.AuthClient.fetch(`/api/tcg/search?keyword=${encodeURIComponent(keyword || '')}&limit=20`);
         const data = await response.json();
         if (response.ok && data.results) {
             updateBatchTCGDropdown(data.results);
@@ -5572,7 +5572,7 @@ async function performTestCaseBatchModify() {
         
         // 分別處理 TCG 和 Priority（因為現有 API 只支援個別處理）
         if (modifyTCG) {
-            const response = await fetch(`/api/teams/${currentTeam.id}/testcases/batch`, {
+            const response = await window.AuthClient.fetch(`/api/teams/${currentTeam.id}/testcases/batch`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -5592,7 +5592,7 @@ async function performTestCaseBatchModify() {
         }
         
         if (modifyPriority) {
-            const response = await fetch(`/api/teams/${currentTeam.id}/testcases/batch`, {
+            const response = await window.AuthClient.fetch(`/api/teams/${currentTeam.id}/testcases/batch`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -5703,7 +5703,7 @@ function batchDeleteTestCases() {
             }
             
             // 發送批次刪除請求
-            const response = await fetch(`/api/teams/${currentTeam.id}/testcases/batch`, {
+            const response = await window.AuthClient.fetch(`/api/teams/${currentTeam.id}/testcases/batch`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -6021,7 +6021,7 @@ function quickEdit(recordId, field) {
             updateData[field] = newValue;
             
             // 背景發送更新請求，不等待響應
-            fetch(`/api/teams/${currentTeam.id}/testcases/${recordId}`, {
+            window.AuthClient.fetch(`/api/teams/${currentTeam.id}/testcases/${recordId}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -6281,7 +6281,7 @@ async function searchTCGOptions(keyword) {
             console.log('從快取取得 TCG 搜尋結果:', results.length, '筆');
         } else {
             // 如果沒有快取，使用 API
-            const response = await fetch(`/api/tcg/search?keyword=${encodeURIComponent(keyword)}&limit=20`);
+            const response = await window.AuthClient.fetch(`/api/tcg/search?keyword=${encodeURIComponent(keyword)}&limit=20`);
             if (!response.ok) {
                 console.error('TCG 搜尋失敗:', response.status, response.statusText);
                 throw new Error(`搜尋 TCG 失敗: ${response.status}`);
@@ -6382,7 +6382,7 @@ function clearTCGValue() {
 async function fetchTCGRecordByNumber(tcgNumber) {
     try {
         // 從 TCG API 獲取對應的記錄資訊
-        const response = await fetch(`/api/tcg/search?keyword=${encodeURIComponent(tcgNumber)}&limit=1`);
+        const response = await window.AuthClient.fetch(`/api/tcg/search?keyword=${encodeURIComponent(tcgNumber)}&limit=1`);
         if (!response.ok) {
             return null;
         }
@@ -6452,7 +6452,7 @@ async function saveTCGChanges(recordId, tcgNumbers) {
         };
         
         // 發送更新請求
-        const response = await fetch(`/api/teams/${currentTeam.id}/testcases/${recordId}`, {
+        const response = await window.AuthClient.fetch(`/api/teams/${currentTeam.id}/testcases/${recordId}`, {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json',
@@ -7110,7 +7110,7 @@ async function uploadFilesToServer(files) {
                     const url = isNumericId
                         ? `/api/teams/${currentTeam.id}/testcases/${encodeURIComponent(currentRecordKey)}/attachments`
                         : `/api/teams/${currentTeam.id}/testcases/by-number/${encodeURIComponent(currentRecordKey)}/attachments`;
-                    const response = await fetch(url, { method: 'POST', body: fd });
+                    const response = await window.AuthClient.fetch(url, { method: 'POST', body: fd });
                     if (response.ok) {
                         const result = await response.json();
                         const statusText = attachmentsList.querySelector('.mt-2 small');
@@ -7155,7 +7155,7 @@ async function uploadFilesToServer(files) {
                 fd.append('files', files[i]);
             }
             if (currentTempUploadId) fd.append('temp_upload_id', currentTempUploadId);
-            const response = await fetch(`/api/teams/${currentTeam.id}/testcases/staging/upload`, { method: 'POST', body: fd });
+            const response = await window.AuthClient.fetch(`/api/teams/${currentTeam.id}/testcases/staging/upload`, { method: 'POST', body: fd });
             if (!response.ok) {
                 let errorText = '上傳失敗';
                 try { const err = await response.json(); errorText = err.detail || errorText; } catch (_e) {}
@@ -7297,7 +7297,7 @@ async function removeAttachment(fileToken, filename, index) {
             if (!currentTeam || !currentTeam.id) {
                 throw new Error('請先選擇團隊');
             }
-            const response = await fetch(`/api/teams/${currentTeam.id}/testcases/${currentRecordId}/attachments/${encodeURIComponent(filename)}`, {
+            const response = await window.AuthClient.fetch(`/api/teams/${currentTeam.id}/testcases/${currentRecordId}/attachments/${encodeURIComponent(filename)}`, {
                 method: 'DELETE',
                 headers: {
                     'Content-Type': 'application/json'
@@ -7864,7 +7864,7 @@ function hideTCGTTooltip(immediate = false) {
 async function fetchJIRATicketInfo(tcgNumber) {
     try {
         // 使用 API 端點取得 ticket 資訊
-        const response = await fetch(`/api/jira/ticket/${tcgNumber}`, {
+        const response = await window.AuthClient.fetch(`/api/jira/ticket/${tcgNumber}`, {
             method: 'GET',
             headers: {
                 'Content-Type': 'application/json'
@@ -8150,7 +8150,7 @@ async function showTCGPreviewForModal() {
 
     try {
         // 從 JIRA 取得 ticket 資訊
-        const response = await fetch(`/api/jira/ticket/${tcgNumber}`, {
+        const response = await window.AuthClient.fetch(`/api/jira/ticket/${tcgNumber}`, {
             method: 'GET',
             headers: { 'Content-Type': 'application/json' }
         });

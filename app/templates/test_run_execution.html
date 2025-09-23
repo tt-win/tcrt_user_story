@@ -2565,7 +2565,7 @@ function bindEventListeners() {
 
 async function loadTestRunConfig() {
     try {
-        const response = await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}`);
+        const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         
         testRunConfig = await response.json();
@@ -2584,7 +2584,7 @@ async function loadTestRunConfig() {
 async function loadTestRunItems() {
     try {
         showItemsLoading();
-        const response = await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/?limit=10000`);
+        const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/?limit=10000`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         
         testRunItems = await response.json();
@@ -2612,7 +2612,7 @@ async function loadTestRunItems() {
 // 不顯示載入動畫的版本（用於 Refresh）
 async function loadTestRunItemsWithoutLoading() {
     try {
-        const response = await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/?limit=1000`);
+        const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/?limit=1000`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         
         testRunItems = await response.json();
@@ -2921,7 +2921,7 @@ async function updateTestResult(itemId, result) {
     try {
         const executedAt = result ? new Date().toISOString() : null;
         
-        const response = await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/${itemId}`, {
+        const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/${itemId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -2993,7 +2993,7 @@ async function updateStatistics() {
         // 顯示載入動畫
         showStatsLoading();
         
-        const response = await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/statistics`);
+        const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/statistics`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         
         const stats = await response.json();
@@ -3009,7 +3009,7 @@ async function updateStatistics() {
         document.getElementById('pass-rate').textContent = Math.floor(stats.pass_rate) + '%';
         
         // 同步配置統計
-        await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/sync`);
+        await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/sync`);
         
     } catch (error) {
         console.error('Failed to update statistics:', error);
@@ -3089,7 +3089,7 @@ function confirmStatusChange(newStatus, message) {
 
 async function changeTestRunStatus(newStatus) {
     try {
-        const response = await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}`, {
+        const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ status: newStatus })
@@ -3154,7 +3154,7 @@ async function restartTestRun(mode) {
         // 調用重新執行 API
         const nameInput = document.getElementById('rerunNameInput');
         const newName = nameInput && nameInput.value ? nameInput.value.trim() : '';
-        const response = await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/restart`, {
+        const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/restart`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ mode: mode, name: newName })
@@ -3390,7 +3390,7 @@ async function batchModifyItems(modifications) {
         });
 
         // 批次修改 API 調用（使用正確的端點）
-        const response = await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/batch-update-results`, {
+        const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/batch-update-results`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -3547,7 +3547,7 @@ async function batchDeleteItems() {
         // 逐個刪除項目（因為可能沒有批次刪除 API）
         for (const itemId of itemsToDelete) {
             try {
-                const response = await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/${itemId}`, {
+                const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/${itemId}`, {
                     method: 'DELETE'
                 });
 
@@ -3786,7 +3786,7 @@ async function loadTestCaseDetail(testCaseNumber) {
         }
 
         // 先以 by-number 取得完整詳情（含附件）
-        const resp = await fetch(`/api/teams/${currentTeamId}/testcases/by-number/${encodeURIComponent(testCaseNumber)}`);
+        const resp = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/testcases/by-number/${encodeURIComponent(testCaseNumber)}`);
         if (resp.ok) {
             const testCase = await resp.json();
             setCachedTestCase(testCaseNumber, testCase);
@@ -3798,7 +3798,7 @@ async function loadTestCaseDetail(testCaseNumber) {
         const url = new URL(`/api/teams/${currentTeamId}/testcases/`, window.location.origin);
         url.searchParams.set('search', testCaseNumber);
         url.searchParams.set('limit', '1');
-        const response = await fetch(url);
+        const response = await window.AuthClient.fetch(url);
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
@@ -4138,7 +4138,7 @@ async function renderResultHistoryTimeline(testCase) {
         // 設定當前項目 ID 供 Bug Ticket 功能使用
         currentItemIdForBugTicket = item.id;
 
-        const resp = await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/${item.id}/result-history?limit=50`);
+        const resp = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/${item.id}/result-history?limit=50`);
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         const records = await resp.json();
         loading.style.display = 'none';
@@ -4278,7 +4278,7 @@ async function fetchAndCacheTestCase(testCaseNumber) {
         const url = new URL(`/api/teams/${currentTeamId}/testcases/`, window.location.origin);
         url.searchParams.set('search', testCaseNumber);
         url.searchParams.set('limit', '1');
-        const resp = await fetch(url);
+        const resp = await window.AuthClient.fetch(url);
         if (!resp.ok) return;
         const list = await resp.json();
         const tc = Array.isArray(list) ? list.find(t => t.test_case_number === testCaseNumber) : null;
@@ -4318,7 +4318,7 @@ async function prefetchTestCasesForItems(items) {
 // 一次性抓取整個團隊的 Test Cases，將與本次 Test Run 有關的案例寫入快取
 async function preloadAllTeamTestCasesForRun(items) {
     try {
-        const resp = await fetch(`/api/teams/${currentTeamId}/testcases/`);
+        const resp = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/testcases/`);
         if (!resp.ok) {
             // 若整批抓取失敗，退回逐筆預抓策略
             await prefetchTestCasesForItems(items);
@@ -4367,7 +4367,7 @@ async function updateAssignee(itemId, assigneeName) {
         // 清理輸入值
         const cleanAssignee = assigneeName ? assigneeName.trim() : '';
         
-        const response = await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/${itemId}`, {
+        const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/${itemId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -4621,7 +4621,7 @@ function createJIRATooltip() {
 // 從 JIRA 取得 ticket 資訊
 async function fetchJIRATicketInfo(tcgNumber) {
     try {
-        const response = await fetch(`/api/jira/ticket/${tcgNumber}`, {
+        const response = await window.AuthClient.fetch(`/api/jira/ticket/${tcgNumber}`, {
             method: 'GET',
             headers: {
                 'Content-Type': 'application/json'
@@ -4933,7 +4933,7 @@ async function loadBugTickets(itemId) {
         
         const url = `/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/${itemId}/bug-tickets`;
         
-        const response = await fetch(url);
+        const response = await window.AuthClient.fetch(url);
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: Failed to load bug tickets`);
         }
@@ -4994,7 +4994,7 @@ async function addBugTicket() {
     }
     
     try {
-        const response = await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/${currentItemIdForBugTicket}/bug-tickets`, {
+        const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/${currentItemIdForBugTicket}/bug-tickets`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -5040,7 +5040,7 @@ function confirmDeleteBugTicket(itemId, ticketNumber) {
 async function deleteBugTicket(itemId, ticketNumber) {
     
     try {
-        const response = await fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/${itemId}/bug-tickets/${encodeURIComponent(ticketNumber)}`, {
+        const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/${itemId}/bug-tickets/${encodeURIComponent(ticketNumber)}`, {
             method: 'DELETE'
         });
         
@@ -5176,7 +5176,7 @@ async function showBugTicketPreview(ticketNumber, triggerElement) {
         tooltip.style.display = 'block';
         
         // 獲取 JIRA ticket 資訊
-        const response = await fetch(`/api/jira/ticket/${encodeURIComponent(ticketNumber)}`);
+        const response = await window.AuthClient.fetch(`/api/jira/ticket/${encodeURIComponent(ticketNumber)}`);
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
         }
@@ -5394,7 +5394,7 @@ async function loadBugTicketsSummary() {
     
     try {
         const url = `/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/bug-tickets/summary`;
-        const response = await fetch(url);
+        const response = await window.AuthClient.fetch(url);
         
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -5528,7 +5528,7 @@ async function refreshBugTicketsStatus() {
         // 依序呼叫 JIRA API 更新每個 ticket 的狀態
         for (let ticket of currentBugTicketsSummary.tickets) {
             try {
-                const response = await fetch(`/api/jira/ticket/${encodeURIComponent(ticket.ticket_info.ticket_number)}`);
+                const response = await window.AuthClient.fetch(`/api/jira/ticket/${encodeURIComponent(ticket.ticket_info.ticket_number)}`);
                 if (response.ok) {
                     const jiraData = await response.json();
                     // 更新本地資料
@@ -6222,7 +6222,7 @@ async function downloadReportAsPDF() {
         }
         
         // 呼叫後端 API 生成 PDF
-        const response = await fetch(`/api/teams/${currentTeamId}/test-runs/${currentConfigId}/generate-pdf`, {
+        const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-runs/${currentConfigId}/generate-pdf`, {
             method: 'GET',
             headers: {
                 'Accept': 'application/pdf'
@@ -6502,7 +6502,7 @@ async function generateHtmlReport() {
     icon.classList.add('fa-spinner', 'fa-spin');
     text.textContent = generatingLabel;
 
-    const resp = await fetch(`/api/teams/${encodeURIComponent(teamId)}/test-runs/${encodeURIComponent(configId)}/generate-html`, {
+    const resp = await window.AuthClient.fetch(`/api/teams/${encodeURIComponent(teamId)}/test-runs/${encodeURIComponent(configId)}/generate-html`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' }
     });
@@ -6814,7 +6814,7 @@ class TestResultsManager {
             if (!this.tcAttachmentsContainer) return;
             const listDiv = this.tcAttachmentsContainer.querySelector('[data-role="attachments-list"]');
             if (listDiv) listDiv.innerHTML = `<div class="text-muted small">${window.i18n ? window.i18n.t('messages.loading') : '載入中...'}</div>`;
-            const resp = await fetch(`/api/teams/${this.teamId}/testcases/by-number/${encodeURIComponent(this.testCaseNumber)}`);
+            const resp = await window.AuthClient.fetch(`/api/teams/${this.teamId}/testcases/by-number/${encodeURIComponent(this.testCaseNumber)}`);
             if (!resp.ok) {
                 if (listDiv) listDiv.innerHTML = `<div class="text-muted small">${window.i18n ? window.i18n.t('errors.noAttachments') : '尚無附件'}</div>`;
                 return;
@@ -6846,7 +6846,7 @@ class TestResultsManager {
         try {
             this.showLoading(true);
             
-            const response = await fetch(`/api/teams/${this.teamId}/test-run-configs/${this.configId}/items/${this.testRunItemId}/test-results`);
+            const response = await window.AuthClient.fetch(`/api/teams/${this.teamId}/test-run-configs/${this.configId}/items/${this.testRunItemId}/test-results`);
             
             if (response.ok) {
                 const data = await response.json();
@@ -6929,7 +6929,7 @@ class TestResultsManager {
             const formData = new FormData();
             files.forEach(file => formData.append('files', file));
             
-            const response = await fetch(`/api/teams/${this.teamId}/test-run-configs/${this.configId}/items/${this.testRunItemId}/upload-results`, {
+            const response = await window.AuthClient.fetch(`/api/teams/${this.teamId}/test-run-configs/${this.configId}/items/${this.testRunItemId}/upload-results`, {
                 method: 'POST',
                 body: formData
             });
@@ -7068,7 +7068,7 @@ class TestResultsManager {
         if (!confirmed) return;
         
         try {
-            const response = await fetch(`/api/teams/${this.teamId}/test-run-configs/${this.configId}/items/${this.testRunItemId}/test-results/${fileToken}`, {
+            const response = await window.AuthClient.fetch(`/api/teams/${this.teamId}/test-run-configs/${this.configId}/items/${this.testRunItemId}/test-results/${fileToken}`, {
                 method: 'DELETE'
             });
             

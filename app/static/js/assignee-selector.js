@@ -404,7 +404,7 @@ class AssigneeSelector {
             ? `/api/teams/${this.options.teamId}/contacts/search/suggestions?q=${encodeURIComponent(normQuery)}&limit=${this.options.maxResults}`
             : `/api/teams/${this.options.teamId}/contacts?limit=${this.options.maxResults}`;
         const p = (async () => {
-            const response = await fetch(url);
+            const response = await window.AuthClient.fetch(url);
             const result = await response.json();
             if (result.success) {
                 return normQuery ? (result.data.suggestions || []) : (result.data.contacts || []);

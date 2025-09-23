@@ -12,6 +12,9 @@ from datetime import datetime
 import io
 
 from app.database import get_db
+from app.auth.dependencies import get_current_user
+from app.auth.models import PermissionType
+from app.models.database_models import User
 from app.models.test_run import (
     TestRun, TestRunCreate, TestRunUpdate, TestRunResponse, TestRunStatistics
 )
@@ -150,6 +153,7 @@ async def get_test_runs(
     team_id: int,
     config_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     # 搜尋參數
     search: Optional[str] = Query(None, description="標題模糊搜尋"),
     test_case_number: Optional[str] = Query(None, description="測試案例編號過濾"),
@@ -165,7 +169,21 @@ async def get_test_runs(
     skip: int = Query(0, ge=0, description="跳過筆數"),
     limit: int = Query(100, ge=1, le=1000, description="回傳筆數")
 ):
-    """取得測試執行記錄列表，支援搜尋、過濾和排序"""
+    """取得測試執行記錄列表（需要對該團隊的讀取權限）"""
+    # 權限檢查
+    from app.auth.models import UserRole
+    from app.auth.permission_service import permission_service
+    
+    if current_user.role != UserRole.SUPER_ADMIN:
+        permission_check = await permission_service.check_team_permission(
+            current_user.id, team_id, PermissionType.READ, current_user.role
+        )
+        if not permission_check.has_permission:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="無權限存取此團隊的測試執行記錄"
+            )
+    
     lark_client, team, config = get_lark_client_for_test_run(team_id, config_id, db)
     
     try:
@@ -238,6 +256,7 @@ async def get_test_runs_count(
     team_id: int,
     config_id: int,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
     # 搜尋參數（與 get_test_runs 相同）
     search: Optional[str] = Query(None, description="標題模糊搜尋"),
     test_case_number: Optional[str] = Query(None, description="測試案例編號過濾"),
@@ -247,7 +266,21 @@ async def get_test_runs_count(
     executed_only: Optional[bool] = Query(None, description="只顯示已執行"),
     has_execution_results: Optional[bool] = Query(None, description="只顯示有執行結果")
 ):
-    """取得符合條件的測試執行記錄數量"""
+    """取得符合條件的測試執行記錄數量（需要對該團隊的讀取權限）"""
+    # 權限檢查
+    from app.auth.models import UserRole
+    from app.auth.permission_service import permission_service
+    
+    if current_user.role != UserRole.SUPER_ADMIN:
+        permission_check = await permission_service.check_team_permission(
+            current_user.id, team_id, PermissionType.READ, current_user.role
+        )
+        if not permission_check.has_permission:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="無權限存取此團隊的測試執行記錄數量"
+            )
+    
     lark_client, team, config = get_lark_client_for_test_run(team_id, config_id, db)
     
     try:
@@ -280,9 +313,24 @@ async def get_test_run(
     team_id: int,
     config_id: int,
     record_id: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
-    """取得特定測試執行記錄"""
+    """取得特定測試執行記錄（需要對該團隊的讀取權限）"""
+    # 權限檢查
+    from app.auth.models import UserRole
+    from app.auth.permission_service import permission_service
+    
+    if current_user.role != UserRole.SUPER_ADMIN:
+        permission_check = await permission_service.check_team_permission(
+            current_user.id, team_id, PermissionType.READ, current_user.role
+        )
+        if not permission_check.has_permission:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="無權限存取此團隊的測試執行記錄"
+            )
+    
     lark_client, team, config = get_lark_client_for_test_run(team_id, config_id, db)
     
     try:
@@ -319,9 +367,24 @@ async def create_test_run(
     team_id: int,
     config_id: int,
     test_run: TestRunCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
-    """建立新的測試執行記錄到 Lark 表格"""
+    """建立新的測試執行記錄（需要對該團隊的寫入權限）"""
+    # 權限檢查
+    from app.auth.models import UserRole
+    from app.auth.permission_service import permission_service
+    
+    if current_user.role != UserRole.SUPER_ADMIN:
+        permission_check = await permission_service.check_team_permission(
+            current_user.id, team_id, PermissionType.WRITE, current_user.role
+        )
+        if not permission_check.has_permission:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="無權限在此團隊建立測試執行記錄"
+            )
+    
     lark_client, team, config = get_lark_client_for_test_run(team_id, config_id, db)
     
     try:
@@ -394,9 +457,24 @@ async def update_test_run(
     config_id: int,
     record_id: str,
     test_run_update: TestRunUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
-    """更新 Lark 表格中的測試執行記錄"""
+    """更新測試執行記錄（需要對該團隊的寫入權限）"""
+    # 權限檢查
+    from app.auth.models import UserRole
+    from app.auth.permission_service import permission_service
+    
+    if current_user.role != UserRole.SUPER_ADMIN:
+        permission_check = await permission_service.check_team_permission(
+            current_user.id, team_id, PermissionType.WRITE, current_user.role
+        )
+        if not permission_check.has_permission:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="無權限修改此團隊的測試執行記錄"
+            )
+    
     lark_client, team, config = get_lark_client_for_test_run(team_id, config_id, db)
     
     try:
@@ -494,9 +572,24 @@ async def delete_test_run(
     team_id: int,
     config_id: int,
     record_id: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
-    """刪除 Lark 表格中的測試執行記錄"""
+    """刪除測試執行記錄（需要對該團隊的刪除權限）"""
+    # 權限檢查
+    from app.auth.models import UserRole
+    from app.auth.permission_service import permission_service
+    
+    if current_user.role != UserRole.SUPER_ADMIN:
+        permission_check = await permission_service.check_team_permission(
+            current_user.id, team_id, PermissionType.DELETE, current_user.role
+        )
+        if not permission_check.has_permission:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="無權限刪除此團隊的測試執行記錄"
+            )
+    
     lark_client, team, config = get_lark_client_for_test_run(team_id, config_id, db)
     
     try:

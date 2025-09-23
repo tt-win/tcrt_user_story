@@ -17,9 +17,12 @@ auth:
   password_reset_expire_hours: 24
   session_cleanup_days: 30
 audit:
-  enable_audit: true
+  enabled: true
   database_url: 'sqlite:///./audit.db'
   batch_size: 100
   cleanup_days: 365
+  max_detail_size: 10240
+  excluded_fields: ['password', 'token', 'secret', 'key']
+  debug_sql: false
 attachments:
   root_dir: ''  # 留空使用專案內 attachments 目錄

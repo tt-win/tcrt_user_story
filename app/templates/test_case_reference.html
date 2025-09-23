@@ -166,7 +166,7 @@
       hideFrame();
       const team = AppUtils.getCurrentTeam();
       if (!team || !team.id) throw new Error('請先選擇團隊');
-      const resp = await fetch(`/api/teams/${team.id}/testcases/?search=${encodeURIComponent(query)}&limit=50`);
+      const resp = await window.AuthClient.fetch(`/api/teams/${team.id}/testcases/?search=${encodeURIComponent(query)}&limit=50`);
       if (!resp.ok) throw new Error('搜尋失敗');
       const arr = await resp.json();
       renderResults(arr || []);
