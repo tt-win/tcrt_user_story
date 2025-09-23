@@ -16,7 +16,7 @@ from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func
 
-from app.database import engine
+from app.database import get_sync_engine
 from app.models.database_models import LarkUser, LarkDepartment
 from app.services.lark_client import LarkAuthManager
 
@@ -32,8 +32,9 @@ class LarkUserService:
         self.base_url = "https://open.larksuite.com/open-apis"
         self.timeout = 30
         
-        # 數據庫會話
-        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        # 數據庫會話（使用同步引擎，避免與 AsyncEngine 混用）
+        sync_engine = get_sync_engine()
+        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=sync_engine)
         self.db_session = SessionLocal()
         
         # 收集統計

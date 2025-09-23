@@ -15,7 +15,7 @@ from datetime import datetime, timedelta
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.exc import IntegrityError
 
-from app.database import engine
+from app.database import get_sync_engine
 from app.models.database_models import LarkDepartment
 from app.services.lark_client import LarkAuthManager
 
@@ -31,8 +31,9 @@ class LarkDepartmentService:
         self.base_url = "https://open.larksuite.com/open-apis"
         self.timeout = 30
         
-        # 數據庫會話
-        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        # 數據庫會話（使用同步引擎，避免與 AsyncEngine 混用）
+        sync_engine = get_sync_engine()
+        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=sync_engine)
         self.db_session = SessionLocal()
         
         # 遍歷統計
@@ -109,8 +110,7 @@ class LarkDepartmentService:
                 existing_dept.updated_at = now
                 existing_dept.last_sync_at = now
                 
-                # 更新子部門統計
-                existing_dept.direct_user_count = len(children_data)  # 暫時用子部門數量
+                # 不在部門遍歷時更新 direct_user_count，改由用戶同步後重算
                 
                 self.stats['departments_updated'] += 1
                 self.logger.debug(f"更新部門: {department_id}")
@@ -121,7 +121,7 @@ class LarkDepartmentService:
                     parent_department_id=parent_id,
                     level=level,
                     path=path,
-                    direct_user_count=len(children_data),  # 暫時用子部門數量
+                    direct_user_count=0,
                     status='active',
                     created_at=now,
                     updated_at=now,

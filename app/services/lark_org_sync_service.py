@@ -10,14 +10,17 @@ import logging
 import json
 from typing import Dict, List, Optional, Any
 from datetime import datetime
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.services.lark_client import LarkAuthManager
 from app.services.lark_department_service import LarkDepartmentService
 from app.services.lark_user_service import LarkUserService
 from app.models.database_models import SyncHistory
-from app.database import SessionLocal
+from app.database import get_sync_engine
 
+
+# 本服務內部使用同步 Session，避免與 AsyncSession 混用
+SyncSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=get_sync_engine())
 
 class LarkOrgSyncService:
     """Lark 組織架構同步服務"""
@@ -107,7 +110,13 @@ class LarkOrgSyncService:
     def sync_departments_only(self) -> Dict[str, Any]:
         """僅同步部門架構"""
         self.logger.info("開始部門架構同步...")
-        return self.department_service.sync_all_departments(self.root_departments)
+        result = self.department_service.sync_all_departments(self.root_departments)
+        try:
+            # 部門同步後，基於本地用戶資料重算直屬用戶數
+            self.user_service.update_department_user_counts()
+        except Exception as e:
+            self.logger.error(f"部門同步後重算用戶數失敗: {e}")
+        return result
     
     def sync_users_only(self) -> Dict[str, Any]:
         """僅同步用戶數據"""
@@ -256,7 +265,7 @@ class LarkOrgSyncService:
     def _create_sync_history(self, team_id: int, sync_type: str, trigger_type: str = 'manual', 
                            trigger_user: Optional[str] = None) -> int:
         """創建同步歷史記錄"""
-        db = SessionLocal()
+        db = SyncSessionLocal()
         try:
             sync_record = SyncHistory(
                 team_id=team_id,
@@ -285,7 +294,7 @@ class LarkOrgSyncService:
         if not sync_id:
             return False
             
-        db = SessionLocal()
+        db = SyncSessionLocal()
         try:
             sync_record = db.query(SyncHistory).filter(SyncHistory.id == sync_id).first()
             if not sync_record:
@@ -341,7 +350,7 @@ class LarkOrgSyncService:
     
     def get_sync_history(self, team_id: int, limit: int = 10) -> List[Dict[str, Any]]:
         """獲取團隊同步歷史記錄"""
-        db = SessionLocal()
+        db = SyncSessionLocal()
         try:
             records = db.query(SyncHistory).filter(
                 SyncHistory.team_id == team_id
