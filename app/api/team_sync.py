@@ -14,7 +14,7 @@ from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
-from ..database import get_db
+from ..database import get_db, get_sync_db
 from ..models.database_models import Team, LarkDepartment, LarkUser
 from ..services.lark_org_sync_service import get_lark_org_sync_service
 
@@ -51,7 +51,7 @@ class OrganizationStatsResponse(BaseModel):
 @router.get("/{team_id}/sync/status")
 async def get_sync_status(
     team_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """
     獲取團隊同步狀態
@@ -91,7 +91,7 @@ async def get_sync_status(
 @router.get("/{team_id}/sync/stats")
 async def get_organization_stats(
     team_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """
     獲取組織架構統計信息
@@ -164,7 +164,7 @@ async def trigger_sync(
     team_id: int,
     request: SyncTriggerRequest,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """
     觸發團隊同步操作
@@ -242,7 +242,7 @@ async def trigger_sync(
 async def get_sync_progress(
     team_id: int,
     sync_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """
     獲取特定同步操作的進度

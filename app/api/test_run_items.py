@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 from app.services.lark_client import LarkClient
 from app.config import settings
-from app.database import get_db
+from app.database import get_db, get_sync_db
 from app.models.database_models import (
     TestRunItem as TestRunItemDB,
     TestRunConfig as TestRunConfigDB,
@@ -37,7 +37,7 @@ async def upload_test_run_results(
     config_id: int,
     item_id: int,
     files: List[UploadFile] = File(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """
     上傳測試執行結果檔案到本地 attachments 目錄，並記錄到本地資料庫。
@@ -429,7 +429,7 @@ def _add_result_history(db: Session, item: TestRunItemDB,
 async def list_items(
     team_id: int,
     config_id: int,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_sync_db),
     # Filters
     search: Optional[str] = Query(None, description="標題/編號模糊搜尋"),
     priority_filter: Optional[str] = Query(None),
@@ -498,7 +498,7 @@ async def batch_create_items(
     team_id: int,
     config_id: int,
     payload: BatchCreateRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     _verify_team_and_config(team_id, config_id, db)
 
@@ -567,7 +567,7 @@ async def update_item(
     config_id: int,
     item_id: int,
     payload: TestRunItemUpdate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     _verify_team_and_config(team_id, config_id, db)
     item = db.query(TestRunItemDB).filter(
@@ -652,7 +652,7 @@ async def delete_item(
     team_id: int,
     config_id: int,
     item_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """刪除測試執行項目及相關附件"""
     from ..services.test_result_cleanup_service import TestResultCleanupService
@@ -697,7 +697,7 @@ async def batch_update_results(
     team_id: int,
     config_id: int,
     payload: BatchUpdateResultRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     _verify_team_and_config(team_id, config_id, db)
     success = 0
@@ -789,7 +789,7 @@ async def get_result_history(
     team_id: int,
     config_id: int,
     item_id: int,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_sync_db),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200)
 ):
@@ -829,7 +829,7 @@ async def get_result_history(
 async def get_items_statistics(
     team_id: int,
     config_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     _verify_team_and_config(team_id, config_id, db)
     q = db.query(TestRunItemDB).filter(
@@ -888,7 +888,7 @@ async def get_items_statistics(
 async def get_bug_tickets_summary(
     team_id: int,
     config_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """取得該 Test Run 的 Bug Tickets 摘要資訊"""
     from ..config import settings
@@ -978,7 +978,7 @@ async def get_bug_tickets(
     team_id: int,
     config_id: int,
     item_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """取得測試項目的 Bug Tickets 清單"""
     _verify_team_and_config(team_id, config_id, db)
@@ -1014,7 +1014,7 @@ async def add_bug_ticket(
     config_id: int,
     item_id: int,
     payload: BugTicketRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """新增 Bug Ticket 到測試項目"""
     _verify_team_and_config(team_id, config_id, db)
@@ -1070,7 +1070,7 @@ async def delete_bug_ticket(
     config_id: int,
     item_id: int,
     ticket_number: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """刪除測試項目的指定 Bug Ticket"""
     _verify_team_and_config(team_id, config_id, db)
@@ -1118,7 +1118,7 @@ async def get_test_run_results(
     team_id: int,
     config_id: int,
     item_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """
     獲取 Test Run Item 的測試結果檔案（本地）
@@ -1190,7 +1190,7 @@ async def delete_test_result_file(
     config_id: int,
     item_id: int,
     file_token: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """
     刪除單一測試結果檔案（本地）

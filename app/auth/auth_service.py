@@ -216,6 +216,12 @@ class AuthService:
             if not PasswordService.verify_password(password, user.hashed_password):
                 return None
 
+            # 更新最後登入時間
+            from datetime import datetime
+            user.last_login_at = datetime.utcnow()
+            await session.commit()
+            await session.refresh(user)
+
             return user
 
     def decode_token_without_verification(self, token: str) -> Optional[Dict[str, Any]]:

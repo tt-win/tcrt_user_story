@@ -13,7 +13,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-from app.database import get_db
+from app.database import get_db, get_sync_db
 from app.models.test_run_config import (
     TestRunConfig, TestRunConfigCreate, TestRunConfigUpdate, TestRunConfigResponse,
     TestRunConfigSummary
@@ -248,7 +248,7 @@ def verify_team_exists(team_id: int, db: Session) -> TeamDB:
 async def get_test_run_configs(
     team_id: int,
     status_filter: Optional[str] = Query(None, description="狀態過濾"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """取得團隊的所有測試執行配置"""
     verify_team_exists(team_id, db)
@@ -290,7 +290,7 @@ async def get_test_run_configs(
 async def create_test_run_config(
     team_id: int,
     config: TestRunConfigCreate,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """建立新的測試執行配置"""
     verify_team_exists(team_id, db)
@@ -313,7 +313,7 @@ async def create_test_run_config(
 async def get_test_run_config(
     team_id: int,
     config_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """取得特定的測試執行配置"""
     verify_team_exists(team_id, db)
@@ -338,7 +338,7 @@ async def update_test_run_config(
     config_id: int,
     config_update: TestRunConfigUpdate,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """更新測試執行配置"""
     verify_team_exists(team_id, db)
@@ -415,7 +415,7 @@ async def update_test_run_config(
 async def delete_test_run_config(
     team_id: int,
     config_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """刪除測試執行配置及相關附件"""
     from ..services.test_result_cleanup_service import TestResultCleanupService
@@ -469,7 +469,7 @@ async def delete_test_run_config(
 async def validate_test_run_config(
     team_id: int,
     config_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """重構後：僅確認配置存在與基本欄位有效。"""
     verify_team_exists(team_id, db)
@@ -486,7 +486,7 @@ async def validate_test_run_config(
 async def sync_test_run_config(
     team_id: int,
     config_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """重構後：從本地 TestRunItem 統計並回寫到 TestRunConfig。"""
     verify_team_exists(team_id, db)
@@ -539,7 +539,7 @@ async def change_test_run_status(
     team_id: int,
     config_id: int,
     status_request: StatusChangeRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """更改測試執行狀態"""
     verify_team_exists(team_id, db)
@@ -605,7 +605,7 @@ async def restart_test_run(
     config_id: int,
     payload: RestartRequest,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """重新執行 Test Run：建立一個新的 Test Run（複製設定），
     並依模式挑選要帶入的新測試案例項目。
@@ -759,7 +759,7 @@ async def search_configs_by_tp_tickets(
     q: str = Query(..., min_length=2, max_length=50, description="搜尋查詢字串（TP 票號）"),
     team_id: int = Query(..., description="團隊 ID"),
     limit: int = Query(20, ge=1, le=100, description="最大返回結果數"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """
     根據 TP 票號搜尋 Test Run Configs
@@ -885,7 +885,7 @@ def _filter_matching_tp_tickets(tp_tickets: List[str], search_query: str) -> Lis
 @search_router.get("/tp/stats")
 async def get_tp_search_statistics(
     team_id: int = Query(..., description="團隊 ID"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """
     取得 TP 票號搜尋相關統計資訊

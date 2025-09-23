@@ -8,6 +8,7 @@
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Response, Form
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from pydantic import BaseModel
@@ -15,7 +16,7 @@ from datetime import datetime
 import uuid
 import json
 
-from app.database import get_db
+from app.database import get_db, get_sync_db
 from app.auth.dependencies import get_current_user, require_team_permission
 from app.auth.models import PermissionType
 from app.models.database_models import User
@@ -109,7 +110,7 @@ def build_tcg_items(numbers: List[str]) -> List[dict]:
 async def get_test_cases(
     team_id: int,
     response: Response,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_sync_db),
     current_user: User = Depends(get_current_user),
     # 搜尋參數
     search: Optional[str] = Query(None, description="標題模糊搜尋"),
@@ -200,7 +201,7 @@ async def get_test_cases(
 @router.get("/count", response_model=dict)
 async def get_test_cases_count(
     team_id: int,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_sync_db),
     current_user: User = Depends(get_current_user),
     # 搜尋參數（與 get_test_cases 相同）
     search: Optional[str] = Query(None, description="標題模糊搜尋"),
@@ -246,7 +247,7 @@ async def get_test_cases_count(
 async def get_test_case(
     team_id: int,
     record_id: str,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_sync_db),
     current_user: User = Depends(get_current_user)
 ):
     """取得特定測試案例（需要對該團隊的讀取權限）。預設會載入附件清單。
@@ -365,7 +366,7 @@ async def get_test_case(
 async def create_test_case(
     team_id: int,
     case: TestCaseCreate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_sync_db),
     current_user: User = Depends(get_current_user)
 ):
     """建立新的測試案例（需要對該團隊的寫入權限）
@@ -488,7 +489,7 @@ async def update_test_case(
     team_id: int,
     record_id: str,
     case_update: TestCaseUpdate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_sync_db),
     current_user: User = Depends(get_current_user)
 ):
     """更新測試案例（需要對該團隊的寫入權限）。
@@ -712,7 +713,7 @@ async def upload_test_case_attachments_staging(
     team_id: int,
     files: List[UploadFile] = File(...),
     temp_upload_id: Optional[str] = Form(None),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """暫存上傳附件（未決定或尚未建立 Test Case 時使用）
     - 回傳 temp_upload_id，前端於建立/更新 Test Case 時帶回即可完成搬移與綁定。
@@ -761,7 +762,7 @@ async def upload_test_case_attachments_by_id(
     team_id: int,
     test_case_id: int,
     files: List[UploadFile] = File(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """上傳測試案例附件（本地 id 版）"""
     import re, json
@@ -833,7 +834,7 @@ async def upload_test_case_attachments_by_id(
 async def list_test_case_attachments(
     team_id: int,
     test_case_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """列出某測試案例的附件（以本地 id）。"""
     import json
@@ -858,7 +859,7 @@ async def delete_test_case_attachment(
     team_id: int,
     test_case_id: int,
     target: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """刪除單一附件（以本地整數 id）。"""
     return await _delete_attachment_common(team_id, target, db, id_value=test_case_id)
@@ -869,7 +870,7 @@ async def delete_test_case_attachment_by_key(
     team_id: int,
     record_key: str,
     target: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """刪除單一附件（接受 lark_record_id 或本地整數 id）。"""
     # 嘗試轉成 int，否則視為 lark_record_id
@@ -887,7 +888,7 @@ async def delete_test_case_attachment_by_number(
     team_id: int,
     test_case_number: str,
     target: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """刪除單一附件（以測試案例編號）。"""
     return await _delete_attachment_common(team_id, target, db, test_case_number=test_case_number)
@@ -1003,7 +1004,7 @@ async def upload_test_case_attachments(
     team_id: int,
     test_case_number: str,
     files: List[UploadFile] = File(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """上傳測試案例附件（只寫本地檔案與 DB）
     規則：一律以 test_case_number 作為唯一識別鍵。
@@ -1079,7 +1080,7 @@ async def upload_test_case_attachments(
 async def delete_test_case(
     team_id: int,
     record_id: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """刪除測試案例（本地 DB）。
     支援 record_id 為本地整數 id、lark_record_id，或 test_case_number（備援）。
@@ -1151,7 +1152,7 @@ async def delete_test_case(
 async def get_test_case_by_number(
     team_id: int,
     test_case_number: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     try:
         item = db.query(TestCaseLocalDB).filter(
@@ -1237,7 +1238,7 @@ async def get_test_case_by_number(
 async def bulk_create_test_cases(
     team_id: int,
     request: BulkCreateRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """批次建立測試案例（只寫本地 DB）"""
     try:
@@ -1307,7 +1308,7 @@ class BulkCloneResponse(BaseModel):
 async def bulk_clone_test_cases(
     team_id: int,
     request: BulkCloneRequest,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """批次複製測試案例（只寫本地 DB）
     - 從來源記錄（以 lark_record_id 尋找）複製 Precondition、Steps、Expected Result、Priority
@@ -1379,7 +1380,7 @@ async def bulk_clone_test_cases(
 async def batch_operation_test_cases(
     team_id: int,
     operation: TestCaseBatchOperation,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """批次操作本地測試案例（不呼叫 Lark）。
     支援：delete、update_priority。update_tcg 暫不支援（需另定規格）。

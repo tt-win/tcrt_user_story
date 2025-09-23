@@ -5,13 +5,13 @@
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
-from pydantic import BaseModel, EmailStr, validator
+from pydantic import BaseModel, EmailStr, Field, validator
 from typing import Optional, List
 import logging
 from datetime import datetime
 
 from app.auth.dependencies import get_current_user
-from app.auth.models import UserRole
+from app.auth.models import UserRole, UserCreate
 from app.auth.password_service import PasswordService
 from app.services.user_service import UserService
 from app.models.database_models import User
@@ -73,6 +73,46 @@ class PasswordResetResponse(BaseModel):
     """密碼重設回應模型"""
     message: str
     new_password: Optional[str] = None  # 只在自動生成時返回
+
+
+# ===================== 個人資料相關模型 =====================
+
+class UserSelfOut(BaseModel):
+    """使用者自己的資料輸出模型"""
+    id: int
+    username: str
+    email: Optional[str]
+    full_name: Optional[str]
+    role: str
+    is_active: bool
+    created_at: datetime
+    updated_at: Optional[datetime]
+    last_login_at: Optional[datetime]
+    teams: List[str] = []  # 所屬團隊名稱列表
+
+
+class UserSelfUpdate(BaseModel):
+    """使用者自己可更新的欄位模型"""
+    full_name: Optional[str] = None
+    email: Optional[EmailStr] = None
+
+    @validator('email')
+    def validate_email(cls, v):
+        if v is not None and len(str(v).strip()) == 0:
+            v = None  # 空字串轉為 None
+        return v
+
+
+class PasswordChangeRequest(BaseModel):
+    """修改密碼請求模型"""
+    current_password: str = Field(..., description="目前密碼")
+    new_password: str = Field(..., min_length=8, description="新密碼（最少8字符）")
+
+    @validator('new_password')
+    def validate_new_password(cls, v):
+        if len(v) < 8:
+            raise ValueError('新密碼長度至少需要8個字符')
+        return v
 
 
 @router.get("/", response_model=UserListResponse)
@@ -217,6 +257,171 @@ async def create_user(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="建立使用者時發生錯誤"
+        )
+
+
+# ===================== 個人資料 API =====================
+
+@router.get("/me", response_model=UserSelfOut)
+async def get_current_user_profile(
+    current_user: User = Depends(get_current_user)
+):
+    """
+    取得目前使用者的資料
+
+    任何已登入的使用者都可以查看自己的資料。
+    """
+    try:
+        # TODO: 取得使用者所屬的團隊名稱
+        # 這裡需要根據實際的數據庫結構來實作
+        teams = []
+        
+        return UserSelfOut(
+            id=current_user.id,
+            username=current_user.username,
+            email=current_user.email,
+            full_name=current_user.full_name,
+            role=current_user.role.value,
+            is_active=current_user.is_active,
+            created_at=current_user.created_at,
+            updated_at=current_user.updated_at,
+            last_login_at=current_user.last_login_at,
+            teams=teams
+        )
+        
+    except Exception as e:
+        logger.error(f"取得使用者資料失敗: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="取得使用者資料時發生錯誤"
+        )
+
+
+@router.put("/me", response_model=UserSelfOut)
+async def update_current_user_profile(
+    request: UserSelfUpdate,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    更新目前使用者的資料
+
+    使用者只能更新自己的基本資料，不能修改角色或狀態。
+    """
+    try:
+        async with get_async_session() as session:
+            # 取得最新的使用者資料
+            user = await session.get(User, current_user.id)
+            if not user:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="使用者不存在"
+                )
+
+            # 檢查 email 是否重複（如果要更新且不為空）
+            if request.email and request.email != user.email:
+                existing_email = await session.execute(
+                    select(User).where(and_(User.email == str(request.email), User.id != user.id))
+                )
+                if existing_email.scalar():
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="電子信箱已被使用"
+                    )
+
+            # 更新欄位
+            updated = False
+            if request.full_name is not None and request.full_name != user.full_name:
+                user.full_name = request.full_name.strip() if request.full_name else None
+                updated = True
+                
+            if request.email is not None and str(request.email) != user.email:
+                user.email = str(request.email) if request.email else None
+                updated = True
+
+            if updated:
+                user.updated_at = datetime.utcnow()
+                await session.commit()
+                await session.refresh(user)
+
+            logger.info(f"使用者 {user.username} 更新了個人資料")
+
+            # TODO: 取得使用者所屬的團隊名稱
+            teams = []
+
+            return UserSelfOut(
+                id=user.id,
+                username=user.username,
+                email=user.email,
+                full_name=user.full_name,
+                role=user.role.value,
+                is_active=user.is_active,
+                created_at=user.created_at,
+                updated_at=user.updated_at,
+                last_login_at=user.last_login_at,
+                teams=teams
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"更新使用者資料失敗: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="更新使用者資料時發生錯誤"
+        )
+
+
+@router.put("/me/password")
+async def change_current_user_password(
+    request: PasswordChangeRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    修改目前使用者的密碼
+
+    使用者必須提供目前密碼來驗證身分。
+    """
+    try:
+        # 驗證目前密碼
+        if not PasswordService.verify_password(request.current_password, current_user.hashed_password):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="目前密碼不正確"
+            )
+
+        # 檢查新密碼是否與舊密碼相同
+        if PasswordService.verify_password(request.new_password, current_user.hashed_password):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="新密碼不能與舊密碼相同"
+            )
+
+        async with get_async_session() as session:
+            # 取得最新的使用者資料
+            user = await session.get(User, current_user.id)
+            if not user:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="使用者不存在"
+                )
+
+            # 更新密碼
+            user.hashed_password = PasswordService.hash_password(request.new_password)
+            user.updated_at = datetime.utcnow()
+
+            await session.commit()
+
+            logger.info(f"使用者 {user.username} 修改了密碼")
+
+            return {"message": "密碼修改成功"}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"修改密碼失敗: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="修改密碼時發生錯誤"
         )
 
 
@@ -472,3 +677,5 @@ async def reset_user_password(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="重設密碼時發生錯誤"
         )
+
+

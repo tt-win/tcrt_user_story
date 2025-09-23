@@ -54,7 +54,39 @@
         "update": "Update",
         "updateDate": "Updated",
         "view": "View",
-        "yes": "Yes"
+        "yes": "Yes",
+        "saving": "Saving...",
+        "processing": "Processing..."
+    },
+    "user": {
+        "menu": {
+            "profile": "Profile",
+            "logout": "Logout",
+            "role": "Role",
+            "teams": "Accessible Teams",
+            "confirmLogout": "Confirm Logout",
+            "confirmLogoutMessage": "Are you sure you want to logout?",
+            "loggingOut": "Logging out...",
+            "logoutError": "Logout error, please try again later"
+        }
+    },
+    "profile": {
+        "title": "Profile",
+        "email": "Email",
+        "fullName": "Full Name",
+        "role": "Role",
+        "teams": "Teams",
+        "createdAt": "Registered At",
+        "lastLogin": "Last Login",
+        "editBasicInfo": "Edit Basic Information",
+        "changePassword": "Change Password",
+        "currentPassword": "Current Password",
+        "newPassword": "New Password",
+        "confirmPassword": "Confirm New Password",
+        "passwordRequirements": "Password Requirements:",
+        "reqLength": "At least 8 characters",
+        "reqDifferent": "Different from current password",
+        "reqMatch": "Two password entries match"
     },
     "confirm": {
         "batchDeleteTestRuns": "Are you sure you want to delete these {count} test runs? This action cannot be undone.",

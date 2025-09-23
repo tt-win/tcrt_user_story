@@ -12,7 +12,7 @@ from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Query, Depends
 from sqlalchemy.orm import Session
 
-from ..database import get_db
+from ..database import get_db, get_sync_db
 from ..models.database_models import Team
 from ..services.lark_org_sync_service import get_lark_org_sync_service
 
@@ -28,7 +28,7 @@ async def get_team_contacts(
     team_id: int,
     q: Optional[str] = Query(None, description="搜尋關鍵字"),
     limit: int = Query(50, ge=1, le=100, description="結果數量限制"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """
     獲取團隊聯絡人列表
@@ -113,7 +113,7 @@ async def get_team_contacts(
 async def get_contact_by_id(
     team_id: int,
     user_id: str,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """
     根據用戶 ID 獲取聯絡人詳細資訊
@@ -166,7 +166,7 @@ async def get_contact_by_id(
 @router.post("/{team_id}/contacts/refresh")
 async def refresh_contacts_cache(
     team_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """
     觸發聯絡人數據同步
@@ -242,7 +242,7 @@ async def get_search_suggestions(
     team_id: int,
     q: str = Query(..., min_length=1, description="搜尋關鍵字"),
     limit: int = Query(10, ge=1, le=20, description="建議數量"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """
     獲取搜尋建議（用於自動完成）
@@ -309,7 +309,7 @@ async def get_search_suggestions(
 @router.get("/{team_id}/contacts/stats")
 async def get_contacts_stats(
     team_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """
     獲取聯絡人統計信息
@@ -351,7 +351,7 @@ async def get_contacts_stats(
 async def trigger_sync(
     team_id: int,
     sync_type: str = Query("full", description="同步類型: full, departments, users"),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """
     觸發組織架構同步（管理員功能）

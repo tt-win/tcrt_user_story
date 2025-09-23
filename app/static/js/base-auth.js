@@ -148,40 +148,71 @@ class BaseAuthManager {
      * 更新使用者資訊顯示
      */
     updateUserInfoDisplay(userInfo) {
-        const displayName = userInfo.name || userInfo.username || '使用者';
+        console.log('[BaseAuthManager] 更新用戶資訊顯示:', userInfo);
+        
+        const displayName = userInfo.full_name || userInfo.name || userInfo.username || '使用者';
         const role = userInfo.role || 'user';
-        const teams = Array.isArray(userInfo.teams) ? userInfo.teams : [];
+        const teams = Array.isArray(userInfo.accessible_teams) ? userInfo.accessible_teams : 
+                     Array.isArray(userInfo.teams) ? userInfo.teams : [];
+        
+        console.log('[BaseAuthManager] 處理後的數據 - displayName:', displayName, 'role:', role, 'teams:', teams);
         
         // 更新主要顯示區域
         if (this.userDisplayName) {
+            // 移除 data-i18n 屬性以防止翻譯系統覆蓋內容
+            if (this.userDisplayName.hasAttribute('data-i18n')) {
+                console.log('[BaseAuthManager] 移除 user-display-name 的 data-i18n 屬性');
+                this.userDisplayName.removeAttribute('data-i18n');
+            }
             this.userDisplayName.textContent = displayName;
+            console.log('[BaseAuthManager] 設定 user-display-name:', displayName);
         }
         
         if (this.userRoleBadge) {
+            // 移除 data-i18n 屬性以防止翻譯系統覆蓋內容
+            if (this.userRoleBadge.hasAttribute('data-i18n')) {
+                console.log('[BaseAuthManager] 移除 user-role-badge 的 data-i18n 屬性');
+                this.userRoleBadge.removeAttribute('data-i18n');
+            }
             this.userRoleBadge.textContent = this.getRoleDisplayName(role);
             this.userRoleBadge.className = `badge ${this.getRoleBadgeClass(role)}`;
+            console.log('[BaseAuthManager] 設定 user-role-badge:', this.getRoleDisplayName(role));
         }
         
         // 更新下拉選單詳細資訊
         if (this.userInfoName) {
+            if (this.userInfoName.hasAttribute('data-i18n')) {
+                this.userInfoName.removeAttribute('data-i18n');
+            }
             this.userInfoName.textContent = displayName;
         }
         
         if (this.userInfoEmail) {
-            this.userInfoEmail.textContent = userInfo.email || '';
+            if (this.userInfoEmail.hasAttribute('data-i18n')) {
+                this.userInfoEmail.removeAttribute('data-i18n');
+            }
+            this.userInfoEmail.textContent = userInfo.email || '未設定';
         }
         
         if (this.userInfoRole) {
+            if (this.userInfoRole.hasAttribute('data-i18n')) {
+                this.userInfoRole.removeAttribute('data-i18n');
+            }
             this.userInfoRole.textContent = this.getRoleDisplayName(role);
         }
         
         if (this.userInfoTeams) {
+            if (this.userInfoTeams.hasAttribute('data-i18n')) {
+                this.userInfoTeams.removeAttribute('data-i18n');
+            }
             if (teams.length > 0) {
                 this.userInfoTeams.textContent = teams.join(', ');
             } else {
                 this.userInfoTeams.textContent = '無';
             }
         }
+        
+        console.log('[BaseAuthManager] 用戶資訊顯示更新完成');
     }
 
     /**
@@ -196,9 +227,11 @@ class BaseAuthManager {
      */
     getRoleDisplayName(role) {
         const roleMap = {
+            'super_admin': '超級管理員',
             'admin': '管理員',
             'manager': '管理者',
             'user': '使用者',
+            'viewer': '檢視者',
             'guest': '訪客'
         };
         return roleMap[role] || role;
@@ -209,9 +242,11 @@ class BaseAuthManager {
      */
     getRoleBadgeClass(role) {
         const classMap = {
+            'super_admin': 'bg-danger',
             'admin': 'bg-danger',
-            'manager': 'bg-warning',
+            'manager': 'bg-warning text-dark',
             'user': 'bg-primary',
+            'viewer': 'bg-info',
             'guest': 'bg-secondary'
         };
         return classMap[role] || 'bg-secondary';
@@ -222,15 +257,17 @@ class BaseAuthManager {
      */
     async handleLogout() {
         try {
-            // 顯示確認對話框
-            if (!confirm('確定要登出嗎？')) {
+            // 顯示確認對話框（優先使用 Bootstrap Modal，回退到 confirm）
+            const confirmed = await this.showLogoutConfirm();
+            if (!confirmed) {
                 return;
             }
 
             // 禁用登出按鈕，避免重複點擊
             if (this.logoutBtn) {
                 this.logoutBtn.disabled = true;
-                this.logoutBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>登出中...';
+                const loadingText = this.getI18nText('user.menu.loggingOut', '登出中...');
+                this.logoutBtn.innerHTML = `<i class="fas fa-spinner fa-spin me-2"></i>${loadingText}`;
             }
 
             // 執行登出
@@ -248,11 +285,13 @@ class BaseAuthManager {
             // 恢復登出按鈕
             if (this.logoutBtn) {
                 this.logoutBtn.disabled = false;
-                this.logoutBtn.innerHTML = '<i class="fas fa-sign-out-alt me-2"></i>登出';
+                const logoutText = this.getI18nText('user.menu.logout', '登出');
+                this.logoutBtn.innerHTML = `<i class="fas fa-sign-out-alt me-2"></i>${logoutText}`;
             }
             
             // 顯示錯誤訊息
-            this.showError('登出時發生錯誤，請稍後再試');
+            const errorMsg = this.getI18nText('user.menu.logoutError', '登出時發生錯誤，請稍後再試');
+            this.showError(errorMsg);
         }
     }
 
@@ -290,6 +329,176 @@ class BaseAuthManager {
         }
     }
     
+    /**
+     * 顯示登出確認對話框
+     */
+    async showLogoutConfirm() {
+        // 嘗試使用 Bootstrap Modal
+        if (window.bootstrap && typeof window.bootstrap.Modal !== 'undefined') {
+            return new Promise((resolve) => {
+                const modalHtml = `
+                    <div class="modal fade" id="logoutConfirmModal" tabindex="-1" aria-labelledby="logoutConfirmModalLabel" aria-hidden="true">
+                        <div class="modal-dialog modal-dialog-centered">
+                            <div class="modal-content">
+                                <div class="modal-header">
+                                    <h5 class="modal-title" id="logoutConfirmModalLabel">
+                                        <i class="fas fa-sign-out-alt me-2 text-warning"></i>
+                                        ${this.getI18nText('user.menu.confirmLogout', '確認登出')}
+                                    </h5>
+                                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                                </div>
+                                <div class="modal-body">
+                                    <p class="mb-0">${this.getI18nText('user.menu.confirmLogoutMessage', '您確定要登出嗎？')}</p>
+                                </div>
+                                <div class="modal-footer">
+                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                                        <i class="fas fa-times me-1"></i>
+                                        ${this.getI18nText('common.cancel', '取消')}
+                                    </button>
+                                    <button type="button" class="btn btn-danger" id="confirmLogoutBtn">
+                                        <i class="fas fa-sign-out-alt me-1"></i>
+                                        ${this.getI18nText('user.menu.logout', '登出')}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                // 創建模态框元素
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = modalHtml;
+                const modal = tempDiv.firstElementChild;
+                document.body.appendChild(modal);
+                
+                // 初始化 Bootstrap Modal
+                const bsModal = new window.bootstrap.Modal(modal);
+                
+                // 設定事件監聽器
+                modal.querySelector('#confirmLogoutBtn').addEventListener('click', () => {
+                    bsModal.hide();
+                    resolve(true);
+                });
+                
+                modal.addEventListener('hidden.bs.modal', () => {
+                    document.body.removeChild(modal);
+                    resolve(false);
+                });
+                
+                // 顯示模态框
+                bsModal.show();
+            });
+        } else {
+            // 回退到原生 confirm
+            const message = this.getI18nText('user.menu.confirmLogoutMessage', '您確定要登出嗎？');
+            return confirm(message);
+        }
+    }
+    
+    /**
+     * 取得 i18n 文字
+     */
+    getI18nText(key, fallback) {
+        try {
+            // 嘗試使用全域 i18n
+            if (window.i18n && typeof window.i18n.t === 'function') {
+                const text = window.i18n.t(key);
+                if (text && text !== key) {
+                    return text;
+                }
+            }
+            
+            // 嘗試從 DOM 元素取得 data-i18n 屬性
+            const element = document.querySelector(`[data-i18n="${key}"]`);
+            if (element && element.textContent.trim()) {
+                return element.textContent.trim();
+            }
+            
+            // 返回預設值
+            return fallback;
+        } catch (error) {
+            console.warn(`Failed to get i18n text for key: ${key}`, error);
+            return fallback;
+        }
+    }
+    
+    /**
+     * 顯示錯誤訊息（改善版）
+     */
+    showError(message) {
+        console.error(message);
+        
+        // 嘗試使用 AppUtils 顯示 Toast
+        if (window.AppUtils && typeof window.AppUtils.showError === 'function') {
+            window.AppUtils.showError(message);
+            return;
+        }
+        
+        // 嘗試使用 Bootstrap Toast
+        try {
+            this.showBootstrapToast(message, 'error');
+            return;
+        } catch (error) {
+            console.warn('Bootstrap Toast failed:', error);
+        }
+        
+        // 回退到 alert
+        alert(message);
+    }
+    
+    /**
+     * 顯示 Bootstrap Toast
+     */
+    showBootstrapToast(message, type = 'info') {
+        try {
+            const toastHtml = `
+                <div class="toast align-items-center text-bg-${type === 'error' ? 'danger' : type} border-0" role="alert" aria-live="assertive" aria-atomic="true">
+                    <div class="d-flex">
+                        <div class="toast-body">
+                            <i class="fas fa-${type === 'error' ? 'exclamation-circle' : 'info-circle'} me-2"></i>
+                            ${message}
+                        </div>
+                        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+                    </div>
+                </div>
+            `;
+            
+            // 尋找或創建 Toast 容器
+            let toastContainer = document.getElementById('toast-container');
+            if (!toastContainer) {
+                toastContainer = document.createElement('div');
+                toastContainer.id = 'toast-container';
+                toastContainer.className = 'toast-container position-fixed top-0 end-0 p-3';
+                toastContainer.style.zIndex = '1070';
+                document.body.appendChild(toastContainer);
+            }
+            
+            // 創建 Toast 元素
+            const tempDiv = document.createElement('div');
+            tempDiv.innerHTML = toastHtml;
+            const toast = tempDiv.firstElementChild;
+            toastContainer.appendChild(toast);
+            
+            // 初始化並顯示 Toast
+            if (window.bootstrap && typeof window.bootstrap.Toast !== 'undefined') {
+                const bsToast = new window.bootstrap.Toast(toast, {
+                    autohide: true,
+                    delay: 5000
+                });
+                
+                toast.addEventListener('hidden.bs.toast', () => {
+                    toastContainer.removeChild(toast);
+                });
+                
+                bsToast.show();
+            }
+        } catch (error) {
+            console.error('Failed to show Bootstrap toast:', error);
+            // 回退到 alert
+            alert(message);
+        }
+    }
+
     /**
      * 延遲函數
      */

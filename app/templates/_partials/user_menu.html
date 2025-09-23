@@ -1,0 +1,49 @@
+<!-- 使用者資訊區域 -->
+<div id="user-info-container" class="d-none">
+    <div class="dropdown">
+        <button class="btn btn-outline-primary btn-sm dropdown-toggle d-flex align-items-center gap-2" 
+                type="button" id="userDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="fas fa-user-circle"></i>
+            <span id="user-display-name" data-i18n="common.loading">載入中...</span>
+            <span id="user-role-badge" class="badge bg-secondary" data-i18n="common.loading">載入中...</span>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
+            <li>
+                <div class="dropdown-item-text">
+                    <div class="fw-bold" id="user-info-name" data-i18n="common.loading">載入中...</div>
+                    <small class="text-muted" id="user-info-email" data-i18n="common.loading">載入中...</small>
+                </div>
+            </li>
+            <li><hr class="dropdown-divider"></li>
+            <li>
+                <div class="dropdown-item-text">
+                    <small class="text-muted">
+                        <i class="fas fa-shield-alt me-1"></i>
+                        <span data-i18n="user.menu.role">角色</span>：<span id="user-info-role" data-i18n="common.loading">載入中...</span>
+                    </small>
+                </div>
+            </li>
+            <li>
+                <div class="dropdown-item-text">
+                    <small class="text-muted">
+                        <i class="fas fa-users me-1"></i>
+                        <span data-i18n="user.menu.teams">可存取團隊</span>：<span id="user-info-teams" data-i18n="common.loading">載入中...</span>
+                    </small>
+                </div>
+            </li>
+            <li><hr class="dropdown-divider"></li>
+            <li>
+                <a class="dropdown-item" href="/profile">
+                    <i class="fas fa-user-edit me-2"></i>
+                    <span data-i18n="user.menu.profile">個人資料</span>
+                </a>
+            </li>
+            <li>
+                <button class="dropdown-item text-danger" type="button" id="logoutBtn">
+                    <i class="fas fa-sign-out-alt me-2"></i>
+                    <span data-i18n="user.menu.logout">登出</span>
+                </button>
+            </li>
+        </ul>
+    </div>
+</div>

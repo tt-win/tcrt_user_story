@@ -1,0 +1,378 @@
+{% extends "base.html" %}
+
+{% block title %}個人資料 - Test Case Repository Web Tool{% endblock %}
+
+{% block page_title_text %}個人資料{% endblock %}
+{% block page_subtitle_text %}查看和編輯您的個人資訊{% endblock %}
+
+{% block head %}
+<style>
+    .profile-card {
+        border: none;
+        border-radius: 12px;
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+        margin-bottom: 1.5rem;
+    }
+    
+    .profile-header {
+        background: linear-gradient(135deg, var(--tr-primary, #3B82F6) 0%, #60A5FA 100%);
+        color: white;
+        border-radius: 12px 12px 0 0;
+        padding: 2rem;
+        text-align: center;
+        position: relative;
+    }
+    
+    .profile-header::after {
+        content: '';
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 1px;
+        background: rgba(255, 255, 255, 0.2);
+    }
+    
+    .profile-avatar {
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.2);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 1rem;
+        font-size: 2rem;
+        border: 3px solid rgba(255, 255, 255, 0.3);
+    }
+    
+    .profile-title {
+        margin: 0;
+        font-size: 1.5rem;
+        font-weight: 600;
+    }
+    
+    .profile-subtitle {
+        margin: 0.5rem 0 0;
+        opacity: 0.9;
+        font-size: 0.95rem;
+    }
+    
+    .info-section {
+        padding: 1.5rem;
+    }
+    
+    .info-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0.75rem 0;
+        border-bottom: 1px solid #f1f5f9;
+    }
+    
+    .info-row:last-child {
+        border-bottom: none;
+    }
+    
+    .info-label {
+        font-weight: 500;
+        color: #64748b;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .info-value {
+        color: #334155;
+        font-weight: 500;
+    }
+    
+    .form-section {
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.08);
+        margin-bottom: 1.5rem;
+    }
+    
+    .form-header {
+        padding: 1.5rem 1.5rem 0;
+        border-bottom: 1px solid #f1f5f9;
+        margin-bottom: 1.5rem;
+    }
+    
+    .form-body {
+        padding: 0 1.5rem 1.5rem;
+    }
+    
+    .badge-role {
+        font-size: 0.75rem;
+        padding: 0.4rem 0.8rem;
+        border-radius: 20px;
+        font-weight: 500;
+    }
+    
+    .badge-admin {
+        background-color: #dc2626;
+        color: white;
+    }
+    
+    .badge-manager {
+        background-color: #f59e0b;
+        color: white;
+    }
+    
+    .badge-user {
+        background-color: #3b82f6;
+        color: white;
+    }
+    
+    .badge-viewer {
+        background-color: #6b7280;
+        color: white;
+    }
+    
+    .password-strength {
+        margin-top: 0.5rem;
+        padding: 0.75rem;
+        border-radius: 8px;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        font-size: 0.875rem;
+    }
+    
+    .strength-requirements {
+        list-style: none;
+        padding: 0;
+        margin: 0.5rem 0 0;
+    }
+    
+    .strength-requirements li {
+        padding: 0.25rem 0;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        color: #64748b;
+    }
+    
+    .strength-requirements li.valid {
+        color: #059669;
+    }
+    
+    .strength-requirements li.invalid {
+        color: #dc2626;
+    }
+    
+    .btn-save {
+        min-width: 120px;
+    }
+    
+    @media (max-width: 768px) {
+        .profile-header {
+            padding: 1.5rem;
+        }
+        
+        .info-section {
+            padding: 1rem;
+        }
+        
+        .form-body {
+            padding: 0 1rem 1rem;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row justify-content-center">
+        <div class="col-12 col-lg-8 col-xl-6">
+            <!-- 個人資訊卡片 -->
+            <div class="profile-card card">
+                <div class="profile-header">
+                    <div class="profile-avatar">
+                        <i class="fas fa-user"></i>
+                    </div>
+                    <h2 class="profile-title" id="profile-display-name" data-i18n="common.loading">載入中...</h2>
+                    <p class="profile-subtitle" id="profile-username" data-i18n="common.loading">載入中...</p>
+                </div>
+                <div class="info-section">
+                    <div class="info-row">
+                        <span class="info-label">
+                            <i class="fas fa-envelope"></i>
+                            <span data-i18n="profile.email">電子信箱</span>
+                        </span>
+                        <span class="info-value" id="profile-email">-</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">
+                            <i class="fas fa-shield-alt"></i>
+                            <span data-i18n="profile.role">角色</span>
+                        </span>
+                        <span class="info-value">
+                            <span id="profile-role-badge" class="badge badge-role">-</span>
+                        </span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">
+                            <i class="fas fa-users"></i>
+                            <span data-i18n="profile.teams">所屬團隊</span>
+                        </span>
+                        <span class="info-value" id="profile-teams">-</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">
+                            <i class="fas fa-calendar-plus"></i>
+                            <span data-i18n="profile.createdAt">註冊時間</span>
+                        </span>
+                        <span class="info-value" id="profile-created-at">-</span>
+                    </div>
+                    <div class="info-row">
+                        <span class="info-label">
+                            <i class="fas fa-calendar-check"></i>
+                            <span data-i18n="profile.lastLogin">最後登入</span>
+                        </span>
+                        <span class="info-value" id="profile-last-login">-</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 編輯基本資料表單 -->
+            <div class="form-section">
+                <div class="form-header">
+                    <h4 class="mb-0">
+                        <i class="fas fa-edit me-2 text-primary"></i>
+                        <span data-i18n="profile.editBasicInfo">編輯基本資料</span>
+                    </h4>
+                </div>
+                <div class="form-body">
+                    <form id="profileForm">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="fullName" class="form-label" data-i18n="profile.fullName">全名</label>
+                                    <input type="text" class="form-control" id="fullName" name="full_name" 
+                                           placeholder="請輸入您的全名">
+                                    <div class="invalid-feedback"></div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="email" class="form-label" data-i18n="profile.email">電子信箱</label>
+                                    <input type="email" class="form-control" id="email" name="email" 
+                                           placeholder="請輸入電子信箱">
+                                    <div class="invalid-feedback"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="d-flex justify-content-end">
+                            <button type="submit" class="btn btn-primary btn-save" id="saveProfileBtn">
+                                <span id="saveProfileBtnText">
+                                    <i class="fas fa-save me-1"></i>
+                                    <span data-i18n="common.save">儲存</span>
+                                </span>
+                                <span id="saveProfileBtnLoading" class="d-none">
+                                    <div class="spinner-border spinner-border-sm me-1" role="status"></div>
+                                    <span data-i18n="common.saving">儲存中...</span>
+                                </span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <!-- 修改密碼表單 -->
+            <div class="form-section">
+                <div class="form-header">
+                    <h4 class="mb-0">
+                        <i class="fas fa-key me-2 text-warning"></i>
+                        <span data-i18n="profile.changePassword">修改密碼</span>
+                    </h4>
+                </div>
+                <div class="form-body">
+                    <form id="passwordForm">
+                        <div class="row">
+                            <div class="col-md-12">
+                                <div class="mb-3">
+                                    <label for="currentPassword" class="form-label" data-i18n="profile.currentPassword">目前密碼</label>
+                                    <div class="input-group">
+                                        <input type="password" class="form-control" id="currentPassword" name="current_password" 
+                                               placeholder="請輸入目前密碼" required>
+                                        <button class="btn btn-outline-secondary" type="button" id="toggleCurrentPassword">
+                                            <i class="fas fa-eye" id="toggleCurrentPasswordIcon"></i>
+                                        </button>
+                                    </div>
+                                    <div class="invalid-feedback"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="newPassword" class="form-label" data-i18n="profile.newPassword">新密碼</label>
+                                    <div class="input-group">
+                                        <input type="password" class="form-control" id="newPassword" name="new_password" 
+                                               placeholder="請輸入新密碼" required>
+                                        <button class="btn btn-outline-secondary" type="button" id="toggleNewPassword">
+                                            <i class="fas fa-eye" id="toggleNewPasswordIcon"></i>
+                                        </button>
+                                    </div>
+                                    <div class="invalid-feedback"></div>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label for="confirmPassword" class="form-label" data-i18n="profile.confirmPassword">確認新密碼</label>
+                                    <div class="input-group">
+                                        <input type="password" class="form-control" id="confirmPassword" name="confirm_password" 
+                                               placeholder="請再次輸入新密碼" required>
+                                        <button class="btn btn-outline-secondary" type="button" id="toggleConfirmPassword">
+                                            <i class="fas fa-eye" id="toggleConfirmPasswordIcon"></i>
+                                        </button>
+                                    </div>
+                                    <div class="invalid-feedback"></div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- 密碼強度指示器 -->
+                        <div class="password-strength d-none" id="passwordStrength">
+                            <div class="fw-bold mb-2" data-i18n="profile.passwordRequirements">密碼要求：</div>
+                            <ul class="strength-requirements">
+                                <li id="req-length">
+                                    <i class="fas fa-times-circle"></i>
+                                    <span data-i18n="profile.reqLength">至少 8 個字符</span>
+                                </li>
+                                <li id="req-different">
+                                    <i class="fas fa-times-circle"></i>
+                                    <span data-i18n="profile.reqDifferent">與目前密碼不同</span>
+                                </li>
+                                <li id="req-match">
+                                    <i class="fas fa-times-circle"></i>
+                                    <span data-i18n="profile.reqMatch">兩次輸入密碼相符</span>
+                                </li>
+                            </ul>
+                        </div>
+                        
+                        <div class="d-flex justify-content-end">
+                            <button type="submit" class="btn btn-warning btn-save" id="changePasswordBtn" disabled>
+                                <span id="changePasswordBtnText">
+                                    <i class="fas fa-key me-1"></i>
+                                    <span data-i18n="profile.changePassword">修改密碼</span>
+                                </span>
+                                <span id="changePasswordBtnLoading" class="d-none">
+                                    <div class="spinner-border spinner-border-sm me-1" role="status"></div>
+                                    <span data-i18n="common.processing">處理中...</span>
+                                </span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/profile.js"></script>
+{% endblock %}

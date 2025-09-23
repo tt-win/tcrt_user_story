@@ -92,6 +92,11 @@ async def setup(request: Request):
     """系統初始化設置頁面"""
     return templates.TemplateResponse("system_setup_standalone.html", {"request": request})
 
+@app.get("/profile", response_class=HTMLResponse)
+async def profile(request: Request):
+    """個人資料頁面"""
+    return templates.TemplateResponse("profile.html", {"request": request})
+
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}

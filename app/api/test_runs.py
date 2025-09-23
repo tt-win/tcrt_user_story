@@ -11,7 +11,7 @@ from typing import List, Optional
 from datetime import datetime
 import io
 
-from app.database import get_db
+from app.database import get_db, get_sync_db
 from app.auth.dependencies import get_current_user
 from app.auth.models import PermissionType
 from app.models.database_models import User
@@ -152,7 +152,7 @@ def sort_test_runs(records: List[dict], sort_by: str = "created_at", sort_order:
 async def get_test_runs(
     team_id: int,
     config_id: int,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_sync_db),
     current_user: User = Depends(get_current_user),
     # 搜尋參數
     search: Optional[str] = Query(None, description="標題模糊搜尋"),
@@ -255,7 +255,7 @@ async def get_test_runs(
 async def get_test_runs_count(
     team_id: int,
     config_id: int,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_sync_db),
     current_user: User = Depends(get_current_user),
     # 搜尋參數（與 get_test_runs 相同）
     search: Optional[str] = Query(None, description="標題模糊搜尋"),
@@ -313,7 +313,7 @@ async def get_test_run(
     team_id: int,
     config_id: int,
     record_id: str,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_sync_db),
     current_user: User = Depends(get_current_user)
 ):
     """取得特定測試執行記錄（需要對該團隊的讀取權限）"""
@@ -367,7 +367,7 @@ async def create_test_run(
     team_id: int,
     config_id: int,
     test_run: TestRunCreate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_sync_db),
     current_user: User = Depends(get_current_user)
 ):
     """建立新的測試執行記錄（需要對該團隊的寫入權限）"""
@@ -457,7 +457,7 @@ async def update_test_run(
     config_id: int,
     record_id: str,
     test_run_update: TestRunUpdate,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_sync_db),
     current_user: User = Depends(get_current_user)
 ):
     """更新測試執行記錄（需要對該團隊的寫入權限）"""
@@ -572,7 +572,7 @@ async def delete_test_run(
     team_id: int,
     config_id: int,
     record_id: str,
-    db: Session = Depends(get_db),
+    db: Session = Depends(get_sync_db),
     current_user: User = Depends(get_current_user)
 ):
     """刪除測試執行記錄（需要對該團隊的刪除權限）"""
@@ -689,7 +689,7 @@ async def delete_test_run(
 async def get_test_run_statistics(
     team_id: int,
     config_id: int,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """取得測試執行統計資訊"""
     lark_client, team, config = get_lark_client_for_test_run(team_id, config_id, db)
@@ -742,7 +742,7 @@ async def batch_update_test_results(
     team_id: int,
     config_id: int,
     updates: List[dict],
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """批次更新測試執行結果"""
     lark_client, team, config = get_lark_client_for_test_run(team_id, config_id, db)
@@ -791,7 +791,7 @@ async def generate_html_report(
     team_id: int,
     config_id: int,
     request: Request,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """生成 Test Run HTML 報告（靜態檔），並回傳可存取的連結"""
     try:
@@ -846,7 +846,7 @@ async def get_html_report_status(
     team_id: int,
     config_id: int,
     request: Request,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """查詢 HTML 報告是否已存在，存在則回傳完整連結"""
     # 驗證團隊與配置存在

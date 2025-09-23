@@ -54,7 +54,39 @@
         "update": "更新",
         "updateDate": "更新日期",
         "view": "查看",
-        "yes": "是"
+        "yes": "是",
+        "saving": "保存中...",
+        "processing": "处理中..."
+    },
+    "user": {
+        "menu": {
+            "profile": "个人资料",
+            "logout": "退出登录",
+            "role": "角色",
+            "teams": "可访问团队",
+            "confirmLogout": "确认退出",
+            "confirmLogoutMessage": "您确定要退出登录吗？",
+            "loggingOut": "退出中...",
+            "logoutError": "退出时发生错误，请稍后再试"
+        }
+    },
+    "profile": {
+        "title": "个人资料",
+        "email": "邮箱",
+        "fullName": "姓名",
+        "role": "角色",
+        "teams": "所属团队",
+        "createdAt": "注册时间",
+        "lastLogin": "最后登录",
+        "editBasicInfo": "编辑基本资料",
+        "changePassword": "修改密码",
+        "currentPassword": "当前密码",
+        "newPassword": "新密码",
+        "confirmPassword": "确认新密码",
+        "passwordRequirements": "密码要求：",
+        "reqLength": "至少 8 个字符",
+        "reqDifferent": "与当前密码不同",
+        "reqMatch": "两次输入密码相符"
     },
     "confirm": {
         "batchDeleteTestRuns": "确定要删除这 {count} 个测试执行吗？此操作无法恢复。",

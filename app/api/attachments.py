@@ -12,7 +12,7 @@ import io
 import requests
 import urllib.parse
 
-from app.database import get_db
+from app.database import get_db, get_sync_db
 from app.models.database_models import Team as TeamDB, TestRunConfig as TestRunConfigDB
 from app.services.lark_client import LarkClient
 from app.config import settings
@@ -51,7 +51,7 @@ async def upload_testcase_attachment(
     file: UploadFile = File(...),
     field_name: str = Form("Attachment"),
     append: bool = Form(True),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """
     上傳檔案到測試案例的附件欄位
@@ -124,7 +124,7 @@ async def upload_testrun_attachment(
     file: UploadFile = File(...),
     field_name: str = Form("Execution Result"),
     append: bool = Form(True),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """
     上傳檔案到測試執行記錄（使用本地檔案系統）
@@ -301,7 +301,7 @@ async def upload_testrun_screenshot(
     config_id: int,
     record_id: str,
     file: UploadFile = File(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """
     上傳測試執行結果截圖（使用本地檔案系統）
@@ -332,7 +332,7 @@ async def upload_testrun_screenshot(
 async def upload_file_get_token(
     team_id: int,
     file: UploadFile = File(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """
     只上傳檔案到 Lark Drive，返回 file_token
@@ -395,7 +395,7 @@ async def attach_file_token_to_testcase(
     file_token: str = Form(...),
     field_name: str = Form("Attachment"),
     append: bool = Form(True),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """
     將已上傳的檔案（file_token）附加到測試案例記錄
@@ -459,7 +459,7 @@ async def remove_testcase_attachment(
     record_id: str,
     file_token: str,
     field_name: str = "Attachment",
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """
     從測試案例記錄中移除指定的附件
@@ -548,7 +548,7 @@ async def download_attachment_proxy(
     file_url: str = None,
     file_token: str = None,
     filename: str = None,
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_sync_db)
 ):
     """
     附件下載代理 API
