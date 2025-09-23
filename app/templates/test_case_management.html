@@ -3993,11 +3993,35 @@ function showTestCaseModal(testCase = null) {
         document.getElementById('title').value = testCase.title || '';
         document.getElementById('testCaseNumber').value = testCase.test_case_number || '';
         document.getElementById('priority').value = testCase.priority || 'Medium';
-        const tcgValue = testCase.tcg ? testCase.tcg.map(t => t.text || t).join(', ') : '';
+        // 初始化 TCG 欄位（隱藏 input 仍以逗號分隔字串存放）
+        const collectTCGs = () => {
+            const out = [];
+            const pushSplit = (text) => {
+                String(text || '')
+                    .split(/[\s,，、|/]+/)
+                    .map(s => s.trim())
+                    .filter(Boolean)
+                    .forEach(s => out.push(s));
+            };
+            if (Array.isArray(testCase.tcg)) {
+                for (const t of testCase.tcg) {
+                    if (t && Array.isArray(t.text_arr) && t.text_arr.length) {
+                        t.text_arr.forEach(pushSplit);
+                    } else if (t && t.text) {
+                        pushSplit(t.text);
+                    } else if (typeof t === 'string') {
+                        pushSplit(t);
+                    }
+                }
+            }
+            return out;
+        };
+        const tcgList = collectTCGs();
+        const tcgValue = tcgList.join(', ');
         document.getElementById('tcg').value = tcgValue;
         
-        // 初始化 Modal TCG 多選顯示
-        modalTCGSelected = testCase.tcg ? testCase.tcg.map(t => t.text || t) : [];
+        // 初始化 Modal TCG 多選顯示（每一個單號一個 tag）
+        modalTCGSelected = tcgList;
         renderModalTCGDisplay();
         document.getElementById('precondition').value = testCase.precondition || '';
         document.getElementById('test_steps').value = testCase.steps || '';
@@ -4853,13 +4877,22 @@ function getTCGDisplay(testCase) {
         return '-';
     }
     
-    // 提取所有 TCG 顯示文字
+    // 提取所有 TCG 顯示文字（若 text 內含多個以逗號/空白/頓號/豎線分隔，拆成多個）
     const tcgNumbers = [];
+    const pushSplit = (text) => {
+        String(text || '')
+            .split(/[\s,，、|/]+/)
+            .map(s => s.trim())
+            .filter(Boolean)
+            .forEach(s => tcgNumbers.push(s));
+    };
     for (const tcgRecord of testCase.tcg) {
-        if (tcgRecord.text) {
-            tcgNumbers.push(tcgRecord.text);
-        } else if (tcgRecord.text_arr && tcgRecord.text_arr.length > 0) {
-            tcgNumbers.push(...tcgRecord.text_arr);
+        if (tcgRecord && Array.isArray(tcgRecord.text_arr) && tcgRecord.text_arr.length) {
+            tcgRecord.text_arr.forEach(pushSplit);
+        } else if (tcgRecord && tcgRecord.text) {
+            pushSplit(tcgRecord.text);
+        } else if (typeof tcgRecord === 'string') {
+            pushSplit(tcgRecord);
         }
     }
     
@@ -4871,13 +4904,22 @@ function getTCGTags(testCase) {
         return '';
     }
     
-    // 提取所有 TCG 顯示文字
+    // 提取所有 TCG 顯示文字（若 text 內含多個以逗號/空白/頓號/豎線分隔，拆成多個）
     const tcgNumbers = [];
+    const pushSplit = (text) => {
+        String(text || '')
+            .split(/[\s,，、|/]+/)
+            .map(s => s.trim())
+            .filter(Boolean)
+            .forEach(s => tcgNumbers.push(s));
+    };
     for (const tcgRecord of testCase.tcg) {
-        if (tcgRecord.text) {
-            tcgNumbers.push(tcgRecord.text);
-        } else if (tcgRecord.text_arr && tcgRecord.text_arr.length > 0) {
-            tcgNumbers.push(...tcgRecord.text_arr);
+        if (tcgRecord && Array.isArray(tcgRecord.text_arr) && tcgRecord.text_arr.length) {
+            tcgRecord.text_arr.forEach(pushSplit);
+        } else if (tcgRecord && tcgRecord.text) {
+            pushSplit(tcgRecord.text);
+        } else if (typeof tcgRecord === 'string') {
+            pushSplit(tcgRecord);
         }
     }
     
@@ -4885,9 +4927,9 @@ function getTCGTags(testCase) {
         return '';
     }
     
-    // 創建柔和的 tag
+    // 創建柔和的 tag（每一個單號一個 tag）
     return tcgNumbers.map(tcg => 
-        `<span class="tcg-tag">${tcg}</span>`
+        `<span class=\"tcg-tag\">${tcg}</span>`
     ).join('');
 }
 

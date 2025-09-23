@@ -3936,8 +3936,32 @@ function generateBasicInfoHtml(testCase) {
     // 以 Test Run Item 的 assignee_name 為準（本地 DB），而非 Test Case 的 assignee
     const itemForCase = (testRunItems || []).find(i => i.test_case_number === testCase.test_case_number);
     const assigneeName = itemForCase ? (itemForCase.assignee_name || '') : '';
-    const tcgText = testCase.tcg && testCase.tcg.length > 0 ? testCase.tcg.map(t => t.text || t).join(', ') : '';
+    const tcgNumbers = Array.isArray(testCase.tcg)
+        ? testCase.tcg.flatMap(t => {
+            if (t && Array.isArray(t.text_arr) && t.text_arr.length) {
+                return t.text_arr;
+            }
+            if (t && t.text) {
+                return String(t.text)
+                    .split(/[\s,，、|/]+/)
+                    .map(s => s.trim())
+                    .filter(Boolean);
+            }
+            if (typeof t === 'string') {
+                return String(t)
+                    .split(/[\s,，、|/]+/)
+                    .map(s => s.trim())
+                    .filter(Boolean);
+            }
+            return [];
+        }).filter(Boolean)
+        : [];
     const attachmentCount = Array.isArray(testCase.attachments) ? testCase.attachments.length : 0;
+
+    const tcgTagsHtml = tcgNumbers.map(num => {
+        const safe = escapeHtml(num);
+        return '<span class="tcg-tag" style="margin-right:4px;" onclick="showTCGPreviewInTestRun(\'' + safe + '\', event)" title="' + safe + '">' + safe + '</span>';
+    }).join('');
 
     return `
         <!-- Basic Info 區域 -->
@@ -3945,17 +3969,16 @@ function generateBasicInfoHtml(testCase) {
             <div class="card-header py-1">
                 <h6 class="card-title mb-0">
                     <i class="fas fa-info-circle me-2"></i>
-                    <span data-i18n="testRun.basicInfo">基本資訊</span>
+                    <span data-i18n=\"testRun.basicInfo\">基本資訊</span>
                 </h6>
             </div>
             <div class="card-body px-2 basic-info-body">
                 <table class="table table-sm table-borderless mb-0 basic-info-table">
                     <tr>
-                        <td class="basic-info-label" data-i18n="testRun.testCaseNumber">編號</td>
+                        <td class="basic-info-label" data-i18n=\"testRun.testCaseNumber\">編號</td>
                         <td class="basic-info-value"><code class="basic-info-code">${escapeHtml(testCase.test_case_number)}</code></td>
-                        <td class="basic-info-label">${tcgText ? 'TCG' : ''}</td>
-                        <td class="basic-info-value">${tcgText ? '<code class="basic-info-code tcg-tag" data-tcg="' + escapeHtml(tcgText) + '">' + escapeHtml(tcgText) + '</code>' + 
-                            '<button type="button" title="檢視 JIRA Ticket 資訊" data-i18n-title="tooltips.viewJiraInfo" onclick="showTCGPreviewInTestRun(\'' + escapeHtml(tcgText) + '\', event)" style="border: none; background: none; padding: 0; margin-left: 8px; color: #6c757d; cursor: pointer; font-size: 0.8em;"><i class="fas fa-eye"></i></button>' : ''}</td>
+                        <td class="basic-info-label">${tcgNumbers.length ? 'TCG' : ''}</td>
+                        <td class="basic-info-value">${tcgNumbers.length ? tcgTagsHtml : ''}</td>
                     </tr>
                     <tr>
                         <td class="basic-info-label" data-i18n="testRun.title">標題</td>
