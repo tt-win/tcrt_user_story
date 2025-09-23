@@ -11,6 +11,7 @@ python-dotenv==1.0.1
 
 # Database
 SQLAlchemy==2.0.43
+aiosqlite==0.19.0
 
 # HTTP Client & APIs
 requests==2.32.5

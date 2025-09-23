@@ -33,6 +33,9 @@ from .lark_types import Priority, TestResultStatus
 from .team import TeamStatus
 from .test_run_config import TestRunStatus
 
+# 導入認證相關枚舉
+from ..auth.models import UserRole, PermissionType
+
 Base = declarative_base()
 
 
@@ -502,19 +505,246 @@ class SyncHistory(Base):
     )
 
 
+# ===================== 認證系統相關表格 =====================
+
+class User(Base):
+    """使用者表格（認證系統）"""
+    __tablename__ = "users"
+    __table_args__ = {
+        'sqlite_autoincrement': True
+    }
+    
+    id = Column(Integer, primary_key=True)
+    username = Column(String(50), unique=True, nullable=False, index=True)
+    email = Column(String(255), unique=True, nullable=False, index=True)
+    hashed_password = Column(String(255), nullable=False)
+    
+    # 基本資訊
+    full_name = Column(String(255), nullable=True)
+    role = Column(Enum(UserRole), nullable=False, default=UserRole.USER, index=True)
+    
+    # 狀態設定
+    is_active = Column(Boolean, default=True, nullable=False, index=True)
+    is_verified = Column(Boolean, default=False, nullable=False)
+    
+    # 時間欄位
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    last_login_at = Column(DateTime, nullable=True)
+    
+    # 關聯關係
+    team_permissions = relationship("UserTeamPermission", back_populates="user", cascade="all, delete-orphan")
+    active_sessions = relationship("ActiveSession", back_populates="user", cascade="all, delete-orphan")
+    
+    # 索引
+    __table_args__ = (
+        Index('ix_users_role_active', 'role', 'is_active'),
+        Index('ix_users_email_active', 'email', 'is_active'),
+        {'sqlite_autoincrement': True}
+    )
+
+
+class UserTeamPermission(Base):
+    """使用者團隊權限表格"""
+    __tablename__ = "user_team_permissions"
+    __table_args__ = {
+        'sqlite_autoincrement': True
+    }
+    
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    team_id = Column(Integer, ForeignKey("teams.id", ondelete="CASCADE"), nullable=False, index=True)
+    permission = Column(Enum(PermissionType), nullable=False, index=True)
+    
+    # 時間欄位
+    granted_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    granted_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    
+    # 關聯關係
+    user = relationship("User", back_populates="team_permissions", foreign_keys=[user_id])
+    team = relationship("Team")
+    granted_by = relationship("User", foreign_keys=[granted_by_id])
+    
+    # 唯一索引：同一使用者在同一團隊只能有一種權限
+    __table_args__ = (
+        UniqueConstraint('user_id', 'team_id', name='uq_user_team_permission'),
+        Index('ix_user_team_perms_user', 'user_id'),
+        Index('ix_user_team_perms_team', 'team_id'),
+        Index('ix_user_team_perms_permission', 'permission'),
+        {'sqlite_autoincrement': True}
+    )
+
+
+class ActiveSession(Base):
+    """活躍会話表格（用於Token管理與撤銷）"""
+    __tablename__ = "active_sessions"
+    __table_args__ = {
+        'sqlite_autoincrement': True
+    }
+    
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    
+    # JWT Token 資訊
+    jti = Column(String(36), unique=True, nullable=False, index=True)  # JWT ID (UUID)
+    token_type = Column(String(20), default="access", nullable=False)  # access, refresh
+    
+    # 会話資訊
+    ip_address = Column(String(45), nullable=True)  # 支持 IPv6
+    user_agent = Column(String(500), nullable=True)
+    
+    # 狀態與時間
+    is_revoked = Column(Boolean, default=False, nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    expires_at = Column(DateTime, nullable=False, index=True)
+    last_used_at = Column(DateTime, nullable=True)
+    revoked_at = Column(DateTime, nullable=True)
+    revoked_reason = Column(String(100), nullable=True)  # logout, admin_revoke, expired, etc.
+    
+    # 關聯關係
+    user = relationship("User", back_populates="active_sessions")
+    
+    # 索引
+    __table_args__ = (
+        Index('ix_sessions_user_active', 'user_id', 'is_revoked'),
+        Index('ix_sessions_expires', 'expires_at'),
+        Index('ix_sessions_jti_active', 'jti', 'is_revoked'),
+        {'sqlite_autoincrement': True}
+    )
+
+
+class PasswordResetToken(Base):
+    """密碼重設令牌表格"""
+    __tablename__ = "password_reset_tokens"
+    __table_args__ = {
+        'sqlite_autoincrement': True
+    }
+    
+    id = Column(Integer, primary_key=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    
+    # 令牌資訊
+    token = Column(String(64), unique=True, nullable=False, index=True)  # 隨機產生的令牌
+    
+    # 狀態與時間
+    is_used = Column(Boolean, default=False, nullable=False, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    expires_at = Column(DateTime, nullable=False, index=True)
+    used_at = Column(DateTime, nullable=True)
+    
+    # 安全資訊
+    ip_address = Column(String(45), nullable=True)
+    user_agent = Column(String(500), nullable=True)
+    
+    # 關聯關係
+    user = relationship("User")
+    
+    # 索引
+    __table_args__ = (
+        Index('ix_reset_tokens_user', 'user_id', 'is_used'),
+        Index('ix_reset_tokens_expires', 'expires_at'),
+        {'sqlite_autoincrement': True}
+    )
+
+
 # 建立資料庫表格的函數
 logger = logging.getLogger(__name__)
 
 
+def _migrate_legacy_auth_tables(engine):
+    """遷移舊的認證相關表格到新的結構"""
+    with engine.begin() as conn:
+        # 檢查舊 users 表格的結構
+        result = conn.execute(text("""
+            SELECT name FROM sqlite_master 
+            WHERE type='table' AND name = 'users'
+        """))
+        has_old_users = result.fetchone() is not None
+        
+        if has_old_users:
+            # 檢查表格結構是否為舊版本
+            result = conn.execute(text("PRAGMA table_info(users)"))
+            columns = [row[1] for row in result.fetchall()]
+            
+            # 如果是舊版本的 users 表（有 lark_id 但沒有 username/email）
+            if 'lark_id' in columns and 'username' not in columns:
+                logger.info("檢測到舊版 users 表格，進行結構遷移...")
+                
+                # 備份舊表格
+                conn.execute(text("CREATE TABLE users_legacy_backup AS SELECT * FROM users"))
+                logger.info("已備份舊 users 表格至 users_legacy_backup")
+                
+                # 刪除舊表格
+                conn.execute(text("DROP TABLE users"))
+                
+                # 由 SQLAlchemy 重新創庺新表格（在 Base.metadata.create_all 中處理）
+                logger.info("已刪除舊 users 表，將由 SQLAlchemy 重新創庺")
+            else:
+                logger.info("現有 users 表格結構已為新版，無需遷移")
+                
+        # 處理 roles 表格（新系統不需要獨立的 roles 表）
+        result = conn.execute(text("""
+            SELECT name FROM sqlite_master 
+            WHERE type='table' AND name = 'roles'
+        """))
+        has_old_roles = result.fetchone() is not None
+        
+        if has_old_roles:
+            logger.info("檢測到舊的 roles 表格，備份後刪除...")
+            conn.execute(text("CREATE TABLE roles_legacy_backup AS SELECT * FROM roles"))
+            conn.execute(text("DROP TABLE roles"))
+            logger.info("舊 roles 表格已備份至 roles_legacy_backup 並刪除")
+
+
 def create_database_tables():
-    """創建所有資料庫表格"""
+    """創庺所有主資料庫表格（包含認證系統）"""
     from app.database import engine
+    
+    # 遷移舊的認證表格（如果存在）
+    _migrate_legacy_auth_tables(engine)
+    
+    # 創庺所有表格
     Base.metadata.create_all(bind=engine)
+    
     try:
         ensure_test_run_item_history_fk(engine)
     except Exception as exc:
         logger.exception("修正 test_run_item_result_history 外鍵失敗: %s", exc)
-    logger.info("資料庫表格已創建完成")
+    
+    logger.info("主資料庫表格已創庺完成")
+
+
+async def create_audit_database_tables():
+    """創建審計系統獨立資料庫表格"""
+    from ..audit.database import audit_db_manager, create_audit_tables
+    
+    if not audit_db_manager.is_initialized:
+        await audit_db_manager.initialize()
+    
+    await create_audit_tables()
+    logger.info("審計資料庫表格已創建完成")
+
+
+def create_all_database_tables():
+    """創建所有資料庫表格（主資料庫 + 審計資料庫）"""
+    # 創建主資料庫表格
+    create_database_tables()
+    
+    # 創建審計資料庫表格（需要在事件迴圈中執行）
+    import asyncio
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    
+    if loop.is_running():
+        # 如果已經在事件迴圈中，創建任務
+        loop.create_task(create_audit_database_tables())
+        logger.info("已排程審計資料庫表格創建")
+    else:
+        # 否則直接執行
+        loop.run_until_complete(create_audit_database_tables())
 
 
 def ensure_test_run_item_history_fk(engine) -> None:

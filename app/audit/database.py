@@ -75,9 +75,12 @@ class AuditDatabaseManager:
         """初始化 SQLite 連接"""
         logger.info("初始化 SQLite 審計資料庫連接")
         
+        # 將 sqlite:// 轉換為 aiosqlite://
+        async_url = self.config.database_url.replace("sqlite://", "sqlite+aiosqlite://")
+        
         # SQLite 使用 NullPool 避免連線池問題
         self._engine = create_async_engine(
-            self.config.database_url,
+            async_url,
             poolclass=NullPool,
             echo=self.config.debug_sql,
             future=True,

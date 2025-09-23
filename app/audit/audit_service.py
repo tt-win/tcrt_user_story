@@ -18,7 +18,7 @@ from .models import (
     AuditLog, AuditLogCreate, AuditLogQuery, AuditLogResponse, AuditLogSummary,
     AuditStatistics, ActionType, ResourceType, AuditSeverity, ExportFormat
 )
-from .database import get_audit_session, AuditLogTable
+from .database import get_audit_session, AuditLogTable, audit_db_manager
 from ..config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -160,7 +160,7 @@ class AuditService:
     async def query_logs(self, query: AuditLogQuery) -> AuditLogResponse:
         """查詢審計記錄"""
         try:
-            async with get_audit_session() as session:
+            async with audit_db_manager.get_session() as session:
                 # 建構查詢條件
                 conditions = []
                 
@@ -242,7 +242,7 @@ class AuditService:
     async def get_log_detail(self, log_id: int) -> Optional[AuditLog]:
         """取得審計記錄詳情"""
         try:
-            async with get_audit_session() as session:
+            async with audit_db_manager.get_session() as session:
                 result = await session.execute(
                     select(AuditLogTable).where(AuditLogTable.id == log_id)
                 )
@@ -288,7 +288,7 @@ class AuditService:
     ) -> AuditStatistics:
         """取得審計統計資訊"""
         try:
-            async with get_audit_session() as session:
+            async with audit_db_manager.get_session() as session:
                 conditions = [
                     AuditLogTable.timestamp >= start_time,
                     AuditLogTable.timestamp <= end_time
@@ -374,7 +374,7 @@ class AuditService:
         cutoff_date = datetime.utcnow() - timedelta(days=self.config.cleanup_days)
         
         try:
-            async with get_audit_session() as session:
+            async with audit_db_manager.get_session() as session:
                 # 先查詢要刪除的記錄數
                 count_result = await session.execute(
                     select(func.count()).select_from(AuditLogTable)
@@ -440,7 +440,7 @@ class AuditService:
         self._last_flush = datetime.utcnow()
         
         try:
-            async with get_audit_session() as session:
+            async with audit_db_manager.get_session() as session:
                 # 轉換為資料表記錄
                 db_records = []
                 for record in records_to_write:
