@@ -533,7 +533,12 @@ class User(Base):
     last_login_at = Column(DateTime, nullable=True)
     
     # 關聯關係
-    team_permissions = relationship("UserTeamPermission", back_populates="user", cascade="all, delete-orphan")
+    team_permissions = relationship(
+        "UserTeamPermission", 
+        back_populates="user", 
+        cascade="all, delete-orphan",
+        foreign_keys="UserTeamPermission.user_id"
+    )
     active_sessions = relationship("ActiveSession", back_populates="user", cascade="all, delete-orphan")
     
     # 索引

@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 from app.config import get_settings
 from app.auth.models import TokenData, UserRole
+from app.auth.session_service import session_service, is_token_revoked, create_session_record
 
 
 class AuthService:
@@ -21,12 +22,14 @@ class AuthService:
         self.algorithm = "HS256"
         self.expire_days = self.settings.auth.jwt_expire_days
     
-    def create_access_token(
+    async def create_access_token(
         self, 
         user_id: int, 
         username: str, 
         role: UserRole,
-        expires_delta: Optional[timedelta] = None
+        expires_delta: Optional[timedelta] = None,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None
     ) -> tuple[str, str, datetime]:
         """
         建立 JWT 存取 Token
@@ -59,9 +62,19 @@ class AuthService:
         }
         
         token = jwt.encode(payload, self.secret_key, algorithm=self.algorithm)
+        
+        # 創建會話記錄
+        await create_session_record(
+            user_id=user_id,
+            jti=jti,
+            expires_at=expire,
+            ip_address=ip_address,
+            user_agent=user_agent
+        )
+        
         return token, jti, expire
     
-    def verify_token(self, token: str) -> Optional[TokenData]:
+    async def verify_token(self, token: str, check_revocation: bool = True) -> Optional[TokenData]:
         """
         驗證 JWT Token
         
@@ -87,6 +100,10 @@ class AuthService:
             
             if not all([user_id, username, role, jti]):
                 return None
+                
+            # 檢查 JTI 是否已被撤銷
+            if check_revocation and await is_token_revoked(jti):
+                return None
             
             return TokenData(
                 user_id=user_id,
@@ -105,7 +122,12 @@ class AuthService:
             # 其他錯誤
             return None
     
-    def refresh_token(self, old_token: str) -> Optional[tuple[str, str, datetime]]:
+    async def refresh_token(
+        self, 
+        old_token: str,
+        ip_address: Optional[str] = None,
+        user_agent: Optional[str] = None
+    ) -> Optional[tuple[str, str, datetime]]:
         """
         刷新 Token（重新生成）
         
@@ -115,32 +137,46 @@ class AuthService:
         Returns:
             tuple: (new_token, new_jti, expires_at) 或 None
         """
-        token_data = self.verify_token(old_token)
+        token_data = await self.verify_token(old_token)
         if not token_data:
             return None
             
-        # TODO: 檢查 JTI 是否已被撤銷
-        # TODO: 撤銷舊 Token 的 JTI
+        # 撤銷舊 Token
+        await session_service.revoke_jti(token_data.jti, "refresh")
         
-        return self.create_access_token(
+        return await self.create_access_token(
             token_data.user_id,
             token_data.username, 
-            token_data.role
+            token_data.role,
+            ip_address=ip_address,
+            user_agent=user_agent
         )
     
-    def revoke_token(self, jti: str) -> bool:
+    async def revoke_token(self, jti: str, reason: str = "logout") -> bool:
         """
         撤銷 Token（將 JTI 加入黑名單）
         
         Args:
             jti: JWT ID
+            reason: 撤銷原因
             
         Returns:
             是否成功撤銷
         """
-        # TODO: 實作 JTI 黑名單機制
-        # 這將在會話管理服務中實作
-        return True
+        return await session_service.revoke_jti(jti, reason)
+    
+    async def revoke_user_tokens(self, user_id: int, reason: str = "admin_revoke") -> int:
+        """
+        撤銷使用者的所有 Token
+        
+        Args:
+            user_id: 使用者 ID
+            reason: 撤銷原因
+            
+        Returns:
+            撤銷的 Token 數量
+        """
+        return await session_service.revoke_user_sessions(user_id, reason)
     
     def decode_token_without_verification(self, token: str) -> Optional[Dict[str, Any]]:
         """
