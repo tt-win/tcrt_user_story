@@ -277,7 +277,7 @@
         "batchCopySuccess": "Successfully copied {count} test cases"
     },
     "navigation": {
-        "backToHome": "Back to Home",
+        "backToHome": "Home",
         "backToManagement": "Back to Management",
         "pleaseSelect": "Please select...",
         "subtitle": "Select a team to start managing test cases",
