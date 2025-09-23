@@ -74,19 +74,25 @@ class AuthConfig(BaseModel):
 
 class AuditConfig(BaseModel):
     """審計系統設定"""
-    enable_audit: bool = True
+    enabled: bool = True
     database_url: str = "sqlite:///./audit.db"
     batch_size: int = 100
     cleanup_days: int = 365
+    max_detail_size: int = 10240
+    excluded_fields: list = ['password', 'token', 'secret', 'key']
+    debug_sql: bool = False
     
     @classmethod
     def from_env(cls, fallback: 'AuditConfig' = None) -> 'AuditConfig':
         """從環境變數載入審計設定"""
         return cls(
-            enable_audit=os.getenv('ENABLE_AUDIT', str(fallback.enable_audit if fallback else True)).lower() == 'true',
+            enabled=os.getenv('ENABLE_AUDIT', str(fallback.enabled if fallback else True)).lower() == 'true',
             database_url=os.getenv('AUDIT_DATABASE_URL', fallback.database_url if fallback else 'sqlite:///./audit.db'),
             batch_size=int(os.getenv('AUDIT_BATCH_SIZE', str(fallback.batch_size if fallback else 100))),
-            cleanup_days=int(os.getenv('AUDIT_CLEANUP_DAYS', str(fallback.cleanup_days if fallback else 365)))
+            cleanup_days=int(os.getenv('AUDIT_CLEANUP_DAYS', str(fallback.cleanup_days if fallback else 365))),
+            max_detail_size=int(os.getenv('AUDIT_MAX_DETAIL_SIZE', str(fallback.max_detail_size if fallback else 10240))),
+            excluded_fields=fallback.excluded_fields if fallback else ['password', 'token', 'secret', 'key'],
+            debug_sql=os.getenv('AUDIT_DEBUG_SQL', str(fallback.debug_sql if fallback else False)).lower() == 'true'
         )
 
 class AttachmentsConfig(BaseModel):
@@ -162,10 +168,13 @@ def create_default_config(config_path: str = "config.yaml") -> None:
             "session_cleanup_days": 30
         },
         "audit": {
-            "enable_audit": True,
+            "enabled": True,
             "database_url": "sqlite:///./audit.db",
             "batch_size": 100,
-            "cleanup_days": 365
+            "cleanup_days": 365,
+            "max_detail_size": 10240,
+            "excluded_fields": ["password", "token", "secret", "key"],
+            "debug_sql": False
         }
     }
     
