@@ -295,7 +295,12 @@ async function loadTeams() {
     try {
         showLoading();
         
-        const response = await fetch('/api/teams/');
+        // 確保 AuthClient 已經初始化
+        if (!window.AuthClient) {
+            throw new Error('AuthClient 尚未初始化');
+        }
+        
+        const response = await window.AuthClient.fetch('/api/teams/');
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
@@ -470,7 +475,7 @@ async function saveTeam() {
             method = 'PUT';
         }
         
-        const response = await fetch(url, {
+        const response = await window.AuthClient.fetch(url, {
             method: method,
             headers: {
                 'Content-Type': 'application/json',
