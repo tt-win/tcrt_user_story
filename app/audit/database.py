@@ -182,7 +182,15 @@ async def cleanup_audit_database() -> None:
 
 
 async def audit_health_check() -> bool:
-    """審計資料庫健康檢查"""
+    """審計資料庫健康檢查（自動初始化）"""
+    # 自動初始化審計資料庫
+    if not audit_db_manager.is_initialized:
+        try:
+            await audit_db_manager.initialize()
+        except Exception as e:
+            logger.error(f"審計資料庫自動初始化失敗: {e}")
+            return False
+    
     return await audit_db_manager.health_check()
 
 
