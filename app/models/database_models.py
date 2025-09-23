@@ -697,17 +697,20 @@ def _migrate_legacy_auth_tables(engine):
 
 
 def create_database_tables():
-    """創庺所有主資料庫表格（包含認證系統）"""
-    from app.database import engine
+    """創建所有主資料庫表格（包含認證系統）"""
+    # 使用同步引擎進行表格創庺與遷移
+    from app.database import get_sync_engine
+    
+    sync_engine = get_sync_engine()
     
     # 遷移舊的認證表格（如果存在）
-    _migrate_legacy_auth_tables(engine)
+    _migrate_legacy_auth_tables(sync_engine)
     
     # 創庺所有表格
-    Base.metadata.create_all(bind=engine)
+    Base.metadata.create_all(bind=sync_engine)
     
     try:
-        ensure_test_run_item_history_fk(engine)
+        ensure_test_run_item_history_fk(sync_engine)
     except Exception as exc:
         logger.exception("修正 test_run_item_result_history 外鍵失敗: %s", exc)
     
