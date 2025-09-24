@@ -6,7 +6,9 @@
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from pydantic import BaseModel, EmailStr, Field, validator
-from typing import Optional, List
+from typing import Optional, List, Union, Any
+from pydantic.main import BaseModel as PydanticBaseModel
+from pydantic_core import PydanticUndefined
 import logging
 from datetime import datetime
 
@@ -17,6 +19,9 @@ from app.services.user_service import UserService
 from app.models.database_models import User
 from app.database import get_async_session
 from sqlalchemy import select, and_, or_, func
+import logging
+
+from app.utils.logging import log_lark_display_decision
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +45,7 @@ class UserCreateRequest(BaseModel):
         return v
 
 
-class UserUpdateRequest(BaseModel):
+class UserUpdateRequest(PydanticBaseModel):
     """更新使用者請求模型"""
     email: Optional[EmailStr] = None
     full_name: Optional[str] = None
@@ -48,6 +53,10 @@ class UserUpdateRequest(BaseModel):
     is_active: Optional[bool] = None
     password: Optional[str] = None  # 密碼重設
     lark_user_id: Optional[str] = None
+
+    def field_is_set(self, field_name: str) -> bool:
+        """檢查字段是否在請求中被明確設置（通過 model_fields_set）"""
+        return field_name in self.model_fields_set
 
 
 class UserResponse(BaseModel):
@@ -582,18 +591,21 @@ async def update_user(
                         detail="電子信箱已被使用"
                     )
 
-            # 更新欄位
-            if request.email is not None:
+            # 更新欄位 - 只有當字段被設置時才更新
+            # 對於可為 null 的字段，當設置為 null 時也應更新
+            # 對於必需字段，只有當明確提供非 null 值時才更新
+            if request.field_is_set('email'):
                 user.email = request.email
-            if request.full_name is not None:
+            if request.field_is_set('full_name'):
                 user.full_name = request.full_name
-            if request.role is not None:
+            if request.field_is_set('role') and request.role is not None:
                 user.role = request.role
-            if request.is_active is not None:
+            if request.field_is_set('is_active') and request.is_active is not None:
                 user.is_active = request.is_active
-            if request.password is not None:
+            if request.field_is_set('password') and request.password is not None:
                 user.hashed_password = PasswordService.hash_password(request.password)
-            if request.lark_user_id is not None:
+            if request.field_is_set('lark_user_id'):
+                # lark_user_id 可以為 null，所以總是更新（即使值為 None）
                 user.lark_user_id = request.lark_user_id
 
             user.updated_at = datetime.utcnow()
@@ -754,6 +766,46 @@ async def reset_user_password(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="重設密碼時發生錯誤"
+        )
+
+
+@router.get("/{user_id}/lark-status", response_model=dict)
+async def get_user_lark_status(
+    user_id: int,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    取得使用者的 Lark 整合狀態
+    
+    需要 ADMIN+ 權限，或者查詢自己的資訊。
+    """
+    # 權限檢查：ADMIN+ 或查詢自己
+    admin_roles = [UserRole.ADMIN, UserRole.SUPER_ADMIN]
+    if current_user.role not in admin_roles and current_user.id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="權限不足"
+        )
+
+    try:
+        # 使用 UserService 檢查 Lark 整合狀態
+        status = await UserService.check_lark_integration_status(user_id)
+        
+        # 記錄顯示決策
+        log_lark_display_decision(
+            user_id, 
+            status.get("lark_linked", False), 
+            status.get("has_lark_data", False),
+            "顯示" if status.get("has_lark_data", False) else "隱藏"
+        )
+        
+        return status
+
+    except Exception as e:
+        logger.error(f"取得使用者 Lark 狀態失敗: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="取得使用者 Lark 狀態時發生錯誤"
         )
 
 

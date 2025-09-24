@@ -473,12 +473,16 @@
       return body;
     }
 
-    // 更新使用者時的處理（僅包含有變更的欄位）
+    // 更新使用者時的處理
     if (fullName !== (currentUser.full_name || '')) body.full_name = fullName || null;
     if (email !== (currentUser.email || '')) body.email = email || null;
     if (role && role !== (currentUser.role || '').toLowerCase()) body.role = role;
     if (isActive !== !!currentUser.is_active) body.is_active = isActive;
-    if (larkId !== (currentUser.lark_user_id || '')) body.lark_user_id = larkId || null;
+    
+    // 重要：始終包含 lark_user_id，即使是空值，以確保能正確清除連結
+    // 不論是否有變化，都包含此字段，以便後端可以正確設置為 null
+    body.lark_user_id = larkId || null;
+    
     return body;
   }
 
@@ -495,6 +499,13 @@
     hideLarkDropdown();
     updateLarkPreviewBox(null); // 解除後隱藏預覽框
     markDirty();
+    
+    // 提示使用者需要儲存變更
+    if (window.AppUtils && AppUtils.showWarning) {
+      AppUtils.showWarning('已解除 Lark 連結，請點擊儲存按鈕以保存變更');
+    } else {
+      console.log('已解除 Lark 連結，請點擊儲存按鈕以保存變更');
+    }
   }
 
   async function fetchLarkPreview(larkId, showToast) {
@@ -521,19 +532,33 @@
     const box = document.getElementById('pm-lark-preview-box');
     const img = document.getElementById('pm-lark-avatar');
     const nameEl = document.getElementById('pm-lark-name');
+    const notConfiguredDiv = document.getElementById('pm-lark-not-configured');
     
     console.log('updateLarkPreviewBox called with:', larkId, 'cache has:', larkId ? state.larkCache.has(larkId) : false);
     
-    if (!box || !img || !nameEl) {
+    if (!box || !img || !nameEl || !notConfiguredDiv) {
       console.error('Preview box elements not found');
       return;
     }
     
-    // 無條件隱藏預覽框：無 larkId 或無快取資料
-    if (!larkId || !state.larkCache.has(larkId)) {
-      console.log('Hiding preview box: no larkId or no cache data');
-      box.style.display = 'none';
+    // 隱藏所有元素
+    box.style.display = 'none';
+    notConfiguredDiv.style.display = 'none';
+    
+    // 如果沒有 larkId，顯示未配置消息
+    if (!larkId) {
+      notConfiguredDiv.style.display = 'block';
       img.src = '';
+      img.style.display = 'block'; // 重置顯示狀態
+      nameEl.textContent = '';
+      return;
+    }
+    
+    // 如果沒有快取資料，也顯示未配置消息
+    if (!state.larkCache.has(larkId)) {
+      notConfiguredDiv.style.display = 'block';
+      img.src = '';
+      img.style.display = 'block'; // 重置顯示狀態
       nameEl.textContent = '';
       return;
     }
@@ -541,23 +566,32 @@
     const data = state.larkCache.get(larkId);
     console.log('Lark data:', data);
     
-    // 無條件隱藏預覽框：沒有有用的資料（名稱和頭像都是空的）
+    // 檢查是否有有用的資料（名稱和頭像）
     const hasName = data.name && data.name.trim();
     const hasAvatar = data.avatar && data.avatar.trim();
     
     if (!hasName && !hasAvatar) {
-      console.log('Hiding preview box: no useful data');
-      box.style.display = 'none';
+      // 即使有連結，但沒有有用的資料，也顯示未配置消息
+      notConfiguredDiv.style.display = 'block';
       img.src = '';
+      img.style.display = 'block'; // 重置顯示狀態
       nameEl.textContent = '';
       return;
     }
     
-    // 有有用資料才顯示
+    // 有有用資料，顯示預覽框
     console.log('Showing preview box');
-    img.src = data.avatar || 'https://www.gravatar.com/avatar/?d=mp';
-    nameEl.textContent = data.name || '';
-    box.style.display = 'block';
+    if (hasAvatar) {
+      img.src = data.avatar;
+      img.style.display = 'block'; // 確保圖片顯示
+    } else {
+      img.src = '';
+      img.style.display = 'none'; // 如果沒有頭像，隱藏圖片元素
+    }
+    nameEl.textContent = hasName ? data.name : '';
+    box.style.display = 'flex'; // 使用 flex 顯示，以正確顯示對齊
+    // 隱藏未配置消息
+    notConfiguredDiv.style.display = 'none';
   }
 
   function clearForm() {

@@ -1,7 +1,18 @@
-"""
-使用者服務
-統一處理使用者的建立、更新、查詢等操作
-"""
+"""使用者服務\n統一處理使用者的建立、更新、查詢等操作"""
+
+from typing import Optional, List, Dict, Any
+from datetime import datetime
+from sqlalchemy.orm import Session
+from sqlalchemy import select, or_, func
+import logging
+
+from app.models.database_models import User
+from app.auth.models import UserRole, UserCreate, UserUpdate
+from app.auth.password_service import PasswordService
+from app.database import get_async_session
+
+# 添加日誌記錄器
+logger = logging.getLogger(__name__)
 
 from typing import Optional, List
 from datetime import datetime
@@ -248,6 +259,64 @@ class UserService:
             await session.commit()
             
             return True
+
+    @staticmethod
+    async def check_lark_integration_status(user_id: int) -> Dict[str, Any]:
+        """檢查用戶的 Lark 整合狀態"""
+        async with get_async_session() as session:
+            result = await session.execute(
+                select(User).where(User.id == user_id)
+            )
+            user = result.scalar_one_or_none()
+            
+            if not user:
+                return {
+                    "lark_linked": False,
+                    "has_lark_data": False,
+                    "lark_user_id": None,
+                    "message": "使用者不存在"
+                }
+            
+            # 檢查是否有連結 Lark 用戶
+            lark_user_id = getattr(user, 'lark_user_id', None)
+            if not lark_user_id:
+                return {
+                    "lark_linked": False,
+                    "has_lark_data": False,
+                    "lark_user_id": None,
+                    "message": "使用者未連結 Lark 帳號"
+                }
+            
+            # 檢查本地快取的 Lark 數據
+            from app.models.database_models import LarkUser
+            lark_result = await session.execute(
+                select(LarkUser).where(LarkUser.user_id == lark_user_id)
+            )
+            lark_user = lark_result.scalar_one_or_none()
+            
+            if lark_user:
+                # 檢查是否有可用的顯示數據
+                has_display_data = bool(lark_user.name or lark_user.avatar_240)
+                status_message = "Lark 帳號已連結並有顯示資料" if has_display_data else "Lark 帳號已連結但缺少顯示資料"
+                
+                return {
+                    "lark_linked": True,
+                    "has_lark_data": has_display_data,
+                    "lark_user_id": lark_user_id,
+                    "name": lark_user.name,
+                    "avatar": lark_user.avatar_240,
+                    "message": status_message
+                }
+            else:
+                # 本地沒有 Lark 數據，可能需要重新同步
+                return {
+                    "lark_linked": True,
+                    "has_lark_data": False,
+                    "lark_user_id": lark_user_id,
+                    "name": None,
+                    "avatar": None,
+                    "message": "Lark 帳號已連結但本地沒有快取資料，可能需要重新同步"
+                }
     
     @staticmethod
     async def deactivate_user(user_id: int) -> Optional[User]:

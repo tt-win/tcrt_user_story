@@ -239,8 +239,12 @@
                                                     </div>
                                                     <input type="hidden" id="pm-lark-id">
                                                     <div class="d-flex align-items-center mt-2 small" id="pm-lark-preview-box" style="display:none;">
-                                                        <img id="pm-lark-avatar" src="" alt="avatar" class="rounded me-2" style="width:32px;height:32px;object-fit:cover;">
-                                                        <span id="pm-lark-name">—</span>
+                                                        <img id="pm-lark-avatar" src="" alt="avatar" class="rounded me-2" style="width:32px;height:32px;object-fit:cover;" onerror="this.style.display='none';">
+                                                        <span id="pm-lark-name"></span>
+                                                    </div>
+                                                    <div id="pm-lark-not-configured" class="mt-2 text-muted small" style="display:none;">
+                                                        <i class="fas fa-info-circle me-1"></i>
+                                                        <span data-i18n="personnel.larkNotLinked">尚未連結 Lark 帳號</span>
                                                     </div>
                                                 </div>
                                                 <div class="col-md-6">

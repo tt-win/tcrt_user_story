@@ -371,6 +371,7 @@
         "role": "角色",
         "active": "啟用",
         "larkUserId": "Lark 使用者",
+        "larkNotLinked": "尚未連結 Lark 帳號",
         "preview": "預覽",
         "unlink": "解除",
         "primaryTeam": "主要團隊",

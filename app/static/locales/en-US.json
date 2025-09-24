@@ -354,6 +354,7 @@
         "role": "Role",
         "active": "Active",
         "larkUserId": "Lark User",
+        "larkNotLinked": "Lark account not linked",
         "preview": "Preview",
         "unlink": "Unlink",
         "primaryTeam": "Primary Team",

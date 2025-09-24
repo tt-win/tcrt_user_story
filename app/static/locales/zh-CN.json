@@ -345,6 +345,26 @@
         "usersStats": "用户统计",
         "viewErrorDetails": "查看错误详情"
     },
+    "personnel": {
+        "tabTitle": "人员管理",
+        "userList": "用户列表",
+        "userDetail": "用户详情",
+        "fullName": "姓名",
+        "role": "角色",
+        "active": "启用",
+        "larkUserId": "Lark 用户",
+        "larkNotLinked": "尚未关联 Lark 账号",
+        "preview": "预览",
+        "unlink": "解除关联",
+        "primaryTeam": "主要团队",
+        "unsaved": "有未保存的更改",
+        "create": "新增",
+        "save": "保存",
+        "resetPassword": "重置密码",
+        "deactivate": "停用/删除",
+        "searchPlaceholder": "搜索用户（姓名/邮箱）",
+        "larkSearchPlaceholder": "搜索 Lark 用户（姓名/邮箱）"
+    },
     "pagination": {
         "nextPage": "下一页",
         "previousPage": "上一页"
