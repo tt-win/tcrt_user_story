@@ -1,4 +1,14 @@
 /* 緊湊設計系統 */
+
+/* 僅在所屬分頁為 active 時顯示標記了 data-role="tab-only" 的區塊 */
+.tab-pane:not(.active) [data-role="tab-only"] {
+    display: none !important;
+}
+
+/* 測試案例 Diff 專用樣式 */
+#tcDiffContainer .diff-value { white-space: pre-wrap; }
+#tcDiffBulkActions { flex-wrap: nowrap; }
+#tcDiffBulkActions .btn { white-space: nowrap; }
 .btn {
     padding: 0.25rem 0.5rem !important;
     font-size: 0.875rem !important;

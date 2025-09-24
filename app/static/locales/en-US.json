@@ -345,6 +345,26 @@
         "usersStats": "User Stats",
         "viewErrorDetails": "View error details"
     },
+
+    "personnel": {
+        "tabTitle": "Personnel Management",
+        "userList": "User List",
+        "userDetail": "User Detail",
+        "fullName": "Full Name",
+        "role": "Role",
+        "active": "Active",
+        "larkUserId": "Lark User",
+        "preview": "Preview",
+        "unlink": "Unlink",
+        "primaryTeam": "Primary Team",
+        "unsaved": "You have unsaved changes",
+        "create": "Create",
+        "save": "Save",
+        "resetPassword": "Reset Password",
+        "deactivate": "Deactivate/Delete",
+        "searchPlaceholder": "Search users (name/email)",
+        "larkSearchPlaceholder": "Search Lark users (name/email)"
+    },
     "pagination": {
         "nextPage": "Next",
         "previousPage": "Previous"

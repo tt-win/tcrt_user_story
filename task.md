@@ -1,5 +1,62 @@
 # Authentication Integration Task List
 
+## 人員管理（全域角色 + Lark 關聯）任務清單 [新增 2025-09-24]
+
+大項目標
+- 在 team_management.html 的同步管理 Modal 中，新增「人員管理」Tab（置於「組織」左側）。
+- 權限模型採全域角色（viewer/user/admin/super_admin），User/Viewer 不得看到此畫面；Admin/Super Admin 授權規則如下：
+  - Super Admin（唯一）：可將他人指派為 viewer/user/admin；不可產生第二位 super_admin；不可使系統無超管。
+  - Admin（可多位）：可將「user/viewer 帳號」變更為 viewer 或 user；不可修改 admin/super_admin；不可將任何人升為 admin/super_admin。
+- 預設顯示使用 Lark 使用者的名稱與頭像（若已關聯 lark_user_id），否則回退至 full_name/username 與預設頭像。
+- 採設定旗標控制是否啟用「團隊權限」；本任務交付與 UI 不依賴團隊權限。
+
+細項工作（後端 M1）
+- [ ] DB/模型：在 users 表新增欄位 lark_user_id（TEXT，唯一、索引）
+  - [ ] SQLAlchemy Model：User 新增欄位 lark_user_id: String(100), unique=True, index=True
+  - [ ] SQLite 遷移（啟動時）：若缺欄位則 ALTER TABLE 加欄，並建立 UNIQUE INDEX（if not exists）
+  - [ ] 驗證：現有資料不受影響；空值可接受
+- [ ] 設定：AuthConfig 新增 use_team_permissions（bool，環境變數 AUTH_USE_TEAM_PERMISSIONS）
+  - [ ] 預設值：為維持兼容測試，預設 True（保留原團隊權限）；後續可於部署環境改為 False 啟用簡化模式
+  - [ ] 文件：在 README/設定說明補充旗標用途
+- [ ] 權限服務：在 use_team_permissions=False 時，權限以全域角色映射
+  - [ ] check_team_permission：role→PermissionType 映射（super_admin/admin→ADMIN；user→WRITE；viewer→READ）
+  - [ ] has_resource_permission：同上映射；Super Admin 直接通過
+  - [ ] 保留快取與既有介面；旗標=True 時維持原行為
+  - [ ] 單元測試：旗標 True/False 兩種模式
+- [ ] Users API（app/api/users.py）
+  - [ ] Request/Response：新增/回傳 lark_user_id 欄位
+  - [ ] create_user：支援 lark_user_id（若提供）
+  - [ ] update_user：
+    - [ ] Admin：僅可修改 user/viewer；Role 目標僅限 viewer/user；不可動到 admin/super_admin；不可重設 super_admin 密碼
+    - [ ] Super Admin：可將他人設為 viewer/user/admin；不可指派 super_admin；保護唯一超管（禁止降級/停用最後一位）
+    - [ ] 一般欄位（email/full_name/is_active/password/lark_user_id）遵循上述限制
+  - [ ] delete_user：Super Admin 專屬；禁止操作唯一 super_admin（避免無超管）
+  - [ ] 重設密碼：Admin+/Super Admin；Admin 不得對 super_admin 操作
+- [ ] Lark 查詢 API（MVP）
+  - [ ] 新增 GET /api/lark/users/{lark_user_id}：以本地 lark_users 表回傳 {id, name, avatar_240}
+  - [ ] 錯誤處理：若無資料則 404 或回傳空
+
+細項工作（前端 M2）
+- [ ] team_management.html：新增「人員管理」Tab 與容器骨架（置於「組織」左側）
+- [ ] 新增 app/static/js/personnel_management.js
+  - [ ] 左欄：搜尋/分頁/篩選，顯示 Lark 頭像與名稱（回退邏輯），role、is_active、建立時間
+  - [ ] 右欄：詳情表單（username/full_name/email/is_active/role/lark_user_id + Lark 預覽）
+  - [ ] 角色下拉：依操作者角色動態限制（Admin 僅 viewer/user；Super Admin viewer/user/admin；super_admin 本人鎖定）
+  - [ ] 動作：建立/更新/刪除（或停用）、重設密碼、Lark 關聯/解除/重新同步（MVP：本地查表預覽）
+  - [ ] 可見性：User/Viewer 不顯示此 Tab；Admin/Super Admin 顯示
+  - [ ] UX：Loading/Disabled、成功/錯誤提示、切換前未存變更警告
+
+品質與驗證
+- [ ] Lint / Typecheck / Test（實作前後）
+  - [ ] 後端：Users API 角色約束、唯一超管保護、Lark 查詢；permission_service 旗標 on/off 測試
+  - [ ] 前端：基本互動與權限可見性檢查（或手動驗證清單）
+- [ ] 文件：設定旗標說明、Lark 關聯說明、回滾策略
+- [ ] 回滾：
+  - [ ] 後端：將 AUTH_USE_TEAM_PERMISSIONS 旗標設回 True；可隱藏「人員管理」Tab 入口
+  - [ ] DB：lark_user_id 欄位可保留（不影響既有功能）
+
+---
+
 ## 階段 1: 後端 API 整合
 
 ### 任務 1.1: 建立認證 API 端點

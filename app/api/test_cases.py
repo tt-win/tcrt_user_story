@@ -10,7 +10,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Response, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
 from datetime import datetime
 import uuid
@@ -27,6 +27,9 @@ from app.models.test_case import (
 from app.models.database_models import Team as TeamDB, TestCaseLocal as TestCaseLocalDB, SyncStatus
 from app.services.test_case_repo_service import TestCaseRepoService
 from app.services.tcg_converter import tcg_converter
+from app.services.test_case_sync_service import TestCaseSyncService
+from app.services.lark_client import LarkClient
+from app.config import settings
 
 router = APIRouter(prefix="/teams/{team_id}/testcases", tags=["test-cases"])
 
@@ -241,6 +244,96 @@ async def get_test_cases_count(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"取得測試案例數量失敗: {str(e)}"
         )
+
+
+@router.get("/diff", response_model=dict)
+async def diff_test_cases(
+    team_id: int,
+    db: Session = Depends(get_sync_db),
+    current_user: User = Depends(get_current_user)
+):
+    # 權限檢查
+    from app.auth.models import UserRole
+    from app.auth.permission_service import permission_service
+
+    if current_user.role != UserRole.SUPER_ADMIN:
+        permission_check = await permission_service.check_team_permission(
+            current_user.id, team_id, PermissionType.READ, current_user.role
+        )
+        if not permission_check.has_permission:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="無權限檢視此團隊的測試案例差異"
+            )
+
+    team = db.query(TeamDB).filter(TeamDB.id == team_id).first()
+    if not team:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"找不到團隊 ID {team_id}")
+    if not (team.wiki_token and team.test_case_table_id):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="此團隊尚未設定 Lark 連線資訊")
+
+    try:
+        lark = LarkClient(app_id=settings.lark.app_id, app_secret=settings.lark.app_secret)
+        svc = TestCaseSyncService(
+            team_id=team_id,
+            db=db,
+            lark_client=lark,
+            wiki_token=team.wiki_token,
+            table_id=team.test_case_table_id,
+        )
+        result = svc.compute_diff()
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"計算差異失敗: {str(e)}")
+
+
+@router.post("/diff/apply", response_model=dict)
+async def apply_diff_test_cases(
+    team_id: int,
+    payload: Dict[str, Any],
+    db: Session = Depends(get_sync_db),
+    current_user: User = Depends(get_current_user)
+):
+    from app.auth.models import UserRole
+    from app.auth.permission_service import permission_service
+
+    if current_user.role != UserRole.SUPER_ADMIN:
+        permission_check = await permission_service.check_team_permission(
+            current_user.id, team_id, PermissionType.WRITE, current_user.role
+        )
+        if not permission_check.has_permission:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="無權限套用此團隊的測試案例差異"
+            )
+
+    decisions = payload.get('decisions') or []
+    if not isinstance(decisions, list):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="decisions 必須是陣列")
+
+    team = db.query(TeamDB).filter(TeamDB.id == team_id).first()
+    if not team:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"找不到團隊 ID {team_id}")
+    if not (team.wiki_token and team.test_case_table_id):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="此團隊尚未設定 Lark 連線資訊")
+
+    try:
+        lark = LarkClient(app_id=settings.lark.app_id, app_secret=settings.lark.app_secret)
+        svc = TestCaseSyncService(
+            team_id=team_id,
+            db=db,
+            lark_client=lark,
+            wiki_token=team.wiki_token,
+            table_id=team.test_case_table_id,
+        )
+        result = svc.apply_diff(decisions)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"套用差異失敗: {str(e)}")
 
 
 @router.get("/{record_id}", response_model=TestCaseResponse)
@@ -755,6 +848,67 @@ async def upload_test_case_attachments_staging(
         })
 
     return {"success": True, "temp_upload_id": sid, "count": len(uploaded), "files": uploaded, "base_url": "/attachments"}
+
+
+
+
+@router.post("/sync", response_model=dict)
+async def sync_test_cases(
+    team_id: int,
+    mode: str = Query(..., description="同步模式: init (Lark->系統), diff (雙向比對), full-update (系統->Lark)", pattern="^(init|diff|full-update)$"),
+    prune: bool = Query(False, description="full-update 時是否清除 Lark 上本地不存在的案例"),
+    db: Session = Depends(get_sync_db),
+    current_user: User = Depends(get_current_user)
+):
+    """觸發測試案例同步（需要對該團隊的寫入權限）
+
+    - init: 從 Lark 匯入到本地（清空本地 team 資料後重建）
+    - diff: 比對差異，Lark->本地 更新/新增，本地缺失者標記 PENDING
+    - full-update: 以本地覆蓋 Lark（create/update；可選 prune 刪除 Lark 多餘項）
+    """
+    # 權限檢查
+    from app.auth.models import UserRole
+    from app.auth.permission_service import permission_service
+
+    if current_user.role != UserRole.SUPER_ADMIN:
+        permission_check = await permission_service.check_team_permission(
+            current_user.id, team_id, PermissionType.WRITE, current_user.role
+        )
+        if not permission_check.has_permission:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="無權限執行此團隊的測試案例同步"
+            )
+
+    # 讀取團隊配置
+    team = db.query(TeamDB).filter(TeamDB.id == team_id).first()
+    if not team:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"找不到團隊 ID {team_id}")
+    if not (team.wiki_token and team.test_case_table_id):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="此團隊尚未設定 Lark 連線資訊")
+
+    try:
+        lark = LarkClient(app_id=settings.lark.app_id, app_secret=settings.lark.app_secret)
+        svc = TestCaseSyncService(
+            team_id=team_id,
+            db=db,
+            lark_client=lark,
+            wiki_token=team.wiki_token,
+            table_id=team.test_case_table_id,
+        )
+        if mode == 'init':
+            result = svc.init_sync()
+        elif mode == 'diff':
+            result = svc.diff_sync()
+        elif mode == 'full-update':
+            result = svc.full_update(prune=prune)
+        else:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="不支援的同步模式")
+        return {"success": True, **result}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"測試案例同步失敗: {str(e)}")
 
 
 @router.post("/{test_case_id:int}/attachments", response_model=dict)

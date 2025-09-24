@@ -302,8 +302,8 @@
         },
         "lastSyncPrefix": "最後同步:",
         "loadingStatus": "載入狀態中...",
-        "modalTitle": "組織架構同步管理",
-        "openButton": "同步組織架構",
+"modalTitle": "同步",
+"openButton": "同步",
         "preparing": "準備開始...",
         "readyToRun": "準備執行新的同步作業",
         "startFailedPrefix": "啟動同步失敗",
@@ -344,6 +344,43 @@
         },
         "usersStats": "用戶統計",
         "viewErrorDetails": "查看錯誤詳情"
+    },
+    "tcSync": {
+        "title": "測試案例同步",
+        "selectTeam": "選擇團隊",
+        "pleaseSelectTeam": "請先選擇團隊",
+        "modes": {
+            "init": "匯入（Lark → 系統）",
+            "diff": "Diff（雙向比對）",
+            "full": "上傳（系統 → Lark）"
+        },
+        "actions": {
+            "run": "執行",
+            "running": "執行中..."
+        },
+        "result": {
+            "success": "同步完成",
+            "failure": "同步失敗"
+        },
+
+    "personnel": {
+        "tabTitle": "人員管理",
+        "userList": "使用者清單",
+        "userDetail": "使用者詳情",
+        "fullName": "姓名",
+        "role": "角色",
+        "active": "啟用",
+        "larkUserId": "Lark 使用者",
+        "preview": "預覽",
+        "unlink": "解除",
+        "primaryTeam": "主要團隊",
+        "unsaved": "有未儲存的變更",
+        "create": "新增",
+        "save": "儲存",
+        "resetPassword": "重設密碼",
+        "deactivate": "停用/刪除",
+        "searchPlaceholder": "搜尋使用者（名稱/Email）",
+        "larkSearchPlaceholder": "搜尋 Lark 使用者（姓名/Email）"
     },
     "pagination": {
         "nextPage": "下一頁",
@@ -996,4 +1033,5 @@
         "checkFailed": "版本檢查失敗",
         "switchFailed": "切換失敗，請重試"
     }
+  }
 }

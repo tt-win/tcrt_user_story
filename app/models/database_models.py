@@ -519,6 +519,9 @@ class User(Base):
     email = Column(String(255), unique=True, nullable=True, index=True)
     hashed_password = Column(String(255), nullable=False)
     
+    # Lark 關聯
+    lark_user_id = Column(String(100), unique=True, nullable=True, index=True)
+    
     # 基本資訊
     full_name = Column(String(255), nullable=True)
     role = Column(Enum(UserRole), nullable=False, default=UserRole.USER, index=True)

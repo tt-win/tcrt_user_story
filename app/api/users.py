@@ -31,6 +31,7 @@ class UserCreateRequest(BaseModel):
     role: UserRole = UserRole.USER
     password: Optional[str] = None  # 如果不提供，會自動生成
     is_active: bool = True
+    lark_user_id: Optional[str] = None
 
     @validator('username')
     def validate_username(cls, v):
@@ -46,6 +47,7 @@ class UserUpdateRequest(BaseModel):
     role: Optional[UserRole] = None
     is_active: Optional[bool] = None
     password: Optional[str] = None  # 密碼重設
+    lark_user_id: Optional[str] = None
 
 
 class UserResponse(BaseModel):
@@ -56,6 +58,7 @@ class UserResponse(BaseModel):
     full_name: Optional[str]
     role: str
     is_active: bool
+    lark_user_id: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime]
     last_login_at: Optional[datetime]
@@ -178,6 +181,7 @@ async def list_users(
                     full_name=user.full_name,
                     role=user.role.value,
                     is_active=user.is_active,
+                    lark_user_id=getattr(user, 'lark_user_id', None),
                     created_at=user.created_at,
                     updated_at=user.updated_at,
                     last_login_at=user.last_login_at
@@ -219,6 +223,13 @@ async def create_user(
 
     try:
         # 轉換為 UserCreate 物件
+        # 禁止建立第二位超級管理員
+        if request.role == UserRole.SUPER_ADMIN:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="系統僅允許一位超級管理員"
+            )
+
         user_create = UserCreate(
             username=request.username,
             email=request.email,
@@ -226,7 +237,8 @@ async def create_user(
             role=request.role,
             password=request.password,  # 如果為空會在 UserService 中處理
             is_active=request.is_active,
-            primary_team_id=None
+            primary_team_id=None,
+            lark_user_id=request.lark_user_id
         )
         
         # 使用統一的 UserService 建立使用者
@@ -241,6 +253,7 @@ async def create_user(
             full_name=new_user.full_name,
             role=new_user.role.value,
             is_active=new_user.is_active,
+            lark_user_id=getattr(new_user, 'lark_user_id', None),
             created_at=new_user.created_at,
             updated_at=new_user.updated_at,
             last_login_at=new_user.last_login_at
@@ -460,6 +473,7 @@ async def get_user(
                 full_name=user.full_name,
                 role=user.role.value,
                 is_active=user.is_active,
+                lark_user_id=getattr(user, 'lark_user_id', None),
                 created_at=user.created_at,
                 updated_at=user.updated_at,
                 last_login_at=user.last_login_at
@@ -493,12 +507,24 @@ async def update_user(
             detail="需要管理員權限"
         )
 
-    # 角色變更需要 SUPER_ADMIN 權限
-    if request.role is not None and current_user.role != UserRole.SUPER_ADMIN:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="變更角色需要超級管理員權限"
-        )
+    # 角色變更規則：
+    # - Super Admin 可變更他人為 viewer/user/admin，但不可設定 super_admin
+    # - Admin 可對 user/viewer 變更為 viewer/user；不可設定 admin/super_admin，也不可修改 admin/super_admin 帳號
+    if request.role is not None:
+        if current_user.role == UserRole.SUPER_ADMIN:
+            if request.role == UserRole.SUPER_ADMIN:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="不可指派超級管理員角色"
+                )
+        elif current_user.role == UserRole.ADMIN:
+            # 需先取得目標使用者角色後再判斷，邏輯在後續讀取 user 後再次檢查
+            pass
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="需要管理員權限"
+            )
 
     try:
         async with get_async_session() as session:
@@ -509,6 +535,41 @@ async def update_user(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="使用者不存在"
                 )
+
+            # Admin 不得修改 admin/super_admin 帳號
+            if current_user.role == UserRole.ADMIN and user.role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Admin 不得修改 admin/super_admin 帳號"
+                )
+
+            # Super Admin 不可將任一帳號設為 super_admin；且不可將唯一 super_admin 降級/停用
+            if request.role is not None:
+                if current_user.role == UserRole.SUPER_ADMIN and request.role == UserRole.SUPER_ADMIN:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="不可指派超級管理員角色"
+                    )
+                if current_user.role == UserRole.ADMIN:
+                    # Admin 僅能在 user/viewer 間調整
+                    if user.role not in [UserRole.USER, UserRole.VIEWER] or request.role not in [UserRole.USER, UserRole.VIEWER]:
+                        raise HTTPException(
+                            status_code=status.HTTP_403_FORBIDDEN,
+                            detail="Admin 僅能在 user/viewer 之間調整角色"
+                        )
+
+            # 唯一超管保護：若要將 super_admin 降級或停用
+            if user.role == UserRole.SUPER_ADMIN:
+                demote = (request.role is not None and request.role != UserRole.SUPER_ADMIN)
+                deactivate = (request.is_active is not None and request.is_active is False)
+                if demote or deactivate:
+                    count_result = await session.execute(select(func.count()).where(User.role == UserRole.SUPER_ADMIN))
+                    sa_count = count_result.scalar() or 0
+                    if sa_count <= 1:
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail="不可移除唯一的超級管理員"
+                        )
 
             # 檢查 email 是否重複（如果要更新且不為空）
             if request.email and request.email != user.email:
@@ -532,6 +593,8 @@ async def update_user(
                 user.is_active = request.is_active
             if request.password is not None:
                 user.hashed_password = PasswordService.hash_password(request.password)
+            if request.lark_user_id is not None:
+                user.lark_user_id = request.lark_user_id
 
             user.updated_at = datetime.utcnow()
 
@@ -547,6 +610,7 @@ async def update_user(
                 full_name=user.full_name,
                 role=user.role.value,
                 is_active=user.is_active,
+                lark_user_id=getattr(user, 'lark_user_id', None),
                 created_at=user.created_at,
                 updated_at=user.updated_at,
                 last_login_at=user.last_login_at
@@ -594,6 +658,13 @@ async def delete_user(
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="使用者不存在"
+                )
+
+            # 禁止刪除超級管理員
+            if user.role == UserRole.SUPER_ADMIN:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="不可刪除超級管理員"
                 )
 
             # 軟刪除：設定為不活躍
@@ -649,6 +720,13 @@ async def reset_user_password(
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="使用者不存在"
+                )
+
+            # Admin 不得重設 super_admin 密碼
+            if current_user.role == UserRole.ADMIN and user.role == UserRole.SUPER_ADMIN:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Admin 不得操作超級管理員"
                 )
 
             # 生成或使用提供的密碼

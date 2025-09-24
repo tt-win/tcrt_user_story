@@ -23,7 +23,8 @@ ROOT = Path(__file__).resolve().parent.parent
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from app.database import SessionLocal, engine
+from sqlalchemy.orm import sessionmaker
+from app.database import get_sync_engine
 from app.config import settings
 from app.models.database_models import Team as TeamDB, Base as ModelsBase
 from app.services.lark_client import LarkClient
@@ -60,10 +61,10 @@ def run_for_team(db, team_id: int, mode: str, dry_run: bool = False, prune: bool
     return result
 
 
-def _ensure_db_schema():
+def _ensure_db_schema(sync_engine):
     # 確保使用 models 的 Base 建表（避免 app.database.Base 與 models.Base 不同造成缺表）
     try:
-        ModelsBase.metadata.create_all(bind=engine)
+        ModelsBase.metadata.create_all(bind=sync_engine)
     except Exception:
         pass
 
@@ -77,8 +78,10 @@ def main():
     parser.add_argument('--prune', action='store_true', help='在 full-update 模式下，刪除 Lark 上本地不存在的案例（務必小心）')
     args = parser.parse_args()
 
-    _ensure_db_schema()
-    db = SessionLocal()
+    sync_engine = get_sync_engine()
+    _ensure_db_schema(sync_engine)
+    SyncSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=sync_engine)
+    db = SyncSessionLocal()
     try:
         results: Dict[str, Any] | list[Dict[str, Any]]
         if args.all or not args.team_id:

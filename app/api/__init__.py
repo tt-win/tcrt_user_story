@@ -17,6 +17,7 @@ from .team_sync import router as team_sync_router
 from .organization_sync import router as organization_sync_router
 from .jira import router as jira_router
 from .lark_groups import router as lark_groups_router
+from .lark_users import router as lark_users_router
 from .admin import router as admin_router
 from .version import router as version_router
 
@@ -39,6 +40,7 @@ api_router.include_router(team_sync_router)
 api_router.include_router(organization_sync_router)
 api_router.include_router(jira_router)
 api_router.include_router(lark_groups_router)
+api_router.include_router(lark_users_router)
 api_router.include_router(admin_router)
 api_router.include_router(version_router)
 

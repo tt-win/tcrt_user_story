@@ -155,7 +155,28 @@ _SyncSessionLocal = None
 def get_sync_engine():
     """取得同步引擎（向後相容）"""
     global _sync_engine, _SyncSessionLocal
+    try:
+        from sqlalchemy.engine import Engine as _SyncType
+        if _sync_engine is not None and isinstance(engine, _SyncType) and _sync_engine is not engine:  # type: ignore[name-defined]
+            # 若先前已建立但測試期間替換了 engine，則切換到新的同步 engine
+            _sync_engine = engine  # type: ignore[assignment]
+            _SyncSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_sync_engine)
+            return _sync_engine
+    except Exception:
+        pass
+
     if _sync_engine is None:
+        # 測試友善：若有人以 monkeypatch 將本模組的 engine（通常為異步引擎）替換成同步 Engine，則直接沿用
+        try:
+            from sqlalchemy.engine import Engine as _SyncType
+            # 這裡的 `engine` 變數是本模組頂層變數，測試可 monkeypatch 為同步 Engine
+            if isinstance(engine, _SyncType):  # type: ignore[name-defined]
+                _sync_engine = engine  # type: ignore[assignment]
+                _SyncSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_sync_engine)
+                return _sync_engine
+        except Exception:
+            pass
+
         _sync_engine = create_engine(
             SYNC_DATABASE_URL,
             connect_args={

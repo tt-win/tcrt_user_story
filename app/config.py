@@ -54,6 +54,7 @@ class AuthConfig(BaseModel):
     jwt_expire_days: int = 7
     password_reset_expire_hours: int = 24
     session_cleanup_days: int = 30
+    use_team_permissions: bool = True  # 透過旗標控制是否啟用團隊權限（預設 True 保持相容）
     
     @classmethod
     def from_env(cls, fallback: 'AuthConfig' = None) -> 'AuthConfig':
@@ -69,7 +70,8 @@ class AuthConfig(BaseModel):
             jwt_secret_key=jwt_secret,
             jwt_expire_days=int(os.getenv('JWT_EXPIRE_DAYS', str(fallback.jwt_expire_days if fallback else 7))),
             password_reset_expire_hours=int(os.getenv('PASSWORD_RESET_EXPIRE_HOURS', str(fallback.password_reset_expire_hours if fallback else 24))),
-            session_cleanup_days=int(os.getenv('SESSION_CLEANUP_DAYS', str(fallback.session_cleanup_days if fallback else 30)))
+            session_cleanup_days=int(os.getenv('SESSION_CLEANUP_DAYS', str(fallback.session_cleanup_days if fallback else 30))),
+            use_team_permissions=os.getenv('AUTH_USE_TEAM_PERMISSIONS', str(fallback.use_team_permissions if fallback else True)).lower() == 'true'
         )
 
 class AuditConfig(BaseModel):
@@ -165,7 +167,8 @@ def create_default_config(config_path: str = "config.yaml") -> None:
             "jwt_secret_key": "${JWT_SECRET_KEY}",  # 必須由環境變數提供
             "jwt_expire_days": 7,
             "password_reset_expire_hours": 24,
-            "session_cleanup_days": 30
+            "session_cleanup_days": 30,
+            "use_team_permissions": True
         },
         "audit": {
             "enabled": True,

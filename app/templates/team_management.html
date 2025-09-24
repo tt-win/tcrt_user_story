@@ -159,16 +159,126 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="關閉"></button>
             </div>
             <div class="modal-body">
-                <!-- 同步狀態區域 -->
-                <div class="mb-4">
-                    <div class="card">
-                        <div class="card-header bg-light">
-                            <h6 class="card-title mb-0">
-                                <i class="fas fa-info-circle me-2"></i><span data-i18n="orgSync.currentStatus">當前同步狀態</span>
-                            </h6>
+                <!-- Tabs for sync categories -->
+                <ul class="nav nav-tabs" id="syncTabs" role="tablist">
+                    <!-- 人員管理分頁（預設隱藏，ADMIN+/SUPER_ADMIN 顯示） -->
+                    <li class="nav-item" role="presentation" id="tab-personnel-li" style="display: none;">
+                        <button class="nav-link" id="tab-personnel" data-bs-toggle="tab" data-bs-target="#tab-pane-personnel" type="button" role="tab" aria-controls="tab-pane-personnel" aria-selected="false" data-testid="tab-personnel" data-i18n="personnel.tabTitle">人員管理</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="tab-org" data-bs-toggle="tab" data-bs-target="#tab-pane-org" type="button" role="tab" aria-controls="tab-pane-org" aria-selected="true" data-testid="tab-org">組織</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="tab-test-cases" data-bs-toggle="tab" data-bs-target="#tab-pane-test-cases" type="button" role="tab" aria-controls="tab-pane-test-cases" aria-selected="false" data-testid="tab-test-cases">測試案例</button>
+                    </li>
+                </ul>
+                <div class="tab-content pt-3" id="syncTabsContent">
+                    <!-- 人員管理分頁內容 -->
+                    <div class="tab-pane fade" id="tab-pane-personnel" role="tabpanel" aria-labelledby="tab-personnel">
+                        <div class="row g-3">
+                            <!-- 左欄：搜尋與使用者列表 -->
+                            <div class="col-12 col-lg-4">
+                                <div class="card h-100">
+                                    <div class="card-header bg-light d-flex align-items-center">
+                                        <i class="fas fa-user-friends me-2"></i>
+                                        <strong data-i18n="personnel.userList">使用者清單</strong>
+                                    </div>
+                                    <div class="card-body p-2">
+                                        <div class="mb-2">
+                                            <input type="text" class="form-control form-control-sm" id="pm-search" placeholder="搜尋使用者（名稱/Email）" data-i18n-placeholder="personnel.searchPlaceholder">
+                                        </div>
+                                        <div id="pm-user-list" class="list-group small" style="max-height: 420px; overflow:auto;"></div>
+                                    </div>
+                                    <div class="card-footer d-flex justify-content-between align-items-center">
+                                        <div class="btn-group btn-group-sm" role="group">
+                                            <button class="btn btn-outline-secondary" id="pm-prev">上一頁</button>
+                                            <button class="btn btn-outline-secondary" id="pm-next">下一頁</button>
+                                        </div>
+                                        <small class="text-muted" id="pm-page-indicator">—</small>
+                                    </div>
+                                </div>
+                            </div>
+                            <!-- 右欄：詳情/編輯表單 -->
+                            <div class="col-12 col-lg-8">
+                                <div class="card h-100">
+                                    <div class="card-header bg-light d-flex align-items-center">
+                                        <i class="fas fa-id-card me-2"></i>
+                                        <strong data-i18n="personnel.userDetail">使用者詳情</strong>
+                                    </div>
+                                    <div class="card-body">
+                                        <form id="pm-form" autocomplete="off">
+                                            <div class="row g-3">
+                                                <div class="col-md-6">
+                                                    <label class="form-label">Username <span class="text-danger">*</span></label>
+                                                    <input type="text" class="form-control" id="pm-username" required>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <label class="form-label" data-i18n="personnel.fullName">姓名</label>
+                                                    <input type="text" class="form-control" id="pm-full-name">
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <label class="form-label">Email</label>
+                                                    <input type="email" class="form-control" id="pm-email">
+                                                </div>
+                                                <div class="col-md-3">
+                                                    <label class="form-label" data-i18n="personnel.role">角色</label>
+                                                    <select class="form-select" id="pm-role"></select>
+                                                </div>
+                                                <div class="col-md-3 d-flex align-items-end">
+                                                    <div class="form-check">
+                                                        <input class="form-check-input" type="checkbox" id="pm-active">
+                                                        <label class="form-check-label" for="pm-active" data-i18n="personnel.active">啟用</label>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <label class="form-label" data-i18n="personnel.larkUserId">Lark 使用者</label>
+                                                    <div class="input-group position-relative">
+                                                        <input type="text" class="form-control" id="pm-lark-search" placeholder="搜尋 Lark 使用者（姓名/Email）" data-i18n-placeholder="personnel.larkSearchPlaceholder" autocomplete="off">
+                                                        <button class="btn btn-outline-danger" type="button" id="pm-lark-unlink" data-i18n="personnel.unlink">解除</button>
+                                                        <div class="dropdown-menu position-absolute w-100" id="pm-lark-dropdown" style="display:none; top:100%; z-index:1050; max-height:300px; overflow-y:auto;"></div>
+                                                    </div>
+                                                    <input type="hidden" id="pm-lark-id">
+                                                    <div class="d-flex align-items-center mt-2 small" id="pm-lark-preview-box" style="display:none;">
+                                                        <img id="pm-lark-avatar" src="" alt="avatar" class="rounded me-2" style="width:32px;height:32px;object-fit:cover;">
+                                                        <span id="pm-lark-name">—</span>
+                                                    </div>
+                                                </div>
+                                                <div class="col-md-6">
+                                                    <label class="form-label" data-i18n="personnel.primaryTeam">主要團隊</label>
+                                                    <input type="text" class="form-control" id="pm-primary-team" disabled>
+                                                </div>
+                                            </div>
+                                        </form>
+                                        <div class="text-muted small mt-2" id="pm-dirty-hint" style="display:none;" data-i18n="personnel.unsaved">有未儲存的變更</div>
+                                    </div>
+                                    <div class="card-footer">
+                                        <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center">
+                                            <div class="btn-group flex-shrink-0" role="group">
+                                                <button class="btn btn-outline-primary text-nowrap" id="pm-create"><i class="fas fa-user-plus me-1"></i><span data-i18n="personnel.create">新增</span></button>
+                                                <button class="btn btn-primary text-nowrap" id="pm-save"><i class="fas fa-save me-1"></i><span data-i18n="personnel.save">儲存</span></button>
+                                            </div>
+                                            <div class="btn-group flex-shrink-0" role="group">
+                                                <button class="btn btn-outline-warning text-nowrap" id="pm-reset"><i class="fas fa-key me-1"></i><span data-i18n="personnel.resetPassword">重設密碼</span></button>
+                                                <button class="btn btn-outline-danger text-nowrap" id="pm-delete"><i class="fas fa-user-slash me-1"></i><span data-i18n="personnel.deactivate">停用/刪除</span></button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
-                        <div class="card-body">
-                            <div id="syncStatusContent">
+                    </div>
+
+                    <div class="tab-pane fade show active" id="tab-pane-org" role="tabpanel" aria-labelledby="tab-org">
+                        <!-- 同步狀態區域 -->
+                        <div class="mb-4">
+                            <div class="card">
+                                <div class="card-header bg-light">
+                                    <h6 class="card-title mb-0">
+                                        <i class="fas fa-info-circle me-2"></i><span data-i18n="orgSync.currentStatus">當前同步狀態</span>
+                                    </h6>
+                                </div>
+                                <div class="card-body">
+                                    <div id="syncStatusContent">
                                 <div id="syncStatusLoading" class="text-center py-3" style="display: none;">
                                     <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
                                     <span class="text-muted" data-i18n="orgSync.loadingStatus">載入狀態中...</span>
@@ -200,16 +310,16 @@
                     </div>
                 </div>
 
-                <!-- 組織統計區域 -->
-                <div class="mb-4">
-                    <div class="card">
-                        <div class="card-header bg-light">
-                            <h6 class="card-title mb-0">
-                                <i class="fas fa-chart-bar me-2"></i><span data-i18n="orgSync.statsTitle">組織架構統計</span>
-                            </h6>
-                        </div>
-                        <div class="card-body">
-                            <div id="orgStatsContent">
+                        <!-- 組織統計區域 -->
+                        <div class="mb-4">
+                            <div class="card">
+                                <div class="card-header bg-light">
+                                    <h6 class="card-title mb-0">
+                                        <i class="fas fa-chart-bar me-2"></i><span data-i18n="orgSync.statsTitle">組織架構統計</span>
+                                    </h6>
+                                </div>
+                                <div class="card-body">
+                                    <div id="orgStatsContent">
                                 <div id="orgStatsLoading" class="text-center py-3" style="display: none;">
                                     <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
                                     <span class="text-muted" data-i18n="orgSync.statsLoading">載入統計資料中...</span>
@@ -237,27 +347,56 @@
                     </div>
                 </div>
 
-            </div>
-            <div class="modal-footer d-flex justify-content-between">
-                <div>
-                    <button type="button" class="btn btn-outline-secondary" id="refreshSyncDataBtn">
-                        <i class="fas fa-sync-alt me-2"></i><span data-i18n="common.refresh">重新整理</span>
-                    </button>
-                </div>
-                <div>
-                    <button type="button" class="btn btn-secondary me-2" data-bs-dismiss="modal" data-i18n="common.close">關閉</button>
-                    <div class="btn-group no-stretch" role="group" aria-label="Sync Actions">
-                        <button type="button" class="btn btn-primary" id="startDeptSyncBtn">
-                            <i class="fas fa-sitemap me-2"></i><span data-i18n="orgSync.departmentsSync">部門同步</span>
-                        </button>
-                        <button type="button" class="btn btn-primary" id="startUserSyncBtn">
-                            <i class="fas fa-address-book me-2"></i><span data-i18n="orgSync.contactsSync">用戶同步</span>
-                        </button>
-                        <button type="button" class="btn btn-primary" id="startSyncBtn">
-                            <i class="fas fa-play me-2"></i><span data-i18n="orgSync.fullSync">完整同步</span>
-                        </button>
+                        <!-- 組織同步按鈕：分頁底部 -->
+                        <div class="d-flex justify-content-end mt-3 pt-2 border-top">
+                            <div class="btn-group no-stretch" role="group" aria-label="Sync Actions">
+                                <button type="button" class="btn btn-primary" id="startDeptSyncBtn">
+                                    <i class="fas fa-sitemap me-2"></i><span data-i18n="orgSync.departmentsSync">部門同步</span>
+                                </button>
+                                <button type="button" class="btn btn-primary" id="startUserSyncBtn">
+                                    <i class="fas fa-address-book me-2"></i><span data-i18n="orgSync.contactsSync">用戶同步</span>
+                                </button>
+                                <button type="button" class="btn btn-primary" id="startSyncBtn">
+                                    <i class="fas fa-play me-2"></i><span data-i18n="orgSync.fullSync">完整同步</span>
+                                </button>
+                            </div>
+                        </div>
                     </div>
-                </div>
+
+                    <!-- 測試案例同步分頁 -->
+                    <div class="tab-pane fade" id="tab-pane-test-cases" role="tabpanel" aria-labelledby="tab-test-cases">
+                        <div class="card mb-3">
+                            <div class="card-header bg-light d-flex align-items-center">
+                                <i class="fas fa-vial me-2"></i>
+                                <strong data-i18n="tcSync.title">測試案例同步</strong>
+                            </div>
+                            <div class="card-body">
+                                <div class="row g-3 align-items-end">
+                                    <div class="col-md-6">
+                                        <label for="tcSyncTeamSelect" class="form-label" data-i18n="tcSync.selectTeam">選擇團隊</label>
+                                        <select class="form-select" id="tcSyncTeamSelect"></select>
+                                    </div>
+                                </div>
+<div class="mt-3 text-muted small" id="tcSyncStatus"></div>
+<!-- Diff 結果容器 -->
+<div id="tcDiffContainer" class="mt-3"></div>
+                            </div>
+                        </div>
+                        <!-- 測試案例同步按鈕：分頁底部（與組織分頁相同位置） -->
+                        <div class="d-flex justify-content-end mt-3 pt-2 border-top" data-role="tab-only">
+                            <div class="btn-group no-stretch" role="group" aria-label="tc-sync-modes">
+                                <button class="btn btn-outline-primary" id="btn-tc-init" data-testid="btn-tc-init" disabled>
+                                    <i class="fas fa-download me-1"></i><span data-i18n="tcSync.modes.init">匯入（Lark → 系統）</span>
+                                </button>
+                                <button class="btn btn-outline-secondary" id="btn-tc-diff" data-testid="btn-tc-diff" disabled>
+                                    <i class="fas fa-exchange-alt me-1"></i><span data-i18n="tcSync.modes.diff">Diff（雙向比對）</span>
+                                </button>
+                                <button class="btn btn-outline-success" id="btn-tc-full" data-testid="btn-tc-full" disabled>
+                                    <i class="fas fa-upload me-1"></i><span data-i18n="tcSync.modes.full">上傳（系統 → Lark）</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
             </div>
         </div>
     </div>
@@ -285,7 +424,8 @@ function initTeamManagement() {
     document.getElementById('startSyncBtn').addEventListener('click', () => startSyncFromModal('full'));
     document.getElementById('startDeptSyncBtn').addEventListener('click', () => startSyncFromModal('departments'));
     document.getElementById('startUserSyncBtn').addEventListener('click', () => startSyncFromModal('users'));
-    document.getElementById('refreshSyncDataBtn').addEventListener('click', refreshSyncModalData);
+    const refreshSyncBtn = document.getElementById('refreshSyncDataBtn');
+    if (refreshSyncBtn) refreshSyncBtn.addEventListener('click', refreshSyncModalData);
 
     // 載入團隊列表
     loadTeams();
@@ -735,6 +875,13 @@ async function openSyncModal() {
 
     // 載入模態框數據
     await loadSyncModalData();
+
+    // 套用翻譯至整個 Modal（包含人員管理分頁）
+    try {
+        if (window.i18n && window.i18n.isReady()) {
+            window.i18n.retranslate(modal);
+        }
+    } catch (_) {}
     
     syncModalInstance.show();
 }
@@ -1080,6 +1227,252 @@ function loadSyncModalState() {
     }
 }
 
+// ===== 測試案例同步（UI 綁定） =====
+let tcSyncSelectedTeamId = null;
+
+async function loadTcSyncTeams() {
+    try {
+        const res = await window.AuthClient.fetch('/api/teams');
+        if (!res.ok) return;
+        const teams = await res.json();
+        const sel = document.getElementById('tcSyncTeamSelect');
+        sel.innerHTML = '';
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = (window.i18n ? window.i18n.t('tcSync.pleaseSelectTeam') : '請先選擇團隊');
+        sel.appendChild(placeholder);
+        for (const t of teams) {
+            const opt = document.createElement('option');
+            opt.value = t.id;
+            opt.textContent = t.name;
+            sel.appendChild(opt);
+        }
+        sel.addEventListener('change', () => {
+            tcSyncSelectedTeamId = sel.value ? parseInt(sel.value, 10) : null;
+            const disabled = !tcSyncSelectedTeamId;
+            document.getElementById('btn-tc-init').disabled = disabled;
+            document.getElementById('btn-tc-diff').disabled = disabled;
+            document.getElementById('btn-tc-full').disabled = disabled;
+        });
+    } catch (e) {
+        console.error('載入團隊清單失敗', e);
+    }
+}
+
+async function runTcSync(mode) {
+    const statusEl = document.getElementById('tcSyncStatus');
+    if (mode === 'diff') {
+        if (!tcSyncSelectedTeamId) {
+            statusEl.textContent = (window.i18n ? window.i18n.t('tcSync.pleaseSelectTeam') : '請先選擇團隊');
+            return;
+        }
+        await loadTcDiff();
+        return;
+    }
+    // 非 diff 模式：透過 /sync 呼叫對應模式
+    if (!tcSyncSelectedTeamId) {
+        statusEl.textContent = (window.i18n ? window.i18n.t('tcSync.pleaseSelectTeam') : '請先選擇團隊');
+        return;
+    }
+    const btnMap = {
+        'init': document.getElementById('btn-tc-init'),
+        'diff': document.getElementById('btn-tc-diff'),
+        'full-update': document.getElementById('btn-tc-full')
+    };
+    const btn = btnMap[mode];
+    const original = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>' + (window.i18n ? window.i18n.t('tcSync.actions.running') : '執行中...');
+    try {
+        const url = `/api/teams/${tcSyncSelectedTeamId}/testcases/sync?mode=${encodeURIComponent(mode)}`;
+        const resp = await window.AuthClient.fetch(url, { method: 'POST' });
+        const json = await resp.json();
+        if (resp.ok && json.success) {
+            statusEl.textContent = (window.i18n ? window.i18n.t('tcSync.result.success') : '同步完成');
+        } else {
+            statusEl.textContent = (window.i18n ? window.i18n.t('tcSync.result.failure') : '同步失敗') + (json.detail ? `：${json.detail}` : '');
+        }
+    } catch (e) {
+        statusEl.textContent = (window.i18n ? window.i18n.t('tcSync.result.failure') : '同步失敗') + `：${e}`;
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = original;
+    }
+}
+
+async function loadTcDiff() {
+    const statusEl = document.getElementById('tcSyncStatus');
+    const container = document.getElementById('tcDiffContainer');
+    container.innerHTML = '';
+    try {
+        statusEl.textContent = (window.i18n ? window.i18n.t('tcSync.actions.running') : '執行中...');
+        const url = `/api/teams/${tcSyncSelectedTeamId}/testcases/diff`;
+        const resp = await window.AuthClient.fetch(url, { method: 'GET' });
+        const json = await resp.json();
+        if (!resp.ok || !json.success) {
+            statusEl.textContent = (window.i18n ? window.i18n.t('tcSync.result.failure') : '同步失敗') + (json.detail ? `：${json.detail}` : '');
+            return;
+        }
+        statusEl.textContent = '';
+        renderTcDiff(json);
+    } catch (e) {
+        statusEl.textContent = (window.i18n ? window.i18n.t('tcSync.result.failure') : '同步失敗') + `：${e}`;
+    }
+}
+
+function renderTcDiff(data) {
+    const escapeHtml = (s) => {
+        if (s === null || s === undefined) return '';
+        return String(s)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    };
+    const container = document.getElementById('tcDiffContainer');
+    const diffs = data.diffs || [];
+    if (!diffs.length) {
+        container.innerHTML = `<div class="alert alert-success">沒有差異</div>`;
+        return;
+    }
+    // 轉成逐欄位的列
+    const entries = [];
+    diffs.forEach(d => {
+        const changed = (d.fields || []).filter(f => f.different);
+        const list = changed.length ? changed : (d.fields || []);
+        list.forEach((f, idx) => {
+            entries.push({
+                test_case_number: d.test_case_number,
+                status: d.status,
+                field: f,
+                isFirst: idx === 0
+            });
+        });
+    });
+
+    const rows = entries.map(e => {
+        const statusLabel = e.status === 'only_local' ? '僅本地' : e.status === 'only_lark' ? '僅 Lark' : '雙方皆有變更';
+        const name = `pick-${e.test_case_number}-${e.field.name}`;
+        const larkChecked = e.status === 'only_lark' ? 'checked' : '';
+        const localChecked = e.status === 'only_local' ? 'checked' : '';
+        const lvRaw = e.field && e.field.local !== undefined ? e.field.local : null;
+        const rvRaw = e.field && e.field.lark !== undefined ? e.field.lark : null;
+        const lv = (lvRaw === null || lvRaw === undefined || lvRaw === '') ? '<span class="text-muted">—</span>' : (e.field.different ? `<span class="text-danger diff-value">${escapeHtml(lvRaw)}</span>` : `<span class="diff-value">${escapeHtml(lvRaw)}</span>`);
+        const rv = (rvRaw === null || rvRaw === undefined || rvRaw === '') ? '<span class="text-muted">—</span>' : (e.field.different ? `<span class="text-danger diff-value">${escapeHtml(rvRaw)}</span>` : `<span class="diff-value">${escapeHtml(rvRaw)}</span>`);
+        const chooseCell = `
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="${name}" value="lark" ${larkChecked}>
+              <label class="form-check-label">採用 Lark</label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="${name}" value="local" ${localChecked}>
+              <label class="form-check-label">採用本地</label>
+            </div>`;
+
+        return `
+            <tr data-tc="${e.test_case_number}" data-field="${escapeHtml(e.field.name)}">
+              <td>${e.test_case_number}</td>
+              <td>${statusLabel}</td>
+              <td><code>${escapeHtml(e.field.name)}</code></td>
+              <td>${lv}</td>
+              <td>${rv}</td>
+              <td>${chooseCell}</td>
+            </tr>`;
+    }).join('');
+
+    container.innerHTML = `
+      <div class="card">
+        <div class="card-header bg-light d-flex justify-content-between align-items-center">
+          <div><strong>差異清單</strong></div>
+          <div class="btn-group btn-group-sm" role="group" id="tcDiffBulkActions">
+            <button class="btn btn-outline-primary" id="tcDiffSelectLark">全選採用 Lark</button>
+            <button class="btn btn-outline-secondary" id="tcDiffSelectLocal">全選採用本地</button>
+          </div>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-sm table-hover mb-0">
+            <thead>
+              <tr><th>Test Case</th><th>狀態</th><th>欄位</th><th>本地</th><th>Lark</th><th>選擇</th></tr>
+            </thead>
+            <tbody>
+              ${rows}
+            </tbody>
+          </table>
+        </div>
+        <div class="card-footer d-flex justify-content-end">
+          <button class="btn btn-success" id="btn-tc-apply-diff">套用</button>
+        </div>
+      </div>`;
+
+    // 綁定全選
+    document.getElementById('tcDiffSelectLark').addEventListener('click', () => {
+        container.querySelectorAll('input[type=radio][value=lark]').forEach(el => { el.checked = true; });
+    });
+    document.getElementById('tcDiffSelectLocal').addEventListener('click', () => {
+        container.querySelectorAll('input[type=radio][value=local]').forEach(el => { el.checked = true; });
+    });
+    document.getElementById('btn-tc-apply-diff').addEventListener('click', applyTcDiff);
+}
+
+async function applyTcDiff() {
+    const container = document.getElementById('tcDiffContainer');
+    const rows = Array.from(container.querySelectorAll('tbody tr'));
+    // 聚合為每個 test case 的欄位決策
+    const byTc = {};
+    rows.forEach(tr => {
+        const tc = tr.dataset.tc;
+        const field = tr.dataset.field;
+        if (!tc || !field) return;
+        const name = `pick-${tc}-${field}`;
+        const picked = container.querySelector(`input[name=\"${name}\"]:checked`);
+        if (!picked) return;
+        if (!byTc[tc]) byTc[tc] = { test_case_number: tc, fields: {} };
+        byTc[tc].fields[field] = picked.value; // 'lark' or 'local'
+    });
+    const decisions = Object.values(byTc);
+    if (!decisions.length) {
+        AppUtils.showWarning('請至少選擇一個欄位的採用來源');
+        return;
+    }
+    const url = `/api/teams/${tcSyncSelectedTeamId}/testcases/diff/apply`;
+    const resp = await window.AuthClient.fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decisions })
+    });
+    const json = await resp.json();
+    if (resp.ok && json) {
+        AppUtils.showSuccess(`已套用 ${json.applied || 0} 筆差異`);
+        // 套用後可重新計算一次差異
+        await loadTcDiff();
+    } else {
+        AppUtils.showError('套用差異失敗');
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    // 啟用按鈕事件
+    const initBtn = document.getElementById('btn-tc-init');
+    const diffBtn = document.getElementById('btn-tc-diff');
+    const fullBtn = document.getElementById('btn-tc-full');
+    if (initBtn) initBtn.addEventListener('click', () => runTcSync('init'));
+    if (diffBtn) diffBtn.addEventListener('click', () => runTcSync('diff'));
+    if (fullBtn) fullBtn.addEventListener('click', () => runTcSync('full-update'));
+
+    // 當切到測試案例分頁時載入團隊清單（只載一次）
+    const tcTabBtn = document.getElementById('tab-test-cases');
+    const tcPane = document.getElementById('tab-pane-test-cases');
+    if (tcTabBtn && tcPane) {
+        tcTabBtn.addEventListener('shown.bs.tab', () => {
+            if (!tcPane.dataset.loaded) {
+                loadTcSyncTeams();
+                tcPane.dataset.loaded = '1';
+            }
+        });
+    }
+});
+
 // ===== 全域組織架構同步功能 =====
 
 // 觸發全域同步
@@ -1298,4 +1691,26 @@ function getI18n(key, fallback = '') {
 /* Enlarge status badges in Sync History */
 /* moved to /static/css/style.css */
 </style>
+
+<!-- 人員管理 i18n（僅少量，其他直接透過 data-i18n 使用全域字典） -->
+<div id="personnel-i18n" class="d-none">
+    <span data-i18n="personnel.tabTitle">人員管理</span>
+    <span data-i18n="personnel.userList">使用者清單</span>
+    <span data-i18n="personnel.userDetail">使用者詳情</span>
+    <span data-i18n="personnel.fullName">姓名</span>
+    <span data-i18n="personnel.role">角色</span>
+    <span data-i18n="personnel.active">啟用</span>
+    <span data-i18n="personnel.larkUserId">Lark 使用者 ID</span>
+    <span data-i18n="personnel.preview">預覽</span>
+    <span data-i18n="personnel.unlink">解除</span>
+    <span data-i18n="personnel.primaryTeam">主要團隊</span>
+    <span data-i18n="personnel.unsaved">有未儲存的變更</span>
+    <span data-i18n="personnel.create">新增</span>
+    <span data-i18n="personnel.save">儲存</span>
+    <span data-i18n="personnel.resetPassword">重設密碼</span>
+    <span data-i18n="personnel.deactivate">停用/刪除</span>
+    <span data-i18n="personnel.searchPlaceholder">搜尋使用者（名稱/Email）</span>
+</div>
+
+<script src="/static/js/personnel_management.js"></script>
 {% endblock %}

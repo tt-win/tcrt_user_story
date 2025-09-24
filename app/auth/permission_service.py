@@ -160,6 +160,14 @@ class PermissionService:
         
         return user_level >= required_level
     
+    async def _role_to_permission(self, role: UserRole) -> PermissionType:
+        """將全域角色映射為資源權限等級"""
+        if role == UserRole.SUPER_ADMIN or role == UserRole.ADMIN:
+            return PermissionType.ADMIN
+        if role == UserRole.USER:
+            return PermissionType.WRITE
+        return PermissionType.READ
+
     async def check_team_permission(self, user_id: int, team_id: int, required_permission: PermissionType) -> bool:
         """
         檢查團隊權限
@@ -172,6 +180,16 @@ class PermissionService:
         Returns:
             是否具備所需權限
         """
+        # 若停用團隊權限，改用全域角色映射
+        if not self.settings.auth.use_team_permissions:
+            user_role = await self._get_user_role(user_id)
+            if not user_role:
+                return False
+            mapped = await self._role_to_permission(user_role)
+            # 快取映射結果
+            await self.cache.set(user_id, mapped, team_id)
+            return self._compare_permissions(mapped, required_permission)
+
         # 嘗試從快取取得
         cached_permission = await self.cache.get(user_id, team_id)
         if cached_permission is not None:
@@ -241,6 +259,12 @@ class PermissionService:
             
             async with get_async_session() as session:
                 # Super Admin 可以存取所有團隊
+                if not self.settings.auth.use_team_permissions:
+                    # 停用團隊權限時，所有有效使用者視為可存取所有團隊（以全域角色控制資源權限）
+                    result = await session.execute(select(Team.id))
+                    return [team_id for team_id, in result.fetchall()]
+
+                # Super Admin 可以存取所有團隊
                 if user_role == UserRole.SUPER_ADMIN:
                     result = await session.execute(select(Team.id))
                     return [team_id for team_id, in result.fetchall()]
@@ -281,6 +305,12 @@ class PermissionService:
             if not user_role:
                 logger.warning(f"找不到使用者角色: user_id={user_id}")
                 return False
+
+            # 若停用團隊權限，改用全域角色映射
+            if not self.settings.auth.use_team_permissions:
+                mapped = await self._role_to_permission(user_role)
+                await self.cache.set(user_id, mapped, team_id, resource_type)
+                return self._compare_permissions(mapped, required_permission)
             
             # 2. Super Admin 可以存取所有資源
             if user_role == UserRole.SUPER_ADMIN:

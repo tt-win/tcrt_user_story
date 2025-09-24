@@ -165,6 +165,10 @@ COLUMN_CONSTRAINT_CHANGES: List[ColumnConstraintChange] = [
 
 # 欄位檢查清單（僅列出可能在既有 DB 缺少、且可由我們輕量補上的欄位）
 COLUMN_CHECKS: Dict[str, List[ColumnSpec]] = {
+    # Users 欄位補充
+    "users": [
+        ColumnSpec("lark_user_id", "TEXT", nullable=True, default=None),
+    ],
     # TestRunItem 結果檔案追蹤欄位
     "test_run_items": [
         ColumnSpec("result_files_uploaded", "INTEGER", nullable=False, default=0),
@@ -200,6 +204,8 @@ COLUMN_CHECKS: Dict[str, List[ColumnSpec]] = {
 
 # 索引規格
 INDEX_SPECS: List[Dict[str, Any]] = [
+    # Users
+    {"name": "idx_users_lark_user_id", "table": "users", "columns": ["lark_user_id"], "unique": True},
     {"name": "idx_tri_configid_testcaseno", "table": "test_run_items", "columns": ["config_id", "test_case_number"]},
     {"name": "idx_tri_teamid_result", "table": "test_run_items", "columns": ["team_id", "test_result"]},
     {"name": "idx_tri_result_files_uploaded", "table": "test_run_items", "columns": ["result_files_uploaded"]},
@@ -441,10 +447,11 @@ def ensure_indexes(engine: Engine, logger: Logger):
             logger.debug(f"索引已存在：{name}")
             continue
         cols_sql = ", ".join(quote_ident(engine, c) for c in columns)
+        is_unique = bool(idx.get("unique", False))
         if supports_if_not_exists:
-            sql = f"CREATE INDEX IF NOT EXISTS {quote_ident(engine, name)} ON {quote_ident(engine, table)} ({cols_sql})"
+            sql = f"CREATE {'UNIQUE ' if is_unique else ''}INDEX IF NOT EXISTS {quote_ident(engine, name)} ON {quote_ident(engine, table)} ({cols_sql})"
         else:
-            sql = f"CREATE INDEX {quote_ident(engine, name)} ON {quote_ident(engine, table)} ({cols_sql})"
+            sql = f"CREATE {'UNIQUE ' if is_unique else ''}INDEX {quote_ident(engine, name)} ON {quote_ident(engine, table)} ({cols_sql})"
         try:
             with engine.begin() as conn:
                 conn.exec_driver_sql(sql)
