@@ -343,28 +343,32 @@
             "users": "Users"
         },
         "usersStats": "User Stats",
-        "viewErrorDetails": "View error details"
+        "viewErrorDetails": "View error details",
+        "tabTitle": "Organization"
     },
-
     "personnel": {
-        "tabTitle": "Personnel Management",
+        "tabTitle": "Personnel",
         "userList": "User List",
-        "userDetail": "User Detail",
+        "userDetail": "User Details",
         "fullName": "Full Name",
         "role": "Role",
         "active": "Active",
         "larkUserId": "Lark User",
-        "larkNotLinked": "Lark account not linked",
+        "larkNotLinked": "No linked Lark account",
         "preview": "Preview",
         "unlink": "Unlink",
         "primaryTeam": "Primary Team",
-        "unsaved": "You have unsaved changes",
+        "unsaved": "Unsaved changes",
         "create": "Create",
         "save": "Save",
         "resetPassword": "Reset Password",
         "deactivate": "Deactivate/Delete",
         "searchPlaceholder": "Search users (name/email)",
-        "larkSearchPlaceholder": "Search Lark users (name/email)"
+        "larkSearchPlaceholder": "Search Lark users",
+        "selectUser": "Select a user",
+        "selectUserHint": "Pick a user from the list or click \"New User\" to create one",
+        "newUser": "New User",
+        "delete": "Delete"
     },
     "pagination": {
         "nextPage": "Next",
@@ -431,6 +435,7 @@
         "noDescription": "No description",
         "noTeams": "No teams have been created yet",
         "noTeamsHint": "Click the \"Create Team\" button above to create your first team",
+        "noTeamsViewer": "No teams have been created yet",
         "notConfigured": "Not Configured",
         "pleaseEnterToken": "Please enter Wiki Token and Test Case Table ID first",
         "saveTeam": "Save Team",
@@ -1016,5 +1021,32 @@
         "updating": "Updating...",
         "checkFailed": "Version check failed",
         "switchFailed": "Switch failed, please retry"
+    },
+    "tcSync": {
+        "tabTitle": "Test Cases",
+        "personnel": {
+            "tabTitle": "Personnel",
+            "userList": "User List",
+            "userDetail": "User Details",
+            "selectUser": "Select a user",
+            "selectUserHint": "Pick a user from the list or click \"New User\" to create one",
+            "fullName": "Full Name",
+            "role": "Role",
+            "active": "Active",
+            "larkUserId": "Lark User",
+            "unlink": "Unlink",
+            "larkNotLinked": "No linked Lark account",
+            "preview": "Preview",
+            "primaryTeam": "Primary Team",
+            "unsaved": "Unsaved changes",
+            "newUser": "New User",
+            "create": "Create",
+            "save": "Save",
+            "resetPassword": "Reset Password",
+            "delete": "Delete",
+            "deactivate": "Deactivate/Delete",
+            "searchPlaceholder": "Search users (name/email)",
+            "larkSearchPlaceholder": "Search Lark users"
+        }
     }
 }

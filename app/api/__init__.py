@@ -20,6 +20,7 @@ from .lark_groups import router as lark_groups_router
 from .lark_users import router as lark_users_router
 from .admin import router as admin_router
 from .version import router as version_router
+from .permissions import router as permissions_router
 
 # 創建主 API 路由器
 api_router = APIRouter()
@@ -43,5 +44,6 @@ api_router.include_router(lark_groups_router)
 api_router.include_router(lark_users_router)
 api_router.include_router(admin_router)
 api_router.include_router(version_router)
+api_router.include_router(permissions_router)
 
 # 可以在此添加其他 API 路由

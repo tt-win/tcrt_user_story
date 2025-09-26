@@ -6,7 +6,7 @@
 {% block page_title_text %}<span data-i18n="navigation.title">Test Case Repository</span>{% endblock %}
 {% block page_subtitle_text %}<span data-i18n="navigation.subtitle">選擇團隊開始管理測試案例</span>{% endblock %}
 {% block page_specific_actions %}
-<a href="/team-management" class="btn btn-primary">
+<a href="/team-management" class="btn btn-primary" id="teamSettingsButton">
     <i class="fas fa-cog me-2"></i><span data-i18n="navigation.teamSettings">團隊設定</span>
 </a>
 {% endblock %}
@@ -28,24 +28,7 @@
     </div>
 
     <!-- 無團隊時的提示區域 -->
-    <div id="no-teams-section" style="display: none;">
-        <div class="row justify-content-center">
-            <div class="col-md-6 col-lg-4">
-                <div class="card text-center add-team-card" onclick="goToTeamManagement()" style="cursor: pointer;">
-                    <div class="card-body py-5">
-                        <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center mx-auto mb-3" 
-                             style="width: 64px; height: 64px; font-size: 24px;">
-                            <i class="fas fa-plus"></i>
-                        </div>
-                        <h5 class="text-primary mb-2" data-i18n="team.createFirstTeam">新增第一個團隊</h5>
-                        <p class="text-muted small mb-0" data-i18n="team.createFirstTeamHint">
-                            建立團隊並設定 Lark 資料來源
-                        </p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
+    <div id="no-teams-section" style="display: none;"></div>
 
     <!-- 有團隊時的列表區域 -->
     <div id="teams-list" style="display: none;">
@@ -59,10 +42,32 @@
 {% block scripts %}
 <script>
 let teams = [];
+let uiPermissions = {};
 
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
+    await applyIndexUiVisibility();
     loadTeams();
 });
+
+async function applyIndexUiVisibility() {
+    try {
+        if (!window.AuthClient) return;
+        const resp = await window.AuthClient.fetch('/api/permissions/ui-config?page=index');
+        if (!resp.ok) return;
+        const config = await resp.json();
+        uiPermissions = config.components || {};
+
+        const settingsBtn = document.getElementById('teamSettingsButton');
+        if (settingsBtn) {
+            settingsBtn.style.display = uiPermissions.teamSettingsButton ? '' : 'none';
+        }
+    } catch (e) {
+        console.error('Failed to apply UI visibility:', e);
+        // On error, hide protected elements
+        const settingsBtn = document.getElementById('teamSettingsButton');
+        if (settingsBtn) settingsBtn.style.display = 'none';
+    }
+}
 
 async function loadTeams() {
     try {
@@ -112,8 +117,37 @@ function hideLoading() {
 }
 
 function showNoTeams() {
-    document.getElementById('no-teams-section').style.display = 'block';
+    const noTeamsSection = document.getElementById('no-teams-section');
+    if (uiPermissions.createFirstTeamCard) {
+        noTeamsSection.innerHTML = `
+        <div class="row justify-content-center">
+            <div class="col-md-6 col-lg-4">
+                <div class="card text-center add-team-card" onclick="goToTeamManagement()" style="cursor: pointer;">
+                    <div class="card-body py-5">
+                        <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center mx-auto mb-3" 
+                             style="width: 64px; height: 64px; font-size: 24px;">
+                            <i class="fas fa-plus"></i>
+                        </div>
+                        <h5 class="text-primary mb-2" data-i18n="team.createFirstTeam">新增第一個團隊</h5>
+                        <p class="text-muted small mb-0" data-i18n="team.createFirstTeamHint">
+                            建立團隊並設定 Lark 資料來源
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+    } else {
+        noTeamsSection.innerHTML = `
+        <div class="text-center py-5">
+            <i class="fas fa-users fa-3x text-muted mb-3"></i>
+            <h5 class="text-muted" data-i18n="team.noTeamsViewer">尚無已建立團隊</h5>
+        </div>`;
+    }
+    noTeamsSection.style.display = 'block';
     document.getElementById('teams-list').style.display = 'none';
+    if (window.i18n && window.i18n.isReady()) {
+        window.i18n.retranslate(noTeamsSection);
+    }
 }
 
 function showTeamsList() {
@@ -163,8 +197,10 @@ function renderTeamCards() {
         </div>
     `).join('');
     
-    // 新增團隊卡片
-    const addTeamCard = `
+    // 新增團隊卡片 (有權限才顯示)
+    let addTeamCard = '';
+    if (uiPermissions.addMoreTeamsCard) {
+        addTeamCard = `
         <div class="col-md-6 col-lg-4 mb-4">
             <div class="card h-100 add-team-card text-center" onclick="goToTeamManagement()" style="cursor: pointer;">
                 <div class="card-body d-flex flex-column justify-content-center">
@@ -178,6 +214,7 @@ function renderTeamCards() {
             </div>
         </div>
     `;
+    }
     
     container.innerHTML = teamsHtml + addTeamCard;
     

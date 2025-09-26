@@ -343,7 +343,8 @@
             "users": "用户同步"
         },
         "usersStats": "用户统计",
-        "viewErrorDetails": "查看错误详情"
+        "viewErrorDetails": "查看错误详情",
+        "tabTitle": "组织"
     },
     "personnel": {
         "tabTitle": "人员管理",
@@ -357,13 +358,17 @@
         "preview": "预览",
         "unlink": "解除关联",
         "primaryTeam": "主要团队",
-        "unsaved": "有未保存的更改",
+        "unsaved": "有未保存的变更",
         "create": "新增",
         "save": "保存",
         "resetPassword": "重置密码",
         "deactivate": "停用/删除",
         "searchPlaceholder": "搜索用户（姓名/邮箱）",
-        "larkSearchPlaceholder": "搜索 Lark 用户（姓名/邮箱）"
+        "larkSearchPlaceholder": "搜索 Lark 用户",
+        "selectUser": "请选择用户",
+        "selectUserHint": "从列表选择用户或点击“新增用户”建立账号",
+        "newUser": "新增用户",
+        "delete": "删除"
     },
     "pagination": {
         "nextPage": "下一页",
@@ -430,6 +435,7 @@
         "noDescription": "无描述",
         "noTeams": "尚未建立任何团队",
         "noTeamsHint": "点击上方「新增团队」按钮开始建立第一个团队",
+        "noTeamsViewer": "尚无已创建的团队",
         "notConfigured": "未设置",
         "pleaseEnterToken": "请先填写 Wiki Token 和 Test Case 表格 ID",
         "saveTeam": "保存团队",
@@ -1015,5 +1021,32 @@
         "updating": "更新中...",
         "checkFailed": "版本检查失败",
         "switchFailed": "切换失败，请重试"
+    },
+    "tcSync": {
+        "tabTitle": "测试用例",
+        "personnel": {
+            "tabTitle": "人员管理",
+            "userList": "用户列表",
+            "userDetail": "用户详情",
+            "selectUser": "请选择用户",
+            "selectUserHint": "从列表选择用户或点击“新增用户”建立账号",
+            "fullName": "姓名",
+            "role": "角色",
+            "active": "启用",
+            "larkUserId": "Lark 用户",
+            "unlink": "解除关联",
+            "larkNotLinked": "尚未关联 Lark 账号",
+            "preview": "预览",
+            "primaryTeam": "主要团队",
+            "unsaved": "有未保存的变更",
+            "newUser": "新增用户",
+            "create": "新增",
+            "save": "保存",
+            "resetPassword": "重置密码",
+            "delete": "删除",
+            "deactivate": "停用/删除",
+            "searchPlaceholder": "搜索用户（姓名/邮箱）",
+            "larkSearchPlaceholder": "搜索 Lark 用户"
+        }
     }
 }

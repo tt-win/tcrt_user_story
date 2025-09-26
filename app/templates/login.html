@@ -171,49 +171,54 @@
         
         <!-- 登入表單 -->
         <div class="p-4">
-            <form id="loginForm">
-                <!-- 使用者名稱或信箱 -->
-                <div class="mb-3">
+            <form id="loginForm" autocomplete="off">
+                <div id="loginStepIndicator" class="mb-3 text-muted small">
+                    <i class="fas fa-circle me-2"></i>步驟 1：輸入帳號
+                </div>
+
+                <div id="usernameStep" class="mb-3">
                     <label for="username" class="form-label">
                         <i class="fas fa-user me-2"></i>使用者名稱或電子信箱
                     </label>
                     <input type="text" class="form-control" id="username" name="username_or_email" 
                            placeholder="請輸入使用者名稱或電子信箱" required>
                 </div>
-                
-                <!-- 密碼 -->
-                <div class="mb-3">
-                    <label for="password" class="form-label">
-                        <i class="fas fa-lock me-2"></i>密碼
-                    </label>
-                    <div class="input-group">
-                        <input type="password" class="form-control" id="password" name="password" 
-                               placeholder="請輸入密碼" required>
-                        <button class="btn btn-outline-secondary" type="button" id="togglePassword">
-                            <i class="fas fa-eye" id="togglePasswordIcon"></i>
-                        </button>
-                    </div>
-                </div>
-                
-                <!-- 記住我 -->
-                <div class="mb-4">
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" id="rememberMe" name="remember_me">
-                        <label class="form-check-label" for="rememberMe">
-                            記住我的登入狀態
+
+                <div id="passwordStep" class="d-none">
+                    <div class="mb-3">
+                        <label for="password" class="form-label">
+                            <i class="fas fa-lock me-2"></i>密碼
                         </label>
+                        <div class="input-group">
+                            <input type="password" class="form-control" id="password" name="password" 
+                                   placeholder="請輸入密碼">
+                            <button class="btn btn-outline-secondary" type="button" id="togglePassword">
+                                <i class="fas fa-eye" id="togglePasswordIcon"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="mb-4">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="rememberMe" name="remember_me">
+                            <label class="form-check-label" for="rememberMe">
+                                記住我的登入狀態
+                            </label>
+                        </div>
                     </div>
                 </div>
-                
-                <!-- 登入按鈕 -->
-                <div class="d-grid">
-                    <button type="submit" class="btn btn-primary btn-login" id="loginBtn">
+
+                <div class="d-flex justify-content-between align-items-center gap-2">
+                    <button type="button" class="btn btn-outline-secondary d-none" id="backToUsername">
+                        <i class="fas fa-arrow-left me-2"></i>返回
+                    </button>
+                    <button type="submit" class="btn btn-primary btn-login flex-fill" id="loginBtn">
                         <span id="loginBtnText">
-                            <i class="fas fa-sign-in-alt me-2"></i>登入
+                            <i class="fas fa-arrow-right me-2"></i>下一步
                         </span>
                         <span id="loginBtnLoading" class="d-none">
                             <div class="spinner-border loading-spinner me-2" role="status"></div>
-                            登入中...
+                            處理中...
                         </span>
                     </button>
                 </div>
@@ -243,54 +248,87 @@
                 this.passwordInput = document.getElementById('password');
                 this.togglePasswordBtn = document.getElementById('togglePassword');
                 this.togglePasswordIcon = document.getElementById('togglePasswordIcon');
-                
+                this.usernameStep = document.getElementById('usernameStep');
+                this.passwordStep = document.getElementById('passwordStep');
+                this.stepIndicator = document.getElementById('loginStepIndicator');
+                this.backButton = document.getElementById('backToUsername');
+                this.alertContainer = document.getElementById('alert-container');
+
+                this.currentStep = 1;
+                this.selectedAccount = null;
+                if (this.submitButton) {
+                    this.submitButton.dataset.loading = 'false';
+                }
+
                 this.init();
             }
-            
+
             async init() {
-                // 先檢查系統初始化狀態
                 const needsSetup = await this.checkSystemInitialization();
                 if (needsSetup) {
                     return;
                 }
-                
+
+                this.switchToStep(1, { reset: true, focus: true });
                 this.initializeEventListeners();
                 this.checkExistingAuth();
             }
-            
+
             initializeEventListeners() {
-                // 表單提交
-                this.form.addEventListener('submit', (e) => this.handleLogin(e));
-                
-                // 密碼顯示切換
-                this.togglePasswordBtn.addEventListener('click', () => this.togglePasswordVisibility());
-                
-                // Enter 鍵快捷登入
-                this.passwordInput.addEventListener('keypress', (e) => {
-                    if (e.key === 'Enter' && !this.isLoading()) {
-                        this.handleLogin(e);
-                    }
-                });
-                
-                // 清除錯誤狀態當用戶開始輸入
-                [this.usernameInput, this.passwordInput].forEach(input => {
-                    input.addEventListener('input', () => {
-                        input.classList.remove('is-invalid');
+                this.form.addEventListener('submit', (event) => this.handleSubmit(event));
+
+                if (this.togglePasswordBtn) {
+                    this.togglePasswordBtn.addEventListener('click', () => this.togglePasswordVisibility());
+                }
+
+                if (this.passwordInput) {
+                    this.passwordInput.addEventListener('keypress', (e) => {
+                        if (this.currentStep === 2 && e.key === 'Enter' && !this.isLoading()) {
+                            this.handleLogin();
+                        }
                     });
-                });
+                    this.passwordInput.addEventListener('input', () => {
+                        this.passwordInput.classList.remove('is-invalid');
+                    });
+                }
+
+                if (this.usernameInput) {
+                    this.usernameInput.addEventListener('keypress', (e) => {
+                        if (this.currentStep === 1 && e.key === 'Enter') {
+                            e.preventDefault();
+                            this.processUsernameStage();
+                        }
+                    });
+                    this.usernameInput.addEventListener('input', () => {
+                        this.usernameInput.classList.remove('is-invalid');
+                    });
+                }
+
+                if (this.backButton) {
+                    this.backButton.addEventListener('click', () => {
+                        this.switchToStep(1, { focus: true });
+                    });
+                }
             }
-            
+
+            async handleSubmit(event) {
+                event.preventDefault();
+                if (this.currentStep === 1) {
+                    await this.processUsernameStage();
+                } else {
+                    await this.handleLogin();
+                }
+            }
+
             async checkExistingAuth() {
                 try {
-                    // 檢查是否已經登入
                     const response = await window.AuthClient.fetch('/api/auth/me', {
                         headers: {
                             'Authorization': `Bearer ${window.AuthClient?.getToken() || ''}`
                         }
                     });
-                    
+
                     if (response.ok) {
-                        // 已經登入，重導向到首頁
                         const urlParams = new URLSearchParams(window.location.search);
                         const redirectTo = urlParams.get('redirect') || '/';
                         window.location.href = redirectTo;
@@ -299,80 +337,136 @@
                     console.log('用戶未登入，顯示登入頁面');
                 }
             }
-            
-            async handleLogin(e) {
-                e.preventDefault();
-                
+
+            async processUsernameStage() {
                 if (this.isLoading()) return;
-                
-                const formData = new FormData(this.form);
-                const loginData = {
-                    username_or_email: formData.get('username_or_email'),
-                    password: formData.get('password')
-                };
-                
-                // 清除之前的錯誤狀態
+
+                const username = (this.usernameInput.value || '').trim();
                 this.clearErrors();
-                
-                // 簡單驗證
-                if (!loginData.username_or_email.trim()) {
+
+                if (!username) {
                     this.showFieldError(this.usernameInput, '請輸入使用者名稱或電子信箱');
                     return;
                 }
-                
-                if (!loginData.password) {
+
+                this.setLoading(true, { showSpinner: false });
+
+                try {
+                    const response = await fetch('/api/auth/pre-login', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username_or_email: username })
+                    });
+                    const data = await response.json();
+
+                    if (!response.ok) {
+                        throw new Error(data.detail || '無法確認帳號狀態');
+                    }
+
+                    if (!data.user_exists) {
+                        this.showFieldError(this.usernameInput, data.message || '找不到對應的帳號');
+                        return;
+                    }
+
+                    if (!data.is_active) {
+                        this.showAlert(data.message || '帳號已被停用，請聯繫系統管理員', 'danger');
+                        return;
+                    }
+
+                    const normalizedUsername = data.username || username;
+
+                    if (data.first_login) {
+                        const redirectUsername = encodeURIComponent(normalizedUsername);
+                        window.location.href = `/first-login-setup?username=${redirectUsername}`;
+                        return;
+                    }
+
+                    this.selectedAccount = {
+                        username: normalizedUsername,
+                        full_name: data.full_name || ''
+                    };
+
+                    this.usernameInput.value = normalizedUsername;
+                    this.usernameInput.readOnly = true;
+                    this.passwordInput.value = '';
+                    this.switchToStep(2, { focus: true });
+
+                } catch (error) {
+                    console.error('登入前檢查失敗:', error);
+                    this.showAlert(error.message || '登入前檢查失敗，請稍後再試', 'danger');
+                } finally {
+                    this.setLoading(false);
+                }
+            }
+
+            async handleLogin() {
+                if (this.isLoading()) return;
+
+                const username = (this.selectedAccount?.username || this.usernameInput.value || '').trim();
+                const password = this.passwordInput.value;
+
+                this.clearErrors();
+
+                if (!username) {
+                    this.showAlert('請先輸入使用者帳號', 'danger');
+                    this.switchToStep(1, { focus: true });
+                    return;
+                }
+
+                if (!password) {
                     this.showFieldError(this.passwordInput, '請輸入密碼');
                     return;
                 }
-                
-                // 開始登入流程
+
                 this.setLoading(true);
-                
+
                 try {
                     const response = await fetch('/api/auth/login', {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify(loginData)
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            username_or_email: username,
+                            password,
+                            remember_me: this.form.querySelector('#rememberMe')?.checked || false
+                        })
                     });
-                    
                     const data = await response.json();
-                    
+
                     if (response.ok && data.access_token) {
-                        this.showAlert('登入成功！正在重導向...', 'success');
-                        
-                        // 儲存 Token
+                        if (data.first_login) {
+                            const redirectUsername = encodeURIComponent(username);
+                            window.location.href = `/first-login-setup?username=${redirectUsername}`;
+                            return;
+                        }
+
                         if (window.AuthClient) {
                             window.AuthClient.setToken(data.access_token, data.expires_in);
                         }
-                        
-                        // 重導向
+
+                        this.showAlert('登入成功！正在重導向...', 'success');
                         setTimeout(() => {
                             const urlParams = new URLSearchParams(window.location.search);
                             const redirectTo = urlParams.get('redirect') || '/';
                             window.location.href = redirectTo;
-                        }, 1000);
-                        
+                        }, 600);
+
                     } else {
                         this.handleLoginError(response.status, data);
                     }
-                    
+
                 } catch (error) {
                     console.error('登入請求失敗:', error);
                     this.showAlert('網路錯誤，請檢查連線後重試', 'danger');
                 } finally {
-                    if (!this.buttonLoading.classList.contains('d-none')) {
-                        this.setLoading(false);
-                    }
+                    this.setLoading(false);
                 }
             }
-            
+
             handleLoginError(status, data) {
                 switch (status) {
                     case 401:
                         this.showAlert('使用者名稱或密碼錯誤', 'danger');
-                        this.usernameInput.focus();
+                        this.passwordInput.focus();
                         break;
                     case 403:
                         this.showAlert('帳戶已被停用，請聯繫系統管理員', 'warning');
@@ -384,111 +478,141 @@
                         this.showAlert('伺服器錯誤，請聯繫系統管理員', 'danger');
                         break;
                     default:
-                        this.showAlert(data.detail || '登入失敗，請重試', 'danger');
+                        this.showAlert(data?.detail || '登入失敗，請重試', 'danger');
                 }
             }
-            
+
             togglePasswordVisibility() {
                 const isPassword = this.passwordInput.type === 'password';
                 this.passwordInput.type = isPassword ? 'text' : 'password';
-                this.togglePasswordIcon.className = isPassword ? 'fas fa-eye-slash' : 'fas fa-eye';
+                if (this.togglePasswordIcon) {
+                    this.togglePasswordIcon.className = isPassword ? 'fas fa-eye-slash' : 'fas fa-eye';
+                }
             }
-            
-            setLoading(loading) {
+
+            setLoading(loading, options = {}) {
                 this.submitButton.disabled = loading;
+                this.submitButton.dataset.loading = loading ? 'true' : 'false';
+
+                const useSpinner = this.currentStep === 2 && options.showSpinner !== false;
                 this.buttonText.classList.toggle('d-none', loading);
-                this.buttonLoading.classList.toggle('d-none', !loading);
+                if (useSpinner) {
+                    this.buttonLoading.classList.toggle('d-none', !loading);
+                } else {
+                    this.buttonLoading.classList.add('d-none');
+                }
             }
-            
+
             isLoading() {
-                return this.submitButton.disabled;
+                return this.submitButton.dataset.loading === 'true';
             }
-            
+
             clearErrors() {
                 [this.usernameInput, this.passwordInput].forEach(input => {
                     input.classList.remove('is-invalid');
                 });
             }
-            
+
             showFieldError(input, message) {
                 input.classList.add('is-invalid');
-                
-                // 移除舊的錯誤訊息
-                const existingError = input.parentElement.querySelector('.invalid-feedback');
-                if (existingError) {
-                    existingError.remove();
-                }
-                
-                // 添加新的錯誤訊息
-                const errorDiv = document.createElement('div');
-                errorDiv.className = 'invalid-feedback';
-                errorDiv.textContent = message;
-                input.parentElement.appendChild(errorDiv);
-                
+                this.showAlert(message, 'danger');
                 input.focus();
             }
-            
+
             showAlert(message, type = 'info') {
-                const alertContainer = document.getElementById('alert-container');
-                
+                if (!this.alertContainer) return;
                 const alert = document.createElement('div');
                 alert.className = `alert alert-${type} alert-floating alert-dismissible fade show`;
                 alert.innerHTML = `
                     <i class="fas fa-${this.getAlertIcon(type)} me-2"></i>
-                    ${message}
+                    ${this.escapeHtml(message)}
                     <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
                 `;
-                
-                alertContainer.appendChild(alert);
-                
-                // 自動移除
+                this.alertContainer.appendChild(alert);
                 setTimeout(() => {
                     if (alert.parentElement) {
                         alert.remove();
                     }
                 }, 5000);
             }
-            
+
             getAlertIcon(type) {
                 const iconMap = {
-                    'success': 'check-circle',
-                    'danger': 'exclamation-circle',
-                    'warning': 'exclamation-triangle',
-                    'info': 'info-circle'
+                    success: 'check-circle',
+                    danger: 'exclamation-circle',
+                    warning: 'exclamation-triangle',
+                    info: 'info-circle'
                 };
                 return iconMap[type] || 'info-circle';
             }
-            
-            /**
-             * 檢查系統初始化狀態
-             */
+
             async checkSystemInitialization() {
                 try {
                     const response = await fetch('/api/system/initialization-check');
                     const data = await response.json();
-                    
                     if (data.needs_setup) {
-                        console.log('系統需要初始化，重導向到設置頁面');
-                        // 顯示提示訊息
                         this.showAlert('系統需要初始化，正在重導向到設置頁面...', 'info');
-                        // 稍微延遲以顕示訊息
                         setTimeout(() => {
                             window.location.href = '/setup';
-                        }, 1500);
+                        }, 1200);
                         return true;
                     }
-                    
-                    return false;
-                    
                 } catch (error) {
                     console.warn('檢查系統初始化狀態時發生錯誤:', error);
-                    // 出錯時不阻止登入流程
-                    return false;
+                }
+                return false;
+            }
+
+            switchToStep(step, options = {}) {
+                this.currentStep = step;
+                const isStep2 = step === 2;
+
+                this.passwordStep.classList.toggle('d-none', !isStep2);
+                this.backButton.classList.toggle('d-none', !isStep2);
+                if (this.togglePasswordBtn) {
+                    this.togglePasswordBtn.classList.toggle('d-none', !isStep2);
+                }
+
+                if (this.stepIndicator) {
+                    if (isStep2) {
+                        const displayName = this.selectedAccount?.full_name || this.selectedAccount?.username || '';
+                        const suffix = displayName ? `（${this.escapeHtml(displayName)}）` : '';
+                        this.stepIndicator.innerHTML = `<i class="fas fa-circle me-2"></i>步驟 2：輸入密碼 ${suffix}`;
+                    } else {
+                        this.stepIndicator.innerHTML = '<i class="fas fa-circle me-2"></i>步驟 1：輸入帳號';
+                    }
+                }
+
+                if (isStep2) {
+                    this.buttonText.innerHTML = '<i class="fas fa-sign-in-alt me-2"></i>登入';
+                    if (options.focus) {
+                        setTimeout(() => this.passwordInput?.focus(), 60);
+                    }
+                } else {
+                    this.usernameInput.readOnly = false;
+                    if (options.reset) {
+                        this.usernameInput.value = '';
+                        this.selectedAccount = null;
+                    }
+                    this.passwordInput.value = '';
+                    this.buttonText.innerHTML = '<i class="fas fa-arrow-right me-2"></i>下一步';
+                    if (options.focus !== false) {
+                        setTimeout(() => this.usernameInput?.focus(), 60);
+                    }
                 }
             }
+
+            escapeHtml(str) {
+                return String(str || '').replace(/[&<>"']/g, (m) => ({
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    '"': '&quot;',
+                    "'": '&#039;'
+                }[m]));
+            }
         }
-        
-        // 初始化登入管理器
+
         document.addEventListener('DOMContentLoaded', () => {
             new LoginManager();
         });

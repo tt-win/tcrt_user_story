@@ -92,6 +92,13 @@ async def setup(request: Request):
     """系統初始化設置頁面"""
     return templates.TemplateResponse("system_setup_standalone.html", {"request": request})
 
+
+@app.get("/first-login-setup", response_class=HTMLResponse)
+async def first_login_setup(request: Request):
+    """首次登入設定頁面"""
+    return templates.TemplateResponse("first_login_setup.html", {"request": request})
+
+
 @app.get("/profile", response_class=HTMLResponse)
 async def profile(request: Request):
     """個人資料頁面"""

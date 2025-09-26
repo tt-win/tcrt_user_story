@@ -453,6 +453,10 @@ async function applyTeamManagementUiVisibility() {
         if (!resp.ok) return;
         const json = await resp.json();
         const map = json.components || {};
+
+        const createBtn = document.getElementById('createTeamBtn');
+        if (createBtn) createBtn.style.display = map['createTeamBtn'] ? '' : 'none';
+
         const syncBtn = document.getElementById('syncOrgBtn');
         if (syncBtn) syncBtn.style.display = map['syncOrgBtn'] ? '' : 'none';
     } catch (_) {}
@@ -535,10 +539,29 @@ function hideLoading() {
     document.getElementById('loading-state').style.display = 'none';
 }
 
-function showNoTeams() {
+async function showNoTeams() {
     document.getElementById('loading-state').style.display = 'none';
     document.getElementById('teams-section').style.display = 'none';
     document.getElementById('no-teams-section').style.display = 'block';
+
+    // 根據權限決定提示文字
+    const hintElement = document.querySelector('#no-teams-section p');
+    try {
+        const resp = await window.AuthClient.fetch('/api/permissions/ui-config?page=team_management');
+        const config = await resp.json();
+        if (config.components.createTeamHint) {
+            hintElement.setAttribute('data-i18n', 'team.noTeamsHint');
+            hintElement.textContent = window.i18n ? window.i18n.t('team.noTeamsHint') : '點擊上方「新增團隊」按鈕開始建立第一個團隊';
+        } else {
+            hintElement.setAttribute('data-i18n', 'team.noTeamsViewer');
+            hintElement.textContent = window.i18n ? window.i18n.t('team.noTeamsViewer') : '尚無已建立團隊';
+        }
+    } catch (e) {
+        // 發生錯誤時，顯示預設的無權限提示
+        hintElement.setAttribute('data-i18n', 'team.noTeamsViewer');
+        hintElement.textContent = window.i18n ? window.i18n.t('team.noTeamsViewer') : '尚無已建立團隊';
+    }
+
     // 清空舊的卡片內容，避免殘留
     const container = document.getElementById('teams-container');
     if (container) container.innerHTML = '';

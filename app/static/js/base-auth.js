@@ -90,6 +90,7 @@ class BaseAuthManager {
     async updateAuthState() {
         try {
             const currentPath = window.location.pathname;
+            const relaxedPaths = ['/login', '/first-login-setup'];
             
             // 在設置頁面完全禁用認證檢查（用於建立第一個使用者）
             if (currentPath === '/setup') {
@@ -98,7 +99,7 @@ class BaseAuthManager {
             }
             
             // 先檢查系統是否需要初始化（只在非設置和非登入頁面檢查）
-            if (currentPath !== '/login') {
+            if (!relaxedPaths.includes(currentPath)) {
                 const needsSetup = await this.checkSystemInitialization();
                 if (needsSetup) {
                     return; // 已經重導向到設置頁面
@@ -113,7 +114,7 @@ class BaseAuthManager {
             } else {
                 this.hideUserInfo();
                 // 如果不在登入頁面，則重導向到登入頁面
-                if (currentPath !== '/login') {
+                if (!relaxedPaths.includes(currentPath)) {
                     this.authClient.redirectToLogin();
                 }
             }

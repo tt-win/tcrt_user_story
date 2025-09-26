@@ -375,10 +375,11 @@ class AuthClient {
      */
     checkAuthRequired() {
         // 登入頁面不需要檢查認證
-        if (window.location.pathname === '/login') {
+        const relaxedPaths = ['/login', '/first-login-setup'];
+        if (relaxedPaths.includes(window.location.pathname)) {
             return;
         }
-        
+
         // 如果未認證，重導向到登入頁面
         if (!this.isAuthenticated()) {
             console.log('[AuthClient] 頁面需要認證，重導向到登入頁面');

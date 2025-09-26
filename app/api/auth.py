@@ -6,13 +6,18 @@
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
+from datetime import datetime
 import logging
+
+from sqlalchemy import select, text
 
 from app.auth.auth_service import auth_service
 from app.auth.permission_service import permission_service
 from app.auth.dependencies import get_current_user
+from app.auth.password_service import PasswordService
+from app.database import get_async_session
 from app.models.database_models import User
 
 logger = logging.getLogger(__name__)
@@ -33,6 +38,29 @@ class LoginResponse(BaseModel):
     token_type: str = "bearer"
     expires_in: int
     user_info: Dict[str, Any]
+    first_login: bool = Field(False, description="是否為首次登入")
+
+
+class PreLoginRequest(BaseModel):
+    """登入前檢查請求模型"""
+    username_or_email: str
+
+
+class PreLoginResponse(BaseModel):
+    """登入前檢查回應模型"""
+    user_exists: bool
+    is_active: bool = False
+    first_login: bool = False
+    username: Optional[str] = None
+    full_name: Optional[str] = None
+    message: Optional[str] = None
+
+
+class FirstLoginSetupRequest(BaseModel):
+    """首次登入設定密碼請求模型"""
+    username: str
+    new_password: str
+    confirm_password: str
 
 
 class RefreshRequest(BaseModel):
@@ -70,6 +98,70 @@ def get_client_ip(request: Request) -> str:
 def get_user_agent(request: Request) -> str:
     """取得使用者代理字串"""
     return request.headers.get("User-Agent", "unknown")
+
+
+@router.post("/pre-login", response_model=PreLoginResponse)
+async def pre_login(request: PreLoginRequest):
+    """登入前檢查，確認帳號狀態"""
+    identifier = (request.username_or_email or '').strip()
+
+    if not identifier:
+        return PreLoginResponse(
+            user_exists=False,
+            message="請輸入使用者名稱或電子信箱"
+        )
+
+    try:
+        async with get_async_session() as session:
+            query = text(
+                """
+                SELECT id, username, full_name, is_active,
+                       NULLIF(last_login_at, '') AS last_login_at
+                FROM users
+                WHERE username = :identifier OR email = :identifier
+                LIMIT 1
+                """
+            )
+            result = await session.execute(query, {"identifier": identifier})
+            row = result.mappings().first()
+
+        if not row:
+            return PreLoginResponse(
+                user_exists=False,
+                message="找不到對應的帳號"
+            )
+
+        is_active = bool(row.get('is_active'))
+        username = row.get('username')
+        full_name = row.get('full_name') or ''
+        last_login_value = row.get('last_login_at')
+        if isinstance(last_login_value, str):
+            last_login_value = last_login_value.strip() or None
+        first_login = not last_login_value
+
+        if not is_active:
+            return PreLoginResponse(
+                user_exists=True,
+                is_active=False,
+                username=username,
+                full_name=full_name,
+                message="帳號已被停用，請聯繫系統管理員"
+            )
+
+        return PreLoginResponse(
+            user_exists=True,
+            is_active=True,
+            first_login=first_login,
+            username=username,
+            full_name=full_name
+        )
+
+    except Exception as exc:
+        logger.error("pre-login 檢查失敗: %s", exc, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="查詢帳號狀態時發生錯誤，請稍後再試"
+        )
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -111,6 +203,8 @@ async def login(request: LoginRequest, http_request: Request):
 
         logger.info(f"使用者 {user.username} 成功登入")
 
+        first_login_flag = bool(getattr(user, 'was_first_login', False))
+
         return LoginResponse(
             access_token=access_token,
             expires_in=expires_in,
@@ -121,7 +215,8 @@ async def login(request: LoginRequest, http_request: Request):
                 "full_name": user.full_name,
                 "role": user.role.value,
                 "is_active": user.is_active
-            }
+            },
+            first_login=first_login_flag
         )
 
     except HTTPException:
@@ -177,6 +272,124 @@ async def logout(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="登出過程發生錯誤"
         )
+
+
+@router.post("/first-login/setup", response_model=LoginResponse)
+async def first_login_setup(request: FirstLoginSetupRequest, http_request: Request):
+    """首次登入時設定新密碼"""
+    username = (request.username or '').strip()
+    if not username:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="請提供使用者名稱"
+        )
+
+    if request.new_password != request.confirm_password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="兩次輸入的密碼不一致"
+        )
+
+    if len(request.new_password or '') < 8:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="新密碼長度至少需 8 個字元"
+        )
+
+    async with get_async_session() as session:
+        result = await session.execute(
+            text(
+                """
+                SELECT id, username, email, full_name, role, is_active,
+                       NULLIF(last_login_at, '') AS last_login_at
+                FROM users
+                WHERE username = :username
+                LIMIT 1
+                """
+            ),
+            {"username": username}
+        )
+        row = result.mappings().first()
+
+        if not row:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="帳號不存在"
+            )
+
+        if not row.get('is_active'):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="帳號已被停用，請聯繫系統管理員"
+            )
+
+        last_login_raw = row.get('last_login_at')
+        if isinstance(last_login_raw, str):
+            last_login_raw = last_login_raw.strip() or None
+
+        if last_login_raw is not None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="此帳號已完成初始化，請直接登入"
+            )
+
+        hashed_password = PasswordService.hash_password(request.new_password)
+        now = datetime.utcnow()
+
+        await session.execute(
+            text(
+                """
+                UPDATE users
+                SET hashed_password = :hashed_password,
+                    last_login_at = :last_login_at,
+                    updated_at = :updated_at,
+                    is_verified = 1
+                WHERE id = :user_id
+                """
+            ),
+            {
+                "hashed_password": hashed_password,
+                "last_login_at": now.isoformat(sep=' '),
+                "updated_at": now.isoformat(sep=' '),
+                "user_id": row['id']
+            }
+        )
+        await session.commit()
+
+        result = await session.execute(
+            select(User).where(User.id == row['id'])
+        )
+        user = result.scalar_one()
+
+    # 建立 Token 供後續使用
+    ip_address = get_client_ip(http_request)
+    user_agent = get_user_agent(http_request)
+
+    access_token, jti, expires_at = await auth_service.create_access_token(
+        user_id=user.id,
+        username=user.username,
+        role=user.role,
+        ip_address=ip_address,
+        user_agent=user_agent
+    )
+
+    expires_in = int((expires_at - datetime.utcnow()).total_seconds())
+
+    logger.info(f"使用者 {user.username} 完成首次登入設定")
+
+    return LoginResponse(
+        access_token=access_token,
+        expires_in=expires_in,
+        user_info={
+            "user_id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "full_name": user.full_name,
+            "role": user.role.value,
+            "is_active": user.is_active
+        },
+        first_login=False
+    )
 
 
 @router.post("/refresh", response_model=RefreshResponse)

@@ -49,10 +49,21 @@
     await fetchMe();
     showPersonnelTabIfAllowed();
 
+    // 預設顯示提示資訊，等待使用者選擇清單項目
+    toggleDetailView(false);
+
     // 僅在切到人員分頁時初始化
     const tabBtn = document.getElementById('tab-personnel');
     if (tabBtn) {
       tabBtn.addEventListener('shown.bs.tab', onTabShown);
+    }
+
+    // 若分頁預設已開啟，需立即載入資料
+    const pane = document.getElementById('tab-pane-personnel');
+    const tabActive = tabBtn && tabBtn.classList.contains('active');
+    const paneVisible = pane && (pane.classList.contains('show') || pane.classList.contains('active'));
+    if (tabActive || paneVisible) {
+      await onTabShown();
     }
 
     state.inited = true;
@@ -174,8 +185,17 @@
       const resp = await window.AuthClient.fetch(url);
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
       const json = await resp.json();
-      state.users = json.users || [];
-      state.total = json.total || 0;
+      const rawUsers = json.users || [];
+      // 前端顯示需排除 super_admin 角色
+      const filteredUsers = rawUsers.filter(u => (u.role || '').toLowerCase() !== 'super_admin');
+      const removedCount = rawUsers.length - filteredUsers.length;
+      const reportedTotal = typeof json.total === 'number' ? json.total : filteredUsers.length;
+      state.users = filteredUsers;
+      state.total = Math.max(0, reportedTotal - removedCount);
+      if (state.selected && (state.selected.role || '').toLowerCase() === 'super_admin') {
+        state.selected = null;
+        clearForm();
+      }
       renderUserList();
       updatePageIndicator();
     } catch (e) {
@@ -255,6 +275,7 @@
   }
 
   function fillForm(u) {
+    toggleDetailView(true);
     setVal('pm-username', u.username || '');
     setVal('pm-full-name', u.full_name || '');
     setVal('pm-email', u.email || '');
@@ -283,6 +304,13 @@
     hideLarkDropdown();
     // 僅在已選擇且有資料時顯示預覽框
     updateLarkPreviewBox(u.lark_user_id);
+  }
+
+  function toggleDetailView(showForm) {
+    const form = document.getElementById('pm-form');
+    const prompt = document.getElementById('pm-select-user-prompt');
+    if (form) form.style.display = showForm ? '' : 'none';
+    if (prompt) prompt.style.display = showForm ? 'none' : 'block';
   }
 
   function buildRoleOptions() {
@@ -359,11 +387,21 @@
   async function onCreate(e) {
     e.preventDefault();
     console.log('onCreate called'); // 除錯用
+
+    // 第一次點擊時，若表單尚未顯示，視為開啟建立模式
+    const form = document.getElementById('pm-form');
+    if (form && form.style.display === 'none') {
+      state.selected = null;
+      clearDirty();
+      clearForm({ keepVisible: true });
+      return;
+    }
+
     if (!hasAuth()) {
       toastError('權限不足');
       return;
     }
-    
+
     // 驗證必填欄位
     const username = val('pm-username').trim();
     if (!username) {
@@ -594,7 +632,7 @@
     notConfiguredDiv.style.display = 'none';
   }
 
-  function clearForm() {
+  function clearForm(options = {}) {
     console.log('Clearing form');
     setVal('pm-username','');
     setVal('pm-full-name','');
@@ -607,6 +645,7 @@
     hideLarkDropdown();
     setVal('pm-primary-team','');
     updateLarkPreviewBox(null);
+    toggleDetailView(!!options.keepVisible);
   }
 
   async function searchLarkUsers(term){

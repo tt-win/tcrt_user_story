@@ -11,7 +11,7 @@ import hashlib
 import os
 import re
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 from functools import lru_cache
 
 import casbin
@@ -180,20 +180,38 @@ class PermissionService:
     def _load_all(self, initial: bool = False) -> None:
         try:
             self._enforcer = self._load_enforcer()
-            self._constraints = self._load_constraints()
-            self._ui_map = self._load_ui_map()
-            self._policy_version = self._compute_policy_version()
-            logging.info(f"Permission policy loaded, version={self._policy_version}")
+        except FileNotFoundError as e:
+            logging.warning(f"權限 policy 未找到，使用無 enforcer 模式: {e}")
+            self._enforcer = None
         except Exception as e:
-            logging.error(f"載入 Casbin/constraints/ui 失敗，使用回退：{e}")
-            # 回退：建立最小 enforcer
+            logging.error(f"載入 Casbin enforcer 失敗: {e}")
             try:
                 self._enforcer = casbin.Enforcer()
             except Exception:
                 self._enforcer = None
+
+        try:
+            self._constraints = self._load_constraints()
+        except Exception as e:
+            logging.error(f"載入權限限制失敗: {e}")
             self._constraints = {}
+
+        try:
+            self._ui_map = self._load_ui_map()
+        except Exception as e:
+            logging.error(f"載入 UI 權限映射失敗: {e}")
             self._ui_map = {}
+
+        try:
+            self._policy_version = self._compute_policy_version()
+        except Exception as e:
+            logging.debug(f"計算權限版本失敗，使用預設: {e}")
             self._policy_version = self.FALLBACK_VERSION
+
+        if self._enforcer:
+            logging.info(f"Permission policy loaded, version={self._policy_version}")
+        else:
+            logging.info("Permission policy 未載入，僅使用限制與 UI 映射配置")
 
     def _maybe_reload(self) -> None:
         """若檔案版本有變更則熱重載策略/設定。"""
@@ -204,6 +222,88 @@ class PermissionService:
                 self._load_all(initial=False)
         except Exception as e:
             logging.debug(f"_maybe_reload failed: {e}")
+
+    async def get_ui_config(self, current_user: User, page: str) -> Dict[str, Any]:
+        """根據使用者權限計算指定頁面的 UI 元件可視設定"""
+        self._maybe_reload()
+
+        page_key = (page or "").strip().lower()
+        if not page_key:
+            return {
+                "page": "",
+                "components": {},
+                "policy_version": self.get_policy_version(),
+            }
+
+        pages_cfg: Dict[str, Any] = {}
+        if isinstance(self._ui_map, dict):
+            pages_cfg = self._ui_map.get("pages", {}) or {}
+
+        page_cfg = pages_cfg.get(page_key) if isinstance(pages_cfg, dict) else None
+        components_cfg: Dict[str, Any] = {}
+        if isinstance(page_cfg, dict):
+            components_cfg = page_cfg.get("components", {}) or {}
+        if not isinstance(components_cfg, dict):
+            components_cfg = {}
+
+        components_result: Dict[str, bool] = {}
+
+        for component_id, rule in components_cfg.items():
+            allowed = False
+            if isinstance(rule, dict):
+                feature = rule.get("feature")
+                action = rule.get("action") or "view"
+                if feature:
+                    try:
+                        check_result = await self.check_permission(
+                            current_user=current_user,
+                            feature=str(feature),
+                            action=str(action),
+                        )
+                        allowed = bool(getattr(check_result, "has_permission", False))
+                    except Exception as e:
+                        logger.error(
+                            "計算 UI 權限失敗: user_id=%s page=%s component=%s error=%s",
+                            getattr(current_user, "id", "?"),
+                            page_key,
+                            component_id,
+                            e,
+                        )
+                    if not allowed:
+                        allowed = self._fallback_ui_allowed(current_user, str(feature), str(action))
+            if not allowed:
+                allowed = self._fallback_ui_allowed(current_user, "", "", component_id)
+            components_result[component_id] = allowed
+
+        return {
+            "page": page_key,
+            "components": components_result,
+            "policy_version": self.get_policy_version(),
+        }
+
+    def _fallback_ui_allowed(self, current_user: User, feature: str, action: str, component_id: str = "") -> bool:
+        """當 Casbin 未配置時，以角色層級提供最小保護的 UI 顯示判斷"""
+        role = getattr(current_user, "role", None)
+        try:
+            if role and not isinstance(role, UserRole):
+                role = UserRole(role)
+        except Exception:
+            role = None
+
+        if role == UserRole.SUPER_ADMIN:
+            return True
+
+        if role == UserRole.ADMIN:
+            if feature == "user_management":
+                return action in {"view", "update"} or component_id in {
+                    "tab-personnel-li",
+                    "pm-tab-personnel",
+                    "syncOrgBtn",
+                }
+            if feature == "organization_management" and action == "view":
+                return True
+
+        return False
 
     def reload_matrix(self) -> Dict:
         """重新載入策略與配置，回傳版本摘要（相容舊介面）"""
@@ -809,4 +909,4 @@ async def get_user_accessible_teams(user_id: int) -> List[int]:
 async def clear_permission_cache(user_id: int, team_id: Optional[int] = None):
     """清除權限快取"""
     await permission_service.clear_cache(user_id, team_id)
-        # TODO: 實作更精細的快取清除邏輯
+    # TODO: 實作更精細的快取清除邏輯

@@ -216,11 +216,16 @@ class AuthService:
             if not PasswordService.verify_password(password, user.hashed_password):
                 return None
 
-            # 更新最後登入時間
             from datetime import datetime
+            first_login = user.last_login_at is None
+
+            # 更新最後登入時間
             user.last_login_at = datetime.utcnow()
             await session.commit()
             await session.refresh(user)
+
+            # 將首次登入資訊附加到物件，供呼叫端使用
+            setattr(user, 'was_first_login', first_login)
 
             return user
 

@@ -1,0 +1,355 @@
+{% extends "base.html" %}
+
+{% block title %}首次登入設定 - Test Case Repository{% endblock %}
+
+{% block page_title %}{% endblock %}
+{% block page_actions %}{% endblock %}
+
+{% block head %}
+<style>
+    .app-header,
+    .app-footer {
+        display: none !important;
+    }
+    .app-main {
+        height: 100vh !important;
+        padding: 0 !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        background: var(--tr-bg-body);
+    }
+    .first-login-container {
+        padding: 1.5rem;
+        width: 100%;
+    }
+    .first-login-card {
+        background: var(--tr-bg-card);
+        border: 1px solid var(--tr-border-light);
+        border-radius: 8px;
+        box-shadow: var(--tr-shadow-md);
+        overflow: hidden;
+        max-width: 460px;
+        width: 100%;
+        margin: 0 auto;
+    }
+    .first-login-header {
+        background: linear-gradient(135deg, var(--tr-warning, #F97316) 0%, #FACC15 100%);
+        color: #1f2937;
+        text-align: center;
+        padding: 2rem;
+    }
+    .first-login-header h4 {
+        font-weight: 600;
+        margin-bottom: 0.5rem;
+    }
+    .first-login-header p {
+        margin: 0;
+        color: rgba(31, 41, 55, 0.85);
+    }
+    .form-label {
+        font-weight: 500;
+        color: var(--tr-text-primary);
+        margin-bottom: 0.5rem;
+        font-size: 0.9rem;
+    }
+    .form-control {
+        border: 1px solid var(--tr-border);
+        border-radius: 6px;
+        font-size: 14px;
+        padding: 0.625rem 0.875rem;
+        transition: all 0.2s ease;
+        background-color: var(--tr-bg-card);
+        color: var(--tr-text-primary);
+    }
+    .form-control:focus {
+        border-color: var(--tr-primary);
+        box-shadow: 0 0 0 0.2rem rgba(var(--tr-primary-rgb), 0.25);
+    }
+    .btn-setup {
+        background: linear-gradient(135deg, var(--tr-warning, #F97316) 0%, #FACC15 100%);
+        border: none;
+        border-radius: 6px;
+        padding: 0.75rem 1.5rem;
+        font-weight: 600;
+        font-size: 0.95rem;
+        color: #1f2937;
+        box-shadow: var(--tr-shadow-sm);
+        transition: all 0.2s ease;
+    }
+    .btn-setup:hover {
+        transform: translateY(-1px);
+        box-shadow: var(--tr-shadow-md);
+        color: #1f2937;
+    }
+    .btn-setup:disabled {
+        background: var(--tr-text-muted);
+        color: white;
+        box-shadow: none;
+        transform: none;
+    }
+    .tips {
+        background: rgba(250, 204, 21, 0.15);
+        border: 1px solid rgba(250, 204, 21, 0.4);
+        border-radius: 6px;
+        padding: 0.75rem 1rem;
+        font-size: 0.85rem;
+        color: #92400e;
+    }
+    .password-requirements {
+        list-style: none;
+        padding: 0;
+        margin: 0.5rem 0 0;
+        font-size: 0.85rem;
+        color: var(--tr-text-secondary);
+    }
+    .password-requirements li::before {
+        content: "•";
+        margin-right: 0.35rem;
+        color: var(--tr-warning, #F97316);
+    }
+    .alert-floating {
+        position: fixed;
+        top: 20px;
+        right: 20px;
+        z-index: 1060;
+        min-width: 300px;
+        animation: slideInRight 0.3s ease-out;
+        border-radius: 6px;
+        box-shadow: var(--tr-shadow-md);
+    }
+    @keyframes slideInRight {
+        from { transform: translateX(100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="alert-container"></div>
+
+<div class="first-login-container">
+    <div class="first-login-card">
+        <div class="first-login-header">
+            <i class="fas fa-user-shield fa-2x mb-3"></i>
+            <h4>首次登入設定</h4>
+            <p id="firstLoginSubtitle">為確保安全，請為您的帳號設定新密碼</p>
+        </div>
+        <div class="p-4">
+            <div id="firstLoginInfo" class="mb-3 text-muted"></div>
+            <div class="tips mb-4">
+                <i class="fas fa-info-circle me-2"></i>
+                請為您的帳號設定一組新的安全密碼，完成後即可直接登入系統。
+            </div>
+            <form id="firstLoginForm" autocomplete="off">
+                <input type="hidden" id="username" name="username">
+                <div class="mb-3">
+                    <label class="form-label" for="newPassword">
+                        <i class="fas fa-lock me-2"></i>新密碼
+                    </label>
+                    <div class="input-group">
+                        <input type="password" class="form-control" id="newPassword" placeholder="請設定新密碼 (至少 8 碼)" required>
+                        <button class="btn btn-outline-secondary" type="button" data-toggle="password" data-target="newPassword">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                    </div>
+                    <ul class="password-requirements">
+                        <li>至少 8 個字元</li>
+                        <li>建議混合大小寫及數字</li>
+                    </ul>
+                </div>
+                <div class="mb-4">
+                    <label class="form-label" for="confirmPassword">
+                        <i class="fas fa-lock me-2"></i>確認新密碼
+                    </label>
+                    <div class="input-group">
+                        <input type="password" class="form-control" id="confirmPassword" placeholder="請再次輸入新密碼" required>
+                        <button class="btn btn-outline-secondary" type="button" data-toggle="password" data-target="confirmPassword">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="d-grid">
+                    <button type="submit" class="btn btn-setup" id="setupBtn">
+                        <span id="setupBtnText"><i class="fas fa-check me-2"></i>設定密碼</span>
+                        <span id="setupBtnLoading" class="d-none">
+                            <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                            處理中...
+                        </span>
+                    </button>
+                </div>
+                <div class="text-center mt-4">
+                    <a href="/login" class="text-muted" id="backToLoginLink">
+                        <i class="fas fa-arrow-left me-2"></i>返回登入頁
+                    </a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+class FirstLoginSetupManager {
+    constructor() {
+        this.form = document.getElementById('firstLoginForm');
+        this.usernameInput = document.getElementById('username');
+        this.infoBox = document.getElementById('firstLoginInfo');
+        this.newPasswordInput = document.getElementById('newPassword');
+        this.confirmPasswordInput = document.getElementById('confirmPassword');
+        this.submitButton = document.getElementById('setupBtn');
+        this.buttonText = document.getElementById('setupBtnText');
+        this.buttonLoading = document.getElementById('setupBtnLoading');
+        this.alertContainer = document.getElementById('alert-container');
+        this.username = '';
+        this.init();
+    }
+
+    async init() {
+        if (await this.checkSystemInitialization()) {
+            return;
+        }
+
+        this.username = new URLSearchParams(window.location.search).get('username') || '';
+        if (!this.username) {
+            this.showAlert('danger', '缺少使用者資訊，請從登入頁重新開始流程');
+            this.disableForm();
+            return;
+        }
+
+        this.usernameInput.value = this.username;
+        this.infoBox.innerHTML = `<strong>帳號：</strong>${this.escapeHtml(this.username)}<br>請設定帳號要使用的新密碼。`;
+
+        this.attachEvents();
+    }
+
+    attachEvents() {
+        this.form.addEventListener('submit', (e) => this.handleSubmit(e));
+
+        document.querySelectorAll('[data-toggle="password"]').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const targetId = btn.getAttribute('data-target');
+                const input = document.getElementById(targetId);
+                if (!input) return;
+                const isPassword = input.type === 'password';
+                input.type = isPassword ? 'text' : 'password';
+                const icon = btn.querySelector('i');
+                if (icon) {
+                    icon.className = isPassword ? 'fas fa-eye-slash' : 'fas fa-eye';
+                }
+            });
+        });
+    }
+
+    async checkSystemInitialization() {
+        try {
+            const response = await fetch('/api/system/initialization-check');
+            const data = await response.json();
+            if (data.needs_setup) {
+                window.location.href = '/setup';
+                return true;
+            }
+        } catch (error) {
+            console.warn('初始化檢查失敗', error);
+        }
+        return false;
+    }
+
+    async handleSubmit(event) {
+        event.preventDefault();
+        if (this.isLoading()) return;
+
+        const newPassword = this.newPasswordInput.value.trim();
+        const confirmPassword = this.confirmPasswordInput.value.trim();
+
+        if (!newPassword || newPassword.length < 8) {
+            this.showAlert('danger', '新密碼長度需至少 8 個字元');
+            this.newPasswordInput.focus();
+            return;
+        }
+        if (newPassword !== confirmPassword) {
+            this.showAlert('danger', '兩次輸入的密碼不一致');
+            this.confirmPasswordInput.focus();
+            return;
+        }
+
+        this.setLoading(true);
+
+        try {
+            const response = await fetch('/api/auth/first-login/setup', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    username: this.username,
+                    new_password: newPassword,
+                    confirm_password: confirmPassword
+                })
+            });
+
+            const data = await response.json();
+
+            if (!response.ok) {
+                throw new Error(data.detail || '設定失敗，請確認輸入資料');
+            }
+
+            this.showAlert('success', '密碼設定成功！正在為您登入...', 2000);
+
+            if (window.AuthClient && data.access_token) {
+                window.AuthClient.setToken(data.access_token, data.expires_in);
+            }
+
+            setTimeout(() => {
+                window.location.href = '/';
+            }, 800);
+        } catch (error) {
+            console.error('首次登入設定失敗', error);
+            this.showAlert('danger', error.message || '設定失敗，請稍後再試');
+        } finally {
+            this.setLoading(false);
+        }
+    }
+
+    disableForm() {
+        this.form.querySelectorAll('input, button').forEach(el => el.disabled = true);
+    }
+
+    setLoading(loading) {
+        this.submitButton.disabled = loading;
+        this.buttonText.classList.toggle('d-none', loading);
+        this.buttonLoading.classList.toggle('d-none', !loading);
+    }
+
+    isLoading() {
+        return this.submitButton.disabled && !this.buttonLoading.classList.contains('d-none');
+    }
+
+    showAlert(level, message, timeout = 4000) {
+        if (!this.alertContainer) return;
+        const wrapper = document.createElement('div');
+        wrapper.className = `alert alert-${level} alert-dismissible fade show alert-floating`;
+        wrapper.innerHTML = `
+            <div>${this.escapeHtml(message)}</div>
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        `;
+        this.alertContainer.appendChild(wrapper);
+        if (timeout > 0) {
+            setTimeout(() => {
+                const alert = new bootstrap.Alert(wrapper);
+                alert.close();
+            }, timeout);
+        }
+    }
+
+    escapeHtml(str) {
+        return String(str || '').replace(/[&<>"']/g, (m) => ({
+            '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
+        }[m]));
+    }
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+    new FirstLoginSetupManager();
+});
+</script>
+{% endblock %}

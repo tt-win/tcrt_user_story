@@ -1,4 +1,10 @@
 pages:
+  index:
+    components:
+      teamSettingsButton: { feature: team_management, action: edit }
+      createFirstTeamCard: { feature: team_management, action: edit }
+      addMoreTeamsCard: { feature: team_management, action: edit }
+
   home:
     components:
       org-entry: { feature: organization_management, action: view }
@@ -11,6 +17,8 @@ pages:
 
   team_management:
     components:
+      createTeamBtn:    { feature: team_management, action: edit }
+      createTeamHint:   { feature: team_management, action: edit }
       pm-tab-personnel: { feature: user_management, action: view }
       pm-btn-create:    { feature: user_management, action: create }
       pm-btn-save:      { feature: user_management, action: update }
