@@ -99,28 +99,6 @@ async def get_db():
 
 # ===================== 資料庫管理函數 =====================
 
-async def create_tables():
-    """創建資料庫表格（異步版本）"""
-    try:
-        from .models.database_models import create_database_tables
-        # 使用現有的表格創建函數，但改為異步調用
-        await asyncio.get_event_loop().run_in_executor(None, create_database_tables)
-        logger.info("異步資料庫表格創建完成")
-    except Exception as e:
-        logger.error(f"異步資料庫表格創建失敗: {e}")
-        raise
-
-
-async def init_database() -> None:
-    """初始化異步資料庫"""
-    try:
-        await create_tables()
-        logger.info("異步資料庫初始化完成")
-    except Exception as e:
-        logger.error(f"異步資料庫初始化失敗: {e}")
-        raise
-
-
 async def cleanup_database() -> None:
     """清理異步資料庫連接"""
     await engine.dispose()

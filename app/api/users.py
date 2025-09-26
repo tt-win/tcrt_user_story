@@ -298,12 +298,14 @@ async def get_current_user_profile(
         # 這裡需要根據實際的數據庫結構來實作
         teams = []
         
+        role_value = str(current_user.role.value) if isinstance(current_user.role, UserRole) else str(current_user.role)
+
         return UserSelfOut(
             id=current_user.id,
             username=current_user.username,
             email=current_user.email,
             full_name=current_user.full_name,
-            role=current_user.role.value,
+            role=role_value.lower(),
             is_active=current_user.is_active,
             created_at=current_user.created_at,
             updated_at=current_user.updated_at,

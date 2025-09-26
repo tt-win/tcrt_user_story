@@ -246,10 +246,132 @@ def backup_sqlite_if_needed(engine: Engine, logger: Logger) -> Optional[str]:
         return None
 
 
+def _migrate_legacy_auth_tables(engine: Engine, logger: Logger):
+    """遷移舊的認證相關表格到新的結構"""
+    with engine.begin() as conn:
+        # 檢查舊 users 表格的結構
+        result = conn.execute(text("""
+            SELECT name FROM sqlite_master 
+            WHERE type='table' AND name = 'users'
+        """))
+        has_old_users = result.fetchone() is not None
+        
+        if has_old_users:
+            # 檢查表格結構是否為舊版本
+            result = conn.execute(text("PRAGMA table_info(users)"))
+            columns = [row[1] for row in result.fetchall()]
+            
+            # 如果是舊版本的 users 表（有 lark_id 但沒有 username/email）
+            if 'lark_id' in columns and 'username' not in columns:
+                logger.info("檢測到舊版 users 表格，進行結構遷移...")
+                
+                # 備份舊表格
+                conn.execute(text("CREATE TABLE users_legacy_backup AS SELECT * FROM users"))
+                logger.info("已備份舊 users 表格至 users_legacy_backup")
+                
+                # 刪除舊表格
+                conn.execute(text("DROP TABLE users"))
+                
+                # 由 SQLAlchemy 重新創庺新表格（在 Base.metadata.create_all 中處理）
+                logger.info("已刪除舊 users 表，將由 SQLAlchemy 重新創庺")
+            else:
+                logger.info("現有 users 表格結構已為新版，無需遷移")
+                
+        # 處理 roles 表格（新系統不需要獨立的 roles 表）
+        result = conn.execute(text("""
+            SELECT name FROM sqlite_master 
+            WHERE type='table' AND name = 'roles'
+        """))
+        has_old_roles = result.fetchone() is not None
+        
+        if has_old_roles:
+            logger.info("檢測到舊的 roles 表格，備份後刪除...")
+            conn.execute(text("CREATE TABLE roles_legacy_backup AS SELECT * FROM roles"))
+            conn.execute(text("DROP TABLE roles"))
+            logger.info("舊 roles 表格已備份至 roles_legacy_backup 並刪除")
+
+
+def ensure_test_run_item_history_fk(engine: Engine, logger: Logger) -> None:
+    """修復 test_run_item_result_history 表格仍引用舊備份表的外鍵。"""
+    if not is_sqlite(engine):
+        return
+
+    with engine.begin() as connection:
+        row = connection.execute(
+            text(
+                "SELECT sql FROM sqlite_master "
+                "WHERE type='table' AND name='test_run_item_result_history'"
+            )
+        ).fetchone()
+        if not row or not row[0] or "test_run_items_backup_snapshot" not in row[0]:
+            return
+
+        logger.info("偵測到 test_run_item_result_history 外鍵引用備份表，開始修復")
+        legacy_name = "test_run_item_result_history_legacy_fk"
+        connection.execute(text("PRAGMA foreign_keys=OFF"))
+        try:
+            connection.execute(text(f"ALTER TABLE test_run_item_result_history RENAME TO {legacy_name}"))
+
+            indexes = connection.execute(
+                text(
+                    "SELECT name FROM sqlite_master "
+                    "WHERE type='index' AND tbl_name=:tbl AND name NOT LIKE 'sqlite_autoindex%'"
+                ),
+                {"tbl": legacy_name},
+            ).fetchall()
+            for (index_name,) in indexes:
+                if index_name:
+                    connection.execute(text(f'DROP INDEX IF EXISTS "{index_name}"'))
+
+            TestRunItemResultHistory.__table__.create(bind=connection)
+
+            available_cols = connection.execute(
+                text(f"PRAGMA table_info('{legacy_name}')")
+            ).fetchall()
+            available = {row[1] for row in available_cols}
+            target_columns = [
+                col.name
+                for col in TestRunItemResultHistory.__table__.c
+                if col.name in available
+            ]
+            if target_columns:
+                columns_csv = ", ".join(f'"{col}"' for col in target_columns)
+                connection.execute(
+                    text(
+                        f'INSERT INTO test_run_item_result_history ({columns_csv}) '
+                        f'SELECT {columns_csv} FROM {legacy_name}'
+                    )
+                )
+
+            connection.execute(text(f"DROP TABLE {legacy_name}"))
+
+            try:
+                connection.execute(
+                    text(
+                        "UPDATE sqlite_sequence SET seq = "
+                        "COALESCE((SELECT MAX(id) FROM test_run_item_result_history), 0) "
+                        "WHERE name='test_run_item_result_history'"
+                    )
+                )
+            except Exception:
+                pass
+            logger.info("test_run_item_result_history 外鍵修復完成")
+        finally:
+            connection.execute(text("PRAGMA foreign_keys=ON"))
+
+
 def create_all_tables(engine: Engine, logger: Logger):
     logger.info("建立/確保所有資料表（依據 ORM 模型）...")
     try:
+        # 執行遷移
+        _migrate_legacy_auth_tables(engine, logger)
+        
+        # 創庺所有表格
         Base.metadata.create_all(bind=engine)
+        
+        # 執行 FK 修正
+        ensure_test_run_item_history_fk(engine, logger)
+        
         logger.info("資料表確認完成")
     except SQLAlchemyError as e:
         raise RuntimeError(f"建立資料表失敗：{e}")

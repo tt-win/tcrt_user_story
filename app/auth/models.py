@@ -40,7 +40,7 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     """建立使用者請求模型"""
-    password: str = Field(..., min_length=8, description="密碼（最少8字符）")
+    password: Optional[str] = Field(None, min_length=8, description="密碼（最少8字符）")
     created_by: Optional[int] = Field(None, description="建立者使用者 ID")
 
 

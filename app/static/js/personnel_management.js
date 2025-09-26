@@ -124,20 +124,8 @@
     const btnReset = document.getElementById('pm-reset');
     const btnUnlink = document.getElementById('pm-lark-unlink');
 
-    console.log('Binding buttons:', { btnCreate, btnSave, btnDelete, btnReset, btnUnlink }); // 除錯
-
-    if (btnCreate) {
-      btnCreate.addEventListener('click', onCreate);
-      console.log('Create button bound');
-    } else {
-      console.error('Create button not found!');
-    }
-    if (btnSave) {
-      btnSave.addEventListener('click', onSave);
-      console.log('Save button bound');
-    } else {
-      console.error('Save button not found!');
-    }
+    if (btnCreate) btnCreate.addEventListener('click', onCreate);
+    if (btnSave) btnSave.addEventListener('click', onSave);
     if (btnDelete) btnDelete.addEventListener('click', onDelete);
     if (btnReset) btnReset.addEventListener('click', onResetPwd);
     if (btnUnlink) btnUnlink.addEventListener('click', onLarkUnlink);
@@ -386,71 +374,61 @@
 
   async function onCreate(e) {
     e.preventDefault();
-    console.log('onCreate called'); // 除錯用
-
-    // 第一次點擊時，若表單尚未顯示，視為開啟建立模式
-    const form = document.getElementById('pm-form');
-    if (form && form.style.display === 'none') {
-      state.selected = null;
-      clearDirty();
-      clearForm({ keepVisible: true });
-      return;
-    }
-
-    if (!hasAuth()) {
-      toastError('權限不足');
-      return;
-    }
-
-    // 驗證必填欄位
-    const username = val('pm-username').trim();
-    if (!username) {
-      toastError('請填寫使用者名稱');
-      return;
-    }
-    
-    try {
-      const body = collectForm(null /* new */);
-      console.log('Create user body:', body); // 除錯用
-      // 後端會自動生成密碼（若未提供）
-      const resp = await window.AuthClient.fetch('/api/users', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
-      });
-      if (!resp.ok) throw await respError(resp);
-      toastSuccess('使用者建立成功');
-      clearDirty();
-      clearForm(); // 清空表單
-      await loadUsers();
-    } catch (e) {
-      console.error('Create user error:', e);
-      toastError('建立失敗：' + (e?.message || e));
+    // 準備一個用於建立新使用者的空白表單
+    state.selected = null;
+    clearDirty();
+    clearForm({ keepVisible: true });
+    // 將焦點設定到 username 輸入框
+    const usernameInput = document.getElementById('pm-username');
+    if(usernameInput) {
+        usernameInput.readOnly = false; // 確保 username 可以輸入
+        usernameInput.focus();
     }
   }
 
   async function onSave(e) {
     e.preventDefault();
-    console.log('onSave called, state.selected:', state.selected); // 除錯用
     if (!hasAuth()) {
       toastError('權限不足');
       return;
     }
-    if (!state.selected) {
-      toastError('請先選擇要編輯的使用者');
-      return;
-    }
-    try {
-      const body = collectForm(state.selected);
-      console.log('Save user body:', body); // 除錯用
-      const resp = await window.AuthClient.fetch(`/api/users/${state.selected.id}`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
-      });
-      if (!resp.ok) throw await respError(resp);
-      toastSuccess('已儲存');
-      clearDirty();
-      await loadUsers();
-    } catch (e) {
-      console.error('Save user error:', e);
-      toastError('儲存失敗：' + (e?.message || e));
+
+    if (state.selected) {
+      // 更新現有使用者
+      try {
+        const body = collectForm(state.selected);
+        const resp = await window.AuthClient.fetch(`/api/users/${state.selected.id}`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+        });
+        if (!resp.ok) throw await respError(resp);
+        toastSuccess('已儲存');
+        clearDirty();
+        await loadUsers();
+      } catch (e) {
+        console.error('Save user error:', e);
+        toastError('儲存失敗：' + (e?.message || e));
+      }
+    } else {
+      // 建立新使用者
+      const username = val('pm-username').trim();
+      if (!username) {
+        toastError('請填寫使用者名稱');
+        return;
+      }
+      try {
+        const body = collectForm(null /* new */);
+        const resp = await window.AuthClient.fetch('/api/users', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+        });
+        if (!resp.ok) throw await respError(resp);
+        toastSuccess('使用者建立成功');
+        clearDirty();
+        clearForm(); // 清空表單
+        await loadUsers();
+      } catch (e) {
+        console.error('Create user error:', e);
+        toastError('建立失敗：' + (e?.message || e));
+      }
     }
   }
 
@@ -633,12 +611,12 @@
   }
 
   function clearForm(options = {}) {
-    console.log('Clearing form');
+    buildRoleOptions(); // 填充角色下拉選單
     setVal('pm-username','');
     setVal('pm-full-name','');
     setVal('pm-email','');
     setVal('pm-role','');
-    setChecked('pm-active', false);
+    setChecked('pm-active', true);
     setVal('pm-lark-id','');
     const larkSearch = document.getElementById('pm-lark-search');
     if (larkSearch) larkSearch.value = '';

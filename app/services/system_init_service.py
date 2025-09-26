@@ -176,13 +176,18 @@ class SystemInitService:
             new_user = self.user_service.create_user(user_create, db=self.db)
             
             if new_user:
+                # 設定 last_login_at 以跳過首次登入流程
+                new_user.last_login_at = datetime.utcnow()
+                self.db.add(new_user)
                 self.db.commit()
+                self.db.refresh(new_user)
+                
                 return {
                     'success': True,
                     'message': f'系統初始化完成！Super Admin "{new_user.username}" 已建立。',
                     'user_id': new_user.id,
                     'username': new_user.username,
-                    'role': new_user.role,
+                    'role': new_user.role.value, # 確保回傳字串
                     'created_at': new_user.created_at.isoformat()
                 }
             else:

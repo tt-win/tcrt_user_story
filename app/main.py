@@ -112,11 +112,6 @@ async def health_check():
 async def startup_event():
     """應用程式啟動事件"""
     try:
-        # 確保資料表存在（包含新增的歷程表）
-        from app.models.database_models import create_database_tables
-        create_database_tables()
-        logging.info("資料表檢查/建立完成")
-
         # 確保報告資料夾存在
         os.makedirs(REPORT_DIR, exist_ok=True)
         os.makedirs(TMP_REPORT_DIR, exist_ok=True)
