@@ -1,0 +1,21 @@
+pages:
+  home:
+    components:
+      org-entry: { feature: organization_management, action: view }
+
+  organization:
+    components:
+      tab-personnel-li: { feature: user_management, action: view }
+      tab-org:          { feature: organization_management, action: advanced }
+      tab-test-cases:   { feature: organization_management, action: advanced }
+
+  team_management:
+    components:
+      pm-tab-personnel: { feature: user_management, action: view }
+      pm-btn-create:    { feature: user_management, action: create }
+      pm-btn-save:      { feature: user_management, action: update }
+      pm-btn-delete:    { feature: user_management, action: delete }
+      pm-btn-reset:     { feature: user_management, action: reset_password }
+      pm-role-select:   { feature: user_management, action: change_role }
+      pm-active-toggle: { feature: user_management, action: toggle_active }
+      syncOrgBtn:       { feature: user_management, action: view }
