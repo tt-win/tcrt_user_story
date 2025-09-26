@@ -20,7 +20,7 @@ security = HTTPBearer()
 
 
 async def get_current_user(
-    credentials: HTTPAuthorizationCredentials = Security(security)
+    credentials: HTTPAuthorizationCredentials = Security(security),
 ) -> User:
     """
     取得目前登入使用者（驗證 Bearer Token、檢查 jti 未撤銷）
@@ -40,10 +40,7 @@ async def get_current_user(
     if not token_data:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={
-                "code": "INVALID_TOKEN",
-                "message": "無效或過期的存取 Token"
-            }
+            detail={"code": "INVALID_TOKEN", "message": "無效或過期的存取 Token"},
         )
 
     # 從資料庫取得完整使用者資訊
@@ -58,8 +55,8 @@ async def get_current_user(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail={
                     "code": "USER_NOT_FOUND_OR_INACTIVE",
-                    "message": "使用者不存在或已停用"
-                }
+                    "message": "使用者不存在或已停用",
+                },
             )
 
         return user
@@ -70,7 +67,7 @@ class AuthDependencies:
 
     @staticmethod
     async def get_current_user_wrapper(
-        credentials: HTTPAuthorizationCredentials = Security(security)
+        credentials: HTTPAuthorizationCredentials = Security(security),
     ) -> User:
         return await get_current_user(credentials)
 
@@ -84,23 +81,24 @@ class AuthDependencies:
         Returns:
             依賴注入函數
         """
+
         async def dependency(current_user: User = Depends(get_current_user)) -> User:
-            if not permission_service.check_user_role(current_user.role, required_role):
+            ok = await permission_service.check_user_role(current_user.id, required_role)
+            if not ok:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail=AuthErrorResponse(
                         code="INSUFFICIENT_ROLE",
                         message="權限不足",
-                        detail=f"需要 {required_role.value} 或更高權限"
-                    ).dict()
+                        detail=f"需要 {required_role.value} 或更高權限",
+                    ).dict(),
                 )
             return current_user
+
         return dependency
 
     def require_team_permission(
-        self,
-        team_id: int,
-        required_permission: PermissionType
+        self, team_id: int, required_permission: PermissionType
     ) -> Callable:
         """
         檢查團隊權限的依賴工廠
@@ -112,24 +110,23 @@ class AuthDependencies:
         Returns:
             依賴注入函數
         """
+
         async def dependency(current_user: User = Depends(get_current_user)) -> User:
-            permission_check = await permission_service.check_team_permission(
-                current_user.id,
-                team_id,
-                required_permission,
-                current_user.role
+            ok = await permission_service.check_team_permission(
+                current_user.id, team_id, required_permission
             )
 
-            if not permission_check.has_permission:
+            if not ok:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
                     detail=AuthErrorResponse(
                         code="INSUFFICIENT_PERMISSION",
                         message="無權限存取此團隊",
-                        detail=permission_check.reason
-                    ).dict()
+                        detail="使用者在該團隊的權限不足",
+                    ).dict(),
                 )
             return current_user
+
         return dependency
 
     def require_admin(self) -> Callable:
@@ -154,40 +151,44 @@ class AuthDependencies:
 # 快捷依賴注入函數
 def require_role(required_role: UserRole) -> Callable:
     """檢查使用者角色權限的依賴工廠"""
+
     async def dependency(current_user: User = Depends(get_current_user)) -> User:
-        if not permission_service.check_user_role(current_user.role, required_role):
+        ok = await permission_service.check_user_role(current_user.id, required_role)
+        if not ok:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={
                     "code": "INSUFFICIENT_ROLE",
                     "message": "權限不足",
-                    "detail": f"需要 {required_role.value} 或更高權限"
-                }
+                    "detail": f"需要 {required_role.value} 或更高權限",
+                },
             )
         return current_user
+
     return dependency
 
 
-def require_team_permission(team_id: int, required_permission: PermissionType) -> Callable:
+def require_team_permission(
+    team_id: int, required_permission: PermissionType
+) -> Callable:
     """檢查團隊權限的依賴工廠"""
+
     async def dependency(current_user: User = Depends(get_current_user)) -> User:
-        permission_check = await permission_service.check_team_permission(
-            current_user.id,
-            team_id,
-            required_permission,
-            current_user.role
+        ok = await permission_service.check_team_permission(
+            current_user.id, team_id, required_permission
         )
 
-        if not permission_check.has_permission:
+        if not ok:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail={
                     "code": "INSUFFICIENT_PERMISSION",
                     "message": "無權限存取此團隊",
-                    "detail": permission_check.reason
-                }
+                    "detail": "使用者在該團隊的權限不足",
+                },
             )
         return current_user
+
     return dependency
 
 

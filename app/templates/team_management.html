@@ -163,18 +163,18 @@
                 <ul class="nav nav-tabs" id="syncTabs" role="tablist">
                     <!-- 人員管理分頁（預設隱藏，ADMIN+/SUPER_ADMIN 顯示） -->
                     <li class="nav-item" role="presentation" id="tab-personnel-li" style="display: none;">
-                        <button class="nav-link" id="tab-personnel" data-bs-toggle="tab" data-bs-target="#tab-pane-personnel" type="button" role="tab" aria-controls="tab-pane-personnel" aria-selected="false" data-testid="tab-personnel" data-i18n="personnel.tabTitle">人員管理</button>
+                        <button class="nav-link active" id="tab-personnel" data-bs-toggle="tab" data-bs-target="#tab-pane-personnel" type="button" role="tab" aria-controls="tab-pane-personnel" aria-selected="true" data-testid="tab-personnel" data-i18n="personnel.tabTitle">人員管理</button>
                     </li>
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link active" id="tab-org" data-bs-toggle="tab" data-bs-target="#tab-pane-org" type="button" role="tab" aria-controls="tab-pane-org" aria-selected="true" data-testid="tab-org">組織</button>
+                        <button class="nav-link" id="tab-org" data-bs-toggle="tab" data-bs-target="#tab-pane-org" type="button" role="tab" aria-controls="tab-pane-org" aria-selected="false" data-testid="tab-org" data-i18n="orgSync.tabTitle">組織</button>
                     </li>
                     <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="tab-test-cases" data-bs-toggle="tab" data-bs-target="#tab-pane-test-cases" type="button" role="tab" aria-controls="tab-pane-test-cases" aria-selected="false" data-testid="tab-test-cases">測試案例</button>
+                        <button class="nav-link" id="tab-test-cases" data-bs-toggle="tab" data-bs-target="#tab-pane-test-cases" type="button" role="tab" aria-controls="tab-pane-test-cases" aria-selected="false" data-testid="tab-test-cases" data-i18n="tcSync.tabTitle">測試案例</button>
                     </li>
                 </ul>
                 <div class="tab-content pt-3" id="syncTabsContent">
                     <!-- 人員管理分頁內容 -->
-                    <div class="tab-pane fade" id="tab-pane-personnel" role="tabpanel" aria-labelledby="tab-personnel">
+                    <div class="tab-pane fade show active" id="tab-pane-personnel" role="tabpanel" aria-labelledby="tab-personnel">
                         <div class="row g-3">
                             <!-- 左欄：搜尋與使用者列表 -->
                             <div class="col-12 col-lg-4">
@@ -206,7 +206,12 @@
                                         <strong data-i18n="personnel.userDetail">使用者詳情</strong>
                                     </div>
                                     <div class="card-body">
-                                        <form id="pm-form" autocomplete="off">
+                                        <div id="pm-select-user-prompt" class="text-center py-5" style="display:none;">
+                                            <i class="fas fa-users fa-3x text-muted mb-3"></i>
+                                            <h5 class="text-muted mb-2" data-i18n="personnel.selectUser">Select User</h5>
+                                            <p class="text-muted" data-i18n="personnel.selectUserHint">Click on a user from the list or click "New User" to create a new user</p>
+                                        </div>
+                                        <form id="pm-form" autocomplete="off" style="display:none;">
                                             <div class="row g-3">
                                                 <div class="col-md-6">
                                                     <label class="form-label">Username <span class="text-danger">*</span></label>
@@ -233,7 +238,7 @@
                                                 <div class="col-md-6">
                                                     <label class="form-label" data-i18n="personnel.larkUserId">Lark 使用者</label>
                                                     <div class="input-group position-relative">
-                                                        <input type="text" class="form-control" id="pm-lark-search" placeholder="搜尋 Lark 使用者（姓名/Email）" data-i18n-placeholder="personnel.larkSearchPlaceholder" autocomplete="off">
+                                                        <input type="text" class="form-control" id="pm-lark-search" placeholder="搜尋 Lark 使用者" data-i18n-placeholder="personnel.larkSearchPlaceholder" autocomplete="off">
                                                         <button class="btn btn-outline-danger" type="button" id="pm-lark-unlink" data-i18n="personnel.unlink">解除</button>
                                                         <div class="dropdown-menu position-absolute w-100" id="pm-lark-dropdown" style="display:none; top:100%; z-index:1050; max-height:300px; overflow-y:auto;"></div>
                                                     </div>
@@ -258,21 +263,22 @@
                                     <div class="card-footer">
                                         <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center">
                                             <div class="btn-group flex-shrink-0" role="group">
-                                                <button class="btn btn-outline-primary text-nowrap" id="pm-create"><i class="fas fa-user-plus me-1"></i><span data-i18n="personnel.create">新增</span></button>
+                                                <button class="btn btn-outline-primary text-nowrap" id="pm-create"><i class="fas fa-user-plus me-1"></i><span data-i18n="personnel.newUser">New User</span></button>
                                                 <button class="btn btn-primary text-nowrap" id="pm-save"><i class="fas fa-save me-1"></i><span data-i18n="personnel.save">儲存</span></button>
                                             </div>
                                             <div class="btn-group flex-shrink-0" role="group">
                                                 <button class="btn btn-outline-warning text-nowrap" id="pm-reset"><i class="fas fa-key me-1"></i><span data-i18n="personnel.resetPassword">重設密碼</span></button>
-                                                <button class="btn btn-outline-danger text-nowrap" id="pm-delete"><i class="fas fa-user-slash me-1"></i><span data-i18n="personnel.deactivate">停用/刪除</span></button>
+                                                <button class="btn btn-outline-danger text-nowrap" id="pm-delete"><i class="fas fa-trash me-1"></i><span data-i18n="personnel.delete">刪除</span></button>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
                             </div>
-                        </div>
-                    </div>
+</div>
+</div>
 
-                    <div class="tab-pane fade show active" id="tab-pane-org" role="tabpanel" aria-labelledby="tab-org">
+
+                    <div class="tab-pane fade" id="tab-pane-org" role="tabpanel" aria-labelledby="tab-org">
                         <!-- 同步狀態區域 -->
                         <div class="mb-4">
                             <div class="card">
@@ -412,8 +418,50 @@
 let teams = [];
 let currentEditTeam = null;
 
+// 依據後端 UI 能力控制組織頁籤可視
+async function applyOrganizationUiVisibility() {
+    try {
+        if (!window.AuthClient) return;
+        const resp = await window.AuthClient.fetch('/api/permissions/ui-config?page=organization');
+        if (!resp.ok) return;
+        const json = await resp.json();
+        const map = json.components || {};
+        const show = (id, isLi=false) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            if (isLi) { el.style.display = map[id] ? '' : 'none'; }
+            else {
+                // 對於 button，隱藏其父 li
+                const li = el.closest('li');
+                if (li) li.style.display = map[id] ? '' : 'none';
+                else el.style.display = map[id] ? '' : 'none';
+            }
+        };
+        // 人員管理分頁（Admin/SuperAdmin 應允許）
+        show('tab-personnel-li', true);
+        // 進階分頁（僅 Super Admin）
+        show('tab-org');
+        show('tab-test-cases');
+    } catch (_) {}
+}
+
+// team-management 頁面按鈕（例如同步組織）可視控制
+async function applyTeamManagementUiVisibility() {
+    try {
+        if (!window.AuthClient) return;
+        const resp = await window.AuthClient.fetch('/api/permissions/ui-config?page=team_management');
+        if (!resp.ok) return;
+        const json = await resp.json();
+        const map = json.components || {};
+        const syncBtn = document.getElementById('syncOrgBtn');
+        if (syncBtn) syncBtn.style.display = map['syncOrgBtn'] ? '' : 'none';
+    } catch (_) {}
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     initTeamManagement();
+    applyOrganizationUiVisibility();
+    applyTeamManagementUiVisibility();
 });
 
 function initTeamManagement() {
@@ -880,12 +928,32 @@ async function openSyncModal() {
     // 載入模態框數據
     await loadSyncModalData();
 
-    // 套用翻譯至整個 Modal（包含人員管理分頁）
+    // 套用翻譯至整個 Modal（包含所有分頁，即使是隱藏的）
     try {
         if (window.i18n && window.i18n.isReady()) {
+            console.log('[Modal Translation] Translating entire modal');
+            // 強制翻譯所有分頁內容，包括隱藏的
             window.i18n.retranslate(modal);
+            
+            // 特別確保測試案例分頁的翻譯
+            const tcPane = document.getElementById('tab-pane-test-cases');
+            if (tcPane) {
+                console.log('[Modal Translation] Specifically translating test cases pane');
+                const tcLabel = tcPane.querySelector('[data-i18n="tcSync.selectTeam"]');
+                if (tcLabel) {
+                    console.log('[Modal Translation] Found tcSync.selectTeam label:', tcLabel.textContent);
+                    const translatedText = window.i18n.t('tcSync.selectTeam');
+                    console.log('[Modal Translation] Translated text:', translatedText);
+                    tcLabel.textContent = translatedText;
+                }
+                window.i18n.retranslate(tcPane);
+            }
+        } else {
+            console.warn('[Modal Translation] i18n not ready');
         }
-    } catch (_) {}
+    } catch (e) {
+        console.error('[Modal Translation] Error:', e);
+    }
     
     syncModalInstance.show();
 }
@@ -1469,10 +1537,44 @@ document.addEventListener('DOMContentLoaded', () => {
     const tcPane = document.getElementById('tab-pane-test-cases');
     if (tcTabBtn && tcPane) {
         tcTabBtn.addEventListener('shown.bs.tab', () => {
+            console.log('[Tab Switch] Test cases tab shown');
+            // 立即重新應用翻譯
+            try {
+                if (window.i18n && window.i18n.isReady()) {
+                    console.log('[Tab Switch] Retranslating test cases pane');
+                    const tcLabel = tcPane.querySelector('[data-i18n="tcSync.selectTeam"]');
+                    if (tcLabel) {
+                        console.log('[Tab Switch] Before translation:', tcLabel.textContent);
+                        window.i18n.retranslate(tcPane);
+                        console.log('[Tab Switch] After translation:', tcLabel.textContent);
+                    } else {
+                        console.warn('[Tab Switch] tcSync.selectTeam label not found');
+                        window.i18n.retranslate(tcPane);
+                    }
+                } else {
+                    console.warn('[Tab Switch] i18n not ready');
+                }
+            } catch (e) {
+                console.error('[Tab Switch] Error:', e);
+            }
+            
             if (!tcPane.dataset.loaded) {
                 loadTcSyncTeams();
                 tcPane.dataset.loaded = '1';
             }
+        });
+    }
+    
+    // 當切到組織分頁時重新應用翻譯
+    const orgTabBtn = document.getElementById('tab-org');
+    const orgPane = document.getElementById('tab-pane-org');
+    if (orgTabBtn && orgPane) {
+        orgTabBtn.addEventListener('shown.bs.tab', () => {
+            try {
+                if (window.i18n && window.i18n.isReady()) {
+                    window.i18n.retranslate(orgPane);
+                }
+            } catch (_) {}
         });
     }
 });
