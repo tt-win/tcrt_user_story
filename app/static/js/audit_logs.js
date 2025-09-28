@@ -344,8 +344,8 @@ class AuditLogsPage {
             const actionBriefHtml = this.formatActionBrief(item);
 
             row.innerHTML = `
-                <td>${actionBriefHtml}</td>
                 <td><div class="d-flex flex-column"><span>${timestampLocal}</span><small class="text-muted">${this.formatDate(item.timestamp, 'datetime-tz')}</small></div></td>
+                <td>${actionBriefHtml}</td>
                 <td>${this.escapeHtml(item.username || '')}</td>
                 <td>${roleLabel}</td>
                 <td>${teamLabel}</td>
