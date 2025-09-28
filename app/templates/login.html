@@ -445,9 +445,7 @@
 
                         this.showAlert('登入成功！正在重導向...', 'success');
                         setTimeout(() => {
-                            const urlParams = new URLSearchParams(window.location.search);
-                            const redirectTo = urlParams.get('redirect') || '/';
-                            window.location.href = redirectTo;
+                            window.location.href = '/';
                         }, 600);
 
                     } else {
