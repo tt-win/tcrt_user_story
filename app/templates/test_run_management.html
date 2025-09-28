@@ -1170,12 +1170,145 @@ let configDetailModalInstance = null;
 let configFormModalInstance = null;
 // delete config modal is handled via bootstrap instance on demand
 
+let testRunPermissions = {
+    role: 'viewer',
+    isViewer: true,
+    canCreate: false,
+    canUpdate: false,
+    canDelete: false,
+    canChangeStatus: false,
+};
+
+async function applyTestRunManagementPermissions() {
+    const defaults = {
+        role: 'viewer',
+        isViewer: true,
+        canCreate: false,
+        canUpdate: false,
+        canDelete: false,
+        canChangeStatus: false,
+    };
+
+    if (!window.AuthClient) {
+        testRunPermissions = defaults;
+        window._testRunPermissions = defaults;
+        return defaults;
+    }
+
+    let components = {};
+    try {
+        const resp = await window.AuthClient.fetch('/api/permissions/ui-config?page=test_run_management');
+        if (resp && resp.ok) {
+            const payload = await resp.json();
+            if (payload && payload.components) {
+                components = payload.components;
+            }
+        }
+    } catch (error) {
+        console.warn('Failed to fetch Test Run UI permissions:', error);
+    }
+
+    let role = 'viewer';
+    try {
+        const info = await window.AuthClient.getUserInfo();
+        if (info && info.role) {
+            role = String(info.role).toLowerCase();
+        }
+    } catch (error) {
+        console.warn('Failed to resolve user role, fallback to viewer:', error);
+    }
+
+    const resolved = {
+        role,
+        isViewer: role === 'viewer',
+        canCreate: !!(components.addConfigCard || components.saveConfigBtn),
+        canUpdate: !!(components.editConfigBtn || components.saveConfigBtn),
+        canDelete: !!components.deleteConfigBtn,
+        canChangeStatus: !!(components.changeStatusBtn || components.editConfigBtn),
+    };
+
+    if (!resolved.isViewer) {
+        resolved.canCreate = true;
+        resolved.canUpdate = true;
+        resolved.canDelete = true;
+        resolved.canChangeStatus = true;
+    }
+
+    testRunPermissions = resolved;
+    window._testRunPermissions = resolved;
+
+    setElementVisibility('saveConfigBtn', resolved.canCreate || resolved.canUpdate);
+    setElementVisibility('confirmCreateItemsBtn', resolved.canCreate || resolved.canUpdate);
+    setElementVisibility('editConfigBtn', resolved.canUpdate);
+    setElementVisibility('deleteConfigBtn', resolved.canDelete);
+
+    return resolved;
+}
+
+function setElementVisibility(elementId, isVisible) {
+    const element = document.getElementById(elementId);
+    if (!element) return;
+
+    if (!element.dataset.defaultDisplay || element.dataset.defaultDisplay === 'none') {
+        let defaultDisplay = '';
+        if (element.classList.contains('d-flex')) {
+            defaultDisplay = 'flex';
+        } else if (element.classList.contains('btn-group')) {
+            defaultDisplay = 'inline-flex';
+        } else if (element.tagName === 'BUTTON' || element.classList.contains('btn')) {
+            defaultDisplay = 'inline-block';
+        } else if (element.tagName === 'INPUT' || element.tagName === 'SELECT' || element.tagName === 'TEXTAREA') {
+            defaultDisplay = 'block';
+        } else {
+            const computed = window.getComputedStyle(element).display;
+            if (computed && computed !== 'none') {
+                defaultDisplay = computed;
+            }
+        }
+        element.dataset.defaultDisplay = defaultDisplay || '';
+    }
+
+    if (isVisible) {
+        element.classList.remove('d-none');
+        const displayValue = element.dataset.defaultDisplay;
+        if (displayValue) {
+            element.style.setProperty('display', displayValue, 'important');
+        } else {
+            element.style.removeProperty('display');
+        }
+    } else {
+        element.classList.add('d-none');
+        element.style.setProperty('display', 'none', 'important');
+    }
+}
+
+function showPermissionDenied() {
+    const message = window.i18n && window.i18n.isReady()
+        ? window.i18n.t('messages.permissionDenied')
+        : 'No permission to perform this action';
+    if (window.AppUtils && typeof window.AppUtils.showWarning === 'function') {
+        window.AppUtils.showWarning(message);
+    } else {
+        alert(message);
+    }
+}
+
 // 頁面狀態旗標，避免競態與重複綁定
 let teamIdReady = false;      // 取得有效 teamId 後才為 true
 let dataLoadedOnce = false;   // 成功載入過資料後為 true
 let eventsBound = false;      // 避免重複綁定 i18n/page 事件
 
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
+    await applyTestRunManagementPermissions();
+    if (window.AuthClient && typeof window.AuthClient.on === 'function') {
+        window.AuthClient.on('authReady', async () => {
+            await applyTestRunManagementPermissions();
+            try {
+                const activeFilter = document.querySelector('input[name="statusFilter"]:checked');
+                renderConfigCards(activeFilter ? activeFilter.value : 'all');
+            } catch (_) {}
+        });
+    }
     // 監聽全域 team 變更事件，隨時更新 URL 的 team_id
     try {
         window.addEventListener('teamChanged', function(e) {
@@ -1279,6 +1412,11 @@ function bindEventListeners() {
     
     document.addEventListener('click', function(e) {
         if (e.target.closest('.add-test-run-card')) {
+            const perms = window._testRunPermissions || testRunPermissions || {};
+            if (!perms.canCreate) {
+                showPermissionDenied();
+                return;
+            }
             openConfigFormModal(); // Changed from openCreateTestRunConfigModal
         }
     });
@@ -1380,8 +1518,11 @@ function renderConfigCards(filterStatus = 'all') {
         filteredConfigs = testRunConfigs.filter(config => config.status === filterStatus);
     }
     
+    const permissions = window._testRunPermissions || testRunPermissions || {};
     const configsHtml = filteredConfigs.map(config => createConfigCard(config)).join('');
-    const addConfigCard = `
+    let addConfigCard = '';
+    if (permissions.canCreate) {
+        addConfigCard = `
         <div class="col-md-6 col-lg-4 mb-4">
             <div class="card h-100 add-test-run-card text-center" onclick="openConfigFormModal()">
                 <div class="card-body d-flex flex-column justify-content-center">
@@ -1395,6 +1536,7 @@ function renderConfigCards(filterStatus = 'all') {
             </div>
         </div>
     `;
+    }
     container.innerHTML = configsHtml + addConfigCard;
     
     if (window.i18n && window.i18n.isReady()) {
@@ -1403,6 +1545,7 @@ function renderConfigCards(filterStatus = 'all') {
 }
 
 function createConfigCard(config) {
+    const permissions = window._testRunPermissions || testRunPermissions || {};
     const statusClass = getStatusClass(config.status);
     const statusText = getStatusText(config.status);
     const progressPercentage = config.execution_rate || 0;
@@ -1433,6 +1576,63 @@ function createConfigCard(config) {
     
     const buildLine = config.build_number ? `<div class=\"stats-item\"><i class=\"fas fa-code-branch stats-icon\"></i><small class=\"text-muted\"><span data-i18n=\"testRun.buildNumber\">建置版本</span>: ${escapeHtml(config.build_number)}</small></div>` : '';
     
+    const actions = [];
+
+    actions.push(`
+                        <button class="btn btn-primary btn-sm flex-grow-1" onclick="event.stopPropagation(); enterTestRun(${config.id})">
+                            <i class="fas fa-arrow-right me-1"></i><span data-i18n="testRun.enterButton">進入</span>
+                        </button>
+    `);
+
+    const lockedForConfigEdit = config.status === 'completed' || config.status === 'archived';
+    const lockedForCasesEdit = config.status === 'completed';
+    const lockedConfigTitle = lockedForConfigEdit
+        ? ` title="${(window.i18n && window.i18n.isReady()) ? window.i18n.t('testRun.cannotEditCompleted') : '已完成或已歸檔的 Test Run 不可編輯'}"`
+        : '';
+    const lockedCasesTitle = lockedForCasesEdit
+        ? ` title="${(window.i18n && window.i18n.isReady()) ? window.i18n.t('testRun.cannotEditCompleted') : '已完成的 Test Run 不可編輯 Test Case'}"`
+        : '';
+
+    if (permissions.canUpdate) {
+        actions.push(`
+                        <button class="btn btn-outline-secondary btn-sm${lockedForConfigEdit ? ' disabled' : ''}" 
+                                ${lockedForConfigEdit ? 'disabled' : ''}${lockedConfigTitle}
+                                onclick="event.stopPropagation(); editBasicSettings(${config.id})">
+                            <i class="fas fa-edit me-1"></i><span data-i18n="testRun.editBasicSettings">編輯基本設定</span>
+                        </button>
+        `);
+        actions.push(`
+                        <button class="btn btn-outline-info btn-sm${(lockedForConfigEdit || lockedForCasesEdit) ? ' disabled' : ''}" 
+                                ${(lockedForConfigEdit || lockedForCasesEdit) ? 'disabled' : ''}${lockedCasesTitle}
+                                onclick="event.stopPropagation(); editTestCases(${config.id})">
+                            <i class="fas fa-list me-1"></i><span data-i18n="testRun.editTestCases">編輯 Test Case</span>
+                        </button>
+        `);
+    }
+
+    if (permissions.canChangeStatus) {
+        actions.push(`
+                        <div class="position-relative" onclick="event.stopPropagation()">
+                            <button type="button" class="btn btn-outline-warning btn-sm custom-status-btn" 
+                                    data-config-id="${config.id}" 
+                                    onclick="event.stopPropagation(); toggleCustomStatusDropdown(this, ${config.id})">
+                                <i class="fas fa-exchange-alt me-1"></i><span data-i18n="testRun.changeStatus">狀態</span>
+                                <i class="fas fa-chevron-down ms-1"></i>
+                            </button>
+                        </div>
+        `);
+    }
+
+    if (permissions.canDelete) {
+        actions.push(`
+                        <button class="btn btn-outline-danger btn-sm" onclick="event.stopPropagation(); deleteTestRun(${config.id}, '${escapeHtml(config.name)}')">
+                            <i class="fas fa-trash me-1"></i><span data-i18n="common.delete">刪除</span>
+                        </button>
+        `);
+    }
+
+    const actionsHtml = actions.join('');
+
     return `
         <div class="col-md-6 col-lg-4 mb-4">
             <div class="card h-100 test-run-card ${getStatusClass(config.status)}" onclick="enterTestRun(${config.id})">
@@ -1481,33 +1681,7 @@ function createConfigCard(config) {
                         </div>
                     </div>
                     <div class="d-flex gap-2 mt-auto pt-2">
-                        <button class="btn btn-primary btn-sm flex-grow-1" onclick="event.stopPropagation(); enterTestRun(${config.id})">
-                            <i class="fas fa-arrow-right me-1"></i><span data-i18n="testRun.enterButton">進入</span>
-                        </button>
-                        <button class="btn btn-outline-secondary btn-sm${(config.status === 'completed' || config.status === 'archived') ? ' disabled' : ''}" 
-                                ${(config.status === 'completed' || config.status === 'archived') ? 'disabled' : ''} 
-                                ${(config.status === 'completed' || config.status === 'archived') ? `title="${window.i18n && window.i18n.isReady() ? window.i18n.t('testRun.cannotEditCompleted') : '已完成或已歸檔的 Test Run 不可編輯'}"` : ''}
-                                onclick="event.stopPropagation(); editBasicSettings(${config.id})">
-                            <i class="fas fa-edit me-1"></i><span data-i18n="testRun.editBasicSettings">編輯基本設定</span>
-                        </button>
-                        <button class="btn btn-outline-info btn-sm${(config.status === 'completed' || config.status === 'archived') ? ' disabled' : ''}" 
-                                ${(config.status === 'completed' || config.status === 'archived') ? 'disabled' : ''} 
-                                ${(config.status === 'completed' || config.status === 'archived') ? `title="${window.i18n && window.i18n.isReady() ? window.i18n.t('testRun.cannotEditCompleted') : '已完成或已歸檔的 Test Run 不可編輯 Test Case'}"` : ''}
-                                onclick="event.stopPropagation(); editTestCases(${config.id})">
-                            <i class="fas fa-list me-1"></i><span data-i18n="testRun.editTestCases">編輯 Test Case</span>
-                        </button>
-                        <!-- 自訂狀態切換下拉選單 -->
-                        <div class="position-relative" onclick="event.stopPropagation()">
-                            <button type="button" class="btn btn-outline-warning btn-sm custom-status-btn" 
-                                    data-config-id="${config.id}" 
-                                    onclick="event.stopPropagation(); toggleCustomStatusDropdown(this, ${config.id})">
-                                <i class="fas fa-exchange-alt me-1"></i><span data-i18n="testRun.changeStatus">狀態</span>
-                                <i class="fas fa-chevron-down ms-1"></i>
-                            </button>
-                        </div>
-                        <button class="btn btn-outline-danger btn-sm" onclick="event.stopPropagation(); deleteTestRun(${config.id}, '${escapeHtml(config.name)}')">
-                            <i class="fas fa-trash me-1"></i><span data-i18n="common.delete">刪除</span>
-                        </button>
+                        ${actionsHtml}
                     </div>
                 </div>
             </div>
@@ -1553,6 +1727,12 @@ function getDefaultStatusText(status) {
 let currentDropdownConfig = null;
 
 function toggleCustomStatusDropdown(button, configId) {
+    const permissions = window._testRunPermissions || testRunPermissions || {};
+    if (!permissions.canChangeStatus) {
+        showPermissionDenied();
+        return;
+    }
+
     const dropdown = document.getElementById('customStatusDropdown');
     const overlay = document.getElementById('statusDropdownOverlay');
     
@@ -1667,6 +1847,11 @@ function getStatusIcon(status) {
 
 async function changeTestRunStatus(configId, newStatus, configName) {
     // 直接執行狀態變更，不需要輸入原因
+    const permissions = window._testRunPermissions || testRunPermissions || {};
+    if (!permissions.canChangeStatus) {
+        showPermissionDenied();
+        return;
+    }
     
     try {
         const teamId = currentTeamId; // 使用全域變數
@@ -1733,6 +1918,16 @@ function refreshStatusTexts() {
 }
 
 function openConfigFormModal(configId = null) {
+    const permissions = window._testRunPermissions || testRunPermissions || {};
+    if (configId && !permissions.canUpdate) {
+        showPermissionDenied();
+        return;
+    }
+    if (!configId && !permissions.canCreate) {
+        showPermissionDenied();
+        return;
+    }
+
     const modalElement = document.getElementById('configFormModal');
     if (!configFormModalInstance) {
         configFormModalInstance = new bootstrap.Modal(modalElement);
@@ -1812,6 +2007,16 @@ async function handleSaveConfig() {
 
     const configId = document.getElementById('configId').value;
     const isEdit = !!configId;
+
+    const permissions = window._testRunPermissions || testRunPermissions || {};
+    if (isEdit && !permissions.canUpdate) {
+        showPermissionDenied();
+        return;
+    }
+    if (!isEdit && !permissions.canCreate) {
+        showPermissionDenied();
+        return;
+    }
 
     const configData = { name: document.getElementById('configName').value };
     const descVal = (document.getElementById('configDescription').value || '').trim();
@@ -1900,11 +2105,20 @@ function showConfigDetails(configId) {
     const editBtn = document.getElementById('editConfigBtn');
     editBtn.setAttribute('data-config-id', configId);
     editBtn.onclick = handleEditConfig;
+
+    const permissions = window._testRunPermissions || testRunPermissions || {};
+    setElementVisibility('editConfigBtn', permissions.canUpdate);
+    setElementVisibility('deleteConfigBtn', permissions.canDelete);
     
     configDetailModalInstance.show();
 }
 
 function handleEditConfig(event) {
+    const permissions = window._testRunPermissions || testRunPermissions || {};
+    if (!permissions.canUpdate) {
+        showPermissionDenied();
+        return;
+    }
     const configId = parseInt(event.currentTarget.getAttribute('data-config-id'));
     if (configDetailModalInstance) {
         configDetailModalInstance.hide();
@@ -1915,6 +2129,12 @@ function handleEditConfig(event) {
 }
 
 async function handleDeleteConfig(event) {
+    const permissions = window._testRunPermissions || testRunPermissions || {};
+    if (!permissions.canDelete) {
+        showPermissionDenied();
+        return;
+    }
+
     const configId = event.currentTarget.getAttribute('data-config-id');
     const config = testRunConfigs.find(c => c.id === parseInt(configId));
     if (!config) return;
@@ -2040,6 +2260,16 @@ function openCaseSelectModalWithConfirm(configId) {
 }
 
 function openCaseSelectModal(configId) {
+  const permissions = window._testRunPermissions || testRunPermissions || {};
+  if (modalMode === 'edit' && !permissions.canUpdate) {
+    showPermissionDenied();
+    return;
+  }
+  if (modalMode !== 'edit' && !permissions.canCreate) {
+    showPermissionDenied();
+    return;
+  }
+
   currentSelectingConfigId = configId;
   const modalEl = document.getElementById('caseSelectModal');
   if (!caseSelectModalInstance) caseSelectModalInstance = new bootstrap.Modal(modalEl);
@@ -2118,6 +2348,11 @@ function openCaseSelectModal(configId) {
 
 // 在卡片上提供「編輯基本設定」
 function editBasicSettings(configId) {
+  const permissions = window._testRunPermissions || testRunPermissions || {};
+  if (!permissions.canUpdate) {
+    showPermissionDenied();
+    return;
+  }
   // 檢查 Test Run 狀態，已完成或已歸檔的不允許編輯
   const config = testRunConfigs.find(c => c.id === configId);
   if (config && (config.status === 'completed' || config.status === 'archived')) {
@@ -2132,6 +2367,11 @@ function editBasicSettings(configId) {
 
 // 在卡片上提供「編輯 Test Case」
 async function editTestCases(configId) {
+  const permissions = window._testRunPermissions || testRunPermissions || {};
+  if (!permissions.canUpdate) {
+    showPermissionDenied();
+    return;
+  }
   // 檢查 Test Run 狀態，已完成的不允許編輯
   const config = testRunConfigs.find(c => c.id === configId);
   if (config && config.status === 'completed') {
@@ -2306,6 +2546,15 @@ function updateSelectedCount() {
 document.getElementById('confirmCreateItemsBtn').addEventListener('click', createItemsFromSelection);
 
 async function createItemsFromSelection() {
+  const permissions = window._testRunPermissions || testRunPermissions || {};
+  if (modalMode === 'edit' && !permissions.canUpdate) {
+    showPermissionDenied();
+    return;
+  }
+  if (modalMode !== 'edit' && !permissions.canCreate) {
+    showPermissionDenied();
+    return;
+  }
   if (!currentSelectingConfigId) return;
   if (selectedCaseMap.size === 0) {
     const warn = window.i18n ? window.i18n.t('errors.pleaseSelectTestCases') : '請先選擇至少一筆 Test Case';
@@ -2347,6 +2596,11 @@ async function createItemsFromSelection() {
 
 // 儲存「編輯 Test Case」的差異：新增選入、刪除取消勾選
 async function saveEditedItems() {
+  const permissions = window._testRunPermissions || testRunPermissions || {};
+  if (!permissions.canUpdate) {
+    showPermissionDenied();
+    return;
+  }
   if (!currentSelectingConfigId) return;
   // 計算差異
   const selectedNumbers = new Set(Array.from(selectedCaseMap.keys()));
@@ -2400,6 +2654,11 @@ async function saveEditedItems() {
 
 // 卡片上的刪除按鈕（不進入詳情也可刪除）
 function deleteTestRun(configId, name) {
+  const permissions = window._testRunPermissions || testRunPermissions || {};
+  if (!permissions.canDelete) {
+    showPermissionDenied();
+    return;
+  }
   const modal = document.getElementById('deleteConfigModal');
   const msgEl = document.getElementById('deleteConfirmMessage');
   const safeName = escapeHtml(name || '');

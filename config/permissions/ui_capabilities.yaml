@@ -27,3 +27,56 @@ pages:
       pm-role-select:   { feature: user_management, action: change_role }
       pm-active-toggle: { feature: user_management, action: toggle_active }
       syncOrgBtn:       { feature: user_management, action: view }
+
+  test_case_management:
+    components:
+      # Header 區 - Create 和 Bulk Create 按鈕（Viewer 隱藏）
+      addTestCaseBtn:     { feature: test_case_management, action: create }
+      openBulkCreateBtn:  { feature: test_case_management, action: create }
+      
+      # Test Case Modal 中的操作按鈕（Viewer 隱藏）
+      saveTestCaseBtn:        { feature: test_case_management, action: update }
+      saveAndAddNextBtn:      { feature: test_case_management, action: create }
+      cloneAndAddNextBtn:     { feature: test_case_management, action: create }
+      previewModeBtn:         { feature: test_case_management, action: view }
+      splitModeBtn:           { feature: test_case_management, action: update }
+      
+      # TCG 編輯權限（Viewer 不能編輯，但可以預覽）
+      tcgEditContainer:       { feature: test_case_management, action: update }
+      tcgPreviewContainer:    { feature: test_case_management, action: view }
+      modalTcgContainer:      { feature: test_case_management, action: update }
+      
+      # 附件相關權限（Viewer 可以看但不能上傳）
+      attachmentUpload:       { feature: test_case_management, action: create }
+      attachmentView:         { feature: test_case_management, action: view }
+      
+      # 批次操作工具（Viewer 隱藏）
+      batchInlineToolbar:     { feature: test_case_management, action: update }
+      batchModifyBtn:         { feature: test_case_management, action: update }
+      batchCopyBtn:           { feature: test_case_management, action: create }
+      batchDeleteBtn:         { feature: test_case_management, action: delete }
+      
+      # Actions 區的複製和刪除按鈕（Viewer 隱藏）
+      testCaseActionCopy:     { feature: test_case_management, action: create }
+      testCaseActionDelete:   { feature: test_case_management, action: delete }
+
+  test_run_management:
+    components:
+      addConfigCard:        { feature: test_run_management, action: create }
+      saveConfigBtn:        { feature: test_run_management, action: update }
+      editConfigBtn:        { feature: test_run_management, action: update }
+      deleteConfigBtn:      { feature: test_run_management, action: delete }
+      confirmCreateItemsBtn: { feature: test_run_management, action: update }
+      changeStatusBtn:      { feature: test_run_management, action: update }
+
+  test_run_execution:
+    components:
+      startBtn:             { feature: test_run_execution, action: update }
+      completeBtn:          { feature: test_run_execution, action: update }
+      restartBtn:           { feature: test_run_execution, action: update }
+      batchModifyBtn:       { feature: test_run_execution, action: update }
+      batchDeleteBtn:       { feature: test_run_execution, action: delete }
+      resultEditor:         { feature: test_run_execution, action: update }
+      assigneeEditor:       { feature: test_run_execution, action: update }
+      uploadTestResultsBtn: { feature: test_run_execution, action: update }
+      addBugTicketBtn:      { feature: test_run_execution, action: update }

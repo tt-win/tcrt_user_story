@@ -1,0 +1,38 @@
+# RBAC Policy Configuration
+# Format: p, subject, object, action, domain
+
+# Super Admin: 擁有所有權限
+p, super_admin, user_management, *, 
+p, super_admin, organization_management, *, 
+p, super_admin, team_management, *, 
+p, super_admin, test_case_management, *, 
+
+# Admin: 管理員權限
+p, admin, user_management, view, 
+p, admin, user_management, update, 
+p, admin, user_management, create, 
+p, admin, user_management, delete, 
+p, admin, user_management, reset_password, 
+p, admin, user_management, change_role, 
+p, admin, user_management, toggle_active, 
+p, admin, organization_management, view, 
+p, admin, team_management, edit, 
+p, admin, test_case_management, *, 
+
+# User: 一般使用者權限
+p, user, test_case_management, *, 
+
+# Viewer: 檢視者權限
+p, viewer, test_case_management, view, 
+
+# Test Run Management 權限
+p, super_admin, test_run_management, *, 
+p, admin, test_run_management, *, 
+p, user, test_run_management, *, 
+p, viewer, test_run_management, view, 
+
+# Test Run Execution 權限
+p, super_admin, test_run_execution, *, 
+p, admin, test_run_execution, *, 
+p, user, test_run_execution, *, 
+p, viewer, test_run_execution, view, 

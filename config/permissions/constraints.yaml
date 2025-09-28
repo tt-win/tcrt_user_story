@@ -1,0 +1,32 @@
+# 權限限制配置
+# 定義各角色在特定功能操作時的額外限制條件
+
+super_admin:
+  # Super Admin 無特殊限制
+
+admin:
+  user_management:
+    # Admin 不能修改 Super Admin
+    update:
+      - name: cannot_target_roles
+        args: [["SUPER_ADMIN"]]
+    change_role:
+      - name: cannot_target_roles
+        args: [["SUPER_ADMIN"]]
+      - name: cannot_promote_to
+        args: [["SUPER_ADMIN"]]
+    delete:
+      - name: cannot_target_roles
+        args: [["SUPER_ADMIN"]]
+    reset_password:
+      - name: cannot_target_roles
+        args: [["SUPER_ADMIN"]]
+    toggle_active:
+      - name: cannot_target_roles
+        args: [["SUPER_ADMIN"]]
+
+user:
+  # User 角色無特殊限制
+
+viewer:
+  # Viewer 角色無額外限制

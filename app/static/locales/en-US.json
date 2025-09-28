@@ -116,6 +116,8 @@
         "noTCGNumber": "Please enter TCG number first",
         "noTcgMatches": "No matching TCG found",
         "noTeamSelected": "Please select a team first",
+        "teamAccessDenied": "You do not have permission to access that team. Please choose another team.",
+        "teamNotFound": "The specified team could not be found. Please choose another team.",
         "noTestCasesAvailable": "No test cases available",
         "noTestRunsFound": "No test run records found matching the criteria",
         "pleaseEnterName": "Please enter test run name",
@@ -274,6 +276,7 @@
         "uploadingFile": "Uploading",
         "validationFailed": "Validation failed",
         "warning": "Warning",
+        "permissionDenied": "You do not have permission to perform this action",
         "batchCopySuccess": "Successfully copied {count} test cases"
     },
     "navigation": {

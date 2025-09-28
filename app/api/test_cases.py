@@ -27,7 +27,7 @@ import uuid
 import json
 
 from app.database import get_db, get_sync_db
-from app.auth.dependencies import get_current_user, require_team_permission
+from app.auth.dependencies import get_current_user
 from app.auth.models import PermissionType
 from app.models.database_models import User
 from app.models.test_case import (
@@ -160,10 +160,10 @@ async def get_test_cases(
     from app.auth.permission_service import permission_service
 
     if current_user.role != UserRole.SUPER_ADMIN:
-        ok = await permission_service.check_team_permission(
-            current_user.id, team_id, PermissionType.READ
+        permission_check = await permission_service.check_team_permission(
+            current_user.id, team_id, PermissionType.READ, current_user.role
         )
-        if not ok:
+        if not permission_check.has_permission:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="無權限存取此團隊的測試案例",
@@ -238,10 +238,10 @@ async def get_test_cases_count(
     from app.auth.permission_service import permission_service
 
     if current_user.role != UserRole.SUPER_ADMIN:
-        ok = await permission_service.check_team_permission(
-            current_user.id, team_id, PermissionType.READ
+        permission_check = await permission_service.check_team_permission(
+            current_user.id, team_id, PermissionType.READ, current_user.role
         )
-        if not ok:
+        if not permission_check.has_permission:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="無權限存取此團隊的測試案例數量",

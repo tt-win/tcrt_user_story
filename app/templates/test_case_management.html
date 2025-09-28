@@ -314,10 +314,10 @@ html, body { height: 100%; overflow: hidden; }
 
 {% block page_specific_actions %}
 <div class="d-flex gap-2">
-    <button type="button" class="btn btn-primary" id="addTestCaseBtn">
+    <button type="button" class="btn btn-primary" id="addTestCaseBtn" style="display: none;">
         <i class="fas fa-plus me-2"></i><span data-i18n="testCase.createTestCase">新增測試案例</span>
     </button>
-    <button type="button" class="btn btn-outline-primary" id="openBulkCreateBtn">
+    <button type="button" class="btn btn-outline-primary" id="openBulkCreateBtn" style="display: none;">
         <i class="fas fa-layer-group me-2"></i><span data-i18n="testCase.bulk.bulkCreateMode">大量新增模式</span>
     </button>
     <button type="button" class="btn btn-secondary" id="refreshBtn">
@@ -398,7 +398,7 @@ html, body { height: 100%; overflow: hidden; }
                         </button>
                     </div>
                     <!-- 批次操作工具列（與套用篩選同一排、靠右顯示） -->
-                    <div id="batchInlineToolbar" class="d-none d-flex align-items-center gap-2 ms-lg-auto mb-2 mb-lg-0">
+                    <div id="batchInlineToolbar" class="d-none d-flex align-items-center gap-2 ms-lg-auto mb-2 mb-lg-0" style="display: none !important;">
                         <button type="button" class="btn btn-outline-secondary btn-sm" id="clearSelectionBtnTC"
                                 data-i18n-title="common.clearSelection" title="清除選取">
                             <i class="fas fa-xmark"></i>
@@ -406,13 +406,13 @@ html, body { height: 100%; overflow: hidden; }
                         <span class="text-muted" id="selectedCountWrapper" data-i18n="testCase.selectedItems" data-i18n-params='{"count":0}'>
                             已選取 0 個項目
                         </span>
-                        <button type="button" class="btn btn-primary btn-sm" id="batchModifyBtn">
+                        <button type="button" class="btn btn-primary btn-sm" id="batchModifyBtn" style="display: none;">
                             <i class="fas fa-edit me-2"></i><span data-i18n="testCase.batchModify">批次修改</span>
                         </button>
-                        <button type="button" class="btn btn-outline-primary btn-sm" id="batchCopyBtn">
+                        <button type="button" class="btn btn-outline-primary btn-sm" id="batchCopyBtn" style="display: none;">
                             <i class="fas fa-copy me-2"></i><span data-i18n="testCase.batchCopy.title">批次複製</span>
                         </button>
-                        <button type="button" class="btn btn-danger btn-sm" id="batchDeleteBtn">
+                        <button type="button" class="btn btn-danger btn-sm" id="batchDeleteBtn" style="display: none;">
                             <i class="fas fa-trash me-2"></i><span data-i18n="testCase.batchDelete">批次刪除</span>
                         </button>
                     </div>
@@ -532,7 +532,8 @@ html, body { height: 100%; overflow: hidden; }
                                     </button>
                                 </label>
                                 <div class="tcg-tags-container" id="modalTcgContainer" 
-                                     style="min-height: 32px; padding: 4px 8px; border: 1px solid #dee2e6; border-radius: 4px; background-color: #fff; cursor: text; display: flex; align-items: center; flex-wrap: wrap; gap: 4px; position: relative; max-height: 120px; overflow-y: auto;">
+                                     style="min-height: 32px; padding: 4px 8px; border: 1px solid #dee2e6; border-radius: 4px; background-color: #fff; cursor: text; display: flex; align-items: center; flex-wrap: wrap; gap: 4px; position: relative; max-height: 120px; overflow-y: auto;"
+                                     data-permission-required="update">
                                     <!-- TCG 標籤會顯示在這裡 -->
                                 </div>
                             </div>
@@ -751,11 +752,11 @@ html, body { height: 100%; overflow: hidden; }
                         <div class="d-flex justify-content-between align-items-center">
                             <!-- 模式切換按鈕 -->
                             <div class="d-flex align-items-center gap-2">
-                                <div class="btn-group btn-group-sm" role="group">
+                                <div class="btn-group btn-group-sm" role="group" id="modeToggleGroup" style="display: none;">
                                     <button type="button" class="btn btn-secondary active" id="previewModeBtn">
                                         <i class="fas fa-eye me-1"></i><span data-i18n="form.browse">瀏覽</span>
                                     </button>
-                                    <button type="button" class="btn btn-outline-secondary" id="splitModeBtn">
+                                    <button type="button" class="btn btn-outline-secondary" id="splitModeBtn" style="display: none;">
                                         <i class="fas fa-edit me-1"></i><span data-i18n="form.editMode">編輯</span>
                                     </button>
                                 </div>
@@ -765,14 +766,14 @@ html, body { height: 100%; overflow: hidden; }
                             </div>
                             <!-- 操作按鈕 -->
                             <div class="d-flex gap-2">
-                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">取消</button>
+                                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel" style="display: none;">取消</button>
                                 <button type="button" class="btn btn-outline-success" id="cloneAndAddNextBtn" style="display: none;">
                                     <i class="fas fa-clone me-2"></i><span data-i18n="testCase.cloneAndAddNext">複製並新增下一筆</span>
                                 </button>
                                 <button type="button" class="btn btn-success" id="saveAndAddNextBtn" disabled style="display: none;">
                                     <i class="fas fa-plus me-2"></i><span data-i18n="form.saveAndNext">儲存並新增下一筆</span>
                                 </button>
-                                <button type="button" class="btn btn-primary" id="saveTestCaseBtn" disabled>
+                                <button type="button" class="btn btn-primary" id="saveTestCaseBtn" disabled style="display: none;">
                                     <i class="fas fa-save me-2"></i><span data-i18n="common.save">儲存</span>
                                 </button>
                             </div>
@@ -1447,6 +1448,89 @@ function getTeamIdForCache(strict = true) {
     return null;
 }
 
+let teamContextPromise = null;
+let teamsCache = null;
+let teamsCacheLastLoaded = 0;
+const TEAMS_CACHE_TTL = 60 * 1000;
+
+async function fetchTeamsList(forceRefresh = false) {
+    if (!window.AuthClient) {
+        return [];
+    }
+    const now = Date.now();
+    if (!forceRefresh && teamsCache && (now - teamsCacheLastLoaded) < TEAMS_CACHE_TTL) {
+        return teamsCache;
+    }
+    try {
+        const resp = await window.AuthClient.fetch('/api/teams/');
+        if (!resp.ok) {
+            console.warn('取得可用團隊列表失敗:', resp.status, resp.statusText);
+            return teamsCache || [];
+        }
+        const data = await resp.json();
+        teamsCache = Array.isArray(data) ? data : [];
+        teamsCacheLastLoaded = now;
+        return teamsCache;
+    } catch (error) {
+        console.error('取得可用團隊列表時發生錯誤:', error);
+        return teamsCache || [];
+    }
+}
+
+async function ensureTeamContext() {
+    if (typeof AppUtils === 'undefined') {
+        return null;
+    }
+
+    const existing = AppUtils.getCurrentTeam ? AppUtils.getCurrentTeam() : null;
+    if (existing && existing.id) {
+        try { sessionStorage.setItem('lastTeamId', String(existing.id)); } catch (_) {}
+        return existing;
+    }
+
+    if (teamContextPromise) {
+        return teamContextPromise;
+    }
+
+    teamContextPromise = (async () => {
+        try {
+            const teams = await fetchTeamsList();
+            if (!Array.isArray(teams) || teams.length === 0) {
+                return null;
+            }
+
+            let candidateId = getTeamIdForCache(false);
+            let matched = candidateId
+                ? teams.find(team => String(team.id) === String(candidateId))
+                : null;
+
+            if (!matched) {
+                matched = teams[0];
+            }
+
+            AppUtils.setCurrentTeam(matched);
+            if (typeof AppUtils.updateTeamNameBadge === 'function') {
+                AppUtils.updateTeamNameBadge();
+            }
+            try { sessionStorage.setItem('lastTeamId', String(matched.id)); } catch (_) {}
+            if (typeof ensureTeamIdInUrl_TCM === 'function') {
+                ensureTeamIdInUrl_TCM(matched.id);
+            }
+
+            return matched;
+        } catch (error) {
+            console.error('解析團隊資訊失敗:', error);
+            return null;
+        } finally {
+            teamContextPromise = null;
+        }
+    })();
+
+    return teamContextPromise;
+}
+
+
+
 function getTestCasesCache(teamIdOverride = null) {
     try {
         const teamId = teamIdOverride ? String(teamIdOverride) : getTeamIdForCache(true);
@@ -1673,12 +1757,257 @@ function addTestCaseToCache(testCase) {
     }
 }
 
+// 權限檢查與 UI 控制函數
+async function applyTestCaseManagementPermissions() {
+    try {
+        if (!window.AuthClient) {
+            console.warn('AuthClient not available, skipping permission check');
+            return;
+        }
+        
+        const resp = await window.AuthClient.fetch('/api/permissions/ui-config?page=test_case_management');
+        if (!resp.ok) {
+            console.warn('Failed to fetch UI permissions');
+            return;
+        }
+        
+        const config = await resp.json();
+        const permissions = config.components ? { ...config.components } : {};
+
+        let userRole = 'viewer';
+        try {
+            const userInfo = await window.AuthClient.getUserInfo();
+            if (userInfo && userInfo.role) {
+                userRole = String(userInfo.role).toLowerCase();
+            }
+        } catch (error) {
+            console.warn('取得使用者角色失敗，使用預設 viewer:', error);
+        }
+
+        const isViewer = userRole === 'viewer';
+        if (!isViewer) {
+            const editingKeys = [
+                'addTestCaseBtn',
+                'openBulkCreateBtn',
+                'saveTestCaseBtn',
+                'saveAndAddNextBtn',
+                'cloneAndAddNextBtn',
+                'splitModeBtn',
+                'tcgEditContainer',
+                'modalTcgContainer',
+                'attachmentUpload',
+                'batchInlineToolbar',
+                'batchModifyBtn',
+                'batchCopyBtn',
+                'batchDeleteBtn',
+                'testCaseActionCopy',
+                'testCaseActionDelete'
+            ];
+            editingKeys.forEach((key) => {
+                permissions[key] = true;
+            });
+        }
+
+        // Header 區按鈕控制
+        setElementVisibility('addTestCaseBtn', permissions.addTestCaseBtn);
+        setElementVisibility('openBulkCreateBtn', permissions.openBulkCreateBtn);
+        
+        // Modal 按鈕控制
+        setElementVisibility('saveTestCaseBtn', permissions.saveTestCaseBtn);
+        setElementVisibility('saveAndAddNextBtn', permissions.saveAndAddNextBtn);
+        setElementVisibility('cloneAndAddNextBtn', permissions.cloneAndAddNextBtn);
+        
+        // 模式切換按鈕控制
+        if (permissions.splitModeBtn) {
+            setElementVisibility('modeToggleGroup', true);
+            setElementVisibility('splitModeBtn', true);
+            // 如果有編輯權限，顯示取消按鈕
+            const cancelBtn = document.querySelector('[data-bs-dismiss="modal"][data-i18n="common.cancel"]');
+            if (cancelBtn) cancelBtn.style.display = '';
+        } else {
+            // Viewer 模式：只顯示預覽按鈕組，隱藏編輯相關按鈕
+            setElementVisibility('modeToggleGroup', true);
+            setElementVisibility('splitModeBtn', false);
+            // 隱藏取消按鈕，Viewer 只能用右上角 X 關閉
+            const cancelBtn = document.querySelector('[data-bs-dismiss="modal"][data-i18n="common.cancel"]');
+            if (cancelBtn) cancelBtn.style.display = 'none';
+        }
+        
+        // TCG 編輯權限控制
+        const tcgContainer = document.getElementById('modalTcgContainer');
+        if (tcgContainer) {
+            if (permissions.tcgEditContainer) {
+                tcgContainer.style.cursor = 'text';
+                tcgContainer.removeAttribute('data-readonly');
+            } else {
+                tcgContainer.style.cursor = 'default';
+                tcgContainer.setAttribute('data-readonly', 'true');
+                // 移除點擊事件，但保留 TCG 預覽功能
+                tcgContainer.style.pointerEvents = 'none';
+            }
+        }
+        
+        // 附件上傳權限控制
+        const attachmentUpload = document.getElementById('attachmentUpload');
+        const attachmentLabel = document.querySelector('label[for="attachmentUpload"]');
+        const attachmentHelp = attachmentUpload ? attachmentUpload.nextElementSibling : null;
+        
+        if (permissions.attachmentUpload) {
+            // 有上傳權限：顯示上傳控制項
+            setElementVisibility('attachmentUpload', true);
+            if (attachmentLabel) attachmentLabel.style.display = '';
+            if (attachmentHelp) attachmentHelp.style.display = '';
+        } else {
+            // 無上傳權限：隱藏上傳控制項，但保留附件列表顯示
+            if (attachmentUpload) attachmentUpload.style.display = 'none';
+            if (attachmentLabel) attachmentLabel.style.display = 'none';
+            if (attachmentHelp) attachmentHelp.style.display = 'none';
+        }
+        
+        // 批次操作工具控制
+        const batchToolbar = document.getElementById('batchInlineToolbar');
+        if (!permissions.batchInlineToolbar) {
+            if (batchToolbar) {
+                batchToolbar.dataset.permissionsEnabled = 'false';
+                batchToolbar.classList.add('d-none');
+                batchToolbar.style.setProperty('display', 'none', 'important');
+            }
+        } else {
+            if (batchToolbar) {
+                if (!batchToolbar.dataset.defaultDisplay || batchToolbar.dataset.defaultDisplay === 'none') {
+                    const computed = window.getComputedStyle(batchToolbar).display;
+                    batchToolbar.dataset.defaultDisplay = (computed && computed !== 'none') ? computed : 'flex';
+                }
+                batchToolbar.dataset.permissionsEnabled = 'true';
+            }
+            setElementVisibility('batchModifyBtn', permissions.batchModifyBtn);
+            setElementVisibility('batchCopyBtn', permissions.batchCopyBtn);
+            setElementVisibility('batchDeleteBtn', permissions.batchDeleteBtn);
+            updateBatchToolbar();
+        }
+        
+        // 儲存權限狀態供後續使用
+        window._testCasePermissions = permissions;
+        
+    } catch (error) {
+        console.error('Apply test case management permissions failed:', error);
+    }
+}
+
+// 輔助函數：設定元素可見性
+function setElementVisibility(elementId, isVisible) {
+    const element = document.getElementById(elementId);
+    if (!element) return;
+
+    if (!element.dataset.defaultDisplay || element.dataset.defaultDisplay === 'none') {
+        let defaultDisplay = '';
+        if (element.classList.contains('d-flex')) {
+            defaultDisplay = 'flex';
+        } else if (element.classList.contains('btn-group')) {
+            defaultDisplay = 'inline-flex';
+        } else if (element.tagName === 'BUTTON' || element.classList.contains('btn')) {
+            defaultDisplay = 'inline-block';
+        } else if (element.tagName === 'INPUT' || element.tagName === 'SELECT' || element.tagName === 'TEXTAREA') {
+            defaultDisplay = 'block';
+        } else {
+            const computed = window.getComputedStyle(element).display;
+            if (computed && computed !== 'none') {
+                defaultDisplay = computed;
+            }
+        }
+        element.dataset.defaultDisplay = defaultDisplay || '';
+    }
+
+    if (isVisible) {
+        element.classList.remove('d-none');
+        const displayValue = element.dataset.defaultDisplay;
+        if (displayValue) {
+            element.style.setProperty('display', displayValue, 'important');
+        } else {
+            element.style.removeProperty('display');
+        }
+    } else {
+        element.classList.add('d-none');
+        element.style.setProperty('display', 'none', 'important');
+    }
+}
+
+// 檢查是否有特定權限
+function hasTestCasePermission(permissionKey) {
+    if (!window._testCasePermissions) return true; // 預設允許（向下相容）
+    return !!window._testCasePermissions[permissionKey];
+}
+
+// 停用編輯功能（for Viewer）
+function disableEditingFeatures() {
+    // 停用所有 textarea 和 input 欄位
+    const modal = document.getElementById('testCaseModal');
+    if (modal) {
+        const inputs = modal.querySelectorAll('input, textarea, select');
+        inputs.forEach(input => {
+            // 不停用附件上傳欄位（會由權限控制隱藏）
+            if (input.id !== 'attachmentUpload') {
+                input.disabled = true;
+                input.style.backgroundColor = '#f8f9fa';
+                input.style.cursor = 'not-allowed';
+            }
+        });
+        
+        // 停用 TCG 編輯容器，但保留預覽功能
+        const tcgContainer = document.getElementById('modalTcgContainer');
+        if (tcgContainer) {
+            tcgContainer.style.cursor = 'default';
+            // 不設定 pointerEvents = 'none'，保留 TCG hover 預覽功能
+            tcgContainer.classList.add('tcg-readonly');
+        }
+        
+        // 隱藏 Markdown 工具列
+        const toolbars = modal.querySelectorAll('.markdown-toolbar');
+        toolbars.forEach(toolbar => {
+            toolbar.style.display = 'none';
+        });
+    }
+}
+
+// 動態渲染表格時的 Actions 控制
+function renderTestCaseActions(testCase) {
+    const permissions = window._testCasePermissions || {};
+    let actionsHtml = `
+        <div class="btn-group" role="group">
+            <button class="btn btn-sm btn-outline-primary" onclick="showTestCaseModal(testCases.find(tc => tc.record_id === '${testCase.record_id}'))" data-i18n-title="common.view">
+                <i class="fas fa-eye"></i>
+            </button>`;
+    
+    if (permissions.testCaseActionCopy) {
+        actionsHtml += `
+            <button class="btn btn-sm btn-outline-secondary" onclick="cloneTestCase('${testCase.record_id}')" data-i18n-title="common.copy">
+                <i class="fas fa-copy"></i>
+            </button>`;
+    }
+    
+    if (permissions.testCaseActionDelete) {
+        actionsHtml += `
+            <button class="btn btn-sm btn-outline-danger" onclick="deleteTestCase('${testCase.record_id}')" data-i18n-title="common.delete">
+                <i class="fas fa-trash"></i>
+            </button>`;
+    }
+    
+    actionsHtml += `</div>`;
+    return actionsHtml;
+}
+
 document.addEventListener('DOMContentLoaded', async function() {
+    // 初始化權限檢查
+    await applyTestCaseManagementPermissions();
+    
+    let activeTeam = null;
+
     // 監聽全域 team 變更事件，隨時更新 URL 的 team_id
     try {
         window.addEventListener('teamChanged', function(e) {
             const newTeam = e && e.detail && e.detail.team;
             if (newTeam && newTeam.id) {
+                activeTeam = newTeam;
                 ensureTeamIdInUrl_TCM(newTeam.id);
                 try { sessionStorage.setItem('lastTeamId', String(newTeam.id)); } catch (_) {}
                 // 切換 team 後：依新 team 的儲存狀態還原（若無儲存則等同清空），並重新渲染
@@ -1705,24 +2034,24 @@ document.addEventListener('DOMContentLoaded', async function() {
         });
     } catch (_) {}
     try {
-        // 先處理 URL 的 team_id，確保後續載入不會因為未選擇團隊而中止
-        const urlParams = new URLSearchParams(window.location.search);
-        const teamIdParam = urlParams.get('team_id');
-        // 嘗試立即更新 placeholder（若 i18n 已就緒）
         updateTcmPlaceholders();
-        const mode = urlParams.get('mode') || 'preview';
-            const teamId = parseInt(teamIdParam);
-            if (!isNaN(teamId)) {
-                AppUtils.setCurrentTeam({ id: teamId, name: 'From Test Run' });
-            }
-        // 確保網址列包含 team_id（不重新載入頁面）
-        try {
-            const cur = AppUtils.getCurrentTeam && AppUtils.getCurrentTeam();
-            if (cur && cur.id) ensureTeamIdInUrl_TCM(cur.id);
-        } catch (_) {}
-    } catch (_) {}
+        activeTeam = await ensureTeamContext();
+        if (activeTeam && activeTeam.id) {
+            ensureTeamIdInUrl_TCM(activeTeam.id);
+        }
+    } catch (error) {
+        console.error('初始化團隊資訊失敗:', error);
+    }
 
-const urlParams = new URLSearchParams(window.location.search);
+    if (!activeTeam || !activeTeam.id) {
+        const selectTeamMessage = window.i18n ? window.i18n.t('errors.selectTeamFirst', {}, '請先選擇團隊') : '請先選擇團隊';
+        showError(selectTeamMessage);
+        hideLoadingProgress();
+        hideLoadingState();
+        return;
+    }
+
+    const urlParams = new URLSearchParams(window.location.search);
     const minimal = urlParams.get('minimal') === '1' || urlParams.get('editor') === '1';
     const tcNumber = urlParams.get('tc') || urlParams.get('test_case_number');
     const mode = urlParams.get('mode') || 'preview';
@@ -1758,7 +2087,7 @@ const urlParams = new URLSearchParams(window.location.search);
             } catch (_) {}
 
             // 直接從 API 抓此測試案例
-            const currentTeam = AppUtils.getCurrentTeam();
+            const currentTeam = activeTeam || (await ensureTeamContext());
             if (!currentTeam || !currentTeam.id) throw new Error('請先選擇團隊');
             const resp = await window.AuthClient.fetch(`/api/teams/${currentTeam.id}/testcases/?search=${encodeURIComponent(tcNumber)}&limit=1`);
             if (!resp.ok) throw new Error('載入測試案例失敗');
@@ -2293,7 +2622,10 @@ async function loadTestCases(showLoadingBlock = true, updateProgress = null, for
         if (updateProgress) updateProgress(0, '開始載入測試案例...');
         
         // 獲取當前選擇的團隊
-        const currentTeam = AppUtils.getCurrentTeam();
+        let currentTeam = AppUtils.getCurrentTeam ? AppUtils.getCurrentTeam() : null;
+        if (!currentTeam || !currentTeam.id) {
+            currentTeam = await ensureTeamContext();
+        }
         if (!currentTeam || !currentTeam.id) {
             throw new Error('請先選擇團隊');
         }
@@ -2374,7 +2706,8 @@ async function loadTestCases(showLoadingBlock = true, updateProgress = null, for
     } catch (error) {
         console.error('載入測試案例失敗:', error);
         const message = window.i18n ? window.i18n.t('errors.loadTestCasesFailed') : '載入測試案例失敗';
-        showError(message + '：' + error.message);
+        const errorMsg = error && error.message ? String(error.message) : '';
+        showError(message + (errorMsg ? '：' + errorMsg : ''));
         if (showLoadingBlock) {
             hideLoadingState();
         }
@@ -2482,8 +2815,10 @@ function renderTestCasesTable() {
                 </button>
             </td>
             <td class="align-middle text-center position-relative" data-field="tcg" data-record-id="${testCase.record_id}" style="max-width: 180px;">
-                <div class="tcg-edit-area" onclick="editTCG('${testCase.record_id}')" data-i18n-title="tooltips.clickEditTcg" 
-                     style="display: flex; flex-wrap: wrap; gap: 2px; justify-content: center; align-items: center; min-height: 24px; padding: 2px; cursor: pointer;">
+                <div class="tcg-edit-area ${hasTestCasePermission('tcgEditContainer') ? 'tcg-editable' : 'tcg-readonly'}" 
+                     ${hasTestCasePermission('tcgEditContainer') ? 
+                       `onclick="editTCG('${testCase.record_id}')" data-i18n-title="tooltips.clickEditTcg" style="display: flex; flex-wrap: wrap; gap: 2px; justify-content: center; align-items: center; min-height: 24px; padding: 2px; cursor: pointer;"` : 
+                       'style="display: flex; flex-wrap: wrap; gap: 2px; justify-content: center; align-items: center; min-height: 24px; padding: 2px; cursor: default;"'}>
                     ${getTCGTags(testCase)}
                 </div>
             </td>
@@ -2506,14 +2841,16 @@ function renderTestCasesTable() {
                             onclick="viewTestCase('${testCase.record_id}')" data-i18n-title="tooltips.viewEdit">
                         <i class="fas fa-eye"></i>
                     </button>
+                    ${hasTestCasePermission('testCaseActionCopy') ? `
                     <button type="button" class="btn btn-sm btn-outline-secondary" 
                             onclick="copyTestCase('${testCase.record_id}')" title="${(window.i18n && window.i18n.isReady()) ? window.i18n.t('common.copy') : '複製'}">
                         <i class="fas fa-copy"></i>
-                    </button>
+                    </button>` : ''}
+                    ${hasTestCasePermission('testCaseActionDelete') ? `
                     <button type="button" class="btn btn-sm btn-danger" 
                             onclick="deleteTestCase('${testCase.record_id}')" data-i18n-title="tooltips.delete">
                         <i class="fas fa-trash"></i>
-                    </button>
+                    </button>` : ''}
                 </div>
             </td>
         </tr>
@@ -4067,8 +4404,15 @@ function showTestCaseModal(testCase = null) {
             updateMarkdownPreview(fieldId);
         });
         
-        // 檢視模式下預設為預覽模式
-        setEditorMode('preview');
+        // 檢視模式下預設為預覽模式，Viewer 強制為預覽模式
+        if (hasTestCasePermission('splitModeBtn')) {
+            setEditorMode('preview');
+        } else {
+            // Viewer 模式：強制預覽模式，不允許切換
+            setEditorMode('preview');
+            // 移除編輯模式相關的事件處理
+            disableEditingFeatures();
+        }
         
         // 隱藏「儲存並新增下一筆」按鈕（編輯模式不需要）
         saveAndAddNextBtn.style.display = 'none';
@@ -5053,10 +5397,18 @@ function updateBatchToolbar() {
     }
     
     // 顯示/隱藏工具列
-    if (selectedCount > 0) {
+    if (!toolbar.dataset.defaultDisplay || toolbar.dataset.defaultDisplay === 'none') {
+        const computed = window.getComputedStyle(toolbar).display;
+        toolbar.dataset.defaultDisplay = (computed && computed !== 'none') ? computed : 'flex';
+    }
+
+    if (selectedCount > 0 && toolbar.dataset.permissionsEnabled !== 'false') {
         toolbar.classList.remove('d-none');
+        const displayValue = toolbar.dataset.defaultDisplay || 'flex';
+        toolbar.style.setProperty('display', displayValue, 'important');
     } else {
         toolbar.classList.add('d-none');
+        toolbar.style.setProperty('display', 'none', 'important');
     }
     
     // 工具列顯示狀態可能改變整體高度，需重新計算列表高度
@@ -6123,6 +6475,11 @@ function quickEdit(recordId, field) {
 let currentTCGEditor = null;
 
 async function editTCG(recordId) {
+    // 檢查權限
+    if (!hasTestCasePermission('tcgEditContainer')) {
+        return; // Viewer 無權編輯 TCG
+    }
+    
     const testCase = testCases.find(tc => tc.record_id === recordId);
     if (!testCase) return;
     
@@ -6821,7 +7178,20 @@ function addHelpButtonsToToolbars() {
 function initializeMarkdownEditor() {
     // 模式切換按鈕
     document.getElementById('previewModeBtn').addEventListener('click', () => setEditorMode('preview'));
-    document.getElementById('splitModeBtn').addEventListener('click', () => setEditorMode('split'));
+    document.getElementById('splitModeBtn').addEventListener('click', () => {
+        // 檢查編輯權限
+        if (hasTestCasePermission('splitModeBtn')) {
+            setEditorMode('split');
+        } else {
+            // Viewer 沒有編輯權限
+            const message = window.i18n ? window.i18n.t('errors.noEditPermission', {}, '您沒有編輯權限') : '您沒有編輯權限';
+            if (window.AppUtils && window.AppUtils.showWarning) {
+                window.AppUtils.showWarning(message);
+            } else {
+                alert(message);
+            }
+        }
+    });
     
     // 綁定 Markdown 事件
     bindMarkdownEvents();
