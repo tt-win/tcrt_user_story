@@ -10,13 +10,13 @@ import json
 import asyncio
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta
-from sqlalchemy import select, func, and_, or_, desc, asc
+from sqlalchemy import select, func, and_, desc, asc
 from sqlalchemy.exc import SQLAlchemyError
 from contextlib import asynccontextmanager
 
 from .models import (
     AuditLog, AuditLogCreate, AuditLogQuery, AuditLogResponse, AuditLogSummary,
-    AuditStatistics, ActionType, ResourceType, AuditSeverity, ExportFormat
+    AuditStatistics, ActionType, ResourceType, AuditSeverity
 )
 from .database import get_audit_session, AuditLogTable, audit_db_manager
 from ..config import get_settings
@@ -45,6 +45,7 @@ class AuditService:
         resource_id: str,
         team_id: int,
         details: Optional[Dict[str, Any]] = None,
+        action_brief: Optional[str] = None,
         severity: AuditSeverity = AuditSeverity.INFO,
         ip_address: Optional[str] = None,
         user_agent: Optional[str] = None
@@ -67,6 +68,7 @@ class AuditService:
                 resource_id=resource_id,
                 team_id=team_id,
                 details=masked_details,
+                action_brief=action_brief,
                 severity=severity,
                 ip_address=ip_address,
                 user_agent=user_agent
@@ -92,6 +94,7 @@ class AuditService:
     async def log_create(self, user_id: int, username: str, resource_type: ResourceType,
                         resource_id: str, team_id: int, role: str,
                         details: Optional[Dict] = None,
+                        action_brief: Optional[str] = None,
                         ip_address: Optional[str] = None, user_agent: Optional[str] = None) -> None:
         """記錄創建操作"""
         await self.log_action(
@@ -103,6 +106,7 @@ class AuditService:
             resource_id=resource_id,
             team_id=team_id,
             details=details,
+            action_brief=action_brief,
             severity=AuditSeverity.INFO,
             ip_address=ip_address,
             user_agent=user_agent
@@ -111,6 +115,7 @@ class AuditService:
     async def log_update(self, user_id: int, username: str, resource_type: ResourceType,
                         resource_id: str, team_id: int, role: str,
                         details: Optional[Dict] = None,
+                        action_brief: Optional[str] = None,
                         ip_address: Optional[str] = None, user_agent: Optional[str] = None) -> None:
         """記錄更新操作"""
         await self.log_action(
@@ -122,6 +127,7 @@ class AuditService:
             resource_id=resource_id,
             team_id=team_id,
             details=details,
+            action_brief=action_brief,
             severity=AuditSeverity.INFO,
             ip_address=ip_address,
             user_agent=user_agent
@@ -130,6 +136,7 @@ class AuditService:
     async def log_delete(self, user_id: int, username: str, resource_type: ResourceType,
                         resource_id: str, team_id: int, role: str,
                         details: Optional[Dict] = None,
+                        action_brief: Optional[str] = None,
                         ip_address: Optional[str] = None, user_agent: Optional[str] = None) -> None:
         """記錄刪除操作（高危險性）"""
         await self.log_action(
@@ -141,6 +148,7 @@ class AuditService:
             resource_id=resource_id,
             team_id=team_id,
             details=details,
+            action_brief=action_brief,
             severity=AuditSeverity.CRITICAL,
             ip_address=ip_address,
             user_agent=user_agent
@@ -171,28 +179,8 @@ class AuditService:
         """查詢審計記錄"""
         try:
             async with audit_db_manager.get_session() as session:
-                # 建構查詢條件
-                conditions = []
-                
-                if query.start_time:
-                    conditions.append(AuditLogTable.timestamp >= query.start_time)
-                if query.end_time:
-                    conditions.append(AuditLogTable.timestamp <= query.end_time)
-                if query.user_id:
-                    conditions.append(AuditLogTable.user_id == query.user_id)
-                if query.username:
-                    conditions.append(AuditLogTable.username.ilike(f'%{query.username}%'))
-                if query.action_type:
-                    conditions.append(AuditLogTable.action_type == query.action_type)
-                if query.resource_type:
-                    conditions.append(AuditLogTable.resource_type == query.resource_type)
-                if query.resource_id:
-                    conditions.append(AuditLogTable.resource_id == query.resource_id)
-                if query.team_id:
-                    conditions.append(AuditLogTable.team_id == query.team_id)
-                if query.severity:
-                    conditions.append(AuditLogTable.severity == query.severity)
-                    
+                conditions = self._build_conditions(query)
+
                 # 總數查詢
                 count_query = select(func.count()).select_from(AuditLogTable)
                 if conditions:
@@ -231,13 +219,14 @@ class AuditService:
                         resource_id=record.resource_id,
                         team_id=record.team_id,
                         severity=record.severity,
+                        action_brief=getattr(record, 'action_brief', None),
                         ip_address=record.ip_address
                     )
                     for record in records
                 ]
                 
                 total_pages = (total + query.page_size - 1) // query.page_size
-                
+
                 return AuditLogResponse(
                     items=items,
                     total=total,
@@ -245,9 +234,82 @@ class AuditService:
                     page_size=query.page_size,
                     total_pages=total_pages
                 )
-                
+
         except Exception as e:
             logger.error(f"查詢審計記錄失敗: {e}", exc_info=True)
+            raise
+
+    def _build_conditions(self, query: AuditLogQuery) -> List[Any]:
+        """依據查詢條件組裝 SQLAlchemy 條件"""
+        conditions: List[Any] = []
+
+        if query.start_time:
+            conditions.append(AuditLogTable.timestamp >= query.start_time)
+        if query.end_time:
+            conditions.append(AuditLogTable.timestamp <= query.end_time)
+        if query.user_id:
+            conditions.append(AuditLogTable.user_id == query.user_id)
+        if query.username:
+            conditions.append(AuditLogTable.username.ilike(f"%{query.username}%"))
+        if query.action_type:
+            conditions.append(AuditLogTable.action_type == query.action_type)
+        if query.resource_type:
+            conditions.append(AuditLogTable.resource_type == query.resource_type)
+        if query.resource_id:
+            conditions.append(AuditLogTable.resource_id == query.resource_id)
+        if query.team_id:
+            conditions.append(AuditLogTable.team_id == query.team_id)
+        if query.severity:
+            conditions.append(AuditLogTable.severity == query.severity)
+        if getattr(query, "role", None):
+            conditions.append(AuditLogTable.role == query.role)
+
+        return conditions
+
+    async def fetch_logs_for_export(self, query: AuditLogQuery) -> List[AuditLog]:
+        """取得符合條件的審計記錄（無分頁）供匯出使用"""
+        try:
+            async with audit_db_manager.get_session() as session:
+                conditions = self._build_conditions(query)
+                stmt = select(AuditLogTable)
+                if conditions:
+                    stmt = stmt.where(and_(*conditions))
+                stmt = stmt.order_by(desc(AuditLogTable.timestamp))
+
+                result = await session.execute(stmt)
+                records = result.scalars().all()
+
+                export_items: List[AuditLog] = []
+                for record in records:
+                    details = None
+                    if record.details:
+                        try:
+                            details = json.loads(record.details)
+                        except json.JSONDecodeError:
+                            details = None
+
+                    export_items.append(
+                        AuditLog(
+                            id=record.id,
+                            timestamp=record.timestamp,
+                            user_id=record.user_id,
+                            username=record.username,
+                            role=record.role,
+                            action_type=record.action_type,
+                            resource_type=record.resource_type,
+                            resource_id=record.resource_id,
+                            team_id=record.team_id,
+                            details=details,
+                            action_brief=getattr(record, 'action_brief', None),
+                            severity=record.severity,
+                            ip_address=record.ip_address,
+                            user_agent=record.user_agent,
+                        )
+                    )
+
+                return export_items
+        except Exception as e:
+            logger.error(f"匯出審計記錄失敗: {e}", exc_info=True)
             raise
             
     async def get_log_detail(self, log_id: int) -> Optional[AuditLog]:
@@ -281,6 +343,7 @@ class AuditService:
                     resource_id=record.resource_id,
                     team_id=record.team_id,
                     details=details,
+                    action_brief=getattr(record, 'action_brief', None),
                     severity=record.severity,
                     ip_address=record.ip_address,
                     user_agent=record.user_agent
@@ -477,6 +540,7 @@ class AuditService:
                         resource_id=record.resource_id,
                         team_id=record.team_id,
                         details=details_json,
+                        action_brief=record.action_brief,
                         severity=record.severity,
                         ip_address=record.ip_address,
                         user_agent=record.user_agent

@@ -35,6 +35,8 @@ class AuditMiddleware(BaseHTTPMiddleware):
         ("/api/auth", ResourceType.AUTH),
     )
 
+    AUTO_LOG_RESOURCE_TYPES: tuple[ResourceType, ...] = ()
+
     def _resolve_resource_type(self, path: str) -> ResourceType:
         for prefix, resource in self.RESOURCE_PATH_MAP:
             if path.startswith(prefix):
@@ -89,6 +91,9 @@ class AuditMiddleware(BaseHTTPMiddleware):
 
         resource_id = self._resolve_resource_id(path_params, path)
         resource_type = self._resolve_resource_type(path)
+
+        if resource_type not in self.AUTO_LOG_RESOURCE_TYPES:
+            return
 
         severity = AuditSeverity.CRITICAL if action_type == ActionType.DELETE else AuditSeverity.INFO
 

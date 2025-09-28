@@ -24,7 +24,6 @@ import os
 import sys
 import shutil
 import argparse
-import asyncio
 from pathlib import Path
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
@@ -44,6 +43,8 @@ from app.models.database_models import (
     Team, TestRunConfig, TestRunItem, TestRunItemResultHistory,
     TCGRecord, LarkDepartment, LarkUser, SyncHistory,
 )
+from sqlalchemy import create_engine
+
 from app.audit import audit_db_manager, AuditLogTable
 
 # -----------------------------
@@ -215,6 +216,7 @@ COLUMN_CHECKS: Dict[str, List[ColumnSpec]] = {
 AUDIT_COLUMN_CHECKS: Dict[str, List[ColumnSpec]] = {
     "audit_logs": [
         ColumnSpec("role", "VARCHAR(50)", nullable=False, default="user"),
+        ColumnSpec("action_brief", "VARCHAR(500)", nullable=True, default=None),
     ],
 }
 
@@ -223,6 +225,9 @@ AUDIT_INDEX_SPECS: List[Dict[str, Any]] = [
     {"name": "idx_audit_user_time", "table": "audit_logs", "columns": ["user_id", "timestamp"]},
     {"name": "idx_audit_resource", "table": "audit_logs", "columns": ["resource_type", "resource_id"]},
     {"name": "idx_audit_severity_time", "table": "audit_logs", "columns": ["severity", "timestamp"]},
+    {"name": "idx_audit_username_time", "table": "audit_logs", "columns": ["username", "timestamp"]},
+    {"name": "idx_audit_role_time", "table": "audit_logs", "columns": ["role", "timestamp"]},
+    {"name": "idx_audit_action_time", "table": "audit_logs", "columns": ["action_type", "timestamp"]},
 ]
 
 # 索引規格
@@ -761,15 +766,21 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     return p.parse_args(argv)
 
 
-def initialize_audit_engine(logger: Logger):
-    async def _init():
-        await audit_db_manager.initialize()
-        return audit_db_manager.engine.sync_engine if audit_db_manager.engine else None
+def _normalize_audit_url(url: str) -> str:
+    """將異步驅動的 URL 轉換為同步驅動"""
+    if url.startswith("sqlite+aiosqlite://"):
+        return url.replace("sqlite+aiosqlite://", "sqlite:///")
+    if url.startswith("postgresql+asyncpg://"):
+        return url.replace("postgresql+asyncpg://", "postgresql://")
+    return url
 
+
+def initialize_audit_engine(logger: Logger):
     try:
-        engine = asyncio.run(_init())
-        if engine is None:
-            raise RuntimeError("審計資料庫引擎初始化失敗")
+        sync_url = _normalize_audit_url(audit_db_manager.config.database_url)
+        engine = create_engine(sync_url, future=True)
+        # 確保審計資料表存在
+        AuditLogTable.metadata.create_all(bind=engine)
         logger.info("審計資料庫已初始化")
         return engine
     except Exception as exc:

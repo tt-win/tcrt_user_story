@@ -15,6 +15,9 @@
     <button type="button" class="btn btn-primary" id="createTeamBtn">
         <i class="fas fa-plus me-2"></i><span data-i18n="team.createTeam">新增團隊</span>
     </button>
+    <button type="button" class="btn btn-outline-primary" id="auditLogBtn">
+        <i class="fas fa-clipboard-list me-2"></i><span data-i18n="audit.viewLogs">審計記錄</span>
+    </button>
     <button type="button" class="btn btn-outline-primary" id="syncOrgBtn">
         <i class="fas fa-users me-2"></i><span data-i18n="orgSync.openButton">同步組織架構</span>
     </button>
@@ -459,6 +462,9 @@ async function applyTeamManagementUiVisibility() {
 
         const syncBtn = document.getElementById('syncOrgBtn');
         if (syncBtn) syncBtn.style.display = map['syncOrgBtn'] ? '' : 'none';
+
+        const auditBtn = document.getElementById('auditLogBtn');
+        if (auditBtn) auditBtn.style.display = map['auditLogBtn'] ? '' : 'none';
     } catch (_) {}
 }
 
@@ -474,6 +480,12 @@ function initTeamManagement() {
     document.getElementById('refreshBtn').addEventListener('click', loadTeams);
     document.getElementById('saveTeamBtn').addEventListener('click', saveTeam);
     document.getElementById('validateLarkBtn').addEventListener('click', validateLarkConnection);
+    const auditBtn = document.getElementById('auditLogBtn');
+    if (auditBtn) {
+        auditBtn.addEventListener('click', () => {
+            window.location.href = '/audit-logs';
+        });
+    }
     document.getElementById('syncOrgBtn').addEventListener('click', openSyncModal);
     
     // 同步功能框事件監聽器

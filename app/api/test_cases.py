@@ -25,6 +25,7 @@ from pydantic import BaseModel
 from datetime import datetime
 import uuid
 import json
+import logging
 
 from app.database import get_db, get_sync_db
 from app.auth.dependencies import get_current_user
@@ -48,8 +49,41 @@ from app.services.tcg_converter import tcg_converter
 from app.services.test_case_sync_service import TestCaseSyncService
 from app.services.lark_client import LarkClient
 from app.config import settings
+from app.audit import audit_service, ActionType, ResourceType, AuditSeverity
 
 router = APIRouter(prefix="/teams/{team_id}/testcases", tags=["test-cases"])
+
+logger = logging.getLogger(__name__)
+
+
+async def log_test_case_action(
+    action_type: ActionType,
+    current_user: User,
+    team_id: int,
+    resource_id: str,
+    action_brief: str,
+    details: Optional[Dict[str, Any]] = None,
+) -> None:
+    try:
+        role_value = (
+            current_user.role.value
+            if hasattr(current_user.role, "value")
+            else str(current_user.role)
+        )
+        await audit_service.log_action(
+            user_id=current_user.id,
+            username=current_user.username,
+            role=role_value,
+            action_type=action_type,
+            resource_type=ResourceType.TEST_CASE,
+            resource_id=resource_id,
+            team_id=team_id,
+            details=details,
+            action_brief=action_brief,
+            severity=AuditSeverity.CRITICAL if action_type == ActionType.DELETE else AuditSeverity.INFO,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("寫入測試案例審計記錄失敗: %s", exc, exc_info=True)
 
 
 class BulkTestCaseItem(BaseModel):
@@ -627,6 +661,22 @@ async def create_test_case(
                     pass
 
         db.commit()
+        action_brief = f"{current_user.username} 建立了 Test Case：{item.test_case_number}"
+        if item.title:
+            action_brief += f"（{item.title}）"
+        await log_test_case_action(
+            action_type=ActionType.CREATE,
+            current_user=current_user,
+            team_id=team_id,
+            resource_id=item.test_case_number or str(item.id),
+            action_brief=action_brief,
+            details={
+                "record_id": item.id,
+                "test_case_number": item.test_case_number,
+                "title": item.title,
+            },
+        )
+
         # 回傳本地物件
         return TestCaseResponse(
             record_id=str(item.id),
@@ -724,29 +774,41 @@ async def update_test_case(
                 detail=f"找不到測試案例 {record_id}",
             )
 
+        recorded_number = item.test_case_number
+        recorded_title = item.title
+        recorded_id = getattr(item, "id", None)
+
         changed = False
+        changed_fields: List[str] = []
 
         if case_update.test_case_number is not None:
             item.test_case_number = case_update.test_case_number
             changed = True
+            changed_fields.append("test_case_number")
         if case_update.title is not None:
             item.title = case_update.title
             changed = True
+            changed_fields.append("title")
         if case_update.priority is not None:
             item.priority = case_update.priority
             changed = True
+            changed_fields.append("priority")
         if case_update.precondition is not None:
             item.precondition = case_update.precondition
             changed = True
+            changed_fields.append("precondition")
         if case_update.steps is not None:
             item.steps = case_update.steps
             changed = True
+            changed_fields.append("steps")
         if case_update.expected_result is not None:
             item.expected_result = case_update.expected_result
             changed = True
+            changed_fields.append("expected_result")
         if case_update.test_result is not None:
             item.test_result = case_update.test_result
             changed = True
+            changed_fields.append("test_result")
 
         # 處理 TCG 欄位更新：支援字串（單號或逗號/空白/換行分隔多號）或 LarkRecord 陣列
         if hasattr(case_update, "tcg") and case_update.tcg is not None:
@@ -772,6 +834,8 @@ async def update_test_case(
                         # 清空
                         item.tcg_json = json.dumps([], ensure_ascii=False)
                         changed = True
+                        if "tcg" not in changed_fields:
+                            changed_fields.append("tcg")
                     else:
                         # 解析多個單號
                         parts = [
@@ -796,6 +860,8 @@ async def update_test_case(
                         tcg_items = build_items_from_pairs(pairs)
                         item.tcg_json = json.dumps(tcg_items, ensure_ascii=False)
                         changed = True
+                        if "tcg" not in changed_fields:
+                            changed_fields.append("tcg")
                 else:
                     # 嘗試將 LarkRecord 結構序列化
                     try:
@@ -839,6 +905,8 @@ async def update_test_case(
                             )
                         item.tcg_json = json.dumps(incoming, ensure_ascii=False)
                         changed = True
+                        if "tcg" not in changed_fields:
+                            changed_fields.append("tcg")
                     except Exception:
                         # 無法解析時，清空避免壞資料
                         item.tcg_json = json.dumps([], ensure_ascii=False)
@@ -893,6 +961,8 @@ async def update_test_case(
                         }
                     )
                 item.attachments_json = json.dumps(existing, ensure_ascii=False)
+                if "attachments" not in changed_fields:
+                    changed_fields.append("attachments")
                 try:
                     staging_dir.rmdir()
                 except Exception:
@@ -903,6 +973,23 @@ async def update_test_case(
             item.updated_at = datetime.utcnow()
             item.sync_status = SyncStatus.PENDING
         db.commit()
+
+        if changed:
+            action_brief = f"{current_user.username} 更新了 Test Case：{item.test_case_number or record_id}"
+            if item.title:
+                action_brief += f"（{item.title}）"
+            await log_test_case_action(
+                action_type=ActionType.UPDATE,
+                current_user=current_user,
+                team_id=team_id,
+                resource_id=item.test_case_number or str(item.id),
+                action_brief=action_brief,
+                details={
+                    "record_id": item.id,
+                    "test_case_number": item.test_case_number,
+                    "changed_fields": changed_fields,
+                },
+            )
 
         return TestCaseResponse(
             record_id=str(item.id),
@@ -1463,7 +1550,10 @@ async def upload_test_case_attachments(
 
 @router.delete("/{record_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_test_case(
-    team_id: int, record_id: str, db: Session = Depends(get_sync_db)
+    team_id: int,
+    record_id: str,
+    db: Session = Depends(get_sync_db),
+    current_user: User = Depends(get_current_user),
 ):
     """刪除測試案例（本地 DB）。
     支援 record_id 為本地整數 id、lark_record_id，或 test_case_number（備援）。
@@ -1471,6 +1561,18 @@ async def delete_test_case(
     """
     import json
     from pathlib import Path
+    from app.auth.models import UserRole
+    from app.auth.permission_service import permission_service
+
+    if current_user.role != UserRole.SUPER_ADMIN:
+        permission_check = await permission_service.check_team_permission(
+            current_user.id, team_id, PermissionType.DELETE, current_user.role
+        )
+        if not permission_check.has_permission:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="無權限刪除此團隊的測試案例",
+            )
 
     try:
         item = None
@@ -1545,6 +1647,22 @@ async def delete_test_case(
 
         db.delete(item)
         db.commit()
+
+        action_brief = f"{current_user.username} 刪除了 Test Case：{recorded_number or record_id}"
+        if recorded_title:
+            action_brief += f"（{recorded_title}）"
+        await log_test_case_action(
+            action_type=ActionType.DELETE,
+            current_user=current_user,
+            team_id=team_id,
+            resource_id=recorded_number or (str(recorded_id) if recorded_id is not None else record_id),
+            action_brief=action_brief,
+            details={
+                "record_id": recorded_id,
+                "test_case_number": recorded_number,
+                "title": recorded_title,
+            },
+        )
     except HTTPException:
         raise
     except Exception as e:

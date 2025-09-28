@@ -88,6 +88,90 @@
         "reqDifferent": "Different from current password",
         "reqMatch": "Two password entries match"
     },
+    "roles": {
+        "superAdmin": "Super Admin",
+        "admin": "Admin",
+        "user": "Member",
+        "viewer": "Viewer"
+    },
+    "audit": {
+        "viewLogs": "Audit Logs",
+        "pageTitle": "Audit Log Review",
+        "pageSubtitle": "Review and trace system activities",
+        "backToTeams": "Back to Team Management",
+        "timezoneHint": "All timestamps are shown in your local timezone",
+        "refresh": "Refresh",
+        "exportCsv": "Export CSV",
+        "filters": {
+            "title": "Filters",
+            "username": "Username",
+            "usernamePlaceholder": "Enter username",
+            "timeRange": "Time Range",
+            "startHint": "Start time (local timezone)",
+            "endHint": "End time (local timezone)",
+            "role": "Role",
+            "resourceType": "Resource Type",
+            "team": "Team",
+            "teamAll": "All Teams",
+            "teamHint": "Display by team name",
+            "apply": "Apply Filters",
+            "reset": "Clear Filters",
+            "teamLoadFailed": "Failed to load team list"
+        },
+        "results": {
+            "title": "Audit Logs"
+        },
+        "loading": "Loading audit logs...",
+        "scrollHint": "Scroll down to load more records",
+        "table": {
+            "brief": "Summary",
+            "timestamp": "Timestamp",
+            "username": "User",
+            "role": "Role",
+            "team": "Team",
+            "action": "Action",
+            "resource": "Resource",
+            "severity": "Severity",
+            "ip": "Source IP",
+            "noData": "No records match the current filters"
+        },
+        "loadingMore": "Loading more records...",
+        "allLoaded": "All records are loaded",
+        "pagination": {
+            "prev": "Previous",
+            "next": "Next",
+            "info": "Page {current} of {total}"
+        },
+        "summary": "Total {total} records, {loaded} loaded",
+        "currentTimezone": "Current timezone: {tz}",
+        "action": {
+            "CREATE": "Create",
+            "READ": "Read",
+            "UPDATE": "Update",
+            "DELETE": "Delete",
+            "LOGIN": "Login",
+            "LOGOUT": "Logout"
+        },
+        "resource": {
+            "team_setting": "Team Settings",
+            "test_run": "Test Run",
+            "test_case": "Test Case",
+            "user": "User",
+            "auth": "Authentication",
+            "permission": "Permission",
+            "attachment": "Attachment",
+            "system": "System"
+        },
+        "severity": {
+            "info": "Info",
+            "warning": "Warning",
+            "critical": "Critical"
+        },
+        "loadFailed": "Failed to load audit logs",
+        "exportSuccess": "CSV export completed",
+        "exportFailed": "Failed to export audit logs",
+        "unauthorized": "You do not have permission to view audit logs"
+    },
     "confirm": {
         "batchDeleteTestRuns": "Are you sure you want to delete these {count} test runs? This action cannot be undone.",
         "batchStartTestRuns": "Are you sure you want to start these {count} test runs?",

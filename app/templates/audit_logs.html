@@ -1,0 +1,242 @@
+{% extends "base.html" %}
+
+{% block title %}審計記錄 - Test Case Repository Web Tool{% endblock %}
+
+{% block page_title_text %}
+<span class="text-primary" data-i18n="audit.pageTitle">審計記錄查閱</span>
+{% endblock %}
+
+{% block page_subtitle_text %}
+<span data-i18n="audit.pageSubtitle">檢視系統操作紀錄與追蹤</span>
+{% endblock %}
+
+{% block head %}
+<style>
+#auditPage {
+    height: calc(100vh - var(--header-height) - var(--footer-height));
+    display: flex;
+    flex-direction: column;
+}
+
+#auditLayout {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+#auditMain {
+    flex: 1;
+    display: flex;
+    gap: 1rem;
+    overflow: hidden;
+}
+
+#auditFilters {
+    width: 320px;
+    min-width: 280px;
+    max-width: 360px;
+    flex-shrink: 0;
+    overflow-y: auto;
+}
+
+#auditResults {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+#auditResults .card-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+#auditTableWrapper {
+    flex: 1;
+    overflow: auto;
+}
+
+#auditTable th {
+    white-space: nowrap;
+}
+
+#auditEmptyState {
+    display: none;
+}
+
+#auditLoadingState {
+    display: none;
+}
+
+#auditLoadMoreIndicator,
+#auditAllLoaded {
+    display: none;
+}
+
+#auditLoadMoreSentinel {
+    width: 100%;
+    height: 1px;
+}
+
+@media (max-width: 992px) {
+    #auditMain {
+        flex-direction: column;
+    }
+
+    #auditFilters {
+        width: 100%;
+        max-width: none;
+        overflow: visible;
+    }
+}
+</style>
+{% endblock %}
+
+{% block page_specific_actions %}
+<div class="d-flex gap-2">
+    <a href="/team-management" class="btn btn-outline-secondary">
+        <i class="fas fa-chevron-left me-2"></i><span data-i18n="audit.backToTeams">返回團隊管理</span>
+    </a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div id="auditPage" class="container-fluid py-3">
+    <div id="auditLayout">
+        <div class="mb-2 d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <div>
+                <span class="text-muted" data-i18n="audit.timezoneHint">所有時間皆以當地時區顯示</span>
+                <small class="ms-2 text-muted" id="auditTimezoneLabel"></small>
+            </div>
+            <div class="d-flex gap-2">
+                <button type="button" class="btn btn-outline-secondary btn-sm" id="auditRefreshBtn">
+                    <i class="fas fa-sync-alt me-1"></i><span data-i18n="audit.refresh">重新整理</span>
+                </button>
+                <button type="button" class="btn btn-primary btn-sm" id="exportCsvBtn">
+                    <i class="fas fa-file-export me-1"></i><span data-i18n="audit.exportCsv">匯出 CSV</span>
+                </button>
+            </div>
+        </div>
+        <div id="auditMain">
+            <div id="auditFilters">
+                <div class="card h-100">
+                    <div class="card-header bg-light">
+                        <strong data-i18n="audit.filters.title">篩選條件</strong>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label for="filterUsername" class="form-label small" data-i18n="audit.filters.username">使用者名稱</label>
+                            <input type="text" id="filterUsername" class="form-control form-control-sm" data-i18n-placeholder="audit.filters.usernamePlaceholder" placeholder="輸入使用者名稱">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label small" data-i18n="audit.filters.timeRange">時間範圍</label>
+                            <div class="mb-2">
+                                <input type="datetime-local" id="filterStartTime" class="form-control form-control-sm">
+                                <small class="text-muted" data-i18n="audit.filters.startHint">開始時間（本地時區）</small>
+                            </div>
+                            <div>
+                                <input type="datetime-local" id="filterEndTime" class="form-control form-control-sm">
+                                <small class="text-muted" data-i18n="audit.filters.endHint">結束時間（本地時區）</small>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="filterRole" class="form-label small" data-i18n="audit.filters.role">角色</label>
+                            <select id="filterRole" class="form-select form-select-sm">
+                                <option value="" data-i18n="common.all">全部</option>
+                                <option value="super_admin" data-i18n="roles.superAdmin">超級管理員</option>
+                                <option value="admin" data-i18n="roles.admin">管理員</option>
+                                <option value="user" data-i18n="roles.user">一般使用者</option>
+                                <option value="viewer" data-i18n="roles.viewer">僅檢視</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="filterResourceType" class="form-label small" data-i18n="audit.filters.resourceType">資源類型</label>
+                            <select id="filterResourceType" class="form-select form-select-sm">
+                                <option value="" data-i18n="common.all">全部</option>
+                                <option value="team_setting" data-i18n="audit.resource.team_setting">團隊設定</option>
+                                <option value="test_run" data-i18n="audit.resource.test_run">測試執行</option>
+                                <option value="test_case" data-i18n="audit.resource.test_case">測試案例</option>
+                                <option value="user" data-i18n="audit.resource.user">使用者</option>
+                                <option value="auth" data-i18n="audit.resource.auth">登入/驗證</option>
+                                <option value="permission" data-i18n="audit.resource.permission">權限設定</option>
+                                <option value="attachment" data-i18n="audit.resource.attachment">附件</option>
+                                <option value="system" data-i18n="audit.resource.system">系統</option>
+                            </select>
+                        </div>
+                        <div class="mb-3">
+                            <label for="filterTeam" class="form-label small" data-i18n="audit.filters.team">團隊</label>
+                            <select id="filterTeam" class="form-select form-select-sm">
+                                <option value="" data-i18n="audit.filters.teamAll">全部團隊</option>
+                            </select>
+                            <small class="text-muted" id="filterTeamHint" data-i18n="audit.filters.teamHint">依據團隊名稱顯示</small>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button type="button" class="btn btn-primary btn-sm w-100" id="applyFiltersBtn">
+                                <i class="fas fa-filter me-1"></i><span data-i18n="audit.filters.apply">套用篩選</span>
+                            </button>
+                            <button type="button" class="btn btn-outline-secondary btn-sm w-100" id="resetFiltersBtn">
+                                <i class="fas fa-eraser me-1"></i><span data-i18n="audit.filters.reset">清除條件</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div id="auditResults" class="card">
+                <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <div>
+                        <strong data-i18n="audit.results.title">審計記錄</strong>
+                        <span class="badge bg-secondary ms-2" id="auditTotalBadge">0</span>
+                    </div>
+                    <div class="text-muted small" id="auditScrollHint" data-i18n="audit.scrollHint">向下滾動以載入更多記錄</div>
+                </div>
+                <div class="card-body p-0 position-relative">
+                    <div id="auditLoadingState" class="text-center py-5">
+                        <div class="spinner-border text-primary" role="status"></div>
+                        <div class="mt-3 text-muted" data-i18n="audit.loading">載入審計記錄中...</div>
+                    </div>
+                    <div id="auditTableWrapper">
+                        <table class="table table-hover mb-0" id="auditTable">
+                            <thead class="table-light">
+                                <tr>
+                                    <th scope="col" data-i18n="audit.table.brief">操作摘要</th>
+                                    <th scope="col" data-i18n="audit.table.timestamp">時間</th>
+                                    <th scope="col" data-i18n="audit.table.username">使用者</th>
+                                    <th scope="col" data-i18n="audit.table.role">角色</th>
+                                    <th scope="col" data-i18n="audit.table.team">團隊</th>
+                                    <th scope="col" data-i18n="audit.table.action">操作</th>
+                                    <th scope="col" data-i18n="audit.table.resource">資源</th>
+                                    <th scope="col" data-i18n="audit.table.severity">嚴重性</th>
+                                    <th scope="col" data-i18n="audit.table.ip">來源 IP</th>
+                                </tr>
+                            </thead>
+                            <tbody id="auditTableBody"></tbody>
+                        </table>
+                        <div id="auditEmptyState" class="text-center py-5">
+                            <i class="fas fa-inbox fa-2x text-muted mb-3"></i>
+                            <p class="text-muted mb-0" data-i18n="audit.table.noData">目前沒有符合條件的記錄</p>
+                        </div>
+                        <div id="auditLoadMoreIndicator" class="text-center py-3 text-muted">
+                            <i class="fas fa-spinner fa-spin me-2"></i><span data-i18n="audit.loadingMore">載入更多記錄...</span>
+                        </div>
+                        <div id="auditAllLoaded" class="text-center py-3 text-muted">
+                            <i class="fas fa-check me-2"></i><span data-i18n="audit.allLoaded">已載入全部審計記錄</span>
+                        </div>
+                        <div id="auditLoadMoreSentinel" aria-hidden="true"></div>
+                    </div>
+                </div>
+                <div class="card-footer">
+                    <div class="small text-muted" id="auditSummary"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="/static/js/audit_logs.js"></script>
+{% endblock %}

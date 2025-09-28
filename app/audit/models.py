@@ -52,6 +52,7 @@ class AuditLogBase(BaseModel):
     resource_id: str = Field(..., max_length=100, description="資源 ID")
     team_id: int = Field(..., description="相關團隊 ID")
     details: Optional[Dict[str, Any]] = Field(None, description="操作詳情（JSON，已遮罩敏感資料）")
+    action_brief: Optional[str] = Field(None, max_length=500, description="人類可讀之操作摘要")
     severity: AuditSeverity = Field(AuditSeverity.INFO, description="嚴重性等級")
     ip_address: Optional[str] = Field(None, max_length=45, description="來源 IP 位址")
     user_agent: Optional[str] = Field(None, max_length=500, description="使用者代理")
@@ -82,6 +83,7 @@ class AuditLogSummary(BaseModel):
     resource_id: str
     team_id: int
     severity: AuditSeverity
+    action_brief: Optional[str] = None
     ip_address: Optional[str] = None
 
 
@@ -101,6 +103,7 @@ class AuditLogQuery(BaseModel):
     resource_id: Optional[str] = Field(None, description="資源 ID")
     team_id: Optional[int] = Field(None, description="團隊 ID")
     severity: Optional[AuditSeverity] = Field(None, description="嚴重性等級")
+    role: Optional[str] = Field(None, description="操作者角色")
     
     # 分頁
     page: int = Field(1, ge=1, description="頁碼")

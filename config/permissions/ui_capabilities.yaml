@@ -27,6 +27,7 @@ pages:
       pm-role-select:   { feature: user_management, action: change_role }
       pm-active-toggle: { feature: user_management, action: toggle_active }
       syncOrgBtn:       { feature: user_management, action: view }
+      auditLogBtn:      { feature: user_management, action: view }
 
   test_case_management:
     components:

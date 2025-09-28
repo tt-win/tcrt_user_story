@@ -22,10 +22,40 @@ from sqlalchemy import select, and_, or_, func
 import logging
 
 from app.utils.logging import log_lark_display_decision
+from app.audit import audit_service, ActionType, ResourceType, AuditSeverity
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/users", tags=["users"])
+
+
+async def log_user_action(
+    action_type: ActionType,
+    current_user: User,
+    target_user: User,
+    action_brief: str,
+    details: Optional[dict] = None,
+) -> None:
+    try:
+        role_value = (
+            current_user.role.value
+            if hasattr(current_user.role, "value")
+            else str(current_user.role)
+        )
+        await audit_service.log_action(
+            user_id=current_user.id,
+            username=current_user.username,
+            role=role_value,
+            action_type=action_type,
+            resource_type=ResourceType.USER,
+            resource_id=str(target_user.id),
+            team_id=0,
+            details=details,
+            action_brief=action_brief,
+            severity=AuditSeverity.CRITICAL if action_type == ActionType.DELETE else AuditSeverity.INFO,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("寫入使用者審計記錄失敗: %s", exc, exc_info=True)
 
 
 class UserCreateRequest(BaseModel):
@@ -252,9 +282,22 @@ async def create_user(
         
         # 使用統一的 UserService 建立使用者
         new_user = await UserService.create_user_async(user_create)
-        
+
         logger.info(f"管理員 {current_user.username} 建立了新使用者 {new_user.username}")
-        
+
+        action_brief = f"{current_user.username} 建立了使用者 {new_user.username}"
+        await log_user_action(
+            action_type=ActionType.CREATE,
+            current_user=current_user,
+            target_user=new_user,
+            action_brief=action_brief,
+            details={
+                "user_id": new_user.id,
+                "role": new_user.role.value,
+                "email": new_user.email,
+            },
+        )
+
         return UserResponse(
             id=new_user.id,
             username=new_user.username,
@@ -596,19 +639,26 @@ async def update_user(
             # 更新欄位 - 只有當字段被設置時才更新
             # 對於可為 null 的字段，當設置為 null 時也應更新
             # 對於必需字段，只有當明確提供非 null 值時才更新
+            changed_fields: List[str] = []
             if request.field_is_set('email'):
                 user.email = request.email
+                changed_fields.append("email")
             if request.field_is_set('full_name'):
                 user.full_name = request.full_name
+                changed_fields.append("full_name")
             if request.field_is_set('role') and request.role is not None:
                 user.role = request.role
+                changed_fields.append("role")
             if request.field_is_set('is_active') and request.is_active is not None:
                 user.is_active = request.is_active
+                changed_fields.append("is_active")
             if request.field_is_set('password') and request.password is not None:
                 user.hashed_password = PasswordService.hash_password(request.password)
+                changed_fields.append("password")
             if request.field_is_set('lark_user_id'):
                 # lark_user_id 可以為 null，所以總是更新（即使值為 None）
                 user.lark_user_id = request.lark_user_id
+                changed_fields.append("lark_user_id")
 
             user.updated_at = datetime.utcnow()
 
@@ -616,6 +666,20 @@ async def update_user(
             await session.refresh(user)
 
             logger.info(f"管理員 {current_user.username} 更新了使用者 {user.username}")
+
+            if changed_fields:
+                action_brief = f"{current_user.username} 更新了使用者 {user.username}"
+                await log_user_action(
+                    action_type=ActionType.UPDATE,
+                    current_user=current_user,
+                    target_user=user,
+                    action_brief=action_brief,
+                    details={
+                        "user_id": user.id,
+                        "changed_fields": changed_fields,
+                        "role": user.role.value,
+                    },
+                )
 
             return UserResponse(
                 id=user.id,
@@ -688,6 +752,19 @@ async def delete_user(
             await session.commit()
 
             logger.info(f"管理員 {current_user.username} 永久刪除了使用者 {deleted_username}")
+
+            action_brief = f"{current_user.username} 刪除了使用者 {deleted_username}"
+            await log_user_action(
+                action_type=ActionType.DELETE,
+                current_user=current_user,
+                target_user=user,
+                action_brief=action_brief,
+                details={
+                    "user_id": user.id,
+                    "username": deleted_username,
+                    "role": user.role.value,
+                },
+            )
 
             return {"message": f"使用者 {deleted_username} 已被刪除"}
 
@@ -809,5 +886,3 @@ async def get_user_lark_status(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="取得使用者 Lark 狀態時發生錯誤"
         )
-
-

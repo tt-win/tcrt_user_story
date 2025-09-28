@@ -88,6 +88,90 @@
         "reqDifferent": "与当前密码不同",
         "reqMatch": "两次输入密码相符"
     },
+    "roles": {
+        "superAdmin": "超级管理员",
+        "admin": "管理员",
+        "user": "普通用户",
+        "viewer": "仅查看"
+    },
+    "audit": {
+        "viewLogs": "审计记录",
+        "pageTitle": "审计记录查阅",
+        "pageSubtitle": "查看系统操作记录与追踪",
+        "backToTeams": "返回团队管理",
+        "timezoneHint": "所有时间皆以本地时区显示",
+        "refresh": "重新整理",
+        "exportCsv": "导出 CSV",
+        "filters": {
+            "title": "筛选条件",
+            "username": "用户名",
+            "usernamePlaceholder": "输入用户名",
+            "timeRange": "时间范围",
+            "startHint": "开始时间（本地时区）",
+            "endHint": "结束时间（本地时区）",
+            "role": "角色",
+            "resourceType": "资源类型",
+            "team": "团队",
+            "teamAll": "全部团队",
+            "teamHint": "按团队名称显示",
+            "apply": "套用筛选",
+            "reset": "清除条件",
+            "teamLoadFailed": "加载团队列表失败"
+        },
+        "results": {
+            "title": "审计记录"
+        },
+        "loading": "加载审计记录中...",
+        "scrollHint": "向下滚动以载入更多记录",
+        "table": {
+            "brief": "操作摘要",
+            "timestamp": "时间",
+            "username": "用户",
+            "role": "角色",
+            "team": "团队",
+            "action": "操作",
+            "resource": "资源",
+            "severity": "严重性",
+            "ip": "来源 IP",
+            "noData": "暂无符合条件的记录"
+        },
+        "loadingMore": "载入更多记录...",
+        "allLoaded": "已载入全部审计记录",
+        "pagination": {
+            "prev": "上一页",
+            "next": "下一页",
+            "info": "第 {current} / {total} 页"
+        },
+        "summary": "共 {total} 条记录，已载入 {loaded} 条",
+        "currentTimezone": "当前时区：{tz}",
+        "action": {
+            "CREATE": "创建",
+            "READ": "读取",
+            "UPDATE": "更新",
+            "DELETE": "删除",
+            "LOGIN": "登录",
+            "LOGOUT": "登出"
+        },
+        "resource": {
+            "team_setting": "团队设置",
+            "test_run": "测试执行",
+            "test_case": "测试用例",
+            "user": "用户",
+            "auth": "登录/验证",
+            "permission": "权限设置",
+            "attachment": "附件",
+            "system": "系统"
+        },
+        "severity": {
+            "info": "一般",
+            "warning": "警示",
+            "critical": "重大"
+        },
+        "loadFailed": "加载审计记录失败",
+        "exportSuccess": "CSV 导出成功",
+        "exportFailed": "导出审计记录失败",
+        "unauthorized": "没有访问审计记录的权限"
+    },
     "confirm": {
         "batchDeleteTestRuns": "确定要删除这 {count} 个测试执行吗？此操作无法恢复。",
         "batchStartTestRuns": "确定要开始执行这 {count} 个测试执行吗？",

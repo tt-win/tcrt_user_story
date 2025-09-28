@@ -72,6 +72,10 @@ async def index(request: Request):
 async def team_management(request: Request):
     return templates.TemplateResponse("team_management.html", {"request": request})
 
+@app.get("/audit-logs", response_class=HTMLResponse)
+async def audit_logs(request: Request):
+    return templates.TemplateResponse("audit_logs.html", {"request": request})
+
 @app.get("/test-case-management", response_class=HTMLResponse)
 async def test_case_management(request: Request):
     return templates.TemplateResponse("test_case_management.html", {"request": request})

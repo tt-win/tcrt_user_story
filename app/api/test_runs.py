@@ -7,9 +7,10 @@
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
 from sqlalchemy.orm import Session
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from datetime import datetime
 import io
+import logging
 
 from app.database import get_db, get_sync_db
 from app.auth.dependencies import get_current_user
@@ -25,8 +26,41 @@ from app.models.test_run import (
 from app.models.database_models import Team as TeamDB, TestRunConfig as TestRunConfigDB
 from app.services.lark_client import LarkClient
 from app.config import settings
+from app.audit import audit_service, ActionType, ResourceType, AuditSeverity
 
 router = APIRouter(prefix="/teams/{team_id}/test-runs", tags=["test-runs"])
+
+logger = logging.getLogger(__name__)
+
+
+async def log_test_run_action(
+    action_type: ActionType,
+    current_user: User,
+    team_id: int,
+    resource_id: str,
+    action_brief: str,
+    details: Optional[Dict[str, Any]] = None,
+) -> None:
+    try:
+        role_value = (
+            current_user.role.value
+            if hasattr(current_user.role, "value")
+            else str(current_user.role)
+        )
+        await audit_service.log_action(
+            user_id=current_user.id,
+            username=current_user.username,
+            role=role_value,
+            action_type=action_type,
+            resource_type=ResourceType.TEST_RUN,
+            resource_id=resource_id,
+            team_id=team_id,
+            details=details,
+            action_brief=action_brief,
+            severity=AuditSeverity.CRITICAL if action_type == ActionType.DELETE else AuditSeverity.INFO,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("寫入測試執行審計記錄失敗: %s", exc, exc_info=True)
 
 
 def get_lark_client_for_test_run(
@@ -486,7 +520,26 @@ async def create_test_run(
             )
 
         # 轉換為 TestRun 模型回傳
-        return TestRun.from_lark_record(created_record, team_id)
+        created_test_run = TestRun.from_lark_record(created_record, team_id)
+
+        action_brief = f"{current_user.username} 建立了 Test Run：{created_test_run.test_case_number or record_id}"
+        if created_test_run.title:
+            action_brief += f"（{created_test_run.title}）"
+        await log_test_run_action(
+            action_type=ActionType.CREATE,
+            current_user=current_user,
+            team_id=team_id,
+            resource_id=record_id,
+            action_brief=action_brief,
+            details={
+                "record_id": record_id,
+                "config_id": config_id,
+                "test_case_number": created_test_run.test_case_number,
+                "title": created_test_run.title,
+            },
+        )
+
+        return created_test_run
 
     except HTTPException:
         raise
@@ -605,7 +658,26 @@ async def update_test_run(
             )
 
         # 轉換為 TestRun 模型回傳
-        return TestRun.from_lark_record(updated_record, team_id)
+        updated_test_run = TestRun.from_lark_record(updated_record, team_id)
+
+        action_brief = f"{current_user.username} 更新了 Test Run：{updated_test_run.test_case_number or record_id}"
+        if updated_test_run.title:
+            action_brief += f"（{updated_test_run.title}）"
+        await log_test_run_action(
+            action_type=ActionType.UPDATE,
+            current_user=current_user,
+            team_id=team_id,
+            resource_id=record_id,
+            action_brief=action_brief,
+            details={
+                "record_id": record_id,
+                "config_id": config_id,
+                "test_case_number": updated_test_run.test_case_number,
+                "changed_fields": list(test_run_update.dict(exclude_unset=True).keys()),
+            },
+        )
+
+        return updated_test_run
 
     except HTTPException:
         raise
@@ -753,6 +825,23 @@ async def delete_test_run(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="刪除 Lark 記錄失敗",
             )
+
+        action_brief = f"{current_user.username} 刪除了 Test Run：{fields.get('Test Case Number') or record_id}"
+        title = fields.get("Title") if isinstance(fields, dict) else None
+        if title:
+            action_brief += f"（{title}）"
+        await log_test_run_action(
+            action_type=ActionType.DELETE,
+            current_user=current_user,
+            team_id=team_id,
+            resource_id=record_id,
+            action_brief=action_brief,
+            details={
+                "record_id": record_id,
+                "config_id": config_id,
+                "test_case_number": fields.get("Test Case Number") if isinstance(fields, dict) else None,
+            },
+        )
 
         # 成功刪除，回傳 204 No Content
 

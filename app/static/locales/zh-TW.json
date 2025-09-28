@@ -88,6 +88,90 @@
         "reqDifferent": "與目前密碼不同",
         "reqMatch": "兩次輸入密碼相符"
     },
+    "roles": {
+        "superAdmin": "超級管理員",
+        "admin": "管理員",
+        "user": "一般使用者",
+        "viewer": "僅檢視"
+    },
+    "audit": {
+        "viewLogs": "審計記錄",
+        "pageTitle": "審計記錄查閱",
+        "pageSubtitle": "檢視系統操作紀錄與追蹤",
+        "backToTeams": "返回團隊管理",
+        "timezoneHint": "所有時間皆以當地時區顯示",
+        "refresh": "重新整理",
+        "exportCsv": "匯出 CSV",
+        "filters": {
+            "title": "篩選條件",
+            "username": "使用者名稱",
+            "usernamePlaceholder": "輸入使用者名稱",
+            "timeRange": "時間範圍",
+            "startHint": "開始時間（本地時區）",
+            "endHint": "結束時間（本地時區）",
+            "role": "角色",
+            "resourceType": "資源類型",
+            "team": "團隊",
+            "teamAll": "全部團隊",
+            "teamHint": "依據團隊名稱顯示",
+            "apply": "套用篩選",
+            "reset": "清除條件",
+            "teamLoadFailed": "載入團隊列表失敗"
+        },
+        "results": {
+            "title": "審計記錄"
+        },
+        "loading": "載入審計記錄中...",
+        "scrollHint": "向下滾動以載入更多記錄",
+        "table": {
+            "brief": "操作摘要",
+            "timestamp": "時間",
+            "username": "使用者",
+            "role": "角色",
+            "team": "團隊",
+            "action": "操作",
+            "resource": "資源",
+            "severity": "嚴重性",
+            "ip": "來源 IP",
+            "noData": "目前沒有符合條件的記錄"
+        },
+        "loadingMore": "載入更多記錄...",
+        "allLoaded": "已載入全部審計記錄",
+        "pagination": {
+            "prev": "上一頁",
+            "next": "下一頁",
+            "info": "第 {current} / {total} 頁"
+        },
+        "summary": "共 {total} 筆資料，已載入 {loaded} 筆",
+        "currentTimezone": "當前時區：{tz}",
+        "action": {
+            "CREATE": "建立",
+            "READ": "讀取",
+            "UPDATE": "更新",
+            "DELETE": "刪除",
+            "LOGIN": "登入",
+            "LOGOUT": "登出"
+        },
+        "resource": {
+            "team_setting": "團隊設定",
+            "test_run": "測試執行",
+            "test_case": "測試案例",
+            "user": "使用者",
+            "auth": "登入/驗證",
+            "permission": "權限設定",
+            "attachment": "附件",
+            "system": "系統"
+        },
+        "severity": {
+            "info": "一般",
+            "warning": "警示",
+            "critical": "重大"
+        },
+        "loadFailed": "載入審計記錄失敗",
+        "exportSuccess": "CSV 匯出成功",
+        "exportFailed": "匯出審計記錄失敗",
+        "unauthorized": "沒有存取審計記錄的權限"
+    },
     "confirm": {
         "batchDeleteTestRuns": "確定要刪除這 {count} 個測試執行嗎？此操作無法復原。",
         "batchStartTestRuns": "確定要開始執行這 {count} 個測試執行嗎？",

@@ -111,6 +111,8 @@ class AuditDatabaseManager:
                     column_names = {row[1] for row in rows}
                     if 'role' not in column_names:
                         sync_conn.execute(text("ALTER TABLE audit_logs ADD COLUMN role VARCHAR(50) DEFAULT 'user'"))
+                    if 'action_brief' not in column_names:
+                        sync_conn.execute(text("ALTER TABLE audit_logs ADD COLUMN action_brief VARCHAR(500)"))
                 else:
                     rows = sync_conn.execute(
                         text("SELECT column_name FROM information_schema.columns WHERE table_name = 'audit_logs' AND table_schema = current_schema()")
@@ -118,6 +120,8 @@ class AuditDatabaseManager:
                     column_names = {row[0] for row in rows}
                     if 'role' not in column_names:
                         sync_conn.execute(text("ALTER TABLE audit_logs ADD COLUMN role VARCHAR(50) DEFAULT 'user'"))
+                    if 'action_brief' not in column_names:
+                        sync_conn.execute(text("ALTER TABLE audit_logs ADD COLUMN action_brief VARCHAR(500)"))
 
             await conn.run_sync(ensure_role_column)
         
@@ -234,25 +238,26 @@ AuditBase = declarative_base()
 class AuditLogTable(AuditBase):
     """審計記錄資料表"""
     __tablename__ = "audit_logs"
-    
+
     id = Column(Integer, primary_key=True, autoincrement=True)
     timestamp = Column(DateTime, nullable=False, default=func.now(), index=True)
-    
+
     # 操作者資訊
     user_id = Column(Integer, nullable=False, index=True)
     username = Column(String(100), nullable=False, index=True)
     role = Column(String(50), nullable=False, default='user', index=True)
-    
+
     # 操作資訊
     action_type = Column(SQLEnum(ActionType), nullable=False, index=True)
     resource_type = Column(SQLEnum(ResourceType), nullable=False, index=True)
     resource_id = Column(String(100), nullable=False, index=True)
     team_id = Column(Integer, nullable=False, index=True)
-    
+
     # 詳細資訊
     details = Column(Text, nullable=True)  # JSON 字串格式
+    action_brief = Column(String(500), nullable=True)
     severity = Column(SQLEnum(AuditSeverity), nullable=False, default=AuditSeverity.INFO, index=True)
-    
+
     # 來源資訊
     ip_address = Column(String(45), nullable=True)  # 支援 IPv6
     user_agent = Column(String(500), nullable=True)
@@ -270,6 +275,9 @@ Index('idx_audit_time_team', AuditLogTable.timestamp, AuditLogTable.team_id)
 Index('idx_audit_user_time', AuditLogTable.user_id, AuditLogTable.timestamp)
 Index('idx_audit_resource', AuditLogTable.resource_type, AuditLogTable.resource_id)
 Index('idx_audit_severity_time', AuditLogTable.severity, AuditLogTable.timestamp)
+Index('idx_audit_username_time', AuditLogTable.username, AuditLogTable.timestamp)
+Index('idx_audit_role_time', AuditLogTable.role, AuditLogTable.timestamp)
+Index('idx_audit_action_time', AuditLogTable.action_type, AuditLogTable.timestamp)
 
 
 async def create_audit_tables() -> None:
