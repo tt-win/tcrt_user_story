@@ -39,6 +39,7 @@ class AuditService:
         self,
         user_id: int,
         username: str,
+        role: str,
         action_type: ActionType,
         resource_type: ResourceType,
         resource_id: str,
@@ -60,6 +61,7 @@ class AuditService:
             audit_log = AuditLogCreate(
                 user_id=user_id,
                 username=username,
+                role=role,
                 action_type=action_type,
                 resource_type=resource_type,
                 resource_id=resource_id,
@@ -88,12 +90,14 @@ class AuditService:
             logger.error(f"記錄審計失敗: {e}", exc_info=True)
             
     async def log_create(self, user_id: int, username: str, resource_type: ResourceType,
-                        resource_id: str, team_id: int, details: Optional[Dict] = None,
+                        resource_id: str, team_id: int, role: str,
+                        details: Optional[Dict] = None,
                         ip_address: Optional[str] = None, user_agent: Optional[str] = None) -> None:
         """記錄創建操作"""
         await self.log_action(
             user_id=user_id,
             username=username,
+            role=role,
             action_type=ActionType.CREATE,
             resource_type=resource_type,
             resource_id=resource_id,
@@ -105,12 +109,14 @@ class AuditService:
         )
         
     async def log_update(self, user_id: int, username: str, resource_type: ResourceType,
-                        resource_id: str, team_id: int, details: Optional[Dict] = None,
+                        resource_id: str, team_id: int, role: str,
+                        details: Optional[Dict] = None,
                         ip_address: Optional[str] = None, user_agent: Optional[str] = None) -> None:
         """記錄更新操作"""
         await self.log_action(
             user_id=user_id,
             username=username,
+            role=role,
             action_type=ActionType.UPDATE,
             resource_type=resource_type,
             resource_id=resource_id,
@@ -122,12 +128,14 @@ class AuditService:
         )
         
     async def log_delete(self, user_id: int, username: str, resource_type: ResourceType,
-                        resource_id: str, team_id: int, details: Optional[Dict] = None,
+                        resource_id: str, team_id: int, role: str,
+                        details: Optional[Dict] = None,
                         ip_address: Optional[str] = None, user_agent: Optional[str] = None) -> None:
         """記錄刪除操作（高危險性）"""
         await self.log_action(
             user_id=user_id,
             username=username,
+            role=role,
             action_type=ActionType.DELETE,
             resource_type=resource_type,
             resource_id=resource_id,
@@ -139,12 +147,14 @@ class AuditService:
         )
         
     async def log_read(self, user_id: int, username: str, resource_type: ResourceType,
-                      resource_id: str, team_id: int, details: Optional[Dict] = None,
+                      resource_id: str, team_id: int, role: str,
+                      details: Optional[Dict] = None,
                       ip_address: Optional[str] = None, user_agent: Optional[str] = None) -> None:
         """記錄讀取操作"""
         await self.log_action(
             user_id=user_id,
             username=username,
+            role=role,
             action_type=ActionType.READ,
             resource_type=resource_type,
             resource_id=resource_id,
@@ -215,6 +225,7 @@ class AuditService:
                         id=record.id,
                         timestamp=record.timestamp,
                         username=record.username,
+                        role=record.role,
                         action_type=record.action_type,
                         resource_type=record.resource_type,
                         resource_id=record.resource_id,
@@ -264,6 +275,7 @@ class AuditService:
                     timestamp=record.timestamp,
                     user_id=record.user_id,
                     username=record.username,
+                    role=record.role,
                     action_type=record.action_type,
                     resource_type=record.resource_type,
                     resource_id=record.resource_id,
@@ -459,6 +471,7 @@ class AuditService:
                         timestamp=datetime.utcnow(),
                         user_id=record.user_id,
                         username=record.username,
+                        role=record.role,
                         action_type=record.action_type,
                         resource_type=record.resource_type,
                         resource_id=record.resource_id,
@@ -490,6 +503,7 @@ audit_service = AuditService()
 async def log_audit_action(
     user_id: int,
     username: str,
+    role: str,
     action_type: ActionType,
     resource_type: ResourceType,
     resource_id: str,
@@ -503,6 +517,7 @@ async def log_audit_action(
     await audit_service.log_action(
         user_id=user_id,
         username=username,
+        role=role,
         action_type=action_type,
         resource_type=resource_type,
         resource_id=resource_id,

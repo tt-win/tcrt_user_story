@@ -4,7 +4,7 @@ FastAPI 認證依賴注入
 提供 JWT Token 驗證、權限檢查等依賴注入功能。
 """
 
-from fastapi import Depends, HTTPException, Security, status
+from fastapi import Depends, HTTPException, Security, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Callable
 from app.auth.models import UserRole, PermissionType, AuthErrorResponse
@@ -20,6 +20,7 @@ security = HTTPBearer()
 
 
 async def get_current_user(
+    request: Request,
     credentials: HTTPAuthorizationCredentials = Security(security),
 ) -> User:
     """
@@ -59,6 +60,7 @@ async def get_current_user(
                 },
             )
 
+        request.state.current_user = user
         return user
 
 
@@ -67,9 +69,10 @@ class AuthDependencies:
 
     @staticmethod
     async def get_current_user_wrapper(
+        request: Request,
         credentials: HTTPAuthorizationCredentials = Security(security),
     ) -> User:
-        return await get_current_user(credentials)
+        return await get_current_user(request, credentials)
 
     def require_role(self, required_role: UserRole) -> Callable:
         """

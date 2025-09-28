@@ -17,6 +17,8 @@ class ActionType(str, Enum):
     READ = "READ"
     UPDATE = "UPDATE"
     DELETE = "DELETE"
+    LOGIN = "LOGIN"
+    LOGOUT = "LOGOUT"
 
 
 class ResourceType(str, Enum):
@@ -24,6 +26,11 @@ class ResourceType(str, Enum):
     TEAM_SETTING = "team_setting"
     TEST_RUN = "test_run" 
     TEST_CASE = "test_case"
+    USER = "user"
+    AUTH = "auth"
+    PERMISSION = "permission"
+    ATTACHMENT = "attachment"
+    SYSTEM = "system"
 
 
 class AuditSeverity(str, Enum):
@@ -39,6 +46,7 @@ class AuditLogBase(BaseModel):
     """審計記錄基礎模型"""
     user_id: int = Field(..., description="操作者使用者 ID")
     username: str = Field(..., max_length=100, description="操作者使用者名稱")
+    role: str = Field(..., max_length=50, description="操作者角色")
     action_type: ActionType = Field(..., description="操作類型")
     resource_type: ResourceType = Field(..., description="資源類型")
     resource_id: str = Field(..., max_length=100, description="資源 ID")
@@ -68,6 +76,7 @@ class AuditLogSummary(BaseModel):
     id: int
     timestamp: datetime
     username: str
+    role: str
     action_type: ActionType
     resource_type: ResourceType
     resource_id: str

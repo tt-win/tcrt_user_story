@@ -19,6 +19,7 @@ from app.auth.dependencies import get_current_user
 from app.auth.password_service import PasswordService
 from app.database import get_async_session
 from app.models.database_models import User
+from app.audit import audit_service, ActionType, ResourceType, AuditSeverity
 
 logger = logging.getLogger(__name__)
 security = HTTPBearer(auto_error=False)
@@ -203,6 +204,26 @@ async def login(request: LoginRequest, http_request: Request):
 
         logger.info(f"使用者 {user.username} 成功登入")
 
+        try:
+            await audit_service.log_action(
+                user_id=user.id,
+                username=user.username,
+                role=user.role.value if hasattr(user.role, 'value') else str(user.role),
+                action_type=ActionType.LOGIN,
+                resource_type=ResourceType.AUTH,
+                resource_id="login",
+                team_id=0,
+                details={
+                    "method": "POST",
+                    "path": "/api/auth/login",
+                },
+                severity=AuditSeverity.INFO,
+                ip_address=ip_address,
+                user_agent=user_agent,
+            )
+        except Exception as audit_exc:  # noqa: BLE001
+            logger.warning("寫入登入審計記錄失敗: %s", audit_exc, exc_info=True)
+
         first_login_flag = bool(getattr(user, 'was_first_login', False))
 
         return LoginResponse(
@@ -231,6 +252,7 @@ async def login(request: LoginRequest, http_request: Request):
 
 @router.post("/logout")
 async def logout(
+    http_request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security),
     current_user: User = Depends(get_current_user)
 ):
@@ -261,6 +283,28 @@ async def logout(
             logger.warning(f"Token 撤銷失敗: {token_data.jti}")
 
         logger.info(f"使用者 {current_user.username} 成功登出")
+
+        try:
+            ip_address = get_client_ip(http_request)
+            user_agent = get_user_agent(http_request)
+            await audit_service.log_action(
+                user_id=current_user.id,
+                username=current_user.username,
+                role=current_user.role.value if hasattr(current_user.role, 'value') else str(current_user.role),
+                action_type=ActionType.LOGOUT,
+                resource_type=ResourceType.AUTH,
+                resource_id="logout",
+                team_id=0,
+                details={
+                    "method": "POST",
+                    "path": "/api/auth/logout",
+                },
+                severity=AuditSeverity.INFO,
+                ip_address=ip_address,
+                user_agent=user_agent,
+            )
+        except Exception as audit_exc:  # noqa: BLE001
+            logger.warning("寫入登出審計記錄失敗: %s", audit_exc, exc_info=True)
 
         return {"message": "成功登出"}
 
@@ -376,6 +420,26 @@ async def first_login_setup(request: FirstLoginSetupRequest, http_request: Reque
     expires_in = int((expires_at - datetime.utcnow()).total_seconds())
 
     logger.info(f"使用者 {user.username} 完成首次登入設定")
+
+    try:
+        await audit_service.log_action(
+            user_id=user.id,
+            username=user.username,
+            role=user.role.value if hasattr(user.role, 'value') else str(user.role),
+            action_type=ActionType.LOGIN,
+            resource_type=ResourceType.AUTH,
+            resource_id="first-login",
+            team_id=0,
+            details={
+                "method": "POST",
+                "path": "/api/auth/first-login/setup",
+            },
+            severity=AuditSeverity.INFO,
+            ip_address=ip_address,
+            user_agent=user_agent,
+        )
+    except Exception as audit_exc:  # noqa: BLE001
+        logger.warning("寫入首次登入審計記錄失敗: %s", audit_exc, exc_info=True)
 
     return LoginResponse(
         access_token=access_token,

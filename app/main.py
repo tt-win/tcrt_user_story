@@ -20,11 +20,16 @@ try:
 except Exception as _e:
     logging.warning(f"GZipMiddleware 啟用失敗（不影響服務）：{_e}")
 
+from app.middlewares import AuditMiddleware
+
+app.add_middleware(AuditMiddleware)
+
 # 配置日誌
 logging.basicConfig(level=logging.INFO)
 
 # 初始化版本服務
 from app.services.version_service import get_version_service
+from app.audit import init_audit_database, cleanup_audit_database, audit_service
 version_service = get_version_service()
 logging.info(f"應用啟動，伺服器版本時間戳: {version_service.get_server_timestamp()}")
 
@@ -117,6 +122,9 @@ async def startup_event():
         os.makedirs(TMP_REPORT_DIR, exist_ok=True)
         logging.info("報告目錄已就緒: %s", REPORT_DIR)
 
+        await init_audit_database()
+        logging.info("審計資料庫初始化完成")
+
         # 啟動定時任務調度器
         from app.services.scheduler import task_scheduler
         task_scheduler.start()
@@ -134,6 +142,12 @@ async def shutdown_event():
         logging.info("定時任務調度器已停止")
     except Exception as e:
         logging.error(f"停止定時任務調度器失敗: {e}")
+
+    try:
+        await audit_service.force_flush()
+        await cleanup_audit_database()
+    except Exception as e:
+        logging.error(f"關閉審計資料庫失敗: {e}")
 
 if __name__ == "__main__":
     import uvicorn

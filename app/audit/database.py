@@ -39,7 +39,8 @@ class AuditDatabaseManager:
                 await self._initialize_postgresql()
             else:
                 await self._initialize_sqlite()
-                
+            await self._ensure_schema()
+            
             self._is_initialized = True
             logger.info("審計資料庫初始化成功")
             
@@ -94,6 +95,31 @@ class AuditDatabaseManager:
             autoflush=False,
             autocommit=False
         )
+
+    async def _ensure_schema(self) -> None:
+        """確保資料表與必要欄位存在"""
+        if not self._engine:
+            return
+
+        async with self._engine.begin() as conn:
+            await conn.run_sync(AuditBase.metadata.create_all)
+
+            def ensure_role_column(sync_conn):
+                dialect = sync_conn.dialect.name
+                if dialect == 'sqlite':
+                    rows = sync_conn.execute(text("PRAGMA table_info(audit_logs)")).fetchall()
+                    column_names = {row[1] for row in rows}
+                    if 'role' not in column_names:
+                        sync_conn.execute(text("ALTER TABLE audit_logs ADD COLUMN role VARCHAR(50) DEFAULT 'user'"))
+                else:
+                    rows = sync_conn.execute(
+                        text("SELECT column_name FROM information_schema.columns WHERE table_name = 'audit_logs' AND table_schema = current_schema()")
+                    ).fetchall()
+                    column_names = {row[0] for row in rows}
+                    if 'role' not in column_names:
+                        sync_conn.execute(text("ALTER TABLE audit_logs ADD COLUMN role VARCHAR(50) DEFAULT 'user'"))
+
+            await conn.run_sync(ensure_role_column)
         
     async def cleanup(self) -> None:
         """清理資料庫連接"""
@@ -215,6 +241,7 @@ class AuditLogTable(AuditBase):
     # 操作者資訊
     user_id = Column(Integer, nullable=False, index=True)
     username = Column(String(100), nullable=False, index=True)
+    role = Column(String(50), nullable=False, default='user', index=True)
     
     # 操作資訊
     action_type = Column(SQLEnum(ActionType), nullable=False, index=True)

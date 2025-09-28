@@ -24,6 +24,7 @@ import os
 import sys
 import shutil
 import argparse
+import asyncio
 from pathlib import Path
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
@@ -43,6 +44,7 @@ from app.models.database_models import (
     Team, TestRunConfig, TestRunItem, TestRunItemResultHistory,
     TCGRecord, LarkDepartment, LarkUser, SyncHistory,
 )
+from app.audit import audit_db_manager, AuditLogTable
 
 # -----------------------------
 # 輔助輸出（繁體中文）
@@ -85,6 +87,14 @@ IMPORTANT_TABLES: List[str] = [
     "lark_departments",
     "lark_users",
     "sync_history",
+]
+
+AUDIT_TABLES: List[str] = [
+    "audit_logs",
+]
+
+AUDIT_TABLES: List[str] = [
+    "audit_logs",
 ]
 
 
@@ -201,6 +211,19 @@ COLUMN_CHECKS: Dict[str, List[ColumnSpec]] = {
         ColumnSpec("primary_department_id", "TEXT", nullable=True, default=None),
     ],
 }
+
+AUDIT_COLUMN_CHECKS: Dict[str, List[ColumnSpec]] = {
+    "audit_logs": [
+        ColumnSpec("role", "VARCHAR(50)", nullable=False, default="user"),
+    ],
+}
+
+AUDIT_INDEX_SPECS: List[Dict[str, Any]] = [
+    {"name": "idx_audit_time_team", "table": "audit_logs", "columns": ["timestamp", "team_id"]},
+    {"name": "idx_audit_user_time", "table": "audit_logs", "columns": ["user_id", "timestamp"]},
+    {"name": "idx_audit_resource", "table": "audit_logs", "columns": ["resource_type", "resource_id"]},
+    {"name": "idx_audit_severity_time", "table": "audit_logs", "columns": ["severity", "timestamp"]},
+]
 
 # 索引規格
 INDEX_SPECS: List[Dict[str, Any]] = [
@@ -432,6 +455,27 @@ def check_missing_columns(engine: Engine, logger: Logger) -> Dict[str, List[Colu
     return missing
 
 
+def check_missing_audit_columns(engine: Engine, logger: Logger) -> Dict[str, List[ColumnSpec]]:
+    missing: Dict[str, List[ColumnSpec]] = {}
+    for table, specs in AUDIT_COLUMN_CHECKS.items():
+        try:
+            existing = get_existing_columns(engine, table)
+        except Exception:
+            continue
+        for spec in specs:
+            if spec.name.lower() not in existing:
+                missing.setdefault(table, []).append(spec)
+    if missing:
+        logger.warn("審計資料庫偵測到缺失欄位：")
+        for table, specs in missing.items():
+            for spec in specs:
+                fixable = "可安全新增" if spec.safe_to_add_on(engine) else "需人工處理"
+                logger.warn(f"  - {table}.{spec.name} ({spec.type_sql}) -> {fixable}{'｜' + spec.notes if spec.notes else ''}")
+    else:
+        logger.info("審計資料庫未發現需補充的欄位")
+    return missing
+
+
 def check_constraint_changes(engine: Engine, logger: Logger) -> List[ColumnConstraintChange]:
     """檢查需要進行約束變更的欄位"""
     needed_changes = []
@@ -583,6 +627,36 @@ def ensure_indexes(engine: Engine, logger: Logger):
             logger.warn(f"建立索引警告（可能已存在）：{name} -> {e}")
 
 
+def ensure_audit_indexes(engine: Engine, logger: Logger):
+    logger.info("確保審計資料庫索引存在...")
+    dialect = (engine.dialect.name or "").lower()
+    supports_if_not_exists = dialect in {"sqlite", "postgresql"}
+    inspector = inspect(engine)
+
+    for idx in AUDIT_INDEX_SPECS:
+        name = idx["name"]
+        table = idx["table"]
+        columns = idx["columns"]
+        try:
+            existing = {i.get("name") for i in inspector.get_indexes(table)}
+        except Exception:
+            existing = set()
+        if name in existing:
+            logger.debug(f"審計索引已存在：{name}")
+            continue
+        cols_sql = ", ".join(quote_ident(engine, c) for c in columns)
+        if supports_if_not_exists:
+            sql = f"CREATE INDEX IF NOT EXISTS {quote_ident(engine, name)} ON {quote_ident(engine, table)} ({cols_sql})"
+        else:
+            sql = f"CREATE INDEX {quote_ident(engine, name)} ON {quote_ident(engine, table)} ({cols_sql})"
+        try:
+            with engine.begin() as conn:
+                conn.exec_driver_sql(sql)
+            logger.info(f"已建立審計索引：{name}")
+        except Exception as e:
+            logger.warn(f"建立審計索引警告：{name} -> {e}")
+
+
 def get_database_stats(engine: Engine, logger: Logger) -> Dict[str, Any]:
     stats: Dict[str, Any] = {"tables": {}, "total_tables": 0, "engine_url": str(engine.url), "errors": []}
     try:
@@ -647,6 +721,31 @@ def print_stats(stats: Dict[str, Any], logger: Logger):
     print(f"📂 資料庫位置：{stats.get('engine_url')}")
 
 
+def print_audit_stats(stats: Dict[str, Any], logger: Logger):
+    print("=" * 60)
+    print("🔐 審計資料庫統計摘要")
+    print("=" * 60)
+    print(f"總表格數：{stats.get('total_tables')}")
+    tables = stats.get("tables", {})
+    for t, d in sorted(tables.items()):
+        if "error" in d:
+            print(f"  ❌ {t}: {d['error']}")
+        else:
+            print(f"  ✅ {t}: {d['rows']} 筆記錄, {d['columns']} 欄位")
+    print()
+    print("重要審計表格狀態：")
+    for t in AUDIT_TABLES:
+        d = tables.get(t)
+        if d is None:
+            print(f"  ⚠️  {t}: 表格不存在")
+        elif "error" in d:
+            print(f"  ❌ {t}: {d['error']}")
+        else:
+            print(f"  ✅ {t}: {d['rows']} 筆記錄, {d['columns']} 欄位")
+    print()
+    print(f"📂 審計資料庫位置：{stats.get('engine_url')}")
+
+
 # -----------------------------
 # 參數與主流程
 # -----------------------------
@@ -660,6 +759,22 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     g.add_argument("--verbose", action="store_true", help="輸出更多詳細資訊")
     g.add_argument("--quiet", action="store_true", help="僅輸出必要資訊與錯誤")
     return p.parse_args(argv)
+
+
+def initialize_audit_engine(logger: Logger):
+    async def _init():
+        await audit_db_manager.initialize()
+        return audit_db_manager.engine.sync_engine if audit_db_manager.engine else None
+
+    try:
+        engine = asyncio.run(_init())
+        if engine is None:
+            raise RuntimeError("審計資料庫引擎初始化失敗")
+        logger.info("審計資料庫已初始化")
+        return engine
+    except Exception as exc:
+        logger.error(f"審計資料庫初始化失敗：{exc}")
+        raise
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -717,9 +832,22 @@ def main(argv: Optional[List[str]] = None) -> int:
         # 索引確保
         ensure_indexes(engine, logger)
 
+        # 審計資料庫初始化與檢查
+        audit_engine = initialize_audit_engine(logger)
+        audit_missing_cols = check_missing_audit_columns(audit_engine, logger)
+        if args.auto_fix and audit_missing_cols:
+            auto_fix_columns(audit_engine, logger, audit_missing_cols)
+        elif audit_missing_cols:
+            logger.info("如需自動補上審計欄位，可使用 --auto-fix 參數。")
+
+        ensure_audit_indexes(audit_engine, logger)
+
         # 最終統計
         stats = get_database_stats(engine, logger)
         print_stats(stats, logger)
+
+        audit_stats = get_database_stats(audit_engine, logger)
+        print_audit_stats(audit_stats, logger)
 
         logger.info("✅ 資料庫初始化完成！")
         if backup_path:
