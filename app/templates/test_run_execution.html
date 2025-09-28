@@ -1766,6 +1766,200 @@ const debounceExecutionFilter = (fn, delay = 250) => {
         timer = setTimeout(() => fn.apply(null, args), delay);
     };
 };
+
+const TRE_PERMISSION_DEFAULTS = {
+    role: 'viewer',
+    isViewer: true,
+    canStart: false,
+    canComplete: false,
+    canRestart: false,
+    canUpdateResults: false,
+    canAssign: false,
+    canBatchModify: false,
+    canBatchDelete: false,
+    canUploadResults: false,
+    canManageBugTickets: false,
+};
+
+let testRunExecutionPermissions = { ...TRE_PERMISSION_DEFAULTS };
+
+function getTrePermissions() {
+    return window._testRunExecutionPermissions || testRunExecutionPermissions || TRE_PERMISSION_DEFAULTS;
+}
+
+function setElementVisibility(elementId, isVisible) {
+    const element = document.getElementById(elementId);
+    if (!element) return;
+
+    if (!element.dataset.defaultDisplay || element.dataset.defaultDisplay === 'none') {
+        let defaultDisplay = '';
+        if (element.classList.contains('d-flex')) {
+            defaultDisplay = 'flex';
+        } else if (element.classList.contains('btn-group')) {
+            defaultDisplay = 'inline-flex';
+        } else if (element.tagName === 'BUTTON' || element.classList.contains('btn')) {
+            defaultDisplay = 'inline-block';
+        } else if (element.tagName === 'INPUT' || element.tagName === 'SELECT' || element.tagName === 'TEXTAREA') {
+            defaultDisplay = 'block';
+        } else {
+            const computed = window.getComputedStyle(element).display;
+            if (computed && computed !== 'none') {
+                defaultDisplay = computed;
+            }
+        }
+        element.dataset.defaultDisplay = defaultDisplay || '';
+    }
+
+    if (isVisible) {
+        element.classList.remove('d-none');
+        const displayValue = element.dataset.defaultDisplay;
+        if (displayValue) {
+            element.style.setProperty('display', displayValue, 'important');
+        } else {
+            element.style.removeProperty('display');
+        }
+        if (typeof element.disabled !== 'undefined') {
+            element.disabled = false;
+        }
+    } else {
+        element.classList.add('d-none');
+        element.style.setProperty('display', 'none', 'important');
+        if (typeof element.disabled !== 'undefined') {
+            element.disabled = true;
+        }
+    }
+}
+
+function showExecutionPermissionDenied() {
+    const message = (window.i18n && window.i18n.isReady())
+        ? window.i18n.t('messages.permissionDenied')
+        : 'No permission to perform this action';
+    if (window.AppUtils && typeof window.AppUtils.showWarning === 'function') {
+        window.AppUtils.showWarning(message);
+    } else {
+        alert(message);
+    }
+}
+
+async function applyTestRunExecutionPermissions() {
+    const defaults = { ...TRE_PERMISSION_DEFAULTS };
+
+    if (!window.AuthClient) {
+        testRunExecutionPermissions = defaults;
+        window._testRunExecutionPermissions = defaults;
+        return defaults;
+    }
+
+    let components = {};
+    try {
+        const resp = await window.AuthClient.fetch('/api/permissions/ui-config?page=test_run_execution');
+        if (resp && resp.ok) {
+            const payload = await resp.json();
+            if (payload && payload.components) {
+                components = payload.components;
+            }
+        }
+    } catch (error) {
+        console.warn('Failed to fetch Test Run Execution UI permissions:', error);
+    }
+
+    let role = 'viewer';
+    try {
+        const info = await window.AuthClient.getUserInfo();
+        if (info && info.role) {
+            role = String(info.role).toLowerCase();
+        }
+    } catch (error) {
+        console.warn('Failed to resolve user role, fallback to viewer:', error);
+    }
+
+    const resolved = {
+        role,
+        isViewer: role === 'viewer',
+        canStart: !!components.startBtn,
+        canComplete: !!components.completeBtn,
+        canRestart: !!components.restartBtn,
+        canBatchModify: !!components.batchModifyBtn,
+        canBatchDelete: !!components.batchDeleteBtn,
+        canUpdateResults: !!components.resultEditor,
+        canAssign: !!components.assigneeEditor,
+        canUploadResults: !!components.uploadTestResultsBtn,
+        canManageBugTickets: !!components.addBugTicketBtn,
+    };
+
+    if (!resolved.isViewer) {
+        resolved.canStart = true;
+        resolved.canComplete = true;
+        resolved.canRestart = true;
+        resolved.canBatchModify = resolved.canBatchModify || true;
+        resolved.canBatchDelete = resolved.canBatchDelete || true;
+        resolved.canUpdateResults = true;
+        resolved.canAssign = true;
+        resolved.canUploadResults = true;
+        resolved.canManageBugTickets = true;
+    }
+
+    testRunExecutionPermissions = resolved;
+    window._testRunExecutionPermissions = resolved;
+
+    setElementVisibility('batchOperationsToolbar', resolved.canBatchModify || resolved.canBatchDelete);
+    setElementVisibility('batchModifyBtn', resolved.canBatchModify);
+    setElementVisibility('batchDeleteBtn', resolved.canBatchDelete);
+
+    const uploadBtn = document.getElementById('uploadTestResultsBtn');
+    if (uploadBtn) {
+        if (resolved.canUploadResults) {
+            uploadBtn.style.display = '';
+            uploadBtn.disabled = false;
+            uploadBtn.classList.remove('disabled');
+            uploadBtn.removeAttribute('aria-disabled');
+        } else {
+            uploadBtn.style.display = 'none';
+            uploadBtn.disabled = true;
+            uploadBtn.classList.add('disabled');
+            uploadBtn.setAttribute('aria-disabled', 'true');
+        }
+    }
+    const uploadArea = document.getElementById('testResultsUploadArea');
+    if (uploadArea && !resolved.canUploadResults) {
+        uploadArea.style.display = 'none';
+    }
+
+    const addBugTicketBtn = document.getElementById('addBugTicketBtn');
+    if (addBugTicketBtn) {
+        if (resolved.canManageBugTickets) {
+            addBugTicketBtn.style.display = '';
+            addBugTicketBtn.disabled = false;
+            addBugTicketBtn.classList.remove('disabled');
+        } else {
+            addBugTicketBtn.style.display = 'none';
+            addBugTicketBtn.disabled = true;
+            addBugTicketBtn.classList.add('disabled');
+        }
+    }
+    const confirmAddBugTicketBtn = document.getElementById('confirmAddBugTicket');
+    if (confirmAddBugTicketBtn) {
+        confirmAddBugTicketBtn.disabled = !resolved.canManageBugTickets;
+    }
+    const confirmDeleteBugTicketBtn = document.getElementById('confirmDeleteBugTicket');
+    if (confirmDeleteBugTicketBtn) {
+        confirmDeleteBugTicketBtn.disabled = !resolved.canManageBugTickets;
+    }
+    const bugTicketNumberInput = document.getElementById('bugTicketNumber');
+    if (bugTicketNumberInput) {
+        if (resolved.canManageBugTickets) {
+            bugTicketNumberInput.removeAttribute('disabled');
+        } else {
+            bugTicketNumberInput.setAttribute('disabled', 'true');
+        }
+    }
+
+    try {
+        updateItemSelectionUI();
+    } catch (_) {}
+
+    return resolved;
+}
 // ===== 排序狀態（TRE） =====
 let treSortField = 'number'; // number|title|priority|result|assignee|executed
 let treSortOrder = 'asc';
@@ -2291,7 +2485,19 @@ window.addEventListener('storage', (event) => {
 });
 
 // 頁面初始化
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
+    await applyTestRunExecutionPermissions();
+    if (window.AuthClient && typeof window.AuthClient.on === 'function') {
+        try {
+            window.AuthClient.on('authReady', async () => {
+                await applyTestRunExecutionPermissions();
+                if (testRunConfig) {
+                    updateControlButtons(testRunConfig.status);
+                    renderTestRunItems();
+                }
+            });
+        } catch (_) {}
+    }
     // 從 URL 參數取得必要參數
     const urlParams = new URLSearchParams(window.location.search);
     currentConfigId = parseInt(urlParams.get('config_id'));
@@ -2421,104 +2627,146 @@ function initializePage() {
 
 
 function bindEventListeners() {
-    document.getElementById('refreshBtn').addEventListener('click', async () => {
-        const refreshBtn = document.getElementById('refreshBtn');
-        const originalHTML = refreshBtn.innerHTML;
-        
-        // 顯示載入動畫在按鈕內（像 Test Case Management 一樣）
-        refreshBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2" role="status"></span>${window.i18n ? window.i18n.t('common.refresh') : '重新整理'}`;
-        refreshBtn.disabled = true;
-        
-        try {
-            // 清除 Test Case Management 的列表快取
-            try {
-                const TEST_CASES_CACHE_KEY = 'test_cases_list_cache_v1';
-                const keys = Object.keys(localStorage);
-                keys.forEach(key => {
-                    if (key.startsWith(TEST_CASES_CACHE_KEY)) {
-                        localStorage.removeItem(key);
-                    }
-                });
-            } catch (e) {
-                console.debug('清除 Test Case Management 快取失敗:', e);
-            }
-            
-            // 清除所有個別快取
-            try {
-                const keys = Object.keys(localStorage);
-                keys.forEach(key => {
-                    if (key.startsWith('tr_exec_tc_cache_v1')) {
-                        localStorage.removeItem(key);
-                    }
-                });
-            } catch (e) {
-                console.debug('清除個別快取失敗:', e);
-            }
-            
-            // 重新載入 Items（不顯示 Test Case 區域載入動畫）
-            await loadTestRunItemsWithoutLoading();
-            // 強制重新抓取 Test Case 詳細並更新快取
-            await preloadAllTeamTestCasesForRun(testRunItems);
-            // 更新統計（包含 Bug Tickets 數量）- 會自動顯示統計區域轉圈動畫
-            await updateStatistics();
-            // 更新 Bug Tickets 狀態
-            try {
-                await refreshBugTicketsStatus();
-            } catch (e) {
-                console.debug('更新 Bug Tickets 狀態失敗:', e);
-            }
-            // 若詳情 Modal 開啟中則刷新 timeline（以目前顯示的 test case）
-            try {
-                const modalEl = document.getElementById('testCaseDetailModal');
-                const isShown = modalEl && modalEl.classList.contains('show');
-                if (isShown && currentDetailTestCase && currentDetailTestCase.test_case_number) {
-                    renderResultHistoryTimeline({ test_case_number: currentDetailTestCase.test_case_number });
-                }
-            } catch (_) {}
-            // 若 Bug Tickets Summary Modal 開啟中則刷新其內容
-            try {
-                const bugModalEl = document.getElementById('bugTicketsSummaryModal');
-                const isBugModalShown = bugModalEl && bugModalEl.classList.contains('show');
-                if (isBugModalShown) {
-                    await loadBugTicketsSummary();
-                }
-            } catch (_) {}
-            
-            // 顯示成功訊息
-            AppUtils.showSuccess(window.i18n ? window.i18n.t('messages.dataReloaded') : '資料已重新載入');
-            
-        } finally {
-            // 恢復按鈕原始狀態
-            refreshBtn.innerHTML = originalHTML;
-            refreshBtn.disabled = false;
-        }
-    });
-    
-    document.getElementById('startBtn').addEventListener('click', () => {
-        confirmStatusChange('active', '{{ i18n.t("testRun.startExecutionConfirm") if i18n else "開始執行此 Test Run？" }}');
-    });
-    
-    document.getElementById('completeBtn').addEventListener('click', () => {
-        confirmStatusChange('completed', '{{ i18n.t("testRun.completeExecutionConfirm") if i18n else "結束此 Test Run？結束後將無法再修改測試結果。" }}');
-    });
-    
-    document.getElementById('restartBtn').addEventListener('click', showRestartModal);
-    
-    // 全選 checkbox 事件
-    document.getElementById('selectAllItemsCheckbox').addEventListener('change', toggleSelectAllItems);
-    
-    // 批次修改按鈕事件
-    document.getElementById('batchModifyBtn').addEventListener('click', showBatchModifyModal);
+    const permissions = getTrePermissions();
 
-    // 批次刪除按鈕事件
-    document.getElementById('batchDeleteBtn').addEventListener('click', showBatchDeleteConfirm);
-    // 清除選取
+    const refreshBtnEl = document.getElementById('refreshBtn');
+    if (refreshBtnEl) {
+        refreshBtnEl.addEventListener('click', async () => {
+            const refreshBtn = document.getElementById('refreshBtn');
+            const originalHTML = refreshBtn.innerHTML;
+
+            refreshBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2" role="status"></span>${window.i18n ? window.i18n.t('common.refresh') : '重新整理'}`;
+            refreshBtn.disabled = true;
+
+            try {
+                try {
+                    const TEST_CASES_CACHE_KEY = 'test_cases_list_cache_v1';
+                    const keys = Object.keys(localStorage);
+                    keys.forEach(key => {
+                        if (key.startsWith(TEST_CASES_CACHE_KEY)) {
+                            localStorage.removeItem(key);
+                        }
+                    });
+                } catch (e) {
+                    console.debug('清除 Test Case Management 快取失敗:', e);
+                }
+
+                try {
+                    const keys = Object.keys(localStorage);
+                    keys.forEach(key => {
+                        if (key.startsWith('tr_exec_tc_cache_v1')) {
+                            localStorage.removeItem(key);
+                        }
+                    });
+                } catch (e) {
+                    console.debug('清除個別快取失敗:', e);
+                }
+
+                await loadTestRunItemsWithoutLoading();
+                await preloadAllTeamTestCasesForRun(testRunItems);
+                await updateStatistics();
+                try {
+                    await refreshBugTicketsStatus();
+                } catch (e) {
+                    console.debug('更新 Bug Tickets 狀態失敗:', e);
+                }
+                try {
+                    const modalEl = document.getElementById('testCaseDetailModal');
+                    const isShown = modalEl && modalEl.classList.contains('show');
+                    if (isShown && currentDetailTestCase && currentDetailTestCase.test_case_number) {
+                        renderResultHistoryTimeline({ test_case_number: currentDetailTestCase.test_case_number });
+                    }
+                } catch (_) {}
+                try {
+                    const bugModalEl = document.getElementById('bugTicketsSummaryModal');
+                    const isBugModalShown = bugModalEl && bugModalEl.classList.contains('show');
+                    if (isBugModalShown) {
+                        await loadBugTicketsSummary();
+                    }
+                } catch (_) {}
+
+                AppUtils.showSuccess(window.i18n ? window.i18n.t('messages.dataReloaded') : '資料已重新載入');
+
+            } finally {
+                refreshBtn.innerHTML = originalHTML;
+                refreshBtn.disabled = false;
+            }
+        });
+    }
+
+    const startBtn = document.getElementById('startBtn');
+    if (startBtn) {
+        startBtn.addEventListener('click', () => {
+            if (!getTrePermissions().canStart) {
+                showExecutionPermissionDenied();
+                return;
+            }
+            confirmStatusChange('active', '{{ i18n.t("testRun.startExecutionConfirm") if i18n else "開始執行此 Test Run？" }}');
+        });
+    }
+
+    const completeBtn = document.getElementById('completeBtn');
+    if (completeBtn) {
+        completeBtn.addEventListener('click', () => {
+            if (!getTrePermissions().canComplete) {
+                showExecutionPermissionDenied();
+                return;
+            }
+            confirmStatusChange('completed', '{{ i18n.t("testRun.completeExecutionConfirm") if i18n else "結束此 Test Run？結束後將無法再修改測試結果。" }}');
+        });
+    }
+
+    const restartBtn = document.getElementById('restartBtn');
+    if (restartBtn) {
+        restartBtn.addEventListener('click', () => {
+            if (!getTrePermissions().canRestart) {
+                showExecutionPermissionDenied();
+                return;
+            }
+            showRestartModal();
+        });
+    }
+
+    const selectAllCheckbox = document.getElementById('selectAllItemsCheckbox');
+    if (selectAllCheckbox) {
+        selectAllCheckbox.addEventListener('change', toggleSelectAllItems);
+    }
+
+    const batchModifyBtn = document.getElementById('batchModifyBtn');
+    if (batchModifyBtn) {
+        batchModifyBtn.addEventListener('click', () => {
+            if (!getTrePermissions().canBatchModify) {
+                showExecutionPermissionDenied();
+                return;
+            }
+            showBatchModifyModal();
+        });
+    }
+
+    const batchDeleteBtn = document.getElementById('batchDeleteBtn');
+    if (batchDeleteBtn) {
+        batchDeleteBtn.addEventListener('click', () => {
+            if (!getTrePermissions().canBatchDelete) {
+                showExecutionPermissionDenied();
+                return;
+            }
+            showBatchDeleteConfirm();
+        });
+    }
+
     const clearSelectionExecBtn = document.getElementById('clearSelectionExecBtn');
-    if (clearSelectionExecBtn) clearSelectionExecBtn.addEventListener('click', clearSelectedItems);
-    
-    // 監聽個別項目 checkbox 變化（單點選 or 程式設定觸發）
+    if (clearSelectionExecBtn) {
+        clearSelectionExecBtn.addEventListener('click', clearSelectedItems);
+    }
+
     document.addEventListener('change', function(e) {
-        if (e.target.classList.contains('test-run-item-checkbox')) {
+        if (e.target && e.target.classList && e.target.classList.contains('test-run-item-checkbox')) {
+            if (!(getTrePermissions().canBatchModify || getTrePermissions().canBatchDelete)) {
+                e.target.checked = false;
+                showExecutionPermissionDenied();
+                updateItemSelectionUI();
+                return;
+            }
             const itemId = parseInt(e.target.value);
             if (e.target.checked) {
                 selectedItems.add(itemId);
@@ -2529,10 +2777,15 @@ function bindEventListeners() {
         }
     });
 
-    // 支援 Shift-點選 連續多選
     document.addEventListener('click', function(e) {
         const cb = e.target;
         if (!cb.classList || !cb.classList.contains('test-run-item-checkbox')) return;
+        if (!(getTrePermissions().canBatchModify || getTrePermissions().canBatchDelete)) {
+            cb.checked = false;
+            showExecutionPermissionDenied();
+            updateItemSelectionUI();
+            return;
+        }
 
         const checkboxes = Array.from(document.querySelectorAll('.test-run-item-checkbox'));
         const currentIndex = checkboxes.indexOf(cb);
@@ -2541,7 +2794,7 @@ function bindEventListeners() {
         if (e.shiftKey && lastItemCheckboxIndex !== null && lastItemCheckboxIndex !== -1) {
             const start = Math.min(lastItemCheckboxIndex, currentIndex);
             const end = Math.max(lastItemCheckboxIndex, currentIndex);
-            const shouldCheck = cb.checked; // 依照目前點選狀態套用整段
+            const shouldCheck = cb.checked;
 
             for (let i = start; i <= end; i++) {
                 const c = checkboxes[i];
@@ -2558,7 +2811,6 @@ function bindEventListeners() {
             updateItemSelectionUI();
         }
 
-        // 更新錨點索引（不論是否有按 Shift）
         lastItemCheckboxIndex = currentIndex;
     });
 }
@@ -2649,28 +2901,40 @@ function updateHeader() {
 }
 
 function updateControlButtons(status) {
+    const permissions = getTrePermissions();
     // 隱藏所有按鈕
-    document.getElementById('startBtn').style.display = 'none';
-    document.getElementById('completeBtn').style.display = 'none';
-    document.getElementById('restartBtn').style.display = 'none';
+    const startBtn = document.getElementById('startBtn');
+    const completeBtn = document.getElementById('completeBtn');
+    const restartBtn = document.getElementById('restartBtn');
+
+    if (startBtn) startBtn.style.display = 'none';
+    if (completeBtn) completeBtn.style.display = 'none';
+    if (restartBtn) restartBtn.style.display = 'none';
     
     // 根據狀態顯示對應按鈕
     switch (status) {
         case 'draft':
-            document.getElementById('startBtn').style.display = 'inline-block';
+            if (startBtn && permissions.canStart) {
+                startBtn.style.display = 'inline-block';
+            }
             break;
         case 'active':
-            document.getElementById('completeBtn').style.display = 'inline-block';
+            if (completeBtn && permissions.canComplete) {
+                completeBtn.style.display = 'inline-block';
+            }
             break;
         case 'completed':
-            document.getElementById('restartBtn').style.display = 'inline-block';
+            if (restartBtn && permissions.canRestart) {
+                restartBtn.style.display = 'inline-block';
+            }
             break;
     }
     
     // 更新批量修改按鈕狀態
     const batchModifyBtn = document.getElementById('batchModifyBtn');
     if (batchModifyBtn) {
-        if (status === 'completed') {
+        const allowModify = permissions.canBatchModify && status !== 'completed';
+        if (!allowModify) {
             batchModifyBtn.disabled = true;
             batchModifyBtn.classList.add('disabled');
             batchModifyBtn.title = window.i18n && window.i18n.isReady() 
@@ -2682,12 +2946,24 @@ function updateControlButtons(status) {
             batchModifyBtn.removeAttribute('title');
         }
     }
+
+    const batchDeleteBtn = document.getElementById('batchDeleteBtn');
+    if (batchDeleteBtn) {
+        const allowDelete = permissions.canBatchDelete && status !== 'completed';
+        batchDeleteBtn.disabled = !allowDelete;
+        if (!allowDelete) {
+            batchDeleteBtn.classList.add('disabled');
+        } else {
+            batchDeleteBtn.classList.remove('disabled');
+        }
+    }
 }
 
 function renderTestRunItems() {
     const tbody = document.getElementById('items-table-body');
-    const canUpdate = testRunConfig && testRunConfig.status === 'active';
-    
+    const permissions = getTrePermissions();
+    const canUpdate = permissions.canUpdateResults && testRunConfig && testRunConfig.status === 'active';
+
     // 更新表格標頭顯示
     updateTableHeader();
     // 依排序設定排序並更新指示
@@ -2786,6 +3062,10 @@ function hideItemsLoading() {
 }
 
 function shouldShowCheckbox(status) {
+    const permissions = getTrePermissions();
+    if (!(permissions.canBatchModify || permissions.canBatchDelete)) {
+        return false;
+    }
     return status === 'draft' || status === 'active';
 }
 
@@ -2804,11 +3084,12 @@ function updateTableHeader() {
 }
 
 function createItemRow(item, index, canUpdate) {
+    const permissions = getTrePermissions();
     const resultClass = getResultClass(item.test_result);
     const resultText = getResultText(item.test_result);
     const executedAt = item.executed_at ? AppUtils.formatDate(item.executed_at, 'datetime') : '-';
     const assigneeName = (item.assignee_name || (item.assignee && item.assignee.name)) || '-';
-    const canEditAssignee = testRunConfig && testRunConfig.status !== 'completed' && testRunConfig.status !== 'archived';
+    const canEditAssignee = permissions.canAssign && testRunConfig && testRunConfig.status !== 'completed' && testRunConfig.status !== 'archived';
     const showCheckbox = shouldShowCheckbox(testRunConfig ? testRunConfig.status : 'draft');
     const hasExecutionHistory = item.executed_at !== null && item.executed_at !== undefined;
     const isDeleted = !!item.__testCaseDeleted;
@@ -2865,46 +3146,42 @@ function createItemRow(item, index, canUpdate) {
 }
 
 function bindItemEventHandlers(canUpdate) {
-    if (!canUpdate) return;
-    
-    // 結果選擇器樣式更新（同時支援 .result-selector 與 .result-selector-lg）
-    document.querySelectorAll('.result-selector, .result-selector-lg').forEach(select => {
-        select.addEventListener('change', function() {
-            updateSelectClass(this);
+    const permissions = getTrePermissions();
+
+    if (canUpdate && permissions.canUpdateResults) {
+        document.querySelectorAll('.result-selector, .result-selector-lg').forEach(select => {
+            select.addEventListener('change', function() {
+                updateSelectClass(this);
+            });
+            updateSelectClass(select);
         });
-        updateSelectClass(select);
-    });
-    
-    // 初始化新渲染的 AssigneeSelector 元件（行內編輯器）
-    if (window.initAssigneeSelectors && currentTeamId) {
-        // 清理之前的 AssigneeSelector 實例
+    }
+
+    if (permissions.canAssign && window.initAssigneeSelectors && currentTeamId) {
         document.querySelectorAll('.assignee-editor[data-assignee-selector]').forEach(input => {
             if (input._assigneeSelector) {
                 input._assigneeSelector.destroy();
             }
         });
-        
-        // 為每個 assignee editor 設定自訂選項，包含選擇回調
+
         document.querySelectorAll('.assignee-editor[data-assignee-selector]').forEach(input => {
             const itemId = parseInt(input.dataset.itemId);
-            
+
             if (input._assigneeSelector) {
                 input._assigneeSelector.destroy();
             }
-            
+
             const options = {
                 teamId: currentTeamId,
                 allowCustomValue: true,
                 onSelect: (contact) => {
-                    // 當選擇聯絡人時，自動更新 assignee
                     updateAssignee(itemId, contact.name);
                 },
                 onClear: () => {
-                    // 當清空選擇時，自動清空 assignee
                     updateAssignee(itemId, '');
                 }
             };
-            
+
             input._assigneeSelector = new AssigneeSelector(input, options);
         });
     }
@@ -2918,6 +3195,10 @@ function updateSelectClass(select) {
 }
 
 async function updateTestResult(itemId, result) {
+    if (!getTrePermissions().canUpdateResults) {
+        showExecutionPermissionDenied();
+        return;
+    }
     try {
         const executedAt = result ? new Date().toISOString() : null;
         
@@ -3072,6 +3353,11 @@ function showItemDetail(itemId) {
 }
 
 function confirmStatusChange(newStatus, message) {
+    const permissions = getTrePermissions();
+    if ((newStatus === 'active' && !permissions.canStart) || (newStatus === 'completed' && !permissions.canComplete)) {
+        showExecutionPermissionDenied();
+        return;
+    }
     document.getElementById('confirm-message').textContent = message;
     const confirmBtn = document.getElementById('confirm-action-btn');
     
@@ -3088,6 +3374,11 @@ function confirmStatusChange(newStatus, message) {
 }
 
 async function changeTestRunStatus(newStatus) {
+    const permissions = getTrePermissions();
+    if ((newStatus === 'active' && !permissions.canStart) || (newStatus === 'completed' && !permissions.canComplete)) {
+        showExecutionPermissionDenied();
+        throw new Error('permission_denied');
+    }
     try {
         const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}`, {
             method: 'PUT',
@@ -3117,6 +3408,10 @@ async function changeTestRunStatus(newStatus) {
 }
 
 function showRestartModal() {
+    if (!getTrePermissions().canRestart) {
+        showExecutionPermissionDenied();
+        return;
+    }
     if (!testRunConfig || testRunConfig.status !== 'completed') {
         AppUtils.showWarning('{{ i18n.t("testRun.onlyCompletedCanRestart") if i18n else "只有已完成的 Test Run 才能重新執行" }}');
         return;
@@ -3134,6 +3429,10 @@ function showRestartModal() {
 }
 
 async function handleRestartConfirm() {
+    if (!getTrePermissions().canRestart) {
+        showExecutionPermissionDenied();
+        return;
+    }
     const selectedMode = document.querySelector('input[name="restartMode"]:checked');
     if (!selectedMode) {
         AppUtils.showWarning('{{ i18n.t("testRun.selectRestartMode") if i18n else "請選擇重新執行模式" }}');
@@ -3150,6 +3449,10 @@ async function handleRestartConfirm() {
 }
 
 async function restartTestRun(mode) {
+    if (!getTrePermissions().canRestart) {
+        showExecutionPermissionDenied();
+        throw new Error('permission_denied');
+    }
     try {
         // 調用重新執行 API
         const nameInput = document.getElementById('rerunNameInput');
@@ -3204,6 +3507,13 @@ function getResultText(result) {
 // 全頁載入已移除，使用列表區載入動畫（showItemsLoading/hideItemsLoading）
 
 function toggleSelectAllItems() {
+    if (!(getTrePermissions().canBatchModify || getTrePermissions().canBatchDelete)) {
+        const selectAll = document.getElementById('selectAllItemsCheckbox');
+        if (selectAll) selectAll.checked = false;
+        showExecutionPermissionDenied();
+        updateItemSelectionUI();
+        return;
+    }
     const selectAll = document.getElementById('selectAllItemsCheckbox').checked;
     const checkboxes = document.querySelectorAll('.test-run-item-checkbox');
     
@@ -3239,39 +3549,63 @@ function updateItemSelectionUI() {
     const selectAllCheckbox = document.getElementById('selectAllItemsCheckbox');
     const toolbar = document.getElementById('batchOperationsToolbar');
     const countDisplay = document.getElementById('selectedItemsCount');
+
+    if (!toolbar) {
+        return;
+    }
+
+    const applyToolbarVisibility = (visible) => {
+        if (visible) {
+            toolbar.classList.remove('d-none');
+            const defaultDisplay = toolbar.dataset.defaultDisplay || 'flex';
+            toolbar.style.setProperty('display', defaultDisplay, 'important');
+        } else {
+            toolbar.classList.add('d-none');
+            toolbar.style.setProperty('display', 'none', 'important');
+        }
+    };
     
     // 如果不顯示 checkbox，隱藏工具列
     if (!shouldShowCheckbox(testRunConfig ? testRunConfig.status : 'draft')) {
-        toolbar.classList.add('d-none');
+        applyToolbarVisibility(false);
         return;
     }
     
     // 更新全選 checkbox 狀態
-    if (selectedCount === 0) {
-        selectAllCheckbox.checked = false;
-        selectAllCheckbox.indeterminate = false;
-        toolbar.classList.add('d-none');
-    } else if (selectedCount === totalCheckboxes) {
-        selectAllCheckbox.checked = true;
-        selectAllCheckbox.indeterminate = false;
-        toolbar.classList.remove('d-none');
+    if (selectAllCheckbox) {
+        if (selectedCount === 0) {
+            selectAllCheckbox.checked = false;
+            selectAllCheckbox.indeterminate = false;
+            applyToolbarVisibility(false);
+        } else if (selectedCount === totalCheckboxes) {
+            selectAllCheckbox.checked = true;
+            selectAllCheckbox.indeterminate = false;
+            applyToolbarVisibility(true);
+        } else {
+            selectAllCheckbox.checked = false;
+            selectAllCheckbox.indeterminate = true;
+            applyToolbarVisibility(true);
+        }
     } else {
-        selectAllCheckbox.checked = false;
-        selectAllCheckbox.indeterminate = true;
-        toolbar.classList.remove('d-none');
+        applyToolbarVisibility(selectedCount > 0);
     }
     
     // 更新選中項目計數
-    if (window.i18n && window.i18n.isReady()) {
-        countDisplay.textContent = window.i18n.t('testRun.selectedItemsCount', {count: selectedCount});
-    } else {
-        countDisplay.textContent = `已選取 ${selectedCount} 個項目`;
+    if (countDisplay) {
+        if (window.i18n && window.i18n.isReady()) {
+            countDisplay.textContent = window.i18n.t('testRun.selectedItemsCount', {count: selectedCount});
+        } else {
+            countDisplay.textContent = `已選取 ${selectedCount} 個項目`;
+        }
+        countDisplay.setAttribute('data-i18n-params', JSON.stringify({count: selectedCount}));
     }
-    // 更新 data-i18n-params 屬性以支持語言切換
-    countDisplay.setAttribute('data-i18n-params', JSON.stringify({count: selectedCount}));
 }
 
 function showBatchModifyModal() {
+    if (!getTrePermissions().canBatchModify) {
+        showExecutionPermissionDenied();
+        return;
+    }
     if (selectedItems.size === 0) {
         const noSelectionMsg = window.i18n && window.i18n.isReady() 
             ? window.i18n.t('testRun.noItemsSelected')
@@ -3328,6 +3662,10 @@ function toggleBatchResultSelect() {
 }
 
 async function handleBatchModifyConfirm() {
+    if (!getTrePermissions().canBatchModify) {
+        showExecutionPermissionDenied();
+        return;
+    }
     try {
         const modifyAssignee = document.getElementById('batchModifyAssignee').checked;
         const modifyResult = document.getElementById('batchModifyResult').checked;
@@ -3370,6 +3708,10 @@ async function handleBatchModifyConfirm() {
 }
 
 async function batchModifyItems(modifications) {
+    if (!getTrePermissions().canBatchModify) {
+        showExecutionPermissionDenied();
+        throw new Error('permission_denied');
+    }
     try {
         const itemsToModify = Array.from(selectedItems);
 
@@ -3470,6 +3812,10 @@ async function batchModifyItems(modifications) {
 
 // 顯示批次刪除確認對話框
 function showBatchDeleteConfirm() {
+    if (!getTrePermissions().canBatchDelete) {
+        showExecutionPermissionDenied();
+        return;
+    }
     if (selectedItems.size === 0) {
         const noSelectionMsg = window.i18n && window.i18n.isReady()
             ? window.i18n.t('testRun.noItemsSelected')
@@ -3539,6 +3885,10 @@ function showBatchDeleteConfirm() {
 
 // 批次刪除測試執行項目
 async function batchDeleteItems() {
+    if (!getTrePermissions().canBatchDelete) {
+        showExecutionPermissionDenied();
+        throw new Error('permission_denied');
+    }
     try {
         const itemsToDelete = Array.from(selectedItems);
         let successCount = 0;
@@ -3664,6 +4014,7 @@ let currentDetailTestCase = null; // 目前顯示於執行頁 Modal 的 Test Cas
 
 // 初始化 Test Case 詳細資料 Modal 中的 AssigneeSelector
 function initializeTestCaseAssigneeSelector(testCase) {
+    if (!getTrePermissions().canAssign) return;
     if (!window.AssigneeSelector || !currentTeamId) return;
 
     const assigneeInput = document.querySelector('#testCaseDetailModal .assignee-editor[data-assignee-selector]');
@@ -3716,6 +4067,7 @@ async function showTestCaseDetailModal(testCaseNumber) {
     if (!testCaseDetailModalInstance) {
         testCaseDetailModalInstance = new bootstrap.Modal(modalElement);
     }
+    const permissions = getTrePermissions();
     
     // 確保這個 Modal 有最高的 z-index (高於其他 Modal)
     // Bug Tickets Summary Modal 預設是 1055，所以設置為 1080 確保在上層
@@ -3924,7 +4276,7 @@ function displayTestCaseDetail(testCase) {
     // 控制 Bug Tickets 新增按鈕狀態
     const addBugTicketBtn = document.getElementById('addBugTicketBtn');
     if (addBugTicketBtn && testRunConfig) {
-        const canAddBugTickets = testRunConfig.status !== 'completed' && testRunConfig.status !== 'archived';
+        const canAddBugTickets = permissions.canManageBugTickets && testRunConfig.status !== 'completed' && testRunConfig.status !== 'archived';
         addBugTicketBtn.disabled = !canAddBugTickets;
         addBugTicketBtn.style.opacity = canAddBugTickets ? '1' : '0.3';
         addBugTicketBtn.style.cursor = canAddBugTickets ? 'pointer' : 'not-allowed';
@@ -3936,6 +4288,8 @@ function generateBasicInfoHtml(testCase) {
     // 以 Test Run Item 的 assignee_name 為準（本地 DB），而非 Test Case 的 assignee
     const itemForCase = (testRunItems || []).find(i => i.test_case_number === testCase.test_case_number);
     const assigneeName = itemForCase ? (itemForCase.assignee_name || '') : '';
+    const permissions = getTrePermissions();
+    const canAssign = permissions.canAssign && testRunConfig && testRunConfig.status !== 'completed' && testRunConfig.status !== 'archived';
     const tcgNumbers = Array.isArray(testCase.tcg)
         ? testCase.tcg.flatMap(t => {
             if (t && Array.isArray(t.text_arr) && t.text_arr.length) {
@@ -3963,6 +4317,14 @@ function generateBasicInfoHtml(testCase) {
         return '<span class="tcg-tag" style="margin-right:4px;" onclick="showTCGPreviewInTestRun(\'' + safe + '\', event)" title="' + safe + '">' + safe + '</span>';
     }).join('');
 
+    const assigneeCell = canAssign
+        ? `<input type="text" class="form-control form-control-sm assignee-editor basic-info-input"
+               value="${escapeHtml(assigneeName || '')}"
+               data-assignee-selector
+               data-test-case-id="${testCase.test_case_number}"
+               placeholder="{{ i18n.t('testRun.enterAssigneeName') if i18n else '輸入執行者姓名' }}">`
+        : `<span class="text-muted">${escapeHtml(assigneeName || '-')}</span>`;
+
     return `
         <!-- Basic Info 區域 -->
         <div class="card mb-2">
@@ -3988,13 +4350,7 @@ function generateBasicInfoHtml(testCase) {
                         <td class="basic-info-label" data-i18n="testRun.priority">優先級</td>
                         <td class="basic-info-value"><span class="badge bg-secondary basic-info-badge">${escapeHtml(testCase.priority || 'Medium')}</span></td>
                         <td class="basic-info-label" data-i18n="testRun.assignee">執行者</td>
-                        <td class="basic-info-value">
-                            <input type="text" class="form-control form-control-sm assignee-editor basic-info-input"
-                                   value="${escapeHtml(assigneeName || '')}"
-                                   data-assignee-selector
-                                   data-test-case-id="${testCase.test_case_number}"
-                                   placeholder="{{ i18n.t('testRun.enterAssigneeName') if i18n else '輸入執行者姓名' }}">
-                        </td>
+                        <td class="basic-info-value">${assigneeCell}</td>
                     </tr>
                     <tr>
                         <td class="basic-info-label basic-info-label-top" data-i18n="testRun.attachments">附件</td>
@@ -4386,6 +4742,10 @@ function showTestCaseDetailError() {
 }
 
 async function updateAssignee(itemId, assigneeName) {
+    if (!getTrePermissions().canAssign) {
+        showExecutionPermissionDenied();
+        return;
+    }
     try {
         // 清理輸入值
         const cleanAssignee = assigneeName ? assigneeName.trim() : '';
@@ -5004,6 +5364,10 @@ async function loadBugTickets(itemId) {
 
 // 新增 Bug Ticket
 async function addBugTicket() {
+    if (!getTrePermissions().canManageBugTickets) {
+        showExecutionPermissionDenied();
+        return;
+    }
     const ticketNumber = document.getElementById('bugTicketNumber').value.trim();
     
     if (!ticketNumber) {
@@ -5061,6 +5425,10 @@ function confirmDeleteBugTicket(itemId, ticketNumber) {
 
 // 刪除 Bug Ticket
 async function deleteBugTicket(itemId, ticketNumber) {
+    if (!getTrePermissions().canManageBugTickets) {
+        showExecutionPermissionDenied();
+        return;
+    }
     
     try {
         const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/${itemId}/bug-tickets/${encodeURIComponent(ticketNumber)}`, {
@@ -5084,59 +5452,74 @@ async function deleteBugTicket(itemId, ticketNumber) {
 
 // 綁定 Bug Ticket 相關事件
 function bindBugTicketEvents() {
+    const permissions = getTrePermissions();
+    const canManageBugTickets = permissions.canManageBugTickets;
     // 新增 Bug Ticket 按鈕
     const addBugTicketBtn = document.getElementById('addBugTicketBtn');
     if (addBugTicketBtn) {
-        addBugTicketBtn.addEventListener('click', () => {
-            // 檢查按鈕是否被禁用
-            if (addBugTicketBtn.disabled) {
-                return;
-            }
-            
-            initBugTicketModal();
-            currentItemIdForBugTicket = getCurrentItemId();
-            if (currentItemIdForBugTicket) {
-                addBugTicketModal.show();
-                // 清空表單
-                document.getElementById('bugTicketNumber').value = '';
-                // 焦點到輸入框
-                setTimeout(() => {
-                    document.getElementById('bugTicketNumber').focus();
-                }, 300);
-            } else {
-                AppUtils.showError('請先選擇一個測試項目');
-            }
-        });
+        if (canManageBugTickets) {
+            addBugTicketBtn.addEventListener('click', () => {
+                if (addBugTicketBtn.disabled) {
+                    return;
+                }
+
+                initBugTicketModal();
+                currentItemIdForBugTicket = getCurrentItemId();
+                if (currentItemIdForBugTicket) {
+                    addBugTicketModal.show();
+                    document.getElementById('bugTicketNumber').value = '';
+                    setTimeout(() => {
+                        document.getElementById('bugTicketNumber').focus();
+                    }, 300);
+                } else {
+                    AppUtils.showError('請先選擇一個測試項目');
+                }
+            });
+        } else {
+            addBugTicketBtn.disabled = true;
+        }
     }
     
     // 確認新增 Bug Ticket 按鈕
     const confirmAddBugTicket = document.getElementById('confirmAddBugTicket');
     if (confirmAddBugTicket) {
-        confirmAddBugTicket.addEventListener('click', addBugTicket);
+        if (canManageBugTickets) {
+            confirmAddBugTicket.addEventListener('click', addBugTicket);
+        } else {
+            confirmAddBugTicket.disabled = true;
+        }
     }
 
     // 確認刪除 Bug Ticket 按鈕
     const confirmDeleteBugTicketBtn = document.getElementById('confirmDeleteBugTicket');
     if (confirmDeleteBugTicketBtn) {
-        confirmDeleteBugTicketBtn.addEventListener('click', async () => {
-            if (currentItemIdForBugTicket && currentTicketNumberForDelete) {
-                deleteBugTicketModal.hide();
-                await deleteBugTicket(currentItemIdForBugTicket, currentTicketNumberForDelete);
-                currentItemIdForBugTicket = null;
-                currentTicketNumberForDelete = null;
-            }
-        });
+        if (canManageBugTickets) {
+            confirmDeleteBugTicketBtn.addEventListener('click', async () => {
+                if (currentItemIdForBugTicket && currentTicketNumberForDelete) {
+                    deleteBugTicketModal.hide();
+                    await deleteBugTicket(currentItemIdForBugTicket, currentTicketNumberForDelete);
+                    currentItemIdForBugTicket = null;
+                    currentTicketNumberForDelete = null;
+                }
+            });
+        } else {
+            confirmDeleteBugTicketBtn.disabled = true;
+        }
     }
     
     // Enter 鍵提交表單
     const bugTicketNumberInput = document.getElementById('bugTicketNumber');
     if (bugTicketNumberInput) {
-        bugTicketNumberInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                addBugTicket();
-            }
-        });
+        if (canManageBugTickets) {
+            bugTicketNumberInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    addBugTicket();
+                }
+            });
+        } else {
+            bugTicketNumberInput.setAttribute('disabled', 'true');
+        }
     }
     
     // 委託事件：Bug Ticket 點擊預覽
@@ -6772,26 +7155,41 @@ class TestResultsManager {
     bindEvents() {
         this.unbindEvents();
 
+        const canUpload = getTrePermissions().canUploadResults;
+
         if (this.uploadBtn) {
-            this.handleUploadButtonClick = () => this.toggleUploadArea();
-            this.uploadBtn.addEventListener('click', this.handleUploadButtonClick);
+            if (canUpload) {
+                this.handleUploadButtonClick = () => this.toggleUploadArea();
+                this.uploadBtn.addEventListener('click', this.handleUploadButtonClick);
+            } else {
+                this.uploadBtn.classList.add('disabled');
+                this.uploadBtn.setAttribute('aria-disabled', 'true');
+            }
         }
 
         if (this.dropzone) {
-            this.handleDropzoneDragOver = (e) => this.handleDragOver(e);
-            this.handleDropzoneDragLeave = (e) => this.handleDragLeave(e);
-            this.handleDropzoneDrop = (e) => this.handleDrop(e);
-            this.handleDropzoneClick = () => this.fileInput?.click();
+            if (canUpload) {
+                this.handleDropzoneDragOver = (e) => this.handleDragOver(e);
+                this.handleDropzoneDragLeave = (e) => this.handleDragLeave(e);
+                this.handleDropzoneDrop = (e) => this.handleDrop(e);
+                this.handleDropzoneClick = () => this.fileInput?.click();
 
-            this.dropzone.addEventListener('dragover', this.handleDropzoneDragOver);
-            this.dropzone.addEventListener('dragleave', this.handleDropzoneDragLeave);
-            this.dropzone.addEventListener('drop', this.handleDropzoneDrop);
-            this.dropzone.addEventListener('click', this.handleDropzoneClick);
+                this.dropzone.addEventListener('dragover', this.handleDropzoneDragOver);
+                this.dropzone.addEventListener('dragleave', this.handleDropzoneDragLeave);
+                this.dropzone.addEventListener('drop', this.handleDropzoneDrop);
+                this.dropzone.addEventListener('click', this.handleDropzoneClick);
+            } else {
+                this.dropzone.classList.add('disabled');
+            }
         }
 
         if (this.fileInput) {
-            this.handleFileInputChange = (e) => this.handleFileSelect(e);
-            this.fileInput.addEventListener('change', this.handleFileInputChange);
+            if (canUpload) {
+                this.handleFileInputChange = (e) => this.handleFileSelect(e);
+                this.fileInput.addEventListener('change', this.handleFileInputChange);
+            } else {
+                this.fileInput.setAttribute('disabled', 'true');
+            }
         }
     }
 
@@ -6888,6 +7286,10 @@ class TestResultsManager {
     }
     
     toggleUploadArea() {
+        if (!getTrePermissions().canUploadResults) {
+            showExecutionPermissionDenied();
+            return;
+        }
         if (!this.uploadArea) {
             return;
         }
@@ -6940,6 +7342,11 @@ class TestResultsManager {
     }
     
     async uploadFiles(files) {
+        if (!getTrePermissions().canUploadResults) {
+            showExecutionPermissionDenied();
+            this.showProgress(false);
+            return;
+        }
         if (this.isUploading) {
             AppUtils.showWarning(i18n.t('testRun.uploadInProgress'));
             return;
@@ -6989,6 +7396,7 @@ class TestResultsManager {
     renderResultsList(files) {
         const safeFiles = Array.isArray(files) ? files : [];
         this.currentFiles = safeFiles;
+        this.canManageFiles = getTrePermissions().canUploadResults;
 
         if (!safeFiles.length) {
             if (this.resultsList) {
@@ -7009,6 +7417,18 @@ class TestResultsManager {
 
     renderFileItem(file) {
         const fileIcon = this.getFileIcon(file.name);
+        const canManageFiles = !!this.canManageFiles;
+        const actionsHtml = canManageFiles ? `
+                <div class="file-actions">
+                    <button type="button" class="btn btn-xs btn-outline-danger delete-file-btn" 
+                            data-file-token="${file.file_token}"
+                            data-file-name="${this.escapeHtml(file.name)}" 
+                            data-i18n-title="testRun.deleteFile"
+                            style="font-size: 0.6rem; padding: 2px 4px;"
+                            onclick="event.stopPropagation();">
+                        <i class="fas fa-trash" style="font-size: 0.7rem;"></i>
+                    </button>
+                </div>` : '';
         
         return `
             <div class="test-result-file-item clickable-file" 
@@ -7022,16 +7442,7 @@ class TestResultsManager {
                         <div class="fw-medium">${this.escapeHtml(file.name)}</div>
                     </div>
                 </div>
-                <div class="file-actions">
-                    <button type="button" class="btn btn-xs btn-outline-danger delete-file-btn" 
-                            data-file-token="${file.file_token}"
-                            data-file-name="${this.escapeHtml(file.name)}" 
-                            data-i18n-title="testRun.deleteFile"
-                            style="font-size: 0.6rem; padding: 2px 4px;"
-                            onclick="event.stopPropagation();">
-                        <i class="fas fa-trash" style="font-size: 0.7rem;"></i>
-                    </button>
-                </div>
+                ${actionsHtml}
             </div>
         `;
     }
@@ -7064,13 +7475,15 @@ class TestResultsManager {
         });
         
         // 刪除按鈕事件
-        document.querySelectorAll('.delete-file-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                const fileToken = e.currentTarget.dataset.fileToken;
-                const fileName = e.currentTarget.dataset.fileName;
-                this.deleteFile(fileToken, fileName);
+        if (this.canManageFiles) {
+            document.querySelectorAll('.delete-file-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const fileToken = e.currentTarget.dataset.fileToken;
+                    const fileName = e.currentTarget.dataset.fileName;
+                    this.deleteFile(fileToken, fileName);
+                });
             });
-        });
+        }
     }
     
     async downloadFile(fileToken) {
@@ -7084,6 +7497,10 @@ class TestResultsManager {
     }
     
     async deleteFile(fileToken, fileName) {
+        if (!getTrePermissions().canUploadResults) {
+            showExecutionPermissionDenied();
+            return;
+        }
         const confirmed = await AppUtils.showConfirm(
             i18n.t('testRun.confirmDeleteFile', { fileName })
         );

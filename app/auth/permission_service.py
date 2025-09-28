@@ -16,10 +16,10 @@ from functools import lru_cache
 
 import casbin
 import yaml
-from sqlalchemy import select, and_
+from sqlalchemy import select
 
 from app.database import get_async_session
-from app.models.database_models import User, UserTeamPermission, Team
+from app.models.database_models import User, Team
 from app.auth.models import UserRole, PermissionType, PermissionCheck
 from app.config import get_settings
 
@@ -442,61 +442,68 @@ class PermissionService:
             return PermissionType.WRITE
         return PermissionType.READ
 
-    async def check_team_permission(self, user_id: int, team_id: int, required_permission: PermissionType) -> bool:
+    async def check_team_permission(
+        self,
+        user_id: int,
+        team_id: int,
+        required_permission: PermissionType,
+        current_role: Optional[UserRole] = None,
+    ) -> PermissionCheck:
         """
-        檢查團隊權限
-        
-        Args:
-            user_id: 使用者 ID
-            team_id: 團隊 ID
-            required_permission: 所需權限類型
-            
-        Returns:
-            是否具備所需權限
-        """
-        # 若停用團隊權限，改用全域角色映射
-        if not self.settings.auth.use_team_permissions:
-            user_role = await self._get_user_role(user_id)
-            if not user_role:
-                return False
-            mapped = await self._role_to_permission(user_role)
-            # 快取映射結果
-            await self.cache.set(user_id, mapped, team_id)
-            return self._compare_permissions(mapped, required_permission)
+        根據使用者角色檢查權限。
 
-        # 嘗試從快取取得
-        cached_permission = await self.cache.get(user_id, team_id)
-        if cached_permission is not None:
-            return self._compare_permissions(cached_permission, required_permission)
-        
-        # 從資料庫查詢
+        現在的權限僅由角色決定，team_id 僅用於快取鍵，實際上不再進行團隊粒度判斷。
+        """
+
         try:
-            async with get_async_session() as session:
-                result = await session.execute(
-                    select(UserTeamPermission.permission).where(
-                        and_(
-                            UserTeamPermission.user_id == user_id,
-                            UserTeamPermission.team_id == team_id
-                        )
-                    )
+            if current_role:
+                user_role = (
+                    current_role
+                    if isinstance(current_role, UserRole)
+                    else UserRole(str(current_role))
                 )
-                permission_str = result.scalar_one_or_none()
-                
-                if not permission_str:
-                    logger.debug(f"使用者無團隊權限: user_id={user_id}, team_id={team_id}")
-                    return False
-                
-                permission = PermissionType(permission_str)
-                
-                # 快取結果
-                await self.cache.set(user_id, permission, team_id)
-                
-                return self._compare_permissions(permission, required_permission)
-                
-        except Exception as e:
-            logger.error(f"檢查團隊權限失敗: user_id={user_id}, team_id={team_id}, error={e}")
-            return False
-    
+            else:
+                user_role = await self._get_user_role(user_id)
+
+            if not user_role:
+                return PermissionCheck(
+                    has_permission=False,
+                    user_role=UserRole.VIEWER,
+                    team_permission=None,
+                    reason="使用者不存在或已停用",
+                )
+
+            mapped_permission = await self._role_to_permission(user_role)
+            has_perm = self._compare_permissions(mapped_permission, required_permission)
+
+            reason = None if has_perm else (
+                f"角色 {user_role.value} 缺少 {required_permission.value} 權限"
+            )
+
+            # 仍保留快取，以便其他檢查共用資料
+            await self.cache.set(user_id, mapped_permission, team_id)
+
+            return PermissionCheck(
+                has_permission=has_perm,
+                user_role=user_role,
+                team_permission=mapped_permission if has_perm else None,
+                reason=reason,
+            )
+
+        except Exception as exc:
+            logger.error(
+                "角色權限檢查失敗: user_id=%s team_id=%s error=%s",
+                user_id,
+                team_id,
+                exc,
+            )
+            return PermissionCheck(
+                has_permission=False,
+                user_role=UserRole.VIEWER,
+                team_permission=None,
+                reason="權限檢查發生例外",
+            )
+
     def _compare_permissions(self, user_permission: PermissionType, required_permission: PermissionType) -> bool:
         """
         比較權限類型
@@ -526,86 +533,54 @@ class PermissionService:
             團隊 ID 列表
         """
         try:
-            # 首先檢查使用者角色
             user_role = await self._get_user_role(user_id)
             if not user_role:
                 return []
-            
-            async with get_async_session() as session:
-                # Super Admin 可以存取所有團隊
-                if not self.settings.auth.use_team_permissions:
-                    # 停用團隊權限時，所有有效使用者視為可存取所有團隊（以全域角色控制資源權限）
-                    result = await session.execute(select(Team.id))
-                    return [team_id for team_id, in result.fetchall()]
 
-                # Super Admin 可以存取所有團隊
-                if user_role == UserRole.SUPER_ADMIN:
-                    result = await session.execute(select(Team.id))
-                    return [team_id for team_id, in result.fetchall()]
-                
-                # 其他角色只能存取有權限的團隊
-                result = await session.execute(
-                    select(UserTeamPermission.team_id).where(
-                        UserTeamPermission.user_id == user_id
-                    )
-                )
+            async with get_async_session() as session:
+                result = await session.execute(select(Team.id))
                 return [team_id for team_id, in result.fetchall()]
-                
+
         except Exception as e:
             logger.error(f"取得使用者可存取團隊失敗: user_id={user_id}, error={e}")
             return []
     
-    async def has_resource_permission(self, user_id: int, team_id: int, resource_type: str, required_permission: PermissionType) -> bool:
-        """
-        檢查資源權限（整合角色檢查和團隊權限檢查）
-        
-        Args:
-            user_id: 使用者 ID
-            team_id: 資源所屬團隊 ID
-            resource_type: 資源類型
-            required_permission: 所需權限
-            
-        Returns:
-            是否具備所需權限
-        """
-        # 檢查快取
+    async def has_resource_permission(
+        self,
+        user_id: int,
+        team_id: int,
+        resource_type: str,
+        required_permission: PermissionType,
+    ) -> bool:
+        """檢查資源權限，現僅依角色決定"""
+
         cached_result = await self.cache.get(user_id, team_id, resource_type)
         if cached_result is not None:
             return self._compare_permissions(cached_result, required_permission)
-        
-        try:
-            # 1. 檢查使用者角色
-            user_role = await self._get_user_role(user_id)
-            if not user_role:
-                logger.warning(f"找不到使用者角色: user_id={user_id}")
-                return False
 
-            # 若停用團隊權限，改用全域角色映射
-            if not self.settings.auth.use_team_permissions:
-                mapped = await self._role_to_permission(user_role)
-                await self.cache.set(user_id, mapped, team_id, resource_type)
-                return self._compare_permissions(mapped, required_permission)
-            
-            # 2. Super Admin 可以存取所有資源
-            if user_role == UserRole.SUPER_ADMIN:
-                # 快取結果（Super Admin 視為最高權限）
-                await self.cache.set(user_id, PermissionType.ADMIN, team_id, resource_type)
-                return True
-            
-            # 3. 檢查團隊權限
-            team_permission_result = await self.check_team_permission(user_id, team_id, required_permission)
-            
-            # 快取結果
-            if team_permission_result:
-                # 取得實際權限並快取
-                user_permission = await self._get_user_team_permission(user_id, team_id)
-                if user_permission:
-                    await self.cache.set(user_id, user_permission, team_id, resource_type)
-            
-            return team_permission_result
-            
-        except Exception as e:
-            logger.error(f"檢查資源權限失敗: user_id={user_id}, team_id={team_id}, resource_type={resource_type}, error={e}")
+        try:
+            permission_check = await self.check_team_permission(
+                user_id, team_id, required_permission
+            )
+
+            if permission_check.has_permission and permission_check.team_permission:
+                await self.cache.set(
+                    user_id,
+                    permission_check.team_permission,
+                    team_id,
+                    resource_type,
+                )
+
+            return permission_check.has_permission
+
+        except Exception as exc:
+            logger.error(
+                "檢查資源權限失敗: user_id=%s, team_id=%s, resource_type=%s, error=%s",
+                user_id,
+                team_id,
+                resource_type,
+                exc,
+            )
             return False
     
     async def _get_user_role(self, user_id: int) -> Optional[UserRole]:
@@ -619,24 +594,6 @@ class PermissionService:
                 return UserRole(role_str) if role_str else None
         except Exception as e:
             logger.error(f"取得使用者角色失敗: user_id={user_id}, error={e}")
-            return None
-    
-    async def _get_user_team_permission(self, user_id: int, team_id: int) -> Optional[PermissionType]:
-        """取得使用者在團隊的權限"""
-        try:
-            async with get_async_session() as session:
-                result = await session.execute(
-                    select(UserTeamPermission.permission).where(
-                        and_(
-                            UserTeamPermission.user_id == user_id,
-                            UserTeamPermission.team_id == team_id
-                        )
-                    )
-                )
-                permission_str = result.scalar_one_or_none()
-                return PermissionType(permission_str) if permission_str else None
-        except Exception as e:
-            logger.error(f"取得使用者團隊權限失敗: user_id={user_id}, team_id={team_id}, error={e}")
             return None
     
     async def check_permission(
@@ -801,17 +758,11 @@ class PermissionService:
             accessible_teams = await self.get_user_accessible_teams(user_id)
             
             # 取得詳細團隊權限
-            team_permissions = {}
-            for team_id in accessible_teams:
-                permission = await self._get_user_team_permission(user_id, team_id)
-                if permission:
-                    team_permissions[team_id] = permission.value
-            
             return {
                 "user_id": user_id,
                 "role": user_role.value,
                 "accessible_teams": accessible_teams,
-                "team_permissions": team_permissions,
+                "team_permissions": {},
                 "is_super_admin": user_role == UserRole.SUPER_ADMIN,
                 "is_admin": user_role in [UserRole.SUPER_ADMIN, UserRole.ADMIN]
             }
@@ -891,9 +842,13 @@ async def check_user_role(user_id: int, required_role: UserRole) -> bool:
     return await permission_service.check_user_role(user_id, required_role)
 
 
-async def check_team_permission(user_id: int, team_id: int, required_permission: PermissionType) -> bool:
-    """檢查團隊權限"""
-    return await permission_service.check_team_permission(user_id, team_id, required_permission)
+async def check_team_permission(
+    user_id: int, team_id: int, required_permission: PermissionType
+) -> PermissionCheck:
+    """檢查團隊權限（角色導向）"""
+    return await permission_service.check_team_permission(
+        user_id, team_id, required_permission
+    )
 
 
 async def has_resource_permission(user_id: int, team_id: int, resource_type: str, required_permission: PermissionType) -> bool:

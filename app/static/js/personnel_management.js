@@ -17,6 +17,13 @@
     larkCache: new Map(), // lark_user_id -> { name, avatar }
   };
 
+  const ROLE_LABELS = {
+    viewer: 'Viewer',
+    user: 'User',
+    admin: 'Admin',
+    super_admin: 'Super Admin',
+  };
+
   function hasAuth() {
     const role = (state.me && state.me.role) || '';
     return role === 'admin' || role === 'super_admin';
@@ -269,8 +276,7 @@
     setVal('pm-email', u.email || '');
     setChecked('pm-active', !!u.is_active);
     // 角色選項
-    buildRoleOptions();
-    setVal('pm-role', (u.role || '').toLowerCase());
+    buildRoleOptions(u.role);
     // 主要團隊（目前後端未提供，僅顯示空）
     setVal('pm-primary-team', u.primary_team_id != null ? String(u.primary_team_id) : '');
     // Lark：同步隱藏值與搜尋框顯示
@@ -301,23 +307,49 @@
     if (prompt) prompt.style.display = showForm ? 'none' : 'block';
   }
 
-  function buildRoleOptions() {
+  function buildRoleOptions(selectedRole = null) {
     const sel = document.getElementById('pm-role');
     if (!sel) return;
+
     const meRole = (state.me && state.me.role) || '';
-    const options = [];
+    const normalizedSelected = selectedRole ? String(selectedRole).toLowerCase() : '';
+
+    const allowed = [];
     if (meRole === 'super_admin') {
-      options.push(['viewer','viewer'], ['user','user'], ['admin','admin']);
+      allowed.push('viewer', 'user', 'admin');
     } else if (meRole === 'admin') {
-      options.push(['viewer','viewer'], ['user','user']);
+      allowed.push('viewer', 'user');
     } else {
-      options.push(['viewer','viewer']);
+      allowed.push('viewer');
     }
-    sel.innerHTML = options.map(([v,l]) => `<option value="${v}">${l}</option>`).join('');
+
+    const seen = new Set();
+    const options = [];
+    allowed.forEach((role) => {
+      const value = role.toLowerCase();
+      if (seen.has(value)) return;
+      seen.add(value);
+      options.push({ value, label: ROLE_LABELS[value] || value, locked: false });
+    });
+
+    if (normalizedSelected && !seen.has(normalizedSelected)) {
+      seen.add(normalizedSelected);
+      options.push({ value: normalizedSelected, label: ROLE_LABELS[normalizedSelected] || normalizedSelected, locked: true });
+    }
+
+    sel.innerHTML = options
+      .map((opt) => `<option value="${opt.value}"${opt.locked ? ' data-locked="true"' : ''}>${opt.label}</option>`)
+      .join('');
+
+    if (normalizedSelected) {
+      sel.value = normalizedSelected;
+    }
   }
 
   function applyRoleRestrictions(targetUser) {
     const meRole = (state.me && state.me.role) || '';
+    const targetRole = targetUser ? targetUser.role : '';
+    buildRoleOptions(targetRole);
     const saveBtn = document.getElementById('pm-save');
     const delBtn = document.getElementById('pm-delete');
     const resetBtn = document.getElementById('pm-reset');
@@ -342,7 +374,6 @@
         // saveBtn 保持啟用，可編輯非關鍵欄位
       } else {
         // 僅能 viewer <-> user 範圍
-        buildRoleOptions();
       }
     } else if (meRole === 'super_admin') {
       if (tRole === 'super_admin') {
@@ -353,7 +384,6 @@
         // saveBtn 保持啟用，可編輯非關鍵欄位
       } else {
         // super_admin 可將他人設為 viewer/user/admin
-        buildRoleOptions();
       }
     } else {
       // 其他角色不可見此分頁，但若出現則全部禁用
@@ -612,6 +642,11 @@
 
   function clearForm(options = {}) {
     buildRoleOptions(); // 填充角色下拉選單
+    const usernameInput = document.getElementById('pm-username');
+    if (usernameInput) {
+      usernameInput.disabled = false;
+      usernameInput.readOnly = false;
+    }
     setVal('pm-username','');
     setVal('pm-full-name','');
     setVal('pm-email','');

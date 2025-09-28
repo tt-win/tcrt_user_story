@@ -13,7 +13,6 @@ from app.auth.dependencies import (
     get_current_user,
     require_admin,
     require_super_admin,
-    require_team_permission,
 )
 from app.auth.models import PermissionType
 from app.models.database_models import User
@@ -246,10 +245,10 @@ async def get_team(
 
     # 權限檢查
     if current_user.role != UserRole.SUPER_ADMIN:
-        ok = await permission_service.check_team_permission(
-            current_user.id, team_id, PermissionType.READ
+        permission_check = await permission_service.check_team_permission(
+            current_user.id, team_id, PermissionType.READ, current_user.role
         )
-        if not ok:
+        if not permission_check.has_permission:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN, detail="無權限存取此團隊"
             )
@@ -277,10 +276,10 @@ async def update_team(
 
     # 權限檢查
     if current_user.role != UserRole.SUPER_ADMIN:
-        ok = await permission_service.check_team_permission(
-            current_user.id, team_id, PermissionType.WRITE
+        permission_check = await permission_service.check_team_permission(
+            current_user.id, team_id, PermissionType.WRITE, current_user.role
         )
-        if not ok:
+        if not permission_check.has_permission:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN, detail="無權限修改此團隊"
             )

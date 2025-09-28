@@ -116,6 +116,8 @@
         "noTCGNumber": "请先输入 TCG 编号",
         "noTcgMatches": "找不到匹配的 TCG",
         "noTeamSelected": "請先選擇團隊",
+        "teamAccessDenied": "您没有权限访问指定团队，请选择其他团队",
+        "teamNotFound": "找不到指定的团队，请选择其他团队",
         "noTestCasesAvailable": "尚无可用测试案例",
         "noTestRunsFound": "没有找到符合条件的测试执行记录",
         "pleaseEnterName": "请填写测试执行名称",
@@ -274,6 +276,7 @@
         "uploadingFile": "正在上传",
         "validationFailed": "验证失败",
         "warning": "警告",
+        "permissionDenied": "无权限执行此操作",
         "batchCopySuccess": "已成功复制 {count} 条测试案例"
     },
     "navigation": {

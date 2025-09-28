@@ -646,7 +646,7 @@ async def delete_user(
     current_user: User = Depends(get_current_user)
 ):
     """
-    刪除使用者 (軟刪除)
+    刪除使用者 (永久刪除)
 
     需要 SUPER_ADMIN 權限。
     """
@@ -681,15 +681,15 @@ async def delete_user(
                     detail="不可刪除超級管理員"
                 )
 
-            # 軟刪除：設定為不活躍
-            user.is_active = False
-            user.updated_at = datetime.utcnow()
+            deleted_username = user.username
 
+            # 永久刪除使用者資料
+            await session.delete(user)
             await session.commit()
 
-            logger.info(f"管理員 {current_user.username} 刪除了使用者 {user.username}")
+            logger.info(f"管理員 {current_user.username} 永久刪除了使用者 {deleted_username}")
 
-            return {"message": f"使用者 {user.username} 已被停用"}
+            return {"message": f"使用者 {deleted_username} 已被刪除"}
 
     except HTTPException:
         raise

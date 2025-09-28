@@ -196,10 +196,10 @@ async def get_test_runs(
     from app.auth.permission_service import permission_service
 
     if current_user.role != UserRole.SUPER_ADMIN:
-        ok = await permission_service.check_team_permission(
-            current_user.id, team_id, PermissionType.READ
+        permission_check = await permission_service.check_team_permission(
+            current_user.id, team_id, PermissionType.READ, current_user.role
         )
-        if not ok:
+        if not permission_check.has_permission:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="無權限存取此團隊的測試執行記錄",
