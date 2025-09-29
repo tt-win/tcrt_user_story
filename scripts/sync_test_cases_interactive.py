@@ -38,6 +38,7 @@ def parse_lark_url(url: str) -> dict | None:
         return match.groupdict()
     return None
 
+
 async def select_team(db: AsyncSession) -> TeamDB | None:
     """
     從資料庫中讀取所有團隊，讓使用者透過選單選擇。
@@ -66,6 +67,7 @@ async def select_team(db: AsyncSession) -> TeamDB | None:
             print("\n操作已取消。")
             return None
 
+
 class TestCaseSynchronizer:
     """
     處理 Test Case 本地與遠端同步的核心邏輯。
@@ -78,7 +80,7 @@ class TestCaseSynchronizer:
         self.plan = {}
         self.local_cases = {}
         self.remote_cases = {}
-        self.raw_remote_records = [] # 保存原始遠端紀錄
+        self.raw_remote_records = []  # 保存原始遠端紀錄
 
     async def _get_local_cases(self):
         """獲取本地資料庫的 Test Cases"""
@@ -241,8 +243,8 @@ class TestCaseSynchronizer:
         
         # 處理 Assignee (人員) 欄位
         try:
-            if case.assignee_json:
-                assignee_data = json.loads(case.assignee_json)
+            if hasattr(case, 'assignee_json') and case.assignee_json is not None:
+                assignee_data = json.loads(str(case.assignee_json))
                 # Lark 人員欄位預期收到一個只包含 id 的物件列表
                 if isinstance(assignee_data, list):
                     # 如果是多人員欄位
@@ -257,8 +259,8 @@ class TestCaseSynchronizer:
 
         # 處理 TCG (關聯) 欄位
         try:
-            if case.tcg_json:
-                tcg_data = json.loads(case.tcg_json)
+            if hasattr(case, 'tcg_json') and case.tcg_json is not None:
+                tcg_data = json.loads(str(case.tcg_json))
                 # Lark 關聯欄位預期收到 record_id 的字串列表
                 record_ids = []
                 if isinstance(tcg_data, list):
@@ -369,6 +371,7 @@ class TestCaseSynchronizer:
             logger.error(f"同步過程中發生錯誤: {e}", exc_info=True)
             print("錯誤發生，資料庫操作已還原。")
 
+
 async def main():
     """
     主執行函式。
@@ -379,45 +382,53 @@ async def main():
     args = parser.parse_args()
 
     async with get_async_session() as db:
-        selected_team = None
-        if args.team_id:
-            result = await db.execute(select(TeamDB).where(TeamDB.id == args.team_id))
-            selected_team = result.scalars().first()
-            if not selected_team:
-                logger.error(f"找不到 ID 為 {args.team_id} 的團隊。")
-                return
-        else:
-            selected_team = await select_team(db)
+        async def select_or_reselect_team():
+            if args.team_id:
+                result = await db.execute(select(TeamDB).where(TeamDB.id == args.team_id))
+                selected_team = result.scalars().first()
+                if not selected_team:
+                    logger.error(f"找不到 ID 為 {args.team_id} 的團隊。")
+                    return None
+                logger.info(f"已選擇團隊: {selected_team.name}")
+                return selected_team
+            else:
+                return await select_team(db)
 
+        def setup_lark_config_and_client(team):
+            lark_config = {}
+            if args.lark_url:
+                logger.info("偵測到 --lark-url 參數，將覆寫團隊預設設定。")
+                parsed_url = parse_lark_url(args.lark_url)
+                if not parsed_url:
+                    logger.error("提供的 Lark URL 格式不正確。")
+                    return None, None
+                lark_config['wiki_token'] = parsed_url['wiki_token']
+                lark_config['table_id'] = parsed_url['table_id']
+            else:
+                logger.info("使用團隊的預設 Lark 設定。")
+                if team.wiki_token is None or team.test_case_table_id is None:
+                    logger.error(f"團隊 '{team.name}' 尚未設定預設的 Lark wiki_token 或 test_case_table_id。")
+                    return None, None
+                lark_config['wiki_token'] = team.wiki_token
+                lark_config['table_id'] = team.test_case_table_id
+
+            print(f"\n將要同步的 Lark 表格 ID: {lark_config['table_id']}\n")
+
+            lark_client = LarkClient(app_id=settings.lark.app_id, app_secret=settings.lark.app_secret)
+            if not lark_client.set_wiki_token(lark_config['wiki_token']):
+                logger.error("設定 Lark wiki token 失敗，請檢查 token 是否正確。")
+                return None, None
+
+            return lark_config, lark_client
+
+        selected_team = await select_or_reselect_team()
         if not selected_team:
             return
 
-        logger.info(f"已選擇團隊: {selected_team.name}")
-
-        lark_config = {}
-        if args.lark_url:
-            logger.info("偵測到 --lark-url 參數，將覆寫團隊預設設定。")
-            parsed_url = parse_lark_url(args.lark_url)
-            if not parsed_url:
-                logger.error("提供的 Lark URL 格式不正確。")
-                return
-            lark_config['wiki_token'] = parsed_url['wiki_token']
-            lark_config['table_id'] = parsed_url['table_id']
-        else:
-            logger.info("使用團隊的預設 Lark 設定。")
-            if not (selected_team.wiki_token and selected_team.test_case_table_id):
-                logger.error(f"團隊 '{selected_team.name}' 尚未設定預設的 Lark wiki_token 或 test_case_table_id。")
-                return
-            lark_config['wiki_token'] = selected_team.wiki_token
-            lark_config['table_id'] = selected_team.test_case_table_id
-
-        print(f"\n將要同步的 Lark 表格 ID: {lark_config['table_id']}\n")
-
-        lark_client = LarkClient(app_id=settings.lark.app_id, app_secret=settings.lark.app_secret)
-        if not lark_client.set_wiki_token(lark_config['wiki_token']):
-            logger.error("設定 Lark wiki token 失敗，請檢查 token 是否正確。")
+        lark_config, lark_client = setup_lark_config_and_client(selected_team)
+        if not lark_config or not lark_client:
             return
-            
+
         synchronizer = TestCaseSynchronizer(db, selected_team, lark_client, lark_config['table_id'])
 
         while True:
@@ -425,6 +436,7 @@ async def main():
             print("  [1] 分析本地與遠端資料")
             print("  [2] 預覽同步計畫 (摘要)")
             print("  [3] 執行同步 (含詳細預覽)")
+            print("  [0] 重新選擇團隊")
             print("  [4] 離開")
             choice = await asyncio.to_thread(input, "請輸入選項: ")
 
@@ -443,6 +455,19 @@ async def main():
                         await synchronizer.execute_plan()
                     else:
                         print("執行已取消。")
+            elif choice == '0':
+                print("\n重新選擇團隊...")
+                selected_team = await select_or_reselect_team()
+                if not selected_team:
+                    print("團隊選擇已取消，程式結束。")
+                    break
+                lark_config, lark_client = setup_lark_config_and_client(selected_team)
+                if not lark_config or not lark_client:
+                    print("Lark 設定失敗，程式結束。")
+                    break
+                synchronizer = TestCaseSynchronizer(db, selected_team, lark_client, lark_config['table_id'])
+                synchronizer.plan = {}  # 重置計畫
+                print(f"已切換到團隊: {selected_team.name}")
             elif choice == '4':
                 print("程式結束。")
                 break
