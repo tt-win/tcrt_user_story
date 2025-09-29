@@ -68,6 +68,7 @@ class UserService:
             role=user_create.role,
             hashed_password=hashed_password,
             is_active=user_create.is_active,
+            lark_user_id=user_create.lark_user_id,
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow()
         )
@@ -127,6 +128,7 @@ class UserService:
                 role=user_create.role,
                 hashed_password=hashed_password,
                 is_active=user_create.is_active,
+                lark_user_id=user_create.lark_user_id,
                 created_at=datetime.utcnow(),
                 updated_at=datetime.utcnow()
             )
