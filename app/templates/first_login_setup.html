@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}首次登入設定 - Test Case Repository{% endblock %}
+{% block title %}First Login Setup - Test Case Repository{% endblock %}
 
 {% block page_title %}{% endblock %}
 {% block page_actions %}{% endblock %}
@@ -143,20 +143,20 @@
     <div class="first-login-card">
         <div class="first-login-header">
             <i class="fas fa-user-shield fa-2x mb-3"></i>
-            <h4>首次登入設定</h4>
-            <p id="firstLoginSubtitle">為確保安全，請為您的帳號設定新密碼</p>
+            <h4>First Login Setup</h4>
+            <p id="firstLoginSubtitle">For security, please set a new password for your account</p>
         </div>
         <div class="p-4">
             <div id="firstLoginInfo" class="mb-3 text-muted"></div>
             <div class="tips mb-4">
                 <i class="fas fa-info-circle me-2"></i>
-                請為您的帳號設定一組新的安全密碼，完成後即可直接登入系統。
+                Please set a new secure password for your account. After completion, you can log in directly.
             </div>
             <form id="firstLoginForm" autocomplete="off">
                 <input type="hidden" id="username" name="username">
                 <div class="mb-3">
                     <label class="form-label" for="newPassword">
-                        <i class="fas fa-lock me-2"></i>新密碼
+                        <i class="fas fa-lock me-2"></i>New Password
                     </label>
                     <div class="input-group">
                         <input type="password" class="form-control" id="newPassword" placeholder="請設定新密碼 (至少 8 碼)" required>
@@ -165,13 +165,13 @@
                         </button>
                     </div>
                     <ul class="password-requirements">
-                        <li id="req-length"><i class="fas fa-times-circle"></i>至少 8 個字元</li>
-                        <li id="req-complexity"><i class="fas fa-times-circle"></i>建議混合大小寫及數字</li>
+                        <li id="req-length"><i class="fas fa-times-circle"></i>At least 8 characters</li>
+                        <li id="req-complexity"><i class="fas fa-times-circle"></i>Recommended to mix uppercase, lowercase, and numbers</li>
                     </ul>
                 </div>
                 <div class="mb-4">
                     <label class="form-label" for="confirmPassword">
-                        <i class="fas fa-lock me-2"></i>確認新密碼
+                        <i class="fas fa-lock me-2"></i>Confirm New Password
                     </label>
                     <div class="input-group">
                         <input type="password" class="form-control" id="confirmPassword" placeholder="請再次輸入新密碼" required>
@@ -185,13 +185,13 @@
                         <span id="setupBtnText"><i class="fas fa-check me-2"></i>設定密碼</span>
                         <span id="setupBtnLoading" class="d-none">
                             <span class="spinner-border spinner-border-sm me-2" role="status"></span>
-                            處理中...
+                            Processing...
                         </span>
                     </button>
                 </div>
                 <div class="text-center mt-4">
                     <a href="/login" class="text-muted" id="backToLoginLink">
-                        <i class="fas fa-arrow-left me-2"></i>返回登入頁
+                        <i class="fas fa-arrow-left me-2"></i>Back to Login Page
                     </a>
                 </div>
             </form>
@@ -224,13 +224,13 @@ class FirstLoginSetupManager {
 
         this.username = new URLSearchParams(window.location.search).get('username') || '';
         if (!this.username) {
-            this.showAlert('danger', '缺少使用者資訊，請從登入頁重新開始流程');
+            this.showAlert('danger', 'Missing user information, please start from login page');
             this.disableForm();
             return;
         }
 
         this.usernameInput.value = this.username;
-        this.infoBox.innerHTML = `<strong>帳號：</strong>${this.escapeHtml(this.username)}<br>請設定帳號要使用的新密碼。`;
+        this.infoBox.innerHTML = `<strong>Account:</strong> ${this.escapeHtml(this.username)}<br>Please set the new password for the account.`;
 
         this.attachEvents();
     }
@@ -328,7 +328,7 @@ class FirstLoginSetupManager {
         const confirmPassword = this.confirmPasswordInput.value.trim();
 
         if (!newPassword || newPassword.length < 8) {
-            this.showAlert('danger', '新密碼長度需至少 8 個字元');
+            this.showAlert('danger', 'New password must be at least 8 characters long');
             this.newPasswordInput.focus();
             return;
         }
@@ -338,12 +338,12 @@ class FirstLoginSetupManager {
         const hasLower = /[a-z]/.test(newPassword);
         const hasDigit = /\d/.test(newPassword);
         if (!hasUpper || !hasLower || !hasDigit) {
-            this.showAlert('warning', '建議使用混合大小寫及數字的密碼以提高安全性');
+            this.showAlert('warning', 'Recommended to use a mix of uppercase, lowercase, and numbers for better security');
             // 不強制，但可以選擇是否繼續
         }
 
         if (newPassword !== confirmPassword) {
-            this.showAlert('danger', '兩次輸入的密碼不一致');
+            this.showAlert('danger', 'The two password entries do not match');
             this.confirmPasswordInput.focus();
             return;
         }
@@ -364,10 +364,10 @@ class FirstLoginSetupManager {
             const data = await response.json();
 
             if (!response.ok) {
-                throw new Error(data.detail || '設定失敗，請確認輸入資料');
+                throw new Error(data.detail || 'Setup failed, please check input data');
             }
 
-            this.showAlert('success', '密碼設定成功！正在為您登入...', 2000);
+            this.showAlert('success', 'Password set successfully! Logging you in...', 2000);
 
             if (window.AuthClient && data.access_token) {
                 window.AuthClient.setToken(data.access_token, data.expires_in);
@@ -378,7 +378,7 @@ class FirstLoginSetupManager {
             }, 800);
         } catch (error) {
             console.error('首次登入設定失敗', error);
-            this.showAlert('danger', error.message || '設定失敗，請稍後再試');
+            this.showAlert('danger', error.message || 'Setup failed, please try later');
         } finally {
             this.setLoading(false);
         }

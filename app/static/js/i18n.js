@@ -14,8 +14,8 @@ class I18nSystem {
     constructor() {
         this.currentLanguage = 'zh-TW';
         this.translations = {};
-        this.supportedLanguages = ['zh-TW', 'zh-CN', 'en-US'];
-        this.fallbackLanguage = 'zh-TW';
+        this.supportedLanguages = ['en-US', 'zh-TW', 'zh-CN'];
+        this.fallbackLanguage = 'en-US';
         this.isLoaded = false;
         this.cacheBuster = String(Date.now());
         

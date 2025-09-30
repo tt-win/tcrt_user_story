@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}登入 - Test Case Repository Web Tool{% endblock %}
+{% block title %}Login - Test Case Repository Web Tool{% endblock %}
 
 <!-- 禁用基礎模板的 header 和 footer -->
 {% block page_title %}{% endblock %}
@@ -165,7 +165,7 @@
         <!-- 登入頭部 -->
         <div class="login-header">
             <i class="fas fa-shield-alt fa-2x mb-2"></i>
-            <h4 class="mb-1">使用者登入</h4>
+            <h4 class="mb-1">User Login</h4>
             <p class="mb-0 opacity-75">Test Case Repository</p>
         </div>
         
@@ -173,25 +173,25 @@
         <div class="p-4">
             <form id="loginForm" autocomplete="off">
                 <div id="loginStepIndicator" class="mb-3 text-muted small">
-                    <i class="fas fa-circle me-2"></i>步驟 1：輸入帳號
+                    <i class="fas fa-circle me-2"></i>Step 1: Enter Account
                 </div>
 
                 <div id="usernameStep" class="mb-3">
                     <label for="username" class="form-label">
-                        <i class="fas fa-user me-2"></i>使用者名稱或電子信箱
+                        <i class="fas fa-user me-2"></i>Username or Email
                     </label>
                     <input type="text" class="form-control" id="username" name="username_or_email" 
-                           placeholder="請輸入使用者名稱或電子信箱" required>
+                           placeholder="Please enter username or email" required>
                 </div>
 
                 <div id="passwordStep" class="d-none">
                     <div class="mb-3">
                         <label for="password" class="form-label">
-                            <i class="fas fa-lock me-2"></i>密碼
+                            <i class="fas fa-lock me-2"></i>Password
                         </label>
                         <div class="input-group">
                             <input type="password" class="form-control" id="password" name="password" 
-                                   placeholder="請輸入密碼">
+                                   placeholder="Please enter password">
                             <button class="btn btn-outline-secondary" type="button" id="togglePassword">
                                 <i class="fas fa-eye" id="togglePasswordIcon"></i>
                             </button>
@@ -202,7 +202,7 @@
                         <div class="form-check">
                             <input class="form-check-input" type="checkbox" id="rememberMe" name="remember_me">
                             <label class="form-check-label" for="rememberMe">
-                                記住我的登入狀態
+                                Remember my login status
                             </label>
                         </div>
                     </div>
@@ -210,15 +210,15 @@
 
                 <div class="d-flex justify-content-between align-items-center gap-2">
                     <button type="button" class="btn btn-outline-secondary d-none" id="backToUsername">
-                        <i class="fas fa-arrow-left me-2"></i>返回
+                        <i class="fas fa-arrow-left me-2"></i>Back
                     </button>
                     <button type="submit" class="btn btn-primary btn-login flex-fill" id="loginBtn">
                         <span id="loginBtnText">
-                            <i class="fas fa-arrow-right me-2"></i>下一步
+                            <i class="fas fa-arrow-right me-2"></i>Next
                         </span>
                         <span id="loginBtnLoading" class="d-none">
                             <div class="spinner-border loading-spinner me-2" role="status"></div>
-                            處理中...
+                            Processing...
                         </span>
                     </button>
                 </div>
@@ -228,7 +228,7 @@
             <div class="text-center mt-4 pt-3 border-top">
                 <small class="text-muted">
                     <i class="fas fa-info-circle me-1"></i>
-                    如有登入問題，請聯繫系統管理員
+                    If you have login issues, please contact the system administrator
                 </small>
             </div>
         </div>
@@ -345,7 +345,7 @@
                 this.clearErrors();
 
                 if (!username) {
-                    this.showFieldError(this.usernameInput, '請輸入使用者名稱或電子信箱');
+                    this.showFieldError(this.usernameInput, 'Please enter username or email');
                     return;
                 }
 
@@ -360,16 +360,16 @@
                     const data = await response.json();
 
                     if (!response.ok) {
-                        throw new Error(data.detail || '無法確認帳號狀態');
+                        throw new Error(data.detail || 'Unable to verify account status');
                     }
 
                     if (!data.user_exists) {
-                        this.showFieldError(this.usernameInput, data.message || '找不到對應的帳號');
+                        this.showFieldError(this.usernameInput, data.message || 'Corresponding account not found');
                         return;
                     }
 
                     if (!data.is_active) {
-                        this.showAlert(data.message || '帳號已被停用，請聯繫系統管理員', 'danger');
+                        this.showAlert(data.message || 'Account has been deactivated, please contact administrator', 'danger');
                         return;
                     }
 
@@ -393,7 +393,7 @@
 
                 } catch (error) {
                     console.error('登入前檢查失敗:', error);
-                    this.showAlert(error.message || '登入前檢查失敗，請稍後再試', 'danger');
+                    this.showAlert(error.message || 'Pre-login check failed, please try later', 'danger');
                 } finally {
                     this.setLoading(false);
                 }
@@ -408,13 +408,13 @@
                 this.clearErrors();
 
                 if (!username) {
-                    this.showAlert('請先輸入使用者帳號', 'danger');
+                    this.showAlert('Please enter username first', 'danger');
                     this.switchToStep(1, { focus: true });
                     return;
                 }
 
                 if (!password) {
-                    this.showFieldError(this.passwordInput, '請輸入密碼');
+                    this.showFieldError(this.passwordInput, 'Please enter password');
                     return;
                 }
 
@@ -443,7 +443,7 @@
                             window.AuthClient.setToken(data.access_token, data.expires_in);
                         }
 
-                        this.showAlert('登入成功！正在重導向...', 'success');
+                        this.showAlert('Login successful! Redirecting...', 'success');
                         setTimeout(() => {
                             window.location.href = '/';
                         }, 600);
@@ -454,7 +454,7 @@
 
                 } catch (error) {
                     console.error('登入請求失敗:', error);
-                    this.showAlert('網路錯誤，請檢查連線後重試', 'danger');
+                    this.showAlert('Network error, check connection and retry', 'danger');
                 } finally {
                     this.setLoading(false);
                 }
@@ -463,20 +463,20 @@
             handleLoginError(status, data) {
                 switch (status) {
                     case 401:
-                        this.showAlert('使用者名稱或密碼錯誤', 'danger');
+                        this.showAlert('Username or password incorrect', 'danger');
                         this.passwordInput.focus();
                         break;
                     case 403:
-                        this.showAlert('帳戶已被停用，請聯繫系統管理員', 'warning');
+                        this.showAlert('Account deactivated, contact administrator', 'warning');
                         break;
                     case 429:
-                        this.showAlert('登入嘗試次數過多，請稍後再試', 'warning');
+                        this.showAlert('Too many login attempts, try later', 'warning');
                         break;
                     case 500:
-                        this.showAlert('伺服器錯誤，請聯繫系統管理員', 'danger');
+                        this.showAlert('Server error, contact administrator', 'danger');
                         break;
                     default:
-                        this.showAlert(data?.detail || '登入失敗，請重試', 'danger');
+                        this.showAlert(data?.detail || 'Login failed, please retry', 'danger');
                 }
             }
 
@@ -549,7 +549,7 @@
                     const response = await fetch('/api/system/initialization-check');
                     const data = await response.json();
                     if (data.needs_setup) {
-                        this.showAlert('系統需要初始化，正在重導向到設置頁面...', 'info');
+                        this.showAlert('System needs initialization, redirecting to setup...', 'info');
                         setTimeout(() => {
                             window.location.href = '/setup';
                         }, 1200);
@@ -574,10 +574,10 @@
                 if (this.stepIndicator) {
                     if (isStep2) {
                         const displayName = this.selectedAccount?.full_name || this.selectedAccount?.username || '';
-                        const suffix = displayName ? `（${this.escapeHtml(displayName)}）` : '';
-                        this.stepIndicator.innerHTML = `<i class="fas fa-circle me-2"></i>步驟 2：輸入密碼 ${suffix}`;
+                        const suffix = displayName ? `(${this.escapeHtml(displayName)})` : '';
+                        this.stepIndicator.innerHTML = `<i class="fas fa-circle me-2"></i>Step 2: Enter Password ${suffix}`;
                     } else {
-                        this.stepIndicator.innerHTML = '<i class="fas fa-circle me-2"></i>步驟 1：輸入帳號';
+                        this.stepIndicator.innerHTML = '<i class="fas fa-circle me-2"></i>Step 1: Enter Account';
                     }
                 }
 
