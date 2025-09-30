@@ -661,9 +661,9 @@ async def create_test_case(
                     pass
 
         db.commit()
-        action_brief = f"{current_user.username} 建立了 Test Case：{item.test_case_number}"
+        action_brief = f"{current_user.username} created Test Case: {item.test_case_number}"
         if item.title:
-            action_brief += f"（{item.title}）"
+            action_brief += f" ({item.title})"
         await log_test_case_action(
             action_type=ActionType.CREATE,
             current_user=current_user,
@@ -975,9 +975,9 @@ async def update_test_case(
         db.commit()
 
         if changed:
-            action_brief = f"{current_user.username} 更新了 Test Case：{item.test_case_number or record_id}"
+            action_brief = f"{current_user.username} updated Test Case: {item.test_case_number or record_id}"
             if item.title:
-                action_brief += f"（{item.title}）"
+                action_brief += f" ({item.title})"
             await log_test_case_action(
                 action_type=ActionType.UPDATE,
                 current_user=current_user,
@@ -1648,9 +1648,9 @@ async def delete_test_case(
         db.delete(item)
         db.commit()
 
-        action_brief = f"{current_user.username} 刪除了 Test Case：{recorded_number or record_id}"
+        action_brief = f"{current_user.username} deleted Test Case: {recorded_number or record_id}"
         if recorded_title:
-            action_brief += f"（{recorded_title}）"
+            action_brief += f" ({recorded_title})"
         await log_test_case_action(
             action_type=ActionType.DELETE,
             current_user=current_user,

@@ -285,7 +285,7 @@ async def create_user(
 
         logger.info(f"管理員 {current_user.username} 建立了新使用者 {new_user.username}")
 
-        action_brief = f"{current_user.username} 建立了使用者 {new_user.username}"
+        action_brief = f"{current_user.username} created user {new_user.username}"
         await log_user_action(
             action_type=ActionType.CREATE,
             current_user=current_user,
@@ -668,7 +668,7 @@ async def update_user(
             logger.info(f"管理員 {current_user.username} 更新了使用者 {user.username}")
 
             if changed_fields:
-                action_brief = f"{current_user.username} 更新了使用者 {user.username}"
+                action_brief = f"{current_user.username} updated user {user.username}"
                 await log_user_action(
                     action_type=ActionType.UPDATE,
                     current_user=current_user,
@@ -753,7 +753,7 @@ async def delete_user(
 
             logger.info(f"管理員 {current_user.username} 永久刪除了使用者 {deleted_username}")
 
-            action_brief = f"{current_user.username} 刪除了使用者 {deleted_username}"
+            action_brief = f"{current_user.username} deleted user {deleted_username}"
             await log_user_action(
                 action_type=ActionType.DELETE,
                 current_user=current_user,

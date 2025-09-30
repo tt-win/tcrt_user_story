@@ -522,9 +522,9 @@ async def create_test_run(
         # 轉換為 TestRun 模型回傳
         created_test_run = TestRun.from_lark_record(created_record, team_id)
 
-        action_brief = f"{current_user.username} 建立了 Test Run：{created_test_run.test_case_number or record_id}"
+        action_brief = f"{current_user.username} created Test Run: {created_test_run.test_case_number or record_id}"
         if created_test_run.title:
-            action_brief += f"（{created_test_run.title}）"
+            action_brief += f" ({created_test_run.title})"
         await log_test_run_action(
             action_type=ActionType.CREATE,
             current_user=current_user,
@@ -660,9 +660,9 @@ async def update_test_run(
         # 轉換為 TestRun 模型回傳
         updated_test_run = TestRun.from_lark_record(updated_record, team_id)
 
-        action_brief = f"{current_user.username} 更新了 Test Run：{updated_test_run.test_case_number or record_id}"
+        action_brief = f"{current_user.username} updated Test Run: {updated_test_run.test_case_number or record_id}"
         if updated_test_run.title:
-            action_brief += f"（{updated_test_run.title}）"
+            action_brief += f" ({updated_test_run.title})"
         await log_test_run_action(
             action_type=ActionType.UPDATE,
             current_user=current_user,
@@ -826,10 +826,10 @@ async def delete_test_run(
                 detail="刪除 Lark 記錄失敗",
             )
 
-        action_brief = f"{current_user.username} 刪除了 Test Run：{fields.get('Test Case Number') or record_id}"
+        action_brief = f"{current_user.username} deleted Test Run: {fields.get('Test Case Number') or record_id}"
         title = fields.get("Title") if isinstance(fields, dict) else None
         if title:
-            action_brief += f"（{title}）"
+            action_brief += f" ({title})"
         await log_test_run_action(
             action_type=ActionType.DELETE,
             current_user=current_user,
