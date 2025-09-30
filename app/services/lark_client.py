@@ -790,7 +790,45 @@ class LarkUserManager:
         if self._users_index and user_id in self._users_index.get('by_id', {}):
             return self._users_index['by_id'][user_id]
         
-        # 如果沒有快取，嘗試拉取用戶列表
+        # 直接呼叫單個用戶 API
+        try:
+            token = self.auth_manager.get_tenant_access_token()
+            if not token:
+                self.logger.error("無法獲取 access token")
+                return None
+            
+            headers = {
+                'Authorization': f'Bearer {token}',
+                'Content-Type': 'application/json'
+            }
+            
+            url = f"{self.base_url}/contact/v3/users/{user_id}"
+            response = requests.get(url, headers=headers, timeout=self.timeout)
+            
+            if response.status_code == 200:
+                result = response.json()
+                if result.get('code') == 0:
+                    user_data = result.get('data', {})
+                    if user_data:
+                        # 更新快取
+                        with self._cache_lock:
+                            if 'by_id' not in self._users_index:
+                                self._users_index['by_id'] = {}
+                            self._users_index['by_id'][user_id] = user_data
+                        
+                        self.logger.debug(f"成功獲取單個用戶: {user_id}")
+                        return user_data
+                    else:
+                        self.logger.warning(f"Lark API 返回空用戶數據: {user_id}")
+                else:
+                    self.logger.warning(f"Lark API 錯誤: {result.get('msg', 'Unknown error')}")
+            else:
+                self.logger.error(f"獲取單個用戶失敗，HTTP {response.status_code}: {response.text}")
+        except Exception as e:
+            self.logger.error(f"獲取單個用戶異常: {e}")
+        
+        # Fallback 到拉取所有用戶
+        self.logger.info(f"單個用戶 API 失敗，回退到拉取所有用戶列表查找 {user_id}")
         users = self.fetch_all_users()
         if users and self._users_index:
             return self._users_index.get('by_id', {}).get(user_id)
@@ -799,11 +837,17 @@ class LarkUserManager:
     
     def format_user_for_frontend(self, user: Dict) -> Dict:
         """格式化用戶資料供前端使用"""
+        avatar_info = user.get('avatar', {})
+        avatar = (avatar_info.get('avatar_240') or
+                 avatar_info.get('avatar_640') or
+                 avatar_info.get('avatar_origin') or
+                 avatar_info.get('avatar_72', ''))
+        
         return {
             'id': user.get('user_id'),
             'name': user.get('name', ''),
             'email': user.get('email', ''),
-            'avatar': user.get('avatar', {}).get('avatar_72', ''),
+            'avatar': avatar,
             'department_name': self._get_department_name(user.get('department_ids', [])),
             'status': user.get('status', {}).get('is_activated', True),
             'display_name': f"{user.get('name', '')} ({user.get('email', '')})" if user.get('email') else user.get('name', '')

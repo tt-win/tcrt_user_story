@@ -60,6 +60,7 @@ class BaseAuthManager {
         this.userInfoEmail = document.getElementById('user-info-email');
         this.userInfoRole = document.getElementById('user-info-role');
         this.userInfoTeams = document.getElementById('user-info-teams');
+        this.userAvatarIcon = document.getElementById('user-avatar-icon');
     }
 
     /**
@@ -151,14 +152,15 @@ class BaseAuthManager {
     updateUserInfoDisplay(userInfo) {
         console.log('[BaseAuthManager] 更新用戶資訊顯示:', userInfo);
         
-        const displayName = userInfo.full_name || userInfo.name || userInfo.username || '使用者';
+        // 優先使用 Lark 名稱，否則使用 full_name 或 username
+        const displayName = userInfo.lark_name || userInfo.full_name || userInfo.name || userInfo.username || '使用者';
         const role = userInfo.role || 'user';
-        const teams = Array.isArray(userInfo.accessible_teams) ? userInfo.accessible_teams : 
+        const teams = Array.isArray(userInfo.accessible_teams) ? userInfo.accessible_teams :
                      Array.isArray(userInfo.teams) ? userInfo.teams : [];
         
         console.log('[BaseAuthManager] 處理後的數據 - displayName:', displayName, 'role:', role, 'teams:', teams);
         
-        // 更新主要顯示區域
+        // 更新主要顯示區域 (header 按鈕)
         if (this.userDisplayName) {
             // 移除 data-i18n 屬性以防止翻譯系統覆蓋內容
             if (this.userDisplayName.hasAttribute('data-i18n')) {
@@ -180,12 +182,13 @@ class BaseAuthManager {
             console.log('[BaseAuthManager] 設定 user-role-badge:', this.getRoleDisplayName(role));
         }
         
-        // 更新下拉選單詳細資訊
+        // 更新下拉選單詳細資訊 (不變更，按任務要求)
         if (this.userInfoName) {
             if (this.userInfoName.hasAttribute('data-i18n')) {
                 this.userInfoName.removeAttribute('data-i18n');
             }
-            this.userInfoName.textContent = displayName;
+            const dropdownName = userInfo.full_name || userInfo.name || userInfo.username || '使用者';
+            this.userInfoName.textContent = dropdownName;
         }
         
         if (this.userInfoEmail) {

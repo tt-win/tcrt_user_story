@@ -191,11 +191,42 @@
         state.selected = null;
         clearForm();
       }
-      renderUserList();
       updatePageIndicator();
+      // 預載 Lark 資料
+      await preloadLarkData(state.users);
+      renderUserList();
     } catch (e) {
       console.error('load users failed', e);
       toastError('載入使用者清單失敗');
+    }
+  }
+
+  async function preloadLarkData(users) {
+    console.log('PreloadLarkData started with users count:', users.length);
+    const larkIds = [...new Set(users.filter(u => u.lark_user_id && u.lark_user_id.trim()).map(u => u.lark_user_id.trim()))];
+    console.log('Collected larkIds:', Array.from(larkIds));
+    if (larkIds.length === 0) return;
+  
+    try {
+      // 使用 allSettled 確保即使部分 fetch 失敗，也能繼續處理其他，並最終重新渲染
+      const results = await Promise.allSettled(larkIds.map(id => fetchLarkPreview(id, false)));
+      results.forEach((result, index) => {
+        const id = larkIds[index];
+        if (result.status === 'fulfilled') {
+          console.log('Fetch success for', id, 'data:', result.value);
+        } else {
+          console.error('Fetch failed for', id, 'reason:', result.reason);
+        }
+      });
+      // 記錄失敗的 ID（可選，用於 debug）
+      const failedIds = results.filter(r => r.status === 'rejected').map((_, idx) => larkIds[idx]);
+      if (failedIds.length > 0) {
+        console.warn('部分 Lark 資料預載失敗，ID:', failedIds);
+      }
+      console.log('Preload complete, cache size:', state.larkCache.size, 'cache keys:', Array.from(state.larkCache.keys()));
+    } catch (e) {
+      console.error('預載 Lark 資料失敗', e);
+      // 不中斷流程，僅記錄錯誤
     }
   }
 
@@ -207,16 +238,18 @@
   }
 
   function renderUserList() {
+    console.log('RenderUserList started, users count:', state.users.length, 'cache size:', state.larkCache.size);
     const box = document.getElementById('pm-user-list');
     if (!box) return;
     if (!state.users.length) {
       box.innerHTML = '<div class="list-group-item text-center text-muted">無使用者</div>';
       return;
     }
-
+  
     const html = state.users.map(u => {
       const display = getDisplayName(u);
       const avatar = getAvatarUrl(u);
+      console.log(`Rendering user ${u.id}: lark_user_id=${u.lark_user_id}, cache_hit=${!!(u.lark_user_id && state.larkCache.has(u.lark_user_id))}, display_name=${display}, avatar_url=${avatar}`);
       const role = (u.role || '').toUpperCase();
       return `
         <button type="button" class="list-group-item list-group-item-action d-flex align-items-center" data-user-id="${u.id}">
@@ -229,7 +262,7 @@
         </button>`;
     }).join('');
     box.innerHTML = html;
-
+  
     box.querySelectorAll('button[data-user-id]').forEach(btn => {
       btn.addEventListener('click', async (e) => {
         const id = Number(btn.getAttribute('data-user-id'));
@@ -239,6 +272,11 @@
   }
 
   function getDisplayName(u) {
+    let larkData = null;
+    if (u.lark_user_id && state.larkCache.has(u.lark_user_id)) {
+      larkData = state.larkCache.get(u.lark_user_id);
+    }
+    console.log('getDisplayName for', u.id, 'using lark:', !!larkData, 'name:', larkData ? larkData.name : 'fallback');
     if (u.lark_user_id && state.larkCache.has(u.lark_user_id)) {
       return state.larkCache.get(u.lark_user_id).name || u.full_name || u.username || '';
     }
@@ -246,8 +284,14 @@
   }
 
   function getAvatarUrl(u) {
-    if (u.lark_user_id && state.larkCache.has(u.lark_user_id)) {
-      return state.larkCache.get(u.lark_user_id).avatar || 'https://www.gravatar.com/avatar/?d=mp';
+    let larkData = null;
+    if (u.lark_user_id && u.lark_user_id.trim() && state.larkCache.has(u.lark_user_id)) {
+      larkData = state.larkCache.get(u.lark_user_id);
+    }
+    console.log('getAvatarUrl for', u.id, 'using lark:', !!larkData, 'avatar:', larkData ? larkData.avatar : 'fallback');
+    if (u.lark_user_id && u.lark_user_id.trim() && state.larkCache.has(u.lark_user_id)) {
+      const avatar = state.larkCache.get(u.lark_user_id).avatar;
+      return avatar && avatar.trim() ? avatar : 'https://www.gravatar.com/avatar/?d=mp';
     }
     return 'https://www.gravatar.com/avatar/?d=mp';
   }
@@ -555,24 +599,28 @@
   }
 
   async function fetchLarkPreview(larkId, showToast) {
-    try {
-      const resp = await window.AuthClient.fetch(`/api/lark/users/${encodeURIComponent(larkId)}`);
-      if (!resp.ok) throw new Error('HTTP ' + resp.status);
-      const json = await resp.json();
-      state.larkCache.set(larkId, { name: json?.name || '', avatar: json?.avatar || '' });
-      // 更新搜尋框顯示值為名稱
-      const larkSearch = document.getElementById('pm-lark-search');
-      if (larkSearch && larkSearch.value === larkId) {
-        larkSearch.value = json?.name || larkId;
+      console.log('Fetching Lark for', larkId);
+      try {
+        const resp = await window.AuthClient.fetch(`/api/lark/users/${encodeURIComponent(larkId)}`);
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const json = await resp.json();
+        console.log('Received avatar from API: ' + json.avatar);
+        state.larkCache.set(larkId, { name: json?.name || '', avatar: json?.avatar || '' });
+        console.log('Fetched Lark for', larkId, 'name:', json.name, 'avatar:', json.avatar);
+        // 更新搜尋框顯示值為名稱
+        const larkSearch = document.getElementById('pm-lark-search');
+        if (larkSearch && larkSearch.value === larkId) {
+          larkSearch.value = json?.name || larkId;
+        }
+        updateLarkPreviewBox(larkId);
+        if (showToast) toastSuccess('已載入 Lark 資訊');
+      } catch (e) {
+        console.error('Fetch error for', larkId, e);
+        state.larkCache.delete(larkId);
+        updateLarkPreviewBox(null);
+        if (showToast) toastError('無法取得 Lark 使用者資訊');
       }
-      updateLarkPreviewBox(larkId);
-      if (showToast) toastSuccess('已載入 Lark 資訊');
-    } catch (e) {
-      state.larkCache.delete(larkId);
-      updateLarkPreviewBox(null);
-      if (showToast) toastError('無法取得 Lark 使用者資訊');
     }
-  }
 
   function updateLarkPreviewBox(larkId) {
     const box = document.getElementById('pm-lark-preview-box');
@@ -592,9 +640,9 @@
     notConfiguredDiv.style.display = 'none';
     
     // 如果沒有 larkId，顯示未配置消息
-    if (!larkId) {
+    if (!larkId || !larkId.trim()) {
       notConfiguredDiv.style.display = 'block';
-      img.src = '';
+      img.src = 'https://www.gravatar.com/avatar/?d=mp';
       img.style.display = 'block'; // 重置顯示狀態
       nameEl.textContent = '';
       return;
@@ -603,7 +651,7 @@
     // 如果沒有快取資料，也顯示未配置消息
     if (!state.larkCache.has(larkId)) {
       notConfiguredDiv.style.display = 'block';
-      img.src = '';
+      img.src = 'https://www.gravatar.com/avatar/?d=mp';
       img.style.display = 'block'; // 重置顯示狀態
       nameEl.textContent = '';
       return;
@@ -616,24 +664,12 @@
     const hasName = data.name && data.name.trim();
     const hasAvatar = data.avatar && data.avatar.trim();
     
-    if (!hasName && !hasAvatar) {
-      // 即使有連結，但沒有有用的資料，也顯示未配置消息
-      notConfiguredDiv.style.display = 'block';
-      img.src = '';
-      img.style.display = 'block'; // 重置顯示狀態
-      nameEl.textContent = '';
-      return;
-    }
-    
-    // 有有用資料，顯示預覽框
+    // 總是顯示預覽框，如果有連結
     console.log('Showing preview box');
-    if (hasAvatar) {
-      img.src = data.avatar;
-      img.style.display = 'block'; // 確保圖片顯示
-    } else {
-      img.src = '';
-      img.style.display = 'none'; // 如果沒有頭像，隱藏圖片元素
-    }
+    const avatarUrl = hasAvatar ? data.avatar : 'https://www.gravatar.com/avatar/?d=mp';
+    img.src = avatarUrl;
+    img.style.display = 'block'; // 總是顯示圖片，使用 Gravatar 作為 fallback
+    img.onerror = function() { this.src = 'https://www.gravatar.com/avatar/?d=mp'; }; // 額外確保 onerror fallback
     nameEl.textContent = hasName ? data.name : '';
     box.style.display = 'flex'; // 使用 flex 顯示，以正確顯示對齊
     // 隱藏未配置消息

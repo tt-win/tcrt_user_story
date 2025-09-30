@@ -22,6 +22,8 @@ class LarkUserBasic(BaseModel):
     name: Optional[str] = None
     avatar: Optional[str] = None
 
+from datetime import datetime
+
 
 class LarkUserLite(BaseModel):
     id: str
@@ -118,7 +120,30 @@ async def get_lark_user_basic(lark_user_id: str):
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail="找不到對應的 Lark 使用者"
                 )
-            return LarkUserBasic(id=user.user_id, name=user.name, avatar=user.avatar_240)
+            
+            # 如果資料庫 avatar_240 為空，嘗試即時從 Lark API 獲取
+            avatar = user.avatar_240
+            if not avatar or not avatar.strip():
+                from app.services.lark_client import LarkClient
+                from app.config import settings
+                
+                client = LarkClient(settings.lark.app_id, settings.lark.app_secret)
+                lark_user_data = client.user_manager.get_user_by_id(lark_user_id)
+                if lark_user_data:
+                    avatar_info = lark_user_data.get('avatar', {})
+                    avatar = avatar_info.get('avatar_240') or avatar_info.get('avatar_640') or avatar_info.get('avatar_origin')
+                    if avatar:
+                        # 更新資料庫
+                        user.avatar_240 = avatar
+                        user.last_sync_at = datetime.utcnow()
+                        await session.commit()
+                        print(f"API response: Updated avatar_240 for {lark_user_id}: {avatar}")
+                    else:
+                        print(f"API response: No avatar found in Lark API for {lark_user_id}")
+                else:
+                    print(f"API response: No user data from Lark API for {lark_user_id}")
+            
+            return LarkUserBasic(id=user.user_id, name=user.name, avatar=avatar)
     except HTTPException:
         raise
     except Exception as e:

@@ -86,6 +86,7 @@ class UserInfoResponse(BaseModel):
     is_active: bool
     permissions: Dict[str, Any]
     accessible_teams: list[int]
+    lark_name: Optional[str] = None
 
 
 def get_client_ip(request: Request) -> str:
@@ -516,7 +517,7 @@ async def refresh_token(request: RefreshRequest, http_request: Request):
 async def get_current_user_info(current_user: User = Depends(get_current_user)):
     """
     取得目前使用者資訊
-
+    
     返回使用者基本資訊、角色權限和可存取的團隊列表
     """
     try:
@@ -526,6 +527,10 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
         # 取得可存取的團隊列表
         accessible_teams = await permission_service.get_user_accessible_teams(current_user.id)
 
+        # 檢查 Lark 整合狀態
+        from app.services.user_service import UserService
+        lark_status = await UserService.check_lark_integration_status(current_user.id)
+ 
         return UserInfoResponse(
             user_id=current_user.id,
             username=current_user.username,
@@ -534,9 +539,10 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
             role=current_user.role.value,
             is_active=current_user.is_active,
             permissions=permissions,
-            accessible_teams=accessible_teams
+            accessible_teams=accessible_teams,
+            lark_name=lark_status.get("name")
         )
-
+        
     except Exception as e:
         logger.error(f"取得使用者資訊失敗: {e}")
         raise HTTPException(
