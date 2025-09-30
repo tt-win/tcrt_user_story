@@ -1,10 +1,17 @@
-from fastapi import APIRouter, Query, HTTPException
+from fastapi import APIRouter, Query, HTTPException, Depends
 from fastapi.responses import JSONResponse
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, date
 import os
 import time
+import logging
+import sqlite3
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import SessionLocal
+from app.auth.dependencies import require_super_admin
+from app.models.database_models import User
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin")
 
@@ -84,85 +91,90 @@ async def system_metrics():
 
 
 @router.get("/stats/test_run_actions_daily", include_in_schema=False)
-async def stats_test_run_actions_daily(days: int = Query(30, ge=1, le=90)):
+async def stats_test_run_actions_daily(
+    current_user: User = Depends(require_super_admin()),
+    days: int = Query(30, ge=1, le=90)
+):
     """
-    統計過去 N 天（預設 30 天）Test Run 的操作次數（來自結果歷程表），依 team 與日期彙總。
+    統計過去 N 天（預設 30 天）Test Run 的建立數（依 test_run_items.created_at 日期彙總）。
+    僅 super_admin 可存取。
+    Returns: { "dates": [...], "counts": [...] }
     """
-    since_dt = datetime.now(timezone.utc) - timedelta(days=days)
-    since_iso = since_dt.isoformat()
-
-    session = SessionLocal()
     try:
-        # 取得團隊名稱映射
-        teams = session.execute(text("SELECT id, name FROM teams")).all()
-        team_map = {int(r[0]): r[1] for r in teams}
+        since_dt = datetime.now(timezone.utc) - timedelta(days=days)
+        since_date_str = since_dt.date().isoformat()
 
-        # 依日期與 team 統計（SQLite 的 DATE() 會以本地時區計算；此處使用 substr 取 ISO 日期部分）
-        q = text(
-            """
-            SELECT team_id,
-                   substr(changed_at, 1, 10) AS day,
-                   COUNT(*) AS cnt
-            FROM test_run_item_result_history
-            WHERE changed_at >= :since
-            GROUP BY team_id, day
-            ORDER BY day ASC, team_id ASC
-            """
-        )
-        rows = session.execute(q, {"since": since_iso}).all()
-        data = [
-            {"team_id": int(r[0]) if r[0] is not None else None,
-             "team_name": team_map.get(int(r[0])) if r[0] is not None else None,
-             "day": r[1],
-             "count": int(r[2])} for r in rows
-        ]
-        return JSONResponse({
-            "since": since_iso,
-            "days": days,
-            "data": data,
-            "teams": team_map,
-        })
-    finally:
-        session.close()
+        async with SessionLocal() as session:
+            q = text(
+                """
+                SELECT date(created_at) AS day,
+                       COUNT(*) AS cnt
+                FROM test_run_items
+                WHERE date(created_at) >= :since_date
+                GROUP BY day
+                ORDER BY day ASC
+                """
+            )
+            result = await session.execute(q, {"since_date": since_date_str})
+            rows = result.all()
+            dates = [r[0] for r in rows]
+            counts = [int(r[1]) for r in rows]
+            return {
+                "dates": dates,
+                "counts": counts
+            }
+    except sqlite3.OperationalError as e:
+        if "no such table" in str(e).lower():
+            logger.warning("資料庫表格 test_run_items 不存在，返回空統計數據")
+            return {"dates": [], "counts": []}
+        else:
+            logger.error(f"統計 Test Run 動作每日數據失敗: {e}")
+            raise HTTPException(status_code=500, detail={"error": "無法載入統計數據"})
+    except Exception as e:
+        logger.error(f"統計 Test Run 動作每日數據失敗: {e}")
+        raise HTTPException(status_code=500, detail={"error": "無法載入統計數據"})
 
 
 @router.get("/stats/test_cases_created_daily", include_in_schema=False)
-async def stats_test_cases_created_daily(days: int = Query(30, ge=1, le=90)):
+async def stats_test_cases_created_daily(
+    current_user: User = Depends(require_super_admin()),
+    days: int = Query(30, ge=1, le=90)
+):
     """
-    統計過去 N 天各 team 的 Test Case 新增數量（依 created_at 日期彙總）。
-    資料表：test_cases(team_id, created_at)
+    統計過去 N 天 Test Case 的建立數（依 test_cases.created_at 日期彙總）。
+    僅 super_admin 可存取。
+    Returns: { "dates": [...], "counts": [...] }
     """
-    since_dt = datetime.now(timezone.utc) - timedelta(days=days)
-    since_iso = since_dt.isoformat()
-
-    session = SessionLocal()
     try:
-        teams = session.execute(text("SELECT id, name FROM teams")).all()
-        team_map = {int(r[0]): r[1] for r in teams}
+        since_dt = datetime.now(timezone.utc) - timedelta(days=days)
+        since_date_str = since_dt.date().isoformat()
 
-        q = text(
-            """
-            SELECT team_id,
-                   substr(created_at, 1, 10) AS day,
-                   COUNT(*) AS cnt
-            FROM test_cases
-            WHERE created_at >= :since
-            GROUP BY team_id, day
-            ORDER BY day ASC, team_id ASC
-            """
-        )
-        rows = session.execute(q, {"since": since_iso}).all()
-        data = [
-            {"team_id": int(r[0]) if r[0] is not None else None,
-             "team_name": team_map.get(int(r[0])) if r[0] is not None else None,
-             "day": r[1],
-             "count": int(r[2])} for r in rows
-        ]
-        return JSONResponse({
-            "since": since_iso,
-            "days": days,
-            "data": data,
-            "teams": team_map,
-        })
-    finally:
-        session.close()
+        async with SessionLocal() as session:
+            q = text(
+                """
+                SELECT date(created_at) AS day,
+                       COUNT(*) AS cnt
+                FROM test_cases
+                WHERE date(created_at) >= :since_date
+                GROUP BY day
+                ORDER BY day ASC
+                """
+            )
+            result = await session.execute(q, {"since_date": since_date_str})
+            rows = result.all()
+            dates = [r[0] for r in rows]
+            counts = [int(r[1]) for r in rows]
+            return {
+                "dates": dates,
+                "counts": counts
+            }
+    except sqlite3.OperationalError as e:
+        if "no such table" in str(e).lower():
+            logger.warning("資料庫表格 test_cases 不存在，返回空統計數據")
+            return {"dates": [], "counts": []}
+        else:
+            logger.error(f"統計 Test Case 每日建立數據失敗: {e}")
+            raise HTTPException(status_code=500, detail={"error": "無法載入統計數據"})
+    except Exception as e:
+        logger.error(f"統計 Test Case 每日建立數據失敗: {e}")
+        raise HTTPException(status_code=500, detail={"error": "無法載入統計數據"})

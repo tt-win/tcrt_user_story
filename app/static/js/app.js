@@ -430,75 +430,87 @@ function refreshCurrentPageData() {
         return null;
     }
 
-function showHiddenModeModal() {
-        // 如已存在同名 modal，先移除避免重覆
-        try {
-            const existing = document.getElementById('hiddenModeModal');
-            if (existing && existing.closest('.modal')) {
-                const inst = bootstrap.Modal.getInstance(existing.closest('.modal'));
-                if (inst) inst.hide();
-                existing.closest('.modal').remove();
-            }
-        } catch (_) {}
+async function showHiddenModeModal() {
+    try {
+        const userInfo = await window.AuthClient.getUserInfo();
+        if (!userInfo || userInfo.role !== 'super_admin') {
+            showMorse404Modal();
+            return;
+        }
+    } catch (e) {
+        console.warn('無法獲取用戶角色，顯示 404 modal:', e);
+        showMorse404Modal();
+        return;
+    }
 
-        const wrapper = document.createElement('div');
-        wrapper.innerHTML = `
-            <div class="modal fade" id="hiddenModeModal" tabindex="-1" aria-hidden="true">
-              <div class="modal-dialog modal-dialog-centered" style="max-width: 1000px; width: 1000px;">
-                <div class="modal-content" style="height: 700px; display: flex; flex-direction: column;">
-                  <div class="modal-header">
-                    <h5 class="modal-title">隱藏模式</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                  </div>
-                  <div class="modal-body" style="flex: 1 1 auto; overflow: auto;">
-                    <!-- Tabs -->
-                    <ul class="nav nav-tabs" id="hiddenModeTabs" role="tablist">
-                      <li class="nav-item" role="presentation">
-                        <button class="nav-link active" id="sys-tab" data-bs-toggle="tab" data-bs-target="#sys-pane" type="button" role="tab" aria-controls="sys-pane" aria-selected="true">系統監控</button>
-                      </li>
-                      <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="stats-tab" data-bs-toggle="tab" data-bs-target="#stats-pane" type="button" role="tab" aria-controls="stats-pane" aria-selected="false">數據統計</button>
-                      </li>
-                    </ul>
-                    <div class="tab-content pt-3">
-                      <!-- 系統監控 -->
-                      <div class="tab-pane fade show active" id="sys-pane" role="tabpanel" aria-labelledby="sys-tab">
-                        <div class="border rounded p-2">
-                          <div class="d-flex justify-content-between align-items-center mb-2">
-                            <div class="fw-semibold">伺服器資源監控</div>
-                            <div>
-                              <span id="hm-last-updated" class="text-muted small">—</span>
-                            </div>
-                          </div>
-                          <div id="hm-metrics" class="small">
-                            <div class="text-muted">讀取中…</div>
-                          </div>
+    // 如已存在同名 modal，先移除避免重覆
+    try {
+        const existing = document.getElementById('hiddenModeModal');
+        if (existing && existing.closest('.modal')) {
+            const inst = bootstrap.Modal.getInstance(existing.closest('.modal'));
+            if (inst) inst.hide();
+            existing.closest('.modal').remove();
+        }
+    } catch (_) {}
+
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = `
+        <div class="modal fade" id="hiddenModeModal" tabindex="-1" aria-hidden="true">
+          <div class="modal-dialog modal-dialog-centered" style="max-width: 1000px; width: 1000px;">
+            <div class="modal-content" style="height: 700px; display: flex; flex-direction: column;">
+              <div class="modal-header">
+                <h5 class="modal-title">隱藏模式</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+              </div>
+              <div class="modal-body" style="flex: 1 1 auto; overflow: auto;">
+                <!-- Tabs -->
+                <ul class="nav nav-tabs" id="hiddenModeTabs" role="tablist">
+                  <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="sys-tab" data-bs-toggle="tab" data-bs-target="#sys-pane" type="button" role="tab" aria-controls="sys-pane" aria-selected="true">系統監控</button>
+                  </li>
+                  <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="stats-tab" data-bs-toggle="tab" data-bs-target="#stats-pane" type="button" role="tab" aria-controls="stats-pane" aria-selected="false">數據統計</button>
+                  </li>
+                </ul>
+                <div class="tab-content pt-3">
+                  <!-- 系統監控 -->
+                  <div class="tab-pane fade show active" id="sys-pane" role="tabpanel" aria-labelledby="sys-tab">
+                    <div class="border rounded p-2">
+                      <div class="d-flex justify-content-between align-items-center mb-2">
+                        <div class="fw-semibold">伺服器資源監控</div>
+                        <div>
+                          <span id="hm-last-updated" class="text-muted small">—</span>
                         </div>
                       </div>
-
-                      <!-- 數據統計 -->
-                      <div class="tab-pane fade" id="stats-pane" role="tabpanel" aria-labelledby="stats-tab">
-                        <div class="d-flex justify-content-between align-items-center mb-2">
-                          <div class="fw-semibold">過去 30 天</div>
-                          <div class="text-muted small" id="stats-last-updated">—</div>
-                        </div>
-                        <div class="mb-3">
-                          <div class="small text-muted mb-1">各 Team 每日新增 Test Case</div>
-                          <canvas id="hm-chart-tc-daily" height="140"></canvas>
-                        </div>
-                        <div>
-                          <div class="small text-muted mb-1">每日 Test Run 操作次數</div>
-                          <canvas id="hm-chart-tr-daily" height="140"></canvas>
-                        </div>
+                      <div id="hm-metrics" class="small">
+                        <div class="text-muted">讀取中…</div>
                       </div>
                     </div>
                   </div>
-                  <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">關閉</button>
+
+                  <!-- 數據統計 -->
+                  <div class="tab-pane fade" id="stats-pane" role="tabpanel" aria-labelledby="stats-tab">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                      <div class="fw-semibold">過去 30 天</div>
+                      <div class="text-muted small" id="stats-last-updated">—</div>
+                    </div>
+                    <div class="mb-3">
+                      <div class="small text-muted mb-1">各 Team 每日新增 Test Case</div>
+                      <canvas id="hm-chart-tc-daily" height="140"></canvas>
+                    </div>
+                    <div>
+                      <div class="small text-muted mb-1">每日 Test Run 操作次數</div>
+                      <canvas id="hm-chart-tr-daily" height="140"></canvas>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>`;
+              <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">關閉</button>
+              </div>
+            </div>
+          </div>
+        </div>`;
 
         document.body.appendChild(wrapper);
         const modalEl = wrapper.querySelector('#hiddenModeModal');
@@ -615,61 +627,6 @@ function showHiddenModeModal() {
             tr: new Set()
         };
 
-        function buildLineChart(ctx, grouped, key) {
-            const defaultLegendClick = Chart.defaults.plugins?.legend?.onClick;
-            const hiddenSet = chartHiddenState[key] || new Set();
-            const datasets = grouped.datasets.map(ds => ({
-                ...ds,
-                hidden: hiddenSet.has(ds.label)
-            }));
-
-            return new Chart(ctx, {
-                type: 'line',
-                data: { labels: grouped.labels, datasets },
-                options: {
-                    responsive: true,
-                    interaction: { intersect: false, mode: 'nearest' },
-                    plugins: {
-                        legend: {
-                            position: 'bottom',
-                            labels: { usePointStyle: true },
-                            onClick: (evt, legendItem, legend) => {
-                                if (typeof defaultLegendClick === 'function') {
-                                    defaultLegendClick.call(this, evt, legendItem, legend);
-                                } else {
-                                    const chart = legend.chart;
-                                    chart.toggleDataVisibility(legendItem.datasetIndex);
-                                    chart.update();
-                                }
-
-                                const chart = legend.chart;
-                                const meta = chart.getDatasetMeta(legendItem.datasetIndex);
-                                const label = legendItem.text;
-                                const state = chartHiddenState[key] || new Set();
-                                if (meta && meta.hidden) {
-                                    state.add(label);
-                                } else {
-                                    state.delete(label);
-                                }
-                                chartHiddenState[key] = state;
-                            }
-                        },
-                        tooltip: {
-                            callbacks: {
-                                title: (items) => items?.[0]?.label || '',
-                                label: (item) => `${item.dataset.label || 'Team'}: ${item.formattedValue}`
-                            }
-                        }
-                    },
-                    scales: {
-                        y: {
-                            beginAtZero: true,
-                            ticks: { precision: 0 }
-                        }
-                    }
-                }
-            });
-        }
 
         async function loadStats(days = 30) {
             try {
@@ -678,21 +635,130 @@ function showHiddenModeModal() {
                     window.AuthClient.fetch(`/api/admin/stats/test_cases_created_daily?days=${days}`),
                     window.AuthClient.fetch(`/api/admin/stats/test_run_actions_daily?days=${days}`)
                 ]);
-                const [tcJson, trJson] = await Promise.all([tcResp.json(), trResp.json()]);
+        
+                if (!tcResp.ok) {
+                    throw new Error(`Test Cases API: ${tcResp.status} ${tcResp.statusText}`);
+                }
+                if (!trResp.ok) {
+                    throw new Error(`Test Run Actions API: ${trResp.status} ${trResp.statusText}`);
+                }
+        
+                let tcJson, trJson;
+                try {
+                    tcJson = await tcResp.json();
+                    trJson = await trResp.json();
+                } catch (jsonErr) {
+                    throw new Error('JSON 解析失敗：伺服器返回非 JSON 格式');
+                }
+        
                 const tcCtx = modalEl.querySelector('#hm-chart-tc-daily');
                 const trCtx = modalEl.querySelector('#hm-chart-tr-daily');
                 if (tcDailyChart) { tcDailyChart.destroy(); }
                 if (trDailyChart) { trDailyChart.destroy(); }
-                const tcGrouped = groupByDayAndTeam(tcJson.data || []);
-                const trGrouped = groupByDayAndTeam(trJson.data || []);
-                tcDailyChart = buildLineChart(tcCtx, tcGrouped, 'tc');
-                trDailyChart = buildLineChart(trCtx, trGrouped, 'tr');
+        
+                // 檢查返回格式是否符合期望
+                if (!tcJson.dates || !tcJson.counts || !trJson.dates || !trJson.counts) {
+                    throw new Error('API 返回數據格式不正確');
+                }
+        
+                // 為圖表準備數據：使用 dates 作為 labels，counts 作為單一數據集
+                const tcLabels = tcJson.dates;
+                const tcData = tcJson.counts;
+                const trLabels = trJson.dates;
+                const trData = trJson.counts;
+        
+                // 簡化圖表：單一數據集
+                const tcDataset = [{
+                    label: '每日新增 Test Cases',
+                    data: tcData,
+                    borderColor: 'hsl(200, 70%, 50%)',
+                    backgroundColor: 'hsl(200, 70%, 50%)',
+                    tension: 0.2
+                }];
+                const trDataset = [{
+                    label: '每日 Test Run 動作',
+                    data: trData,
+                    borderColor: 'hsl(120, 70%, 50%)',
+                    backgroundColor: 'hsl(120, 70%, 50%)',
+                    tension: 0.2
+                }];
+        
+                tcDailyChart = new Chart(tcCtx, {
+                    type: 'line',
+                    data: { labels: tcLabels, datasets: tcDataset },
+                    options: {
+                        responsive: true,
+                        interaction: { intersect: false, mode: 'nearest' },
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    title: (items) => items?.[0]?.label || '',
+                                    label: (item) => `${item.dataset.label}: ${item.formattedValue}`
+                                }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: { precision: 0 }
+                            }
+                        }
+                    }
+                });
+        
+                trDailyChart = new Chart(trCtx, {
+                    type: 'line',
+                    data: { labels: trLabels, datasets: trDataset },
+                    options: {
+                        responsive: true,
+                        interaction: { intersect: false, mode: 'nearest' },
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    title: (items) => items?.[0]?.label || '',
+                                    label: (item) => `${item.dataset.label}: ${item.formattedValue}`
+                                }
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: { precision: 0 }
+                            }
+                        }
+                    }
+                });
+        
                 const statsStamp = modalEl.querySelector('#stats-last-updated');
                 if (statsStamp) statsStamp.textContent = new Date().toLocaleTimeString();
+        
+                // 清除任何先前錯誤訊息
+                const errorDiv = modalEl.querySelector('#stats-error');
+                if (errorDiv) errorDiv.remove();
+        
             } catch (e) {
                 console.error('loadStats error', e);
+                
+                // 顯示友好錯誤訊息
+                const statsPane = modalEl.querySelector('#stats-pane');
+                if (statsPane) {
+                    let errorDiv = statsPane.querySelector('#stats-error');
+                    if (!errorDiv) {
+                        errorDiv = document.createElement('div');
+                        errorDiv.id = 'stats-error';
+                        errorDiv.className = 'alert alert-warning';
+                        statsPane.insertBefore(errorDiv, statsPane.firstChild);
+                    }
+                    errorDiv.innerHTML = `
+                        <i class="fas fa-exclamation-triangle me-2"></i>
+                        無法載入統計數據：${e.message || '未知錯誤'}
+                    `;
+                }
+        
                 const statsStamp = modalEl.querySelector('#stats-last-updated');
-                if (statsStamp) statsStamp.textContent = '讀取失敗';
+                if (statsStamp) statsStamp.textContent = '載入失敗';
             }
         }
 
@@ -742,6 +808,122 @@ function showHiddenModeModal() {
             buffer = [];
             showHiddenModeModal();
         }
+    }
+
+    // 404 Morse Code Modal 函數
+    function showMorse404Modal() {
+        // 如已存在同名 modal，先移除避免重覆
+        try {
+            const existing = document.getElementById('morse404Modal');
+            if (existing && existing.closest('.modal')) {
+                const inst = bootstrap.Modal.getInstance(existing.closest('.modal'));
+                if (inst) inst.hide();
+                existing.closest('.modal').remove();
+            }
+        } catch (_) {}
+
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = `
+            <div class="modal fade" id="morse404Modal" tabindex="-1" aria-hidden="true">
+              <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content">
+                  <div class="modal-header">
+                    <h5 class="modal-title">404 - 存取被拒</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                  </div>
+                  <div class="modal-body text-center">
+                    <p class="mb-4">您無權限存取此隱藏模式。</p>
+                    <div id="morse-animation" class="mb-3" style="font-size: 2rem; font-family: monospace; line-height: 2;">
+                      <!-- 動畫將在這裡顯示 -->
+                    </div>
+                    <p class="text-muted small">摩斯電碼：404 Not Found</p>
+                  </div>
+                  <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">關閉</button>
+                  </div>
+                </div>
+              </div>
+            </div>`;
+
+        document.body.appendChild(wrapper);
+        const modalEl = wrapper.querySelector('#morse404Modal');
+        const modal = new bootstrap.Modal(modalEl);
+        const animationEl = modalEl.querySelector('#morse-animation');
+
+        // 摩斯碼序列：404 Not Found
+        // 4: ....- 0: ----- 4: ....-   N: -. O: ---   F: ..-. O: --- U: ..- N: -. D: -..
+        const morseSequence = [
+            { code: '....-', letter: '4' },
+            { code: '-----', letter: '0' },
+            { code: '....-', letter: '4' },
+            { code: '-.', letter: 'N' },
+            { code: '---', letter: 'O' },
+            { code: '..-.', letter: 'F' },
+            { code: '---', letter: 'O' },
+            { code: '..-', letter: 'U' },
+            { code: '-.', letter: 'N' },
+            { code: '-..', letter: 'D' }
+        ];
+
+        let currentIndex = 0;
+        let currentCharIndex = 0;
+        let intervalId = null;
+
+        function playMorse() {
+            if (currentIndex >= morseSequence.length) {
+                // 循環重播
+                currentIndex = 0;
+                currentCharIndex = 0;
+                animationEl.textContent = '';
+                return;
+            }
+
+            const current = morseSequence[currentIndex];
+            if (currentCharIndex < current.code.length) {
+                const symbol = current.code[currentCharIndex];
+                const display = symbol === '.' ? '·' : '—';
+                animationEl.textContent = `${current.letter}: ${display}`;
+                
+                // 閃爍動畫：dit 短閃，dah 長閃
+                const flashDuration = symbol === '.' ? 200 : 600;
+                animationEl.style.color = '#000';
+                setTimeout(() => {
+                    animationEl.style.color = '#ff0000';
+                    setTimeout(() => {
+                        animationEl.style.color = '#000';
+                        currentCharIndex++;
+                        if (currentCharIndex >= current.code.length) {
+                            currentCharIndex = 0;
+                            currentIndex++;
+                            setTimeout(() => {
+                                animationEl.textContent += ' '; // 字母間空格
+                            }, 400);
+                        }
+                    }, flashDuration);
+                }, 100);
+            }
+        }
+
+        function startAnimation() {
+            playMorse();
+            intervalId = setInterval(playMorse, 1000); // 每個符號間隔
+        }
+
+        function stopAnimation() {
+            if (intervalId) {
+                clearInterval(intervalId);
+                intervalId = null;
+            }
+            animationEl.textContent = '';
+        }
+
+        modalEl.addEventListener('shown.bs.modal', startAnimation);
+        modalEl.addEventListener('hidden.bs.modal', () => {
+            stopAnimation();
+            wrapper.remove();
+        });
+
+        modal.show();
     }
 
     document.addEventListener('keydown', onKeydown, { passive: true });
