@@ -91,7 +91,7 @@
     "roles": {
         "superAdmin": "超级管理员",
         "admin": "管理员",
-        "user": "普通用户",
+        "user": "用户",
         "viewer": "仅查看"
     },
     "audit": {

@@ -20,6 +20,8 @@ from .models import (
 )
 from .database import get_audit_session, AuditLogTable, audit_db_manager
 from ..config import get_settings
+from app.models.database_models import User
+from app.auth.models import UserRole
 
 logger = logging.getLogger(__name__)
 
@@ -175,12 +177,12 @@ class AuditService:
         
     # ===================== 查詢功能 =====================
     
-    async def query_logs(self, query: AuditLogQuery) -> AuditLogResponse:
+    async def query_logs(self, query: AuditLogQuery, current_user: User) -> AuditLogResponse:
         """查詢審計記錄"""
         try:
             async with audit_db_manager.get_session() as session:
-                conditions = self._build_conditions(query)
-
+                conditions = self._build_conditions(query, current_user)
+    
                 # 總數查詢
                 count_query = select(func.count()).select_from(AuditLogTable)
                 if conditions:
@@ -226,7 +228,7 @@ class AuditService:
                 ]
                 
                 total_pages = (total + query.page_size - 1) // query.page_size
-
+    
                 return AuditLogResponse(
                     items=items,
                     total=total,
@@ -234,15 +236,15 @@ class AuditService:
                     page_size=query.page_size,
                     total_pages=total_pages
                 )
-
+    
         except Exception as e:
             logger.error(f"查詢審計記錄失敗: {e}", exc_info=True)
             raise
 
-    def _build_conditions(self, query: AuditLogQuery) -> List[Any]:
+    def _build_conditions(self, query: AuditLogQuery, current_user: User) -> List[Any]:
         """依據查詢條件組裝 SQLAlchemy 條件"""
         conditions: List[Any] = []
-
+    
         if query.start_time:
             conditions.append(AuditLogTable.timestamp >= query.start_time)
         if query.end_time:
@@ -263,22 +265,26 @@ class AuditService:
             conditions.append(AuditLogTable.severity == query.severity)
         if getattr(query, "role", None):
             conditions.append(AuditLogTable.role == query.role)
-
+    
+        # Admin 不能查看 super admin 的 audit log
+        if current_user.role != UserRole.SUPER_ADMIN:
+            conditions.append(AuditLogTable.role != 'super_admin')
+    
         return conditions
 
-    async def fetch_logs_for_export(self, query: AuditLogQuery) -> List[AuditLog]:
+    async def fetch_logs_for_export(self, query: AuditLogQuery, current_user: User) -> List[AuditLog]:
         """取得符合條件的審計記錄（無分頁）供匯出使用"""
         try:
             async with audit_db_manager.get_session() as session:
-                conditions = self._build_conditions(query)
+                conditions = self._build_conditions(query, current_user)
                 stmt = select(AuditLogTable)
                 if conditions:
                     stmt = stmt.where(and_(*conditions))
                 stmt = stmt.order_by(desc(AuditLogTable.timestamp))
-
+    
                 result = await session.execute(stmt)
                 records = result.scalars().all()
-
+    
                 export_items: List[AuditLog] = []
                 for record in records:
                     details = None
@@ -287,7 +293,7 @@ class AuditService:
                             details = json.loads(record.details)
                         except json.JSONDecodeError:
                             details = None
-
+    
                     export_items.append(
                         AuditLog(
                             id=record.id,
@@ -306,7 +312,7 @@ class AuditService:
                             user_agent=record.user_agent,
                         )
                     )
-
+    
                 return export_items
         except Exception as e:
             logger.error(f"匯出審計記錄失敗: {e}", exc_info=True)

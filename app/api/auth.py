@@ -226,6 +226,12 @@ async def login(request: LoginRequest, http_request: Request):
         except Exception as audit_exc:  # noqa: BLE001
             logger.warning("寫入登入審計記錄失敗: %s", audit_exc, exc_info=True)
 
+        # 強制刷新審計記錄到資料庫
+        try:
+            await audit_service.force_flush()
+        except Exception as flush_exc:  # noqa: BLE001
+            logger.warning("審計記錄強制刷新失敗: %s", flush_exc, exc_info=True)
+
         first_login_flag = bool(getattr(user, 'was_first_login', False))
 
         return LoginResponse(
@@ -308,6 +314,12 @@ async def logout(
             )
         except Exception as audit_exc:  # noqa: BLE001
             logger.warning("寫入登出審計記錄失敗: %s", audit_exc, exc_info=True)
+
+        # 強制刷新審計記錄到資料庫
+        try:
+            await audit_service.force_flush()
+        except Exception as flush_exc:  # noqa: BLE001
+            logger.warning("審計記錄強制刷新失敗: %s", flush_exc, exc_info=True)
 
         return {"message": "成功登出"}
 
@@ -444,6 +456,12 @@ async def first_login_setup(request: FirstLoginSetupRequest, http_request: Reque
         )
     except Exception as audit_exc:  # noqa: BLE001
         logger.warning("寫入首次登入審計記錄失敗: %s", audit_exc, exc_info=True)
+
+    # 強制刷新審計記錄到資料庫
+    try:
+        await audit_service.force_flush()
+    except Exception as flush_exc:  # noqa: BLE001
+        logger.warning("審計記錄強制刷新失敗: %s", flush_exc, exc_info=True)
 
     return LoginResponse(
         access_token=access_token,

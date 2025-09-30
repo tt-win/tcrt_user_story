@@ -89,9 +89,9 @@
         "reqMatch": "兩次輸入密碼相符"
     },
     "roles": {
-        "superAdmin": "超級管理員",
+        "super_admin": "超級管理員",
         "admin": "管理員",
-        "user": "一般使用者",
+        "user": "使用者",
         "viewer": "僅檢視"
     },
     "audit": {

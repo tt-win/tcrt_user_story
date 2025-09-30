@@ -89,9 +89,9 @@
         "reqMatch": "Two password entries match"
     },
     "roles": {
-        "superAdmin": "Super Admin",
+        "super_admin": "Super Admin",
         "admin": "Admin",
-        "user": "Member",
+        "user": "User",
         "viewer": "Viewer"
     },
     "audit": {

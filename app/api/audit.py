@@ -74,7 +74,7 @@ async def list_audit_logs(
         page_size=page_size,
     )
 
-    response = await audit_service.query_logs(query)
+    response = await audit_service.query_logs(query, current_user)
     team_map = await _fetch_team_names(item.team_id for item in response.items)
 
     return {
@@ -129,7 +129,7 @@ async def export_audit_logs(
         page_size=1000,
     )
 
-    logs = await audit_service.fetch_logs_for_export(query)
+    logs = await audit_service.fetch_logs_for_export(query, current_user)
     team_map = await _fetch_team_names(log.team_id for log in logs)
 
     tzinfo = timezone.utc
