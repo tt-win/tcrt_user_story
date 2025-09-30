@@ -21,7 +21,8 @@ PyYAML==6.0.2
 
 # Authentication & Security
 PyJWT==2.8.0
-passlib[bcrypt]==1.7.4
+passlib==1.7.4
+bcrypt==3.2.2
 
 # PDF Generation
 reportlab==4.2.5

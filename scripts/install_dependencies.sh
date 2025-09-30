@@ -2,12 +2,11 @@
 set -euo pipefail
 
 # Test Case Repository Web Tool - dependency installer
-# - Creates a Python virtualenv and installs requirements
+# - Installs Python requirements via pip
 # - Optionally installs JS libraries (Bootstrap 5, Font Awesome) via npm
 # - Copies JS/CSS assets into app/static/vendor for offline/local serving
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-VENVDIR="${PROJECT_ROOT}/.venv"
 REQ_FILE="${PROJECT_ROOT}/requirements.txt"
 VENDOR_DIR="${PROJECT_ROOT}/app/static/vendor"
 USE_LOCAL_JS=false
@@ -31,15 +30,14 @@ if [[ ${#} -gt 0 ]]; then
   esac
 fi
 
-echo "==> Python: creating virtual environment at ${VENVDIR}"
+echo "==> Checking Python environment"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
   echo "Error: python3 not found. Please install Python 3.10+ and retry." >&2
   exit 1
 fi
 
-"${PYTHON_BIN}" -m venv "${VENVDIR}"
-source "${VENVDIR}/bin/activate"
+echo "==> Upgrading pip and wheel"
 python -m pip install --upgrade pip wheel
 
 if [[ ! -f "${REQ_FILE}" ]]; then
@@ -49,6 +47,14 @@ fi
 
 echo "==> Installing Python dependencies from requirements.txt"
 pip install -r "${REQ_FILE}"
+
+# Verify bcrypt installation (ensure compatibility with passlib)
+echo "==> Verifying bcrypt version compatibility"
+BCRYPT_VERSION=$(python -c "import bcrypt; print(bcrypt.__version__)" 2>/dev/null || echo "unknown")
+echo "    Installed bcrypt version: ${BCRYPT_VERSION}"
+if [[ "${BCRYPT_VERSION}" == "unknown" ]]; then
+  echo "    Warning: Could not verify bcrypt version" >&2
+fi
 
 echo "==> Python dependencies installed successfully"
 
@@ -89,7 +95,7 @@ if [[ "${USE_LOCAL_JS}" == "true" ]]; then
   echo "Note: Templates currently use CDN. To use local assets, update <link>/<script> tags to point to /static/vendor/..."
 fi
 
-echo "\nAll done. Activate the venv with:"
-echo "  source ${VENVDIR}/bin/activate"
-echo "Then run the app as you usually do."
+echo ""
+echo "All done! Dependencies installed successfully."
+echo "You can now run the app as you usually do."
 
