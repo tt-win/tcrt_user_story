@@ -3978,6 +3978,10 @@ function copyTestCase(id) {
     const tcgValue = source.tcg ? source.tcg.map(t => t.text || t).join(', ') : '';
     document.getElementById('tcg').value = tcgValue;
 
+    // 初始化 Modal TCG 多選顯示（每一個單號一個 tag）
+    modalTCGSelected = tcgValue ? tcgValue.split(', ').filter(Boolean) : [];
+    renderModalTCGDisplay();
+
     document.getElementById('precondition').value = source.precondition || '';
     document.getElementById('test_steps').value = source.steps || '';
     document.getElementById('expected_result').value = source.expected_result || '';
