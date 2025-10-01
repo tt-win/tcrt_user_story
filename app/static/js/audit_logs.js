@@ -22,6 +22,22 @@ class AuditLogsPage {
 
         this.cacheElements();
         this.setupInfiniteScroll();
+
+        // Wait for i18n to be ready
+        await new Promise((resolve) => {
+            if (window.i18n && window.i18n.isReady()) {
+                resolve();
+            } else {
+                const handler = () => {
+                    document.removeEventListener('i18nReady', handler);
+                    resolve();
+                };
+                document.addEventListener('i18nReady', handler);
+                // Fallback timeout
+                setTimeout(resolve, 5000);
+            }
+        });
+
         this.updateTimezoneLabel();
 
         const userInfo = await this.authClient.getUserInfo();
