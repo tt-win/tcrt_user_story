@@ -251,17 +251,26 @@ async def create_user(
     """
     建立新使用者
 
-    需要 SUPER_ADMIN 權限。
+    權限要求：
+    - ADMIN 可以創建 USER 和 VIEWER
+    - SUPER_ADMIN 可以創建任何角色（除了第二個 SUPER_ADMIN）
     """
-    # 權限檢查：需要 SUPER_ADMIN 權限
-    if current_user.role != UserRole.SUPER_ADMIN:
+    # 權限檢查：至少需要 ADMIN 權限
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="需要超級管理員權限"
+            detail="需要管理員權限"
         )
 
     try:
-        # 轉換為 UserCreate 物件
+        # ADMIN 只能創建 USER 和 VIEWER
+        if current_user.role == UserRole.ADMIN:
+            if request.role not in [UserRole.USER, UserRole.VIEWER]:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="管理員只能創建 USER 和 VIEWER 角色"
+                )
+
         # 禁止建立第二位超級管理員
         if request.role == UserRole.SUPER_ADMIN:
             raise HTTPException(
@@ -712,13 +721,15 @@ async def delete_user(
     """
     刪除使用者 (永久刪除)
 
-    需要 SUPER_ADMIN 權限。
+    權限要求：
+    - ADMIN 可以刪除 USER 和 VIEWER
+    - SUPER_ADMIN 可以刪除任何角色（除了 SUPER_ADMIN）
     """
-    # 權限檢查：需要 SUPER_ADMIN 權限
-    if current_user.role != UserRole.SUPER_ADMIN:
+    # 權限檢查：至少需要 ADMIN 權限
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="需要超級管理員權限"
+            detail="需要管理員權限"
         )
 
     # 防止刪除自己
@@ -744,6 +755,14 @@ async def delete_user(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="不可刪除超級管理員"
                 )
+
+            # ADMIN 只能刪除 USER 和 VIEWER
+            if current_user.role == UserRole.ADMIN:
+                if user.role not in [UserRole.USER, UserRole.VIEWER]:
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="管理員只能刪除 USER 和 VIEWER 角色"
+                    )
 
             deleted_username = user.username
 
