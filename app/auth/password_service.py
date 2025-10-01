@@ -2,55 +2,163 @@
 密碼管理服務
 
 提供密碼雜湊、驗證、強度檢查等功能。
-使用 bcrypt 進行安全的密碼雜湊。
+支援 bcrypt (舊格式) 和 PBKDF2 (新格式，用於 challenge-response)。
 """
 
 import secrets
 import string
 import re
+import hashlib
+import base64
 from passlib.hash import bcrypt
 from typing import Tuple
 
 
 class PasswordService:
     """密碼管理服務"""
-    
+
     # bcrypt cost factor = 12 (平衡安全性與效能)
     BCRYPT_ROUNDS = 12
-    
+
+    # PBKDF2 參數
+    PBKDF2_ITERATIONS = 100000
+    PBKDF2_HASH_NAME = 'sha256'
+
     # 密碼強度規則
     MIN_LENGTH = 8
     MAX_LENGTH = 128
-    
+
     @classmethod
-    def hash_password(cls, password: str) -> str:
+    def hash_password_pbkdf2(cls, password: str, username: str) -> str:
         """
-        雜湊密碼
-        
+        使用 PBKDF2 雜湊密碼 (用於 challenge-response 認證)
+
         Args:
             password: 明文密碼
-            
+            username: 使用者名稱 (作為 salt)
+
         Returns:
-            雜湊後的密碼
+            格式化的雜湊字串: pbkdf2_sha256$iterations$salt$hash
         """
-        return bcrypt.using(rounds=cls.BCRYPT_ROUNDS).hash(password)
-    
+        salt = username.encode('utf-8')
+        hash_bytes = hashlib.pbkdf2_hmac(
+            cls.PBKDF2_HASH_NAME,
+            password.encode('utf-8'),
+            salt,
+            cls.PBKDF2_ITERATIONS
+        )
+        hash_b64 = base64.b64encode(hash_bytes).decode('ascii')
+        salt_b64 = base64.b64encode(salt).decode('ascii')
+
+        return f"pbkdf2_{cls.PBKDF2_HASH_NAME}${cls.PBKDF2_ITERATIONS}${salt_b64}${hash_b64}"
+
     @classmethod
-    def verify_password(cls, password: str, hashed_password: str) -> bool:
+    def verify_password_pbkdf2(cls, password: str, hashed_password: str) -> bool:
         """
-        驗證密碼
-        
+        驗證 PBKDF2 雜湊密碼
+
         Args:
             password: 明文密碼
-            hashed_password: 雜湊密碼
-            
+            hashed_password: PBKDF2 格式的雜湊密碼
+
         Returns:
             密碼是否正確
         """
         try:
-            return bcrypt.verify(password, hashed_password)
+            parts = hashed_password.split('$')
+            if len(parts) != 4 or not parts[0].startswith('pbkdf2_'):
+                return False
+
+            algorithm = parts[0].replace('pbkdf2_', '')
+            iterations = int(parts[1])
+            salt = base64.b64decode(parts[2])
+            stored_hash = base64.b64decode(parts[3])
+
+            computed_hash = hashlib.pbkdf2_hmac(
+                algorithm,
+                password.encode('utf-8'),
+                salt,
+                iterations
+            )
+
+            return secrets.compare_digest(computed_hash, stored_hash)
         except Exception:
             return False
+
+    @classmethod
+    def extract_pbkdf2_params(cls, hashed_password: str) -> dict:
+        """
+        從 PBKDF2 雜湊中提取參數 (用於 challenge-response)
+
+        Args:
+            hashed_password: PBKDF2 格式的雜湊密碼
+
+        Returns:
+            字典包含 {salt, iterations, hash_hex}
+        """
+        try:
+            parts = hashed_password.split('$')
+            if len(parts) != 4 or not parts[0].startswith('pbkdf2_'):
+                return None
+
+            iterations = int(parts[1])
+            salt = base64.b64decode(parts[2]).decode('utf-8')
+            hash_bytes = base64.b64decode(parts[3])
+            hash_hex = hash_bytes.hex()
+
+            return {
+                'salt': salt,
+                'iterations': iterations,
+                'hash_hex': hash_hex
+            }
+        except Exception:
+            return None
+
+    @classmethod
+    def hash_password(cls, password: str, username: str = None, use_pbkdf2: bool = False) -> str:
+        """
+        雜湊密碼 (支援兩種格式)
+
+        Args:
+            password: 明文密碼
+            username: 使用者名稱 (PBKDF2 需要)
+            use_pbkdf2: 是否使用 PBKDF2 (預設 False 用 bcrypt)
+
+        Returns:
+            雜湊後的密碼
+        """
+        if use_pbkdf2:
+            if not username:
+                raise ValueError("PBKDF2 requires username as salt")
+            return cls.hash_password_pbkdf2(password, username)
+        else:
+            return bcrypt.using(rounds=cls.BCRYPT_ROUNDS).hash(password)
+
+    @classmethod
+    def verify_password(cls, password: str, hashed_password: str) -> bool:
+        """
+        驗證密碼 (自動檢測格式)
+
+        Args:
+            password: 明文密碼
+            hashed_password: 雜湊密碼
+
+        Returns:
+            密碼是否正確
+        """
+        try:
+            # 檢測是 PBKDF2 還是 bcrypt
+            if hashed_password.startswith('pbkdf2_'):
+                return cls.verify_password_pbkdf2(password, hashed_password)
+            else:
+                return bcrypt.verify(password, hashed_password)
+        except Exception:
+            return False
+
+    @classmethod
+    def is_pbkdf2_format(cls, hashed_password: str) -> bool:
+        """檢查密碼是否為 PBKDF2 格式"""
+        return hashed_password.startswith('pbkdf2_') if hashed_password else False
     
     @classmethod
     def check_password_strength(cls, password: str) -> Tuple[bool, str]:

@@ -237,6 +237,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/js/crypto-utils.js"></script>
 <script>
         class LoginManager {
             constructor() {
@@ -421,14 +422,66 @@
                 this.setLoading(true);
 
                 try {
+                    // 檢查是否支援 Web Crypto API
+                    const useEncryption = window.CryptoUtils && window.CryptoUtils.isWebCryptoAvailable();
+
+                    let requestBody = {
+                        username_or_email: username,
+                        remember_me: this.form.querySelector('#rememberMe')?.checked || false
+                    };
+
+                    if (useEncryption) {
+                        // 使用加密方式
+                        console.log('[Login] 使用加密認證方式');
+
+                        // 步驟 1: 取得 challenge
+                        const challengeResponse = await fetch('/api/auth/challenge', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ username_or_email: username })
+                        });
+
+                        if (!challengeResponse.ok) {
+                            throw new Error('Failed to get challenge');
+                        }
+
+                        const challengeData = await challengeResponse.json();
+
+                        // 檢查是否支援加密登入
+                        if (challengeData.supports_encryption && challengeData.salt && challengeData.iterations) {
+                            console.log('[Login] 使用者支援加密登入');
+
+                            const challenge = challengeData.challenge;
+                            const salt = challengeData.salt;
+                            const iterations = challengeData.iterations;
+
+                            // 步驟 2: 計算 password_hash
+                            const passwordHash = await window.CryptoUtils.calculateChallengeResponse(
+                                password,
+                                salt,
+                                challenge,
+                                iterations
+                            );
+
+                            // 使用加密方式登入
+                            requestBody.password = '';  // 不傳送明文密碼
+                            requestBody.password_hash = passwordHash;
+                            requestBody.challenge = challenge;
+                        } else {
+                            // 使用者尚未升級到 PBKDF2，降級到明文登入
+                            console.warn('[Login] 使用者尚未支援加密登入，使用明文方式 (將自動升級)');
+                            requestBody.password = password;
+                        }
+                    } else {
+                        // 降級到明文方式 (舊版相容)
+                        console.warn('[Login] Web Crypto API 不可用，使用明文認證方式 (不安全)');
+                        requestBody.password = password;
+                    }
+
                     const response = await fetch('/api/auth/login', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            username_or_email: username,
-                            password,
-                            remember_me: this.form.querySelector('#rememberMe')?.checked || false
-                        })
+                        body: JSON.stringify(requestBody)
                     });
                     const data = await response.json();
 

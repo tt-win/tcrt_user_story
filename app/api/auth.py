@@ -31,6 +31,8 @@ class LoginRequest(BaseModel):
     """登入請求模型"""
     username_or_email: str
     password: str
+    password_hash: Optional[str] = None  # 加密後的密碼雜湊
+    challenge: Optional[str] = None  # 對應的 challenge
 
 
 class LoginResponse(BaseModel):
@@ -62,6 +64,8 @@ class FirstLoginSetupRequest(BaseModel):
     username: str
     new_password: str
     confirm_password: str
+    password_hash: Optional[str] = None  # 加密後的密碼雜湊
+    challenge: Optional[str] = None  # 對應的 challenge
 
 
 class RefreshRequest(BaseModel):
@@ -100,6 +104,83 @@ def get_client_ip(request: Request) -> str:
 def get_user_agent(request: Request) -> str:
     """取得使用者代理字串"""
     return request.headers.get("User-Agent", "unknown")
+
+
+class ChallengeRequest(BaseModel):
+    """Challenge 請求模型"""
+    username_or_email: str
+
+
+class ChallengeResponse(BaseModel):
+    """Challenge 回應模型"""
+    challenge: str
+    expires_at: str
+    salt: Optional[str] = None  # PBKDF2 salt (username)
+    iterations: Optional[int] = None  # PBKDF2 iterations
+    supports_encryption: bool = False  # 是否支援加密登入
+
+
+@router.post("/challenge", response_model=ChallengeResponse)
+async def get_challenge(request: ChallengeRequest):
+    """
+    取得登入 Challenge
+
+    用於實作 Challenge-Response 認證機制，防止密碼明文傳輸
+    如果使用者密碼是 PBKDF2 格式，會返回 salt 和 iterations
+    """
+    import secrets
+    from datetime import datetime, timedelta
+    from app.auth.password_service import PasswordService
+
+    # 生成隨機 challenge (32 bytes = 64 hex chars)
+    challenge = secrets.token_hex(32)
+    expires_at = datetime.utcnow() + timedelta(minutes=5)
+
+    # 使用 username_or_email 作為 key
+    identifier = request.username_or_email.strip()
+
+    # 暫存到 session service
+    from app.auth.session_service import session_service
+    await session_service.store_challenge(identifier, challenge, expires_at)
+
+    # 查詢使用者並檢查密碼格式
+    supports_encryption = False
+    salt = None
+    iterations = None
+
+    try:
+        async with get_async_session() as session:
+            result = await session.execute(
+                select(User).where(
+                    (User.username == identifier) | (User.email == identifier)
+                )
+            )
+            user = result.scalar_one_or_none()
+
+            if user and user.hashed_password:
+                # 檢查是否為 PBKDF2 格式
+                if PasswordService.is_pbkdf2_format(user.hashed_password):
+                    params = PasswordService.extract_pbkdf2_params(user.hashed_password)
+                    if params:
+                        supports_encryption = True
+                        salt = params['salt']
+                        iterations = params['iterations']
+                        logger.info(f"使用者 {identifier} 支援加密登入")
+                else:
+                    logger.info(f"使用者 {identifier} 使用舊格式密碼，不支援加密登入")
+
+    except Exception as e:
+        logger.error(f"查詢使用者密碼格式失敗: {e}")
+
+    logger.info(f"生成 challenge for {identifier}")
+
+    return ChallengeResponse(
+        challenge=challenge,
+        expires_at=expires_at.isoformat(),
+        salt=salt,
+        iterations=iterations,
+        supports_encryption=supports_encryption
+    )
 
 
 @router.post("/pre-login", response_model=PreLoginResponse)
@@ -172,12 +253,17 @@ async def login(request: LoginRequest, http_request: Request):
     使用者登入
 
     驗證使用者憑證並建立認證會話，返回 JWT token
+    支援兩種認證方式：
+    1. 明文密碼 (相容舊版)
+    2. Challenge-Response 加密認證 (推薦)
     """
     try:
-        # 驗證使用者憑證
+        # 驗證使用者憑證 - 支援兩種方式
         user = await auth_service.authenticate_user(
             username_or_email=request.username_or_email,
-            password=request.password
+            password=request.password if not request.password_hash else None,
+            password_hash=request.password_hash,
+            challenge=request.challenge
         )
 
         if not user:

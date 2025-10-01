@@ -6,6 +6,7 @@ JWT Token 認證服務
 
 import jwt
 import uuid
+import logging
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 from sqlalchemy import select
@@ -16,6 +17,8 @@ from app.auth.password_service import PasswordService
 from app.database import get_async_session
 from app.models.database_models import User
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 
 class AuthService:
@@ -183,13 +186,21 @@ class AuthService:
         """
         return await session_service.revoke_user_sessions(user_id, reason)
 
-    async def authenticate_user(self, username_or_email: str, password: str) -> Optional[User]:
+    async def authenticate_user(
+        self,
+        username_or_email: str,
+        password: str = None,
+        password_hash: str = None,
+        challenge: str = None
+    ) -> Optional[User]:
         """
         驗證使用者憑證
 
         Args:
             username_or_email: 使用者名稱或電子信箱
-            password: 密碼
+            password: 明文密碼 (舊方式，相容性保留)
+            password_hash: 加密後的密碼雜湊 (新方式)
+            challenge: 對應的 challenge (新方式)
 
         Returns:
             使用者物件（如果驗證成功）或 None
@@ -212,8 +223,53 @@ class AuthService:
             if not user or not user.is_active:
                 return None
 
-            # 驗證密碼
-            if not PasswordService.verify_password(password, user.hashed_password):
+            # 驗證密碼 - 支援兩種方式
+            if password_hash and challenge:
+                # 新方式: Challenge-Response 認證
+                # 驗證 challenge
+                if not await session_service.verify_challenge(username_or_email, challenge):
+                    return None
+
+                # 檢查是否為 PBKDF2 格式
+                if not PasswordService.is_pbkdf2_format(user.hashed_password):
+                    return None  # 只有 PBKDF2 格式才支援加密登入
+
+                # 計算預期的 response
+                # response = HMAC-SHA256(challenge, stored_pbkdf2_hash)
+                import hmac
+                import hashlib
+
+                params = PasswordService.extract_pbkdf2_params(user.hashed_password)
+                if not params:
+                    return None
+
+                # 使用 PBKDF2 雜湊的十六進位表示作為 HMAC key
+                expected_hash = hmac.new(
+                    bytes.fromhex(params['hash_hex']),
+                    challenge.encode('utf-8'),
+                    hashlib.sha256
+                ).hexdigest()
+
+                if expected_hash != password_hash:
+                    return None
+
+            elif password:
+                # 舊方式: 明文密碼驗證 (相容性保留)
+                if not PasswordService.verify_password(password, user.hashed_password):
+                    return None
+
+                # 如果是 bcrypt 格式，驗證成功後升級到 PBKDF2
+                if not PasswordService.is_pbkdf2_format(user.hashed_password):
+                    logger.info(f"升級使用者 {user.username} 的密碼格式到 PBKDF2")
+                    user.hashed_password = PasswordService.hash_password(
+                        password,
+                        username=user.username,
+                        use_pbkdf2=True
+                    )
+                    # 標記需要更新
+                    setattr(user, '_password_upgraded', True)
+            else:
+                # 既沒有明文密碼，也沒有加密雜湊
                 return None
 
             from datetime import datetime

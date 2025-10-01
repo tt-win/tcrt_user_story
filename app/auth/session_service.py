@@ -19,10 +19,11 @@ logger = logging.getLogger(__name__)
 
 class SessionService:
     """會話管理服務"""
-    
+
     def __init__(self):
         self.settings = get_settings()
         self._revoked_jtis: Set[str] = set()  # 記憶體中的撤銷 JTI 集合
+        self._challenges: dict = {}  # 暫存 challenges {identifier: (challenge, expires_at)}
         
     async def create_session(
         self, 
@@ -258,6 +259,64 @@ class SessionService:
             logger.error(f"清理過期會話失敗: {e}")
             return 0
     
+    async def store_challenge(self, identifier: str, challenge: str, expires_at: datetime) -> bool:
+        """
+        暫存 challenge
+
+        Args:
+            identifier: 使用者識別 (username 或 email)
+            challenge: 隨機 challenge 字串
+            expires_at: 過期時間
+
+        Returns:
+            是否暫存成功
+        """
+        try:
+            self._challenges[identifier] = (challenge, expires_at)
+            logger.debug(f"暫存 challenge for {identifier}")
+            return True
+        except Exception as e:
+            logger.error(f"暫存 challenge 失敗: {e}")
+            return False
+
+    async def verify_challenge(self, identifier: str, challenge: str) -> bool:
+        """
+        驗證 challenge
+
+        Args:
+            identifier: 使用者識別
+            challenge: 要驗證的 challenge
+
+        Returns:
+            是否驗證成功
+        """
+        try:
+            if identifier not in self._challenges:
+                logger.warning(f"找不到 challenge for {identifier}")
+                return False
+
+            stored_challenge, expires_at = self._challenges[identifier]
+
+            # 檢查是否過期
+            if datetime.utcnow() > expires_at:
+                logger.warning(f"Challenge 已過期 for {identifier}")
+                del self._challenges[identifier]
+                return False
+
+            # 驗證 challenge
+            if stored_challenge != challenge:
+                logger.warning(f"Challenge 不匹配 for {identifier}")
+                return False
+
+            # 驗證成功，刪除 challenge (一次性使用)
+            del self._challenges[identifier]
+            logger.debug(f"Challenge 驗證成功 for {identifier}")
+            return True
+
+        except Exception as e:
+            logger.error(f"驗證 challenge 失敗: {e}")
+            return False
+
     def _cleanup_memory_cache(self):
         """清理記憶體中的 JTI 快取"""
         # 這裡可以實作更精細的快取清理邏輯
@@ -267,6 +326,17 @@ class SessionService:
             jti_list = list(self._revoked_jtis)
             self._revoked_jtis = set(jti_list[len(jti_list)//2:])
             logger.debug("清理了一半的 JTI 記憶體快取")
+
+        # 清理過期的 challenges
+        current_time = datetime.utcnow()
+        expired_identifiers = [
+            identifier for identifier, (_, expires_at) in self._challenges.items()
+            if expires_at < current_time
+        ]
+        for identifier in expired_identifiers:
+            del self._challenges[identifier]
+        if expired_identifiers:
+            logger.debug(f"清理了 {len(expired_identifiers)} 個過期 challenge")
     
     async def get_session_statistics(self) -> dict:
         """
