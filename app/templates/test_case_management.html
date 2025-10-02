@@ -212,13 +212,15 @@ html, body { height: 100%; overflow: hidden; }
 #bulkEditModal .bulk-edit-grid thead { position: sticky; top: 0; z-index: 10; background: #f8f9fa; }
 #bulkEditModal .bulk-edit-grid th { border: 1px solid #dee2e6; padding: 0.5rem; font-weight: 600; text-align: left; background: #e9ecef; }
 #bulkEditModal .bulk-edit-grid td { border: 1px solid #dee2e6; padding: 0; position: relative; background: white; }
-#bulkEditModal .bulk-edit-grid td.selected { background-color: #e7f3ff; }
-#bulkEditModal .bulk-edit-grid td.editing { padding: 0; }
-#bulkEditModal .bulk-edit-grid td .cell-content { padding: 0.5rem; min-height: 2rem; cursor: text; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#bulkEditModal .bulk-edit-grid td.selected { background-color: #e7f3ff; box-shadow: inset 0 0 0 2px #0d6efd; }
+#bulkEditModal .bulk-edit-grid td.editing .cell-content { display: none; }
+#bulkEditModal .bulk-edit-grid td.editing .cell-input { display: block !important; }
+#bulkEditModal .bulk-edit-grid td .cell-content { padding: 0.5rem; min-height: 2rem; cursor: cell; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #bulkEditModal .bulk-edit-grid td .cell-content.multiline { white-space: pre-wrap; }
-#bulkEditModal .bulk-edit-grid td .cell-input { width: 100%; border: 2px solid #0d6efd; padding: 0.5rem; box-sizing: border-box; outline: none; resize: vertical; min-height: 2rem; }
-#bulkEditModal .bulk-edit-grid td .drag-handle { position: absolute; right: 0; bottom: 0; width: 8px; height: 8px; background: #0d6efd; cursor: crosshair; z-index: 5; }
-#bulkEditModal .bulk-edit-grid td:hover .drag-handle { display: block; }
+#bulkEditModal .bulk-edit-grid td .cell-input { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 2px solid #0d6efd; padding: 0.5rem; box-sizing: border-box; outline: none; resize: none; z-index: 10; background: white; }
+#bulkEditModal .bulk-edit-grid td .drag-handle { position: absolute; right: -1px; bottom: -1px; width: 8px; height: 8px; background: #0d6efd; cursor: crosshair; z-index: 15; display: none; }
+#bulkEditModal .bulk-edit-grid td .drag-handle::before { content: '+'; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 10px; font-weight: bold; line-height: 1; }
+#bulkEditModal .bulk-edit-grid td.selected .drag-handle { display: block; }
 
 /* 專門收斂 #searchInput 的父層（col-）之上緣空白：縮小該 row 的垂直 gutter */
 #searchFilterCard .card-body .row.g-3 {
@@ -8926,6 +8928,9 @@ let bulkEditData = []; // 編輯中的資料
 let bulkEditChanges = new Map(); // 記錄變更: record_id -> { field: value }
 let bulkEditSelectedCells = new Set(); // 選取的儲存格
 let bulkEditClipboard = { content: '', column: '', cells: [] }; // 剪貼簿
+let bulkEditUndoStack = []; // 復原堆疊
+let bulkEditCurrentCell = null; // 當前編輯的儲存格
+let bulkEditDragState = null; // 拖曳狀態
 
 // 欄位對應表
 const bulkEditColumns = [
@@ -9005,12 +9010,27 @@ function renderBulkEditGrid() {
                 displayValue = value.substring(0, 47) + '...';
             }
             
+            let inputHTML = '';
+            if (isEditable) {
+                if (col.type === 'select') {
+                    const options = col.options.map(opt => 
+                        `<option value="${opt}" ${opt === value ? 'selected' : ''}>${opt}</option>`
+                    ).join('');
+                    inputHTML = `<select class="cell-input form-select">${options}</select>`;
+                } else if (col.type === 'textarea') {
+                    inputHTML = `<textarea class="cell-input form-control">${value}</textarea>`;
+                } else {
+                    inputHTML = `<input type="text" class="cell-input form-control" value="${value}">`;
+                }
+            }
+            
             return `
                 <td class="${cellClass}" data-record-id="${row.record_id}" data-column="${col.key}" data-cell-id="${cellId}">
                     <div class="cell-content ${col.type === 'textarea' ? 'multiline' : ''}" title="${value}">
                         ${displayValue || ''}
                     </div>
-                    ${isEditable ? '<div class="drag-handle" style="display: none;"></div>' : ''}
+                    ${inputHTML}
+                    ${isEditable ? '<div class="drag-handle"></div>' : ''}
                 </td>
             `;
         }).join('');
@@ -9043,11 +9063,9 @@ function bindBulkEditEvents() {
     });
     
     // 拖曳事件
-    grid.addEventListener('mousedown', function(e) {
-        if (e.target.classList.contains('drag-handle')) {
-            startDragFill(e);
-        }
-    });
+    document.addEventListener('mousedown', handleDragStart);
+    document.addEventListener('mousemove', handleDragMove);
+    document.addEventListener('mouseup', handleDragEnd);
     
     // 鍵盤事件
     document.addEventListener('keydown', handleBulkEditKeydown);
@@ -9127,6 +9145,9 @@ function clearCellSelection() {
 
 function startCellEdit(cell) {
     if (cell.classList.contains('editing')) return;
+    if (bulkEditCurrentCell) {
+        finishCellEdit(bulkEditCurrentCell);
+    }
     
     const recordId = cell.dataset.recordId;
     const column = cell.dataset.column;
@@ -9134,62 +9155,86 @@ function startCellEdit(cell) {
     
     if (!colInfo || !colInfo.editable) return;
     
-    const currentValue = getCellValue(recordId, column);
-    const cellContent = cell.querySelector('.cell-content');
-    
+    bulkEditCurrentCell = cell;
     cell.classList.add('editing');
     
-    let input;
-    if (colInfo.type === 'select') {
-        input = document.createElement('select');
-        input.className = 'cell-input form-select';
-        colInfo.options.forEach(option => {
-            const optionEl = document.createElement('option');
-            optionEl.value = option;
-            optionEl.textContent = option;
-            optionEl.selected = option === currentValue;
-            input.appendChild(optionEl);
-        });
-    } else if (colInfo.type === 'textarea') {
-        input = document.createElement('textarea');
-        input.className = 'cell-input form-control';
-        input.value = currentValue;
-        input.rows = 3;
-    } else {
-        input = document.createElement('input');
-        input.className = 'cell-input form-control';
-        input.type = 'text';
-        input.value = currentValue;
+    const input = cell.querySelector('.cell-input');
+    if (input) {
+        input.focus();
+        if (input.tagName === 'INPUT' || input.tagName === 'TEXTAREA') {
+            input.select();
+        }
+        
+        // 綁定事件
+        input.onblur = () => finishCellEdit(cell);
+        input.onkeydown = (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                finishCellEdit(cell);
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                cancelCellEdit(cell);
+            } else if (e.key === 'Tab') {
+                e.preventDefault();
+                finishCellEdit(cell);
+                // 移到下一個可編輯儲存格
+                const nextCell = getNextEditableCell(cell, !e.shiftKey);
+                if (nextCell) {
+                    setTimeout(() => startCellEdit(nextCell), 10);
+                }
+            }
+        };
     }
+}
+
+function finishCellEdit(cell) {
+    if (!cell || !cell.classList.contains('editing')) return;
     
-    cell.appendChild(input);
-    input.focus();
+    const recordId = cell.dataset.recordId;
+    const column = cell.dataset.column;
+    const input = cell.querySelector('.cell-input');
+    const cellContent = cell.querySelector('.cell-content');
     
-    // 結束編輯事件
-    const finishEdit = () => {
+    if (input) {
         const newValue = input.value.trim();
+        const currentValue = getCellValue(recordId, column);
+        
         if (newValue !== currentValue) {
+            // 儲存到 undo 堆疊
+            pushUndoState(recordId, column, currentValue, newValue);
             setCellValue(recordId, column, newValue);
             updateBulkEditStatus();
         }
         
-        cellContent.textContent = newValue;
-        cellContent.title = newValue;
-        cell.removeChild(input);
-        cell.classList.remove('editing');
-    };
-    
-    input.addEventListener('blur', finishEdit);
-    input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            finishEdit();
-        } else if (e.key === 'Escape') {
-            e.preventDefault();
-            cell.removeChild(input);
-            cell.classList.remove('editing');
+        // 更新顯示
+        let displayValue = newValue;
+        if (newValue.length > 50) {
+            displayValue = newValue.substring(0, 47) + '...';
         }
-    });
+        cellContent.textContent = displayValue;
+        cellContent.title = newValue;
+    }
+    
+    cell.classList.remove('editing');
+    bulkEditCurrentCell = null;
+}
+
+function cancelCellEdit(cell) {
+    if (!cell || !cell.classList.contains('editing')) return;
+    cell.classList.remove('editing');
+    bulkEditCurrentCell = null;
+}
+
+function getNextEditableCell(currentCell, forward = true) {
+    const allCells = Array.from(document.querySelectorAll('.bulk-edit-grid td.editable-cell'));
+    const currentIndex = allCells.indexOf(currentCell);
+    if (currentIndex === -1) return null;
+    
+    const nextIndex = forward ? currentIndex + 1 : currentIndex - 1;
+    if (nextIndex >= 0 && nextIndex < allCells.length) {
+        return allCells[nextIndex];
+    }
+    return null;
 }
 
 function getCellValue(recordId, column) {
@@ -9222,7 +9267,14 @@ function handleBulkEditKeydown(event) {
     const modal = document.getElementById('bulkEditModal');
     if (!modal || !modal.classList.contains('show')) return;
     
-    if ((event.ctrlKey || event.metaKey) && event.key === 'c') {
+    // 如果正在編輯儲存格，不處理快捷鍵
+    if (bulkEditCurrentCell) return;
+    
+    if ((event.ctrlKey || event.metaKey) && event.key === 'z') {
+        // Ctrl+Z: 復原
+        performUndo();
+        event.preventDefault();
+    } else if ((event.ctrlKey || event.metaKey) && event.key === 'c') {
         // Ctrl+C: 複製
         copySelectedCells();
         event.preventDefault();
@@ -9230,6 +9282,64 @@ function handleBulkEditKeydown(event) {
         // Ctrl+V: 貼上
         pasteToSelectedCells();
         event.preventDefault();
+    }
+}
+
+function pushUndoState(recordId, column, oldValue, newValue) {
+    bulkEditUndoStack.push({ recordId, column, oldValue, newValue });
+    // 限制 undo 堆疊大小
+    if (bulkEditUndoStack.length > 50) {
+        bulkEditUndoStack.shift();
+    }
+    // 啟用 undo 按鈕
+    const undoBtn = document.getElementById('bulkEditUndoBtn');
+    if (undoBtn) undoBtn.disabled = false;
+}
+
+function performUndo() {
+    if (bulkEditUndoStack.length === 0) return;
+    
+    const lastAction = bulkEditUndoStack.pop();
+    const { recordId, column, oldValue } = lastAction;
+    
+    // 恢復舊值（不加入 undo 堆疊）
+    if (!bulkEditChanges.has(recordId)) {
+        bulkEditChanges.set(recordId, {});
+    }
+    bulkEditChanges.get(recordId)[column] = oldValue;
+    
+    // 更新本地資料
+    const row = bulkEditData.find(r => r.record_id === recordId);
+    if (row) {
+        row[column] = oldValue;
+    }
+    
+    // 更新顯示
+    const cell = document.querySelector(`td[data-record-id="${recordId}"][data-column="${column}"]`);
+    if (cell) {
+        const cellContent = cell.querySelector('.cell-content');
+        const cellInput = cell.querySelector('.cell-input');
+        
+        let displayValue = oldValue;
+        if (oldValue.length > 50) {
+            displayValue = oldValue.substring(0, 47) + '...';
+        }
+        
+        if (cellContent) {
+            cellContent.textContent = displayValue;
+            cellContent.title = oldValue;
+        }
+        if (cellInput) {
+            cellInput.value = oldValue;
+        }
+    }
+    
+    updateBulkEditStatus();
+    
+    // 如果 undo 堆疊空了，停用按鈕
+    const undoBtn = document.getElementById('bulkEditUndoBtn');
+    if (undoBtn && bulkEditUndoStack.length === 0) {
+        undoBtn.disabled = true;
     }
 }
 
@@ -9275,33 +9385,92 @@ function pasteToSelectedCells() {
     console.log(`已貼上到 ${bulkEditSelectedCells.size} 個儲存格`);
 }
 
-function startDragFill(event) {
+function handleDragStart(event) {
+    const dragHandle = event.target;
+    if (!dragHandle || !dragHandle.classList.contains('drag-handle')) return;
+    
     event.preventDefault();
     
-    const cell = event.target.closest('td');
+    const cell = dragHandle.closest('td');
     if (!cell) return;
     
     const recordId = cell.dataset.recordId;
     const column = cell.dataset.column;
     const sourceValue = getCellValue(recordId, column);
     
-    // 簡化實現: 直接複製到下一個儲存格
-    const nextRow = cell.closest('tr').nextElementSibling;
-    if (nextRow) {
-        const targetCell = nextRow.querySelector(`td[data-column="${column}"]`);
-        if (targetCell && targetCell.classList.contains('editable-cell')) {
-            const targetRecordId = targetCell.dataset.recordId;
-            setCellValue(targetRecordId, column, sourceValue);
-            
-            const cellContent = targetCell.querySelector('.cell-content');
-            if (cellContent) {
-                cellContent.textContent = sourceValue;
-                cellContent.title = sourceValue;
-            }
-            
-            updateBulkEditStatus();
+    bulkEditDragState = {
+        startCell: cell,
+        column: column,
+        sourceValue: sourceValue,
+        affectedCells: new Set([cell])
+    };
+    
+    // 添加視覺回饋
+    cell.style.opacity = '0.7';
+}
+
+function handleDragMove(event) {
+    if (!bulkEditDragState) return;
+    
+    event.preventDefault();
+    
+    const targetElement = document.elementFromPoint(event.clientX, event.clientY);
+    const targetCell = targetElement ? targetElement.closest('td.editable-cell') : null;
+    
+    if (targetCell && targetCell.dataset.column === bulkEditDragState.column) {
+        // 添加預覽效果
+        if (!bulkEditDragState.affectedCells.has(targetCell)) {
+            bulkEditDragState.affectedCells.add(targetCell);
+            targetCell.style.backgroundColor = '#d0e8ff';
         }
     }
+}
+
+function handleDragEnd(event) {
+    if (!bulkEditDragState) return;
+    
+    event.preventDefault();
+    
+    const { startCell, column, sourceValue, affectedCells } = bulkEditDragState;
+    
+    // 移除視覺效果
+    startCell.style.opacity = '';
+    
+    // 應用變更
+    affectedCells.forEach(cell => {
+        if (cell === startCell) return; // 跳過來源儲存格
+        
+        const targetRecordId = cell.dataset.recordId;
+        const currentValue = getCellValue(targetRecordId, column);
+        
+        if (currentValue !== sourceValue) {
+            pushUndoState(targetRecordId, column, currentValue, sourceValue);
+            setCellValue(targetRecordId, column, sourceValue);
+            
+            // 更新顯示
+            const cellContent = cell.querySelector('.cell-content');
+            const cellInput = cell.querySelector('.cell-input');
+            
+            let displayValue = sourceValue;
+            if (sourceValue.length > 50) {
+                displayValue = sourceValue.substring(0, 47) + '...';
+            }
+            
+            if (cellContent) {
+                cellContent.textContent = displayValue;
+                cellContent.title = sourceValue;
+            }
+            if (cellInput) {
+                cellInput.value = sourceValue;
+            }
+        }
+        
+        // 移除預覽效果
+        cell.style.backgroundColor = '';
+    });
+    
+    updateBulkEditStatus();
+    bulkEditDragState = null;
 }
 
 function updateBulkEditStatus() {
