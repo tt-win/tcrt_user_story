@@ -221,6 +221,8 @@ html, body { height: 100%; overflow: hidden; }
 #bulkEditModal .bulk-edit-grid td .drag-handle { position: absolute; right: -1px; bottom: -1px; width: 8px; height: 8px; background: #0d6efd; cursor: crosshair; z-index: 15; display: none; }
 #bulkEditModal .bulk-edit-grid td .drag-handle::before { content: '+'; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 10px; font-weight: bold; line-height: 1; }
 #bulkEditModal .bulk-edit-grid td.selected .drag-handle { display: block; }
+#bulkEditModal .bulk-edit-grid td.selecting { background-color: #e0f0ff; }
+#bulkEditModal .bulk-edit-grid { user-select: none; }
 
 /* 專門收斂 #searchInput 的父層（col-）之上緣空白：縮小該 row 的垂直 gutter */
 #searchFilterCard .card-body .row.g-3 {
@@ -8931,6 +8933,7 @@ let bulkEditClipboard = { content: '', column: '', cells: [] }; // 剪貼簿
 let bulkEditUndoStack = []; // 復原堆疊
 let bulkEditCurrentCell = null; // 當前編輯的儲存格
 let bulkEditDragState = null; // 拖曳狀態
+let bulkEditSelectDragState = null; // 拖移選取狀態
 
 // 欄位對應表
 const bulkEditColumns = [
@@ -9012,15 +9015,19 @@ function renderBulkEditGrid() {
             
             let inputHTML = '';
             if (isEditable) {
+                // Escape HTML to prevent XSS and preserve formatting
+                const escapedValue = (value || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                
                 if (col.type === 'select') {
                     const options = col.options.map(opt => 
                         `<option value="${opt}" ${opt === value ? 'selected' : ''}>${opt}</option>`
                     ).join('');
                     inputHTML = `<select class="cell-input form-select">${options}</select>`;
                 } else if (col.type === 'textarea') {
-                    inputHTML = `<textarea class="cell-input form-control">${value}</textarea>`;
+                    // Use proper closing tag to avoid whitespace issue
+                    inputHTML = `<textarea class="cell-input form-control">${escapedValue}</textarea>`;
                 } else {
-                    inputHTML = `<input type="text" class="cell-input form-control" value="${value}">`;
+                    inputHTML = `<input type="text" class="cell-input form-control" value="${escapedValue}">`;
                 }
             }
             
@@ -9047,10 +9054,33 @@ function bindBulkEditEvents() {
     if (!grid) return;
     
     // 儲存格點擊事件
-    grid.addEventListener('click', function(e) {
+    grid.addEventListener('mousedown', function(e) {
+        // 先處理 drag handle
+        if (e.target.classList.contains('drag-handle')) {
+            handleDragStart(e);
+            return;
+        }
+        
         const cell = e.target.closest('td.editable-cell');
         if (cell) {
             handleCellClick(cell, e);
+        }
+    });
+    
+    // 拖移選取事件
+    grid.addEventListener('mousemove', function(e) {
+        if (bulkEditSelectDragState && bulkEditSelectDragState.isSelecting) {
+            handleSelectDragMove(e);
+        } else if (bulkEditDragState) {
+            handleDragMove(e);
+        }
+    });
+    
+    grid.addEventListener('mouseup', function(e) {
+        if (bulkEditSelectDragState) {
+            handleSelectDragEnd(e);
+        } else if (bulkEditDragState) {
+            handleDragEnd(e);
         }
     });
     
@@ -9061,11 +9091,6 @@ function bindBulkEditEvents() {
             startCellEdit(cell);
         }
     });
-    
-    // 拖曳事件
-    document.addEventListener('mousedown', handleDragStart);
-    document.addEventListener('mousemove', handleDragMove);
-    document.addEventListener('mouseup', handleDragEnd);
     
     // 鍵盤事件
     document.addEventListener('keydown', handleBulkEditKeydown);
@@ -9102,6 +9127,12 @@ function handleCellClick(cell, event) {
         clearCellSelection();
         bulkEditSelectedCells.add(cellId);
         cell.classList.add('selected');
+        
+        // 開始拖移選取
+        bulkEditSelectDragState = {
+            startCell: cell,
+            isSelecting: false
+        };
     }
 }
 
@@ -9346,43 +9377,155 @@ function performUndo() {
 function copySelectedCells() {
     if (bulkEditSelectedCells.size === 0) return;
     
-    // 簡化實現: 只複製第一個選中的儲存格
-    const firstCellId = Array.from(bulkEditSelectedCells)[0];
-    const [recordId, column] = firstCellId.split('_');
+    // 收集所有選中儲存格的資料
+    const selectedData = [];
+    const cellsArray = Array.from(bulkEditSelectedCells);
     
-    bulkEditClipboard.content = getCellValue(recordId, column);
-    bulkEditClipboard.column = column;
-    bulkEditClipboard.cells = Array.from(bulkEditSelectedCells);
+    // 按行和列排序
+    const cellsWithPosition = cellsArray.map(cellId => {
+        const [recordId, column] = cellId.split('_');
+        const cell = document.querySelector(`td[data-cell-id="${cellId}"]`);
+        const row = cell ? cell.closest('tr') : null;
+        const allRows = Array.from(document.querySelectorAll('.bulk-edit-grid tbody tr'));
+        const rowIndex = row ? allRows.indexOf(row) : -1;
+        const colIndex = bulkEditColumns.findIndex(c => c.key === column);
+        
+        return {
+            cellId,
+            recordId,
+            column,
+            rowIndex,
+            colIndex,
+            value: getCellValue(recordId, column)
+        };
+    }).filter(c => c.rowIndex >= 0 && c.colIndex >= 0);
     
-    console.log('已複製:', bulkEditClipboard.content);
+    // 排序: 先按行再按列
+    cellsWithPosition.sort((a, b) => {
+        if (a.rowIndex !== b.rowIndex) return a.rowIndex - b.rowIndex;
+        return a.colIndex - b.colIndex;
+    });
+    
+    // 建立二維表格結構
+    const grid = {};
+    cellsWithPosition.forEach(cell => {
+        if (!grid[cell.rowIndex]) grid[cell.rowIndex] = {};
+        grid[cell.rowIndex][cell.colIndex] = cell.value;
+    });
+    
+    // 轉換為 TSV 格式 (類似 Excel)
+    const rows = Object.keys(grid).sort((a, b) => parseInt(a) - parseInt(b));
+    const tsvData = rows.map(rowIdx => {
+        const rowData = grid[rowIdx];
+        const cols = Object.keys(rowData).sort((a, b) => parseInt(a) - parseInt(b));
+        return cols.map(colIdx => rowData[colIdx] || '').join('\t');
+    }).join('\n');
+    
+    // 儲存到剪貼簿
+    bulkEditClipboard.content = tsvData;
+    bulkEditClipboard.cellsData = cellsWithPosition;
+    bulkEditClipboard.cells = cellsArray;
+    
+    // 複製到系統剪貼簿
+    try {
+        navigator.clipboard.writeText(tsvData).then(() => {
+            console.log(`已複製 ${cellsWithPosition.length} 個儲存格到剪貼簿`);
+        }).catch(err => {
+            console.warn('無法寫入系統剪貼簿:', err);
+        });
+    } catch (err) {
+        console.warn('剪貼簿 API 不可用:', err);
+    }
 }
 
-function pasteToSelectedCells() {
-    if (!bulkEditClipboard.content || bulkEditSelectedCells.size === 0) return;
+async function pasteToSelectedCells() {
+    if (bulkEditSelectedCells.size === 0) return;
     
-    const targetColumn = bulkEditClipboard.column;
-    const content = bulkEditClipboard.content;
-    
-    // 貼上到相同欄位的選中儲存格
-    bulkEditSelectedCells.forEach(cellId => {
-        const [recordId, column] = cellId.split('_');
-        if (column === targetColumn) {
-            setCellValue(recordId, column, content);
+    try {
+        // 嘗試從系統剪貼簿讀取
+        let clipboardText = '';
+        try {
+            clipboardText = await navigator.clipboard.readText();
+        } catch (err) {
+            // 如果無法讀取系統剪貼簿，使用內部剪貼簿
+            clipboardText = bulkEditClipboard.content || '';
+        }
+        
+        if (!clipboardText) return;
+        
+        // 解析 TSV 資料 (支援 Excel 複製貼上)
+        const rows = clipboardText.split('\n').filter(r => r.trim());
+        const data = rows.map(row => row.split('\t'));
+        
+        // 取得第一個選中的儲存格作為起點
+        const firstCellId = Array.from(bulkEditSelectedCells)[0];
+        const firstCell = document.querySelector(`td[data-cell-id="${firstCellId}"]`);
+        if (!firstCell) return;
+        
+        const startRow = firstCell.closest('tr');
+        const allRows = Array.from(document.querySelectorAll('.bulk-edit-grid tbody tr'));
+        const startRowIndex = allRows.indexOf(startRow);
+        const startColIndex = bulkEditColumns.findIndex(c => c.key === firstCell.dataset.column);
+        
+        if (startRowIndex < 0 || startColIndex < 0) return;
+        
+        let pasteCount = 0;
+        
+        // 貼上資料到對應位置
+        for (let i = 0; i < data.length; i++) {
+            const targetRowIndex = startRowIndex + i;
+            if (targetRowIndex >= allRows.length) break;
             
-            // 更新顯示
-            const cell = document.querySelector(`td[data-cell-id="${cellId}"]`);
-            if (cell) {
-                const cellContent = cell.querySelector('.cell-content');
-                if (cellContent) {
-                    cellContent.textContent = content;
-                    cellContent.title = content;
+            const targetRow = allRows[targetRowIndex];
+            const recordId = targetRow.dataset.recordId;
+            
+            for (let j = 0; j < data[i].length; j++) {
+                const targetColIndex = startColIndex + j;
+                if (targetColIndex >= bulkEditColumns.length) break;
+                
+                const column = bulkEditColumns[targetColIndex];
+                if (!column.editable) continue;
+                
+                const value = data[i][j];
+                const cellId = `${recordId}_${column.key}`;
+                const currentValue = getCellValue(recordId, column.key);
+                
+                if (value !== currentValue) {
+                    pushUndoState(recordId, column.key, currentValue, value);
+                    setCellValue(recordId, column.key, value);
+                    
+                    // 更新顯示
+                    const cell = document.querySelector(`td[data-cell-id="${cellId}"]`);
+                    if (cell) {
+                        const cellContent = cell.querySelector('.cell-content');
+                        const cellInput = cell.querySelector('.cell-input');
+                        
+                        let displayValue = value;
+                        if (value.length > 50) {
+                            displayValue = value.substring(0, 47) + '...';
+                        }
+                        
+                        if (cellContent) {
+                            cellContent.textContent = displayValue;
+                            cellContent.title = value;
+                        }
+                        if (cellInput) {
+                            cellInput.value = value;
+                        }
+                    }
+                    
+                    pasteCount++;
                 }
             }
         }
-    });
-    
-    updateBulkEditStatus();
-    console.log(`已貼上到 ${bulkEditSelectedCells.size} 個儲存格`);
+        
+        updateBulkEditStatus();
+        console.log(`已貼上 ${pasteCount} 個儲存格`);
+        
+    } catch (err) {
+        console.error('貼上失敗:', err);
+        AppUtils.showError('貼上失敗');
+    }
 }
 
 function handleDragStart(event) {
@@ -9572,6 +9715,77 @@ function performSearchReplace(replaceAll = false) {
         `全部取代完成，共取代 ${replaceCount} 個位置` :
         `取代完成，共取代 ${replaceCount} 個位置`;
     AppUtils.showSuccess(successMsg);
+}
+
+// ===== 拖移選取功能 =====
+function handleSelectDragMove(event) {
+    if (!bulkEditSelectDragState) return;
+    
+    const targetElement = document.elementFromPoint(event.clientX, event.clientY);
+    const targetCell = targetElement ? targetElement.closest('td.editable-cell') : null;
+    
+    if (!targetCell) return;
+    
+    // 標記為正在選取
+    if (!bulkEditSelectDragState.isSelecting) {
+        bulkEditSelectDragState.isSelecting = true;
+    }
+    
+    // 清除舊的選取
+    document.querySelectorAll('.bulk-edit-grid td.selecting').forEach(cell => {
+        cell.classList.remove('selecting');
+    });
+    
+    // 計算選取範圍
+    const startCell = bulkEditSelectDragState.startCell;
+    const startRow = startCell.closest('tr');
+    const endRow = targetCell.closest('tr');
+    
+    const allRows = Array.from(document.querySelectorAll('.bulk-edit-grid tbody tr'));
+    const startRowIndex = allRows.indexOf(startRow);
+    const endRowIndex = allRows.indexOf(endRow);
+    
+    const startColIndex = bulkEditColumns.findIndex(c => c.key === startCell.dataset.column);
+    const endColIndex = bulkEditColumns.findIndex(c => c.key === targetCell.dataset.column);
+    
+    const minRow = Math.min(startRowIndex, endRowIndex);
+    const maxRow = Math.max(startRowIndex, endRowIndex);
+    const minCol = Math.min(startColIndex, endColIndex);
+    const maxCol = Math.max(startColIndex, endColIndex);
+    
+    // 選取範圍內的所有儲存格
+    for (let r = minRow; r <= maxRow; r++) {
+        const row = allRows[r];
+        for (let c = minCol; c <= maxCol; c++) {
+            const column = bulkEditColumns[c];
+            if (!column.editable) continue;
+            
+            const cellId = `${row.dataset.recordId}_${column.key}`;
+            const cell = document.querySelector(`td[data-cell-id="${cellId}"]`);
+            if (cell) {
+                cell.classList.add('selecting');
+            }
+        }
+    }
+}
+
+function handleSelectDragEnd(event) {
+    if (!bulkEditSelectDragState) return;
+    
+    // 如果有選取拖移，套用選取
+    if (bulkEditSelectDragState.isSelecting) {
+        clearCellSelection();
+        
+        const selectingCells = document.querySelectorAll('.bulk-edit-grid td.selecting');
+        selectingCells.forEach(cell => {
+            const cellId = cell.dataset.cellId;
+            bulkEditSelectedCells.add(cellId);
+            cell.classList.remove('selecting');
+            cell.classList.add('selected');
+        });
+    }
+    
+    bulkEditSelectDragState = null;
 }
 
 async function saveBulkEditChanges() {
