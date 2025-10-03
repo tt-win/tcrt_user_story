@@ -762,7 +762,15 @@
             "editTitle": "新增／修改 Test Case",
             "searchPlaceholder": "搜索标题或编号...",
             "selectedInfo": "已选 {count} 笔，按「建立」加入 Test Run",
-            "title": "选择要加入的 Test Case"
+            "title": "选择要加入的 Test Case",
+            "filter": {
+                "all": "全部",
+                "selected": "已选取",
+                "unselected": "未选取",
+                "showingAll": "显示全部 {total} 笔，已选取 {selected} 笔",
+                "showingSelected": "显示已选取 {count} 笔",
+                "showingUnselected": "显示未选取 {count} 笔"
+            }
         },
         "caseTitle": "标题",
         "changeStatus": "狀態",

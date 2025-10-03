@@ -785,7 +785,15 @@
             "editTitle": "新增／修改 Test Case",
             "searchPlaceholder": "搜尋標題或編號...",
             "selectedInfo": "已選 {count} 筆，按「建立」加入 Test Run",
-            "title": "選擇要加入的 Test Case"
+            "title": "選擇要加入的 Test Case",
+            "filter": {
+                "all": "全部",
+                "selected": "已選取",
+                "unselected": "未選取",
+                "showingAll": "顯示全部 {total} 筆，已選取 {selected} 筆",
+                "showingSelected": "顯示已選取 {count} 筆",
+                "showingUnselected": "顯示未選取 {count} 筆"
+            }
         },
         "caseTitle": "標題",
         "changeStatus": "狀態",

@@ -762,7 +762,15 @@
             "editTitle": "Add/Modify Test Cases",
             "searchPlaceholder": "Search title or number...",
             "selectedInfo": "{count} selected, click 'Create' to add to Test Run",
-            "title": "Select Test Cases to Add"
+            "title": "Select Test Cases to Add",
+            "filter": {
+                "all": "All",
+                "selected": "Selected",
+                "unselected": "Unselected",
+                "showingAll": "Showing all {total} test cases, {selected} selected",
+                "showingSelected": "Showing {count} selected test cases",
+                "showingUnselected": "Showing {count} unselected test cases"
+            }
         },
         "caseTitle": "Title",
         "changeStatus": "Status",

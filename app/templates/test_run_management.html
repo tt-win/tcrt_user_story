@@ -1039,6 +1039,18 @@
           </div>
           <button class="btn btn-secondary" id="caseSearchBtn" type="button"><i class="fas fa-search me-1"></i><span data-i18n="common.search">搜尋</span></button>
         </div>
+        <div class="mb-3">
+          <div class="btn-group w-100" role="group" aria-label="Test case filter">
+            <input type="radio" class="btn-check" name="caseFilter" id="caseFilterAll" value="all" checked>
+            <label class="btn btn-outline-primary" for="caseFilterAll"><span data-i18n="testRun.caseSelect.filter.all">全部</span></label>
+
+            <input type="radio" class="btn-check" name="caseFilter" id="caseFilterSelected" value="selected">
+            <label class="btn btn-outline-primary" for="caseFilterSelected"><span data-i18n="testRun.caseSelect.filter.selected">已選取</span></label>
+
+            <input type="radio" class="btn-check" name="caseFilter" id="caseFilterUnselected" value="unselected">
+            <label class="btn btn-outline-primary" for="caseFilterUnselected"><span data-i18n="testRun.caseSelect.filter.unselected">未選取</span></label>
+          </div>
+        </div>
         <div id="caseSelectInfo" class="text-muted small mb-2"></div>
         <div class="table-responsive" style="max-height: 50vh; overflow:auto;">
           <table class="table table-sm align-middle table-sticky">
@@ -2250,6 +2262,7 @@ let pendingCreate = false; // true only for newly created config awaiting items
 let createdItemsInSession = false; // set true when items are created
 let modalMode = 'create'; // 'create' | 'edit'
 let existingItemIdByCaseNumber = new Map(); // for edit mode: case_number -> item_id
+let currentCaseFilter = 'all'; // 'all' | 'selected' | 'unselected'
 
 // Removed confirmation step; open modal directly and rely on hidden handler for rollback
 function openCaseSelectModalWithConfirm(configId) {
@@ -2282,6 +2295,9 @@ function openCaseSelectModal(configId) {
   document.getElementById('caseListBody').innerHTML = '';
   document.getElementById('caseSearchInput').value = '';
   document.getElementById('caseSelectInfo').textContent = '';
+  // reset filter to 'all'
+  currentCaseFilter = 'all';
+  document.getElementById('caseFilterAll').checked = true;
   // set modal title and confirm button text/handler per mode
   const titleSpan = modalEl.querySelector('.modal-title [data-i18n]');
   if (titleSpan) {
@@ -2439,7 +2455,16 @@ async function loadTeamTestCases(search) {
 
 function renderCaseList() {
   const tbody = document.getElementById('caseListBody');
-  const rows = availableCases.map(c => {
+
+  // 根據 filter 篩選 test cases
+  let filteredCases = availableCases;
+  if (currentCaseFilter === 'selected') {
+    filteredCases = availableCases.filter(c => selectedCaseMap.has(c.test_case_number));
+  } else if (currentCaseFilter === 'unselected') {
+    filteredCases = availableCases.filter(c => !selectedCaseMap.has(c.test_case_number));
+  }
+
+  const rows = filteredCases.map(c => {
     const num = escapeHtml(c.test_case_number || '');
     const ttl = escapeHtml(c.title || '');
     const pri = escapeHtml(c.priority || '');
@@ -2457,6 +2482,7 @@ function renderCaseList() {
   tbody.innerHTML = rows;
   wireCaseCheckHandlers();
   updateSelectedCount();
+  updateFilterInfo(filteredCases.length);
   if (window.i18n && window.i18n.isReady()) window.i18n.retranslate(document.getElementById('caseSelectModal'));
 }
 
@@ -2471,20 +2497,45 @@ function wireCaseCheckHandlers() {
         selectedCaseMap.delete(num);
       }
       updateSelectedCount();
+      // 如果當前 filter 不是 all，需要重新渲染以更新列表
+      if (currentCaseFilter !== 'all') {
+        renderCaseList();
+      } else {
+        // 只更新 filter info
+        const filteredCount = availableCases.length;
+        updateFilterInfo(filteredCount);
+      }
     });
   });
   const selectAll = document.getElementById('selectAllCases');
   selectAll.checked = false;
-  selectAll.addEventListener('change', (e) => {
+  // 使用新的事件處理器，避免重複綁定
+  selectAll.onchange = (e) => {
     if (e.target.checked) {
-      availableCases.forEach(c => selectedCaseMap.set(c.test_case_number, c));
+      // 全選當前顯示的項目（根據 filter）
+      let filteredCases = availableCases;
+      if (currentCaseFilter === 'selected') {
+        filteredCases = availableCases.filter(c => selectedCaseMap.has(c.test_case_number));
+      } else if (currentCaseFilter === 'unselected') {
+        filteredCases = availableCases.filter(c => !selectedCaseMap.has(c.test_case_number));
+      }
+      filteredCases.forEach(c => selectedCaseMap.set(c.test_case_number, c));
       document.querySelectorAll('.case-check').forEach(ch => ch.checked = true);
     } else {
-      selectedCaseMap.clear();
+      // 取消全選當前顯示的項目
+      let filteredCases = availableCases;
+      if (currentCaseFilter === 'selected') {
+        filteredCases = availableCases.filter(c => selectedCaseMap.has(c.test_case_number));
+      } else if (currentCaseFilter === 'unselected') {
+        filteredCases = availableCases.filter(c => !selectedCaseMap.has(c.test_case_number));
+      }
+      filteredCases.forEach(c => selectedCaseMap.delete(c.test_case_number));
       document.querySelectorAll('.case-check').forEach(ch => ch.checked = false);
     }
     updateSelectedCount();
-  });
+    // 重新渲染以更新列表和 info
+    renderCaseList();
+  };
   // search handlers moved to bindCaseSearchBarEvents()
 }
 
@@ -2513,7 +2564,7 @@ function bindCaseSearchBarEvents() {
       }
     };
     // toggle clear button visibility on input
-    inputEl.addEventListener('input', () => {
+    inputEl.oninput = () => {
       if (clearBtn) {
         if (inputEl.value && inputEl.value.length > 0) {
           clearBtn.classList.remove('d-none');
@@ -2521,24 +2572,52 @@ function bindCaseSearchBarEvents() {
           clearBtn.classList.add('d-none');
         }
       }
-    });
+    };
     // initialize visibility
     if (clearBtn) {
       if (inputEl.value && inputEl.value.length > 0) clearBtn.classList.remove('d-none');
       else clearBtn.classList.add('d-none');
     }
   }
+
+  // Bind filter radio button handlers - 使用 onchange 避免重複綁定
+  document.querySelectorAll('input[name="caseFilter"]').forEach(radio => {
+    radio.onchange = (e) => {
+      currentCaseFilter = e.target.value;
+      renderCaseList();
+    };
+  });
 }
 
 function updateSelectedCount() {
   const count = selectedCaseMap.size;
   const selectedEl = document.getElementById('selectedCount');
   selectedEl.textContent = String(count);
+}
+
+function updateFilterInfo(filteredCount) {
   const info = document.getElementById('caseSelectInfo');
-  if (window.i18n && count > 0) {
-    info.textContent = window.i18n.t('testRun.caseSelect.selectedInfo', { count });
+  const totalCount = availableCases.length;
+  const selectedCount = selectedCaseMap.size;
+
+  if (window.i18n && window.i18n.isReady()) {
+    let filterText = '';
+    if (currentCaseFilter === 'all') {
+      filterText = window.i18n.t('testRun.caseSelect.filter.showingAll', { total: totalCount, selected: selectedCount });
+    } else if (currentCaseFilter === 'selected') {
+      filterText = window.i18n.t('testRun.caseSelect.filter.showingSelected', { count: filteredCount });
+    } else if (currentCaseFilter === 'unselected') {
+      filterText = window.i18n.t('testRun.caseSelect.filter.showingUnselected', { count: filteredCount });
+    }
+    info.textContent = filterText;
   } else {
-    info.textContent = '';
+    if (currentCaseFilter === 'all') {
+      info.textContent = `顯示全部 ${totalCount} 筆，已選取 ${selectedCount} 筆`;
+    } else if (currentCaseFilter === 'selected') {
+      info.textContent = `顯示已選取 ${filteredCount} 筆`;
+    } else if (currentCaseFilter === 'unselected') {
+      info.textContent = `顯示未選取 ${filteredCount} 筆`;
+    }
   }
 }
 
