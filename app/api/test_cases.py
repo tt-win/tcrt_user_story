@@ -991,6 +991,26 @@ async def update_test_case(
                 },
             )
 
+        # 解析 TCG JSON 以便返回
+        tcg_list = []
+        if item.tcg_json:
+            try:
+                tcg_data = json.loads(item.tcg_json)
+                if isinstance(tcg_data, list):
+                    from app.models.lark_types import LarkRecord
+                    for tcg_item in tcg_data:
+                        if isinstance(tcg_item, dict):
+                            tcg_list.append(LarkRecord(
+                                record_ids=tcg_item.get("record_ids", []),
+                                table_id=tcg_item.get("table_id", ""),
+                                text=tcg_item.get("text", ""),
+                                text_arr=tcg_item.get("text_arr", []),
+                                type=tcg_item.get("type", "text")
+                            ))
+            except Exception as e:
+                # 如果解析失敗，返回空陣列
+                tcg_list = []
+        
         return TestCaseResponse(
             record_id=str(item.id),
             test_case_number=item.test_case_number or "",
@@ -1009,6 +1029,7 @@ async def update_test_case(
                 if hasattr(item.test_result, "value")
                 else (item.test_result or None)
             ),
+            tcg=tcg_list,  # 添加 TCG 欄位
             attachment_count=0,
             execution_result_count=0,
             total_attachment_count=0,

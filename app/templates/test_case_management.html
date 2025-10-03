@@ -1174,7 +1174,6 @@ TC-1003,API 健康檢查,\"服務已啟動\",\"發送 GET /health\",\"回傳 200
                                 <th style="width: 40px;">#</th>
                                 <th style="width: 180px;" data-i18n="testCase.testCaseNumber">測試案例編號</th>
                                 <th style="width: 200px;" data-i18n="form.title">標題</th>
-                                <th style="width: 120px;">TCG</th>
                                 <th style="width: 100px;" data-i18n="testCase.priority">優先級</th>
                                 <th style="width: 200px;" data-i18n="testCase.preconditions">前置條件</th>
                                 <th style="width: 250px;" data-i18n="testCase.steps">測試步驟</th>
@@ -1816,14 +1815,30 @@ function updateTestCaseInCache(testCase) {
         if (cached) {
             const data = JSON.parse(cached);
             if (data && data.testCases && Array.isArray(data.testCases)) {
-                const index = data.testCases.findIndex(tc => tc.record_id === testCase.record_id);
+                // 優先使用 test_case_number 查找，因為 record_id 可能不匹配（API 返回數字 ID，快取中是 Lark ID）
+                let index = -1;
+                if (testCase.test_case_number) {
+                    index = data.testCases.findIndex(tc => tc.test_case_number === testCase.test_case_number);
+                }
+                // 備用：如果找不到，再嘗試使用 record_id
+                if (index < 0) {
+                    index = data.testCases.findIndex(tc => tc.record_id === testCase.record_id);
+                }
+                
                 if (index >= 0) {
-                    data.testCases[index] = testCase;
+                    // 保留原本的 record_id（Lark ID），但更新其他欄位
+                    const originalRecordId = data.testCases[index].record_id;
+                    data.testCases[index] = { ...testCase, record_id: originalRecordId };
                     localStorage.setItem(cacheKey, JSON.stringify(data));
                     console.log(`測試案例快取已更新: ${testCase.test_case_number}`);
-                    console.debug('[CACHE] UPDATE list item', { teamId, cacheKey, testCase: testCase.test_case_number });
+                    console.debug('[CACHE] UPDATE list item', { teamId, cacheKey, testCase: testCase.test_case_number, originalRecordId });
                 }
-                else { console.debug('[CACHE] UPDATE skipped: record not found in cache list', { teamId, recordId: testCase.record_id }); }
+                else { 
+                    console.debug('[CACHE] UPDATE skipped: record not found in cache list', { 
+                        teamId, 
+                        searchedBy: testCase.test_case_number || testCase.record_id 
+                    }); 
+                }
             }
             else { console.debug('[CACHE] UPDATE skipped: malformed cache payload', { teamId }); }
         }
@@ -6733,15 +6748,24 @@ function handleTCGOutsideClick(event) {
 }
 
 async function finishTCGEdit() {
-    if (!currentTCGEditor) return;
+    if (!currentTCGEditor) {
+        console.log('⚠️ finishTCGEdit: 沒有當前編輯器');
+        return;
+    }
     
     const { recordId, currentTCGs, originalTCGs, cell } = currentTCGEditor;
+    
+    console.log('=== finishTCGEdit 開始 ===');
+    console.log('recordId:', recordId);
+    console.log('currentTCGs:', currentTCGs);
+    console.log('originalTCGs:', originalTCGs);
     
     // 移除全域點擊監聽器
     document.removeEventListener('click', handleTCGOutsideClick, true);
     
     // 檢查是否有變更
     const hasChanges = JSON.stringify(currentTCGs.sort()) !== JSON.stringify(originalTCGs.sort());
+    console.log('hasChanges:', hasChanges);
     
     // 立即更新 UI 顯示
     cell.classList.remove('editing');
@@ -6752,11 +6776,14 @@ async function finishTCGEdit() {
     
     // 如果有變更，在背景處理儲存
     if (hasChanges) {
+        console.log('💾 準備儲存 TCG 變更...');
         // 非同步背景儲存，不等待完成
         saveTCGChanges(recordId, currentTCGs).catch(error => {
-            console.error('TCG 儲存失敗:', error);
+            console.error('❌ TCG 儲存失敗:', error);
             // 如果儲存失敗，可以考慮顯示錯誤訊息或恢復原值
         });
+    } else {
+        console.log('ℹ️ 沒有變更，不需要儲存');
     }
     // 工具列顯示狀態可能改變整體高度，需重新計算列表高度
     adjustTestCasesScrollHeight();
@@ -6984,26 +7011,17 @@ async function saveTCGChanges(recordId, tcgNumbers) {
             throw new Error('請先選擇團隊');
         }
         
-        // 將 TCG 編號轉換為 LarkRecord 格式
-        const tcgRecords = [];
-        for (const tcgNum of tcgNumbers) {
-            // 使用 TCG 轉換器查詢對應的記錄 ID
-            const tcgRecord = await fetchTCGRecordByNumber(tcgNum);
-            if (tcgRecord) {
-                tcgRecords.push({
-                    record_ids: [tcgRecord.record_id],
-                    text: tcgNum,
-                    text_arr: [tcgNum],
-                    table_id: tcgRecord.table_id || '',
-                    type: 'record'
-                });
-            }
-        }
+        // 後端 API 支援字串格式（逗號分隔），不需要轉換為 LarkRecord 陣列
+        const tcgString = tcgNumbers.join(', ');
         
-        // 構建更新資料
+        console.log('儲存 TCG 變更:', { recordId, tcgString });
+        
+        // 構建更新資料：使用字串格式
         const updateData = {
-            tcg: tcgRecords
+            tcg: tcgString
         };
+        
+        console.log('Request body:', JSON.stringify(updateData));
         
         // 發送更新請求
         const response = await window.AuthClient.fetch(`/api/teams/${currentTeam.id}/testcases/${recordId}`, {
@@ -7014,21 +7032,41 @@ async function saveTCGChanges(recordId, tcgNumbers) {
             body: JSON.stringify(updateData)
         });
         
+        console.log('TCG 更新 Response status:', response.status);
+        
         if (!response.ok) {
             const errorData = await response.json();
+            console.error('TCG 更新失敗:', errorData);
             throw new Error(errorData.detail || '更新失敗');
         }
         
-        // 更新本地資料
+        // 從 API 返回的資料更新本地資料
+        const updatedTestCase = await response.json();
+        console.log('API 返回的更新後資料:', updatedTestCase);
+        console.log('API 返回的 tcg 欄位:', updatedTestCase.tcg);
+        console.log('tcg 類型:', typeof updatedTestCase.tcg);
+        console.log('tcg 是否為陣列:', Array.isArray(updatedTestCase.tcg));
+        
         const testCase = testCases.find(tc => tc.record_id === recordId);
         if (testCase) {
-            testCase.tcg = tcgRecords;
+            console.log('找到 testCase, 原本的 tcg:', testCase.tcg);
+            // 保留原本的 record_id，但更新 tcg 欄位
+            testCase.tcg = updatedTestCase.tcg;
+            console.log('✅ 已更新 testCase.tcg:', testCase.tcg);
+        } else {
+            console.error('⚠️ 找不到 testCase, recordId:', recordId);
+        }
+        
+        // 更新快取
+        if (updatedTestCase.test_case_number) {
+            updateTestCaseInCache(updatedTestCase);
         }
         
         // 重新渲染表格
         renderTestCasesTable();
         
         showSuccess(window.i18n ? window.i18n.t('messages.tcgUpdated') : 'TCG 更新成功');
+        console.log('✅ TCG 儲存完成');
         
     } catch (error) {
         console.error('更新 TCG 失敗:', error);
@@ -8930,7 +8968,8 @@ let bulkEditData = []; // 編輯中的資料
 let bulkEditChanges = new Map(); // 記錄變更: record_id -> { field: value }
 let bulkEditSelectedCells = new Set(); // 選取的儲存格
 let bulkEditClipboard = { content: '', column: '', cells: [] }; // 剪貼簿
-let bulkEditUndoStack = []; // 復原堆疊
+let bulkEditUndoStack = []; // 復原堆疊：每個元素是一個操作（包含多個儲存格變更）
+let bulkEditCurrentOperation = null; // 當前正在執行的操作
 let bulkEditCurrentCell = null; // 當前編輯的儲存格
 let bulkEditDragState = null; // 拖曳狀態
 let bulkEditSelectDragState = null; // 拖移選取狀態
@@ -8940,7 +8979,6 @@ const bulkEditColumns = [
     { key: 'index', title: '#', width: '40px', editable: false },
     { key: 'test_case_number', title: '測試案例編號', width: '180px', editable: false },
     { key: 'title', title: '標題', width: '200px', editable: true },
-    { key: 'tcg', title: 'TCG', width: '120px', editable: true, type: 'tcg' },
     { key: 'priority', title: '優先級', width: '100px', editable: true, type: 'select', options: ['High', 'Medium', 'Low'] },
     { key: 'precondition', title: '前置條件', width: '200px', editable: true, type: 'textarea' },
     { key: 'steps', title: '測試步驟', width: '250px', editable: true, type: 'textarea' },
@@ -8964,7 +9002,6 @@ function openBulkEditModal() {
             record_id: tc.record_id,
             test_case_number: tc.test_case_number,
             title: tc.title || '',
-            tcg: (tc.tcg && Array.isArray(tc.tcg) ? tc.tcg.map(t => t.text || t).join(', ') : ''),
             priority: tc.priority || 'Medium',
             precondition: tc.precondition || '',
             steps: tc.steps || '',
@@ -9031,13 +9068,12 @@ function renderBulkEditGrid() {
                 }
             }
             
+            // 對於 textarea，在顯示時去除前後空白
+            const sanitizedDisplay = col.type === 'textarea' ? (displayValue || '').trim() : (displayValue || '');
+            
             return `
                 <td class="${cellClass}" data-record-id="${row.record_id}" data-column="${col.key}" data-cell-id="${cellId}">
-                    <div class="cell-content ${col.type === 'textarea' ? 'multiline' : ''}" title="${value}">
-                        ${displayValue || ''}
-                    </div>
-                    ${inputHTML}
-                    ${isEditable ? '<div class="drag-handle"></div>' : ''}
+                    <div class="cell-content ${col.type === 'textarea' ? 'multiline' : ''}" title="${value || ''}">${sanitizedDisplay}</div>${inputHTML}${isEditable ? '<div class="drag-handle"></div>' : ''}
                 </td>
             `;
         }).join('');
@@ -9053,8 +9089,19 @@ function bindBulkEditEvents() {
     const grid = document.getElementById('bulkEditGrid');
     if (!grid) return;
     
+    // 避免重複綁定事件：先移除舊的監聽器
+    const oldMouseDown = grid._bulkEditMouseDown;
+    const oldMouseMove = grid._bulkEditMouseMove;
+    const oldMouseUp = grid._bulkEditMouseUp;
+    const oldDblClick = grid._bulkEditDblClick;
+    
+    if (oldMouseDown) grid.removeEventListener('mousedown', oldMouseDown);
+    if (oldMouseMove) grid.removeEventListener('mousemove', oldMouseMove);
+    if (oldMouseUp) grid.removeEventListener('mouseup', oldMouseUp);
+    if (oldDblClick) grid.removeEventListener('dblclick', oldDblClick);
+    
     // 儲存格點擊事件
-    grid.addEventListener('mousedown', function(e) {
+    const mouseDownHandler = function(e) {
         // 先處理 drag handle
         if (e.target.classList.contains('drag-handle')) {
             handleDragStart(e);
@@ -9065,32 +9112,40 @@ function bindBulkEditEvents() {
         if (cell) {
             handleCellClick(cell, e);
         }
-    });
+    };
+    grid.addEventListener('mousedown', mouseDownHandler);
+    grid._bulkEditMouseDown = mouseDownHandler;
     
     // 拖移選取事件
-    grid.addEventListener('mousemove', function(e) {
-        if (bulkEditSelectDragState && bulkEditSelectDragState.isSelecting) {
+    const mouseMoveHandler = function(e) {
+        if (bulkEditSelectDragState) {
             handleSelectDragMove(e);
         } else if (bulkEditDragState) {
             handleDragMove(e);
         }
-    });
+    };
+    grid.addEventListener('mousemove', mouseMoveHandler);
+    grid._bulkEditMouseMove = mouseMoveHandler;
     
-    grid.addEventListener('mouseup', function(e) {
+    const mouseUpHandler = function(e) {
         if (bulkEditSelectDragState) {
             handleSelectDragEnd(e);
         } else if (bulkEditDragState) {
             handleDragEnd(e);
         }
-    });
+    };
+    grid.addEventListener('mouseup', mouseUpHandler);
+    grid._bulkEditMouseUp = mouseUpHandler;
     
     // 儲存格雙擊編輯
-    grid.addEventListener('dblclick', function(e) {
+    const dblClickHandler = function(e) {
         const cell = e.target.closest('td.editable-cell');
         if (cell) {
             startCellEdit(cell);
         }
-    });
+    };
+    grid.addEventListener('dblclick', dblClickHandler);
+    grid._bulkEditDblClick = dblClickHandler;
     
     // 鍵盤事件
     document.addEventListener('keydown', handleBulkEditKeydown);
@@ -9307,21 +9362,75 @@ function handleBulkEditKeydown(event) {
         event.preventDefault();
     } else if ((event.ctrlKey || event.metaKey) && event.key === 'c') {
         // Ctrl+C: 複製
-        copySelectedCells();
+        console.log('複製快捷鍵觸發');
+        copySelectedCells().catch(err => {
+            console.error('複製失敗 (caught in keydown):', err);
+        });
         event.preventDefault();
     } else if ((event.ctrlKey || event.metaKey) && event.key === 'v') {
         // Ctrl+V: 貼上
-        pasteToSelectedCells();
+        // console.log('貼上快捷鍵觸發');
+        pasteToSelectedCells().catch(err => {
+            console.error('貼上失敗 (caught in keydown):', err);
+        });
         event.preventDefault();
     }
 }
 
+// 開始一個新的 undo 操作
+function beginUndoOperation(operationType = 'edit') {
+    bulkEditCurrentOperation = {
+        type: operationType, // 'edit', 'paste', 'drag-fill', etc.
+        changes: [],
+        timestamp: Date.now()
+    };
+}
+
+// 將單個儲存格變更加入當前操作組
+function addToCurrentOperation(recordId, column, oldValue, newValue) {
+    if (!bulkEditCurrentOperation) {
+        console.warn('No current operation, auto-creating one');
+        beginUndoOperation('edit');
+    }
+    
+    bulkEditCurrentOperation.changes.push({
+        recordId,
+        column,
+        oldValue,
+        newValue
+    });
+}
+
+// 向後兼容：立即提交的單個變更（使用於單個儲存格編輯）
 function pushUndoState(recordId, column, oldValue, newValue) {
-    bulkEditUndoStack.push({ recordId, column, oldValue, newValue });
+    // 如果沒有當前操作，自動建立一個
+    if (!bulkEditCurrentOperation) {
+        beginUndoOperation('edit');
+    }
+    
+    bulkEditCurrentOperation.changes.push({
+        recordId,
+        column,
+        oldValue,
+        newValue
+    });
+}
+
+// 完成當前操作，加入 undo 堆疊
+function commitUndoOperation() {
+    if (!bulkEditCurrentOperation || bulkEditCurrentOperation.changes.length === 0) {
+        bulkEditCurrentOperation = null;
+        return;
+    }
+    
+    bulkEditUndoStack.push(bulkEditCurrentOperation);
+    bulkEditCurrentOperation = null;
+    
     // 限制 undo 堆疊大小
     if (bulkEditUndoStack.length > 50) {
         bulkEditUndoStack.shift();
     }
+    
     // 啟用 undo 按鈕
     const undoBtn = document.getElementById('bulkEditUndoBtn');
     if (undoBtn) undoBtn.disabled = false;
@@ -9330,65 +9439,113 @@ function pushUndoState(recordId, column, oldValue, newValue) {
 function performUndo() {
     if (bulkEditUndoStack.length === 0) return;
     
-    const lastAction = bulkEditUndoStack.pop();
-    const { recordId, column, oldValue } = lastAction;
+    // 取出最後一個操作
+    const operation = bulkEditUndoStack.pop();
+    const changesCount = operation.changes.length;
     
-    // 恢復舊值（不加入 undo 堆疊）
-    if (!bulkEditChanges.has(recordId)) {
-        bulkEditChanges.set(recordId, {});
-    }
-    bulkEditChanges.get(recordId)[column] = oldValue;
+    console.log(`復原操作：${operation.type}，共 ${changesCount} 個變更`);
     
-    // 更新本地資料
-    const row = bulkEditData.find(r => r.record_id === recordId);
-    if (row) {
-        row[column] = oldValue;
-    }
-    
-    // 更新顯示
-    const cell = document.querySelector(`td[data-record-id="${recordId}"][data-column="${column}"]`);
-    if (cell) {
-        const cellContent = cell.querySelector('.cell-content');
-        const cellInput = cell.querySelector('.cell-input');
+    // 批次恢復所有變更
+    operation.changes.forEach(change => {
+        const { recordId, column, oldValue } = change;
         
-        let displayValue = oldValue;
-        if (oldValue.length > 50) {
-            displayValue = oldValue.substring(0, 47) + '...';
+        // 恢復舊值
+        if (!bulkEditChanges.has(recordId)) {
+            bulkEditChanges.set(recordId, {});
+        }
+        bulkEditChanges.get(recordId)[column] = oldValue;
+        
+        // 更新本地資料
+        const row = bulkEditData.find(r => r.record_id === recordId);
+        if (row) {
+            row[column] = oldValue;
         }
         
-        if (cellContent) {
-            cellContent.textContent = displayValue;
-            cellContent.title = oldValue;
+        // 更新顯示
+        const cell = document.querySelector(`td[data-record-id="${recordId}"][data-column="${column}"]`);
+        if (cell) {
+            const cellContent = cell.querySelector('.cell-content');
+            const cellInput = cell.querySelector('.cell-input');
+            
+            // 檢查是否為 textarea 類型
+            const colInfo = bulkEditColumns.find(c => c.key === column);
+            const isTextarea = colInfo && colInfo.type === 'textarea';
+            
+            let displayValue = oldValue;
+            if (isTextarea) {
+                displayValue = oldValue.trim();
+            }
+            if (displayValue.length > 50) {
+                displayValue = displayValue.substring(0, 47) + '...';
+            }
+            
+            if (cellContent) {
+                cellContent.textContent = displayValue;
+                cellContent.title = oldValue;
+            }
+            if (cellInput) {
+                if (cellInput.tagName === 'TEXTAREA') {
+                    cellInput.textContent = oldValue;
+                } else {
+                    cellInput.value = oldValue;
+                }
+            }
         }
-        if (cellInput) {
-            cellInput.value = oldValue;
-        }
-    }
+    });
     
     updateBulkEditStatus();
     
+    // 顯示提示
+    const toast = document.createElement('div');
+    toast.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #17a2b8; color: white; padding: 12px 24px; border-radius: 4px; z-index: 10000; font-size: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);';
+    toast.textContent = `↺ 已復原 ${changesCount} 個儲存格`;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 2000);
+    
     // 如果 undo 堆疊空了，停用按鈕
     const undoBtn = document.getElementById('bulkEditUndoBtn');
-    if (undoBtn && bulkEditUndoStack.length === 0) {
-        undoBtn.disabled = true;
+    if (undoBtn) {
+        undoBtn.disabled = bulkEditUndoStack.length === 0;
     }
 }
 
-function copySelectedCells() {
-    if (bulkEditSelectedCells.size === 0) return;
+async function copySelectedCells() {
+    if (bulkEditSelectedCells.size === 0) {
+        console.warn('⚠️ 沒有選中任何儲存格');
+        
+        // 顯示提示
+        const toast = document.createElement('div');
+        toast.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #dc3545; color: white; padding: 12px 24px; border-radius: 4px; z-index: 10000; font-size: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);';
+        toast.textContent = '⚠️ 請先選取儲存格';
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 2000);
+        return;
+    }
     
     // 收集所有選中儲存格的資料
     const selectedData = [];
     const cellsArray = Array.from(bulkEditSelectedCells);
     
+    // console.log('複製開始，選中', cellsArray.length, '個儲存格');
+    
     // 按行和列排序
     const cellsWithPosition = cellsArray.map(cellId => {
-        const [recordId, column] = cellId.split('_');
+        // 從 DOM 元素直接取得 recordId 和 column，避免 split 問題
         const cell = document.querySelector(`td[data-cell-id="${cellId}"]`);
-        const row = cell ? cell.closest('tr') : null;
+        if (!cell) {
+            console.warn('找不到儲存格:', cellId);
+            return null;
+        }
+        
+        const recordId = cell.dataset.recordId;
+        const column = cell.dataset.column;
+        const row = cell.closest('tr');
         const allRows = Array.from(document.querySelectorAll('.bulk-edit-grid tbody tr'));
-        const rowIndex = row ? allRows.indexOf(row) : -1;
+        const rowIndex = allRows.indexOf(row);
         const colIndex = bulkEditColumns.findIndex(c => c.key === column);
+        const value = getCellValue(recordId, column);
+        
+        // console.log(`儲存格 ${cellId}: row=${rowIndex}, col=${colIndex}, column=${column}, value=${value}`);
         
         return {
             cellId,
@@ -9396,9 +9553,11 @@ function copySelectedCells() {
             column,
             rowIndex,
             colIndex,
-            value: getCellValue(recordId, column)
+            value
         };
-    }).filter(c => c.rowIndex >= 0 && c.colIndex >= 0);
+    }).filter(c => c !== null && c.rowIndex >= 0 && c.colIndex >= 0);
+    
+    // console.log('有效儲存格數量:', cellsWithPosition.length);
     
     // 排序: 先按行再按列
     cellsWithPosition.sort((a, b) => {
@@ -9421,25 +9580,93 @@ function copySelectedCells() {
         return cols.map(colIdx => rowData[colIdx] || '').join('\t');
     }).join('\n');
     
-    // 儲存到剪貼簿
+    // console.log('TSV 資料:', tsvData.substring(0, 100), '...');
+    // console.log('TSV 長度:', tsvData.length, '字符');
+    
+    // 儲存到內部剪貼簿（作為備用）
     bulkEditClipboard.content = tsvData;
     bulkEditClipboard.cellsData = cellsWithPosition;
     bulkEditClipboard.cells = cellsArray;
+    // console.log('✅ 已儲存到內部剪貼簿');
     
     // 複製到系統剪貼簿
-    try {
-        navigator.clipboard.writeText(tsvData).then(() => {
-            console.log(`已複製 ${cellsWithPosition.length} 個儲存格到剪貼簿`);
-        }).catch(err => {
-            console.warn('無法寫入系統剪貼簿:', err);
-        });
-    } catch (err) {
-        console.warn('剪貼簿 API 不可用:', err);
+    let clipboardSuccess = false;
+    
+    // 檢查當前環境
+    const isSecureContext = window.isSecureContext;
+    const hasClipboardAPI = navigator.clipboard && navigator.clipboard.writeText;
+    
+    // 方法1：嘗試使用 Clipboard API（僅在安全上下文下可用）
+    if (hasClipboardAPI && isSecureContext) {
+        try {
+        await navigator.clipboard.writeText(tsvData);
+            // console.log('✅ 系統剪貼簿寫入成功 (Clipboard API)');
+            clipboardSuccess = true;
+        } catch (err) {
+            // console.warn('⚠️ Clipboard API 失敗:', err.name, err.message);
+        }
     }
+    
+    // 方法2：如果 Clipboard API 失敗，嘗試使用 execCommand
+    if (!clipboardSuccess) {
+        // console.log('嘗試使用 execCommand 方式...');
+        try {
+            const textarea = document.createElement('textarea');
+            textarea.value = tsvData;
+            textarea.style.position = 'fixed';
+            textarea.style.opacity = '0';
+            document.body.appendChild(textarea);
+            textarea.select();
+            const success = document.execCommand('copy');
+            document.body.removeChild(textarea);
+            
+            if (success) {
+                // console.log('✅ 系統剪貼簿寫入成功 (execCommand)');
+                clipboardSuccess = true;
+            } else {
+                // console.warn('⚠️ execCommand 返回 false');
+            }
+        } catch (err) {
+            console.error('❌ execCommand 失敗:', err);
+        }
+    }
+    
+    // console.log('=== 複製結束 ===');
+    
+    // 顯示視覺回饋
+    const toast = document.createElement('div');
+    toast.style.cssText = 'position: fixed; top: 20px; right: 20px; padding: 12px 24px; border-radius: 4px; z-index: 10000; font-size: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);';
+    
+    if (clipboardSuccess) {
+        toast.style.background = '#28a745';
+        toast.style.color = 'white';
+        toast.textContent = `✅ 已複製 ${cellsWithPosition.length} 個儲存格`;
+    } else {
+        toast.style.background = '#ffc107';
+        toast.style.color = 'black';
+        toast.textContent = `⚠️ 已儲存到內部剪貼簿（${cellsWithPosition.length} 個儲存格）`;
+    }
+    
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 2000);
 }
 
 async function pasteToSelectedCells() {
-    if (bulkEditSelectedCells.size === 0) return;
+    // console.log('貼上函數被呼叫, 選中', bulkEditSelectedCells.size, '個儲存格');
+    
+    if (bulkEditSelectedCells.size === 0) {
+        console.warn('⚠️ 沒有選中任何儲存格');
+        
+        const toast = document.createElement('div');
+        toast.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #dc3545; color: white; padding: 12px 24px; border-radius: 4px; z-index: 10000; font-size: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);';
+        toast.textContent = '⚠️ 請先選取儲存格';
+        document.body.appendChild(toast);
+        setTimeout(() => toast.remove(), 2000);
+        return;
+    }
+    
+    // 開始新的 undo 操作組
+    beginUndoOperation();
     
     try {
         // 嘗試從系統剪貼簿讀取
@@ -9451,47 +9678,88 @@ async function pasteToSelectedCells() {
             clipboardText = bulkEditClipboard.content || '';
         }
         
-        if (!clipboardText) return;
+        if (!clipboardText) {
+            console.warn('⚠️ 剪貼簿空白');
+            return;
+        }
         
         // 解析 TSV 資料 (支援 Excel 複製貼上)
         const rows = clipboardText.split('\n').filter(r => r.trim());
         const data = rows.map(row => row.split('\t'));
         
-        // 取得第一個選中的儲存格作為起點
-        const firstCellId = Array.from(bulkEditSelectedCells)[0];
-        const firstCell = document.querySelector(`td[data-cell-id="${firstCellId}"]`);
-        if (!firstCell) return;
+        // console.log('解析後的資料:', data.length, '行 x', data[0]?.length || 0, '列');
         
-        const startRow = firstCell.closest('tr');
+        const selectedCellsArray = Array.from(bulkEditSelectedCells);
+        
+        const cellsWithPosition = selectedCellsArray.map(cellId => {
+            const cell = document.querySelector(`td[data-cell-id="${cellId}"]`);
+            if (!cell) {
+                console.warn('找不到儲存格:', cellId);
+                return null;
+            }
+            
+            const row = cell.closest('tr');
+            const allRows = Array.from(document.querySelectorAll('.bulk-edit-grid tbody tr'));
+            const rowIndex = allRows.indexOf(row);
+            const colIndex = bulkEditColumns.findIndex(c => c.key === cell.dataset.column);
+            
+            return { cellId, cell, rowIndex, colIndex, column: cell.dataset.column };
+        }).filter(c => c !== null);
+        
+        if (cellsWithPosition.length === 0) return;
+        
+        // 排序找到起始儲存格（最左上角）
+        cellsWithPosition.sort((a, b) => {
+            if (a.rowIndex !== b.rowIndex) return a.rowIndex - b.rowIndex;
+            return a.colIndex - b.colIndex;
+        });
+        
+        const firstCellPos = cellsWithPosition[0];
+        const startRowIndex = firstCellPos.rowIndex;
+        const startColIndex = firstCellPos.colIndex;
         const allRows = Array.from(document.querySelectorAll('.bulk-edit-grid tbody tr'));
-        const startRowIndex = allRows.indexOf(startRow);
-        const startColIndex = bulkEditColumns.findIndex(c => c.key === firstCell.dataset.column);
         
-        if (startRowIndex < 0 || startColIndex < 0) return;
+        // 計算選取範圍的大小
+        const lastCellPos = cellsWithPosition[cellsWithPosition.length - 1];
+        const selectedRowCount = lastCellPos.rowIndex - startRowIndex + 1;
+        const selectedColCount = lastCellPos.colIndex - startColIndex + 1;
+        
+        const dataRowCount = data.length;
+        const dataColCount = data[0]?.length || 0;
         
         let pasteCount = 0;
         
-        // 貼上資料到對應位置
-        for (let i = 0; i < data.length; i++) {
+        // 智能貼上：根據選取範圍和資料範圍決定貼上策略
+        // 如果選取範圍比資料範圍大，則重複貼上（類似 Excel）
+        const targetRowCount = Math.max(selectedRowCount, dataRowCount);
+        const targetColCount = Math.max(selectedColCount, dataColCount);
+        
+        for (let i = 0; i < targetRowCount; i++) {
             const targetRowIndex = startRowIndex + i;
             if (targetRowIndex >= allRows.length) break;
             
             const targetRow = allRows[targetRowIndex];
             const recordId = targetRow.dataset.recordId;
             
-            for (let j = 0; j < data[i].length; j++) {
+            // 使用 modulo 運算實現重複貼上
+            const dataRowIndex = i % dataRowCount;
+            
+            for (let j = 0; j < targetColCount; j++) {
                 const targetColIndex = startColIndex + j;
                 if (targetColIndex >= bulkEditColumns.length) break;
                 
                 const column = bulkEditColumns[targetColIndex];
                 if (!column.editable) continue;
                 
-                const value = data[i][j];
+                // 使用 modulo 運算實現重複貼上
+                const dataColIndex = j % dataColCount;
+                const value = data[dataRowIndex][dataColIndex] || '';
+                
                 const cellId = `${recordId}_${column.key}`;
                 const currentValue = getCellValue(recordId, column.key);
                 
                 if (value !== currentValue) {
-                    pushUndoState(recordId, column.key, currentValue, value);
+                    addToCurrentOperation(recordId, column.key, currentValue, value);
                     setCellValue(recordId, column.key, value);
                     
                     // 更新顯示
@@ -9501,8 +9769,13 @@ async function pasteToSelectedCells() {
                         const cellInput = cell.querySelector('.cell-input');
                         
                         let displayValue = value;
-                        if (value.length > 50) {
-                            displayValue = value.substring(0, 47) + '...';
+                        // 檢查是否為 textarea 類型
+                        const isTextarea = column.type === 'textarea';
+                        if (isTextarea) {
+                            displayValue = value.trim();
+                        }
+                        if (displayValue.length > 50) {
+                            displayValue = displayValue.substring(0, 47) + '...';
                         }
                         
                         if (cellContent) {
@@ -9510,7 +9783,11 @@ async function pasteToSelectedCells() {
                             cellContent.title = value;
                         }
                         if (cellInput) {
-                            cellInput.value = value;
+                            if (cellInput.tagName === 'TEXTAREA') {
+                                cellInput.textContent = value;
+                            } else {
+                                cellInput.value = value;
+                            }
                         }
                     }
                     
@@ -9520,11 +9797,27 @@ async function pasteToSelectedCells() {
         }
         
         updateBulkEditStatus();
-        console.log(`已貼上 ${pasteCount} 個儲存格`);
+        
+        // 提交 undo 操作（只有在有改變時才提交）
+        if (pasteCount > 0) {
+            commitUndoOperation();
+            
+            // 顯示成功提示
+            const toast = document.createElement('div');
+            toast.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #28a745; color: white; padding: 12px 24px; border-radius: 4px; z-index: 10000; font-size: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);';
+            toast.textContent = `✅ 已貼上 ${pasteCount} 個儲存格`;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 2000);
+        } else {
+            // 如果沒有任何改變，取消操作組
+            bulkEditCurrentOperation = null;
+        }
         
     } catch (err) {
         console.error('貼上失敗:', err);
         AppUtils.showError('貼上失敗');
+        // 發生錯誤時取消當前操作組
+        bulkEditCurrentOperation = null;
     }
 }
 
@@ -9579,6 +9872,10 @@ function handleDragEnd(event) {
     // 移除視覺效果
     startCell.style.opacity = '';
     
+    // 開始新的 undo 操作組
+    beginUndoOperation();
+    let changeCount = 0;
+    
     // 應用變更
     affectedCells.forEach(cell => {
         if (cell === startCell) return; // 跳過來源儲存格
@@ -9587,8 +9884,9 @@ function handleDragEnd(event) {
         const currentValue = getCellValue(targetRecordId, column);
         
         if (currentValue !== sourceValue) {
-            pushUndoState(targetRecordId, column, currentValue, sourceValue);
+            addToCurrentOperation(targetRecordId, column, currentValue, sourceValue);
             setCellValue(targetRecordId, column, sourceValue);
+            changeCount++;
             
             // 更新顯示
             const cellContent = cell.querySelector('.cell-content');
@@ -9611,6 +9909,13 @@ function handleDragEnd(event) {
         // 移除預覽效果
         cell.style.backgroundColor = '';
     });
+    
+    // 提交 undo 操作（只有在有改變時才提交）
+    if (changeCount > 0) {
+        commitUndoOperation();
+    } else {
+        bulkEditCurrentOperation = null;
+    }
     
     updateBulkEditStatus();
     bulkEditDragState = null;
@@ -9672,6 +9977,9 @@ function performSearchReplace(replaceAll = false) {
         return;
     }
     
+    // 開始新的 undo 操作組
+    beginUndoOperation();
+    
     let replaceCount = 0;
     const columnsToSearch = searchColumn === 'all' ? 
         ['title', 'precondition', 'steps', 'expected_result'] : [searchColumn];
@@ -9685,6 +9993,7 @@ function performSearchReplace(replaceAll = false) {
                     currentValue.replace(searchText, replaceText);
                 
                 if (newValue !== currentValue) {
+                    addToCurrentOperation(row.record_id, column, currentValue, newValue);
                     setCellValue(row.record_id, column, newValue);
                     
                     // 更新顯示
@@ -9708,6 +10017,13 @@ function performSearchReplace(replaceAll = false) {
         });
     });
     
+    // 提交 undo 操作（只有在有改變時才提交）
+    if (replaceCount > 0) {
+        commitUndoOperation();
+    } else {
+        bulkEditCurrentOperation = null;
+    }
+    
     updateBulkEditStatus();
     bulkEditSearchModalInstance.hide();
     
@@ -9726,9 +10042,11 @@ function handleSelectDragMove(event) {
     
     if (!targetCell) return;
     
-    // 標記為正在選取
+    // 標記為正在選取（只要滑鼠移動就開始選取）
     if (!bulkEditSelectDragState.isSelecting) {
         bulkEditSelectDragState.isSelecting = true;
+        // 清除原本的單一選取
+        clearCellSelection();
     }
     
     // 清除舊的選取
@@ -9772,11 +10090,13 @@ function handleSelectDragMove(event) {
 function handleSelectDragEnd(event) {
     if (!bulkEditSelectDragState) return;
     
-    // 如果有選取拖移，套用選取
+    // 如果有拖移選取，套用選取
     if (bulkEditSelectDragState.isSelecting) {
         clearCellSelection();
         
+        // 同步更新選取狀態，立即生效
         const selectingCells = document.querySelectorAll('.bulk-edit-grid td.selecting');
+        
         selectingCells.forEach(cell => {
             const cellId = cell.dataset.cellId;
             bulkEditSelectedCells.add(cellId);
@@ -9802,34 +10122,66 @@ async function saveBulkEditChanges() {
     try {
         let successCount = 0;
         let errorCount = 0;
+        const errors = []; // 記錄錯誤訊息
+        
+        console.log('=== 開始儲存 Bulk Edit 變更 ===');
+        console.log('總共要更新', bulkEditChanges.size, '筆資料');
         
         for (const [recordId, changes] of bulkEditChanges) {
             try {
+                console.log('\n--- 處理 recordId:', recordId, '---');
+                
                 // 找到原始測試案例
                 const originalTestCase = testCases.find(tc => tc.record_id === recordId);
                 if (!originalTestCase) {
-                    console.error(`找不到 record_id: ${recordId}`);
+                    const errMsg = `找不到 record_id: ${recordId}`;
+                    console.error(errMsg);
+                    errors.push(errMsg);
                     errorCount++;
                     continue;
                 }
                 
-                // 準備更新資料
-                const updateData = { ...originalTestCase, ...changes };
+                console.log('=== 準備更新 recordId:', recordId, '===');
+                console.log('changes:', changes);
                 
-                // 處理 TCG 欄位
-                if (changes.tcg !== undefined) {
-                    if (changes.tcg === '') {
-                        updateData.tcg = '';
-                    } else {
-                        updateData.tcg = changes.tcg;
+                // 只發送實際變更的欄位，不發送完整的 test case 物件
+                // 這樣可以避免不必要的欄位被誤更新
+                const updateData = {};
+                
+                // API 支援的可更新欄位
+                // 注意：bulk edit 不包含 TCG 欄位，所以不應發送 TCG 更新
+                const updateableFields = [
+                    'test_case_number',
+                    'title', 
+                    'priority',
+                    'precondition',
+                    'steps',
+                    'expected_result',
+                    'test_result',
+                    // 'tcg', // 不包含 TCG，bulk edit 不編輯此欄位
+                    'assignee',
+                    'attachments',
+                    'user_story_map',
+                    'parent_record',
+                    'temp_upload_id'
+                ];
+                
+                // 只加入實際變更的欄位
+                for (const [key, value] of Object.entries(changes)) {
+                    if (updateableFields.includes(key)) {
+                        updateData[key] = value;
                     }
                 }
+                
+                console.log('updateData:', updateData);
                 
                 // 呼叫 API 更新
                 const currentTeam = AppUtils.getCurrentTeam();
                 if (!currentTeam) {
                     throw new Error('請先選擇團隊');
                 }
+                
+                console.log('Request body:', JSON.stringify(updateData, null, 2));
                 
                 const response = await window.AuthClient.fetch(`/api/teams/${currentTeam.id}/testcases/${recordId}`, {
                     method: 'PUT',
@@ -9839,49 +10191,96 @@ async function saveBulkEditChanges() {
                     body: JSON.stringify(updateData)
                 });
                 
+                console.log('API Response status:', response.status);
+                
                 if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                    // 讀取錯誤詳情
+                    let errorDetail = '';
+                    try {
+                        const errorData = await response.json();
+                        errorDetail = JSON.stringify(errorData, null, 2);
+                        console.error('API 錯誤詳情:', errorDetail);
+                    } catch (e) {
+                        errorDetail = await response.text();
+                        console.error('API 錯誤文本:', errorDetail);
+                    }
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}\n${errorDetail}`);
                 }
                 
                 const updatedTestCase = await response.json();
+                console.log('API 返回的更新後資料:', updatedTestCase);
+                console.log('API 返回的 record_id:', updatedTestCase.record_id);
+                console.log('原本的 recordId:', recordId);
                 
-                // 更新本地資料
+                // 更新本地資料：使用原本的 recordId 查找
                 const index = testCases.findIndex(tc => tc.record_id === recordId);
                 if (index >= 0) {
-                    testCases[index] = updatedTestCase;
+                    // 保留原本的 record_id，但更新其他欄位
+                    const originalRecordId = testCases[index].record_id;
+                    testCases[index] = { ...updatedTestCase, record_id: originalRecordId };
+                    console.log('✅ 已更新 testCases 索引:', index);
+                } else {
+                    console.warn('⚠️ 在 testCases 中找不到 recordId:', recordId);
                 }
                 
                 const filteredIndex = filteredTestCases.findIndex(tc => tc.record_id === recordId);
                 if (filteredIndex >= 0) {
-                    filteredTestCases[filteredIndex] = updatedTestCase;
+                    const originalRecordId = filteredTestCases[filteredIndex].record_id;
+                    filteredTestCases[filteredIndex] = { ...updatedTestCase, record_id: originalRecordId };
+                    console.log('✅ 已更新 filteredTestCases 索引:', filteredIndex);
                 }
                 
-                // 更新快取
-                updateTestCaseInCache(updatedTestCase);
+                // 更新快取：使用 test_case_number 作為關鍵字
+                if (updatedTestCase.test_case_number) {
+                    updateTestCaseInCache(updatedTestCase);
+                    console.log('✅ 已更新快取:', updatedTestCase.test_case_number);
+                }
                 
+                console.log('✅ 成功更新 recordId:', recordId);
                 successCount++;
                 
             } catch (error) {
-                console.error(`更新 ${recordId} 失敗:`, error);
+                const errMsg = `更新 ${recordId} 失敗: ${error.message}`;
+                console.error(errMsg, error);
+                errors.push(errMsg);
                 errorCount++;
             }
         }
         
+        console.log('=== 儲存完成 ===');
+        console.log('成功:', successCount, '筆');
+        console.log('失敗:', errorCount, '筆');
+        
         // 顯示結果
         if (successCount > 0) {
-            AppUtils.showSuccess(`儲存成功 ${successCount} 筆${errorCount > 0 ? `，失敗 ${errorCount} 筆` : ''}`);
+            let message = `儲存成功 ${successCount} 筆`;
+            if (errorCount > 0) {
+                message += `，失敗 ${errorCount} 筆`;
+                console.warn('失敗詳情:', errors);
+            }
+            AppUtils.showSuccess(message);
             
             // 清除變更記錄
             bulkEditChanges.clear();
+            
+            // 清空 undo 堆疊（因為已經儲存）
+            bulkEditUndoStack = [];
+            
+            // 更新狀態
             updateBulkEditStatus();
+            
+            // 禁用 undo 按鈕
+            const undoBtn = document.getElementById('bulkEditUndoBtn');
+            if (undoBtn) undoBtn.disabled = true;
             
             // 刷新表格顯示
             renderTestCasesTable();
             
-            // 關閉 modal
-            bulkEditModalInstance.hide();
+            // 不關閉 modal，讓用戶繼續編輯
         } else {
-            AppUtils.showError('儲存失敗');
+            const errorMsg = '儲存失敗：' + (errors.length > 0 ? '\n' + errors.join('\n') : '所有資料都更新失敗');
+            console.error(errorMsg);
+            AppUtils.showError(errorMsg);
         }
         
     } catch (error) {
