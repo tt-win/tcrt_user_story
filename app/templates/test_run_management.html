@@ -2424,7 +2424,7 @@ async function loadTeamTestCases(search) {
     console.log('Loading test cases for team ID:', currentTeamId);
     const url = new URL(`/api/teams/${currentTeamId}/testcases/`, window.location.origin);
     if (search) url.searchParams.set('search', search);
-    url.searchParams.set('limit', '200');
+    url.searchParams.set('limit', '2000');
     console.log('API URL:', url.toString());
     
     const resp = await window.AuthClient.fetch(url);
