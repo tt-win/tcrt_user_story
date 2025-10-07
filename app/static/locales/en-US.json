@@ -571,7 +571,9 @@
             "addAtLeastOne": "Please add at least one range",
             "addPrefix": "Add Prefix",
             "addRange": "Add Range",
+            "bulkMode": "Bulk Mode",
             "bulkCreateMode": "Bulk Create Mode",
+            "bulkEditMode": "Bulk Edit Mode",
             "creating": "Creating...",
             "duplicatesFound": "Duplicate numbers found:",
             "end": "End",
@@ -1083,7 +1085,12 @@
         "filterReset": "Clear filters",
         "filterMatchCount": "{matched} of {total} items",
         "noItemsAfterFilter": "No test run items match the current filters",
-        "filtersApplied": "Filtered"
+        "filtersApplied": "Filtered",
+        "comment": "Comment",
+        "editComment": "Edit Comment",
+        "noComment": "No comment yet",
+        "saveComment": "Save",
+        "cancelComment": "Cancel"
     },
     "tooltip": {
         "assignedTo": "Assigned To",

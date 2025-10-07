@@ -1106,7 +1106,12 @@
         "filterReset": "清除篩選",
         "filterMatchCount": "顯示 {matched} 筆，共 {total} 筆",
         "noItemsAfterFilter": "目前沒有符合篩選條件的項目",
-        "filtersApplied": "已篩選"
+        "filtersApplied": "已篩選",
+        "comment": "註釋",
+        "editComment": "編輯註釋",
+        "noComment": "暫無註釋",
+        "saveComment": "儲存",
+        "cancelComment": "取消"
     },
     "tooltip": {
         "assignedTo": "指派給",
