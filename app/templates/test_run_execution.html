@@ -1599,6 +1599,23 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                                 </div>
                             </div>
                         </div>
+
+                        <!-- Comment 區域 -->
+                        <div class="mt-3 border-top pt-3" style="flex-shrink: 0; height: 180px; display: flex; flex-direction: column;">
+                            <div class="d-flex align-items-center justify-content-between mb-2" style="flex-shrink: 0;">
+                                <h6 class="mb-0">
+                                    <i class="fas fa-comment me-2"></i>
+                                    <span data-i18n="testRun.comment">Comment</span>
+                                </h6>
+                                <button type="button" id="editCommentBtn" class="btn btn-link text-secondary p-0"
+                                        data-i18n-title="testRun.editComment" style="border: none; background: none;">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                            </div>
+                            <div id="commentContent" class="text-muted small" style="flex: 1; overflow-y: auto; white-space: pre-wrap;">
+                                <span data-i18n="testRun.noComment">尚無註釋</span>
+                            </div>
+                        </div>
                     </aside>
                 </div>
                 <div id="testCaseDetailError" style="display: none;">
@@ -4173,6 +4190,9 @@ async function loadTestCaseDetail(testCaseNumber) {
 }
 
 function displayTestCaseDetail(testCase) {
+    const permissions = getTrePermissions();
+    console.log('Debug: displayTestCaseDetail called with permissions:', permissions);
+
     // 隱藏載入狀態
     document.getElementById('testCaseDetailLoading').style.display = 'none';
     
@@ -4227,7 +4247,7 @@ function displayTestCaseDetail(testCase) {
     const testRunItem = (testRunItems || []).find(item => item.test_case_number === testCase.test_case_number);
     if (testRunItem && testRunItem.id) {
         loadBugTickets(testRunItem.id);
-        
+
         // 初始化 Test Results 管理器
         initializeTestResults(
             testRunItem.id,
@@ -4235,6 +4255,9 @@ function displayTestCaseDetail(testCase) {
             currentTeamId,
             currentConfigId
         );
+
+        // 載入 Comment
+        loadComment(testRunItem.id);
     }
     // 載入完成後再顯示，避免切換時顯示上一筆資料
     const headerResult = document.getElementById('testCaseDetailHeaderResult');
@@ -4284,6 +4307,24 @@ function displayTestCaseDetail(testCase) {
         addBugTicketBtn.disabled = !canAddBugTickets;
         addBugTicketBtn.style.opacity = canAddBugTickets ? '1' : '0.3';
         addBugTicketBtn.style.cursor = canAddBugTickets ? 'pointer' : 'not-allowed';
+    }
+
+    // 控制 Comment 編輯按鈕狀態
+    const editCommentBtn = document.getElementById('editCommentBtn');
+    if (editCommentBtn && testRunConfig) {
+        const canEditComments = permissions.canUpdateResults && testRunConfig.status !== 'completed' && testRunConfig.status !== 'archived';
+        editCommentBtn.disabled = !canEditComments;
+        editCommentBtn.style.opacity = canEditComments ? '1' : '0.3';
+        editCommentBtn.style.cursor = canEditComments ? 'pointer' : 'not-allowed';
+
+        if (canEditComments) {
+            editCommentBtn.addEventListener('click', () => {
+                const testRunItem = (testRunItems || []).find(item => item.test_case_number === testCase.test_case_number);
+                if (testRunItem && testRunItem.id) {
+                    editComment(testRunItem.id);
+                }
+            });
+        }
     }
 }
 
@@ -4740,9 +4781,13 @@ async function navigateExecCase(currentTestCase, step) {
 // 移除 Modal 內更新結果的輔助函式（已回滾設計）
 
 function showTestCaseDetailError() {
-    document.getElementById('testCaseDetailLoading').style.display = 'none';
-    document.getElementById('testCaseDetailContent').style.display = 'none';
-    document.getElementById('testCaseDetailError').style.display = 'block';
+    const loadingEl = document.getElementById('testCaseDetailLoading');
+    const bodyRowEl = document.getElementById('testCaseDetailBodyRow');
+    const errorEl = document.getElementById('testCaseDetailError');
+
+    if (loadingEl) loadingEl.style.display = 'none';
+    if (bodyRowEl) bodyRowEl.style.display = 'none';
+    if (errorEl) errorEl.style.display = 'block';
 }
 
 async function updateAssignee(itemId, assigneeName) {
@@ -5334,19 +5379,36 @@ async function loadBugTickets(itemId) {
             bugTicketsList.innerHTML = '';
         } else {
             bugTicketsEmpty.style.display = 'none';
-            bugTicketsList.innerHTML = bugTickets.map(ticket => `
+            bugTicketsList.innerHTML = bugTickets.map(ticket => {
+                // 顯示時使用清理後的版本，但保留原始值用於刪除
+                const cleanedTicket = cleanTicketNumber(ticket.ticket_number);
+                const escapedCleanedTicket = escapeHtml(cleanedTicket);
+                // 保留原始 ticket number 用於 API 呼叫（進行 HTML 轉義但不清理）
+                const escapedOriginalTicket = escapeHtml(ticket.ticket_number);
+                return `
                 <div class="bug-ticket-item d-flex justify-content-between align-items-center mb-2 p-2 border rounded bg-light">
                     <div>
-                        <strong class="bug-ticket-link" data-ticket="${ticket.ticket_number}" style="cursor: pointer; color: #0066cc;">
-                            ${ticket.ticket_number}
+                        <strong class="bug-ticket-link" data-ticket="${escapedOriginalTicket}" style="cursor: pointer; color: #0066cc;">
+                            ${escapedCleanedTicket}
                         </strong>
                     </div>
-                    <button type="button" class="btn btn-link text-secondary p-0" onclick="confirmDeleteBugTicket(${itemId}, '${ticket.ticket_number}')" data-i18n-title="common.delete" style="border: none; background: none;">
+                    <button type="button" class="btn btn-link text-secondary p-0" data-item-id="${itemId}" data-ticket-original="${escapedOriginalTicket}" data-i18n-title="common.delete" style="border: none; background: none;">
                         <i class="fas fa-times"></i>
                     </button>
                 </div>
-            `).join('');
-            
+            `;
+            }).join('');
+
+            // 綁定刪除按鈕事件（使用事件委託）
+            bugTicketsList.querySelectorAll('.btn-link').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    const itemId = this.getAttribute('data-item-id');
+                    // 使用原始的 ticket number 進行刪除
+                    const ticketNumber = this.getAttribute('data-ticket-original');
+                    confirmDeleteBugTicket(parseInt(itemId), ticketNumber);
+                });
+            });
+
             // 重新翻譯動態添加的元素
             if (window.i18n && window.i18n.isReady()) {
                 window.i18n.retranslate(bugTicketsList);
@@ -5366,24 +5428,195 @@ async function loadBugTickets(itemId) {
     }
 }
 
+// 載入 Comment
+async function loadComment(testRunItemId) {
+    try {
+        const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/${testRunItemId}/comment`);
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        const data = await response.json();
+        const commentContent = document.getElementById('commentContent');
+        if (commentContent) {
+            // 確保恢復 small class 和 style（如果在編輯模式中被移除）
+            if (!commentContent.classList.contains('small')) {
+                commentContent.classList.add('small');
+            }
+            const currentStyle = commentContent.getAttribute('style');
+            if (!currentStyle || !currentStyle.includes('white-space: pre-wrap')) {
+                commentContent.setAttribute('style', 'flex: 1; overflow-y: auto; white-space: pre-wrap;');
+            }
+
+            if (data.comment && data.comment.trim()) {
+                commentContent.innerHTML = escapeHtml(data.comment).replace(/\n/g, '<br>');
+            } else {
+                commentContent.innerHTML = '<span data-i18n="testRun.noComment">尚無註釋</span>';
+            }
+        }
+    } catch (error) {
+        console.error('載入 Comment 失敗:', error);
+        const commentContent = document.getElementById('commentContent');
+        if (commentContent) {
+            commentContent.innerHTML = '<span class="text-danger">載入失敗</span>';
+        }
+    }
+}
+
+// 編輯 Comment
+async function editComment(testRunItemId) {
+    if (!getTrePermissions().canUpdateResults) {
+        showExecutionPermissionDenied();
+        return;
+    }
+
+    const commentContent = document.getElementById('commentContent');
+    if (!commentContent) return;
+
+    // 如果已經在編輯模式，不要重複進入
+    if (document.getElementById('commentTextarea')) {
+        return;
+    }
+
+    const currentComment = commentContent.textContent === '尚無註釋' ? '' : commentContent.innerHTML.replace(/<br>/g, '\n').replace(/</g, '<').replace(/>/g, '>').replace(/&/g, '&').replace(/"/g, '"').replace(/&#039;/g, "'");
+
+    // 儲存原始狀態
+    const originalContent = commentContent.innerHTML;
+    const hasSmallClass = commentContent.classList.contains('small');
+    const originalStyle = commentContent.getAttribute('style');
+
+    // 暫時移除 small class
+    if (hasSmallClass) {
+        commentContent.classList.remove('small');
+    }
+    // 調整 style 以配合編輯模式（保持 flex: 1 讓它填滿父容器）
+    commentContent.setAttribute('style', 'flex: 1; overflow-y: auto; display: flex; flex-direction: column;');
+
+    // 替換成編輯模式
+    commentContent.innerHTML = `
+        <textarea class="form-control mb-2" id="commentTextarea" rows="2" placeholder="輸入註釋內容..." style="flex: 1; resize: none; min-height: 60px;">${currentComment}</textarea>
+        <div class="d-flex gap-2" style="flex-shrink: 0;">
+            <button type="button" class="btn btn-primary" id="saveCommentBtn">
+                <i class="fas fa-save me-1"></i>儲存
+            </button>
+            <button type="button" class="btn btn-secondary" id="cancelCommentBtn">
+                <i class="fas fa-times me-1"></i>取消
+            </button>
+        </div>
+    `;
+
+    // 聚焦到 textarea
+    const textarea = document.getElementById('commentTextarea');
+    if (textarea) {
+        textarea.focus();
+        textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    }
+
+    // 還原函數
+    const restoreOriginal = () => {
+        commentContent.innerHTML = originalContent;
+        if (hasSmallClass) {
+            commentContent.classList.add('small');
+        }
+        if (originalStyle) {
+            commentContent.setAttribute('style', originalStyle);
+        }
+    };
+
+    // 綁定儲存按鈕事件
+    document.getElementById('saveCommentBtn').addEventListener('click', async () => {
+        const newComment = textarea.value.trim();
+        await saveComment(testRunItemId, newComment);
+    });
+
+    // 綁定取消按鈕事件
+    document.getElementById('cancelCommentBtn').addEventListener('click', () => {
+        restoreOriginal();
+    });
+
+    // 綁定鍵盤事件
+    textarea.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            restoreOriginal();
+        } else if (e.key === 'Enter' && e.ctrlKey) {
+            e.preventDefault();
+            document.getElementById('saveCommentBtn').click();
+        }
+    });
+}
+
+// 儲存 Comment
+async function saveComment(testRunItemId, comment) {
+    if (!getTrePermissions().canUpdateResults) {
+        showExecutionPermissionDenied();
+        return;
+    }
+
+    try {
+        const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/${testRunItemId}/comment`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ comment: comment })
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status}`);
+        }
+
+        // 重新載入 comment
+        await loadComment(testRunItemId);
+
+        // 顯示成功訊息
+        if (window.AppUtils && typeof window.AppUtils.showSuccess === 'function') {
+            window.AppUtils.showSuccess('註釋已儲存');
+        }
+
+    } catch (error) {
+        console.error('儲存 Comment 失敗:', error);
+        if (window.AppUtils && typeof window.AppUtils.showError === 'function') {
+            window.AppUtils.showError('儲存註釋失敗: ' + error.message);
+        }
+    }
+}
+
+// 清理 Bug Ticket 編號，移除 URL 和特殊字符
+function cleanTicketNumber(ticketNumber) {
+    if (!ticketNumber) return '';
+
+    // 移除 URL 前綴 (http://, https://, etc.)
+    let cleaned = ticketNumber.replace(/^https?:\/\//i, '');
+
+    // 如果包含 '/'，取最後一段（通常是 ticket number）
+    if (cleaned.includes('/')) {
+        const parts = cleaned.split('/');
+        cleaned = parts[parts.length - 1];
+    }
+
+    // 移除尾部的特殊字符和空白
+    cleaned = cleaned.trim();
+
+    return cleaned;
+}
+
 // 新增 Bug Ticket
 async function addBugTicket() {
     if (!getTrePermissions().canManageBugTickets) {
         showExecutionPermissionDenied();
         return;
     }
-    const ticketNumber = document.getElementById('bugTicketNumber').value.trim();
-    
+    const rawTicketNumber = document.getElementById('bugTicketNumber').value.trim();
+    const ticketNumber = cleanTicketNumber(rawTicketNumber);
+
     if (!ticketNumber) {
         AppUtils.showError(window.i18n ? window.i18n.t('testRun.ticketNumberHelp') : '請輸入 JIRA Ticket 編號');
         return;
     }
-    
+
     if (!currentItemIdForBugTicket) {
         AppUtils.showError('Missing item ID');
         return;
     }
-    
+
     try {
         const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/${currentItemIdForBugTicket}/bug-tickets`, {
             method: 'POST',
@@ -5394,21 +5627,21 @@ async function addBugTicket() {
                 ticket_number: ticketNumber
             })
         });
-        
+
         if (!response.ok) {
             const error = await response.json();
             throw new Error(error.detail || 'Failed to add bug ticket');
         }
-        
+
         // 關閉模態框並清空表單
         addBugTicketModal.hide();
         document.getElementById('bugTicketNumber').value = '';
-        
+
         // 重新載入 Bug Tickets 列表
         await loadBugTickets(currentItemIdForBugTicket);
-        
+
         AppUtils.showSuccess(window.i18n ? window.i18n.t('testRun.bugTicketAdded') : 'Bug Ticket 新增成功');
-        
+
     } catch (error) {
         console.error('新增 Bug Ticket 失敗:', error);
         AppUtils.showError(error.message || (window.i18n ? window.i18n.t('testRun.addBugTicketFailed') : '新增 Bug Ticket 失敗'));
@@ -5420,10 +5653,11 @@ function confirmDeleteBugTicket(itemId, ticketNumber) {
     initDeleteBugTicketModal();
     currentItemIdForBugTicket = itemId;
     currentTicketNumberForDelete = ticketNumber;
-    
-    // 顯示票號
-    document.getElementById('deleteBugTicketNumber').textContent = ticketNumber;
-    
+
+    // 顯示清理後的票號（更容易閱讀），但實際刪除時使用原始值
+    const displayTicketNumber = cleanTicketNumber(ticketNumber);
+    document.getElementById('deleteBugTicketNumber').textContent = displayTicketNumber;
+
     deleteBugTicketModal.show();
 }
 
@@ -5502,7 +5736,7 @@ function bindBugTicketEvents() {
                 if (currentItemIdForBugTicket && currentTicketNumberForDelete) {
                     deleteBugTicketModal.hide();
                     await deleteBugTicket(currentItemIdForBugTicket, currentTicketNumberForDelete);
-                    currentItemIdForBugTicket = null;
+                    // 保留 currentItemIdForBugTicket 以便繼續新增其他 Bug Tickets
                     currentTicketNumberForDelete = null;
                 }
             });

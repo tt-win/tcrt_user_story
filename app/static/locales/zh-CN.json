@@ -1083,7 +1083,12 @@
         "filterReset": "清除筛选",
         "filterMatchCount": "显示 {matched} 条，共 {total} 条",
         "noItemsAfterFilter": "目前没有符合筛选条件的项目",
-        "filtersApplied": "已筛选"
+        "filtersApplied": "已筛选",
+        "comment": "注释",
+        "editComment": "编辑注释",
+        "noComment": "暂无注释",
+        "saveComment": "保存",
+        "cancelComment": "取消"
     },
     "tooltip": {
         "assignedTo": "指派给",

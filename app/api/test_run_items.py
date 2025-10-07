@@ -24,9 +24,11 @@ from app.models.database_models import (
     Team as TeamDB,
     TestRunItemResultHistory as ResultHistoryDB,
     TestCaseLocal as TestCaseLocalDB,
+    User,
 )
 from app.models.lark_types import Priority, TestResultStatus
 from pydantic import BaseModel, Field
+from app.auth.dependencies import get_current_user
 
 
 router = APIRouter(prefix="/teams/{team_id}/test-run-configs/{config_id}/items", tags=["test-run-items"])
@@ -238,6 +240,7 @@ class TestRunItemResponse(BaseModel):
     attachment_count: int = Field(0)
     execution_result_count: int = Field(0)
     execution_results: List[Dict[str, Any]] = Field(default_factory=list)
+    comment: Optional[str] = None
     created_at: Optional[datetime]
     updated_at: Optional[datetime]
 
@@ -279,6 +282,10 @@ class BugTicketRequest(BaseModel):
 class BugTicketResponse(BaseModel):
     ticket_number: str
     created_at: datetime
+
+
+class CommentRequest(BaseModel):
+    comment: str = Field(..., description="Comment content")
 
 
 def _to_json(value: Any) -> Optional[str]:
@@ -354,7 +361,7 @@ def _get_lark_client_for_team(team_id: int, db: Session):
     return lark_client, team_config
 
 
-def _db_to_response(item: TestRunItemDB, case: Optional[TestCaseLocalDB] = None) -> TestRunItemResponse:
+def _db_to_response(item: TestRunItemDB, case: Optional[TestCaseLocalDB] = None, db: Optional[Session] = None) -> TestRunItemResponse:
     exec_results = _parse_execution_results(item.execution_results_json)
     test_case = case or getattr(item, 'test_case', None)
 
@@ -363,6 +370,7 @@ def _db_to_response(item: TestRunItemDB, case: Optional[TestCaseLocalDB] = None)
     precondition = None
     steps = None
     expected_result = None
+    comment = None
 
     if test_case is not None:
         title = getattr(test_case, 'title', None)
@@ -372,6 +380,18 @@ def _db_to_response(item: TestRunItemDB, case: Optional[TestCaseLocalDB] = None)
         precondition = getattr(test_case, 'precondition', None)
         steps = getattr(test_case, 'steps', None)
         expected_result = getattr(test_case, 'expected_result', None)
+
+    # 從歷史記錄中取得最新的 comment（change_source = 'comment'）
+    if db is not None:
+        latest_comment_record = db.query(ResultHistoryDB).filter(
+            ResultHistoryDB.team_id == item.team_id,
+            ResultHistoryDB.config_id == item.config_id,
+            ResultHistoryDB.item_id == item.id,
+            ResultHistoryDB.change_source == 'comment'
+        ).order_by(ResultHistoryDB.changed_at.desc()).first()
+
+        if latest_comment_record and latest_comment_record.change_reason:
+            comment = latest_comment_record.change_reason
 
     return TestRunItemResponse(
         id=item.id,
@@ -393,6 +413,7 @@ def _db_to_response(item: TestRunItemDB, case: Optional[TestCaseLocalDB] = None)
         attachment_count=_len_json_list(item.attachments_json),
         execution_result_count=len(exec_results),
         execution_results=exec_results,
+        comment=comment,
         created_at=item.created_at,
         updated_at=item.updated_at,
     )
@@ -490,7 +511,7 @@ async def list_items(
         q = q.order_by(sort_col.desc())
 
     items = q.offset(skip).limit(limit).all()
-    return [_db_to_response(i, getattr(i, 'test_case', None)) for i in items]
+    return [_db_to_response(i, getattr(i, 'test_case', None), db) for i in items]
 
 
 @router.post("/", response_model=BatchCreateResponse, status_code=status.HTTP_201_CREATED)
@@ -567,7 +588,8 @@ async def update_item(
     config_id: int,
     item_id: int,
     payload: TestRunItemUpdate,
-    db: Session = Depends(get_sync_db)
+    db: Session = Depends(get_sync_db),
+    current_user: User = Depends(get_current_user)
 ):
     _verify_team_and_config(team_id, config_id, db)
     item = db.query(TestRunItemDB).filter(
@@ -637,14 +659,14 @@ async def update_item(
         item.test_result, item.executed_at,
         source=data.get('change_source') or 'single',
         reason=data.get('change_reason'),
-        changed_by_id=None,
-        changed_by_name=None
+        changed_by_id=str(current_user.id) if current_user else None,
+        changed_by_name=current_user.full_name or current_user.username if current_user else None
     )
 
     item.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(item)
-    return _db_to_response(item, item.test_case)
+    return _db_to_response(item, item.test_case, db)
 
 
 @router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -697,7 +719,8 @@ async def batch_update_results(
     team_id: int,
     config_id: int,
     payload: BatchUpdateResultRequest,
-    db: Session = Depends(get_sync_db)
+    db: Session = Depends(get_sync_db),
+    current_user: User = Depends(get_current_user)
 ):
     _verify_team_and_config(team_id, config_id, db)
     success = 0
@@ -766,7 +789,9 @@ async def batch_update_results(
                 prev_result, prev_executed_at,
                 item.test_result, item.executed_at,
                 source=source,
-                reason=upd.get('change_reason')
+                reason=upd.get('change_reason'),
+                changed_by_id=str(current_user.id) if current_user else None,
+                changed_by_name=current_user.full_name or current_user.username if current_user else None
             )
 
             item.updated_at = datetime.utcnow()
@@ -1064,7 +1089,7 @@ async def add_bug_ticket(
     )
 
 
-@router.delete("/{item_id}/bug-tickets/{ticket_number}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/{item_id}/bug-tickets/{ticket_number:path}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_bug_ticket(
     team_id: int,
     config_id: int,
@@ -1092,13 +1117,24 @@ async def delete_bug_ticket(
         except Exception:
             existing_tickets = []
     
-    # 尋找並移除指定的 ticket
-    ticket_number_upper = ticket_number.strip().upper()
+    # 尋找並移除指定的 ticket（使用精確匹配，不轉換大小寫）
     original_count = len(existing_tickets)
-    existing_tickets = [ticket for ticket in existing_tickets 
-                      if not (isinstance(ticket, dict) and 
-                             ticket.get('ticket_number', '').upper() == ticket_number_upper)]
-    
+    ticket_number_to_delete = ticket_number.strip()
+
+    # 先嘗試精確匹配
+    existing_tickets_filtered = [ticket for ticket in existing_tickets
+                      if not (isinstance(ticket, dict) and
+                             ticket.get('ticket_number', '') == ticket_number_to_delete)]
+
+    # 如果精確匹配沒找到，嘗試不區分大小寫匹配
+    if len(existing_tickets_filtered) == original_count:
+        ticket_number_upper = ticket_number_to_delete.upper()
+        existing_tickets_filtered = [ticket for ticket in existing_tickets
+                          if not (isinstance(ticket, dict) and
+                                 ticket.get('ticket_number', '').upper() == ticket_number_upper)]
+
+    existing_tickets = existing_tickets_filtered
+
     if len(existing_tickets) == original_count:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -1294,4 +1330,91 @@ async def delete_test_result_file(
         "message": "檔案刪除成功",
         "deleted": deleted.get('stored_name') or deleted.get('name'),
         "remaining_files_count": len(files)
+    }
+
+
+# -------------------- Comment Management --------------------
+
+@router.get("/{item_id}/comment", response_model=Dict[str, Any])
+async def get_comment(
+    team_id: int,
+    config_id: int,
+    item_id: int,
+    db: Session = Depends(get_sync_db)
+):
+    """取得測試項目的最新 comment"""
+    _verify_team_and_config(team_id, config_id, db)
+    item = db.query(TestRunItemDB).filter(
+        TestRunItemDB.id == item_id,
+        TestRunItemDB.team_id == team_id,
+        TestRunItemDB.config_id == config_id,
+    ).first()
+    if not item:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到項目")
+
+    # 從歷史記錄中取得最新的 comment
+    latest_comment_record = db.query(ResultHistoryDB).filter(
+        ResultHistoryDB.team_id == team_id,
+        ResultHistoryDB.config_id == config_id,
+        ResultHistoryDB.item_id == item_id,
+        ResultHistoryDB.change_source == 'comment'
+    ).order_by(ResultHistoryDB.changed_at.desc()).first()
+
+    comment = latest_comment_record.change_reason if latest_comment_record else None
+
+    return {
+        "comment": comment,
+        "updated_at": latest_comment_record.changed_at.isoformat() if latest_comment_record else None,
+        "updated_by": latest_comment_record.changed_by_name if latest_comment_record else None
+    }
+
+
+@router.put("/{item_id}/comment", response_model=Dict[str, Any])
+async def update_comment(
+    team_id: int,
+    config_id: int,
+    item_id: int,
+    payload: CommentRequest,
+    db: Session = Depends(get_sync_db),
+    current_user: User = Depends(get_current_user)
+):
+    """更新測試項目的 comment"""
+    _verify_team_and_config(team_id, config_id, db)
+    item = db.query(TestRunItemDB).filter(
+        TestRunItemDB.id == item_id,
+        TestRunItemDB.team_id == team_id,
+        TestRunItemDB.config_id == config_id,
+    ).first()
+    if not item:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到項目")
+
+    # 清理輸入的 comment
+    comment = payload.comment.strip() if payload.comment else ""
+
+    # 建立新的歷史記錄（即使 comment 是空的也要記錄，因為這是用戶的明確操作）
+    rec = ResultHistoryDB(
+        team_id=item.team_id,
+        config_id=item.config_id,
+        item_id=item.id,
+        prev_result=item.test_result,
+        new_result=item.test_result,  # comment 更新不改變測試結果
+        prev_executed_at=item.executed_at,
+        new_executed_at=item.executed_at,  # comment 更新不改變執行時間
+        changed_by_id=str(current_user.id) if current_user else None,
+        changed_by_name=current_user.full_name or current_user.username if current_user else 'web',
+        change_source='comment',
+        change_reason=comment,
+        changed_at=datetime.utcnow()
+    )
+    db.add(rec)
+
+    # 更新項目時間戳
+    item.updated_at = datetime.utcnow()
+    db.commit()
+
+    return {
+        "success": True,
+        "comment": comment,
+        "updated_at": rec.changed_at.isoformat(),
+        "message": "Comment 已更新"
     }
