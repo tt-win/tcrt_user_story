@@ -795,6 +795,29 @@
     }
 }
 
+.test-run-section-divider {
+    border-top: 2px solid var(--tr-border-light);
+    margin: 3rem 0;
+}
+
+#testRunSetDetailActions {
+    align-items: center;
+}
+
+#testRunSetDetailActions .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.3rem 0.75rem;
+    line-height: 1.2;
+    min-height: auto;
+}
+
+#testRunSetDetailActions .btn i {
+    margin-right: 0.35rem;
+}
+
+
 </style>
 {% endblock %}
 
@@ -879,10 +902,36 @@
         </div>
     </div>
 
-    <!-- Test Run 配置卡片區域 -->
+    <!-- Test Run Set 與未歸組區域 -->
     <div id="test-run-configs-section">
-        <div class="row" id="test-run-configs-container">
-            <!-- Test Run 配置卡片將在此處動態生成 -->
+        <div id="test-run-sets-section" class="mb-5">
+            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                <div>
+                    <h4 class="mb-0" data-i18n="testRun.sets.heading">Test Run Set</h4>
+                    <small class="text-muted" data-i18n="testRun.sets.subtitle">集中管理多個 Test Run 組合</small>
+                </div>
+            </div>
+            <div class="row" id="test-run-sets-container"></div>
+            <div id="no-test-run-sets" class="text-center text-muted py-4" style="display: none;">
+                <i class="fas fa-layer-group fa-2x mb-3"></i>
+                <div data-i18n="testRun.sets.empty">尚未建立任何 Test Run Set，點擊下方卡片開始建立</div>
+            </div>
+        </div>
+
+        <div class="test-run-section-divider"></div>
+
+        <div id="unassigned-test-runs-section">
+            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                <div>
+                    <h4 class="mb-0" data-i18n="testRun.unassigned.heading">未歸組 Test Run</h4>
+                    <small class="text-muted" data-i18n="testRun.unassigned.subtitle">尚未加入任何 Test Run Set 的測試執行</small>
+                </div>
+            </div>
+            <div class="row" id="unassigned-test-runs-container"></div>
+            <div id="no-unassigned-test-runs" class="text-center text-muted py-4" style="display: none;">
+                <i class="fas fa-clipboard-check fa-2x mb-3"></i>
+                <div data-i18n="testRun.unassigned.empty">所有 Test Run 皆已加入 Test Run Set</div>
+            </div>
         </div>
     </div>
 </div>
@@ -898,6 +947,7 @@
             <div class="modal-body">
                 <form id="testRunConfigForm">
                     <input type="hidden" id="configId" name="id">
+                    <input type="hidden" id="configSetId" name="set_id">
                     <div class="mb-3">
                         <label for="configName" class="form-label">
                             <span data-i18n="testRun.configName">Test Run 名稱</span> 
@@ -1099,6 +1149,142 @@
                     <i class="fas fa-trash me-2"></i><span data-i18n="common.delete">刪除</span>
                 </button>
             </div>
+</div>
+</div>
+</div>
+
+<!-- Test Run Set 建立/編輯 Modal -->
+<div class="modal fade" id="testRunSetFormModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="testRunSetFormTitle"></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="testRunSetForm">
+                    <input type="hidden" id="testRunSetId" name="id">
+                    <div class="mb-3">
+                        <label for="testRunSetName" class="form-label">
+                            <span data-i18n="testRun.sets.form.name">Test Run Set 名稱</span>
+                            <span class="text-danger">*</span>
+                        </label>
+                        <input type="text" class="form-control" id="testRunSetName" name="name" maxlength="120" required>
+                        <div class="form-text text-muted" data-i18n="testRun.sets.form.nameHint">請輸入易辨識的組合名稱，建議 120 字以內</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="testRunSetDescription" class="form-label" data-i18n="testRun.sets.form.description">描述</label>
+                        <textarea class="form-control" id="testRunSetDescription" name="description" rows="3"></textarea>
+                        <div class="form-text text-muted" data-i18n="testRun.sets.form.descriptionHint">可補充使用情境、測試目標或通知需求</div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="setTpTicketsInput" class="form-label">
+                            <span data-i18n="testRun.sets.form.relatedTpTickets">相關 TP 開發單</span>
+                            <span class="badge bg-secondary ms-2" data-i18n="common.optional">選填</span>
+                        </label>
+                        <input type="text" class="form-control" id="setTpTicketsInput" placeholder="TP-12345" autocomplete="off">
+                        <div class="form-text text-muted">
+                            <i class="fas fa-info-circle me-1"></i>
+                            <span data-i18n="testRun.sets.form.relatedTpTicketsHint">按 Enter 鍵新增票號，格式 TP-123456</span>
+                        </div>
+                    </div>
+
+                    <div class="mb-3" id="setTpTicketsDisplay" style="display: none;">
+                        <label class="form-label">
+                            <span data-i18n="testRun.sets.form.relatedTpTicketsSelected">已選 TP 票號</span>
+                            <span class="badge bg-primary ms-2" id="setTpTicketsCount">0</span>
+                        </label>
+                        <div id="setTpTicketTags" class="d-flex flex-wrap gap-2"></div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">取消</button>
+                <button type="button" class="btn btn-primary" id="saveTestRunSetBtn">
+                    <i class="fas fa-save me-2"></i><span data-i18n="common.save">儲存</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Test Run Set 詳情 Modal -->
+<div class="modal fade" id="testRunSetDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title d-flex align-items-center gap-2">
+                    <i class="fas fa-layer-group text-primary"></i>
+                    <span id="testRunSetDetailTitle"></span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="d-flex flex-column flex-lg-row gap-3 mb-3">
+                    <div class="flex-grow-1">
+                        <div class="text-muted" id="testRunSetDetailDescription"></div>
+                        <div class="mt-2">
+                            <span id="testRunSetDetailStatus"></span>
+                            <small class="text-muted" id="testRunSetDetailMeta"></small>
+                        </div>
+                        <div class="mt-3" id="setDetailTpSection" style="display: none;">
+                            <div class="text-muted small mb-1" data-i18n="testRun.sets.detail.relatedTpTickets">相關 TP 開發單</div>
+                            <div id="setDetailTpTags" class="d-flex flex-wrap gap-2"></div>
+                        </div>
+                    </div>
+                    <div class="d-flex flex-wrap gap-2" id="testRunSetDetailActions">
+                        <button type="button" class="btn btn-primary btn-sm" id="setDetailCreateConfigBtn">
+                            <i class="fas fa-plus me-1"></i><span data-i18n="testRun.sets.detail.createTestRun">新增 Test Run</span>
+                        </button>
+                        <button type="button" class="btn btn-outline-primary btn-sm" id="setDetailAddExistingBtn">
+                            <i class="fas fa-link me-1"></i><span data-i18n="testRun.sets.detail.addExisting">加入既有 Test Run</span>
+                        </button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="setDetailEditBtn">
+                            <i class="fas fa-edit me-1"></i><span data-i18n="common.edit">編輯</span>
+                        </button>
+                        <button type="button" class="btn btn-outline-warning btn-sm" id="setDetailArchiveBtn">
+                            <i class="fas fa-archive me-1"></i><span data-i18n="testRun.sets.detail.archive">Archive</span>
+                        </button>
+                        <button type="button" class="btn btn-outline-danger btn-sm" id="setDetailDeleteBtn">
+                            <i class="fas fa-trash me-1"></i><span data-i18n="common.delete">刪除</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div id="testRunSetRunsContainer"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.close">關閉</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 加入既有 Test Run 到 Set Modal -->
+<div class="modal fade" id="addExistingToSetModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title d-flex align-items-center gap-2">
+                    <i class="fas fa-link text-primary"></i>
+                    <span data-i18n="testRun.sets.addExisting.title">加入既有 Test Run</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label" data-i18n="testRun.sets.addExisting.hint">選擇要加入 Test Run Set 的測試執行</label>
+                    <div id="addExistingToSetList" class="list-group"></div>
+                    <div id="addExistingToSetEmpty" class="text-muted py-3" style="display: none;" data-i18n="testRun.sets.addExisting.empty">目前沒有可加入的 Test Run</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">取消</button>
+                <button type="button" class="btn btn-primary" id="confirmAddExistingToSetBtn">
+                    <i class="fas fa-check me-2"></i><span data-i18n="common.confirm">確認</span>
+                </button>
+            </div>
         </div>
     </div>
 </div>
@@ -1177,9 +1363,16 @@
 // Test Run 配置管理
 
 let testRunConfigs = [];
+let testRunSets = [];
+let unassignedTestRuns = [];
 let currentTeamId = null;
 let configDetailModalInstance = null;
 let configFormModalInstance = null;
+let testRunSetFormModalInstance = null;
+let testRunSetDetailModalInstance = null;
+let addExistingToSetModalInstance = null;
+let currentSetContext = null;
+let pendingSetIdForNewConfig = null;
 // delete config modal is handled via bootstrap instance on demand
 
 let testRunPermissions = {
@@ -1190,6 +1383,11 @@ let testRunPermissions = {
     canDelete: false,
     canChangeStatus: false,
 };
+
+let currentStatusFilter = 'all';
+let currentSetTpTickets = [];
+let setTpInputInitialized = false;
+let reopenSetDetailAfterForm = false;
 
 async function applyTestRunManagementPermissions() {
     const defaults = {
@@ -1317,7 +1515,9 @@ document.addEventListener('DOMContentLoaded', async function() {
             await applyTestRunManagementPermissions();
             try {
                 const activeFilter = document.querySelector('input[name="statusFilter"]:checked');
-                renderConfigCards(activeFilter ? activeFilter.value : 'all');
+                const filterValue = activeFilter ? activeFilter.value : 'all';
+                currentStatusFilter = filterValue;
+                renderTestRunOverview(filterValue);
             } catch (_) {}
         });
     }
@@ -1423,18 +1623,30 @@ function bindEventListeners() {
     });
     
     document.addEventListener('click', function(e) {
-        if (e.target.closest('.add-test-run-card')) {
+        const addCard = e.target.closest('.add-test-run-card');
+        if (addCard) {
             const perms = window._testRunPermissions || testRunPermissions || {};
             if (!perms.canCreate) {
                 showPermissionDenied();
                 return;
             }
-            openConfigFormModal(); // Changed from openCreateTestRunConfigModal
+            const cardType = addCard.dataset.cardType || 'run';
+            if (cardType === 'set') {
+                openTestRunSetFormModal();
+            } else {
+                openConfigFormModal();
+            }
         }
     });
     
     const saveBtn = document.getElementById('saveConfigBtn');
     if (saveBtn) saveBtn.addEventListener('click', handleSaveConfig);
+
+    const saveSetBtn = document.getElementById('saveTestRunSetBtn');
+    if (saveSetBtn) saveSetBtn.addEventListener('click', handleSaveTestRunSet);
+
+    const confirmAddExistingBtn = document.getElementById('confirmAddExistingToSetBtn');
+    if (confirmAddExistingBtn) confirmAddExistingBtn.addEventListener('click', confirmAddExistingToSet);
     
     // 狀態過濾事件監聽器
     document.querySelectorAll('input[name="statusFilter"]').forEach(radio => {
@@ -1442,7 +1654,8 @@ function bindEventListeners() {
             if (this.checked) {
                 const filterValue = this.value;
                 console.log('過濾狀態變更為:', filterValue);
-                renderConfigCards(filterValue);
+                currentStatusFilter = filterValue;
+                renderTestRunOverview(filterValue);
             }
         });
     });
@@ -1466,18 +1679,21 @@ async function loadTestRunConfigs() {
             return;
         }
 
-        console.log('Loading Test Run configurations, Team ID:', currentTeamId);
+        console.log('Loading Test Run overview, Team ID:', currentTeamId);
         showLoading();
-        const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/`);
-        console.log('API 回應狀態:', response.status);
+        const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-sets/overview`);
+        console.log('Overview API 回應狀態:', response.status);
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
-        testRunConfigs = await response.json();
+        const payload = await response.json();
+        testRunSets = Array.isArray(payload.sets) ? payload.sets : [];
+        unassignedTestRuns = Array.isArray(payload.unassigned) ? payload.unassigned : [];
+        rebuildTestRunConfigIndex();
         dataLoadedOnce = true;
-        console.log('Loaded configurations count:', testRunConfigs.length);
-        console.log('Configuration data:', testRunConfigs);
-        renderTestRunConfigs();
+        console.log('Loaded Test Run Sets:', testRunSets.length, 'Unassigned:', unassignedTestRuns.length);
+        renderTestRunOverview(currentStatusFilter);
+        await refreshCurrentSetDetail();
     } catch (error) {
         console.error('Failed to load Test Run configurations:', error);
         const errorMsg = window.i18n ? window.i18n.t('messages.loadConfigsFailed') : '載入失敗';
@@ -1488,18 +1704,217 @@ async function loadTestRunConfigs() {
     }
 }
 
-function renderTestRunConfigs() {
-    console.log('Starting to render Test Run configurations');
-    console.log('testRunConfigs:', testRunConfigs);
-    if (!testRunConfigs || testRunConfigs.length === 0) {
-        console.log('No configuration data, showing no configs state');
+function rebuildTestRunConfigIndex() {
+    const flattened = [];
+    (testRunSets || []).forEach(set => {
+        (set.test_runs || []).forEach(run => {
+            flattened.push({
+                ...run,
+                set_id: run.set_id ?? set.id,
+                set_name: run.set_name ?? set.name,
+            });
+        });
+    });
+    (unassignedTestRuns || []).forEach(run => {
+        flattened.push({
+            ...run,
+            set_id: run.set_id ?? null,
+            set_name: run.set_name ?? null,
+        });
+    });
+    testRunConfigs = flattened;
+}
+
+function filterTestRunsByStatus(runs, filterStatus) {
+    if (!runs) return [];
+    if (!filterStatus || filterStatus === 'all') return [...runs];
+    return runs.filter(item => (item.status || '').toLowerCase() === filterStatus.toLowerCase());
+}
+
+function renderTestRunOverview(filterStatus = 'all') {
+    const hasSets = Array.isArray(testRunSets) && testRunSets.length > 0;
+    const hasUnassigned = Array.isArray(unassignedTestRuns) && unassignedTestRuns.length > 0;
+
+    if (!hasSets && !hasUnassigned) {
         showNoConfigs();
         return;
     }
-    console.log('Showing configs section and rendering cards');
+
     showConfigsSection();
-    renderConfigCards();
+    renderTestRunSetCards(filterStatus);
+    renderUnassignedTestRunCards(filterStatus);
 }
+
+function renderTestRunSetCards(filterStatus) {
+    const container = document.getElementById('test-run-sets-container');
+    const emptyHint = document.getElementById('no-test-run-sets');
+    if (!container) return;
+
+    const perms = window._testRunPermissions || testRunPermissions || {};
+    const hasSets = Array.isArray(testRunSets) && testRunSets.length > 0;
+
+    const cards = hasSets ? testRunSets.map(set => createTestRunSetCard(set, filterStatus)) : [];
+
+    if (perms.canCreate) {
+        cards.push(getAddTestRunSetCardHtml());
+    }
+
+    container.innerHTML = cards.join('');
+
+    if (emptyHint) emptyHint.style.display = hasSets ? 'none' : 'block';
+
+    if (window.i18n && window.i18n.isReady()) {
+        window.i18n.retranslate(container);
+    }
+}
+
+function summarizeSetMetrics(testRuns) {
+    let totalCases = 0;
+    let executedCases = 0;
+    let passedCases = 0;
+
+    (testRuns || []).forEach(run => {
+        totalCases += run.total_test_cases || 0;
+        executedCases += run.executed_cases || 0;
+        passedCases += run.passed_cases || 0;
+    });
+
+    const executionRate = totalCases > 0 ? (executedCases / totalCases) * 100 : 0;
+    const passRate = executedCases > 0 ? (passedCases / executedCases) * 100 : 0;
+
+    return { totalCases, executedCases, passedCases, executionRate, passRate };
+}
+
+function createTestRunSetCard(set, filterStatus) {
+    const allRuns = Array.isArray(set.test_runs) ? set.test_runs : [];
+    const filteredRuns = filterTestRunsByStatus(allRuns, filterStatus);
+    const metrics = summarizeSetMetrics(allRuns);
+    const filteredMetrics = summarizeSetMetrics(filteredRuns);
+    const totalRuns = allRuns.length;
+    const filteredCount = filteredRuns.length;
+
+    const recentRunsHtml = filteredRuns.slice(0, 3).map(run => {
+        const statusClass = getStatusClass(run.status);
+        const statusText = getStatusText(run.status);
+        return `
+            <div class="d-flex align-items-center justify-content-between py-1 border-bottom">
+                <div class="me-2 text-truncate"><i class="fas fa-flag text-muted me-2"></i>${escapeHtml(run.name)}</div>
+                <span class="badge ${statusClass}">${statusText}</span>
+            </div>
+        `;
+    }).join('');
+
+    const emptyKey = filterStatus === 'all' ? 'testRun.sets.card.empty' : 'testRun.sets.card.noMatches';
+    const emptyFallback = filterStatus === 'all' ? '尚未包含任何 Test Run' : '沒有符合篩選條件的 Test Run';
+    const noRunsHtml = `
+        <div class="text-muted small py-2" data-i18n="${emptyKey}">
+            ${emptyFallback}
+        </div>
+    `;
+
+    const statusClass = getStatusClass(set.status || 'active');
+    const statusBadge = getSetStatusBadge(set.status);
+
+    let tpLine = '';
+    if (set.related_tp_tickets && Array.isArray(set.related_tp_tickets) && set.related_tp_tickets.length > 0) {
+        const maxDisplay = 5;
+        const visibleTickets = set.related_tp_tickets.slice(0, maxDisplay);
+        const remainingCount = set.related_tp_tickets.length - maxDisplay;
+        const tpTags = visibleTickets.map(ticket => {
+            const safe = escapeHtml(ticket);
+            return `<span class="tp-tag badge bg-secondary me-1" data-tp-ticket="${safe}"` +
+                ` onmouseenter="showJiraPreview(event, '${safe}')"` +
+                ` onmouseleave="hideJiraPreview()"` +
+                ` onclick="event.stopPropagation(); openJiraTicket('${safe}')" style="cursor:pointer;">${safe}</span>`;
+        }).join('');
+        const remainingTag = remainingCount > 0
+            ? `<span class="badge bg-light text-dark" style="font-size: 0.75rem;">+${remainingCount}</span>`
+            : '';
+        tpLine = `<div class="stats-item"><i class="fas fa-ticket-alt stats-icon"></i><small class="text-muted"><span data-i18n="testRun.relatedTpTickets">相關 TP 開發單</span>: <span class="ms-1">${tpTags}${remainingTag}</span></small></div>`;
+    }
+
+    return `
+        <div class="col-xl-4 col-lg-6 mb-4">
+            <div class="card h-100 test-run-card ${statusClass}" onclick="openTestRunSetDetail(${set.id})">
+                <div class="card-body d-flex flex-column">
+                    <div class="d-flex justify-content-between align-items-start mb-3">
+                        <div>
+                            <h5 class="card-title text-primary mb-1 text-truncate">${escapeHtml(set.name)}</h5>
+                            ${statusBadge}
+                            <div class="text-muted small mt-1">
+                                <i class="fas fa-calendar-plus me-1"></i>${AppUtils.formatDate(set.created_at, 'datetime')}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="small text-muted mb-3">
+                        <div class="d-flex justify-content-between"><span data-i18n="testRun.sets.card.totalRuns">包含 Test Run</span><span>${filteredCount}/${totalRuns}</span></div>
+                        <div class="d-flex justify-content-between"><span data-i18n="testRun.progressLabel">執行進度</span><span>${filteredMetrics.executionRate.toFixed(1)}%</span></div>
+                        <div class="d-flex justify-content-between"><span data-i18n="testRun.passRateLabel">Pass Rate</span><span>${filteredMetrics.passRate.toFixed(1)}%</span></div>
+                        ${tpLine}
+                    </div>
+                    <div class="border rounded p-2 bg-light flex-grow-1">
+                        ${filteredCount > 0 ? recentRunsHtml : noRunsHtml}
+                    </div>
+                    <div class="mt-3 d-flex gap-2 flex-wrap">
+                        <button type="button" class="btn btn-primary btn-sm flex-grow-1" onclick="event.stopPropagation(); openTestRunSetDetail(${set.id})">
+                            <i class="fas fa-layer-group me-1"></i><span data-i18n="testRun.sets.card.openDetail">管理 Test Run</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function renderUnassignedTestRunCards(filterStatus) {
+    const container = document.getElementById('unassigned-test-runs-container');
+    const emptyHint = document.getElementById('no-unassigned-test-runs');
+    if (!container) return;
+
+    if (!Array.isArray(unassignedTestRuns) || unassignedTestRuns.length === 0) {
+        const perms = window._testRunPermissions || testRunPermissions || {};
+        container.innerHTML = perms.canCreate ? getAddTestRunCardHtml() : '';
+        if (emptyHint) emptyHint.style.display = 'block';
+        if (window.i18n && window.i18n.isReady()) {
+            window.i18n.retranslate(container);
+        }
+        return;
+    }
+
+    const runs = filterTestRunsByStatus(unassignedTestRuns, filterStatus);
+    const perms = window._testRunPermissions || testRunPermissions || {};
+
+    if (runs.length === 0) {
+        let messageHtml = '';
+        if (filterStatus === 'all') {
+            if (emptyHint) emptyHint.style.display = 'block';
+        } else {
+            messageHtml = `
+                <div class="col-12">
+                    <div class="text-center text-muted py-4" data-i18n="testRun.unassigned.noFilterMatches">目前沒有符合篩選條件的 Test Run</div>
+                </div>
+            `;
+            if (emptyHint) emptyHint.style.display = 'none';
+        }
+        container.innerHTML = messageHtml + (perms.canCreate ? getAddTestRunCardHtml() : '');
+        if (window.i18n && window.i18n.isReady()) {
+            window.i18n.retranslate(container);
+        }
+        return;
+    }
+
+    let cardsHtml = runs.map(config => createConfigCard(config)).join('');
+    if (perms.canCreate) {
+        cardsHtml += getAddTestRunCardHtml();
+    }
+    container.innerHTML = cardsHtml;
+    if (emptyHint) emptyHint.style.display = 'none';
+
+    if (window.i18n && window.i18n.isReady()) {
+        window.i18n.retranslate(container);
+    }
+}
+
 
 function showLoading() {
     document.getElementById('loading-state').style.display = 'block';
@@ -1519,41 +1934,6 @@ function showNoConfigs() {
 function showConfigsSection() {
     document.getElementById('no-configs-section').style.display = 'none';
     document.getElementById('test-run-configs-section').style.display = 'block';
-}
-
-function renderConfigCards(filterStatus = 'all') {
-    const container = document.getElementById('test-run-configs-container');
-    
-    // 過濾配置
-    let filteredConfigs = testRunConfigs;
-    if (filterStatus !== 'all') {
-        filteredConfigs = testRunConfigs.filter(config => config.status === filterStatus);
-    }
-    
-    const permissions = window._testRunPermissions || testRunPermissions || {};
-    const configsHtml = filteredConfigs.map(config => createConfigCard(config)).join('');
-    let addConfigCard = '';
-    if (permissions.canCreate) {
-        addConfigCard = `
-        <div class="col-md-6 col-lg-4 mb-4">
-            <div class="card h-100 add-test-run-card text-center" onclick="openConfigFormModal()">
-                <div class="card-body d-flex flex-column justify-content-center">
-                    <div class="text-primary rounded-circle d-flex align-items-center justify-content-center mx-auto mb-3" 
-                         style="width: 48px; height: 48px; font-size: 18px; border: 2px dashed var(--tr-primary);">
-                        <i class="fas fa-plus"></i>
-                    </div>
-                    <h6 class="text-primary mb-1" data-i18n="testRun.addMoreConfigs">新增更多 Test Run</h6>
-                    <small class="text-muted" data-i18n="testRun.addMoreConfigsHint">建立新的測試執行配置</small>
-                </div>
-            </div>
-        </div>
-    `;
-    }
-    container.innerHTML = configsHtml + addConfigCard;
-    
-    if (window.i18n && window.i18n.isReady()) {
-        window.i18n.retranslate(container);
-    }
 }
 
 function createConfigCard(config) {
@@ -1701,6 +2081,40 @@ function createConfigCard(config) {
     `;
 }
 
+function getAddTestRunCardHtml() {
+    return `
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card h-100 add-test-run-card text-center" data-card-type="run">
+                <div class="card-body d-flex flex-column justify-content-center">
+                    <div class="text-primary rounded-circle d-flex align-items-center justify-content-center mx-auto mb-3" 
+                         style="width: 48px; height: 48px; font-size: 18px; border: 2px dashed var(--tr-primary);">
+                        <i class="fas fa-plus"></i>
+                    </div>
+                    <h6 class="text-primary mb-1" data-i18n="testRun.addMoreConfigs">新增更多 Test Run</h6>
+                    <small class="text-muted" data-i18n="testRun.addMoreConfigsHint">建立新的測試執行配置</small>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function getAddTestRunSetCardHtml() {
+    return `
+        <div class="col-xl-4 col-lg-6 mb-4">
+            <div class="card h-100 add-test-run-card text-center" data-card-type="set">
+                <div class="card-body d-flex flex-column justify-content-center">
+                    <div class="text-primary rounded-circle d-flex align-items-center justify-content-center mx-auto mb-3"
+                         style="width: 48px; height: 48px; font-size: 18px; border: 2px dashed var(--tr-primary);">
+                        <i class="fas fa-layer-group"></i>
+                    </div>
+                    <h6 class="text-primary mb-1" data-i18n="testRun.sets.form.addCardTitle">新增 Test Run Set</h6>
+                    <small class="text-muted" data-i18n="testRun.sets.form.addCardHint">將相關的 Test Run 分組管理</small>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
 function getStatusClass(status) {
     switch (status) {
         case 'active': return 'status-active';
@@ -1733,6 +2147,24 @@ function getDefaultStatusText(status) {
         'unknown': '未知'
     };
     return defaultTexts[status] || '未知';
+}
+
+function getSetStatusText(status) {
+    const key = String(status || '').toLowerCase();
+    if (key === 'active') {
+        return window.i18n?.t('testRun.sets.status.active') || 'Active';
+    }
+    if (key === 'archived') {
+        return window.i18n?.t('testRun.sets.status.archived') || 'Archived';
+    }
+    return key || 'Unknown';
+}
+
+function getSetStatusBadge(status) {
+    const text = getSetStatusText(status);
+    const key = String(status || '').toLowerCase();
+    const className = key === 'archived' ? 'status-badge status-archived' : 'status-badge status-active';
+    return `<span class="${className}">${text}</span>`;
 }
 
 // 自訂下拉選單邏輯
@@ -1929,7 +2361,7 @@ function refreshStatusTexts() {
     }
 }
 
-function openConfigFormModal(configId = null) {
+function openConfigFormModal(configId = null, options = {}) {
     const permissions = window._testRunPermissions || testRunPermissions || {};
     if (configId && !permissions.canUpdate) {
         showPermissionDenied();
@@ -1948,6 +2380,8 @@ function openConfigFormModal(configId = null) {
     const form = document.getElementById('testRunConfigForm');
     form.reset();
     document.getElementById('configId').value = '';
+    pendingSetIdForNewConfig = options.setId ?? null;
+    document.getElementById('configSetId').value = pendingSetIdForNewConfig ? String(pendingSetIdForNewConfig) : '';
 
     const titleEl = document.getElementById('configFormModalTitle');
     const saveBtnTextEl = document.getElementById('saveConfigBtnText');
@@ -1961,6 +2395,7 @@ function openConfigFormModal(configId = null) {
             document.getElementById('configId').value = config.id;
             document.getElementById('configName').value = config.name;
             document.getElementById('configDescription').value = config.description || '';
+            document.getElementById('configSetId').value = config.set_id ? String(config.set_id) : '';
             // 嘗試載入詳細配置以填入可選欄位和 TP 票號
             window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${configId}`)
               .then(r => r.ok ? r.json() : null)
@@ -1994,6 +2429,8 @@ function openConfigFormModal(configId = null) {
     modalElement.addEventListener('hidden.bs.modal', function() {
         clearAllTpTickets();
         clearNotificationSettings();
+        pendingSetIdForNewConfig = null;
+        document.getElementById('configSetId').value = '';
     }, { once: true }); // 只監聽一次，避免重複綁定
     
     if (window.i18n) window.i18n.retranslate(modalElement);
@@ -2048,6 +2485,13 @@ async function handleSaveConfig() {
         configData.notify_chat_names_snapshot = notificationSettings.chatNames;
     }
 
+    if (!isEdit) {
+        const setIdValue = document.getElementById('configSetId').value;
+        if (setIdValue) {
+            configData.set_id = parseInt(setIdValue, 10);
+        }
+    }
+
     const url = isEdit ? `/api/teams/${currentTeamId}/test-run-configs/${configId}` : `/api/teams/${currentTeamId}/test-run-configs/`;
     const method = isEdit ? 'PUT' : 'POST';
 
@@ -2089,6 +2533,505 @@ async function handleSaveConfig() {
         AppUtils.showError(error.message);
     } finally {
         saveBtn.disabled = false;
+        pendingSetIdForNewConfig = null;
+        document.getElementById('configSetId').value = '';
+    }
+}
+
+function openTestRunSetFormModal(setId = null) {
+    const permissions = window._testRunPermissions || testRunPermissions || {};
+    if (setId) {
+        if (!permissions.canUpdate) {
+            showPermissionDenied();
+            return;
+        }
+    } else if (!permissions.canCreate) {
+        showPermissionDenied();
+        return;
+    }
+
+    const modalElement = document.getElementById('testRunSetFormModal');
+    if (!testRunSetFormModalInstance) {
+        testRunSetFormModalInstance = new bootstrap.Modal(modalElement);
+        modalElement.addEventListener('hidden.bs.modal', () => {
+            const form = document.getElementById('testRunSetForm');
+            if (form) form.reset();
+            const idInput = document.getElementById('testRunSetId');
+            if (idInput) idInput.value = '';
+            clearAllSetTpTickets();
+            clearSetTpInputError();
+            if (reopenSetDetailAfterForm && currentSetContext?.id) {
+                reopenSetDetailAfterForm = false;
+                openTestRunSetDetail(currentSetContext.id);
+            } else {
+                reopenSetDetailAfterForm = false;
+            }
+        });
+    }
+
+    const form = document.getElementById('testRunSetForm');
+    form.reset();
+    const idInput = document.getElementById('testRunSetId');
+    idInput.value = setId ? String(setId) : '';
+
+    const titleEl = document.getElementById('testRunSetFormTitle');
+    const nameInput = document.getElementById('testRunSetName');
+    const descInput = document.getElementById('testRunSetDescription');
+
+    clearAllSetTpTickets();
+    initSetTpTicketInput();
+
+    const detailModalEl = document.getElementById('testRunSetDetailModal');
+    const detailInstanceVisible = detailModalEl && detailModalEl.classList.contains('show');
+    if (detailInstanceVisible && testRunSetDetailModalInstance) {
+        reopenSetDetailAfterForm = true;
+        testRunSetDetailModalInstance.hide();
+    } else {
+        reopenSetDetailAfterForm = false;
+    }
+
+    if (setId) {
+        const setData = (testRunSets || []).find(s => s.id === setId) || currentSetContext || null;
+        titleEl.setAttribute('data-i18n', 'testRun.sets.form.editTitle');
+        titleEl.textContent = window.i18n?.t('testRun.sets.form.editTitle') || '編輯 Test Run Set';
+        nameInput.value = setData ? (setData.name || '') : '';
+        descInput.value = setData ? (setData.description || '') : '';
+        if (setData && Array.isArray(setData.related_tp_tickets)) {
+            setSetTpTickets(setData.related_tp_tickets);
+        }
+    } else {
+        titleEl.setAttribute('data-i18n', 'testRun.sets.form.createTitle');
+        titleEl.textContent = window.i18n?.t('testRun.sets.form.createTitle') || '新增 Test Run Set';
+    }
+
+    if (window.i18n && window.i18n.isReady()) {
+        window.i18n.retranslate(modalElement);
+    }
+
+    testRunSetFormModalInstance.show();
+}
+
+async function handleSaveTestRunSet() {
+    const form = document.getElementById('testRunSetForm');
+    if (!form) return;
+
+    if (!form.checkValidity()) {
+        form.reportValidity();
+        return;
+    }
+
+    const setId = form.querySelector('#testRunSetId').value || null;
+    const name = form.querySelector('#testRunSetName').value.trim();
+    const description = form.querySelector('#testRunSetDescription').value.trim();
+
+    const permissions = window._testRunPermissions || testRunPermissions || {};
+    if (setId && !permissions.canUpdate) {
+        showPermissionDenied();
+        return;
+    }
+    if (!setId && !permissions.canCreate) {
+        showPermissionDenied();
+        return;
+    }
+
+    const payload = { name };
+    if (description) {
+        payload.description = description;
+    }
+    payload.related_tp_tickets = [...currentSetTpTickets];
+
+    const endpoint = setId
+        ? `/api/teams/${currentTeamId}/test-run-sets/${setId}`
+        : `/api/teams/${currentTeamId}/test-run-sets`;
+    const method = setId ? 'PUT' : 'POST';
+
+    const saveBtn = document.getElementById('saveTestRunSetBtn');
+    try {
+        saveBtn.disabled = true;
+        const response = await window.AuthClient.fetch(endpoint, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) {
+            const errorPayload = await response.json().catch(() => ({ detail: null }));
+            throw new Error(errorPayload?.detail || (window.i18n?.t('messages.saveFailed') || '儲存失敗'));
+        }
+
+        const data = await response.json();
+        const successMsg = setId
+            ? (window.i18n?.t('testRun.sets.form.updateSuccess') || 'Test Run Set 已更新')
+            : (window.i18n?.t('testRun.sets.form.createSuccess') || 'Test Run Set 建立成功');
+        AppUtils.showSuccess(successMsg);
+
+        testRunSetFormModalInstance?.hide();
+        await loadTestRunConfigs();
+
+        if (!setId && data?.id) {
+            await openTestRunSetDetail(data.id);
+        } else if (setId) {
+            await refreshCurrentSetDetail();
+        }
+    } catch (error) {
+        console.error('Save Test Run Set failed:', error);
+        AppUtils.showError(error.message);
+    } finally {
+        saveBtn.disabled = false;
+    }
+}
+
+async function openTestRunSetDetail(setId) {
+    try {
+        const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-sets/${setId}`);
+        if (!response.ok) {
+            const payload = await response.json().catch(() => ({ detail: null }));
+            throw new Error(payload?.detail || '無法載入 Test Run Set 詳細資訊');
+        }
+        currentSetContext = await response.json();
+
+        const modalElement = document.getElementById('testRunSetDetailModal');
+        if (!testRunSetDetailModalInstance) {
+            testRunSetDetailModalInstance = new bootstrap.Modal(modalElement);
+            modalElement.addEventListener('hidden.bs.modal', () => {
+                currentSetContext = null;
+            });
+        }
+
+        renderTestRunSetDetail(currentSetContext, currentStatusFilter);
+
+        if (window.i18n && window.i18n.isReady()) {
+            window.i18n.retranslate(modalElement);
+        }
+
+        testRunSetDetailModalInstance.show();
+    } catch (error) {
+        console.error('Open Test Run Set detail failed:', error);
+        AppUtils.showError(error.message);
+    }
+}
+
+function renderTestRunSetDetail(setData, filterStatus = 'all') {
+    if (!setData) return;
+
+    const titleEl = document.getElementById('testRunSetDetailTitle');
+    const descEl = document.getElementById('testRunSetDetailDescription');
+    const statusEl = document.getElementById('testRunSetDetailStatus');
+    const metaEl = document.getElementById('testRunSetDetailMeta');
+    const actionsContainer = document.getElementById('testRunSetDetailActions');
+    const runsContainer = document.getElementById('testRunSetRunsContainer');
+
+    titleEl.textContent = setData.name || '';
+
+    if (setData.description) {
+        descEl.innerHTML = escapeHtml(setData.description).replace(/\n/g, '<br>');
+    } else {
+        descEl.innerHTML = '<span class="text-muted" data-i18n="testRun.sets.detail.noDescription">尚未填寫描述</span>';
+    }
+
+    statusEl.innerHTML = getSetStatusBadge(setData.status);
+
+    const metrics = summarizeSetMetrics(setData.test_runs || []);
+    const metaText = `${window.i18n?.t('testRun.sets.detail.totalRuns') || 'Test Run 數'}: ${setData.test_runs?.length || 0} · ${window.i18n?.t('testRun.sets.detail.totalCases') || '總案例'}: ${metrics.totalCases}`;
+    metaEl.textContent = metaText;
+    renderSetDetailTpTags(setData.related_tp_tickets || []);
+
+    const perms = window._testRunPermissions || testRunPermissions || {};
+
+    const createBtn = document.getElementById('setDetailCreateConfigBtn');
+    const addExistingBtn = document.getElementById('setDetailAddExistingBtn');
+    const editBtn = document.getElementById('setDetailEditBtn');
+    const archiveBtn = document.getElementById('setDetailArchiveBtn');
+    const deleteBtn = document.getElementById('setDetailDeleteBtn');
+
+    setElementVisibility('setDetailCreateConfigBtn', perms.canCreate);
+    setElementVisibility('setDetailAddExistingBtn', perms.canCreate);
+    setElementVisibility('setDetailEditBtn', perms.canUpdate);
+    setElementVisibility('setDetailArchiveBtn', perms.canUpdate);
+    setElementVisibility('setDetailDeleteBtn', perms.canDelete);
+
+    if (createBtn) {
+        createBtn.disabled = setData.status === 'archived' || !perms.canCreate;
+        createBtn.onclick = () => openConfigFormModal(null, { setId: setData.id });
+    }
+
+    if (addExistingBtn) {
+        addExistingBtn.disabled = setData.status === 'archived' || !perms.canCreate;
+        addExistingBtn.onclick = () => openAddExistingToSetModal(setData);
+    }
+
+    if (editBtn) {
+        editBtn.disabled = !perms.canUpdate;
+        editBtn.onclick = () => openTestRunSetFormModal(setData.id);
+    }
+
+    if (archiveBtn) {
+        archiveBtn.disabled = !perms.canUpdate;
+        if (setData.status === 'archived') {
+            archiveBtn.innerHTML = '<i class="fas fa-undo me-1"></i><span data-i18n="testRun.sets.detail.unarchive">取消 Archive</span>';
+            archiveBtn.onclick = () => toggleArchiveTestRunSet(setData, 'active');
+        } else {
+            archiveBtn.innerHTML = '<i class="fas fa-archive me-1"></i><span data-i18n="testRun.sets.detail.archive">Archive</span>';
+            archiveBtn.onclick = () => toggleArchiveTestRunSet(setData, 'archived');
+        }
+    }
+
+    if (deleteBtn) {
+        deleteBtn.disabled = !perms.canDelete;
+        deleteBtn.onclick = () => confirmDeleteTestRunSet(setData);
+    }
+
+    const runs = filterTestRunsByStatus(setData.test_runs || [], filterStatus);
+    if (!runs.length) {
+        const emptyKey = filterStatus === 'all' ? 'testRun.sets.detail.noRuns' : 'testRun.sets.detail.noFilterMatches';
+        const fallbackText = filterStatus === 'all' ? '尚未加入任何 Test Run' : '目前沒有符合篩選條件的 Test Run';
+        runsContainer.innerHTML = `
+            <div class="text-center text-muted py-4" data-i18n="${emptyKey}">
+                ${fallbackText}
+            </div>
+        `;
+    } else {
+        runsContainer.innerHTML = runs.map(run => buildSetRunDetailRow(run, setData)).join('');
+    }
+
+    if (window.i18n && window.i18n.isReady()) {
+        window.i18n.retranslate(actionsContainer);
+        window.i18n.retranslate(runsContainer);
+    }
+}
+
+function buildSetRunDetailRow(run, setData) {
+    const statusClass = getStatusClass(run.status);
+    const statusText = getStatusText(run.status);
+    const metricsText = `${run.executed_cases || 0}/${run.total_test_cases || 0}`;
+    const createdText = run.created_at ? AppUtils.formatDate(run.created_at, 'datetime') : '';
+    const otherSets = (testRunSets || []).filter(s => s.id !== setData.id);
+
+    const moveSelect = otherSets.length > 0 ? `
+        <select class="form-select form-select-sm" onchange="handleMoveSelectChange(this, ${run.id})">
+            <option value="">${window.i18n?.t('testRun.sets.detail.moveToOther') || '搬移至其他 Set'}</option>
+            ${otherSets.map(s => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join('')}
+        </select>
+    ` : '';
+
+    return `
+        <div class="card mb-3">
+            <div class="card-body">
+                <div class="d-flex flex-column flex-lg-row justify-content-between align-items-lg-start gap-3">
+                    <div class="flex-grow-1">
+                        <h6 class="mb-1 text-primary text-truncate">${escapeHtml(run.name)}</h6>
+                        <div class="d-flex flex-wrap gap-2 align-items-center small text-muted">
+                            <span class="badge ${statusClass}">${statusText}</span>
+                            <span><i class="fas fa-list-ul me-1"></i>${metricsText}</span>
+                            ${createdText ? `<span><i class=\"fas fa-clock me-1\"></i>${createdText}</span>` : ''}
+                        </div>
+                    </div>
+                    <div class="d-flex flex-column align-items-lg-end gap-2">
+                        ${moveSelect}
+                        <div class="btn-group" role="group">
+                            <button class="btn btn-sm btn-outline-primary" onclick="enterTestRun(${run.id})">
+                                <i class="fas fa-arrow-right"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="removeTestRunFromSet(${run.id}, '${escapeHtml(run.name)}')">
+                                <i class="fas fa-unlink"></i>
+                            </button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="deleteTestRun(${run.id}, '${escapeHtml(run.name)}')">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function handleMoveSelectChange(selectEl, configId) {
+    const value = selectEl.value;
+    if (!value) return;
+    moveTestRunToSet(configId, parseInt(value, 10)).finally(() => {
+        selectEl.value = '';
+    });
+}
+
+function openAddExistingToSetModal(setData) {
+    if (!addExistingToSetModalInstance) {
+        const modalEl = document.getElementById('addExistingToSetModal');
+        addExistingToSetModalInstance = new bootstrap.Modal(modalEl);
+    }
+
+    const listContainer = document.getElementById('addExistingToSetList');
+    const emptyHint = document.getElementById('addExistingToSetEmpty');
+    const confirmBtn = document.getElementById('confirmAddExistingToSetBtn');
+    listContainer.innerHTML = '';
+
+    const availableRuns = Array.isArray(unassignedTestRuns) ? unassignedTestRuns : [];
+    if (!availableRuns.length) {
+        emptyHint.style.display = 'block';
+        confirmBtn.disabled = true;
+    } else {
+        emptyHint.style.display = 'none';
+        confirmBtn.disabled = false;
+        listContainer.innerHTML = availableRuns.map(run => `
+            <label class="list-group-item d-flex align-items-center justify-content-between">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" value="${run.id}" id="add-existing-${run.id}">
+                    <label class="form-check-label" for="add-existing-${run.id}">
+                        <strong>${escapeHtml(run.name)}</strong>
+                        <div class="small text-muted">${getStatusText(run.status)} · ${run.executed_cases || 0}/${run.total_test_cases || 0}</div>
+                    </label>
+                </div>
+            </label>
+        `).join('');
+    }
+
+    const modalEl = document.getElementById('addExistingToSetModal');
+    modalEl.dataset.targetSetId = String(setData.id);
+
+    if (window.i18n && window.i18n.isReady()) {
+        window.i18n.retranslate(modalEl);
+    }
+
+    addExistingToSetModalInstance.show();
+}
+
+async function confirmAddExistingToSet() {
+    const modalEl = document.getElementById('addExistingToSetModal');
+    const targetSetId = parseInt(modalEl.dataset.targetSetId || '0', 10);
+    if (!targetSetId) {
+        addExistingToSetModalInstance.hide();
+        return;
+    }
+
+    const selected = Array.from(document.querySelectorAll('#addExistingToSetList input[type="checkbox"]:checked'))
+        .map(input => parseInt(input.value, 10));
+
+    if (!selected.length) {
+        AppUtils.showWarning(window.i18n?.t('testRun.sets.addExisting.selectWarning') || '請至少選擇一個 Test Run');
+        return;
+    }
+
+    try {
+        const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-sets/${targetSetId}/members`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ config_ids: selected })
+        });
+
+        if (!response.ok) {
+            const payload = await response.json().catch(() => ({ detail: null }));
+            throw new Error(payload?.detail || '加入既有 Test Run 失敗');
+        }
+
+        addExistingToSetModalInstance.hide();
+        AppUtils.showSuccess(window.i18n?.t('testRun.sets.addExisting.success') || '已將選定的 Test Run 加入 Set');
+        await loadTestRunConfigs();
+        await refreshCurrentSetDetail();
+    } catch (error) {
+        console.error('Add existing Test Run failed:', error);
+        AppUtils.showError(error.message);
+    }
+}
+
+async function moveTestRunToSet(configId, targetSetId) {
+    try {
+        const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-sets/members/${configId}/move`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ target_set_id: targetSetId })
+        });
+
+        if (!response.ok) {
+            const payload = await response.json().catch(() => ({ detail: null }));
+            throw new Error(payload?.detail || '搬移 Test Run 失敗');
+        }
+
+        const targetName = targetSetId
+            ? (testRunSets.find(s => s.id === targetSetId)?.name || '其他 Set')
+            : (window.i18n?.t('testRun.sets.moveToUnassigned') || '未歸組 Test Run');
+        AppUtils.showSuccess(`${window.i18n?.t('testRun.sets.moveSuccess') || '搬移成功'}：${targetName}`);
+
+        await loadTestRunConfigs();
+        await refreshCurrentSetDetail();
+    } catch (error) {
+        console.error('Move Test Run between sets failed:', error);
+        AppUtils.showError(error.message);
+    }
+}
+
+async function removeTestRunFromSet(configId, configName) {
+    const confirmed = await AppUtils.showConfirm(window.i18n?.t('testRun.sets.removeConfirm', { name: configName }) || `確定要將 ${configName} 移出目前的 Test Run Set？`);
+    if (!confirmed) return;
+    await moveTestRunToSet(configId, null);
+}
+
+async function toggleArchiveTestRunSet(setData, targetStatus) {
+    try {
+        const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-sets/${setData.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: targetStatus })
+        });
+
+        if (!response.ok) {
+            const payload = await response.json().catch(() => ({ detail: null }));
+            throw new Error(payload?.detail || '更新狀態失敗');
+        }
+
+        const successMsg = targetStatus === 'archived'
+            ? (window.i18n?.t('testRun.sets.archiveSuccess') || 'Test Run Set 已 Archive')
+            : (window.i18n?.t('testRun.sets.unarchiveSuccess') || 'Test Run Set 已啟用');
+        AppUtils.showSuccess(successMsg);
+
+        await loadTestRunConfigs();
+        await refreshCurrentSetDetail();
+    } catch (error) {
+        console.error('Toggle archive Test Run Set failed:', error);
+        AppUtils.showError(error.message);
+    }
+}
+
+async function confirmDeleteTestRunSet(setData) {
+    const confirmed = await AppUtils.showConfirm(window.i18n?.t('testRun.sets.deleteConfirm', { name: setData.name }) || `確定要刪除「${setData.name}」以及底下的所有 Test Run？`);
+    if (!confirmed) return;
+
+    try {
+        const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-sets/${setData.id}`, {
+            method: 'DELETE'
+        });
+
+        if (!response.ok) {
+            const payload = await response.json().catch(() => ({ detail: null }));
+            throw new Error(payload?.detail || '刪除失敗');
+        }
+
+        AppUtils.showSuccess(window.i18n?.t('testRun.sets.deleteSuccess') || 'Test Run Set 已刪除');
+        testRunSetDetailModalInstance?.hide();
+        await loadTestRunConfigs();
+    } catch (error) {
+        console.error('Delete Test Run Set failed:', error);
+        AppUtils.showError(error.message);
+    }
+}
+
+async function refreshCurrentSetDetail() {
+    const modalEl = document.getElementById('testRunSetDetailModal');
+    if (!modalEl || !modalEl.classList.contains('show') || !currentSetContext) {
+        return;
+    }
+
+    try {
+        const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-sets/${currentSetContext.id}`);
+        if (!response.ok) {
+            throw new Error('Refresh failed');
+        }
+        currentSetContext = await response.json();
+        renderTestRunSetDetail(currentSetContext, currentStatusFilter);
+        if (window.i18n && window.i18n.isReady()) {
+            window.i18n.retranslate(modalEl);
+        }
+    } catch (error) {
+        console.warn('Refresh Test Run Set detail failed:', error);
     }
 }
 
@@ -2755,6 +3698,7 @@ function deleteTestRun(configId, name) {
         const successMsg = window.i18n ? window.i18n.t('testRun.deleteSuccess', { name: safeName }) : `成功刪除 "${safeName}"`;
         AppUtils.showSuccess(successMsg);
         await loadTestRunConfigs();
+        await refreshCurrentSetDetail();
       } else {
         let detail = '';
         try {
@@ -2968,6 +3912,183 @@ function clearAllTpTickets() {
     currentTpTickets = [];
     renderTpTags();
     clearTpInputError();
+}
+
+// ===== Test Run Set TP 票號輸入功能 =====
+
+function initSetTpTicketInput() {
+    if (setTpInputInitialized) return;
+    const inputElement = document.getElementById('setTpTicketsInput');
+    if (!inputElement) return;
+
+    setTpInputInitialized = true;
+
+    inputElement.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const value = this.value.trim();
+            if (value) {
+                addSetTpTicket(value);
+            }
+        }
+    });
+
+    inputElement.addEventListener('blur', function() {
+        const value = this.value.trim();
+        if (value) {
+            addSetTpTicket(value);
+        }
+    });
+}
+
+function addSetTpTicket(ticketNumber) {
+    const trimmed = ticketNumber.trim().toUpperCase();
+    if (!trimmed) {
+        return false;
+    }
+
+    if (!validateTpTicketFormat(trimmed)) {
+        const message = window.i18n?.t('messages.invalidTpTicketFormat') || 'TP 票號格式不正確（需要 TP-12345）';
+        showSetTpInputError(message);
+        return false;
+    }
+
+    if (currentSetTpTickets.includes(trimmed)) {
+        const message = window.i18n?.t('messages.duplicateTpTicket') || 'TP 票號已重複';
+        showSetTpInputError(message);
+        return false;
+    }
+
+    currentSetTpTickets.push(trimmed);
+    renderSetTpTags();
+
+    const inputElement = document.getElementById('setTpTicketsInput');
+    if (inputElement) {
+        inputElement.value = '';
+    }
+    clearSetTpInputError();
+    return true;
+}
+
+function removeSetTpTicket(ticketNumber) {
+    const index = currentSetTpTickets.indexOf(ticketNumber);
+    if (index > -1) {
+        currentSetTpTickets.splice(index, 1);
+        renderSetTpTags();
+    }
+}
+
+function renderSetTpTags() {
+    const tagsContainer = document.getElementById('setTpTicketTags');
+    const displayContainer = document.getElementById('setTpTicketsDisplay');
+    const countBadge = document.getElementById('setTpTicketsCount');
+
+    if (!tagsContainer || !displayContainer) return;
+
+    if (currentSetTpTickets.length === 0) {
+        displayContainer.style.display = 'none';
+        tagsContainer.innerHTML = '';
+        if (countBadge) countBadge.textContent = '0';
+        return;
+    }
+
+    displayContainer.style.display = 'block';
+    if (countBadge) countBadge.textContent = String(currentSetTpTickets.length);
+
+    tagsContainer.innerHTML = currentSetTpTickets.map(ticket => {
+        const safe = escapeHtml(ticket);
+        return `
+            <div class="tp-ticket-tag" data-ticket="${safe}">
+                <i class="fas fa-ticket-alt me-1"></i>
+                <span>${safe}</span>
+                <button type="button" class="remove-btn" onclick="removeSetTpTicket('${safe}')" aria-label="移除 ${safe}">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+        `;
+    }).join('');
+
+    const ticketTags = tagsContainer.querySelectorAll('.tp-ticket-tag');
+    ticketTags.forEach(tag => {
+        const ticketNumber = tag.getAttribute('data-ticket');
+        tag.addEventListener('mouseenter', (e) => showJiraPreview(e, ticketNumber));
+        tag.addEventListener('mouseleave', hideJiraPreview);
+        tag.addEventListener('click', (e) => {
+            if (e.target.closest('.remove-btn')) return;
+            openJiraTicket(ticketNumber);
+        });
+    });
+}
+
+function setSetTpTickets(tickets) {
+    currentSetTpTickets = Array.isArray(tickets) ? [...tickets] : [];
+    renderSetTpTags();
+    clearSetTpInputError();
+}
+
+function clearAllSetTpTickets() {
+    currentSetTpTickets = [];
+    renderSetTpTags();
+    clearSetTpInputError();
+}
+
+function showSetTpInputError(message) {
+    const inputElement = document.getElementById('setTpTicketsInput');
+    if (!inputElement) return;
+
+    clearSetTpInputError();
+    inputElement.classList.add('is-invalid');
+
+    let errorElement = document.getElementById('setTpTicketInputError');
+    if (!errorElement) {
+        errorElement = document.createElement('div');
+        errorElement.id = 'setTpTicketInputError';
+        errorElement.className = 'invalid-feedback d-block';
+        inputElement.parentNode.appendChild(errorElement);
+    }
+
+    errorElement.textContent = message;
+    setTimeout(clearSetTpInputError, 3000);
+}
+
+function clearSetTpInputError() {
+    const inputElement = document.getElementById('setTpTicketsInput');
+    const errorElement = document.getElementById('setTpTicketInputError');
+    if (inputElement) {
+        inputElement.classList.remove('is-invalid');
+    }
+    if (errorElement) {
+        errorElement.remove();
+    }
+}
+
+function renderSetDetailTpTags(tickets) {
+    const section = document.getElementById('setDetailTpSection');
+    const container = document.getElementById('setDetailTpTags');
+    if (!section || !container) return;
+
+    if (!tickets || tickets.length === 0) {
+        section.style.display = 'none';
+        container.innerHTML = '';
+        return;
+    }
+
+    section.style.display = 'block';
+    container.innerHTML = tickets.map(ticket => {
+        const safe = escapeHtml(ticket);
+        return `
+            <span class="tp-tag badge bg-secondary me-1" data-ticket="${safe}" style="cursor: pointer;">
+                <i class="fas fa-ticket-alt me-1"></i>${safe}
+            </span>
+        `;
+    }).join('');
+
+    container.querySelectorAll('.tp-tag').forEach(tag => {
+        const ticketNumber = tag.getAttribute('data-ticket');
+        tag.addEventListener('mouseenter', (e) => showJiraPreview(e, ticketNumber));
+        tag.addEventListener('mouseleave', hideJiraPreview);
+        tag.addEventListener('click', () => openJiraTicket(ticketNumber));
+    });
 }
 
 // === TP 票號 JIRA 預覽功能 ===
@@ -3687,7 +4808,7 @@ function renderSearchHistory(container) {
         </div>`;
         return;
     }
-    
+
     container.innerHTML = history.map((term, idx) => `
         <button type="button" class="list-group-item list-group-item-action d-flex align-items-center py-2 ${idx===0?'active':''}" 
                 data-search-term="${escapeHtml(term)}">
@@ -3696,7 +4817,17 @@ function renderSearchHistory(container) {
             <small class="text-muted">${window.i18n ? window.i18n.t('search.recent') : '最近'}</small>
         </button>
     `).join('');
-    
+
+    const buttons = container.querySelectorAll('.list-group-item-action');
+    buttons.forEach((btn, idx) => {
+        if (idx === 0) {
+            btn.classList.add('quick-search-active');
+            btn.classList.add('active');
+        } else {
+            btn.classList.remove('quick-search-active');
+        }
+    });
+
     // 綁定點擊事件 - 點擊歷史記錄項目直接搜尋
     container.querySelectorAll('[data-search-term]').forEach(btn => {
         btn.addEventListener('click', () => {
@@ -3742,8 +4873,12 @@ function openQuickSearchTP() {
             let idx = items.findIndex(li => li.classList.contains('active'));
             if (idx < 0) idx = 0;
             idx = (e.key === 'ArrowDown') ? Math.min(idx+1, items.length-1) : Math.max(idx-1, 0);
-            items.forEach(li => li.classList.remove('active'));
+            items.forEach(li => {
+                li.classList.remove('active');
+                li.classList.remove('quick-search-active');
+            });
             items[idx].classList.add('active');
+            items[idx].classList.add('quick-search-active');
             items[idx].scrollIntoView({ block:'nearest' });
         }
     };
@@ -3797,7 +4932,7 @@ function quickSearchRenderTP(query, container) {
     }
     
     const limit = 20;
-    
+
     // T027: 檢查快取
     const cachedResult = tpSearchCache.get(q, currentTeamId, limit);
     if (cachedResult) {
@@ -3812,14 +4947,31 @@ function quickSearchRenderTP(query, container) {
         ${window.i18n ? window.i18n.t('common.searching') : '搜尋中...'}
     </div>`;
     
-    // T027: 呼叫 TP 搜尋 API (含快取儲存)
-    window.AuthClient.fetch(`/api/test-run-configs/search/tp?q=${encodeURIComponent(q)}&team_id=${currentTeamId}&limit=${limit}`)
-        .then(response => response.json())
-        .then(data => {
-            // 儲存到快取
-            tpSearchCache.set(q, currentTeamId, limit, data);
+    const configsUrl = `/api/test-run-configs/search/tp?q=${encodeURIComponent(q)}&team_id=${currentTeamId}&limit=${limit}`;
+    const setsUrl = `/api/teams/${currentTeamId}/test-run-sets/search/tp?q=${encodeURIComponent(q)}&limit=${limit}`;
+
+    const configRequest = window.AuthClient.fetch(configsUrl)
+        .then(response => {
+            if (!response.ok) throw new Error(`Config search failed: ${response.status}`);
+            return response.json();
+        });
+
+    const setRequest = window.AuthClient.fetch(setsUrl)
+        .then(response => {
+            if (!response.ok) throw new Error(`Set search failed: ${response.status}`);
+            return response.json();
+        })
+        .catch(error => {
+            console.warn('Test Run Set search failed:', error);
+            return [];
+        });
+
+    Promise.all([configRequest, setRequest])
+        .then(([configData, setData]) => {
+            const payload = { configs: configData, sets: setData };
+            tpSearchCache.set(q, currentTeamId, limit, payload);
             console.log('API 搜尋結果已快取:', q);
-            renderSearchResults(data, container, q);
+            renderSearchResults(payload, container, q);
         })
         .catch(error => {
             console.error('TP 搜尋 API 錯誤:', error);
@@ -3829,53 +4981,104 @@ function quickSearchRenderTP(query, container) {
 
 // T027 + T028: 快速搜尋結果渲染 (簡潔下拉選單風格)
 function renderSearchResults(data, container, searchTerm = '') {
-    if (!Array.isArray(data) || data.length === 0) {
+    let configs = [];
+    let sets = [];
+
+    if (Array.isArray(data)) {
+        configs = data;
+    } else if (data && typeof data === 'object') {
+        configs = Array.isArray(data.configs) ? data.configs : [];
+        sets = Array.isArray(data.sets) ? data.sets : [];
+    }
+
+    if (configs.length === 0 && sets.length === 0) {
         container.innerHTML = `<div class="list-group-item text-center text-muted py-3 border-0">
             <small><i class="fas fa-search me-2"></i>${window.i18n ? window.i18n.t('errors.noMatchingTPConfigs') : '沒有找到符合條件的 TP 票號配置'}</small>
         </div>`;
         return;
     }
-    
-    container.innerHTML = data.map((config, idx) => {
-        // T028: 簡潔的狀態處理
-        const statusInfo = getSearchResultStatusInfo(config.status, config.execution_rate, config.pass_rate);
-        
-        // TP 標籤 - 簡化顯示，保留互動功能 (T031: 加入高亮顯示)
-        let tpDisplay = '';
-        if (config.related_tp_tickets && Array.isArray(config.related_tp_tickets) && config.related_tp_tickets.length > 0) {
-            const maxDisplay = 2;
-            const visibleTickets = config.related_tp_tickets.slice(0, maxDisplay);
-            const remainingCount = config.related_tp_tickets.length - maxDisplay;
-            
-            const tpTags = visibleTickets.map(ticket => 
-                `<span class="text-secondary">${highlightSearchTerm(ticket, searchTerm)}</span>`
-            ).join(', ');
-            
-            tpDisplay = tpTags;
-            if (remainingCount > 0) {
-                tpDisplay += ` <span class="text-muted">+${remainingCount}更多</span>`;
+
+    const sections = [];
+    const setHeading = window.i18n ? (window.i18n.t('testRun.quickSearch.testRunSetsHeading') || window.i18n.t('testRun.sets.heading')) : 'Test Run Sets';
+    const runHeading = window.i18n ? (window.i18n.t('testRun.quickSearch.testRunsHeading') || 'Test Runs') : 'Test Runs';
+
+    if (sets.length > 0) {
+        sections.push(`<div class="list-group-item text-muted small fw-semibold bg-light border-0">${escapeHtml(setHeading || 'Test Run Sets')}</div>`);
+        sections.push(sets.map(set => buildSetSearchItem(set, searchTerm)).join(''));
+    }
+
+    if (configs.length > 0) {
+        sections.push(`<div class="list-group-item text-muted small fw-semibold bg-light border-0">${escapeHtml(runHeading || 'Test Runs')}</div>`);
+        sections.push(configs.map(config => buildConfigSearchItem(config, searchTerm)).join(''));
+    }
+
+    container.innerHTML = sections.join('');
+
+    const items = Array.from(container.querySelectorAll('.quick-search-tp-item'));
+    if (items.length) {
+        items[0].classList.add('quick-search-active', 'active');
+    }
+
+    items.forEach(btn => {
+        btn.addEventListener('click', () => {
+            const configId = btn.getAttribute('data-config-id');
+            const setId = btn.getAttribute('data-set-id');
+            const searchTermValue = btn.getAttribute('data-search-term');
+
+            if (searchTermValue && searchTermValue.trim().length >= 2) {
+                tpSearchHistory.add(searchTermValue.trim());
             }
-        }
-        
-        // 環境資訊
-        const envInfo = config.test_environment || '';
-        const buildInfo = config.build_number || '';
-        const envBuildDisplay = [envInfo, buildInfo].filter(Boolean).join(' • ');
-            
-        return `
-        <button type="button" class="quick-search-tp-item py-3 px-4 w-100 text-start ${idx===0?'quick-search-active':''}" 
-                data-config-id="${config.id}" data-search-term="${escapeHtml(searchTerm)}"
+
+            closeQuickSearchTP();
+
+            if (configId) {
+                const teamId = (typeof AppUtils.getCurrentTeamId === 'function') ? AppUtils.getCurrentTeamId() : (AppUtils.getCurrentTeam()?.id ?? '');
+                const params = new URLSearchParams({ config_id: String(configId) });
+                if (teamId) params.set('team_id', String(teamId));
+                window.location.href = `/test-run-execution?${params.toString()}`;
+            } else if (setId) {
+                openTestRunSetDetail(Number(setId));
+            }
+        });
+    });
+}
+
+function buildConfigSearchItem(config, searchTerm) {
+    const statusInfo = getSearchResultStatusInfo(config.status, config.execution_rate, config.pass_rate);
+
+    let tpDisplay = '';
+    if (config.related_tp_tickets && Array.isArray(config.related_tp_tickets) && config.related_tp_tickets.length > 0) {
+        const maxDisplay = 3;
+        const visibleTickets = config.related_tp_tickets.slice(0, maxDisplay);
+        const remainingCount = config.related_tp_tickets.length - maxDisplay;
+
+        const tpTags = visibleTickets.map(ticket =>
+            `<span class="tp-tag badge bg-secondary me-1">${highlightSearchTerm(ticket, searchTerm)}</span>`
+        ).join('');
+
+        const remainingTag = remainingCount > 0
+            ? `<span class="badge bg-light text-dark" style="font-size: 0.75rem;">+${remainingCount}</span>`
+            : '';
+
+        tpDisplay = `<span class="d-inline-flex flex-wrap align-items-center gap-1">${tpTags}${remainingTag}</span>`;
+    }
+
+    const envInfo = config.test_environment || '';
+    const buildInfo = config.build_number || '';
+    const envBuildDisplay = [envInfo, buildInfo].filter(Boolean).join(' • ');
+
+    return `
+        <button type="button" class="list-group-item list-group-item-action quick-search-tp-item py-3 px-4 w-100 text-start"
+                data-result-type="config" data-config-id="${config.id}" data-search-term="${escapeHtml(searchTerm)}">
             <div class="d-flex justify-content-between align-items-start">
                 <div class="flex-grow-1 min-width-0 pe-3">
-                    <!-- 主標題 (T031: 加入高亮顯示) -->
                     <div class="d-flex align-items-center mb-1">
                         <i class="fas fa-play stats-icon me-2"></i>
                         <span class="fw-medium text-dark text-truncate" style="font-size: 1rem;">${highlightSearchTerm(config.name || '', searchTerm)}</span>
-                        <span class="status-badge ${statusInfo.statusClass} ms-2 flex-shrink-0" 
-                              style="font-size: 0.7rem; padding: 0.15rem 0.4rem;">${statusInfo.statusText}</span>
+                        <span class="status-badge ${statusInfo.statusClass} ms-2 flex-shrink-0" style="font-size: 0.7rem; padding: 0.15rem 0.4rem;">
+                            ${statusInfo.statusText}
+                        </span>
                     </div>
-                    
-                    <!-- 次要資訊 -->
                     <div class="small text-muted">
                         ${tpDisplay ? `<span class="me-3"><i class="fas fa-ticket-alt stats-icon"></i>${tpDisplay}</span>` : ''}
                         ${envBuildDisplay ? `<span class="me-3"><i class="fas fa-server stats-icon"></i>${escapeHtml(envBuildDisplay)}</span>` : ''}
@@ -3884,30 +5087,50 @@ function renderSearchResults(data, container, searchTerm = '') {
                     </div>
                 </div>
             </div>
-        </button>`;
-    }).join('');
-    
-    // 綁定點擊事件
-    container.querySelectorAll('.quick-search-tp-item').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const configId = btn.getAttribute('data-config-id');
-            const searchTerm = btn.getAttribute('data-search-term');
-            
-            // T032: 只在用戶實際使用搜尋結果時才記錄歷史
-            if (searchTerm && searchTerm.trim().length >= 2) {
-                tpSearchHistory.add(searchTerm.trim());
-            }
-            
-            closeQuickSearchTP();
-            if (configId) {
-                // 跳轉到 Test Run 執行頁面
-const teamId = (typeof AppUtils.getCurrentTeamId === 'function') ? AppUtils.getCurrentTeamId() : (AppUtils.getCurrentTeam()?.id ?? '');
-                const params = new URLSearchParams({ config_id: String(configId) });
-                if (teamId) params.set('team_id', String(teamId));
-                window.location.href = `/test-run-execution?${params.toString()}`;
-            }
-        });
-    });
+        </button>
+    `;
+}
+
+function buildSetSearchItem(set, searchTerm) {
+    const statusInfo = getSearchResultStatusInfo(set.status || 'active', 0, 0);
+    const matchingTickets = Array.isArray(set.related_tp_tickets) ? set.related_tp_tickets : [];
+    const maxDisplay = 3;
+    const visibleTickets = matchingTickets.slice(0, maxDisplay);
+    const remainingCount = matchingTickets.length - maxDisplay;
+    let tpTags = '';
+    let tpMeta = '';
+    if (visibleTickets.length > 0) {
+        const badges = visibleTickets.map(ticket =>
+            `<span class="tp-tag badge bg-secondary me-1">${highlightSearchTerm(ticket, searchTerm)}</span>`
+        ).join('');
+        const remaining = remainingCount > 0
+            ? `<span class="badge bg-light text-dark ms-1" style="font-size: 0.75rem;">+${remainingCount}</span>`
+            : '';
+        tpMeta = `<span class="d-inline-flex align-items-center gap-1">${badges}${remaining}</span>`;
+    }
+
+    const totalRunsLabel = window.i18n ? (window.i18n.t('testRun.sets.card.totalRuns') || '包含 Test Run') : 'Test Runs';
+
+    return `
+        <button type="button" class="list-group-item list-group-item-action quick-search-tp-item py-3 px-4 w-100 text-start"
+                data-result-type="set" data-set-id="${set.id}" data-search-term="${escapeHtml(searchTerm)}">
+            <div class="d-flex justify-content-between align-items-start">
+                <div class="flex-grow-1 min-width-0 pe-3">
+                    <div class="d-flex align-items-center mb-1">
+                        <i class="fas fa-layer-group stats-icon me-2"></i>
+                        <span class="fw-medium text-dark text-truncate" style="font-size: 1rem;">${highlightSearchTerm(set.name || '', searchTerm)}</span>
+                        <span class="status-badge ${statusInfo.statusClass} ms-2 flex-shrink-0" style="font-size: 0.7rem; padding: 0.15rem 0.4rem;">
+                            ${statusInfo.statusText}
+                        </span>
+                    </div>
+                    <div class="small text-muted">
+                        <span class="me-3"><i class="fas fa-layer-group stats-icon"></i>${escapeHtml(totalRunsLabel || 'Test Runs')}: ${set.test_run_count || 0}</span>
+                        ${tpMeta ? `<span class="me-3"><i class="fas fa-ticket-alt stats-icon"></i>${tpMeta}</span>` : ''}
+                    </div>
+                </div>
+            </div>
+        </button>
+    `;
 }
 
 // 初始化快速搜尋功能

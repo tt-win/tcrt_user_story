@@ -82,6 +82,8 @@ IMPORTANT_TABLES: List[str] = [
     # 測試系統相關表
     "teams",
     "test_run_configs",
+    "test_run_sets",
+    "test_run_set_memberships",
     "test_run_items",
     "test_run_item_result_history",
     "tcg_records",
@@ -200,6 +202,10 @@ COLUMN_CHECKS: Dict[str, List[ColumnSpec]] = {
         ColumnSpec("notify_chat_ids_json", "TEXT", nullable=True, default=None),
         ColumnSpec("notify_chat_names_snapshot", "TEXT", nullable=True, default=None),
         ColumnSpec("notify_chats_search", "TEXT", nullable=True, default=None),
+    ],
+    "test_run_sets": [
+        ColumnSpec("related_tp_tickets_json", "TEXT", nullable=True, default=None),
+        ColumnSpec("tp_tickets_search", "TEXT", nullable=True, default=None),
     ],
     # TestCaseLocal 需要新增的附件標記欄位
     "test_cases": [

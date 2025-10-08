@@ -9,6 +9,7 @@ from .teams import router as teams_router
 from .test_run_configs import router as test_run_configs_router, search_router as test_run_configs_search_router
 from .test_cases import router as test_cases_router
 from .test_runs import router as test_runs_router
+from .test_run_sets import router as test_run_sets_router
 from .attachments import router as attachments_router
 from .tcg import router as tcg_router
 from .test_run_items import router as test_run_items_router
@@ -34,6 +35,7 @@ api_router.include_router(test_run_configs_router)
 api_router.include_router(test_run_configs_search_router)  # 新增搜尋路由
 api_router.include_router(test_cases_router)
 api_router.include_router(test_runs_router)
+api_router.include_router(test_run_sets_router)
 api_router.include_router(attachments_router)
 api_router.include_router(tcg_router)
 api_router.include_router(test_run_items_router)

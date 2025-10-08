@@ -26,6 +26,8 @@ class TestRunConfig(BaseModel):
     team_id: int = Field(..., description="所屬團隊 ID")
     name: str = Field(..., description="測試執行名稱", max_length=100)
     description: Optional[str] = Field(None, description="測試執行描述")
+    set_id: Optional[int] = Field(None, description="所屬 Test Run Set ID")
+    set_name: Optional[str] = Field(None, description="所屬 Test Run Set 名稱")
     
     # 測試執行元資料
     test_version: Optional[str] = Field(None, description="測試版本")
@@ -171,6 +173,7 @@ class TestRunConfigCreate(BaseModel):
     team_id: Optional[int] = Field(None, description="所屬團隊 ID（由路徑參數指定）")
     name: str = Field(..., description="測試執行名稱", max_length=100)
     description: Optional[str] = Field(None, description="測試執行描述")
+    set_id: Optional[int] = Field(None, description="建立時指定的 Test Run Set ID")
     test_version: Optional[str] = Field(None, description="測試版本")
     test_environment: Optional[str] = Field(None, description="測試環境")
     build_number: Optional[str] = Field(None, description="建置編號")
@@ -363,6 +366,8 @@ class TestRunConfigSummary(BaseModel):
     """測試執行配置摘要（用於列表顯示）"""
     id: int = Field(..., description="配置 ID")
     name: str = Field(..., description="測試執行名稱")
+    set_id: Optional[int] = Field(None, description="所屬 Test Run Set ID")
+    set_name: Optional[str] = Field(None, description="所屬 Test Run Set 名稱")
     test_environment: Optional[str] = Field(None, description="測試環境")
     build_number: Optional[str] = Field(None, description="建置編號")
     test_version: Optional[str] = Field(None, description="測試版本")

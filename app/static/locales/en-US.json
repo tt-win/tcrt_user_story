@@ -700,6 +700,26 @@
             "prefix": "Prefix",
             "middleCode": "Middle Code",
             "suffixStart": "Suffix (Start)"
+        },
+        "bulkEdit": {
+            "title": "Bulk Edit Mode",
+            "search": "Search & Replace",
+            "searchReplace": "Search & Replace",
+            "searchText": "Search Text",
+            "replaceText": "Replace Text",
+            "searchColumn": "Search In",
+            "replace": "Replace",
+            "replaceAll": "Replace All",
+            "editingCount": "Editing {count} items",
+            "changedCount": "Modified {count} items",
+            "noChanges": "No changes to save",
+            "saved": "Saved {count} items",
+            "saveFailed": "Failed to save {count} items",
+            "replaceSuccess": "{mode} completed, {count} locations replaced",
+            "dragToFill": "Drag to fill",
+            "doubleClickToEdit": "Double-click to edit",
+            "selectMultiple": "Hold Ctrl/Cmd + click for multi-select, Shift + click for range select",
+            "copyPaste": "Ctrl+C to copy, Ctrl+V to paste"
         }
     },
     "testRun": {
@@ -1028,7 +1048,12 @@
         "totalItems": "Total Items",
         "totalTestCases": "Total Test Cases",
         "tpTicketInputHint": "Press Enter to add ticket",
-        "unassigned": "Unassigned",
+        "unassigned": {
+            "heading": "Unassigned Test Runs",
+            "subtitle": "Test runs that are not part of any set",
+            "empty": "All test runs are assigned to a set",
+            "noFilterMatches": "No test runs match the current filter"
+        },
         "unnamed": "Unnamed",
         "updateAssigneeFailed": "Update assignee failed",
         "updateFailed": "Update failed",
@@ -1090,7 +1115,70 @@
         "editComment": "Edit Comment",
         "noComment": "No comment yet",
         "saveComment": "Save",
-        "cancelComment": "Cancel"
+        "cancelComment": "Cancel",
+        "sets": {
+            "heading": "Test Run Sets",
+            "subtitle": "Group multiple test runs and manage them together",
+            "create": "Create Test Run Set",
+            "empty": "No Test Run Set yet. Click the card below to get started.",
+            "form": {
+                "name": "Test Run Set Name",
+                "nameHint": "Provide a clear group name (max 120 characters)",
+                "description": "Description",
+                "descriptionHint": "Add context such as scenario, goals, or notification requirements",
+                "editTitle": "Edit Test Run Set",
+                "createTitle": "Create Test Run Set",
+                "updateSuccess": "Test Run Set updated",
+                "createSuccess": "Test Run Set created",
+                "addCardTitle": "Add Test Run Set",
+                "addCardHint": "Group related test runs into a set",
+                "relatedTpTickets": "Related TP Tickets",
+                "relatedTpTicketsHint": "Press Enter to add a ticket (e.g., TP-12345)",
+                "relatedTpTicketsSelected": "Selected TP Tickets"
+            },
+            "status": {
+                "active": "Active",
+                "archived": "Archived"
+            },
+            "card": {
+                "noMatches": "No test runs match the current filter",
+                "viewDetail": "View Details",
+                "totalRuns": "Included Test Runs",
+                "openDetail": "Manage Test Runs",
+                "empty": "No test runs added yet"
+            },
+            "detail": {
+                "createTestRun": "Create Test Run",
+                "addExisting": "Add Existing Test Run",
+                "archive": "Archive",
+                "unarchive": "Unarchive",
+                "noDescription": "No description provided",
+                "totalRuns": "Test Run Count",
+                "totalCases": "Total Cases",
+                "noRuns": "No test runs added yet",
+                "noFilterMatches": "No test runs match the current filter",
+                "moveToOther": "Move to another set",
+                "relatedTpTickets": "Related TP Tickets"
+            },
+            "addExisting": {
+                "title": "Add Existing Test Run",
+                "hint": "Select test runs to include in this set",
+                "empty": "No test runs available to add",
+                "selectWarning": "Select at least one test run",
+                "success": "Selected test runs added to the set"
+            },
+            "moveToUnassigned": "Unassigned Test Runs",
+            "moveSuccess": "Move succeeded",
+            "removeConfirm": "Are you sure you want to remove \"{name}\" from this Test Run Set?",
+            "archiveSuccess": "Test Run Set archived",
+            "unarchiveSuccess": "Test Run Set reactivated",
+            "deleteConfirm": "Delete \"{name}\" and all of its Test Runs?",
+            "deleteSuccess": "Test Run Set deleted"
+        },
+        "quickSearch": {
+            "testRunsHeading": "Test Runs",
+            "testRunSetsHeading": "Test Run Sets"
+        }
     },
     "tooltip": {
         "assignedTo": "Assigned To",

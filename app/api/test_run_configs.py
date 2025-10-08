@@ -20,6 +20,8 @@ from app.models.test_run_config import (
 )
 from app.models.database_models import (
     TestRunConfig as TestRunConfigDB,
+    TestRunSet as TestRunSetDB,
+    TestRunSetMembership as TestRunSetMembershipDB,
     Team as TeamDB,
     TestRunItem as TestRunItemDB,
     TestRunItemResultHistory as ResultHistoryDB,
@@ -169,18 +171,27 @@ def convert_db_to_model(config_db: TestRunConfigDB) -> TestRunConfig:
     """將資料庫 TestRunConfig 模型轉換為 API 模型"""
     # 反序列化 TP 票號
     related_tp_tickets = deserialize_tp_tickets(config_db.related_tp_tickets_json)
-    
+
     # 反序列化通知群組
     notify_chat_ids, notify_chat_names_snapshot = deserialize_notify_chats(
         config_db.notify_chat_ids_json, 
         config_db.notify_chat_names_snapshot
     )
-    
+
+    set_id = None
+    set_name = None
+    if getattr(config_db, "set_membership", None):
+        set_id = config_db.set_membership.set_id
+        if config_db.set_membership.test_run_set:
+            set_name = config_db.set_membership.test_run_set.name
+
     return TestRunConfig(
         id=config_db.id,
         team_id=config_db.team_id,
         name=config_db.name,
         description=config_db.description,
+        set_id=set_id,
+        set_name=set_name,
         test_version=config_db.test_version,
         test_environment=config_db.test_environment,
         build_number=config_db.build_number,
@@ -233,6 +244,30 @@ def convert_model_to_db(config: TestRunConfigCreate) -> TestRunConfigDB:
     )
 
 
+def build_config_summary(config_db: TestRunConfigDB) -> TestRunConfigSummary:
+    """建立 TestRunConfig 摘要模型"""
+    config = convert_db_to_model(config_db)
+    return TestRunConfigSummary(
+        id=config.id,
+        name=config.name,
+        set_id=config.set_id,
+        set_name=config.set_name,
+        test_environment=config.test_environment,
+        build_number=config.build_number,
+        test_version=config.test_version,
+        related_tp_tickets=config.related_tp_tickets,
+        tp_tickets_count=len(config.related_tp_tickets) if config.related_tp_tickets else 0,
+        status=config.status,
+        execution_rate=config.get_execution_rate(),
+        pass_rate=config.get_pass_rate(),
+        total_test_cases=config.total_test_cases,
+        executed_cases=config.executed_cases,
+        start_date=config.start_date,
+        end_date=config.end_date,
+        created_at=config.created_at
+    )
+
+
 def verify_team_exists(team_id: int, db: Session) -> TeamDB:
     """驗證團隊存在"""
     team = db.query(TeamDB).filter(TeamDB.id == team_id).first()
@@ -242,6 +277,98 @@ def verify_team_exists(team_id: int, db: Session) -> TeamDB:
             detail=f"找不到團隊 ID {team_id}"
         )
     return team
+
+
+def ensure_test_run_set(
+    db: Session,
+    team_id: int,
+    set_id: int
+) -> TestRunSetDB:
+    """確認 Test Run Set 存在且屬於指定團隊"""
+    test_run_set = db.query(TestRunSetDB).filter(
+        TestRunSetDB.id == set_id,
+        TestRunSetDB.team_id == team_id
+    ).first()
+    if not test_run_set:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"找不到 Test Run Set ID {set_id}"
+        )
+    return test_run_set
+
+
+def attach_config_to_set(
+    db: Session,
+    team_id: int,
+    config_db: TestRunConfigDB,
+    set_id: int
+) -> None:
+    """將 Test Run Config 加入指定 Set"""
+    ensure_test_run_set(db, team_id, set_id)
+
+    existing = db.query(TestRunSetMembershipDB).filter(
+        TestRunSetMembershipDB.config_id == config_db.id
+    ).first()
+
+    if existing:
+        if existing.set_id == set_id:
+            return
+        existing.set_id = set_id
+        existing.team_id = team_id
+    else:
+        membership = TestRunSetMembershipDB(
+            team_id=team_id,
+            set_id=set_id,
+            config_id=config_db.id
+        )
+        db.add(membership)
+
+
+def detach_config_from_set(
+    db: Session,
+    config_id: int
+) -> None:
+    """將 Test Run Config 從任何 Set 中移出"""
+    db.query(TestRunSetMembershipDB).filter(
+        TestRunSetMembershipDB.config_id == config_id
+    ).delete(synchronize_session=False)
+
+
+async def delete_test_run_config_cascade(
+    db: Session,
+    team_id: int,
+    config_db: TestRunConfigDB
+) -> None:
+    """刪除 Test Run Config 與相關紀錄與檔案"""
+    from ..services.test_result_cleanup_service import TestResultCleanupService
+
+    # 先清除 set membership
+    detach_config_from_set(db, config_db.id)
+
+    # 清理檔案與資料
+    cleanup_service = TestResultCleanupService()
+    cleaned_files_count = await cleanup_service.cleanup_test_run_config_files(
+        team_id, config_db.id, db
+    )
+
+    if cleaned_files_count > 0:
+        logger.info(
+            "Test Run Config %s 已清理 %s 個測試結果檔案",
+            config_db.id,
+            cleaned_files_count
+        )
+
+    db.query(ResultHistoryDB).filter(
+        ResultHistoryDB.config_id == config_db.id,
+        ResultHistoryDB.team_id == team_id
+    ).delete(synchronize_session=False)
+
+    db.query(TestRunItemDB).filter(
+        TestRunItemDB.config_id == config_db.id,
+        TestRunItemDB.team_id == team_id
+    ).delete(synchronize_session=False)
+
+    db.delete(config_db)
 
 
 @router.get("/", response_model=List[TestRunConfigSummary])
@@ -263,25 +390,7 @@ async def get_test_run_configs(
     # 轉換為摘要格式（execution_rate/pass_rate 由模型方法計算）
     summaries = []
     for config_db in configs_db:
-        config = convert_db_to_model(config_db)
-        summary = TestRunConfigSummary(
-            id=config.id,
-            name=config.name,
-            test_environment=config.test_environment,
-            build_number=config.build_number,
-            test_version=config.test_version,
-            related_tp_tickets=config.related_tp_tickets,
-            tp_tickets_count=len(config.related_tp_tickets) if config.related_tp_tickets else 0,
-            status=config.status,
-            execution_rate=config.get_execution_rate(),
-            pass_rate=config.get_pass_rate(),
-            total_test_cases=config.total_test_cases,
-            executed_cases=config.executed_cases,
-            start_date=config.start_date,
-            end_date=config.end_date,
-            created_at=config.created_at
-        )
-        summaries.append(summary)
+        summaries.append(build_config_summary(config_db))
     
     return summaries
 
@@ -301,10 +410,16 @@ async def create_test_run_config(
     # 建立資料庫模型
     config_db = convert_model_to_db(config)
     
-    # 儲存到資料庫
+    # 儲存到資料庫並處理 Set 關聯
     db.add(config_db)
+    db.flush()
+
+    if config.set_id is not None:
+        attach_config_to_set(db, team_id, config_db, config.set_id)
+
     db.commit()
     db.refresh(config_db)
+    db.expire(config_db, ['set_membership'])
     
     return convert_db_to_model(config_db)
 
@@ -418,8 +533,6 @@ async def delete_test_run_config(
     db: Session = Depends(get_sync_db)
 ):
     """刪除測試執行配置及相關附件"""
-    from ..services.test_result_cleanup_service import TestResultCleanupService
-    
     verify_team_exists(team_id, db)
     
     config_db = db.query(TestRunConfigDB).filter(
@@ -433,33 +546,9 @@ async def delete_test_run_config(
             detail=f"找不到測試執行配置 ID {config_id}"
         )
     
-    # 先清理測試結果檔案，再刪除歷程與本地 items
     try:
-        # 1. 清理測試結果檔案
-        cleanup_service = TestResultCleanupService()
-        cleaned_files_count = await cleanup_service.cleanup_test_run_config_files(
-            team_id, config_id, db
-        )
-        
-        if cleaned_files_count > 0:
-            logger.info(f"Test Run Config {config_id} 已清理 {cleaned_files_count} 個測試結果檔案")
-        
-        # 2. 保險刪除：相關歷程
-        db.query(ResultHistoryDB).filter(
-            ResultHistoryDB.config_id == config_id,
-            ResultHistoryDB.team_id == team_id
-        ).delete(synchronize_session=False)
-        
-        # 3. 刪除 Test Run Items
-        db.query(TestRunItemDB).filter(
-            TestRunItemDB.config_id == config_id,
-            TestRunItemDB.team_id == team_id
-        ).delete(synchronize_session=False)
-        
-        # 4. 刪除 Test Run Config
-        db.delete(config_db)
+        await delete_test_run_config_cascade(db, team_id, config_db)
         db.commit()
-        
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
