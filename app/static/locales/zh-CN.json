@@ -571,7 +571,9 @@
             "addAtLeastOne": "请至少添加一个范围",
             "addPrefix": "添加前缀",
             "addRange": "添加范围",
+            "bulkMode": "批量模式",
             "bulkCreateMode": "批量创建模式",
+            "bulkEditMode": "批量编辑模式",
             "creating": "创建中...",
             "duplicatesFound": "发现重复单号：",
             "end": "结束",
@@ -698,6 +700,26 @@
             "prefix": "主单号",
             "middleCode": "中间号",
             "suffixStart": "末尾单号（开始号）"
+        },
+        "bulkEdit": {
+            "title": "批量编辑模式",
+            "search": "搜索及替换",
+            "searchReplace": "搜索及替换",
+            "searchText": "搜索内容",
+            "replaceText": "替换内容",
+            "searchColumn": "搜索范围",
+            "replace": "替换",
+            "replaceAll": "全部替换",
+            "editingCount": "编辑 {count} 条数据",
+            "changedCount": "已修改 {count} 条",
+            "noChanges": "没有要保存的变更",
+            "saved": "保存成功 {count} 条",
+            "saveFailed": "保存失败 {count} 条",
+            "replaceSuccess": "{mode}完成，共替换 {count} 个位置",
+            "dragToFill": "拖拽以填充",
+            "doubleClickToEdit": "双击编辑",
+            "selectMultiple": "按住 Ctrl/Cmd 点击多选，Shift 点击范围选取",
+            "copyPaste": "Ctrl+C 复制，Ctrl+V 粘贴"
         }
     },
     "testRun": {
@@ -1026,7 +1048,12 @@
         "totalItems": "总项目",
         "totalTestCases": "总测试案例",
         "tpTicketInputHint": "按 Enter 键新增票号",
-        "unassigned": "未指定",
+        "unassigned": {
+            "heading": "未归组 Test Run",
+            "subtitle": "不属于任何集合的测试执行",
+            "empty": "所有测试执行都已归组",
+            "noFilterMatches": "没有符合筛选条件的测试执行"
+        },
         "unnamed": "未命名",
         "updateAssigneeFailed": "更新执行者失败",
         "updateFailed": "更新失败",
@@ -1088,7 +1115,70 @@
         "editComment": "编辑注释",
         "noComment": "暂无注释",
         "saveComment": "保存",
-        "cancelComment": "取消"
+        "cancelComment": "取消",
+        "sets": {
+            "heading": "Test Run Set",
+            "subtitle": "集中管理多个 Test Run 组合",
+            "create": "新增 Test Run Set",
+            "empty": "尚未建立任何 Test Run Set，点击下方卡片开始建立",
+            "form": {
+                "name": "Test Run Set 名称",
+                "nameHint": "请输入易辨识的组合名称，建议 120 字以内",
+                "description": "描述",
+                "descriptionHint": "可补充使用情境、测试目标或通知需求",
+                "editTitle": "编辑 Test Run Set",
+                "createTitle": "新增 Test Run Set",
+                "updateSuccess": "Test Run Set 已更新",
+                "createSuccess": "Test Run Set 建立成功",
+                "addCardTitle": "新增 Test Run Set",
+                "addCardHint": "将相关的 Test Run 分组管理",
+                "relatedTpTickets": "相关 TP 开发单",
+                "relatedTpTicketsHint": "按 Enter 键新增票号，格式为 TP-12345",
+                "relatedTpTicketsSelected": "已选 TP 票号"
+            },
+            "status": {
+                "active": "进行中",
+                "archived": "已归档"
+            },
+            "card": {
+                "noMatches": "目前没有符合筛选条件的 Test Run",
+                "viewDetail": "查看详情",
+                "totalRuns": "包含 Test Run",
+                "openDetail": "管理 Test Run",
+                "empty": "尚未包含任何 Test Run"
+            },
+            "detail": {
+                "createTestRun": "新增 Test Run",
+                "addExisting": "加入既有 Test Run",
+                "archive": "归档",
+                "unarchive": "取消归档",
+                "noDescription": "尚未填写描述",
+                "totalRuns": "Test Run 数",
+                "totalCases": "总案例",
+                "noRuns": "尚未加入任何 Test Run",
+                "noFilterMatches": "目前没有符合筛选条件的 Test Run",
+                "moveToOther": "搬移至其他 Set",
+                "relatedTpTickets": "相关 TP 开发单"
+            },
+            "addExisting": {
+                "title": "加入既有 Test Run",
+                "hint": "选择要加入 Test Run Set 的测试执行",
+                "empty": "目前没有可加入的 Test Run",
+                "selectWarning": "请至少选择一个 Test Run",
+                "success": "已将选定的 Test Run 加入 Set"
+            },
+            "moveToUnassigned": "未归组 Test Run",
+            "moveSuccess": "搬移成功",
+            "removeConfirm": "确定要将“{name}”移出当前的 Test Run Set？",
+            "archiveSuccess": "Test Run Set 已归档",
+            "unarchiveSuccess": "Test Run Set 已启用",
+            "deleteConfirm": "确定要删除“{name}”以及其中的所有 Test Run？",
+            "deleteSuccess": "Test Run Set 已删除"
+        },
+        "quickSearch": {
+            "testRunsHeading": "Test Run",
+            "testRunSetsHeading": "Test Run Set"
+        }
     },
     "tooltip": {
         "assignedTo": "指派给",

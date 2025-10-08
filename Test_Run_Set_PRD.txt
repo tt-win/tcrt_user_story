@@ -1,4 +1,4 @@
-我要修改一個系統功能。
+我要修改一個系統功能，請先提出計劃
 
 場景：
 1. 使用者可以新增 Test Run Set，Test Run Set 中可以包含一個或多個 Test Run
@@ -11,4 +11,14 @@
 規格：
 1. 新建立一張表 test_run_set 來管理 test run set
 2. 原有 test_run_configs 表不加欄位或加最少的欄位
-3. 進入 Test Run Management 頁面時，
+3. 進入 Test Run Management 頁面時，Test Run Set 為一區，放上方，不屬於 Test Run Set 的放在下方，設計要盡量接近現在的 Test run 卡片
+4. 點進去 Test Run Set 可以看到其所屬的所有 test run，比照現在的卡片化 顯示
+
+---
+
+實作摘要（2025-10-03）：
+- 新增 `test_run_sets` 與 `test_run_set_memberships` 資料表，並提供 CRUD、加入/搬移/移出成員等 API。
+- 後端 `POST /test-run-configs` 支援指定 `set_id`，刪除 Set 時會同步移除底下的 Test Run。
+- 前端 Test Run Management 頁面改為分區呈現（Set 區塊 + 未歸組 Test Run），並新增 Set 詳情、加入既有/新建 Test Run、搬移與歸檔操作。
+- 更新多語系文案並補上 API 對應的單元測試（`app/testsuite/test_test_run_set_api.py`）。
+- Test Run Set 支援 TP 票號（建立/編輯可輸入、卡片與詳情頁顯示，對應 API 及儲存欄位同步擴充）。

@@ -32,6 +32,7 @@ from enum import Enum as PyEnum
 from .lark_types import Priority, TestResultStatus
 from .team import TeamStatus
 from .test_run_config import TestRunStatus
+from .test_run_set import TestRunSetStatus
 
 # 導入認證相關枚舉
 from ..auth.models import UserRole, PermissionType
@@ -83,6 +84,7 @@ class Team(Base):
     
     # 關聯關係
     test_run_configs = relationship("TestRunConfig", back_populates="team")
+    test_run_sets = relationship("TestRunSet", back_populates="team")
 
 
 class TestRunConfig(Base):
@@ -141,6 +143,62 @@ class TestRunConfig(Base):
     team = relationship("Team", back_populates="test_run_configs")
     # 本地測試執行項目
     items = relationship("TestRunItem", back_populates="config", cascade="all, delete-orphan")
+    set_membership = relationship(
+        "TestRunSetMembership",
+        back_populates="config",
+        uselist=False,
+    )
+
+
+class TestRunSet(Base):
+    """測試執行集合表格"""
+
+    __tablename__ = "test_run_sets"
+    __table_args__ = {
+        'sqlite_autoincrement': True
+    }
+
+    id = Column(Integer, primary_key=True)
+    team_id = Column(Integer, ForeignKey("teams.id"), nullable=False, index=True)
+    name = Column(String(120), nullable=False)
+    description = Column(Text, nullable=True)
+    status = Column(Enum(TestRunSetStatus), default=TestRunSetStatus.ACTIVE, nullable=False)
+    archived_at = Column(DateTime, nullable=True)
+    related_tp_tickets_json = Column(Text, nullable=True,
+                                     comment="相關 TP 開發單票號 JSON 陣列")
+    tp_tickets_search = Column(String(1000), nullable=True, index=True,
+                               comment="TP 票號搜尋索引欄位")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    team = relationship("Team", back_populates="test_run_sets")
+    memberships = relationship(
+        "TestRunSetMembership",
+        back_populates="test_run_set",
+        cascade="all, delete-orphan",
+    )
+
+
+class TestRunSetMembership(Base):
+    """測試執行集合成員關聯表格"""
+
+    __tablename__ = "test_run_set_memberships"
+    __table_args__ = (
+        UniqueConstraint('config_id', name='uq_test_run_set_membership_config'),
+        Index('ix_test_run_set_memberships_team_config', 'team_id', 'config_id'),
+        Index('ix_test_run_set_memberships_team_set', 'team_id', 'set_id'),
+    )
+
+    id = Column(Integer, primary_key=True)
+    team_id = Column(Integer, ForeignKey("teams.id"), nullable=False)
+    set_id = Column(Integer, ForeignKey("test_run_sets.id", ondelete="CASCADE"), nullable=False)
+    config_id = Column(Integer, ForeignKey("test_run_configs.id", ondelete="CASCADE"), nullable=False)
+    position = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    test_run_set = relationship("TestRunSet", back_populates="memberships")
+    config = relationship("TestRunConfig", back_populates="set_membership")
 
 
 class TCGRecord(Base):
