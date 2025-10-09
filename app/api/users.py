@@ -147,11 +147,16 @@ class UserSelfUpdate(BaseModel):
 
 class PasswordChangeRequest(BaseModel):
     """修改密碼請求模型"""
-    current_password: str = Field(..., description="目前密碼")
-    new_password: str = Field(..., min_length=8, description="新密碼（最少8字符）")
+    current_password: str = Field(..., description="目前密碼（可能已加密）")
+    new_password: str = Field(..., description="新密碼（可能已加密）")
+    encrypted: bool = Field(default=False, description="密碼是否已加密")
 
     @validator('new_password')
-    def validate_new_password(cls, v):
+    def validate_new_password(cls, v, values):
+        # 如果密碼已加密，跳過長度檢查（解密後再檢查）
+        if values.get('encrypted', False):
+            return v
+        # 明文密碼需要檢查長度
         if len(v) < 8:
             raise ValueError('新密碼長度至少需要8個字符')
         return v
@@ -456,17 +461,41 @@ async def change_current_user_password(
     修改目前使用者的密碼
 
     使用者必須提供目前密碼來驗證身分。
+    支援加密和明文兩種模式。
     """
     try:
+        # 如果密碼已加密，先解密
+        current_password = request.current_password
+        new_password = request.new_password
+
+        if request.encrypted:
+            from app.auth.password_encryption import password_encryption_service
+            try:
+                current_password = password_encryption_service.decrypt_password(request.current_password)
+                new_password = password_encryption_service.decrypt_password(request.new_password)
+            except Exception as e:
+                logger.error(f"密碼解密失敗: {e}")
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="密碼解密失敗，請重試"
+                )
+
+        # 解密後檢查新密碼長度
+        if len(new_password) < 8:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="新密碼長度至少需要8個字符"
+            )
+
         # 驗證目前密碼
-        if not PasswordService.verify_password(request.current_password, current_user.hashed_password):
+        if not PasswordService.verify_password(current_password, current_user.hashed_password):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="目前密碼不正確"
             )
 
         # 檢查新密碼是否與舊密碼相同
-        if PasswordService.verify_password(request.new_password, current_user.hashed_password):
+        if PasswordService.verify_password(new_password, current_user.hashed_password):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="新密碼不能與舊密碼相同"
@@ -481,8 +510,8 @@ async def change_current_user_password(
                     detail="使用者不存在"
                 )
 
-            # 更新密碼
-            user.hashed_password = PasswordService.hash_password(request.new_password)
+            # 更新密碼（使用解密後的明文密碼）
+            user.hashed_password = PasswordService.hash_password(new_password)
             user.updated_at = datetime.utcnow()
 
             await session.commit()

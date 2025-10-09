@@ -1121,7 +1121,7 @@
             "heading": "Test Run Set",
             "subtitle": "集中管理多個 Test Run 組合",
             "create": "新增 Test Run Set",
-            "empty": "尚未建立任何 Test Run Set，點擊下方卡片開始建立",
+            "empty": "",
             "form": {
                 "name": "Test Run Set 名稱",
                 "nameHint": "請輸入易辨識的組合名稱，建議 120 字以內",
@@ -1215,6 +1215,21 @@
     },
     "tcSync": {
         "tabTitle": "測試案例",
+        "title": "測試案例同步",
+        "selectTeam": "選擇團隊",
+        "pleaseSelectTeam": "請先選擇一個團隊",
+        "modes": {
+            "init": "匯入（Lark → 系統）",
+            "diff": "比對（雙向比較）",
+            "full": "上傳（系統 → Lark）"
+        },
+        "actions": {
+            "running": "執行中..."
+        },
+        "result": {
+            "success": "同步完成",
+            "failure": "同步失敗"
+        },
         "personnel": {
             "tabTitle": "人員管理",
             "userList": "使用者清單",

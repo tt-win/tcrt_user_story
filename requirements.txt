@@ -15,6 +15,7 @@ aiosqlite==0.19.0
 
 # HTTP Client & APIs
 requests==2.32.5
+aiohttp==3.10.11
 
 # Configuration & Data Parsing
 PyYAML==6.0.2
@@ -23,6 +24,10 @@ PyYAML==6.0.2
 PyJWT==2.8.0
 passlib==1.7.4
 bcrypt==3.2.2
+cryptography==43.0.3
+
+# Access Control
+casbin==1.36.3
 
 # PDF Generation
 reportlab==4.2.5
@@ -31,3 +36,6 @@ matplotlib==3.9.2
 # Notes:
 # - python-dotenv is required by app/config.py (load_dotenv())
 # - JS assets are pulled via CDN by default; see scripts/install_dependencies.sh for local JS setup
+# - cryptography is required for password encryption/decryption (RSA)
+# - aiohttp is required for async HTTP requests in lark_client
+# - casbin is required for role-based access control (RBAC)

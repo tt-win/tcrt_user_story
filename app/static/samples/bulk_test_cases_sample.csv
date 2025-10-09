@@ -1,4 +1,4 @@
-Test Case Number,Title,Precondition,Steps,Expected Result,Priority
-TC-1001,User Login,"Ensure test account exists","1. Open login page; 2. Enter valid credentials","Dashboard is displayed",TCG-93178|TCG-99999,High
-TC-1002,Invalid Password,,Enter wrong password,Error message displayed,TCG-11111,Low
-TC-1003,API Health Check,"Service is running","Send GET /health","Service returns 200",TCG-11000,Medium
+Test Case Number,Title,Precondition,Steps,Expected Result,TCG,Priority
+TC-10000.010.010,User Login,"Ensure test account exists","1. Open login page; 2. Enter valid credentials","Dashboard is displayed",TCG-93178|TCG-99999,High
+TC-10000.010.020,Invalid Password,,Enter wrong password,Error message displayed,TCG-11111,Low
+TC-10000.010.030,API Health Check,"Service is running","Send GET /health","Service returns 200",TCG-11000,Medium

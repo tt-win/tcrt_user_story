@@ -356,7 +356,7 @@ class ProfileManager {
      */
     async handlePasswordSubmit(e) {
         e.preventDefault();
-        
+
         if (this.isSubmitting('password')) return;
 
         // 客戶端驗證
@@ -369,10 +369,55 @@ class ProfileManager {
             this.clearFormErrors(this.passwordForm);
 
             const formData = new FormData(this.passwordForm);
-            const data = {
-                current_password: formData.get('current_password'),
-                new_password: formData.get('new_password')
-            };
+            const currentPassword = formData.get('current_password');
+            const newPassword = formData.get('new_password');
+
+            // 使用加密工具加密密碼
+            let data;
+
+            console.log('[ProfileManager] 檢查加密支援...');
+            console.log('[ProfileManager] window.PasswordCrypto 存在?', !!window.PasswordCrypto);
+
+            if (window.PasswordCrypto) {
+                console.log('[ProfileManager] PasswordCrypto.isSupported()?', window.PasswordCrypto.isSupported());
+            }
+
+            if (window.PasswordCrypto && window.PasswordCrypto.isSupported()) {
+                console.log('[ProfileManager] 使用加密方式傳送密碼');
+                try {
+                    data = await window.PasswordCrypto.encryptPasswordChangeRequest(
+                        currentPassword,
+                        newPassword
+                    );
+                    console.log('[ProfileManager] 加密完成，encrypted =', data.encrypted);
+                } catch (error) {
+                    console.error('[ProfileManager] 加密過程發生錯誤:', error);
+                    // 回退到明文
+                    data = {
+                        current_password: currentPassword,
+                        new_password: newPassword,
+                        encrypted: false
+                    };
+                }
+            } else {
+                console.warn('[ProfileManager] 瀏覽器不支援加密，使用明文傳送（不安全）');
+                if (!window.PasswordCrypto) {
+                    console.warn('[ProfileManager] window.PasswordCrypto 未定義');
+                } else if (!window.PasswordCrypto.isSupported()) {
+                    console.warn('[ProfileManager] Web Crypto API 不支援');
+                }
+                data = {
+                    current_password: currentPassword,
+                    new_password: newPassword,
+                    encrypted: false
+                };
+            }
+
+            console.log('[ProfileManager] 最終要傳送的資料:', {
+                encrypted: data.encrypted,
+                current_password_length: data.current_password?.length,
+                new_password_length: data.new_password?.length
+            });
 
             const response = await this.authClient.fetch('/api/users/me/password', {
                 method: 'PUT',

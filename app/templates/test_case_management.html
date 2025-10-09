@@ -9573,11 +9573,23 @@ async function copySelectedCells() {
     });
     
     // 轉換為 TSV 格式 (類似 Excel)
+    // 處理特殊字元：如果值包含 \n, \t 或 " 則需要用引號包裹
+    function escapeTsvValue(value) {
+        if (value === null || value === undefined) return '';
+        const strValue = String(value);
+        // 如果包含換行、Tab 或引號，需要用雙引號包裹
+        if (strValue.includes('\n') || strValue.includes('\t') || strValue.includes('"')) {
+            // 將內部的引號轉義為兩個引號
+            return '"' + strValue.replace(/"/g, '""') + '"';
+        }
+        return strValue;
+    }
+
     const rows = Object.keys(grid).sort((a, b) => parseInt(a) - parseInt(b));
     const tsvData = rows.map(rowIdx => {
         const rowData = grid[rowIdx];
         const cols = Object.keys(rowData).sort((a, b) => parseInt(a) - parseInt(b));
-        return cols.map(colIdx => rowData[colIdx] || '').join('\t');
+        return cols.map(colIdx => escapeTsvValue(rowData[colIdx] || '')).join('\t');
     }).join('\n');
     
     // console.log('TSV 資料:', tsvData.substring(0, 100), '...');
@@ -9682,10 +9694,93 @@ async function pasteToSelectedCells() {
             console.warn('⚠️ 剪貼簿空白');
             return;
         }
-        
-        // 解析 TSV 資料 (支援 Excel 複製貼上)
-        const rows = clipboardText.split('\n').filter(r => r.trim());
-        const data = rows.map(row => row.split('\t'));
+
+        // 解析 TSV 資料 (支援 Excel 複製貼上和包含換行的儲存格)
+        function parseTsvRow(row) {
+            const result = [];
+            let current = '';
+            let inQuotes = false;
+            let i = 0;
+
+            while (i < row.length) {
+                const char = row[i];
+
+                if (inQuotes) {
+                    if (char === '"') {
+                        // 檢查下一個字元
+                        if (i + 1 < row.length && row[i + 1] === '"') {
+                            // 兩個連續的引號代表一個引號字元
+                            current += '"';
+                            i += 2;
+                            continue;
+                        } else {
+                            // 單個引號代表引號結束
+                            inQuotes = false;
+                            i++;
+                            continue;
+                        }
+                    } else {
+                        // 在引號內，所有字元（包括 \n 和 \t）都是值的一部分
+                        current += char;
+                        i++;
+                    }
+                } else {
+                    if (char === '"') {
+                        // 開始引號
+                        inQuotes = true;
+                        i++;
+                    } else if (char === '\t') {
+                        // Tab 分隔符，儲存當前值並開始新值
+                        result.push(current);
+                        current = '';
+                        i++;
+                    } else {
+                        // 普通字元
+                        current += char;
+                        i++;
+                    }
+                }
+            }
+
+            // 加入最後一個值
+            result.push(current);
+            return result;
+        }
+
+        // 分割行時要考慮引號內的換行
+        const rows = [];
+        let currentRow = '';
+        let inQuotes = false;
+
+        for (let i = 0; i < clipboardText.length; i++) {
+            const char = clipboardText[i];
+
+            if (char === '"') {
+                currentRow += char;
+                // 檢查是否為轉義的引號
+                if (i + 1 < clipboardText.length && clipboardText[i + 1] === '"') {
+                    currentRow += clipboardText[i + 1];
+                    i++;
+                } else {
+                    inQuotes = !inQuotes;
+                }
+            } else if (char === '\n' && !inQuotes) {
+                // 只有在引號外的換行才是行分隔符
+                if (currentRow.trim()) {
+                    rows.push(currentRow);
+                }
+                currentRow = '';
+            } else {
+                currentRow += char;
+            }
+        }
+
+        // 加入最後一行
+        if (currentRow.trim()) {
+            rows.push(currentRow);
+        }
+
+        const data = rows.map(row => parseTsvRow(row));
         
         // console.log('解析後的資料:', data.length, '行 x', data[0]?.length || 0, '列');
         

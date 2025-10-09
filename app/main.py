@@ -129,12 +129,17 @@ async def startup_event():
         await init_audit_database()
         logging.info("審計資料庫初始化完成")
 
+        # 初始化密碼加密服務
+        from app.auth.password_encryption import password_encryption_service
+        password_encryption_service.initialize()
+        logging.info("密碼加密服務初始化完成")
+
         # 啟動定時任務調度器
         from app.services.scheduler import task_scheduler
         task_scheduler.start()
         logging.info("定時任務調度器已啟動")
     except Exception as e:
-        logging.error(f"啟動定時任務調度器失敗: {e}")
+        logging.error(f"啟動服務失敗: {e}")
 
 @app.on_event("shutdown")
 async def shutdown_event():
