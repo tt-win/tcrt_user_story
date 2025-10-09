@@ -24,7 +24,7 @@
         "failed": "失败",
         "filter": "筛选",
         "filtered": "已筛选 ({count})",
-        "home": "首頁",
+        "home": "首页",
         "languageEnUs": "English",
         "languageZhCn": "简体中文",
         "languageZhTw": "繁体中文",
@@ -46,6 +46,7 @@
         "searching": "搜索中...",
         "select": "选择",
         "selectAll": "全选",
+        "undo": "撤销",
         "skipped": "跳过",
         "startTime": "开始时间",
         "status": "状态",
@@ -91,8 +92,10 @@
     "roles": {
         "super_admin": "超级管理员",
         "admin": "管理员",
+        "manager": "管理者",
         "user": "用户",
-        "viewer": "仅查看"
+        "viewer": "仅查看",
+        "guest": "访客"
     },
     "audit": {
         "viewLogs": "审计记录",
@@ -199,7 +202,7 @@
         "noMatchingTestCases": "没有找到符合条件的测试案例",
         "noTCGNumber": "请先输入 TCG 编号",
         "noTcgMatches": "找不到匹配的 TCG",
-        "noTeamSelected": "請先選擇團隊",
+        "noTeamSelected": "请先选择团队",
         "teamAccessDenied": "您没有权限访问指定团队，请选择其他团队",
         "teamNotFound": "找不到指定的团队，请选择其他团队",
         "noTestCasesAvailable": "尚无可用测试案例",
@@ -364,7 +367,7 @@
         "batchCopySuccess": "已成功复制 {count} 条测试案例"
     },
     "navigation": {
-        "backToHome": "首頁",
+        "backToHome": "首页",
         "backToManagement": "回到管理",
         "pleaseSelect": "请选择...",
         "subtitle": "选择团队开始管理测试案例",
@@ -1158,7 +1161,8 @@
                 "noRuns": "尚未加入任何 Test Run",
                 "noFilterMatches": "目前没有符合筛选条件的 Test Run",
                 "moveToOther": "搬移至其他 Set",
-                "relatedTpTickets": "相关 TP 开发单"
+                "relatedTpTickets": "相关 TP 开发单",
+                "remove": "移出 Test Run Set"
             },
             "addExisting": {
                 "title": "加入既有 Test Run",

@@ -264,16 +264,19 @@ class ProfileManager {
             return;
         }
 
-        const roleMap = {
-            'super_admin': { text: '超級管理員', class: 'badge-admin' },
-            'admin': { text: '管理員', class: 'badge-admin' },
-            'manager': { text: '管理者', class: 'badge-manager' },
-            'user': { text: '使用者', class: 'badge-user' },
-            'viewer': { text: '檢視者', class: 'badge-viewer' }
+        const normalizedRole = String(role || '').toLowerCase();
+        const classMap = {
+            'super_admin': 'badge-admin',
+            'admin': 'badge-admin',
+            'manager': 'badge-manager',
+            'user': 'badge-user',
+            'viewer': 'badge-viewer',
+            'guest': 'badge-viewer'
         };
 
-        const roleInfo = roleMap[role] || { text: role, class: 'badge-user' };
-        console.log('[ProfileManager] 角色資訊:', roleInfo);
+        const roleLabel = this.getRoleDisplayName(normalizedRole);
+        const roleClass = classMap[normalizedRole] || 'badge-user';
+        console.log('[ProfileManager] 角色資訊:', { normalizedRole, roleLabel, roleClass });
         
         // 移除 data-i18n 屬性以防止翻譯系統覆蓋內容
         if (roleBadge.hasAttribute('data-i18n')) {
@@ -281,10 +284,38 @@ class ProfileManager {
             roleBadge.removeAttribute('data-i18n');
         }
         
-        roleBadge.textContent = roleInfo.text;
-        roleBadge.className = `badge badge-role ${roleInfo.class}`;
+        roleBadge.textContent = roleLabel || role || '-';
+        roleBadge.className = `badge badge-role ${roleClass}`;
         
         console.log('[ProfileManager] 角色設定完成，內容:', roleBadge.textContent, '類型:', roleBadge.className);
+    }
+
+    /**
+     * 取得角色顯示名稱
+     */
+    getRoleDisplayName(role) {
+        const normalizedRole = String(role || '').toLowerCase();
+        const fallbackMap = {
+            'super_admin': '超級管理員',
+            'admin': '管理員',
+            'manager': '管理者',
+            'user': '使用者',
+            'viewer': '僅檢視',
+            'guest': '訪客'
+        };
+        const fallback = fallbackMap[normalizedRole] || (role || '');
+        if (normalizedRole && window.i18n && typeof window.i18n.t === 'function') {
+            try {
+                const key = `roles.${normalizedRole}`;
+                const translated = window.i18n.t(key);
+                if (translated && translated !== key) {
+                    return translated;
+                }
+            } catch (error) {
+                console.warn('[ProfileManager] translate role failed:', error);
+            }
+        }
+        return fallback;
     }
 
     /**

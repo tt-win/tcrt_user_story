@@ -1384,6 +1384,7 @@ let currentStatusFilter = 'all';
 let currentSetTpTickets = [];
 let setTpInputInitialized = false;
 let reopenSetDetailAfterForm = false;
+let suppressSetDetailReopen = false;
 
 async function applyTestRunManagementPermissions() {
     const defaults = {
@@ -1809,7 +1810,7 @@ function createTestRunSetCard(set, filterStatus) {
         return `
             <div class="d-flex align-items-center justify-content-between py-1 border-bottom">
                 <div class="me-2 text-truncate"><i class="fas fa-flag text-muted me-2"></i>${escapeHtml(run.name)}</div>
-                <span class="badge ${statusClass}">${statusText}</span>
+                <span class="status-badge ${statusClass}">${statusText}</span>
             </div>
         `;
     }).join('');
@@ -2388,6 +2389,7 @@ function openConfigFormModal(configId = null, options = {}) {
     if (wasSetDetailModalOpen && testRunSetDetailModalInstance) {
         testRunSetDetailModalInstance.hide();
     }
+    suppressSetDetailReopen = false;
 
     const modalElement = document.getElementById('configFormModal');
     if (!configFormModalInstance) {
@@ -2450,9 +2452,10 @@ function openConfigFormModal(configId = null, options = {}) {
         document.getElementById('configSetId').value = '';
 
         // 如果之前 Test Run Set Detail Modal 是打開的，重新顯示它
-        if (wasSetDetailModalOpen && testRunSetDetailModalInstance) {
+        if (!suppressSetDetailReopen && wasSetDetailModalOpen && testRunSetDetailModalInstance) {
             testRunSetDetailModalInstance.show();
         }
+        suppressSetDetailReopen = false;
     }, { once: true }); // 只監聽一次，避免重複綁定
 
     if (window.i18n) window.i18n.retranslate(modalElement);
@@ -2533,22 +2536,25 @@ async function handleSaveConfig() {
         }
 
         const data = await response.json();
+        if (!isEdit) {
+            suppressSetDetailReopen = true;
+        }
         configFormModalInstance.hide();
         if (isEdit) {
-          const msg = window.i18n ? window.i18n.t('testRun.updateSuccess') : '更新成功';
-          AppUtils.showSuccess(msg);
-          await loadTestRunConfigs();
+            const msg = window.i18n ? window.i18n.t('testRun.updateSuccess') : '更新成功';
+            AppUtils.showSuccess(msg);
+            await loadTestRunConfigs();
         } else {
-          const msg = window.i18n ? window.i18n.t('testRun.createConfigSuccessSelectCases') : '建立成功，請選擇要加入的 Test Case';
-          AppUtils.showSuccess(msg);
-          // 進入 Test Case 選擇流程（直接開啟，取消時自動回滾）
-          pendingCreate = true;
-          createdItemsInSession = false;
-          // 確保為全新建立流程，清空任何編輯殘留選取狀態
-          modalMode = 'create';
-          selectedCaseMap.clear();
-          existingItemIdByCaseNumber.clear();
-          openCaseSelectModal(data.id);
+            const msg = window.i18n ? window.i18n.t('testRun.createConfigSuccessSelectCases') : '建立成功，請選擇要加入的 Test Case';
+            AppUtils.showSuccess(msg);
+            // 進入 Test Case 選擇流程（直接開啟，取消時自動回滾）
+            pendingCreate = true;
+            createdItemsInSession = false;
+            // 確保為全新建立流程，清空任何編輯殘留選取狀態
+            modalMode = 'create';
+            selectedCaseMap.clear();
+            existingItemIdByCaseNumber.clear();
+            openCaseSelectModal(data.id);
         }
 
     } catch (error) {
@@ -2854,13 +2860,93 @@ function buildSetRunDetailRow(run, setData) {
     const metricsText = `${run.executed_cases || 0}/${run.total_test_cases || 0}`;
     const createdText = run.created_at ? AppUtils.formatDate(run.created_at, 'datetime') : '';
     const otherSets = (testRunSets || []).filter(s => s.id !== setData.id);
-
-    const moveSelect = otherSets.length > 0 ? `
-        <select class="form-select form-select-sm" onchange="handleMoveSelectChange(this, ${run.id})">
-            <option value="">${window.i18n?.t('testRun.sets.detail.moveToOther') || '搬移至其他 Set'}</option>
-            ${otherSets.map(s => `<option value="${s.id}">${escapeHtml(s.name)}</option>`).join('')}
-        </select>
+    const perms = window._testRunPermissions || testRunPermissions || {};
+    const moveLabel = window.i18n?.t('testRun.sets.detail.moveToOther') || '搬移至其他 Set';
+    const moveDropdown = (perms.canUpdate && otherSets.length > 0) ? `
+        <div class="dropdown" onclick="event.stopPropagation()">
+            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="fas fa-random me-1"></i><span data-i18n="testRun.sets.detail.moveToOther">${escapeHtml(moveLabel)}</span>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+                ${otherSets.map(s => `
+                    <li>
+                        <button class="dropdown-item" type="button" onclick="event.stopPropagation(); moveTestRunToSet(${run.id}, ${s.id});">
+                            ${escapeHtml(s.name)}
+                        </button>
+                    </li>
+                `).join('')}
+            </ul>
+        </div>
     ` : '';
+
+    const lockedForConfigEdit = run.status === 'completed' || run.status === 'archived';
+    const lockedForCasesEdit = run.status === 'completed';
+    const lockedConfigMessage = (window.i18n && window.i18n.isReady())
+        ? window.i18n.t('testRun.cannotEditCompleted')
+        : '已完成或已歸檔的 Test Run 不可編輯';
+    const lockedCasesMessage = (window.i18n && window.i18n.isReady())
+        ? window.i18n.t('testRun.cannotEditCompleted')
+        : '已完成的 Test Run 不可編輯 Test Case';
+    const lockedConfigTitle = lockedForConfigEdit ? ` title="${escapeHtml(lockedConfigMessage)}"` : '';
+    const lockedCasesTitle = (lockedForConfigEdit || lockedForCasesEdit) ? ` title="${escapeHtml(lockedCasesMessage)}"` : '';
+
+    const actionButtons = [];
+    actionButtons.push(`
+        <button class="btn btn-sm btn-primary" onclick="event.stopPropagation(); enterTestRun(${run.id})">
+            <i class="fas fa-arrow-right me-1"></i><span data-i18n="testRun.enterButton">進入</span>
+        </button>
+    `);
+
+    if (perms.canUpdate && moveDropdown) {
+        actionButtons.push(moveDropdown);
+    }
+
+    if (perms.canUpdate) {
+        actionButtons.push(`
+            <button class="btn btn-sm btn-outline-secondary${lockedForConfigEdit ? ' disabled' : ''}" ${lockedForConfigEdit ? 'disabled' : ''}${lockedConfigTitle}
+                    onclick="event.stopPropagation(); editBasicSettings(${run.id})">
+                <i class="fas fa-edit me-1"></i><span data-i18n="testRun.editBasicSettings">編輯基本設定</span>
+            </button>
+        `);
+
+        actionButtons.push(`
+            <button class="btn btn-sm btn-outline-info${(lockedForConfigEdit || lockedForCasesEdit) ? ' disabled' : ''}" ${(lockedForConfigEdit || lockedForCasesEdit) ? 'disabled' : ''}${lockedCasesTitle}
+                    onclick="event.stopPropagation(); editTestCases(${run.id})">
+                <i class="fas fa-list me-1"></i><span data-i18n="testRun.editTestCases">編輯 Test Case</span>
+            </button>
+        `);
+    }
+
+    if (perms.canChangeStatus) {
+        actionButtons.push(`
+            <div class="position-relative" onclick="event.stopPropagation()">
+                <button type="button" class="btn btn-sm btn-outline-warning custom-status-btn"
+                        data-config-id="${run.id}"
+                        onclick="event.stopPropagation(); toggleCustomStatusDropdown(this, ${run.id})">
+                    <i class="fas fa-exchange-alt me-1"></i><span data-i18n="testRun.changeStatus">狀態</span>
+                    <i class="fas fa-chevron-down ms-1"></i>
+                </button>
+            </div>
+        `);
+    }
+
+    if (perms.canUpdate) {
+        actionButtons.push(`
+            <button class="btn btn-sm btn-outline-secondary" onclick="event.stopPropagation(); removeTestRunFromSet(${run.id}, '${escapeHtml(run.name)}')">
+                <i class="fas fa-unlink me-1"></i><span data-i18n="testRun.sets.detail.remove">移出 Test Run Set</span>
+            </button>
+        `);
+    }
+
+    if (perms.canDelete) {
+        actionButtons.push(`
+            <button class="btn btn-sm btn-outline-danger" onclick="event.stopPropagation(); deleteTestRun(${run.id}, '${escapeHtml(run.name)}')">
+                <i class="fas fa-trash me-1"></i><span data-i18n="common.delete">刪除</span>
+            </button>
+        `);
+    }
+
+    const actionsHtml = actionButtons.join('');
 
     return `
         <div class="card mb-3">
@@ -2869,37 +2955,20 @@ function buildSetRunDetailRow(run, setData) {
                     <div class="flex-grow-1">
                         <h6 class="mb-1 text-primary text-truncate">${escapeHtml(run.name)}</h6>
                         <div class="d-flex flex-wrap gap-2 align-items-center small text-muted">
-                            <span class="badge ${statusClass}">${statusText}</span>
+                            <span class="status-badge ${statusClass}">${statusText}</span>
                             <span><i class="fas fa-list-ul me-1"></i>${metricsText}</span>
                             ${createdText ? `<span><i class=\"fas fa-clock me-1\"></i>${createdText}</span>` : ''}
                         </div>
                     </div>
-                    <div class="d-flex flex-column align-items-lg-end gap-2">
-                        ${moveSelect}
-                        <div class="btn-group" role="group">
-                            <button class="btn btn-sm btn-outline-primary" onclick="enterTestRun(${run.id})">
-                                <i class="fas fa-arrow-right"></i>
-                            </button>
-                            <button class="btn btn-sm btn-outline-secondary" onclick="removeTestRunFromSet(${run.id}, '${escapeHtml(run.name)}')">
-                                <i class="fas fa-unlink"></i>
-                            </button>
-                            <button class="btn btn-sm btn-outline-danger" onclick="deleteTestRun(${run.id}, '${escapeHtml(run.name)}')">
-                                <i class="fas fa-trash"></i>
-                            </button>
+                    <div class="d-flex flex-column align-items-lg-end gap-2 w-100 w-lg-auto">
+                        <div class="d-flex flex-wrap gap-2 justify-content-lg-end">
+                            ${actionsHtml}
                         </div>
                     </div>
                 </div>
             </div>
         </div>
     `;
-}
-
-function handleMoveSelectChange(selectEl, configId) {
-    const value = selectEl.value;
-    if (!value) return;
-    moveTestRunToSet(configId, parseInt(value, 10)).finally(() => {
-        selectEl.value = '';
-    });
 }
 
 function openAddExistingToSetModal(setData) {
