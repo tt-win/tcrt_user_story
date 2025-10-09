@@ -910,6 +910,7 @@ async def batch_update_test_results(
     config_id: int,
     updates: List[dict],
     db: Session = Depends(get_sync_db),
+    current_user: User = Depends(get_current_user),
 ):
     """批次更新測試執行結果"""
     lark_client, team, config = get_lark_client_for_test_run(team_id, config_id, db)
@@ -917,6 +918,7 @@ async def batch_update_test_results(
     try:
         success_count = 0
         error_messages = []
+        success_items = []  # 記錄成功更新的項目，用於 audit log
 
         for update_data in updates:
             record_id = update_data.get("record_id")
@@ -935,10 +937,39 @@ async def batch_update_test_results(
 
                 if success:
                     success_count += 1
+                    # 記錄成功更新的項目
+                    success_items.append({
+                        "record_id": record_id,
+                        "test_result": test_result,
+                    })
                 else:
                     error_messages.append(f"記錄 {record_id} 更新失敗")
             except Exception as e:
                 error_messages.append(f"記錄 {record_id}: {str(e)}")
+
+        # 記錄批次更新測試結果 audit log
+        if success_count > 0:
+            record_ids = [item["record_id"] for item in success_items]
+            action_brief = f"{current_user.username} batch updated test results for {success_count} Test Runs"
+            if record_ids[:3]:
+                action_brief += f": {', '.join(record_ids[:3])}"
+                if len(record_ids) > 3:
+                    action_brief += f" and {len(record_ids) - 3} more"
+
+            await log_test_run_action(
+                action_type=ActionType.UPDATE,
+                current_user=current_user,
+                team_id=team_id,
+                resource_id=f"batch_{success_count}_items",
+                action_brief=action_brief,
+                details={
+                    "operation": "batch_update_results",
+                    "config_id": config_id,
+                    "success_count": success_count,
+                    "total_count": len(updates),
+                    "updated_items": success_items,
+                },
+            )
 
         return {
             "success": len(error_messages) == 0,

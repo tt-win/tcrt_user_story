@@ -1234,7 +1234,7 @@
             "userList": "用户列表",
             "userDetail": "用户详情",
             "selectUser": "请选择用户",
-            "selectUserHint": "从列表选择用户或点击"新增用户"建立账号",
+            "selectUserHint": "从列表选择用户或点击\"新增用户\"建立账号",
             "fullName": "姓名",
             "role": "角色",
             "active": "启用",

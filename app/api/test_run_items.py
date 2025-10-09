@@ -29,9 +29,41 @@ from app.models.database_models import (
 from app.models.lark_types import Priority, TestResultStatus
 from pydantic import BaseModel, Field
 from app.auth.dependencies import get_current_user
+from app.audit import audit_service, ActionType, ResourceType, AuditSeverity
 
 
 router = APIRouter(prefix="/teams/{team_id}/test-run-configs/{config_id}/items", tags=["test-run-items"])
+
+
+async def log_test_run_item_action(
+    action_type: ActionType,
+    current_user: User,
+    team_id: int,
+    resource_id: str,
+    action_brief: str,
+    details: Optional[Dict[str, Any]] = None,
+) -> None:
+    try:
+        role_value = (
+            current_user.role.value
+            if hasattr(current_user.role, "value")
+            else str(current_user.role)
+        )
+        await audit_service.log_action(
+            user_id=current_user.id,
+            username=current_user.username,
+            role=role_value,
+            action_type=action_type,
+            resource_type=ResourceType.TEST_RUN,
+            resource_id=resource_id,
+            team_id=team_id,
+            details=details,
+            action_brief=action_brief,
+            severity=AuditSeverity.CRITICAL if action_type == ActionType.DELETE else AuditSeverity.INFO,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("寫入測試執行項目審計記錄失敗: %s", exc, exc_info=True)
+
 
 @router.post("/{item_id}/upload-results")
 async def upload_test_run_results(
@@ -519,13 +551,15 @@ async def batch_create_items(
     team_id: int,
     config_id: int,
     payload: BatchCreateRequest,
-    db: Session = Depends(get_sync_db)
+    db: Session = Depends(get_sync_db),
+    current_user: User = Depends(get_current_user),
 ):
     _verify_team_and_config(team_id, config_id, db)
 
     created = 0
     skipped = 0
     errors: List[str] = []
+    created_items = []  # 記錄建立的項目，用於 audit log
 
     for idx, item in enumerate(payload.items):
         try:
@@ -568,11 +602,41 @@ async def batch_create_items(
             )
             db.add(db_item)
             created += 1
+            # 記錄建立的項目
+            created_items.append({
+                "test_case_number": item.test_case_number,
+                "title": test_case.title if test_case else None,
+            })
         except Exception as e:
             errors.append(f"index {idx}: {e}")
             continue
 
     db.commit()
+
+    # 記錄批次建立 audit log
+    if created > 0:
+        test_case_numbers = [item["test_case_number"] for item in created_items]
+        action_brief = f"{current_user.username} batch created {created} Test Run Items"
+        if test_case_numbers[:3]:
+            action_brief += f": {', '.join(test_case_numbers[:3])}"
+            if len(test_case_numbers) > 3:
+                action_brief += f" and {len(test_case_numbers) - 3} more"
+
+        await log_test_run_item_action(
+            action_type=ActionType.CREATE,
+            current_user=current_user,
+            team_id=team_id,
+            resource_id=f"batch_{created}_items",
+            action_brief=action_brief,
+            details={
+                "operation": "batch_create_items",
+                "config_id": config_id,
+                "created_count": created,
+                "skipped_count": skipped,
+                "total_count": len(payload.items),
+                "created_items": created_items,
+            },
+        )
 
     return BatchCreateResponse(
         success=len(errors) == 0,
@@ -725,6 +789,7 @@ async def batch_update_results(
     _verify_team_and_config(team_id, config_id, db)
     success = 0
     errors: List[str] = []
+    success_items = []  # 記錄成功更新的項目，用於 audit log
     source = payload.change_source or 'batch'
     for upd in payload.updates:
         try:
@@ -796,10 +861,41 @@ async def batch_update_results(
 
             item.updated_at = datetime.utcnow()
             success += 1
+            # 記錄成功更新的項目
+            success_items.append({
+                "item_id": item_id,
+                "test_case_number": item.test_case_number,
+                "test_result": item.test_result,
+            })
         except Exception as e:
             errors.append(f"項目 {upd.get('id')} 更新失敗: {str(e)}")
             continue
     db.commit()
+
+    # 記錄批次更新 audit log
+    if success > 0:
+        test_case_numbers = [item["test_case_number"] for item in success_items]
+        action_brief = f"{current_user.username} batch updated results for {success} Test Run Items"
+        if test_case_numbers[:3]:
+            action_brief += f": {', '.join(test_case_numbers[:3])}"
+            if len(test_case_numbers) > 3:
+                action_brief += f" and {len(test_case_numbers) - 3} more"
+
+        await log_test_run_item_action(
+            action_type=ActionType.UPDATE,
+            current_user=current_user,
+            team_id=team_id,
+            resource_id=f"batch_{success}_items",
+            action_brief=action_brief,
+            details={
+                "operation": "batch_update_results",
+                "config_id": config_id,
+                "success_count": success,
+                "total_count": len(payload.updates),
+                "updated_items": success_items,
+            },
+        )
+
     return {
         "success": len(errors) == 0,
         "processed_count": len(payload.updates),
