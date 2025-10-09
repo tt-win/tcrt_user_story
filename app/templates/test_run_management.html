@@ -3395,7 +3395,7 @@ async function editTestCases(configId) {
     createdItemsInSession = false;
     currentSelectingConfigId = configId;
     // 讀取現有 items，預設勾選
-    const resp = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${configId}/items?limit=1000`);
+    const resp = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${configId}/items?limit=10000`);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const items = await resp.json();
     selectedCaseMap.clear();
@@ -3415,7 +3415,7 @@ async function loadTeamTestCases(search) {
     console.log('Loading test cases for team ID:', currentTeamId);
     const url = new URL(`/api/teams/${currentTeamId}/testcases/`, window.location.origin);
     if (search) url.searchParams.set('search', search);
-    url.searchParams.set('limit', '2000');
+    url.searchParams.set('limit', '10000');
     console.log('API URL:', url.toString());
     
     const resp = await window.AuthClient.fetch(url);

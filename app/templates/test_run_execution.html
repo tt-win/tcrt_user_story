@@ -2885,7 +2885,7 @@ async function loadTestRunItems() {
 // 不顯示載入動畫的版本（用於 Refresh）
 async function loadTestRunItemsWithoutLoading() {
     try {
-        const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/?limit=1000`);
+        const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/items/?limit=10000`);
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         
         testRunItems = await response.json();
