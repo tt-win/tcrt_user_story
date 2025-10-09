@@ -371,16 +371,17 @@ class TestRunConfigSummary(BaseModel):
     test_environment: Optional[str] = Field(None, description="測試環境")
     build_number: Optional[str] = Field(None, description="建置編號")
     test_version: Optional[str] = Field(None, description="測試版本")
-    
+
     # TP 開發單票號 (摘要顯示)
     related_tp_tickets: Optional[List[str]] = Field(None, description="相關 TP 開發單票號")
     tp_tickets_count: int = Field(0, description="TP 票號數量")
-    
+
     status: TestRunStatus = Field(..., description="執行狀態")
     execution_rate: float = Field(..., description="執行率")
     pass_rate: float = Field(..., description="通過率")
     total_test_cases: int = Field(..., description="總案例數")
     executed_cases: int = Field(..., description="已執行案例數")
+    passed_cases: int = Field(..., description="通過案例數")
     start_date: Optional[datetime] = Field(None, description="開始日期")
     end_date: Optional[datetime] = Field(None, description="結束日期")
     created_at: datetime = Field(..., description="建立時間")

@@ -3309,6 +3309,22 @@ async function updateStatistics() {
         document.getElementById('execution-rate').textContent = Math.floor(stats.execution_rate) + '%';
         // 通過率顯示為無條件捨去之整數百分比
         document.getElementById('pass-rate').textContent = Math.floor(stats.pass_rate) + '%';
+
+        // 添加前端診斷日誌來驗證 API 返回的數據
+        console.warn('FRONTEND_PASS_RATE_DEBUG: 接收到的統計數據:', {
+            total_runs: stats.total_runs,
+            executed_runs: stats.executed_runs,
+            passed_runs: stats.passed_runs,
+            failed_runs: stats.failed_runs,
+            execution_rate: stats.execution_rate,
+            pass_rate: stats.pass_rate,
+            total_pass_rate: stats.total_pass_rate
+        });
+        console.warn('FRONTEND_PASS_RATE_DEBUG: 計算驗證:', {
+            expected_pass_rate: stats.executed_runs > 0 ? (stats.passed_runs / stats.executed_runs * 100) : 0,
+            received_pass_rate: stats.pass_rate,
+            is_match: Math.abs((stats.executed_runs > 0 ? (stats.passed_runs / stats.executed_runs * 100) : 0) - stats.pass_rate) < 0.01
+        });
         
         // 同步配置統計
         await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}/sync`);

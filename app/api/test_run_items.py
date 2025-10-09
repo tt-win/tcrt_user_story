@@ -964,9 +964,30 @@ async def get_items_statistics(
     retest = q.filter(TestRunItemDB.test_result == TestResultStatus.RETEST).count()
     na = q.filter(TestRunItemDB.test_result == TestResultStatus.NOT_AVAILABLE).count()
 
+    # 添加詳細的資料狀態診斷日誌
+    logger.warning(f"PASS_RATE_DATA_DEBUG: team_id={team_id}, config_id={config_id}")
+    logger.warning(f"PASS_RATE_DATA_DEBUG: total items: {total}")
+    logger.warning(f"PASS_RATE_DATA_DEBUG: executed items: {executed}")
+    logger.warning(f"PASS_RATE_DATA_DEBUG: passed items: {passed}")
+    logger.warning(f"PASS_RATE_DATA_DEBUG: failed items: {failed}")
+    logger.warning(f"PASS_RATE_DATA_DEBUG: retest items: {retest}")
+    logger.warning(f"PASS_RATE_DATA_DEBUG: not_available items: {na}")
+
+    # 檢查是否有任何項目有 test_result 欄位
+    sample_items = q.limit(5).all()
+    logger.warning(f"PASS_RATE_SAMPLE_DEBUG: sample items count: {len(sample_items)}")
+    for i, item in enumerate(sample_items):
+        logger.warning(f"PASS_RATE_SAMPLE_DEBUG: item {i+1}: test_result={item.test_result}, executed_at={item.executed_at}")
+
     execution_rate = (executed / total * 100) if total > 0 else 0.0
     pass_rate = (passed / executed * 100) if executed > 0 else 0.0
     total_pass_rate = (passed / total * 100) if total > 0 else 0.0
+
+    # 添加診斷日誌來驗證 pass rate 計算問題
+    logger.warning(f"PASS_RATE_DEBUG: team_id={team_id}, config_id={config_id}")
+    logger.warning(f"PASS_RATE_DEBUG: total={total}, executed={executed}, passed={passed}")
+    logger.warning(f"PASS_RATE_DEBUG: pass_rate={pass_rate}, total_pass_rate={total_pass_rate}")
+    logger.warning(f"PASS_RATE_DEBUG: executed > 0: {executed > 0}, passed/executed ratio: {passed/executed if executed > 0 else 'N/A'}")
 
     # 計算 Bug Tickets 統計
     bug_tickets_count = 0
