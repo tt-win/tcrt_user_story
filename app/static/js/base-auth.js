@@ -230,15 +230,24 @@ class BaseAuthManager {
      * 取得角色顯示名稱
      */
     getRoleDisplayName(role) {
-        const roleMap = {
+        const normalizedRole = String(role || '').toLowerCase();
+        const fallbackMap = {
             'super_admin': '超級管理員',
             'admin': '管理員',
             'manager': '管理者',
             'user': '使用者',
-            'viewer': '檢視者',
+            'viewer': '僅檢視',
             'guest': '訪客'
         };
-        return roleMap[role] || role;
+        const fallback = fallbackMap[normalizedRole] || (role || '');
+        const i18nKey = normalizedRole ? `roles.${normalizedRole}` : '';
+        if (i18nKey) {
+            const translated = this.getI18nText(i18nKey, fallback);
+            if (translated) {
+                return translated;
+            }
+        }
+        return fallback;
     }
 
     /**

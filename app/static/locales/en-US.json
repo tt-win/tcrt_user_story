@@ -46,6 +46,7 @@
         "searching": "Searching...",
         "select": "Select",
         "selectAll": "Select All",
+        "undo": "Undo",
         "skipped": "Skipped",
         "startTime": "Start Time",
         "status": "Status",
@@ -91,8 +92,10 @@
     "roles": {
         "super_admin": "Super Admin",
         "admin": "Admin",
+        "manager": "Manager",
         "user": "User",
-        "viewer": "Viewer"
+        "viewer": "Viewer",
+        "guest": "Guest"
     },
     "audit": {
         "viewLogs": "Audit Logs",
@@ -1158,7 +1161,8 @@
                 "noRuns": "No test runs added yet",
                 "noFilterMatches": "No test runs match the current filter",
                 "moveToOther": "Move to another set",
-                "relatedTpTickets": "Related TP Tickets"
+                "relatedTpTickets": "Related TP Tickets",
+                "remove": "Remove from Set"
             },
             "addExisting": {
                 "title": "Add Existing Test Run",
