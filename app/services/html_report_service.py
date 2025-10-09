@@ -103,6 +103,15 @@ class HTMLReportService:
             if case_priority is not None:
                 priority_str = case_priority.value if hasattr(case_priority, 'value') else case_priority
 
+            # 獲取最新的 comment（從歷史記錄中取得）
+            comment = None
+            if getattr(i, 'histories', None):
+                # 找到 change_source 為 'comment' 的最新記錄
+                comment_histories = [h for h in i.histories if getattr(h, 'change_source', None) == 'comment']
+                if comment_histories:
+                    latest_comment = max(comment_histories, key=lambda h: getattr(h, 'changed_at', datetime.min))
+                    comment = getattr(latest_comment, 'change_reason', None)
+            
             test_results.append({
                 "test_case_number": i.test_case_number or "",
                 "title": case_title or "",
@@ -110,6 +119,7 @@ class HTMLReportService:
                 "status": i.test_result.value if getattr(i.test_result, 'value', None) else (i.test_result or "未執行"),
                 "executor": i.assignee_name or "",
                 "execution_time": i.executed_at.strftime('%Y-%m-%d %H:%M') if i.executed_at else "",
+                "comment": comment or ""
             })
 
         # Bug tickets summary（不請 JIRA，直接顯示票號與關聯測試案例）
@@ -347,10 +357,11 @@ class HTMLReportService:
             """
 
         rows = []
-        rows.append("<tr><th style=\"width:160px;\">Test Case Number</th><th>Title</th><th style=\"width:100px;\">Priority</th><th style=\"width:140px;\">Result</th><th style=\"width:160px;\">Executor</th><th style=\"width:160px;\">Executed At</th></tr>")
+        rows.append("<tr><th style=\"width:160px;\">Test Case Number</th><th>Title</th><th style=\"width:100px;\">Priority</th><th style=\"width:140px;\">Result</th><th style=\"width:160px;\">Executor</th><th style=\"width:160px;\">Executed At</th><th style=\"width:200px;\">Comment</th></tr>")
         for r in data.get("test_results", []):
             status_text = r.get('status') or ''
             status_class = self._status_class(status_text)
+            comment = r.get('comment') or ''
             rows.append(
                 "<tr>"
                 f"<td>{esc(r.get('test_case_number'))}</td>"
@@ -359,6 +370,7 @@ class HTMLReportService:
                 f"<td><span class=\"pill {status_class}\">{esc(status_text)}</span></td>"
                 f"<td>{esc(r.get('executor'))}</td>"
                 f"<td>{esc(r.get('execution_time'))}</td>"
+                f"<td style=\"white-space: pre-wrap;\">{esc(comment)}</td>"
                 "</tr>"
             )
         details_html = f"""
