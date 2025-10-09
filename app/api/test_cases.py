@@ -179,7 +179,7 @@ async def get_test_cases(
     sort_order: Optional[str] = Query("desc", description="排序順序 (asc/desc)"),
     # 分頁參數
     skip: int = Query(0, ge=0, description="跳過筆數"),
-    limit: int = Query(1000, ge=1, le=100000, description="回傳筆數"),
+    limit: int = Query(10000, ge=1, le=100000, description="回傳筆數"),
     with_meta: bool = Query(False, description="是否回傳分頁中繼資料"),
     load_all: bool = Query(False, description="忽略分頁，一次載入全部資料並回傳"),
 ):
