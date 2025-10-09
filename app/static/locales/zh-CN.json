@@ -1120,7 +1120,7 @@
             "heading": "Test Run Set",
             "subtitle": "集中管理多个 Test Run 组合",
             "create": "新增 Test Run Set",
-            "empty": "尚未建立任何 Test Run Set，点击下方卡片开始建立",
+            "empty": "",
             "form": {
                 "name": "Test Run Set 名称",
                 "nameHint": "请输入易辨识的组合名称，建议 120 字以内",
@@ -1214,12 +1214,27 @@
     },
     "tcSync": {
         "tabTitle": "测试用例",
+        "title": "测试用例同步",
+        "selectTeam": "选择团队",
+        "pleaseSelectTeam": "请先选择团队",
+        "modes": {
+            "init": "导入（Lark → 系统）",
+            "diff": "Diff（双向比对）",
+            "full": "上传（系统 → Lark）"
+        },
+        "actions": {
+            "running": "执行中..."
+        },
+        "result": {
+            "success": "同步完成",
+            "failure": "同步失败"
+        },
         "personnel": {
             "tabTitle": "人员管理",
             "userList": "用户列表",
             "userDetail": "用户详情",
             "selectUser": "请选择用户",
-            "selectUserHint": "从列表选择用户或点击“新增用户”建立账号",
+            "selectUserHint": "从列表选择用户或点击"新增用户"建立账号",
             "fullName": "姓名",
             "role": "角色",
             "active": "启用",

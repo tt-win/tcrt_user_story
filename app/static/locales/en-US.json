@@ -1120,7 +1120,7 @@
             "heading": "Test Run Sets",
             "subtitle": "Group multiple test runs and manage them together",
             "create": "Create Test Run Set",
-            "empty": "No Test Run Set yet. Click the card below to get started.",
+            "empty": "",
             "form": {
                 "name": "Test Run Set Name",
                 "nameHint": "Provide a clear group name (max 120 characters)",
@@ -1214,6 +1214,21 @@
     },
     "tcSync": {
         "tabTitle": "Test Cases",
+        "title": "Test Case Sync",
+        "selectTeam": "Select Team",
+        "pleaseSelectTeam": "Please select a team first",
+        "modes": {
+            "init": "Import (Lark → System)",
+            "diff": "Diff (Two-way Compare)",
+            "full": "Upload (System → Lark)"
+        },
+        "actions": {
+            "running": "Running..."
+        },
+        "result": {
+            "success": "Sync completed",
+            "failure": "Sync failed"
+        },
         "personnel": {
             "tabTitle": "Personnel",
             "userList": "User List",

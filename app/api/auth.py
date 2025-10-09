@@ -696,3 +696,29 @@ async def validate_token(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="無效的 token"
         )
+
+
+@router.get("/public-key")
+async def get_public_key():
+    """
+    獲取 RSA 公鑰
+
+    前端使用此公鑰加密密碼，確保傳輸安全
+    """
+    try:
+        from app.auth.password_encryption import password_encryption_service
+
+        public_key_base64 = password_encryption_service.get_public_key_base64()
+
+        return {
+            "public_key": public_key_base64,
+            "algorithm": "RSA-OAEP",
+            "hash": "SHA-256"
+        }
+
+    except Exception as e:
+        logger.error(f"獲取公鑰失敗: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="無法獲取公鑰"
+        )

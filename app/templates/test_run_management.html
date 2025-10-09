@@ -912,10 +912,6 @@
                 </div>
             </div>
             <div class="row" id="test-run-sets-container"></div>
-            <div id="no-test-run-sets" class="text-center text-muted py-4" style="display: none;">
-                <i class="fas fa-layer-group fa-2x mb-3"></i>
-                <div data-i18n="testRun.sets.empty">尚未建立任何 Test Run Set，點擊下方卡片開始建立</div>
-            </div>
         </div>
 
         <div class="test-run-section-divider"></div>
@@ -1681,7 +1677,7 @@ async function loadTestRunConfigs() {
 
         console.log('Loading Test Run overview, Team ID:', currentTeamId);
         showLoading();
-        const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-sets/overview`);
+        const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-sets/overview?include_archived=true`);
         console.log('Overview API 回應狀態:', response.status);
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
@@ -1753,7 +1749,21 @@ function renderTestRunSetCards(filterStatus) {
     const perms = window._testRunPermissions || testRunPermissions || {};
     const hasSets = Array.isArray(testRunSets) && testRunSets.length > 0;
 
-    const cards = hasSets ? testRunSets.map(set => createTestRunSetCard(set, filterStatus)) : [];
+    // 根據狀態篩選 Test Run Set
+    let filteredSets = testRunSets;
+    if (hasSets && filterStatus !== 'all') {
+        filteredSets = testRunSets.filter(set => {
+            const setStatus = set.status || 'active';
+            // archived 篩選：只顯示 archived 的 set
+            if (filterStatus === 'archived') {
+                return setStatus === 'archived';
+            }
+            // 其他篩選 (draft, active, completed)：只顯示非 archived 的 set
+            return setStatus !== 'archived';
+        });
+    }
+
+    const cards = filteredSets.length > 0 ? filteredSets.map(set => createTestRunSetCard(set, filterStatus)) : [];
 
     if (perms.canCreate) {
         cards.push(getAddTestRunSetCardHtml());
@@ -2372,6 +2382,13 @@ function openConfigFormModal(configId = null, options = {}) {
         return;
     }
 
+    // 如果 Test Run Set Detail Modal 正在顯示，先隱藏它
+    const setDetailModalElement = document.getElementById('testRunSetDetailModal');
+    const wasSetDetailModalOpen = setDetailModalElement && setDetailModalElement.classList.contains('show');
+    if (wasSetDetailModalOpen && testRunSetDetailModalInstance) {
+        testRunSetDetailModalInstance.hide();
+    }
+
     const modalElement = document.getElementById('configFormModal');
     if (!configFormModalInstance) {
         configFormModalInstance = new bootstrap.Modal(modalElement);
@@ -2431,8 +2448,13 @@ function openConfigFormModal(configId = null, options = {}) {
         clearNotificationSettings();
         pendingSetIdForNewConfig = null;
         document.getElementById('configSetId').value = '';
+
+        // 如果之前 Test Run Set Detail Modal 是打開的，重新顯示它
+        if (wasSetDetailModalOpen && testRunSetDetailModalInstance) {
+            testRunSetDetailModalInstance.show();
+        }
     }, { once: true }); // 只監聽一次，避免重複綁定
-    
+
     if (window.i18n) window.i18n.retranslate(modalElement);
     configFormModalInstance.show();
 }
@@ -2553,18 +2575,43 @@ function openTestRunSetFormModal(setId = null) {
     const modalElement = document.getElementById('testRunSetFormModal');
     if (!testRunSetFormModalInstance) {
         testRunSetFormModalInstance = new bootstrap.Modal(modalElement);
-        modalElement.addEventListener('hidden.bs.modal', () => {
+        modalElement.addEventListener('hidden.bs.modal', async () => {
             const form = document.getElementById('testRunSetForm');
             if (form) form.reset();
             const idInput = document.getElementById('testRunSetId');
             if (idInput) idInput.value = '';
             clearAllSetTpTickets();
             clearSetTpInputError();
-            if (reopenSetDetailAfterForm && currentSetContext?.id) {
+
+            // 檢查是否為儲存成功後關閉
+            if (window._setFormSavedSuccessfully) {
+                const savedSetId = window._savedSetId;
+                const shouldReopen = window._shouldReopenDetailAfterSave;
+                const newSetId = window._newSetId;
+
+                // 清除標記
+                window._setFormSavedSuccessfully = false;
+                window._savedSetId = null;
+                window._shouldReopenDetailAfterSave = false;
+                window._newSetId = null;
                 reopenSetDetailAfterForm = false;
-                openTestRunSetDetail(currentSetContext.id);
+
+                // 根據情況重新打開 Detail Modal
+                if (newSetId) {
+                    // 新建：打開新建的 Set Detail
+                    await openTestRunSetDetail(newSetId);
+                } else if (savedSetId && shouldReopen) {
+                    // 編輯：重新打開原本的 Set Detail
+                    await openTestRunSetDetail(savedSetId);
+                }
             } else {
-                reopenSetDetailAfterForm = false;
+                // 取消或其他情況：檢查是否需要重新打開
+                if (reopenSetDetailAfterForm && currentSetContext?.id) {
+                    reopenSetDetailAfterForm = false;
+                    openTestRunSetDetail(currentSetContext.id);
+                } else {
+                    reopenSetDetailAfterForm = false;
+                }
             }
         });
     }
@@ -2665,14 +2712,15 @@ async function handleSaveTestRunSet() {
             : (window.i18n?.t('testRun.sets.form.createSuccess') || 'Test Run Set 建立成功');
         AppUtils.showSuccess(successMsg);
 
+        // 標記為成功儲存，之後 hidden 事件中會手動處理重新打開
+        const shouldReopenDetail = reopenSetDetailAfterForm && setId;
+        window._setFormSavedSuccessfully = true;
+        window._savedSetId = setId;
+        window._shouldReopenDetailAfterSave = shouldReopenDetail;
+        window._newSetId = !setId ? data?.id : null;
+
         testRunSetFormModalInstance?.hide();
         await loadTestRunConfigs();
-
-        if (!setId && data?.id) {
-            await openTestRunSetDetail(data.id);
-        } else if (setId) {
-            await refreshCurrentSetDetail();
-        }
     } catch (error) {
         console.error('Save Test Run Set failed:', error);
         AppUtils.showError(error.message);

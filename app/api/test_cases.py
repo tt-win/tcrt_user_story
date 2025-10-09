@@ -1801,7 +1801,10 @@ async def get_test_case_by_number(
 # 以下批次建立/複製等仍為對 Lark 的操作，若後續要完全改本地，請再確認規格。
 @router.post("/bulk_create", response_model=BulkCreateResponse)
 async def bulk_create_test_cases(
-    team_id: int, request: BulkCreateRequest, db: Session = Depends(get_sync_db)
+    team_id: int,
+    request: BulkCreateRequest,
+    db: Session = Depends(get_sync_db),
+    current_user: User = Depends(get_current_user),
 ):
     """批次建立測試案例（只寫本地 DB）"""
     try:
@@ -1828,6 +1831,7 @@ async def bulk_create_test_cases(
             )
 
         created_count = 0
+        created_items = []  # 記錄建立的項目，用於 audit log
         priority_map = {"high": "High", "medium": "Medium", "low": "Low"}
         for it in request.items:
             title = (
@@ -1857,7 +1861,35 @@ async def bulk_create_test_cases(
 
             db.add(item)
             created_count += 1
+            created_items.append({
+                "test_case_number": it.test_case_number,
+                "title": title,
+                "priority": priority_value,
+            })
         db.commit()
+
+        # 記錄批次建立 audit log
+        if created_count > 0:
+            test_case_numbers = [item["test_case_number"] for item in created_items]
+            action_brief = f"{current_user.username} bulk created {created_count} Test Cases"
+            if test_case_numbers[:3]:
+                action_brief += f": {', '.join(test_case_numbers[:3])}"
+                if len(test_case_numbers) > 3:
+                    action_brief += f" and {len(test_case_numbers) - 3} more"
+
+            await log_test_case_action(
+                action_type=ActionType.CREATE,
+                current_user=current_user,
+                team_id=team_id,
+                resource_id=f"bulk_{created_count}_items",
+                action_brief=action_brief,
+                details={
+                    "operation": "bulk_create",
+                    "created_count": created_count,
+                    "created_items": created_items,
+                },
+            )
+
         return BulkCreateResponse(
             success=True, created_count=created_count, duplicates=[], errors=[]
         )
@@ -1886,7 +1918,10 @@ class BulkCloneResponse(BaseModel):
 
 @router.post("/bulk_clone", response_model=BulkCloneResponse)
 async def bulk_clone_test_cases(
-    team_id: int, request: BulkCloneRequest, db: Session = Depends(get_sync_db)
+    team_id: int,
+    request: BulkCloneRequest,
+    db: Session = Depends(get_sync_db),
+    current_user: User = Depends(get_current_user),
 ):
     """批次複製測試案例（只寫本地 DB）
     - 從來源記錄（以 lark_record_id 尋找）複製 Precondition、Steps、Expected Result、Priority
@@ -1927,6 +1962,7 @@ async def bulk_clone_test_cases(
 
         created = 0
         errors: List[str] = []
+        created_items = []  # 記錄複製的項目，用於 audit log
 
         for it in request.items:
             src = src_map.get(it.source_record_id)
@@ -1955,6 +1991,12 @@ async def bulk_clone_test_cases(
                 )
                 db.add(item)
                 created += 1
+                created_items.append({
+                    "test_case_number": it.test_case_number,
+                    "title": new_title,
+                    "source_record_id": it.source_record_id,
+                    "source_test_case_number": src.test_case_number,
+                })
             except Exception as e:
                 errors.append(f"來源 {it.source_record_id} 複製失敗: {str(e)}")
 
@@ -1965,6 +2007,29 @@ async def bulk_clone_test_cases(
             )
 
         db.commit()
+
+        # 記錄批次複製 audit log
+        if created > 0:
+            test_case_numbers = [item["test_case_number"] for item in created_items]
+            action_brief = f"{current_user.username} bulk cloned {created} Test Cases"
+            if test_case_numbers[:3]:
+                action_brief += f": {', '.join(test_case_numbers[:3])}"
+                if len(test_case_numbers) > 3:
+                    action_brief += f" and {len(test_case_numbers) - 3} more"
+
+            await log_test_case_action(
+                action_type=ActionType.CREATE,
+                current_user=current_user,
+                team_id=team_id,
+                resource_id=f"bulk_clone_{created}_items",
+                action_brief=action_brief,
+                details={
+                    "operation": "bulk_clone",
+                    "created_count": created,
+                    "cloned_items": created_items,
+                },
+            )
+
         return BulkCloneResponse(
             success=True, created_count=created, duplicates=[], errors=errors
         )
@@ -1977,7 +2042,10 @@ async def bulk_clone_test_cases(
 
 @router.post("/batch", response_model=TestCaseBatchResponse)
 async def batch_operation_test_cases(
-    team_id: int, operation: TestCaseBatchOperation, db: Session = Depends(get_sync_db)
+    team_id: int,
+    operation: TestCaseBatchOperation,
+    db: Session = Depends(get_sync_db),
+    current_user: User = Depends(get_current_user),
 ):
     """批次操作本地測試案例（不呼叫 Lark）。
     支援：delete、update_priority。update_tcg 暫不支援（需另定規格）。
@@ -2025,6 +2093,7 @@ async def batch_operation_test_cases(
     processed = 0
     success_count = 0
     errors: list[str] = []
+    success_items = []  # 記錄成功操作的項目，用於 audit log
 
     try:
         if operation.operation == "delete":
@@ -2034,6 +2103,12 @@ async def batch_operation_test_cases(
                 if not item:
                     errors.append(f"找不到測試案例 {rid}")
                     continue
+                # 記錄刪除的項目資訊（在刪除前）
+                item_info = {
+                    "id": item.id,
+                    "test_case_number": item.test_case_number,
+                    "title": item.title,
+                }
                 # 刪檔（非致命）
                 try:
                     if item.attachments_json:
@@ -2065,7 +2140,31 @@ async def batch_operation_test_cases(
                     pass
                 db.delete(item)
                 success_count += 1
+                success_items.append(item_info)
             db.commit()
+
+            # 記錄批次刪除 audit log
+            if success_count > 0:
+                test_case_numbers = [item["test_case_number"] for item in success_items if item.get("test_case_number")]
+                action_brief = f"{current_user.username} batch deleted {success_count} Test Cases"
+                if test_case_numbers[:3]:  # 顯示前3個
+                    action_brief += f": {', '.join(test_case_numbers[:3])}"
+                    if len(test_case_numbers) > 3:
+                        action_brief += f" and {len(test_case_numbers) - 3} more"
+
+                await log_test_case_action(
+                    action_type=ActionType.DELETE,
+                    current_user=current_user,
+                    team_id=team_id,
+                    resource_id=f"batch_{success_count}_items",
+                    action_brief=action_brief,
+                    details={
+                        "operation": "batch_delete",
+                        "success_count": success_count,
+                        "total_count": len(operation.record_ids),
+                        "deleted_items": success_items,
+                    },
+                )
 
         elif operation.operation == "update_priority":
             pr = (
@@ -2084,13 +2183,45 @@ async def batch_operation_test_cases(
                     errors.append(f"找不到測試案例 {rid}")
                     continue
                 try:
+                    old_priority = item.priority
                     item.priority = pr
                     item.updated_at = datetime.utcnow()
                     item.sync_status = SyncStatus.PENDING
                     success_count += 1
+                    success_items.append({
+                        "id": item.id,
+                        "test_case_number": item.test_case_number,
+                        "title": item.title,
+                        "old_priority": old_priority,
+                        "new_priority": pr,
+                    })
                 except Exception as e:
                     errors.append(f"{rid}: {e}")
             db.commit()
+
+            # 記錄批次更新優先級 audit log
+            if success_count > 0:
+                test_case_numbers = [item["test_case_number"] for item in success_items if item.get("test_case_number")]
+                action_brief = f"{current_user.username} batch updated priority to {pr} for {success_count} Test Cases"
+                if test_case_numbers[:3]:
+                    action_brief += f": {', '.join(test_case_numbers[:3])}"
+                    if len(test_case_numbers) > 3:
+                        action_brief += f" and {len(test_case_numbers) - 3} more"
+
+                await log_test_case_action(
+                    action_type=ActionType.UPDATE,
+                    current_user=current_user,
+                    team_id=team_id,
+                    resource_id=f"batch_{success_count}_items",
+                    action_brief=action_brief,
+                    details={
+                        "operation": "batch_update_priority",
+                        "new_priority": pr,
+                        "success_count": success_count,
+                        "total_count": len(operation.record_ids),
+                        "updated_items": success_items,
+                    },
+                )
 
         elif operation.operation == "update_tcg":
             # 批次更新 TCG：在 DB 的 tcg_json 存 Lark 相容格式（LarkRecord 物件陣列），
@@ -2181,17 +2312,51 @@ async def batch_operation_test_cases(
                 # 寫入 tcg_json
                 try:
                     items = build_tcg_items(rid_pairs)
-                    item.tcg_json = (
+                    new_tcg_json = (
                         json.dumps(items, ensure_ascii=False)
                         if items
                         else json.dumps([], ensure_ascii=False)
                     )
+                    item.tcg_json = new_tcg_json
                     item.updated_at = datetime.utcnow()
                     item.sync_status = SyncStatus.PENDING
                     success_count += 1
+                    # 記錄更新的項目
+                    tcg_numbers = [pair[1] for pair in rid_pairs if pair[1]]
+                    success_items.append({
+                        "id": item.id,
+                        "test_case_number": item.test_case_number,
+                        "title": item.title,
+                        "tcg_numbers": tcg_numbers,
+                    })
                 except Exception as e:
                     errors.append(f"{rid}: {e}")
             db.commit()
+
+            # 記錄批次更新 TCG audit log
+            if success_count > 0:
+                test_case_numbers = [item["test_case_number"] for item in success_items if item.get("test_case_number")]
+                tcg_display = ", ".join([pair[1] for pair in rid_pairs if pair[1]][:3])
+                action_brief = f"{current_user.username} batch updated TCG for {success_count} Test Cases"
+                if tcg_display:
+                    action_brief += f" to TCG: {tcg_display}"
+                if len(rid_pairs) > 3:
+                    action_brief += f" and {len(rid_pairs) - 3} more"
+
+                await log_test_case_action(
+                    action_type=ActionType.UPDATE,
+                    current_user=current_user,
+                    team_id=team_id,
+                    resource_id=f"batch_{success_count}_items",
+                    action_brief=action_brief,
+                    details={
+                        "operation": "batch_update_tcg",
+                        "tcg_pairs": rid_pairs,
+                        "success_count": success_count,
+                        "total_count": len(operation.record_ids),
+                        "updated_items": success_items,
+                    },
+                )
         else:
             raise HTTPException(
                 status_code=400, detail=f"不支援的批次操作: {operation.operation}"
