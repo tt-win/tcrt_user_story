@@ -262,6 +262,7 @@ def build_config_summary(config_db: TestRunConfigDB) -> TestRunConfigSummary:
         pass_rate=config.get_pass_rate(),
         total_test_cases=config.total_test_cases,
         executed_cases=config.executed_cases,
+        passed_cases=config.passed_cases,
         start_date=config.start_date,
         end_date=config.end_date,
         created_at=config.created_at
@@ -898,6 +899,8 @@ async def search_configs_by_tp_tickets(
             summary = TestRunConfigSummary(
                 id=config.id,
                 name=config.name,
+                set_id=config.set_id,
+                set_name=config.set_name,
                 test_environment=config.test_environment,
                 build_number=config.build_number,
                 test_version=config.test_version,
@@ -908,6 +911,7 @@ async def search_configs_by_tp_tickets(
                 pass_rate=config.get_pass_rate(),
                 total_test_cases=config.total_test_cases,
                 executed_cases=config.executed_cases,
+                passed_cases=config.passed_cases,
                 start_date=config.start_date,
                 end_date=config.end_date,
                 created_at=config.created_at
