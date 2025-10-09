@@ -193,6 +193,13 @@
     0%, 50% { opacity: 1; }
     51%, 100% { opacity: 0.3; }
 }
+
+#configDetailModal .modal-dialog,
+#testRunSetDetailModal .modal-dialog,
+#caseSelectModal .modal-dialog {
+    max-width: 1200px;
+    width: 90%;
+}
 /* 自訂狀態下拉選單 - 使用 fixed positioning 解決層級問題 */
 .custom-status-dropdown {
     position: fixed !important;
@@ -1385,6 +1392,8 @@ let currentSetTpTickets = [];
 let setTpInputInitialized = false;
 let reopenSetDetailAfterForm = false;
 let suppressSetDetailReopen = false;
+let reopenSetDetailAfterCaseModal = false;
+let preserveSetContextOnHide = false;
 
 async function applyTestRunManagementPermissions() {
     const defaults = {
@@ -1979,9 +1988,10 @@ function createConfigCard(config) {
     
     const buildLine = config.build_number ? `<div class=\"stats-item\"><i class=\"fas fa-code-branch stats-icon\"></i><small class=\"text-muted\"><span data-i18n=\"testRun.buildNumber\">建置版本</span>: ${escapeHtml(config.build_number)}</small></div>` : '';
     
-    const actions = [];
+    const primaryActions = [];
+    const secondaryActions = [];
 
-    actions.push(`
+    primaryActions.push(`
                         <button class="btn btn-primary btn-sm flex-grow-1" onclick="event.stopPropagation(); enterTestRun(${config.id})">
                             <i class="fas fa-arrow-right me-1"></i><span data-i18n="testRun.enterButton">進入</span>
                         </button>
@@ -1997,14 +2007,14 @@ function createConfigCard(config) {
         : '';
 
     if (permissions.canUpdate) {
-        actions.push(`
+        primaryActions.push(`
                         <button class="btn btn-outline-secondary btn-sm${lockedForConfigEdit ? ' disabled' : ''}" 
                                 ${lockedForConfigEdit ? 'disabled' : ''}${lockedConfigTitle}
                                 onclick="event.stopPropagation(); editBasicSettings(${config.id})">
                             <i class="fas fa-edit me-1"></i><span data-i18n="testRun.editBasicSettings">編輯基本設定</span>
                         </button>
         `);
-        actions.push(`
+        primaryActions.push(`
                         <button class="btn btn-outline-info btn-sm${(lockedForConfigEdit || lockedForCasesEdit) ? ' disabled' : ''}" 
                                 ${(lockedForConfigEdit || lockedForCasesEdit) ? 'disabled' : ''}${lockedCasesTitle}
                                 onclick="event.stopPropagation(); editTestCases(${config.id})">
@@ -2014,7 +2024,7 @@ function createConfigCard(config) {
     }
 
     if (permissions.canChangeStatus) {
-        actions.push(`
+        secondaryActions.push(`
                         <div class="position-relative" onclick="event.stopPropagation()">
                             <button type="button" class="btn btn-outline-warning btn-sm custom-status-btn" 
                                     data-config-id="${config.id}" 
@@ -2027,14 +2037,18 @@ function createConfigCard(config) {
     }
 
     if (permissions.canDelete) {
-        actions.push(`
+        secondaryActions.push(`
                         <button class="btn btn-outline-danger btn-sm" onclick="event.stopPropagation(); deleteTestRun(${config.id}, '${escapeHtml(config.name)}')">
                             <i class="fas fa-trash me-1"></i><span data-i18n="common.delete">刪除</span>
                         </button>
         `);
     }
 
-    const actionsHtml = actions.join('');
+    const actionsHtml = (() => {
+        const merged = [...primaryActions, ...secondaryActions];
+        if (!merged.length) return '';
+        return `<div class="d-flex gap-2 flex-wrap w-100 justify-content-lg-end">${merged.join('')}</div>`;
+    })();
 
     return `
         <div class="col-md-6 col-lg-4 mb-4">
@@ -2083,9 +2097,7 @@ function createConfigCard(config) {
                             <small class="text-muted">${(window.i18n && window.i18n.isReady()) ? window.i18n.t('testRun.createdLabel', {date: createdDate}) : `建立: ${createdDate}`}</small>
                         </div>
                     </div>
-                    <div class="d-flex gap-2 mt-auto pt-2">
-                        ${actionsHtml}
-                    </div>
+                    ${actionsHtml ? `<div class="mt-auto pt-2">${actionsHtml}</div>` : ''}
                 </div>
             </div>
         </div>
@@ -2387,6 +2399,7 @@ function openConfigFormModal(configId = null, options = {}) {
     const setDetailModalElement = document.getElementById('testRunSetDetailModal');
     const wasSetDetailModalOpen = setDetailModalElement && setDetailModalElement.classList.contains('show');
     if (wasSetDetailModalOpen && testRunSetDetailModalInstance) {
+        preserveSetContextOnHide = true;
         testRunSetDetailModalInstance.hide();
     }
     suppressSetDetailReopen = false;
@@ -2748,7 +2761,10 @@ async function openTestRunSetDetail(setId) {
         if (!testRunSetDetailModalInstance) {
             testRunSetDetailModalInstance = new bootstrap.Modal(modalElement);
             modalElement.addEventListener('hidden.bs.modal', () => {
-                currentSetContext = null;
+                if (!preserveSetContextOnHide) {
+                    currentSetContext = null;
+                }
+                preserveSetContextOnHide = false;
             });
         }
 
@@ -2890,26 +2906,24 @@ function buildSetRunDetailRow(run, setData) {
     const lockedConfigTitle = lockedForConfigEdit ? ` title="${escapeHtml(lockedConfigMessage)}"` : '';
     const lockedCasesTitle = (lockedForConfigEdit || lockedForCasesEdit) ? ` title="${escapeHtml(lockedCasesMessage)}"` : '';
 
-    const actionButtons = [];
-    actionButtons.push(`
+    const primaryActionButtons = [];
+    const secondaryActionButtons = [];
+
+    primaryActionButtons.push(`
         <button class="btn btn-sm btn-primary" onclick="event.stopPropagation(); enterTestRun(${run.id})">
             <i class="fas fa-arrow-right me-1"></i><span data-i18n="testRun.enterButton">進入</span>
         </button>
     `);
 
-    if (perms.canUpdate && moveDropdown) {
-        actionButtons.push(moveDropdown);
-    }
-
     if (perms.canUpdate) {
-        actionButtons.push(`
+        primaryActionButtons.push(`
             <button class="btn btn-sm btn-outline-secondary${lockedForConfigEdit ? ' disabled' : ''}" ${lockedForConfigEdit ? 'disabled' : ''}${lockedConfigTitle}
                     onclick="event.stopPropagation(); editBasicSettings(${run.id})">
                 <i class="fas fa-edit me-1"></i><span data-i18n="testRun.editBasicSettings">編輯基本設定</span>
             </button>
         `);
 
-        actionButtons.push(`
+        primaryActionButtons.push(`
             <button class="btn btn-sm btn-outline-info${(lockedForConfigEdit || lockedForCasesEdit) ? ' disabled' : ''}" ${(lockedForConfigEdit || lockedForCasesEdit) ? 'disabled' : ''}${lockedCasesTitle}
                     onclick="event.stopPropagation(); editTestCases(${run.id})">
                 <i class="fas fa-list me-1"></i><span data-i18n="testRun.editTestCases">編輯 Test Case</span>
@@ -2918,7 +2932,7 @@ function buildSetRunDetailRow(run, setData) {
     }
 
     if (perms.canChangeStatus) {
-        actionButtons.push(`
+        secondaryActionButtons.push(`
             <div class="position-relative" onclick="event.stopPropagation()">
                 <button type="button" class="btn btn-sm btn-outline-warning custom-status-btn"
                         data-config-id="${run.id}"
@@ -2931,7 +2945,7 @@ function buildSetRunDetailRow(run, setData) {
     }
 
     if (perms.canUpdate) {
-        actionButtons.push(`
+        secondaryActionButtons.push(`
             <button class="btn btn-sm btn-outline-secondary" onclick="event.stopPropagation(); removeTestRunFromSet(${run.id}, '${escapeHtml(run.name)}')">
                 <i class="fas fa-unlink me-1"></i><span data-i18n="testRun.sets.detail.remove">移出 Test Run Set</span>
             </button>
@@ -2939,14 +2953,22 @@ function buildSetRunDetailRow(run, setData) {
     }
 
     if (perms.canDelete) {
-        actionButtons.push(`
+        secondaryActionButtons.push(`
             <button class="btn btn-sm btn-outline-danger" onclick="event.stopPropagation(); deleteTestRun(${run.id}, '${escapeHtml(run.name)}')">
                 <i class="fas fa-trash me-1"></i><span data-i18n="common.delete">刪除</span>
             </button>
         `);
     }
 
-    const actionsHtml = actionButtons.join('');
+    if (moveDropdown) {
+        secondaryActionButtons.unshift(moveDropdown);
+    }
+
+    const actionsHtml = (() => {
+        const merged = [...primaryActionButtons, ...secondaryActionButtons];
+        if (!merged.length) return '';
+        return `<div class="d-flex gap-2 flex-wrap justify-content-lg-end w-100">${merged.join('')}</div>`;
+    })();
 
     return `
         <div class="card mb-3">
@@ -2961,9 +2983,7 @@ function buildSetRunDetailRow(run, setData) {
                         </div>
                     </div>
                     <div class="d-flex flex-column align-items-lg-end gap-2 w-100 w-lg-auto">
-                        <div class="d-flex flex-wrap gap-2 justify-content-lg-end">
-                            ${actionsHtml}
-                        </div>
+                        ${actionsHtml || ''}
                     </div>
                 </div>
             </div>
@@ -3387,6 +3407,15 @@ function openCaseSelectModal(configId) {
       await createItemsFromSelection();
     }
   });
+  const detailModalEl = document.getElementById('testRunSetDetailModal');
+  const detailWasOpen = detailModalEl && detailModalEl.classList.contains('show');
+  if (detailWasOpen && testRunSetDetailModalInstance) {
+    preserveSetContextOnHide = true;
+    testRunSetDetailModalInstance.hide();
+    reopenSetDetailAfterCaseModal = true;
+  } else {
+    reopenSetDetailAfterCaseModal = false;
+  }
   caseSelectModalInstance.show();
   // ensure we bind a one-time hide handler for rollback if pending
   const modalDom = document.getElementById('caseSelectModal');
@@ -3412,6 +3441,10 @@ function openCaseSelectModal(configId) {
       createdItemsInSession = false;
       currentSelectingConfigId = null;
     }
+    if (reopenSetDetailAfterCaseModal && testRunSetDetailModalInstance) {
+      testRunSetDetailModalInstance.show();
+    }
+    reopenSetDetailAfterCaseModal = false;
     // remove this handler after execution
     modalDom.removeEventListener('hidden.bs.modal', onHidden);
   }, { once: true });
