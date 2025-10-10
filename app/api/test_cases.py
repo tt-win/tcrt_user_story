@@ -1587,7 +1587,7 @@ async def delete_test_case(
 
     if current_user.role != UserRole.SUPER_ADMIN:
         permission_check = await permission_service.check_team_permission(
-            current_user.id, team_id, PermissionType.DELETE, current_user.role
+            current_user.id, team_id, PermissionType.WRITE, current_user.role
         )
         if not permission_check.has_permission:
             raise HTTPException(
@@ -1636,6 +1636,11 @@ async def delete_test_case(
                 detail=f"找不到測試案例 {record_id}",
             )
 
+        # 在刪除之前保存必要的資訊用於 audit log
+        recorded_id = item.id
+        recorded_number = item.test_case_number
+        recorded_title = item.title
+
         # 先嘗試刪除附件檔案（非致命）
         try:
             project_root = Path(__file__).resolve().parents[2]
@@ -1669,6 +1674,7 @@ async def delete_test_case(
         db.delete(item)
         db.commit()
 
+        # 記錄刪除操作到 audit log
         action_brief = f"{current_user.username} deleted Test Case: {recorded_number or record_id}"
         if recorded_title:
             action_brief += f" ({recorded_title})"
