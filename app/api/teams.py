@@ -144,9 +144,9 @@ async def get_teams(
 async def create_team(
     team: TeamCreate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_super_admin()),
+    current_user: User = Depends(require_admin()),
 ):
-    """新增一個團隊（僅 SUPER_ADMIN 可以建立團隊）"""
+    """新增一個團隊（需要 ADMIN 或以上權限）"""
     try:
         # 創建資料庫模型
         team_db = team_model_to_db(team)
@@ -261,12 +261,9 @@ async def update_team(
     team_id: int,
     team_update: TeamUpdate,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin()),
 ):
-    """更新指定的團隊（需要對該團隊的寫入權限）"""
-    from app.auth.models import UserRole
-    from app.auth.permission_service import permission_service
-
+    """更新指定的團隊（需要 ADMIN 或以上權限）"""
     result = await db.execute(select(TeamDB).where(TeamDB.id == team_id))
     team_db = result.scalar_one_or_none()
     if not team_db:
@@ -274,15 +271,6 @@ async def update_team(
             status_code=status.HTTP_404_NOT_FOUND, detail=f"找不到團隊 ID {team_id}"
         )
 
-    # 權限檢查
-    if current_user.role != UserRole.SUPER_ADMIN:
-        permission_check = await permission_service.check_team_permission(
-            current_user.id, team_id, PermissionType.WRITE, current_user.role
-        )
-        if not permission_check.has_permission:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN, detail="無權限修改此團隊"
-            )
     try:
         # 更新資料庫模型
         if team_update.name is not None:
@@ -330,9 +318,9 @@ async def update_team(
 async def delete_team(
     team_id: int,
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(require_super_admin()),
+    current_user: User = Depends(require_admin()),
 ):
-    """刪除指定的團隊（僅 SUPER_ADMIN 可以刪除團隊）"""
+    """刪除指定的團隊（需要 ADMIN 或以上權限）"""
     result = await db.execute(select(TeamDB).where(TeamDB.id == team_id))
     team_db = result.scalar_one_or_none()
 
