@@ -3965,14 +3965,27 @@ function showBulkPreviewModal(items) {
         const steps = item.steps || '';
         const expected = item.expected_result || '';
         const tcgDisplay = (item.tcg_numbers || []).join(', ');
+
+        // 將字面的 \n 轉換為真正的換行符號，然後轉換為 <br> 用於 HTML 顯示
+        const convertNewlinesForDisplay = (text) => {
+            if (!text) return '';
+            return escapeHtml(truncateText(text.replace(/\\n/g, '\n'))).replace(/\n/g, '<br>');
+        };
+
+        // 為 title 屬性轉換換行符號（不使用 <br>）
+        const convertNewlinesForTitle = (text) => {
+            if (!text) return '';
+            return escapeHtml(text.replace(/\\n/g, '\n'));
+        };
+
         return `
         <tr>
             <td>${index + 1}</td>
             <td><code>${escapeHtml(item.case_no)}</code></td>
-            <td style="width: 220px;" title="${escapeHtml(title)}">${escapeHtml(truncateText(title))}</td>
-            <td title="${escapeHtml(precondition)}">${escapeHtml(truncateText(precondition))}</td>
-            <td title="${escapeHtml(steps)}">${escapeHtml(truncateText(steps))}</td>
-            <td title="${escapeHtml(expected)}">${escapeHtml(truncateText(expected))}</td>
+            <td style="width: 220px;" title="${convertNewlinesForTitle(title)}">${escapeHtml(truncateText(title))}</td>
+            <td style="white-space: pre-wrap;" title="${convertNewlinesForTitle(precondition)}">${convertNewlinesForDisplay(precondition)}</td>
+            <td style="white-space: pre-wrap;" title="${convertNewlinesForTitle(steps)}">${convertNewlinesForDisplay(steps)}</td>
+            <td style="white-space: pre-wrap;" title="${convertNewlinesForTitle(expected)}">${convertNewlinesForDisplay(expected)}</td>
             <td style="width: 280px; min-width: 21ch;" title="${escapeHtml(tcgDisplay)}">${escapeHtml(truncateText(tcgDisplay, 120))}</td>
             <td>${escapeHtml(priorityLabel)}</td>
         </tr>
@@ -4020,12 +4033,18 @@ async function confirmBulkTextCreate() {
     }
     
     try {
+        // 輔助函數：將字面的 \n 轉換為真正的換行符號
+        const convertLiteralNewlines = (text) => {
+            if (!text) return text;
+            return text.replace(/\\n/g, '\n');
+        };
+
         const items = bulkTextParsedItems.map(item => ({
             test_case_number: item.case_no,
             title: item.title,
-            precondition: item.precondition || null,
-            steps: item.steps || null,
-            expected_result: item.expected_result || null,
+            precondition: convertLiteralNewlines(item.precondition) || null,
+            steps: convertLiteralNewlines(item.steps) || null,
+            expected_result: convertLiteralNewlines(item.expected_result) || null,
             priority: item.priority || 'Medium',
             tcg_numbers: Array.isArray(item.tcg_numbers) ? item.tcg_numbers : []
         }));
