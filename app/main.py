@@ -113,6 +113,11 @@ async def profile(request: Request):
     """個人資料頁面"""
     return templates.TemplateResponse("profile.html", {"request": request})
 
+@app.get("/team-statistics", response_class=HTMLResponse)
+async def team_statistics(request: Request):
+    """團隊數據統計頁面"""
+    return templates.TemplateResponse("team_statistics.html", {"request": request})
+
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}

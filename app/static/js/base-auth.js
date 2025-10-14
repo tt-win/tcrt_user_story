@@ -215,7 +215,17 @@ class BaseAuthManager {
                 this.userInfoTeams.textContent = '無';
             }
         }
-        
+
+        // 顯示/隱藏團隊數據統計菜單項（僅 admin 及以上可見）
+        const teamStatsMenuItem = document.getElementById('team-statistics-menu-item');
+        if (teamStatsMenuItem) {
+            if (role === 'admin' || role === 'super_admin') {
+                teamStatsMenuItem.classList.remove('d-none');
+            } else {
+                teamStatsMenuItem.classList.add('d-none');
+            }
+        }
+
         console.log('[BaseAuthManager] 用戶資訊顯示更新完成');
     }
 
