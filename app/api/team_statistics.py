@@ -450,32 +450,50 @@ async def get_test_run_metrics(
     測試執行指標分析
 
     Returns:
-        - daily_executions: 每日執行次數 [{date, count}]
+        - dates: 日期座標列表
+        - per_team_daily: 團隊別每日執行統計
+        - per_team_pass_rate: 團隊別每日通過率統計
         - by_status: 按狀態分佈 {status: count}
-        - pass_rate_trend: 通過率趨勢（每日）
-        - by_team: 按團隊統計
+        - by_team: 按團隊統計總數
+        - overall: 全域彙總（每日執行及通過率）
     """
     try:
-        start_date, end_date = _get_date_range(days)
+        start_date_str, end_date_str = _get_date_range(days)
+        start_date_obj = date.fromisoformat(start_date_str)
+        end_date_obj = date.fromisoformat(end_date_str)
 
         async with SessionLocal() as session:
-            # 每日執行次數
-            daily_result = await session.execute(
+            # 每日執行次數（按團隊分組）
+            daily_team_result = await session.execute(
                 text("""
-                    SELECT date(created_at) as day, COUNT(*) as cnt
+                    SELECT team_id, date(created_at) as day, COUNT(*) as cnt
                     FROM test_run_items
-                    WHERE date(created_at) >= :start_date
-                    GROUP BY day
+                    WHERE date(created_at) BETWEEN :start_date AND :end_date
+                    GROUP BY team_id, day
                     ORDER BY day ASC
                 """),
-                {"start_date": start_date}
+                {"start_date": start_date_str, "end_date": end_date_str}
             )
-            daily_executions = [
-                {"date": row[0], "count": int(row[1])}
-                for row in daily_result.all()
-            ]
+            daily_team_rows = daily_team_result.all()
 
-            # 按狀態分佈（從 test_run_item_result_history）
+            # 通過率趨勢（按團隊分組）
+            pass_rate_team_result = await session.execute(
+                text("""
+                    SELECT
+                        trirh.team_id,
+                        date(trirh.changed_at) as day,
+                        SUM(CASE WHEN trirh.new_result = 'Pass' THEN 1 ELSE 0 END) as pass_count,
+                        COUNT(*) as total_count
+                    FROM test_run_item_result_history trirh
+                    WHERE date(trirh.changed_at) BETWEEN :start_date AND :end_date
+                    GROUP BY trirh.team_id, day
+                    ORDER BY day ASC
+                """),
+                {"start_date": start_date_str, "end_date": end_date_str}
+            )
+            pass_rate_team_rows = pass_rate_team_result.all()
+
+            # 按狀態分佈（全局）
             status_result = await session.execute(
                 text("""
                     SELECT new_result, COUNT(*) as cnt
@@ -483,38 +501,29 @@ async def get_test_run_metrics(
                     WHERE date(changed_at) >= :start_date
                     GROUP BY new_result
                 """),
-                {"start_date": start_date}
+                {"start_date": start_date_str}
             )
             by_status = {
                 row[0] or "unknown": int(row[1])
                 for row in status_result.all()
             }
 
-            # 通過率趨勢（每日）
-            pass_rate_result = await session.execute(
-                text("""
-                    SELECT
-                        date(changed_at) as day,
-                        SUM(CASE WHEN new_result = 'Pass' THEN 1 ELSE 0 END) as pass_count,
-                        COUNT(*) as total_count
-                    FROM test_run_item_result_history
-                    WHERE date(changed_at) >= :start_date
-                    GROUP BY day
-                    ORDER BY day ASC
-                """),
-                {"start_date": start_date}
-            )
-            pass_rate_trend = [
-                {
-                    "date": row[0],
-                    "pass_rate": round((row[1] / row[2] * 100) if row[2] > 0 else 0, 2),
-                    "pass_count": int(row[1]),
-                    "total_count": int(row[2])
-                }
-                for row in pass_rate_result.all()
-            ]
+            # 獲取涉及的團隊資訊
+            involved_team_ids = {
+                int(row[0]) for row in daily_team_rows + pass_rate_team_rows if row[0] is not None
+            }
 
-            # 按團隊統計
+            team_name_map: Dict[int, str] = {}
+            if involved_team_ids:
+                teams_result = await session.execute(
+                    select(Team.id, Team.name).where(Team.id.in_(involved_team_ids))
+                )
+                team_name_map = {
+                    int(row[0]): (row[1] or f"未命名團隊 #{row[0]}")
+                    for row in teams_result.all()
+                }
+
+            # 按團隊統計總數
             team_result = await session.execute(
                 text("""
                     SELECT tri.team_id, t.name, COUNT(*) as cnt
@@ -524,7 +533,7 @@ async def get_test_run_metrics(
                     GROUP BY tri.team_id, t.name
                     ORDER BY cnt DESC
                 """),
-                {"start_date": start_date}
+                {"start_date": start_date_str}
             )
             by_team = [
                 {
@@ -535,17 +544,128 @@ async def get_test_run_metrics(
                 for row in team_result.all()
             ]
 
-        return JSONResponse({
-            "daily_executions": daily_executions,
+        # 生成日期標籤
+        date_cursor = start_date_obj
+        labels: List[str] = []
+        while date_cursor <= end_date_obj:
+            labels.append(date_cursor.isoformat())
+            date_cursor += timedelta(days=1)
+
+        # 整理每日執行數據（按團隊）
+        daily_exec_map: Dict[int, Dict[str, int]] = defaultdict(dict)
+        for team_id, day_value, count in daily_team_rows:
+            if team_id is None or day_value is None:
+                continue
+            day_str = day_value if isinstance(day_value, str) else day_value.isoformat()
+            daily_exec_map[int(team_id)][day_str] = int(count)
+
+        # 整理通過率數據（按團隊）
+        pass_rate_map: Dict[int, Dict[str, tuple]] = defaultdict(dict)
+        for team_id, day_value, pass_count, total_count in pass_rate_team_rows:
+            if team_id is None or day_value is None:
+                continue
+            day_str = day_value if isinstance(day_value, str) else day_value.isoformat()
+            pass_rate_map[int(team_id)][day_str] = (int(pass_count), int(total_count))
+
+        # 構建團隊別每日執行數據
+        per_team_daily: List[Dict[str, Any]] = []
+        for team_id in sorted(involved_team_ids):
+            team_name = team_name_map.get(team_id, f"未命名團隊 #{team_id}")
+            daily_entries: List[Dict[str, Any]] = []
+            total_executions = 0
+
+            for label in labels:
+                exec_count = daily_exec_map.get(team_id, {}).get(label, 0)
+                total_executions += exec_count
+                daily_entries.append({
+                    "date": label,
+                    "count": exec_count
+                })
+
+            if total_executions == 0:
+                continue
+
+            per_team_daily.append({
+                "team_id": team_id,
+                "team_name": team_name,
+                "daily": daily_entries,
+                "total_executions": total_executions
+            })
+
+        per_team_daily.sort(key=lambda item: item["total_executions"], reverse=True)
+
+        # 構建團隊別每日通過率數據
+        per_team_pass_rate: List[Dict[str, Any]] = []
+        for team_id in sorted(involved_team_ids):
+            team_name = team_name_map.get(team_id, f"未命名團隊 #{team_id}")
+            daily_entries: List[Dict[str, Any]] = []
+            total_pass = 0
+            total_count = 0
+
+            for label in labels:
+                pass_count, count = pass_rate_map.get(team_id, {}).get(label, (0, 0))
+                pass_rate = round((pass_count / count * 100) if count > 0 else 0, 2)
+                total_pass += pass_count
+                total_count += count
+                daily_entries.append({
+                    "date": label,
+                    "pass_rate": pass_rate,
+                    "pass_count": pass_count,
+                    "total_count": count
+                })
+
+            if total_count == 0:
+                continue
+
+            per_team_pass_rate.append({
+                "team_id": team_id,
+                "team_name": team_name,
+                "daily": daily_entries,
+                "total_pass": total_pass,
+                "total_count": total_count,
+                "overall_pass_rate": round((total_pass / total_count * 100) if total_count > 0 else 0, 2)
+            })
+
+        per_team_pass_rate.sort(key=lambda item: item["overall_pass_rate"], reverse=True)
+
+        # 計算全域彙總
+        overall_daily_executions: List[Dict[str, Any]] = []
+        overall_pass_rate_trend: List[Dict[str, Any]] = []
+
+        for idx, label in enumerate(labels):
+            # 彙總執行數
+            exec_sum = sum(team_entry["daily"][idx]["count"] for team_entry in per_team_daily)
+            overall_daily_executions.append({"date": label, "count": exec_sum})
+
+            # 彙總通過率
+            pass_sum = sum(team_entry["daily"][idx]["pass_count"] for team_entry in per_team_pass_rate)
+            total_sum = sum(team_entry["daily"][idx]["total_count"] for team_entry in per_team_pass_rate)
+            pass_rate = round((pass_sum / total_sum * 100) if total_sum > 0 else 0, 2)
+            overall_pass_rate_trend.append({
+                "date": label,
+                "pass_rate": pass_rate,
+                "pass_count": pass_sum,
+                "total_count": total_sum
+            })
+
+        response_payload = {
+            "dates": labels,
+            "per_team_daily": per_team_daily,
+            "per_team_pass_rate": per_team_pass_rate,
             "by_status": by_status,
-            "pass_rate_trend": pass_rate_trend,
             "by_team": by_team,
+            "overall": {
+                "daily_executions": overall_daily_executions,
+                "pass_rate_trend": overall_pass_rate_trend
+            },
             "date_range": {
-                "start": start_date,
-                "end": end_date,
+                "start": start_date_str,
+                "end": end_date_str,
                 "days": days
             }
-        })
+        }
+
+        return JSONResponse(response_payload)
 
     except Exception as e:
         logger.error(f"獲取測試執行指標失敗: {e}")

@@ -302,14 +302,22 @@
                 `/api/admin/team_statistics/test_run_metrics?days=${currentDays}`
             );
 
-            // 渲染每日執行次數圖表
-            if (data.daily_executions) {
-                renderTestRunDailyChart(data.daily_executions);
+            const dates = data.dates || [];
+            const perTeamDaily = data.per_team_daily || [];
+            const perTeamPassRate = data.per_team_pass_rate || [];
+
+            // 渲染每日執行次數圖表（按團隊分組）
+            if (dates.length > 0 && perTeamDaily.length > 0) {
+                renderTestRunDailyChart(dates, perTeamDaily);
+            } else {
+                renderTestRunDailyChart([], []);
             }
 
-            // 渲染通過率趨勢圖表
-            if (data.pass_rate_trend) {
-                renderTestRunPassRateChart(data.pass_rate_trend);
+            // 渲染通過率趨勢圖表（按團隊分組）
+            if (dates.length > 0 && perTeamPassRate.length > 0) {
+                renderTestRunPassRateChart(dates, perTeamPassRate);
+            } else {
+                renderTestRunPassRateChart([], []);
             }
 
             // 渲染狀態分佈圖表
@@ -1091,30 +1099,39 @@
     }
 
     /**
-     * 渲染測試執行每日圖表
+     * 渲染測試執行每日圖表（按團隊分組）
      */
-    function renderTestRunDailyChart(data) {
+    function renderTestRunDailyChart(dates, perTeam) {
         const ctx = document.getElementById('test-run-daily-chart');
         if (!ctx) return;
 
         destroyChart('test-run-daily-chart');
 
+        if (!dates || dates.length === 0 || !perTeam || perTeam.length === 0) {
+            ctx.getContext('2d')?.clearRect(0, 0, ctx.width, ctx.height);
+            return;
+        }
+
         charts['test-run-daily-chart'] = new Chart(ctx, {
             type: 'line',
             data: {
-                labels: data.map(d => d.date),
-                datasets: [{
-                    label: '執行次數',
-                    data: data.map(d => d.count),
-                    borderColor: 'rgba(153, 102, 255, 1)',
-                    backgroundColor: 'rgba(153, 102, 255, 0.2)',
-                    fill: true,
-                    tension: 0.3
-                }]
+                labels: dates,
+                datasets: buildTeamDatasets(perTeam, 'count')
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                interaction: {
+                    mode: 'nearest',
+                    axis: 'x',
+                    intersect: false
+                },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    }
+                },
                 scales: {
                     y: {
                         beginAtZero: true
@@ -1125,30 +1142,39 @@
     }
 
     /**
-     * 渲染測試執行通過率趨勢圖表
+     * 渲染測試執行通過率趨勢圖表（按團隊分組）
      */
-    function renderTestRunPassRateChart(data) {
+    function renderTestRunPassRateChart(dates, perTeam) {
         const ctx = document.getElementById('test-run-pass-rate-chart');
         if (!ctx) return;
 
         destroyChart('test-run-pass-rate-chart');
 
+        if (!dates || dates.length === 0 || !perTeam || perTeam.length === 0) {
+            ctx.getContext('2d')?.clearRect(0, 0, ctx.width, ctx.height);
+            return;
+        }
+
         charts['test-run-pass-rate-chart'] = new Chart(ctx, {
             type: 'line',
             data: {
-                labels: data.map(d => d.date),
-                datasets: [{
-                    label: '通過率 (%)',
-                    data: data.map(d => d.pass_rate),
-                    borderColor: 'rgba(75, 192, 192, 1)',
-                    backgroundColor: 'rgba(75, 192, 192, 0.2)',
-                    fill: true,
-                    tension: 0.3
-                }]
+                labels: dates,
+                datasets: buildTeamDatasets(perTeam, 'pass_rate')
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
+                interaction: {
+                    mode: 'nearest',
+                    axis: 'x',
+                    intersect: false
+                },
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'top'
+                    }
+                },
                 scales: {
                     y: {
                         beginAtZero: true,
