@@ -1,0 +1,932 @@
+{% extends "base.html" %} {% block title %}團隊數據統計 - Test Case Repository{%
+endblock %} {% block page_title_text %}<span data-i18n="teamStats.pageTitle"
+    >團隊數據統計</span
+>{% endblock %} {% block page_subtitle_text %}<span
+    data-i18n="teamStats.pageSubtitle"
+    >全面的團隊活動與測試數據分析</span
+>{% endblock %} {% block page_specific_actions %}
+<!-- 日期範圍選擇器 -->
+<div class="btn-group me-2" role="group">
+    <button type="button" class="btn btn-sm btn-outline-primary" data-days="7">
+        <span data-i18n="teamStats.days7">7天</span>
+    </button>
+    <button
+        type="button"
+        class="btn btn-sm btn-outline-primary active"
+        data-days="30"
+    >
+        <span data-i18n="teamStats.days30">30天</span>
+    </button>
+    <button type="button" class="btn btn-sm btn-outline-primary" data-days="90">
+        <span data-i18n="teamStats.days90">90天</span>
+    </button>
+</div>
+
+<!-- 刷新按鈕 -->
+<button
+    type="button"
+    class="btn btn-sm btn-outline-secondary me-2"
+    id="refresh-stats-btn"
+>
+    <i class="fas fa-sync-alt"></i>
+    <span data-i18n="common.refresh">刷新</span>
+</button>
+
+<!-- 導航按鈕 -->
+<a href="/" class="btn btn-sm btn-outline-secondary me-2">
+    <i class="fas fa-home me-1"></i>
+    <span data-i18n="navigation.backToHome">首頁</span>
+</a>
+<a href="/team-management" class="btn btn-sm btn-outline-secondary">
+    <i class="fas fa-arrow-left me-1"></i>
+    <span data-i18n="team.management">團隊管理</span>
+</a>
+{% endblock %} {% block content %}
+<div class="container-fluid py-3">
+    <!-- 標籤頁導航 -->
+    <ul class="nav nav-tabs mb-3" id="statsTab" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button
+                class="nav-link active"
+                id="overview-tab"
+                data-bs-toggle="tab"
+                data-bs-target="#overview-pane"
+                type="button"
+                role="tab"
+            >
+                <i class="fas fa-chart-pie me-1"></i>
+                <span data-i18n="teamStats.tabs.overview">總覽</span>
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button
+                class="nav-link"
+                id="team-activity-tab"
+                data-bs-toggle="tab"
+                data-bs-target="#team-activity-pane"
+                type="button"
+                role="tab"
+            >
+                <i class="fas fa-users me-1"></i>
+                <span data-i18n="teamStats.tabs.teamActivity">團隊活動</span>
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button
+                class="nav-link"
+                id="test-case-tab"
+                data-bs-toggle="tab"
+                data-bs-target="#test-case-pane"
+                type="button"
+                role="tab"
+            >
+                <i class="fas fa-clipboard-list me-1"></i>
+                <span data-i18n="teamStats.tabs.testCaseTrends"
+                    >測試案例趨勢</span
+                >
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button
+                class="nav-link"
+                id="test-run-tab"
+                data-bs-toggle="tab"
+                data-bs-target="#test-run-pane"
+                type="button"
+                role="tab"
+            >
+                <i class="fas fa-play-circle me-1"></i>
+                <span data-i18n="teamStats.tabs.testRunMetrics"
+                    >測試執行指標</span
+                >
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button
+                class="nav-link"
+                id="user-activity-tab"
+                data-bs-toggle="tab"
+                data-bs-target="#user-activity-pane"
+                type="button"
+                role="tab"
+            >
+                <i class="fas fa-user-clock me-1"></i>
+                <span data-i18n="teamStats.tabs.userActivity">使用者行為</span>
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button
+                class="nav-link"
+                id="audit-tab"
+                data-bs-toggle="tab"
+                data-bs-target="#audit-pane"
+                type="button"
+                role="tab"
+            >
+                <i class="fas fa-shield-alt me-1"></i>
+                <span data-i18n="teamStats.tabs.auditAnalysis">審計分析</span>
+            </button>
+        </li>
+        <!-- <li class="nav-item" role="presentation">
+            <button
+                class="nav-link"
+                id="department-tab"
+                data-bs-toggle="tab"
+                data-bs-target="#department-pane"
+                type="button"
+                role="tab"
+            >
+                <i class="fas fa-sitemap me-1"></i>
+                <span data-i18n="teamStats.tabs.departmentStats">部門統計</span>
+            </button>
+        </li> -->
+    </ul>
+
+    <!-- 標籤頁內容 -->
+    <div class="tab-content" id="statsTabContent">
+        <!-- 總覽 -->
+        <div
+            class="tab-pane fade show active"
+            id="overview-pane"
+            role="tabpanel"
+        >
+            <div class="row g-3 mb-4">
+                <!-- 關鍵指標卡片 -->
+                <div class="col-md-3">
+                    <div class="card">
+                        <div class="card-body">
+                            <h6 class="card-subtitle mb-2 text-muted">
+                                <i class="fas fa-users me-1"></i>
+                                <span data-i18n="teamStats.overview.teamCount"
+                                    >團隊總數</span
+                                >
+                            </h6>
+                            <h2
+                                class="card-title mb-0"
+                                id="overview-team-count"
+                            >
+                                --
+                            </h2>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card">
+                        <div class="card-body">
+                            <h6 class="card-subtitle mb-2 text-muted">
+                                <i class="fas fa-user me-1"></i>
+                                <span data-i18n="teamStats.overview.userCount"
+                                    >使用者總數</span
+                                >
+                            </h6>
+                            <h2
+                                class="card-title mb-0"
+                                id="overview-user-count"
+                            >
+                                --
+                            </h2>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card">
+                        <div class="card-body">
+                            <h6 class="card-subtitle mb-2 text-muted">
+                                <i class="fas fa-clipboard-list me-1"></i>
+                                <span
+                                    data-i18n="teamStats.overview.testCaseTotal"
+                                    >測試案例總數</span
+                                >
+                            </h6>
+                            <h2
+                                class="card-title mb-0"
+                                id="overview-test-case-total"
+                            >
+                                --
+                            </h2>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card">
+                        <div class="card-body">
+                            <h6 class="card-subtitle mb-2 text-muted">
+                                <i class="fas fa-play-circle me-1"></i>
+                                <span
+                                    data-i18n="teamStats.overview.testRunTotal"
+                                    >測試執行總數</span
+                                >
+                            </h6>
+                            <h2
+                                class="card-title mb-0"
+                                id="overview-test-run-total"
+                            >
+                                --
+                            </h2>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 團隊統計 -->
+            <div class="row g-3 mb-4">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="fas fa-clipboard-list me-1"></i>
+                            <span data-i18n="teamStats.overview.teamTestCases"
+                                >各團隊 Test Case 總數</span
+                            >
+                        </div>
+                        <div class="card-body">
+                            <div
+                                class="table-responsive"
+                                style="max-height: 300px; overflow-y: auto"
+                            >
+                                <table class="table table-sm table-hover">
+                                    <thead class="sticky-top bg-white">
+                                        <tr>
+                                            <th
+                                                data-i18n="teamStats.overview.teamName"
+                                            >
+                                                團隊名稱
+                                            </th>
+                                            <th
+                                                data-i18n="teamStats.overview.count"
+                                            >
+                                                數量
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="team-test-cases-tbody">
+                                        <tr>
+                                            <td
+                                                colspan="2"
+                                                class="text-center text-muted"
+                                            >
+                                                <span data-i18n="common.loading"
+                                                    >載入中...</span
+                                                >
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="fas fa-play-circle me-1"></i>
+                            <span data-i18n="teamStats.overview.teamTestRuns"
+                                >各團隊 Test Run 總數</span
+                            >
+                        </div>
+                        <div class="card-body">
+                            <div
+                                class="table-responsive"
+                                style="max-height: 300px; overflow-y: auto"
+                            >
+                                <table class="table table-sm table-hover">
+                                    <thead class="sticky-top bg-white">
+                                        <tr>
+                                            <th
+                                                data-i18n="teamStats.overview.teamName"
+                                            >
+                                                團隊名稱
+                                            </th>
+                                            <th
+                                                data-i18n="teamStats.overview.count"
+                                            >
+                                                數量
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="team-test-runs-tbody">
+                                        <tr>
+                                            <td
+                                                colspan="2"
+                                                class="text-center text-muted"
+                                            >
+                                                <span data-i18n="common.loading"
+                                                    >載入中...</span
+                                                >
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 最近活動 -->
+            <div class="card">
+                <div class="card-header">
+                    <i class="fas fa-history me-1"></i>
+                    <span data-i18n="teamStats.overview.recentActivity"
+                        >最近活動</span
+                    >
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover">
+                            <thead>
+                                <tr>
+                                    <th data-i18n="teamStats.overview.time">
+                                        時間
+                                    </th>
+                                    <th data-i18n="teamStats.overview.user">
+                                        使用者
+                                    </th>
+                                    <th data-i18n="teamStats.overview.action">
+                                        操作
+                                    </th>
+                                    <th data-i18n="teamStats.overview.resource">
+                                        資源
+                                    </th>
+                                    <th
+                                        data-i18n="teamStats.overview.description"
+                                    >
+                                        描述
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody id="recent-activity-tbody">
+                                <tr>
+                                    <td
+                                        colspan="5"
+                                        class="text-center text-muted"
+                                    >
+                                        <span data-i18n="common.loading"
+                                            >載入中...</span
+                                        >
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 團隊活動 -->
+        <div class="tab-pane fade" id="team-activity-pane" role="tabpanel">
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="fas fa-chart-bar me-1"></i>
+                            <span
+                                data-i18n="teamStats.teamActivity.topActiveTeams"
+                                >最活躍團隊</span
+                            >
+                        </div>
+                        <div class="card-body">
+                            <canvas
+                                id="team-activity-chart"
+                                height="300"
+                            ></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="fas fa-list me-1"></i>
+                            <span
+                                data-i18n="teamStats.teamActivity.activityDetails"
+                                >活動詳情</span
+                            >
+                        </div>
+                        <div class="card-body">
+                            <div
+                                class="table-responsive"
+                                style="max-height: 350px; overflow-y: auto"
+                            >
+                                <table class="table table-sm">
+                                    <thead class="sticky-top bg-white">
+                                        <tr>
+                                            <th
+                                                data-i18n="teamStats.teamActivity.teamName"
+                                            >
+                                                團隊名稱
+                                            </th>
+                                            <th
+                                                data-i18n="teamStats.teamActivity.totalActions"
+                                            >
+                                                總操作數
+                                            </th>
+                                            <th
+                                                data-i18n="teamStats.teamActivity.createActions"
+                                            >
+                                                新增
+                                            </th>
+                                            <th
+                                                data-i18n="teamStats.teamActivity.updateActions"
+                                            >
+                                                更新
+                                            </th>
+                                            <th
+                                                data-i18n="teamStats.teamActivity.deleteActions"
+                                            >
+                                                刪除
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="team-activity-tbody">
+                                        <tr>
+                                            <td
+                                                colspan="5"
+                                                class="text-center text-muted"
+                                            >
+                                                <span data-i18n="common.loading"
+                                                    >載入中...</span
+                                                >
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 測試案例趨勢 -->
+        <div class="tab-pane fade" id="test-case-pane" role="tabpanel">
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="fas fa-chart-line me-1"></i>
+                            <span data-i18n="teamStats.testCase.dailyCreated"
+                                >各團隊每日新增</span
+                            >
+                        </div>
+                        <div class="card-body">
+                            <canvas
+                                id="test-case-created-chart"
+                                height="120"
+                            ></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="fas fa-edit me-1"></i>
+                            <span data-i18n="teamStats.testCase.dailyUpdated"
+                                >各團隊每日更新</span
+                            >
+                        </div>
+                        <div class="card-body">
+                            <canvas
+                                id="test-case-updated-chart"
+                                height="120"
+                            ></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="row g-3">
+                <div class="col-md-5">
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="fas fa-list-ol me-1"></i>
+                            <span data-i18n="teamStats.testCase.teamSummary"
+                                >團隊總覽</span
+                            >
+                        </div>
+                        <div class="card-body">
+                            <div
+                                class="table-responsive"
+                                style="max-height: 260px; overflow-y: auto"
+                            >
+                                <table class="table table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th
+                                                data-i18n="teamStats.testCase.teamName"
+                                            >
+                                                團隊名稱
+                                            </th>
+                                            <th
+                                                data-i18n="teamStats.testCase.createdCount"
+                                            >
+                                                新增數
+                                            </th>
+                                            <th
+                                                data-i18n="teamStats.testCase.updatedCount"
+                                            >
+                                                更新數
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody
+                                        id="test-case-team-summary-tbody"
+                                    ></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-7">
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="fas fa-calendar-day me-1"></i>
+                            <span data-i18n="teamStats.testCase.teamDaily"
+                                >團隊每日明細</span
+                            >
+                        </div>
+                        <div class="card-body">
+                            <div
+                                class="table-responsive"
+                                style="max-height: 260px; overflow-y: auto"
+                            >
+                                <table class="table table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th
+                                                data-i18n="teamStats.testCase.date"
+                                            >
+                                                日期
+                                            </th>
+                                            <th
+                                                data-i18n="teamStats.testCase.teamName"
+                                            >
+                                                團隊名稱
+                                            </th>
+                                            <th
+                                                data-i18n="teamStats.testCase.createdCount"
+                                            >
+                                                新增數
+                                            </th>
+                                            <th
+                                                data-i18n="teamStats.testCase.updatedCount"
+                                            >
+                                                更新數
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody
+                                        id="test-case-team-daily-tbody"
+                                    ></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 測試執行指標 -->
+        <div class="tab-pane fade" id="test-run-pane" role="tabpanel">
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="fas fa-chart-area me-1"></i>
+                            <span data-i18n="teamStats.testRun.dailyExecutions"
+                                >每日執行次數</span
+                            >
+                        </div>
+                        <div class="card-body">
+                            <canvas
+                                id="test-run-daily-chart"
+                                height="120"
+                            ></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="fas fa-percentage me-1"></i>
+                            <span data-i18n="teamStats.testRun.passRateTrend"
+                                >通過率趨勢</span
+                            >
+                        </div>
+                        <div class="card-body">
+                            <canvas
+                                id="test-run-pass-rate-chart"
+                                height="120"
+                            ></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="fas fa-tasks me-1"></i>
+                            <span data-i18n="teamStats.testRun.byStatus"
+                                >按狀態分佈</span
+                            >
+                        </div>
+                        <div class="card-body">
+                            <canvas
+                                id="test-run-status-chart"
+                                height="200"
+                            ></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="fas fa-users me-1"></i>
+                            <span data-i18n="teamStats.testRun.byTeam"
+                                >按團隊統計</span
+                            >
+                        </div>
+                        <div class="card-body">
+                            <div
+                                class="table-responsive"
+                                style="max-height: 250px; overflow-y: auto"
+                            >
+                                <table class="table table-sm">
+                                    <thead>
+                                        <tr>
+                                            <th
+                                                data-i18n="teamStats.testRun.teamName"
+                                            >
+                                                團隊名稱
+                                            </th>
+                                            <th
+                                                data-i18n="teamStats.testRun.executionCount"
+                                            >
+                                                執行次數
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="test-run-team-tbody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 使用者行為 -->
+        <div class="tab-pane fade" id="user-activity-pane" role="tabpanel">
+            <div class="row g-3 mb-3">
+                <div class="col-md-8">
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="fas fa-user-friends me-1"></i>
+                            <span data-i18n="teamStats.userActivity.topUsers"
+                                >最活躍使用者（前20）</span
+                            >
+                        </div>
+                        <div class="card-body">
+                            <canvas
+                                id="user-activity-chart"
+                                height="120"
+                            ></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="fas fa-cog me-1"></i>
+                            <span data-i18n="teamStats.userActivity.byOperation"
+                                >操作類型分佈</span
+                            >
+                        </div>
+                        <div class="card-body">
+                            <canvas
+                                id="user-operation-chart"
+                                height="200"
+                            ></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="row g-3">
+                <div class="col-md-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="fas fa-clock me-1"></i>
+                            <span
+                                data-i18n="teamStats.userActivity.hourlyDistribution"
+                                >每小時活動分佈</span
+                            >
+                        </div>
+                        <div class="card-body">
+                            <canvas id="user-hourly-chart" height="80"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 審計分析 -->
+        <div class="tab-pane fade" id="audit-pane" role="tabpanel">
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="fas fa-database me-1"></i>
+                            <span data-i18n="teamStats.audit.byResourceType"
+                                >按資源類型分佈</span
+                            >
+                        </div>
+                        <div class="card-body">
+                            <canvas
+                                id="audit-resource-chart"
+                                height="200"
+                            ></canvas>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="fas fa-exclamation-triangle me-1"></i>
+                            <span data-i18n="teamStats.audit.bySeverity"
+                                >按嚴重性分佈</span
+                            >
+                        </div>
+                        <div class="card-body">
+                            <canvas
+                                id="audit-severity-chart"
+                                height="200"
+                            ></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="row g-3 mb-3">
+                <div class="col-md-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="fas fa-chart-line me-1"></i>
+                            <span data-i18n="teamStats.audit.dailyTrend"
+                                >每日操作趨勢</span
+                            >
+                        </div>
+                        <div class="card-body">
+                            <canvas id="audit-daily-chart" height="80"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="row g-3">
+                <div class="col-md-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="fas fa-exclamation-circle me-1"></i>
+                            <span data-i18n="teamStats.audit.criticalActions"
+                                >關鍵操作記錄（最近50筆）</span
+                            >
+                        </div>
+                        <div class="card-body">
+                            <div
+                                class="table-responsive"
+                                style="max-height: 300px; overflow-y: auto"
+                            >
+                                <table class="table table-sm table-hover">
+                                    <thead class="sticky-top bg-white">
+                                        <tr>
+                                            <th
+                                                data-i18n="teamStats.audit.time"
+                                            >
+                                                時間
+                                            </th>
+                                            <th
+                                                data-i18n="teamStats.audit.user"
+                                            >
+                                                使用者
+                                            </th>
+                                            <th
+                                                data-i18n="teamStats.audit.action"
+                                            >
+                                                操作
+                                            </th>
+                                            <th
+                                                data-i18n="teamStats.audit.resource"
+                                            >
+                                                資源
+                                            </th>
+                                            <th
+                                                data-i18n="teamStats.audit.description"
+                                            >
+                                                描述
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="audit-critical-tbody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 部門統計 -->
+        <!-- <div class="tab-pane fade" id="department-pane" role="tabpanel">
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="fas fa-sitemap me-1"></i>
+                            <span data-i18n="teamStats.department.list"
+                                >部門列表</span
+                            >
+                        </div>
+                        <div class="card-body">
+                            <div
+                                class="table-responsive"
+                                style="max-height: 300px; overflow-y: auto"
+                            >
+                                <table class="table table-sm">
+                                    <thead class="sticky-top bg-white">
+                                        <tr>
+                                            <th
+                                                data-i18n="teamStats.department.name"
+                                            >
+                                                部門名稱
+                                            </th>
+                                            <th
+                                                data-i18n="teamStats.department.userCount"
+                                            >
+                                                人員數
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="department-list-tbody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="fas fa-user-shield me-1"></i>
+                            <span
+                                data-i18n="teamStats.department.userDistribution"
+                                >使用者角色分佈</span
+                            >
+                        </div>
+                        <div class="card-body">
+                            <canvas
+                                id="department-role-chart"
+                                height="200"
+                            ></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="row g-3">
+                <div class="col-md-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <i class="fas fa-user-clock me-1"></i>
+                            <span
+                                data-i18n="teamStats.department.topActiveUsers"
+                                >最活躍使用者（前50）</span
+                            >
+                        </div>
+                        <div class="card-body">
+                            <div
+                                class="table-responsive"
+                                style="max-height: 300px; overflow-y: auto"
+                            >
+                                <table class="table table-sm">
+                                    <thead class="sticky-top bg-white">
+                                        <tr>
+                                            <th
+                                                data-i18n="teamStats.department.username"
+                                            >
+                                                使用者名稱
+                                            </th>
+                                            <th
+                                                data-i18n="teamStats.department.actionCount"
+                                            >
+                                                操作次數
+                                            </th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="department-users-tbody"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div> -->
+    </div>
+</div>
+{% endblock %} {% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="/static/js/team_statistics.js"></script>
+{% endblock %}

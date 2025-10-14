@@ -68,7 +68,95 @@
             "confirmLogout": "確認登出",
             "confirmLogoutMessage": "您確定要登出嗎？",
             "loggingOut": "登出中...",
-            "logoutError": "登出時發生錯誤，請稍後再試"
+            "logoutError": "登出時發生錯誤，請稍後再試",
+            "teamStatistics": "團隊數據統計"
+        }
+    },
+    "teamStats": {
+        "pageTitle": "團隊數據統計",
+        "pageSubtitle": "全面的團隊活動與測試數據分析",
+        "days7": "7天",
+        "days30": "30天",
+        "days90": "90天",
+        "tabs": {
+            "overview": "總覽",
+            "teamActivity": "團隊活動",
+            "testCaseTrends": "測試案例趨勢",
+            "testRunMetrics": "測試執行指標",
+            "userActivity": "使用者行為",
+            "auditAnalysis": "審計分析",
+            "departmentStats": "部門統計"
+        },
+        "overview": {
+            "teamCount": "團隊總數",
+            "userCount": "使用者總數",
+            "testCaseTotal": "測試案例總數",
+            "testRunTotal": "測試執行總數",
+            "teamTestCases": "各團隊 Test Case 總數",
+            "teamTestRuns": "各團隊 Test Run 總數",
+            "teamName": "團隊名稱",
+            "count": "數量",
+            "recentActivity": "最近活動",
+            "time": "時間",
+            "user": "使用者",
+            "action": "操作",
+            "resource": "資源",
+            "description": "描述"
+        },
+        "teamActivity": {
+            "topActiveTeams": "最活躍團隊",
+            "activityDetails": "活動詳情",
+            "teamName": "團隊名稱",
+            "totalActions": "總操作數",
+            "createActions": "新增",
+            "updateActions": "更新",
+            "deleteActions": "刪除"
+        },
+        "testCase": {
+            "dailyCreated": "各團隊每日新增",
+            "dailyUpdated": "各團隊每日更新",
+            "teamSummary": "團隊總覽",
+            "teamDaily": "團隊每日明細",
+            "teamName": "團隊名稱",
+            "createdCount": "新增數",
+            "updatedCount": "更新數",
+            "date": "日期",
+            "totalLabel": "總計"
+        },
+        "testRun": {
+            "dailyExecutions": "每日執行次數",
+            "passRateTrend": "通過率趨勢",
+            "byStatus": "按狀態分佈",
+            "byTeam": "按團隊統計",
+            "teamName": "團隊名稱",
+            "executionCount": "執行次數"
+        },
+        "userActivity": {
+            "topUsers": "最活躍使用者（前20）",
+            "byOperation": "操作類型分佈",
+            "hourlyDistribution": "每小時活動分佈"
+        },
+        "audit": {
+            "byResourceType": "按資源類型分佈",
+            "bySeverity": "按嚴重性分佈",
+            "dailyTrend": "每日操作趨勢",
+            "criticalActions": "關鍵操作記錄（最近50筆）",
+            "time": "時間",
+            "user": "使用者",
+            "action": "操作",
+            "resource": "資源",
+            "description": "描述"
+        },
+        "department": {
+            "list": "部門列表",
+            "name": "部門名稱",
+            "userCount": "人員數",
+            "totalCountLabel": "總數",
+            "directCountLabel": "直屬",
+            "userDistribution": "使用者角色分佈",
+            "topActiveUsers": "最活躍使用者（前50）",
+            "username": "使用者名稱",
+            "actionCount": "操作次數"
         }
     },
     "profile": {
@@ -96,6 +184,9 @@
         "user": "使用者",
         "viewer": "僅檢視",
         "guest": "訪客"
+    },
+    "dataMenu": {
+        "title": "數據與記錄"
     },
     "audit": {
         "viewLogs": "稽核記錄",

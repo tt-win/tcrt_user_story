@@ -101,6 +101,72 @@ const AppUtils = {
         }, 3000);
     },
 
+    // 取得或建立全域載入遮罩
+    _ensureLoadingOverlay: function() {
+        if (this._loadingOverlay) {
+            return this._loadingOverlay;
+        }
+
+        const overlay = document.createElement('div');
+        overlay.id = 'app-loading-overlay';
+        overlay.className = 'position-fixed top-0 start-0 w-100 h-100 d-flex align-items-center justify-content-center bg-white bg-opacity-75';
+        overlay.style.zIndex = '2000';
+        overlay.style.backdropFilter = 'blur(2px)';
+        overlay.style.display = 'none';
+
+        overlay.innerHTML = `
+            <div class="text-center">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+                <div id="app-loading-message" class="mt-3 text-primary fw-semibold"></div>
+            </div>
+        `;
+
+        document.body.appendChild(overlay);
+        this._loadingOverlay = overlay;
+        this._loadingMessageEl = overlay.querySelector('#app-loading-message');
+        this._loadingCounter = 0;
+        return overlay;
+    },
+
+    // 顯示全域載入遮罩
+    showLoading: function(message = '載入中...') {
+        const overlay = this._ensureLoadingOverlay();
+        this._loadingCounter = (this._loadingCounter || 0) + 1;
+        overlay.dataset.loadingCount = String(this._loadingCounter);
+
+        if (this._loadingMessageEl) {
+            this._loadingMessageEl.textContent = message;
+        }
+
+        overlay.style.display = 'flex';
+    },
+
+    // 隱藏全域載入遮罩
+    hideLoading: function(force = false) {
+        if (!this._loadingOverlay) {
+            return;
+        }
+
+        let counter = this._loadingCounter || 0;
+        counter = force ? 0 : Math.max(counter - 1, 0);
+        this._loadingCounter = counter;
+        this._loadingOverlay.dataset.loadingCount = String(counter);
+
+        if (counter === 0 || force) {
+            if (this._loadingOverlay) {
+                this._loadingOverlay.style.display = 'none';
+                if (this._loadingOverlay.parentNode) {
+                    this._loadingOverlay.parentNode.removeChild(this._loadingOverlay);
+                }
+                this._loadingOverlay = null;
+            }
+            this._loadingMessageEl = null;
+            this._loadingCounter = 0;
+        }
+    },
+
     // 格式化日期 - 使用瀏覽器的 locale 設定，不依賴介面語言
     formatDate: function(dateString, format = 'datetime') {
         if (!dateString) return '';
@@ -468,9 +534,6 @@ async function showHiddenModeModal() {
                   <li class="nav-item" role="presentation">
                     <button class="nav-link active" id="sys-tab" data-bs-toggle="tab" data-bs-target="#sys-pane" type="button" role="tab" aria-controls="sys-pane" aria-selected="true">系統監控</button>
                   </li>
-                  <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="stats-tab" data-bs-toggle="tab" data-bs-target="#stats-pane" type="button" role="tab" aria-controls="stats-pane" aria-selected="false">數據統計</button>
-                  </li>
                 </ul>
                 <div class="tab-content pt-3">
                   <!-- 系統監控 -->
@@ -485,22 +548,6 @@ async function showHiddenModeModal() {
                       <div id="hm-metrics" class="small">
                         <div class="text-muted">讀取中…</div>
                       </div>
-                    </div>
-                  </div>
-
-                  <!-- 數據統計 -->
-                  <div class="tab-pane fade" id="stats-pane" role="tabpanel" aria-labelledby="stats-tab">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                      <div class="fw-semibold">過去 30 天</div>
-                      <div class="text-muted small" id="stats-last-updated">—</div>
-                    </div>
-                    <div class="mb-3">
-                      <div class="small text-muted mb-1">各 Team 每日新增 Test Case</div>
-                      <canvas id="hm-chart-tc-daily" height="140"></canvas>
-                    </div>
-                    <div>
-                      <div class="small text-muted mb-1">每日 Test Run 操作次數</div>
-                      <canvas id="hm-chart-tr-daily" height="140"></canvas>
                     </div>
                   </div>
                 </div>
@@ -518,10 +565,6 @@ async function showHiddenModeModal() {
 
         let timer = null;
         let abortCtrl = null;
-
-        // Chart instances
-        let tcDailyChart = null;
-        let trDailyChart = null;
 
         function fmtBytes(bytes) {
             if (bytes == null) return '—';
@@ -595,184 +638,13 @@ async function showHiddenModeModal() {
             `;
         }
 
-        async function ensureChartJs() {
-            if (window.Chart) return;
-            await new Promise((resolve, reject) => {
-                const s = document.createElement('script');
-                s.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js';
-                s.onload = resolve; s.onerror = reject;
-                document.head.appendChild(s);
-            });
-        }
-
-        function groupByDayAndTeam(rows) {
-            const labelsSet = new Set();
-            const teamsSet = new Set();
-            rows.forEach(r => { labelsSet.add(r.day); if (r.team_name) teamsSet.add(r.team_name); });
-            const labels = Array.from(labelsSet).sort();
-            const teams = Array.from(teamsSet);
-            const datasets = teams.map((t, idx) => {
-                const color = `hsl(${(idx*67)%360} 70% 50%)`;
-                const data = labels.map(d => {
-                    const found = rows.find(r => r.team_name===t && r.day===d);
-                    return found ? found.count : 0;
-                });
-                return { label: t, data, borderColor: color, backgroundColor: color, tension: 0.2 };
-            });
-            return { labels, datasets };
-        }
-
-        const chartHiddenState = {
-            tc: new Set(),
-            tr: new Set()
-        };
-
-
-        async function loadStats(days = 30) {
-            try {
-                await ensureChartJs();
-                const [tcResp, trResp] = await Promise.all([
-                    window.AuthClient.fetch(`/api/admin/stats/test_cases_created_daily?days=${days}`),
-                    window.AuthClient.fetch(`/api/admin/stats/test_run_actions_daily?days=${days}`)
-                ]);
-        
-                if (!tcResp.ok) {
-                    throw new Error(`Test Cases API: ${tcResp.status} ${tcResp.statusText}`);
-                }
-                if (!trResp.ok) {
-                    throw new Error(`Test Run Actions API: ${trResp.status} ${trResp.statusText}`);
-                }
-        
-                let tcJson, trJson;
-                try {
-                    tcJson = await tcResp.json();
-                    trJson = await trResp.json();
-                } catch (jsonErr) {
-                    throw new Error('JSON 解析失敗：伺服器返回非 JSON 格式');
-                }
-        
-                const tcCtx = modalEl.querySelector('#hm-chart-tc-daily');
-                const trCtx = modalEl.querySelector('#hm-chart-tr-daily');
-                if (tcDailyChart) { tcDailyChart.destroy(); }
-                if (trDailyChart) { trDailyChart.destroy(); }
-        
-                // 檢查返回格式是否符合期望
-                if (!tcJson.dates || !tcJson.counts || !trJson.dates || !trJson.counts) {
-                    throw new Error('API 返回數據格式不正確');
-                }
-        
-                // 為圖表準備數據：使用 dates 作為 labels，counts 作為單一數據集
-                const tcLabels = tcJson.dates;
-                const tcData = tcJson.counts;
-                const trLabels = trJson.dates;
-                const trData = trJson.counts;
-        
-                // 簡化圖表：單一數據集
-                const tcDataset = [{
-                    label: '每日新增 Test Cases',
-                    data: tcData,
-                    borderColor: 'hsl(200, 70%, 50%)',
-                    backgroundColor: 'hsl(200, 70%, 50%)',
-                    tension: 0.2
-                }];
-                const trDataset = [{
-                    label: '每日 Test Run 動作',
-                    data: trData,
-                    borderColor: 'hsl(120, 70%, 50%)',
-                    backgroundColor: 'hsl(120, 70%, 50%)',
-                    tension: 0.2
-                }];
-        
-                tcDailyChart = new Chart(tcCtx, {
-                    type: 'line',
-                    data: { labels: tcLabels, datasets: tcDataset },
-                    options: {
-                        responsive: true,
-                        interaction: { intersect: false, mode: 'nearest' },
-                        plugins: {
-                            legend: { display: false },
-                            tooltip: {
-                                callbacks: {
-                                    title: (items) => items?.[0]?.label || '',
-                                    label: (item) => `${item.dataset.label}: ${item.formattedValue}`
-                                }
-                            }
-                        },
-                        scales: {
-                            y: {
-                                beginAtZero: true,
-                                ticks: { precision: 0 }
-                            }
-                        }
-                    }
-                });
-        
-                trDailyChart = new Chart(trCtx, {
-                    type: 'line',
-                    data: { labels: trLabels, datasets: trDataset },
-                    options: {
-                        responsive: true,
-                        interaction: { intersect: false, mode: 'nearest' },
-                        plugins: {
-                            legend: { display: false },
-                            tooltip: {
-                                callbacks: {
-                                    title: (items) => items?.[0]?.label || '',
-                                    label: (item) => `${item.dataset.label}: ${item.formattedValue}`
-                                }
-                            }
-                        },
-                        scales: {
-                            y: {
-                                beginAtZero: true,
-                                ticks: { precision: 0 }
-                            }
-                        }
-                    }
-                });
-        
-                const statsStamp = modalEl.querySelector('#stats-last-updated');
-                if (statsStamp) statsStamp.textContent = new Date().toLocaleTimeString();
-        
-                // 清除任何先前錯誤訊息
-                const errorDiv = modalEl.querySelector('#stats-error');
-                if (errorDiv) errorDiv.remove();
-        
-            } catch (e) {
-                console.error('loadStats error', e);
-                
-                // 顯示友好錯誤訊息
-                const statsPane = modalEl.querySelector('#stats-pane');
-                if (statsPane) {
-                    let errorDiv = statsPane.querySelector('#stats-error');
-                    if (!errorDiv) {
-                        errorDiv = document.createElement('div');
-                        errorDiv.id = 'stats-error';
-                        errorDiv.className = 'alert alert-warning';
-                        statsPane.insertBefore(errorDiv, statsPane.firstChild);
-                    }
-                    errorDiv.innerHTML = `
-                        <i class="fas fa-exclamation-triangle me-2"></i>
-                        無法載入統計數據：${e.message || '未知錯誤'}
-                    `;
-                }
-        
-                const statsStamp = modalEl.querySelector('#stats-last-updated');
-                if (statsStamp) statsStamp.textContent = '載入失敗';
-            }
-        }
-
         function start() {
             fetchMetrics();
             timer = setInterval(fetchMetrics, 2000);
-            // 延遲載入統計，避免阻塞 modal 開啟
-            setTimeout(() => loadStats(30), 200);
         }
         function stop() {
             if (timer) { clearInterval(timer); timer = null; }
             if (abortCtrl) { abortCtrl.abort(); abortCtrl = null; }
-            if (tcDailyChart) { tcDailyChart.destroy(); tcDailyChart = null; }
-            if (trDailyChart) { trDailyChart.destroy(); trDailyChart = null; }
         }
 
         modalEl.addEventListener('shown.bs.modal', start);

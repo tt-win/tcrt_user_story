@@ -15,9 +15,24 @@
     <button type="button" class="btn btn-primary" id="createTeamBtn">
         <i class="fas fa-plus me-2"></i><span data-i18n="team.createTeam">新增團隊</span>
     </button>
-    <button type="button" class="btn btn-outline-primary" id="auditLogBtn">
-        <i class="fas fa-clipboard-list me-2"></i><span data-i18n="audit.viewLogs">審計記錄</span>
-    </button>
+    <!-- 數據與記錄下拉選單 -->
+    <div class="btn-group" role="group" id="dataMenuGroup">
+        <button type="button" class="btn btn-outline-primary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="fas fa-chart-bar me-2"></i><span data-i18n="dataMenu.title">數據與記錄</span>
+        </button>
+        <ul class="dropdown-menu">
+            <li>
+                <a class="dropdown-item" href="/audit-logs">
+                    <i class="fas fa-clipboard-list me-2"></i><span data-i18n="audit.viewLogs">審計記錄</span>
+                </a>
+            </li>
+            <li>
+                <a class="dropdown-item" href="/team-statistics" id="teamStatsLink">
+                    <i class="fas fa-chart-line me-2"></i><span data-i18n="user.menu.teamStatistics">團隊數據統計</span>
+                </a>
+            </li>
+        </ul>
+    </div>
     <button type="button" class="btn btn-outline-primary" id="syncOrgBtn">
         <i class="fas fa-users me-2"></i><span data-i18n="orgSync.openButton">同步組織架構</span>
     </button>
@@ -463,8 +478,20 @@ async function applyTeamManagementUiVisibility() {
         const syncBtn = document.getElementById('syncOrgBtn');
         if (syncBtn) syncBtn.style.display = map['syncOrgBtn'] ? '' : 'none';
 
-        const auditBtn = document.getElementById('auditLogBtn');
-        if (auditBtn) auditBtn.style.display = map['auditLogBtn'] ? '' : 'none';
+        // 數據與記錄選單的顯示控制
+        const dataMenuGroup = document.getElementById('dataMenuGroup');
+        if (dataMenuGroup) dataMenuGroup.style.display = map['auditLogBtn'] ? '' : 'none';
+
+        // 控制團隊數據統計連結的顯示（僅 admin 及以上可見）
+        const teamStatsLink = document.getElementById('teamStatsLink');
+        if (teamStatsLink && window.currentUser) {
+            const userRole = window.currentUser.role;
+            if (userRole === 'admin' || userRole === 'super_admin') {
+                teamStatsLink.parentElement.style.display = '';
+            } else {
+                teamStatsLink.parentElement.style.display = 'none';
+            }
+        }
     } catch (_) {}
 }
 
@@ -480,12 +507,7 @@ function initTeamManagement() {
     document.getElementById('refreshBtn').addEventListener('click', loadTeams);
     document.getElementById('saveTeamBtn').addEventListener('click', saveTeam);
     document.getElementById('validateLarkBtn').addEventListener('click', validateLarkConnection);
-    const auditBtn = document.getElementById('auditLogBtn');
-    if (auditBtn) {
-        auditBtn.addEventListener('click', () => {
-            window.location.href = '/audit-logs';
-        });
-    }
+    // 審計記錄和團隊統計現在使用下拉選單中的 <a> 標籤，不需要額外的事件監聽器
     document.getElementById('syncOrgBtn').addEventListener('click', openSyncModal);
     
     // 同步功能框事件監聽器

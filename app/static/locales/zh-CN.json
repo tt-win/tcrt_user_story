@@ -68,7 +68,95 @@
             "confirmLogout": "确认退出",
             "confirmLogoutMessage": "您确定要退出登录吗？",
             "loggingOut": "退出中...",
-            "logoutError": "退出时发生错误，请稍后再试"
+            "logoutError": "退出时发生错误，请稍后再试",
+            "teamStatistics": "团队数据统计"
+        }
+    },
+    "teamStats": {
+        "pageTitle": "团队数据统计",
+        "pageSubtitle": "全面的团队活动与测试数据分析",
+        "days7": "7天",
+        "days30": "30天",
+        "days90": "90天",
+        "tabs": {
+            "overview": "总览",
+            "teamActivity": "团队活动",
+            "testCaseTrends": "测试用例趋势",
+            "testRunMetrics": "测试执行指标",
+            "userActivity": "用户行为",
+            "auditAnalysis": "审计分析",
+            "departmentStats": "部门统计"
+        },
+        "overview": {
+            "teamCount": "团队总数",
+            "userCount": "用户总数",
+            "testCaseTotal": "测试用例总数",
+            "testRunTotal": "测试执行总数",
+            "teamTestCases": "各团队 Test Case 总数",
+            "teamTestRuns": "各团队 Test Run 总数",
+            "teamName": "团队名称",
+            "count": "数量",
+            "recentActivity": "最近活动",
+            "time": "时间",
+            "user": "用户",
+            "action": "操作",
+            "resource": "资源",
+            "description": "描述"
+        },
+        "teamActivity": {
+            "topActiveTeams": "最活跃团队",
+            "activityDetails": "活动详情",
+            "teamName": "团队名称",
+            "totalActions": "总操作数",
+            "createActions": "新增",
+            "updateActions": "更新",
+            "deleteActions": "删除"
+        },
+        "testCase": {
+            "dailyCreated": "各团队每日新增",
+            "dailyUpdated": "各团队每日更新",
+            "teamSummary": "团队总览",
+            "teamDaily": "团队每日明细",
+            "teamName": "团队名称",
+            "createdCount": "新增数",
+            "updatedCount": "更新数",
+            "date": "日期",
+            "totalLabel": "总计"
+        },
+        "testRun": {
+            "dailyExecutions": "每日执行次数",
+            "passRateTrend": "通过率趋势",
+            "byStatus": "按状态分布",
+            "byTeam": "按团队统计",
+            "teamName": "团队名称",
+            "executionCount": "执行次数"
+        },
+        "userActivity": {
+            "topUsers": "最活跃用户（前20）",
+            "byOperation": "操作类型分布",
+            "hourlyDistribution": "每小时活动分布"
+        },
+        "audit": {
+            "byResourceType": "按资源类型分布",
+            "bySeverity": "按严重性分布",
+            "dailyTrend": "每日操作趋势",
+            "criticalActions": "关键操作记录（最近50笔）",
+            "time": "时间",
+            "user": "用户",
+            "action": "操作",
+            "resource": "资源",
+            "description": "描述"
+        },
+        "department": {
+            "list": "部门列表",
+            "name": "部门名称",
+            "userCount": "人员数",
+            "totalCountLabel": "总数",
+            "directCountLabel": "直属",
+            "userDistribution": "用户角色分布",
+            "topActiveUsers": "最活跃用户（前50）",
+            "username": "用户名",
+            "actionCount": "操作次数"
         }
     },
     "profile": {
@@ -96,6 +184,9 @@
         "user": "用户",
         "viewer": "仅查看",
         "guest": "访客"
+    },
+    "dataMenu": {
+        "title": "数据与记录"
     },
     "audit": {
         "viewLogs": "审计记录",

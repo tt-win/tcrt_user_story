@@ -195,6 +195,7 @@ audit_db_manager = AuditDatabaseManager()
 
 
 # 便利函數
+@asynccontextmanager
 async def get_audit_session() -> AsyncGenerator[AsyncSession, None]:
     """取得審計資料庫會話（依賴注入用）"""
     async with audit_db_manager.get_session() as session:

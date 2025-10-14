@@ -68,7 +68,95 @@
             "confirmLogout": "Confirm Logout",
             "confirmLogoutMessage": "Are you sure you want to logout?",
             "loggingOut": "Logging out...",
-            "logoutError": "Logout error, please try again later"
+            "logoutError": "Logout error, please try again later",
+            "teamStatistics": "Team Statistics"
+        }
+    },
+    "teamStats": {
+        "pageTitle": "Team Statistics",
+        "pageSubtitle": "Comprehensive team activity and test data analytics",
+        "days7": "7 Days",
+        "days30": "30 Days",
+        "days90": "90 Days",
+        "tabs": {
+            "overview": "Overview",
+            "teamActivity": "Team Activity",
+            "testCaseTrends": "Test Case Trends",
+            "testRunMetrics": "Test Run Metrics",
+            "userActivity": "User Activity",
+            "auditAnalysis": "Audit Analysis",
+            "departmentStats": "Department Stats"
+        },
+        "overview": {
+            "teamCount": "Total Teams",
+            "userCount": "Total Users",
+            "testCaseTotal": "Total Test Cases",
+            "testRunTotal": "Total Test Runs",
+            "teamTestCases": "Test Cases by Team",
+            "teamTestRuns": "Test Runs by Team",
+            "teamName": "Team Name",
+            "count": "Count",
+            "recentActivity": "Recent Activity",
+            "time": "Time",
+            "user": "User",
+            "action": "Action",
+            "resource": "Resource",
+            "description": "Description"
+        },
+        "teamActivity": {
+            "topActiveTeams": "Most Active Teams",
+            "activityDetails": "Activity Details",
+            "teamName": "Team Name",
+            "totalActions": "Total Actions",
+            "createActions": "Create",
+            "updateActions": "Update",
+            "deleteActions": "Delete"
+        },
+        "testCase": {
+            "dailyCreated": "Team Daily Created",
+            "dailyUpdated": "Team Daily Updated",
+            "teamSummary": "Team Summary",
+            "teamDaily": "Team Daily Breakdown",
+            "teamName": "Team Name",
+            "createdCount": "Created",
+            "updatedCount": "Updated",
+            "date": "Date",
+            "totalLabel": "Total"
+        },
+        "testRun": {
+            "dailyExecutions": "Daily Executions",
+            "passRateTrend": "Pass Rate Trend",
+            "byStatus": "Distribution by Status",
+            "byTeam": "Statistics by Team",
+            "teamName": "Team Name",
+            "executionCount": "Execution Count"
+        },
+        "userActivity": {
+            "topUsers": "Most Active Users (Top 20)",
+            "byOperation": "Distribution by Operation",
+            "hourlyDistribution": "Hourly Activity Distribution"
+        },
+        "audit": {
+            "byResourceType": "Distribution by Resource Type",
+            "bySeverity": "Distribution by Severity",
+            "dailyTrend": "Daily Operation Trend",
+            "criticalActions": "Critical Actions (Last 50)",
+            "time": "Time",
+            "user": "User",
+            "action": "Action",
+            "resource": "Resource",
+            "description": "Description"
+        },
+        "department": {
+            "list": "Department List",
+            "name": "Department Name",
+            "userCount": "User Count",
+            "totalCountLabel": "Total",
+            "directCountLabel": "Direct",
+            "userDistribution": "User Role Distribution",
+            "topActiveUsers": "Most Active Users (Top 50)",
+            "username": "Username",
+            "actionCount": "Action Count"
         }
     },
     "profile": {
@@ -96,6 +184,9 @@
         "user": "User",
         "viewer": "Viewer",
         "guest": "Guest"
+    },
+    "dataMenu": {
+        "title": "Data & Records"
     },
     "audit": {
         "viewLogs": "Audit Logs",
