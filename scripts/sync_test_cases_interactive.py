@@ -274,7 +274,7 @@ class TestCaseSynchronizer:
 
         return {k: v for k, v in fields.items() if v is not None}
 
-    def _convert_lark_to_local_case(self, record: dict) -> TestCaseLocalDB:
+    async def _convert_lark_to_local_case(self, record: dict) -> TestCaseLocalDB:
         """將 Lark API record 轉換為本地 DB 物件。"""
         from app.models.lark_types import Priority
         
@@ -286,9 +286,23 @@ class TestCaseSynchronizer:
         assignee_val = fields.get("Assignee")
         tcg_val = fields.get("TCG")
 
+        # 檢查 lark_record_id 是否已存在於資料庫中，避免 UNIQUE constraint 錯誤
+        desired_lark_id = record.get('record_id')
+        if desired_lark_id:
+            existing_record = await self.db.execute(
+                select(TestCaseLocalDB).where(
+                    TestCaseLocalDB.lark_record_id == desired_lark_id
+                )
+            )
+            existing = existing_record.scalars().first()
+            if existing is not None:
+                # 如果 lark_record_id 已存在，則設為 None 以避免 UNIQUE constraint 錯誤
+                logger.warning(f"lark_record_id '{desired_lark_id}' 已存在於資料庫中，將設為 None 以避免 UNIQUE constraint 錯誤 | TC: {fields.get('Test Case Number')}")
+                desired_lark_id = None
+
         new_case = TestCaseLocalDB(
             team_id=self.team.id,
-            lark_record_id=record.get('record_id'),
+            lark_record_id=desired_lark_id,
             test_case_number=fields.get("Test Case Number"),
             title=fields.get("Title"),
             priority=priority_enum,
@@ -330,7 +344,7 @@ class TestCaseSynchronizer:
                 for key in self.plan['create_local']:
                     record = self.remote_cases.get(key)
                     if record:
-                        new_case = self._convert_lark_to_local_case(record)
+                        new_case = await self._convert_lark_to_local_case(record)
                         new_local_cases.append(new_case)
                 if new_local_cases:
                     self.db.add_all(new_local_cases)
