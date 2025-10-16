@@ -5494,7 +5494,10 @@ async function editComment(testRunItemId) {
         return;
     }
 
-    const currentComment = commentContent.textContent === '尚無註釋' ? '' : commentContent.innerHTML.replace(/<br>/g, '\n').replace(/</g, '<').replace(/>/g, '>').replace(/&/g, '&').replace(/"/g, '"').replace(/&#039;/g, "'");
+    // 檢查是否顯示了"暫無註釋"，如果是則當前評論為空
+    const isNoCommentShown = commentContent.querySelector && commentContent.querySelector('[data-i18n="testRun.noComment"]');
+    const currentComment = isNoCommentShown ? '' : commentContent.innerHTML.replace(/<br>/g, '\\n').replace(/</g, '<').replace(/>/g, '>').replace(/&/g, '&').replace(/\"/g, '"').replace(/&#039;/g, "'");
+
 
     // 儲存原始狀態
     const originalContent = commentContent.innerHTML;
