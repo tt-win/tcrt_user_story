@@ -3590,14 +3590,14 @@ function wireCaseCheckHandlers() {
         selectedCaseMap.delete(num);
       }
       updateSelectedCount();
-      // 如果當前 filter 不是 all，需要重新渲染以更新列表
-      if (currentCaseFilter !== 'all') {
-        renderCaseList();
-      } else {
-        // 只更新 filter info
-        const filteredCount = availableCases.length;
-        updateFilterInfo(filteredCount);
+      // 只更新 filter info，不重新渲染列表，讓使用者在按下更新按鈕前可以看到選擇的項目
+      let filteredCount = availableCases.length;
+      if (currentCaseFilter === 'selected') {
+        filteredCount = availableCases.filter(c => selectedCaseMap.has(c.test_case_number)).length;
+      } else if (currentCaseFilter === 'unselected') {
+        filteredCount = availableCases.filter(c => !selectedCaseMap.has(c.test_case_number)).length;
       }
+      updateFilterInfo(filteredCount);
     });
   });
   const selectAll = document.getElementById('selectAllCases');
@@ -3626,8 +3626,14 @@ function wireCaseCheckHandlers() {
       document.querySelectorAll('.case-check').forEach(ch => ch.checked = false);
     }
     updateSelectedCount();
-    // 重新渲染以更新列表和 info
-    renderCaseList();
+    // 只更新 filter info，不重新渲染列表
+    let filteredCount = availableCases.length;
+    if (currentCaseFilter === 'selected') {
+      filteredCount = availableCases.filter(c => selectedCaseMap.has(c.test_case_number)).length;
+    } else if (currentCaseFilter === 'unselected') {
+      filteredCount = availableCases.filter(c => !selectedCaseMap.has(c.test_case_number)).length;
+    }
+    updateFilterInfo(filteredCount);
   };
   // search handlers moved to bindCaseSearchBarEvents()
 }
