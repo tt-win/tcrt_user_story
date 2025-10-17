@@ -1530,18 +1530,18 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                     <i class="fas fa-spinner fa-spin me-2"></i>
                     <span data-i18n="common.loading">載入中...</span>
                 </div>
-                <!-- 三欄佈局區域 -->
+                <!-- 兩欄佈局區域 -->
                 <div id="testCaseDetailBodyRow" class="d-none" style="flex: 1; min-height: 0; display: flex; gap: 16px;">
-                    <!-- 左欄：Test Case 詳情 (40%) -->
-                    <div id="testCaseDetailLeft" style="flex: 0 0 40%; min-width: 0; display: flex; flex-direction: column; overflow: hidden;">
+                    <!-- 左欄：Test Case 詳情 (50%) -->
+                    <div id="testCaseDetailLeft" style="flex: 0 0 calc(50% - 8px); min-width: 0; display: flex; flex-direction: column; overflow: hidden;">
                         <!-- 固定區：Basic Info + 測試詳情標題 -->
                         <div id="testCaseDetailFixed" style="display:none;"></div>
                         <!-- 可捲動區：僅測試詳情內容 -->
                         <div id="testCaseDetailScrollable" style="display:none;"></div>
                     </div>
 
-                    <!-- 中欄：Timeline + Bug Tickets + Test Results (35%) -->
-                    <aside id="testCaseDetailMiddlePane" style="flex: 0 0 35%; border-left: 1px solid var(--tr-border-light); padding-left: 12px; display: none; min-width: 320px; flex-direction: column; overflow: hidden;">
+                    <!-- 右欄：Timeline + Bug Tickets + Test Results + Comment (50%) -->
+                    <aside id="testCaseDetailMiddlePane" style="flex: 0 0 calc(50% - 8px); border-left: 1px solid var(--tr-border-light); padding-left: 12px; display: none; min-width: 320px; flex-direction: column; overflow: hidden;">
                         <div class="d-flex align-items-center justify-content-between mb-2">
                             <h6 class="mb-0"><i class="fas fa-history me-2"></i><span data-i18n="testRun.resultHistory">結果歷程</span></h6>
                             <button type="button" id="refreshTimelineBtn" class="btn btn-link text-secondary p-0" title="刷新" style="border: none; background: none;"><i class="fas fa-sync-alt"></i></button>
@@ -1572,7 +1572,7 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                         </div>
 
                         <!-- Test Results 區域 -->
-                        <div class="mt-3 border-top pt-3" style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
+                        <div class="mt-3 border-top pt-3" style="flex: 1; display: flex; flex-direction: column; min-height: 0; max-height: 50%;">
                             <div class="d-flex align-items-center justify-content-between mb-2">
                                 <h6 class="mb-0">
                                     <i class="fas fa-file-alt me-2"></i>
@@ -1591,10 +1591,10 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                             <div id="testResultsEmpty" class="text-muted small mb-2" style="display:none;">
                                 <i class="fas fa-info-circle me-1"></i><span data-i18n="testRun.noTestResults">尚無測試結果檔案</span>
                             </div>
-                            <div id="testResultsList" style="flex: 1; overflow-y: auto; min-height: 150px;"></div>
+                            <div id="testResultsList" style="flex: 1; overflow-y: auto; min-height: 100px;"></div>
 
                             <!-- 上傳狀態區（覆蓋檔案列表區域） -->
-                            <div id="testResultsUploadArea" class="test-results-upload-zone mb-2" style="display:none; flex: 1; min-height: 150px;">
+                            <div id="testResultsUploadArea" class="test-results-upload-zone mb-2" style="display:none; flex: 1; min-height: 100px;">
                                 <div class="upload-dropzone border-2 border-dashed border-secondary rounded p-3 text-center">
                                     <div id="uploadDropText">
                                         <i class="fas fa-cloud-upload-alt fa-2x text-muted mb-2"></i>
@@ -1613,12 +1613,9 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                                 </div>
                             </div>
                         </div>
-                    </aside>
 
-                    <!-- 右欄：Comment 區域 (25%) -->
-                    <aside id="testCaseDetailRightPane" style="flex: 0 0 25%; border-left: 1px solid var(--tr-border-light); padding-left: 12px; display: none; min-width: 280px; flex-direction: column; overflow: hidden;">
                         <!-- Comment 區域 -->
-                        <div style="flex: 1; display: flex; flex-direction: column; overflow: hidden;">
+                        <div class="mt-3 border-top pt-3" style="flex: 0 0 200px; display: flex; flex-direction: column; min-height: 200px;">
                             <div class="d-flex align-items-center justify-content-between mb-2" style="flex-shrink: 0;">
                                 <h6 class="mb-0">
                                     <i class="fas fa-comment me-2"></i>
@@ -4578,15 +4575,13 @@ function getItemByTestCaseNumber(testCaseNumber) {
 async function renderResultHistoryTimeline(testCase) {
     try {
         const middlePane = document.getElementById('testCaseDetailMiddlePane');
-        const rightPane = document.getElementById('testCaseDetailRightPane');
         const loading = document.getElementById('timelineLoading');
         const empty = document.getElementById('timelineEmpty');
         const list = document.getElementById('timelineList');
-        if (!middlePane || !rightPane || !list) return;
+        if (!middlePane || !list) return;
 
-        // 顯示中欄和右欄 (使用 flex 佈局)
+        // 顯示右欄 (使用 flex 佈局)
         middlePane.style.display = 'flex';
-        rightPane.style.display = 'flex';
         loading.style.display = 'block';
         empty.style.display = 'none';
         list.innerHTML = '';
