@@ -1530,18 +1530,18 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                     <i class="fas fa-spinner fa-spin me-2"></i>
                     <span data-i18n="common.loading">載入中...</span>
                 </div>
-                <!-- 兩欄佈局區域 -->
+                <!-- 三欄佈局區域 -->
                 <div id="testCaseDetailBodyRow" class="d-none" style="flex: 1; min-height: 0; display: flex; gap: 16px;">
-                    <!-- 左欄：Test Case 詳情 (50%) -->
-                    <div id="testCaseDetailLeft" style="flex: 0 0 calc(50% - 8px); min-width: 0; display: flex; flex-direction: column; overflow: hidden;">
+                    <!-- 左欄：Test Case 詳情 (40%) -->
+                    <div id="testCaseDetailLeft" style="flex: 0 0 calc(40% - 11px); min-width: 0; display: flex; flex-direction: column; overflow: hidden;">
                         <!-- 固定區：Basic Info + 測試詳情標題 -->
                         <div id="testCaseDetailFixed" style="display:none;"></div>
                         <!-- 可捲動區：僅測試詳情內容 -->
                         <div id="testCaseDetailScrollable" style="display:none;"></div>
                     </div>
 
-                    <!-- 右欄：Timeline + Bug Tickets + Test Results + Comment (50%) -->
-                    <aside id="testCaseDetailMiddlePane" style="flex: 0 0 calc(50% - 8px); border-left: 1px solid var(--tr-border-light); padding-left: 12px; display: none; min-width: 320px; flex-direction: column; overflow: hidden;">
+                    <!-- 中欄：Timeline + Bug Tickets (30%) -->
+                    <aside id="testCaseDetailMiddlePane" style="flex: 0 0 calc(30% - 11px); border-left: 1px solid var(--tr-border-light); padding-left: 12px; display: none; min-width: 280px; flex-direction: column; overflow: hidden;">
                         <div class="d-flex align-items-center justify-content-between mb-2">
                             <h6 class="mb-0"><i class="fas fa-history me-2"></i><span data-i18n="testRun.resultHistory">結果歷程</span></h6>
                             <button type="button" id="refreshTimelineBtn" class="btn btn-link text-secondary p-0" title="刷新" style="border: none; background: none;"><i class="fas fa-sync-alt"></i></button>
@@ -1555,7 +1555,7 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                         <div id="timelineList" style="height: 200px; overflow-y: auto; flex-shrink: 0;"></div>
 
                         <!-- Bug Tickets 區域 -->
-                        <div class="mt-3 border-top pt-3" style="flex-shrink: 0;">
+                        <div class="mt-3 border-top pt-3" style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
                             <div class="d-flex align-items-center justify-content-between mb-2">
                                 <h6 class="mb-0"><i class="fas fa-bug me-2"></i><span data-i18n="testRun.bugTickets">Bug Tickets</span></h6>
                                 <button type="button" id="addBugTicketBtn" class="btn btn-link text-secondary p-0" data-i18n-title="testRun.addBugTicket" style="border: none; background: none;">
@@ -1568,11 +1568,14 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                             <div id="bugTicketsEmpty" class="text-muted small" style="display:none;">
                                 <i class="fas fa-info-circle me-1"></i><span data-i18n="testRun.noBugTickets">尚無關聯的 Bug Tickets</span>
                             </div>
-                            <div id="bugTicketsList" style="height: 150px; overflow-y: auto;"></div>
+                            <div id="bugTicketsList" style="flex: 1; overflow-y: auto; min-height: 150px;"></div>
                         </div>
+                    </aside>
 
+                    <!-- 右欄：Test Results + Comment (30%) -->
+                    <aside id="testCaseDetailRightPane" style="flex: 0 0 calc(30% - 11px); border-left: 1px solid var(--tr-border-light); padding-left: 12px; display: none; min-width: 280px; flex-direction: column; overflow: hidden;">
                         <!-- Test Results 區域 -->
-                        <div class="mt-3 border-top pt-3" style="flex: 1; display: flex; flex-direction: column; min-height: 0; max-height: 50%;">
+                        <div style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
                             <div class="d-flex align-items-center justify-content-between mb-2">
                                 <h6 class="mb-0">
                                     <i class="fas fa-file-alt me-2"></i>
@@ -4575,13 +4578,15 @@ function getItemByTestCaseNumber(testCaseNumber) {
 async function renderResultHistoryTimeline(testCase) {
     try {
         const middlePane = document.getElementById('testCaseDetailMiddlePane');
+        const rightPane = document.getElementById('testCaseDetailRightPane');
         const loading = document.getElementById('timelineLoading');
         const empty = document.getElementById('timelineEmpty');
         const list = document.getElementById('timelineList');
-        if (!middlePane || !list) return;
+        if (!middlePane || !rightPane || !list) return;
 
-        // 顯示右欄 (使用 flex 佈局)
+        // 顯示中欄和右欄 (使用 flex 佈局)
         middlePane.style.display = 'flex';
+        rightPane.style.display = 'flex';
         loading.style.display = 'block';
         empty.style.display = 'none';
         list.innerHTML = '';
