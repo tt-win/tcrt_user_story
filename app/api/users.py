@@ -873,8 +873,9 @@ async def reset_user_password(
             if generate_new or not password:
                 password = PasswordService.generate_temp_password()
 
-            # 更新密碼
+            # 更新密碼並清空 last_login_at，強制使用者首次登入時設定新密碼
             user.hashed_password = PasswordService.hash_password(password)
+            user.last_login_at = None  # 清空以觸發首次登入流程
             user.updated_at = datetime.utcnow()
 
             await session.commit()
