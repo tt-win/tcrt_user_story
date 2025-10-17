@@ -3829,19 +3829,19 @@ function updateBulkTextStatus(parseResult) {
 function annotateConflictsInEditor(conflicts) {
     const textarea = document.getElementById('bulkTextInput');
     if (!textarea || !conflicts.length) return;
-    
+
     const lines = textarea.value.split('\n');
     const conflictNumbers = new Set(conflicts);
-    
+
     // 先移除所有現有的 (Conflict) 標記
-    const cleanedLines = lines.map(line => 
+    const cleanedLines = lines.map(line =>
         line.replace(/^\(Conflict\)\s*/, '')
     );
-    
+
     // 重新加上衝突標記
     const annotatedLines = cleanedLines.map(line => {
         if (!line.trim()) return line;
-        
+
         const columns = parseCsvLine(line.trim());
         if (!columns.length) return line;
         const case_no = (columns[0] || '').trim();
@@ -3850,7 +3850,35 @@ function annotateConflictsInEditor(conflicts) {
         }
         return line;
     });
-    
+
+    textarea.value = annotatedLines.join('\n');
+}
+
+/**
+ * 在編輯器中標記有格式錯誤的行
+ */
+function annotateErrorsInEditor(errors) {
+    const textarea = document.getElementById('bulkTextInput');
+    if (!textarea || !errors.length) return;
+
+    const lines = textarea.value.split('\n');
+    const errorLineNumbers = new Set(errors.map(e => e.line));
+
+    // 先移除所有現有的 (Error) 標記和 (Conflict) 標記
+    const cleanedLines = lines.map(line =>
+        line.replace(/^\((Error|Conflict)\)\s*/, '')
+    );
+
+    // 重新加上錯誤標記
+    const annotatedLines = cleanedLines.map((line, index) => {
+        const lineNumber = index + 1;
+        if (!line.trim()) return line;
+        if (errorLineNumbers.has(lineNumber)) {
+            return `(Error) ${line}`;
+        }
+        return line;
+    });
+
     textarea.value = annotatedLines.join('\n');
 }
 
@@ -3860,23 +3888,25 @@ function annotateConflictsInEditor(conflicts) {
 async function startBulkTextCreate() {
     const textarea = document.getElementById('bulkTextInput');
     if (!textarea) return;
-    
+
     const rawText = textarea.value.trim();
     if (!rawText) {
         const emptyMessage = window.i18n ? window.i18n.t('testCase.bulkTextToast.emptyInput') : '請輸入資料';
         AppUtils.showWarning(emptyMessage);
         return;
     }
-    
+
     // 解析輸入
     const parseResult = parseBulkText(rawText);
     updateBulkTextStatus(parseResult);
-    
+
     const { items, errors, duplicates } = parseResult;
-    
+
     // 檢查格式錯誤
     if (errors.length > 0) {
-        const message = window.i18n ? 
+        // 標記有錯誤的行
+        annotateErrorsInEditor(errors);
+        const message = window.i18n ?
             window.i18n.t('testCase.bulkTextToast.invalid', { count: errors.length }) :
             `有 ${errors.length} 行格式錯誤，請修正後再試。`;
         AppUtils.showError(message);
