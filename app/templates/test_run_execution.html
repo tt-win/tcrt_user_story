@@ -5,6 +5,111 @@
 {% block head %}
 <!-- Markdown 編輯器相關資源 -->
 <script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+
+<!-- Markdown 顯示樣式 -->
+<style>
+#commentContent {
+    word-break: break-word;
+}
+
+#commentContent h1,
+#commentContent h2,
+#commentContent h3,
+#commentContent h4,
+#commentContent h5,
+#commentContent h6 {
+    margin-top: 0.5em;
+    margin-bottom: 0.5em;
+    font-weight: 600;
+}
+
+#commentContent h1 { font-size: 1.5em; }
+#commentContent h2 { font-size: 1.3em; }
+#commentContent h3 { font-size: 1.1em; }
+#commentContent h4 { font-size: 1em; }
+
+#commentContent p {
+    margin-bottom: 0.5em;
+}
+
+#commentContent ul,
+#commentContent ol {
+    margin-bottom: 0.5em;
+    padding-left: 1.5em;
+}
+
+#commentContent li {
+    margin-bottom: 0.2em;
+}
+
+#commentContent code {
+    background-color: #f5f5f5;
+    padding: 0.2em 0.4em;
+    border-radius: 3px;
+    font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+    font-size: 0.9em;
+}
+
+#commentContent pre {
+    background-color: #f5f5f5;
+    padding: 0.8em;
+    border-radius: 4px;
+    overflow-x: auto;
+    margin-bottom: 0.5em;
+}
+
+#commentContent pre code {
+    background-color: transparent;
+    padding: 0;
+    border-radius: 0;
+}
+
+#commentContent blockquote {
+    border-left: 3px solid #ddd;
+    padding-left: 0.8em;
+    margin-left: 0;
+    margin-bottom: 0.5em;
+    color: #666;
+}
+
+#commentContent a {
+    color: #0066cc;
+    text-decoration: none;
+}
+
+#commentContent a:hover {
+    text-decoration: underline;
+}
+
+#commentContent table {
+    border-collapse: collapse;
+    margin-bottom: 0.5em;
+}
+
+#commentContent table th,
+#commentContent table td {
+    border: 1px solid #ddd;
+    padding: 0.5em;
+    text-align: left;
+}
+
+#commentContent table th {
+    background-color: #f5f5f5;
+    font-weight: 600;
+}
+
+#commentContent hr {
+    border: none;
+    border-top: 2px solid #ddd;
+    margin: 0.5em 0;
+}
+
+#commentContent strong,
+#commentContent em {
+    font-weight: 600;
+}
+</style>
 
 <script>
 function setupQuickSearch_TR() {
@@ -1575,7 +1680,7 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                     <!-- 右欄：Test Results + Comment (30%) -->
                     <aside id="testCaseDetailRightPane" style="flex: 0 0 calc(30% - 11px); border-left: 1px solid var(--tr-border-light); padding-left: 12px; display: none; min-width: 280px; flex-direction: column; overflow: hidden;">
                         <!-- Test Results 區域 -->
-                        <div style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
+                        <div style="flex: 0 0 50%; display: flex; flex-direction: column; min-height: 0; overflow: hidden;">
                             <div class="d-flex align-items-center justify-content-between mb-2">
                                 <h6 class="mb-0">
                                     <i class="fas fa-file-alt me-2"></i>
@@ -1618,7 +1723,7 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                         </div>
 
                         <!-- Comment 區域 -->
-                        <div class="mt-3 border-top pt-3" style="flex: 0 0 200px; display: flex; flex-direction: column; min-height: 200px;">
+                        <div class="border-top pt-3" style="flex: 0 0 50%; display: flex; flex-direction: column; min-height: 0; overflow: hidden; margin-top: 0;">
                             <div class="d-flex align-items-center justify-content-between mb-2" style="flex-shrink: 0;">
                                 <h6 class="mb-0">
                                     <i class="fas fa-comment me-2"></i>
@@ -5484,9 +5589,29 @@ async function loadComment(testRunItemId) {
             }
 
             if (data.comment && data.comment.trim()) {
-                commentContent.innerHTML = escapeHtml(data.comment).replace(/\n/g, '<br>');
+                const originalMarkdown = data.comment;
+
+                // 使用 marked 库将 markdown 转换为 HTML
+                let htmlContent = marked.parse(originalMarkdown);
+
+                // 使用 DOMPurify 清理 HTML，防止 XSS 攻击
+                // 配置允许的标签和属性
+                const cleanHtml = DOMPurify.sanitize(htmlContent, {
+                    ALLOWED_TAGS: ['h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'p', 'br', 'strong', 'em', 'u', 'del',
+                                  'ul', 'ol', 'li', 'blockquote', 'code', 'pre', 'hr', 'table', 'thead', 'tbody',
+                                  'th', 'tr', 'td', 'a', 'img', 'span', 'div'],
+                    ALLOWED_ATTR: ['href', 'title', 'alt', 'src', 'class', 'id'],
+                    ALLOW_DATA_ATTR: false
+                });
+
+                // 在 data attribute 中存储原始 markdown，以便编辑时使用
+                commentContent.setAttribute('data-original-markdown', originalMarkdown);
+
+                // 设置渲染的 HTML
+                commentContent.innerHTML = cleanHtml;
             } else {
                 commentContent.innerHTML = '<span data-i18n="testRun.noComment">尚無註釋</span>';
+                commentContent.removeAttribute('data-original-markdown');
             }
         }
     } catch (error) {
@@ -5494,6 +5619,7 @@ async function loadComment(testRunItemId) {
         const commentContent = document.getElementById('commentContent');
         if (commentContent) {
             commentContent.innerHTML = '<span class="text-danger">載入失敗</span>';
+            commentContent.removeAttribute('data-original-markdown');
         }
     }
 }
@@ -5515,11 +5641,19 @@ async function editComment(testRunItemId) {
 
     // 檢查是否顯示了"暫無註釋"，如果是則當前評論為空
     const isNoCommentShown = commentContent.querySelector && commentContent.querySelector('[data-i18n="testRun.noComment"]');
-    const currentComment = isNoCommentShown ? '' : commentContent.innerHTML.replace(/<br>/g, '\\n').replace(/</g, '<').replace(/>/g, '>').replace(/&/g, '&').replace(/\"/g, '"').replace(/&#039;/g, "'");
 
+    // 優先使用存儲在 data attribute 中的原始 markdown，否則為空
+    let currentComment = '';
+    if (!isNoCommentShown) {
+        const originalMarkdown = commentContent.getAttribute('data-original-markdown');
+        if (originalMarkdown) {
+            currentComment = originalMarkdown;
+        }
+    }
 
     // 儲存原始狀態
     const originalContent = commentContent.innerHTML;
+    const originalMarkdown = commentContent.getAttribute('data-original-markdown');
     const hasSmallClass = commentContent.classList.contains('small');
     const originalStyle = commentContent.getAttribute('style');
 
@@ -5532,7 +5666,7 @@ async function editComment(testRunItemId) {
 
     // 替換成編輯模式
     commentContent.innerHTML = `
-        <textarea class="form-control mb-2" id="commentTextarea" rows="2" placeholder="輸入註釋內容..." style="flex: 1; resize: none; min-height: 60px;">${currentComment}</textarea>
+        <textarea class="form-control mb-2" id="commentTextarea" rows="2" placeholder="輸入註釋內容..." style="flex: 1; resize: none; min-height: 60px;">${escapeHtml(currentComment)}</textarea>
         <div class="d-flex gap-2" style="flex-shrink: 0;">
             <button type="button" class="btn btn-primary" id="saveCommentBtn">
                 <i class="fas fa-save me-1"></i>儲存
@@ -5553,6 +5687,9 @@ async function editComment(testRunItemId) {
     // 還原函數
     const restoreOriginal = () => {
         commentContent.innerHTML = originalContent;
+        if (originalMarkdown) {
+            commentContent.setAttribute('data-original-markdown', originalMarkdown);
+        }
         if (hasSmallClass) {
             commentContent.classList.add('small');
         }
