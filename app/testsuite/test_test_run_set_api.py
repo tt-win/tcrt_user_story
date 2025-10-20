@@ -173,3 +173,56 @@ def test_test_run_set_crud_and_membership(temp_db):
         assert remaining_config1 is None
         remaining_config2 = session.query(TestRunConfig).filter_by(id=config2_id).first()
         assert remaining_config2 is not None
+
+
+def test_test_run_set_status_auto_updates(temp_db):
+    _, SessionLocal = temp_db
+    client = TestClient(app)
+
+    with SessionLocal() as session:
+        team_id, config1_id, config2_id = _seed_team_with_runs(session)
+
+    response = client.post(
+        f"/api/teams/{team_id}/test-run-sets",
+        json={
+            "name": "Cycle",
+            "initial_config_ids": [config1_id, config2_id],
+        },
+    )
+    assert response.status_code == 201
+    set_payload = response.json()
+    set_id = set_payload["id"]
+    assert set_payload["status"] == "active"
+
+    for cfg_id in (config1_id, config2_id):
+        resp = client.put(
+            f"/api/teams/{team_id}/test-run-configs/{cfg_id}/status",
+            json={"status": "active"},
+        )
+        assert resp.status_code == 200
+        resp = client.put(
+            f"/api/teams/{team_id}/test-run-configs/{cfg_id}/status",
+            json={"status": "completed"},
+        )
+        assert resp.status_code == 200
+
+    detail = client.get(f"/api/teams/{team_id}/test-run-sets/{set_id}")
+    assert detail.status_code == 200
+    detail_payload = detail.json()
+    assert detail_payload["status"] == "completed"
+
+    response = client.post(
+        f"/api/teams/{team_id}/test-run-configs",
+        json={
+            "name": "Extra Cycle",
+            "set_id": set_id,
+        },
+    )
+    assert response.status_code == 201
+    new_config = response.json()
+    assert new_config["set_id"] == set_id
+
+    refreshed = client.get(f"/api/teams/{team_id}/test-run-sets/{set_id}")
+    assert refreshed.status_code == 200
+    refreshed_payload = refreshed.json()
+    assert refreshed_payload["status"] == "active"

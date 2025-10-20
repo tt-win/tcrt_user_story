@@ -1232,6 +1232,7 @@
             },
             "status": {
                 "active": "Active",
+                "completed": "Completed",
                 "archived": "Archived"
             },
             "card": {

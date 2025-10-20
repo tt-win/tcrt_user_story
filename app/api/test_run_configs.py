@@ -29,6 +29,7 @@ from app.models.database_models import (
 from app.models.lark_types import TestResultStatus
 from app.models.test_run_config import TestRunStatus
 from app.services.lark_notify_service import get_lark_notify_service
+from app.services.test_run_set_status import recalculate_set_status
 from datetime import datetime
 from pydantic import BaseModel, Field
 
@@ -343,8 +344,28 @@ async def delete_test_run_config_cascade(
     """刪除 Test Run Config 與相關紀錄與檔案"""
     from ..services.test_result_cleanup_service import TestResultCleanupService
 
+    # 先記錄所屬的 Test Run Set
+    membership = (
+        db.query(TestRunSetMembershipDB)
+        .filter(TestRunSetMembershipDB.config_id == config_db.id)
+        .first()
+    )
+    affected_set_id = membership.set_id if membership else None
+
     # 先清除 set membership
     detach_config_from_set(db, config_db.id)
+
+    if affected_set_id is not None:
+        affected_set = (
+            db.query(TestRunSetDB)
+            .filter(
+                TestRunSetDB.id == affected_set_id,
+                TestRunSetDB.team_id == team_id,
+            )
+            .first()
+        )
+        if affected_set:
+            recalculate_set_status(db, affected_set)
 
     # 清理檔案與資料
     cleanup_service = TestResultCleanupService()
@@ -417,6 +438,8 @@ async def create_test_run_config(
 
     if config.set_id is not None:
         attach_config_to_set(db, team_id, config_db, config.set_id)
+        parent_set = ensure_test_run_set(db, team_id, config.set_id)
+        recalculate_set_status(db, parent_set)
 
     db.commit()
     db.refresh(config_db)
@@ -490,7 +513,11 @@ async def update_test_run_config(
     # 更新其他欄位
     for key, value in update_data.items():
         setattr(config_db, key, value)
-    
+
+    if config_db.set_membership:
+        parent_set = ensure_test_run_set(db, team_id, config_db.set_membership.set_id)
+        recalculate_set_status(db, parent_set)
+
     # 提交更新
     db.commit()
     db.refresh(config_db)
@@ -680,9 +707,13 @@ async def change_test_run_status(
         config_db.end_date = None
         if not config_db.start_date:
             config_db.start_date = datetime.utcnow()
-    
+
     config_db.updated_at = datetime.utcnow()
-    
+
+    if config_db.set_membership:
+        parent_set = ensure_test_run_set(db, team_id, config_db.set_membership.set_id)
+        recalculate_set_status(db, parent_set)
+
     db.commit()
     db.refresh(config_db)
     
