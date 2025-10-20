@@ -15,6 +15,7 @@ class TestRunSetStatus(str, Enum):
     """Test Run Set 狀態枚舉"""
 
     ACTIVE = "active"
+    COMPLETED = "completed"
     ARCHIVED = "archived"
 
 

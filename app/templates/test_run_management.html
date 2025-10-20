@@ -2177,6 +2177,9 @@ function getSetStatusText(status) {
     if (key === 'active') {
         return window.i18n?.t('testRun.sets.status.active') || 'Active';
     }
+    if (key === 'completed') {
+        return window.i18n?.t('testRun.sets.status.completed') || 'Completed';
+    }
     if (key === 'archived') {
         return window.i18n?.t('testRun.sets.status.archived') || 'Archived';
     }
@@ -2186,7 +2189,12 @@ function getSetStatusText(status) {
 function getSetStatusBadge(status) {
     const text = getSetStatusText(status);
     const key = String(status || '').toLowerCase();
-    const className = key === 'archived' ? 'status-badge status-archived' : 'status-badge status-active';
+    let className = 'status-badge status-active';
+    if (key === 'archived') {
+        className = 'status-badge status-archived';
+    } else if (key === 'completed') {
+        className = 'status-badge status-completed';
+    }
     return `<span class="${className}">${text}</span>`;
 }
 

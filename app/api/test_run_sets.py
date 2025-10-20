@@ -27,6 +27,10 @@ from app.models.test_run_set import (
     TestRunSetSummary,
     TestRunSetUpdate,
 )
+from app.services.test_run_set_status import (
+    recalculate_set_status,
+    resolve_status_for_response,
+)
 
 from .test_run_configs import (
     attach_config_to_set,
@@ -78,10 +82,11 @@ def _query_set_with_members(db: Session):
 
 
 def _build_set_summary(set_db: TestRunSetDB) -> TestRunSetSummary:
+    resolved_status = resolve_status_for_response(set_db)
     return TestRunSetSummary(
         id=set_db.id,
         name=set_db.name,
-        status=set_db.status,
+        status=resolved_status,
         test_run_count=len(set_db.memberships),
         related_tp_tickets=deserialize_tp_tickets(set_db.related_tp_tickets_json),
         created_at=set_db.created_at,
@@ -95,12 +100,14 @@ def _build_set_detail(set_db: TestRunSetDB) -> TestRunSetDetail:
         if membership.config:
             test_runs.append(build_config_summary(membership.config))
 
+    resolved_status = resolve_status_for_response(set_db)
+
     return TestRunSetDetail(
         id=set_db.id,
         team_id=set_db.team_id,
         name=set_db.name,
         description=set_db.description,
-        status=set_db.status,
+        status=resolved_status,
         archived_at=set_db.archived_at,
         related_tp_tickets=deserialize_tp_tickets(set_db.related_tp_tickets_json),
         created_at=set_db.created_at,
@@ -229,6 +236,8 @@ def create_test_run_set(
     for config_db in configs:
         attach_config_to_set(db, team_id, config_db, new_set.id)
 
+    recalculate_set_status(db, new_set)
+
     db.commit()
     db.refresh(new_set)
 
@@ -270,15 +279,19 @@ def update_test_run_set(
     for key, value in update_data.items():
         setattr(test_run_set, key, value)
 
+    recalculate_set_status(db, test_run_set)
+
     db.commit()
     db.refresh(test_run_set)
+
+    resolved_status = resolve_status_for_response(test_run_set)
 
     return TestRunSet(
         id=test_run_set.id,
         team_id=test_run_set.team_id,
         name=test_run_set.name,
         description=test_run_set.description,
-        status=test_run_set.status,
+        status=resolved_status,
         archived_at=test_run_set.archived_at,
         related_tp_tickets=deserialize_tp_tickets(test_run_set.related_tp_tickets_json),
         created_at=test_run_set.created_at,
@@ -299,6 +312,8 @@ def add_members_to_set(
     configs = _validate_config_ids(db, team_id, payload.config_ids)
     for config_db in configs:
         attach_config_to_set(db, team_id, config_db, test_run_set.id)
+
+    recalculate_set_status(db, test_run_set)
 
     db.commit()
     db.refresh(test_run_set)
@@ -327,11 +342,22 @@ def move_config_between_sets(
             detail=f"找不到 Test Run Config ID {config_id}"
         )
 
+    previous_set_id = None
+    if config_db.set_membership:
+        previous_set_id = config_db.set_membership.set_id
+
     if payload.target_set_id is None:
         detach_config_from_set(db, config_id)
+        if previous_set_id is not None:
+            previous_set = ensure_test_run_set(db, team_id, previous_set_id)
+            recalculate_set_status(db, previous_set)
     else:
-        ensure_test_run_set(db, team_id, payload.target_set_id)
-        attach_config_to_set(db, team_id, config_db, payload.target_set_id)
+        target_set = ensure_test_run_set(db, team_id, payload.target_set_id)
+        attach_config_to_set(db, team_id, config_db, target_set.id)
+        recalculate_set_status(db, target_set)
+        if previous_set_id and previous_set_id != target_set.id:
+            previous_set = ensure_test_run_set(db, team_id, previous_set_id)
+            recalculate_set_status(db, previous_set)
 
     db.commit()
     db.refresh(config_db)
