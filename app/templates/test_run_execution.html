@@ -7820,15 +7820,15 @@ class TestResultsManager {
         }
         
         this.showEmpty(false);
-        const filesHtml = safeFiles.map(file => this.renderFileItem(file)).join('');
+        const filesHtml = safeFiles.map((file, index) => this.renderFileItem(file, index)).join('');
         if (this.resultsList) {
             this.resultsList.innerHTML = filesHtml;
         }
-        
+
         this.bindFileItemEvents();
     }
 
-    renderFileItem(file) {
+    renderFileItem(file, fileIndex) {
         const fileIcon = this.getFileIcon(file.name);
         const canManageFiles = !!this.canManageFiles;
         const actionsHtml = canManageFiles ? `
