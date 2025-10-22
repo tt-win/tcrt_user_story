@@ -2720,12 +2720,28 @@ async function loadTCGCacheFromStorage() {
 }
 
 async function saveTCGCacheToStorage() {
-    // 僅保存必要欄位，並以 TRCache（IndexedDB + gzip）存放
-    const compact = Array.isArray(tcgCache)
-        ? tcgCache.map(item => ({ tcg_number: item.tcg_number, title: item.title }))
-        : [];
-    await TRCache.setTCG(compact);
-    adjustTestCasesScrollHeight();
+    try {
+        // 僅保存必要欄位，並以 TRCache（IndexedDB + gzip）存放
+        const compact = Array.isArray(tcgCache)
+            ? tcgCache.map(item => ({ tcg_number: item.tcg_number, title: item.title }))
+            : [];
+
+        console.log(`[TCG 保存] 準備保存 ${compact.length} 筆記錄到 IndexedDB`);
+
+        const success = await TRCache.setTCG(compact);
+        console.log(`[TCG 保存] IndexedDB 保存結果: ${success ? '✅ 成功' : '❌ 失敗'}`);
+
+        if (!success) {
+            console.error('[TCG 保存] 失敗！需要檢查 IndexedDB 或 pako 库');
+            console.log('[TCG 保存] pako 库状态:', typeof pako !== 'undefined' ? '✅ 已加載' : '❌ 未加載');
+        }
+
+        adjustTestCasesScrollHeight();
+        return success;
+    } catch (error) {
+        console.error('[TCG 保存] 出錯:', error);
+        return false;
+    }
 }
 
 
@@ -2739,32 +2755,38 @@ function shouldUpdateTCGCache() {
 async function loadTCGCache(updateProgress = null) {
     try {
         if (updateProgress) updateProgress(0, '開始載入 TCG 單號...');
-        
+
         if (updateProgress) updateProgress(30, '從本地資料庫載入...');
-        
+
         // 一次性從本地 SQLite 載入所有資料（極快）
         const response = await window.AuthClient.fetch('/api/tcg/search?keyword=&limit=50000');
         if (!response.ok) {
             throw new Error(`載入 TCG 失敗: ${response.status} ${response.statusText}`);
         }
-        
+
         if (updateProgress) updateProgress(70, '解析 TCG 資料...');
-        
+
         const data = await response.json();
         tcgCache = data.results || [];
         tcgCacheTimestamp = Date.now();
-        
+
+        console.log(`[TCG 加載] API 返回 ${data.total} 筆，實際接收 ${tcgCache.length} 筆`);
+        if (tcgCache.length !== data.total) {
+            console.warn(`[TCG 加載] 警告：期望 ${data.total} 筆但只獲得 ${tcgCache.length} 筆！`);
+        }
+
         if (updateProgress) updateProgress(90, '儲存快取...');
-        await saveTCGCacheToStorage();
-        
+        const saveSuccess = await saveTCGCacheToStorage();
+        console.log(`[TCG 加載] IndexedDB 保存結果: ${saveSuccess ? '成功' : '失敗'}`);
+
         if (updateProgress) {
             const tcgCompletedMsg = window.i18n ? window.i18n.t('loading.completedWithCount', {count: tcgCache.length}) : `載入完成 (${tcgCache.length} 筆)`;
             updateProgress(100, tcgCompletedMsg);
         }
-        
+
         console.log(`TCG 快取更新完成: ${tcgCache.length} 筆記錄`);
         return true;
-        
+
     } catch (error) {
         console.error('載入 TCG 快取失敗:', error);
         if (updateProgress) {
