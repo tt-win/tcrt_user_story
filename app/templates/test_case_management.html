@@ -1198,7 +1198,7 @@ TC-1003,API 健康檢查,\"服務已啟動\",\"發送 GET /health\",\"回傳 200
 
 <!-- 搜尋及取代 Modal -->
 <div class="modal fade" id="bulkEditSearchModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">
@@ -1208,31 +1208,57 @@ TC-1003,API 健康檢查,\"服務已啟動\",\"發送 GET /health\",\"回傳 200
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <div class="mb-3">
-                    <label for="bulkEditSearchText" class="form-label" data-i18n="testCase.bulkEdit.searchText">搜尋內容</label>
-                    <input type="text" class="form-control" id="bulkEditSearchText">
+                <!-- 搜尋表單 -->
+                <div id="bulkEditSearchForm">
+                    <div class="mb-3">
+                        <label for="bulkEditSearchText" class="form-label" data-i18n="testCase.bulkEdit.searchText">搜尋內容</label>
+                        <input type="text" class="form-control" id="bulkEditSearchText">
+                    </div>
+                    <div class="mb-3">
+                        <label for="bulkEditReplaceText" class="form-label" data-i18n="testCase.bulkEdit.replaceText">取代內容</label>
+                        <input type="text" class="form-control" id="bulkEditReplaceText">
+                    </div>
+                    <div class="mb-3">
+                        <label for="bulkEditSearchColumn" class="form-label" data-i18n="testCase.bulkEdit.searchColumn">搜尋範圍</label>
+                        <select class="form-select" id="bulkEditSearchColumn">
+                            <option value="all" data-i18n="common.all">所有欄位</option>
+                            <option value="title" data-i18n="form.title">標題</option>
+                            <option value="precondition" data-i18n="testCase.preconditions">前置條件</option>
+                            <option value="steps" data-i18n="testCase.steps">測試步驟</option>
+                            <option value="expected_result" data-i18n="testCase.expectedResults">預期結果</option>
+                        </select>
+                    </div>
                 </div>
-                <div class="mb-3">
-                    <label for="bulkEditReplaceText" class="form-label" data-i18n="testCase.bulkEdit.replaceText">取代內容</label>
-                    <input type="text" class="form-control" id="bulkEditReplaceText">
-                </div>
-                <div class="mb-3">
-                    <label for="bulkEditSearchColumn" class="form-label" data-i18n="testCase.bulkEdit.searchColumn">搜尋範圍</label>
-                    <select class="form-select" id="bulkEditSearchColumn">
-                        <option value="all" data-i18n="common.all">所有欄位</option>
-                        <option value="title" data-i18n="form.title">標題</option>
-                        <option value="precondition" data-i18n="testCase.preconditions">前置條件</option>
-                        <option value="steps" data-i18n="testCase.steps">測試步驟</option>
-                        <option value="expected_result" data-i18n="testCase.expectedResults">預期結果</option>
-                    </select>
+
+                <!-- 搜尋結果列表 -->
+                <div id="bulkEditSearchResults" style="display: none;">
+                    <div class="mb-2">
+                        <small class="text-muted">
+                            找到 <strong id="bulkEditResultCount">0</strong> 個符合項目
+                        </small>
+                    </div>
+                    <div class="d-flex gap-2 mb-2">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="bulkEditSelectAllBtn">
+                            <i class="fas fa-check-square me-1"></i>全選
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-secondary" id="bulkEditDeselectAllBtn">
+                            <i class="fas fa-square me-1"></i>反選
+                        </button>
+                    </div>
+                    <div class="list-group" style="max-height: 400px; overflow-y: auto;" id="bulkEditResultsList">
+                        <!-- 結果項目將動態添加在這裡 -->
+                    </div>
                 </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">取消</button>
-                <button type="button" class="btn btn-outline-primary" id="bulkEditReplaceBtn">
+                <button type="button" class="btn btn-info" id="bulkEditSearchBtn">
+                    <i class="fas fa-search me-2"></i><span data-i18n="common.search">搜尋</span>
+                </button>
+                <button type="button" class="btn btn-outline-primary" id="bulkEditReplaceBtn" style="display: none;">
                     <i class="fas fa-exchange-alt me-2"></i><span data-i18n="testCase.bulkEdit.replace">取代</span>
                 </button>
-                <button type="button" class="btn btn-primary" id="bulkEditReplaceAllBtn">
+                <button type="button" class="btn btn-primary" id="bulkEditReplaceAllBtn" style="display: none;">
                     <i class="fas fa-exchange-alt me-2"></i><span data-i18n="testCase.bulkEdit.replaceAll">全部取代</span>
                 </button>
             </div>
@@ -9023,6 +9049,10 @@ let bulkEditCurrentCell = null; // 當前編輯的儲存格
 let bulkEditDragState = null; // 拖曳狀態
 let bulkEditSelectDragState = null; // 拖移選取狀態
 
+// 搜尋結果管理
+let bulkEditSearchResults = []; // 搜尋結果列表：{ resultId, recordId, column, matchText, contextBefore, contextAfter, checked }
+let bulkEditCheckedResults = new Set(); // 被勾選的搜尋結果 ID
+
 // 欄位對應表
 const bulkEditColumns = [
     { key: 'index', title: '#', width: '40px', editable: false },
@@ -10097,83 +10127,281 @@ function openSearchReplaceModal() {
     if (!bulkEditSearchModalInstance) {
         bulkEditSearchModalInstance = new bootstrap.Modal(modalEl);
     }
-    
+
+    // 清除之前的搜尋結果
+    bulkEditSearchResults = [];
+    bulkEditCheckedResults = new Set();
+
     // 綁定事件
+    const searchBtn = document.getElementById('bulkEditSearchBtn');
     const replaceBtn = document.getElementById('bulkEditReplaceBtn');
     const replaceAllBtn = document.getElementById('bulkEditReplaceAllBtn');
-    
+    const selectAllBtn = document.getElementById('bulkEditSelectAllBtn');
+    const deselectAllBtn = document.getElementById('bulkEditDeselectAllBtn');
+
+    if (searchBtn) searchBtn.onclick = performSearch;
     if (replaceBtn) replaceBtn.onclick = performSearchReplace;
     if (replaceAllBtn) replaceAllBtn.onclick = () => performSearchReplace(true);
-    
+    if (selectAllBtn) selectAllBtn.onclick = selectAllSearchResults;
+    if (deselectAllBtn) deselectAllBtn.onclick = deselectAllSearchResults;
+
     if (window.i18n && window.i18n.isReady()) {
         window.i18n.retranslate(modalEl);
     }
     bulkEditSearchModalInstance.show();
 }
 
-function performSearchReplace(replaceAll = false) {
+function performSearch() {
     const searchText = document.getElementById('bulkEditSearchText').value.trim();
-    const replaceText = document.getElementById('bulkEditReplaceText').value;
     const searchColumn = document.getElementById('bulkEditSearchColumn').value;
-    
+
     if (!searchText) {
         AppUtils.showError('請輸入搜尋內容');
         return;
     }
-    
-    // 開始新的 undo 操作組
-    beginUndoOperation();
-    
-    let replaceCount = 0;
-    const columnsToSearch = searchColumn === 'all' ? 
+
+    // 清除之前的搜尋結果
+    bulkEditSearchResults = [];
+    bulkEditCheckedResults = new Set();
+
+    // 確定要搜尋的欄位
+    const columnsToSearch = searchColumn === 'all' ?
         ['title', 'precondition', 'steps', 'expected_result'] : [searchColumn];
-    
-    bulkEditData.forEach(row => {
+
+    let resultId = 0;
+
+    // 搜尋數據
+    bulkEditData.forEach((row, rowIndex) => {
         columnsToSearch.forEach(column => {
             const currentValue = getCellValue(row.record_id, column);
-            if (currentValue.includes(searchText)) {
-                const newValue = replaceAll ? 
-                    currentValue.split(searchText).join(replaceText) :
-                    currentValue.replace(searchText, replaceText);
-                
-                if (newValue !== currentValue) {
-                    addToCurrentOperation(row.record_id, column, currentValue, newValue);
-                    setCellValue(row.record_id, column, newValue);
-                    
-                    // 更新顯示
-                    const cell = document.querySelector(`td[data-record-id="${row.record_id}"][data-column="${column}"]`);
-                    if (cell) {
-                        const cellContent = cell.querySelector('.cell-content');
-                        if (cellContent) {
-                            let displayValue = newValue;
-                            if (newValue.length > 50) {
-                                displayValue = newValue.substring(0, 47) + '...';
-                            }
-                            cellContent.textContent = displayValue;
-                            cellContent.title = newValue;
-                        }
-                    }
-                    
-                    replaceCount++;
-                    if (!replaceAll) return; // 只取代一次
-                }
+            let searchIndex = 0;
+            let matchIndex;
+
+            // 找出所有匹配項
+            while ((matchIndex = currentValue.indexOf(searchText, searchIndex)) !== -1) {
+                const contextStartIndex = Math.max(0, matchIndex - 30);
+                const contextEndIndex = Math.min(currentValue.length, matchIndex + searchText.length + 30);
+
+                bulkEditSearchResults.push({
+                    resultId: resultId++,
+                    recordId: row.record_id,
+                    rowIndex: rowIndex,
+                    testCaseNumber: row.test_case_number,
+                    column: column,
+                    columnTitle: getColumnTitle(column),
+                    matchText: searchText,
+                    fullValue: currentValue,
+                    contextBefore: currentValue.substring(contextStartIndex, matchIndex),
+                    contextMatch: searchText,
+                    contextAfter: currentValue.substring(matchIndex + searchText.length, contextEndIndex),
+                    checked: true // 默認勾選所有結果
+                });
+
+                // 將此結果加入勾選集合
+                bulkEditCheckedResults.add(resultId - 1);
+
+                searchIndex = matchIndex + searchText.length;
             }
         });
     });
-    
+
+    // 顯示搜尋結果
+    displaySearchResults();
+}
+
+function displaySearchResults() {
+    const searchResultsDiv = document.getElementById('bulkEditSearchResults');
+    const resultsList = document.getElementById('bulkEditResultsList');
+    const resultCount = document.getElementById('bulkEditResultCount');
+    const searchBtn = document.getElementById('bulkEditSearchBtn');
+    const replaceBtn = document.getElementById('bulkEditReplaceBtn');
+    const replaceAllBtn = document.getElementById('bulkEditReplaceAllBtn');
+
+    if (bulkEditSearchResults.length === 0) {
+        AppUtils.showInfo('未找到符合項目');
+        searchResultsDiv.style.display = 'none';
+        searchBtn.style.display = 'inline-block';
+        replaceBtn.style.display = 'none';
+        replaceAllBtn.style.display = 'none';
+        return;
+    }
+
+    resultCount.textContent = bulkEditSearchResults.length;
+    resultsList.innerHTML = '';
+
+    bulkEditSearchResults.forEach((result) => {
+        const itemDiv = document.createElement('div');
+        itemDiv.className = 'list-group-item';
+        itemDiv.style.cursor = 'pointer';
+
+        const isChecked = bulkEditCheckedResults.has(result.resultId);
+
+        let truncatedContext = (result.contextBefore + result.contextMatch + result.contextAfter);
+        if (truncatedContext.length > 100) {
+            truncatedContext = truncatedContext.substring(0, 97) + '...';
+        }
+
+        itemDiv.innerHTML = `
+            <div class="d-flex align-items-start gap-2">
+                <input type="checkbox" class="form-check-input search-result-checkbox"
+                       data-result-id="${result.resultId}"
+                       ${isChecked ? 'checked' : ''}
+                       style="margin-top: 0.3rem;">
+                <div style="flex: 1; min-width: 0;">
+                    <small class="text-muted">
+                        <strong>${result.testCaseNumber}</strong> · ${result.columnTitle}
+                    </small>
+                    <div class="text-break small mt-1" style="word-break: break-word;">
+                        <span class="text-muted">${escapeHtml(result.contextBefore)}</span><mark>${escapeHtml(result.contextMatch)}</mark><span class="text-muted">${escapeHtml(result.contextAfter)}</span>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        itemDiv.addEventListener('click', (e) => {
+            if (e.target.classList.contains('search-result-checkbox')) {
+                const checkbox = e.target;
+                const resultId = parseInt(checkbox.dataset.resultId);
+                if (checkbox.checked) {
+                    bulkEditCheckedResults.add(resultId);
+                } else {
+                    bulkEditCheckedResults.delete(resultId);
+                }
+            } else {
+                const checkbox = itemDiv.querySelector('.search-result-checkbox');
+                checkbox.checked = !checkbox.checked;
+                const resultId = parseInt(checkbox.dataset.resultId);
+                if (checkbox.checked) {
+                    bulkEditCheckedResults.add(resultId);
+                } else {
+                    bulkEditCheckedResults.delete(resultId);
+                }
+            }
+        });
+
+        resultsList.appendChild(itemDiv);
+    });
+
+    // 顯示搜尋結果區域，隱藏搜尋表單的部分按鈕
+    searchResultsDiv.style.display = 'block';
+    searchBtn.style.display = 'none';
+    replaceBtn.style.display = 'inline-block';
+    replaceAllBtn.style.display = 'inline-block';
+}
+
+function selectAllSearchResults() {
+    bulkEditSearchResults.forEach((result) => {
+        bulkEditCheckedResults.add(result.resultId);
+    });
+
+    // 更新所有 checkbox
+    document.querySelectorAll('.search-result-checkbox').forEach(checkbox => {
+        checkbox.checked = true;
+    });
+}
+
+function deselectAllSearchResults() {
+    bulkEditCheckedResults.clear();
+
+    // 更新所有 checkbox
+    document.querySelectorAll('.search-result-checkbox').forEach(checkbox => {
+        checkbox.checked = false;
+    });
+}
+
+function getColumnTitle(column) {
+    const columnMap = {
+        'title': '標題',
+        'precondition': '前置條件',
+        'steps': '測試步驟',
+        'expected_result': '預期結果'
+    };
+    return columnMap[column] || column;
+}
+
+function performSearchReplace(replaceAll = false) {
+    const searchText = document.getElementById('bulkEditSearchText').value.trim();
+    const replaceText = document.getElementById('bulkEditReplaceText').value;
+
+    if (!searchText) {
+        AppUtils.showError('請輸入搜尋內容');
+        return;
+    }
+
+    // 檢查是否有搜尋結果和勾選的結果
+    if (bulkEditSearchResults.length === 0) {
+        AppUtils.showError('請先執行搜尋');
+        return;
+    }
+
+    if (bulkEditCheckedResults.size === 0) {
+        AppUtils.showError('請選擇至少一個結果進行取代');
+        return;
+    }
+
+    // 開始新的 undo 操作組
+    beginUndoOperation();
+
+    let replaceCount = 0;
+    const updatedRecords = new Map(); // 記錄每個記錄的更新情況
+
+    // 遍歷勾選的搜尋結果進行替換
+    bulkEditCheckedResults.forEach(resultId => {
+        const result = bulkEditSearchResults[resultId];
+        if (!result) return;
+
+        const currentValue = getCellValue(result.recordId, result.column);
+        let newValue;
+
+        if (replaceAll) {
+            // 全部取代：替換所有出現
+            newValue = currentValue.split(searchText).join(replaceText);
+        } else {
+            // 只取代一次：替換第一次出現
+            newValue = currentValue.replace(searchText, replaceText);
+        }
+
+        if (newValue !== currentValue) {
+            addToCurrentOperation(result.recordId, result.column, currentValue, newValue);
+            setCellValue(result.recordId, result.column, newValue);
+
+            // 更新顯示
+            const cell = document.querySelector(`td[data-record-id="${result.recordId}"][data-column="${result.column}"]`);
+            if (cell) {
+                const cellContent = cell.querySelector('.cell-content');
+                if (cellContent) {
+                    let displayValue = newValue;
+                    if (newValue.length > 50) {
+                        displayValue = newValue.substring(0, 47) + '...';
+                    }
+                    cellContent.textContent = displayValue;
+                    cellContent.title = newValue;
+                }
+            }
+
+            replaceCount++;
+
+            // 記錄更新過的記錄
+            if (!updatedRecords.has(result.recordId)) {
+                updatedRecords.set(result.recordId, []);
+            }
+            updatedRecords.get(result.recordId).push(result.column);
+        }
+    });
+
     // 提交 undo 操作（只有在有改變時才提交）
     if (replaceCount > 0) {
         commitUndoOperation();
     } else {
         bulkEditCurrentOperation = null;
     }
-    
+
     updateBulkEditStatus();
     bulkEditSearchModalInstance.hide();
-    
-    const successMsg = replaceAll ? 
-        `全部取代完成，共取代 ${replaceCount} 個位置` :
-        `取代完成，共取代 ${replaceCount} 個位置`;
+
+    const successMsg = replaceAll ?
+        `全部取代完成，共取代 ${replaceCount} 個位置，更新 ${updatedRecords.size} 筆資料` :
+        `取代完成，共取代 ${replaceCount} 個位置，更新 ${updatedRecords.size} 筆資料`;
     AppUtils.showSuccess(successMsg);
 }
 
