@@ -11,11 +11,15 @@ from typing import Optional
 import io
 import requests
 import urllib.parse
+import logging
 
 from app.database import get_db, get_sync_db
 from app.models.database_models import Team as TeamDB, TestRunConfig as TestRunConfigDB
 from app.services.lark_client import LarkClient
 from app.config import settings
+
+# 配置日志
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/attachments", tags=["attachments"])
 
