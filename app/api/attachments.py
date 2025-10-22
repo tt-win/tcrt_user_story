@@ -9,6 +9,7 @@ from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import Optional
 import io
+import json
 import requests
 import urllib.parse
 import logging
