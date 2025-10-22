@@ -1147,7 +1147,7 @@ TC-1003,API 健康檢查,\"服務已啟動\",\"發送 GET /health\",\"回傳 200
                 <div class="bulk-edit-toolbar">
                     <div class="d-flex justify-content-between align-items-center">
                         <div class="d-flex gap-2 align-items-center">
-                            <button type="button" class="btn btn-sm btn-outline-secondary" id="bulkEditSearchBtn">
+                            <button type="button" class="btn btn-sm btn-outline-secondary" id="bulkEditOpenSearchBtn">
                                 <i class="fas fa-search me-1"></i><span data-i18n="testCase.bulkEdit.search">搜尋及取代</span>
                             </button>
                             <button type="button" class="btn btn-sm btn-outline-secondary" id="bulkEditUndoBtn" disabled>
@@ -9230,9 +9230,9 @@ function bindBulkEditEvents() {
     document.addEventListener('keydown', handleBulkEditKeydown);
     
     // 工具列事件
-    const searchBtn = document.getElementById('bulkEditSearchBtn');
-    if (searchBtn) {
-        searchBtn.onclick = openSearchReplaceModal;
+    const openSearchBtn = document.getElementById('bulkEditOpenSearchBtn');
+    if (openSearchBtn) {
+        openSearchBtn.onclick = openSearchReplaceModal;
     }
     
     const saveBtn = document.getElementById('saveBulkEditBtn');
@@ -10173,7 +10173,7 @@ function performSearch() {
     // 搜尋數據
     bulkEditData.forEach((row, rowIndex) => {
         columnsToSearch.forEach(column => {
-            const currentValue = getCellValue(row.record_id, column);
+            const currentValue = String(getCellValue(row.record_id, column) || '');
             let searchIndex = 0;
             let matchIndex;
 
