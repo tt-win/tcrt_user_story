@@ -10282,9 +10282,9 @@ function displaySearchResults() {
         resultsList.appendChild(itemDiv);
     });
 
-    // 顯示搜尋結果區域，隱藏搜尋表單的部分按鈕
+    // 顯示搜尋結果區域，保留搜尋按鈕供修改條件後重新搜尋
     searchResultsDiv.style.display = 'block';
-    searchBtn.style.display = 'none';
+    searchBtn.style.display = 'inline-block';
     replaceBtn.style.display = 'inline-block';
     replaceAllBtn.style.display = 'inline-block';
 }
