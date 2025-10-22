@@ -7844,10 +7844,13 @@ class TestResultsManager {
                 </div>` : '';
         
         return `
-            <div class="test-result-file-item clickable-file" 
+            <div class="test-result-file-item clickable-file"
                  data-file-token="${file.file_token}"
                  data-file-name="${this.escapeHtml(file.name)}"
-                 style="cursor: pointer;" 
+                 data-file-index="${fileIndex}"
+                 data-config-id="${this.configId}"
+                 data-item-id="${this.testRunItemId}"
+                 style="cursor: pointer;"
                  title="點擊下載 ${this.escapeHtml(file.name)}">
                 <div class="file-info">
                     <i class="${fileIcon} file-icon"></i>
@@ -7883,10 +7886,13 @@ class TestResultsManager {
         document.querySelectorAll('.clickable-file').forEach(item => {
             item.addEventListener('click', (e) => {
                 const fileToken = e.currentTarget.dataset.fileToken;
-                this.downloadFile(fileToken);
+                const fileIndex = parseInt(e.currentTarget.dataset.fileIndex);
+                const configId = parseInt(e.currentTarget.dataset.configId);
+                const itemId = parseInt(e.currentTarget.dataset.itemId);
+                this.downloadFile(fileToken, fileIndex, configId, itemId);
             });
         });
-        
+
         // 刪除按鈕事件
         if (this.canManageFiles) {
             document.querySelectorAll('.delete-file-btn').forEach(btn => {
@@ -7898,11 +7904,22 @@ class TestResultsManager {
             });
         }
     }
-    
-    async downloadFile(fileToken) {
+
+    async downloadFile(fileToken, fileIndex = null, configId = null, itemId = null) {
         try {
-            const downloadUrl = `/api/attachments/teams/${this.teamId}/attachments/download?file_token=${fileToken}`;
-            window.open(downloadUrl, '_blank');
+            const downloadUrl = new URL(`/api/attachments/teams/${this.teamId}/attachments/download`, window.location.origin);
+
+            // 優先使用 config_id + item_id + file_index（快速路徑，無遞迴搜尋）
+            if (fileIndex !== null && configId !== null && itemId !== null) {
+                downloadUrl.searchParams.set('config_id', configId);
+                downloadUrl.searchParams.set('item_id', itemId);
+                downloadUrl.searchParams.set('file_index', fileIndex);
+            } else {
+                // 降級到舊的方法（較慢）
+                downloadUrl.searchParams.set('file_token', fileToken);
+            }
+
+            window.open(downloadUrl.toString(), '_blank');
         } catch (error) {
             console.error('下載檔案失敗:', error);
             AppUtils.showError('下載檔案失敗');
