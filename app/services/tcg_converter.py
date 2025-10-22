@@ -132,18 +132,25 @@ class TCGConverter:
                 record_id = record.get('record_id')
                 fields = record.get('fields', {})
                 
-                # 提取 TCG 號碼
+                # 提取 TCG 號碼 - 支援多種字段名（英文和中文）
                 raw_tcg = (
                     fields.get('TCG Tickets') or
-                    fields.get('TCG Number') or 
-                    fields.get('TCG') or 
-                    fields.get('Ticket Number')
+                    fields.get('TCG Number') or
+                    fields.get('TCG') or
+                    fields.get('Ticket Number') or
+                    fields.get('單號') or  # 中文
+                    fields.get('TCG單號') or  # 中文
+                    fields.get('Ticket') or
+                    fields.get('ticket')
                 )
-                
+
                 tcg_number = self._extract_text_from_field(raw_tcg)
-                
+
                 if updated_count == 0:
                     self.logger.info(f"第一個記錄的所有欄位: {list(fields.keys())}")
+                    self.logger.info(f"第一個記錄的所有欄位和值:")
+                    for key, value in fields.items():
+                        self.logger.info(f"  {key}: {value}")
                     if raw_tcg:
                         self.logger.info(f"第一個 TCG 記錄結構: {raw_tcg}")
                         self.logger.info(f"解析後的 TCG 號碼: {tcg_number}")
