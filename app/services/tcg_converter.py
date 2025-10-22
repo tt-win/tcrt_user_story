@@ -78,25 +78,37 @@ class TCGConverter:
                     app_id=settings.lark.app_id,
                     app_secret=settings.lark.app_secret
                 )
-                
+
                 tcg_wiki_token = "Q4XxwaS2Cif80DkAku9lMKuAgof"
-                tcg_table_id = "tblcK6eF3yQCuwwl"
-                
+                # 需要同步的兩張 TCG 表格
+                tcg_table_ids = [
+                    "tblcK6eF3yQCuwwl",  # 原本的 TCG 表
+                    "tbl22a72JrEcdLGB"   # 新增的 TCG 表
+                ]
+
                 if not lark_client.set_wiki_token(tcg_wiki_token):
                     self.logger.error("無法設定 Lark Wiki Token")
                     return 0
-                
+
                 self.logger.info("開始從 Lark 同步 TCG 資料...")
-                
-                # 從 Lark 取得所有 TCG 資料
-                records = lark_client.get_all_records(tcg_table_id)
-                
-                if not records:
+
+                # 從兩張表格收集所有 TCG 資料
+                all_records = []
+                for table_id in tcg_table_ids:
+                    self.logger.info(f"正在從表格 {table_id} 同步資料...")
+                    records = lark_client.get_all_records(table_id)
+                    if records:
+                        all_records.extend(records)
+                        self.logger.info(f"從表格 {table_id} 取得 {len(records)} 筆記錄")
+                    else:
+                        self.logger.warning(f"未從表格 {table_id} 取得到任何記錄")
+
+                if not all_records:
                     self.logger.warning("未從 Lark 取得到任何 TCG 記錄")
                     return 0
-                
+
                 # 在單一交易中完成清空和重建
-                return self._atomic_sync_records(records)
+                return self._atomic_sync_records(all_records)
             finally:
                 self._sync_lock.release()
             
