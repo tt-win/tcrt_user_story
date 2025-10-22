@@ -10392,6 +10392,12 @@ function performSearchReplace() {
                     cellContent.textContent = displayValue;
                     cellContent.title = currentValue;
                 }
+
+                // 同時更新 cell-input，以便編輯時顯示最新的值
+                const cellInput = cell.querySelector('.cell-input');
+                if (cellInput) {
+                    cellInput.value = currentValue;
+                }
             }
 
             // 記錄更新過的記錄
