@@ -2708,13 +2708,36 @@ async function loadTCGCacheFromStorage() {
     try {
         const cached = await TRCache.getTCG(TCG_CACHE_EXPIRY);
         if (cached && Array.isArray(cached.data)) {
+            const cacheSize = cached.data.length;
+            console.log(`[TCG 快取] 從 IndexedDB 讀取: ${cacheSize} 筆記錄`);
+
+            // 驗證快取完整性：如果快取過小（< 10000），視為損壞
+            const MIN_VALID_CACHE = 10000;
+            if (cacheSize < MIN_VALID_CACHE) {
+                console.warn(`[TCG 快取] ⚠️ 快取記錄過少 (${cacheSize} < ${MIN_VALID_CACHE})，視為損壞快取，將清除並重新加載`);
+                try {
+                    await TRCache.clearAll();
+                    console.log('[TCG 快取] ✅ 已清除損壞的 IndexedDB 快取');
+                } catch (clearError) {
+                    console.error('[TCG 快取] ❌ 清除快取失敗:', clearError);
+                }
+                return false;  // 強制重新加載
+            }
+
             tcgCache = cached.data;
             tcgCacheTimestamp = cached.ts || Date.now();
-            console.log(`載入 TCG 快取 (IndexedDB): ${tcgCache.length} 筆記錄`);
+            console.log(`[TCG 快取] ✅ 快取驗證通過，使用本地快取`);
             return true;
         }
     } catch (error) {
-        console.error('載入 TCG 快取失敗:', error);
+        console.error('[TCG 快取] ❌ IndexedDB 讀取出錯:', error);
+        // 如果讀取失敗，清除損壞的快取
+        try {
+            console.log('[TCG 快取] 嘗試清除損壞的 IndexedDB...');
+            await TRCache.clearAll();
+        } catch (e) {
+            console.error('[TCG 快取] 清除失敗:', e);
+        }
     }
     return false;
 }
@@ -2728,18 +2751,27 @@ async function saveTCGCacheToStorage() {
 
         console.log(`[TCG 保存] 準備保存 ${compact.length} 筆記錄到 IndexedDB`);
 
+        // 驗證數據：不能為空且必須達到最小要求
+        if (compact.length < 10000) {
+            console.error(`[TCG 保存] ❌ 數據不完整，只有 ${compact.length} 筆 (期望 >= 10000)`);
+            console.log('[TCG 保存] 不保存不完整的數據，等待下次同步');
+            return false;
+        }
+
         const success = await TRCache.setTCG(compact);
         console.log(`[TCG 保存] IndexedDB 保存結果: ${success ? '✅ 成功' : '❌ 失敗'}`);
 
         if (!success) {
-            console.error('[TCG 保存] 失敗！需要檢查 IndexedDB 或 pako 库');
-            console.log('[TCG 保存] pako 库状态:', typeof pako !== 'undefined' ? '✅ 已加載' : '❌ 未加載');
+            console.error('[TCG 保存] ❌ IndexedDB 保存失敗，可能原因:');
+            console.log('  - pako 库:', typeof pako !== 'undefined' ? '✅ 已加載' : '❌ 未加載');
+            console.log('  - IndexedDB 配額已滿');
+            console.log('  - 瀏覽器不支持 IndexedDB');
         }
 
         adjustTestCasesScrollHeight();
         return success;
     } catch (error) {
-        console.error('[TCG 保存] 出錯:', error);
+        console.error('[TCG 保存] ❌ 出錯:', error);
         return false;
     }
 }
@@ -2747,8 +2779,25 @@ async function saveTCGCacheToStorage() {
 
 function shouldUpdateTCGCache() {
     // 檢查是否需要更新快取
-    if (!tcgCache) return true; // 沒有快取
-    if (tcgCacheTimestamp && (Date.now() - tcgCacheTimestamp) > TCG_CACHE_EXPIRY) return true; // 過期
+    if (!tcgCache || tcgCache.length === 0) {
+        console.log('[TCG 快取] 檢查: 沒有快取，需要加載');
+        return true;
+    }
+
+    // 如果快取太小，視為不完整
+    const MIN_VALID_CACHE = 10000;
+    if (tcgCache.length < MIN_VALID_CACHE) {
+        console.warn(`[TCG 快取] 檢查: 快取過小 (${tcgCache.length} < ${MIN_VALID_CACHE})，需要重新加載`);
+        return true;
+    }
+
+    // 檢查是否過期
+    if (tcgCacheTimestamp && (Date.now() - tcgCacheTimestamp) > TCG_CACHE_EXPIRY) {
+        console.log('[TCG 快取] 檢查: 快取已過期，需要更新');
+        return true;
+    }
+
+    console.log(`[TCG 快取] 檢查: 使用有效快取 (${tcgCache.length} 筆記錄，年齡: ${((Date.now() - tcgCacheTimestamp) / 1000 / 60).toFixed(1)} 分鐘)`);
     return false;
 }
 
@@ -2759,7 +2808,7 @@ async function loadTCGCache(updateProgress = null) {
         if (updateProgress) updateProgress(30, '從本地資料庫載入...');
 
         // 一次性從本地 SQLite 載入所有資料（極快）
-        const response = await window.AuthClient.fetch('/api/tcg/search?keyword=&limit=50000');
+        const response = await window.AuthClient.fetch('/api/tcg/search?keyword=&limit=50000', { timeout: 30000 });
         if (!response.ok) {
             throw new Error(`載入 TCG 失敗: ${response.status} ${response.statusText}`);
         }
@@ -2770,32 +2819,53 @@ async function loadTCGCache(updateProgress = null) {
         tcgCache = data.results || [];
         tcgCacheTimestamp = Date.now();
 
-        console.log(`[TCG 加載] API 返回 ${data.total} 筆，實際接收 ${tcgCache.length} 筆`);
-        if (tcgCache.length !== data.total) {
-            console.warn(`[TCG 加載] 警告：期望 ${data.total} 筆但只獲得 ${tcgCache.length} 筆！`);
+        const expectedCount = data.total;
+        const actualCount = tcgCache.length;
+
+        console.log(`[TCG 加載] API 返回 ${expectedCount} 筆，實際接收 ${actualCount} 筆`);
+
+        // 驗證數據完整性
+        const MIN_VALID_LOAD = 10000;
+        if (actualCount < MIN_VALID_LOAD) {
+            console.error(`[TCG 加載] ❌ 加載數據不完整: ${actualCount} < ${MIN_VALID_LOAD}`);
+            tcgCache = [];  // 清空不完整的數據
+            throw new Error(`加載的 TCG 數據過少 (${actualCount} < ${MIN_VALID_LOAD})`);
+        }
+
+        if (actualCount !== expectedCount) {
+            console.warn(`[TCG 加載] ⚠️ 警告：期望 ${expectedCount} 筆但只獲得 ${actualCount} 筆`);
         }
 
         if (updateProgress) updateProgress(90, '儲存快取...');
         const saveSuccess = await saveTCGCacheToStorage();
-        console.log(`[TCG 加載] IndexedDB 保存結果: ${saveSuccess ? '成功' : '失敗'}`);
+
+        if (!saveSuccess) {
+            console.warn(`[TCG 加載] ⚠️ IndexedDB 保存失敗，但記憶體快取已加載可用`);
+            // 即使 IndexedDB 失敗，記憶體快取也能用，只是下次需要重新加載
+        } else {
+            console.log(`[TCG 加載] ✅ IndexedDB 保存成功`);
+        }
 
         if (updateProgress) {
             const tcgCompletedMsg = window.i18n ? window.i18n.t('loading.completedWithCount', {count: tcgCache.length}) : `載入完成 (${tcgCache.length} 筆)`;
             updateProgress(100, tcgCompletedMsg);
         }
 
-        console.log(`TCG 快取更新完成: ${tcgCache.length} 筆記錄`);
+        console.log(`[TCG 加載] ✅ TCG 快取更新完成: ${tcgCache.length} 筆記錄`);
         return true;
 
     } catch (error) {
-        console.error('載入 TCG 快取失敗:', error);
+        console.error('[TCG 加載] ❌ 載入 TCG 快取失敗:', error);
+        tcgCache = [];  // 清空無效數據
+        tcgCacheTimestamp = 0;
         if (updateProgress) {
             updateProgress(0, '載入失敗: ' + error.message);
         }
         return false;
+    } finally {
+        // 工具列顯示狀態可能改變整體高度，需重新計算列表高度
+        adjustTestCasesScrollHeight();
     }
-    // 工具列顯示狀態可能改變整體高度，需重新計算列表高度
-    adjustTestCasesScrollHeight();
 }
 
 function searchTCGFromCache(keyword, limit = 20) {
