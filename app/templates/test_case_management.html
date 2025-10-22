@@ -1255,11 +1255,8 @@ TC-1003,API 健康檢查,\"服務已啟動\",\"發送 GET /health\",\"回傳 200
                 <button type="button" class="btn btn-info" id="bulkEditSearchBtn">
                     <i class="fas fa-search me-2"></i><span data-i18n="common.search">搜尋</span>
                 </button>
-                <button type="button" class="btn btn-outline-primary" id="bulkEditReplaceBtn" style="display: none;">
+                <button type="button" class="btn btn-primary" id="bulkEditReplaceBtn" style="display: none;">
                     <i class="fas fa-exchange-alt me-2"></i><span data-i18n="testCase.bulkEdit.replace">取代</span>
-                </button>
-                <button type="button" class="btn btn-primary" id="bulkEditReplaceAllBtn" style="display: none;">
-                    <i class="fas fa-exchange-alt me-2"></i><span data-i18n="testCase.bulkEdit.replaceAll">全部取代</span>
                 </button>
             </div>
         </div>
@@ -10139,13 +10136,11 @@ function openSearchReplaceModal() {
     // 綁定事件
     const searchBtn = document.getElementById('bulkEditSearchBtn');
     const replaceBtn = document.getElementById('bulkEditReplaceBtn');
-    const replaceAllBtn = document.getElementById('bulkEditReplaceAllBtn');
     const selectAllBtn = document.getElementById('bulkEditSelectAllBtn');
     const deselectAllBtn = document.getElementById('bulkEditDeselectAllBtn');
 
     if (searchBtn) searchBtn.onclick = performSearch;
     if (replaceBtn) replaceBtn.onclick = performSearchReplace;
-    if (replaceAllBtn) replaceAllBtn.onclick = () => performSearchReplace(true);
     if (selectAllBtn) selectAllBtn.onclick = selectAllSearchResults;
     if (deselectAllBtn) deselectAllBtn.onclick = deselectAllSearchResults;
 
@@ -10195,6 +10190,7 @@ function performSearch() {
                     columnTitle: getColumnTitle(column),
                     matchText: searchText,
                     fullValue: currentValue,
+                    matchIndex: matchIndex,
                     contextBefore: currentValue.substring(contextStartIndex, matchIndex),
                     contextMatch: searchText,
                     contextAfter: currentValue.substring(matchIndex + searchText.length, contextEndIndex),
@@ -10219,14 +10215,12 @@ function displaySearchResults() {
     const resultCount = document.getElementById('bulkEditResultCount');
     const searchBtn = document.getElementById('bulkEditSearchBtn');
     const replaceBtn = document.getElementById('bulkEditReplaceBtn');
-    const replaceAllBtn = document.getElementById('bulkEditReplaceAllBtn');
 
     if (bulkEditSearchResults.length === 0) {
         AppUtils.showInfo('未找到符合項目');
         searchResultsDiv.style.display = 'none';
         searchBtn.style.display = 'inline-block';
         replaceBtn.style.display = 'none';
-        replaceAllBtn.style.display = 'none';
         return;
     }
 
@@ -10290,7 +10284,6 @@ function displaySearchResults() {
     searchResultsDiv.style.display = 'block';
     searchBtn.style.display = 'inline-block';
     replaceBtn.style.display = 'inline-block';
-    replaceAllBtn.style.display = 'inline-block';
 }
 
 function selectAllSearchResults() {
@@ -10323,7 +10316,7 @@ function getColumnTitle(column) {
     return columnMap[column] || column;
 }
 
-function performSearchReplace(replaceAll = false) {
+function performSearchReplace() {
     const searchText = document.getElementById('bulkEditSearchText').value.trim();
     const replaceText = document.getElementById('bulkEditReplaceText').value;
 
@@ -10349,47 +10342,63 @@ function performSearchReplace(replaceAll = false) {
     let replaceCount = 0;
     const updatedRecords = new Map(); // 記錄每個記錄的更新情況
 
-    // 遍歷勾選的搜尋結果進行替換
+    // 按記錄和列分組被勾選的搜尋結果
+    const groupedResults = new Map();
     bulkEditCheckedResults.forEach(resultId => {
         const result = bulkEditSearchResults[resultId];
         if (!result) return;
 
-        const currentValue = getCellValue(result.recordId, result.column);
-        let newValue;
-
-        if (replaceAll) {
-            // 全部取代：替換所有出現
-            newValue = currentValue.split(searchText).join(replaceText);
-        } else {
-            // 只取代一次：替換第一次出現
-            newValue = currentValue.replace(searchText, replaceText);
+        const key = `${result.recordId}_${result.column}`;
+        if (!groupedResults.has(key)) {
+            groupedResults.set(key, []);
         }
+        groupedResults.get(key).push(result);
+    });
 
-        if (newValue !== currentValue) {
-            addToCurrentOperation(result.recordId, result.column, currentValue, newValue);
-            setCellValue(result.recordId, result.column, newValue);
+    // 對每個單元格進行替換
+    groupedResults.forEach((cellResults, key) => {
+        const [recordId, column] = key.split('_');
+        let currentValue = getCellValue(recordId, column);
+
+        // 將搜尋結果按匹配位置從後往前排序，避免替換後位置錯位
+        cellResults.sort((a, b) => b.matchIndex - a.matchIndex);
+
+        // 逐個替換
+        cellResults.forEach(result => {
+            const beforeValue = currentValue;
+            // 找出當前值中匹配的位置並替換
+            const matchIndex = currentValue.indexOf(searchText);
+            if (matchIndex !== -1) {
+                currentValue = currentValue.substring(0, matchIndex) + replaceText + currentValue.substring(matchIndex + searchText.length);
+                replaceCount++;
+            }
+        });
+
+        // 如果有改變，保存新值
+        const originalValue = getCellValue(recordId, column);
+        if (currentValue !== originalValue) {
+            addToCurrentOperation(recordId, column, originalValue, currentValue);
+            setCellValue(recordId, column, currentValue);
 
             // 更新顯示
-            const cell = document.querySelector(`td[data-record-id="${result.recordId}"][data-column="${result.column}"]`);
+            const cell = document.querySelector(`td[data-record-id="${recordId}"][data-column="${column}"]`);
             if (cell) {
                 const cellContent = cell.querySelector('.cell-content');
                 if (cellContent) {
-                    let displayValue = newValue;
-                    if (newValue.length > 50) {
-                        displayValue = newValue.substring(0, 47) + '...';
+                    let displayValue = currentValue;
+                    if (currentValue.length > 50) {
+                        displayValue = currentValue.substring(0, 47) + '...';
                     }
                     cellContent.textContent = displayValue;
-                    cellContent.title = newValue;
+                    cellContent.title = currentValue;
                 }
             }
 
-            replaceCount++;
-
             // 記錄更新過的記錄
-            if (!updatedRecords.has(result.recordId)) {
-                updatedRecords.set(result.recordId, []);
+            if (!updatedRecords.has(recordId)) {
+                updatedRecords.set(recordId, []);
             }
-            updatedRecords.get(result.recordId).push(result.column);
+            updatedRecords.get(recordId).push(column);
         }
     });
 
@@ -10403,9 +10412,7 @@ function performSearchReplace(replaceAll = false) {
     updateBulkEditStatus();
     bulkEditSearchModalInstance.hide();
 
-    const successMsg = replaceAll ?
-        `全部取代完成，共取代 ${replaceCount} 個位置，更新 ${updatedRecords.size} 筆資料` :
-        `取代完成，共取代 ${replaceCount} 個位置，更新 ${updatedRecords.size} 筆資料`;
+    const successMsg = `取代完成，共取代 ${replaceCount} 個位置，更新 ${updatedRecords.size} 筆資料`;
     AppUtils.showSuccess(successMsg);
 }
 
