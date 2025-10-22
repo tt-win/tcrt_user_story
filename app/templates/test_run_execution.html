@@ -7,6 +7,114 @@
 <script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
 
+<!-- Markdown 格式快捷鍵處理 -->
+<script>
+/**
+ * 通用的 Markdown 格式化函數
+ * 為 textarea 中的選中文本添加 Markdown 格式
+ *
+ * @param {HTMLTextAreaElement} textarea - 目標 textarea 元素
+ * @param {string} format - 格式類型: 'bold' | 'italic' | 'underline'
+ */
+function applyMarkdownFormat(textarea, format) {
+    if (!textarea) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const selectedText = textarea.value.substring(start, end);
+    const beforeText = textarea.value.substring(0, start);
+    const afterText = textarea.value.substring(end);
+
+    let formattedText;
+    let newCursorPos;
+
+    if (!selectedText) {
+        // 如果沒有選中文本，只插入格式標記
+        switch(format) {
+            case 'bold':
+                formattedText = '**文字**';
+                newCursorPos = start + 2;
+                break;
+            case 'italic':
+                formattedText = '_文字_';
+                newCursorPos = start + 1;
+                break;
+            case 'underline':
+                formattedText = '<u>文字</u>';
+                newCursorPos = start + 3;
+                break;
+            default:
+                return;
+        }
+    } else {
+        // 有選中文本時，使用選中的文本
+        switch(format) {
+            case 'bold':
+                formattedText = `**${selectedText}**`;
+                newCursorPos = end + 4;
+                break;
+            case 'italic':
+                formattedText = `_${selectedText}_`;
+                newCursorPos = end + 2;
+                break;
+            case 'underline':
+                formattedText = `<u>${selectedText}</u>`;
+                newCursorPos = end + 7;
+                break;
+            default:
+                return;
+        }
+    }
+
+    // 更新 textarea 內容
+    textarea.value = beforeText + formattedText + afterText;
+
+    // 恢復光標位置
+    setTimeout(() => {
+        textarea.selectionStart = newCursorPos;
+        textarea.selectionEnd = newCursorPos;
+        textarea.focus();
+    }, 0);
+
+    // 觸發 input 事件以通知變更
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+/**
+ * 為 textarea 添加 Markdown 快捷鍵監聽
+ * Ctrl/Cmd + B -> Bold
+ * Ctrl/Cmd + I -> Italic
+ * Ctrl/Cmd + U -> Underline
+ *
+ * @param {HTMLTextAreaElement} textarea - 目標 textarea 元素
+ */
+function setupMarkdownHotkeys(textarea) {
+    if (!textarea) return;
+
+    textarea.addEventListener('keydown', (e) => {
+        const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+        const isCtrlOrCmd = isMac ? e.metaKey : e.ctrlKey;
+
+        if (!isCtrlOrCmd) return;
+
+        switch(e.key.toLowerCase()) {
+            case 'b':
+                e.preventDefault();
+                applyMarkdownFormat(textarea, 'bold');
+                break;
+            case 'i':
+                e.preventDefault();
+                applyMarkdownFormat(textarea, 'italic');
+                break;
+            case 'u':
+                e.preventDefault();
+                applyMarkdownFormat(textarea, 'underline');
+                break;
+        }
+    });
+}
+</script>
+
 <!-- Markdown 顯示樣式 -->
 <style>
 #commentContent {
@@ -5682,6 +5790,7 @@ async function editComment(testRunItemId) {
     if (textarea) {
         textarea.focus();
         textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+        setupMarkdownHotkeys(textarea);
     }
 
     // 還原函數
