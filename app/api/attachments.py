@@ -548,22 +548,69 @@ async def download_attachment_proxy(
     file_url: str = None,
     file_token: str = None,
     filename: str = None,
+    config_id: int = None,
+    item_id: int = None,
+    file_index: int = None,
     db: Session = Depends(get_sync_db)
 ):
     """
     附件下載代理 API
-    
-    現在優先支援本地附件：
-    - 若 file_url 以 /attachments 開頭，直接從本地檔案系統讀取並回傳
-    - 若只有 file_token，嘗試在本地 attachments 目錄中以檔名搜尋
-    - 其餘情況才代理 Lark 下載
+
+    優先級：
+    1. 若提供 config_id + item_id + file_index，從資料庫直接查詢文件路徑（無遞迴搜尋）- 最快
+    2. 若 file_url 以 /attachments 開頭，直接從本地檔案系統讀取並回傳
+    3. 若只有 file_token，嘗試在本地 attachments 目錄中以檔名搜尋（較慢，向後相容）
+    4. 其餘情況才代理 Lark 下載
     """
     import os
     import mimetypes
     from pathlib import Path
     import urllib.parse
 
-    # 1) 本地附件：/attachments 相對路徑
+    # 優先級 1：通過資料庫直接查詢文件路徑（無遞迴搜尋）- 最優化
+    if config_id is not None and item_id is not None and file_index is not None:
+        try:
+            from app.models.database_models import TestRunItem as TestRunItemDB
+
+            item = db.query(TestRunItemDB).filter(
+                TestRunItemDB.team_id == team_id,
+                TestRunItemDB.config_id == config_id,
+                TestRunItemDB.id == item_id
+            ).first()
+
+            if item:
+                try:
+                    execution_results = json.loads(item.execution_results_json or '[]')
+                    if 0 <= file_index < len(execution_results):
+                        file_meta = execution_results[file_index]
+                        # 優先使用 absolute_path，否則嘗試重建路徑
+                        file_path = file_meta.get('absolute_path')
+
+                        if file_path and Path(file_path).exists() and Path(file_path).is_file():
+                            # 驗證路徑安全性
+                            project_root = Path(__file__).resolve().parents[2]
+                            cfg_root = getattr(settings, 'attachments', None)
+                            attachments_root = Path(cfg_root.root_dir) if (cfg_root and cfg_root.root_dir) else (project_root / 'attachments')
+
+                            try:
+                                Path(file_path).resolve().relative_to(attachments_root.resolve())
+                                # 路徑合法，提供文件
+                                media_type = mimetypes.guess_type(str(file_path))[0] or file_meta.get('type', 'application/octet-stream')
+                                def iterfile():
+                                    with open(file_path, 'rb') as f:
+                                        yield from f
+                                return StreamingResponse(iterfile(), media_type=media_type)
+                            except ValueError:
+                                # 路徑穿越檢查失敗
+                                logger.warning(f"路徑穿越嘗試: {file_path}")
+                                raise HTTPException(status_code=403, detail="禁止存取")
+                except (json.JSONDecodeError, IndexError, KeyError) as e:
+                    logger.warning(f"無法解析執行結果: {e}")
+        except Exception as e:
+            logger.warning(f"資料庫查詢失敗: {e}")
+            # 降級到其他方法
+
+    # 優先級 2：本地附件：/attachments 相對路徑
     try:
         if file_url and file_url.strip().startswith('/attachments'):
             project_root = Path(__file__).resolve().parents[2]
@@ -575,9 +622,14 @@ async def download_attachment_proxy(
             disk_path = attachments_root / rel
             if not disk_path.exists() or not disk_path.is_file():
                 raise HTTPException(status_code=404, detail="附件不存在")
-            # 僅允許服務 attachments_root 之下的檔案
-            if attachments_root not in disk_path.parents:
+
+            # 驗證路徑安全性（修複的邏輯）
+            try:
+                disk_path.resolve().relative_to(attachments_root.resolve())
+            except ValueError:
+                # 路徑穿越檢查失敗
                 raise HTTPException(status_code=403, detail="禁止存取")
+
             media_type = mimetypes.guess_type(str(disk_path))[0] or 'application/octet-stream'
             def iterfile():
                 with open(disk_path, 'rb') as f:
@@ -589,9 +641,12 @@ async def download_attachment_proxy(
         # 本地嘗試失敗則進入下一步
         pass
 
-    # 2) 只有 token：嘗試在本地 attachments 目錄以檔名搜尋
+    # 優先級 3：只有 token：嘗試在本地 attachments 目錄以檔名搜尋（較慢，向後相容）
+    # 注意：此方法使用遞迴搜尋，如果有大量附件會很慢
+    # 建議前端在呼叫此 API 時提供 config_id + item_id + file_index 以使用優先級 1 的快速路徑
     try:
         if file_token and (not file_url):
+            logger.warning(f"使用較慢的遞迴搜尋查找檔案: {file_token}，建議前端提供 config_id/item_id/file_index")
             project_root = Path(__file__).resolve().parents[2]
             cfg_root = getattr(settings, 'attachments', None)
             attachments_root = Path(cfg_root.root_dir) if (cfg_root and cfg_root.root_dir) else (project_root / 'attachments')
@@ -603,15 +658,24 @@ async def download_attachment_proxy(
                         target = p
                         break
             if target and target.exists():
+                # 驗證路徑安全性
+                try:
+                    target.resolve().relative_to(attachments_root.resolve())
+                except ValueError:
+                    logger.warning(f"路徑穿越嘗試: {target}")
+                    raise HTTPException(status_code=403, detail="禁止存取")
+
                 media_type = mimetypes.guess_type(str(target))[0] or 'application/octet-stream'
                 def iterfile():
                     with open(target, 'rb') as f:
                         yield from f
                 return StreamingResponse(iterfile(), media_type=media_type)
+    except HTTPException:
+        raise
     except Exception:
         pass
 
-    # 3) 代理 Lark 下載
+    # 優先級 4：代理 Lark 下載
     lark_client, team = get_lark_client_for_team(team_id, db)
     
     try:
