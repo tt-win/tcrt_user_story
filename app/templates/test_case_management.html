@@ -9431,7 +9431,11 @@ function handleBulkEditKeydown(event) {
     // 只在 bulk edit modal 打開時處理
     const modal = document.getElementById('bulkEditModal');
     if (!modal || !modal.classList.contains('show')) return;
-    
+
+    // 如果搜尋替換 Modal 打開，不處理快捷鍵（讓 Modal 中的輸入框正常工作）
+    const searchModal = document.getElementById('bulkEditSearchModal');
+    if (searchModal && searchModal.classList.contains('show')) return;
+
     // 如果正在編輯儲存格，不處理快捷鍵
     if (bulkEditCurrentCell) return;
     
