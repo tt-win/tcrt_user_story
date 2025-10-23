@@ -4564,12 +4564,12 @@ function displayTestCaseDetail(testCase) {
         editCommentBtn.style.cursor = canEditComments ? 'pointer' : 'not-allowed';
 
         if (canEditComments) {
-            editCommentBtn.addEventListener('click', () => {
+            editCommentBtn.onclick = () => {
                 const testRunItem = (testRunItems || []).find(item => item.test_case_number === testCase.test_case_number);
                 if (testRunItem && testRunItem.id) {
                     editComment(testRunItem.id);
                 }
-            });
+            };
         }
     }
 }
