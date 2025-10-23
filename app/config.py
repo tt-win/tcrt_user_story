@@ -32,9 +32,9 @@ class AppConfig(BaseModel):
     host: str = "0.0.0.0"
     port: int = 9999
     database_url: str = "sqlite:///./test_case_repo.db"
-    base_url: str = "http://localhost:8000"
+    base_url: str = "http://localhost:9999"
     lark_dry_run: bool = False
-    
+
     @classmethod
     def from_env(cls, fallback: 'AppConfig' = None) -> 'AppConfig':
         """從環境變數載入設定，如果環境變數為空則使用 fallback"""
@@ -43,7 +43,7 @@ class AppConfig(BaseModel):
             host=os.getenv('HOST', fallback.host if fallback else '0.0.0.0'),
             port=int(os.getenv('PORT', str(fallback.port) if fallback else '9999')),
             database_url=os.getenv('DATABASE_URL', fallback.database_url if fallback else 'sqlite:///./test_case_repo.db'),
-            base_url=os.getenv('APP_BASE_URL', getattr(fallback, 'base_url', 'http://localhost:8000') if fallback else 'http://localhost:8000'),
+            base_url=os.getenv('APP_BASE_URL', getattr(fallback, 'base_url', 'http://localhost:9999') if fallback else 'http://localhost:9999'),
             lark_dry_run=os.getenv('LARK_DRY_RUN', str(getattr(fallback, 'lark_dry_run', False)).lower() if fallback else 'false').lower() == 'true'
         )
 
