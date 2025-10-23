@@ -464,7 +464,7 @@ class LarkNotifyService:
                 return
 
             # 組裝訊息
-            message = self.build_start_message(config, self.settings.app.base_url)
+            message = self.build_start_message(config, self.settings.app.get_base_url())
 
             # 發送通知
             logger.info(f"發送開始執行通知: {config.name} (config_id={config_id})")
@@ -525,7 +525,7 @@ class LarkNotifyService:
             stats = self.compute_end_stats(team_id, config_id, db)
 
             # 組裝訊息
-            message = self.build_end_message(config, stats, self.settings.app.base_url)
+            message = self.build_end_message(config, stats, self.settings.app.get_base_url())
 
             # 發送通知
             logger.info(f"發送結束執行通知: {config.name} (config_id={config_id})")

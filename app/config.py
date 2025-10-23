@@ -32,8 +32,29 @@ class AppConfig(BaseModel):
     host: str = "0.0.0.0"
     port: int = 9999
     database_url: str = "sqlite:///./test_case_repo.db"
-    base_url: str = "http://localhost:9999"
+    base_url: Optional[str] = None  # 優先使用環境變數設定，否則自動構建
     lark_dry_run: bool = False
+
+    def get_base_url(self) -> str:
+        """
+        根據環境變數或配置動態構建 base_url
+        優先級：
+        1. APP_BASE_URL 環境變數
+        2. 配置檔案中的 base_url
+        3. 自動構建：http://localhost:{port}
+        """
+        # 1. 檢查環境變數（最高優先級）
+        env_base_url = os.getenv('APP_BASE_URL')
+        if env_base_url:
+            return env_base_url
+
+        # 2. 檢查配置檔案中是否明確設定了 base_url
+        if self.base_url:
+            return self.base_url
+
+        # 3. 自動構建（預設為 localhost + port）
+        # 在生產環境下應通過 APP_BASE_URL 環境變數明確設定
+        return f"http://localhost:{self.port}"
 
     @classmethod
     def from_env(cls, fallback: 'AppConfig' = None) -> 'AppConfig':
@@ -43,7 +64,7 @@ class AppConfig(BaseModel):
             host=os.getenv('HOST', fallback.host if fallback else '0.0.0.0'),
             port=int(os.getenv('PORT', str(fallback.port) if fallback else '9999')),
             database_url=os.getenv('DATABASE_URL', fallback.database_url if fallback else 'sqlite:///./test_case_repo.db'),
-            base_url=os.getenv('APP_BASE_URL', getattr(fallback, 'base_url', 'http://localhost:9999') if fallback else 'http://localhost:9999'),
+            base_url=getattr(fallback, 'base_url', None) if fallback else None,  # 不在這裡硬設定，使用 get_base_url() 方法
             lark_dry_run=os.getenv('LARK_DRY_RUN', str(getattr(fallback, 'lark_dry_run', False)).lower() if fallback else 'false').lower() == 'true'
         )
 
