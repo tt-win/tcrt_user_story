@@ -458,9 +458,16 @@ def _add_result_history(db: Session, item: TestRunItemDB,
                         reason: Optional[str] = None,
                         changed_by_id: Optional[str] = None,
                         changed_by_name: Optional[str] = None):
-    # 僅在真的有變更時寫入
-    if prev_result == new_result and prev_executed_at == new_executed_at:
+    # 檢查是否有實質性的改變：
+    # 1. 測試結果或執行時間改變
+    # 2. 或者有提供 change_reason（備註/評論）
+    has_result_change = (prev_result != new_result or prev_executed_at != new_executed_at)
+    has_reason = reason and reason.strip()
+    
+    # 只有在有改變或有備註時才寫入
+    if not has_result_change and not has_reason:
         return
+    
     rec = ResultHistoryDB(
         team_id=item.team_id,
         config_id=item.config_id,
