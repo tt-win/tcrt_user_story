@@ -139,9 +139,7 @@ class LarkNotifyService:
         else:
             start_time = datetime.utcnow().strftime('%Y-%m-%d %H:%M:%S UTC')
 
-        # Build URL (fix port to 9999)
-        if ":8000" in base_url:
-            base_url = base_url.replace(":8000", ":9999")
+        # Build URL using configured base_url
         url = f"{base_url.rstrip('/')}/test-run-execution?config_id={config.id}&team_id={config.team_id}"
 
         # Build Rich Text content
@@ -224,13 +222,11 @@ class LarkNotifyService:
             config: Test Run configuration
             stats: Statistics {"pass_rate": float, "fail_rate": float, "bug_count": int}
             base_url: Application base URL
-            
+
         Returns:
             Rich Text dictionary
         """
-        # Build URL (fix port to 9999)
-        if ":8000" in base_url:
-            base_url = base_url.replace(":8000", ":9999")
+        # Build URL using configured base_url
         url = f"{base_url.rstrip('/')}/test-run-execution?config_id={config.id}&team_id={config.team_id}"
 
         # Get end time in UTC
