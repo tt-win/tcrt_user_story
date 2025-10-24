@@ -482,7 +482,7 @@ async def get_test_run_metrics(
                     SELECT
                         trirh.team_id,
                         date(trirh.changed_at) as day,
-                        SUM(CASE WHEN trirh.new_result = 'Pass' THEN 1 ELSE 0 END) as pass_count,
+                        SUM(CASE WHEN trirh.new_result = 'PASSED' THEN 1 ELSE 0 END) as pass_count,
                         COUNT(*) as total_count
                     FROM test_run_item_result_history trirh
                     WHERE date(trirh.changed_at) BETWEEN :start_date AND :end_date
