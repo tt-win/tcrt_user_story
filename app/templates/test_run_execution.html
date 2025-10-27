@@ -6061,136 +6061,29 @@ function getCurrentItemId() {
     return currentItemIdForBugTicket;
 }
 
-// Bug Ticket 預覽 (使用類似 TCG 預覽的方式)
+// Bug Ticket 直接打開 JIRA 頁面
 async function showBugTicketPreview(ticketNumber, triggerElement) {
     try {
-        console.log('Loading Bug ticket preview for:', ticketNumber);
-        
-        // 檢查是否已存在 tooltip，如果存在先移除
-        const existingTooltip = document.getElementById('bugTicketTooltip');
-        if (existingTooltip) {
-            existingTooltip.remove();
-        }
-        
-        // 創建 tooltip 容器
-        const tooltip = document.createElement('div');
-        tooltip.id = 'bugTicketTooltip';
-        tooltip.style.cssText = `
-            position: absolute;
-            background: white;
-            border: 1px solid #ddd;
-            border-radius: 8px;
-            padding: 12px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            z-index: 1080;
-            max-width: 400px;
-            font-size: 14px;
-            display: none;
-            pointer-events: auto;
-        `;
-        
-        // 顯示載入中
-        tooltip.innerHTML = `
-            <div class="d-flex align-items-center">
-                <i class="fas fa-spinner fa-spin me-2"></i>
-                <span>載入 JIRA Ticket 資訊中...</span>
-            </div>
-        `;
-        
-        document.body.appendChild(tooltip);
-        
-        // 定位 tooltip
-        positionJIRATooltip(tooltip, triggerElement);
-        tooltip.style.display = 'block';
-        
-        // 獲取 JIRA ticket 資訊
+        console.log('Opening JIRA page for:', ticketNumber);
+
+        // 獲取 JIRA ticket 資訊（包括 URL）
         const response = await window.AuthClient.fetch(`/api/jira/ticket/${encodeURIComponent(ticketNumber)}`);
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}`);
         }
-        
+
         const ticketData = await response.json();
-        
-        // 顯示 ticket 資訊
-        const createdDate = ticketData.created ? new Date(ticketData.created).toLocaleDateString() : '';
-        const updatedDate = ticketData.updated ? new Date(ticketData.updated).toLocaleDateString() : '';
-        const createdLabel = window.i18n ? window.i18n.t('tooltip.created') : '建立日期';
-        const updatedLabel = window.i18n ? window.i18n.t('tooltip.updated') : '更新日期';
-        
-        tooltip.innerHTML = `
-            <div class="mb-2">
-                <div class="d-flex align-items-center mb-1">
-                    <i class="fas fa-bug text-danger me-2"></i>
-                    <strong>${ticketData.ticket_key || ticketNumber}</strong>
-                    <span class="badge ms-2 ${getJIRAStatusBadgeClass(ticketData.status?.name)}">${ticketData.status?.name || 'Unknown'}</span>
-                </div>
-                <div class="text-muted small mb-2">${ticketData.summary || 'No summary available'}</div>
-            </div>
-            <div class="small text-muted border-top pt-2">
-                <div class="row">
-                    <div class="col-6">
-                        <strong>${createdLabel}:</strong><br>
-                        ${createdDate}
-                    </div>
-                    <div class="col-6">
-                        <strong>${updatedLabel}:</strong><br>
-                        ${updatedDate}
-                    </div>
-                </div>
-                ${ticketData.assignee?.displayName ? `<div class="mt-2"><strong>${window.i18n ? window.i18n.t('tooltip.assignedTo') : '指派給'}:</strong> ${ticketData.assignee.displayName}</div>` : ''}
-                ${ticketData.url ? `<div class="mt-2"><a href="${ticketData.url}" target="_blank" class="text-primary"><i class="fas fa-external-link-alt me-1"></i>${window.i18n ? window.i18n.t('tooltip.openInJira') : '在 JIRA 中開啟'}</a></div>` : ''}
-            </div>
-        `;
-        
-        // 重新定位
-        positionJIRATooltip(tooltip, triggerElement);
-        
-        // 添加點擊關閉事件
-        tooltip.addEventListener('click', function(e) {
-            e.stopPropagation();
-        });
-        
-        // 點擊其他地方關閉 tooltip
-        const closeTooltip = function(e) {
-            if (!tooltip.contains(e.target) && e.target !== triggerElement) {
-                tooltip.style.display = 'none';
-                document.removeEventListener('click', closeTooltip);
-            }
-        };
-        
-        setTimeout(() => {
-            document.addEventListener('click', closeTooltip);
-        }, 100);
-        
-        // 自動隱藏 tooltip
-        setTimeout(() => {
-            if (tooltip && tooltip.style.display !== 'none') {
-                tooltip.style.display = 'none';
-                document.removeEventListener('click', closeTooltip);
-            }
-        }, 8000);
-        
-    } catch (error) {
-        console.error('Bug ticket tooltip 載入失敗:', error);
-        const tooltip = document.getElementById('bugTicketTooltip');
-        if (tooltip) {
-            tooltip.innerHTML = `
-                <div class="text-danger small">
-                    <i class="fas fa-times-circle me-1"></i>
-                    載入失敗
-                </div>
-            `;
-            
-            // 重新定位
-            positionJIRATooltip(tooltip, triggerElement);
-            
-            // 自動隱藏錯誤 tooltip
-            setTimeout(() => {
-                if (tooltip && tooltip.style.display !== 'none') {
-                    tooltip.style.display = 'none';
-                }
-            }, 3000);
+
+        // 如果成功獲取到 URL，直接在新標籤頁打開
+        if (ticketData.url) {
+            window.open(ticketData.url, '_blank');
+        } else {
+            console.error('未能獲取到 JIRA ticket URL');
         }
+    } catch (error) {
+        console.error('打開 JIRA ticket 失敗:', error);
+        // 如果出現錯誤，顯示提示訊息
+        alert('無法打開 JIRA ticket，請稍後重試');
     }
 }
 
