@@ -130,6 +130,7 @@ config.yaml
 # IDEs
 .idea/
 .vscode/
+.serena/
 
 # SQLite
 *.sqlite3
