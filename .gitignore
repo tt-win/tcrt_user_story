@@ -151,6 +151,7 @@ i18n_test.html
 # Design and documentation files
 *.md
 !README.md
+!docs/*.md
 plan/
 architecture.md
 spec.md
