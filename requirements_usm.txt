@@ -1,0 +1,2 @@
+# Additional requirements for User Story Map feature
+reactflow==11.11.0  # Note: This would be installed via npm/CDN in frontend

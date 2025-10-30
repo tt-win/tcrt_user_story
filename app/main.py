@@ -60,8 +60,10 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 # 包含 API 路由
 from app.api import api_router
 from app.api.system import router as system_router
+from app.api.user_story_maps import router as usm_router
 app.include_router(api_router, prefix="/api")
 app.include_router(system_router)
+app.include_router(usm_router, prefix="/api")
 
 # 前端頁面路由
 @app.get("/", response_class=HTMLResponse)
@@ -118,6 +120,11 @@ async def team_statistics(request: Request):
     """團隊數據統計頁面"""
     return templates.TemplateResponse("team_statistics.html", {"request": request})
 
+@app.get("/user-story-map/{team_id}", response_class=HTMLResponse)
+async def user_story_map(request: Request, team_id: int):
+    """User Story Map 頁面"""
+    return templates.TemplateResponse("user_story_map.html", {"request": request, "team_id": team_id})
+
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
@@ -133,6 +140,11 @@ async def startup_event():
 
         await init_audit_database()
         logging.info("審計資料庫初始化完成")
+
+        # 初始化 User Story Map 資料庫
+        from app.models.user_story_map_db import init_usm_db
+        await init_usm_db()
+        logging.info("User Story Map 資料庫初始化完成")
 
         # 初始化密碼加密服務
         from app.auth.password_encryption import password_encryption_service
