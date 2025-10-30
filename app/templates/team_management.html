@@ -637,14 +637,19 @@ function renderTeamCards() {
                                     ((window.i18n && window.i18n.isReady()) ? window.i18n.t('team.notConfigured') : '未設定')}</small>
                             </div>
                         </div>
-                        <div class="d-flex gap-2">
+                        <div class="d-flex gap-2 mb-2">
                             <button class="btn btn-primary btn-sm flex-grow-1" onclick="selectTeam(${team.id})">
                                 <i class="fas fa-arrow-right me-1"></i><span>${(window.i18n && window.i18n.isReady()) ? window.i18n.t('team.enterTeam') : '進入團隊'}</span>
                             </button>
-                            <button class="btn btn-outline-secondary btn-sm" onclick="editTeam(${team.id})">
+                            <button class="btn btn-outline-info btn-sm" onclick="window.location.href='/user-story-map/${team.id}'">
+                                <i class="fas fa-project-diagram me-1"></i><span>Story Map</span>
+                            </button>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-outline-secondary btn-sm flex-grow-1" onclick="editTeam(${team.id})">
                                 <i class="fas fa-edit me-1"></i><span>${(window.i18n && window.i18n.isReady()) ? window.i18n.t('common.edit') : '編輯'}</span>
                             </button>
-                            <button class="btn btn-outline-danger btn-sm" onclick="openDeleteTeamModal(${team.id})">
+                            <button class="btn btn-outline-danger btn-sm flex-grow-1" onclick="openDeleteTeamModal(${team.id})">
                                 <i class="fas fa-trash me-1"></i><span>${(window.i18n && window.i18n.isReady()) ? window.i18n.t('common.delete') : '刪除'}</span>
                             </button>
                         </div>
