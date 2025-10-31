@@ -14,7 +14,7 @@ const {
     Background,
     BackgroundVariant,
     MarkerType,
-} = ReactFlowLib;
+} = window.ReactFlow;
 
 // Team ID from URL
 const teamId = parseInt(window.location.pathname.split('/').pop());
@@ -35,33 +35,47 @@ const CustomNode = ({ data }) => {
         task: 'Task',
     };
 
-    return (
-        <div className={`custom-node ${data.nodeType || 'user_story'}`}>
-            <div className="node-title">{data.title || 'Untitled'}</div>
-            {data.description && (
-                <div className="text-muted" style={{fontSize: '12px', marginTop: '4px'}}>
-                    {data.description.substring(0, 50)}{data.description.length > 50 ? '...' : ''}
-                </div>
-            )}
-            <div className="node-meta">
-                <span className="node-badge" style={{
-                    backgroundColor: nodeTypeColors[data.nodeType] || '#0d6efd',
-                    color: 'white'
-                }}>
-                    {nodeTypeLabels[data.nodeType] || 'Story'}
-                </span>
-                {data.product && (
-                    <span className="node-badge bg-secondary text-white">
-                        {data.product}
-                    </span>
-                )}
-                {data.jiraTickets && data.jiraTickets.length > 0 && (
-                    <span className="node-badge bg-info text-white">
-                        <i className="fas fa-ticket-alt"></i> {data.jiraTickets.length}
-                    </span>
-                )}
-            </div>
-        </div>
+    return React.createElement(
+        'div',
+        { className: `custom-node ${data.nodeType || 'user_story'}` },
+        React.createElement(
+            'div',
+            { className: 'node-title' },
+            data.title || 'Untitled'
+        ),
+        data.description ? React.createElement(
+            'div',
+            { className: 'text-muted', style: { fontSize: '12px', marginTop: '4px' } },
+            data.description.substring(0, 50),
+            data.description.length > 50 ? '...' : ''
+        ) : null,
+        React.createElement(
+            'div',
+            { className: 'node-meta' },
+            React.createElement(
+                'span',
+                {
+                    className: 'node-badge',
+                    style: {
+                        backgroundColor: nodeTypeColors[data.nodeType] || '#0d6efd',
+                        color: 'white'
+                    }
+                },
+                nodeTypeLabels[data.nodeType] || 'Story'
+            ),
+            data.product ? React.createElement(
+                'span',
+                { className: 'node-badge bg-secondary text-white' },
+                data.product
+            ) : null,
+            data.jiraTickets && data.jiraTickets.length > 0 ? React.createElement(
+                'span',
+                { className: 'node-badge bg-info text-white' },
+                React.createElement('i', { className: 'fas fa-ticket-alt' }),
+                ' ',
+                data.jiraTickets.length
+            ) : null
+        )
     );
 };
 
@@ -366,22 +380,22 @@ const UserStoryMapFlow = () => {
         };
     }, [saveMap, addNode, loadMap, loadMaps]);
 
-    return (
-        <ReactFlow
-            nodes={nodes}
-            edges={edges}
-            onNodesChange={onNodesChange}
-            onEdgesChange={onEdgesChange}
-            onConnect={onConnect}
-            onNodeClick={onNodeClick}
-            onInit={(instance) => { reactFlowInstance.current = instance; }}
-            nodeTypes={nodeTypes}
-            fitView
-        >
-            <Background variant={BackgroundVariant.Dots} />
-            <Controls />
-            <MiniMap />
-        </ReactFlow>
+    return React.createElement(
+        ReactFlow,
+        {
+            nodes: nodes,
+            edges: edges,
+            onNodesChange: onNodesChange,
+            onEdgesChange: onEdgesChange,
+            onConnect: onConnect,
+            onNodeClick: onNodeClick,
+            onInit: (instance) => { reactFlowInstance.current = instance; },
+            nodeTypes: nodeTypes,
+            fitView: true
+        },
+        React.createElement(Background, { variant: BackgroundVariant.Dots }),
+        React.createElement(Controls, null),
+        React.createElement(MiniMap, null)
     );
 };
 

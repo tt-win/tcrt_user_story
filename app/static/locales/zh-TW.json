@@ -465,6 +465,7 @@
         "teamSettings": "團隊設定",
         "testCaseManagement": "Test Case 管理",
         "testRunManagement": "Test Run 管理",
+        "userStoryMap": "User Story Map",
         "title": "Test Case Repository"
     },
     "orgSync": {
@@ -1349,5 +1350,12 @@
             "searchPlaceholder": "搜尋使用者（姓名/電子郵件）",
             "larkSearchPlaceholder": "搜尋 Lark 使用者"
         }
+    },
+    "usm": {
+        "title": "使用者故事地圖",
+        "subtitle": "視覺化管理使用者故事與功能規劃",
+        "mapList": "地圖列表",
+        "newMap": "新增地圖",
+        "save": "儲存"
     }
 }

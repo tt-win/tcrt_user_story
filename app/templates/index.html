@@ -190,6 +190,9 @@ function renderTeamCards() {
                         <button class="btn btn-secondary" onclick="event.stopPropagation(); selectTeamForTestRuns(${team.id})">
                             <i class="fas fa-play-circle me-2"></i><span data-i18n="navigation.testRunManagement">Test Run 管理</span>
                         </button>
+                        <button class="btn btn-info" onclick="event.stopPropagation(); selectTeamForUserStoryMap(${team.id})">
+                            <i class="fas fa-project-diagram me-2"></i><span data-i18n="navigation.userStoryMap">User Story Map</span>
+                        </button>
                         </div>
                     </div>
                 </div>
@@ -245,6 +248,18 @@ function selectTeamForTestRuns(teamId) {
         AppUtils.setCurrentTeam(team);
         // 直接導向測試執行管理（不顯示 Toast）
         window.location.href = '/test-run-management';
+    }
+}
+
+function selectTeamForUserStoryMap(teamId) {
+    const team = teams.find(t => t.id === teamId);
+    if (!team) return;
+    
+    // 儲存選擇的團隊
+    if (AppUtils && AppUtils.setCurrentTeam) {
+        AppUtils.setCurrentTeam(team);
+        // 直接導向 User Story Map（不顯示 Toast）
+        window.location.href = `/user-story-map/${team.id}`;
     }
 }
 

@@ -296,8 +296,22 @@
 <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 
-<!-- React Flow -->
-<script src="https://cdn.jsdelivr.net/npm/reactflow@11.11.0/dist/umd/index.min.js"></script>
+<!-- React Flow Library -->
+<script src="https://unpkg.com/reactflow@11.11.0"></script>
+
+<!-- Setup library globals and initialize app -->
+<script>
+    // Ensure React Flow is available in window scope
+    // The UMD build should expose ReactFlow to window, but we verify it
+    if (typeof window.ReactFlow === 'undefined') {
+        console.warn('Attempting to use global ReactFlow variable');
+        if (typeof ReactFlow !== 'undefined') {
+            window.ReactFlow = ReactFlow;
+        } else {
+            console.error('React Flow failed to load. Check CDN availability.');
+        }
+    }
+</script>
 
 <script src="/static/js/user_story_map.js"></script>
 {% endblock %}
