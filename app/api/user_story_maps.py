@@ -311,11 +311,15 @@ async def search_nodes(
     query = select(UserStoryMapNodeDB).where(UserStoryMapNodeDB.map_id == map_id)
     
     if q:
+        like_pattern = f"%{q}%"
         query = query.where(
             or_(
-                UserStoryMapNodeDB.title.contains(q),
-                UserStoryMapNodeDB.description.contains(q),
-                UserStoryMapNodeDB.comment.contains(q),
+                UserStoryMapNodeDB.title.ilike(like_pattern),
+                UserStoryMapNodeDB.description.ilike(like_pattern),
+                UserStoryMapNodeDB.comment.ilike(like_pattern),
+                UserStoryMapNodeDB.as_a.ilike(like_pattern),
+                UserStoryMapNodeDB.i_want.ilike(like_pattern),
+                UserStoryMapNodeDB.so_that.ilike(like_pattern),
             )
         )
 
