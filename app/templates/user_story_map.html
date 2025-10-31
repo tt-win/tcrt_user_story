@@ -15,37 +15,53 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reactflow@11.11.0/dist/style.css">
 <style>
     .reactflow-wrapper {
-        height: calc(100vh - var(--header-height) - var(--footer-height) - 40px);
+        flex: 1;
+        min-height: 0;
         background-color: #f8f9fa;
     }
     
     .custom-node {
         padding: 12px 16px;
+        padding-right: 24px;
         border-radius: 8px;
         background: white;
         border: 2px solid #0d6efd;
-        min-width: 200px;
+        width: 200px;
+        min-height: 110px;
+        max-height: 110px;
         box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        position: relative;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
     }
     
-    .custom-node.epic {
-        border-color: #6f42c1;
-        background: linear-gradient(135deg, #f8f4ff 0%, #fff 100%);
+    .custom-node.root-node {
+        background: linear-gradient(135deg, #fff9d6 0%, #fffef0 100%);
+        border-color: #f0c94d;
     }
     
-    .custom-node.feature {
-        border-color: #0dcaf0;
-        background: linear-gradient(135deg, #e7f9ff 0%, #fff 100%);
+    .custom-node .react-flow__handle {
+        width: 0;
+        height: 0;
+        opacity: 0;
+        pointer-events: none;
     }
     
-    .custom-node.user-story {
-        border-color: #0d6efd;
-        background: linear-gradient(135deg, #e7f0ff 0%, #fff 100%);
+    .custom-node .react-flow__handle-top {
+        top: -6px;
     }
     
-    .custom-node.task {
-        border-color: #198754;
-        background: linear-gradient(135deg, #e7f5f0 0%, #fff 100%);
+    .custom-node .react-flow__handle-bottom {
+        bottom: -6px;
+    }
+    
+    .custom-node .react-flow__handle-left {
+        left: -6px;
+    }
+    
+    .custom-node .react-flow__handle-right {
+        right: -6px;
     }
     
     .custom-node .node-title {
@@ -57,15 +73,44 @@
     .custom-node .node-meta {
         font-size: 11px;
         color: #6c757d;
-        margin-top: 4px;
+        margin-top: auto;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
     }
-    
+
     .node-badge {
         display: inline-block;
         padding: 2px 6px;
         border-radius: 4px;
         font-size: 10px;
-        margin-right: 4px;
+    }
+
+    .node-collapse-btn {
+        position: absolute;
+        top: 6px;
+        right: 6px;
+        border: none;
+        background: transparent;
+        color: #6c757d;
+        padding: 0;
+        line-height: 1;
+        cursor: pointer;
+    }
+
+    .node-collapse-btn:hover,
+    .node-collapse-btn:focus {
+        color: #0d6efd;
+        outline: none;
+    }
+
+    .node-collapse-btn i {
+        pointer-events: none;
+    }
+    
+    .react-flow__node.selected .custom-node {
+        border-color: #f76707;
+        box-shadow: 0 0 0 3px rgba(247, 103, 7, 0.35), 0 4px 12px rgba(0,0,0,0.15);
     }
     
     .usm-sidebar {
@@ -74,17 +119,22 @@
         border-left: 1px solid #dee2e6;
         padding: 20px;
         overflow-y: auto;
-        height: calc(100vh - var(--header-height) - var(--footer-height));
+        height: 100%;
+        min-height: 0;
     }
     
     .usm-main-area {
         display: flex;
-        height: calc(100vh - var(--header-height) - var(--footer-height) - 40px);
+        height: calc(100vh - var(--header-height) - var(--footer-height) - 16px); /* account for app-main padding (8px top & bottom) */
+        min-height: 0;
     }
     
     .usm-flow-container {
         flex: 1;
         position: relative;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
     }
     
     .usm-toolbar {
@@ -95,6 +145,26 @@
         gap: 12px;
         align-items: center;
         flex-wrap: wrap;
+        flex-shrink: 0;
+        position: relative;
+    }
+    
+    .usm-toolbar #currentMapSelect {
+        flex: 0 1 clamp(12rem, 30vw, 18rem);
+        min-width: 12rem;
+    }
+
+    #highlightInfo {
+        position: fixed;
+        top: calc(var(--header-height) + 80px);
+        left: calc(16px + 8px);
+        width: min(320px, calc(100vw - 32px));
+        max-width: 320px;
+        z-index: 1040;
+        margin: 0;
+        border-left: 4px solid #ffc107;
+        font-size: 12px;
+        pointer-events: auto;
     }
 </style>
 {% endblock %}
@@ -106,6 +176,9 @@
     </button>
     <button type="button" class="btn btn-outline-primary" id="newMapBtn">
         <i class="fas fa-plus me-2"></i><span data-i18n="usm.newMap">新增地圖</span>
+    </button>
+    <button type="button" class="btn btn-outline-info" id="calcTicketsBtn" title="重新計算所有節點的聚合票證">
+        <i class="fas fa-calculator me-2"></i><span data-i18n="usm.calcTickets">計算票證</span>
     </button>
     <button type="button" class="btn btn-primary" id="saveMapBtn">
         <i class="fas fa-save me-2"></i><span data-i18n="usm.save">儲存</span>
@@ -121,27 +194,31 @@
     <div class="usm-flow-container">
         <!-- Toolbar -->
         <div class="usm-toolbar">
-            <select class="form-select form-select-sm" style="width: auto;" id="currentMapSelect">
+            <select class="form-select form-select-sm" id="currentMapSelect">
                 <option value="">選擇地圖...</option>
             </select>
             <div class="vr"></div>
-            <button type="button" class="btn btn-sm btn-outline-primary" id="addNodeBtn">
-                <i class="fas fa-plus"></i> 新增節點
+            <button type="button" class="btn btn-sm btn-outline-primary" id="addChildBtn">
+                <i class="fas fa-plus"></i> 新增子節點
             </button>
-            <button type="button" class="btn btn-sm btn-outline-secondary" id="fitViewBtn">
-                <i class="fas fa-compress-arrows-alt"></i> 適應畫面
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="addSiblingBtn">
+                <i class="fas fa-plus"></i> 新增同級節點
             </button>
-            <button type="button" class="btn btn-sm btn-outline-secondary" id="zoomInBtn">
-                <i class="fas fa-search-plus"></i>
-            </button>
-            <button type="button" class="btn btn-sm btn-outline-secondary" id="zoomOutBtn">
-                <i class="fas fa-search-minus"></i>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="autoLayoutBtn">
+                <i class="fas fa-project-diagram"></i> 自動排版
             </button>
             <div class="vr"></div>
             <button type="button" class="btn btn-sm btn-outline-info" id="searchBtn">
                 <i class="fas fa-search"></i> 搜尋
             </button>
+            <button type="button" class="btn btn-sm btn-outline-warning" id="highlightPathBtn">
+                <i class="fas fa-route"></i> 高亮路徑
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="clearHighlightBtn" style="display:none;">
+                <i class="fas fa-times"></i> 清除高亮
+            </button>
         </div>
+        <div id="highlightInfo" class="alert alert-warning d-none"></div>
         
         <!-- React Flow Container -->
         <div id="reactFlowWrapper" class="reactflow-wrapper"></div>
@@ -203,6 +280,33 @@
     </div>
 </div>
 
+<!-- Edit Map Modal -->
+<div class="modal fade" id="editMapModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">編輯地圖</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="editMapId">
+                <div class="mb-3">
+                    <label for="editMapName" class="form-label">地圖名稱 <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="editMapName" required>
+                </div>
+                <div class="mb-3">
+                    <label for="editMapDescription" class="form-label">描述</label>
+                    <textarea class="form-control" id="editMapDescription" rows="3"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="saveMapEditBtn">儲存</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Add Node Modal -->
 <div class="modal fade" id="addNodeModal" tabindex="-1">
     <div class="modal-dialog">
@@ -214,15 +318,6 @@
             <div class="modal-body">
                 <form id="addNodeForm">
                     <div class="mb-3">
-                        <label class="form-label">節點類型 <span class="text-danger">*</span></label>
-                        <select class="form-select" id="nodeType" required>
-                            <option value="epic">Epic</option>
-                            <option value="feature">Feature</option>
-                            <option value="user_story" selected>User Story</option>
-                            <option value="task">Task</option>
-                        </select>
-                    </div>
-                    <div class="mb-3">
                         <label class="form-label">標題 <span class="text-danger">*</span></label>
                         <input type="text" class="form-control" id="nodeTitle" required>
                     </div>
@@ -231,12 +326,8 @@
                         <textarea class="form-control" id="nodeDescription" rows="3"></textarea>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">產品</label>
-                        <input type="text" class="form-control" id="nodeProduct">
-                    </div>
-                    <div class="mb-3">
                         <label class="form-label">團隊</label>
-                        <input type="text" class="form-control" id="nodeTeam">
+                        <p class="form-control-plaintext mb-0" id="nodeTeamDisplay">載入中…</p>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">JIRA Tickets (逗號分隔)</label>
@@ -264,20 +355,6 @@
                 <div class="mb-3">
                     <input type="text" class="form-control" id="searchInput" placeholder="搜尋標題、描述或註解...">
                 </div>
-                <div class="row mb-3">
-                    <div class="col-md-6">
-                        <select class="form-select form-select-sm" id="searchNodeType">
-                            <option value="">所有類型</option>
-                            <option value="epic">Epic</option>
-                            <option value="feature">Feature</option>
-                            <option value="user_story">User Story</option>
-                            <option value="task">Task</option>
-                        </select>
-                    </div>
-                    <div class="col-md-6">
-                        <input type="text" class="form-control form-control-sm" id="searchProduct" placeholder="產品">
-                    </div>
-                </div>
                 <button type="button" class="btn btn-sm btn-primary" id="performSearchBtn">
                     <i class="fas fa-search"></i> 搜尋
                 </button>
@@ -292,6 +369,9 @@
 {% endblock %}
 
 {% block scripts %}
+<!-- Dagre for tree layout -->
+<script src="https://unpkg.com/dagre@0.8.5/dist/dagre.min.js"></script>
+
 <!-- React and ReactDOM -->
 <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
 <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>

@@ -98,11 +98,29 @@ async def create_map(
     db: AsyncSession = Depends(get_usm_db),
 ):
     """建立新的 User Story Map"""
+    # Create root node
+    import time
+    root_node = {
+        "id": f"root_{int(time.time() * 1000)}",
+        "title": "Root",
+        "description": "根節點",
+        "parent_id": None,
+        "children_ids": [],
+        "related_ids": [],
+        "comment": "",
+        "jira_tickets": [],
+        "team": None,
+        "aggregated_tickets": [],
+        "position_x": 250.0,
+        "position_y": 250.0,
+        "level": 0,
+    }
+    
     new_map = UserStoryMapDB(
         team_id=map_data.team_id,
         name=map_data.name,
         description=map_data.description,
-        nodes=[],
+        nodes=[root_node],
         edges=[],
     )
     
@@ -110,12 +128,33 @@ async def create_map(
     await db.commit()
     await db.refresh(new_map)
     
+    # Create node DB entry for search
+    node_db = UserStoryMapNodeDB(
+        map_id=new_map.id,
+        node_id=root_node["id"],
+        title=root_node["title"],
+        description=root_node["description"],
+        node_type=None,
+        parent_id=root_node["parent_id"],
+        children_ids=root_node["children_ids"],
+        related_ids=root_node["related_ids"],
+        comment=root_node["comment"],
+        jira_tickets=root_node["jira_tickets"],
+        team=root_node["team"],
+        aggregated_tickets=root_node["aggregated_tickets"],
+        position_x=float(root_node["position_x"]),
+        position_y=float(root_node["position_y"]),
+        level=root_node["level"],
+    )
+    db.add(node_db)
+    await db.commit()
+    
     return UserStoryMapResponse(
         id=new_map.id,
         team_id=new_map.team_id,
         name=new_map.name,
         description=new_map.description,
-        nodes=[],
+        nodes=[UserStoryMapNode(**root_node)],
         edges=[],
         created_at=new_map.created_at,
         updated_at=new_map.updated_at,
@@ -156,16 +195,17 @@ async def update_map(
                 node_id=node.id,
                 title=node.title,
                 description=node.description,
-                node_type=node.node_type,
+                node_type=None,
                 parent_id=node.parent_id,
                 children_ids=node.children_ids,
                 related_ids=node.related_ids,
                 comment=node.comment,
                 jira_tickets=node.jira_tickets,
-                product=node.product,
                 team=node.team,
+                aggregated_tickets=node.aggregated_tickets,
                 position_x=node.position_x,
                 position_y=node.position_y,
+                level=node.level,
             )
             db.add(node_db)
     
@@ -217,8 +257,6 @@ async def delete_map(
 async def search_nodes(
     map_id: int,
     q: Optional[str] = Query(None, description="搜尋關鍵字"),
-    node_type: Optional[str] = Query(None, description="節點類型"),
-    product: Optional[str] = Query(None, description="產品"),
     team: Optional[str] = Query(None, description="團隊"),
     jira_ticket: Optional[str] = Query(None, description="JIRA Ticket"),
     current_user: User = Depends(get_current_user),
@@ -236,12 +274,6 @@ async def search_nodes(
             )
         )
     
-    if node_type:
-        query = query.where(UserStoryMapNodeDB.node_type == node_type)
-    
-    if product:
-        query = query.where(UserStoryMapNodeDB.product == product)
-    
     if team:
         query = query.where(UserStoryMapNodeDB.team == team)
     
@@ -255,8 +287,6 @@ async def search_nodes(
                 "node_id": node.node_id,
                 "title": node.title,
                 "description": node.description,
-                "node_type": node.node_type,
-                "product": node.product,
                 "team": node.team,
                 "jira_tickets": node.jira_tickets,
             }
@@ -271,10 +301,86 @@ async def search_nodes(
             "node_id": node.node_id,
             "title": node.title,
             "description": node.description,
-            "node_type": node.node_type,
-            "product": node.product,
             "team": node.team,
             "jira_tickets": node.jira_tickets,
         }
         for node in nodes
     ]
+
+
+@router.post("/{map_id}/calculate-aggregated-tickets")
+async def calculate_aggregated_tickets(
+    map_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_usm_db),
+):
+    """計算並更新所有節點的聚合 tickets (從子節點繼承)"""
+    result = await db.execute(
+        select(UserStoryMapDB).where(UserStoryMapDB.id == map_id)
+    )
+    map_db = result.scalar_one_or_none()
+    
+    if not map_db:
+        raise HTTPException(status_code=404, detail="User Story Map not found")
+    
+    nodes = map_db.nodes or []
+    node_dict = {node["id"]: node for node in nodes}
+    
+    def aggregate_tickets(node_id: str, visited: set = None) -> List[str]:
+        """遞迴聚合子節點的 tickets"""
+        if visited is None:
+            visited = set()
+        
+        if node_id in visited:
+            return []
+        
+        visited.add(node_id)
+        node = node_dict.get(node_id)
+        
+        if not node:
+            return []
+        
+        tickets = set(node.get("jira_tickets", []))
+        
+        for child_id in node.get("children_ids", []):
+            tickets.update(aggregate_tickets(child_id, visited))
+        
+        return list(tickets)
+    
+    for node in nodes:
+        node["aggregated_tickets"] = aggregate_tickets(node["id"])
+    
+    map_db.nodes = nodes
+    await db.commit()
+    
+    return {"message": "Aggregated tickets calculated successfully"}
+
+
+@router.get("/{map_id}/path/{node_id}")
+async def get_node_path(
+    map_id: int,
+    node_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_usm_db),
+):
+    """獲取從根節點到指定節點的路徑"""
+    result = await db.execute(
+        select(UserStoryMapDB).where(UserStoryMapDB.id == map_id)
+    )
+    map_db = result.scalar_one_or_none()
+    
+    if not map_db:
+        raise HTTPException(status_code=404, detail="User Story Map not found")
+    
+    nodes = map_db.nodes or []
+    node_dict = {node["id"]: node for node in nodes}
+    
+    path = []
+    current = node_dict.get(node_id)
+    
+    while current:
+        path.insert(0, current["id"])
+        parent_id = current.get("parent_id")
+        current = node_dict.get(parent_id) if parent_id else None
+    
+    return {"path": path}

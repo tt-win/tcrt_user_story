@@ -1356,6 +1356,7 @@
         "subtitle": "Visualize and manage user stories and feature planning",
         "mapList": "Map List",
         "newMap": "New Map",
-        "save": "Save"
+        "save": "Save",
+        "calcTickets": "Recalculate aggregated tickets"
     }
 }

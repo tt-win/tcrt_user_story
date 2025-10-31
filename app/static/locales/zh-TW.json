@@ -1352,10 +1352,11 @@
         }
     },
     "usm": {
-        "title": "使用者故事地圖",
+        "title": "User Story Map",
         "subtitle": "視覺化管理使用者故事與功能規劃",
         "mapList": "地圖列表",
         "newMap": "新增地圖",
-        "save": "儲存"
+        "save": "儲存",
+        "calcTickets": "重新計算聚合票證"
     }
 }
