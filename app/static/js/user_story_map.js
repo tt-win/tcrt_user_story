@@ -582,20 +582,6 @@ const UserStoryMapFlow = () => {
                     <label class="form-label small fw-bold">團隊</label>
                     <p class="form-control-plaintext mb-0">${resolvedTeam ? escapeHtml(resolvedTeam) : '<span class="text-muted">未設定</span>'}</p>
                 </div>
-                <div class="mb-3">
-                    <label class="form-label small fw-bold">JIRA Tickets</label>
-                    <input type="text" class="form-control form-control-sm" id="propJira" value="${escapeHtml((data.jiraTickets || []).join(', '))}">
-                </div>
-                ${data.aggregatedTickets && data.aggregatedTickets.length > 0 ? `<div class="mb-3">
-                    <label class="form-label small fw-bold">聚合 Tickets (含子節點)</label>
-                    <div class="alert alert-warning p-2 small">
-                        ${escapeHtml(data.aggregatedTickets.join(', '))}
-                    </div>
-                </div>` : ''}
-                <div class="mb-3">
-                    <label class="form-label small fw-bold">註解</label>
-                    <textarea class="form-control form-control-sm" id="propComment" rows="2">${escapeHtml(data.comment || '')}</textarea>
-                </div>
                 ${data.nodeType === 'user_story' ? `
                 <div class="mb-3">
                     <label class="form-label small fw-bold">As a <small class="text-muted">(使用者角色)</small></label>
@@ -610,6 +596,20 @@ const UserStoryMapFlow = () => {
                     <textarea class="form-control form-control-sm" id="propSoThat" rows="3" placeholder="So that...">${escapeHtml(data.so_that || '')}</textarea>
                 </div>
                 ` : ''}
+                <div class="mb-3">
+                    <label class="form-label small fw-bold">JIRA Tickets</label>
+                    <input type="text" class="form-control form-control-sm" id="propJira" value="${escapeHtml((data.jiraTickets || []).join(', '))}">
+                </div>
+                ${data.aggregatedTickets && data.aggregatedTickets.length > 0 ? `<div class="mb-3">
+                    <label class="form-label small fw-bold">聚合 Tickets (含子節點)</label>
+                    <div class="alert alert-warning p-2 small">
+                        ${escapeHtml(data.aggregatedTickets.join(', '))}
+                    </div>
+                </div>` : ''}
+                <div class="mb-3">
+                    <label class="form-label small fw-bold">註解</label>
+                    <textarea class="form-control form-control-sm" id="propComment" rows="2">${escapeHtml(data.comment || '')}</textarea>
+                </div>
             </div>
             <div class="node-properties-actions">
                 <button type="button" class="btn btn-sm btn-primary w-100" id="updateNodeBtn">更新節點</button>
