@@ -130,23 +130,6 @@ const CustomNode = ({ data, id }) => {
             },
             truncatedDescription
         ) : null,
-        // BDD fields for User Story nodes
-        data.nodeType === 'user_story' ? React.createElement(
-            'div',
-            { className: 'node-bdd', style: { fontSize: '10px', marginTop: '4px', color: '#495057' } },
-            data.as_a ? React.createElement('div', { style: { marginBottom: '2px' } },
-                React.createElement('strong', null, 'As a: '),
-                data.as_a.length > 25 ? data.as_a.substring(0, 22) + '...' : data.as_a
-            ) : null,
-            data.i_want ? React.createElement('div', { style: { marginBottom: '2px' } },
-                React.createElement('strong', null, 'I want: '),
-                data.i_want.length > 25 ? data.i_want.substring(0, 22) + '...' : data.i_want
-            ) : null,
-            data.so_that ? React.createElement('div', null,
-                React.createElement('strong', null, 'So that: '),
-                data.so_that.length > 25 ? data.so_that.substring(0, 22) + '...' : data.so_that
-            ) : null
-        ) : null,
         React.createElement(
             'div',
             { className: 'node-meta' },
@@ -612,6 +595,20 @@ const UserStoryMapFlow = () => {
                 <label class="form-label small fw-bold">註解</label>
                 <textarea class="form-control form-control-sm" id="propComment" rows="2">${data.comment || ''}</textarea>
             </div>
+            ${data.nodeType === 'user_story' ? `
+            <div class="mb-3">
+                <label class="form-label small fw-bold">As a <small class="text-muted">(使用者角色)</small></label>
+                <input type="text" class="form-control form-control-sm" id="propAsA" value="${data.as_a || ''}" placeholder="As a user...">
+            </div>
+            <div class="mb-3">
+                <label class="form-label small fw-bold">I want <small class="text-muted">(需求描述)</small></label>
+                <input type="text" class="form-control form-control-sm" id="propIWant" value="${data.i_want || ''}" placeholder="I want to...">
+            </div>
+            <div class="mb-3">
+                <label class="form-label small fw-bold">So that <small class="text-muted">(價值目的)</small></label>
+                <input type="text" class="form-control form-control-sm" id="propSoThat" value="${data.so_that || ''}" placeholder="So that...">
+            </div>
+            ` : ''}
             <button type="button" class="btn btn-sm btn-primary w-100" id="updateNodeBtn">更新節點</button>
             <button type="button" class="btn btn-sm btn-danger w-100 mt-2" id="deleteNodeBtn">刪除節點</button>
         `;
@@ -627,6 +624,13 @@ const UserStoryMapFlow = () => {
         attachAutoSave('propDescription');
         attachAutoSave('propJira');
         attachAutoSave('propComment');
+
+        // BDD fields auto-save for User Story nodes
+        if (data.nodeType === 'user_story') {
+            attachAutoSave('propAsA');
+            attachAutoSave('propIWant');
+            attachAutoSave('propSoThat');
+        }
 
         // Add event listeners
         document.getElementById('updateNodeBtn')?.addEventListener('click', () => {
@@ -646,7 +650,7 @@ const UserStoryMapFlow = () => {
                     const jiraText = document.getElementById('propJira')?.value || '';
                     const jiraTickets = jiraText.split(',').map(t => t.trim()).filter(t => t);
                     
-                    node.data = {
+                    const updatedData = {
                         ...node.data,
                         title: document.getElementById('propTitle')?.value || '',
                         description: document.getElementById('propDescription')?.value || '',
@@ -654,6 +658,15 @@ const UserStoryMapFlow = () => {
                         jiraTickets: jiraTickets,
                         comment: document.getElementById('propComment')?.value || '',
                     };
+
+                    // Add BDD fields for User Story nodes
+                    if (node.data.nodeType === 'user_story') {
+                        updatedData.as_a = document.getElementById('propAsA')?.value || '';
+                        updatedData.i_want = document.getElementById('propIWant')?.value || '';
+                        updatedData.so_that = document.getElementById('propSoThat')?.value || '';
+                    }
+
+                    node.data = updatedData;
                 }
                 return node;
             })
