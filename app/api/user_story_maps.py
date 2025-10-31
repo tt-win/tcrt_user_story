@@ -325,10 +325,11 @@ async def search_nodes(
     if team:
         query = query.where(UserStoryMapNodeDB.team == team)
     
+    result = await db.execute(query)
+    nodes = result.scalars().all()
+
     if jira_ticket:
         # JSON 欄位搜尋需要特殊處理
-        result = await db.execute(query)
-        nodes = result.scalars().all()
         nodes = [n for n in nodes if jira_ticket in (n.jira_tickets or [])]
 
     return [
@@ -337,35 +338,6 @@ async def search_nodes(
             "title": node.title,
             "description": node.description,
             "node_type": node.node_type,
-            "team": node.team,
-            "jira_tickets": node.jira_tickets,
-        }
-        for node in nodes
-    ]
-
-    result = await db.execute(query)
-    nodes = result.scalars().all()
-
-    return [
-        {
-            "node_id": node.node_id,
-            "title": node.title,
-            "description": node.description,
-            "node_type": node.node_type,
-            "team": node.team,
-            "jira_tickets": node.jira_tickets,
-        }
-        for node in nodes
-    ]
-    
-    result = await db.execute(query)
-    nodes = result.scalars().all()
-    
-    return [
-        {
-            "node_id": node.node_id,
-            "title": node.title,
-            "description": node.description,
             "team": node.team,
             "jira_tickets": node.jira_tickets,
         }

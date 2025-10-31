@@ -49,7 +49,7 @@ class UserStoryMapNodeDB(Base):
     node_id = Column(String(100), nullable=False, index=True)
     title = Column(String(255), nullable=False, index=True)
     description = Column(Text, nullable=True)
-    node_type = Column(String(50), nullable=False, index=True)
+    node_type = Column(String(50), nullable=True, index=True)
     parent_id = Column(String(100), nullable=True, index=True)
     children_ids = Column(JSON, default=list)
     related_ids = Column(JSON, default=list)
@@ -119,8 +119,30 @@ def _ensure_node_type_nullable(connection):
 
     logging.info("調整 user_story_map_nodes.node_type 欄位為可為 NULL")
 
-    column_names = [column.name for column in UserStoryMapNodeDB.__table__.columns]
-    columns_csv = ", ".join(column_names)
+    # 獲取現有表格的欄位
+    result = connection.exec_driver_sql("PRAGMA table_info(user_story_map_nodes__legacy)")
+    existing_columns = [row[1] for row in result.fetchall()]  # row[1] 是欄位名稱
+
+    # 建立欄位映射，為新欄位提供默認值
+    select_columns = []
+    insert_columns = []
+    for column in UserStoryMapNodeDB.__table__.columns:
+        insert_columns.append(column.name)
+        if column.name in existing_columns:
+            select_columns.append(column.name)
+        else:
+            # 為新欄位提供默認值
+            if column.name in ['children_ids', 'related_ids', 'jira_tickets', 'team_tags', 'aggregated_tickets']:
+                select_columns.append("'[]'")  # JSON array default
+            elif column.name in ['position_x', 'position_y', 'level']:
+                select_columns.append("'0'")  # Numeric defaults
+            elif column.name in ['created_at', 'updated_at']:
+                select_columns.append("datetime('now')")  # Current timestamp
+            else:
+                select_columns.append("NULL")  # NULL for other new columns
+
+    select_csv = ", ".join(select_columns)
+    insert_csv = ", ".join(insert_columns)
 
     try:
         connection.exec_driver_sql("PRAGMA foreign_keys=OFF;")
@@ -141,8 +163,8 @@ def _ensure_node_type_nullable(connection):
         # 使用最新定義重新建立資料表（包含允許 NULL 的 node_type）
         Base.metadata.tables["user_story_map_nodes"].create(connection)
         connection.exec_driver_sql(
-            f"INSERT INTO user_story_map_nodes ({columns_csv}) "
-            f"SELECT {columns_csv} FROM user_story_map_nodes__legacy;"
+            f"INSERT INTO user_story_map_nodes ({insert_csv}) "
+            f"SELECT {select_csv} FROM user_story_map_nodes__legacy;"
         )
         connection.exec_driver_sql("DROP TABLE user_story_map_nodes__legacy;")
         logging.info("user_story_map_nodes.node_type 約束調整完成")
@@ -158,10 +180,26 @@ def _ensure_node_type_nullable(connection):
         connection.exec_driver_sql("PRAGMA foreign_keys=ON;")
 
 
+def _add_missing_columns(connection):
+    """添加缺失的欄位到現有表格"""
+    # 檢查並添加 i_want 和 so_that 欄位
+    result = connection.exec_driver_sql("PRAGMA table_info(user_story_map_nodes)")
+    existing_columns = {row[1] for row in result.fetchall()}  # row[1] 是欄位名稱
+
+    if 'i_want' not in existing_columns:
+        connection.exec_driver_sql("ALTER TABLE user_story_map_nodes ADD COLUMN i_want TEXT")
+        logging.info("已添加 i_want 欄位")
+
+    if 'so_that' not in existing_columns:
+        connection.exec_driver_sql("ALTER TABLE user_story_map_nodes ADD COLUMN so_that TEXT")
+        logging.info("已添加 so_that 欄位")
+
+
 async def init_usm_db():
     """初始化 User Story Map 資料庫"""
     async with usm_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(_add_missing_columns)
         await conn.run_sync(_ensure_node_type_nullable)
 
 
