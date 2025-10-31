@@ -124,11 +124,28 @@ const CustomNode = ({ data, id }) => {
         ),
         truncatedDescription ? React.createElement(
             'div',
-            { 
+            {
                 className: 'text-muted',
                 style: { fontSize: '12px', marginTop: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
             },
             truncatedDescription
+        ) : null,
+        // BDD fields for User Story nodes
+        data.nodeType === 'user_story' ? React.createElement(
+            'div',
+            { className: 'node-bdd', style: { fontSize: '10px', marginTop: '4px', color: '#495057' } },
+            data.as_a ? React.createElement('div', { style: { marginBottom: '2px' } },
+                React.createElement('strong', null, 'As a: '),
+                data.as_a.length > 25 ? data.as_a.substring(0, 22) + '...' : data.as_a
+            ) : null,
+            data.i_want ? React.createElement('div', { style: { marginBottom: '2px' } },
+                React.createElement('strong', null, 'I want: '),
+                data.i_want.length > 25 ? data.i_want.substring(0, 22) + '...' : data.i_want
+            ) : null,
+            data.so_that ? React.createElement('div', null,
+                React.createElement('strong', null, 'So that: '),
+                data.so_that.length > 25 ? data.so_that.substring(0, 22) + '...' : data.so_that
+            ) : null
         ) : null,
         React.createElement(
             'div',
