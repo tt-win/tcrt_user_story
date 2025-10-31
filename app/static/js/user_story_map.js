@@ -256,19 +256,12 @@ const UserStoryMapFlow = () => {
                         option.textContent = map.name;
                         select.appendChild(option);
                     });
-
-                    // Auto-load first map if available and no map is currently selected
-                    if (data.length > 0 && !currentMapId) {
-                        const firstMapId = data[0].id;
-                        select.value = firstMapId;
-                        loadMap(firstMapId);
-                    }
                 }
             }
         } catch (error) {
             console.error('Failed to load maps:', error);
         }
-    }, [teamId, currentMapId, loadMap]);
+    }, [teamId]);
 
     // Load specific map
     const loadMap = useCallback(async (mapId) => {
@@ -1012,6 +1005,18 @@ const UserStoryMapFlow = () => {
     useEffect(() => {
         loadTeamInfo();
     }, [loadTeamInfo]);
+
+    // Auto-load first map when maps are loaded and no map is selected
+    useEffect(() => {
+        if (maps.length > 0 && !currentMapId) {
+            const select = document.getElementById('currentMapSelect');
+            if (select && !select.value) {
+                const firstMapId = maps[0].id;
+                select.value = firstMapId;
+                loadMap(firstMapId);
+            }
+        }
+    }, [maps, currentMapId, loadMap]);
 
     useEffect(() => {
         if (!teamName) {
