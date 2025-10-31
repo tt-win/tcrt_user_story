@@ -1638,6 +1638,29 @@ document.addEventListener('DOMContentLoaded', function() {
         modal.show();
     });
 
+    // Clear search
+    document.getElementById('clearSearchBtn')?.addEventListener('click', () => {
+        const searchInput = document.getElementById('searchInput');
+        const searchResults = document.getElementById('searchResults');
+
+        if (searchInput) {
+            searchInput.value = '';
+        }
+
+        if (searchResults) {
+            searchResults.innerHTML = '<p class="text-muted small">輸入搜尋條件並點擊搜尋</p>';
+        }
+
+        // Clear highlights
+        window.userStoryMapFlow?.clearHighlight();
+
+        // Remove box shadows from nodes
+        const nodeElements = document.querySelectorAll('[data-id]');
+        nodeElements.forEach(nodeEl => {
+            nodeEl.style.boxShadow = '';
+        });
+    });
+
     // Perform search
     document.getElementById('performSearchBtn')?.addEventListener('click', async () => {
         const mapId = document.getElementById('currentMapSelect')?.value;
@@ -1666,7 +1689,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     container.innerHTML = '<p class="text-muted">無搜尋結果</p>';
                 } else {
                     window.userStoryMapFlow?.clearHighlight();
-                    
+
                     // Update nodes to highlight matches
                     const reactFlowWrapper = document.querySelector('.react-flow__renderer');
                     if (reactFlowWrapper) {
