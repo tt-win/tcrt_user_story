@@ -42,7 +42,24 @@ async def get_team_maps(
     
     response_maps = []
     for map_db in maps:
-        nodes = [UserStoryMapNode(**node) for node in (map_db.nodes or [])]
+        # Map legacy node_type values to new enum values
+        processed_nodes = []
+        for node in (map_db.nodes or []):
+            node_copy = dict(node)
+            # Map legacy node_type values
+            legacy_mapping = {
+                'epic': 'feature_category',
+                'feature': 'feature_category',
+                'task': 'user_story'
+            }
+            if node_copy.get('node_type') in legacy_mapping:
+                node_copy['node_type'] = legacy_mapping[node_copy['node_type']]
+            # Ensure node_type exists and is valid
+            if not node_copy.get('node_type'):
+                node_copy['node_type'] = 'feature_category'
+            processed_nodes.append(node_copy)
+
+        nodes = [UserStoryMapNode(**node) for node in processed_nodes]
         edges = [UserStoryMapEdge(**edge) for edge in (map_db.edges or [])]
         
         response_maps.append(
@@ -75,8 +92,25 @@ async def get_map(
     
     if not map_db:
         raise HTTPException(status_code=404, detail="User Story Map not found")
-    
-    nodes = [UserStoryMapNode(**node) for node in (map_db.nodes or [])]
+
+    # Map legacy node_type values to new enum values
+    processed_nodes = []
+    for node in (map_db.nodes or []):
+        node_copy = dict(node)
+        # Map legacy node_type values
+        legacy_mapping = {
+            'epic': 'feature_category',
+            'feature': 'feature_category',
+            'task': 'user_story'
+        }
+        if node_copy.get('node_type') in legacy_mapping:
+            node_copy['node_type'] = legacy_mapping[node_copy['node_type']]
+        # Ensure node_type exists and is valid
+        if not node_copy.get('node_type'):
+            node_copy['node_type'] = 'feature_category'
+        processed_nodes.append(node_copy)
+
+    nodes = [UserStoryMapNode(**node) for node in processed_nodes]
     edges = [UserStoryMapEdge(**edge) for edge in (map_db.edges or [])]
     
     return UserStoryMapResponse(
