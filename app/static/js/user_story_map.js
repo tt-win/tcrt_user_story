@@ -945,6 +945,57 @@ const UserStoryMapFlow = () => {
         }
     }, [setNodes, setEdges]);
 
+    const focusNode = useCallback((nodeId, highlightNodeIds = []) => {
+        if (!nodeId) {
+            return;
+        }
+
+        const instance = reactFlowInstance.current;
+        const targetNode = nodesRef.current.find((node) => node.id === nodeId);
+
+        if (!instance || !targetNode) {
+            showMessage('找不到指定節點，請重新載入地圖', 'error');
+            return;
+        }
+
+        // 更新 React Flow 的選取狀態
+        setNodes((nds) => {
+            const updated = nds.map((node) => ({
+                ...node,
+                selected: node.id === nodeId,
+            }));
+            nodesRef.current = updated;
+            return updated;
+        });
+
+        // 將視窗平移至節點附近（維持現有縮放）
+        if (instance.setCenter) {
+            const { x, y } = targetNode.position;
+            instance.setCenter(x + (targetNode.width || 0) / 2, y + (targetNode.height || 0) / 2, {
+                zoom: instance.getZoom?.() ?? undefined,
+                duration: 300,
+            });
+        }
+
+        setSelectedNode(targetNode);
+        updateNodeProperties(targetNode);
+
+        const highlightIds = Array.isArray(highlightNodeIds) && highlightNodeIds.length
+            ? new Set(highlightNodeIds)
+            : null;
+
+        if (highlightIds) {
+            setTimeout(() => {
+                highlightIds.forEach((id) => {
+                    const nodeElement = document.querySelector(`[data-id="${id}"]`);
+                    if (nodeElement) {
+                        nodeElement.style.boxShadow = '0 0 20px 5px #ffc107';
+                    }
+                });
+            }, 120);
+        }
+    }, [setNodes, setSelectedNode, updateNodeProperties]);
+
     // Auto layout
     const autoLayout = useCallback(() => {
         const layoutedNodes = applyTreeLayout(nodes, edges);
@@ -1123,6 +1174,7 @@ const UserStoryMapFlow = () => {
             autoLayout,
             highlightPath,
             clearHighlight,
+            focusNode,
             getSelectedNode: () => selectedNode,
             getTeamName: () => teamName,
             setNodes,
@@ -1130,7 +1182,7 @@ const UserStoryMapFlow = () => {
         };
         window.addChildNode = addChildNode;
         window.addSiblingNode = addSiblingNode;
-    }, [saveMap, addNode, loadMap, loadMaps, autoLayout, highlightPath, clearHighlight, selectedNode, addChildNode, addSiblingNode, setNodes, setEdges, teamName]);
+    }, [saveMap, addNode, loadMap, loadMaps, autoLayout, highlightPath, clearHighlight, focusNode, selectedNode, addChildNode, addSiblingNode, setNodes, setEdges, teamName]);
 
     // MiniMap node color function
     const getNodeColor = (node) => {
@@ -1654,9 +1706,14 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById('clearSearchBtn')?.addEventListener('click', () => {
         const searchInput = document.getElementById('searchInput');
         const searchResults = document.getElementById('searchResults');
+        const searchNodeType = document.getElementById('searchNodeType');
 
         if (searchInput) {
             searchInput.value = '';
+        }
+
+        if (searchNodeType) {
+            searchNodeType.value = '';
         }
 
         if (searchResults) {
@@ -1682,9 +1739,11 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         const query = document.getElementById('searchInput')?.value;
+        const nodeTypeFilter = document.getElementById('searchNodeType')?.value;
 
         const params = new URLSearchParams();
         if (query) params.append('q', query);
+        if (nodeTypeFilter) params.append('node_type', nodeTypeFilter);
 
         try {
             const response = await fetch(`/api/user-story-maps/${mapId}/search?${params}`, {
@@ -1727,6 +1786,22 @@ document.addEventListener('DOMContentLoaded', function() {
                             `).join('')}
                         </div>
                     `;
+
+                    const highlightIds = results.map((node) => node.node_id);
+
+                    container.querySelectorAll('.list-group-item').forEach((item) => {
+                        item.addEventListener('click', () => {
+                            const nodeId = item.getAttribute('data-node-id');
+                            if (nodeId) {
+                                window.userStoryMapFlow?.focusNode?.(nodeId, highlightIds);
+                                const modalElement = document.getElementById('searchModal');
+                                const modalInstance = modalElement
+                                    ? bootstrap.Modal.getInstance(modalElement)
+                                    : null;
+                                modalInstance?.hide();
+                            }
+                        });
+                    });
                 }
             }
         } catch (error) {
