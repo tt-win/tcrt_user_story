@@ -1120,6 +1120,16 @@ const UserStoryMapFlow = () => {
         window.addSiblingNode = addSiblingNode;
     }, [saveMap, addNode, loadMap, loadMaps, autoLayout, highlightPath, clearHighlight, selectedNode, addChildNode, addSiblingNode, setNodes, setEdges, teamName]);
 
+    // MiniMap node color function
+    const getNodeColor = (node) => {
+        const nodeTypeColors = {
+            root: '#6f42c1', // Purple
+            feature_category: '#87ceeb', // Light blue
+            user_story: '#dda0dd', // Plum (light purple)
+        };
+        return nodeTypeColors[node.data.nodeType] || '#0d6efd';
+    };
+
     return React.createElement(
         ReactFlow,
         {
@@ -1137,7 +1147,7 @@ const UserStoryMapFlow = () => {
             connectOnClick: false
         },
         React.createElement(Background, { variant: BackgroundVariant.Dots }),
-        React.createElement(MiniMap, null)
+        React.createElement(MiniMap, { nodeColor: getNodeColor })
     );
 };
 
