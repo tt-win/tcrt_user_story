@@ -641,9 +641,6 @@ function renderTeamCards() {
                             <button class="btn btn-primary btn-sm flex-grow-1" onclick="selectTeam(${team.id})">
                                 <i class="fas fa-arrow-right me-1"></i><span>${(window.i18n && window.i18n.isReady()) ? window.i18n.t('team.enterTeam') : '進入團隊'}</span>
                             </button>
-                            <button class="btn btn-outline-info btn-sm" onclick="window.location.href='/user-story-map/${team.id}'">
-                                <i class="fas fa-project-diagram me-1"></i><span>Story Map</span>
-                            </button>
                         </div>
                         <div class="d-flex gap-2">
                             <button class="btn btn-outline-secondary btn-sm flex-grow-1" onclick="editTeam(${team.id})">
