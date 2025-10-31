@@ -316,9 +316,6 @@ async def search_nodes(
                 UserStoryMapNodeDB.title.contains(q),
                 UserStoryMapNodeDB.description.contains(q),
                 UserStoryMapNodeDB.comment.contains(q),
-                UserStoryMapNodeDB.as_a.contains(q),
-                UserStoryMapNodeDB.i_want.contains(q),
-                UserStoryMapNodeDB.so_that.contains(q),
             )
         )
 
@@ -333,9 +330,6 @@ async def search_nodes(
         result = await db.execute(query)
         nodes = result.scalars().all()
         nodes = [n for n in nodes if jira_ticket in (n.jira_tickets or [])]
-    else:
-        result = await db.execute(query)
-        nodes = result.scalars().all()
 
     return [
         {
@@ -343,6 +337,35 @@ async def search_nodes(
             "title": node.title,
             "description": node.description,
             "node_type": node.node_type,
+            "team": node.team,
+            "jira_tickets": node.jira_tickets,
+        }
+        for node in nodes
+    ]
+
+    result = await db.execute(query)
+    nodes = result.scalars().all()
+
+    return [
+        {
+            "node_id": node.node_id,
+            "title": node.title,
+            "description": node.description,
+            "node_type": node.node_type,
+            "team": node.team,
+            "jira_tickets": node.jira_tickets,
+        }
+        for node in nodes
+    ]
+    
+    result = await db.execute(query)
+    nodes = result.scalars().all()
+    
+    return [
+        {
+            "node_id": node.node_id,
+            "title": node.title,
+            "description": node.description,
             "team": node.team,
             "jira_tickets": node.jira_tickets,
         }
