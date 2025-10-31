@@ -245,7 +245,7 @@ const UserStoryMapFlow = () => {
             if (response.ok) {
                 const data = await response.json();
                 setMaps(data);
-                
+
                 // Update select dropdown
                 const select = document.getElementById('currentMapSelect');
                 if (select) {
@@ -256,12 +256,19 @@ const UserStoryMapFlow = () => {
                         option.textContent = map.name;
                         select.appendChild(option);
                     });
+
+                    // Auto-load first map if available and no map is currently selected
+                    if (data.length > 0 && !currentMapId) {
+                        const firstMapId = data[0].id;
+                        select.value = firstMapId;
+                        loadMap(firstMapId);
+                    }
                 }
             }
         } catch (error) {
             console.error('Failed to load maps:', error);
         }
-    }, [teamId]);
+    }, [teamId, currentMapId, loadMap]);
 
     // Load specific map
     const loadMap = useCallback(async (mapId) => {
