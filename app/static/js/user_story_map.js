@@ -569,48 +569,54 @@ const UserStoryMapFlow = () => {
         const data = node.data;
         const resolvedTeam = data.team || teamName || '';
         container.innerHTML = `
-            <div class="mb-3">
-                <label class="form-label small fw-bold">標題</label>
-                <input type="text" class="form-control form-control-sm" id="propTitle" value="${data.title || ''}">
-            </div>
-            <div class="mb-3">
-                <label class="form-label small fw-bold">描述</label>
-                <textarea class="form-control form-control-sm" id="propDescription" rows="3">${data.description || ''}</textarea>
-            </div>
-            <div class="mb-3">
-                <label class="form-label small fw-bold">團隊</label>
-                <p class="form-control-plaintext mb-0">${resolvedTeam ? escapeHtml(resolvedTeam) : '<span class="text-muted">未設定</span>'}</p>
-            </div>
-            <div class="mb-3">
-                <label class="form-label small fw-bold">JIRA Tickets</label>
-                <input type="text" class="form-control form-control-sm" id="propJira" value="${(data.jiraTickets || []).join(', ')}">
-            </div>
-            ${data.aggregatedTickets && data.aggregatedTickets.length > 0 ? `<div class="mb-3">
-                <label class="form-label small fw-bold">聚合 Tickets (含子節點)</label>
-                <div class="alert alert-warning p-2 small">
-                    ${data.aggregatedTickets.join(', ')}
+            <div class="node-properties-container">
+                <div class="node-properties-content">
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">標題</label>
+                        <input type="text" class="form-control form-control-sm" id="propTitle" value="${data.title || ''}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">描述</label>
+                        <textarea class="form-control form-control-sm" id="propDescription" rows="3">${data.description || ''}</textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">團隊</label>
+                        <p class="form-control-plaintext mb-0">${resolvedTeam ? escapeHtml(resolvedTeam) : '<span class="text-muted">未設定</span>'}</p>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">JIRA Tickets</label>
+                        <input type="text" class="form-control form-control-sm" id="propJira" value="${(data.jiraTickets || []).join(', ')}">
+                    </div>
+                    ${data.aggregatedTickets && data.aggregatedTickets.length > 0 ? `<div class="mb-3">
+                        <label class="form-label small fw-bold">聚合 Tickets (含子節點)</label>
+                        <div class="alert alert-warning p-2 small">
+                            ${data.aggregatedTickets.join(', ')}
+                        </div>
+                    </div>` : ''}
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">註解</label>
+                        <textarea class="form-control form-control-sm" id="propComment" rows="2">${data.comment || ''}</textarea>
+                    </div>
+                    ${data.nodeType === 'user_story' ? `
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">As a <small class="text-muted">(使用者角色)</small></label>
+                        <input type="text" class="form-control form-control-sm" id="propAsA" value="${data.as_a || ''}" placeholder="As a user...">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">I want <small class="text-muted">(需求描述)</small></label>
+                        <textarea class="form-control form-control-sm" id="propIWant" rows="3" placeholder="I want to...">${data.i_want || ''}</textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">So that <small class="text-muted">(價值目的)</small></label>
+                        <textarea class="form-control form-control-sm" id="propSoThat" rows="3" placeholder="So that...">${data.so_that || ''}</textarea>
+                    </div>
+                    ` : ''}
                 </div>
-            </div>` : ''}
-            <div class="mb-3">
-                <label class="form-label small fw-bold">註解</label>
-                <textarea class="form-control form-control-sm" id="propComment" rows="2">${data.comment || ''}</textarea>
+                <div class="node-properties-actions">
+                    <button type="button" class="btn btn-sm btn-primary w-100" id="updateNodeBtn">更新節點</button>
+                    <button type="button" class="btn btn-sm btn-danger w-100 mt-2" id="deleteNodeBtn">刪除節點</button>
+                </div>
             </div>
-            ${data.nodeType === 'user_story' ? `
-            <div class="mb-3">
-                <label class="form-label small fw-bold">As a <small class="text-muted">(使用者角色)</small></label>
-                <input type="text" class="form-control form-control-sm" id="propAsA" value="${data.as_a || ''}" placeholder="As a user...">
-            </div>
-            <div class="mb-3">
-                <label class="form-label small fw-bold">I want <small class="text-muted">(需求描述)</small></label>
-                <input type="text" class="form-control form-control-sm" id="propIWant" value="${data.i_want || ''}" placeholder="I want to...">
-            </div>
-            <div class="mb-3">
-                <label class="form-label small fw-bold">So that <small class="text-muted">(價值目的)</small></label>
-                <input type="text" class="form-control form-control-sm" id="propSoThat" value="${data.so_that || ''}" placeholder="So that...">
-            </div>
-            ` : ''}
-            <button type="button" class="btn btn-sm btn-primary w-100" id="updateNodeBtn">更新節點</button>
-            <button type="button" class="btn btn-sm btn-danger w-100 mt-2" id="deleteNodeBtn">刪除節點</button>
         `;
 
         const attachAutoSave = (id) => {
