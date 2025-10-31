@@ -104,6 +104,7 @@ async def create_map(
         "id": f"root_{int(time.time() * 1000)}",
         "title": "Root",
         "description": "根節點",
+        "node_type": "root",
         "parent_id": None,
         "children_ids": [],
         "related_ids": [],
@@ -114,6 +115,9 @@ async def create_map(
         "position_x": 250.0,
         "position_y": 250.0,
         "level": 0,
+        "as_a": None,
+        "i_want": None,
+        "so_that": None,
     }
     
     new_map = UserStoryMapDB(
@@ -134,7 +138,7 @@ async def create_map(
         node_id=root_node["id"],
         title=root_node["title"],
         description=root_node["description"],
-        node_type=None,
+        node_type=root_node["node_type"],
         parent_id=root_node["parent_id"],
         children_ids=root_node["children_ids"],
         related_ids=root_node["related_ids"],
@@ -145,6 +149,9 @@ async def create_map(
         position_x=float(root_node["position_x"]),
         position_y=float(root_node["position_y"]),
         level=root_node["level"],
+        as_a=root_node["as_a"],
+        i_want=root_node["i_want"],
+        so_that=root_node["so_that"],
     )
     db.add(node_db)
     await db.commit()
@@ -195,7 +202,7 @@ async def update_map(
                 node_id=node.id,
                 title=node.title,
                 description=node.description,
-                node_type=None,
+                node_type=node.node_type.value if hasattr(node.node_type, 'value') else node.node_type,
                 parent_id=node.parent_id,
                 children_ids=node.children_ids,
                 related_ids=node.related_ids,
@@ -206,6 +213,9 @@ async def update_map(
                 position_x=node.position_x,
                 position_y=node.position_y,
                 level=node.level,
+                as_a=getattr(node, 'as_a', None),
+                i_want=getattr(node, 'i_want', None),
+                so_that=getattr(node, 'so_that', None),
             )
             db.add(node_db)
     
@@ -257,6 +267,7 @@ async def delete_map(
 async def search_nodes(
     map_id: int,
     q: Optional[str] = Query(None, description="搜尋關鍵字"),
+    node_type: Optional[str] = Query(None, description="節點類型"),
     team: Optional[str] = Query(None, description="團隊"),
     jira_ticket: Optional[str] = Query(None, description="JIRA Ticket"),
     current_user: User = Depends(get_current_user),
@@ -273,7 +284,10 @@ async def search_nodes(
                 UserStoryMapNodeDB.comment.contains(q),
             )
         )
-    
+
+    if node_type:
+        query = query.where(UserStoryMapNodeDB.node_type == node_type)
+
     if team:
         query = query.where(UserStoryMapNodeDB.team == team)
     
@@ -282,16 +296,33 @@ async def search_nodes(
         result = await db.execute(query)
         nodes = result.scalars().all()
         nodes = [n for n in nodes if jira_ticket in (n.jira_tickets or [])]
-        return [
-            {
-                "node_id": node.node_id,
-                "title": node.title,
-                "description": node.description,
-                "team": node.team,
-                "jira_tickets": node.jira_tickets,
-            }
-            for node in nodes
-        ]
+
+    return [
+        {
+            "node_id": node.node_id,
+            "title": node.title,
+            "description": node.description,
+            "node_type": node.node_type,
+            "team": node.team,
+            "jira_tickets": node.jira_tickets,
+        }
+        for node in nodes
+    ]
+
+    result = await db.execute(query)
+    nodes = result.scalars().all()
+
+    return [
+        {
+            "node_id": node.node_id,
+            "title": node.title,
+            "description": node.description,
+            "node_type": node.node_type,
+            "team": node.team,
+            "jira_tickets": node.jira_tickets,
+        }
+        for node in nodes
+    ]
     
     result = await db.execute(query)
     nodes = result.scalars().all()

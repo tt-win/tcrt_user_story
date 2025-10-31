@@ -49,7 +49,7 @@ class UserStoryMapNodeDB(Base):
     node_id = Column(String(100), nullable=False, index=True)
     title = Column(String(255), nullable=False, index=True)
     description = Column(Text, nullable=True)
-    node_type = Column(String(50), nullable=True, index=True)  # Deprecated, 保留欄位以維持舊資料相容
+    node_type = Column(String(50), nullable=False, index=True)
     parent_id = Column(String(100), nullable=True, index=True)
     children_ids = Column(JSON, default=list)
     related_ids = Column(JSON, default=list)
@@ -62,6 +62,10 @@ class UserStoryMapNodeDB(Base):
     position_x = Column(Float, default=0)
     position_y = Column(Float, default=0)
     level = Column(Integer, default=0)
+    # BDD fields for User Story nodes
+    as_a = Column(Text, nullable=True)  # As a
+    i_want = Column(Text, nullable=True)  # I want
+    so_that = Column(Text, nullable=True)  # So that
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -121,6 +125,19 @@ def _ensure_node_type_nullable(connection):
     try:
         connection.exec_driver_sql("PRAGMA foreign_keys=OFF;")
         connection.exec_driver_sql("ALTER TABLE user_story_map_nodes RENAME TO user_story_map_nodes__legacy;")
+
+        # 刪除舊表格的所有索引，以避免重建時衝突
+        result = connection.exec_driver_sql("PRAGMA index_list(user_story_map_nodes__legacy)")
+        indexes = result.fetchall()
+        for index_row in indexes:
+            index_name = index_row[1]  # PRAGMA index_list 格式: (seq, name, unique, origin, partial)
+            if index_name.startswith('sqlite_autoindex_'):
+                continue  # 跳過自動索引
+            try:
+                connection.exec_driver_sql(f"DROP INDEX IF EXISTS {index_name}")
+            except Exception as idx_exc:
+                logging.warning("無法刪除索引 %s: %s", index_name, idx_exc)
+
         # 使用最新定義重新建立資料表（包含允許 NULL 的 node_type）
         Base.metadata.tables["user_story_map_nodes"].create(connection)
         connection.exec_driver_sql(

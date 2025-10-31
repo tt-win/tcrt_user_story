@@ -325,14 +325,35 @@
                         <label class="form-label">描述</label>
                         <textarea class="form-control" id="nodeDescription" rows="3"></textarea>
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label">團隊</label>
-                        <p class="form-control-plaintext mb-0" id="nodeTeamDisplay">載入中…</p>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">JIRA Tickets (逗號分隔)</label>
-                        <input type="text" class="form-control" id="nodeJira" placeholder="PROJ-123, PROJ-456">
-                    </div>
+                     <div class="mb-3">
+                         <label class="form-label">節點類型 <span class="text-danger">*</span></label>
+                         <select class="form-control" id="nodeType" required>
+                             <option value="feature_category">功能分類節點</option>
+                             <option value="user_story">User Story</option>
+                         </select>
+                     </div>
+                     <div class="mb-3">
+                         <label class="form-label">團隊</label>
+                         <p class="form-control-plaintext mb-0" id="nodeTeamDisplay">載入中…</p>
+                     </div>
+                     <div class="mb-3">
+                         <label class="form-label">JIRA Tickets (逗號分隔)</label>
+                         <input type="text" class="form-control" id="nodeJira" placeholder="PROJ-123, PROJ-456">
+                     </div>
+                     <div id="bddFields" style="display: none;">
+                         <div class="mb-3">
+                             <label class="form-label">As a</label>
+                             <input type="text" class="form-control" id="nodeAsA" placeholder="As a user...">
+                         </div>
+                         <div class="mb-3">
+                             <label class="form-label">I want</label>
+                             <input type="text" class="form-control" id="nodeIWant" placeholder="I want to...">
+                         </div>
+                         <div class="mb-3">
+                             <label class="form-label">So that</label>
+                             <input type="text" class="form-control" id="nodeSoThat" placeholder="So that...">
+                         </div>
+                     </div>
                 </form>
             </div>
             <div class="modal-footer">
