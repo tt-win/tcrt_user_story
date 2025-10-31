@@ -413,7 +413,28 @@
             </div>
             <div class="modal-body">
                 <div class="mb-3">
-                    <input type="text" class="form-control" id="searchInput" placeholder="搜尋標題、描述或註解...">
+                    <input type="text" class="form-control" id="searchInput" placeholder="搜尋標題、描述、註解或 BDD 欄位...">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">節點類型篩選</label>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="nodeTypeFilter" id="nodeTypeAll" value="" checked>
+                        <label class="form-check-label" for="nodeTypeAll">
+                            全部
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="nodeTypeFilter" id="nodeTypeFeature" value="feature_category">
+                        <label class="form-check-label" for="nodeTypeFeature">
+                            功能分類
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="nodeTypeFilter" id="nodeTypeUserStory" value="user_story">
+                        <label class="form-check-label" for="nodeTypeUserStory">
+                            User Story
+                        </label>
+                    </div>
                 </div>
                 <button type="button" class="btn btn-sm btn-primary" id="performSearchBtn">
                     <i class="fas fa-search"></i> 搜尋

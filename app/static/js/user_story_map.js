@@ -1647,9 +1647,11 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         const query = document.getElementById('searchInput')?.value;
+        const nodeTypeFilter = document.querySelector('input[name="nodeTypeFilter"]:checked')?.value;
 
         const params = new URLSearchParams();
         if (query) params.append('q', query);
+        if (nodeTypeFilter) params.append('node_type', nodeTypeFilter);
 
         try {
             const response = await fetch(`/api/user-story-maps/${mapId}/search?${params}`, {
@@ -1666,7 +1668,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     container.innerHTML = '<p class="text-muted">無搜尋結果</p>';
                 } else {
                     window.userStoryMapFlow?.clearHighlight();
-                    
+
                     // Update nodes to highlight matches
                     const reactFlowWrapper = document.querySelector('.react-flow__renderer');
                     if (reactFlowWrapper) {
@@ -1680,13 +1682,20 @@ document.addEventListener('DOMContentLoaded', function() {
                         }, 100);
                     }
 
+                    const nodeTypeLabels = {
+                        root: 'Root',
+                        feature_category: '功能分類',
+                        user_story: 'User Story',
+                    };
+
                     container.innerHTML = `
                         <div class="list-group">
                             ${results.map(node => `
                                 <div class="list-group-item" data-node-id="${node.node_id}">
                                     <h6 class="mb-1">${escapeHtml(node.title)}</h6>
                                     ${node.description ? `<p class="mb-1 small">${escapeHtml(node.description)}</p>` : ''}
-                                    ${node.team ? `<small class="text-muted">團隊: ${escapeHtml(node.team)}</small>` : ''}
+                                    <small class="text-muted">類型: ${nodeTypeLabels[node.node_type] || node.node_type}</small>
+                                    ${node.team ? `<br><small class="text-muted">團隊: ${escapeHtml(node.team)}</small>` : ''}
                                     ${node.jira_tickets && node.jira_tickets.length > 0 ? `<br><small class="text-info">Tickets: ${escapeHtml(node.jira_tickets.join(', '))}</small>` : ''}
                                 </div>
                             `).join('')}
