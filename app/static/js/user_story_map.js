@@ -36,8 +36,8 @@ const CustomNode = ({ data, id }) => {
     // Node type colors
     const nodeTypeColors = {
         root: '#6f42c1', // Purple
-        feature_category: '#0d6efd', // Blue
-        user_story: '#17a2b8', // Info blue
+        feature_category: '#87ceeb', // Light blue
+        user_story: '#dda0dd', // Plum (light purple)
     };
 
     const nodeTypeLabels = {
@@ -102,8 +102,9 @@ const CustomNode = ({ data, id }) => {
 
     return React.createElement(
         'div',
-        { 
+        {
             className: `custom-node${data.isRoot ? ' root-node' : ''}`,
+            'data-node-type': data.nodeType,
             style: {
                 opacity: data.dimmed ? 0.3 : 1,
                 transition: 'opacity 0.3s ease',
