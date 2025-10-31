@@ -5,15 +5,6 @@ User Story Map 資料模型
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import datetime
-from enum import Enum
-
-
-class NodeType(str, Enum):
-    """節點類型"""
-    EPIC = "epic"
-    FEATURE = "feature"
-    USER_STORY = "user_story"
-    TASK = "task"
 
 
 class UserStoryMapNode(BaseModel):
@@ -21,16 +12,16 @@ class UserStoryMapNode(BaseModel):
     id: str
     title: str
     description: Optional[str] = None
-    node_type: NodeType = NodeType.USER_STORY
     parent_id: Optional[str] = None
     children_ids: List[str] = Field(default_factory=list)
     related_ids: List[str] = Field(default_factory=list)
     comment: Optional[str] = None
     jira_tickets: List[str] = Field(default_factory=list)
-    product: Optional[str] = None
     team: Optional[str] = None
+    aggregated_tickets: List[str] = Field(default_factory=list)
     position_x: float = 0
     position_y: float = 0
+    level: int = 0
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 

@@ -11,13 +11,7 @@ User Story Map 功能讓團隊能夠視覺化管理使用者故事、功能規�
 - 支援縮放和平移操作
 - 迷你地圖導航
 
-### 2. 節點類型
-- **Epic**: 史詩級功能
-- **Feature**: 功能特性
-- **User Story**: 使用者故事
-- **Task**: 具體任務
-
-### 3. 節點屬性
+### 2. 節點屬性
 每個節點包含以下屬性：
 - **Title**: 標題
 - **Description**: 描述
@@ -26,23 +20,20 @@ User Story Map 功能讓團隊能夠視覺化管理使用者故事、功能規�
 - **關係節點**: Related Nodes
 - **Comment**: 註解
 - **JIRA Tickets**: 相關的 JIRA 工單
-- **Product**: 所屬產品
-- **Team**: 所屬團隊
+- **Team**: 所屬團隊（自動帶入地圖隸屬的團隊名稱）
 
-### 4. 搜尋功能
+### 3. 搜尋功能
 支援多種搜尋條件：
 - 關鍵字搜尋（標題、描述、註解）
-- 節點類型篩選
-- 產品篩選
 - 團隊篩選
 - JIRA Ticket 篩選
 
-### 5. 多地圖管理
+### 4. 多地圖管理
 - 一個團隊可以建立多張故事地圖
 - 每張地圖獨立管理
 - 支援地圖列表瀏覽和切換
 
-### 6. 獨立資料庫
+### 5. 獨立資料庫
 使用獨立的 SQLite 資料庫 (`userstorymap.db`) 管理故事地圖資料：
 - `user_story_maps`: 地圖主表
 - `user_story_map_nodes`: 節點索引表（用於快速搜尋）
@@ -105,7 +96,7 @@ DELETE /api/user-story-maps/{map_id}
 
 ### 搜尋節點
 ```
-GET /api/user-story-maps/{map_id}/search?q={keyword}&node_type={type}&product={product}&team={team}&jira_ticket={ticket}
+GET /api/user-story-maps/{map_id}/search?q={keyword}&team={team}&jira_ticket={ticket}
 ```
 
 ## 使用方式
@@ -117,7 +108,7 @@ GET /api/user-story-maps/{map_id}/search?q={keyword}&node_type={type}&product={p
 點擊「新增地圖」按鈕，輸入地圖名稱和描述。
 
 ### 3. 新增節點
-點擊「新增節點」按鈕，選擇節點類型並填寫相關資訊。
+點擊「新增節點」按鈕，填寫節點基本資訊。
 
 ### 4. 編輯節點
 點擊節點後，右側邊欄會顯示節點屬性，可以編輯各項資訊。
@@ -153,13 +144,12 @@ GET /api/user-story-maps/{map_id}/search?q={keyword}&node_type={type}&product={p
 | node_id | VARCHAR(100) | 節點 ID |
 | title | VARCHAR(255) | 標題 |
 | description | TEXT | 描述 |
-| node_type | VARCHAR(50) | 節點類型 |
 | parent_id | VARCHAR(100) | 父節點 ID |
 | children_ids | JSON | 子節點 IDs |
 | related_ids | JSON | 關係節點 IDs |
 | comment | TEXT | 註解 |
 | jira_tickets | JSON | JIRA Tickets |
-| product | VARCHAR(255) | 產品 |
+| product | VARCHAR(255) | （已淘汰）僅保留舊資料 |
 | team | VARCHAR(255) | 團隊 |
 | position_x | FLOAT | X 座標 |
 | position_y | FLOAT | Y 座標 |

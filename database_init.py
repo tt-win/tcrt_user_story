@@ -47,6 +47,14 @@ from sqlalchemy import create_engine
 
 from app.audit import audit_db_manager, AuditLogTable
 
+# User Story Map 資料庫相關
+from app.models.user_story_map_db import (
+    Base as USMBase,
+    UserStoryMapDB,
+    UserStoryMapNodeDB,
+    DATABASE_URL as USM_DATABASE_URL,
+)
+
 # -----------------------------
 # 輔助輸出（繁體中文）
 # -----------------------------
@@ -96,8 +104,9 @@ AUDIT_TABLES: List[str] = [
     "audit_logs",
 ]
 
-AUDIT_TABLES: List[str] = [
-    "audit_logs",
+USM_TABLES: List[str] = [
+    "user_story_maps",
+    "user_story_map_nodes",
 ]
 
 
@@ -173,6 +182,13 @@ COLUMN_CONSTRAINT_CHANGES: List[ColumnConstraintChange] = [
         old_constraint="NOT NULL",
         new_constraint="NULL",
         notes="系統初始化時允許不提供 email"
+    ),
+    ColumnConstraintChange(
+        table="user_story_map_nodes",
+        column="node_type",
+        old_constraint="NOT NULL",
+        new_constraint="NULL",
+        notes="節點類型屬性已移除，欄位改為允許 NULL 以維持相容性"
     ),
 ]
 
@@ -757,6 +773,31 @@ def print_audit_stats(stats: Dict[str, Any], logger: Logger):
     print(f"📂 審計資料庫位置：{stats.get('engine_url')}")
 
 
+def print_usm_stats(stats: Dict[str, Any], logger: Logger):
+    print("=" * 60)
+    print("🗺️  User Story Map 資料庫統計摘要")
+    print("=" * 60)
+    print(f"總表格數：{stats.get('total_tables')}")
+    tables = stats.get("tables", {})
+    for t, d in sorted(tables.items()):
+        if "error" in d:
+            print(f"  ❌ {t}: {d['error']}")
+        else:
+            print(f"  ✅ {t}: {d['rows']} 筆記錄, {d['columns']} 欄位")
+    print()
+    print("User Story Map 表格狀態：")
+    for t in USM_TABLES:
+        d = tables.get(t)
+        if d is None:
+            print(f"  ⚠️  {t}: 表格不存在")
+        elif "error" in d:
+            print(f"  ❌ {t}: {d['error']}")
+        else:
+            print(f"  ✅ {t}: {d['rows']} 筆記錄, {d['columns']} 欄位")
+    print()
+    print(f"📂 User Story Map 資料庫位置：{stats.get('engine_url')}")
+
+
 # -----------------------------
 # 參數與主流程
 # -----------------------------
@@ -791,6 +832,22 @@ def initialize_audit_engine(logger: Logger):
         return engine
     except Exception as exc:
         logger.error(f"審計資料庫初始化失敗：{exc}")
+        raise
+
+
+def initialize_usm_engine(logger: Logger):
+    """初始化 User Story Map 資料庫"""
+    try:
+        sync_url = _normalize_audit_url(USM_DATABASE_URL)
+        engine = create_engine(sync_url, future=True)
+        # 確保 USM 資料表存在
+        USMBase.metadata.create_all(bind=engine)
+        logger.info("User Story Map 資料庫已初始化")
+        return engine
+    except Exception as exc:
+        logger.error(f"User Story Map 資料庫初始化失敗：{exc}")
+        import traceback
+        logger.error(traceback.format_exc())
         raise
 
 
@@ -859,12 +916,18 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         ensure_audit_indexes(audit_engine, logger)
 
+        # User Story Map 資料庫初始化與檢查
+        usm_engine = initialize_usm_engine(logger)
+
         # 最終統計
         stats = get_database_stats(engine, logger)
         print_stats(stats, logger)
 
         audit_stats = get_database_stats(audit_engine, logger)
         print_audit_stats(audit_stats, logger)
+
+        usm_stats = get_database_stats(usm_engine, logger)
+        print_usm_stats(usm_stats, logger)
 
         logger.info("✅ 資料庫初始化完成！")
         if backup_path:
