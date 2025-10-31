@@ -33,6 +33,19 @@ const CustomNode = ({ data, id }) => {
     const { Handle, Position } = window.ReactFlow;
     const badges = [];
 
+    // Node type colors
+    const nodeTypeColors = {
+        root: '#6f42c1', // Purple
+        feature_category: '#0d6efd', // Blue
+        user_story: '#17a2b8', // Info blue
+    };
+
+    const nodeTypeLabels = {
+        root: 'Root',
+        feature_category: 'Feature',
+        user_story: 'Story',
+    };
+
     if (data.jiraTickets && data.jiraTickets.length > 0) {
         badges.push(
             React.createElement(
@@ -49,7 +62,7 @@ const CustomNode = ({ data, id }) => {
         badges.push(
             React.createElement(
                 'span',
-                { 
+                {
                     key: 'aggregated',
                     className: 'node-badge bg-warning text-dark',
                     title: 'Aggregated tickets from children'
@@ -79,9 +92,11 @@ const CustomNode = ({ data, id }) => {
                       event.stopPropagation();
                       data.toggleCollapse?.(id);
                   },
-                  title: data.collapsed ? '展開子節點' : '收合子節點',
+                  title: data.collapsed
+                      ? '目前為收合狀態，點擊以展開子節點'
+                      : '目前為展開狀態，點擊以收合子節點',
               },
-              React.createElement('i', { className: `fas fa-chevron-${data.collapsed ? 'right' : 'down'}` })
+              React.createElement('i', { className: `fas fa-chevron-${data.collapsed ? 'down' : 'right'}` })
           )
         : null;
 
@@ -117,6 +132,17 @@ const CustomNode = ({ data, id }) => {
         React.createElement(
             'div',
             { className: 'node-meta' },
+            React.createElement(
+                'span',
+                {
+                    className: 'node-badge',
+                    style: {
+                        backgroundColor: nodeTypeColors[data.nodeType] || '#0d6efd',
+                        color: 'white'
+                    }
+                },
+                nodeTypeLabels[data.nodeType] || 'Node'
+            ),
             ...badges
         )
     );
@@ -257,6 +283,7 @@ const UserStoryMapFlow = () => {
                     data: {
                         title: node.title,
                         description: node.description,
+                        nodeType: node.node_type,
                         team: node.team || teamName || '',
                         jiraTickets: node.jira_tickets,
                         aggregatedTickets: node.aggregated_tickets || [],
@@ -267,6 +294,9 @@ const UserStoryMapFlow = () => {
                         level: node.level || 0,
                         dimmed: false,
                         isRoot: !node.parent_id,
+                        as_a: node.as_a,
+                        i_want: node.i_want,
+                        so_that: node.so_that,
                     },
                 }));
 
@@ -317,6 +347,7 @@ const UserStoryMapFlow = () => {
                 id: node.id,
                 title: node.data.title,
                 description: node.data.description,
+                node_type: node.data.nodeType,
                 parent_id: node.data.parentId,
                 children_ids: node.data.childrenIds || [],
                 related_ids: node.data.relatedIds || [],
@@ -327,6 +358,9 @@ const UserStoryMapFlow = () => {
                 position_x: node.position.x,
                 position_y: node.position.y,
                 level: node.data.level || 0,
+                as_a: node.data.as_a,
+                i_want: node.data.i_want,
+                so_that: node.data.so_that,
             }));
 
             // Convert edges back
@@ -396,6 +430,7 @@ const UserStoryMapFlow = () => {
             data: {
                 title: nodeData.title,
                 description: nodeData.description,
+                nodeType: nodeData.nodeType || 'feature_category',
                 team: teamName,
                 jiraTickets: nodeData.jiraTickets || [],
                 aggregatedTickets: [],
@@ -408,6 +443,9 @@ const UserStoryMapFlow = () => {
                 isRoot: !nodeData.parentId,
                 collapsed: false,
                 toggleCollapse: toggleNodeCollapse,
+                as_a: nodeData.as_a,
+                i_want: nodeData.i_want,
+                so_that: nodeData.so_that,
             },
         };
         setNodes((nds) => {
@@ -460,9 +498,17 @@ const UserStoryMapFlow = () => {
     const addChildNode = useCallback((parentId) => {
         const parentNode = nodes.find(n => n.id === parentId);
         if (!parentNode) return;
-        
+
         const modal = new bootstrap.Modal(document.getElementById('addNodeModal'));
         modal.show();
+
+        // Set default node type
+        const nodeTypeSelect = document.getElementById('nodeType');
+        if (nodeTypeSelect) {
+            nodeTypeSelect.value = 'feature_category';
+            // Trigger change event to show/hide BDD fields
+            nodeTypeSelect.dispatchEvent(new Event('change'));
+        }
 
         const teamLabel = document.getElementById('nodeTeamDisplay');
         if (teamLabel) {
@@ -1428,14 +1474,31 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
 
+    // Node type change - show/hide BDD fields
+    document.getElementById('nodeType')?.addEventListener('change', (e) => {
+        const bddFields = document.getElementById('bddFields');
+        if (bddFields) {
+            bddFields.style.display = e.target.value === 'user_story' ? 'block' : 'none';
+        }
+    });
+
     // Confirm add node
     document.getElementById('confirmAddNodeBtn')?.addEventListener('click', () => {
         const title = document.getElementById('nodeTitle')?.value;
         const description = document.getElementById('nodeDescription')?.value;
+        const nodeType = document.getElementById('nodeType')?.value;
         const jiraText = document.getElementById('nodeJira')?.value;
+        const asA = document.getElementById('nodeAsA')?.value;
+        const iWant = document.getElementById('nodeIWant')?.value;
+        const soThat = document.getElementById('nodeSoThat')?.value;
 
         if (!title) {
             alert('請輸入標題');
+            return;
+        }
+
+        if (!nodeType) {
+            alert('請選擇節點類型');
             return;
         }
 
@@ -1445,9 +1508,13 @@ document.addEventListener('DOMContentLoaded', function() {
         window.userStoryMapFlow?.addNode({
             title,
             description,
+            nodeType,
             jiraTickets,
             parentId,
             level,
+            as_a: asA,
+            i_want: iWant,
+            so_that: soThat,
         });
 
         bootstrap.Modal.getInstance(document.getElementById('addNodeModal')).hide();

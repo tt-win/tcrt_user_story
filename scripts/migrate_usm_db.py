@@ -1,6 +1,7 @@
 """
 Database Migration Script for User Story Map Enhancements
-Adds new fields: team_tags, aggregated_tickets, and level
+Adds new fields: team_tags, aggregated_tickets, level, as_a, i_want, so_that
+Makes node_type NOT NULL
 """
 
 import asyncio
@@ -39,17 +40,38 @@ async def migrate():
                     if 'team_tags' not in node:
                         node['team_tags'] = []
                         updated = True
-                    
+
                     # Add aggregated_tickets if missing
                     if 'aggregated_tickets' not in node:
                         node['aggregated_tickets'] = []
                         updated = True
-                    
+
                     # Add level if missing
                     if 'level' not in node:
                         node['level'] = 0
                         updated = True
-                    
+
+                    # Add BDD fields for User Story nodes
+                    if 'as_a' not in node:
+                        node['as_a'] = None
+                        updated = True
+                    if 'i_want' not in node:
+                        node['i_want'] = None
+                        updated = True
+                    if 'so_that' not in node:
+                        node['so_that'] = None
+                        updated = True
+
+                    # Set node_type if missing (default to feature_category for existing nodes)
+                    if 'node_type' not in node or node['node_type'] is None:
+                        # For root node, set to root
+                        if node.get('parent_id') is None:
+                            node['node_type'] = 'root'
+                        else:
+                            # For existing child nodes, default to feature_category
+                            node['node_type'] = 'feature_category'
+                        updated = True
+
                     # Migrate old team field to team_tags if needed
                     if node.get('team') and not node['team_tags']:
                         node['team_tags'] = [{

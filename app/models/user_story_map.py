@@ -5,6 +5,14 @@ User Story Map 資料模型
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import datetime
+from enum import Enum
+
+
+class NodeType(str, Enum):
+    """節點類型"""
+    ROOT = "root"
+    FEATURE_CATEGORY = "feature_category"
+    USER_STORY = "user_story"
 
 
 class UserStoryMapNode(BaseModel):
@@ -12,6 +20,7 @@ class UserStoryMapNode(BaseModel):
     id: str
     title: str
     description: Optional[str] = None
+    node_type: NodeType
     parent_id: Optional[str] = None
     children_ids: List[str] = Field(default_factory=list)
     related_ids: List[str] = Field(default_factory=list)
@@ -22,6 +31,10 @@ class UserStoryMapNode(BaseModel):
     position_x: float = 0
     position_y: float = 0
     level: int = 0
+    # BDD fields for User Story nodes
+    as_a: Optional[str] = None
+    i_want: Optional[str] = None
+    so_that: Optional[str] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
