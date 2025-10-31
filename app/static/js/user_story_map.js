@@ -573,11 +573,11 @@ const UserStoryMapFlow = () => {
                 <div class="node-properties-content">
                     <div class="mb-3">
                         <label class="form-label small fw-bold">標題</label>
-                        <input type="text" class="form-control form-control-sm" id="propTitle" value="${data.title || ''}">
+                        <input type="text" class="form-control form-control-sm" id="propTitle" value="${escapeHtml(data.title || '')}">
                     </div>
                     <div class="mb-3">
                         <label class="form-label small fw-bold">描述</label>
-                        <textarea class="form-control form-control-sm" id="propDescription" rows="3">${data.description || ''}</textarea>
+                        <textarea class="form-control form-control-sm" id="propDescription" rows="3">${escapeHtml(data.description || '')}</textarea>
                     </div>
                     <div class="mb-3">
                         <label class="form-label small fw-bold">團隊</label>
@@ -585,32 +585,30 @@ const UserStoryMapFlow = () => {
                     </div>
                     <div class="mb-3">
                         <label class="form-label small fw-bold">JIRA Tickets</label>
-                        <input type="text" class="form-control form-control-sm" id="propJira" value="${(data.jiraTickets || []).join(', ')}">
+                        <input type="text" class="form-control form-control-sm" id="propJira" value="${escapeHtml((data.jiraTickets || []).join(', '))}">
                     </div>
                     ${data.aggregatedTickets && data.aggregatedTickets.length > 0 ? `<div class="mb-3">
                         <label class="form-label small fw-bold">聚合 Tickets (含子節點)</label>
                         <div class="alert alert-warning p-2 small">
-                            ${data.aggregatedTickets.join(', ')}
+                            ${escapeHtml(data.aggregatedTickets.join(', '))}
                         </div>
                     </div>` : ''}
                     <div class="mb-3">
                         <label class="form-label small fw-bold">註解</label>
-                        <textarea class="form-control form-control-sm" id="propComment" rows="2">${data.comment || ''}</textarea>
+                        <textarea class="form-control form-control-sm" id="propComment" rows="2">${escapeHtml(data.comment || '')}</textarea>
                     </div>
-                    ${data.nodeType === 'user_story' ? `
-                    <div class="mb-3">
+                    ${data.nodeType === 'user_story' ? `<div class="mb-3">
                         <label class="form-label small fw-bold">As a <small class="text-muted">(使用者角色)</small></label>
-                        <input type="text" class="form-control form-control-sm" id="propAsA" value="${data.as_a || ''}" placeholder="As a user...">
+                        <input type="text" class="form-control form-control-sm" id="propAsA" value="${escapeHtml(data.as_a || '')}" placeholder="As a user...">
                     </div>
                     <div class="mb-3">
                         <label class="form-label small fw-bold">I want <small class="text-muted">(需求描述)</small></label>
-                        <textarea class="form-control form-control-sm" id="propIWant" rows="3" placeholder="I want to...">${data.i_want || ''}</textarea>
+                        <textarea class="form-control form-control-sm" id="propIWant" rows="3" placeholder="I want to...">${escapeHtml(data.i_want || '')}</textarea>
                     </div>
                     <div class="mb-3">
                         <label class="form-label small fw-bold">So that <small class="text-muted">(價值目的)</small></label>
-                        <textarea class="form-control form-control-sm" id="propSoThat" rows="3" placeholder="So that...">${data.so_that || ''}</textarea>
-                    </div>
-                    ` : ''}
+                        <textarea class="form-control form-control-sm" id="propSoThat" rows="3" placeholder="So that...">${escapeHtml(data.so_that || '')}</textarea>
+                    </div>` : ''}
                 </div>
                 <div class="node-properties-actions">
                     <button type="button" class="btn btn-sm btn-primary w-100" id="updateNodeBtn">更新節點</button>
@@ -1161,7 +1159,7 @@ function showMessage(message, type = 'info') {
     const alert = document.createElement('div');
     alert.className = `alert ${alertClass} alert-dismissible fade show`;
     alert.innerHTML = `
-        ${message}
+        ${escapeHtml(message)}
         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
     `;
     document.getElementById('flash-messages').appendChild(alert);
@@ -1246,16 +1244,16 @@ document.addEventListener('DOMContentLoaded', function() {
                     <a href="#" class="list-group-item list-group-item-action" data-map-id="${map.id}">
                         <div class="d-flex w-100 justify-content-between align-items-start">
                             <div class="me-3">
-                                <h6 class="mb-1">${map.name}</h6>
-                                ${map.description ? `<p class="mb-1 small">${map.description}</p>` : '<p class="mb-1 small text-muted fst-italic">尚未設定描述</p>'}
+                                <h6 class="mb-1">${escapeHtml(map.name)}</h6>
+                                ${map.description ? `<p class="mb-1 small">${escapeHtml(map.description)}</p>` : '<p class="mb-1 small text-muted fst-italic">尚未設定描述</p>'}
                                 <small class="text-muted">${map.nodes.length} 個節點</small>
                             </div>
                             <div class="d-flex flex-column gap-2 align-items-end">
                                 <div class="btn-group btn-group-sm" role="group">
-                                    <button class="btn btn-outline-primary edit-map-btn" data-map-id="${map.id}" data-map-name="${map.name}" data-map-description="${map.description || ''}">
+                                    <button class="btn btn-outline-primary edit-map-btn" data-map-id="${map.id}" data-map-name="${escapeHtml(map.name)}" data-map-description="${escapeHtml(map.description || '')}">
                                         <i class="fas fa-pen"></i>
                                     </button>
-                                    <button class="btn btn-outline-danger delete-map-btn" data-map-id="${map.id}" data-map-name="${map.name}">
+                                    <button class="btn btn-outline-danger delete-map-btn" data-map-id="${map.id}" data-map-name="${escapeHtml(map.name)}">
                                         <i class="fas fa-trash"></i>
                                     </button>
                                 </div>
@@ -1676,10 +1674,10 @@ document.addEventListener('DOMContentLoaded', function() {
                         <div class="list-group">
                             ${results.map(node => `
                                 <div class="list-group-item" data-node-id="${node.node_id}">
-                                    <h6 class="mb-1">${node.title}</h6>
-                                    ${node.description ? `<p class="mb-1 small">${node.description}</p>` : ''}
+                                    <h6 class="mb-1">${escapeHtml(node.title)}</h6>
+                                    ${node.description ? `<p class="mb-1 small">${escapeHtml(node.description)}</p>` : ''}
                                     ${node.team ? `<small class="text-muted">團隊: ${escapeHtml(node.team)}</small>` : ''}
-                                    ${node.jira_tickets && node.jira_tickets.length > 0 ? `<br><small class="text-info">Tickets: ${node.jira_tickets.join(', ')}</small>` : ''}
+                                    ${node.jira_tickets && node.jira_tickets.length > 0 ? `<br><small class="text-info">Tickets: ${escapeHtml(node.jira_tickets.join(', '))}</small>` : ''}
                                 </div>
                             `).join('')}
                         </div>
