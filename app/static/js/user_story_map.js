@@ -2889,6 +2889,12 @@ document.addEventListener('DOMContentLoaded', async function() {
     });
 
     // Add selected relations button
+    const ensureSelectionsArray = () => {
+        if (!Array.isArray(window.selectedRelationTargets)) {
+            window.selectedRelationTargets = [];
+        }
+    };
+    
     document.getElementById('relationAddSelectedBtn')?.addEventListener('click', () => {
         const resultsContainer = document.getElementById('relationSearchResults');
         const checkedBoxes = resultsContainer.querySelectorAll('input[type="checkbox"]:checked');
