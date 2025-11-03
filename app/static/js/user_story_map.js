@@ -1772,6 +1772,36 @@ const UserStoryMapFlow = () => {
 
         document.getElementById('crossMapNodesList').innerHTML = crossMapHtml;
 
+        // 計算外部節點區域標示的位置
+        const externalNodes = graphNodes.filter(node => node.data.isExternal);
+        if (externalNodes.length > 0) {
+            // 計算外部節點區域的中心位置，用於放置標示
+            const minX = Math.min(...externalNodes.map(n => n.position.x));
+            const maxX = Math.max(...externalNodes.map(n => n.position.x + 200)); // 200 is node width
+            const minY = Math.min(...externalNodes.map(n => n.position.y));
+            
+            // 創建一個標示節點
+            const externalLabelNode = {
+                id: 'external-area-label',
+                type: 'custom',
+                position: { x: minX, y: minY - 30 }, // 在外部節點上方放置標示
+                style: {
+                    width: maxX - minX,
+                    height: 30,
+                    pointerEvents: 'none', // 確保標示不會干擾交互
+                },
+                data: {
+                    title: '外部節點',
+                    isExternalLabel: true,
+                },
+                selected: false,
+                dragHandle: '.no-drag',
+            };
+            
+            // 將標示節點添加到節點數組
+            graphNodes.push(externalLabelNode);
+        }
+        
         // 在容器中渲染 React Flow
         const containerElement = document.getElementById('relationGraphContainer');
         if (containerElement && window.ReactFlow) {
@@ -1785,47 +1815,13 @@ const UserStoryMapFlow = () => {
                 window._fullGraphRoot = null;
             }
             
-            // 添加外部節點區域的虛線框（如果存在外部節點）
-            const externalNodes = graphNodes.filter(node => node.data.isExternal);
-            if (externalNodes.length > 0) {
-                // 計算外部節點區域的邊界
-                const minX = Math.min(...externalNodes.map(n => n.position.x));
-                const maxX = Math.max(...externalNodes.map(n => n.position.x + 200)); // 200 is node width
-                const minY = Math.min(...externalNodes.map(n => n.position.y));
-                const maxY = Math.max(...externalNodes.map(n => n.position.y + 110)); // 110 is node height
-                
-                // 創建一個虛線框節點
-                const externalAreaNode = {
-                    id: 'external-area-boundary',
-                    type: 'custom',
-                    position: { x: minX - 20, y: minY - 40 }, // 添加一些邊距
-                    style: {
-                        width: maxX - minX + 40,
-                        height: maxY - minY + 80,
-                        border: '2px dashed #6c757d',
-                        backgroundColor: 'rgba(230, 247, 255, 0.2)', // 淺藍色半透明背景
-                        borderRadius: '8px',
-                        pointerEvents: 'none', // 確保框不會干擾交互
-                    },
-                    data: {
-                        title: '外部節點',
-                        isExternalArea: true,
-                    },
-                    selected: false,
-                    dragHandle: '.no-drag',
-                };
-                
-                // 將邊界框節點添加到節點數組的開頭，確保它在底部
-                graphNodes.unshift(externalAreaNode);
-            }
-            
             // 使用一個簡單的 React 函數組件渲染 React Flow
             const GraphComponent = () => {
                 const [rNodes, setRNodes, onNodesChange] = window.ReactFlow.useNodesState(graphNodes);
                 const [rEdges, setREdges, onEdgesChange] = window.ReactFlow.useEdgesState(graphEdges);
                 
-                // 自定義外部區域框的組件
-                const ExternalAreaNode = ({ data, id }) => {
+                // 自定義外部區域標示的組件
+                const ExternalLabelNode = ({ data, id }) => {
                     return React.createElement(
                         'div',
                         {
@@ -1836,30 +1832,20 @@ const UserStoryMapFlow = () => {
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                position: 'relative',
+                                fontSize: '14px',
+                                fontWeight: 'bold',
+                                color: '#6c757d',
+                                backgroundColor: 'rgba(230, 247, 255, 0.3)', // 淺藍色半透明背景
+                                border: '1px dashed #6c757d', // 虛線邊框
+                                borderRadius: '4px',
                             }
                         },
-                        React.createElement(
-                            'div',
-                            {
-                                style: {
-                                    position: 'absolute',
-                                    top: '-20px',
-                                    left: '10px',
-                                    backgroundColor: '#f8f9fa',
-                                    padding: '2px 8px',
-                                    borderRadius: '4px',
-                                    fontSize: '12px',
-                                    color: '#6c757d',
-                                    fontWeight: 'bold',
-                                }
-                            },
-                            '外部節點'
-                        )
+                        data.title
                     );
                 };
-                // 添加到 nodeTypes
-                const combinedNodeTypes = { ...nodeTypes, externalArea: ExternalAreaNode };
+                
+                // 擴展 nodeTypes 以包含外部標示
+                const combinedNodeTypes = { ...nodeTypes, externalLabel: ExternalLabelNode };
                 
                 return React.createElement(
                     window.ReactFlow.ReactFlowProvider,
