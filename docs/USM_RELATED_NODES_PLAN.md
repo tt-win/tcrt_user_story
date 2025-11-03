@@ -21,6 +21,12 @@
 
 ## 系統設計概述
 
+### 權限實作要求
+- 所有與 USM 關聯節點相關的 API（例如查詢、建立、刪除關聯、跨圖搜尋）都必須整合既有的 RBAC 與團隊層級權限檢查，確保 `viewer` 角色僅能讀取。
+- 前端在套用 UI 能力時需遵循 `permission_service.get_ui_config` 回傳的設定，並在操作流程中再次檢查，以避免使用者繞過 UI 限制。
+- 後端在資料庫層面需以 `_require_usm_permission` 或等效機制保護每一條路徑，並為跨圖行為加入目標地圖/團隊權限驗證，避免資料洩漏或越權編輯。
+- 新增單元測試與整合測試覆蓋 Viewer/User/Admin 角色的正反案例，確保權限矩陣變動時能快速發現回歸。
+
 ### 資料模型
 - **前端**：`node.data.relatedIds` 改為陣列物件 `{ relationId, nodeId, mapId, mapName, teamId, teamName, displayTitle }`。
 - **後端**：

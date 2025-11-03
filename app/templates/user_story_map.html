@@ -118,6 +118,22 @@
         pointer-events: none;
     }
     
+    /* Ensure modals are visible and on top */
+    #relationSettingsModal,
+    #fullRelationGraphModal {
+        z-index: 9998 !important;
+    }
+    
+    #relationSettingsModal.show,
+    #fullRelationGraphModal.show {
+        display: block !important;
+        z-index: 9998 !important;
+    }
+    
+    .modal-backdrop {
+        z-index: 9997 !important;
+    }
+    
     .react-flow__node.selected .custom-node {
         border-color: #f76707;
         box-shadow: 0 0 0 3px rgba(247, 103, 7, 0.35), 0 4px 12px rgba(0,0,0,0.15);
@@ -243,6 +259,9 @@
             <button type="button" class="btn btn-sm btn-outline-secondary" id="addSiblingBtn">
                 <i class="fas fa-plus"></i> 新增同級節點
             </button>
+            <button type="button" class="btn btn-sm btn-outline-success" id="setRelationsBtn" title="建立節點關聯" data-bs-toggle="modal" data-bs-target="#relationSettingsModal" onclick="window.openRelationModal?.()">
+                <i class="fas fa-link"></i> 設定關聯
+            </button>
             <button type="button" class="btn btn-sm btn-outline-secondary" id="autoLayoutBtn">
                 <i class="fas fa-project-diagram"></i> 自動排版
             </button>
@@ -252,6 +271,9 @@
             </button>
             <button type="button" class="btn btn-sm btn-outline-warning" id="highlightPathBtn">
                 <i class="fas fa-route"></i> 高亮路徑
+            </button>
+            <button type="button" class="btn btn-sm btn-outline-info" id="fullRelationGraphBtn" title="顯示完整相關圖" onclick="window.openFullRelationGraph?.()">
+                <i class="fas fa-project-diagram"></i> 完整相關圖
             </button>
             <button type="button" class="btn btn-sm btn-outline-secondary" id="clearHighlightBtn" style="display:none;">
                 <i class="fas fa-times"></i> 清除高亮
@@ -268,6 +290,100 @@
         <h6 class="mb-3">節點屬性</h6>
         <div id="nodeProperties">
             <p class="text-muted small">選擇一個節點以查看和編輯屬性</p>
+        </div>
+    </div>
+</div>
+
+<!-- Relation Settings Modal -->
+<div class="modal fade" id="relationSettingsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">設定節點關聯</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <!-- Current Node Info -->
+                <div class="alert alert-info mb-3">
+                    <strong>來源節點:</strong> <span id="relationSourceNodeTitle">未選擇</span>
+                    <small class="text-muted d-block">ID: <span id="relationSourceNodeId">-</span></small>
+                </div>
+
+                <!-- Search Section -->
+                <div class="mb-3">
+                    <label class="form-label">搜尋目標節點</label>
+                    <div class="input-group input-group-sm mb-2">
+                        <input type="text" class="form-control" id="relationSearchInput" placeholder="輸入節點名稱或描述...">
+                        <button class="btn btn-outline-secondary" type="button" id="relationSearchBtn">
+                            <i class="fas fa-search"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Filters -->
+                <div class="row mb-3">
+                    <div class="col-md-6">
+                        <label class="form-label small text-muted">節點類型</label>
+                        <select class="form-select form-select-sm" id="relationNodeTypeFilter">
+                            <option value="">全部類型</option>
+                            <option value="user_story">User Story</option>
+                            <option value="feature_category">功能節點</option>
+                        </select>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="form-check mt-3">
+                            <input class="form-check-input" type="checkbox" id="relationIncludeExternal">
+                            <label class="form-check-label small" for="relationIncludeExternal">
+                                搜尋其他地圖
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Search Results -->
+                <div class="mb-3">
+                    <label class="form-label">搜尋結果</label>
+                    <div class="list-group list-group-sm" id="relationSearchResults" style="max-height: 250px; overflow-y: auto;">
+                        <p class="text-muted small text-center py-3">輸入關鍵字並搜尋</p>
+                    </div>
+                </div>
+
+                <!-- Selected Relations -->
+                <div class="mb-3">
+                    <label class="form-label">已選擇的關聯 (<span id="relationSelectedCount">0</span>)</label>
+                    <div class="list-group list-group-sm" id="relationSelectedList" style="max-height: 200px; overflow-y: auto;">
+                        <p class="text-muted small text-center py-3">尚未選擇</p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" id="relationSaveBtn">
+                    <i class="fas fa-save"></i> 儲存關聯
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Full Relation Graph Modal -->
+<div class="modal fade" id="fullRelationGraphModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">節點完整相關圖</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="relationGraphContainer" style="height: 500px; border: 1px solid #ddd; border-radius: 4px; position: relative;">
+                    <!-- React Flow 節點將在這裡渲染 -->
+                </div>
+                <hr>
+                <h6 class="mt-3">跨地圖相關節點</h6>
+                <div id="crossMapNodesList" class="list-group list-group-sm" style="max-height: 200px; overflow-y: auto;">
+                    <p class="text-muted small text-center py-3">無跨地圖關聯</p>
+                </div>
+            </div>
         </div>
     </div>
 </div>
@@ -435,10 +551,11 @@
                  <div id="searchResults">
                      <p class="text-muted small">輸入搜尋條件並點擊搜尋</p>
                  </div>
-             </div>
-        </div>
+</div>
     </div>
 </div>
+
+
 {% endblock %}
 
 {% block scripts %}

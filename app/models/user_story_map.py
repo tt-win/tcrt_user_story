@@ -3,7 +3,7 @@ User Story Map 資料模型
 """
 
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional, List, Union
 from datetime import datetime
 from enum import Enum
 
@@ -15,6 +15,17 @@ class NodeType(str, Enum):
     USER_STORY = "user_story"
 
 
+class RelatedNode(BaseModel):
+    """相關節點物件"""
+    relation_id: str
+    node_id: str
+    map_id: int
+    map_name: str
+    team_id: int
+    team_name: str
+    display_title: str
+
+
 class UserStoryMapNode(BaseModel):
     """User Story Map 節點"""
     id: str
@@ -23,7 +34,7 @@ class UserStoryMapNode(BaseModel):
     node_type: NodeType
     parent_id: Optional[str] = None
     children_ids: List[str] = Field(default_factory=list)
-    related_ids: List[str] = Field(default_factory=list)
+    related_ids: Union[List[str], List[Union[str, RelatedNode]]] = Field(default_factory=list)
     comment: Optional[str] = None
     jira_tickets: List[str] = Field(default_factory=list)
     team: Optional[str] = None
@@ -87,3 +98,27 @@ class UserStoryMapResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+
+class SearchNodeResult(BaseModel):
+    """搜尋節點結果"""
+    node_id: str
+    node_title: str
+    node_type: Optional[str] = None
+    map_id: int
+    map_name: str
+    team_id: int
+    team_name: str
+    breadcrumb: Optional[str] = None
+    description: Optional[str] = None
+
+
+class RelationCreateRequest(BaseModel):
+    """建立關聯請求"""
+    target_node_id: str
+    target_map_id: int
+
+
+class RelationDeleteRequest(BaseModel):
+    """刪除關聯請求"""
+    relation_id: str

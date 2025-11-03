@@ -68,6 +68,7 @@ const updateUsmUiVisibility = () => {
     setElementVisibility('calcTicketsBtn', hasUsmAccess('mapUpdate'));
     setElementVisibility('addChildBtn', hasUsmAccess('nodeAdd'));
     setElementVisibility('addSiblingBtn', hasUsmAccess('nodeAdd'));
+    setElementVisibility('setRelationsBtn', hasUsmAccess('nodeUpdate'));
     setElementVisibility('autoLayoutBtn', hasUsmAccess('nodeAdd'));
     setElementVisibility('confirmAddNodeBtn', hasUsmAccess('nodeAdd'));
 };
@@ -422,18 +423,26 @@ const UserStoryMapFlow = () => {
                 }));
 
                 // Convert edges
-                const flowEdges = map.edges.map(edge => ({
-                    id: edge.id,
-                    source: edge.source,
-                    target: edge.target,
-                    type: edge.edge_type === 'parent' ? 'smoothstep' : 'default',
-                    animated: edge.edge_type === 'related',
-                    markerEnd: {
-                        type: MarkerType.ArrowClosed,
-                    },
-                    sourceHandle: 'right',
-                    targetHandle: 'left',
-                }));
+                const flowEdges = map.edges.map(edge => {
+                    const isRelationEdge = edge.edge_type === 'related' || edge.id.startsWith('relation-');
+                    return {
+                        id: edge.id,
+                        source: edge.source,
+                        target: edge.target,
+                        type: edge.edge_type === 'parent' ? 'smoothstep' : 'default',
+                        animated: isRelationEdge,
+                        style: isRelationEdge ? {
+                            strokeDasharray: '5,5',
+                            stroke: '#17a2b8',
+                            strokeWidth: 2,
+                        } : {},
+                        markerEnd: {
+                            type: MarkerType.ArrowClosed,
+                        },
+                        sourceHandle: 'right',
+                        targetHandle: 'left',
+                    };
+                });
 
                 const layoutedNodes = applyTreeLayout(flowNodes, flowEdges);
                 const decoratedNodes = layoutedNodes.map(node => ({
@@ -444,9 +453,16 @@ const UserStoryMapFlow = () => {
                         toggleCollapse: toggleNodeCollapse,
                     },
                 }));
+                
+                // Clean up orphaned edges (pointing to non-existent nodes)
+                const nodeIds = new Set(decoratedNodes.map(n => n.id));
+                const validEdges = flowEdges.filter(edge => 
+                    nodeIds.has(edge.source) && nodeIds.has(edge.target)
+                );
+                
                 nodesRef.current = decoratedNodes;
                 setNodes(decoratedNodes);
-                setEdges(flowEdges.map(edge => ({ ...edge, hidden: false })));
+                setEdges(validEdges.map(edge => ({ ...edge, hidden: false })));
                 setCurrentMapId(mapId);
                 setCollapsedNodeIds(() => new Set());
             }
@@ -492,12 +508,15 @@ const UserStoryMapFlow = () => {
             }));
 
             // Convert edges back
-            const mapEdges = edges.map(edge => ({
-                id: edge.id,
-                source: edge.source,
-                target: edge.target,
-                edge_type: edge.type === 'smoothstep' ? 'parent' : edge.animated ? 'related' : 'default',
-            }));
+            const mapEdges = edges.map(edge => {
+                const isRelationEdge = edge.id.startsWith('relation-') || edge.animated && edge.style?.strokeDasharray === '5,5';
+                return {
+                    id: edge.id,
+                    source: edge.source,
+                    target: edge.target,
+                    edge_type: edge.type === 'smoothstep' ? 'parent' : isRelationEdge ? 'related' : 'default',
+                };
+            });
 
             const response = await fetch(`/api/user-story-maps/${currentMapId}`, {
                 method: 'PUT',
@@ -712,7 +731,22 @@ const UserStoryMapFlow = () => {
         const container = document.getElementById('nodeProperties');
         if (!node) {
             container.innerHTML = '<p class="text-muted small">選擇一個節點以查看和編輯屬性</p>';
+            // 隱藏按鈕
+            const highlightBtn = document.getElementById('highlightPathBtn');
+            const graphBtn = document.getElementById('fullRelationGraphBtn');
+            if (highlightBtn) highlightBtn.style.display = 'none';
+            if (graphBtn) graphBtn.style.display = 'none';
             return;
+        }
+
+        // 顯示按鈕
+        const highlightBtn = document.getElementById('highlightPathBtn');
+        const graphBtn = document.getElementById('fullRelationGraphBtn');
+        if (highlightBtn) {
+            highlightBtn.style.display = 'inline-block';
+        }
+        if (graphBtn) {
+            graphBtn.style.display = 'inline-block';
         }
 
         const data = node.data;
@@ -726,6 +760,28 @@ const UserStoryMapFlow = () => {
                     <label class="form-label small fw-bold">聚合 Tickets (含子節點)</label>
                     <div class="alert alert-warning p-2 small">
                         ${escapeHtml(data.aggregatedTickets.join(', '))}
+                    </div>
+                </div>`
+            : '';
+
+        const relatedNodesHtml = data.relatedIds && data.relatedIds.length > 0
+            ? `<div class="mb-3">
+                    <label class="form-label small fw-bold">相關節點 (<span id="relatedNodesCount">${data.relatedIds.length}</span>)</label>
+                    <div class="list-group list-group-sm" id="relatedNodesList" style="max-height: 200px; overflow-y: auto;">
+                        ${(Array.isArray(data.relatedIds) ? data.relatedIds : []).map((rel, idx) => {
+                            if (typeof rel === 'string') {
+                                return `<div class="list-group-item small"><span class="text-muted">${escapeHtml(rel)}</span></div>`;
+                            }
+                            return `
+                                <button type="button" class="list-group-item list-group-item-action small text-start" data-related-idx="${idx}" title="點擊導航到該節點">
+                                    <strong>${escapeHtml(rel.display_title || rel.node_id)}</strong>
+                                    <br>
+                                    <small class="text-muted">
+                                        ${escapeHtml(rel.team_name || '')} / ${escapeHtml(rel.map_name || '')}
+                                    </small>
+                                </button>
+                            `;
+                        }).join('')}
                     </div>
                 </div>`
             : '';
@@ -768,6 +824,7 @@ const UserStoryMapFlow = () => {
                     <input type="text" class="form-control form-control-sm" id="propJira" ${readOnlyAttr} value="${escapeHtml((data.jiraTickets || []).join(', '))}">
                 </div>
                 ${aggregatedTicketsHtml}
+                ${relatedNodesHtml}
                 <div class="mb-3">
                     <label class="form-label small fw-bold">註解</label>
                     <textarea class="form-control form-control-sm" id="propComment" rows="2" ${readOnlyAttr}>${escapeHtml(data.comment || '')}</textarea>
@@ -807,6 +864,61 @@ const UserStoryMapFlow = () => {
                 deleteNode(node.id);
             });
         }
+        
+        // Add event handlers for related nodes
+        document.querySelectorAll('[data-related-idx]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const idx = parseInt(btn.getAttribute('data-related-idx'));
+                const relatedNode = data.relatedIds[idx];
+                
+                if (!relatedNode) return;
+                
+                // Handle both string and object formats
+                let nodeId, mapId;
+                
+                if (typeof relatedNode === 'string') {
+                    // Old format: just node ID
+                    nodeId = relatedNode;
+                    mapId = window.currentMapId;
+                } else if (typeof relatedNode === 'object') {
+                    // New format: object with metadata
+                    nodeId = relatedNode.node_id || relatedNode.nodeId;
+                    mapId = relatedNode.map_id || relatedNode.mapId;
+                } else {
+                    return;
+                }
+                
+                if (!nodeId) return;
+                
+                // Same map - directly focus
+                if (!mapId || mapId === window.currentMapId) {
+                    window.userStoryMapFlow?.focusNode?.(nodeId);
+                    showMessage(`已聚焦節點: ${relatedNode.display_title || nodeId}`, 'info');
+                } else {
+                    // Cross-map - ask user to switch
+                    const mapName = relatedNode.map_name || `地圖 ${mapId}`;
+                    const nodeTitle = relatedNode.display_title || nodeId;
+                    
+                    if (confirm(`是否切換到 "${mapName}" 地圖並聚焦節點 "${nodeTitle}"？`)) {
+                        console.log(`[Navigation] Switching to map ${mapId}, focusing node ${nodeId}`);
+                        
+                        // Load the other map
+                        const mapSelect = document.getElementById('currentMapSelect');
+                        if (mapSelect) {
+                            mapSelect.value = mapId;
+                            mapSelect.dispatchEvent(new Event('change'));
+                            
+                            // After map loads, focus the node
+                            setTimeout(() => {
+                                console.log(`[Navigation] Focusing node ${nodeId} in map ${mapId}`);
+                                window.userStoryMapFlow?.focusNode?.(nodeId);
+                                showMessage(`已切換到 ${mapName} 並聚焦節點`, 'success');
+                            }, 800);
+                        }
+                    }
+                }
+            });
+        });
     };
 
     // Update node
@@ -1005,17 +1117,49 @@ const UserStoryMapFlow = () => {
         );
 
         setEdges((eds) =>
-            eds.map((edge) => ({
-                ...edge,
-                style: {
-                    ...edge.style,
-                    opacity:
-                        highlightedIds.has(edge.source) &&
-                        highlightedIds.has(edge.target)
-                            ? 1
-                            : 0.2,
-                },
-            }))
+            eds.map((edge) => {
+                // 保持現有邊的樣式
+                const isRelationEdge = relatedSameMapNodes.some(n => 
+                    (edge.source === nodeId && edge.target === n.id) ||
+                    (edge.source === n.id && edge.target === nodeId)
+                );
+                
+                return {
+                    ...edge,
+                    style: {
+                        ...edge.style,
+                        opacity:
+                            highlightedIds.has(edge.source) &&
+                            highlightedIds.has(edge.target)
+                                ? 1
+                                : 0.2,
+                        strokeDasharray: isRelationEdge ? '5,5' : undefined,
+                        stroke: isRelationEdge ? '#17a2b8' : undefined,
+                    },
+                };
+            })
+            // 添加關聯邊
+            .concat(
+                relatedSameMapNodes.flatMap(relNode => {
+                    const edgeId = `relation-${nodeId}-${relNode.id}`;
+                    // 檢查邊是否已存在
+                    if (eds.some(e => e.id === edgeId)) {
+                        return [];
+                    }
+                    return [{
+                        id: edgeId,
+                        source: nodeId,
+                        target: relNode.id,
+                        type: 'default',
+                        animated: true,
+                        style: {
+                            strokeDasharray: '5,5',
+                            stroke: '#17a2b8',
+                            strokeWidth: 2,
+                        },
+                    }];
+                })
+            )
         );
 
         const highlightInfoEl = document.getElementById('highlightInfo');
@@ -1090,13 +1234,16 @@ const UserStoryMapFlow = () => {
         );
 
         setEdges((eds) =>
-            eds.map((edge) => ({
-                ...edge,
-                style: {
-                    ...edge.style,
-                    opacity: 1,
-                },
-            }))
+            eds
+                // 移除 relation 邊
+                .filter(edge => !edge.id.startsWith('relation-'))
+                .map((edge) => ({
+                    ...edge,
+                    style: {
+                        ...edge.style,
+                        opacity: 1,
+                    },
+                }))
         );
 
         const highlightInfoEl = document.getElementById('highlightInfo');
@@ -1111,6 +1258,78 @@ const UserStoryMapFlow = () => {
             clearBtn.style.display = 'none';
         }
     }, [setNodes, setEdges]);
+
+    // Show full relation graph
+    const showFullRelationGraph = useCallback((nodeId) => {
+        if (!nodeId) return;
+
+        const nodesById = new Map(nodes.map((node) => [node.id, node]));
+        const targetNode = nodesById.get(nodeId);
+
+        if (!targetNode) {
+            showMessage('找不到指定節點', 'error');
+            return;
+        }
+
+        // 收集所有同圖關聯節點
+        const relatedSameMapNodes = [];
+        const crossMapRelations = [];
+        
+        (targetNode.data.relatedIds || []).forEach((entry) => {
+            if (typeof entry === 'string') {
+                if (nodesById.has(entry)) {
+                    relatedSameMapNodes.push(nodesById.get(entry));
+                } else {
+                    crossMapRelations.push({ nodeId: entry, raw: entry });
+                }
+            } else if (typeof entry === 'object') {
+                const nodeId = entry.nodeId || entry.node_id || entry.id;
+                if (nodeId && nodesById.has(nodeId)) {
+                    relatedSameMapNodes.push(nodesById.get(nodeId));
+                } else {
+                    crossMapRelations.push({
+                        nodeId: nodeId || entry.id,
+                        mapId: entry.mapId || entry.map_id,
+                        mapName: entry.mapName || entry.map_name,
+                        nodeTitle: entry.display_title || entry.node_title || entry.title,
+                    });
+                }
+            }
+        });
+
+        // 生成跨圖節點卡片 HTML
+        const crossMapHtml = crossMapRelations.length > 0
+            ? crossMapRelations.map(rel => `
+                <div class="list-group-item">
+                    <h6 class="mb-1">${escapeHtml(rel.nodeTitle || rel.nodeId)}</h6>
+                    <small class="text-muted">
+                        ${rel.mapName ? `地圖: ${escapeHtml(rel.mapName)}` : ''}
+                        ${rel.mapId ? ` (ID: ${rel.mapId})` : ''}
+                    </small>
+                </div>
+              `).join('')
+            : '<p class="text-muted small text-center py-3">無跨地圖關聯</p>';
+
+        document.getElementById('crossMapNodesList').innerHTML = crossMapHtml;
+
+        // 打開 Modal
+        const modalElement = document.getElementById('fullRelationGraphModal');
+        if (modalElement) {
+            // Ensure modal is not hidden
+            modalElement.style.display = 'block';
+            modalElement.style.position = 'fixed';
+            modalElement.style.zIndex = '9999';
+            
+            // Remove any existing backdrop
+            document.querySelectorAll('.modal-backdrop').forEach(bd => bd.remove());
+            
+            const modal = new bootstrap.Modal(modalElement, {
+                backdrop: 'static',
+                keyboard: false
+            });
+            modal.show();
+        }
+    }, [nodes]);
 
     const focusNode = useCallback((nodeId, highlightNodeIds = []) => {
         if (!nodeId) {
@@ -1357,7 +1576,8 @@ const UserStoryMapFlow = () => {
         };
         window.addChildNode = addChildNode;
         window.addSiblingNode = addSiblingNode;
-    }, [saveMap, addNode, loadMap, loadMaps, autoLayout, highlightPath, clearHighlight, focusNode, selectedNode, addChildNode, addSiblingNode, setNodes, setEdges, teamName]);
+        window.showFullRelationGraph = showFullRelationGraph;
+    }, [saveMap, addNode, loadMap, loadMaps, autoLayout, highlightPath, clearHighlight, focusNode, selectedNode, addChildNode, addSiblingNode, setNodes, setEdges, teamName, showFullRelationGraph]);
 
     // MiniMap node color function
     const getNodeColor = (node) => {
@@ -2032,6 +2252,388 @@ document.addEventListener('DOMContentLoaded', async function() {
         } catch (error) {
             console.error('Search failed:', error);
             showMessage('搜尋失敗', 'error');
+        }
+    });
+
+    // ============ Relation Settings ============
+    
+    // Set Relations Button - Global function
+    window.openRelationModal = function() {
+        console.log('[Relation] openRelationModal called');
+
+        if (!hasUsmAccess('nodeUpdate')) {
+            showMessage('您沒有權限編輯關聯', 'error');
+            console.warn('[Relation] Permission denied: nodeUpdate');
+            return;
+        }
+
+        const selectedNode = window.userStoryMapFlow?.getSelectedNode();
+        console.log('[Relation] Selected node:', selectedNode);
+
+        if (!selectedNode) {
+            showMessage('請先選擇一個節點', 'warning');
+            console.warn('[Relation] No node selected');
+
+            // 移除可能遺留的 Bootstrap backdrop 與樣式，避免畫面無法操作
+            document.querySelectorAll('.modal-backdrop').forEach((backdrop) => backdrop.remove());
+            document.body.classList.remove('modal-open');
+            document.body.style.removeProperty('padding-right');
+            document.body.style.removeProperty('paddingRight');
+
+            return;
+        }
+
+        try {
+            // Initialize relation modal
+            window.currentRelationNode = selectedNode;
+            console.log('[Relation] Setting up modal with node:', selectedNode.id);
+
+            document.getElementById('relationSourceNodeTitle').textContent = selectedNode.data?.title || '未知節點';
+            document.getElementById('relationSourceNodeId').textContent = selectedNode.id;
+            document.getElementById('relationSearchInput').value = '';
+            document.getElementById('relationSearchResults').innerHTML = '<p class="text-muted small text-center py-3">輸入關鍵字並搜尋</p>';
+            document.getElementById('relationSelectedList').innerHTML = '<p class="text-muted small text-center py-3">尚未選擇</p>';
+            document.getElementById('relationSelectedCount').textContent = '0';
+            window.selectedRelationTargets = [];
+
+            const modalElement = document.getElementById('relationSettingsModal');
+            if (!modalElement) {
+                console.error('[Relation] Modal element not found');
+                showMessage('關聯設定視窗載入失敗', 'error');
+                return;
+            }
+
+            console.log('[Relation] Modal element:', modalElement);
+            console.log('[Relation] Modal classList:', modalElement.className);
+            
+            // Remove any existing backdrop
+            document.querySelectorAll('.modal-backdrop').forEach(bd => bd.remove());
+            
+            // Ensure modal is not hidden
+            modalElement.style.display = 'block';
+            modalElement.style.position = 'fixed';
+            modalElement.style.zIndex = '9999';
+            
+            console.log('[Relation] Creating modal instance');
+            const modalInstance = new bootstrap.Modal(modalElement, {
+                backdrop: 'static',
+                keyboard: false
+            });
+            console.log('[Relation] Showing modal');
+            modalInstance.show();
+            
+            // Verify modal is visible
+            setTimeout(() => {
+                console.log('[Relation] Modal visible:', modalElement.style.display);
+                console.log('[Relation] Modal opacity:', window.getComputedStyle(modalElement).opacity);
+            }, 100);
+            
+            console.log('[Relation] Modal shown successfully');
+        } catch (error) {
+            console.error('[Relation] Error setting up modal:', error);
+            showMessage('打開關聯設定視窗時出錯: ' + error.message, 'error');
+        }
+    };
+    
+    // Full Relation Graph - Global function
+    window.openFullRelationGraph = function() {
+        console.log('[Relation] openFullRelationGraph called');
+        const selectedNode = window.userStoryMapFlow?.getSelectedNode();
+        if (selectedNode) {
+            window.showFullRelationGraph?.(selectedNode.id);
+        } else {
+            alert('請先選擇一個節點');
+        }
+    };
+    
+    // Relation Search Button
+    document.getElementById('relationSearchBtn')?.addEventListener('click', async () => {
+        console.log('[Relation] Search button clicked');
+        
+        const query = document.getElementById('relationSearchInput').value.trim();
+        const nodeType = document.getElementById('relationNodeTypeFilter').value;
+        const includeExternal = document.getElementById('relationIncludeExternal').checked;
+        const currentMapId = parseInt(document.getElementById('currentMapSelect').value, 10);
+
+        console.log('[Relation] Search params:', { query, nodeType, includeExternal, currentMapId });
+
+        if (!query && !nodeType) {
+            showMessage('請輸入搜尋條件', 'warning');
+            return;
+        }
+
+        if (Number.isNaN(currentMapId)) {
+            showMessage('請先選擇一個地圖', 'warning');
+            return;
+        }
+        
+        try {
+            const params = new URLSearchParams({
+                map_id: currentMapId,
+                ...(query && { q: query }),
+                ...(nodeType && { node_type: nodeType }),
+                include_external: includeExternal
+            });
+            
+            const url = `/api/user-story-maps/search-nodes?${params}`;
+            console.log('[Relation] Fetching:', url);
+            
+            const token = localStorage.getItem('access_token');
+            const headers = {
+                'Content-Type': 'application/json',
+            };
+            if (token) {
+                headers.Authorization = `Bearer ${token}`;
+            }
+
+            const response = await fetch(url, {
+                method: 'GET',
+                headers,
+            });
+            
+            console.log('[Relation] Search response status:', response.status);
+            
+            if (!response.ok) {
+                throw new Error(`Search failed: ${response.statusText}`);
+            }
+            
+            const results = await response.json();
+            console.log('[Relation] Search results:', results);
+            
+            const resultsContainer = document.getElementById('relationSearchResults');
+            
+            if (results.length === 0) {
+                resultsContainer.innerHTML = '<p class="text-muted small text-center py-3">找不到符合的節點</p>';
+                return;
+            }
+            
+            resultsContainer.innerHTML = `
+                <div class="list-group">
+                    ${results.map((node, idx) => `
+                        <button type="button" class="list-group-item list-group-item-action text-start" data-result-idx="${idx}">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div class="flex-grow-1">
+                                    <h6 class="mb-1">${escapeHtml(node.node_title)}</h6>
+                                    <small class="text-muted">
+                                        ${escapeHtml(node.team_name)} / ${escapeHtml(node.map_name)}
+                                    </small>
+                                    ${node.description ? `<p class="mb-0 small mt-1">${escapeHtml(node.description)}</p>` : ''}
+                                </div>
+                                <i class="fas fa-check-circle text-success" style="display: none;"></i>
+                            </div>
+                        </button>
+                    `).join('')}
+                </div>
+            `;
+            
+            // Store results for access
+            window.relationSearchResults = results;
+            
+            // Add click handlers
+            resultsContainer.querySelectorAll('button[data-result-idx]').forEach((btn) => {
+                btn.addEventListener('click', () => {
+                    const idx = parseInt(btn.getAttribute('data-result-idx'));
+                    const node = results[idx];
+                    
+                    // Check if already selected
+                    const alreadySelected = window.selectedRelationTargets.some(t => t.node_id === node.node_id && t.map_id === node.map_id);
+                    
+                    if (!alreadySelected) {
+                        window.selectedRelationTargets.push(node);
+                        btn.classList.add('active');
+                        btn.querySelector('i').style.display = 'inline';
+                        updateRelationSelectedList();
+                        console.log('[Relation] Added target:', node.node_id);
+                    }
+                });
+            });
+            
+            showMessage(`找到 ${results.length} 個節點`, 'success');
+        } catch (error) {
+            console.error('[Relation] Relation search failed:', error);
+            showMessage('搜尋失敗: ' + error.message, 'error');
+        }
+    });
+    
+    // Update relation selected list display
+    const updateRelationSelectedList = () => {
+        const selectedContainer = document.getElementById('relationSelectedList');
+        const countDisplay = document.getElementById('relationSelectedCount');
+        
+        if (!window.selectedRelationTargets || window.selectedRelationTargets.length === 0) {
+            selectedContainer.innerHTML = '<p class="text-muted small text-center py-3">尚未選擇</p>';
+            countDisplay.textContent = '0';
+            return;
+        }
+        
+        countDisplay.textContent = window.selectedRelationTargets.length;
+        selectedContainer.innerHTML = `
+            <div class="list-group">
+                ${window.selectedRelationTargets.map((node, idx) => `
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <div class="flex-grow-1">
+                            <h6 class="mb-1 small">${escapeHtml(node.node_title)}</h6>
+                            <small class="text-muted">${escapeHtml(node.team_name)} / ${escapeHtml(node.map_name)}</small>
+                        </div>
+                        <button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="${idx}">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+        
+        // Add remove handlers
+        selectedContainer.querySelectorAll('button[data-remove-idx]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const idx = parseInt(btn.getAttribute('data-remove-idx'));
+                window.selectedRelationTargets.splice(idx, 1);
+                updateRelationSelectedList();
+                
+                // Update search results UI
+                const resultsContainer = document.getElementById('relationSearchResults');
+                resultsContainer.querySelectorAll('button[data-result-idx]').forEach(resultBtn => {
+                    resultBtn.classList.remove('active');
+                    resultBtn.querySelector('i').style.display = 'none';
+                });
+            });
+        });
+    };
+    
+    // Save relations button
+    document.getElementById('relationSaveBtn')?.addEventListener('click', async () => {
+        console.log('[Relation] Save button clicked');
+        
+        const sourceNode = window.currentRelationNode;
+        const targets = window.selectedRelationTargets || [];
+        
+        console.log('[Relation] Save params:', { sourceNode: sourceNode?.id, targets: targets.length });
+        
+        if (!sourceNode || targets.length === 0) {
+            showMessage('請選擇至少一個目標節點', 'warning');
+            return;
+        }
+        
+        try {
+            showMessage('正在保存關聯...', 'info');
+            let successCount = 0;
+            
+            for (const target of targets) {
+                try {
+                    const currentMapId = parseInt(document.getElementById('currentMapSelect').value, 10);
+                    if (Number.isNaN(currentMapId)) {
+                        throw new Error('未選擇地圖，無法建立關聯');
+                    }
+                    const token = localStorage.getItem('access_token');
+                    const headers = {
+                        'Content-Type': 'application/json',
+                    };
+                    if (token) {
+                        headers.Authorization = `Bearer ${token}`;
+                    }
+
+                    const response = await fetch(
+                        `/api/user-story-maps/${currentMapId}/nodes/${sourceNode.id}/relations`,
+                        {
+                            method: 'POST',
+                            headers,
+                            body: JSON.stringify({
+                                target_node_id: target.node_id,
+                                target_map_id: target.map_id
+                            })
+                        }
+                    );
+                    
+                    console.log('[Relation] Create relation response:', response.status);
+                    
+                    if (response.ok) {
+                        successCount++;
+                        const result = await response.json();
+                        
+                        // Add to node data
+                        const newRelation = {
+                            relation_id: result.relation_id,
+                            node_id: target.node_id,
+                            map_id: target.map_id,
+                            map_name: target.map_name,
+                            team_id: target.team_id,
+                            team_name: target.team_name,
+                            display_title: target.node_title,
+                        };
+
+                        if (!Array.isArray(sourceNode.data.relatedIds)) {
+                            sourceNode.data.relatedIds = [];
+                        }
+                        sourceNode.data.relatedIds.push(newRelation);
+
+                        window.userStoryMapFlow?.setNodes?.((nodes) =>
+                            nodes.map((node) =>
+                                node.id === sourceNode.id
+                                    ? {
+                                        ...node,
+                                        data: {
+                                            ...node.data,
+                                            relatedIds: [
+                                                ...(Array.isArray(node.data.relatedIds) ? node.data.relatedIds : []),
+                                                newRelation,
+                                            ],
+                                        },
+                                    }
+                                    : node
+                            )
+                        );
+                        
+                        console.log('[Relation] Relation created:', result.relation_id);
+                    } else {
+                        const errorData = await response.json();
+                        console.error('[Relation] Create relation failed:', errorData);
+                    }
+                } catch (err) {
+                    console.error('[Relation] Error creating single relation:', err);
+                }
+            }
+            
+            if (successCount === targets.length) {
+                showMessage(`已成功建立 ${successCount} 個關聯`, 'success');
+                
+                // Save map
+                console.log('[Relation] Saving map');
+                if (window.userStoryMapFlow?.saveMap) {
+                    await window.userStoryMapFlow.saveMap(true);
+                    console.log('[Relation] Map saved');
+                }
+
+                // Close modal
+                const modalElement = document.getElementById('relationSettingsModal');
+                const modalInstance = bootstrap.Modal.getInstance(modalElement);
+                if (modalInstance) {
+                    modalInstance.hide();
+                    console.log('[Relation] Modal closed');
+                }
+
+                window.selectedRelationTargets = [];
+                window.currentRelationNode = null;
+
+                setTimeout(() => {
+                    const mapSelect = document.getElementById('currentMapSelect');
+                    const activeMapId = mapSelect ? parseInt(mapSelect.value, 10) : NaN;
+                    if (!Number.isNaN(activeMapId)) {
+                        const flow = window.userStoryMapFlow;
+                        if (flow?.loadMap) {
+                            flow.loadMap(activeMapId).then(() => {
+                                flow.focusNode?.(sourceNode.id);
+                            });
+                        }
+                    }
+                }, 300);
+            } else if (successCount > 0) {
+                showMessage(`已建立 ${successCount}/${targets.length} 個關聯`, 'warning');
+            } else {
+                showMessage('未成功建立任何關聯', 'error');
+            }
+        } catch (error) {
+            console.error('[Relation] Save relations failed:', error);
+            showMessage('保存關聯失敗: ' + error.message, 'error');
         }
     });
 });
