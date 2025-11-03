@@ -168,8 +168,18 @@ class PermissionService:
             return {}
         with open(self._constraints_path, 'r', encoding='utf-8') as f:
             data = yaml.safe_load(f) or {}
-        # 正規化角色鍵
-        return {self._normalize_role(k): v for k, v in data.items()}
+
+        # 正規化角色鍵，並確保每個角色的設定至少為空 dict
+        normalized: Dict[str, Dict] = {}
+        for role_key, raw_rules in data.items():
+            normalized_role = self._normalize_role(role_key)
+            if isinstance(raw_rules, dict):
+                normalized[normalized_role] = raw_rules
+            else:
+                # YAML 中僅留下註解時會得到 None，轉為空 dict 以避免後續 AttributeError
+                normalized[normalized_role] = {}
+
+        return normalized
 
     def _load_ui_map(self) -> Dict:
         if not os.path.exists(self._ui_map_path):
@@ -783,11 +793,19 @@ class PermissionService:
         回傳 (是否通過, 理由) 列表（AND 邏輯）。"""
         results: List[Tuple[bool, str]] = []
         role = self._normalize_role(role)
-        rules = (
-            self._constraints.get(role, {})
-            .get(feature, {})
-            .get(action, [])
-        )
+        role_rules = self._constraints.get(role) or {}
+        if not isinstance(role_rules, dict):
+            role_rules = {}
+
+        feature_rules = role_rules.get(feature) if isinstance(role_rules, dict) else {}
+        if not isinstance(feature_rules, dict):
+            feature_rules = {}
+
+        action_rules = feature_rules.get(action, [])
+        if not isinstance(action_rules, list):
+            action_rules = []
+
+        rules = action_rules
         for rule in rules:
             name = rule.get('name')
             args = rule.get('args', [])

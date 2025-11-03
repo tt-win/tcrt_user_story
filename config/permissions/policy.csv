@@ -25,6 +25,18 @@ p, user, test_case_management, *,
 # Viewer: 檢視者權限
 p, viewer, test_case_management, view, 
 
+# User Story Map 權限
+p, super_admin, user_story_map, *, 
+p, admin, user_story_map, view, 
+p, admin, user_story_map, create, 
+p, admin, user_story_map, update, 
+p, admin, user_story_map, delete, 
+p, user, user_story_map, view, 
+p, user, user_story_map, create, 
+p, user, user_story_map, update, 
+p, user, user_story_map, delete, 
+p, viewer, user_story_map, view, 
+
 # Test Run Management 權限
 p, super_admin, test_run_management, *, 
 p, admin, test_run_management, *, 

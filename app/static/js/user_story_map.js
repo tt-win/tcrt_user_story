@@ -24,6 +24,119 @@ const CHILD_HORIZONTAL_OFFSET = 180;
 const ROOT_VERTICAL_SPACING = 160;
 const SIBLING_VERTICAL_SPACING = 140;
 
+const fullUsmAccess = {
+    mapCreate: true,
+    mapUpdate: true,
+    mapDelete: true,
+    nodeAdd: true,
+    nodeUpdate: true,
+    nodeDelete: true,
+};
+
+const viewerUsmAccess = {
+    mapCreate: false,
+    mapUpdate: false,
+    mapDelete: false,
+    nodeAdd: false,
+    nodeUpdate: false,
+    nodeDelete: false,
+};
+
+if (!window.userStoryMapAccess) {
+    window.userStoryMapAccess = { ...fullUsmAccess };
+}
+
+const hasUsmAccess = (key) => Boolean(window.userStoryMapAccess?.[key]);
+
+const setElementVisibility = (id, allowed) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (allowed) {
+        el.classList.remove('d-none');
+        el.disabled = false;
+    } else {
+        el.classList.add('d-none');
+        el.disabled = true;
+    }
+};
+
+const updateUsmUiVisibility = () => {
+    setElementVisibility('newMapBtn', hasUsmAccess('mapCreate'));
+    setElementVisibility('createMapBtn', hasUsmAccess('mapCreate'));
+    setElementVisibility('saveMapBtn', hasUsmAccess('mapUpdate'));
+    setElementVisibility('saveMapEditBtn', hasUsmAccess('mapUpdate'));
+    setElementVisibility('calcTicketsBtn', hasUsmAccess('mapUpdate'));
+    setElementVisibility('addChildBtn', hasUsmAccess('nodeAdd'));
+    setElementVisibility('addSiblingBtn', hasUsmAccess('nodeAdd'));
+    setElementVisibility('autoLayoutBtn', hasUsmAccess('nodeAdd'));
+    setElementVisibility('confirmAddNodeBtn', hasUsmAccess('nodeAdd'));
+};
+
+const applyUsmPermissions = async () => {
+    let effectiveRole = (localStorage.getItem('user_role') || '').toLowerCase();
+
+    if (effectiveRole === 'viewer') {
+        window.userStoryMapAccess = { ...viewerUsmAccess };
+    } else if (effectiveRole) {
+        window.userStoryMapAccess = { ...fullUsmAccess };
+    } else {
+        window.userStoryMapAccess = { ...window.userStoryMapAccess };
+    }
+
+    try {
+        if (!window.AuthClient) {
+            console.warn('[USM] AuthClient not ready, retrying permission fetch...');
+            updateUsmUiVisibility();
+            setTimeout(applyUsmPermissions, 200);
+            return;
+        }
+
+        const userInfo = await window.AuthClient.getUserInfo?.();
+        if (userInfo?.role) {
+            effectiveRole = String(userInfo.role).toLowerCase();
+        }
+
+        const resp = await window.AuthClient.fetch('/api/permissions/ui-config?page=user_story_map');
+        if (!resp.ok) {
+            console.warn('[USM] 無法取得 UI 權限設定，使用預設權限');
+            if (effectiveRole === 'viewer') {
+                window.userStoryMapAccess = { ...viewerUsmAccess };
+            } else {
+                window.userStoryMapAccess = { ...fullUsmAccess };
+            }
+            updateUsmUiVisibility();
+            return;
+        }
+
+        const config = await resp.json();
+        const components = config?.components || {};
+
+        window.userStoryMapAccess = {
+            mapCreate: Boolean(components.newMapBtn),
+            mapUpdate: Boolean(components.saveMapBtn || components.editMapAction),
+            mapDelete: Boolean(components.deleteMapAction),
+            nodeAdd: Boolean(components.addChildBtn || components.confirmAddNodeBtn),
+            nodeUpdate: Boolean(components.nodeUpdateAction || components.saveMapBtn),
+            nodeDelete: Boolean(components.nodeDeleteAction || components.deleteMapAction),
+        };
+
+        if (effectiveRole === 'viewer') {
+            window.userStoryMapAccess = { ...viewerUsmAccess };
+        } else {
+            window.userStoryMapAccess = { ...fullUsmAccess, ...window.userStoryMapAccess };
+        }
+    } catch (error) {
+        console.warn('[USM] 讀取權限設定失敗，使用 fallback 權限', error);
+        if (effectiveRole === 'viewer') {
+            window.userStoryMapAccess = { ...viewerUsmAccess };
+        } else {
+            window.userStoryMapAccess = { ...fullUsmAccess };
+        }
+    }
+
+    updateUsmUiVisibility();
+};
+
 // Utility: sanitize HTML content before injecting into DOM
 const escapeHtml = (value) => {
     if (value === undefined || value === null) return '';
@@ -344,6 +457,13 @@ const UserStoryMapFlow = () => {
 
     // Save map
     const saveMap = useCallback(async (silent = false) => {
+        if (!hasUsmAccess('mapUpdate')) {
+            if (!silent) {
+                showMessage('您沒有權限儲存此地圖', 'error');
+            }
+            return;
+        }
+
         if (!currentMapId) {
             alert('請先選擇一個地圖');
             return;
@@ -406,6 +526,10 @@ const UserStoryMapFlow = () => {
 
     // Add node
     const addNode = useCallback((nodeData) => {
+        if (!hasUsmAccess('nodeAdd')) {
+            showMessage('您沒有權限新增節點', 'error');
+            return null;
+        }
         // Calculate position based on tree layout
         let positionX = ROOT_START_X;
         let positionY = ROOT_START_Y;
@@ -514,6 +638,10 @@ const UserStoryMapFlow = () => {
 
     // Add child node
     const addChildNode = useCallback((parentId) => {
+        if (!hasUsmAccess('nodeAdd')) {
+            showMessage('您沒有權限新增節點', 'error');
+            return;
+        }
         const parentNode = nodes.find(n => n.id === parentId);
         if (!parentNode) return;
 
@@ -541,6 +669,10 @@ const UserStoryMapFlow = () => {
 
     // Add sibling node
     const addSiblingNode = useCallback((siblingId) => {
+        if (!hasUsmAccess('nodeAdd')) {
+            showMessage('您沒有權限新增節點', 'error');
+            return;
+        }
         const siblingNode = nodes.find(n => n.id === siblingId);
         if (!siblingNode) return;
         
@@ -585,15 +717,33 @@ const UserStoryMapFlow = () => {
 
         const data = node.data;
         const resolvedTeam = data.team || teamName || '';
+        const canUpdateNode = hasUsmAccess('nodeUpdate');
+        const canDeleteNode = hasUsmAccess('nodeDelete');
+        const readOnlyAttr = canUpdateNode ? '' : 'readonly';
+
+        const aggregatedTicketsHtml = data.aggregatedTickets && data.aggregatedTickets.length > 0
+            ? `<div class="mb-3">
+                    <label class="form-label small fw-bold">聚合 Tickets (含子節點)</label>
+                    <div class="alert alert-warning p-2 small">
+                        ${escapeHtml(data.aggregatedTickets.join(', '))}
+                    </div>
+                </div>`
+            : '';
+
+        const actionButtonsHtml = [
+            canUpdateNode ? '<button type="button" class="btn btn-sm btn-primary w-100" id="updateNodeBtn">更新節點</button>' : '',
+            canDeleteNode ? '<button type="button" class="btn btn-sm btn-danger w-100" id="deleteNodeBtn">刪除節點</button>' : '',
+        ].filter(Boolean).join('');
+
         container.innerHTML = `
             <div class="node-properties-content">
                 <div class="mb-3">
                     <label class="form-label small fw-bold">標題</label>
-                    <input type="text" class="form-control form-control-sm" id="propTitle" value="${escapeHtml(data.title || '')}">
+                    <input type="text" class="form-control form-control-sm" id="propTitle" ${readOnlyAttr} value="${escapeHtml(data.title || '')}">
                 </div>
                 <div class="mb-3">
                     <label class="form-label small fw-bold">描述</label>
-                    <textarea class="form-control form-control-sm" id="propDescription" rows="3">${escapeHtml(data.description || '')}</textarea>
+                    <textarea class="form-control form-control-sm" id="propDescription" rows="3" ${readOnlyAttr}>${escapeHtml(data.description || '')}</textarea>
                 </div>
                 <div class="mb-3">
                     <label class="form-label small fw-bold">團隊</label>
@@ -602,69 +752,69 @@ const UserStoryMapFlow = () => {
                 ${data.nodeType === 'user_story' ? `
                 <div class="mb-3">
                     <label class="form-label small fw-bold">As a <small class="text-muted">(使用者角色)</small></label>
-                    <input type="text" class="form-control form-control-sm" id="propAsA" value="${escapeHtml(data.as_a || '')}" placeholder="As a user...">
+                    <input type="text" class="form-control form-control-sm" id="propAsA" ${readOnlyAttr} value="${escapeHtml(data.as_a || '')}" placeholder="As a user...">
                 </div>
                 <div class="mb-3">
                     <label class="form-label small fw-bold">I want <small class="text-muted">(需求描述)</small></label>
-                    <textarea class="form-control form-control-sm" id="propIWant" rows="3" placeholder="I want to...">${escapeHtml(data.i_want || '')}</textarea>
+                    <textarea class="form-control form-control-sm" id="propIWant" rows="3" ${readOnlyAttr} placeholder="I want to...">${escapeHtml(data.i_want || '')}</textarea>
                 </div>
                 <div class="mb-3">
                     <label class="form-label small fw-bold">So that <small class="text-muted">(價值目的)</small></label>
-                    <textarea class="form-control form-control-sm" id="propSoThat" rows="3" placeholder="So that...">${escapeHtml(data.so_that || '')}</textarea>
+                    <textarea class="form-control form-control-sm" id="propSoThat" rows="3" ${readOnlyAttr} placeholder="So that...">${escapeHtml(data.so_that || '')}</textarea>
                 </div>
                 ` : ''}
                 <div class="mb-3">
                     <label class="form-label small fw-bold">JIRA Tickets</label>
-                    <input type="text" class="form-control form-control-sm" id="propJira" value="${escapeHtml((data.jiraTickets || []).join(', '))}">
+                    <input type="text" class="form-control form-control-sm" id="propJira" ${readOnlyAttr} value="${escapeHtml((data.jiraTickets || []).join(', '))}">
                 </div>
-                ${data.aggregatedTickets && data.aggregatedTickets.length > 0 ? `<div class="mb-3">
-                    <label class="form-label small fw-bold">聚合 Tickets (含子節點)</label>
-                    <div class="alert alert-warning p-2 small">
-                        ${escapeHtml(data.aggregatedTickets.join(', '))}
-                    </div>
-                </div>` : ''}
+                ${aggregatedTicketsHtml}
                 <div class="mb-3">
                     <label class="form-label small fw-bold">註解</label>
-                    <textarea class="form-control form-control-sm" id="propComment" rows="2">${escapeHtml(data.comment || '')}</textarea>
+                    <textarea class="form-control form-control-sm" id="propComment" rows="2" ${readOnlyAttr}>${escapeHtml(data.comment || '')}</textarea>
                 </div>
             </div>
             <div class="node-properties-actions">
-                <button type="button" class="btn btn-sm btn-primary w-100" id="updateNodeBtn">更新節點</button>
-                <button type="button" class="btn btn-sm btn-danger w-100" id="deleteNodeBtn">刪除節點</button>
+                ${actionButtonsHtml || '<p class="text-muted small mb-0">目前角色無可用操作</p>'}
             </div>
         `;
 
-        const attachAutoSave = (id) => {
-            const el = document.getElementById(id);
-            if (el) {
-                el.addEventListener('blur', () => updateNode(node.id));
+        if (canUpdateNode) {
+            const attachAutoSave = (id) => {
+                const el = document.getElementById(id);
+                if (el) {
+                    el.addEventListener('blur', () => updateNode(node.id));
+                }
+            };
+
+            attachAutoSave('propTitle');
+            attachAutoSave('propDescription');
+            attachAutoSave('propJira');
+            attachAutoSave('propComment');
+
+            if (data.nodeType === 'user_story') {
+                attachAutoSave('propAsA');
+                attachAutoSave('propIWant');
+                attachAutoSave('propSoThat');
             }
-        };
 
-        attachAutoSave('propTitle');
-        attachAutoSave('propDescription');
-        attachAutoSave('propJira');
-        attachAutoSave('propComment');
-
-        // BDD fields auto-save for User Story nodes
-        if (data.nodeType === 'user_story') {
-            attachAutoSave('propAsA');
-            attachAutoSave('propIWant');
-            attachAutoSave('propSoThat');
+            document.getElementById('updateNodeBtn')?.addEventListener('click', () => {
+                updateNode(node.id);
+            });
         }
 
-        // Add event listeners
-        document.getElementById('updateNodeBtn')?.addEventListener('click', () => {
-            updateNode(node.id);
-        });
-
-        document.getElementById('deleteNodeBtn')?.addEventListener('click', () => {
-            deleteNode(node.id);
-        });
+        if (canDeleteNode) {
+            document.getElementById('deleteNodeBtn')?.addEventListener('click', () => {
+                deleteNode(node.id);
+            });
+        }
     };
 
     // Update node
     const updateNode = (nodeId) => {
+        if (!hasUsmAccess('nodeUpdate')) {
+            showMessage('您沒有權限更新節點', 'error');
+            return;
+        }
         setNodes((nds) =>
             nds.map((node) => {
                 if (node.id === nodeId) {
@@ -1015,6 +1165,10 @@ const UserStoryMapFlow = () => {
 
     // Auto layout
     const autoLayout = useCallback(() => {
+        if (!hasUsmAccess('nodeAdd')) {
+            showMessage('您沒有權限調整地圖排版', 'error');
+            return;
+        }
         const layoutedNodes = applyTreeLayout(nodes, edges);
         nodesRef.current = layoutedNodes;
         setNodes(layoutedNodes);
@@ -1025,6 +1179,10 @@ const UserStoryMapFlow = () => {
 
     // Delete node
     const deleteNode = (nodeId) => {
+        if (!hasUsmAccess('nodeDelete')) {
+            showMessage('您沒有權限刪除節點', 'error');
+            return;
+        }
         if (confirm('確定要刪除此節點嗎？')) {
             let remainingIds = new Set();
             setNodes((nds) => {
@@ -1258,7 +1416,8 @@ function showMessage(message, type = 'info') {
 }
 
 // Event handlers
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
+    await applyUsmPermissions();
     initUserStoryMap();
 
     const mapListModalElement = document.getElementById('mapListModal');
@@ -1329,32 +1488,39 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
 
-        mapListContainer.innerHTML = `
-            <div class="list-group">
-                ${maps.map(map => `
-                    <a href="#" class="list-group-item list-group-item-action" data-map-id="${map.id}">
-                        <div class="d-flex w-100 justify-content-between align-items-start">
-                            <div class="me-3">
-                                <h6 class="mb-1">${escapeHtml(map.name)}</h6>
-                                ${map.description ? `<p class="mb-1 small">${escapeHtml(map.description)}</p>` : '<p class="mb-1 small text-muted fst-italic">尚未設定描述</p>'}
-                                <small class="text-muted">${map.nodes.length} 個節點</small>
-                            </div>
-                            <div class="d-flex flex-column gap-2 align-items-end">
-                                <div class="btn-group btn-group-sm" role="group">
-                                    <button class="btn btn-outline-primary edit-map-btn" data-map-id="${map.id}" data-map-name="${escapeHtml(map.name)}" data-map-description="${escapeHtml(map.description || '')}">
-                                        <i class="fas fa-pen"></i>
-                                    </button>
-                                    <button class="btn btn-outline-danger delete-map-btn" data-map-id="${map.id}" data-map-name="${escapeHtml(map.name)}">
-                                        <i class="fas fa-trash"></i>
-                                    </button>
-                                </div>
-                                <small class="text-muted">更新: ${new Date(map.updated_at).toLocaleString()}</small>
-                            </div>
+        const itemsHtml = maps.map(map => {
+            const editBtn = hasUsmAccess('mapUpdate')
+                ? `<button class="btn btn-outline-primary edit-map-btn" data-map-id="${map.id}" data-map-name="${escapeHtml(map.name)}" data-map-description="${escapeHtml(map.description || '')}">
+                        <i class="fas fa-pen"></i>
+                   </button>`
+                : '';
+            const deleteBtn = hasUsmAccess('mapDelete')
+                ? `<button class="btn btn-outline-danger delete-map-btn" data-map-id="${map.id}" data-map-name="${escapeHtml(map.name)}">
+                        <i class="fas fa-trash"></i>
+                   </button>`
+                : '';
+            const actionButtons = editBtn || deleteBtn
+                ? `<div class="btn-group btn-group-sm" role="group">${editBtn}${deleteBtn}</div>`
+                : '';
+
+            return `
+                <a href="#" class="list-group-item list-group-item-action" data-map-id="${map.id}">
+                    <div class="d-flex w-100 justify-content-between align-items-start">
+                        <div class="me-3">
+                            <h6 class="mb-1">${escapeHtml(map.name)}</h6>
+                            ${map.description ? `<p class="mb-1 small">${escapeHtml(map.description)}</p>` : '<p class="mb-1 small text-muted fst-italic">尚未設定描述</p>'}
+                            <small class="text-muted">${map.nodes.length} 個節點</small>
                         </div>
-                    </a>
-                `).join('')}
-            </div>
-        `;
+                        <div class="d-flex flex-column gap-2 align-items-end">
+                            ${actionButtons}
+                            <small class="text-muted">更新: ${new Date(map.updated_at).toLocaleString()}</small>
+                        </div>
+                    </div>
+                </a>
+            `;
+        }).join('');
+
+        mapListContainer.innerHTML = `<div class="list-group">${itemsHtml}</div>`;
 
         mapListContainer.querySelectorAll('.list-group-item').forEach(item => {
             item.addEventListener('click', (e) => {
@@ -1372,32 +1538,38 @@ document.addEventListener('DOMContentLoaded', function() {
             });
         });
 
-        mapListContainer.querySelectorAll('.edit-map-btn').forEach(btn => {
-            btn.addEventListener('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                const mapId = parseInt(btn.dataset.mapId);
-                if (!mapId) {
-                    return;
-                }
-                const mapName = btn.dataset.mapName || '';
-                const mapDescription = btn.dataset.mapDescription || '';
-                openEditMapModal(mapId, mapName, mapDescription);
+        if (hasUsmAccess('mapUpdate')) {
+            mapListContainer.querySelectorAll('.edit-map-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const mapId = parseInt(btn.dataset.mapId);
+                    if (!mapId) {
+                        return;
+                    }
+                    const mapName = btn.dataset.mapName || '';
+                    const mapDescription = btn.dataset.mapDescription || '';
+                    openEditMapModal(mapId, mapName, mapDescription);
+                });
             });
-        });
+        }
 
-        mapListContainer.querySelectorAll('.delete-map-btn').forEach(btn => {
-            btn.addEventListener('click', async (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                const mapId = parseInt(btn.dataset.mapId);
-                const mapName = btn.dataset.mapName;
+        if (hasUsmAccess('mapDelete')) {
+            mapListContainer.querySelectorAll('.delete-map-btn').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const mapId = parseInt(btn.dataset.mapId);
+                    const mapName = btn.dataset.mapName;
 
-                if (!mapId) {
-                    return;
-                }
+                    if (!mapId) {
+                        return;
+                    }
 
-                if (confirm(`確定要刪除地圖「${mapName}」嗎？此操作無法復原。`)) {
+                    if (!confirm(`確定要刪除地圖「${mapName}」嗎？此操作無法復原。`)) {
+                        return;
+                    }
+
                     try {
                         const response = await fetch(`/api/user-story-maps/${mapId}`, {
                             method: 'DELETE',
@@ -1428,9 +1600,9 @@ document.addEventListener('DOMContentLoaded', function() {
                         console.error('Failed to delete map:', error);
                         showMessage('刪除失敗', 'error');
                     }
-                }
+                });
             });
-        });
+        }
     };
 
     const loadMapList = async () => {
@@ -1459,6 +1631,10 @@ document.addEventListener('DOMContentLoaded', function() {
     };
 
     document.getElementById('saveMapEditBtn')?.addEventListener('click', async () => {
+        if (!hasUsmAccess('mapUpdate')) {
+            showMessage('您沒有權限編輯地圖', 'error');
+            return;
+        }
         const mapId = parseInt(editMapIdInput?.value);
         if (!mapId) {
             return;
@@ -1515,11 +1691,19 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Save button
     document.getElementById('saveMapBtn')?.addEventListener('click', () => {
+        if (!hasUsmAccess('mapUpdate')) {
+            showMessage('您沒有權限儲存此地圖', 'error');
+            return;
+        }
         window.userStoryMapFlow?.saveMap();
     });
 
     // Calculate tickets button
     document.getElementById('calcTicketsBtn')?.addEventListener('click', async () => {
+        if (!hasUsmAccess('mapUpdate')) {
+            showMessage('您沒有權限更新聚合票證', 'error');
+            return;
+        }
         const mapId = document.getElementById('currentMapSelect')?.value;
         if (!mapId) {
             alert('請先選擇一個地圖');
@@ -1549,12 +1733,20 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // New map button
     document.getElementById('newMapBtn')?.addEventListener('click', () => {
+        if (!hasUsmAccess('mapCreate')) {
+            showMessage('您沒有權限建立地圖', 'error');
+            return;
+        }
         const modal = new bootstrap.Modal(document.getElementById('newMapModal'));
         modal.show();
     });
 
     // Create map
     document.getElementById('createMapBtn')?.addEventListener('click', async () => {
+        if (!hasUsmAccess('mapCreate')) {
+            showMessage('您沒有權限建立地圖', 'error');
+            return;
+        }
         const name = document.getElementById('mapName')?.value;
         const description = document.getElementById('mapDescription')?.value;
 
@@ -1610,6 +1802,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Confirm add node
     document.getElementById('confirmAddNodeBtn')?.addEventListener('click', () => {
+        if (!hasUsmAccess('nodeAdd')) {
+            showMessage('您沒有權限新增節點', 'error');
+            return;
+        }
         const title = document.getElementById('nodeTitle')?.value;
         const description = document.getElementById('nodeDescription')?.value;
         const nodeType = document.getElementById('nodeType')?.value;
@@ -1660,6 +1856,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Add child node (toolbar)
     document.getElementById('addChildBtn')?.addEventListener('click', () => {
+        if (!hasUsmAccess('nodeAdd')) {
+            showMessage('您沒有權限新增節點', 'error');
+            return;
+        }
         const selectedNode = window.userStoryMapFlow?.getSelectedNode();
         if (!selectedNode) {
             alert('請先選擇一個節點');
@@ -1672,6 +1872,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Add sibling node (toolbar)
     document.getElementById('addSiblingBtn')?.addEventListener('click', () => {
+        if (!hasUsmAccess('nodeAdd')) {
+            showMessage('您沒有權限新增節點', 'error');
+            return;
+        }
         const selectedNode = window.userStoryMapFlow?.getSelectedNode();
         if (!selectedNode) {
             alert('請先選擇一個節點');
@@ -1684,6 +1888,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // Auto layout button
     document.getElementById('autoLayoutBtn')?.addEventListener('click', () => {
+        if (!hasUsmAccess('nodeAdd')) {
+            showMessage('您沒有權限調整地圖排版', 'error');
+            return;
+        }
         window.userStoryMapFlow?.autoLayout();
         showMessage('已套用樹狀排版', 'success');
     });

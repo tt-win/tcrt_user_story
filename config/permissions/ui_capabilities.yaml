@@ -81,3 +81,17 @@ pages:
       assigneeEditor:       { feature: test_run_execution, action: update }
       uploadTestResultsBtn: { feature: test_run_execution, action: update }
       addBugTicketBtn:      { feature: test_run_execution, action: update }
+
+  user_story_map:
+    components:
+      newMapBtn:             { feature: user_story_map, action: create }
+      saveMapBtn:            { feature: user_story_map, action: update }
+      calcTicketsBtn:        { feature: user_story_map, action: update }
+      editMapAction:         { feature: user_story_map, action: update }
+      deleteMapAction:       { feature: user_story_map, action: delete }
+      addChildBtn:           { feature: user_story_map, action: update }
+      addSiblingBtn:         { feature: user_story_map, action: update }
+      autoLayoutBtn:         { feature: user_story_map, action: update }
+      confirmAddNodeBtn:     { feature: user_story_map, action: update }
+      nodeUpdateAction:      { feature: user_story_map, action: update }
+      nodeDeleteAction:      { feature: user_story_map, action: delete }
