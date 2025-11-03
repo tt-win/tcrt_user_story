@@ -396,7 +396,7 @@ async def update_map(
             node_db = UserStoryMapNodeDB(
                 map_id=map_id,
                 node_id=node.id,
-                title=node.title or "",
+                title=node.title,
                 description=node.description,
                 node_type=node.node_type.value if hasattr(node.node_type, 'value') else node.node_type,
                 parent_id=node.parent_id,
