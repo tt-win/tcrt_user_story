@@ -267,6 +267,9 @@ async def get_map(
         # Ensure node_type exists and is valid
         if not node_copy.get('node_type'):
             node_copy['node_type'] = 'feature_category'
+        # Ensure related_ids exists
+        if 'related_ids' not in node_copy:
+            node_copy['related_ids'] = []
         processed_nodes.append(node_copy)
 
     nodes = [UserStoryMapNode(**node) for node in processed_nodes]
@@ -426,7 +429,15 @@ async def update_map(
     await db.commit()
     await db.refresh(map_db)
     
-    nodes = [UserStoryMapNode(**node) for node in (map_db.nodes or [])]
+    # Ensure all nodes have related_ids
+    processed_nodes = []
+    for node in (map_db.nodes or []):
+        node_copy = dict(node)
+        if 'related_ids' not in node_copy:
+            node_copy['related_ids'] = []
+        processed_nodes.append(node_copy)
+    
+    nodes = [UserStoryMapNode(**node) for node in processed_nodes]
     edges = [UserStoryMapEdge(**edge) for edge in (map_db.edges or [])]
     
     return UserStoryMapResponse(
