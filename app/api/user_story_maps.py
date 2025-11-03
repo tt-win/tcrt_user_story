@@ -4,9 +4,10 @@ User Story Map API 路由
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete, or_
+from sqlalchemy import select, delete, or_, and_
 from typing import List, Optional
 from datetime import datetime
+import uuid
 
 from app.models.user_story_map import (
     UserStoryMapCreate,
@@ -14,6 +15,9 @@ from app.models.user_story_map import (
     UserStoryMapResponse,
     UserStoryMapNode,
     UserStoryMapEdge,
+    SearchNodeResult,
+    RelationCreateRequest,
+    RelationDeleteRequest,
 )
 from app.models.user_story_map_db import (
     get_usm_db,
@@ -23,9 +27,24 @@ from app.models.user_story_map_db import (
 from app.auth.dependencies import get_current_user
 from app.auth.models import PermissionType
 from app.auth.permission_service import permission_service
-from app.models.database_models import User
+from app.models.database_models import User, Team
+from app.database import get_db
 
 router = APIRouter(prefix="/user-story-maps", tags=["user-story-maps"])
+
+
+def _normalize_related_ids(related_ids):
+    """將 related_ids 從舊格式（字串）轉換為新格式（物件）以支援向下相容"""
+    if not related_ids:
+        return []
+    
+    normalized = []
+    for rel_id in related_ids:
+        if isinstance(rel_id, str):
+            normalized.append(rel_id)
+        elif isinstance(rel_id, dict):
+            normalized.append(rel_id)
+    return normalized
 
 
 async def _require_usm_permission(
@@ -494,3 +513,218 @@ async def get_node_path(
         current = node_dict.get(parent_id) if parent_id else None
     
     return {"path": path}
+
+
+@router.get("/search-nodes", response_model=List[SearchNodeResult])
+async def search_global_nodes(
+    q: Optional[str] = Query(None, description="搜尋關鍵字"),
+    node_type: Optional[str] = Query(None, description="節點類型"),
+    map_id: Optional[int] = Query(None, description="限制在特定地圖"),
+    team_id: Optional[int] = Query(None, description="限制在特定團隊"),
+    include_external: bool = Query(False, description="是否搜尋外部地圖"),
+    current_user: User = Depends(get_current_user),
+    usm_db: AsyncSession = Depends(get_usm_db),
+    db: AsyncSession = Depends(get_db),
+):
+    """跨地圖搜尋節點"""
+    
+    if not map_id:
+        raise HTTPException(status_code=400, detail="map_id is required")
+    
+    source_map_result = await usm_db.execute(
+        select(UserStoryMapDB).where(UserStoryMapDB.id == map_id)
+    )
+    source_map_db = source_map_result.scalar_one_or_none()
+    
+    if not source_map_db:
+        raise HTTPException(status_code=404, detail="Source map not found")
+    
+    await _require_usm_permission(current_user, "view", source_map_db.team_id)
+    
+    query = select(UserStoryMapNodeDB)
+    
+    if not include_external:
+        query = query.where(UserStoryMapNodeDB.map_id == map_id)
+    
+    if q:
+        like_pattern = f"%{q}%"
+        query = query.where(
+            or_(
+                UserStoryMapNodeDB.title.ilike(like_pattern),
+                UserStoryMapNodeDB.description.ilike(like_pattern),
+                UserStoryMapNodeDB.comment.ilike(like_pattern),
+                UserStoryMapNodeDB.as_a.ilike(like_pattern),
+                UserStoryMapNodeDB.i_want.ilike(like_pattern),
+                UserStoryMapNodeDB.so_that.ilike(like_pattern),
+            )
+        )
+    
+    if node_type:
+        query = query.where(UserStoryMapNodeDB.node_type == node_type)
+    
+    if team_id:
+        query = query.where(UserStoryMapNodeDB.map_id.in_(
+            select(UserStoryMapDB.id).where(UserStoryMapDB.team_id == team_id)
+        ))
+    
+    result = await usm_db.execute(query)
+    nodes = result.scalars().all()
+    
+    search_results = []
+    for node in nodes:
+        map_result = await usm_db.execute(
+            select(UserStoryMapDB).where(UserStoryMapDB.id == node.map_id)
+        )
+        node_map = map_result.scalar_one_or_none()
+        
+        team_result = await db.execute(
+            select(Team).where(Team.id == node_map.team_id)
+        )
+        team = team_result.scalar_one_or_none()
+        
+        if include_external and node.map_id != map_id:
+            await _require_usm_permission(current_user, "view", node_map.team_id)
+        
+        search_results.append(SearchNodeResult(
+            node_id=node.node_id,
+            node_title=node.title,
+            node_type=node.node_type,
+            map_id=node.map_id,
+            map_name=node_map.name if node_map else "Unknown",
+            team_id=node_map.team_id if node_map else 0,
+            team_name=team.name if team else "Unknown",
+            breadcrumb=node.comment,
+            description=node.description,
+        ))
+    
+    return search_results
+
+
+@router.post("/{map_id}/nodes/{node_id}/relations")
+async def create_relation(
+    map_id: int,
+    node_id: str,
+    request: RelationCreateRequest,
+    current_user: User = Depends(get_current_user),
+    usm_db: AsyncSession = Depends(get_usm_db),
+    db: AsyncSession = Depends(get_db),
+):
+    """建立節點關聯"""
+    
+    source_map_result = await usm_db.execute(
+        select(UserStoryMapDB).where(UserStoryMapDB.id == map_id)
+    )
+    source_map = source_map_result.scalar_one_or_none()
+    
+    if not source_map:
+        raise HTTPException(status_code=404, detail="Source map not found")
+    
+    await _require_usm_permission(current_user, "update", source_map.team_id)
+    
+    target_map_result = await usm_db.execute(
+        select(UserStoryMapDB).where(UserStoryMapDB.id == request.target_map_id)
+    )
+    target_map = target_map_result.scalar_one_or_none()
+    
+    if not target_map:
+        raise HTTPException(status_code=404, detail="Target map not found")
+    
+    await _require_usm_permission(current_user, "view", target_map.team_id)
+    
+    target_node_result = await usm_db.execute(
+        select(UserStoryMapNodeDB).where(
+            and_(
+                UserStoryMapNodeDB.map_id == request.target_map_id,
+                UserStoryMapNodeDB.node_id == request.target_node_id
+            )
+        )
+    )
+    target_node = target_node_result.scalar_one_or_none()
+    
+    if not target_node:
+        raise HTTPException(status_code=404, detail="Target node not found")
+    
+    team_result = await db.execute(
+        select(Team).where(Team.id == target_map.team_id)
+    )
+    target_team = team_result.scalar_one_or_none()
+    
+    source_node_db_result = await usm_db.execute(
+        select(UserStoryMapNodeDB).where(
+            and_(
+                UserStoryMapNodeDB.map_id == map_id,
+                UserStoryMapNodeDB.node_id == node_id
+            )
+        )
+    )
+    source_node_db = source_node_db_result.scalar_one_or_none()
+    
+    if not source_node_db:
+        raise HTTPException(status_code=404, detail="Source node not found")
+    
+    relation_id = str(uuid.uuid4())
+    
+    related_node = {
+        "relation_id": relation_id,
+        "node_id": request.target_node_id,
+        "map_id": request.target_map_id,
+        "map_name": target_map.name,
+        "team_id": target_map.team_id,
+        "team_name": target_team.name if target_team else "Unknown",
+        "display_title": target_node.title,
+    }
+    
+    if source_node_db.related_ids is None:
+        source_node_db.related_ids = []
+    
+    source_node_db.related_ids.append(related_node)
+    source_node_db.updated_at = datetime.utcnow()
+    
+    await usm_db.commit()
+    await usm_db.refresh(source_node_db)
+    
+    return {"relation_id": relation_id, "message": "Relation created successfully"}
+
+
+@router.delete("/{map_id}/nodes/{node_id}/relations/{relation_id}")
+async def delete_relation(
+    map_id: int,
+    node_id: str,
+    relation_id: str,
+    current_user: User = Depends(get_current_user),
+    usm_db: AsyncSession = Depends(get_usm_db),
+):
+    """刪除節點關聯"""
+    
+    source_map_result = await usm_db.execute(
+        select(UserStoryMapDB).where(UserStoryMapDB.id == map_id)
+    )
+    source_map = source_map_result.scalar_one_or_none()
+    
+    if not source_map:
+        raise HTTPException(status_code=404, detail="Source map not found")
+    
+    await _require_usm_permission(current_user, "update", source_map.team_id)
+    
+    source_node_db_result = await usm_db.execute(
+        select(UserStoryMapNodeDB).where(
+            and_(
+                UserStoryMapNodeDB.map_id == map_id,
+                UserStoryMapNodeDB.node_id == node_id
+            )
+        )
+    )
+    source_node_db = source_node_db_result.scalar_one_or_none()
+    
+    if not source_node_db:
+        raise HTTPException(status_code=404, detail="Source node not found")
+    
+    if source_node_db.related_ids:
+        source_node_db.related_ids = [
+            rel for rel in source_node_db.related_ids 
+            if isinstance(rel, str) or rel.get("relation_id") != relation_id
+        ]
+        source_node_db.updated_at = datetime.utcnow()
+        await usm_db.commit()
+    
+    return {"message": "Relation deleted successfully"}
