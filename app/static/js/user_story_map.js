@@ -2830,8 +2830,12 @@ document.addEventListener('DOMContentLoaded', async function() {
             resultsContainer.innerHTML = `
                 <div class="list-group">
                     ${results.map((node, idx) => `
-                        <button type="button" class="list-group-item list-group-item-action text-start" data-result-idx="${idx}">
-                            <div class="d-flex justify-content-between align-items-start">
+                        <div class="list-group-item" data-result-idx="${idx}">
+                            <div class="d-flex align-items-start">
+                                <div class="form-check me-3">
+                                    <input class="form-check-input" type="checkbox" id="relationCheck${idx}" data-result-idx="${idx}">
+                                    <label class="form-check-label visually-hidden" for="relationCheck${idx}">選擇此節點</label>
+                                </div>
                                 <div class="flex-grow-1">
                                     <h6 class="mb-1">${escapeHtml(node.node_title)}</h6>
                                     <small class="text-muted">
@@ -2839,9 +2843,8 @@ document.addEventListener('DOMContentLoaded', async function() {
                                     </small>
                                     ${node.description ? `<p class="mb-0 small mt-1">${escapeHtml(node.description)}</p>` : ''}
                                 </div>
-                                <i class="fas fa-check-circle text-success" style="display: none;"></i>
                             </div>
-                        </button>
+                        </div>
                     `).join('')}
                 </div>
             `;
@@ -2855,38 +2858,78 @@ document.addEventListener('DOMContentLoaded', async function() {
                 }
             };
 
-            const buttons = resultsContainer.querySelectorAll('button[data-result-idx]');
-            buttons.forEach((btn) => {
-                const idx = Number(btn.getAttribute('data-result-idx'));
-                const node = results[idx];
-                const icon = btn.querySelector('i');
+            // Initialize checkboxes and update add button state
+            const updateAddButtonState = () => {
+                const checkedBoxes = resultsContainer.querySelectorAll('input[type="checkbox"]:checked');
+                const addBtn = document.getElementById('relationAddSelectedBtn');
+                if (addBtn) {
+                    addBtn.disabled = checkedBoxes.length === 0;
+                }
+            };
 
+            const checkboxes = resultsContainer.querySelectorAll('input[type="checkbox"]');
+            checkboxes.forEach((checkbox) => {
+                const idx = Number(checkbox.getAttribute('data-result-idx'));
+                const node = results[idx];
+
+                // Check if already selected
                 if (window.selectedRelationTargets?.some((rel) => relationMatchesSearchNode(rel, node))) {
-                    btn.classList.add('active');
-                    if (icon) icon.style.display = 'inline';
+                    checkbox.checked = true;
                 }
 
-                btn.addEventListener('click', () => {
-                    ensureSelectionsArray();
-
-                    const alreadySelected = window.selectedRelationTargets.some((rel) => relationMatchesSearchNode(rel, node));
-
-                    if (alreadySelected) {
-                        window.selectedRelationTargets = window.selectedRelationTargets.filter((rel) => !relationMatchesSearchNode(rel, node));
-                    } else {
-                        window.selectedRelationTargets = [
-                            ...window.selectedRelationTargets,
-                            createRelationFromSearchResult(node),
-                        ];
-                    }
-
-                    updateRelationSelectedList({ refreshSearch: true });
-                });
+                checkbox.addEventListener('change', updateAddButtonState);
             });
+
+            // Initial state update
+            updateAddButtonState();
         } catch (error) {
             console.error('[Relation] Relation search failed:', error);
             showMessage('搜尋失敗: ' + error.message, 'error');
         }
+    });
+
+    // Add selected relations button
+    document.getElementById('relationAddSelectedBtn')?.addEventListener('click', () => {
+        const resultsContainer = document.getElementById('relationSearchResults');
+        const checkedBoxes = resultsContainer.querySelectorAll('input[type="checkbox"]:checked');
+
+        if (checkedBoxes.length === 0) {
+            showMessage('請先選擇要增加的節點', 'warning');
+            return;
+        }
+
+        ensureSelectionsArray();
+
+        let addedCount = 0;
+        checkedBoxes.forEach((checkbox) => {
+            const idx = Number(checkbox.getAttribute('data-result-idx'));
+            const node = window.relationSearchResults[idx];
+
+            const alreadySelected = window.selectedRelationTargets.some((rel) => relationMatchesSearchNode(rel, node));
+
+            if (!alreadySelected) {
+                window.selectedRelationTargets = [
+                    ...window.selectedRelationTargets,
+                    createRelationFromSearchResult(node),
+                ];
+                addedCount++;
+            }
+        });
+
+        if (addedCount > 0) {
+            showMessage(`已增加 ${addedCount} 個關聯節點`, 'success');
+            updateRelationSelectedList({ refreshSearch: true });
+        } else {
+            showMessage('選中的節點都已經在關聯列表中', 'info');
+        }
+
+        // Uncheck all checkboxes after adding
+        checkedBoxes.forEach((checkbox) => {
+            checkbox.checked = false;
+        });
+
+        // Update button state
+        document.getElementById('relationAddSelectedBtn').disabled = true;
     });
     
     // Update relation selected list display
@@ -2953,19 +2996,19 @@ document.addEventListener('DOMContentLoaded', async function() {
         if (refreshSearch) {
             const resultsContainer = document.getElementById('relationSearchResults');
             if (resultsContainer && Array.isArray(window.relationSearchResults)) {
-                resultsContainer.querySelectorAll('button[data-result-idx]').forEach((btn) => {
-                    const idx = Number(btn.getAttribute('data-result-idx'));
+                resultsContainer.querySelectorAll('input[type="checkbox"]').forEach((checkbox) => {
+                    const idx = Number(checkbox.getAttribute('data-result-idx'));
                     const node = window.relationSearchResults[idx];
-                    const icon = btn.querySelector('i');
                     const matched = targets.some((rel) => relationMatchesSearchNode(rel, node));
-                    if (matched) {
-                        btn.classList.add('active');
-                        if (icon) icon.style.display = 'inline';
-                    } else {
-                        btn.classList.remove('active');
-                        if (icon) icon.style.display = 'none';
-                    }
+                    checkbox.checked = matched;
                 });
+
+                // Update add button state
+                const checkedBoxes = resultsContainer.querySelectorAll('input[type="checkbox"]:checked');
+                const addBtn = document.getElementById('relationAddSelectedBtn');
+                if (addBtn) {
+                    addBtn.disabled = checkedBoxes.length === 0;
+                }
             }
         }
     }
