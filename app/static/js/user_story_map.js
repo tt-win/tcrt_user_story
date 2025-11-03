@@ -1561,6 +1561,9 @@ const UserStoryMapFlow = () => {
         Array.from(highlightedIds).forEach((id) => {
             const node = nodesById.get(id);
             if (node) {
+                // 檢查是否為原始選定節點，如果是則使用不同背景色標示
+                const isOriginalSelectedNode = id === nodeId;
+                
                 graphNodes.push({
                     id: node.id,
                     type: 'custom',
@@ -1578,6 +1581,9 @@ const UserStoryMapFlow = () => {
                         width: 200,
                         minHeight: 110,
                         maxHeight: 110,
+                        // 為原始選定節點使用不同的背景顏色進行標示
+                        backgroundColor: isOriginalSelectedNode ? '#fff3cd' : undefined, // 淺黃色背景
+                        border: isOriginalSelectedNode ? '2px solid #f76707' : undefined
                     }
                 });
             }
@@ -1616,7 +1622,7 @@ const UserStoryMapFlow = () => {
                         id: `relation-${id}-${relatedId}`,
                         source: id,
                         target: relatedId,
-                        type: 'smoothstep',  // 使用 smoothstep 類型，它會產生曲線效果
+                        type: 'smoothstep',  // 使用 smoothstep 類型實現曲線效果
                         sourceHandle: 'right',
                         targetHandle: 'left',
                         animated: true,
