@@ -1616,7 +1616,7 @@ const UserStoryMapFlow = () => {
                         id: `relation-${id}-${relatedId}`,
                         source: id,
                         target: relatedId,
-                        type: 'step',
+                        type: 'smoothstep',  // 使用 smoothstep 類型，它會產生曲線效果
                         sourceHandle: 'right',
                         targetHandle: 'left',
                         animated: true,
