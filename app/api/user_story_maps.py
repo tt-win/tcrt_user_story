@@ -100,6 +100,7 @@ async def search_global_nodes(
     map_id: Optional[int] = Query(None, description="限制在特定地圖"),
     team_id: Optional[int] = Query(None, description="限制在特定團隊"),
     include_external: bool = Query(False, description="是否搜尋外部地圖"),
+    exclude_node_id: Optional[str] = Query(None, description="排除的節點ID"),
     current_user: User = Depends(get_current_user),
     usm_db: AsyncSession = Depends(get_usm_db),
     db: AsyncSession = Depends(get_db),
@@ -147,6 +148,10 @@ async def search_global_nodes(
 
     result = await usm_db.execute(query)
     nodes = result.scalars().all()
+
+    # 排除指定的節點
+    if exclude_node_id:
+        nodes = [node for node in nodes if node.node_id != exclude_node_id]
 
     search_results = []
     for node in nodes:

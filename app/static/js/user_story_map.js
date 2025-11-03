@@ -2379,6 +2379,9 @@ document.addEventListener('DOMContentLoaded', async function() {
             if (includeExternal) {
                 params.set('include_external', 'true');
             }
+            if (window.currentRelationNode && window.currentRelationNode.id) {
+                params.set('exclude_node_id', window.currentRelationNode.id);
+            }
 
             const url = `/api/user-story-maps/search-nodes?${params.toString()}`;
             console.log('[Relation] Fetching:', url);
