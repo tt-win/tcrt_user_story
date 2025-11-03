@@ -1613,6 +1613,10 @@ const UserStoryMapFlow = () => {
                         isOriginalSelected: isOriginalSelectedNode,
                         isExternal: false, // 標記為非外部節點
                     },
+                    position: { 
+                        x: node.position.x, 
+                        y: node.position.y 
+                    }, // 保持原有位置或使用佈局計算的位置
                     style: {
                         width: 200,
                         minHeight: 110,
@@ -1622,8 +1626,9 @@ const UserStoryMapFlow = () => {
             }
         });
 
-        // 添加外部節點
-        externalNodesData.forEach((externalNode) => {
+        // 添加外部節點，將它們放置在圖表下方
+        const externalStartY = Math.max(...graphNodes.map(n => n.position.y || 0)) + 200; // 在現有節點下方開始放置
+        externalNodesData.forEach((externalNode, index) => {
             graphNodes.push({
                 id: externalNode.id,
                 type: 'custom',
@@ -1635,6 +1640,10 @@ const UserStoryMapFlow = () => {
                     // 在完整關係圖中不顯示子節點，所以將 childrenIds 設為空陣列
                     childrenIds: [],
                     isExternal: true, // 標記為外部節點
+                },
+                position: { 
+                    x: 300 + (index % 4) * 250, // 每行最多4個節點
+                    y: externalStartY + Math.floor(index / 4) * 150 // 換行放置
                 },
                 style: {
                     width: 200,
