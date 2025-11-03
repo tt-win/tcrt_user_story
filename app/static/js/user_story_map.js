@@ -1697,28 +1697,54 @@ const UserStoryMapFlow = () => {
             });
         });
 
-        // 應用樹狀佈局（與主圖相同設定）
+        // 應用樹狀佈局（與主圖相同設定）但不包含外部節點
         if (window.dagre && graphNodes.length > 0) {
-            const g = new dagre.graphlib.Graph();
-            g.setGraph({ rankdir: 'LR', ranksep: 75, nodesep: 40 });
-            g.setDefaultEdgeLabel(() => ({}));
+            const internalNodes = graphNodes.filter(node => !node.data.isExternal);
+            const externalNodes = graphNodes.filter(node => node.data.isExternal);
+            
+            if (internalNodes.length > 0) {
+                const g = new dagre.graphlib.Graph();
+                g.setGraph({ rankdir: 'LR', ranksep: 75, nodesep: 40 });
+                g.setDefaultEdgeLabel(() => ({}));
 
-            graphNodes.forEach(node => {
-                g.setNode(node.id, { width: 200, height: 110 });
-            });
+                internalNodes.forEach(node => {
+                    g.setNode(node.id, { width: 200, height: 110 });
+                });
 
-            layoutEdges.forEach(edge => {
-                g.setEdge(edge.source, edge.target);
-            });
+                layoutEdges.forEach(edge => {
+                    // 只對內部節點之間的邊進行佈局計算
+                    if (internalNodes.some(n => n.id === edge.source) && 
+                        internalNodes.some(n => n.id === edge.target)) {
+                        g.setEdge(edge.source, edge.target);
+                    }
+                });
 
-            dagre.layout(g);
+                dagre.layout(g);
 
-            graphNodes.forEach(node => {
-                const position = g.node(node.id);
-                node.position = { x: position.x, y: position.y };
-                node.targetPosition = 'left';
-                node.sourcePosition = 'right';
-            });
+                internalNodes.forEach(node => {
+                    const position = g.node(node.id);
+                    node.position = { x: position.x, y: position.y };
+                    node.targetPosition = 'left';
+                    node.sourcePosition = 'right';
+                });
+            }
+            
+            // 計算外部節點位置
+            if (externalNodes.length > 0) {
+                const internalMaxY = internalNodes.length > 0 
+                    ? Math.max(...internalNodes.map(n => (n.position.y || 0) + 110)) 
+                    : 0;
+                const externalStartY = internalMaxY + 150; // 在內部節點下方留出空間
+                
+                externalNodes.forEach((node, index) => {
+                    node.position = { 
+                        x: 300 + (index % 4) * 250, // 每行最多4個節點
+                        y: externalStartY + Math.floor(index / 4) * 150 // 換行放置
+                    };
+                    node.targetPosition = 'top';
+                    node.sourcePosition = 'bottom';
+                });
+            }
         }
 
         // 生成跨圖節點卡片 HTML
