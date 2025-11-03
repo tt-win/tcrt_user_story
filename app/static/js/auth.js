@@ -113,6 +113,7 @@ class AuthClient {
         // 清除本地儲存
         localStorage.removeItem('access_token');
         localStorage.removeItem('token_expiry');
+        localStorage.removeItem('user_role');
         
         // 停止刷新週期
         if (this.refreshTimer) {

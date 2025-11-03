@@ -495,6 +495,11 @@
                         if (window.AuthClient) {
                             window.AuthClient.setToken(data.access_token, data.expires_in);
                         }
+                        
+                        // Save user role to localStorage for permission checks
+                        if (data.user && data.user.role) {
+                            localStorage.setItem('user_role', data.user.role);
+                        }
 
                         this.showAlert('Login successful! Redirecting...', 'success');
                         setTimeout(() => {

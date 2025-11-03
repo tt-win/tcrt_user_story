@@ -6,11 +6,9 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, or_
 from typing import List, Optional
-import json
 from datetime import datetime
 
 from app.models.user_story_map import (
-    UserStoryMap,
     UserStoryMapCreate,
     UserStoryMapUpdate,
     UserStoryMapResponse,
@@ -23,9 +21,57 @@ from app.models.user_story_map_db import (
     UserStoryMapNodeDB,
 )
 from app.auth.dependencies import get_current_user
+from app.auth.models import PermissionType
+from app.auth.permission_service import permission_service
 from app.models.database_models import User
 
 router = APIRouter(prefix="/user-story-maps", tags=["user-story-maps"])
+
+
+async def _require_usm_permission(
+    current_user: User,
+    action: str,
+    team_id: Optional[int] = None,
+) -> None:
+    """對 USM 資源執行 Casbin 權限檢查並套用團隊權限限制"""
+
+    casbin_check = await permission_service.check_permission(
+        current_user=current_user,
+        feature="user_story_map",
+        action=action,
+    )
+
+    if not casbin_check.has_permission:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "USM_PERMISSION_DENIED",
+                "message": casbin_check.reason or "無權限執行此操作",
+            },
+        )
+
+    if team_id is None:
+        return
+
+    required_team_permission = (
+        PermissionType.READ if action == "view" else PermissionType.WRITE
+    )
+
+    team_check = await permission_service.check_team_permission(
+        current_user.id,
+        team_id,
+        required_team_permission,
+        current_user.role,
+    )
+
+    if not team_check.has_permission:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={
+                "code": "USM_TEAM_PERMISSION_DENIED",
+                "message": team_check.reason or "無權限存取此團隊",
+            },
+        )
 
 
 @router.get("/team/{team_id}", response_model=List[UserStoryMapResponse])
@@ -35,6 +81,8 @@ async def get_team_maps(
     db: AsyncSession = Depends(get_usm_db),
 ):
     """獲取團隊的所有 User Story Maps"""
+    await _require_usm_permission(current_user, "view", team_id)
+
     result = await db.execute(
         select(UserStoryMapDB).where(UserStoryMapDB.team_id == team_id)
     )
@@ -93,6 +141,8 @@ async def get_map(
     if not map_db:
         raise HTTPException(status_code=404, detail="User Story Map not found")
 
+    await _require_usm_permission(current_user, "view", map_db.team_id)
+
     # Map legacy node_type values to new enum values
     processed_nodes = []
     for node in (map_db.nodes or []):
@@ -132,6 +182,7 @@ async def create_map(
     db: AsyncSession = Depends(get_usm_db),
 ):
     """建立新的 User Story Map"""
+    await _require_usm_permission(current_user, "create", map_data.team_id)
     # Create root node
     import time
     root_node = {
@@ -218,6 +269,8 @@ async def update_map(
     if not map_db:
         raise HTTPException(status_code=404, detail="User Story Map not found")
     
+    await _require_usm_permission(current_user, "update", map_db.team_id)
+
     if map_data.name is not None:
         map_db.name = map_data.name
     if map_data.description is not None:
@@ -291,6 +344,8 @@ async def delete_map(
     if not map_db:
         raise HTTPException(status_code=404, detail="User Story Map not found")
     
+    await _require_usm_permission(current_user, "delete", map_db.team_id)
+
     await db.delete(map_db)
     await db.commit()
     
@@ -308,6 +363,16 @@ async def search_nodes(
     db: AsyncSession = Depends(get_usm_db),
 ):
     """搜尋 User Story Map 節點"""
+    map_result = await db.execute(
+        select(UserStoryMapDB).where(UserStoryMapDB.id == map_id)
+    )
+    map_db = map_result.scalar_one_or_none()
+
+    if not map_db:
+        raise HTTPException(status_code=404, detail="User Story Map not found")
+
+    await _require_usm_permission(current_user, "view", map_db.team_id)
+
     query = select(UserStoryMapNodeDB).where(UserStoryMapNodeDB.map_id == map_id)
     
     if q:
@@ -364,6 +429,8 @@ async def calculate_aggregated_tickets(
     if not map_db:
         raise HTTPException(status_code=404, detail="User Story Map not found")
     
+    await _require_usm_permission(current_user, "update", map_db.team_id)
+
     nodes = map_db.nodes or []
     node_dict = {node["id"]: node for node in nodes}
     
@@ -412,6 +479,8 @@ async def get_node_path(
     
     if not map_db:
         raise HTTPException(status_code=404, detail="User Story Map not found")
+
+    await _require_usm_permission(current_user, "view", map_db.team_id)
     
     nodes = map_db.nodes or []
     node_dict = {node["id"]: node for node in nodes}
