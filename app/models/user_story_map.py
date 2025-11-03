@@ -122,3 +122,24 @@ class RelationCreateRequest(BaseModel):
 class RelationDeleteRequest(BaseModel):
     """刪除關聯請求"""
     relation_id: str
+
+
+class RelationPayload(BaseModel):
+    """批次更新關聯時的單一項目資料"""
+    relation_id: Optional[str] = Field(None, description="關聯 ID，未提供時由後端產生")
+    node_id: str = Field(..., description="目標節點 ID")
+    map_id: Optional[int] = Field(None, description="目標地圖 ID，預設為來源地圖")
+    map_name: Optional[str] = Field(None, description="目標地圖名稱（顯示用）")
+    team_id: Optional[int] = Field(None, description="目標團隊 ID，用於權限檢查")
+    team_name: Optional[str] = Field(None, description="目標團隊名稱")
+    display_title: Optional[str] = Field(None, description="顯示名稱，預設為目標節點標題")
+
+
+class RelationBulkUpdateRequest(BaseModel):
+    """批次更新關聯請求"""
+    relations: List[Union[str, RelationPayload]] = Field(default_factory=list, description="要設定的關聯列表")
+
+
+class RelationBulkUpdateResponse(BaseModel):
+    """批次更新關聯回應"""
+    relations: List[Union[str, RelationPayload]] = Field(default_factory=list, description="更新後的關聯列表")
