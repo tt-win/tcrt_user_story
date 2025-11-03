@@ -346,11 +346,12 @@ const CustomNode = ({ data, id }) => {
     return React.createElement(
         'div',
         {
-            className: `custom-node${data.isRoot ? ' root-node' : ''}`,
+            className: `custom-node${data.isRoot ? ' root-node' : ''}${data.isOriginalSelected ? ' original-selected-node' : ''}`,
             'data-node-type': data.nodeType,
             style: {
                 opacity: data.dimmed ? 0.3 : 1,
                 transition: 'opacity 0.3s ease',
+                backgroundColor: data.isExternal ? '#e6f7ff' : (data.isOriginalSelected ? '#fff3cd' : undefined), // 外部節點為淺藍色，原始選定節點為淺黃色
             }
         },
         // Connection Handles - 4 positions (removed corner handles)
@@ -1503,6 +1504,38 @@ const UserStoryMapFlow = () => {
             }
         });
 
+        // 獲取跨圖節點的詳細資訊並加入到圖中
+        const externalNodesData = [];
+        for (const rel of crossMapRelations) {
+            if (rel.mapId && rel.mapId !== currentMapId) {
+                // 獲取外部節點的詳細資訊
+                try {
+                    const response = await fetch(`/api/user-story-maps/${rel.mapId}`, {
+                        headers: {
+                            'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+                        },
+                    });
+                    
+                    if (response.ok) {
+                        const mapData = await response.json();
+                        const targetNode = mapData.nodes.find(n => n.id === rel.nodeId);
+                        
+                        if (targetNode) {
+                            // 添加到外部節點數組，標記為外部節點
+                            externalNodesData.push({
+                                ...targetNode,
+                                isExternal: true, // 標記為外部節點
+                                mapId: rel.mapId,
+                                mapName: rel.mapName || `地圖 ${rel.mapId}`,
+                            });
+                        }
+                    }
+                } catch (error) {
+                    console.error('獲取跨圖節點資訊失敗:', error);
+                }
+            }
+        }
+
         // 獲取跨圖節點的詳細資訊（包括 As A, I want, So That）
         const enhancedCrossMapRelations = [];
         for (const rel of crossMapRelations) {
@@ -1576,17 +1609,39 @@ const UserStoryMapFlow = () => {
                         collapsed: false,
                         // 在完整關係圖中不顯示子節點，所以將 childrenIds 設為空陣列
                         childrenIds: [],
+                        // 在 data 中標記是否為原始選定節點，以便在 CustomNode 組件中處理
+                        isOriginalSelected: isOriginalSelectedNode,
+                        isExternal: false, // 標記為非外部節點
                     },
                     style: {
                         width: 200,
                         minHeight: 110,
                         maxHeight: 110,
-                        // 為原始選定節點使用不同的背景顏色進行標示
-                        backgroundColor: isOriginalSelectedNode ? '#fff3cd' : undefined, // 淺黃色背景
-                        border: isOriginalSelectedNode ? '2px solid #f76707' : undefined
                     }
                 });
             }
+        });
+
+        // 添加外部節點
+        externalNodesData.forEach((externalNode) => {
+            graphNodes.push({
+                id: externalNode.id,
+                type: 'custom',
+                data: {
+                    ...externalNode,
+                    // disable collapse interaction inside modal
+                    toggleCollapse: undefined,
+                    collapsed: false,
+                    // 在完整關係圖中不顯示子節點，所以將 childrenIds 設為空陣列
+                    childrenIds: [],
+                    isExternal: true, // 標記為外部節點
+                },
+                style: {
+                    width: 200,
+                    minHeight: 110,
+                    maxHeight: 110,
+                }
+            });
         });
 
         // 構建邊 - 包含層級邊和關聯邊
