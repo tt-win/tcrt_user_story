@@ -2433,29 +2433,27 @@ document.addEventListener('DOMContentLoaded', async function() {
                 </div>
             `;
             
-            // Store results for access
-            window.relationSearchResults = results;
-            
-            // Add click handlers
-            resultsContainer.querySelectorAll('button[data-result-idx]').forEach((btn) => {
-                btn.addEventListener('click', () => {
-                    const idx = parseInt(btn.getAttribute('data-result-idx'));
-                    const node = results[idx];
-                    
-                    // Check if already selected
-                    const alreadySelected = window.selectedRelationTargets.some(t => t.node_id === node.node_id && t.map_id === node.map_id);
-                    
-                    if (!alreadySelected) {
-                        window.selectedRelationTargets.push(node);
-                        btn.classList.add('active');
-                        btn.querySelector('i').style.display = 'inline';
-                        updateRelationSelectedList();
-                        console.log('[Relation] Added target:', node.node_id);
-                    }
-                });
-            });
-            
-            showMessage(`找到 ${results.length} 個節點`, 'success');
+             // Store results for access
+             window.relationSearchResults = results;
+
+             // Add click handlers
+             resultsContainer.querySelectorAll('button[data-result-idx]').forEach((btn) => {
+                 btn.addEventListener('click', () => {
+                     const idx = parseInt(btn.getAttribute('data-result-idx'));
+                     const node = results[idx];
+
+                     // Check if already selected
+                     const alreadySelected = window.selectedRelationTargets.some(t => t.node_id === node.node_id && t.map_id === node.map_id);
+
+                     if (!alreadySelected) {
+                         window.selectedRelationTargets.push(node);
+                         btn.classList.add('active');
+                         btn.querySelector('i').style.display = 'inline';
+                         updateRelationSelectedList();
+                         console.log('[Relation] Added target:', node.node_id);
+                     }
+                 });
+             });
         } catch (error) {
             console.error('[Relation] Relation search failed:', error);
             showMessage('搜尋失敗: ' + error.message, 'error');
