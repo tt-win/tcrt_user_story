@@ -1657,14 +1657,13 @@ const UserStoryMapFlow = () => {
                 return `
                 <div class="list-group-item">
                     <div class="d-flex justify-content-between align-items-start">
-                        <div class="flex-grow-1 me-3">
+                        <div class="flex-grow-1 me-3" style="width: 40%;">
                             <h6 class="mb-1">${escapeHtml(rel.nodeTitle || rel.nodeId)}</h6>
                             <small class="text-muted">
                                 ${rel.mapName ? `地圖: ${escapeHtml(rel.mapName)}` : ''}
-                                ${rel.mapId ? ` (ID: ${rel.mapId})` : ''}
                             </small>
                         </div>
-                        <div class="text-start" style="min-width: 300px;">
+                        <div class="text-start" style="width: 60%;">
                             ${rel.as_a ? `<div><small><strong>As A:</strong> ${escapeHtml(rel.as_a)}</small></div>` : ''}
                             ${rel.i_want ? `<div><small><strong>I Want:</strong> ${escapeHtml(rel.i_want)}</small></div>` : ''}
                             ${rel.so_that ? `<div><small><strong>So That:</strong> ${escapeHtml(rel.so_that)}</small></div>` : ''}
