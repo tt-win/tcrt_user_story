@@ -17,6 +17,13 @@ const {
 // Team ID from URL
 const teamId = parseInt(window.location.pathname.split('/').pop());
 
+// Layout constants to keep newly added nodes from overlapping
+const ROOT_START_X = 100;
+const ROOT_START_Y = 100;
+const CHILD_HORIZONTAL_OFFSET = 180;
+const ROOT_VERTICAL_SPACING = 160;
+const SIBLING_VERTICAL_SPACING = 140;
+
 // Utility: sanitize HTML content before injecting into DOM
 const escapeHtml = (value) => {
     if (value === undefined || value === null) return '';
@@ -400,25 +407,35 @@ const UserStoryMapFlow = () => {
     // Add node
     const addNode = useCallback((nodeData) => {
         // Calculate position based on tree layout
-        let positionX = 100;
-        let positionY = 100;
-        
+        let positionX = ROOT_START_X;
+        let positionY = ROOT_START_Y;
+
         if (nodeData.parentId) {
             const parentNode = nodes.find(n => n.id === nodeData.parentId);
             if (parentNode) {
                 // Position to the right of parent
-                positionX = parentNode.position.x + 150;
-                
-                // Calculate Y position based on siblings
+                positionX = parentNode.position.x + CHILD_HORIZONTAL_OFFSET;
+
+                // Calculate Y position based on existing siblings to avoid stacking
                 const siblings = nodes.filter(n => n.data.parentId === nodeData.parentId);
-                positionY = parentNode.position.y + (siblings.length * 60);
+                if (siblings.length > 0) {
+                    const maxSiblingY = Math.max(...siblings.map((s) => s.position.y));
+                    positionY = maxSiblingY + SIBLING_VERTICAL_SPACING;
+                } else {
+                    positionY = parentNode.position.y;
+                }
             }
         } else {
             // Root level - position based on existing root nodes
             const rootNodes = nodes.filter(n => !n.data.parentId);
-            positionY = 100 + (rootNodes.length * 100);
+            if (rootNodes.length > 0) {
+                const maxRootY = Math.max(...rootNodes.map((root) => root.position.y));
+                positionY = maxRootY + ROOT_VERTICAL_SPACING;
+            } else {
+                positionY = ROOT_START_Y;
+            }
         }
-        
+
         const newNode = {
             id: `node_${Date.now()}`,
             type: 'custom',
