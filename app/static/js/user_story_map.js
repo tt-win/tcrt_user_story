@@ -1681,14 +1681,15 @@ const UserStoryMapFlow = () => {
             // 添加相關邊
             (node.data.relatedIds || []).forEach((entry) => {
                 const relatedId = typeof entry === 'string' ? entry : (entry.nodeId || entry.node_id || entry.id);
-                if (relatedId && highlightedIds.has(relatedId) && id !== relatedId) {
+                // 移除 highlightedIds.has(relatedId) 檢查，這樣外部節點也會被連接
+                if (relatedId && id !== relatedId) {
                     graphEdges.push({
                         id: `relation-${id}-${relatedId}`,
                         source: id,
                         target: relatedId,
                         type: 'smoothstep',  // 使用 smoothstep 類型實現曲線效果
                         sourceHandle: 'right',
-                        targetHandle: 'left',
+                        targetHandle: 'left',  // 這會自動適應目標節點的 handle 位置
                         animated: true,
                         style: { stroke: '#17a2b8', strokeWidth: 2, strokeDasharray: '5,5' },
                         markerEnd: { type: (window.ReactFlow && window.ReactFlow.MarkerType && window.ReactFlow.MarkerType.ArrowClosed) ? window.ReactFlow.MarkerType.ArrowClosed : 'arrowclosed' }
