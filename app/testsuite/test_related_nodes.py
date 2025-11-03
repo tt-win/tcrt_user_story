@@ -19,6 +19,9 @@ from app.models.user_story_map import (
     SearchNodeResult,
     RelationCreateRequest,
     RelationDeleteRequest,
+    RelationPayload,
+    RelationBulkUpdateRequest,
+    RelationBulkUpdateResponse,
     UserStoryMapNode,
     NodeType,
 )
@@ -121,9 +124,9 @@ class TestNormalizeRelatedIds:
             {
                 "relation_id": str(uuid4()),
                 "node_id": "node-1",
-                "map_id": 1,
+                "map_id": "1",
                 "map_name": "Map 1",
-                "team_id": 1,
+                "team_id": "1",
                 "team_name": "Team A",
                 "display_title": "Title"
             }
@@ -131,6 +134,8 @@ class TestNormalizeRelatedIds:
         result = _normalize_related_ids(new_ids)
         assert len(result) == 1
         assert isinstance(result[0], dict)
+        assert result[0]["map_id"] == 1
+        assert result[0]["team_id"] == 1
     
     def test_normalize_mixed_format(self):
         """測試混合格式 (舊格式 + 新格式) 的正規化"""
@@ -173,6 +178,23 @@ class TestRelationDeleteRequest:
         relation_id = str(uuid4())
         request = RelationDeleteRequest(relation_id=relation_id)
         assert request.relation_id == relation_id
+
+    def test_relation_payload_defaults(self):
+        """測試 RelationPayload 預設值與欄位"""
+        payload = RelationPayload(node_id="node-1")
+        assert payload.node_id == "node-1"
+        assert payload.map_id is None
+        assert payload.display_title is None
+
+    def test_relation_bulk_update_request(self):
+        """測試 RelationBulkUpdateRequest"""
+        payload = RelationBulkUpdateRequest(relations=["node-1", RelationPayload(node_id="node-2", map_id=2)])
+        assert len(payload.relations) == 2
+
+    def test_relation_bulk_update_response(self):
+        """測試 RelationBulkUpdateResponse"""
+        response = RelationBulkUpdateResponse(relations=[RelationPayload(node_id="node-3", map_id=3)])
+        assert len(response.relations) == 1
 
 
 # 整合測試可在此新增，需要 FastAPI TestClient

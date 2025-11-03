@@ -4,9 +4,10 @@ User Story Map API 路由
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete, or_, and_
+from sqlalchemy import select, delete, or_, and_, text
 from sqlalchemy.orm.attributes import flag_modified
-from typing import List, Optional
+from typing import List, Optional, Union, Dict, Tuple, Set, Any
+from json import JSONDecodeError
 from datetime import datetime
 import uuid
 
@@ -19,6 +20,9 @@ from app.models.user_story_map import (
     SearchNodeResult,
     RelationCreateRequest,
     RelationDeleteRequest,
+    RelationPayload,
+    RelationBulkUpdateRequest,
+    RelationBulkUpdateResponse,
 )
 from app.models.user_story_map_db import (
     get_usm_db,
@@ -38,14 +42,276 @@ def _normalize_related_ids(related_ids):
     """將 related_ids 從舊格式（字串）轉換為新格式（物件）以支援向下相容"""
     if not related_ids:
         return []
-    
+
     normalized = []
-    for rel_id in related_ids:
-        if isinstance(rel_id, str):
-            normalized.append(rel_id)
-        elif isinstance(rel_id, dict):
-            normalized.append(rel_id)
+    for rel in related_ids:
+        if isinstance(rel, str):
+            normalized.append(rel)
+            continue
+
+        if hasattr(rel, "dict"):
+            rel = rel.dict()
+
+        if isinstance(rel, dict):
+            relation_id = rel.get("relation_id") or rel.get("relationId")
+            node_id = rel.get("node_id") or rel.get("nodeId")
+            map_id = rel.get("map_id") if "map_id" in rel else rel.get("mapId")
+            team_id = rel.get("team_id") if "team_id" in rel else rel.get("teamId")
+            map_name = rel.get("map_name") or rel.get("mapName") or ""
+            team_name = rel.get("team_name") or rel.get("teamName") or ""
+            display_title = (
+                rel.get("display_title")
+                or rel.get("displayTitle")
+                or rel.get("node_title")
+                or rel.get("nodeTitle")
+                or node_id
+                or ""
+            )
+
+            try:
+                map_id_val = int(map_id) if map_id is not None and str(map_id).isdigit() else map_id
+            except Exception:
+                map_id_val = map_id
+
+            try:
+                team_id_val = int(team_id) if team_id is not None and str(team_id).isdigit() else team_id
+            except Exception:
+                team_id_val = team_id
+
+            normalized.append({
+                "relation_id": relation_id or f"legacy-{node_id or ''}",
+                "node_id": node_id or "",
+                "map_id": map_id_val,
+                "map_name": map_name,
+                "team_id": team_id_val,
+                "team_name": team_name,
+                "display_title": display_title,
+            })
     return normalized
+
+
+async def _prepare_relation_entries(
+    raw_relations: List[Union[str, RelationPayload]],
+    source_map: UserStoryMapDB,
+    current_user: User,
+    usm_db: AsyncSession,
+    db: AsyncSession,
+) -> List[Dict[str, Any]]:
+    """將輸入的關聯資料轉換為標準格式，並補齊目標節點資訊"""
+
+    if not raw_relations:
+        return []
+
+    prepared: List[Dict[str, Any]] = []
+    seen: Set[Tuple[int, str]] = set()
+
+    map_cache: Dict[int, UserStoryMapDB] = {source_map.id: source_map}
+    team_cache: Dict[int, str] = {}
+    node_cache: Dict[Tuple[int, str], UserStoryMapNodeDB] = {}
+
+    for raw in raw_relations:
+        if isinstance(raw, str):
+            rel_dict: Dict[str, Any] = {"node_id": raw}
+        elif isinstance(raw, RelationPayload):
+            rel_dict = raw.dict(exclude_unset=True)
+        elif hasattr(raw, "dict"):
+            rel_dict = raw.dict()
+        else:
+            rel_dict = dict(raw)
+
+        node_id = str(rel_dict.get("node_id") or "").strip()
+        if not node_id:
+            continue
+
+        try:
+            map_id_candidate = rel_dict.get("map_id") if "map_id" in rel_dict else rel_dict.get("mapId")
+        except Exception:
+            map_id_candidate = None
+
+        map_id = map_id_candidate if map_id_candidate is not None else source_map.id
+
+        # 取得目標地圖資訊
+        if map_id not in map_cache:
+            map_result = await usm_db.execute(
+                select(UserStoryMapDB).where(UserStoryMapDB.id == map_id)
+            )
+            target_map = map_result.scalar_one_or_none()
+            if not target_map:
+                raise HTTPException(status_code=404, detail=f"Target map {map_id} not found")
+            map_cache[map_id] = target_map
+        else:
+            target_map = map_cache[map_id]
+
+        # 權限檢查：跨地圖需具備 view 權限
+        await _require_usm_permission(current_user, "view", target_map.team_id)
+
+        # 取得團隊名稱
+        team_id_candidate = rel_dict.get("team_id") if "team_id" in rel_dict else rel_dict.get("teamId")
+        team_id = team_id_candidate if team_id_candidate is not None else target_map.team_id
+        team_name = rel_dict.get("team_name") or rel_dict.get("teamName")
+
+        if team_id is not None and not team_name:
+            if team_id in team_cache:
+                team_name = team_cache[team_id]
+            else:
+                team_result = await db.execute(select(Team).where(Team.id == team_id))
+                team = team_result.scalar_one_or_none()
+                team_name = team.name if team else ""
+                if team:
+                    team_cache[team_id] = team_name
+        elif team_id is not None and team_name:
+            team_cache.setdefault(team_id, team_name)
+
+        # 取得目標節點資訊
+        node_key = (map_id, node_id)
+        if node_key not in node_cache:
+            node_result = await usm_db.execute(
+                select(UserStoryMapNodeDB).where(
+                    and_(
+                        UserStoryMapNodeDB.map_id == map_id,
+                        UserStoryMapNodeDB.node_id == node_id,
+                    )
+                )
+            )
+            target_node_db = node_result.scalar_one_or_none()
+            if not target_node_db:
+                raise HTTPException(status_code=404, detail=f"Target node {node_id} not found in map {map_id}")
+            node_cache[node_key] = target_node_db
+        else:
+            target_node_db = node_cache[node_key]
+
+        display_title = (
+            rel_dict.get("display_title")
+            or rel_dict.get("displayTitle")
+            or getattr(target_node_db, "title", None)
+            or node_id
+        )
+
+        relation_id = rel_dict.get("relation_id") or rel_dict.get("relationId") or str(uuid.uuid4())
+
+        dedup_key = (map_id, node_id)
+        if dedup_key in seen:
+            continue
+        seen.add(dedup_key)
+
+        prepared.append({
+            "relation_id": relation_id,
+            "node_id": node_id,
+            "map_id": map_id,
+            "map_name": rel_dict.get("map_name") or rel_dict.get("mapName") or target_map.name,
+            "team_id": team_id,
+            "team_name": team_name or "",
+            "display_title": display_title,
+        })
+
+    return prepared
+
+
+async def _get_usm_map(usm_db: AsyncSession, map_id: int) -> Optional[UserStoryMapDB]:
+    """取得 USM Map，並在 JSON 欄位損毀時嘗試修復"""
+    try:
+        result = await usm_db.execute(
+            select(UserStoryMapDB).where(UserStoryMapDB.id == map_id)
+        )
+        return result.scalar_one_or_none()
+    except JSONDecodeError:
+        await usm_db.execute(
+            text(
+                "UPDATE user_story_maps SET nodes='[]' WHERE id=:map_id AND (nodes IS NULL OR trim(nodes)='')"
+            ),
+            {"map_id": map_id},
+        )
+        await usm_db.commit()
+        result = await usm_db.execute(
+            select(UserStoryMapDB).where(UserStoryMapDB.id == map_id)
+        )
+        return result.scalar_one_or_none()
+
+
+async def _get_usm_node(
+    usm_db: AsyncSession, map_id: int, node_id: str
+) -> Optional[UserStoryMapNodeDB]:
+    """取得 USM Node，遇到 JSONDecodeError 時自動修復"""
+    try:
+        result = await usm_db.execute(
+            select(UserStoryMapNodeDB).where(
+                and_(
+                    UserStoryMapNodeDB.map_id == map_id,
+                    UserStoryMapNodeDB.node_id == node_id,
+                )
+            )
+        )
+        return result.scalar_one_or_none()
+    except JSONDecodeError:
+        await usm_db.execute(
+            text(
+                """
+                UPDATE user_story_map_nodes
+                SET related_ids='[]'
+                WHERE map_id=:map_id AND node_id=:node_id AND (related_ids IS NULL OR trim(related_ids)='')
+                """
+            ),
+            {"map_id": map_id, "node_id": node_id},
+        )
+        await usm_db.commit()
+        result = await usm_db.execute(
+            select(UserStoryMapNodeDB).where(
+                and_(
+                    UserStoryMapNodeDB.map_id == map_id,
+                    UserStoryMapNodeDB.node_id == node_id,
+                )
+            )
+        )
+        return result.scalar_one_or_none()
+
+
+def _save_node_relations(
+    source_map: UserStoryMapDB,
+    source_node_db: UserStoryMapNodeDB,
+    relations: List[Dict[str, Any]],
+) -> None:
+    """更新來源節點以及主 JSON 的關聯欄位"""
+
+    normalized_relations = _normalize_related_ids(relations)
+    source_node_db.related_ids = normalized_relations
+    source_node_db.updated_at = datetime.utcnow()
+    flag_modified(source_node_db, "related_ids")
+
+    map_nodes = list(source_map.nodes or [])
+    updated = False
+    for idx, entry in enumerate(map_nodes):
+        entry_id = entry.get("id") if isinstance(entry, dict) else None
+        if entry_id == source_node_db.node_id:
+            entry_copy = dict(entry)
+            entry_copy["related_ids"] = normalized_relations
+            map_nodes[idx] = entry_copy
+            updated = True
+            break
+
+    if not updated:
+        map_nodes.append({
+            "id": source_node_db.node_id,
+            "title": source_node_db.title,
+            "description": source_node_db.description,
+            "node_type": source_node_db.node_type,
+            "parent_id": source_node_db.parent_id,
+            "children_ids": source_node_db.children_ids or [],
+            "related_ids": normalized_relations,
+            "comment": source_node_db.comment,
+            "jira_tickets": source_node_db.jira_tickets or [],
+            "team": source_node_db.team,
+            "aggregated_tickets": source_node_db.aggregated_tickets or [],
+            "position_x": source_node_db.position_x,
+            "position_y": source_node_db.position_y,
+            "level": source_node_db.level,
+            "as_a": source_node_db.as_a,
+            "i_want": source_node_db.i_want,
+            "so_that": source_node_db.so_that,
+        })
+
+    source_map.nodes = map_nodes
+    source_map.updated_at = datetime.utcnow()
+    flag_modified(source_map, "nodes")
 
 
 async def _require_usm_permission(
@@ -425,9 +691,11 @@ async def update_map(
             db.add(node_db)
 
         map_db.nodes = normalized_nodes
-    
+        flag_modified(map_db, "nodes")
+
     if map_data.edges is not None:
         map_db.edges = [edge.dict() for edge in map_data.edges]
+        flag_modified(map_db, "edges")
     
     map_db.updated_at = datetime.utcnow()
     
@@ -633,140 +901,70 @@ async def create_relation(
     db: AsyncSession = Depends(get_db),
 ):
     """建立節點關聯"""
-    
-    print(f"\n[API] POST relation called - map_id={map_id}, node_id={node_id}, target_node={request.target_node_id}, target_map={request.target_map_id}")
-    
-    source_map_result = await usm_db.execute(
-        select(UserStoryMapDB).where(UserStoryMapDB.id == map_id)
-    )
-    source_map = source_map_result.scalar_one_or_none()
-    
+    source_map = await _get_usm_map(usm_db, map_id)
+
     if not source_map:
         raise HTTPException(status_code=404, detail="Source map not found")
-    
+
     await _require_usm_permission(current_user, "update", source_map.team_id)
-    
-    target_map_result = await usm_db.execute(
-        select(UserStoryMapDB).where(UserStoryMapDB.id == request.target_map_id)
-    )
-    target_map = target_map_result.scalar_one_or_none()
-    
-    if not target_map:
-        raise HTTPException(status_code=404, detail="Target map not found")
-    
-    await _require_usm_permission(current_user, "view", target_map.team_id)
-    
-    target_node_result = await usm_db.execute(
-        select(UserStoryMapNodeDB).where(
-            and_(
-                UserStoryMapNodeDB.map_id == request.target_map_id,
-                UserStoryMapNodeDB.node_id == request.target_node_id
-            )
-        )
-    )
-    target_node = target_node_result.scalar_one_or_none()
-    
-    if not target_node:
-        raise HTTPException(status_code=404, detail="Target node not found")
-    
-    team_result = await db.execute(
-        select(Team).where(Team.id == target_map.team_id)
-    )
-    target_team = team_result.scalar_one_or_none()
-    
-    source_node_db_result = await usm_db.execute(
-        select(UserStoryMapNodeDB).where(
-            and_(
-                UserStoryMapNodeDB.map_id == map_id,
-                UserStoryMapNodeDB.node_id == node_id
-            )
-        )
-    )
-    source_node_db = source_node_db_result.scalar_one_or_none()
-    
+
+    source_node_db = await _get_usm_node(usm_db, map_id, node_id)
+
     if not source_node_db:
         raise HTTPException(status_code=404, detail="Source node not found")
-    print(f"[API] Source node found: {source_node_db.node_id}, current related_ids: {source_node_db.related_ids}")
-    
-    relation_id = str(uuid.uuid4())
-    
-    related_node = {
-        "relation_id": relation_id,
-        "node_id": request.target_node_id,
-        "map_id": request.target_map_id,
-        "map_name": target_map.name,
-        "team_id": target_map.team_id,
-        "team_name": target_team.name if target_team else "Unknown",
-        "display_title": target_node.title or "",
-    }
-    
-    print(f"[API] Creating relation: {related_node}")
-    
-    if source_node_db.related_ids is None:
-        source_node_db.related_ids = []
-    
-    # Create new list to trigger SQLAlchemy change detection
-    updated_related_ids = [*source_node_db.related_ids, related_node]
-    source_node_db.related_ids = updated_related_ids
-    source_node_db.updated_at = datetime.utcnow()
-    
-    print(f"[API] After reassign, related_ids: {source_node_db.related_ids}")
-    
-    # Flag as modified for SQLAlchemy
-    flag_modified(source_node_db, "related_ids")
-    
-    print(f"[API] Flag modified called")
 
-    # 同步更新主 Map JSON
-    map_nodes = source_map.nodes or []
-    updated = False
-    for idx, entry in enumerate(map_nodes):
-        entry_id = entry.get("id") if isinstance(entry, dict) else None
-        if entry_id == node_id:
-            entry_copy = dict(entry)
-            entry_copy["related_ids"] = _normalize_related_ids(source_node_db.related_ids)
-            map_nodes[idx] = entry_copy
-            updated = True
-            break
-    if not updated:
-        map_nodes.append({
-            "id": node_id,
-            "title": source_node_db.title,
-            "description": source_node_db.description,
-            "node_type": source_node_db.node_type,
-            "parent_id": source_node_db.parent_id,
-            "children_ids": source_node_db.children_ids or [],
-            "related_ids": _normalize_related_ids(source_node_db.related_ids),
-            "comment": source_node_db.comment,
-            "jira_tickets": source_node_db.jira_tickets or [],
-            "team": source_node_db.team,
-            "aggregated_tickets": source_node_db.aggregated_tickets or [],
-            "position_x": source_node_db.position_x,
-            "position_y": source_node_db.position_y,
-            "level": source_node_db.level,
-            "as_a": source_node_db.as_a,
-            "i_want": source_node_db.i_want,
-            "so_that": source_node_db.so_that,
-        })
-    source_map.nodes = map_nodes
-    source_map.updated_at = datetime.utcnow()
-    flag_modified(source_map, "nodes")
-    
-    
-    print(f"[API] Before commit, source_node_db.related_ids: {source_node_db.related_ids}")
-    print(f"[API] Committing to database...")
-    
+    new_relations = await _prepare_relation_entries(
+        [RelationPayload(node_id=request.target_node_id, map_id=request.target_map_id)],
+        source_map,
+        current_user,
+        usm_db,
+        db,
+    )
+
+    if not new_relations:
+        raise HTTPException(status_code=400, detail="No relation provided")
+
+    existing_relations = _normalize_related_ids(source_node_db.related_ids)
+    dedup: Set[Tuple[int, str]] = set()
+    merged: List[Union[str, Dict[str, Any]]] = []
+
+    for rel in existing_relations:
+        if isinstance(rel, str):
+            key = (source_map.id, rel)
+            if key in dedup:
+                continue
+            dedup.add(key)
+            merged.append(rel)
+            continue
+
+        key = ((rel.get("map_id") or source_map.id), rel.get("node_id"))
+        if key in dedup:
+            continue
+        dedup.add(key)
+        merged.append(rel)
+
+    created_relation = None
+    for rel in new_relations:
+        key = (rel.get("map_id") or source_map.id, rel.get("node_id"))
+        if key in dedup:
+            continue
+        dedup.add(key)
+        merged.append(rel)
+        if created_relation is None:
+            created_relation = rel
+
+    if created_relation is None:
+        return {"relation_id": None, "message": "Relation already exists"}
+
+    _save_node_relations(source_map, source_node_db, merged)
     await usm_db.commit()
-    
-    print(f"[API] After commit")
-    
-    await usm_db.refresh(source_map)
     await usm_db.refresh(source_node_db)
-    
-    print(f"[API] After refresh, source_node_db.related_ids: {source_node_db.related_ids}")
-    print(f"[API] Returning relation_id: {relation_id}\n")
-    
-    return {"relation_id": relation_id, "message": "Relation created successfully"}
+    await usm_db.refresh(source_map)
+
+    return {
+        "relation_id": created_relation.get("relation_id"),
+        "message": "Relation created successfully",
+    }
 
 
 @router.delete("/{map_id}/nodes/{node_id}/relations/{relation_id}")
@@ -779,49 +977,95 @@ async def delete_relation(
 ):
     """刪除節點關聯"""
     
-    source_map_result = await usm_db.execute(
-        select(UserStoryMapDB).where(UserStoryMapDB.id == map_id)
-    )
-    source_map = source_map_result.scalar_one_or_none()
+    source_map = await _get_usm_map(usm_db, map_id)
     
     if not source_map:
         raise HTTPException(status_code=404, detail="Source map not found")
     
     await _require_usm_permission(current_user, "update", source_map.team_id)
     
-    source_node_db_result = await usm_db.execute(
-        select(UserStoryMapNodeDB).where(
-            and_(
-                UserStoryMapNodeDB.map_id == map_id,
-                UserStoryMapNodeDB.node_id == node_id
-            )
-        )
-    )
-    source_node_db = source_node_db_result.scalar_one_or_none()
+    source_node_db = await _get_usm_node(usm_db, map_id, node_id)
     
     if not source_node_db:
         raise HTTPException(status_code=404, detail="Source node not found")
-    
-    if source_node_db.related_ids:
-        source_node_db.related_ids = [
-            rel for rel in source_node_db.related_ids 
-            if isinstance(rel, str) or rel.get("relation_id") != relation_id
-        ]
-        source_node_db.updated_at = datetime.utcnow()
 
-        # 同步更新主 Map JSON
-        map_nodes = source_map.nodes or []
-        for idx, entry in enumerate(map_nodes):
-            entry_id = entry.get("id") if isinstance(entry, dict) else None
-            if entry_id == node_id:
-                entry_copy = dict(entry)
-                entry_copy["related_ids"] = _normalize_related_ids(source_node_db.related_ids)
-                map_nodes[idx] = entry_copy
-                break
-        source_map.nodes = map_nodes
-        source_map.updated_at = datetime.utcnow()
-        flag_modified(source_map, "nodes")
-        
-        await usm_db.commit()
-    
+    existing_relations = _normalize_related_ids(source_node_db.related_ids)
+
+    filtered: List[Union[str, Dict[str, Any]]] = []
+    removed = False
+    for rel in existing_relations:
+        if isinstance(rel, str):
+            if relation_id == rel:
+                removed = True
+                continue
+            filtered.append(rel)
+            continue
+
+        if rel.get("relation_id") == relation_id:
+            removed = True
+            continue
+        filtered.append(rel)
+
+    if not removed:
+        return {"message": "Relation deleted successfully"}
+
+    _save_node_relations(source_map, source_node_db, filtered)
+    await usm_db.commit()
+    await usm_db.refresh(source_node_db)
+    await usm_db.refresh(source_map)
+
     return {"message": "Relation deleted successfully"}
+
+
+@router.put("/{map_id}/nodes/{node_id}/relations", response_model=RelationBulkUpdateResponse)
+async def replace_relations(
+    map_id: int,
+    node_id: str,
+    payload: RelationBulkUpdateRequest,
+    current_user: User = Depends(get_current_user),
+    usm_db: AsyncSession = Depends(get_usm_db),
+    db: AsyncSession = Depends(get_db),
+):
+    """批次更新指定節點的所有關聯"""
+    
+    print(f"\n[PUT RELATION] Called - map_id={map_id}, node_id={node_id}")
+    print(f"[PUT RELATION] Payload relations count: {len(payload.relations) if payload and payload.relations else 0}")
+
+    source_map = await _get_usm_map(usm_db, map_id)
+
+    if not source_map:
+        raise HTTPException(status_code=404, detail="Source map not found")
+
+    await _require_usm_permission(current_user, "update", source_map.team_id)
+
+    source_node_db = await _get_usm_node(usm_db, map_id, node_id)
+
+    if not source_node_db:
+        raise HTTPException(status_code=404, detail="Source node not found")
+
+    incoming_relations = payload.relations if payload and payload.relations is not None else []
+    print(f"[PUT RELATION] Incoming relations: {incoming_relations}")
+    
+    prepared_relations = await _prepare_relation_entries(
+        incoming_relations,
+        source_map,
+        current_user,
+        usm_db,
+        db,
+    )
+    
+    print(f"[PUT RELATION] Prepared relations: {prepared_relations}")
+
+    _save_node_relations(source_map, source_node_db, prepared_relations)
+    
+    print(f"[PUT RELATION] After save, source_node_db.related_ids: {source_node_db.related_ids}")
+    
+    await usm_db.commit()
+    print(f"[PUT RELATION] After commit")
+    
+    await usm_db.refresh(source_node_db)
+    await usm_db.refresh(source_map)
+    
+    print(f"[PUT RELATION] After refresh, source_node_db.related_ids: {source_node_db.related_ids}\n")
+
+    return RelationBulkUpdateResponse(relations=_normalize_related_ids(source_node_db.related_ids))
