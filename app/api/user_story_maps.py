@@ -401,7 +401,10 @@ async def update_map(
                 node_type=node.node_type.value if hasattr(node.node_type, 'value') else node.node_type,
                 parent_id=node.parent_id,
                 children_ids=node.children_ids,
-                related_ids=node.related_ids,
+                related_ids=[
+                    rel.dict() if hasattr(rel, 'dict') else rel
+                    for rel in node.related_ids
+                ],
                 comment=node.comment,
                 jira_tickets=node.jira_tickets,
                 team=node.team,
