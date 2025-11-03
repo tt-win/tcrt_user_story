@@ -664,6 +664,12 @@ const UserStoryMapFlow = () => {
         const parentNode = nodes.find(n => n.id === parentId);
         if (!parentNode) return;
 
+        // Clean up any lingering modal backdrops
+        document.querySelectorAll('.modal-backdrop').forEach((backdrop) => backdrop.remove());
+        document.body.classList.remove('modal-open');
+        document.body.style.removeProperty('padding-right');
+        document.body.style.removeProperty('paddingRight');
+
         const modal = new bootstrap.Modal(document.getElementById('addNodeModal'));
         modal.show();
 
@@ -694,13 +700,19 @@ const UserStoryMapFlow = () => {
         }
         const siblingNode = nodes.find(n => n.id === siblingId);
         if (!siblingNode) return;
-        
+
         // Root node cannot have siblings - check by level and parentId
         if (siblingNode.data.level === 0 || !siblingNode.data.parentId) {
             alert('根節點不能新增同級節點');
             return;
         }
-        
+
+        // Clean up any lingering modal backdrops
+        document.querySelectorAll('.modal-backdrop').forEach((backdrop) => backdrop.remove());
+        document.body.classList.remove('modal-open');
+        document.body.style.removeProperty('padding-right');
+        document.body.style.removeProperty('paddingRight');
+
         const modal = new bootstrap.Modal(document.getElementById('addNodeModal'));
         modal.show();
 
@@ -2292,9 +2304,53 @@ document.addEventListener('DOMContentLoaded', async function() {
             document.getElementById('relationSourceNodeId').textContent = selectedNode.id;
             document.getElementById('relationSearchInput').value = '';
             document.getElementById('relationSearchResults').innerHTML = '<p class="text-muted small text-center py-3">輸入關鍵字並搜尋</p>';
-            document.getElementById('relationSelectedList').innerHTML = '<p class="text-muted small text-center py-3">尚未選擇</p>';
-            document.getElementById('relationSelectedCount').textContent = '0';
+            
+            // Load existing relations
+            const existingRelations = selectedNode.data?.relatedIds || [];
             window.selectedRelationTargets = [];
+            
+            if (existingRelations.length > 0) {
+                existingRelations.forEach(rel => {
+                    window.selectedRelationTargets.push(rel);
+                });
+                
+                // Display existing relations
+                const relatedHtml = existingRelations.map((rel, idx) => {
+                    const displayTitle = typeof rel === 'string' 
+                        ? rel 
+                        : (rel.display_title || rel.node_title || rel.node_id || rel);
+                    const mapInfo = typeof rel === 'string' 
+                        ? '' 
+                        : (rel.map_name ? ` (${rel.map_name})` : '');
+                    
+                    return `
+                        <div class="list-group-item d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong>${escapeHtml(displayTitle)}</strong>
+                                ${mapInfo ? `<small class="text-muted">${escapeHtml(mapInfo)}</small>` : ''}
+                            </div>
+                            <button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="${idx}">
+                                <i class="fas fa-trash-alt"></i>
+                            </button>
+                        </div>
+                    `;
+                }).join('');
+                
+                document.getElementById('relationSelectedList').innerHTML = relatedHtml;
+                
+                // Add remove handlers
+                document.querySelectorAll('[data-remove-idx]').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const idx = parseInt(btn.getAttribute('data-remove-idx'));
+                        window.selectedRelationTargets.splice(idx, 1);
+                        window.openRelationModal?.(); // Refresh modal
+                    });
+                });
+            } else {
+                document.getElementById('relationSelectedList').innerHTML = '<p class="text-muted small text-center py-3">尚未選擇</p>';
+            }
+            
+            document.getElementById('relationSelectedCount').textContent = window.selectedRelationTargets.length;
 
             const modalElement = document.getElementById('relationSettingsModal');
             if (!modalElement) {
