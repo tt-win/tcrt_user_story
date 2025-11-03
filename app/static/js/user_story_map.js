@@ -2368,14 +2368,19 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
         
         try {
-            const params = new URLSearchParams({
-                map_id: currentMapId,
-                ...(query && { q: query }),
-                ...(nodeType && { node_type: nodeType }),
-                include_external: includeExternal
-            });
-            
-            const url = `/api/user-story-maps/search-nodes?${params}`;
+            const params = new URLSearchParams();
+            params.set('map_id', String(currentMapId));
+            if (query) {
+                params.set('q', query);
+            }
+            if (nodeType) {
+                params.set('node_type', nodeType);
+            }
+            if (includeExternal) {
+                params.set('include_external', 'true');
+            }
+
+            const url = `/api/user-story-maps/search-nodes?${params.toString()}`;
             console.log('[Relation] Fetching:', url);
             
             const token = localStorage.getItem('access_token');
@@ -2394,6 +2399,8 @@ document.addEventListener('DOMContentLoaded', async function() {
             console.log('[Relation] Search response status:', response.status);
             
             if (!response.ok) {
+                const errorDetail = await response.text();
+                console.error('[Relation] Search error body:', errorDetail);
                 throw new Error(`Search failed: ${response.statusText}`);
             }
             

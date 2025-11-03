@@ -93,6 +93,91 @@ async def _require_usm_permission(
         )
 
 
+@router.get("/search-nodes", response_model=List[SearchNodeResult])
+async def search_global_nodes(
+    q: Optional[str] = Query(None, description="搜尋關鍵字"),
+    node_type: Optional[str] = Query(None, description="節點類型"),
+    map_id: Optional[int] = Query(None, description="限制在特定地圖"),
+    team_id: Optional[int] = Query(None, description="限制在特定團隊"),
+    include_external: bool = Query(False, description="是否搜尋外部地圖"),
+    current_user: User = Depends(get_current_user),
+    usm_db: AsyncSession = Depends(get_usm_db),
+    db: AsyncSession = Depends(get_db),
+):
+    """跨地圖搜尋節點"""
+
+    if not map_id:
+        raise HTTPException(status_code=400, detail="map_id is required")
+
+    source_map_result = await usm_db.execute(
+        select(UserStoryMapDB).where(UserStoryMapDB.id == map_id)
+    )
+    source_map_db = source_map_result.scalar_one_or_none()
+
+    if not source_map_db:
+        raise HTTPException(status_code=404, detail="Source map not found")
+
+    await _require_usm_permission(current_user, "view", source_map_db.team_id)
+
+    query = select(UserStoryMapNodeDB)
+
+    if not include_external:
+        query = query.where(UserStoryMapNodeDB.map_id == map_id)
+
+    if q:
+        like_pattern = f"%{q}%"
+        query = query.where(
+            or_(
+                UserStoryMapNodeDB.title.ilike(like_pattern),
+                UserStoryMapNodeDB.description.ilike(like_pattern),
+                UserStoryMapNodeDB.comment.ilike(like_pattern),
+                UserStoryMapNodeDB.as_a.ilike(like_pattern),
+                UserStoryMapNodeDB.i_want.ilike(like_pattern),
+                UserStoryMapNodeDB.so_that.ilike(like_pattern),
+            )
+        )
+
+    if node_type:
+        query = query.where(UserStoryMapNodeDB.node_type == node_type)
+
+    if team_id:
+        query = query.where(UserStoryMapNodeDB.map_id.in_(
+            select(UserStoryMapDB.id).where(UserStoryMapDB.team_id == team_id)
+        ))
+
+    result = await usm_db.execute(query)
+    nodes = result.scalars().all()
+
+    search_results = []
+    for node in nodes:
+        map_result = await usm_db.execute(
+            select(UserStoryMapDB).where(UserStoryMapDB.id == node.map_id)
+        )
+        node_map = map_result.scalar_one_or_none()
+
+        team_result = await db.execute(
+            select(Team).where(Team.id == node_map.team_id)
+        )
+        team = team_result.scalar_one_or_none()
+
+        if include_external and node.map_id != map_id:
+            await _require_usm_permission(current_user, "view", node_map.team_id)
+
+        search_results.append(SearchNodeResult(
+            node_id=node.node_id,
+            node_title=node.title,
+            node_type=node.node_type,
+            map_id=node.map_id,
+            map_name=node_map.name if node_map else "Unknown",
+            team_id=node_map.team_id if node_map else 0,
+            team_name=team.name if team else "Unknown",
+            breadcrumb=node.comment,
+            description=node.description,
+        ))
+
+    return search_results
+
+
 @router.get("/team/{team_id}", response_model=List[UserStoryMapResponse])
 async def get_team_maps(
     team_id: int,
@@ -513,91 +598,6 @@ async def get_node_path(
         current = node_dict.get(parent_id) if parent_id else None
     
     return {"path": path}
-
-
-@router.get("/search-nodes", response_model=List[SearchNodeResult])
-async def search_global_nodes(
-    q: Optional[str] = Query(None, description="搜尋關鍵字"),
-    node_type: Optional[str] = Query(None, description="節點類型"),
-    map_id: Optional[int] = Query(None, description="限制在特定地圖"),
-    team_id: Optional[int] = Query(None, description="限制在特定團隊"),
-    include_external: bool = Query(False, description="是否搜尋外部地圖"),
-    current_user: User = Depends(get_current_user),
-    usm_db: AsyncSession = Depends(get_usm_db),
-    db: AsyncSession = Depends(get_db),
-):
-    """跨地圖搜尋節點"""
-    
-    if not map_id:
-        raise HTTPException(status_code=400, detail="map_id is required")
-    
-    source_map_result = await usm_db.execute(
-        select(UserStoryMapDB).where(UserStoryMapDB.id == map_id)
-    )
-    source_map_db = source_map_result.scalar_one_or_none()
-    
-    if not source_map_db:
-        raise HTTPException(status_code=404, detail="Source map not found")
-    
-    await _require_usm_permission(current_user, "view", source_map_db.team_id)
-    
-    query = select(UserStoryMapNodeDB)
-    
-    if not include_external:
-        query = query.where(UserStoryMapNodeDB.map_id == map_id)
-    
-    if q:
-        like_pattern = f"%{q}%"
-        query = query.where(
-            or_(
-                UserStoryMapNodeDB.title.ilike(like_pattern),
-                UserStoryMapNodeDB.description.ilike(like_pattern),
-                UserStoryMapNodeDB.comment.ilike(like_pattern),
-                UserStoryMapNodeDB.as_a.ilike(like_pattern),
-                UserStoryMapNodeDB.i_want.ilike(like_pattern),
-                UserStoryMapNodeDB.so_that.ilike(like_pattern),
-            )
-        )
-    
-    if node_type:
-        query = query.where(UserStoryMapNodeDB.node_type == node_type)
-    
-    if team_id:
-        query = query.where(UserStoryMapNodeDB.map_id.in_(
-            select(UserStoryMapDB.id).where(UserStoryMapDB.team_id == team_id)
-        ))
-    
-    result = await usm_db.execute(query)
-    nodes = result.scalars().all()
-    
-    search_results = []
-    for node in nodes:
-        map_result = await usm_db.execute(
-            select(UserStoryMapDB).where(UserStoryMapDB.id == node.map_id)
-        )
-        node_map = map_result.scalar_one_or_none()
-        
-        team_result = await db.execute(
-            select(Team).where(Team.id == node_map.team_id)
-        )
-        team = team_result.scalar_one_or_none()
-        
-        if include_external and node.map_id != map_id:
-            await _require_usm_permission(current_user, "view", node_map.team_id)
-        
-        search_results.append(SearchNodeResult(
-            node_id=node.node_id,
-            node_title=node.title,
-            node_type=node.node_type,
-            map_id=node.map_id,
-            map_name=node_map.name if node_map else "Unknown",
-            team_id=node_map.team_id if node_map else 0,
-            team_name=team.name if team else "Unknown",
-            breadcrumb=node.comment,
-            description=node.description,
-        ))
-    
-    return search_results
 
 
 @router.post("/{map_id}/nodes/{node_id}/relations")
