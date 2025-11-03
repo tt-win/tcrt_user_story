@@ -587,7 +587,7 @@ async def search_global_nodes(
         
         search_results.append(SearchNodeResult(
             node_id=node.node_id,
-            node_title=node.title,
+            node_title=node.title or "",
             node_type=node.node_type,
             map_id=node.map_id,
             map_name=node_map.name if node_map else "Unknown",
