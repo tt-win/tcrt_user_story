@@ -5,6 +5,7 @@ User Story Map API 路由
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, or_, and_
+from sqlalchemy.orm.attributes import flag_modified
 from typing import List, Optional
 from datetime import datetime
 import uuid
@@ -267,9 +268,8 @@ async def get_map(
         # Ensure node_type exists and is valid
         if not node_copy.get('node_type'):
             node_copy['node_type'] = 'feature_category'
-        # Ensure related_ids exists
-        if 'related_ids' not in node_copy:
-            node_copy['related_ids'] = []
+        # Ensure related_ids format
+        node_copy['related_ids'] = _normalize_related_ids(node_copy.get('related_ids'))
         processed_nodes.append(node_copy)
 
     nodes = [UserStoryMapNode(**node) for node in processed_nodes]
@@ -388,14 +388,20 @@ async def update_map(
     if map_data.description is not None:
         map_db.description = map_data.description
     if map_data.nodes is not None:
-        map_db.nodes = [node.dict() for node in map_data.nodes]
-        
+        normalized_nodes = []
+
         # 更新節點索引表
         await db.execute(
             delete(UserStoryMapNodeDB).where(UserStoryMapNodeDB.map_id == map_id)
         )
-        
+
         for node in map_data.nodes:
+            normalized_related = _normalize_related_ids(node.related_ids)
+
+            node_dict = node.dict()
+            node_dict["related_ids"] = normalized_related
+            normalized_nodes.append(node_dict)
+
             node_db = UserStoryMapNodeDB(
                 map_id=map_id,
                 node_id=node.id,
@@ -404,10 +410,7 @@ async def update_map(
                 node_type=node.node_type.value if hasattr(node.node_type, 'value') else node.node_type,
                 parent_id=node.parent_id,
                 children_ids=node.children_ids,
-                related_ids=[
-                    rel.dict() if hasattr(rel, 'dict') else rel
-                    for rel in node.related_ids
-                ],
+                related_ids=normalized_related,
                 comment=node.comment,
                 jira_tickets=node.jira_tickets,
                 team=node.team,
@@ -420,6 +423,8 @@ async def update_map(
                 so_that=getattr(node, 'so_that', None),
             )
             db.add(node_db)
+
+        map_db.nodes = normalized_nodes
     
     if map_data.edges is not None:
         map_db.edges = [edge.dict() for edge in map_data.edges]
@@ -429,12 +434,11 @@ async def update_map(
     await db.commit()
     await db.refresh(map_db)
     
-    # Ensure all nodes have related_ids
+    # Ensure all nodes have normalized related_ids
     processed_nodes = []
     for node in (map_db.nodes or []):
         node_copy = dict(node)
-        if 'related_ids' not in node_copy:
-            node_copy['related_ids'] = []
+        node_copy['related_ids'] = _normalize_related_ids(node_copy.get('related_ids'))
         processed_nodes.append(node_copy)
     
     nodes = [UserStoryMapNode(**node) for node in processed_nodes]
@@ -630,6 +634,8 @@ async def create_relation(
 ):
     """建立節點關聯"""
     
+    print(f"\n[API] POST relation called - map_id={map_id}, node_id={node_id}, target_node={request.target_node_id}, target_map={request.target_map_id}")
+    
     source_map_result = await usm_db.execute(
         select(UserStoryMapDB).where(UserStoryMapDB.id == map_id)
     )
@@ -680,6 +686,7 @@ async def create_relation(
     
     if not source_node_db:
         raise HTTPException(status_code=404, detail="Source node not found")
+    print(f"[API] Source node found: {source_node_db.node_id}, current related_ids: {source_node_db.related_ids}")
     
     relation_id = str(uuid.uuid4())
     
@@ -690,17 +697,74 @@ async def create_relation(
         "map_name": target_map.name,
         "team_id": target_map.team_id,
         "team_name": target_team.name if target_team else "Unknown",
-        "display_title": target_node.title,
+        "display_title": target_node.title or "",
     }
+    
+    print(f"[API] Creating relation: {related_node}")
     
     if source_node_db.related_ids is None:
         source_node_db.related_ids = []
     
-    source_node_db.related_ids.append(related_node)
+    # Create new list to trigger SQLAlchemy change detection
+    updated_related_ids = [*source_node_db.related_ids, related_node]
+    source_node_db.related_ids = updated_related_ids
     source_node_db.updated_at = datetime.utcnow()
     
+    print(f"[API] After reassign, related_ids: {source_node_db.related_ids}")
+    
+    # Flag as modified for SQLAlchemy
+    flag_modified(source_node_db, "related_ids")
+    
+    print(f"[API] Flag modified called")
+
+    # 同步更新主 Map JSON
+    map_nodes = source_map.nodes or []
+    updated = False
+    for idx, entry in enumerate(map_nodes):
+        entry_id = entry.get("id") if isinstance(entry, dict) else None
+        if entry_id == node_id:
+            entry_copy = dict(entry)
+            entry_copy["related_ids"] = _normalize_related_ids(source_node_db.related_ids)
+            map_nodes[idx] = entry_copy
+            updated = True
+            break
+    if not updated:
+        map_nodes.append({
+            "id": node_id,
+            "title": source_node_db.title,
+            "description": source_node_db.description,
+            "node_type": source_node_db.node_type,
+            "parent_id": source_node_db.parent_id,
+            "children_ids": source_node_db.children_ids or [],
+            "related_ids": _normalize_related_ids(source_node_db.related_ids),
+            "comment": source_node_db.comment,
+            "jira_tickets": source_node_db.jira_tickets or [],
+            "team": source_node_db.team,
+            "aggregated_tickets": source_node_db.aggregated_tickets or [],
+            "position_x": source_node_db.position_x,
+            "position_y": source_node_db.position_y,
+            "level": source_node_db.level,
+            "as_a": source_node_db.as_a,
+            "i_want": source_node_db.i_want,
+            "so_that": source_node_db.so_that,
+        })
+    source_map.nodes = map_nodes
+    source_map.updated_at = datetime.utcnow()
+    flag_modified(source_map, "nodes")
+    
+    
+    print(f"[API] Before commit, source_node_db.related_ids: {source_node_db.related_ids}")
+    print(f"[API] Committing to database...")
+    
     await usm_db.commit()
+    
+    print(f"[API] After commit")
+    
+    await usm_db.refresh(source_map)
     await usm_db.refresh(source_node_db)
+    
+    print(f"[API] After refresh, source_node_db.related_ids: {source_node_db.related_ids}")
+    print(f"[API] Returning relation_id: {relation_id}\n")
     
     return {"relation_id": relation_id, "message": "Relation created successfully"}
 
@@ -744,6 +808,20 @@ async def delete_relation(
             if isinstance(rel, str) or rel.get("relation_id") != relation_id
         ]
         source_node_db.updated_at = datetime.utcnow()
+
+        # 同步更新主 Map JSON
+        map_nodes = source_map.nodes or []
+        for idx, entry in enumerate(map_nodes):
+            entry_id = entry.get("id") if isinstance(entry, dict) else None
+            if entry_id == node_id:
+                entry_copy = dict(entry)
+                entry_copy["related_ids"] = _normalize_related_ids(source_node_db.related_ids)
+                map_nodes[idx] = entry_copy
+                break
+        source_map.nodes = map_nodes
+        source_map.updated_at = datetime.utcnow()
+        flag_modified(source_map, "nodes")
+        
         await usm_db.commit()
     
     return {"message": "Relation deleted successfully"}
