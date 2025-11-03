@@ -73,6 +73,88 @@ const updateUsmUiVisibility = () => {
     setElementVisibility('confirmAddNodeBtn', hasUsmAccess('nodeAdd'));
 };
 
+const ensureRelatedDisplayTitle = (entry) => {
+    if (!entry || typeof entry === 'string') {
+        return entry;
+    }
+
+    const displayTitle = entry.display_title
+        || entry.node_title
+        || entry.displayTitle
+        || entry.nodeTitle
+        || entry.node_id
+        || entry.nodeId
+        || 'Related Node';
+
+    return {
+        ...entry,
+        display_title: displayTitle,
+    };
+};
+
+const normalizeRelatedEntries = (entries) => {
+    if (!Array.isArray(entries)) {
+        return [];
+    }
+
+    return entries.map((entry) => {
+        if (typeof entry === 'string') {
+            return entry;
+        }
+
+        const relationId = entry.relation_id
+            || entry.relationId
+            || `legacy-${entry.node_id || entry.nodeId || Math.random().toString(36).slice(2)}`;
+        const nodeId = entry.node_id || entry.nodeId || '';
+        const mapIdRaw = entry.map_id ?? entry.mapId;
+        const teamIdRaw = entry.team_id ?? entry.teamId;
+        const mapIdParsed = Number(mapIdRaw);
+        const teamIdParsed = Number(teamIdRaw);
+        const mapId = Number.isFinite(mapIdParsed) ? mapIdParsed : mapIdRaw;
+        const teamId = Number.isFinite(teamIdParsed) ? teamIdParsed : teamIdRaw;
+        const mapName = entry.map_name ?? entry.mapName ?? '';
+        const teamName = entry.team_name ?? entry.teamName ?? '';
+
+        return ensureRelatedDisplayTitle({
+            relation_id: relationId,
+            node_id: nodeId,
+            map_id: mapId,
+            map_name: mapName,
+            team_id: teamId,
+            team_name: teamName,
+            display_title: entry.display_title,
+            node_title: entry.node_title || entry.nodeTitle || entry.display_title,
+        });
+    });
+};
+
+const serializeRelatedEntries = (entries) => {
+    if (!Array.isArray(entries)) {
+        return [];
+    }
+    return entries.map((entry) => {
+        if (typeof entry === 'string') {
+            return entry;
+        }
+
+        const normalized = ensureRelatedDisplayTitle(entry);
+        const mapIdParsed = Number(normalized.map_id);
+        const teamIdParsed = Number(normalized.team_id);
+        const mapId = Number.isFinite(mapIdParsed) ? mapIdParsed : normalized.map_id;
+        const teamId = Number.isFinite(teamIdParsed) ? teamIdParsed : normalized.team_id;
+
+        return {
+            relation_id: normalized.relation_id,
+            node_id: normalized.node_id,
+            map_id: mapId,
+            map_name: normalized.map_name || '',
+            team_id: teamId,
+            team_name: normalized.team_name || '',
+            display_title: normalized.display_title,
+        };
+    });
+};
+
 const applyUsmPermissions = async () => {
     let effectiveRole = (localStorage.getItem('user_role') || '').toLowerCase();
 
@@ -412,7 +494,7 @@ const UserStoryMapFlow = () => {
                         comment: node.comment,
                         parentId: node.parent_id,
                         childrenIds: node.children_ids || [],
-                        relatedIds: node.related_ids,
+                        relatedIds: normalizeRelatedEntries(node.related_ids),
                         level: node.level || 0,
                         dimmed: false,
                         isRoot: !node.parent_id,
@@ -494,7 +576,7 @@ const UserStoryMapFlow = () => {
                 node_type: node.data.nodeType,
                 parent_id: node.data.parentId,
                 children_ids: node.data.childrenIds || [],
-                related_ids: node.data.relatedIds || [],
+                related_ids: serializeRelatedEntries(node.data.relatedIds),
                 comment: node.data.comment,
                 jira_tickets: node.data.jiraTickets || [],
                 team: teamName || node.data.team || '',
@@ -670,8 +752,20 @@ const UserStoryMapFlow = () => {
         document.body.style.removeProperty('padding-right');
         document.body.style.removeProperty('paddingRight');
 
-        const modal = new bootstrap.Modal(document.getElementById('addNodeModal'));
+        const modalElement = document.getElementById('addNodeModal');
+        // Ensure modal is visible
+        modalElement.style.zIndex = '1050';
+        
+        const modal = new bootstrap.Modal(modalElement);
         modal.show();
+        
+        // After showing, adjust backdrop z-index
+        setTimeout(() => {
+            const backdrops = document.querySelectorAll('.modal-backdrop');
+            if (backdrops.length > 0) {
+                backdrops[backdrops.length - 1].style.zIndex = '1049';
+            }
+        }, 10);
 
         // Set default node type
         const nodeTypeSelect = document.getElementById('nodeType');
@@ -713,8 +807,20 @@ const UserStoryMapFlow = () => {
         document.body.style.removeProperty('padding-right');
         document.body.style.removeProperty('paddingRight');
 
-        const modal = new bootstrap.Modal(document.getElementById('addNodeModal'));
+        const modalElement = document.getElementById('addNodeModal');
+        // Ensure modal is visible
+        modalElement.style.zIndex = '1050';
+        
+        const modal = new bootstrap.Modal(modalElement);
         modal.show();
+        
+        // After showing, adjust backdrop z-index
+        setTimeout(() => {
+            const backdrops = document.querySelectorAll('.modal-backdrop');
+            if (backdrops.length > 0) {
+                backdrops[backdrops.length - 1].style.zIndex = '1049';
+            }
+        }, 10);
 
         const teamLabel = document.getElementById('nodeTeamDisplay');
         if (teamLabel) {
@@ -1330,7 +1436,7 @@ const UserStoryMapFlow = () => {
             // Ensure modal is not hidden
             modalElement.style.display = 'block';
             modalElement.style.position = 'fixed';
-            modalElement.style.zIndex = '9999';
+            modalElement.style.zIndex = '1060';
             
             // Remove any existing backdrop
             document.querySelectorAll('.modal-backdrop').forEach(bd => bd.remove());
@@ -2368,7 +2474,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             // Ensure modal is not hidden
             modalElement.style.display = 'block';
             modalElement.style.position = 'fixed';
-            modalElement.style.zIndex = '9999';
+            modalElement.style.zIndex = '1060';
             
             console.log('[Relation] Creating modal instance');
             const modalInstance = new bootstrap.Modal(modalElement, {
@@ -2588,6 +2694,10 @@ document.addEventListener('DOMContentLoaded', async function() {
                     if (Number.isNaN(currentMapId)) {
                         throw new Error('未選擇地圖，無法建立關聯');
                     }
+                    
+                    console.log('[Relation] Target object:', target);
+                    console.log('[Relation] Target node_id:', target.node_id, 'Target map_id:', target.map_id);
+                    
                     const token = localStorage.getItem('access_token');
                     const headers = {
                         'Content-Type': 'application/json',
@@ -2596,15 +2706,19 @@ document.addEventListener('DOMContentLoaded', async function() {
                         headers.Authorization = `Bearer ${token}`;
                     }
 
+                    const payload = {
+                        target_node_id: target.node_id,
+                        target_map_id: target.map_id || currentMapId
+                    };
+                    
+                    console.log('[Relation] Sending payload:', payload);
+
                     const response = await fetch(
                         `/api/user-story-maps/${currentMapId}/nodes/${sourceNode.id}/relations`,
                         {
                             method: 'POST',
                             headers,
-                            body: JSON.stringify({
-                                target_node_id: target.node_id,
-                                target_map_id: target.map_id
-                            })
+                            body: JSON.stringify(payload)
                         }
                     );
                     
@@ -2615,7 +2729,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                         const result = await response.json();
                         
                         // Add to node data
-                        const newRelation = {
+                        const newRelation = ensureRelatedDisplayTitle({
                             relation_id: result.relation_id,
                             node_id: target.node_id,
                             map_id: target.map_id,
@@ -2623,31 +2737,29 @@ document.addEventListener('DOMContentLoaded', async function() {
                             team_id: target.team_id,
                             team_name: target.team_name,
                             display_title: target.node_title,
-                        };
+                            node_title: target.node_title,
+                        });
 
-                        if (!Array.isArray(sourceNode.data.relatedIds)) {
-                            sourceNode.data.relatedIds = [];
-                        }
-                        sourceNode.data.relatedIds.push(newRelation);
+                        // Update local nodes reference immediately
+                        const updatedSourceNode = {
+                            ...sourceNode,
+                            data: {
+                                ...sourceNode.data,
+                                relatedIds: [
+                                    ...(Array.isArray(sourceNode.data.relatedIds) ? sourceNode.data.relatedIds : []),
+                                    newRelation,
+                                ],
+                            }
+                        };
 
                         window.userStoryMapFlow?.setNodes?.((nodes) =>
                             nodes.map((node) =>
-                                node.id === sourceNode.id
-                                    ? {
-                                        ...node,
-                                        data: {
-                                            ...node.data,
-                                            relatedIds: [
-                                                ...(Array.isArray(node.data.relatedIds) ? node.data.relatedIds : []),
-                                                newRelation,
-                                            ],
-                                        },
-                                    }
-                                    : node
+                                node.id === sourceNode.id ? updatedSourceNode : node
                             )
                         );
                         
                         console.log('[Relation] Relation created:', result.relation_id);
+                        console.log('[Relation] Updated source node relatedIds:', updatedSourceNode.data.relatedIds);
                     } else {
                         const errorData = await response.json();
                         console.error('[Relation] Create relation failed:', errorData);
@@ -2659,6 +2771,10 @@ document.addEventListener('DOMContentLoaded', async function() {
             
             if (successCount === targets.length) {
                 showMessage(`已成功建立 ${successCount} 個關聯`, 'success');
+                
+                // Wait for React state to update
+                console.log('[Relation] Waiting for state sync...');
+                await new Promise(resolve => setTimeout(resolve, 100));
                 
                 // Save map
                 console.log('[Relation] Saving map');

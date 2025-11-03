@@ -121,17 +121,26 @@
     /* Ensure modals are visible and on top */
     #relationSettingsModal,
     #fullRelationGraphModal {
-        z-index: 9998 !important;
+        z-index: 1060 !important;
     }
     
     #relationSettingsModal.show,
     #fullRelationGraphModal.show {
         display: block !important;
-        z-index: 9998 !important;
+        z-index: 1060 !important;
     }
     
-    .modal-backdrop {
-        z-index: 9997 !important;
+    /* Add Node modal above others */
+    #addNodeModal { z-index: 1062 !important; }
+    #addNodeModal.show { display: block !important; z-index: 1062 !important; }
+    #addNodeModal ~ .modal-backdrop { z-index: 1061 !important; }
+    
+
+    
+    /* Backdrop should be just below modal */
+    #relationSettingsModal ~ .modal-backdrop,
+    #fullRelationGraphModal ~ .modal-backdrop {
+        z-index: 1059 !important;
     }
     
     .react-flow__node.selected .custom-node {
@@ -259,7 +268,7 @@
             <button type="button" class="btn btn-sm btn-outline-secondary" id="addSiblingBtn">
                 <i class="fas fa-plus"></i> 新增同級節點
             </button>
-            <button type="button" class="btn btn-sm btn-outline-success" id="setRelationsBtn" title="建立節點關聯" data-bs-toggle="modal" data-bs-target="#relationSettingsModal" onclick="window.openRelationModal?.()">
+            <button type="button" class="btn btn-sm btn-outline-success" id="setRelationsBtn" title="建立節點關聯" onclick="window.openRelationModal?.()">
                 <i class="fas fa-link"></i> 設定關聯
             </button>
             <button type="button" class="btn btn-sm btn-outline-secondary" id="autoLayoutBtn">
@@ -330,8 +339,8 @@
                             <option value="feature_category">功能節點</option>
                         </select>
                     </div>
-                    <div class="col-md-6">
-                        <div class="form-check mt-3">
+                    <div class="col-md-6 d-flex align-items-end">
+                        <div class="form-check mb-0">
                             <input class="form-check-input" type="checkbox" id="relationIncludeExternal">
                             <label class="form-check-label small" for="relationIncludeExternal">
                                 搜尋其他地圖
@@ -341,7 +350,7 @@
                 </div>
 
                 <!-- Search Results -->
-                <div class="mb-3">
+                <div class="mt-2 mb-3">
                     <label class="form-label">搜尋結果</label>
                     <div class="list-group list-group-sm" id="relationSearchResults" style="max-height: 250px; overflow-y: auto;">
                         <p class="text-muted small text-center py-3">輸入關鍵字並搜尋</p>
