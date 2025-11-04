@@ -1558,7 +1558,9 @@ const UserStoryMapFlow = () => {
         if (!nodeId) return;
 
         const nodesById = new Map(nodes.map((node) => [node.id, node]));
-        const targetNode = nodesById.get(nodeId);
+        // 支援多選：使用第一個有效的節點作為焦點來驗證
+        const activeIds = Array.isArray(nodeId) ? nodeId.filter(Boolean) : [nodeId];
+        const targetNode = nodesById.get(activeIds[0]);
 
         if (!targetNode) {
             showMessage('找不到指定節點', 'error');
@@ -1566,7 +1568,6 @@ const UserStoryMapFlow = () => {
         }
 
         // 支援多選：合併多個節點的高亮集合
-        const activeIds = Array.isArray(nodeId) ? nodeId.filter(Boolean) : [nodeId];
         const highlightedIds = new Set();
         const crossMapRelations = [];
         let focusId = activeIds[0];
