@@ -107,12 +107,14 @@ const CustomNode = ({ data, id }) => {
     return React.createElement(
         'div',
         {
-            className: `custom-node${data.isRoot ? ' root-node' : ''}`,
+            className: `custom-node${data.isRoot ? ' root-node' : ''}${data.highlighted ? ' highlighted' : ''}`,
             'data-node-type': data.nodeType,
             style: {
                 opacity: data.dimmed ? 0.3 : 1,
                 transition: 'opacity 0.3s ease',
                 backgroundColor: data.isExternal ? '#e6f7ff' : undefined,
+                borderColor: data.highlighted ? '#ff6b35' : undefined,
+                boxShadow: data.highlighted ? '0 0 0 3px rgba(255, 107, 53, 0.35)' : undefined,
             }
         },
         React.createElement(Handle, { type: 'target', position: Position.Top, id: 'top' }),
