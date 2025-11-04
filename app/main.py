@@ -125,6 +125,11 @@ async def user_story_map(request: Request, team_id: int):
     """User Story Map 頁面"""
     return templates.TemplateResponse("user_story_map.html", {"request": request, "team_id": team_id})
 
+@app.get("/user-story-map-popup", response_class=HTMLResponse)
+async def user_story_map_popup(request: Request):
+    """User Story Map 彈出視圖 - 用於外部節點"""
+    return templates.TemplateResponse("user_story_map_popup.html", {"request": request})
+
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}

@@ -946,14 +946,22 @@ const UserStoryMapFlow = () => {
                             if (typeof rel === 'string') {
                                 return `<div class="list-group-item small"><span class="text-muted">${escapeHtml(rel)}</span></div>`;
                             }
+                            // Only show popup button if:
+                            // 1. map_id exists (not undefined/null)
+                            // 2. map_id is different from current map
+                            // 3. map_id is not 0 or empty string (treating falsy values as same map)
+                            const isCrossMap = rel.map_id && String(rel.map_id) !== String(window.currentMapId);
                             return `
-                                <button type="button" class="list-group-item list-group-item-action small text-start" data-related-idx="${idx}" title="點擊導航到該節點">
-                                    <strong>${escapeHtml(rel.display_title || rel.node_id)}</strong>
-                                    <br>
-                                    <small class="text-muted">
-                                        ${escapeHtml(rel.team_name || '')} / ${escapeHtml(rel.map_name || '')}
-                                    </small>
-                                </button>
+                                <div class="list-group-item small" style="display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px;">
+                                    <button type="button" class="flex-grow-1 btn btn-link btn-sm text-start p-0" data-related-idx="${idx}" title="點擊導航到該節點">
+                                        <strong>${escapeHtml(rel.display_title || rel.node_id)}</strong>
+                                        <br>
+                                        <small class="text-muted">
+                                            ${escapeHtml(rel.team_name || '')} / ${escapeHtml(rel.map_name || '')}
+                                        </small>
+                                    </button>
+                                    ${isCrossMap ? `<button type="button" class="btn btn-sm btn-outline-info" data-related-popup-idx="${idx}" title="在新視窗開啟外部地圖" style="flex-shrink: 0;"><i class="fas fa-external-link-alt"></i></button>` : ''}
+                                </div>
                             `;
                         }).join('')}
                     </div>
@@ -1064,32 +1072,46 @@ const UserStoryMapFlow = () => {
                 
                 if (!nodeId) return;
                 
+                // Check if it's an external node
+                const isCrossMap = mapId && String(mapId) !== String(window.currentMapId);
+                
+                // External nodes should not be focusable via navigation button
+                if (isCrossMap) {
+                    showMessage('外部節點，請使用「開啟」按鈕在彈出視窗中查看', 'info');
+                    return;
+                }
+                
                 // Same map - directly focus
-                if (!mapId || mapId === window.currentMapId) {
-                    window.userStoryMapFlow?.focusNode?.(nodeId);
-                    showMessage(`已聚焦節點: ${relatedNode.display_title || nodeId}`, 'info');
+                window.userStoryMapFlow?.focusNode?.(nodeId);
+                showMessage(`已聚焦節點: ${relatedNode.display_title || nodeId}`, 'info');
+            });
+        });
+
+        // Add event handlers for popup buttons (cross-map nodes)
+        document.querySelectorAll('[data-related-popup-idx]').forEach((btn) => {
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const idx = parseInt(btn.getAttribute('data-related-popup-idx'));
+                const relatedNode = data.relatedIds[idx];
+                
+                if (!relatedNode || typeof relatedNode === 'string') return;
+                
+                const mapId = relatedNode.map_id || relatedNode.mapId;
+                const teamId = relatedNode.team_id || relatedNode.teamId;
+                
+                if (!mapId || !teamId) {
+                    showMessage('無法開啟外部地圖：缺少必要的資訊', 'error');
+                    return;
+                }
+                
+                // Open in popup window
+                const popupUrl = `/user-story-map-popup?mapId=${mapId}&teamId=${teamId}`;
+                const popupWindow = window.open(popupUrl, 'usm-popup', 'width=1200,height=800,resizable=yes,scrollbars=yes');
+                
+                if (popupWindow) {
+                    showMessage(`已在新視窗開啟 "${relatedNode.map_name || `地圖 ${mapId}`}" 地圖`, 'success');
                 } else {
-                    // Cross-map - ask user to switch
-                    const mapName = relatedNode.map_name || `地圖 ${mapId}`;
-                    const nodeTitle = relatedNode.display_title || nodeId;
-                    
-                    if (confirm(`是否切換到 "${mapName}" 地圖並聚焦節點 "${nodeTitle}"？`)) {
-                        console.log(`[Navigation] Switching to map ${mapId}, focusing node ${nodeId}`);
-                        
-                        // Load the other map
-                        const mapSelect = document.getElementById('currentMapSelect');
-                        if (mapSelect) {
-                            mapSelect.value = mapId;
-                            mapSelect.dispatchEvent(new Event('change'));
-                            
-                            // After map loads, focus the node
-                            setTimeout(() => {
-                                console.log(`[Navigation] Focusing node ${nodeId} in map ${mapId}`);
-                                window.userStoryMapFlow?.focusNode?.(nodeId);
-                                showMessage(`已切換到 ${mapName} 並聚焦節點`, 'success');
-                            }, 800);
-                        }
-                    }
+                    showMessage('無法開啟新視窗，請檢查瀏覽器設定', 'error');
                 }
             });
         });
@@ -2097,10 +2119,11 @@ const UserStoryMapFlow = () => {
             setNodes,
             setEdges,
         };
+        window.currentMapId = currentMapId;
         window.addChildNode = addChildNode;
         window.addSiblingNode = addSiblingNode;
         window.showFullRelationGraph = showFullRelationGraph;
-    }, [saveMap, addNode, loadMap, loadMaps, autoLayout, highlightPath, clearHighlight, focusNode, selectedNode, addChildNode, addSiblingNode, setNodes, setEdges, teamName, showFullRelationGraph]);
+    }, [saveMap, addNode, loadMap, loadMaps, autoLayout, highlightPath, clearHighlight, focusNode, selectedNode, addChildNode, addSiblingNode, setNodes, setEdges, teamName, showFullRelationGraph, currentMapId]);
 
     // MiniMap node color function
     const getNodeColor = (node) => {
