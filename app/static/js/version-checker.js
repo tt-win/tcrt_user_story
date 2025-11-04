@@ -161,7 +161,7 @@ class VersionChecker {
         const button = document.createElement('button');
         button.id = 'version-update-btn';
         button.type = 'button';
-        button.className = 'btn btn-outline-info btn-sm';
+        button.className = 'btn btn-info btn-sm';
         button.innerHTML = '<i class="fas fa-sync-alt me-1"></i><span data-i18n="version.updateAvailable">有新版本</span>';
         button.title = '點擊更新到最新版本';
         button.style.display = 'none';

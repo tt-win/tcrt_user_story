@@ -962,14 +962,14 @@ const UserStoryMapFlow = () => {
                             const isCrossMap = rel.map_id && String(rel.map_id) !== String(window.currentMapId);
                             return `
                                 <div class="list-group-item small" style="display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px;">
-                                    <button type="button" class="flex-grow-1 btn btn-link btn-sm text-start p-0" data-related-idx="${idx}" title="點擊導航到該節點">
+                                    <button type="button" class="flex-grow-1 btn btn-secondary btn-sm text-start p-0" data-related-idx="${idx}" title="點擊導航到該節點">
                                         <strong>${escapeHtml(rel.display_title || rel.node_id)}</strong>
                                         <br>
                                         <small class="text-muted">
                                             ${escapeHtml(rel.team_name || '')} / ${escapeHtml(rel.map_name || '')}
                                         </small>
                                     </button>
-                                    ${isCrossMap ? `<button type="button" class="btn btn-sm btn-outline-info" data-related-popup-idx="${idx}" title="在新視窗開啟外部地圖" style="flex-shrink: 0;"><i class="fas fa-external-link-alt"></i></button>` : ''}
+                                    ${isCrossMap ? `<button type="button" class="btn btn-sm btn-info" data-related-popup-idx="${idx}" title="在新視窗開啟外部地圖" style="flex-shrink: 0;"><i class="fas fa-external-link-alt"></i></button>` : ''}
                                 </div>
                             `;
                         }).join('')}
@@ -2300,12 +2300,12 @@ document.addEventListener('DOMContentLoaded', async function() {
 
         const itemsHtml = maps.map(map => {
             const editBtn = hasUsmAccess('mapUpdate')
-                ? `<button class="btn btn-outline-primary edit-map-btn" data-map-id="${map.id}" data-map-name="${escapeHtml(map.name)}" data-map-description="${escapeHtml(map.description || '')}">
+                ? `<button class="btn btn-primary edit-map-btn" data-map-id="${map.id}" data-map-name="${escapeHtml(map.name)}" data-map-description="${escapeHtml(map.description || '')}">
                         <i class="fas fa-pen"></i>
                    </button>`
                 : '';
             const deleteBtn = hasUsmAccess('mapDelete')
-                ? `<button class="btn btn-outline-danger delete-map-btn" data-map-id="${map.id}" data-map-name="${escapeHtml(map.name)}">
+                ? `<button class="btn btn-danger delete-map-btn" data-map-id="${map.id}" data-map-name="${escapeHtml(map.name)}">
                         <i class="fas fa-trash"></i>
                    </button>`
                 : '';
@@ -3147,7 +3147,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                     return `
                         <div class="list-group-item d-flex justify-content-between align-items-center">
                             <div><strong>${escapeHtml(rel)}</strong></div>
-                            <button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="${idx}">
+                            <button type="button" class="btn btn-sm btn-danger" data-remove-idx="${idx}">
                                 <i class="fas fa-times"></i>
                             </button>
                         </div>
@@ -3164,7 +3164,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                             <h6 class="mb-1 small">${escapeHtml(rel.display_title || rel.node_id)}</h6>
                             ${infoText ? `<small class="text-muted">${escapeHtml(infoText)}</small>` : ''}
                         </div>
-                        <button type="button" class="btn btn-sm btn-outline-danger" data-remove-idx="${idx}">
+                        <button type="button" class="btn btn-sm btn-danger" data-remove-idx="${idx}">
                             <i class="fas fa-times"></i>
                         </button>
                     </div>
