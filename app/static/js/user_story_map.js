@@ -23,6 +23,7 @@ const ROOT_START_Y = 100;
 const CHILD_HORIZONTAL_OFFSET = 180;
 const ROOT_VERTICAL_SPACING = 160;
 const SIBLING_VERTICAL_SPACING = 140;
+const RELATION_EDGE_PATH_OPTIONS = { offset: 120, borderRadius: 18 }; // 確保關聯邊在節點外形成明顯轉折
 
 const fullUsmAccess = {
     mapCreate: true,
@@ -359,6 +360,7 @@ const CustomNode = ({ data, id }) => {
         React.createElement(Handle, { type: 'source', position: Position.Bottom, id: 'bottom' }),
         React.createElement(Handle, { type: 'target', position: Position.Left, id: 'left' }),
         React.createElement(Handle, { type: 'source', position: Position.Right, id: 'right' }),
+        React.createElement(Handle, { type: 'target', position: Position.Right, id: 'right-target' }),
         collapseToggle,
         // Node content
         React.createElement(
@@ -548,7 +550,8 @@ const UserStoryMapFlow = () => {
                 // Convert edges
                 const flowEdges = map.edges.map(edge => {
                     const isRelationEdge = edge.edge_type === 'related' || edge.id.startsWith('relation-');
-                    return {
+                    const targetHandle = isRelationEdge ? 'right-target' : 'left';
+                    const baseEdge = {
                         id: edge.id,
                         source: edge.source,
                         target: edge.target,
@@ -563,8 +566,13 @@ const UserStoryMapFlow = () => {
                             type: MarkerType.ArrowClosed,
                         },
                         sourceHandle: 'right',
-                        targetHandle: 'left',
+                        targetHandle,
                     };
+                    if (isRelationEdge) {
+                        baseEdge.type = 'step';
+                        baseEdge.pathOptions = RELATION_EDGE_PATH_OPTIONS;
+                    }
+                    return baseEdge;
                 });
 
                 const layoutedNodes = applyTreeLayout(flowNodes, flowEdges);
@@ -1309,7 +1317,10 @@ const UserStoryMapFlow = () => {
                         id: edgeId,
                         source: nodeId,
                         target: relNode.id,
-                        type: 'default',
+                        type: 'step',
+                        sourceHandle: 'right',
+                        targetHandle: 'right-target',
+                        pathOptions: RELATION_EDGE_PATH_OPTIONS,
                         animated: true,
                         style: {
                             strokeDasharray: '5,5',
@@ -1687,9 +1698,10 @@ const UserStoryMapFlow = () => {
                         id: `relation-${id}-${relatedId}`,
                         source: id,
                         target: relatedId,
-                        type: 'smoothstep',  // 使用 smoothstep 類型實現曲線效果
+                        type: 'step',  // 使用階梯式線條讓轉折更明顯
                         sourceHandle: 'right',
-                        targetHandle: 'left',  // 這會自動適應目標節點的 handle 位置
+                        targetHandle: 'right-target',  // 讓關聯邊預設接到右側
+                        pathOptions: RELATION_EDGE_PATH_OPTIONS,
                         animated: true,
                         style: { stroke: '#17a2b8', strokeWidth: 2, strokeDasharray: '5,5' },
                         markerEnd: { type: (window.ReactFlow && window.ReactFlow.MarkerType && window.ReactFlow.MarkerType.ArrowClosed) ? window.ReactFlow.MarkerType.ArrowClosed : 'arrowclosed' }
