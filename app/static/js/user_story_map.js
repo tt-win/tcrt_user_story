@@ -616,7 +616,7 @@ const UserStoryMapFlow = () => {
         } catch (error) {
             console.error('Failed to load map:', error);
         }
-    }, [setNodes, setEdges, applyTreeLayout, teamName, toggleNodeCollapse, setSelectedNode]);
+    }, [setNodes, setEdges, applyTreeLayout, teamName, toggleNodeCollapse, setSelectedNode, setCurrentMapId, setCollapsedNodeIds, setHighlightedNodeIds, setHighlightedPath]);
 
     // Save map
     const saveMap = useCallback(async (silent = false) => {
