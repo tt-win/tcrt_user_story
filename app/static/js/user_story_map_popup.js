@@ -450,16 +450,29 @@ const UserStoryMapFlow = () => {
             const set = collectHighlightSet(id, nodesById);
             set.forEach(v => combined.add(v));
         });
+        // Dim unrelated nodes
         setNodes(prev => prev.map(n => ({
             ...n,
             data: { ...n.data, dimmed: !combined.has(n.id) }
         })));
-    }, [nodes, highlightedNodeIds, setNodes, collectHighlightSet]);
+        // Dim unrelated edges (match main view behavior)
+        setEdges(prev => prev.map(edge => {
+            const isHighlighted = combined.has(edge.source) && combined.has(edge.target);
+            const nextStyle = { ...edge.style, opacity: isHighlighted ? 1 : 0.2 };
+            if (edge.id.startsWith('rel-') && isHighlighted) {
+                nextStyle.strokeDasharray = edge.style?.strokeDasharray || '5,5';
+                nextStyle.stroke = edge.style?.stroke || '#ffc107';
+                nextStyle.strokeWidth = edge.style?.strokeWidth || 2;
+            }
+            return { ...edge, style: nextStyle };
+        }));
+    }, [nodes, highlightedNodeIds, setNodes, setEdges, collectHighlightSet]);
 
     const clearHighlight = useCallback(() => {
         setHighlightedNodeIds([]);
         setNodes(prev => prev.map(n => ({ ...n, data: { ...n.data, dimmed: false } })));
-    }, [setNodes]);
+        setEdges(prev => prev.map(e => ({ ...e, style: { ...e.style, opacity: 1 } })));
+    }, [setNodes, setEdges]);
 
     // Load map on mount
     useEffect(() => {
