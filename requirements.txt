@@ -24,7 +24,7 @@ PyYAML==6.0.2
 PyJWT==2.8.0
 passlib==1.7.4
 bcrypt==3.2.2
-cryptography==43.0.3
+cryptography==44.0.1
 
 # Access Control
 casbin==1.36.3
