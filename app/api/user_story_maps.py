@@ -1161,7 +1161,7 @@ async def _handle_bidirectional_relations(
             "node_id": source_node_db.node_id,
             "map_id": source_map.id,
             "display_title": source_node_db.title or source_node_db.node_id,
-            "team_name": source_map.team_name or "Unknown",
+            "team_name": "",  # TODO: fetch team name if needed
             "map_name": source_map.name or "Unknown",
         }
 
