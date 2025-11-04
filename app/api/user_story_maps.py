@@ -4,7 +4,7 @@ User Story Map API 路由
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete, or_, and_, text
+from sqlalchemy import select, delete, or_, and_, text, update
 from sqlalchemy.orm.attributes import flag_modified
 from typing import List, Optional, Union, Dict, Tuple, Set, Any
 from json import JSONDecodeError
@@ -852,10 +852,27 @@ async def calculate_aggregated_tickets(
     
     for node in nodes:
         node["aggregated_tickets"] = aggregate_tickets(node["id"])
-    
+
     map_db.nodes = nodes
+    flag_modified(map_db, "nodes")
+
+    for node in nodes:
+        await db.execute(
+            update(UserStoryMapNodeDB)
+            .where(
+                UserStoryMapNodeDB.map_id == map_id,
+                UserStoryMapNodeDB.node_id == node["id"],
+            )
+            .values(
+                aggregated_tickets=node.get("aggregated_tickets", []),
+                jira_tickets=node.get("jira_tickets", []),
+                updated_at=datetime.utcnow(),
+            )
+        )
+
     await db.commit()
-    
+    await db.refresh(map_db)
+
     return {"message": "Aggregated tickets calculated successfully"}
 
 

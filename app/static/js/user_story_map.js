@@ -593,6 +593,13 @@ const UserStoryMapFlow = () => {
                 
                 nodesRef.current = decoratedNodes;
                 setNodes(decoratedNodes);
+                setSelectedNode((prevSelected) => {
+                    if (!prevSelected) {
+                        return prevSelected;
+                    }
+                    const refreshed = decoratedNodes.find(node => node.id === prevSelected.id);
+                    return refreshed || null;
+                });
                 setEdges(validEdges.map(edge => ({ ...edge, hidden: false })));
                 setCurrentMapId(mapId);
                 setCollapsedNodeIds(() => new Set());
@@ -600,7 +607,7 @@ const UserStoryMapFlow = () => {
         } catch (error) {
             console.error('Failed to load map:', error);
         }
-    }, [setNodes, setEdges, applyTreeLayout, teamName, toggleNodeCollapse]);
+    }, [setNodes, setEdges, applyTreeLayout, teamName, toggleNodeCollapse, setSelectedNode]);
 
     // Save map
     const saveMap = useCallback(async (silent = false) => {
