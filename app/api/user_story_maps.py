@@ -1009,30 +1009,22 @@ async def delete_relation(
     existing_relations = _normalize_related_ids(source_node_db.related_ids)
 
     filtered: List[Union[str, Dict[str, Any]]] = []
-    removed_relation = None
+    removed = False
     for rel in existing_relations:
         if isinstance(rel, str):
             if relation_id == rel:
-                removed_relation = rel
+                removed = True
                 continue
             filtered.append(rel)
             continue
 
         if rel.get("relation_id") == relation_id:
-            removed_relation = rel
+            removed = True
             continue
         filtered.append(rel)
 
-    if not removed_relation:
+    if not removed:
         return {"message": "Relation deleted successfully"}
-
-    # Handle bidirectional deletion for same-map relations
-    await _handle_bidirectional_deletion(
-        source_map,
-        source_node_db,
-        removed_relation,
-        usm_db
-    )
 
     _save_node_relations(source_map, source_node_db, filtered)
     await usm_db.commit()
@@ -1070,11 +1062,7 @@ async def replace_relations(
 
     incoming_relations = payload.relations if payload and payload.relations is not None else []
     print(f"[PUT RELATION] Incoming relations: {incoming_relations}")
-
-    # Get existing relations before update
-    existing_relations = _normalize_related_ids(source_node_db.related_ids)
-    print(f"[PUT RELATION] Existing relations: {existing_relations}")
-
+    
     prepared_relations = await _prepare_relation_entries(
         incoming_relations,
         source_map,
@@ -1082,152 +1070,20 @@ async def replace_relations(
         usm_db,
         db,
     )
-
+    
     print(f"[PUT RELATION] Prepared relations: {prepared_relations}")
 
-    # Save source node relations
     _save_node_relations(source_map, source_node_db, prepared_relations)
-
-    # Handle bidirectional relations for same-map relations
-    await _handle_bidirectional_relations(
-        source_map,
-        source_node_db,
-        existing_relations,
-        prepared_relations,
-        usm_db
-    )
-
+    
     print(f"[PUT RELATION] After save, source_node_db.related_ids: {source_node_db.related_ids}")
-
+    
     await usm_db.commit()
     print(f"[PUT RELATION] After commit")
-
+    
     await usm_db.refresh(source_node_db)
     await usm_db.refresh(source_map)
-
+    
     print(f"[PUT RELATION] After refresh, source_node_db.related_ids: {source_node_db.related_ids}\n")
 
     return RelationBulkUpdateResponse(relations=_normalize_related_ids(source_node_db.related_ids))
 
-
-async def _handle_bidirectional_relations(
-    source_map: UserStoryMapDB,
-    source_node_db: UserStoryMapNodeDB,
-    existing_relations: List[Union[str, Dict[str, Any]]],
-    new_relations: List[Union[str, Dict[str, Any]]],
-    usm_db: AsyncSession
-):
-    """Handle bidirectional relations for same-map relations"""
-    # Find added relations (in new_relations but not in existing_relations)
-    existing_keys = set()
-    for rel in existing_relations:
-        if isinstance(rel, str):
-            existing_keys.add((source_map.id, rel))
-        else:
-            existing_keys.add(((rel.get("map_id") or source_map.id), rel.get("node_id")))
-
-    added_relations = []
-    for rel in new_relations:
-        if isinstance(rel, str):
-            key = (source_map.id, rel)
-        else:
-            key = ((rel.get("map_id") or source_map.id), rel.get("node_id"))
-        if key not in existing_keys:
-            added_relations.append(rel)
-
-    # For each added relation, if it's same map, add back-reference to target node
-    for rel in added_relations:
-        target_node_id = None
-        target_map_id = source_map.id
-
-        if isinstance(rel, str):
-            target_node_id = rel
-        elif isinstance(rel, dict):
-            target_node_id = rel.get("node_id")
-            target_map_id = rel.get("map_id") or source_map.id
-
-        # Only handle same-map relations
-        if target_map_id != source_map.id or not target_node_id:
-            continue
-
-        # Get target node
-        target_node_db = await _get_usm_node(usm_db, source_map.id, target_node_id)
-        if not target_node_db:
-            continue
-
-        # Add back-reference to target node's relations
-        target_existing_relations = _normalize_related_ids(target_node_db.related_ids)
-        back_ref = {
-            "node_id": source_node_db.node_id,
-            "map_id": source_map.id,
-            "display_title": source_node_db.title or source_node_db.node_id,
-            "team_name": "",  # TODO: fetch team name if needed
-            "map_name": source_map.name or "Unknown",
-        }
-
-        # Check if back-reference already exists
-        back_ref_key = (source_map.id, source_node_db.node_id)
-        back_ref_exists = False
-        for t_rel in target_existing_relations:
-            if isinstance(t_rel, str):
-                if t_rel == source_node_db.node_id:
-                    back_ref_exists = True
-                    break
-            else:
-                t_key = ((t_rel.get("map_id") or source_map.id), t_rel.get("node_id"))
-                if t_key == back_ref_key:
-                    back_ref_exists = True
-                    break
-
-        if not back_ref_exists:
-            target_existing_relations.append(back_ref)
-            _save_node_relations(source_map, target_node_db, target_existing_relations)
-            print(f"[BIDIRECTIONAL] Added back-reference from {target_node_id} to {source_node_db.node_id}")
-
-
-async def _handle_bidirectional_deletion(
-    source_map: UserStoryMapDB,
-    source_node_db: UserStoryMapNodeDB,
-    removed_relation: Union[str, Dict[str, Any]],
-    usm_db: AsyncSession
-):
-    """Handle bidirectional deletion for same-map relations"""
-    target_node_id = None
-    target_map_id = source_map.id
-
-    if isinstance(removed_relation, str):
-        target_node_id = removed_relation
-    elif isinstance(removed_relation, dict):
-        target_node_id = removed_relation.get("node_id")
-        target_map_id = removed_relation.get("map_id") or source_map.id
-
-    # Only handle same-map relations
-    if target_map_id != source_map.id or not target_node_id:
-        return
-
-    # Get target node
-    target_node_db = await _get_usm_node(usm_db, source_map.id, target_node_id)
-    if not target_node_db:
-        return
-
-    # Remove back-reference from target node's relations
-    target_existing_relations = _normalize_related_ids(target_node_db.related_ids)
-    filtered_target_relations = []
-    back_ref_key = (source_map.id, source_node_db.node_id)
-
-    for t_rel in target_existing_relations:
-        if isinstance(t_rel, str):
-            if t_rel == source_node_db.node_id:
-                continue  # Remove this back-reference
-            filtered_target_relations.append(t_rel)
-            continue
-
-        t_key = ((t_rel.get("map_id") or source_map.id), t_rel.get("node_id"))
-        if t_key == back_ref_key:
-            continue  # Remove this back-reference
-        filtered_target_relations.append(t_rel)
-
-    # Only save if relations changed
-    if len(filtered_target_relations) != len(target_existing_relations):
-        _save_node_relations(source_map, target_node_db, filtered_target_relations)
-        print(f"[BIDIRECTIONAL] Removed back-reference from {target_node_id} to {source_node_db.node_id}")
