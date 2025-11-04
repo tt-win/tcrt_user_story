@@ -395,84 +395,302 @@ const UserStoryMapFlow = () => {
         return path;
     };
 
-    // Highlight helpers (multi-select)
-    const collectHighlightSet = useCallback((nodeId, nodesById) => {
-        const result = new Set([nodeId]);
-        // parents
-        let currentParentId = nodesById.get(nodeId)?.data.parentId;
+    // Compute highlight details for a node (same as main view)
+    const computeHighlightDetails = useCallback((nodeId, nodesById) => {
+        const targetNode = nodesById.get(nodeId);
+        if (!targetNode) {
+            return null;
+        }
+
+        const highlightedIds = new Set([nodeId]);
+        const parentNodes = [];
+        const childNodes = [];
+        const relatedSameMapNodes = [];
+        const crossMapRelations = [];
+
+        let currentParentId = targetNode.data.parentId;
         const visitedParents = new Set();
         while (currentParentId && !visitedParents.has(currentParentId)) {
             visitedParents.add(currentParentId);
-            result.add(currentParentId);
             const parentNode = nodesById.get(currentParentId);
-            if (!parentNode) break;
+            if (!parentNode) {
+                break;
+            }
+            parentNodes.push(parentNode);
+            highlightedIds.add(parentNode.id);
             currentParentId = parentNode.data.parentId;
         }
-        // descendants
-        const queue = Array.isArray(nodesById.get(nodeId)?.data.childrenIds) ? [...nodesById.get(nodeId).data.childrenIds] : [];
-        const visitedChildren = new Set();
-        while (queue.length) {
-            const cid = queue.shift();
-            if (!cid || visitedChildren.has(cid)) continue;
-            visitedChildren.add(cid);
-            result.add(cid);
-            const cnode = nodesById.get(cid);
-            if (cnode && Array.isArray(cnode.data.childrenIds)) queue.push(...cnode.data.childrenIds);
-        }
-        // same-map related
-        const rels = nodesById.get(nodeId)?.data.relatedIds;
-        if (Array.isArray(rels)) {
-            rels.forEach(rel => {
-                let rid = null;
-                if (typeof rel === 'string') rid = rel;
-                else if (rel && typeof rel === 'object' && rel.node_id && (!rel.map_id || Number(rel.map_id) === Number(mapIdParam))) rid = rel.node_id;
-                if (rid && nodesById.has(rid)) result.add(rid);
-            });
-        }
-        return result;
-    }, [mapIdParam]);
+        parentNodes.reverse();
 
+        const childQueue = Array.isArray(targetNode.data.childrenIds)
+            ? [...targetNode.data.childrenIds]
+            : [];
+        const visitedChildren = new Set();
+
+        while (childQueue.length > 0) {
+            const childId = childQueue.shift();
+            if (!childId || visitedChildren.has(childId)) continue;
+            visitedChildren.add(childId);
+
+            const childNode = nodesById.get(childId);
+            if (!childNode) continue;
+
+            childNodes.push(childNode);
+            highlightedIds.add(childNode.id);
+
+            if (Array.isArray(childNode.data.childrenIds)) {
+                childQueue.push(...childNode.data.childrenIds);
+            }
+        }
+
+        const normalizeRelatedEntry = (entry) => {
+            if (!entry) return null;
+
+            if (typeof entry === 'string') {
+                if (nodesById.has(entry)) {
+                    return { type: 'same', node: nodesById.get(entry) };
+                }
+
+                const parts = entry.split(':');
+                if (parts.length >= 2) {
+                    const maybeMapId = parts[0];
+                    const nodeIdentifier = parts.slice(1).join(':');
+                    const mapIdNumber = Number(maybeMapId);
+                    if (!Number.isNaN(mapIdNumber)) {
+                        return {
+                            type: 'cross',
+                            mapId: mapIdNumber,
+                            nodeId: nodeIdentifier,
+                            raw: entry,
+                        };
+                    }
+                }
+
+                return {
+                    type: 'cross',
+                    mapId: null,
+                    nodeId: entry,
+                    raw: entry,
+                };
+            }
+
+            if (typeof entry === 'object') {
+                const mapId =
+                    entry.mapId ??
+                    entry.map_id ??
+                    entry.map ??
+                    null;
+                const nodeId =
+                    entry.nodeId ??
+                    entry.node_id ??
+                    entry.id ??
+                    entry.target ??
+                    null;
+                const nodeTitle =
+                    entry.nodeTitle ??
+                    entry.node_title ??
+                    entry.title ??
+                    null;
+                const mapName =
+                    entry.mapName ??
+                    entry.map_name ??
+                    null;
+
+                if (nodeId && nodesById.has(nodeId)) {
+                    return { type: 'same', node: nodesById.get(nodeId) };
+                }
+
+                return {
+                    type: 'cross',
+                    mapId,
+                    nodeId,
+                    nodeTitle,
+                    mapName,
+                    raw: JSON.stringify(entry),
+                };
+            }
+
+            return null;
+        };
+
+        (targetNode.data.relatedIds || []).forEach((entry) => {
+            const normalized = normalizeRelatedEntry(entry);
+            if (!normalized) return;
+
+            if (normalized.type === 'same' && normalized.node) {
+                relatedSameMapNodes.push(normalized.node);
+                highlightedIds.add(normalized.node.id);
+            } else if (normalized.type === 'cross') {
+                crossMapRelations.push(normalized);
+            }
+        });
+
+        return {
+            node: targetNode,
+            highlightedIds,
+            parentNodes,
+            childNodes,
+            relatedSameMapNodes,
+            crossMapRelations,
+        };
+    }, []);
+
+    // Apply highlight to all nodes and edges
+    const applyHighlight = useCallback((activeIds, focusId, nodesById) => {
+        if (!Array.isArray(activeIds) || activeIds.length === 0) {
+            setNodes((nds) =>
+                nds.map((node) => ({
+                    ...node,
+                    data: {
+                        ...node.data,
+                        dimmed: false,
+                    },
+                }))
+            );
+
+            setEdges((eds) =>
+                eds
+                    .filter(edge => !edge.id.startsWith('relation-'))
+                    .map((edge) => ({
+                        ...edge,
+                        style: {
+                            ...edge.style,
+                            opacity: 1,
+                        },
+                    }))
+            );
+            return;
+        }
+
+        const combinedIds = new Set();
+        const relationPairs = new Map();
+        let focusDetails = null;
+
+        activeIds.forEach((id) => {
+            const details = computeHighlightDetails(id, nodesById);
+            if (!details) {
+                return;
+            }
+            details.highlightedIds.forEach((value) => combinedIds.add(value));
+            details.relatedSameMapNodes.forEach((relNode) => {
+                combinedIds.add(relNode.id);
+                const key = `${id}->${relNode.id}`;
+                if (!relationPairs.has(key)) {
+                    relationPairs.set(key, { sourceId: id, relNode });
+                }
+            });
+            if (focusId === id) {
+                focusDetails = details;
+            }
+        });
+
+        if (!focusDetails && activeIds.length > 0) {
+            focusDetails = computeHighlightDetails(activeIds[0], nodesById);
+        }
+
+        setNodes((nds) =>
+            nds.map((node) => ({
+                ...node,
+                data: {
+                    ...node.data,
+                    dimmed: !combinedIds.has(node.id),
+                },
+            }))
+        );
+
+        setEdges((eds) => {
+            const existingEdgeIds = new Set(eds.map(edge => edge.id));
+            const relationKeys = new Set(relationPairs.keys());
+
+            const updatedEdges = eds.map((edge) => {
+                const isHighlighted =
+                    combinedIds.has(edge.source) &&
+                    combinedIds.has(edge.target);
+                const relationKey = `${edge.source}->${edge.target}`;
+                const isRelationEdge = edge.id.startsWith('relation-') || relationKeys.has(relationKey);
+
+                const nextStyle = {
+                    ...edge.style,
+                    opacity: isHighlighted ? 1 : 0.2,
+                };
+                if (isRelationEdge && isHighlighted) {
+                    nextStyle.strokeDasharray = edge.style?.strokeDasharray || '5,5';
+                    nextStyle.stroke = edge.style?.stroke || '#17a2b8';
+                    nextStyle.strokeWidth = edge.style?.strokeWidth || 2;
+                }
+
+                return {
+                    ...edge,
+                    style: nextStyle,
+                };
+            });
+
+            const extraEdges = [];
+            relationPairs.forEach(({ sourceId, relNode }) => {
+                const edgeId = `relation-${sourceId}-${relNode.id}`;
+                if (!existingEdgeIds.has(edgeId)) {
+                    existingEdgeIds.add(edgeId);
+                    extraEdges.push({
+                        id: edgeId,
+                        source: sourceId,
+                        target: relNode.id,
+                        type: 'step',
+                        sourceHandle: 'right',
+                        targetHandle: 'left',
+                        pathOptions: RELATION_EDGE_PATH_OPTIONS,
+                        animated: true,
+                        style: {
+                            strokeDasharray: '5,5',
+                            stroke: '#17a2b8',
+                            strokeWidth: 2,
+                        },
+                    });
+                }
+            });
+
+            return updatedEdges.concat(extraEdges);
+        });
+    }, [setNodes, setEdges, computeHighlightDetails]);
+
+    // Highlight path with multi-select support
     const highlightPath = useCallback((nodeId, isMultiSelect = false) => {
         if (!nodeId) return;
-        const nodesById = new Map(nodes.map(n => [n.id, n]));
+        const nodesById = new Map(nodes.map((node) => [node.id, node]));
+        if (!nodesById.has(nodeId)) {
+            console.error('[Popup] Node not found:', nodeId);
+            return;
+        }
+
+        const selectedIds = nodes
+            .filter(node => node.selected)
+            .map(node => node.id);
+
         let nextIds;
         if (isMultiSelect) {
-            nextIds = highlightedNodeIds.includes(nodeId)
-                ? highlightedNodeIds.filter(id => id !== nodeId)
-                : [...highlightedNodeIds, nodeId];
+            if (highlightedNodeIds.includes(nodeId)) {
+                nextIds = highlightedNodeIds.filter(id => id !== nodeId);
+            } else {
+                nextIds = [...highlightedNodeIds, nodeId];
+            }
+        } else if (selectedIds.length > 1) {
+            nextIds = Array.from(new Set(selectedIds));
         } else {
             nextIds = [nodeId];
         }
-        if (!nextIds.includes(nodeId)) nextIds = nextIds.length ? [...nextIds, nodeId] : [nodeId];
+
+        if (!nextIds.includes(nodeId)) {
+            nextIds = nextIds.length > 0 ? [...nextIds, nodeId] : [nodeId];
+        }
+
         setHighlightedNodeIds(nextIds);
-        const combined = new Set();
-        nextIds.forEach(id => {
-            const set = collectHighlightSet(id, nodesById);
-            set.forEach(v => combined.add(v));
-        });
-        // Dim unrelated nodes
-        setNodes(prev => prev.map(n => ({
-            ...n,
-            data: { ...n.data, dimmed: !combined.has(n.id) }
-        })));
-        // Dim unrelated edges (match main view behavior)
-        setEdges(prev => prev.map(edge => {
-            const isHighlighted = combined.has(edge.source) && combined.has(edge.target);
-            const nextStyle = { ...edge.style, opacity: isHighlighted ? 1 : 0.2 };
-            if (edge.id.startsWith('rel-') && isHighlighted) {
-                nextStyle.strokeDasharray = edge.style?.strokeDasharray || '5,5';
-                nextStyle.stroke = edge.style?.stroke || '#ffc107';
-                nextStyle.strokeWidth = edge.style?.strokeWidth || 2;
-            }
-            return { ...edge, style: nextStyle };
-        }));
-    }, [nodes, highlightedNodeIds, setNodes, setEdges, collectHighlightSet]);
+        applyHighlight(nextIds, nodeId, nodesById);
+    }, [nodes, highlightedNodeIds, applyHighlight]);
 
     const clearHighlight = useCallback(() => {
         setHighlightedNodeIds([]);
-        setNodes(prev => prev.map(n => ({ ...n, data: { ...n.data, dimmed: false } })));
-        setEdges(prev => prev.map(e => ({ ...e, style: { ...e.style, opacity: 1 } })));
-    }, [setNodes, setEdges]);
+        const nodesById = new Map(nodes.map((node) => [node.id, node]));
+        applyHighlight([], null, nodesById);
+    }, [nodes, applyHighlight]);
 
     // Load map on mount
     useEffect(() => {
@@ -582,7 +800,7 @@ const UserStoryMapFlow = () => {
                 </div>
                 
                 <div style="margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
-                    <button id="highlightPathBtn" style="padding: 6px 12px; font-size: 12px; background: #0d6efd; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                    <button id="highlightPathBtn" data-node-id="${node.id}" style="padding: 6px 12px; font-size: 12px; background: #0d6efd; color: white; border: none; border-radius: 4px; cursor: pointer;">
                         <i class="fas fa-lightbulb"></i> 高亮路徑
                     </button>
                     <button id="clearHighlightBtn" style="padding: 6px 12px; font-size: 12px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">
@@ -620,7 +838,8 @@ const UserStoryMapFlow = () => {
             if (highlightBtn) {
                 highlightBtn.addEventListener('click', (event) => {
                     const isMulti = event.ctrlKey || event.metaKey;
-                    highlightPath(node.id, isMulti);
+                    const nodeId = highlightBtn.getAttribute('data-node-id');
+                    highlightPath(nodeId, isMulti);
                 });
             }
             
@@ -629,7 +848,7 @@ const UserStoryMapFlow = () => {
                     clearHighlight();
                 });
             }
-    }, [nodes, setNodes, mapIdParam, teamIdParam]);
+    }, [nodes, setNodes, mapIdParam, teamIdParam, highlightPath, clearHighlight]);
 
     // Handle canvas events
     const onConnect = useCallback((connection) => {
