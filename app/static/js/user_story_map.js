@@ -1565,79 +1565,26 @@ const UserStoryMapFlow = () => {
             return;
         }
 
-        // 收集完整高亮路徑
-        const highlightedIds = new Set([nodeId]);
-        const parentNodes = [];
-        const childNodes = [];
-        const relatedSameMapNodes = [];
+        // 支援多選：合併多個節點的高亮集合
+        const activeIds = Array.isArray(nodeId) ? nodeId.filter(Boolean) : [nodeId];
+        const highlightedIds = new Set();
         const crossMapRelations = [];
+        let focusId = activeIds[0];
+        let focusDetails = null;
 
-        // 收集所有父節點
-        let currentParentId = targetNode.data.parentId;
-        const visitedParents = new Set();
-        while (currentParentId && !visitedParents.has(currentParentId)) {
-            visitedParents.add(currentParentId);
-            const parentNode = nodesById.get(currentParentId);
-            if (!parentNode) break;
-            parentNodes.push(parentNode);
-            highlightedIds.add(parentNode.id);
-            currentParentId = parentNode.data.parentId;
-        }
-        parentNodes.reverse();
-
-        // 收集所有子節點
-        const childQueue = Array.isArray(targetNode.data.childrenIds)
-            ? [...targetNode.data.childrenIds]
-            : [];
-        const visitedChildren = new Set();
-
-        while (childQueue.length > 0) {
-            const childId = childQueue.shift();
-            if (!childId || visitedChildren.has(childId)) continue;
-            visitedChildren.add(childId);
-
-            const childNode = nodesById.get(childId);
-            if (!childNode) continue;
-
-            childNodes.push(childNode);
-            highlightedIds.add(childNode.id);
-
-            if (Array.isArray(childNode.data.childrenIds)) {
-                childQueue.push(...childNode.data.childrenIds);
-            }
-        }
-
-        // 收集相關節點
-        (targetNode.data.relatedIds || []).forEach((entry) => {
-            if (typeof entry === 'string') {
-                if (nodesById.has(entry)) {
-                    relatedSameMapNodes.push(nodesById.get(entry));
-                    highlightedIds.add(entry);
-                } else {
-                    crossMapRelations.push({ 
-                        nodeId: entry, 
-                        raw: entry,
-                        mapId: currentMapId, // 使用當前地圖 ID，因為這是同地圖的 ID
-                    });
-                }
-            } else if (typeof entry === 'object') {
-                const relNodeId = entry.nodeId || entry.node_id || entry.id;
-                if (relNodeId && nodesById.has(relNodeId)) {
-                    relatedSameMapNodes.push(nodesById.get(relNodeId));
-                    highlightedIds.add(relNodeId);
-                } else {
-                    crossMapRelations.push({
-                        nodeId: relNodeId || entry.id,
-                        mapId: entry.mapId || entry.map_id,
-                        mapName: entry.mapName || entry.map_name,
-                        nodeTitle: entry.display_title || entry.node_title || entry.title,
-                        as_a: entry.as_a,
-                        i_want: entry.i_want,
-                        so_that: entry.so_that,
-                    });
-                }
+        activeIds.forEach((id) => {
+            const details = computeHighlightDetails(id, nodesById);
+            if (!details) return;
+            details.highlightedIds.forEach((v) => highlightedIds.add(v));
+            details.crossMapRelations.forEach((rel) => crossMapRelations.push(rel));
+            if (id === focusId) {
+                focusDetails = details;
             }
         });
+
+        const parentNodes = focusDetails ? focusDetails.parentNodes : [];
+        const childNodes = focusDetails ? focusDetails.childNodes : [];
+        const relatedSameMapNodes = focusDetails ? focusDetails.relatedSameMapNodes : [];
 
         // 獲取跨圖節點的詳細資訊並加入到圖中
         const externalNodesData = [];
@@ -2210,6 +2157,7 @@ const UserStoryMapFlow = () => {
             clearHighlight,
             focusNode,
             getSelectedNode: () => selectedNode,
+            getSelectedNodeIds: () => nodes.filter(n => n.selected).map(n => n.id),
             getTeamName: () => teamName,
             setNodes,
             setEdges,
@@ -2983,6 +2931,11 @@ document.addEventListener('DOMContentLoaded', async function() {
     // Full Relation Graph - Global function
     window.openFullRelationGraph = function() {
         console.log('[Relation] openFullRelationGraph called');
+        const ids = window.userStoryMapFlow?.getSelectedNodeIds?.() || [];
+        if (ids.length > 1) {
+            window.showFullRelationGraph?.(ids);
+            return;
+        }
         const selectedNode = window.userStoryMapFlow?.getSelectedNode();
         if (selectedNode) {
             window.showFullRelationGraph?.(selectedNode.id);
