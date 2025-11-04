@@ -1773,36 +1773,6 @@ const UserStoryMapFlow = () => {
 
         document.getElementById('crossMapNodesList').innerHTML = crossMapHtml;
 
-        // 計算外部節點區域標示的位置
-        const externalNodes = graphNodes.filter(node => node.data.isExternal);
-        if (externalNodes.length > 0) {
-            // 計算外部節點區域的中心位置，用於放置標示
-            const minX = Math.min(...externalNodes.map(n => n.position.x));
-            const maxX = Math.max(...externalNodes.map(n => n.position.x + 200)); // 200 is node width
-            const minY = Math.min(...externalNodes.map(n => n.position.y));
-            
-            // 創建一個標示節點
-            const externalLabelNode = {
-                id: 'external-area-label',
-                type: 'custom',
-                position: { x: minX, y: minY - 30 }, // 在外部節點上方放置標示
-                style: {
-                    width: maxX - minX,
-                    height: 30,
-                    pointerEvents: 'none', // 確保標示不會干擾交互
-                },
-                data: {
-                    title: '外部節點',
-                    isExternalLabel: true,
-                },
-                selected: false,
-                dragHandle: '.no-drag',
-            };
-            
-            // 將標示節點添加到節點數組
-            graphNodes.push(externalLabelNode);
-        }
-        
         // 在容器中渲染 React Flow
         const containerElement = document.getElementById('relationGraphContainer');
         if (containerElement && window.ReactFlow) {
@@ -1821,33 +1791,6 @@ const UserStoryMapFlow = () => {
                 const [rNodes, setRNodes, onNodesChange] = window.ReactFlow.useNodesState(graphNodes);
                 const [rEdges, setREdges, onEdgesChange] = window.ReactFlow.useEdgesState(graphEdges);
                 
-                // 自定義外部區域標示的組件
-                const ExternalLabelNode = ({ data, id }) => {
-                    return React.createElement(
-                        'div',
-                        {
-                            className: 'no-drag',
-                            style: {
-                                width: '100%',
-                                height: '100%',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                fontSize: '14px',
-                                fontWeight: 'bold',
-                                color: '#6c757d',
-                                backgroundColor: 'rgba(230, 247, 255, 0.3)', // 淺藍色半透明背景
-                                border: '1px dashed #6c757d', // 虛線邊框
-                                borderRadius: '4px',
-                            }
-                        },
-                        data.title
-                    );
-                };
-                
-                // 擴展 nodeTypes 以包含外部標示
-                const combinedNodeTypes = { ...nodeTypes, externalLabel: ExternalLabelNode };
-                
                 return React.createElement(
                     window.ReactFlow.ReactFlowProvider,
                     null,
@@ -1858,7 +1801,7 @@ const UserStoryMapFlow = () => {
                             edges: rEdges,
                             onNodesChange,
                             onEdgesChange,
-                            nodeTypes: combinedNodeTypes,
+                            nodeTypes: nodeTypes,
                             defaultEdgeOptions: { type: 'smoothstep' },
                             fitView: true,
                             nodesConnectable: false,
