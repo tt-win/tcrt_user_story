@@ -256,12 +256,19 @@ const UserStoryMapFlow = () => {
                     description: node.description,
                     nodeType: node.node_type,
                     isRoot: !node.parent_id,
+                    parentId: node.parent_id,
                     childrenIds: childrenIds,
                     collapsed: collapsedNodeIds.has(node.id),
                     toggleCollapse: toggleNodeCollapse,
                     jiraTickets,
                     aggregatedTickets,
                     isExternal: node.map_id !== mapIdParam,
+                    team: node.team,
+                    asA: node.as_a,
+                    iWant: node.i_want,
+                    soThat: node.so_that,
+                    comment: node.comment,
+                    relatedIds: node.related_ids,
                 },
                 position: { x: 0, y: 0 }, // Will be set by Dagre layout
                 type: 'custom',
@@ -366,20 +373,24 @@ const UserStoryMapFlow = () => {
     // Find path from node to root
     const findPathToRoot = (nodeId, nodesList) => {
         const path = [];
-        let currentNode = nodesList.find(n => n.id === nodeId);
+        let currentNodeId = nodeId;
+        const visited = new Set();
         
-        while (currentNode) {
-            path.unshift(currentNode);
+        // Traverse up to root using parent_id
+        while (currentNodeId && !visited.has(currentNodeId)) {
+            visited.add(currentNodeId);
+            const node = nodesList.find(n => n.id === currentNodeId);
             
-            // Find parent
-            const parentNode = nodesList.find(n => 
-                currentNode.data.childrenIds && currentNode.data.childrenIds.includes(n.id)
-            );
-            
-            if (!parentNode) break;
-            currentNode = parentNode;
+            if (node) {
+                path.unshift(node);
+                // Move to parent
+                currentNodeId = node.data.parentId;
+            } else {
+                break;
+            }
         }
         
+        console.log('[USM Popup] Path to root:', path.map(n => n.id));
         return path;
     };
 
@@ -393,69 +404,103 @@ const UserStoryMapFlow = () => {
         console.log('Node clicked:', node.id, node.data);
         setSelectedNode(node);
         
-        // Show node properties panel
         const content = document.getElementById('nodePropertiesContent');
+        if (!content) return;
         
-        if (content) {
-            // Build properties HTML
-            const title = node.data.title || 'Untitled';
-            const description = node.data.description || '';
-            const nodeType = node.data.nodeType || '';
-            const jiraTickets = node.data.jiraTickets || [];
-            const aggregated = node.data.aggregatedTickets || [];
-            
-            let html = `
-                <div style="margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #dee2e6;">
-                    <div style="margin-bottom: 8px;">
-                        <strong>標題:</strong>
-                        <div style="color: #333; word-break: break-word; margin-top: 4px;">${escapeHtml(title)}</div>
+        const data = node.data;
+        
+        // Build aggregated tickets section
+        const aggregatedTicketsHtml = data.aggregatedTickets && data.aggregatedTickets.length > 0
+            ? `<div class="mb-3">
+                    <label class="form-label small fw-bold">聚合 Tickets (含子節點)</label>
+                    <div class="alert alert-warning p-2 small" style="word-break: break-word;">
+                        ${escapeHtml(data.aggregatedTickets.join(', '))}
                     </div>
-            `;
-            
-            if (description) {
-                html += `
-                    <div style="margin-bottom: 8px;">
-                        <strong>描述:</strong>
-                        <div style="color: #666; word-break: break-word; white-space: pre-wrap; margin-top: 4px; font-size: 12px;">${escapeHtml(description)}</div>
+                </div>`
+            : '';
+        
+        // Build related nodes section
+        const relatedNodesHtml = data.relatedIds && data.relatedIds.length > 0
+            ? `<div class="mb-3">
+                    <label class="form-label small fw-bold">相關節點 (<span id="relatedNodesCount">${data.relatedIds.length}</span>)</label>
+                    <div class="list-group list-group-sm" id="relatedNodesList" style="max-height: 200px; overflow-y: auto;">
+                        ${(Array.isArray(data.relatedIds) ? data.relatedIds : []).map((rel, idx) => {
+                            if (typeof rel === 'string') {
+                                return `<div class="list-group-item small"><span class="text-muted">${escapeHtml(rel)}</span></div>`;
+                            }
+                            // Check if cross-map
+                            const isCrossMap = rel.map_id && String(rel.map_id) !== String(mapIdParam);
+                            return `
+                                <div class="list-group-item small" style="display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px;">
+                                    <div style="flex-grow: 1;">
+                                        <strong>${escapeHtml(rel.display_title || rel.node_id)}</strong>
+                                        <br>
+                                        <small class="text-muted">
+                                            ${escapeHtml(rel.team_name || '')} / ${escapeHtml(rel.map_name || '')}
+                                        </small>
+                                    </div>
+                                    ${isCrossMap ? `<button type="button" class="btn btn-sm btn-outline-info" data-related-popup-idx="${idx}" title="在新視窗開啟外部地圖" style="flex-shrink: 0;"><i class="fas fa-external-link-alt"></i></button>` : ''}
+                                </div>
+                            `;
+                        }).join('')}
                     </div>
-                `;
-            }
-            
-            if (nodeType) {
-                html += `
-                    <div style="margin-bottom: 8px;">
-                        <strong>類型:</strong>
-                        <div style="color: #666; margin-top: 4px; font-size: 12px;">${escapeHtml(nodeType)}</div>
-                    </div>
-                `;
-            }
-            
-            html += `</div>`;
-            
-            if (jiraTickets.length > 0) {
-                html += `
-                    <div style="margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #dee2e6;">
-                        <strong style="font-size: 12px;">JIRA Tickets:</strong>
-                        <div style="color: #666; margin-top: 4px; font-size: 12px;">
-                            ${jiraTickets.map(t => `<div style="padding: 2px 0;">• ${escapeHtml(String(t))}</div>`).join('')}
-                        </div>
-                    </div>
-                `;
-            }
-            
-            if (aggregated.length > 0) {
-                html += `
-                    <div style="margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid #dee2e6;">
-                        <strong style="font-size: 12px;">聚合 Tickets:</strong>
-                        <div style="color: #666; margin-top: 4px; font-size: 12px;">
-                            ${aggregated.map(t => `<div style="padding: 2px 0;">• ${escapeHtml(String(t))}</div>`).join('')}
-                        </div>
-                    </div>
-                `;
-            }
-            
-            // Add highlight path button
+                </div>`
+            : '';
+        
+        // Build main HTML matching main view layout
+        let html = `
+            <div class="node-properties-content">
+                <div class="mb-3">
+                    <label class="form-label small fw-bold">標題</label>
+                    <p class="form-control-plaintext mb-0 small">${escapeHtml(data.title || '')}</p>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label small fw-bold">描述</label>
+                    <p class="form-control-plaintext mb-0 small" style="white-space: pre-wrap; word-break: break-word;">${escapeHtml(data.description || '')}</p>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label small fw-bold">團隊</label>
+                    <p class="form-control-plaintext mb-0 small">${data.team ? escapeHtml(data.team) : '<span class="text-muted">未設定</span>'}</p>
+                </div>
+        `;
+        
+        // Add user story fields if applicable
+        if (data.nodeType === 'user_story') {
             html += `
+                <div class="mb-3">
+                    <label class="form-label small fw-bold">As a <small class="text-muted">(使用者角色)</small></label>
+                    <p class="form-control-plaintext mb-0 small">${escapeHtml(data.asA || '')}</p>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label small fw-bold">I want <small class="text-muted">(需求描述)</small></label>
+                    <p class="form-control-plaintext mb-0 small" style="white-space: pre-wrap; word-break: break-word;">${escapeHtml(data.iWant || '')}</p>
+                </div>
+                
+                <div class="mb-3">
+                    <label class="form-label small fw-bold">So that <small class="text-muted">(價值目的)</small></label>
+                    <p class="form-control-plaintext mb-0 small" style="white-space: pre-wrap; word-break: break-word;">${escapeHtml(data.soThat || '')}</p>
+                </div>
+            `;
+        }
+        
+        html += `
+                <div class="mb-3">
+                    <label class="form-label small fw-bold">JIRA Tickets</label>
+                    <p class="form-control-plaintext mb-0 small">${data.jiraTickets && data.jiraTickets.length > 0 ? escapeHtml(data.jiraTickets.join(', ')) : '<span class="text-muted">無</span>'}</p>
+                </div>
+                
+                ${aggregatedTicketsHtml}
+                
+                ${relatedNodesHtml}
+                
+                <div class="mb-3">
+                    <label class="form-label small fw-bold">註解</label>
+                    <p class="form-control-plaintext mb-0 small" style="white-space: pre-wrap; word-break: break-word;">${escapeHtml(data.comment || '')}</p>
+                </div>
+                
                 <div style="margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
                     <button id="highlightPathBtn" style="padding: 6px 12px; font-size: 12px; background: #0d6efd; color: white; border: none; border-radius: 4px; cursor: pointer;">
                         <i class="fas fa-lightbulb"></i> 高亮路徑
@@ -464,9 +509,29 @@ const UserStoryMapFlow = () => {
                         <i class="fas fa-times"></i> 清除
                     </button>
                 </div>
-            `;
-            
-            content.innerHTML = html;
+            </div>
+        `;
+        
+        content.innerHTML = html;
+        
+        // Add event listeners for related node popup buttons
+        document.querySelectorAll('[data-related-popup-idx]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const idx = parseInt(btn.getAttribute('data-related-popup-idx'));
+                const relatedNode = data.relatedIds?.[idx];
+                
+                if (!relatedNode) return;
+                
+                const mapId = relatedNode.map_id || relatedNode.mapId;
+                const nodeId = relatedNode.node_id || relatedNode.nodeId;
+                const mapName = relatedNode.map_name || `地圖 ${mapId}`;
+                
+                if (nodeId && mapId) {
+                    console.log(`[USM Popup] Opening external map ${mapId}, node ${nodeId}`);
+                    window.open(`/user-story-map-popup?mapId=${mapId}&teamId=${teamIdParam}`, '_blank', 'width=1200,height=800,toolbar=no');
+                }
+            });
+        });
             
             // Add event listeners for buttons
             const highlightBtn = document.getElementById('highlightPathBtn');
@@ -475,19 +540,74 @@ const UserStoryMapFlow = () => {
             if (highlightBtn) {
                 highlightBtn.addEventListener('click', () => {
                     console.log('[USM Popup] Highlighting path for node:', node.id);
-                    const pathNodes = findPathToRoot(node.id, nodes);
-                    const nodeIds = pathNodes.map(n => n.id);
                     
-                    // Highlight path nodes
-                    setNodes(prevNodes => 
-                        prevNodes.map(n => ({
+                    // Create node map for quick lookup
+                    const nodesById = new Map(nodes.map(n => [n.id, n]));
+                    
+                    // Build highlighted set: node itself + parents + children + related
+                    const highlightedIds = new Set([node.id]);
+                    
+                    // Add all parents up to root
+                    let currentParentId = node.data.parentId;
+                    const visitedParents = new Set();
+                    while (currentParentId && !visitedParents.has(currentParentId)) {
+                        visitedParents.add(currentParentId);
+                        highlightedIds.add(currentParentId);
+                        const parentNode = nodesById.get(currentParentId);
+                        if (parentNode) {
+                            currentParentId = parentNode.data.parentId;
+                        } else {
+                            break;
+                        }
+                    }
+                    
+                    // Add all descendants
+                    const childQueue = Array.isArray(node.data.childrenIds) ? [...node.data.childrenIds] : [];
+                    const visitedChildren = new Set();
+                    while (childQueue.length > 0) {
+                        const childId = childQueue.shift();
+                        if (!childId || visitedChildren.has(childId)) continue;
+                        visitedChildren.add(childId);
+                        
+                        highlightedIds.add(childId);
+                        const childNode = nodesById.get(childId);
+                        if (childNode && Array.isArray(childNode.data.childrenIds)) {
+                            childQueue.push(...childNode.data.childrenIds);
+                        }
+                    }
+                    
+                    // Add related nodes (same map only)
+                    if (node.data.relatedIds && Array.isArray(node.data.relatedIds)) {
+                        node.data.relatedIds.forEach(rel => {
+                            let relatedNodeId = null;
+                            if (typeof rel === 'string') {
+                                relatedNodeId = rel;
+                            } else if (typeof rel === 'object' && rel.node_id) {
+                                // Only same map relations
+                                if (!rel.map_id || rel.map_id === mapIdParam) {
+                                    relatedNodeId = rel.node_id;
+                                }
+                            }
+                            if (relatedNodeId && nodesById.has(relatedNodeId)) {
+                                highlightedIds.add(relatedNodeId);
+                            }
+                        });
+                    }
+                    
+                    console.log('[USM Popup] Highlighting node IDs:', Array.from(highlightedIds));
+                    
+                    // Set dimmed status: highlight path is NOT dimmed, others ARE dimmed
+                    setNodes(prevNodes => {
+                        const updated = prevNodes.map(n => ({
                             ...n,
                             data: {
                                 ...n.data,
-                                highlighted: nodeIds.includes(n.id)
+                                dimmed: !highlightedIds.has(n.id)
                             }
-                        }))
-                    );
+                        }));
+                        console.log('[USM Popup] Updated dimmed nodes:', updated.filter(n => !n.data.dimmed).map(n => n.id));
+                        return updated;
+                    });
                 });
             }
             
@@ -499,14 +619,13 @@ const UserStoryMapFlow = () => {
                             ...n,
                             data: {
                                 ...n.data,
-                                highlighted: false
+                                dimmed: false
                             }
                         }))
                     );
                 });
             }
-        }
-    }, [nodes, setNodes]);
+    }, [nodes, setNodes, mapIdParam, teamIdParam]);
 
     // Handle canvas events
     const onConnect = useCallback((connection) => {
