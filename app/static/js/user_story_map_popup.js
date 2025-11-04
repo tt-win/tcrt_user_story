@@ -168,6 +168,7 @@ const UserStoryMapFlow = () => {
     const [collapsedNodeIds, setCollapsedNodeIds] = useState(new Set());
     const [selectedNode, setSelectedNode] = useState(null);
     const [mapName, setMapName] = useState('User Story Map');
+    const [highlightedNodeIds, setHighlightedNodeIds] = useState([]);
     const reactFlowInstance = useRef(null);
 
     // Load map data from API
@@ -394,6 +395,72 @@ const UserStoryMapFlow = () => {
         return path;
     };
 
+    // Highlight helpers (multi-select)
+    const collectHighlightSet = useCallback((nodeId, nodesById) => {
+        const result = new Set([nodeId]);
+        // parents
+        let currentParentId = nodesById.get(nodeId)?.data.parentId;
+        const visitedParents = new Set();
+        while (currentParentId && !visitedParents.has(currentParentId)) {
+            visitedParents.add(currentParentId);
+            result.add(currentParentId);
+            const parentNode = nodesById.get(currentParentId);
+            if (!parentNode) break;
+            currentParentId = parentNode.data.parentId;
+        }
+        // descendants
+        const queue = Array.isArray(nodesById.get(nodeId)?.data.childrenIds) ? [...nodesById.get(nodeId).data.childrenIds] : [];
+        const visitedChildren = new Set();
+        while (queue.length) {
+            const cid = queue.shift();
+            if (!cid || visitedChildren.has(cid)) continue;
+            visitedChildren.add(cid);
+            result.add(cid);
+            const cnode = nodesById.get(cid);
+            if (cnode && Array.isArray(cnode.data.childrenIds)) queue.push(...cnode.data.childrenIds);
+        }
+        // same-map related
+        const rels = nodesById.get(nodeId)?.data.relatedIds;
+        if (Array.isArray(rels)) {
+            rels.forEach(rel => {
+                let rid = null;
+                if (typeof rel === 'string') rid = rel;
+                else if (rel && typeof rel === 'object' && rel.node_id && (!rel.map_id || Number(rel.map_id) === Number(mapIdParam))) rid = rel.node_id;
+                if (rid && nodesById.has(rid)) result.add(rid);
+            });
+        }
+        return result;
+    }, [mapIdParam]);
+
+    const highlightPath = useCallback((nodeId, isMultiSelect = false) => {
+        if (!nodeId) return;
+        const nodesById = new Map(nodes.map(n => [n.id, n]));
+        let nextIds;
+        if (isMultiSelect) {
+            nextIds = highlightedNodeIds.includes(nodeId)
+                ? highlightedNodeIds.filter(id => id !== nodeId)
+                : [...highlightedNodeIds, nodeId];
+        } else {
+            nextIds = [nodeId];
+        }
+        if (!nextIds.includes(nodeId)) nextIds = nextIds.length ? [...nextIds, nodeId] : [nodeId];
+        setHighlightedNodeIds(nextIds);
+        const combined = new Set();
+        nextIds.forEach(id => {
+            const set = collectHighlightSet(id, nodesById);
+            set.forEach(v => combined.add(v));
+        });
+        setNodes(prev => prev.map(n => ({
+            ...n,
+            data: { ...n.data, dimmed: !combined.has(n.id) }
+        })));
+    }, [nodes, highlightedNodeIds, setNodes, collectHighlightSet]);
+
+    const clearHighlight = useCallback(() => {
+        setHighlightedNodeIds([]);
+        setNodes(prev => prev.map(n => ({ ...n, data: { ...n.data, dimmed: false } })));
+    }, [setNodes]);
+
     // Load map on mount
     useEffect(() => {
         loadMap();
@@ -538,91 +605,15 @@ const UserStoryMapFlow = () => {
             const clearBtn = document.getElementById('clearHighlightBtn');
             
             if (highlightBtn) {
-                highlightBtn.addEventListener('click', () => {
-                    console.log('[USM Popup] Highlighting path for node:', node.id);
-                    
-                    // Create node map for quick lookup
-                    const nodesById = new Map(nodes.map(n => [n.id, n]));
-                    
-                    // Build highlighted set: node itself + parents + children + related
-                    const highlightedIds = new Set([node.id]);
-                    
-                    // Add all parents up to root
-                    let currentParentId = node.data.parentId;
-                    const visitedParents = new Set();
-                    while (currentParentId && !visitedParents.has(currentParentId)) {
-                        visitedParents.add(currentParentId);
-                        highlightedIds.add(currentParentId);
-                        const parentNode = nodesById.get(currentParentId);
-                        if (parentNode) {
-                            currentParentId = parentNode.data.parentId;
-                        } else {
-                            break;
-                        }
-                    }
-                    
-                    // Add all descendants
-                    const childQueue = Array.isArray(node.data.childrenIds) ? [...node.data.childrenIds] : [];
-                    const visitedChildren = new Set();
-                    while (childQueue.length > 0) {
-                        const childId = childQueue.shift();
-                        if (!childId || visitedChildren.has(childId)) continue;
-                        visitedChildren.add(childId);
-                        
-                        highlightedIds.add(childId);
-                        const childNode = nodesById.get(childId);
-                        if (childNode && Array.isArray(childNode.data.childrenIds)) {
-                            childQueue.push(...childNode.data.childrenIds);
-                        }
-                    }
-                    
-                    // Add related nodes (same map only)
-                    if (node.data.relatedIds && Array.isArray(node.data.relatedIds)) {
-                        node.data.relatedIds.forEach(rel => {
-                            let relatedNodeId = null;
-                            if (typeof rel === 'string') {
-                                relatedNodeId = rel;
-                            } else if (typeof rel === 'object' && rel.node_id) {
-                                // Only same map relations
-                                if (!rel.map_id || rel.map_id === mapIdParam) {
-                                    relatedNodeId = rel.node_id;
-                                }
-                            }
-                            if (relatedNodeId && nodesById.has(relatedNodeId)) {
-                                highlightedIds.add(relatedNodeId);
-                            }
-                        });
-                    }
-                    
-                    console.log('[USM Popup] Highlighting node IDs:', Array.from(highlightedIds));
-                    
-                    // Set dimmed status: highlight path is NOT dimmed, others ARE dimmed
-                    setNodes(prevNodes => {
-                        const updated = prevNodes.map(n => ({
-                            ...n,
-                            data: {
-                                ...n.data,
-                                dimmed: !highlightedIds.has(n.id)
-                            }
-                        }));
-                        console.log('[USM Popup] Updated dimmed nodes:', updated.filter(n => !n.data.dimmed).map(n => n.id));
-                        return updated;
-                    });
+                highlightBtn.addEventListener('click', (event) => {
+                    const isMulti = event.ctrlKey || event.metaKey;
+                    highlightPath(node.id, isMulti);
                 });
             }
             
             if (clearBtn) {
                 clearBtn.addEventListener('click', () => {
-                    console.log('[USM Popup] Clearing highlight');
-                    setNodes(prevNodes =>
-                        prevNodes.map(n => ({
-                            ...n,
-                            data: {
-                                ...n.data,
-                                dimmed: false
-                            }
-                        }))
-                    );
+                    clearHighlight();
                 });
             }
     }, [nodes, setNodes, mapIdParam, teamIdParam]);
