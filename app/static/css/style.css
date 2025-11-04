@@ -177,6 +177,66 @@ body {
     color: #ffffff;
 }
 
+/* 成功操作按鈕 - 綠色系 */
+.btn-success {
+    background: linear-gradient(135deg, var(--tr-success) 0%, #6DC86D 100%);
+    border: 1px solid var(--tr-success);
+    color: #ffffff;
+}
+
+.btn-success:hover {
+    background: linear-gradient(135deg, var(--tr-success-dark) 0%, #5CB85C 100%);
+    border-color: var(--tr-success-dark);
+    color: #ffffff;
+}
+
+.btn-success:focus, .btn-success:active {
+    background: linear-gradient(135deg, var(--tr-success-dark) 0%, #5CB85C 100%);
+    border-color: var(--tr-success-dark);
+    color: #ffffff;
+    box-shadow: 0 0 0 0.2rem rgba(92, 184, 92, 0.25);
+}
+
+/* 警告操作按鈕 - 橙色系 */
+.btn-warning {
+    background: linear-gradient(135deg, var(--tr-warning) 0%, #F5B868 100%);
+    border: 1px solid var(--tr-warning);
+    color: #ffffff;
+}
+
+.btn-warning:hover {
+    background: linear-gradient(135deg, var(--tr-warning-dark) 0%, #F0AD4E 100%);
+    border-color: var(--tr-warning-dark);
+    color: #ffffff;
+}
+
+.btn-warning:focus, .btn-warning:active {
+    background: linear-gradient(135deg, var(--tr-warning-dark) 0%, #F0AD4E 100%);
+    border-color: var(--tr-warning-dark);
+    color: #ffffff;
+    box-shadow: 0 0 0 0.2rem rgba(240, 173, 78, 0.25);
+}
+
+/* 資訊操作按鈕 - 青色系 */
+.btn-info {
+    background: linear-gradient(135deg, var(--tr-info) 0%, #6FD4E8 100%);
+    border: 1px solid var(--tr-info);
+    color: #ffffff;
+}
+
+.btn-info:hover {
+    background: linear-gradient(135deg, var(--tr-info-dark) 0%, #5BC0DE 100%);
+    border-color: var(--tr-info-dark);
+    color: #ffffff;
+}
+
+.btn-info:focus, .btn-info:active {
+    background: linear-gradient(135deg, var(--tr-info-dark) 0%, #5BC0DE 100%);
+    border-color: var(--tr-info-dark);
+    color: #ffffff;
+    box-shadow: 0 0 0 0.2rem rgba(91, 192, 222, 0.25);
+}
+
 
 /* 基礎卡片樣式 */
 .card {

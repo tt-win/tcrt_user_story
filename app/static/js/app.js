@@ -300,7 +300,7 @@ const AppUtils = {
                     <small class="text-muted">${instruction}</small>
                   </div>
                   <div class="modal-footer">
-                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">${closeLabel}</button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">${closeLabel}</button>
                     <button type="button" class="btn btn-primary" id="copySelectBtn">${selectLabel}</button>
                   </div>
                 </div>

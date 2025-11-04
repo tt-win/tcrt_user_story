@@ -66,28 +66,7 @@
         border-color: var(--tr-primary);
         box-shadow: 0 0 0 0.2rem rgba(var(--tr-primary-rgb), 0.25);
     }
-    .btn-setup {
-        background: linear-gradient(135deg, var(--tr-warning, #F97316) 0%, #FACC15 100%);
-        border: none;
-        border-radius: 6px;
-        padding: 0.75rem 1.5rem;
-        font-weight: 600;
-        font-size: 0.95rem;
-        color: #1f2937;
-        box-shadow: var(--tr-shadow-sm);
-        transition: all 0.2s ease;
-    }
-    .btn-setup:hover {
-        transform: translateY(-1px);
-        box-shadow: var(--tr-shadow-md);
-        color: #1f2937;
-    }
-    .btn-setup:disabled {
-        background: var(--tr-text-muted);
-        color: white;
-        box-shadow: none;
-        transform: none;
-    }
+
     .tips {
         background: rgba(250, 204, 21, 0.15);
         border: 1px solid rgba(250, 204, 21, 0.4);
@@ -160,7 +139,7 @@
                     </label>
                     <div class="input-group">
                         <input type="password" class="form-control" id="newPassword" placeholder="請設定新密碼 (至少 8 碼)" required>
-                        <button class="btn btn-outline-secondary" type="button" data-toggle="password" data-target="newPassword">
+                        <button class="btn btn-secondary" type="button" data-toggle="password" data-target="newPassword">
                             <i class="fas fa-eye"></i>
                         </button>
                     </div>
@@ -175,13 +154,13 @@
                     </label>
                     <div class="input-group">
                         <input type="password" class="form-control" id="confirmPassword" placeholder="請再次輸入新密碼" required>
-                        <button class="btn btn-outline-secondary" type="button" data-toggle="password" data-target="confirmPassword">
+                        <button class="btn btn-secondary" type="button" data-toggle="password" data-target="confirmPassword">
                             <i class="fas fa-eye"></i>
                         </button>
                     </div>
                 </div>
                 <div class="d-grid">
-                    <button type="submit" class="btn btn-setup" id="setupBtn">
+                    <button type="submit" class="btn btn-success" id="setupBtn">
                         <span id="setupBtnText"><i class="fas fa-check me-2"></i>設定密碼</span>
                         <span id="setupBtnLoading" class="d-none">
                             <span class="spinner-border spinner-border-sm me-2" role="status"></span>

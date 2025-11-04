@@ -1339,16 +1339,16 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
         <i class="fas fa-redo me-2"></i><span data-i18n="testRun.restartExecution">重新執行</span>
     </button>
     <div class="ms-auto d-flex gap-2">
-        <button type="button" class="btn btn-outline-primary" id="exportBtn">
+        <button type="button" class="btn btn-primary" id="exportBtn">
             <i class="fas fa-chart-pie me-2"></i><span data-i18n="testRun.chartsReports">Charts & Reports</span>
         </button>
         <button type="button" class="btn btn-secondary" id="refreshBtn">
             <i class="fas fa-sync-alt me-2"></i><span data-i18n="common.refresh">重新整理</span>
         </button>
-        <a href="/test-run-management" class="btn btn-outline-secondary">
+        <a href="/test-run-management" class="btn btn-secondary">
             <i class="fas fa-arrow-left me-2"></i><span data-i18n="navigation.backToManagement">回到管理</span>
         </a>
-        <a href="/" class="btn btn-outline-secondary">
+        <a href="/" class="btn btn-secondary">
             <i class="fas fa-home me-2"></i><span data-i18n="navigation.backToHome">首頁</span>
         </a>
     </div>
@@ -1403,7 +1403,7 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
             </div>
             <!-- 批次操作工具區 -->
             <div id="batchOperationsToolbar" class="d-none d-flex align-items-center gap-2 ms-lg-auto mb-2 mb-lg-0">
-                <button type="button" class="btn btn-outline-secondary btn-sm" id="clearSelectionExecBtn" data-i18n-title="common.clearSelection" title="清除選取">
+                <button type="button" class="btn btn-secondary btn-sm" id="clearSelectionExecBtn" data-i18n-title="common.clearSelection" title="清除選取">
                     <i class="fas fa-xmark"></i>
                 </button>
                 <span class="text-muted" id="selectedItemsCount" data-i18n="testRun.selectedItemsCount" data-i18n-params='{"count": 0}'>已選取 0 個項目</span>
@@ -1422,10 +1422,10 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                     <span data-i18n="common.filter">篩選</span>
                 </div>
                 <div class="d-flex align-items-center gap-2">
-                    <button type="button" class="btn btn-link btn-sm p-0" id="resetExecutionFiltersBtn">
+                    <button type="button" class="btn btn-secondary btn-sm p-0" id="resetExecutionFiltersBtn">
                         <i class="fas fa-undo-alt me-1"></i><span data-i18n="testRun.filterReset">清除篩選</span>
                     </button>
-                    <button type="button" class="btn btn-outline-secondary btn-sm" id="closeExecutionFiltersBtn" aria-label="Close">
+                    <button type="button" class="btn btn-secondary btn-sm" id="closeExecutionFiltersBtn" aria-label="Close">
                         <i class="fas fa-times"></i>
                     </button>
                 </div>
@@ -1562,7 +1562,7 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                 <!-- 詳情內容將動態載入 -->
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" data-i18n="common.close">關閉</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.close">關閉</button>
             </div>
         </div>
     </div>
@@ -1726,13 +1726,13 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                 <div id="testCaseDetailHeaderResult" class="ms-3" style="min-width: 170px;"></div>
                 <!-- 標頭靠右：上一隻 / 下一隻 / 關閉 -->
                 <div class="d-flex align-items-center gap-2 ms-auto">
-                    <button type="button" class="btn btn-outline-primary btn-sm" id="copyExecCaseLinkBtn">
+                    <button type="button" class="btn btn-primary btn-sm" id="copyExecCaseLinkBtn">
                         <i class="fas fa-link me-1"></i><span data-i18n="common.copyLink">複製連結</span>
                     </button>
-                    <button type="button" class="btn btn-outline-secondary btn-sm" id="prevExecCaseBtn" title="上一隻">
+                    <button type="button" class="btn btn-secondary btn-sm" id="prevExecCaseBtn" title="上一隻">
                         <i class="fas fa-chevron-left"></i>
                     </button>
-                    <button type="button" class="btn btn-outline-secondary btn-sm" id="nextExecCaseBtn" title="下一隻">
+                    <button type="button" class="btn btn-secondary btn-sm" id="nextExecCaseBtn" title="下一隻">
                         <i class="fas fa-chevron-right"></i>
                     </button>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
@@ -1757,7 +1757,7 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                     <aside id="testCaseDetailMiddlePane" style="flex: 0 0 calc(30% - 11px); border-left: 1px solid var(--tr-border-light); padding-left: 12px; display: none; min-width: 280px; flex-direction: column; overflow: hidden;">
                         <div class="d-flex align-items-center justify-content-between mb-2">
                             <h6 class="mb-0"><i class="fas fa-history me-2"></i><span data-i18n="testRun.resultHistory">結果歷程</span></h6>
-                            <button type="button" id="refreshTimelineBtn" class="btn btn-link text-secondary p-0" title="刷新" style="border: none; background: none;"><i class="fas fa-sync-alt"></i></button>
+                            <button type="button" id="refreshTimelineBtn" class="btn btn-secondary text-secondary p-0" title="刷新" style="border: none; background: none;"><i class="fas fa-sync-alt"></i></button>
                         </div>
                         <div id="timelineLoading" class="text-center py-2" style="display:none;">
                             <i class="fas fa-spinner fa-spin"></i>
@@ -1771,7 +1771,7 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                         <div class="mt-3 border-top pt-3" style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
                             <div class="d-flex align-items-center justify-content-between mb-2">
                                 <h6 class="mb-0"><i class="fas fa-bug me-2"></i><span data-i18n="testRun.bugTickets">Bug Tickets</span></h6>
-                                <button type="button" id="addBugTicketBtn" class="btn btn-link text-secondary p-0" data-i18n-title="testRun.addBugTicket" style="border: none; background: none;">
+                                <button type="button" id="addBugTicketBtn" class="btn btn-secondary text-secondary p-0" data-i18n-title="testRun.addBugTicket" style="border: none; background: none;">
                                     <i class="fas fa-plus"></i>
                                 </button>
                             </div>
@@ -1794,7 +1794,7 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                                     <i class="fas fa-file-alt me-2"></i>
                                     <span data-i18n="testRun.testResults">Test Results</span>
                                 </h6>
-                                <button type="button" id="uploadTestResultsBtn" class="btn btn-link text-secondary p-0"
+                                <button type="button" id="uploadTestResultsBtn" class="btn btn-secondary text-secondary p-0"
                                         data-i18n-title="testRun.uploadTestResults" style="border: none; background: none;">
                                     <i class="fas fa-upload"></i>
                                 </button>
@@ -1837,7 +1837,7 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                                     <i class="fas fa-comment me-2"></i>
                                     <span data-i18n="testRun.comment">Comment</span>
                                 </h6>
-                                <button type="button" id="editCommentBtn" class="btn btn-link text-secondary p-0"
+                                <button type="button" id="editCommentBtn" class="btn btn-secondary text-secondary p-0"
                                         data-i18n-title="testRun.editComment" style="border: none; background: none;">
                                     <i class="fas fa-edit"></i>
                                 </button>
@@ -1857,13 +1857,13 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
             </div>
             <div class="modal-footer">
                 <div class="me-auto">
-                    <button type="button" class="btn btn-outline-info" id="referenceTestCaseExecBtn" style="display: none;">
+                    <button type="button" class="btn btn-info" id="referenceTestCaseExecBtn" style="display: none;">
                         <i class="fas fa-search me-2"></i>
                         <span data-i18n="testCase.referenceTestCaseButton">參考測試案例</span>
                     </button>
                 </div>
                 <div>
-                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
                         <i class="fas fa-times me-2"></i>
                         <span data-i18n="common.close">關閉</span>
                     </button>
@@ -1961,15 +1961,15 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                     <div class="mb-3">
                         <div class="d-flex justify-content-between align-items-center mb-2">
                             <div class="btn-group btn-group-sm" role="group" aria-label="Status Filter">
-                                <button type="button" class="btn btn-outline-secondary active" data-status="ALL" data-i18n="testRun.statusFilter.all" onclick="filterBugTicketsByStatus('ALL')">All</button>
-                                <button type="button" class="btn btn-outline-warning" data-status="OPEN" data-i18n="testRun.statusFilter.open" onclick="filterBugTicketsByStatus('OPEN')">Open</button>
-                                <button type="button" class="btn btn-outline-primary" data-status="TO DO" data-i18n="testRun.statusFilter.toDo" onclick="filterBugTicketsByStatus('TO DO')">To Do</button>
-                                <button type="button" class="btn btn-outline-info" data-status="IN PROGRESS" data-i18n="testRun.statusFilter.inProgress" onclick="filterBugTicketsByStatus('IN PROGRESS')">In Progress</button>
-                                <button type="button" class="btn btn-outline-success" data-status="RESOLVED" data-i18n="testRun.statusFilter.resolved" onclick="filterBugTicketsByStatus('RESOLVED')">Resolved</button>
-                                <button type="button" class="btn btn-outline-secondary" data-status="SCHEDULED" data-i18n="testRun.statusFilter.scheduled" onclick="filterBugTicketsByStatus('SCHEDULED')">Scheduled</button>
-                                <button type="button" class="btn btn-outline-dark" data-status="CLOSED" data-i18n="testRun.statusFilter.closed" onclick="filterBugTicketsByStatus('CLOSED')">Closed</button>
+                                <button type="button" class="btn btn-secondary active" data-status="ALL" data-i18n="testRun.statusFilter.all" onclick="filterBugTicketsByStatus('ALL')">All</button>
+                                <button type="button" class="btn btn-warning" data-status="OPEN" data-i18n="testRun.statusFilter.open" onclick="filterBugTicketsByStatus('OPEN')">Open</button>
+                                <button type="button" class="btn btn-primary" data-status="TO DO" data-i18n="testRun.statusFilter.toDo" onclick="filterBugTicketsByStatus('TO DO')">To Do</button>
+                                <button type="button" class="btn btn-info" data-status="IN PROGRESS" data-i18n="testRun.statusFilter.inProgress" onclick="filterBugTicketsByStatus('IN PROGRESS')">In Progress</button>
+                                <button type="button" class="btn btn-success" data-status="RESOLVED" data-i18n="testRun.statusFilter.resolved" onclick="filterBugTicketsByStatus('RESOLVED')">Resolved</button>
+                                <button type="button" class="btn btn-secondary" data-status="SCHEDULED" data-i18n="testRun.statusFilter.scheduled" onclick="filterBugTicketsByStatus('SCHEDULED')">Scheduled</button>
+                                <button type="button" class="btn btn-secondary" data-status="CLOSED" data-i18n="testRun.statusFilter.closed" onclick="filterBugTicketsByStatus('CLOSED')">Closed</button>
                             </div>
-                            <button type="button" class="btn btn-outline-secondary btn-sm" onclick="refreshBugTicketsStatus()">
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="refreshBugTicketsStatus()">
                                 <i class="fas fa-sync-alt me-1"></i><span data-i18n="testRun.refreshBugStatus">重新整理狀態</span>
                             </button>
                         </div>
@@ -5640,7 +5640,7 @@ async function loadBugTickets(itemId) {
                             ${escapedCleanedTicket}
                         </strong>
                     </div>
-                    <button type="button" class="btn btn-link text-secondary p-0" data-item-id="${itemId}" data-ticket-original="${escapedOriginalTicket}" data-i18n-title="common.delete" style="border: none; background: none;">
+                    <button type="button" class="btn btn-secondary text-secondary p-0" data-item-id="${itemId}" data-ticket-original="${escapedOriginalTicket}" data-i18n-title="common.delete" style="border: none; background: none;">
                         <i class="fas fa-times"></i>
                     </button>
                 </div>
@@ -5648,7 +5648,7 @@ async function loadBugTickets(itemId) {
             }).join('');
 
             // 綁定刪除按鈕事件（使用事件委託）
-            bugTicketsList.querySelectorAll('.btn-link').forEach(btn => {
+            bugTicketsList.querySelectorAll('.btn-secondary').forEach(btn => {
                 btn.addEventListener('click', function() {
                     const itemId = this.getAttribute('data-item-id');
                     // 使用原始的 ticket number 進行刪除
@@ -7835,7 +7835,7 @@ class TestResultsManager {
         const canManageFiles = !!this.canManageFiles;
         const actionsHtml = canManageFiles ? `
                 <div class="file-actions">
-                    <button type="button" class="btn btn-xs btn-outline-danger delete-file-btn" 
+                    <button type="button" class="btn btn-xs btn-danger delete-file-btn" 
                             data-file-token="${file.file_token}"
                             data-file-name="${this.escapeHtml(file.name)}" 
                             data-i18n-title="testRun.deleteFile"

@@ -7,17 +7,17 @@ endblock %} {% block page_title_text %}<span data-i18n="teamStats.pageTitle"
 >{% endblock %} {% block page_specific_actions %}
 <!-- 日期範圍選擇器 -->
 <div class="btn-group me-2" role="group">
-    <button type="button" class="btn btn-sm btn-outline-primary" data-days="7">
+    <button type="button" class="btn btn-sm btn-primary" data-days="7">
         <span data-i18n="teamStats.days7">7天</span>
     </button>
     <button
         type="button"
-        class="btn btn-sm btn-outline-primary active"
+        class="btn btn-sm btn-primary active"
         data-days="30"
     >
         <span data-i18n="teamStats.days30">30天</span>
     </button>
-    <button type="button" class="btn btn-sm btn-outline-primary" data-days="90">
+    <button type="button" class="btn btn-sm btn-primary" data-days="90">
         <span data-i18n="teamStats.days90">90天</span>
     </button>
 </div>
@@ -25,7 +25,7 @@ endblock %} {% block page_title_text %}<span data-i18n="teamStats.pageTitle"
 <!-- 刷新按鈕 -->
 <button
     type="button"
-    class="btn btn-sm btn-outline-secondary me-2"
+    class="btn btn-sm btn-secondary me-2"
     id="refresh-stats-btn"
 >
     <i class="fas fa-sync-alt"></i>
@@ -33,11 +33,11 @@ endblock %} {% block page_title_text %}<span data-i18n="teamStats.pageTitle"
 </button>
 
 <!-- 導航按鈕 -->
-<a href="/" class="btn btn-sm btn-outline-secondary me-2">
+<a href="/" class="btn btn-sm btn-secondary me-2">
     <i class="fas fa-home me-1"></i>
     <span data-i18n="navigation.backToHome">首頁</span>
 </a>
-<a href="/team-management" class="btn btn-sm btn-outline-secondary">
+<a href="/team-management" class="btn btn-sm btn-secondary">
     <i class="fas fa-arrow-left me-1"></i>
     <span data-i18n="team.management">團隊管理</span>
 </a>

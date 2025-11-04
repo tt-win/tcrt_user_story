@@ -447,7 +447,7 @@ html, body { height: 100%; overflow: hidden; }
         <i class="fas fa-plus me-2"></i><span data-i18n="testCase.createTestCase">新增測試案例</span>
     </button>
     <div class="btn-group" role="group" id="bulkModeDropdownGroup" style="display: none;">
-        <button type="button" class="btn btn-outline-primary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+        <button type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
             <i class="fas fa-layer-group me-2"></i><span data-i18n="testCase.bulk.bulkMode">大量模式</span>
         </button>
         <ul class="dropdown-menu">
@@ -462,7 +462,7 @@ html, body { height: 100%; overflow: hidden; }
     <button type="button" class="btn btn-secondary" id="refreshBtn">
         <i class="fas fa-sync-alt me-2"></i><span data-i18n="common.refresh">重新整理</span>
     </button>
-    <a href="/" class="btn btn-outline-secondary">
+    <a href="/" class="btn btn-secondary">
         <i class="fas fa-home me-2"></i><span data-i18n="navigation.backToHome">回到首頁</span>
     </a>
 </div>
@@ -529,7 +529,7 @@ html, body { height: 100%; overflow: hidden; }
                 </div>
                 <div class="col-md-3 col-lg-6 d-flex align-items-end justify-content-between flex-wrap">
                     <div class="d-flex align-items-center mb-2 mb-lg-0">
-                        <button type="button" class="btn btn-primary me-2" id="applyFiltersBtn">
+                        <button type="button" class="btn btn-success me-2" id="applyFiltersBtn">
                             <i class="fas fa-filter me-2"></i><span data-i18n="common.apply">套用篩選</span>
                         </button>
                         <button type="button" class="btn btn-secondary" id="clearFiltersBtn">
@@ -538,17 +538,17 @@ html, body { height: 100%; overflow: hidden; }
                     </div>
                     <!-- 批次操作工具列（與套用篩選同一排、靠右顯示） -->
                     <div id="batchInlineToolbar" class="d-none d-flex align-items-center gap-2 ms-lg-auto mb-2 mb-lg-0" style="display: none !important;">
-                        <button type="button" class="btn btn-outline-secondary btn-sm" id="clearSelectionBtnTC"
+                        <button type="button" class="btn btn-secondary btn-sm" id="clearSelectionBtnTC"
                                 data-i18n-title="common.clearSelection" title="清除選取">
                             <i class="fas fa-xmark"></i>
                         </button>
                         <span class="text-muted" id="selectedCountWrapper" data-i18n="testCase.selectedItems" data-i18n-params='{"count":0}'>
                             已選取 0 個項目
                         </span>
-                        <button type="button" class="btn btn-primary btn-sm" id="batchModifyBtn" style="display: none;">
+                        <button type="button" class="btn btn-warning btn-sm" id="batchModifyBtn" style="display: none;">
                             <i class="fas fa-edit me-2"></i><span data-i18n="testCase.batchModify">批次修改</span>
                         </button>
-                        <button type="button" class="btn btn-outline-primary btn-sm" id="batchCopyBtn" style="display: none;">
+                        <button type="button" class="btn btn-warning btn-sm" id="batchCopyBtn" style="display: none;">
                             <i class="fas fa-copy me-2"></i><span data-i18n="testCase.batchCopy.title">批次複製</span>
                         </button>
                         <button type="button" class="btn btn-danger btn-sm" id="batchDeleteBtn" style="display: none;">
@@ -623,13 +623,13 @@ html, body { height: 100%; overflow: hidden; }
                     <span id="testCaseModalTitle" data-i18n="testCase.createTestCase">新增測試案例</span>
                 </h5>
                 <div class="d-flex align-items-center gap-2">
-                    <button type="button" class="btn btn-outline-primary btn-sm" id="copyTcmCaseLinkBtn">
+                    <button type="button" class="btn btn-primary btn-sm" id="copyTcmCaseLinkBtn">
                         <i class="fas fa-link me-1"></i><span data-i18n="common.copyLink">複製連結</span>
                     </button>
-                    <button type="button" class="btn btn-outline-secondary btn-sm" id="prevTestCaseBtn" data-i18n-title="testCase.previousTestCase">
+                    <button type="button" class="btn btn-secondary btn-sm" id="prevTestCaseBtn" data-i18n-title="testCase.previousTestCase">
                         <i class="fas fa-chevron-left"></i>
                     </button>
-                    <button type="button" class="btn btn-outline-secondary btn-sm" id="nextTestCaseBtn" data-i18n-title="testCase.nextTestCase">
+                    <button type="button" class="btn btn-secondary btn-sm" id="nextTestCaseBtn" data-i18n-title="testCase.nextTestCase">
                         <i class="fas fa-chevron-right"></i>
                     </button>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
@@ -701,34 +701,34 @@ html, body { height: 100%; overflow: hidden; }
                                                 <!-- Markdown 工具列 -->
                                                 <div class="markdown-toolbar px-2 py-1 border-bottom" data-target="precondition" style="background-color: #f8f9fa; height: 32px; display: flex; align-items: center;">
                                                     <div class="btn-group btn-group-sm me-1" role="group">
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="**" data-i18n-title="markdown.bold">
+                                                        <button type="button" class="btn btn-secondary btn-xs" data-md="**" data-i18n-title="markdown.bold">
                                                             <i class="fas fa-bold"></i>
                                                         </button>
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="*" data-i18n-title="markdown.italic">
+                                                        <button type="button" class="btn btn-secondary btn-xs" data-md="*" data-i18n-title="markdown.italic">
                                                             <i class="fas fa-italic"></i>
                                                         </button>
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="`" data-i18n-title="markdown.code">
+                                                        <button type="button" class="btn btn-secondary btn-xs" data-md="`" data-i18n-title="markdown.code">
                                                             <i class="fas fa-code"></i>
                                                         </button>
                                                     </div>
                                                     <div class="btn-group btn-group-sm me-1" role="group">
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="# " data-i18n-title="markdown.heading1">H1</button>
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="## " data-i18n-title="markdown.heading2">H2</button>
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="### " data-i18n-title="markdown.heading3">H3</button>
+                                                        <button type="button" class="btn btn-secondary btn-xs" data-md="# " data-i18n-title="markdown.heading1">H1</button>
+                                                        <button type="button" class="btn btn-secondary btn-xs" data-md="## " data-i18n-title="markdown.heading2">H2</button>
+                                                        <button type="button" class="btn btn-secondary btn-xs" data-md="### " data-i18n-title="markdown.heading3">H3</button>
                                                     </div>
                                                     <div class="btn-group btn-group-sm me-1" role="group">
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="- " data-i18n-title="markdown.unorderedList">
+                                                        <button type="button" class="btn btn-secondary btn-xs" data-md="- " data-i18n-title="markdown.unorderedList">
                                                             <i class="fas fa-list-ul"></i>
                                                         </button>
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="1. " data-i18n-title="markdown.orderedList">
+                                                        <button type="button" class="btn btn-secondary btn-xs" data-md="1. " data-i18n-title="markdown.orderedList">
                                                             <i class="fas fa-list-ol"></i>
                                                         </button>
                                                     </div>
                                                     <div class="btn-group btn-group-sm" role="group">
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="[text](url)" data-i18n-title="markdown.link">
+                                                        <button type="button" class="btn btn-secondary btn-xs" data-md="[text](url)" data-i18n-title="markdown.link">
                                                             <i class="fas fa-link"></i>
                                                         </button>
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="![alt](url)" data-i18n-title="markdown.image">
+                                                        <button type="button" class="btn btn-secondary btn-xs" data-md="![alt](url)" data-i18n-title="markdown.image">
                                                             <i class="fas fa-image"></i>
                                                         </button>
                                                     </div>
@@ -762,34 +762,34 @@ html, body { height: 100%; overflow: hidden; }
                                                 <!-- Markdown 工具列 -->
                                                 <div class="markdown-toolbar px-2 py-1 border-bottom" data-target="test_steps" style="background-color: #f8f9fa; height: 32px; display: flex; align-items: center;">
                                                     <div class="btn-group btn-group-sm me-1" role="group">
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="**" data-i18n-title="markdown.bold">
+                                                        <button type="button" class="btn btn-secondary btn-xs" data-md="**" data-i18n-title="markdown.bold">
                                                             <i class="fas fa-bold"></i>
                                                         </button>
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="*" data-i18n-title="markdown.italic">
+                                                        <button type="button" class="btn btn-secondary btn-xs" data-md="*" data-i18n-title="markdown.italic">
                                                             <i class="fas fa-italic"></i>
                                                         </button>
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="`" data-i18n-title="markdown.code">
+                                                        <button type="button" class="btn btn-secondary btn-xs" data-md="`" data-i18n-title="markdown.code">
                                                             <i class="fas fa-code"></i>
                                                         </button>
                                                     </div>
                                                     <div class="btn-group btn-group-sm me-1" role="group">
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="# " data-i18n-title="markdown.heading1">H1</button>
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="## " data-i18n-title="markdown.heading2">H2</button>
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="### " data-i18n-title="markdown.heading3">H3</button>
+                                                        <button type="button" class="btn btn-secondary btn-xs" data-md="# " data-i18n-title="markdown.heading1">H1</button>
+                                                        <button type="button" class="btn btn-secondary btn-xs" data-md="## " data-i18n-title="markdown.heading2">H2</button>
+                                                        <button type="button" class="btn btn-secondary btn-xs" data-md="### " data-i18n-title="markdown.heading3">H3</button>
                                                     </div>
                                                     <div class="btn-group btn-group-sm me-1" role="group">
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="- " data-i18n-title="markdown.unorderedList">
+                                                        <button type="button" class="btn btn-secondary btn-xs" data-md="- " data-i18n-title="markdown.unorderedList">
                                                             <i class="fas fa-list-ul"></i>
                                                         </button>
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="1. " data-i18n-title="markdown.orderedList">
+                                                        <button type="button" class="btn btn-secondary btn-xs" data-md="1. " data-i18n-title="markdown.orderedList">
                                                             <i class="fas fa-list-ol"></i>
                                                         </button>
                                                     </div>
                                                     <div class="btn-group btn-group-sm" role="group">
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="[text](url)" data-i18n-title="markdown.link">
+                                                        <button type="button" class="btn btn-secondary btn-xs" data-md="[text](url)" data-i18n-title="markdown.link">
                                                             <i class="fas fa-link"></i>
                                                         </button>
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="![alt](url)" data-i18n-title="markdown.image">
+                                                        <button type="button" class="btn btn-secondary btn-xs" data-md="![alt](url)" data-i18n-title="markdown.image">
                                                             <i class="fas fa-image"></i>
                                                         </button>
                                                     </div>
@@ -823,34 +823,34 @@ html, body { height: 100%; overflow: hidden; }
                                                 <!-- Markdown 工具列 -->
                                                 <div class="markdown-toolbar px-2 py-1 border-bottom" data-target="expected_result" style="background-color: #f8f9fa; height: 32px; display: flex; align-items: center;">
                                                     <div class="btn-group btn-group-sm me-1" role="group">
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="**" data-i18n-title="markdown.bold">
+                                                        <button type="button" class="btn btn-secondary btn-xs" data-md="**" data-i18n-title="markdown.bold">
                                                             <i class="fas fa-bold"></i>
                                                         </button>
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="*" data-i18n-title="markdown.italic">
+                                                        <button type="button" class="btn btn-secondary btn-xs" data-md="*" data-i18n-title="markdown.italic">
                                                             <i class="fas fa-italic"></i>
                                                         </button>
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="`" data-i18n-title="markdown.code">
+                                                        <button type="button" class="btn btn-secondary btn-xs" data-md="`" data-i18n-title="markdown.code">
                                                             <i class="fas fa-code"></i>
                                                         </button>
                                                     </div>
                                                     <div class="btn-group btn-group-sm me-1" role="group">
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="# " data-i18n-title="markdown.heading1">H1</button>
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="## " data-i18n-title="markdown.heading2">H2</button>
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="### " data-i18n-title="markdown.heading3">H3</button>
+                                                        <button type="button" class="btn btn-secondary btn-xs" data-md="# " data-i18n-title="markdown.heading1">H1</button>
+                                                        <button type="button" class="btn btn-secondary btn-xs" data-md="## " data-i18n-title="markdown.heading2">H2</button>
+                                                        <button type="button" class="btn btn-secondary btn-xs" data-md="### " data-i18n-title="markdown.heading3">H3</button>
                                                     </div>
                                                     <div class="btn-group btn-group-sm me-1" role="group">
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="- " data-i18n-title="markdown.unorderedList">
+                                                        <button type="button" class="btn btn-secondary btn-xs" data-md="- " data-i18n-title="markdown.unorderedList">
                                                             <i class="fas fa-list-ul"></i>
                                                         </button>
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="1. " data-i18n-title="markdown.orderedList">
+                                                        <button type="button" class="btn btn-secondary btn-xs" data-md="1. " data-i18n-title="markdown.orderedList">
                                                             <i class="fas fa-list-ol"></i>
                                                         </button>
                                                     </div>
                                                     <div class="btn-group btn-group-sm" role="group">
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="[text](url)" data-i18n-title="markdown.link">
+                                                        <button type="button" class="btn btn-secondary btn-xs" data-md="[text](url)" data-i18n-title="markdown.link">
                                                             <i class="fas fa-link"></i>
                                                         </button>
-                                                        <button type="button" class="btn btn-outline-secondary btn-xs" data-md="![alt](url)" data-i18n-title="markdown.image">
+                                                        <button type="button" class="btn btn-secondary btn-xs" data-md="![alt](url)" data-i18n-title="markdown.image">
                                                             <i class="fas fa-image"></i>
                                                         </button>
                                                     </div>
@@ -895,18 +895,18 @@ html, body { height: 100%; overflow: hidden; }
                                     <button type="button" class="btn btn-secondary active" id="previewModeBtn">
                                         <i class="fas fa-eye me-1"></i><span data-i18n="form.browse">瀏覽</span>
                                     </button>
-                                    <button type="button" class="btn btn-outline-secondary" id="splitModeBtn" style="display: none;">
+                                    <button type="button" class="btn btn-secondary" id="splitModeBtn" style="display: none;">
                                         <i class="fas fa-edit me-1"></i><span data-i18n="form.editMode">編輯</span>
                                     </button>
                                 </div>
-                                <button type="button" class="btn btn-outline-info btn-sm" id="referenceTestCaseBtn" onclick="openReferenceTestCasePopup()">
+                                <button type="button" class="btn btn-info btn-sm" id="referenceTestCaseBtn" onclick="openReferenceTestCasePopup()">
                                     <i class="fas fa-search me-1"></i><span data-i18n="testCase.referenceTestCaseButton">參考測試案例</span>
                                 </button>
                             </div>
                             <!-- 操作按鈕 -->
                             <div class="d-flex gap-2">
                                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel" style="display: none;">取消</button>
-                                <button type="button" class="btn btn-outline-success" id="cloneAndAddNextBtn" style="display: none;">
+                                <button type="button" class="btn btn-success" id="cloneAndAddNextBtn" style="display: none;">
                                     <i class="fas fa-clone me-2"></i><span data-i18n="testCase.cloneAndAddNext">複製並新增下一筆</span>
                                 </button>
                                 <button type="button" class="btn btn-success" id="saveAndAddNextBtn" disabled style="display: none;">
@@ -1043,21 +1043,21 @@ html, body { height: 100%; overflow: hidden; }
                         <div class="input-group">
                             <span class="input-group-text py-1" data-i18n="testCase.batchCopy.prefix">Prefix</span>
                             <input type="text" class="form-control form-control-sm flex-grow-0 w-auto" id="copyPrefixInput" placeholder="TCG-93178" style="max-width:16ch;" />
-                            <button class="btn btn-outline-primary btn-sm" id="applyCopyPrefixBtn"><span data-i18n="testCase.batchCopy.apply">Apply</span></button>
+                            <button class="btn btn-primary btn-sm" id="applyCopyPrefixBtn"><span data-i18n="testCase.batchCopy.apply">Apply</span></button>
                         </div>
                     </div>
                     <div class="col-md-auto">
                         <div class="input-group">
                             <span class="input-group-text py-1" data-i18n="testCase.batchCopy.middleCode">Middle Code</span>
                             <input type="text" class="form-control form-control-sm flex-grow-0 w-auto" id="copyMiddleInput" placeholder="010" style="max-width:6ch;" />
-                            <button class="btn btn-outline-primary btn-sm" id="applyCopyMiddleBtn"><span data-i18n="testCase.batchCopy.apply">Apply</span></button>
+                            <button class="btn btn-primary btn-sm" id="applyCopyMiddleBtn"><span data-i18n="testCase.batchCopy.apply">Apply</span></button>
                         </div>
                     </div>
                     <div class="col-md-auto">
                         <div class="input-group">
                             <span class="input-group-text py-1" data-i18n="testCase.batchCopy.suffixStart">Suffix (Start)</span>
                             <input type="text" class="form-control form-control-sm flex-grow-0 w-auto" id="copySuffixStartInput" placeholder="020" style="max-width:6ch;" />
-                            <button class="btn btn-outline-primary btn-sm" id="applyCopySuffixBtn"><span data-i18n="testCase.batchCopy.apply">Apply</span></button>
+                            <button class="btn btn-primary btn-sm" id="applyCopySuffixBtn"><span data-i18n="testCase.batchCopy.apply">Apply</span></button>
                         </div>
                     </div>
                 </div>
@@ -1255,10 +1255,10 @@ TC-1003,API 健康檢查,\"服務已啟動\",\"發送 GET /health\",\"回傳 200
                 <div class="bulk-edit-toolbar">
                     <div class="d-flex justify-content-between align-items-center">
                         <div class="d-flex gap-2 align-items-center">
-                            <button type="button" class="btn btn-sm btn-outline-secondary" id="bulkEditOpenSearchBtn">
+                            <button type="button" class="btn btn-sm btn-secondary" id="bulkEditOpenSearchBtn">
                                 <i class="fas fa-search me-1"></i><span data-i18n="testCase.bulkEdit.search">搜尋及取代</span>
                             </button>
-                            <button type="button" class="btn btn-sm btn-outline-secondary" id="bulkEditUndoBtn" disabled>
+                            <button type="button" class="btn btn-sm btn-secondary" id="bulkEditUndoBtn" disabled>
                                 <i class="fas fa-undo me-1"></i><span data-i18n="common.undo">復原</span>
                             </button>
                             <div class="vr"></div>
@@ -1346,10 +1346,10 @@ TC-1003,API 健康檢查,\"服務已啟動\",\"發送 GET /health\",\"回傳 200
                         </small>
                     </div>
                     <div class="d-flex gap-2 mb-2">
-                        <button type="button" class="btn btn-sm btn-outline-secondary" id="bulkEditSelectAllBtn">
+                        <button type="button" class="btn btn-sm btn-secondary" id="bulkEditSelectAllBtn">
                             <i class="fas fa-check-square me-1"></i>全選
                         </button>
-                        <button type="button" class="btn btn-sm btn-outline-secondary" id="bulkEditDeselectAllBtn">
+                        <button type="button" class="btn btn-sm btn-secondary" id="bulkEditDeselectAllBtn">
                             <i class="fas fa-square me-1"></i>反選
                         </button>
                     </div>
@@ -2261,20 +2261,20 @@ function renderTestCaseActions(testCase) {
     const permissions = window._testCasePermissions || {};
     let actionsHtml = `
         <div class="btn-group" role="group">
-            <button class="btn btn-sm btn-outline-primary" onclick="showTestCaseModal(testCases.find(tc => tc.record_id === '${testCase.record_id}'))" data-i18n-title="common.view">
+            <button class="btn btn-sm btn-primary" onclick="showTestCaseModal(testCases.find(tc => tc.record_id === '${testCase.record_id}'))" data-i18n-title="common.view">
                 <i class="fas fa-eye"></i>
             </button>`;
     
     if (permissions.testCaseActionCopy) {
         actionsHtml += `
-            <button class="btn btn-sm btn-outline-secondary" onclick="cloneTestCase('${testCase.record_id}')" data-i18n-title="common.copy">
+            <button class="btn btn-sm btn-secondary" onclick="cloneTestCase('${testCase.record_id}')" data-i18n-title="common.copy">
                 <i class="fas fa-copy"></i>
             </button>`;
     }
     
     if (permissions.testCaseActionDelete) {
         actionsHtml += `
-            <button class="btn btn-sm btn-outline-danger" onclick="deleteTestCase('${testCase.record_id}')" data-i18n-title="common.delete">
+            <button class="btn btn-sm btn-danger" onclick="deleteTestCase('${testCase.record_id}')" data-i18n-title="common.delete">
                 <i class="fas fa-trash"></i>
             </button>`;
     }
@@ -3221,7 +3221,7 @@ function renderTestCasesTable() {
                         <i class="fas fa-eye"></i>
                     </button>
                     ${hasTestCasePermission('testCaseActionCopy') ? `
-                    <button type="button" class="btn btn-sm btn-outline-secondary" 
+                    <button type="button" class="btn btn-sm btn-secondary" 
                             onclick="copyTestCase('${testCase.record_id}')" title="${(window.i18n && window.i18n.isReady()) ? window.i18n.t('common.copy') : '複製'}">
                         <i class="fas fa-copy"></i>
                     </button>` : ''}
@@ -4538,7 +4538,7 @@ function showCloneSelector() {
                             </div>
                             <div class="modal-footer">
                                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">${cancelAction}</button>
-                                <button type="button" class="btn btn-outline-danger" id="continueWithoutSaveBtn">${continueWithoutSave}</button>
+                                <button type="button" class="btn btn-danger" id="continueWithoutSaveBtn">${continueWithoutSave}</button>
                                 <button type="button" class="btn btn-primary" id="saveAndContinueBtn">
                                     <i class="fas fa-save me-2"></i>${saveAndContinue}
                                 </button>
@@ -7414,38 +7414,38 @@ function generateMarkdownToolbar(targetFieldId) {
     return `
         <div class="markdown-toolbar px-2 py-1 border-bottom" data-target="${targetFieldId}" style="background-color: #f8f9fa; height: 32px; display: flex; align-items: center;">
             <div class="btn-group btn-group-sm me-1" role="group">
-                <button type="button" class="btn btn-outline-secondary btn-xs" data-md="**" data-i18n-title="markdown.bold">
+                <button type="button" class="btn btn-secondary btn-xs" data-md="**" data-i18n-title="markdown.bold">
                     <i class="fas fa-bold"></i>
                 </button>
-                <button type="button" class="btn btn-outline-secondary btn-xs" data-md="*" data-i18n-title="markdown.italic">
+                <button type="button" class="btn btn-secondary btn-xs" data-md="*" data-i18n-title="markdown.italic">
                     <i class="fas fa-italic"></i>
                 </button>
-                <button type="button" class="btn btn-outline-secondary btn-xs" data-md="\`" data-i18n-title="markdown.code">
+                <button type="button" class="btn btn-secondary btn-xs" data-md="\`" data-i18n-title="markdown.code">
                     <i class="fas fa-code"></i>
                 </button>
             </div>
             <div class="btn-group btn-group-sm me-1" role="group">
-                <button type="button" class="btn btn-outline-secondary btn-xs" data-md="# " data-i18n-title="markdown.heading1">H1</button>
-                <button type="button" class="btn btn-outline-secondary btn-xs" data-md="## " data-i18n-title="markdown.heading2">H2</button>
-                <button type="button" class="btn btn-outline-secondary btn-xs" data-md="### " data-i18n-title="markdown.heading3">H3</button>
+                <button type="button" class="btn btn-secondary btn-xs" data-md="# " data-i18n-title="markdown.heading1">H1</button>
+                <button type="button" class="btn btn-secondary btn-xs" data-md="## " data-i18n-title="markdown.heading2">H2</button>
+                <button type="button" class="btn btn-secondary btn-xs" data-md="### " data-i18n-title="markdown.heading3">H3</button>
             </div>
             <div class="btn-group btn-group-sm me-1" role="group">
-                <button type="button" class="btn btn-outline-secondary btn-xs" data-md="- " data-i18n-title="markdown.unorderedList">
+                <button type="button" class="btn btn-secondary btn-xs" data-md="- " data-i18n-title="markdown.unorderedList">
                     <i class="fas fa-list-ul"></i>
                 </button>
-                <button type="button" class="btn btn-outline-secondary btn-xs" data-md="1. " data-i18n-title="markdown.orderedList">
+                <button type="button" class="btn btn-secondary btn-xs" data-md="1. " data-i18n-title="markdown.orderedList">
                     <i class="fas fa-list-ol"></i>
                 </button>
             </div>
             <div class="btn-group btn-group-sm" role="group">
-                <button type="button" class="btn btn-outline-secondary btn-xs" data-md="[text](url)" data-i18n-title="markdown.link">
+                <button type="button" class="btn btn-secondary btn-xs" data-md="[text](url)" data-i18n-title="markdown.link">
                     <i class="fas fa-link"></i>
                 </button>
-                <button type="button" class="btn btn-outline-secondary btn-xs" data-md="![alt](url)" data-i18n-title="markdown.image">
+                <button type="button" class="btn btn-secondary btn-xs" data-md="![alt](url)" data-i18n-title="markdown.image">
                     <i class="fas fa-image"></i>
                 </button>
             </div>
-            <button type="button" class="btn btn-outline-info btn-xs markdown-help-btn" data-i18n-title="tooltips.markdownHelp" style="margin-left: 8px;" onclick="window.open('https://www.markdownguide.org/cheat-sheet/', '_blank')">
+            <button type="button" class="btn btn-info btn-xs markdown-help-btn" data-i18n-title="tooltips.markdownHelp" style="margin-left: 8px;" onclick="window.open('https://www.markdownguide.org/cheat-sheet/', '_blank')">
                 <i class="fas fa-question-circle"></i>
             </button>
         </div>
@@ -7626,7 +7626,7 @@ function addHelpButtonsToToolbars() {
         if (toolbar && !toolbar.querySelector('.markdown-help-btn')) {
             const helpButton = document.createElement('button');
             helpButton.type = 'button';
-            helpButton.className = 'btn btn-outline-info btn-xs markdown-help-btn';
+            helpButton.className = 'btn btn-info btn-xs markdown-help-btn';
             helpButton.setAttribute('data-i18n-title', 'markdown.help');
             helpButton.title = 'Markdown 語法說明'; // fallback
             helpButton.style.marginLeft = '8px';
@@ -7686,11 +7686,11 @@ function setEditorMode(mode) {
     // 更新按鈕狀態
     document.querySelectorAll('#previewModeBtn, #splitModeBtn').forEach(btn => {
         btn.classList.remove('active', 'btn-secondary');
-        btn.classList.add('btn-outline-secondary');
+        btn.classList.add('btn-secondary');
     });
     const activeBtn = document.getElementById(mode + 'ModeBtn');
     if (activeBtn) {
-        activeBtn.classList.remove('btn-outline-secondary');
+        activeBtn.classList.remove('btn-secondary');
         activeBtn.classList.add('btn-secondary', 'active');
     }
     
@@ -8113,7 +8113,7 @@ function renderAttachmentsList() {
             </div>
             <div>
                 ${link}
-                <button type="button" class="btn btn-sm btn-outline-danger" 
+                <button type="button" class="btn btn-sm btn-danger" 
                         onclick="removeAttachment('${stored}', '${attachment.name}', ${index})" data-i18n-title="tooltips.removeAttachment">
                     <i class="fas fa-times"></i>
                 </button>

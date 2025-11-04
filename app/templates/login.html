@@ -82,42 +82,6 @@
             color: var(--tr-text-primary);
         }
         
-        .btn-login {
-            background: linear-gradient(135deg, var(--tr-primary) 0%, #5BA0F2 100%);
-            border: 1px solid var(--tr-primary);
-            border-radius: 6px;
-            padding: 0.75rem 1.5rem;
-            font-weight: 500;
-            font-size: 0.875rem;
-            transition: all 0.2s ease;
-            color: white;
-            box-shadow: var(--tr-shadow-sm);
-        }
-        
-        .btn-login:hover {
-            background: linear-gradient(135deg, var(--tr-primary-dark) 0%, #4A8FD1 100%);
-            border-color: var(--tr-primary-dark);
-            transform: translateY(-1px);
-            box-shadow: var(--tr-shadow-md);
-            color: white;
-        }
-        
-        .btn-login:focus,
-        .btn-login:active {
-            background: linear-gradient(135deg, var(--tr-primary-dark) 0%, #4A8FD1 100%);
-            border-color: var(--tr-primary-dark);
-            color: white;
-            box-shadow: 0 0 0 0.2rem rgba(var(--tr-primary-rgb), 0.25);
-        }
-        
-        .btn-login:disabled {
-            background: var(--tr-text-muted);
-            border-color: var(--tr-text-muted);
-            transform: none;
-            box-shadow: none;
-            color: white;
-        }
-        
         .loading-spinner {
             width: 1rem;
             height: 1rem;
@@ -192,7 +156,7 @@
                         <div class="input-group">
                             <input type="password" class="form-control" id="password" name="password" 
                                    placeholder="Please enter password">
-                            <button class="btn btn-outline-secondary" type="button" id="togglePassword">
+                            <button class="btn btn-secondary" type="button" id="togglePassword">
                                 <i class="fas fa-eye" id="togglePasswordIcon"></i>
                             </button>
                         </div>
@@ -209,10 +173,10 @@
                 </div>
 
                 <div class="d-flex justify-content-between align-items-center gap-2">
-                    <button type="button" class="btn btn-outline-secondary d-none" id="backToUsername">
+                    <button type="button" class="btn btn-secondary d-none" id="backToUsername">
                         <i class="fas fa-arrow-left me-2"></i>Back
                     </button>
-                    <button type="submit" class="btn btn-primary btn-login flex-fill" id="loginBtn">
+                    <button type="submit" class="btn btn-success flex-fill" id="loginBtn">
                         <span id="loginBtnText">
                             <i class="fas fa-arrow-right me-2"></i>Next
                         </span>

@@ -39,27 +39,6 @@
             box-shadow: 0 0 0 0.25rem rgba(102, 126, 234, 0.25);
         }
         
-        .btn-login {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            border: none;
-            border-radius: 8px;
-            padding: 12px 24px;
-            font-weight: 500;
-            transition: all 0.3s ease;
-        }
-        
-        .btn-login:hover {
-            background: linear-gradient(135deg, #5a6fd8 0%, #6a4190 100%);
-            transform: translateY(-2px);
-            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.3);
-        }
-        
-        .btn-login:disabled {
-            background: #6c757d;
-            transform: none;
-            box-shadow: none;
-        }
-        
         .loading-spinner {
             width: 1rem;
             height: 1rem;
@@ -119,7 +98,7 @@
                         <div class="input-group">
                             <input type="password" class="form-control" id="password" name="password" 
                                    placeholder="請輸入密碼" required>
-                            <button class="btn btn-outline-secondary" type="button" id="togglePassword">
+                            <button class="btn btn-secondary" type="button" id="togglePassword">
                                 <i class="fas fa-eye" id="togglePasswordIcon"></i>
                             </button>
                         </div>
@@ -137,7 +116,7 @@
                     
                     <!-- 登入按鈕 -->
                     <div class="d-grid">
-                        <button type="submit" class="btn btn-primary btn-login" id="loginBtn">
+                        <button type="submit" class="btn btn-primary" id="loginBtn">
                             <span id="loginBtnText">
                                 <i class="fas fa-sign-in-alt me-2"></i>登入
                             </span>

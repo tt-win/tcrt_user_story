@@ -737,7 +737,7 @@ const UserStoryMapFlow = () => {
                                             ${escapeHtml(rel.team_name || '')} / ${escapeHtml(rel.map_name || '')}
                                         </small>
                                     </div>
-                                    ${isCrossMap ? `<button type="button" class="btn btn-sm btn-outline-info" data-related-popup-idx="${idx}" title="在新視窗開啟外部地圖" style="flex-shrink: 0;"><i class="fas fa-external-link-alt"></i></button>` : ''}
+                                    ${isCrossMap ? `<button type="button" class="btn btn-sm btn-info" data-related-popup-idx="${idx}" title="在新視窗開啟外部地圖" style="flex-shrink: 0;"><i class="fas fa-external-link-alt"></i></button>` : ''}
                                 </div>
                             `;
                         }).join('')}
@@ -800,10 +800,10 @@ const UserStoryMapFlow = () => {
                 </div>
                 
                 <div style="margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
-                    <button id="highlightPathBtn" data-node-id="${node.id}" style="padding: 6px 12px; font-size: 12px; background: #0d6efd; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                    <button id="highlightPathBtn" class="btn btn-warning btn-sm" data-node-id="${node.id}">
                         <i class="fas fa-lightbulb"></i> 高亮路徑
                     </button>
-                    <button id="clearHighlightBtn" style="padding: 6px 12px; font-size: 12px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                    <button id="clearHighlightBtn" class="btn btn-secondary btn-sm">
                         <i class="fas fa-times"></i> 清除
                     </button>
                 </div>

@@ -17,7 +17,7 @@
     </button>
     <!-- 數據與記錄下拉選單 -->
     <div class="btn-group" role="group" id="dataMenuGroup">
-        <button type="button" class="btn btn-outline-primary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+        <button type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
             <i class="fas fa-chart-bar me-2"></i><span data-i18n="dataMenu.title">數據與記錄</span>
         </button>
         <ul class="dropdown-menu">
@@ -33,13 +33,13 @@
             </li>
         </ul>
     </div>
-    <button type="button" class="btn btn-outline-primary" id="syncOrgBtn">
+    <button type="button" class="btn btn-primary" id="syncOrgBtn">
         <i class="fas fa-users me-2"></i><span data-i18n="orgSync.openButton">同步組織架構</span>
     </button>
     <button type="button" class="btn btn-secondary" id="refreshBtn">
         <i class="fas fa-sync-alt me-2"></i><span data-i18n="common.refresh">重新整理</span>
     </button>
-    <a href="/" class="btn btn-outline-secondary">
+    <a href="/" class="btn btn-secondary">
         <i class="fas fa-home me-2"></i><span data-i18n="navigation.backToHome">回到首頁</span>
     </a>
 </div>
@@ -121,7 +121,7 @@
                         <div class="row mt-3">
                             <div class="col-12">
                                 <div class="d-flex align-items-center">
-                                    <button type="button" class="btn btn-outline-info" id="validateLarkBtn">
+                                    <button type="button" class="btn btn-info" id="validateLarkBtn">
                                         <i class="fas fa-check me-2"></i><span data-i18n="team.validateConnection">驗證 Lark 連線</span>
                                     </button>
                                     <div id="larkValidationResult" class="ms-3"></div>
@@ -209,8 +209,8 @@
                                     </div>
                                     <div class="card-footer d-flex justify-content-between align-items-center">
                                         <div class="btn-group btn-group-sm" role="group">
-                                            <button class="btn btn-outline-secondary" id="pm-prev">上一頁</button>
-                                            <button class="btn btn-outline-secondary" id="pm-next">下一頁</button>
+                                            <button class="btn btn-secondary" id="pm-prev">上一頁</button>
+                                            <button class="btn btn-secondary" id="pm-next">下一頁</button>
                                         </div>
                                         <small class="text-muted" id="pm-page-indicator">—</small>
                                     </div>
@@ -257,7 +257,7 @@
                                                     <label class="form-label" data-i18n="personnel.larkUserId">Lark 使用者</label>
                                                     <div class="input-group position-relative">
                                                         <input type="text" class="form-control" id="pm-lark-search" placeholder="搜尋 Lark 使用者" data-i18n-placeholder="personnel.larkSearchPlaceholder" autocomplete="off">
-                                                        <button class="btn btn-outline-danger" type="button" id="pm-lark-unlink" data-i18n="personnel.unlink">解除</button>
+                                                        <button class="btn btn-danger" type="button" id="pm-lark-unlink" data-i18n="personnel.unlink">解除</button>
                                                         <div class="dropdown-menu position-absolute w-100" id="pm-lark-dropdown" style="display:none; top:100%; z-index:1050; max-height:300px; overflow-y:auto;"></div>
                                                     </div>
                                                     <input type="hidden" id="pm-lark-id">
@@ -281,12 +281,12 @@
                                     <div class="card-footer">
                                         <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center">
                                             <div class="btn-group flex-shrink-0" role="group">
-                                                <button class="btn btn-outline-primary text-nowrap" id="pm-create"><i class="fas fa-user-plus me-1"></i><span data-i18n="personnel.newUser">New User</span></button>
+                                                <button class="btn btn-primary text-nowrap" id="pm-create"><i class="fas fa-user-plus me-1"></i><span data-i18n="personnel.newUser">New User</span></button>
                                                 <button class="btn btn-primary text-nowrap" id="pm-save"><i class="fas fa-save me-1"></i><span data-i18n="personnel.save">儲存</span></button>
                                             </div>
                                             <div class="btn-group flex-shrink-0" role="group">
-                                                <button class="btn btn-outline-warning text-nowrap" id="pm-reset"><i class="fas fa-key me-1"></i><span data-i18n="personnel.resetPassword">重設密碼</span></button>
-                                                <button class="btn btn-outline-danger text-nowrap" id="pm-delete"><i class="fas fa-trash me-1"></i><span data-i18n="personnel.delete">刪除</span></button>
+                                                <button class="btn btn-warning text-nowrap" id="pm-reset"><i class="fas fa-key me-1"></i><span data-i18n="personnel.resetPassword">重設密碼</span></button>
+                                                <button class="btn btn-danger text-nowrap" id="pm-delete"><i class="fas fa-trash me-1"></i><span data-i18n="personnel.delete">刪除</span></button>
                                             </div>
                                         </div>
                                     </div>
@@ -413,13 +413,13 @@
                         <!-- 測試案例同步按鈕：分頁底部（與組織分頁相同位置） -->
                         <div class="d-flex justify-content-end mt-3 pt-2 border-top" data-role="tab-only">
                             <div class="btn-group no-stretch" role="group" aria-label="tc-sync-modes">
-                                <button class="btn btn-outline-primary" id="btn-tc-init" data-testid="btn-tc-init" disabled>
+                                <button class="btn btn-primary" id="btn-tc-init" data-testid="btn-tc-init" disabled>
                                     <i class="fas fa-download me-1"></i><span data-i18n="tcSync.modes.init">匯入（Lark → 系統）</span>
                                 </button>
-                                <button class="btn btn-outline-secondary" id="btn-tc-diff" data-testid="btn-tc-diff" disabled>
+                                <button class="btn btn-secondary" id="btn-tc-diff" data-testid="btn-tc-diff" disabled>
                                     <i class="fas fa-exchange-alt me-1"></i><span data-i18n="tcSync.modes.diff">Diff（雙向比對）</span>
                                 </button>
-                                <button class="btn btn-outline-success" id="btn-tc-full" data-testid="btn-tc-full" disabled>
+                                <button class="btn btn-success" id="btn-tc-full" data-testid="btn-tc-full" disabled>
                                     <i class="fas fa-upload me-1"></i><span data-i18n="tcSync.modes.full">上傳（系統 → Lark）</span>
                                 </button>
                             </div>
@@ -643,10 +643,10 @@ function renderTeamCards() {
                             </button>
                         </div>
                         <div class="d-flex gap-2">
-                            <button class="btn btn-outline-secondary btn-sm flex-grow-1" onclick="editTeam(${team.id})">
+                            <button class="btn btn-secondary btn-sm flex-grow-1" onclick="editTeam(${team.id})">
                                 <i class="fas fa-edit me-1"></i><span>${(window.i18n && window.i18n.isReady()) ? window.i18n.t('common.edit') : '編輯'}</span>
                             </button>
-                            <button class="btn btn-outline-danger btn-sm flex-grow-1" onclick="openDeleteTeamModal(${team.id})">
+                            <button class="btn btn-danger btn-sm flex-grow-1" onclick="openDeleteTeamModal(${team.id})">
                                 <i class="fas fa-trash me-1"></i><span>${(window.i18n && window.i18n.isReady()) ? window.i18n.t('common.delete') : '刪除'}</span>
                             </button>
                         </div>
@@ -1517,8 +1517,8 @@ function renderTcDiff(data) {
         <div class="card-header bg-light d-flex justify-content-between align-items-center">
           <div><strong>差異清單</strong></div>
           <div class="btn-group btn-group-sm" role="group" id="tcDiffBulkActions">
-            <button class="btn btn-outline-primary" id="tcDiffSelectLark">全選採用 Lark</button>
-            <button class="btn btn-outline-secondary" id="tcDiffSelectLocal">全選採用本地</button>
+            <button class="btn btn-primary" id="tcDiffSelectLark">全選採用 Lark</button>
+            <button class="btn btn-secondary" id="tcDiffSelectLocal">全選採用本地</button>
           </div>
         </div>
         <div class="table-responsive">
