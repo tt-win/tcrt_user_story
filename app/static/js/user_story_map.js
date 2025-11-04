@@ -407,6 +407,7 @@ const UserStoryMapFlow = () => {
     const [currentMapId, setCurrentMapId] = useState(null);
     const [maps, setMaps] = useState([]);
     const [highlightedPath, setHighlightedPath] = useState(null);
+    const [highlightedNodeIds, setHighlightedNodeIds] = useState([]);
     const [teamName, setTeamName] = useState('');
     const [collapsedNodeIds, setCollapsedNodeIds] = useState(new Set());
     const reactFlowInstance = useRef(null);
@@ -603,6 +604,14 @@ const UserStoryMapFlow = () => {
                 setEdges(validEdges.map(edge => ({ ...edge, hidden: false })));
                 setCurrentMapId(mapId);
                 setCollapsedNodeIds(() => new Set());
+                setHighlightedNodeIds([]);
+                setHighlightedPath(null);
+                const highlightInfoEl = document.getElementById('highlightInfo');
+                if (highlightInfoEl) {
+                    highlightInfoEl.classList.remove('show');
+                    highlightInfoEl.classList.add('d-none');
+                    highlightInfoEl.innerHTML = '';
+                }
             }
         } catch (error) {
             console.error('Failed to load map:', error);
@@ -1155,16 +1164,10 @@ const UserStoryMapFlow = () => {
         }, 0);
     };
 
-    // Highlight path to node
-    const highlightPath = useCallback((nodeId) => {
-        if (!nodeId) return;
-
-        const nodesById = new Map(nodes.map((node) => [node.id, node]));
+    const computeHighlightDetails = useCallback((nodeId, nodesById) => {
         const targetNode = nodesById.get(nodeId);
-
         if (!targetNode) {
-            showMessage('找不到指定節點，請重新載入地圖', 'error');
-            return;
+            return null;
         }
 
         const highlightedIds = new Set([nodeId]);
@@ -1173,7 +1176,6 @@ const UserStoryMapFlow = () => {
         const relatedSameMapNodes = [];
         const crossMapRelations = [];
 
-        // Collect parents up to root
         let currentParentId = targetNode.data.parentId;
         const visitedParents = new Set();
         while (currentParentId && !visitedParents.has(currentParentId)) {
@@ -1188,7 +1190,6 @@ const UserStoryMapFlow = () => {
         }
         parentNodes.reverse();
 
-        // Collect all descendants
         const childQueue = Array.isArray(targetNode.data.childrenIds)
             ? [...targetNode.data.childrenIds]
             : [];
@@ -1210,7 +1211,6 @@ const UserStoryMapFlow = () => {
             }
         }
 
-        // Collect related nodes
         const normalizeRelatedEntry = (entry) => {
             if (!entry) return null;
 
@@ -1293,58 +1293,140 @@ const UserStoryMapFlow = () => {
             }
         });
 
-        setHighlightedPath({
-            nodeId,
-            nodes: Array.from(highlightedIds),
-            parents: parentNodes.map((node) => node.id),
-            children: childNodes.map((node) => node.id),
-            relatedSameMap: relatedSameMapNodes.map((node) => node.id),
+        return {
+            node: targetNode,
+            highlightedIds,
+            parentNodes,
+            childNodes,
+            relatedSameMapNodes,
             crossMapRelations,
+        };
+    }, [currentMapId]);
+
+    const applyHighlight = useCallback((activeIds, focusId, nodesById) => {
+        if (!Array.isArray(activeIds) || activeIds.length === 0) {
+            setHighlightedPath(null);
+
+            setNodes((nds) =>
+                nds.map((node) => ({
+                    ...node,
+                    data: {
+                        ...node.data,
+                        dimmed: false,
+                    },
+                }))
+            );
+
+            setEdges((eds) =>
+                eds
+                    // 移除 relation 邊
+                    .filter(edge => !edge.id.startsWith('relation-'))
+                    .map((edge) => ({
+                        ...edge,
+                        style: {
+                            ...edge.style,
+                            opacity: 1,
+                        },
+                    }))
+            );
+
+            const highlightInfoEl = document.getElementById('highlightInfo');
+            if (highlightInfoEl) {
+                highlightInfoEl.classList.remove('show');
+                highlightInfoEl.classList.add('d-none');
+                highlightInfoEl.innerHTML = '';
+            }
+            const clearBtn = document.getElementById('clearHighlightBtn');
+            if (clearBtn) {
+                clearBtn.style.display = 'none';
+            }
+            return;
+        }
+
+        const combinedIds = new Set();
+        const relationPairs = new Map(); // key: `${sourceId}->${targetId}`, value: relation node
+        let focusDetails = null;
+
+        activeIds.forEach((id) => {
+            const details = computeHighlightDetails(id, nodesById);
+            if (!details) {
+                return;
+            }
+            details.highlightedIds.forEach((value) => combinedIds.add(value));
+            details.relatedSameMapNodes.forEach((relNode) => {
+                combinedIds.add(relNode.id);
+                const key = `${id}->${relNode.id}`;
+                if (!relationPairs.has(key)) {
+                    relationPairs.set(key, { sourceId: id, relNode });
+                }
+            });
+            if (focusId === id) {
+                focusDetails = details;
+            }
         });
+
+        if (!focusDetails && activeIds.length > 0) {
+            focusDetails = computeHighlightDetails(activeIds[0], nodesById);
+        }
+
+        if (focusDetails) {
+            setHighlightedPath({
+                nodeId: focusDetails.node.id,
+                nodes: Array.from(focusDetails.highlightedIds),
+                parents: focusDetails.parentNodes.map((node) => node.id),
+                children: focusDetails.childNodes.map((node) => node.id),
+                relatedSameMap: focusDetails.relatedSameMapNodes.map((node) => node.id),
+                crossMapRelations: focusDetails.crossMapRelations,
+            });
+        } else {
+            setHighlightedPath(null);
+        }
 
         setNodes((nds) =>
             nds.map((node) => ({
                 ...node,
                 data: {
                     ...node.data,
-                    dimmed: !highlightedIds.has(node.id),
+                    dimmed: !combinedIds.has(node.id),
                 },
             }))
         );
 
-        setEdges((eds) =>
-            eds.map((edge) => {
-                // 保持現有邊的樣式
-                const isRelationEdge = relatedSameMapNodes.some(n => 
-                    (edge.source === nodeId && edge.target === n.id) ||
-                    (edge.source === n.id && edge.target === nodeId)
-                );
-                
+        setEdges((eds) => {
+            const existingEdgeIds = new Set(eds.map(edge => edge.id));
+            const relationKeys = new Set(relationPairs.keys());
+
+            const updatedEdges = eds.map((edge) => {
+                const isHighlighted =
+                    combinedIds.has(edge.source) &&
+                    combinedIds.has(edge.target);
+                const relationKey = `${edge.source}->${edge.target}`;
+                const isRelationEdge = edge.id.startsWith('relation-') || relationKeys.has(relationKey);
+
+                const nextStyle = {
+                    ...edge.style,
+                    opacity: isHighlighted ? 1 : 0.2,
+                };
+                if (isRelationEdge && isHighlighted) {
+                    nextStyle.strokeDasharray = edge.style?.strokeDasharray || '5,5';
+                    nextStyle.stroke = edge.style?.stroke || '#17a2b8';
+                    nextStyle.strokeWidth = edge.style?.strokeWidth || 2;
+                }
+
                 return {
                     ...edge,
-                    style: {
-                        ...edge.style,
-                        opacity:
-                            highlightedIds.has(edge.source) &&
-                            highlightedIds.has(edge.target)
-                                ? 1
-                                : 0.2,
-                        strokeDasharray: isRelationEdge ? '5,5' : undefined,
-                        stroke: isRelationEdge ? '#17a2b8' : undefined,
-                    },
+                    style: nextStyle,
                 };
-            })
-            // 添加關聯邊
-            .concat(
-                relatedSameMapNodes.flatMap(relNode => {
-                    const edgeId = `relation-${nodeId}-${relNode.id}`;
-                    // 檢查邊是否已存在
-                    if (eds.some(e => e.id === edgeId)) {
-                        return [];
-                    }
-                    return [{
+            });
+
+            const extraEdges = [];
+            relationPairs.forEach(({ sourceId, relNode }) => {
+                const edgeId = `relation-${sourceId}-${relNode.id}`;
+                if (!existingEdgeIds.has(edgeId)) {
+                    existingEdgeIds.add(edgeId);
+                    extraEdges.push({
                         id: edgeId,
-                        source: nodeId,
+                        source: sourceId,
                         target: relNode.id,
                         type: 'step',
                         sourceHandle: 'right',
@@ -1356,107 +1438,120 @@ const UserStoryMapFlow = () => {
                             stroke: '#17a2b8',
                             strokeWidth: 2,
                         },
-                    }];
-                })
-            )
-        );
+                    });
+                }
+            });
+
+            return updatedEdges.concat(extraEdges);
+        });
 
         const highlightInfoEl = document.getElementById('highlightInfo');
         if (highlightInfoEl) {
-            highlightInfoEl.classList.remove('d-none');
-            highlightInfoEl.classList.add('show');
-
             const formatNodeBadge = (node) =>
                 `<span class="badge rounded-pill text-bg-primary me-1 mb-1">${escapeHtml(node.data.title || node.id)}</span>`;
+            const selectedBadges = activeIds
+                .map(id => nodesById.get(id))
+                .filter(Boolean)
+                .map(formatNodeBadge)
+                .join('');
 
-            const parentHtml =
-                parentNodes.length > 0
-                    ? parentNodes.map(formatNodeBadge).join('')
-                    : '<span class="text-muted">無父節點</span>';
+            let htmlContent = `<div><strong>已選擇節點：</strong>${selectedBadges || '<span class="text-muted">無</span>'}</div>`;
 
-            const childrenHtml =
-                childNodes.length > 0
-                    ? childNodes.map(formatNodeBadge).join('')
-                    : '<span class="text-muted">無子節點</span>';
+            if (focusDetails) {
+                const parentHtml =
+                    focusDetails.parentNodes.length > 0
+                        ? focusDetails.parentNodes.map(formatNodeBadge).join('')
+                        : '<span class="text-muted">無父節點</span>';
 
-            const relatedHtml =
-                relatedSameMapNodes.length > 0
-                    ? relatedSameMapNodes.map(formatNodeBadge).join('')
-                    : '<span class="text-muted">本圖無關聯節點</span>';
+                const childrenHtml =
+                    focusDetails.childNodes.length > 0
+                        ? focusDetails.childNodes.map(formatNodeBadge).join('')
+                        : '<span class="text-muted">無子節點</span>';
 
-            const crossMapHtml =
-                crossMapRelations.length > 0
-                    ? `<ul class="mb-0 ps-3">${crossMapRelations
-                          .map((rel) => {
-                              const mapLabel =
-                                  rel.mapName ??
-                                  (rel.mapId !== null && rel.mapId !== undefined
-                                      ? `地圖 ${rel.mapId}`
-                                      : '其他地圖');
-                              const nodeLabel =
-                                  rel.nodeTitle ??
-                                  rel.nodeId ??
-                                  rel.raw ??
-                                  '未知節點';
-                              return `<li>${escapeHtml(mapLabel)} - ${escapeHtml(nodeLabel)}</li>`;
-                          })
-                          .join('')}</ul>`
-                    : '<span class="text-muted">無跨圖關聯</span>';
+                const relatedHtml =
+                    focusDetails.relatedSameMapNodes.length > 0
+                        ? focusDetails.relatedSameMapNodes.map(formatNodeBadge).join('')
+                        : '<span class="text-muted">本圖無關聯節點</span>';
 
-            highlightInfoEl.innerHTML = `
-                <div><strong>當前節點：</strong>${escapeHtml(targetNode.data.title || targetNode.id)}</div>
-                <div class="mt-1"><strong>父節點：</strong>${parentHtml}</div>
-                <div class="mt-1"><strong>子節點：</strong>${childrenHtml}</div>
-                <div class="mt-1"><strong>本圖關聯：</strong>${relatedHtml}</div>
-                <div class="mt-1"><strong>跨圖關聯：</strong>${crossMapHtml}</div>
-            `;
+                const crossMapHtml =
+                    focusDetails.crossMapRelations.length > 0
+                        ? `<ul class="mb-0 ps-3">${focusDetails.crossMapRelations
+                              .map((rel) => {
+                                  const mapLabel =
+                                      rel.mapName ??
+                                      (rel.mapId !== null && rel.mapId !== undefined
+                                          ? `地圖 ${rel.mapId}`
+                                          : '其他地圖');
+                                  const nodeLabel =
+                                      rel.nodeTitle ??
+                                      rel.nodeId ??
+                                      rel.raw ??
+                                      '未知節點';
+                                  return `<li>${escapeHtml(mapLabel)} - ${escapeHtml(nodeLabel)}</li>`;
+                              })
+                              .join('')}</ul>`
+                        : '<span class="text-muted">無跨圖關聯</span>';
+
+                htmlContent += `
+                    <div class="mt-1"><strong>當前節點：</strong>${escapeHtml(focusDetails.node.data.title || focusDetails.node.id)}</div>
+                    <div class="mt-1"><strong>父節點：</strong>${parentHtml}</div>
+                    <div class="mt-1"><strong>子節點：</strong>${childrenHtml}</div>
+                    <div class="mt-1"><strong>本圖關聯：</strong>${relatedHtml}</div>
+                    <div class="mt-1"><strong>跨圖關聯：</strong>${crossMapHtml}</div>
+                `;
+            }
+
+            highlightInfoEl.classList.remove('d-none');
+            highlightInfoEl.classList.add('show');
+            highlightInfoEl.innerHTML = htmlContent;
         }
-
         const clearBtn = document.getElementById('clearHighlightBtn');
         if (clearBtn) {
             clearBtn.style.display = 'inline-block';
         }
-    }, [nodes, setNodes, setEdges]);
+    }, [computeHighlightDetails, setNodes, setEdges, setHighlightedPath]);
+
+    // Highlight path to node
+    const highlightPath = useCallback((nodeId, isMultiSelect = false) => {
+        if (!nodeId) return;
+
+        const nodesById = new Map(nodes.map((node) => [node.id, node]));
+        if (!nodesById.has(nodeId)) {
+            showMessage('找不到指定節點，請重新載入地圖', 'error');
+            return;
+        }
+
+        const selectedIds = nodes
+            .filter(node => node.selected)
+            .map(node => node.id);
+
+        let nextIds;
+        if (isMultiSelect) {
+            if (highlightedNodeIds.includes(nodeId)) {
+                nextIds = highlightedNodeIds.filter(id => id !== nodeId);
+            } else {
+                nextIds = [...highlightedNodeIds, nodeId];
+            }
+        } else if (selectedIds.length > 1) {
+            nextIds = Array.from(new Set(selectedIds));
+        } else {
+            nextIds = [nodeId];
+        }
+
+        if (!nextIds.includes(nodeId)) {
+            nextIds = nextIds.length > 0 ? [...nextIds, nodeId] : [nodeId];
+        }
+
+        setHighlightedNodeIds(nextIds);
+        applyHighlight(nextIds, nodeId, nodesById);
+    }, [nodes, highlightedNodeIds, applyHighlight]);
 
     // Clear path highlighting
     const clearHighlight = useCallback(() => {
-        setHighlightedPath(null);
-        
-        setNodes((nds) =>
-            nds.map((node) => ({
-                ...node,
-                data: {
-                    ...node.data,
-                    dimmed: false,
-                },
-            }))
-        );
-
-        setEdges((eds) =>
-            eds
-                // 移除 relation 邊
-                .filter(edge => !edge.id.startsWith('relation-'))
-                .map((edge) => ({
-                    ...edge,
-                    style: {
-                        ...edge.style,
-                        opacity: 1,
-                    },
-                }))
-        );
-
-        const highlightInfoEl = document.getElementById('highlightInfo');
-        if (highlightInfoEl) {
-            highlightInfoEl.classList.remove('show');
-            highlightInfoEl.classList.add('d-none');
-            highlightInfoEl.innerHTML = '';
-        }
-
-        const clearBtn = document.getElementById('clearHighlightBtn');
-        if (clearBtn) {
-            clearBtn.style.display = 'none';
-        }
-    }, [setNodes, setEdges]);
+        setHighlightedNodeIds([]);
+        const nodesById = new Map(nodes.map((node) => [node.id, node]));
+        applyHighlight([], null, nodesById);
+    }, [nodes, applyHighlight]);
 
     // Show full relation graph
     const showFullRelationGraph = useCallback(async (nodeId) => {
@@ -2663,10 +2758,11 @@ document.addEventListener('DOMContentLoaded', async function() {
     });
 
     // Highlight path button
-    document.getElementById('highlightPathBtn')?.addEventListener('click', () => {
+    document.getElementById('highlightPathBtn')?.addEventListener('click', (event) => {
         const selectedNode = window.userStoryMapFlow?.getSelectedNode();
+        const isMultiSelect = event.ctrlKey || event.metaKey;
         if (selectedNode) {
-            window.userStoryMapFlow?.highlightPath(selectedNode.id);
+            window.userStoryMapFlow?.highlightPath(selectedNode.id, isMultiSelect);
         } else {
             alert('請先選擇一個節點');
         }
