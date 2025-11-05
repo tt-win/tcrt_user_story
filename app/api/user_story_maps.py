@@ -928,7 +928,7 @@ async def _create_reverse_relation(
         "map_name": source_map_name,
         "team_id": source_team_id,
         "team_name": source_team_name,
-        "node_name": source_node_name,
+        "display_title": source_node_name,
         "relation_id": None,
     }
     
