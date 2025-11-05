@@ -402,36 +402,37 @@ const UserStoryMapFlow = () => {
         nodesRef.current = nodes;
     }, [nodes]);
 
+    // Handle wheel event for zoom with Cmd/Ctrl
+    const handleWheel = useCallback((event) => {
+        const isCtrlPressed = event.ctrlKey || event.getModifierState?.('Control');
+        if (!isCtrlPressed) {
+            return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        const instance = reactFlowInstance.current;
+        if (!instance) {
+            return;
+        }
+        const zoomDelta = event.deltaY < 0 ? 0.2 : -0.2;
+        try {
+            instance.zoomBy?.(zoomDelta, { duration: 150 });
+        } catch (_) {
+            const currentZoom = instance.getZoom?.() ?? 1;
+            const nextZoom = Math.min(2, Math.max(0.2, currentZoom + zoomDelta));
+            instance.zoomTo?.(nextZoom, { duration: 150 });
+        }
+    }, []);
+
     useEffect(() => {
         const wrapper = document.getElementById('reactFlowWrapper');
         if (!wrapper) {
             return;
         }
 
-        const handleWheel = (event) => {
-            const isCtrlPressed = event.ctrlKey || event.getModifierState?.('Control');
-            if (!isCtrlPressed) {
-                return;
-            }
-            event.preventDefault();
-            event.stopPropagation();
-            const instance = reactFlowInstance.current;
-            if (!instance) {
-                return;
-            }
-            const zoomDelta = event.deltaY < 0 ? 0.2 : -0.2;
-            try {
-                instance.zoomBy?.(zoomDelta, { duration: 150 });
-            } catch (_) {
-                const currentZoom = instance.getZoom?.() ?? 1;
-                const nextZoom = Math.min(2, Math.max(0.2, currentZoom + zoomDelta));
-                instance.zoomTo?.(nextZoom, { duration: 150 });
-            }
-        };
-
         wrapper.addEventListener('wheel', handleWheel, { passive: false });
         return () => wrapper.removeEventListener('wheel', handleWheel);
-    }, []);
+    }, [handleWheel]);
 
     // Tree layout using dagre
     const applyTreeLayout = useCallback((nodes, edges) => {
@@ -1892,34 +1893,36 @@ const UserStoryMapFlow = () => {
                 const [rEdges, setREdges, onEdgesChange] = window.ReactFlow.useEdgesState(graphEdges);
                 const flowInstanceRef = React.useRef(null);
 
+                // Create memoized handleWheel function outside of useEffect
+                const handleWheelGraph = React.useCallback((event) => {
+                    const isCtrlPressed = event.ctrlKey || event.getModifierState?.('Control');
+                    if (!isCtrlPressed) {
+                        return;
+                    }
+                    event.preventDefault();
+                    event.stopPropagation();
+                    const instance = flowInstanceRef.current;
+                    if (!instance) {
+                        return;
+                    }
+                    const zoomDelta = event.deltaY < 0 ? 0.2 : -0.2;
+                    try {
+                        instance.zoomBy?.(zoomDelta, { duration: 150 });
+                    } catch (_) {
+                        const currentZoom = instance.getZoom?.() ?? 1;
+                        const nextZoom = Math.min(2, Math.max(0.2, currentZoom + zoomDelta));
+                        instance.zoomTo?.(nextZoom, { duration: 150 });
+                    }
+                }, []);
+
                 React.useEffect(() => {
                     if (!containerElement) {
                         return;
                     }
-                    const handleWheel = (event) => {
-                        const isCtrlPressed = event.ctrlKey || event.getModifierState?.('Control');
-                        if (!isCtrlPressed) {
-                            return;
-                        }
-                        event.preventDefault();
-                        event.stopPropagation();
-                        const instance = flowInstanceRef.current;
-                        if (!instance) {
-                            return;
-                        }
-                        const zoomDelta = event.deltaY < 0 ? 0.2 : -0.2;
-                        try {
-                            instance.zoomBy?.(zoomDelta, { duration: 150 });
-                        } catch (_) {
-                            const currentZoom = instance.getZoom?.() ?? 1;
-                            const nextZoom = Math.min(2, Math.max(0.2, currentZoom + zoomDelta));
-                            instance.zoomTo?.(nextZoom, { duration: 150 });
-                        }
-                    };
 
-                    containerElement.addEventListener('wheel', handleWheel, { passive: false });
-                    return () => containerElement.removeEventListener('wheel', handleWheel);
-                }, []);
+                    containerElement.addEventListener('wheel', handleWheelGraph, { passive: false });
+                    return () => containerElement.removeEventListener('wheel', handleWheelGraph);
+                }, [handleWheelGraph]);
                 
                 return React.createElement(
                     window.ReactFlow.ReactFlowProvider,
