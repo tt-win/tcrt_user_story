@@ -1945,33 +1945,8 @@ const UserStoryMapFlow = () => {
                             </div>`
                         : '';
                     
-                    // Build related nodes section
-                    const relatedNodesHtml = data.relatedIds && data.relatedIds.length > 0
-                        ? `<div class="mb-3">
-                                <label class="form-label small fw-bold">相關節點 (<span id="relatedNodesCount">${data.relatedIds.length}</span>)</label>
-                                <div class="list-group list-group-sm" id="relatedNodesList" style="max-height: 200px; overflow-y: auto;">
-                                    ${(Array.isArray(data.relatedIds) ? data.relatedIds : []).map((rel, idx) => {
-                                        if (typeof rel === 'string') {
-                                            return `<div class="list-group-item small"><span class="text-muted">${escapeHtml(rel)}</span></div>`;
-                                        }
-                                        // Check if cross-map
-                                        const isCrossMap = rel.map_id && String(rel.map_id) !== String(currentMapId);
-                                        return `
-                                            <div class="list-group-item small" style="display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px;">
-                                                <div style="flex-grow: 1;">
-                                                    <strong>${escapeHtml(rel.display_title || rel.node_id)}</strong>
-                                                    <br>
-                                                    <small class="text-muted">
-                                                        ${escapeHtml(rel.team_name || '')} / ${escapeHtml(rel.map_name || '')}
-                                                    </small>
-                                                </div>
-                                                ${isCrossMap ? `<button type="button" class="btn btn-sm btn-info" data-related-popup-idx="${idx}" title="在新視窗開啟外部地圖" style="flex-shrink: 0;"><i class="fas fa-external-link-alt"></i></button>` : ''}
-                                            </div>
-                                        `;
-                                    }).join('')}
-                                </div>
-                            </div>`
-                        : '';
+                    // 在完整關係圖的右側面板中不顯示相關節點，以避免與跨地圖節點列表重複
+                    const relatedNodesHtml = '';
                     
                     // Build main HTML matching main view layout
                     let html = `
