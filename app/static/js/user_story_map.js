@@ -339,7 +339,7 @@ const CustomNode = ({ data, id }) => {
     }
 
     const hasChildren = Array.isArray(data.childrenIds) && data.childrenIds.length > 0;
-    const collapseToggle = hasChildren
+    const collapseToggle = hasChildren && !data.disableCollapse
         ? React.createElement(
               'button',
               {
@@ -500,6 +500,61 @@ const UserStoryMapFlow = () => {
                 next.add(nodeId);
             }
             return next;
+        });
+    }, []);
+
+    // 重新應用佈局的函數
+    const applyLayoutWithCollapsedNodes = useCallback((currentNodes, currentEdges, collapsedSet) => {
+        if (!window.dagre) {
+            console.error('Dagre library not loaded');
+            return currentNodes;
+        }
+
+        const g = new dagre.graphlib.Graph();
+        g.setGraph({ rankdir: 'LR', ranksep: 75, nodesep: 40 });
+        g.setDefaultEdgeLabel(() => ({}));
+
+        // 只為未收合的節點設置圖形
+        const visibleNodes = currentNodes.filter(node => {
+            // 檢查節點是否被收合 - 通過檢查其父節點是否被收合
+            let parentId = node.data.parentId;
+            while (parentId) {
+                if (collapsedSet.has(parentId)) {
+                    return false; // 如果父節點收合，則隱藏當前節點
+                }
+                const parent = currentNodes.find(n => n.id === parentId);
+                parentId = parent?.data.parentId || null;
+            }
+            return true;
+        });
+
+        visibleNodes.forEach(node => {
+            g.setNode(node.id, { width: 200, height: 110 });
+        });
+
+        // 只為可見節點之間的邊設置圖形關係
+        currentEdges.forEach(edge => {
+            const sourceNodeVisible = visibleNodes.some(n => n.id === edge.source);
+            const targetNodeVisible = visibleNodes.some(n => n.id === edge.target);
+            if (sourceNodeVisible && targetNodeVisible) {
+                g.setEdge(edge.source, edge.target);
+            }
+        });
+
+        dagre.layout(g);
+
+        // 更新可見節點位置，保持隱藏節點的原始位置
+        return currentNodes.map(node => {
+            if (visibleNodes.includes(node)) {
+                const position = g.node(node.id);
+                return {
+                    ...node,
+                    position: { x: position.x, y: position.y },
+                    targetPosition: 'left',
+                    sourcePosition: 'right',
+                };
+            }
+            return node; // 保持隱藏節點的原始位置
         });
     }, []);
 
@@ -1791,6 +1846,8 @@ const UserStoryMapFlow = () => {
                         collapsed: false,
                         // 在完整關係圖中不顯示子節點，所以將 childrenIds 設為空陣列
                         childrenIds: [],
+                        // 在完整關係圖中禁用收合功能
+                        disableCollapse: true,
                         // 在 data 中標記是否為原始選定節點，以便在 CustomNode 組件中處理
                         isOriginalSelected: isOriginalSelectedNode,
                         isExternal: false, // 標記為非外部節點
@@ -1819,6 +1876,7 @@ const UserStoryMapFlow = () => {
                     // disable collapse interaction inside modal
                     toggleCollapse: undefined,
                     collapsed: false,
+                    disableCollapse: true, // 在完整關係圖中禁用收合功能
                     // 在完整關係圖中不顯示子節點，所以將 childrenIds 設為空陣列
                     childrenIds: [],
                     isExternal: true, // 標記為外部節點
@@ -2376,8 +2434,11 @@ const UserStoryMapFlow = () => {
             };
         });
 
-        nodesRef.current = updatedNodes;
-        setNodes(updatedNodes);
+        // 重新應用佈局以適應收合/展開的節點
+        const layoutedNodes = applyLayoutWithCollapsedNodes(updatedNodes, edges, collapsedNodeIds);
+
+        nodesRef.current = layoutedNodes;
+        setNodes(layoutedNodes);
         setEdges((eds) =>
             eds.map((edge) => {
                 const hidden = hiddenStatus.get(edge.source) || hiddenStatus.get(edge.target);
@@ -2394,14 +2455,14 @@ const UserStoryMapFlow = () => {
                     container.innerHTML = '<p class="text-muted small">選擇一個節點以查看和編輯屬性</p>';
                 }
             } else {
-                const refreshed = updatedNodes.find((node) => node.id === selectedNode.id);
+                const refreshed = layoutedNodes.find((node) => node.id === selectedNode.id);
                 if (refreshed && refreshed !== selectedNode) {
                     setSelectedNode(refreshed);
                     updateNodeProperties(refreshed);
                 }
             }
         }
-    }, [collapsedNodeIds, setNodes, setEdges, toggleNodeCollapse, setSelectedNode]);
+    }, [collapsedNodeIds, setNodes, setEdges, toggleNodeCollapse, setSelectedNode, applyLayoutWithCollapsedNodes, edges]);
 
     useEffect(() => {
         if (selectedNode) {
