@@ -2286,6 +2286,33 @@ const UserStoryMapFlow = () => {
         }, 0);
     }, [nodes, edges, setNodes, applyTreeLayout]);
 
+    // Collapse all parent nodes that have User Story children
+    const collapseUserStoryNodes = useCallback(() => {
+        setCollapsedNodeIds((prev) => {
+            const next = new Set(prev);
+            // Find all nodes that have User Story children and add them to collapsed set
+            nodes.forEach(node => {
+                if (Array.isArray(node.data.childrenIds) && node.data.childrenIds.length > 0) {
+                    // Check if any children are User Story nodes
+                    const hasUserStoryChild = node.data.childrenIds.some(childId => {
+                        const childNode = nodes.find(n => n.id === childId);
+                        return childNode && childNode.data.nodeType === 'user_story';
+                    });
+                    
+                    if (hasUserStoryChild) {
+                        next.add(node.id);
+                    }
+                }
+            });
+            return next;
+        });
+    }, [nodes, setCollapsedNodeIds]);
+
+    // Expand all nodes (clear all collapsed nodes)
+    const expandAllNodes = useCallback(() => {
+        setCollapsedNodeIds(new Set());
+    }, [setCollapsedNodeIds]);
+
     // Delete node
     const deleteNode = (nodeId) => {
         if (!hasUsmAccess('nodeDelete')) {
@@ -2496,7 +2523,15 @@ const UserStoryMapFlow = () => {
         window.addChildNode = addChildNode;
         window.addSiblingNode = addSiblingNode;
         window.showFullRelationGraph = showFullRelationGraph;
-    }, [saveMap, addNode, loadMap, loadMaps, autoLayout, highlightPath, clearHighlight, focusNode, selectedNode, addChildNode, addSiblingNode, setNodes, setEdges, teamName, showFullRelationGraph, currentMapId, teamId, mapIdFromUrl]);
+    }, [saveMap, addNode, loadMap, loadMaps, autoLayout, highlightPath, clearHighlight, focusNode, selectedNode, addChildNode, addSiblingNode, setNodes, setEdges, teamName, showFullRelationGraph, currentMapId, teamId, mapIdFromUrl, collapseUserStoryNodes, expandAllNodes]);
+
+    // Expose new functions to window for button handlers
+    useEffect(() => {
+        if (window.userStoryMapFlow) {
+            window.userStoryMapFlow.collapseUserStoryNodes = collapseUserStoryNodes;
+            window.userStoryMapFlow.expandAllNodes = expandAllNodes;
+        }
+    }, [collapseUserStoryNodes, expandAllNodes]);
 
     // MiniMap node color function
     const getNodeColor = (node) => {
@@ -3036,6 +3071,18 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
         window.userStoryMapFlow?.autoLayout();
         showMessage('已套用樹狀排版', 'success');
+    });
+
+    // Collapse User Story nodes button
+    document.getElementById('collapseUserStoryNodesBtn')?.addEventListener('click', () => {
+        window.userStoryMapFlow?.collapseUserStoryNodes();
+        showMessage('已收合所有 User Story 節點', 'success');
+    });
+
+    // Expand all nodes button
+    document.getElementById('expandAllNodesBtn')?.addEventListener('click', () => {
+        window.userStoryMapFlow?.expandAllNodes();
+        showMessage('已展開所有節點', 'success');
     });
 
     // Highlight path button
