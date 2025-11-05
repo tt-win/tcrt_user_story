@@ -730,7 +730,7 @@ async def delete_map(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_usm_db),
 ):
-    """刪除 User Story Map"""
+    """刪除 User Story Map 及其所有節點"""
     result = await db.execute(
         select(UserStoryMapDB).where(UserStoryMapDB.id == map_id)
     )
@@ -741,6 +741,12 @@ async def delete_map(
     
     await _require_usm_permission(current_user, "delete", map_db.team_id)
 
+    # 級聯刪除：先刪除所有關聯的節點
+    await db.execute(
+        delete(UserStoryMapNodeDB).where(UserStoryMapNodeDB.map_id == map_id)
+    )
+    
+    # 再刪除 map 本身
     await db.delete(map_db)
     await db.commit()
     
