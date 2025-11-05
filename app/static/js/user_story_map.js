@@ -1639,7 +1639,8 @@ const UserStoryMapFlow = () => {
             if (rel.mapId && rel.mapId !== currentMapId) {
                 // 獲取外部節點的詳細資訊
                 try {
-                    const response = await fetch(`/api/user-story-maps/${rel.mapId}`, {
+                    const url = `/api/user-story-maps/${rel.mapId}${(rel.team_id||rel.teamId)?`?team_id=${rel.team_id||rel.teamId}`:''}`;
+                    const response = await fetch(url, {
                         headers: {
                             'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
                         },
@@ -1690,7 +1691,8 @@ const UserStoryMapFlow = () => {
             if (rel.mapId && rel.mapId !== (currentMapId || 0)) {
                 // 需要從後端獲取此跨圖節點的詳細資訊
                 try {
-                    const response = await fetch(`/api/user-story-maps/${rel.mapId}`, {
+                    const url = `/api/user-story-maps/${rel.mapId}${(rel.team_id||rel.teamId)?`?team_id=${rel.team_id||rel.teamId}`:''}`;
+                    const response = await fetch(url, {
                         headers: {
                             'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
                         },

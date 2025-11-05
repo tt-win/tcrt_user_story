@@ -433,20 +433,20 @@
                 <h5 class="modal-title">節點完整相關圖</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body" style="padding: 0; flex: 1; display: flex; flex-direction: column;">
-                <div class="row" style="margin: 0; flex: 1;">
+            <div class="modal-body" style="padding: 0; flex: 1; display: flex; flex-direction: column; min-height: 0;">
+                <div class="row" style="margin: 0; flex: 1; min-height: 0;">
                     <!-- Graph container -->
-                    <div class="col-9" style="padding: 0; height: 100%;">
+                    <div class="col-9" style="padding: 0; height: 100%; min-height: 0;">
                         <div id="relationGraphContainer" style="width: 100%; height: 100%; border: 1px solid #ddd; border-radius: 4px; position: relative;">
                             <!-- React Flow 節點將在這裡渲染 -->
                         </div>
                     </div>
                     <!-- Properties panel -->
-                    <div class="col-3" style="padding: 0; height: 100%; border-left: 1px solid #dee2e6; overflow-y: auto;">
-                        <div style="padding: 12px; border-bottom: 1px solid #dee2e6;">
+                    <div class="col-3" style="padding: 0; height: 100%; min-height: 0; border-left: 1px solid #dee2e6; display: flex; flex-direction: column; overflow: hidden;">
+                        <div style="padding: 12px; border-bottom: 1px solid #dee2e6; flex-shrink: 0;">
                             <h6 style="margin: 0; font-weight: 600; color: #333;">節點屬性</h6>
                         </div>
-                        <div id="fullRelationNodeProperties" style="padding: 12px; flex: 1; overflow-y: auto;">
+                        <div id="fullRelationNodeProperties" style="padding: 12px; flex: 1; overflow-y: auto; min-height: 0;">
                             <p class="text-muted small" style="font-size: 12px;">點擊地圖上的節點以查看詳細信息</p>
                         </div>
                     </div>
