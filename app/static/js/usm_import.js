@@ -72,9 +72,9 @@ async function populateTeamSelect() {
 }
 
 /**
- * 預覽 Lark 表格
+ * 預處理 Lark 表格
  */
-async function previewLarkTable() {
+async function preprocessLarkTable() {
     try {
         const larkUrl = document.getElementById('larkUrlInput').value.trim();
         
@@ -92,7 +92,7 @@ async function previewLarkTable() {
         // 顯示加載狀態
         const countSpan = document.getElementById('larkRecordCount');
         countSpan.style.display = 'inline';
-        countSpan.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>載入中...';
+        countSpan.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>預處理中...';
 
         // 調用預覽 API
         const response = await window.AuthClient.fetch(
@@ -105,7 +105,7 @@ async function previewLarkTable() {
 
         if (!response.ok) {
             const error = await response.json();
-            throw new Error(error.detail || '預覽失敗');
+            throw new Error(error.detail || '預處理失敗');
         }
 
         const data = await response.json();
@@ -118,10 +118,10 @@ async function previewLarkTable() {
         countSpan.innerHTML = `共 ${data.total_records} 筆記錄`;
         
     } catch (error) {
-        console.error('Preview error:', error);
+        console.error('Preprocess error:', error);
         const countSpan = document.getElementById('larkRecordCount');
         countSpan.style.display = 'none';
-        AppUtils.showError(`預覽失敗: ${error.message}`);
+        AppUtils.showError(`預處理失敗: ${error.message}`);
     }
 }
 
@@ -153,7 +153,7 @@ async function confirmUSMImport() {
         }
         
         if (!usmImportData.previewData) {
-            AppUtils.showError('請先預覽數據');
+            AppUtils.showError('請先預處理數據');
             return;
         }
         
