@@ -197,8 +197,9 @@ async function confirmUSMImport() {
             
             // 刷新頁面或導向到新建的 map
             if (result.map_id) {
-                // 導向到新建的 USM
-                window.location.href = `/user-story-map/${result.map_id}`;
+                // 導向到新建的 USM - 需要 team_id 和 map_id
+                const teamId = parseInt(document.getElementById('targetTeamSelect').value);
+                window.location.href = `/user-story-map/${teamId}/${result.map_id}`;
             } else {
                 // 刷新頁面
                 location.reload();

@@ -14,8 +14,12 @@ const {
     MarkerType,
 } = window.ReactFlow;
 
-// Team ID from URL
-const teamId = parseInt(window.location.pathname.split('/').pop());
+// Team ID and optional Map ID from URL
+// Extract from path: /user-story-map/{team_id}[/map_id]
+const pathParts = window.location.pathname.split('/').filter(p => p);
+const teamIdIndex = pathParts.indexOf('user-story-map') + 1;
+const teamId = parseInt(pathParts[teamIdIndex]);
+const mapIdFromUrl = pathParts[teamIdIndex + 1] ? parseInt(pathParts[teamIdIndex + 1]) : null;
 
 // Layout constants to keep newly added nodes from overlapping
 const ROOT_START_X = 100;
@@ -2093,13 +2097,35 @@ const UserStoryMapFlow = () => {
     }, [loadTeamInfo]);
 
     // Auto-load first map when maps are loaded and no map is selected
+    // Or load specific map if provided in URL
     useEffect(() => {
-        if (maps.length > 0 && !currentMapId) {
-            const select = document.getElementById('currentMapSelect');
-            if (select && !select.value) {
-                const firstMapId = maps[0].id;
-                select.value = firstMapId;
-                loadMap(firstMapId);
+        if (maps.length > 0) {
+            if (mapIdFromUrl && !currentMapId) {
+                // If mapId is provided in URL, try to load that specific map
+                const targetMap = maps.find(map => map.id === mapIdFromUrl);
+                if (targetMap) {
+                    const select = document.getElementById('currentMapSelect');
+                    if (select) {
+                        select.value = targetMap.id;
+                        loadMap(targetMap.id);
+                    }
+                } else {
+                    // If specified mapId doesn't exist, fall back to loading first map
+                    const firstMapId = maps[0].id;
+                    const select = document.getElementById('currentMapSelect');
+                    if (select) {
+                        select.value = firstMapId;
+                        loadMap(firstMapId);
+                    }
+                }
+            } else if (!currentMapId) {
+                // If no mapId in URL, load first map as usual
+                const select = document.getElementById('currentMapSelect');
+                if (select && !select.value) {
+                    const firstMapId = maps[0].id;
+                    select.value = firstMapId;
+                    loadMap(firstMapId);
+                }
             }
         }
     }, [maps, currentMapId, loadMap]);
@@ -2217,10 +2243,12 @@ const UserStoryMapFlow = () => {
             setEdges,
         };
         window.currentMapId = currentMapId;
+        window.teamId = teamId;
+        window.mapIdFromUrl = mapIdFromUrl;
         window.addChildNode = addChildNode;
         window.addSiblingNode = addSiblingNode;
         window.showFullRelationGraph = showFullRelationGraph;
-    }, [saveMap, addNode, loadMap, loadMaps, autoLayout, highlightPath, clearHighlight, focusNode, selectedNode, addChildNode, addSiblingNode, setNodes, setEdges, teamName, showFullRelationGraph, currentMapId]);
+    }, [saveMap, addNode, loadMap, loadMaps, autoLayout, highlightPath, clearHighlight, focusNode, selectedNode, addChildNode, addSiblingNode, setNodes, setEdges, teamName, showFullRelationGraph, currentMapId, teamId, mapIdFromUrl]);
 
     // MiniMap node color function
     const getNodeColor = (node) => {
