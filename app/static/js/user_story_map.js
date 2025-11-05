@@ -391,10 +391,10 @@ const UserStoryMapFlow = () => {
     const [selectedNode, setSelectedNode] = useState(null);
     const [currentMapId, setCurrentMapId] = useState(null);
     const [maps, setMaps] = useState([]);
-    const [highlightedPath, setHighlightedPath] = useState(null);
-    const [highlightedNodeIds, setHighlightedNodeIds] = useState([]);
     const [teamName, setTeamName] = useState('');
     const [collapsedNodeIds, setCollapsedNodeIds] = useState(new Set());
+    const [highlightedPath, setHighlightedPath] = useState(null);
+    const [highlightedNodeIds, setHighlightedNodeIds] = useState([]);
     const reactFlowInstance = useRef(null);
     const nodesRef = useRef([]);
 
@@ -525,7 +525,7 @@ const UserStoryMapFlow = () => {
         } catch (error) {
             console.error('Failed to load maps:', error);
         }
-    }, [teamId]);
+    }, []);
 
     // Load specific map
     const loadMap = useCallback(async (mapId) => {
