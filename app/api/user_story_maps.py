@@ -908,6 +908,58 @@ async def get_node_path(
     return {"path": path}
 
 
+async def _create_reverse_relation(
+    target_node_db: UserStoryMapNodeDB,
+    target_map: UserStoryMapDB,
+    source_node_id: str,
+    source_map_id: int,
+    source_map_name: str,
+    source_team_id: int,
+    source_team_name: str,
+    source_node_name: str,
+    usm_db: AsyncSession,
+) -> None:
+    """建立反向關聯：被關聯的節點也要記錄源節點的關聯"""
+    
+    # 建立反向關聯數據
+    reverse_relation = {
+        "node_id": source_node_id,
+        "map_id": source_map_id,
+        "map_name": source_map_name,
+        "team_id": source_team_id,
+        "team_name": source_team_name,
+        "node_name": source_node_name,
+        "relation_id": None,
+    }
+    
+    # 取得目標節點的現有關聯
+    existing_relations = _normalize_related_ids(target_node_db.related_ids)
+    dedup: Set[Tuple[int, str]] = set()
+    merged: List[Union[str, Dict[str, Any]]] = []
+    
+    # 保留現有關聯並去重
+    for rel in existing_relations:
+        if isinstance(rel, str):
+            key = (target_map.id, rel)
+            if key in dedup:
+                continue
+            dedup.add(key)
+            merged.append(rel)
+        else:
+            key = ((rel.get("map_id") or target_map.id), rel.get("node_id"))
+            if key in dedup:
+                continue
+            dedup.add(key)
+            merged.append(rel)
+    
+    # 檢查反向關聯是否已存在
+    key = (source_map_id, source_node_id)
+    if key not in dedup:
+        merged.append(reverse_relation)
+        _save_node_relations(target_map, target_node_db, merged)
+        await usm_db.flush()
+
+
 @router.post("/{map_id}/nodes/{node_id}/relations")
 async def create_relation(
     map_id: int,
@@ -974,6 +1026,38 @@ async def create_relation(
         return {"relation_id": None, "message": "Relation already exists"}
 
     _save_node_relations(source_map, source_node_db, merged)
+    
+    # 建立反向關聯：目標節點也要記錄源節點的關聯
+    target_node_id = created_relation.get("node_id")
+    target_map_id = created_relation.get("map_id") or source_map.id
+    
+    if target_node_id:
+        target_map = await _get_usm_map(usm_db, target_map_id)
+        if target_map:
+            target_node_db = await _get_usm_node(usm_db, target_map_id, target_node_id)
+            if target_node_db:
+                # 取得源節點名稱
+                source_node = source_map.nodes
+                source_node_name = ""
+                if source_node:
+                    for n in source_node:
+                        if n.get("id") == source_node_db.node_id:
+                            source_node_name = n.get("name", "")
+                            break
+                
+                # 建立反向關聯
+                await _create_reverse_relation(
+                    target_node_db=target_node_db,
+                    target_map=target_map,
+                    source_node_id=source_node_db.node_id,
+                    source_map_id=source_map.id,
+                    source_map_name=source_map.name or "",
+                    source_team_id=source_map.team_id,
+                    source_team_name="",  # 可以後續改進取得團隊名稱
+                    source_node_name=source_node_name,
+                    usm_db=usm_db,
+                )
+    
     await usm_db.commit()
     await usm_db.refresh(source_node_db)
     await usm_db.refresh(source_map)
@@ -992,7 +1076,7 @@ async def delete_relation(
     current_user: User = Depends(get_current_user),
     usm_db: AsyncSession = Depends(get_usm_db),
 ):
-    """刪除節點關聯"""
+    """刪除節點關聯（包括反向關聯）"""
     
     source_map = await _get_usm_map(usm_db, map_id)
     
@@ -1008,18 +1092,23 @@ async def delete_relation(
 
     existing_relations = _normalize_related_ids(source_node_db.related_ids)
 
+    # 找到要刪除的關聯詳情
+    removed_relation = None
     filtered: List[Union[str, Dict[str, Any]]] = []
     removed = False
+    
     for rel in existing_relations:
         if isinstance(rel, str):
             if relation_id == rel:
                 removed = True
+                removed_relation = {"node_id": rel, "map_id": source_map.id}
                 continue
             filtered.append(rel)
             continue
 
         if rel.get("relation_id") == relation_id:
             removed = True
+            removed_relation = rel
             continue
         filtered.append(rel)
 
@@ -1027,6 +1116,34 @@ async def delete_relation(
         return {"message": "Relation deleted successfully"}
 
     _save_node_relations(source_map, source_node_db, filtered)
+    
+    # 刪除反向關聯：從目標節點移除源節點
+    if removed_relation:
+        target_node_id = removed_relation.get("node_id")
+        target_map_id = removed_relation.get("map_id") or source_map.id
+        
+        if target_node_id:
+            try:
+                target_map = await _get_usm_map(usm_db, target_map_id)
+                if target_map:
+                    target_node_db = await _get_usm_node(usm_db, target_map_id, target_node_id)
+                    if target_node_db:
+                        # 從目標節點的關聯中移除源節點
+                        target_relations = _normalize_related_ids(target_node_db.related_ids)
+                        target_filtered: List[Union[str, Dict[str, Any]]] = []
+                        
+                        for rel in target_relations:
+                            if isinstance(rel, str):
+                                if rel != source_node_db.node_id or target_map_id != source_map.id:
+                                    target_filtered.append(rel)
+                            else:
+                                if rel.get("node_id") != source_node_db.node_id or rel.get("map_id") != source_map.id:
+                                    target_filtered.append(rel)
+                        
+                        _save_node_relations(target_map, target_node_db, target_filtered)
+            except Exception as e:
+                print(f"[DELETE RELATION] Error deleting reverse relation: {e}")
+    
     await usm_db.commit()
     await usm_db.refresh(source_node_db)
     await usm_db.refresh(source_map)
@@ -1073,9 +1190,50 @@ async def replace_relations(
     
     print(f"[PUT RELATION] Prepared relations: {prepared_relations}")
 
+    # 獲取舊關聯以便清理反向關聯
+    old_relations = _normalize_related_ids(source_node_db.related_ids)
+    
     _save_node_relations(source_map, source_node_db, prepared_relations)
     
     print(f"[PUT RELATION] After save, source_node_db.related_ids: {source_node_db.related_ids}")
+    
+    # 創建新的反向關聯
+    source_node = source_map.nodes
+    source_node_name = ""
+    if source_node:
+        for n in source_node:
+            if n.get("id") == source_node_db.node_id:
+                source_node_name = n.get("name", "")
+                break
+    
+    # 為每個新關聯建立反向關聯
+    for rel in prepared_relations:
+        if not isinstance(rel, dict):
+            continue
+            
+        target_node_id = rel.get("node_id")
+        target_map_id = rel.get("map_id") or source_map.id
+        
+        if target_node_id:
+            try:
+                target_map = await _get_usm_map(usm_db, target_map_id)
+                if target_map:
+                    target_node_db = await _get_usm_node(usm_db, target_map_id, target_node_id)
+                    if target_node_db:
+                        await _create_reverse_relation(
+                            target_node_db=target_node_db,
+                            target_map=target_map,
+                            source_node_id=source_node_db.node_id,
+                            source_map_id=source_map.id,
+                            source_map_name=source_map.name or "",
+                            source_team_id=source_map.team_id,
+                            source_team_name="",
+                            source_node_name=source_node_name,
+                            usm_db=usm_db,
+                        )
+            except Exception as e:
+                print(f"[PUT RELATION] Error creating reverse relation: {e}")
+                continue
     
     await usm_db.commit()
     print(f"[PUT RELATION] After commit")
