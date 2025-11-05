@@ -728,6 +728,53 @@ const UserStoryMapFlow = () => {
         loadMap();
     }, [loadMap]);
 
+    // Setup event delegation for related node buttons (mount once only)
+    useEffect(() => {
+        const handlePopupClick = (e) => {
+            const btn = e.target.closest('[data-related-popup-idx]');
+            if (!btn) return;
+            
+            const content = document.getElementById('nodePropertiesContent');
+            if (!content?.contains(btn)) return;
+            
+            // Get current selectedNode from state closure
+            // This will be the most recent value when the listener was attached
+            const idx = parseInt(btn.getAttribute('data-related-popup-idx'));
+            
+            // Read from the node element itself which has the data
+            const nodeItemDiv = btn.closest('.list-group-item');
+            if (!nodeItemDiv) return;
+            
+            // Since we don't have direct access to relatedIds, we need to
+            // get it from the window object or pass it via data attributes
+            // For now, re-trigger the onNodeClick to refresh the button state
+            // This is a workaround - better to store data in the button itself
+            
+            if (!selectedNode?.data?.relatedIds) return;
+            
+            const relatedNode = selectedNode.data.relatedIds?.[idx];
+            
+            if (!relatedNode) return;
+            
+            const mapId = relatedNode.map_id || relatedNode.mapId;
+            const nodeId = relatedNode.node_id || relatedNode.nodeId;
+            
+            if (nodeId && mapId) {
+                console.log(`[USM Popup] Opening external map ${mapId}, node ${nodeId}`);
+                window.open(`/user-story-map-popup?mapId=${mapId}&teamId=${teamIdParam}`, '_blank', 'width=1200,height=800,toolbar=no');
+            }
+        };
+
+        const content = document.getElementById('nodePropertiesContent');
+        if (!content) return;
+
+        content.addEventListener('click', handlePopupClick);
+
+        return () => {
+            content.removeEventListener('click', handlePopupClick);
+        };
+    }, [selectedNode]);
+
     // Handle node click to show properties and highlight path
     const onNodeClick = useCallback((event, node) => {
         console.log('Node clicked:', node.id, node.data);
@@ -768,7 +815,7 @@ const UserStoryMapFlow = () => {
                                             ${escapeHtml(rel.team_name || '')} / ${escapeHtml(rel.map_name || '')}
                                         </small>
                                     </div>
-                                    ${isCrossMap ? `<button type="button" class="btn btn-sm btn-info" data-related-popup-idx="${idx}" title="在新視窗開啟外部地圖" style="flex-shrink: 0;"><i class="fas fa-external-link-alt"></i></button>` : ''}
+                                    ${isCrossMap ? `<button type="button" class="btn btn-sm btn-info" data-related-popup-idx="${idx}" data-map-id="${rel.map_id || rel.mapId || ''}" data-team-id="${rel.team_id || rel.teamId || ''}" title="在新視窗開啟外部地圖" style="flex-shrink: 0; position: relative; z-index: 2; pointer-events: auto;"><i class="fas fa-external-link-alt"></i></button>` : ''}
                                 </div>
                             `;
                         }).join('')}
@@ -841,26 +888,24 @@ const UserStoryMapFlow = () => {
             </div>
         `;
         
-        content.innerHTML = html;
-        
-        // Add event listeners for related node popup buttons
-        document.querySelectorAll('[data-related-popup-idx]').forEach((btn) => {
-            btn.addEventListener('click', () => {
-                const idx = parseInt(btn.getAttribute('data-related-popup-idx'));
-                const relatedNode = data.relatedIds?.[idx];
-                
-                if (!relatedNode) return;
-                
-                const mapId = relatedNode.map_id || relatedNode.mapId;
-                const nodeId = relatedNode.node_id || relatedNode.nodeId;
-                const mapName = relatedNode.map_name || `地圖 ${mapId}`;
-                
-                if (nodeId && mapId) {
-                    console.log(`[USM Popup] Opening external map ${mapId}, node ${nodeId}`);
-                    window.open(`/user-story-map-popup?mapId=${mapId}&teamId=${teamIdParam}`, '_blank', 'width=1200,height=800,toolbar=no');
-                }
-            });
+        // Only update if content actually changed (use data signature, not innerHTML string)
+        const renderSig = JSON.stringify({
+            id: node.id,
+            nodeType: data.nodeType || '',
+            title: data.title || '',
+            description: data.description || '',
+            team: data.team || '',
+            as_a: data.as_a || '',
+            i_want: data.i_want || '',
+            so_that: data.so_that || '',
+            jira: (data.jiraTickets || []).join(', '),
+            related: Array.isArray(data.relatedIds) ? JSON.stringify(data.relatedIds) : '[]',
+            aggregated: Array.isArray(data.aggregatedTickets) ? JSON.stringify(data.aggregatedTickets) : '[]',
+            comment: data.comment || ''
         });
+        if (content.dataset.renderSig !== renderSig) {
+            content.dataset.renderSig = renderSig;
+            content.innerHTML = html;
             
             // Add event listeners for buttons
             const highlightBtn = document.getElementById('highlightPathBtn');
@@ -879,6 +924,7 @@ const UserStoryMapFlow = () => {
                     clearHighlight();
                 });
             }
+        }
     }, [nodes, setNodes, mapIdParam, teamIdParam, highlightPath, clearHighlight]);
 
     // Handle canvas events
