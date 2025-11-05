@@ -124,9 +124,13 @@ async def team_statistics(request: Request):
     return templates.TemplateResponse("team_statistics.html", {"request": request})
 
 @app.get("/user-story-map/{team_id}", response_class=HTMLResponse)
-async def user_story_map(request: Request, team_id: int):
+@app.get("/user-story-map/{team_id}/{map_id}", response_class=HTMLResponse)
+async def user_story_map(request: Request, team_id: int, map_id: int = None):
     """User Story Map 頁面"""
-    return templates.TemplateResponse("user_story_map.html", {"request": request, "team_id": team_id})
+    context = {"request": request, "team_id": team_id}
+    if map_id is not None:
+        context["map_id"] = map_id
+    return templates.TemplateResponse("user_story_map.html", context)
 
 @app.get("/user-story-map-popup", response_class=HTMLResponse)
 async def user_story_map_popup(request: Request):
