@@ -322,6 +322,22 @@ const CustomNode = ({ data, id }) => {
         );
     }
 
+    // Add team and map name for external nodes
+    let additionalInfo = null;
+    if (data.isExternal && (data.team || data.mapName)) {
+        const displayText = `${data.team || '未知團隊'} / ${data.mapName || `地圖 ${data.mapId}`}`;
+        additionalInfo = React.createElement(
+            'div',
+            { 
+                className: 'text-muted mb-1', 
+                style: { fontSize: '10px' } 
+            },
+            React.createElement('small', null, 
+                React.createElement('em', null, displayText)
+            )
+        );
+    }
+
     const hasChildren = Array.isArray(data.childrenIds) && data.childrenIds.length > 0;
     const collapseToggle = hasChildren
         ? React.createElement(
@@ -360,6 +376,7 @@ const CustomNode = ({ data, id }) => {
         React.createElement(Handle, { type: 'target', position: Position.Right, id: 'right-target' }),
         collapseToggle,
         // Node content
+        additionalInfo, // Add external node info if applicable
         React.createElement(
             'div',
             { className: 'node-title' },
@@ -1625,12 +1642,31 @@ const UserStoryMapFlow = () => {
                         const targetNode = mapData.nodes.find(n => n.id === rel.nodeId);
                         
                         if (targetNode) {
+                            // 獲取團隊名稱
+                            let teamName = '未知團隊';
+                            const teamId = mapData?.team_id || rel.team_id || rel.teamId; // 根據實際API響應結構
+                            if (teamId) {
+                                const teamResponse = await fetch(`/api/teams/${teamId}`, {
+                                    headers: {
+                                        'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+                                    },
+                                });
+                                
+                                if (teamResponse.ok) {
+                                    const teamData = await teamResponse.json();
+                                    teamName = teamData.name || `團隊 ${teamId}`;
+                                } else {
+                                    teamName = `團隊 ${teamId}`;
+                                }
+                            }
+                            
                             // 添加到外部節點數組，標記為外部節點
                             externalNodesData.push({
                                 ...targetNode,
                                 isExternal: true, // 標記為外部節點
                                 mapId: rel.mapId,
-                                mapName: rel.mapName || `地圖 ${rel.mapId}`,
+                                mapName: rel.mapName || mapData?.name || `地圖 ${rel.mapId}`,
+                                team: teamName,
                             });
                         }
                     }
@@ -1640,10 +1676,10 @@ const UserStoryMapFlow = () => {
             }
         }
 
-        // 獲取跨圖節點的詳細資訊（包括 As A, I want, So That）
+        // 獲取跨圖節點的詳細資訊（包括 As A, I want, So That 和團隊名稱）
         const enhancedCrossMapRelations = [];
         for (const rel of crossMapRelations) {
-            if (rel.mapId && rel.mapId !== (currentMapId || 0) && rel.as_a === undefined) {
+            if (rel.mapId && rel.mapId !== (currentMapId || 0)) {
                 // 需要從後端獲取此跨圖節點的詳細資訊
                 try {
                     const response = await fetch(`/api/user-story-maps/${rel.mapId}`, {
@@ -1656,6 +1692,24 @@ const UserStoryMapFlow = () => {
                         const mapData = await response.json();
                         const targetNode = mapData.nodes.find(n => n.id === rel.nodeId);
                         
+                        // 獲取團隊名稱
+                        let teamName = rel.team_name || '未知團隊';
+                        const teamId = mapData?.team_id || rel.team_id || rel.teamId;
+                        if (teamId && !rel.team_name) {
+                            const teamResponse = await fetch(`/api/teams/${teamId}`, {
+                                headers: {
+                                    'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+                                },
+                            });
+                            
+                            if (teamResponse.ok) {
+                                const teamData = await teamResponse.json();
+                                teamName = teamData.name || `團隊 ${teamId}`;
+                            } else {
+                                teamName = `團隊 ${teamId}`;
+                            }
+                        }
+                        
                         if (targetNode) {
                             enhancedCrossMapRelations.push({
                                 ...rel,
@@ -1663,19 +1717,43 @@ const UserStoryMapFlow = () => {
                                 i_want: targetNode.i_want,
                                 so_that: targetNode.so_that,
                                 nodeTitle: targetNode.title,
+                                resolvedTeamName: teamName,
+                                team_id: teamId, // 保留 team_id 方便後續使用
                             });
                         } else {
-                            enhancedCrossMapRelations.push(rel); // 如果找不到節點，使用原始資料
+                            enhancedCrossMapRelations.push({
+                                ...rel,
+                                resolvedTeamName: teamName,
+                                team_id: teamId,
+                            }); // 如果找不到節點，使用原始資料
                         }
                     } else {
-                        enhancedCrossMapRelations.push(rel); // 如果獲取失敗，使用原始資料
+                        const teamId = rel.team_id || rel.teamId;
+                        const teamName = rel.team_name || (teamId ? `團隊 ${teamId}` : '未知團隊');
+                        enhancedCrossMapRelations.push({
+                            ...rel,
+                            resolvedTeamName: teamName,
+                            team_id: teamId,
+                        }); // 如果獲取失敗，使用原始資料
                     }
                 } catch (error) {
                     console.error('獲取跨圖節點資訊失敗:', error);
-                    enhancedCrossMapRelations.push(rel); // 出錯時使用原始資料
+                    const teamId = rel.team_id || rel.teamId;
+                    const teamName = rel.team_name || (teamId ? `團隊 ${teamId}` : '未知團隊');
+                    enhancedCrossMapRelations.push({
+                        ...rel,
+                        resolvedTeamName: teamName,
+                        team_id: teamId,
+                    }); // 出錯時使用原始資料
                 }
             } else {
-                enhancedCrossMapRelations.push(rel); // 同圖節點或已有資訊的直接使用
+                const teamId = rel.team_id || rel.teamId;
+                const teamName = rel.team_name || (teamId ? `團隊 ${teamId}` : '未知團隊');
+                enhancedCrossMapRelations.push({
+                    ...rel,
+                    resolvedTeamName: teamName,
+                    team_id: teamId,
+                }); // 同圖節點或已有資訊的直接使用
             }
         }
 
@@ -1853,7 +1931,7 @@ const UserStoryMapFlow = () => {
             }
         }
 
-        // 生成跨圖節點卡片 HTML
+        // 生成跨圖節點卡片 HTML，使用預先獲取的團隊名稱
         const crossMapHtml = enhancedCrossMapRelations.length > 0
             ? enhancedCrossMapRelations.map(rel => {
                 return `
@@ -1862,7 +1940,7 @@ const UserStoryMapFlow = () => {
                         <div class="flex-grow-1 me-3" style="width: 40%;">
                             <h6 class="mb-1">${escapeHtml(rel.nodeTitle || rel.nodeId)}</h6>
                             <small class="text-muted">
-                                ${rel.mapName ? `地圖: ${escapeHtml(rel.mapName)}` : ''}
+                                ${rel.resolvedTeamName ? escapeHtml(rel.resolvedTeamName) + ' / ' : ''}${rel.mapName ? '地圖: ' + escapeHtml(rel.mapName) : ''}
                             </small>
                         </div>
                         <div class="text-start" style="width: 60%;">
