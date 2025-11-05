@@ -232,9 +232,9 @@
 
     .usm-map-btn {
         position: absolute;
-        top: 16px;
+        top: 80px; /* Below toolbar */
         right: 16px;
-        z-index: 1000;
+        z-index: 9999;
         box-shadow: 0 2px 8px rgba(0,0,0,0.15);
         border-radius: 6px;
         background: rgba(255, 255, 255, 0.95);
@@ -308,12 +308,12 @@
         <div id="highlightInfo" class="alert alert-warning d-none"></div>
         
         <!-- React Flow Container -->
-        <div id="reactFlowWrapper" class="reactflow-wrapper">
-            <!-- Auto Layout Button on Map -->
-            <button type="button" class="btn btn-sm btn-secondary usm-map-btn" id="autoLayoutBtn" title="自動排版">
-                <i class="fas fa-project-diagram"></i>
-            </button>
-        </div>
+        <div id="reactFlowWrapper" class="reactflow-wrapper"></div>
+
+        <!-- Auto Layout Button on Map -->
+        <button type="button" class="btn btn-sm btn-secondary usm-map-btn" id="autoLayoutBtn" title="自動排版">
+            <i class="fas fa-project-diagram"></i>
+        </button>
     </div>
     
     <!-- Sidebar -->
