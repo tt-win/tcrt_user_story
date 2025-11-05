@@ -1866,9 +1866,9 @@ const UserStoryMapFlow = () => {
                             </small>
                         </div>
                         <div class="text-start" style="width: 60%;">
-                            ${rel.as_a ? `<div><small><strong>As A:</strong> ${escapeHtml(rel.as_a)}</small></div>` : ''}
-                            ${rel.i_want ? `<div><small><strong>I Want:</strong> ${escapeHtml(rel.i_want)}</small></div>` : ''}
-                            ${rel.so_that ? `<div><small><strong>So That:</strong> ${escapeHtml(rel.so_that)}</small></div>` : ''}
+                            ${rel.as_a || rel.asA ? `<div><small><strong>As A:</strong> ${escapeHtml(rel.as_a || rel.asA)}</small></div>` : ''}
+                            ${rel.i_want || rel.iWant ? `<div><small><strong>I Want:</strong> ${escapeHtml(rel.i_want || rel.iWant)}</small></div>` : ''}
+                            ${rel.so_that || rel.soThat ? `<div><small><strong>So That:</strong> ${escapeHtml(rel.so_that || rel.soThat)}</small></div>` : ''}
                         </div>
                     </div>
                 </div>
@@ -1928,6 +1928,139 @@ const UserStoryMapFlow = () => {
                     return () => containerElement.removeEventListener('wheel', handleWheelGraph);
                 }, [handleWheelGraph]);
                 
+                // Node click handler for properties panel
+                const onNodeClick = React.useCallback((event, node) => {
+                    const content = document.getElementById('fullRelationNodeProperties');
+                    if (!content) return;
+                    
+                    const data = node.data;
+                    
+                    // Build aggregated tickets section
+                    const aggregatedTicketsHtml = data.aggregatedTickets && data.aggregatedTickets.length > 0
+                        ? `<div class="mb-3">
+                                <label class="form-label small fw-bold">聚合 Tickets (含子節點)</label>
+                                <div class="alert alert-warning p-2 small" style="word-break: break-word;">
+                                    ${escapeHtml(data.aggregatedTickets.join(', '))}
+                                </div>
+                            </div>`
+                        : '';
+                    
+                    // Build related nodes section
+                    const relatedNodesHtml = data.relatedIds && data.relatedIds.length > 0
+                        ? `<div class="mb-3">
+                                <label class="form-label small fw-bold">相關節點 (<span id="relatedNodesCount">${data.relatedIds.length}</span>)</label>
+                                <div class="list-group list-group-sm" id="relatedNodesList" style="max-height: 200px; overflow-y: auto;">
+                                    ${(Array.isArray(data.relatedIds) ? data.relatedIds : []).map((rel, idx) => {
+                                        if (typeof rel === 'string') {
+                                            return `<div class="list-group-item small"><span class="text-muted">${escapeHtml(rel)}</span></div>`;
+                                        }
+                                        // Check if cross-map
+                                        const isCrossMap = rel.map_id && String(rel.map_id) !== String(currentMapId);
+                                        return `
+                                            <div class="list-group-item small" style="display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px;">
+                                                <div style="flex-grow: 1;">
+                                                    <strong>${escapeHtml(rel.display_title || rel.node_id)}</strong>
+                                                    <br>
+                                                    <small class="text-muted">
+                                                        ${escapeHtml(rel.team_name || '')} / ${escapeHtml(rel.map_name || '')}
+                                                    </small>
+                                                </div>
+                                                ${isCrossMap ? `<button type="button" class="btn btn-sm btn-info" data-related-popup-idx="${idx}" title="在新視窗開啟外部地圖" style="flex-shrink: 0;"><i class="fas fa-external-link-alt"></i></button>` : ''}
+                                            </div>
+                                        `;
+                                    }).join('')}
+                                </div>
+                            </div>`
+                        : '';
+                    
+                    // Build main HTML matching main view layout
+                    let html = `
+                        <div class="node-properties-content">
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold">標題</label>
+                                <p class="form-control-plaintext mb-0 small">${escapeHtml(data.title || '')}</p>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold">描述</label>
+                                <p class="form-control-plaintext mb-0 small" style="white-space: pre-wrap; word-break: break-word;">${escapeHtml(data.description || '')}</p>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold">團隊</label>
+                                <p class="form-control-plaintext mb-0 small">${data.team ? escapeHtml(data.team) : '<span class="text-muted">未設定</span>'}</p>
+                            </div>
+                    `;
+                    
+                    // Add user story fields if applicable
+                    if (data.nodeType === 'user_story') {
+                        html += `
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold">As a <small class="text-muted">(使用者角色)</small></label>
+                                <p class="form-control-plaintext mb-0 small">${escapeHtml(data.as_a || data.asA || '')}</p>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold">I want <small class="text-muted">(需求描述)</small></label>
+                                <p class="form-control-plaintext mb-0 small" style="white-space: pre-wrap; word-break: break-word;">${escapeHtml(data.i_want || data.iWant || '')}</p>
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold">So that <small class="text-muted">(價值目的)</small></label>
+                                <p class="form-control-plaintext mb-0 small" style="white-space: pre-wrap; word-break: break-word;">${escapeHtml(data.so_that || data.soThat || '')}</p>
+                            </div>
+                        `;
+                    }
+                    
+                    html += `
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold">JIRA Tickets</label>
+                                <p class="form-control-plaintext mb-0 small">${data.jiraTickets && data.jiraTickets.length > 0 ? escapeHtml(data.jiraTickets.join(', ')) : '<span class="text-muted">無</span>'}</p>
+                            </div>
+                            
+                            ${aggregatedTicketsHtml}
+                            
+                            ${relatedNodesHtml}
+                            
+                            <div class="mb-3">
+                                <label class="form-label small fw-bold">註解</label>
+                                <p class="form-control-plaintext mb-0 small" style="white-space: pre-wrap; word-break: break-word;">${escapeHtml(data.comment || '')}</p>
+                            </div>
+                        </div>
+                    `;
+                    
+                    content.innerHTML = html;
+                    
+                    // Add event listeners for related node popup buttons
+                    document.querySelectorAll('[data-related-popup-idx]').forEach((btn) => {
+                        btn.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            const idx = parseInt(btn.getAttribute('data-related-popup-idx'));
+                            const relatedNode = data.relatedIds?.[idx];
+                            
+                            if (!relatedNode || typeof relatedNode === 'string') return;
+                            
+                            const mapId = relatedNode.map_id || relatedNode.mapId;
+                            const teamId = relatedNode.team_id || relatedNode.teamId;
+                            
+                            if (!mapId || !teamId) {
+                                showMessage('無法開啟外部地圖：缺少必要的資訊', 'error');
+                                return;
+                            }
+                            
+                            // Open in popup window
+                            const popupUrl = `/user-story-map-popup?mapId=${mapId}&teamId=${teamId}`;
+                            const popupWindow = window.open(popupUrl, 'usm-popup', 'width=1200,height=800,resizable=yes,scrollbars=yes');
+                            
+                            if (popupWindow) {
+                                showMessage(`已在新視窗開啟 "${relatedNode.map_name || `地圖 ${mapId}`}" 地圖`, 'success');
+                            } else {
+                                showMessage('無法開啟新視窗，請檢查瀏覽器設定', 'error');
+                            }
+                        });
+                    });
+                }, []);
+                
                 return React.createElement(
                     window.ReactFlow.ReactFlowProvider,
                     null,
@@ -1938,6 +2071,7 @@ const UserStoryMapFlow = () => {
                             edges: rEdges,
                             onNodesChange,
                             onEdgesChange,
+                            onNodeClick: onNodeClick, // Add node click handler
                             nodeTypes: nodeTypes,
                             defaultEdgeOptions: { type: 'smoothstep' },
                             fitView: true,
