@@ -171,6 +171,37 @@ const UserStoryMapFlow = () => {
     const [highlightedNodeIds, setHighlightedNodeIds] = useState([]);
     const reactFlowInstance = useRef(null);
 
+    useEffect(() => {
+        const wrapper = document.getElementById('reactFlowWrapper');
+        if (!wrapper) {
+            return;
+        }
+
+        const handleWheel = (event) => {
+            const isCtrlPressed = event.ctrlKey || event.getModifierState?.('Control');
+            if (!isCtrlPressed) {
+                return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            const instance = reactFlowInstance.current;
+            if (!instance) {
+                return;
+            }
+            const zoomDelta = event.deltaY < 0 ? 0.2 : -0.2;
+            try {
+                instance.zoomBy?.(zoomDelta, { duration: 150 });
+            } catch (_) {
+                const currentZoom = instance.getZoom?.() ?? 1;
+                const nextZoom = Math.min(2, Math.max(0.2, currentZoom + zoomDelta));
+                instance.zoomTo?.(nextZoom, { duration: 150 });
+            }
+        };
+
+        wrapper.addEventListener('wheel', handleWheel, { passive: false });
+        return () => wrapper.removeEventListener('wheel', handleWheel);
+    }, []);
+
     // Load map data from API
     const loadMap = useCallback(async () => {
         try {
@@ -915,7 +946,10 @@ const UserStoryMapFlow = () => {
             fitView: true,
             nodesConnectable: false,
             edgesUpdatable: false,
-            connectOnClick: false
+            connectOnClick: false,
+            zoomOnScroll: false,
+            panOnScroll: true,
+            panOnScrollSpeed: 0.8,
         },
         React.createElement(Background, { variant: BackgroundVariant.Dots }),
         React.createElement(MiniMap, { nodeColor: getNodeColor })

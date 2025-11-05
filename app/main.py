@@ -61,9 +61,11 @@ templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 from app.api import api_router
 from app.api.system import router as system_router
 from app.api.user_story_maps import router as usm_router
+from app.api.usm_import import router as usm_import_router
 app.include_router(api_router, prefix="/api")
 app.include_router(system_router)
 app.include_router(usm_router, prefix="/api")
+app.include_router(usm_import_router)
 
 # 前端頁面路由
 @app.get("/", response_class=HTMLResponse)

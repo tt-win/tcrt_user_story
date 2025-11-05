@@ -318,13 +318,6 @@ const CustomNode = ({ data, id }) => {
         );
     }
 
-    const truncatedDescription = (() => {
-        if (!data.description) return null;
-        const plain = String(data.description).trim();
-        if (plain.length <= 80) return plain;
-        return plain.slice(0, 77) + '...';
-    })();
-
     const hasChildren = Array.isArray(data.childrenIds) && data.childrenIds.length > 0;
     const collapseToggle = hasChildren
         ? React.createElement(
@@ -368,14 +361,6 @@ const CustomNode = ({ data, id }) => {
             { className: 'node-title' },
             data.title || 'Untitled'
         ),
-        truncatedDescription ? React.createElement(
-            'div',
-            {
-                className: 'text-muted',
-                style: { fontSize: '12px', marginTop: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }
-            },
-            truncatedDescription
-        ) : null,
         React.createElement(
             'div',
             { className: 'node-meta' },
@@ -416,6 +401,37 @@ const UserStoryMapFlow = () => {
     useEffect(() => {
         nodesRef.current = nodes;
     }, [nodes]);
+
+    useEffect(() => {
+        const wrapper = document.getElementById('reactFlowWrapper');
+        if (!wrapper) {
+            return;
+        }
+
+        const handleWheel = (event) => {
+            const isCtrlPressed = event.ctrlKey || event.getModifierState?.('Control');
+            if (!isCtrlPressed) {
+                return;
+            }
+            event.preventDefault();
+            event.stopPropagation();
+            const instance = reactFlowInstance.current;
+            if (!instance) {
+                return;
+            }
+            const zoomDelta = event.deltaY < 0 ? 0.2 : -0.2;
+            try {
+                instance.zoomBy?.(zoomDelta, { duration: 150 });
+            } catch (_) {
+                const currentZoom = instance.getZoom?.() ?? 1;
+                const nextZoom = Math.min(2, Math.max(0.2, currentZoom + zoomDelta));
+                instance.zoomTo?.(nextZoom, { duration: 150 });
+            }
+        };
+
+        wrapper.addEventListener('wheel', handleWheel, { passive: false });
+        return () => wrapper.removeEventListener('wheel', handleWheel);
+    }, []);
 
     // Tree layout using dagre
     const applyTreeLayout = useCallback((nodes, edges) => {
@@ -1874,6 +1890,36 @@ const UserStoryMapFlow = () => {
             const GraphComponent = () => {
                 const [rNodes, setRNodes, onNodesChange] = window.ReactFlow.useNodesState(graphNodes);
                 const [rEdges, setREdges, onEdgesChange] = window.ReactFlow.useEdgesState(graphEdges);
+                const flowInstanceRef = React.useRef(null);
+
+                React.useEffect(() => {
+                    if (!containerElement) {
+                        return;
+                    }
+                    const handleWheel = (event) => {
+                        const isCtrlPressed = event.ctrlKey || event.getModifierState?.('Control');
+                        if (!isCtrlPressed) {
+                            return;
+                        }
+                        event.preventDefault();
+                        event.stopPropagation();
+                        const instance = flowInstanceRef.current;
+                        if (!instance) {
+                            return;
+                        }
+                        const zoomDelta = event.deltaY < 0 ? 0.2 : -0.2;
+                        try {
+                            instance.zoomBy?.(zoomDelta, { duration: 150 });
+                        } catch (_) {
+                            const currentZoom = instance.getZoom?.() ?? 1;
+                            const nextZoom = Math.min(2, Math.max(0.2, currentZoom + zoomDelta));
+                            instance.zoomTo?.(nextZoom, { duration: 150 });
+                        }
+                    };
+
+                    containerElement.addEventListener('wheel', handleWheel, { passive: false });
+                    return () => containerElement.removeEventListener('wheel', handleWheel);
+                }, []);
                 
                 return React.createElement(
                     window.ReactFlow.ReactFlowProvider,
@@ -1891,6 +1937,10 @@ const UserStoryMapFlow = () => {
                             nodesConnectable: false,
                             edgesUpdatable: false,
                             connectOnClick: false,
+                            zoomOnScroll: false,
+                            panOnScroll: true,
+                            panOnScrollSpeed: 0.8,
+                            onInit: (instance) => { flowInstanceRef.current = instance; },
                             style: { width: '100%', height: '100%' }
                         }
                     )
@@ -2193,7 +2243,10 @@ const UserStoryMapFlow = () => {
             fitView: true,
             nodesConnectable: false,
             edgesUpdatable: false,
-            connectOnClick: false
+            connectOnClick: false,
+            zoomOnScroll: false,
+            panOnScroll: true,
+            panOnScrollSpeed: 0.8,
         },
         React.createElement(Background, { variant: BackgroundVariant.Dots }),
         React.createElement(MiniMap, { nodeColor: getNodeColor })
