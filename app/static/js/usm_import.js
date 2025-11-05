@@ -125,7 +125,7 @@ async function previewLarkTable() {
  */
 function showPreviewResult(data) {
     const resultDiv = document.getElementById('larkPreviewResult');
-    
+
     let html = `
         <div class="alert alert-success" role="alert">
             <h6 class="alert-heading">
@@ -136,38 +136,8 @@ function showPreviewResult(data) {
                 <li>預覽記錄: <strong>${data.preview_records.length}</strong></li>
             </ul>
         </div>
-        <div class="alert alert-info" role="alert">
-            <h6 class="alert-heading">
-                <i class="fas fa-info-circle me-2"></i>數據結構
-            </h6>
-            <small>
     `;
-    
-    // 顯示字段映射
-    if (data.structure) {
-        Object.entries(data.structure).forEach(([larkField, dbField]) => {
-            html += `<div><strong>${larkField}</strong> → ${dbField}</div>`;
-        });
-    }
-    
-    html += '</small></div>';
-    
-    // 顯示示例記錄
-    if (data.preview_records && data.preview_records.length > 0) {
-        html += '<div class="alert alert-secondary" role="alert"><h6>示例記錄</h6><small><ul class="mb-0">';
-        
-        data.preview_records.slice(0, 3).forEach((record, index) => {
-            const title = record['Features'] || '(無標題)';
-            html += `<li>#${index + 1}: ${title}</li>`;
-        });
-        
-        if (data.preview_records.length > 3) {
-            html += `<li>... 及 ${data.preview_records.length - 3} 條記錄</li>`;
-        }
-        
-        html += '</ul></small></div>';
-    }
-    
+
     resultDiv.innerHTML = html;
 }
 
