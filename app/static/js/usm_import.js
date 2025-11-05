@@ -242,7 +242,7 @@ async function confirmUSMImport() {
             // 刷新頁面或導向到新建的 map
             if (result.map_id) {
                 // 導向到新建的 USM
-                window.location.href = `/user-story-map?mapId=${result.map_id}`;
+                window.location.href = `/user-story-map/${result.map_id}`;
             } else {
                 // 刷新頁面
                 location.reload();
