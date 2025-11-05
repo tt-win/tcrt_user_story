@@ -16,7 +16,10 @@ let usmImportData = {
 function openUSMImportModal() {
     // 重設表單
     document.getElementById('usmImportForm').reset();
-    document.getElementById('larkPreviewResult').innerHTML = '';
+    const countSpan = document.getElementById('larkRecordCount');
+    if (countSpan) {
+        countSpan.style.display = 'none';
+    }
     usmImportData = {
         larkUrl: '',
         rootName: '',
@@ -87,9 +90,10 @@ async function previewLarkTable() {
         }
         
         // 顯示加載狀態
-        const resultDiv = document.getElementById('larkPreviewResult');
-        resultDiv.innerHTML = '<small class="text-info"><i class="fas fa-spinner fa-spin me-1"></i>正在預覽...</small>';
-        
+        const countSpan = document.getElementById('larkRecordCount');
+        countSpan.style.display = 'inline';
+        countSpan.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>載入中...';
+
         // 調用預覽 API
         const response = await window.AuthClient.fetch(
             `/api/usm-import/lark-preview?lark_url=${encodeURIComponent(larkUrl)}`,
@@ -98,48 +102,30 @@ async function previewLarkTable() {
                 headers: { 'Content-Type': 'application/json' }
             }
         );
-        
+
         if (!response.ok) {
             const error = await response.json();
             throw new Error(error.detail || '預覽失敗');
         }
-        
+
         const data = await response.json();
-        
+
         // 保存預覽數據
         usmImportData.previewData = data;
         usmImportData.larkUrl = larkUrl;
-        
-        // 顯示預覽結果
-        showPreviewResult(data);
+
+        // 顯示總筆數
+        countSpan.innerHTML = `共 ${data.total_records} 筆記錄`;
         
     } catch (error) {
         console.error('Preview error:', error);
-        const resultDiv = document.getElementById('larkPreviewResult');
-        resultDiv.innerHTML = `<small class="text-danger"><i class="fas fa-times-circle me-1"></i>${error.message}</small>`;
+        const countSpan = document.getElementById('larkRecordCount');
+        countSpan.style.display = 'none';
+        AppUtils.showError(`預覽失敗: ${error.message}`);
     }
 }
 
-/**
- * 顯示預覽結果
- */
-function showPreviewResult(data) {
-    const resultDiv = document.getElementById('larkPreviewResult');
 
-    let html = `
-        <div class="alert alert-success" role="alert">
-            <h6 class="alert-heading">
-                <i class="fas fa-check-circle me-2"></i>預覽成功
-            </h6>
-            <ul class="mb-0 small">
-                <li>總記錄數: <strong>${data.total_records}</strong></li>
-                <li>預覽記錄: <strong>${data.preview_records.length}</strong></li>
-            </ul>
-        </div>
-    `;
-
-    resultDiv.innerHTML = html;
-}
 
 /**
  * 確認並開始匯入
