@@ -1062,7 +1062,7 @@ const UserStoryMapFlow = () => {
                                             ${escapeHtml(rel.team_name || '')} / ${escapeHtml(rel.map_name || '')}
                                         </small>
                                     </button>
-                                    ${isCrossMap ? `<button type="button" class="btn btn-sm btn-info" data-related-popup-idx="${idx}" title="在新視窗開啟外部地圖" style="flex-shrink: 0;"><i class="fas fa-external-link-alt"></i></button>` : ''}
+                                    ${isCrossMap ? `<button type="button" class="btn btn-sm btn-info" data-related-popup-idx="${idx}" data-map-id="${rel.map_id || rel.mapId || ''}" data-team-id="${rel.team_id || rel.teamId || ''}" title="在新視窗開啟外部地圖" style="flex-shrink: 0; position: relative; z-index: 2; pointer-events: auto;"><i class="fas fa-external-link-alt"></i></button>` : ''}
                                 </div>
                             `;
                         }).join('')}
@@ -1075,7 +1075,26 @@ const UserStoryMapFlow = () => {
             canDeleteNode ? '<button type="button" class="btn btn-sm btn-danger w-100" id="deleteNodeBtn">刪除節點</button>' : '',
         ].filter(Boolean).join('');
 
-        container.innerHTML = `
+        // Build a stable render signature to avoid unnecessary re-renders
+        const renderSig = JSON.stringify({
+            id: node.id,
+            nodeType: data.nodeType || '',
+            title: data.title || '',
+            description: data.description || '',
+            team: resolvedTeam || '',
+            as_a: data.as_a || '',
+            i_want: data.i_want || '',
+            so_that: data.so_that || '',
+            jira: (data.jiraTickets || []).join(', '),
+            related: Array.isArray(data.relatedIds) ? JSON.stringify(data.relatedIds) : '[]',
+            aggregated: Array.isArray(data.aggregatedTickets) ? JSON.stringify(data.aggregatedTickets) : '[]',
+            comment: data.comment || ''
+        });
+        if (container.dataset.renderSig === renderSig) {
+            return; // No change; skip DOM update
+        }
+
+        const newHtml = `
             <div class="node-properties-content">
                 <div class="mb-3">
                     <label class="form-label small fw-bold">標題</label>
@@ -1119,6 +1138,9 @@ const UserStoryMapFlow = () => {
             </div>
         `;
 
+        container.dataset.renderSig = renderSig;
+        container.innerHTML = newHtml;
+
         if (canUpdateNode) {
             const attachAutoSave = (id) => {
                 const el = document.getElementById(id);
@@ -1148,75 +1170,6 @@ const UserStoryMapFlow = () => {
                 deleteNode(node.id);
             });
         }
-        
-        // Add event handlers for related nodes
-        document.querySelectorAll('[data-related-idx]').forEach((btn) => {
-            btn.addEventListener('click', () => {
-                const idx = parseInt(btn.getAttribute('data-related-idx'));
-                const relatedNode = data.relatedIds[idx];
-                
-                if (!relatedNode) return;
-                
-                // Handle both string and object formats
-                let nodeId, mapId;
-                
-                if (typeof relatedNode === 'string') {
-                    // Old format: just node ID
-                    nodeId = relatedNode;
-                    mapId = window.currentMapId;
-                } else if (typeof relatedNode === 'object') {
-                    // New format: object with metadata
-                    nodeId = relatedNode.node_id || relatedNode.nodeId;
-                    mapId = relatedNode.map_id || relatedNode.mapId;
-                } else {
-                    return;
-                }
-                
-                if (!nodeId) return;
-                
-                // Check if it's an external node
-                const isCrossMap = mapId && String(mapId) !== String(window.currentMapId);
-                
-                // External nodes should not be focusable via navigation button
-                if (isCrossMap) {
-                    showMessage('外部節點，請使用「開啟」按鈕在彈出視窗中查看', 'info');
-                    return;
-                }
-                
-                // Same map - directly focus
-                window.userStoryMapFlow?.focusNode?.(nodeId);
-                showMessage(`已聚焦節點: ${relatedNode.display_title || nodeId}`, 'info');
-            });
-        });
-
-        // Add event handlers for popup buttons (cross-map nodes)
-        document.querySelectorAll('[data-related-popup-idx]').forEach((btn) => {
-            btn.addEventListener('click', (e) => {
-                e.stopPropagation();
-                const idx = parseInt(btn.getAttribute('data-related-popup-idx'));
-                const relatedNode = data.relatedIds[idx];
-                
-                if (!relatedNode || typeof relatedNode === 'string') return;
-                
-                const mapId = relatedNode.map_id || relatedNode.mapId;
-                const teamId = relatedNode.team_id || relatedNode.teamId;
-                
-                if (!mapId || !teamId) {
-                    showMessage('無法開啟外部地圖：缺少必要的資訊', 'error');
-                    return;
-                }
-                
-                // Open in popup window
-                const popupUrl = `/user-story-map-popup?mapId=${mapId}&teamId=${teamId}`;
-                const popupWindow = window.open(popupUrl, 'usm-popup', 'width=1200,height=800,resizable=yes,scrollbars=yes');
-                
-                if (popupWindow) {
-                    showMessage(`已在新視窗開啟 "${relatedNode.map_name || `地圖 ${mapId}`}" 地圖`, 'success');
-                } else {
-                    showMessage('無法開啟新視窗，請檢查瀏覽器設定', 'error');
-                }
-            });
-        });
     };
 
     // Update node
@@ -2495,7 +2448,97 @@ const UserStoryMapFlow = () => {
         if (selectedNode) {
             updateNodeProperties(selectedNode);
         }
-    }, [teamName, selectedNode]);
+    }, [selectedNode]);
+
+    // Setup global event delegation for related node buttons (mount once only)
+    useEffect(() => {
+        const handleRelatedNodeClick = (e) => {
+            const navBtn = e.target.closest('[data-related-idx]');
+            if (!navBtn) return;
+            
+            const container = document.getElementById('nodeProperties');
+            if (!container?.contains(navBtn)) return;
+            
+            const idx = parseInt(navBtn.getAttribute('data-related-idx'));
+            
+            // Get the most current selectedNode from window or state
+            const currentSelected = window.userStoryMapFlow?.getSelectedNode?.();
+            if (!currentSelected?.data?.relatedIds) return;
+            
+            const relatedNode = currentSelected.data.relatedIds[idx];
+            if (!relatedNode) return;
+            
+            let nodeId, mapId;
+            
+            if (typeof relatedNode === 'string') {
+                nodeId = relatedNode;
+                mapId = window.currentMapId;
+            } else if (typeof relatedNode === 'object') {
+                nodeId = relatedNode.node_id || relatedNode.nodeId;
+                mapId = relatedNode.map_id || relatedNode.mapId;
+            } else {
+                return;
+            }
+            
+            if (!nodeId) return;
+            
+            const isCrossMap = mapId && String(mapId) !== String(window.currentMapId);
+            
+            if (isCrossMap) {
+                showMessage('外部節點，請使用「開啟」按鈕在彈出視窗中查看', 'info');
+                return;
+            }
+            
+            window.userStoryMapFlow?.focusNode?.(nodeId);
+            showMessage(`已聚焦節點: ${relatedNode.display_title || nodeId}`, 'info');
+        };
+
+        const handlePopupClick = (e) => {
+            const popupBtn = e.target.closest('[data-related-popup-idx]');
+            if (!popupBtn) return;
+            
+            const container = document.getElementById('nodeProperties');
+            if (!container?.contains(popupBtn)) return;
+            
+            e.stopPropagation();
+            const idx = parseInt(popupBtn.getAttribute('data-related-popup-idx'));
+            
+            // Get the most current selectedNode from window
+            const currentSelected = window.userStoryMapFlow?.getSelectedNode?.();
+            if (!currentSelected?.data?.relatedIds) return;
+            
+            const relatedNode = currentSelected.data.relatedIds[idx];
+            if (!relatedNode || typeof relatedNode === 'string') return;
+            
+            const mapId = relatedNode.map_id || relatedNode.mapId;
+            const teamId = relatedNode.team_id || relatedNode.teamId;
+            
+            if (!mapId || !teamId) {
+                showMessage('無法開啟外部地圖：缺少必要的資訊', 'error');
+                return;
+            }
+            
+            const popupUrl = `/user-story-map-popup?mapId=${mapId}&teamId=${teamId}`;
+            const popupWindow = window.open(popupUrl, 'usm-popup', 'width=1200,height=800,resizable=yes,scrollbars=yes');
+            
+            if (popupWindow) {
+                showMessage(`已在新視窗開啟 "${relatedNode.map_name || `地圖 ${mapId}`}" 地圖`, 'success');
+            } else {
+                showMessage('無法開啟新視窗，請檢查瀏覽器設定', 'error');
+            }
+        };
+
+        const container = document.getElementById('nodeProperties');
+        if (!container) return;
+
+        container.addEventListener('click', handleRelatedNodeClick);
+        container.addEventListener('click', handlePopupClick);
+
+        return () => {
+            container.removeEventListener('click', handleRelatedNodeClick);
+            container.removeEventListener('click', handlePopupClick);
+        };
+    }, []);
 
     // Expose functions to window for button handlers
     useEffect(() => {
