@@ -70,7 +70,7 @@ const updateUsmUiVisibility = () => {
     setElementVisibility('addChildBtn', hasUsmAccess('nodeAdd'));
     setElementVisibility('addSiblingBtn', hasUsmAccess('nodeAdd'));
     setElementVisibility('setRelationsBtn', hasUsmAccess('nodeUpdate'));
-    setElementVisibility('autoLayoutBtn', hasUsmAccess('nodeAdd'));
+    setElementVisibility('autoLayoutBtn', hasUsmAccess('nodeUpdate'));
     setElementVisibility('confirmAddNodeBtn', hasUsmAccess('nodeAdd'));
 };
 
