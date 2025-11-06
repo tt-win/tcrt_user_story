@@ -2558,6 +2558,7 @@ const UserStoryMapFlow = () => {
             focusNode,
             getSelectedNode: () => selectedNode,
             getSelectedNodeIds: () => nodes.filter(n => n.selected).map(n => n.id),
+            getNodes: () => nodes,
             getTeamName: () => teamName,
             setNodes,
             setEdges,
@@ -3759,12 +3760,12 @@ document.getElementById('reviewTestCasesBtn')?.addEventListener('click', async (
     // Collect all aggregated tickets from all selected nodes
     const aggregatedTickets = new Set();
 
-    // Get the current nodes data to find selected nodes' data
-    const currentNodes = window.currentMapNodes || [];
+    // Get the current nodes data from React Flow
+    const allNodes = window.userStoryMapFlow?.getNodes?.() || [];
 
     selectedNodeIds.forEach(nodeId => {
         // Find the node with matching ID
-        const node = currentNodes.find(n => n.id === nodeId);
+        const node = allNodes.find(n => n.id === nodeId);
         if (node && node.data) {
             let tickets = node.data.aggregatedTickets;
 
