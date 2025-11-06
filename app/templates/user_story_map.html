@@ -436,20 +436,20 @@
                 <h5 class="modal-title">節點完整相關圖</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body" style="padding: 0; flex: 1; display: flex; flex-direction: column;">
-                <div class="row" style="margin: 0; flex: 1;">
+            <div class="modal-body" style="padding: 0; flex: 1; display: flex; flex-direction: column; min-height: 0;">
+                <div class="row" style="margin: 0; flex: 1; min-height: 0;">
                     <!-- Graph container -->
-                    <div class="col-9" style="padding: 0; height: 100%;">
+                    <div class="col-9" style="padding: 0; height: 100%; min-height: 0;">
                         <div id="relationGraphContainer" style="width: 100%; height: 100%; border: 1px solid #ddd; border-radius: 4px; position: relative;">
                             <!-- React Flow 節點將在這裡渲染 -->
                         </div>
                     </div>
                     <!-- Properties panel -->
-                    <div class="col-3" style="padding: 0; height: 100%; border-left: 1px solid #dee2e6; overflow-y: auto;">
-                        <div style="padding: 12px; border-bottom: 1px solid #dee2e6;">
+                    <div class="col-3" style="padding: 0; height: 100%; min-height: 0; border-left: 1px solid #dee2e6; display: flex; flex-direction: column; overflow: hidden;">
+                        <div style="padding: 12px; border-bottom: 1px solid #dee2e6; flex-shrink: 0;">
                             <h6 style="margin: 0; font-weight: 600; color: #333;">節點屬性</h6>
                         </div>
-                        <div id="fullRelationNodeProperties" style="padding: 12px; flex: 1; overflow-y: auto;">
+                        <div id="fullRelationNodeProperties" style="padding: 12px; flex: 1; overflow-y: auto; min-height: 0;">
                             <p class="text-muted small" style="font-size: 12px;">點擊地圖上的節點以查看詳細信息</p>
                         </div>
                     </div>
@@ -622,6 +622,21 @@
                          <option value="feature_category">功能節點</option>
                      </select>
                  </div>
+                <div class="mb-3">
+                    <label class="form-label small text-muted">JIRA Tickets (逗號分隔)</label>
+                    <input type="text" class="form-control form-control-sm" id="searchJiraTickets" placeholder="如: TEST-123, TEST-456">
+                    <div class="mt-2">
+                        <small class="text-muted">邏輯:</small>
+                        <div class="form-check form-check-inline ms-2">
+                            <input class="form-check-input" type="radio" name="jiraLogic" id="jiraOr" value="or" checked>
+                            <label class="form-check-label small" for="jiraOr">OR</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="jiraLogic" id="jiraAnd" value="and">
+                            <label class="form-check-label small" for="jiraAnd">AND</label>
+                        </div>
+                    </div>
+                </div>
                  <button type="button" class="btn btn-sm btn-success" id="performSearchBtn">
                      <i class="fas fa-search"></i> 搜尋
                  </button>
@@ -723,6 +738,17 @@
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
                 <button type="button" class="btn btn-success" id="confirmCreateTestRunBtn">建立</button>
             </div>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Search Overlay -->
+<div id="quickSearchOverlay" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:1050; padding:20px;">
+    <div style="max-width:600px; margin:100px auto; background:white; border-radius:8px; box-shadow:0 4px 20px rgba(0,0,0,0.15);">
+        <input type="text" id="quickSearchInput" placeholder="搜尋節點 (標題、描述、As a、I want、So that)..." 
+               style="width:100%; padding:12px 16px; border:none; border-bottom:1px solid #dee2e6; font-size:14px; outline:none;">
+        <div id="quickSearchResults" class="list-group" style="max-height:400px; overflow-y:auto; border-radius:0 0 8px 8px;">
+            <div class="list-group-item text-muted text-center py-3">輸入以搜尋...</div>
         </div>
     </div>
 </div>
