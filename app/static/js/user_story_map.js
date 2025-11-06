@@ -3719,3 +3719,259 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
     });
 });
+
+// ============ Test Cases Review Feature ============
+document.getElementById('reviewTestCasesBtn')?.addEventListener('click', async () => {
+    const currentMapId = parseInt(document.getElementById('currentMapSelect').value, 10);
+    if (Number.isNaN(currentMapId)) {
+        showMessage('請先選擇一個地圖', 'warning');
+        return;
+    }
+
+    // Get selected node using the exposed method
+    const selectedNode = window.userStoryMapFlow?.getSelectedNode?.();
+    if (!selectedNode) {
+        showMessage('請先選擇一個或多個節點', 'warning');
+        return;
+    }
+
+    // Collect all aggregated tickets from selected node
+    const aggregatedTickets = new Set();
+    let tickets = selectedNode.data?.aggregatedTickets;
+    
+    // Handle if aggregatedTickets is a string (JSON)
+    if (typeof tickets === 'string') {
+        try {
+            tickets = JSON.parse(tickets);
+        } catch (e) {
+            tickets = [];
+        }
+    }
+    
+    if (Array.isArray(tickets)) {
+        tickets.forEach(t => {
+            if (t) aggregatedTickets.add(t);
+        });
+    }
+
+    if (aggregatedTickets.size === 0) {
+        showMessage('選定的節點沒有關聯票券', 'info');
+        return;
+    }
+
+    console.log('Selected node:', selectedNode.id, 'Aggregated Tickets:', Array.from(aggregatedTickets));
+
+    try {
+        // Fetch test cases by aggregated tickets
+        const teamId = window.teamId;
+        if (!teamId) {
+            showMessage('無法取得團隊資訊', 'warning');
+            return;
+        }
+
+        const ticketsParam = Array.from(aggregatedTickets).join(',');
+        
+        const response = await fetch(`/api/teams/${teamId}/testcases/by-tickets?tickets=${encodeURIComponent(ticketsParam)}`, {
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+            },
+        });
+
+        if (response.ok) {
+            const testCases = await response.json();
+            displayTestCasesReview(testCases);
+            
+            const modal = new bootstrap.Modal(document.getElementById('reviewTestCasesModal'));
+            modal.show();
+        } else {
+            const errorMsg = await response.text();
+            console.error('API error:', errorMsg);
+            showMessage('無法載入相關案例', 'error');
+        }
+    } catch (error) {
+        console.error('Failed to fetch test cases:', error);
+        showMessage('載入相關案例失敗: ' + error.message, 'error');
+    }
+});
+
+function displayTestCasesReview(testCases) {
+    const tbody = document.getElementById('testCasesTableBody');
+    
+    if (!testCases || testCases.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" class="text-muted text-center py-3">沒有相關的測試案例</td></tr>';
+        return;
+    }
+
+    window.selectedTestCases = []; // Store selected cases
+    window.lastCheckedCheckbox = null; // For shift-click support
+
+    const getPriorityBadgeClass = (priority) => {
+        const classes = {
+            'HIGH': 'bg-danger',
+            'MEDIUM': 'bg-warning',
+            'LOW': 'bg-info'
+        };
+        return classes[priority] || 'bg-secondary';
+    };
+
+    const getPriorityText = (priority) => {
+        const text = {
+            'HIGH': '高',
+            'MEDIUM': '中',
+            'LOW': '低'
+        };
+        return text[priority] || priority || '-';
+    };
+
+    const html = testCases.map((tc, idx) => `
+        <tr>
+            <td class="text-center">
+                <input class="form-check-input test-case-checkbox" type="checkbox" 
+                       value="${tc.record_id}" data-tc-id="${tc.record_id}">
+            </td>
+            <td>
+                <code class="small">${escapeHtml(tc.test_case_number)}</code>
+            </td>
+            <td>
+                <strong>${escapeHtml(tc.title)}</strong>
+            </td>
+            <td class="text-center">
+                <span class="badge ${getPriorityBadgeClass(tc.priority)}">${getPriorityText(tc.priority)}</span>
+            </td>
+        </tr>
+    `).join('');
+    
+    tbody.innerHTML = html;
+
+    const updateSelectedCount = () => {
+        document.getElementById('selectedTestCasesCount').textContent = window.selectedTestCases.length;
+    };
+
+    // Add change listeners to checkboxes with shift-click support
+    tbody.querySelectorAll('.test-case-checkbox').forEach(checkbox => {
+        checkbox.addEventListener('change', (e) => {
+            if (e.target.checked) {
+                window.selectedTestCases.push({
+                    record_id: e.target.value,
+                    tcId: e.target.getAttribute('data-tc-id')
+                });
+            } else {
+                window.selectedTestCases = window.selectedTestCases.filter(
+                    tc => tc.record_id !== e.target.value
+                );
+            }
+            updateSelectedCount();
+        });
+
+        checkbox.addEventListener('click', (e) => {
+            if (e.shiftKey && window.lastCheckedCheckbox && window.lastCheckedCheckbox !== checkbox) {
+                // Find the range between last checked and current
+                const checkboxes = Array.from(tbody.querySelectorAll('.test-case-checkbox'));
+                const lastIndex = checkboxes.indexOf(window.lastCheckedCheckbox);
+                const currentIndex = checkboxes.indexOf(checkbox);
+                const [start, end] = lastIndex < currentIndex ? [lastIndex, currentIndex] : [currentIndex, lastIndex];
+                
+                // Select all checkboxes in the range
+                for (let i = start; i <= end; i++) {
+                    const cb = checkboxes[i];
+                    if (!cb.checked) {
+                        cb.checked = true;
+                        cb.dispatchEvent(new Event('change'));
+                    }
+                }
+            }
+            window.lastCheckedCheckbox = checkbox;
+        });
+    });
+    
+    // Handle "Select All" checkbox
+    const selectAllCheckbox = document.getElementById('selectAllTestCasesCheckbox');
+    if (selectAllCheckbox) {
+        selectAllCheckbox.addEventListener('change', (e) => {
+            const isChecked = e.target.checked;
+            tbody.querySelectorAll('.test-case-checkbox').forEach(checkbox => {
+                checkbox.checked = isChecked;
+                checkbox.dispatchEvent(new Event('change'));
+            });
+        });
+    }
+}
+
+// Create Test Run button - use event delegation
+document.addEventListener('click', (e) => {
+    if (e.target.id === 'createTestRunBtn') {
+        console.log('createTestRunBtn clicked');
+        console.log('selectedTestCases:', window.selectedTestCases);
+        
+        if (!window.selectedTestCases || window.selectedTestCases.length === 0) {
+            showMessage('請先選擇至少一個測試案例', 'warning');
+            return;
+        }
+
+        document.getElementById('selectedTestCasesCount').textContent = window.selectedTestCases.length;
+        document.getElementById('testRunName').value = '';
+        
+        const reviewModal = bootstrap.Modal.getInstance(document.getElementById('reviewTestCasesModal'));
+        console.log('reviewModal:', reviewModal);
+        reviewModal?.hide();
+
+        const createModal = new bootstrap.Modal(document.getElementById('createTestRunModal'));
+        console.log('showing createTestRunModal');
+        createModal.show();
+    }
+});
+
+// Confirm create test run - use event delegation
+document.addEventListener('click', (e) => {
+    if (e.target.id === 'confirmCreateTestRunBtn') {
+        e.preventDefault();
+        (async () => {
+            console.log('confirmCreateTestRunBtn clicked');
+            const testRunName = document.getElementById('testRunName')?.value?.trim();
+            console.log('testRunName:', testRunName);
+            
+            if (!testRunName) {
+                showMessage('請輸入 Test Run 名稱', 'warning');
+                return;
+            }
+
+            const teamId = window.teamId;
+            const recordIds = window.selectedTestCases.map(tc => tc.record_id);
+            console.log('teamId:', teamId, 'recordIds:', recordIds);
+
+            try {
+                const response = await fetch(`/api/teams/${teamId}/test-run-sets/from-test-cases`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        name: testRunName,
+                        test_case_records: recordIds,
+                        description: '',
+                    }),
+                });
+
+                console.log('response status:', response.status);
+                if (response.ok) {
+                    const result = await response.json();
+                    console.log('result:', result);
+                    showMessage('Test Run 已建立', 'success');
+                    
+                    const modal = bootstrap.Modal.getInstance(document.getElementById('createTestRunModal'));
+                    modal?.hide();
+                    
+                    window.selectedTestCases = [];
+                } else {
+                    const errorText = await response.text();
+                    console.error('error response:', errorText);
+                    showMessage('建立 Test Run 失敗: ' + response.status, 'error');
+                }
+            } catch (error) {
+                console.error('Failed to create test run:', error);
+                showMessage('建立 Test Run 失敗: ' + error.message, 'error');
+            }
+        })();
+    }
+});

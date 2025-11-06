@@ -162,6 +162,118 @@ def build_tcg_items(numbers: List[str]) -> List[dict]:
     return items
 
 
+# ============ USM Integration: Get Test Cases by JIRA Tickets ============
+@router.get("/by-tickets")
+async def get_test_cases_by_jira_tickets(
+    team_id: int,
+    tickets: str = Query(...),
+    db: Session = Depends(get_sync_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    按 JIRA tickets 获取相关的测试案例
+    
+    Parameters:
+        team_id: 团队 ID
+        tickets: 逗号分隔的 JIRA tickets (如: TEST-123,TEST-456)
+    
+    Returns:
+        List of test cases that contain any of the specified JIRA tickets
+    """
+    try:
+        # Verify team exists
+        team = db.query(TeamDB).filter(TeamDB.id == team_id).first()
+        if not team:
+            raise HTTPException(status_code=404, detail="团队不存在")
+        
+        # Parse tickets
+        ticket_list = [t.strip().upper() for t in tickets.split(',') if t.strip()]
+        if not ticket_list:
+            return []
+        
+        # Query all test cases for the team
+        test_cases = db.query(TestCaseLocalDB).filter(
+            TestCaseLocalDB.team_id == team_id
+        ).all()
+        
+        logger.info(f"Searching for tickets {ticket_list} in {len(test_cases)} test cases for team {team_id}")
+        
+        # Filter test cases that have matching JIRA tickets
+        matching_cases = []
+        
+        for tc in test_cases:
+            jira_tickets = []
+            
+            # tcg_json is an array of objects with 'text' field containing the TCG number
+            if tc.tcg_json:
+                try:
+                    tcg_data = json.loads(tc.tcg_json)
+                    
+                    if isinstance(tcg_data, list):
+                        # Extract 'text' from each element in the array
+                        for item in tcg_data:
+                            if isinstance(item, dict) and 'text' in item:
+                                text_val = item['text']
+                                if isinstance(text_val, str) and text_val:
+                                    jira_tickets.append(text_val)
+                                elif isinstance(text_val, list):
+                                    jira_tickets.extend([t for t in text_val if t])
+                    elif isinstance(tcg_data, dict):
+                        # Fallback in case it's a dict
+                        for key in ['jira_tickets', 'jira', 'tcg_tickets', 'tcg', 'text', 'tickets']:
+                            if key in tcg_data:
+                                val = tcg_data.get(key)
+                                if isinstance(val, list):
+                                    jira_tickets = val
+                                elif isinstance(val, str):
+                                    jira_tickets = [val]
+                                break
+                except (json.JSONDecodeError, TypeError, AttributeError) as e:
+                    logger.error(f"Error parsing tcg_json for {tc.test_case_number}: {e}")
+            
+            # Also try raw_fields_json if tcg_json didn't have results
+            if not jira_tickets and tc.raw_fields_json:
+                try:
+                    raw_fields = json.loads(tc.raw_fields_json)
+                    
+                    if isinstance(raw_fields, dict):
+                        # Try common field names
+                        for key in ['jira_tickets', 'jira', 'tcg_tickets', 'tcg', 'jira_ticket', 'tcg_ticket', 'tickets']:
+                            if key in raw_fields:
+                                val = raw_fields.get(key)
+                                if isinstance(val, list):
+                                    jira_tickets = val
+                                elif isinstance(val, str):
+                                    jira_tickets = [val]
+                                break
+                except (json.JSONDecodeError, TypeError, AttributeError) as e:
+                    logger.error(f"Error parsing raw_fields_json for {tc.test_case_number}: {e}")
+            
+            # Convert to uppercase for comparison
+            jira_tickets_upper = [str(t).upper() for t in jira_tickets if t]
+            
+            # Check if any of the search tickets match
+            if any(ticket in jira_tickets_upper for ticket in ticket_list):
+                logger.info(f"Match found for {tc.test_case_number}: {jira_tickets}")
+                matching_cases.append({
+                    "record_id": tc.lark_record_id or tc.id,
+                    "test_case_number": tc.test_case_number,
+                    "title": tc.title,
+                    "priority": tc.priority.value if tc.priority else "MEDIUM",
+                    "description": tc.precondition or "",
+                    "jira_tickets": jira_tickets,
+                })
+        
+        logger.info(f"Found {len(matching_cases)} matching test cases")
+        return matching_cases
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error fetching test cases by JIRA tickets: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"获取测试案例失败: {str(e)}")
+
+
 @router.get("/", response_model=List[TestCaseResponse])
 async def get_test_cases(
     team_id: int,
@@ -2387,3 +2499,6 @@ async def batch_operation_test_cases(
             error_count=len(errors) + 1,
             error_messages=errors + [str(e)],
         )
+
+
+        raise HTTPException(status_code=500, detail="获取测试案例失败")
