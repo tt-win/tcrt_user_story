@@ -619,6 +619,21 @@
                          <option value="feature_category">功能節點</option>
                      </select>
                  </div>
+                <div class="mb-3">
+                    <label class="form-label small text-muted">JIRA Tickets (逗號分隔)</label>
+                    <input type="text" class="form-control form-control-sm" id="searchJiraTickets" placeholder="如: TEST-123, TEST-456">
+                    <div class="mt-2">
+                        <small class="text-muted">邏輯:</small>
+                        <div class="form-check form-check-inline ms-2">
+                            <input class="form-check-input" type="radio" name="jiraLogic" id="jiraOr" value="or" checked>
+                            <label class="form-check-label small" for="jiraOr">OR</label>
+                        </div>
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="radio" name="jiraLogic" id="jiraAnd" value="and">
+                            <label class="form-check-label small" for="jiraAnd">AND</label>
+                        </div>
+                    </div>
+                </div>
                  <button type="button" class="btn btn-sm btn-success" id="performSearchBtn">
                      <i class="fas fa-search"></i> 搜尋
                  </button>
