@@ -3749,38 +3749,48 @@ document.getElementById('reviewTestCasesBtn')?.addEventListener('click', async (
         return;
     }
 
-    // Get selected node using the exposed method
-    const selectedNode = window.userStoryMapFlow?.getSelectedNode?.();
-    if (!selectedNode) {
+    // Get all selected node IDs
+    const selectedNodeIds = window.userStoryMapFlow?.getSelectedNodeIds?.() || [];
+    if (selectedNodeIds.length === 0) {
         showMessage('請先選擇一個或多個節點', 'warning');
         return;
     }
 
-    // Collect all aggregated tickets from selected node
+    // Collect all aggregated tickets from all selected nodes
     const aggregatedTickets = new Set();
-    let tickets = selectedNode.data?.aggregatedTickets;
-    
-    // Handle if aggregatedTickets is a string (JSON)
-    if (typeof tickets === 'string') {
-        try {
-            tickets = JSON.parse(tickets);
-        } catch (e) {
-            tickets = [];
+
+    // Get the current nodes data to find selected nodes' data
+    const currentNodes = window.currentMapNodes || [];
+
+    selectedNodeIds.forEach(nodeId => {
+        // Find the node with matching ID
+        const node = currentNodes.find(n => n.id === nodeId);
+        if (node && node.data) {
+            let tickets = node.data.aggregatedTickets;
+
+            // Handle if aggregatedTickets is a string (JSON)
+            if (typeof tickets === 'string') {
+                try {
+                    tickets = JSON.parse(tickets);
+                } catch (e) {
+                    tickets = [];
+                }
+            }
+
+            if (Array.isArray(tickets)) {
+                tickets.forEach(t => {
+                    if (t) aggregatedTickets.add(t);
+                });
+            }
         }
-    }
-    
-    if (Array.isArray(tickets)) {
-        tickets.forEach(t => {
-            if (t) aggregatedTickets.add(t);
-        });
-    }
+    });
 
     if (aggregatedTickets.size === 0) {
         showMessage('選定的節點沒有關聯票券', 'info');
         return;
     }
 
-    console.log('Selected node:', selectedNode.id, 'Aggregated Tickets:', Array.from(aggregatedTickets));
+    console.log('Selected nodes:', selectedNodeIds, 'Aggregated Tickets:', Array.from(aggregatedTickets));
 
     try {
         // Fetch test cases by aggregated tickets
