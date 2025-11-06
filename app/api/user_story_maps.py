@@ -10,6 +10,7 @@ from typing import List, Optional, Union, Dict, Tuple, Set, Any
 from json import JSONDecodeError
 from datetime import datetime
 import uuid
+import logging
 
 from app.models.user_story_map import (
     UserStoryMapCreate,
@@ -34,6 +35,9 @@ from app.auth.models import PermissionType
 from app.auth.permission_service import permission_service
 from app.models.database_models import User, Team
 from app.database import get_db
+from app.audit import audit_service, ActionType, ResourceType, AuditSeverity
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/user-story-maps", tags=["user-story-maps"])
 
@@ -618,7 +622,34 @@ async def create_map(
     )
     db.add(node_db)
     await db.commit()
-    
+
+    # 記錄審計日誌
+    role_value = (
+        current_user.role.value
+        if hasattr(current_user.role, "value")
+        else str(current_user.role)
+    )
+    try:
+        await audit_service.log_action(
+            user_id=current_user.id,
+            username=current_user.username,
+            role=role_value,
+            action_type=ActionType.CREATE,
+            resource_type=ResourceType.TEST_RUN,
+            resource_id=str(new_map.id),
+            team_id=map_data.team_id,
+            details={
+                "map_id": new_map.id,
+                "map_name": new_map.name,
+                "description": new_map.description,
+                "source": "manual_creation",
+            },
+            action_brief=f"{current_user.username} created User Story Map: {new_map.name}",
+            severity=AuditSeverity.INFO,
+        )
+    except Exception as exc:
+        logger.warning("寫入 USM 創建審計記錄失敗: %s", exc, exc_info=True)
+
     return UserStoryMapResponse(
         id=new_map.id,
         team_id=new_map.team_id,
@@ -698,20 +729,57 @@ async def update_map(
         flag_modified(map_db, "edges")
     
     map_db.updated_at = datetime.utcnow()
-    
+
     await db.commit()
     await db.refresh(map_db)
-    
+
+    # 記錄審計日誌
+    role_value = (
+        current_user.role.value
+        if hasattr(current_user.role, "value")
+        else str(current_user.role)
+    )
+    changes = []
+    if map_data.name is not None:
+        changes.append("name")
+    if map_data.description is not None:
+        changes.append("description")
+    if map_data.nodes is not None:
+        changes.append(f"nodes ({len(map_data.nodes)} total)")
+    if map_data.edges is not None:
+        changes.append(f"edges ({len(map_data.edges)} total)")
+
+    try:
+        await audit_service.log_action(
+            user_id=current_user.id,
+            username=current_user.username,
+            role=role_value,
+            action_type=ActionType.UPDATE,
+            resource_type=ResourceType.TEST_RUN,
+            resource_id=str(map_id),
+            team_id=map_db.team_id,
+            details={
+                "map_id": map_id,
+                "map_name": map_db.name,
+                "changed_fields": changes,
+                "source": "map_update",
+            },
+            action_brief=f"{current_user.username} updated User Story Map: {map_db.name} ({', '.join(changes)})",
+            severity=AuditSeverity.INFO,
+        )
+    except Exception as exc:
+        logger.warning("寫入 USM 更新審計記錄失敗: %s", exc, exc_info=True)
+
     # Ensure all nodes have normalized related_ids
     processed_nodes = []
     for node in (map_db.nodes or []):
         node_copy = dict(node)
         node_copy['related_ids'] = _normalize_related_ids(node_copy.get('related_ids'))
         processed_nodes.append(node_copy)
-    
+
     nodes = [UserStoryMapNode(**node) for node in processed_nodes]
     edges = [UserStoryMapEdge(**edge) for edge in (map_db.edges or [])]
-    
+
     return UserStoryMapResponse(
         id=map_db.id,
         team_id=map_db.team_id,
@@ -735,21 +803,53 @@ async def delete_map(
         select(UserStoryMapDB).where(UserStoryMapDB.id == map_id)
     )
     map_db = result.scalar_one_or_none()
-    
+
     if not map_db:
         raise HTTPException(status_code=404, detail="User Story Map not found")
-    
+
     await _require_usm_permission(current_user, "delete", map_db.team_id)
+
+    # 記錄要刪除的 map 信息
+    map_name = map_db.name
+    team_id = map_db.team_id
+    node_count = len(map_db.nodes) if map_db.nodes else 0
 
     # 級聯刪除：先刪除所有關聯的節點
     await db.execute(
         delete(UserStoryMapNodeDB).where(UserStoryMapNodeDB.map_id == map_id)
     )
-    
+
     # 再刪除 map 本身
     await db.delete(map_db)
     await db.commit()
-    
+
+    # 記錄審計日誌
+    role_value = (
+        current_user.role.value
+        if hasattr(current_user.role, "value")
+        else str(current_user.role)
+    )
+    try:
+        await audit_service.log_action(
+            user_id=current_user.id,
+            username=current_user.username,
+            role=role_value,
+            action_type=ActionType.DELETE,
+            resource_type=ResourceType.TEST_RUN,
+            resource_id=str(map_id),
+            team_id=team_id,
+            details={
+                "map_id": map_id,
+                "map_name": map_name,
+                "node_count": node_count,
+                "source": "map_deletion",
+            },
+            action_brief=f"{current_user.username} deleted User Story Map: {map_name} ({node_count} nodes)",
+            severity=AuditSeverity.CRITICAL,
+        )
+    except Exception as exc:
+        logger.warning("寫入 USM 刪除審計記錄失敗: %s", exc, exc_info=True)
+
     return {"message": "User Story Map deleted successfully"}
 
 
@@ -1062,6 +1162,34 @@ async def create_relation(
     await usm_db.refresh(source_node_db)
     await usm_db.refresh(source_map)
 
+    # 記錄審計日誌
+    role_value = (
+        current_user.role.value
+        if hasattr(current_user.role, "value")
+        else str(current_user.role)
+    )
+    try:
+        await audit_service.log_action(
+            user_id=current_user.id,
+            username=current_user.username,
+            role=role_value,
+            action_type=ActionType.CREATE,
+            resource_type=ResourceType.TEST_RUN,
+            resource_id=f"{map_id}:{node_id}",
+            team_id=source_map.team_id,
+            details={
+                "map_id": map_id,
+                "node_id": node_id,
+                "target_node_id": created_relation.get("node_id"),
+                "target_map_id": created_relation.get("map_id") or map_id,
+                "source": "node_relation",
+            },
+            action_brief=f"{current_user.username} created relation from node {node_id} in map {map_id}",
+            severity=AuditSeverity.INFO,
+        )
+    except Exception as exc:
+        logger.warning("寫入 USM 關聯審計記錄失敗: %s", exc, exc_info=True)
+
     return {
         "relation_id": created_relation.get("relation_id"),
         "message": "Relation created successfully",
@@ -1155,6 +1283,35 @@ async def delete_relation(
     await usm_db.commit()
     await usm_db.refresh(source_node_db)
     await usm_db.refresh(source_map)
+
+    # 記錄審計日誌
+    if removed:
+        role_value = (
+            current_user.role.value
+            if hasattr(current_user.role, "value")
+            else str(current_user.role)
+        )
+        try:
+            await audit_service.log_action(
+                user_id=current_user.id,
+                username=current_user.username,
+                role=role_value,
+                action_type=ActionType.DELETE,
+                resource_type=ResourceType.TEST_RUN,
+                resource_id=f"{map_id}:{node_id}:{relation_id}",
+                team_id=source_map.team_id,
+                details={
+                    "map_id": map_id,
+                    "node_id": node_id,
+                    "relation_id": relation_id,
+                    "target_node_id": removed_relation.get("node_id") if removed_relation else None,
+                    "source": "relation_deletion",
+                },
+                action_brief=f"{current_user.username} deleted relation from node {node_id} in map {map_id}",
+                severity=AuditSeverity.INFO,
+            )
+        except Exception as exc:
+            logger.warning("寫入 USM 關聯刪除審計記錄失敗: %s", exc, exc_info=True)
 
     return {"message": "Relation deleted successfully"}
 
@@ -1285,11 +1442,38 @@ async def replace_relations(
     
     await usm_db.commit()
     print(f"[PUT RELATION] After commit")
-    
+
     await usm_db.refresh(source_node_db)
     await usm_db.refresh(source_map)
-    
+
     print(f"[PUT RELATION] After refresh, source_node_db.related_ids: {source_node_db.related_ids}\n")
+
+    # 記錄審計日誌
+    role_value = (
+        current_user.role.value
+        if hasattr(current_user.role, "value")
+        else str(current_user.role)
+    )
+    try:
+        await audit_service.log_action(
+            user_id=current_user.id,
+            username=current_user.username,
+            role=role_value,
+            action_type=ActionType.UPDATE,
+            resource_type=ResourceType.TEST_RUN,
+            resource_id=f"{map_id}:{node_id}",
+            team_id=source_map.team_id,
+            details={
+                "map_id": map_id,
+                "node_id": node_id,
+                "relation_count": len(prepared_relations),
+                "source": "relations_bulk_update",
+            },
+            action_brief=f"{current_user.username} updated relations for node {node_id} in map {map_id} ({len(prepared_relations)} relations)",
+            severity=AuditSeverity.INFO,
+        )
+    except Exception as exc:
+        logger.warning("寫入 USM 批量關聯更新審計記錄失敗: %s", exc, exc_info=True)
 
     return RelationBulkUpdateResponse(relations=_normalize_related_ids(source_node_db.related_ids))
 

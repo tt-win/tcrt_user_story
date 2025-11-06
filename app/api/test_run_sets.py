@@ -9,8 +9,12 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status, Body
 from sqlalchemy.orm import Session, joinedload
+from typing import Dict, Any
 
 from app.database import get_sync_db
+from app.auth.dependencies import get_current_user
+from app.models.database_models import User
+from app.audit import audit_service, ActionType, ResourceType, AuditSeverity
 from app.models.database_models import (
     TestRunConfig as TestRunConfigDB,
     TestRunSet as TestRunSetDB,
@@ -50,6 +54,37 @@ from .test_run_configs import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/teams/{team_id}/test-run-sets", tags=["test-run-sets"])
+
+
+async def log_test_run_set_action(
+    action_type: ActionType,
+    current_user: User,
+    team_id: int,
+    resource_id: str,
+    action_brief: str,
+    details: Optional[Dict[str, Any]] = None,
+) -> None:
+    """記錄 Test Run Set 相關的審計日誌"""
+    try:
+        role_value = (
+            current_user.role.value
+            if hasattr(current_user.role, "value")
+            else str(current_user.role)
+        )
+        await audit_service.log_action(
+            user_id=current_user.id,
+            username=current_user.username,
+            role=role_value,
+            action_type=action_type,
+            resource_type=ResourceType.TEST_RUN,
+            resource_id=resource_id,
+            team_id=team_id,
+            details=details,
+            action_brief=action_brief,
+            severity=AuditSeverity.CRITICAL if action_type == ActionType.DELETE else AuditSeverity.INFO,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("寫入 Test Run Set 審計記錄失敗: %s", exc, exc_info=True)
 
 
 def serialize_tp_tickets(tp_tickets: Optional[List[str]]) -> tuple[Optional[str], Optional[str]]:
@@ -217,10 +252,11 @@ def get_test_run_set_overview(
 
 
 @router.post("/", response_model=TestRunSetDetail, status_code=status.HTTP_201_CREATED)
-def create_test_run_set(
+async def create_test_run_set(
     team_id: int,
     payload: TestRunSetCreate,
     db: Session = Depends(get_sync_db),
+    current_user: User = Depends(get_current_user),
 ):
     verify_team_exists(team_id, db)
 
@@ -247,6 +283,23 @@ def create_test_run_set(
     db.refresh(new_set)
 
     loaded_set = _load_set_or_404(db, team_id, new_set.id)
+
+    # 記錄審計日誌
+    action_brief = f"{current_user.username} created Test Run Set: {new_set.name}"
+    await log_test_run_set_action(
+        action_type=ActionType.CREATE,
+        current_user=current_user,
+        team_id=team_id,
+        resource_id=str(new_set.id),
+        action_brief=action_brief,
+        details={
+            "set_id": new_set.id,
+            "name": new_set.name,
+            "description": new_set.description,
+            "config_count": len(configs),
+        },
+    )
+
     return _build_set_detail(loaded_set)
 
 
@@ -262,14 +315,19 @@ def get_test_run_set(
 
 
 @router.put("/{set_id}", response_model=TestRunSet)
-def update_test_run_set(
+async def update_test_run_set(
     team_id: int,
     set_id: int,
     payload: TestRunSetUpdate,
     db: Session = Depends(get_sync_db),
+    current_user: User = Depends(get_current_user),
 ):
     verify_team_exists(team_id, db)
     test_run_set = ensure_test_run_set(db, team_id, set_id)
+
+    # 記錄變更前的狀態
+    old_status = test_run_set.status
+    old_name = test_run_set.name
 
     update_data = payload.dict(exclude_unset=True)
     if "status" in update_data and update_data["status"] == TestRunSetStatus.ARCHIVED:
@@ -290,6 +348,32 @@ def update_test_run_set(
     db.refresh(test_run_set)
 
     resolved_status = resolve_status_for_response(test_run_set)
+
+    # 記錄審計日誌
+    changes = []
+    if "name" in update_data and old_name != test_run_set.name:
+        changes.append(f"name: {old_name} -> {test_run_set.name}")
+    if "status" in update_data and old_status != test_run_set.status:
+        changes.append(f"status: {old_status} -> {test_run_set.status}")
+    if "description" in update_data:
+        changes.append("description updated")
+
+    action_brief = f"{current_user.username} updated Test Run Set: {test_run_set.name}"
+    if changes:
+        action_brief += f" ({', '.join(changes)})"
+
+    await log_test_run_set_action(
+        action_type=ActionType.UPDATE,
+        current_user=current_user,
+        team_id=team_id,
+        resource_id=str(test_run_set.id),
+        action_brief=action_brief,
+        details={
+            "set_id": test_run_set.id,
+            "changes": changes,
+            "new_status": test_run_set.status,
+        },
+    )
 
     return TestRunSet(
         id=test_run_set.id,
@@ -376,9 +460,14 @@ async def delete_test_run_set(
     team_id: int,
     set_id: int,
     db: Session = Depends(get_sync_db),
+    current_user: User = Depends(get_current_user),
 ):
     verify_team_exists(team_id, db)
     test_run_set = _load_set_or_404(db, team_id, set_id)
+
+    # 記錄要刪除的 Set 名稱
+    set_name = test_run_set.name
+    config_count = len(test_run_set.memberships)
 
     try:
         for membership in list(test_run_set.memberships):
@@ -386,6 +475,21 @@ async def delete_test_run_set(
                 await delete_test_run_config_cascade(db, team_id, membership.config)
         db.delete(test_run_set)
         db.commit()
+
+        # 記錄審計日誌
+        action_brief = f"{current_user.username} deleted Test Run Set: {set_name}"
+        await log_test_run_set_action(
+            action_type=ActionType.DELETE,
+            current_user=current_user,
+            team_id=team_id,
+            resource_id=str(set_id),
+            action_brief=action_brief,
+            details={
+                "set_id": set_id,
+                "set_name": set_name,
+                "config_count": config_count,
+            },
+        )
     except Exception as exc:
         db.rollback()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
@@ -464,14 +568,15 @@ def search_test_run_sets_by_tp_tickets(
 
 # ============ USM Integration: Create Test Run with Test Cases ============
 @router.post("/from-test-cases")
-def create_test_run_from_test_cases(
+async def create_test_run_from_test_cases(
     team_id: int,
     payload: dict = Body(...),
     db: Session = Depends(get_sync_db),
+    current_user: User = Depends(get_current_user),
 ):
     """
     从选定的测试案例创建 Test Run
-    
+
     Parameters:
         team_id: 团队 ID
         payload: {
@@ -479,23 +584,23 @@ def create_test_run_from_test_cases(
             "test_case_records": [record_id1, record_id2, ...],
             "description": "可选描述"
         }
-    
+
     Returns:
         Created TestRunConfig with added test cases
     """
     try:
         verify_team_exists(team_id, db)
-        
+
         name = payload.get("name", "")
         if not name or not name.strip():
             raise HTTPException(status_code=400, detail="Test Run 名称不能为空")
-        
+
         test_case_records = payload.get("test_case_records", [])
         if not test_case_records:
             raise HTTPException(status_code=400, detail="必须至少选择一个测试案例")
-        
+
         description = payload.get("description", "")
-        
+
         # Create a Test Run Config
         config = TestRunConfigDB(
             team_id=team_id,
@@ -504,10 +609,10 @@ def create_test_run_from_test_cases(
             status='active',
             total_test_cases=0
         )
-        
+
         db.add(config)
         db.flush()
-        
+
         # Add each test case as a Test Run Item
         for record_id in test_case_records:
             # Get the test case by lark_record_id
@@ -515,10 +620,10 @@ def create_test_run_from_test_cases(
                 TestCaseLocalDB.lark_record_id == record_id,
                 TestCaseLocalDB.team_id == team_id
             ).first()
-            
+
             if not test_case:
                 continue
-            
+
             # Create Test Run Item for this test case
             item = TestRunItemDB(
                 team_id=team_id,
@@ -526,17 +631,34 @@ def create_test_run_from_test_cases(
                 test_case_number=test_case.test_case_number
             )
             db.add(item)
-        
+
         db.flush()
-        
+
         # Update test case count
         config.total_test_cases = db.query(TestRunItemDB).filter(
             TestRunItemDB.config_id == config.id
         ).count()
-        
+
         db.commit()
         db.refresh(config)
-        
+
+        # 记录审计日志
+        action_brief = f"{current_user.username} created Test Run from test cases: {config.name}"
+        await log_test_run_set_action(
+            action_type=ActionType.CREATE,
+            current_user=current_user,
+            team_id=team_id,
+            resource_id=str(config.id),
+            action_brief=action_brief,
+            details={
+                "config_id": config.id,
+                "name": config.name,
+                "description": config.description,
+                "test_case_count": config.total_test_cases,
+                "source": "from_test_cases",
+            },
+        )
+
         # Return the created Test Run Config
         return {
             "id": config.id,
@@ -547,7 +669,7 @@ def create_test_run_from_test_cases(
             "total_test_cases": config.total_test_cases,
             "created_at": config.created_at.isoformat() if config.created_at else None
         }
-    
+
     except HTTPException:
         raise
     except Exception as e:

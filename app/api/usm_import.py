@@ -5,8 +5,9 @@ import time
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from typing import Optional
+from typing import Optional, Dict, Any
 from pydantic import BaseModel
+import logging
 
 from app.auth.dependencies import get_current_user
 from app.models.database_models import User
@@ -14,6 +15,9 @@ from app.models.user_story_map_db import get_usm_db, UserStoryMapDB, UserStoryMa
 from app.services.lark_usm_import_service import LarkUSMImportService
 from app.services.lark_client import LarkClient
 from app.config import settings
+from app.audit import audit_service, ActionType, ResourceType, AuditSeverity
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/usm-import", tags=["usm-import"])
 
@@ -207,59 +211,88 @@ async def import_usm_from_lark(
 ):
     """
     從 Lark 多維表格匯入 USM
-    
+
     完整流程：
     1. 驗證 URL 和輸入
     2. 獲取 Lark 表格數據
     3. 轉換為 USM 格式
     4. 保存到數據庫
     """
-    
+
     try:
         # 1. 驗證輸入
         if not request.lark_url or not request.root_name or not request.team_id:
             raise HTTPException(status_code=400, detail="缺少必要參數")
-        
+
         # 2. 初始化 Lark 客戶端
         if not settings.lark.app_id or not settings.lark.app_secret:
             raise HTTPException(status_code=500, detail="Lark 認證信息未配置")
-        
+
         lark_client = LarkClient(settings.lark.app_id, settings.lark.app_secret)
         lark_service = LarkUSMImportService(lark_client)
-        
+
         # 3. 獲取 Lark 數據
         lark_records = await lark_service.fetch_lark_table(request.lark_url)
-        
+
         if not lark_records:
             raise HTTPException(status_code=400, detail="無法獲取 Lark 表格數據")
-        
+
         # 4. 轉換為 USM 格式
         usm_data = lark_service.convert_to_usm_nodes(
             lark_records,
             request.root_name,
             request.team_id
         )
-        
+
         # 5. 驗證數據
         is_valid, error_msg = lark_service.validate_import_data(usm_data)
         if not is_valid:
             raise HTTPException(status_code=400, detail=error_msg)
-        
+
         # 6. 保存到數據庫
         map_id = await _save_imported_usm(usm_db, usm_data, current_user)
-        
+
+        total_nodes = len(usm_data["nodes"])
+
+        # 7. 記錄審計日誌
+        role_value = (
+            current_user.role.value
+            if hasattr(current_user.role, "value")
+            else str(current_user.role)
+        )
+        try:
+            await audit_service.log_action(
+                user_id=current_user.id,
+                username=current_user.username,
+                role=role_value,
+                action_type=ActionType.CREATE,
+                resource_type=ResourceType.TEST_RUN,
+                resource_id=str(map_id),
+                team_id=request.team_id,
+                details={
+                    "map_id": map_id,
+                    "map_name": request.root_name,
+                    "total_nodes": total_nodes,
+                    "lark_url": request.lark_url,
+                    "source": "lark_import",
+                },
+                action_brief=f"{current_user.username} imported USM from Lark: {request.root_name} ({total_nodes} nodes)",
+                severity=AuditSeverity.INFO,
+            )
+        except Exception as exc:
+            logger.warning("寫入 USM 導入審計記錄失敗: %s", exc, exc_info=True)
+
         return USMImportResponse(
             success=True,
-            message=f"USM 匯入成功，共 {len(usm_data['nodes'])} 個節點",
+            message=f"USM 匯入成功，共 {total_nodes} 個節點",
             map_id=map_id,
-            total_nodes=len(usm_data["nodes"])
+            total_nodes=total_nodes
         )
-        
+
     except HTTPException:
         raise
     except Exception as e:
-        import logging
-        logging.error(f"USM 匯入失敗: {str(e)}", exc_info=True)
+        logger.error(f"USM 匯入失敗: {str(e)}", exc_info=True)
         return USMImportResponse(
             success=False,
             message=f"匯入失敗: {str(e)}"
