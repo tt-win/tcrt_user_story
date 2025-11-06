@@ -5,8 +5,9 @@ from __future__ import annotations
 from datetime import datetime
 from typing import List, Optional
 import json
+import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status, Body
 from sqlalchemy.orm import Session, joinedload
 
 from app.database import get_sync_db
@@ -14,6 +15,8 @@ from app.models.database_models import (
     TestRunConfig as TestRunConfigDB,
     TestRunSet as TestRunSetDB,
     TestRunSetMembership as TestRunSetMembershipDB,
+    TestCaseLocal as TestCaseLocalDB,
+    TestRunItem as TestRunItemDB,
 )
 from app.models.test_run_config import TestRunConfigSummary
 from app.models.test_run_set import (
@@ -43,6 +46,8 @@ from .test_run_configs import (
     _filter_matching_tp_tickets,
 )
 
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/teams/{team_id}/test-run-sets", tags=["test-run-sets"])
 
@@ -455,3 +460,97 @@ def search_test_run_sets_by_tp_tickets(
         summaries.append(summary)
 
     return summaries
+
+
+# ============ USM Integration: Create Test Run with Test Cases ============
+@router.post("/from-test-cases")
+def create_test_run_from_test_cases(
+    team_id: int,
+    payload: dict = Body(...),
+    db: Session = Depends(get_sync_db),
+):
+    """
+    从选定的测试案例创建 Test Run
+    
+    Parameters:
+        team_id: 团队 ID
+        payload: {
+            "name": "Test Run 名称",
+            "test_case_records": [record_id1, record_id2, ...],
+            "description": "可选描述"
+        }
+    
+    Returns:
+        Created TestRunConfig with added test cases
+    """
+    try:
+        verify_team_exists(team_id, db)
+        
+        name = payload.get("name", "")
+        if not name or not name.strip():
+            raise HTTPException(status_code=400, detail="Test Run 名称不能为空")
+        
+        test_case_records = payload.get("test_case_records", [])
+        if not test_case_records:
+            raise HTTPException(status_code=400, detail="必须至少选择一个测试案例")
+        
+        description = payload.get("description", "")
+        
+        # Create a Test Run Config
+        config = TestRunConfigDB(
+            team_id=team_id,
+            name=name.strip(),
+            description=description,
+            status='active',
+            total_test_cases=0
+        )
+        
+        db.add(config)
+        db.flush()
+        
+        # Add each test case as a Test Run Item
+        for record_id in test_case_records:
+            # Get the test case by lark_record_id
+            test_case = db.query(TestCaseLocalDB).filter(
+                TestCaseLocalDB.lark_record_id == record_id,
+                TestCaseLocalDB.team_id == team_id
+            ).first()
+            
+            if not test_case:
+                continue
+            
+            # Create Test Run Item for this test case
+            item = TestRunItemDB(
+                team_id=team_id,
+                config_id=config.id,
+                test_case_number=test_case.test_case_number
+            )
+            db.add(item)
+        
+        db.flush()
+        
+        # Update test case count
+        config.total_test_cases = db.query(TestRunItemDB).filter(
+            TestRunItemDB.config_id == config.id
+        ).count()
+        
+        db.commit()
+        db.refresh(config)
+        
+        # Return the created Test Run Config
+        return {
+            "id": config.id,
+            "team_id": config.team_id,
+            "name": config.name,
+            "description": config.description,
+            "status": config.status,
+            "total_test_cases": config.total_test_cases,
+            "created_at": config.created_at.isoformat() if config.created_at else None
+        }
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error creating test run from test cases: {str(e)}", exc_info=True)
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"创建 Test Run 失败: {str(e)}")
