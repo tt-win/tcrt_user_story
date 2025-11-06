@@ -3721,3 +3721,181 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
     });
 });
+
+// ============ Quick Search (Slash command) ============
+document.addEventListener('DOMContentLoaded', function() {
+    // Setup global keydown listener for slash
+    document.addEventListener('keydown', function(e) {
+        const tag = (e.target && e.target.tagName || '').toLowerCase();
+        const isTyping = ['input', 'textarea', 'select'].includes(tag) || (e.target && e.target.isContentEditable);
+        
+        if (!isTyping && e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            e.preventDefault();
+            openQuickSearchUSM();
+        }
+    });
+    
+    // Add hint at bottom
+    if (document.getElementById('quickSearchHint')) return;
+    const hint = document.createElement('div');
+    hint.id = 'quickSearchHint';
+    hint.className = 'position-fixed';
+    hint.style.cssText = 'left:12px; bottom:12px; z-index:1040; opacity:0.85; pointer-events:none;';
+    hint.innerHTML = `<span class="badge bg-secondary-subtle text-secondary border" style="--bs-bg-opacity:.65;">按 / 開啟快速搜尋</span>`;
+    document.body.appendChild(hint);
+});
+
+function openQuickSearchUSM() {
+    const overlay = document.getElementById('quickSearchOverlay');
+    const input = document.getElementById('quickSearchInput');
+    const results = document.getElementById('quickSearchResults');
+    if (!overlay || !input || !results) return;
+    
+    overlay.style.display = 'block';
+    input.value = '';
+    results.innerHTML = '';
+    input.focus();
+    
+    const handleKey = (e) => {
+        if (e.key === 'Escape') {
+            closeQuickSearchUSM();
+            return;
+        }
+        if (e.key === 'Enter') {
+            const active = results.querySelector('.active');
+            if (active) {
+                active.click();
+            }
+        } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            const items = Array.from(results.querySelectorAll('.list-group-item'));
+            if (items.length === 0) return;
+            let idx = items.findIndex(li => li.classList.contains('active'));
+            if (idx < 0) idx = 0;
+            idx = (e.key === 'ArrowDown') ? Math.min(idx + 1, items.length - 1) : Math.max(idx - 1, 0);
+            items.forEach(li => li.classList.remove('active'));
+            items[idx].classList.add('active');
+            items[idx].scrollIntoView({ block: 'nearest' });
+        }
+    };
+    
+    input.onkeydown = handleKey;
+    input.oninput = () => quickSearchRenderUSM(input.value, results);
+}
+
+function closeQuickSearchUSM() {
+    const overlay = document.getElementById('quickSearchOverlay');
+    if (overlay) overlay.style.display = 'none';
+}
+
+function quickSearchRenderUSM(query, container) {
+    const q = (query || '').trim().toLowerCase();
+    let matches = [];
+    
+    if (q.length > 0) {
+        let nodesData = [];
+        
+        // 查詢所有自定義節點的 DOM
+        const nodeElements = document.querySelectorAll('.custom-node');
+        if (nodeElements.length > 0) {
+            nodesData = Array.from(nodeElements).map((el) => {
+                // 嘗試從多個地方獲取實際的節點 ID
+                let nodeId = null;
+                
+                // 方法1：查找 data-id 屬性
+                const parentWithId = el.closest('[data-id]');
+                if (parentWithId) {
+                    nodeId = parentWithId.getAttribute('data-id');
+                }
+                
+                // 方法2：查找 React Flow 節點的 ID（在 data-testid 或其他屬性中）
+                if (!nodeId) {
+                    const rfNode = el.closest('[data-testid="rf__node"]');
+                    if (rfNode) {
+                        // React Flow 通常在 class 中包含節點 ID
+                        const classes = rfNode.getAttribute('class') || '';
+                        const match = classes.match(/rf__node-[^\s]*/);
+                        if (match) {
+                            nodeId = match[0].replace('rf__node-', '');
+                        }
+                    }
+                }
+                
+                // 方法3：從標題推斷（備用）
+                const titleEl = el.querySelector('.node-title') || el.querySelector('strong');
+                const title = titleEl?.textContent?.trim() || '';
+                
+                if (!nodeId) {
+                    nodeId = title;
+                }
+                
+                return {
+                    id: nodeId,
+                    data: {
+                        title: title,
+                        description: '',
+                        as_a: '',
+                        i_want: '',
+                        so_that: ''
+                    }
+                };
+            }).filter(n => n.id && n.id.length > 0);
+        }
+        
+        // 去重：使用 Map 根據 nodeId 去除重複
+        const uniqueMap = new Map();
+        nodesData.forEach(node => {
+            if (!uniqueMap.has(node.id)) {
+                uniqueMap.set(node.id, node);
+            }
+        });
+        nodesData = Array.from(uniqueMap.values());
+        
+        console.log('Quick search: found', nodesData.length, 'unique nodes', nodesData.map(n => ({ id: n.id, title: n.data.title })));
+        
+        matches = nodesData.filter(node => {
+            if (!node || !node.id) return false;
+            const data = node.data || {};
+            const title = (data.title || '').toLowerCase();
+            const desc = (data.description || '').toLowerCase();
+            const asA = (data.as_a || '').toLowerCase();
+            const iWant = (data.i_want || '').toLowerCase();
+            const soThat = (data.so_that || '').toLowerCase();
+            const nodeId = (node.id || '').toLowerCase();
+            
+            return title.includes(q) || 
+                   desc.includes(q) || 
+                   asA.includes(q) || 
+                   iWant.includes(q) || 
+                   soThat.includes(q) ||
+                   nodeId.includes(q);
+        }).slice(0, 100);
+    }
+    
+    if (matches.length === 0) {
+        container.innerHTML = `<div class="list-group-item text-muted text-center py-3">沒有找到符合條件的節點</div>`;
+        return;
+    }
+    
+    container.innerHTML = matches.map((node, idx) => `
+        <button type="button" class="list-group-item list-group-item-action ${idx === 0 ? 'active' : ''}" data-node-id="${escapeHtml(node.id)}">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+                <div style="flex: 1; text-align: left;">
+                    <strong class="text-truncate d-block">${escapeHtml(node.data?.title || node.id)}</strong>
+                    <small class="text-muted text-truncate d-block">${escapeHtml((node.data?.description || '').substring(0, 60))}</small>
+                </div>
+            </div>
+        </button>
+    `).join('');
+    
+    container.querySelectorAll('.list-group-item').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const nodeId = btn.getAttribute('data-node-id');
+            console.log('Quick search: clicking node', nodeId);
+            closeQuickSearchUSM();
+            if (nodeId && window.userStoryMapFlow?.focusNode) {
+                window.userStoryMapFlow.focusNode(nodeId);
+            }
+        });
+    });
+}
