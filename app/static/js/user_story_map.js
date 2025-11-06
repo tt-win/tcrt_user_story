@@ -3200,6 +3200,8 @@ document.addEventListener('DOMContentLoaded', async function() {
 
         const query = document.getElementById('searchInput')?.value;
         const nodeTypeFilter = document.getElementById('searchNodeType')?.value;
+        const jiraTickets = document.getElementById('searchJiraTickets')?.value;
+        const jiraLogic = document.querySelector('input[name="jiraLogic"]:checked')?.value || 'or';
 
         const params = new URLSearchParams();
         if (query) params.append('q', query);
@@ -3213,8 +3215,25 @@ document.addEventListener('DOMContentLoaded', async function() {
             });
 
             if (response.ok) {
-                const results = await response.json();
+                let results = await response.json();
                 const container = document.getElementById('searchResults');
+
+                // 前端 JIRA 過濾
+                if (jiraTickets && jiraTickets.trim()) {
+                    const jiraList = jiraTickets.split(',').map(t => t.trim().toUpperCase()).filter(t => t);
+                    if (jiraList.length > 0) {
+                        results = results.filter(node => {
+                            const nodeJira = (node.jira_tickets || []).map(t => t.toUpperCase());
+                            if (jiraLogic === 'and') {
+                                // AND: 需要包含所有指定的 JIRA tickets
+                                return jiraList.every(ticket => nodeJira.includes(ticket));
+                            } else {
+                                // OR: 只需包含任一個 JIRA ticket
+                                return jiraList.some(ticket => nodeJira.includes(ticket));
+                            }
+                        });
+                    }
+                }
 
                 if (results.length === 0) {
                     container.innerHTML = '<p class="text-muted">無搜尋結果</p>';
