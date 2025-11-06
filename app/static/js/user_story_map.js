@@ -3826,13 +3826,46 @@ document.getElementById('reviewTestCasesBtn')?.addEventListener('click', async (
     }
 });
 
+/**
+ * Sort test cases by test case number (numeric sorting)
+ * Reference: Test Case Management sorting algorithm
+ */
+function sortTestCasesByNumber(testCases) {
+    const parseNumberSegments = str => {
+        try {
+            if (!str) return [];
+            const ms = String(str).match(/\d+/g);
+            return ms ? ms.map(s => parseInt(s, 10)) : [];
+        } catch (_) { return []; }
+    };
+
+    const compareByNumericParts = (aStr, bStr) => {
+        const aSeg = parseNumberSegments(aStr);
+        const bSeg = parseNumberSegments(bStr);
+        const len = Math.min(aSeg.length, bSeg.length);
+        for (let i = 0; i < len; i++) {
+            if (aSeg[i] !== bSeg[i]) return aSeg[i] - bSeg[i];
+        }
+        return aSeg.length - bSeg.length;
+    };
+
+    return testCases.slice().sort((a, b) => {
+        const aNum = a.test_case_number || '';
+        const bNum = b.test_case_number || '';
+        return compareByNumericParts(aNum, bNum);
+    });
+}
+
 function displayTestCasesReview(testCases) {
     const tbody = document.getElementById('testCasesTableBody');
-    
+
     if (!testCases || testCases.length === 0) {
         tbody.innerHTML = '<tr><td colspan="4" class="text-muted text-center py-3">沒有相關的測試案例</td></tr>';
         return;
     }
+
+    // Sort test cases by test case number
+    const sortedTestCases = sortTestCasesByNumber(testCases);
 
     window.selectedTestCases = []; // Store selected cases
     window.lastCheckedCheckbox = null; // For shift-click support
@@ -3855,7 +3888,7 @@ function displayTestCasesReview(testCases) {
         return text[priority] || priority || '-';
     };
 
-    const html = testCases.map((tc, idx) => `
+    const html = sortedTestCases.map((tc, idx) => `
         <tr>
             <td class="text-center">
                 <input class="form-check-input test-case-checkbox" type="checkbox" 
