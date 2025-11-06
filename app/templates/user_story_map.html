@@ -659,4 +659,16 @@
 </script>
 
 <script src="/static/js/user_story_map.js"></script>
+
+<!-- Quick Search Overlay -->
+<div id="quickSearchOverlay" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:1050; padding:20px;">
+    <div style="max-width:600px; margin:100px auto; background:white; border-radius:8px; box-shadow:0 4px 20px rgba(0,0,0,0.15);">
+        <input type="text" id="quickSearchInput" placeholder="搜尋節點 (標題、描述、As a、I want、So that)..." 
+               style="width:100%; padding:12px 16px; border:none; border-bottom:1px solid #dee2e6; font-size:14px; outline:none;">
+        <div id="quickSearchResults" class="list-group" style="max-height:400px; overflow-y:auto; border-radius:0 0 8px 8px;">
+            <div class="list-group-item text-muted text-center py-3">輸入以搜尋...</div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
