@@ -586,28 +586,12 @@ class TestCaseSectionList {
   }
 
   /**
-   * 動態調整內容區域高度以適應視口
+   * 動態調整內容區域高度以適應視口（現在由 CSS flexbox 自動處理）
    */
   adjustPanelHeight() {
-    const content = document.getElementById('sectionListContent');
-    const panel = document.getElementById('sectionListPanel');
-
-    if (!content || !panel) return;
-
-    // 計算可用高度：視口高度 - 上邊距離 - footer高度 - header高度 - footer按鈕高度
-    const topOffset = 20; // 與 panel 的 top: 20px 對應
-    const footerHeight = 52; // Footer 高度（來自 CSS 變數 --footer-height）
-    const footerPadding = 8; // Footer 下的 padding
-    const headerHeight = 50; // Card header 的高度
-    const footerButtonHeight = 50; // Card footer 按鈕區域的高度
-    const safetyMargin = 10; // 額外的安全邊距
-
-    const availableHeight = window.innerHeight - topOffset - footerHeight - footerPadding - headerHeight - footerButtonHeight - safetyMargin;
-
-    // 設置 content 的 max-height
-    content.style.maxHeight = `${Math.max(100, availableHeight)}px`;
-
-    console.log(`[SectionList] Content height adjusted: ${availableHeight}px (viewport: ${window.innerHeight}px)`);
+    // 高度分配現在完全由 CSS flexbox 處理
+    // 這個方法保留用於日誌和未來可能的調整
+    console.log('[SectionList] Panel layout adjusted by CSS flexbox');
   }
 
   /**
