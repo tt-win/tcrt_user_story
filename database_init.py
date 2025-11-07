@@ -42,6 +42,7 @@ from app.models.database_models import (
     User, UserTeamPermission, ActiveSession, PasswordResetToken,  # 認證系統相關表
     Team, TestRunConfig, TestRunItem, TestRunItemResultHistory,
     TCGRecord, LarkDepartment, LarkUser, SyncHistory,
+    TestCaseSet, TestCaseSection,  # Test Case Set/Section 相關表
 )
 from sqlalchemy import create_engine
 
@@ -84,11 +85,13 @@ class Logger:
 IMPORTANT_TABLES: List[str] = [
     # 認證系統相關表
     "users",
-    "user_team_permissions", 
+    "user_team_permissions",
     "active_sessions",
     "password_reset_tokens",
     # 測試系統相關表
     "teams",
+    "test_case_sets",
+    "test_case_sections",
     "test_run_configs",
     "test_run_sets",
     "test_run_set_memberships",
@@ -223,10 +226,12 @@ COLUMN_CHECKS: Dict[str, List[ColumnSpec]] = {
         ColumnSpec("related_tp_tickets_json", "TEXT", nullable=True, default=None),
         ColumnSpec("tp_tickets_search", "TEXT", nullable=True, default=None),
     ],
-    # TestCaseLocal 需要新增的附件標記欄位
+    # TestCaseLocal 需要新增的附件標記欄位和 Set/Section 關聯欄位
     "test_cases": [
         ColumnSpec("has_attachments", "INTEGER", nullable=False, default=0, notes="是否有附件（0/1）"),
         ColumnSpec("attachment_count", "INTEGER", nullable=False, default=0, notes="附件數量"),
+        ColumnSpec("test_case_set_id", "INTEGER", nullable=True, default=None, notes="關聯的 Test Case Set ID"),
+        ColumnSpec("test_case_section_id", "INTEGER", nullable=True, default=None, notes="關聯的 Test Case Section ID"),
     ],
     # Lark Users 重要索引欄位（若缺少欄位則僅報告，不強制新增 NOT NULL）
     "lark_users": [

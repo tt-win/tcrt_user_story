@@ -1,25 +1,21 @@
-{% extends "base.html" %}
-
-{% block title %}User Story Map - Test Case Repository Web Tool{% endblock %}
-
-{% block page_title_text %}
+{% extends "base.html" %} {% block title %}User Story Map - Test Case Repository
+Web Tool{% endblock %} {% block page_title_text %}
 <span class="text-primary" data-i18n="usm.title">User Story Map</span>
-{% endblock %}
-
-{% block page_subtitle_text %}
+{% endblock %} {% block page_subtitle_text %}
 <span data-i18n="usm.subtitle">視覺化管理使用者故事與功能規劃</span>
-{% endblock %}
-
-{% block head %}
+{% endblock %} {% block head %}
 <!-- React Flow CSS -->
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reactflow@11.11.0/dist/style.css">
+<link
+    rel="stylesheet"
+    href="https://cdn.jsdelivr.net/npm/reactflow@11.11.0/dist/style.css"
+/>
 <style>
     .reactflow-wrapper {
         flex: 1;
         min-height: 0;
         background-color: #f8f9fa;
     }
-    
+
     .custom-node {
         padding: 12px 16px;
         padding-right: 24px;
@@ -35,7 +31,7 @@
         flex-direction: column;
         overflow: hidden;
     }
-    
+
     .custom-node.root-node {
         background: linear-gradient(135deg, #fff9d6 0%, #fffef0 100%);
         border-color: #f0c94d;
@@ -50,37 +46,37 @@
         background: linear-gradient(135deg, #fdf8ff 0%, #faf0ff 100%);
         border-color: #dda0dd;
     }
-    
+
     .custom-node .react-flow__handle {
         width: 0;
         height: 0;
         opacity: 0;
         pointer-events: none;
     }
-    
+
     .custom-node .react-flow__handle-top {
         top: -6px;
     }
-    
+
     .custom-node .react-flow__handle-bottom {
         bottom: -6px;
     }
-    
+
     .custom-node .react-flow__handle-left {
         left: -6px;
     }
-    
+
     .custom-node .react-flow__handle-right {
         right: -6px;
     }
-    
+
     .custom-node .node-title {
         font-weight: 600;
         margin-bottom: 4px;
         font-size: 14px;
         color: #000000;
     }
-    
+
     .custom-node .node-meta {
         font-size: 11px;
         color: #6c757d;
@@ -118,37 +114,37 @@
     .node-collapse-btn i {
         pointer-events: none;
     }
-    
+
     /* Ensure modals are visible and on top */
     #relationSettingsModal,
     #fullRelationGraphModal {
         z-index: 1060 !important;
     }
-    
+
     #relationSettingsModal.show,
     #fullRelationGraphModal.show {
         display: block !important;
         z-index: 1060 !important;
     }
-    
+
     /* Add Node modal above others */
     #addNodeModal { z-index: 1062 !important; }
     #addNodeModal.show { display: block !important; z-index: 1062 !important; }
     #addNodeModal ~ .modal-backdrop { z-index: 1061 !important; }
-    
 
-    
+
+
     /* Backdrop should be just below modal */
     #relationSettingsModal ~ .modal-backdrop,
     #fullRelationGraphModal ~ .modal-backdrop {
         z-index: 1059 !important;
     }
-    
+
     .react-flow__node.selected .custom-node {
         border-color: #f76707;
         box-shadow: 0 0 0 3px rgba(247, 103, 7, 0.35), 0 4px 12px rgba(0,0,0,0.15);
     }
-    
+
     .usm-sidebar {
         width: 300px;
         background: white;
@@ -187,13 +183,13 @@
         flex-direction: column;
         gap: 8px;
     }
-    
+
     .usm-main-area {
         display: flex;
         height: calc(100vh - var(--header-height) - var(--footer-height) - 16px); /* account for app-main padding (8px top & bottom) */
         min-height: 0;
     }
-    
+
     .usm-flow-container {
         flex: 1;
         position: relative;
@@ -201,7 +197,7 @@
         flex-direction: column;
         min-height: 0;
     }
-    
+
     .usm-toolbar {
         background: white;
         padding: 12px 16px;
@@ -213,7 +209,7 @@
         flex-shrink: 0;
         position: relative;
     }
-    
+
     .usm-toolbar #currentMapSelect {
         flex: 0 1 clamp(12rem, 30vw, 18rem);
         min-width: 12rem;
@@ -236,7 +232,7 @@
         left: 16px;
         z-index: 9999;
     }
-    
+
     .usm-map-btn {
         box-shadow: 0 2px 8px rgba(0,0,0,0.15);
         border-radius: 6px;
@@ -264,29 +260,34 @@
         pointer-events: auto;
     }
 </style>
-{% endblock %}
-
-{% block page_specific_actions %}
+{% endblock %} {% block page_specific_actions %}
 <div class="d-flex gap-2">
     <button type="button" class="btn btn-secondary" id="mapListBtn">
-        <i class="fas fa-list me-2"></i><span data-i18n="usm.mapList">地圖列表</span>
+        <i class="fas fa-list me-2"></i
+        ><span data-i18n="usm.mapList">地圖列表</span>
     </button>
     <button type="button" class="btn btn-primary" id="newMapBtn">
-        <i class="fas fa-plus me-2"></i><span data-i18n="usm.newMap">新增地圖</span>
+        <i class="fas fa-plus me-2"></i
+        ><span data-i18n="usm.newMap">新增地圖</span>
     </button>
-    <button type="button" class="btn btn-info" id="calcTicketsBtn" title="重新計算所有節點的聚合票證">
-        <i class="fas fa-calculator me-2"></i><span data-i18n="usm.calcTickets">計算票證</span>
+    <button
+        type="button"
+        class="btn btn-info"
+        id="calcTicketsBtn"
+        title="重新計算所有節點的聚合票證"
+    >
+        <i class="fas fa-calculator me-2"></i
+        ><span data-i18n="usm.calcTickets">計算票證</span>
     </button>
     <button type="button" class="btn btn-success" id="saveMapBtn">
         <i class="fas fa-save me-2"></i><span data-i18n="usm.save">儲存</span>
     </button>
     <a href="/" class="btn btn-secondary">
-        <i class="fas fa-arrow-left me-2"></i><span data-i18n="common.back">返回</span>
+        <i class="fas fa-arrow-left me-2"></i
+        ><span data-i18n="common.back">返回</span>
     </a>
 </div>
-{% endblock %}
-
-{% block content %}
+{% endblock %} {% block content %}
 <div class="usm-main-area">
     <div class="usm-flow-container">
         <!-- Toolbar -->
@@ -295,53 +296,102 @@
                 <option value="">選擇地圖...</option>
             </select>
             <div class="vr"></div>
-            <button type="button" class="btn btn-sm btn-primary" id="addChildBtn">
+            <button
+                type="button"
+                class="btn btn-sm btn-primary"
+                id="addChildBtn"
+            >
                 <i class="fas fa-plus"></i> 新增子節點
             </button>
-            <button type="button" class="btn btn-sm btn-primary" id="addSiblingBtn">
+            <button
+                type="button"
+                class="btn btn-sm btn-primary"
+                id="addSiblingBtn"
+            >
                 <i class="fas fa-plus"></i> 新增同級節點
             </button>
-            <button type="button" class="btn btn-sm btn-secondary" id="setRelationsBtn" title="建立節點關聯" onclick="window.openRelationModal?.()">
+            <button
+                type="button"
+                class="btn btn-sm btn-edit"
+                id="setRelationsBtn"
+                title="建立節點關聯"
+                onclick="window.openRelationModal?.()"
+            >
                 <i class="fas fa-link"></i> 設定關聯
             </button>
             <div class="vr"></div>
             <button type="button" class="btn btn-sm btn-info" id="searchBtn">
                 <i class="fas fa-search"></i> 搜尋
             </button>
-            <button type="button" class="btn btn-sm btn-warning" id="highlightPathBtn">
+            <button
+                type="button"
+                class="btn btn-sm btn-info"
+                id="highlightPathBtn"
+            >
                 <i class="fas fa-route"></i> 高亮路徑
             </button>
-            <button type="button" class="btn btn-sm btn-info" id="fullRelationGraphBtn" title="顯示完整相關圖" onclick="window.openFullRelationGraph?.()">
+            <button
+                type="button"
+                class="btn btn-sm btn-info"
+                id="fullRelationGraphBtn"
+                title="顯示完整相關圖"
+                onclick="window.openFullRelationGraph?.()"
+            >
                 <i class="fas fa-project-diagram"></i> 完整相關圖
             </button>
-            <button type="button" class="btn btn-sm btn-success" id="reviewTestCasesBtn" title="檢閱相關案例">
+            <button
+                type="button"
+                class="btn btn-sm btn-info"
+                id="reviewTestCasesBtn"
+                title="檢閱相關案例"
+            >
                 <i class="fas fa-check-square"></i> 檢閱相關案例
             </button>
-            <button type="button" class="btn btn-sm btn-secondary" id="clearHighlightBtn" style="display:none;">
+            <button
+                type="button"
+                class="btn btn-sm btn-secondary"
+                id="clearHighlightBtn"
+                style="display: none"
+            >
                 <i class="fas fa-times"></i> 清除高亮
             </button>
         </div>
         <div id="highlightInfo" class="alert alert-warning d-none"></div>
-        
+
         <!-- React Flow Container -->
         <div id="reactFlowWrapper" class="reactflow-wrapper"></div>
 
         <!-- Toolbar for layout and collapse operations -->
         <div class="usm-map-btn-container">
             <div class="btn-group-vertical" role="group">
-                <button type="button" class="btn btn-sm btn-secondary usm-map-btn" id="autoLayoutBtn" title="自動排版">
+                <button
+                    type="button"
+                    class="btn btn-sm btn-secondary usm-map-btn"
+                    id="autoLayoutBtn"
+                    title="自動排版"
+                >
                     <i class="fas fa-project-diagram"></i>
                 </button>
-                <button type="button" class="btn btn-sm btn-secondary usm-map-btn" id="collapseUserStoryNodesBtn" title="收合所有 User Story 節點">
+                <button
+                    type="button"
+                    class="btn btn-sm btn-secondary usm-map-btn"
+                    id="collapseUserStoryNodesBtn"
+                    title="收合所有 User Story 節點"
+                >
                     <i class="fas fa-compress-alt"></i>
                 </button>
-                <button type="button" class="btn btn-sm btn-secondary usm-map-btn" id="expandAllNodesBtn" title="展開所有節點">
+                <button
+                    type="button"
+                    class="btn btn-sm btn-secondary usm-map-btn"
+                    id="expandAllNodesBtn"
+                    title="展開所有節點"
+                >
                     <i class="fas fa-expand-alt"></i>
                 </button>
             </div>
         </div>
     </div>
-    
+
     <!-- Sidebar -->
     <div class="usm-sidebar">
         <h6 class="mb-3">節點屬性</h6>
@@ -357,21 +407,37 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">設定節點關聯</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button
+                    type="button"
+                    class="btn-close"
+                    data-bs-dismiss="modal"
+                ></button>
             </div>
             <div class="modal-body">
                 <!-- Current Node Info -->
                 <div class="alert alert-info mb-3">
-                    <strong>來源節點:</strong> <span id="relationSourceNodeTitle">未選擇</span>
-                    <small class="text-muted d-block">ID: <span id="relationSourceNodeId">-</span></small>
+                    <strong>來源節點:</strong>
+                    <span id="relationSourceNodeTitle">未選擇</span>
+                    <small class="text-muted d-block"
+                        >ID: <span id="relationSourceNodeId">-</span></small
+                    >
                 </div>
 
                 <!-- Search Section -->
                 <div class="mb-3">
                     <label class="form-label">搜尋目標節點</label>
                     <div class="input-group input-group-sm mb-2">
-                        <input type="text" class="form-control" id="relationSearchInput" placeholder="輸入節點名稱或描述...">
-                        <button class="btn btn-secondary" type="button" id="relationSearchBtn">
+                        <input
+                            type="text"
+                            class="form-control"
+                            id="relationSearchInput"
+                            placeholder="輸入節點名稱或描述..."
+                        />
+                        <button
+                            class="btn btn-secondary"
+                            type="button"
+                            id="relationSearchBtn"
+                        >
                             <i class="fas fa-search"></i>
                         </button>
                     </div>
@@ -380,8 +446,13 @@
                 <!-- Filters -->
                 <div class="row mb-3">
                     <div class="col-md-6">
-                        <label class="form-label small text-muted">節點類型</label>
-                        <select class="form-select form-select-sm" id="relationNodeTypeFilter">
+                        <label class="form-label small text-muted"
+                            >節點類型</label
+                        >
+                        <select
+                            class="form-select form-select-sm"
+                            id="relationNodeTypeFilter"
+                        >
                             <option value="">全部類型</option>
                             <option value="user_story">User Story</option>
                             <option value="feature_category">功能節點</option>
@@ -389,38 +460,75 @@
                     </div>
                     <div class="col-md-6 d-flex align-items-end">
                         <div class="form-check mb-0">
-                            <input class="form-check-input" type="checkbox" id="relationIncludeExternal">
-                            <label class="form-check-label small" for="relationIncludeExternal">
+                            <input
+                                class="form-check-input"
+                                type="checkbox"
+                                id="relationIncludeExternal"
+                            />
+                            <label
+                                class="form-check-label small"
+                                for="relationIncludeExternal"
+                            >
                                 搜尋其他地圖
                             </label>
                         </div>
                     </div>
                 </div>
 
-                 <!-- Search Results -->
-                 <div class="mt-2 mb-3">
-                     <label class="form-label">搜尋結果</label>
-                     <div class="list-group list-group-sm" id="relationSearchResults" style="max-height: 250px; overflow-y: auto;">
-                         <p class="text-muted small text-center py-3">輸入關鍵字並搜尋</p>
-                     </div>
-                     <div class="mt-2">
-                         <button type="button" class="btn btn-sm btn-primary" id="relationAddSelectedBtn" disabled>
-                             <i class="fas fa-plus"></i> 增加選中項目
-                         </button>
-                     </div>
-                 </div>
+                <!-- Search Results -->
+                <div class="mt-2 mb-3">
+                    <label class="form-label">搜尋結果</label>
+                    <div
+                        class="list-group list-group-sm"
+                        id="relationSearchResults"
+                        style="max-height: 250px; overflow-y: auto"
+                    >
+                        <p class="text-muted small text-center py-3">
+                            輸入關鍵字並搜尋
+                        </p>
+                    </div>
+                    <div class="mt-2">
+                        <button
+                            type="button"
+                            class="btn btn-sm btn-primary"
+                            id="relationAddSelectedBtn"
+                            disabled
+                        >
+                            <i class="fas fa-plus"></i> 增加選中項目
+                        </button>
+                    </div>
+                </div>
 
                 <!-- Selected Relations -->
                 <div class="mb-3">
-                    <label class="form-label">已選擇的關聯 (<span id="relationSelectedCount">0</span>)</label>
-                    <div class="list-group list-group-sm" id="relationSelectedList" style="max-height: 200px; overflow-y: auto;">
-                        <p class="text-muted small text-center py-3">尚未選擇</p>
+                    <label class="form-label"
+                        >已選擇的關聯 (<span id="relationSelectedCount">0</span
+                        >)</label
+                    >
+                    <div
+                        class="list-group list-group-sm"
+                        id="relationSelectedList"
+                        style="max-height: 200px; overflow-y: auto"
+                    >
+                        <p class="text-muted small text-center py-3">
+                            尚未選擇
+                        </p>
                     </div>
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                <button type="button" class="btn btn-success" id="relationSaveBtn">
+                <button
+                    type="button"
+                    class="btn btn-secondary"
+                    data-bs-dismiss="modal"
+                >
+                    取消
+                </button>
+                <button
+                    type="button"
+                    class="btn btn-success"
+                    id="relationSaveBtn"
+                >
                     <i class="fas fa-save"></i> 儲存關聯
                 </button>
             </div>
@@ -430,35 +538,100 @@
 
 <!-- Full Relation Graph Modal -->
 <div class="modal fade" id="fullRelationGraphModal" tabindex="-1">
-    <div class="modal-dialog modal-xl" style="max-width: 90vw; margin: 2.5vh auto;">
-        <div class="modal-content" style="height: 90vh;">
+    <div
+        class="modal-dialog modal-xl"
+        style="max-width: 90vw; margin: 2.5vh auto"
+    >
+        <div class="modal-content" style="height: 90vh">
             <div class="modal-header">
                 <h5 class="modal-title">節點完整相關圖</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button
+                    type="button"
+                    class="btn-close"
+                    data-bs-dismiss="modal"
+                ></button>
             </div>
-            <div class="modal-body" style="padding: 0; flex: 1; display: flex; flex-direction: column; min-height: 0;">
-                <div class="row" style="margin: 0; flex: 1; min-height: 0;">
+            <div
+                class="modal-body"
+                style="
+                    padding: 0;
+                    flex: 1;
+                    display: flex;
+                    flex-direction: column;
+                    min-height: 0;
+                "
+            >
+                <div class="row" style="margin: 0; flex: 1; min-height: 0">
                     <!-- Graph container -->
-                    <div class="col-9" style="padding: 0; height: 100%; min-height: 0;">
-                        <div id="relationGraphContainer" style="width: 100%; height: 100%; border: 1px solid #ddd; border-radius: 4px; position: relative;">
+                    <div
+                        class="col-9"
+                        style="padding: 0; height: 100%; min-height: 0"
+                    >
+                        <div
+                            id="relationGraphContainer"
+                            style="
+                                width: 100%;
+                                height: 100%;
+                                border: 1px solid #ddd;
+                                border-radius: 4px;
+                                position: relative;
+                            "
+                        >
                             <!-- React Flow 節點將在這裡渲染 -->
                         </div>
                     </div>
                     <!-- Properties panel -->
-                    <div class="col-3" style="padding: 0; height: 100%; min-height: 0; border-left: 1px solid #dee2e6; display: flex; flex-direction: column; overflow: hidden;">
-                        <div style="padding: 12px; border-bottom: 1px solid #dee2e6; flex-shrink: 0;">
-                            <h6 style="margin: 0; font-weight: 600; color: #333;">節點屬性</h6>
+                    <div
+                        class="col-3"
+                        style="
+                            padding: 0;
+                            height: 100%;
+                            min-height: 0;
+                            border-left: 1px solid #dee2e6;
+                            display: flex;
+                            flex-direction: column;
+                            overflow: hidden;
+                        "
+                    >
+                        <div
+                            style="
+                                padding: 12px;
+                                border-bottom: 1px solid #dee2e6;
+                                flex-shrink: 0;
+                            "
+                        >
+                            <h6
+                                style="margin: 0; font-weight: 600; color: #333"
+                            >
+                                節點屬性
+                            </h6>
                         </div>
-                        <div id="fullRelationNodeProperties" style="padding: 12px; flex: 1; overflow-y: auto; min-height: 0;">
-                            <p class="text-muted small" style="font-size: 12px;">點擊地圖上的節點以查看詳細信息</p>
+                        <div
+                            id="fullRelationNodeProperties"
+                            style="
+                                padding: 12px;
+                                flex: 1;
+                                overflow-y: auto;
+                                min-height: 0;
+                            "
+                        >
+                            <p class="text-muted small" style="font-size: 12px">
+                                點擊地圖上的節點以查看詳細信息
+                            </p>
                         </div>
                     </div>
                 </div>
-                <hr style="margin: 12px 0 0 0;">
-                <div style="padding: 12px; flex-shrink: 0;">
+                <hr style="margin: 12px 0 0 0" />
+                <div style="padding: 12px; flex-shrink: 0">
                     <h6 class="mt-3">跨地圖相關節點</h6>
-                    <div id="crossMapNodesList" class="list-group list-group-sm" style="max-height: 120px; overflow-y: auto;">
-                        <p class="text-muted small text-center py-3">無跨地圖關聯</p>
+                    <div
+                        id="crossMapNodesList"
+                        class="list-group list-group-sm"
+                        style="max-height: 120px; overflow-y: auto"
+                    >
+                        <p class="text-muted small text-center py-3">
+                            無跨地圖關聯
+                        </p>
                     </div>
                 </div>
             </div>
@@ -472,23 +645,48 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" data-i18n="usm.newMap">新增地圖</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button
+                    type="button"
+                    class="btn-close"
+                    data-bs-dismiss="modal"
+                ></button>
             </div>
             <div class="modal-body">
                 <form id="newMapForm">
                     <div class="mb-3">
-                        <label for="mapName" class="form-label">地圖名稱 <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" id="mapName" required>
+                        <label for="mapName" class="form-label"
+                            >地圖名稱 <span class="text-danger">*</span></label
+                        >
+                        <input
+                            type="text"
+                            class="form-control"
+                            id="mapName"
+                            required
+                        />
                     </div>
                     <div class="mb-3">
-                        <label for="mapDescription" class="form-label">描述</label>
-                        <textarea class="form-control" id="mapDescription" rows="3"></textarea>
+                        <label for="mapDescription" class="form-label"
+                            >描述</label
+                        >
+                        <textarea
+                            class="form-control"
+                            id="mapDescription"
+                            rows="3"
+                        ></textarea>
                     </div>
                 </form>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                <button type="button" class="btn btn-primary" id="createMapBtn">建立</button>
+                <button
+                    type="button"
+                    class="btn btn-secondary"
+                    data-bs-dismiss="modal"
+                >
+                    取消
+                </button>
+                <button type="button" class="btn btn-primary" id="createMapBtn">
+                    建立
+                </button>
             </div>
         </div>
     </div>
@@ -500,12 +698,19 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" data-i18n="usm.mapList">地圖列表</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button
+                    type="button"
+                    class="btn-close"
+                    data-bs-dismiss="modal"
+                ></button>
             </div>
             <div class="modal-body">
                 <div id="mapListContainer">
                     <div class="text-center py-4">
-                        <div class="spinner-border text-primary" role="status"></div>
+                        <div
+                            class="spinner-border text-primary"
+                            role="status"
+                        ></div>
                     </div>
                 </div>
             </div>
@@ -519,22 +724,51 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">編輯地圖</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button
+                    type="button"
+                    class="btn-close"
+                    data-bs-dismiss="modal"
+                ></button>
             </div>
             <div class="modal-body">
-                <input type="hidden" id="editMapId">
+                <input type="hidden" id="editMapId" />
                 <div class="mb-3">
-                    <label for="editMapName" class="form-label">地圖名稱 <span class="text-danger">*</span></label>
-                    <input type="text" class="form-control" id="editMapName" required>
+                    <label for="editMapName" class="form-label"
+                        >地圖名稱 <span class="text-danger">*</span></label
+                    >
+                    <input
+                        type="text"
+                        class="form-control"
+                        id="editMapName"
+                        required
+                    />
                 </div>
                 <div class="mb-3">
-                    <label for="editMapDescription" class="form-label">描述</label>
-                    <textarea class="form-control" id="editMapDescription" rows="3"></textarea>
+                    <label for="editMapDescription" class="form-label"
+                        >描述</label
+                    >
+                    <textarea
+                        class="form-control"
+                        id="editMapDescription"
+                        rows="3"
+                    ></textarea>
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                <button type="button" class="btn btn-success" id="saveMapEditBtn">儲存</button>
+                <button
+                    type="button"
+                    class="btn btn-secondary"
+                    data-bs-dismiss="modal"
+                >
+                    取消
+                </button>
+                <button
+                    type="button"
+                    class="btn btn-success"
+                    id="saveMapEditBtn"
+                >
+                    儲存
+                </button>
             </div>
         </div>
     </div>
@@ -546,52 +780,110 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">新增節點</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button
+                    type="button"
+                    class="btn-close"
+                    data-bs-dismiss="modal"
+                ></button>
             </div>
             <div class="modal-body">
                 <form id="addNodeForm">
                     <div class="mb-3">
-                        <label class="form-label">標題 <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" id="nodeTitle" required>
+                        <label class="form-label"
+                            >標題 <span class="text-danger">*</span></label
+                        >
+                        <input
+                            type="text"
+                            class="form-control"
+                            id="nodeTitle"
+                            required
+                        />
                     </div>
                     <div class="mb-3">
                         <label class="form-label">描述</label>
-                        <textarea class="form-control" id="nodeDescription" rows="3"></textarea>
+                        <textarea
+                            class="form-control"
+                            id="nodeDescription"
+                            rows="3"
+                        ></textarea>
                     </div>
-                     <div class="mb-3">
-                         <label class="form-label">節點類型 <span class="text-danger">*</span></label>
-                         <select class="form-control" id="nodeType" required>
-                             <option value="feature_category">功能分類節點</option>
-                             <option value="user_story">User Story</option>
-                         </select>
-                     </div>
-                     <div class="mb-3">
-                         <label class="form-label">團隊</label>
-                         <p class="form-control-plaintext mb-0" id="nodeTeamDisplay">載入中…</p>
-                     </div>
-                     <div class="mb-3">
-                         <label class="form-label">JIRA Tickets (逗號分隔)</label>
-                         <input type="text" class="form-control" id="nodeJira" placeholder="PROJ-123, PROJ-456">
-                     </div>
-                     <div id="bddFields" style="display: none;">
-                         <div class="mb-3">
-                             <label class="form-label">As a</label>
-                             <input type="text" class="form-control" id="nodeAsA" placeholder="As a user...">
-                         </div>
-                         <div class="mb-3">
-                             <label class="form-label">I want</label>
-                             <input type="text" class="form-control" id="nodeIWant" placeholder="I want to...">
-                         </div>
-                         <div class="mb-3">
-                             <label class="form-label">So that</label>
-                             <input type="text" class="form-control" id="nodeSoThat" placeholder="So that...">
-                         </div>
-                     </div>
+                    <div class="mb-3">
+                        <label class="form-label"
+                            >節點類型 <span class="text-danger">*</span></label
+                        >
+                        <select class="form-control" id="nodeType" required>
+                            <option value="feature_category">
+                                功能分類節點
+                            </option>
+                            <option value="user_story">User Story</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">團隊</label>
+                        <p
+                            class="form-control-plaintext mb-0"
+                            id="nodeTeamDisplay"
+                        >
+                            載入中…
+                        </p>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label"
+                            >JIRA Tickets (逗號分隔)</label
+                        >
+                        <input
+                            type="text"
+                            class="form-control"
+                            id="nodeJira"
+                            placeholder="PROJ-123, PROJ-456"
+                        />
+                    </div>
+                    <div id="bddFields" style="display: none">
+                        <div class="mb-3">
+                            <label class="form-label">As a</label>
+                            <input
+                                type="text"
+                                class="form-control"
+                                id="nodeAsA"
+                                placeholder="As a user..."
+                            />
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">I want</label>
+                            <input
+                                type="text"
+                                class="form-control"
+                                id="nodeIWant"
+                                placeholder="I want to..."
+                            />
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">So that</label>
+                            <input
+                                type="text"
+                                class="form-control"
+                                id="nodeSoThat"
+                                placeholder="So that..."
+                            />
+                        </div>
+                    </div>
                 </form>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                <button type="button" class="btn btn-primary" id="confirmAddNodeBtn">新增</button>
+                <button
+                    type="button"
+                    class="btn btn-secondary"
+                    data-bs-dismiss="modal"
+                >
+                    取消
+                </button>
+                <button
+                    type="button"
+                    class="btn btn-primary"
+                    id="confirmAddNodeBtn"
+                >
+                    新增
+                </button>
             </div>
         </div>
     </div>
@@ -603,154 +895,311 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title">搜尋節點</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <button
+                    type="button"
+                    class="btn-close"
+                    data-bs-dismiss="modal"
+                ></button>
             </div>
-             <div class="modal-body">
-                 <div class="mb-3">
-                     <div class="input-group">
-                         <input type="text" class="form-control" id="searchInput" placeholder="搜尋標題、描述、註解或 BDD 欄位...">
-                         <button class="btn btn-danger" type="button" id="clearSearchBtn" title="清除搜尋">
-                             <i class="fas fa-times"></i>
-                         </button>
-                     </div>
-                 </div>
-                 <div class="mb-3">
-                     <label class="form-label small text-muted">節點類型篩選</label>
-                     <select class="form-select form-select-sm" id="searchNodeType">
-                         <option value="">全部節點</option>
-                         <option value="user_story">User Story</option>
-                         <option value="feature_category">功能節點</option>
-                     </select>
-                 </div>
+            <div class="modal-body">
                 <div class="mb-3">
-                    <label class="form-label small text-muted">JIRA Tickets (逗號分隔)</label>
-                    <input type="text" class="form-control form-control-sm" id="searchJiraTickets" placeholder="如: TEST-123, TEST-456">
+                    <div class="input-group">
+                        <input
+                            type="text"
+                            class="form-control"
+                            id="searchInput"
+                            placeholder="搜尋標題、描述、註解或 BDD 欄位..."
+                        />
+                        <button
+                            class="btn btn-danger"
+                            type="button"
+                            id="clearSearchBtn"
+                            title="清除搜尋"
+                        >
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small text-muted"
+                        >節點類型篩選</label
+                    >
+                    <select
+                        class="form-select form-select-sm"
+                        id="searchNodeType"
+                    >
+                        <option value="">全部節點</option>
+                        <option value="user_story">User Story</option>
+                        <option value="feature_category">功能節點</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label small text-muted"
+                        >JIRA Tickets (逗號分隔)</label
+                    >
+                    <input
+                        type="text"
+                        class="form-control form-control-sm"
+                        id="searchJiraTickets"
+                        placeholder="如: TEST-123, TEST-456"
+                    />
                     <div class="mt-2">
                         <small class="text-muted">邏輯:</small>
                         <div class="form-check form-check-inline ms-2">
-                            <input class="form-check-input" type="radio" name="jiraLogic" id="jiraOr" value="or" checked>
-                            <label class="form-check-label small" for="jiraOr">OR</label>
+                            <input
+                                class="form-check-input"
+                                type="radio"
+                                name="jiraLogic"
+                                id="jiraOr"
+                                value="or"
+                                checked
+                            />
+                            <label class="form-check-label small" for="jiraOr"
+                                >OR</label
+                            >
                         </div>
                         <div class="form-check form-check-inline">
-                            <input class="form-check-input" type="radio" name="jiraLogic" id="jiraAnd" value="and">
-                            <label class="form-check-label small" for="jiraAnd">AND</label>
+                            <input
+                                class="form-check-input"
+                                type="radio"
+                                name="jiraLogic"
+                                id="jiraAnd"
+                                value="and"
+                            />
+                            <label class="form-check-label small" for="jiraAnd"
+                                >AND</label
+                            >
                         </div>
                     </div>
                 </div>
-                 <button type="button" class="btn btn-sm btn-success" id="performSearchBtn">
-                     <i class="fas fa-search"></i> 搜尋
-                 </button>
-                 <hr>
-                 <div id="searchResults">
-                     <p class="text-muted small">輸入搜尋條件並點擊搜尋</p>
-                 </div>
-</div>
-    </div>
-</div>
-
-
-{% endblock %}
-
-{% block scripts %}
-<!-- Dagre for tree layout -->
-<script src="https://unpkg.com/dagre@0.8.5/dist/dagre.min.js"></script>
-
-<!-- React and ReactDOM -->
-<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-
-<!-- React Flow Library -->
-<script src="https://unpkg.com/reactflow@11.11.0"></script>
-
-<!-- Setup library globals and initialize app -->
-<script>
-    // Ensure React Flow is available in window scope
-    // The UMD build should expose ReactFlow to window, but we verify it
-    if (typeof window.ReactFlow === 'undefined') {
-        console.warn('Attempting to use global ReactFlow variable');
-        if (typeof ReactFlow !== 'undefined') {
-            window.ReactFlow = ReactFlow;
-        } else {
-            console.error('React Flow failed to load. Check CDN availability.');
-        }
-    }
-</script>
-
-<script src="/static/js/user_story_map.js"></script>
-
-<!-- Test Cases Review Modal -->
-<div class="modal fade" id="reviewTestCasesModal" tabindex="-1">
-    <div class="modal-dialog modal-xl modal-dialog-scrollable">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title"><i class="fas fa-tasks me-2"></i>檢閱相關案例</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div id="caseSelectInfo" class="text-muted small mb-3"></div>
-                <div class="table-responsive" style="max-height: 60vh; overflow-y: auto;">
-                    <table class="table table-sm table-hover align-middle mb-0">
-                        <thead class="table-light sticky-top" style="top: 0;">
-                            <tr>
-                                <th style="width: 50px;" class="text-center">
-                                    <input type="checkbox" class="form-check-input" id="selectAllTestCasesCheckbox">
-                                </th>
-                                <th style="width: 160px;">編號</th>
-                                <th>標題</th>
-                                <th style="width: 100px;">優先級</th>
-                            </tr>
-                        </thead>
-                        <tbody id="testCasesTableBody">
-                            <tr>
-                                <td colspan="4" class="text-muted text-center py-3">載入中...</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <div class="me-auto text-muted small">已選擇 <span id="selectedTestCasesCount">0</span> 個</div>
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                <button type="button" class="btn btn-primary" id="createTestRunBtn">
-                    <i class="fas fa-check me-1"></i>建立 Test Run
+                <button
+                    type="button"
+                    class="btn btn-sm btn-info"
+                    id="performSearchBtn"
+                >
+                    <i class="fas fa-search"></i> 搜尋
                 </button>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- Create Test Run Modal -->
-<div class="modal fade" id="createTestRunModal" tabindex="-1">
-    <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">建立 Test Run</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div class="mb-3">
-                    <label class="form-label">Test Run 名稱</label>
-                    <input type="text" class="form-control" id="testRunName" placeholder="輸入 Test Run 名稱">
+                <hr />
+                <div id="searchResults">
+                    <p class="text-muted small">輸入搜尋條件並點擊搜尋</p>
                 </div>
-                <p class="text-muted small">已選擇 <span id="selectedTestCasesCount">0</span> 個測試案例</p>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                <button type="button" class="btn btn-success" id="confirmCreateTestRunBtn">建立</button>
             </div>
         </div>
     </div>
-</div>
 
-<!-- Quick Search Overlay -->
-<div id="quickSearchOverlay" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:1050; padding:20px;">
-    <div style="max-width:600px; margin:100px auto; background:white; border-radius:8px; box-shadow:0 4px 20px rgba(0,0,0,0.15);">
-        <input type="text" id="quickSearchInput" placeholder="搜尋節點 (標題、描述、As a、I want、So that)..." 
-               style="width:100%; padding:12px 16px; border:none; border-bottom:1px solid #dee2e6; font-size:14px; outline:none;">
-        <div id="quickSearchResults" class="list-group" style="max-height:400px; overflow-y:auto; border-radius:0 0 8px 8px;">
-            <div class="list-group-item text-muted text-center py-3">輸入以搜尋...</div>
+    {% endblock %} {% block scripts %}
+    <!-- Dagre for tree layout -->
+    <script src="https://unpkg.com/dagre@0.8.5/dist/dagre.min.js"></script>
+
+    <!-- React and ReactDOM -->
+    <script
+        crossorigin
+        src="https://unpkg.com/react@18/umd/react.production.min.js"
+    ></script>
+    <script
+        crossorigin
+        src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"
+    ></script>
+
+    <!-- React Flow Library -->
+    <script src="https://unpkg.com/reactflow@11.11.0"></script>
+
+    <!-- Setup library globals and initialize app -->
+    <script>
+        // Ensure React Flow is available in window scope
+        // The UMD build should expose ReactFlow to window, but we verify it
+        if (typeof window.ReactFlow === "undefined") {
+            console.warn("Attempting to use global ReactFlow variable");
+            if (typeof ReactFlow !== "undefined") {
+                window.ReactFlow = ReactFlow;
+            } else {
+                console.error(
+                    "React Flow failed to load. Check CDN availability.",
+                );
+            }
+        }
+    </script>
+
+    <script src="/static/js/user_story_map.js"></script>
+
+    <!-- Test Cases Review Modal -->
+    <div class="modal fade" id="reviewTestCasesModal" tabindex="-1">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="fas fa-tasks me-2"></i>檢閱相關案例
+                    </h5>
+                    <button
+                        type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"
+                    ></button>
+                </div>
+                <div class="modal-body">
+                    <div
+                        id="caseSelectInfo"
+                        class="text-muted small mb-3"
+                    ></div>
+                    <div
+                        class="table-responsive"
+                        style="max-height: 60vh; overflow-y: auto"
+                    >
+                        <table
+                            class="table table-sm table-hover align-middle mb-0"
+                        >
+                            <thead
+                                class="table-light sticky-top"
+                                style="top: 0"
+                            >
+                                <tr>
+                                    <th style="width: 50px" class="text-center">
+                                        <input
+                                            type="checkbox"
+                                            class="form-check-input"
+                                            id="selectAllTestCasesCheckbox"
+                                        />
+                                    </th>
+                                    <th style="width: 160px">編號</th>
+                                    <th>標題</th>
+                                    <th style="width: 100px">優先級</th>
+                                </tr>
+                            </thead>
+                            <tbody id="testCasesTableBody">
+                                <tr>
+                                    <td
+                                        colspan="4"
+                                        class="text-muted text-center py-3"
+                                    >
+                                        載入中...
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <div class="me-auto text-muted small">
+                        已選擇 <span id="selectedTestCasesCount">0</span> 個
+                    </div>
+                    <button
+                        type="button"
+                        class="btn btn-secondary"
+                        data-bs-dismiss="modal"
+                    >
+                        取消
+                    </button>
+                    <button
+                        type="button"
+                        class="btn btn-primary"
+                        id="createTestRunBtn"
+                    >
+                        <i class="fas fa-check me-1"></i>建立 Test Run
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
-</div>
 
-{% endblock %}
+    <!-- Create Test Run Modal -->
+    <div class="modal fade" id="createTestRunModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">建立 Test Run</h5>
+                    <button
+                        type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"
+                    ></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Test Run 名稱</label>
+                        <input
+                            type="text"
+                            class="form-control"
+                            id="testRunName"
+                            placeholder="輸入 Test Run 名稱"
+                        />
+                    </div>
+                    <p class="text-muted small">
+                        已選擇
+                        <span id="selectedTestCasesCount">0</span> 個測試案例
+                    </p>
+                </div>
+                <div class="modal-footer">
+                    <button
+                        type="button"
+                        class="btn btn-secondary"
+                        data-bs-dismiss="modal"
+                    >
+                        取消
+                    </button>
+                    <button
+                        type="button"
+                        class="btn btn-success"
+                        id="confirmCreateTestRunBtn"
+                    >
+                        建立
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Search Overlay -->
+    <div
+        id="quickSearchOverlay"
+        style="
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1050;
+            padding: 20px;
+        "
+    >
+        <div
+            style="
+                max-width: 600px;
+                margin: 100px auto;
+                background: white;
+                border-radius: 8px;
+                box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+            "
+        >
+            <input
+                type="text"
+                id="quickSearchInput"
+                placeholder="搜尋節點 (標題、描述、As a、I want、So that)..."
+                style="
+                    width: 100%;
+                    padding: 12px 16px;
+                    border: none;
+                    border-bottom: 1px solid #dee2e6;
+                    font-size: 14px;
+                    outline: none;
+                "
+            />
+            <div
+                id="quickSearchResults"
+                class="list-group"
+                style="
+                    max-height: 400px;
+                    overflow-y: auto;
+                    border-radius: 0 0 8px 8px;
+                "
+            >
+                <div class="list-group-item text-muted text-center py-3">
+                    輸入以搜尋...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {% endblock %}
+</div>

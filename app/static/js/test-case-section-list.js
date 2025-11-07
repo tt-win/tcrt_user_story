@@ -94,13 +94,13 @@ class TestCaseSectionList {
 
     // 構建側邊欄面板 HTML
     const panelHtml = `
-      <div id="sectionListPanel" class="card sticky-top section-list-panel" style="top: 20px; display: flex; flex-direction: column;">
+      <div id="sectionListPanel" class="card sticky-top section-list-panel" style="top: calc(var(--header-height) + 8px); bottom: calc(var(--footer-height) + 16px); display: flex; flex-direction: column;">
         <div class="card-header bg-light d-flex justify-content-between align-items-center">
           <h6 class="mb-0">
             <i class="fas fa-folder-tree"></i> 區段列表
           </h6>
         </div>
-        <div id="sectionListContent" class="card-body p-0 section-list-content" style="flex: 1; overflow-y: auto; min-height: 0; max-height: calc(100vh - 200px);">
+        <div id="sectionListContent" class="card-body p-0 section-list-content" style="flex: 1; overflow-y: auto; min-height: 0;">
           <!-- Section 樹會插入這裡 -->
         </div>
         <div class="card-footer section-list-footer">

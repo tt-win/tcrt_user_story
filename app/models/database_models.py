@@ -85,6 +85,7 @@ class Team(Base):
     # 關聯關係
     test_run_configs = relationship("TestRunConfig", back_populates="team")
     test_run_sets = relationship("TestRunSet", back_populates="team")
+    test_case_sets = relationship("TestCaseSet", backref="team", cascade="all, delete-orphan")
 
 
 class TestRunConfig(Base):
@@ -344,6 +345,69 @@ class LarkDepartment(Base):
     )
 
 
+class TestCaseSet(Base):
+    """測試案例集合表格
+
+    用於組織測試案例，每個 Team 可以有多個 Test Case Set。
+    """
+    __tablename__ = "test_case_sets"
+    __table_args__ = (
+        UniqueConstraint('name', name='uq_test_case_set_name'),  # 全域名稱唯一
+        Index('ix_test_case_sets_team', 'team_id'),
+    )
+
+    id = Column(Integer, primary_key=True)
+    team_id = Column(Integer, ForeignKey("teams.id"), nullable=False, index=True)
+    name = Column(String(100), nullable=False)  # 全域唯一名稱
+    description = Column(Text, nullable=True)
+    is_default = Column(Boolean, default=False, nullable=False)  # 標記為預設 Set
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # 關聯關係
+    sections = relationship("TestCaseSection", back_populates="test_case_set", cascade="all, delete-orphan")
+    test_cases = relationship("TestCaseLocal", back_populates="test_case_set")
+
+
+class TestCaseSection(Base):
+    """測試案例區段表格
+
+    在 Test Case Set 內建立巢狀結構，類似資料夾分類。
+    最多 5 層深度。
+    """
+    __tablename__ = "test_case_sections"
+    __table_args__ = (
+        UniqueConstraint('test_case_set_id', 'parent_section_id', 'name',
+                        name='uq_section_name_in_parent'),  # 同層級不可重複名稱
+        Index('ix_sections_set_parent', 'test_case_set_id', 'parent_section_id'),
+        Index('ix_sections_set_level', 'test_case_set_id', 'level'),
+    )
+
+    id = Column(Integer, primary_key=True)
+    test_case_set_id = Column(Integer, ForeignKey("test_case_sets.id", ondelete="CASCADE"),
+                             nullable=False, index=True)
+    name = Column(String(100), nullable=False)
+    description = Column(Text, nullable=True)
+
+    # 巢狀結構
+    parent_section_id = Column(Integer, ForeignKey("test_case_sections.id", ondelete="CASCADE"),
+                              nullable=True)
+    level = Column(Integer, default=1, nullable=False)  # 1-5，表示深度
+    sort_order = Column(Integer, default=0, nullable=False)  # 同層級排序
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # 關聯關係
+    test_case_set = relationship("TestCaseSet", back_populates="sections",
+                                foreign_keys=[test_case_set_id])
+    parent_section = relationship("TestCaseSection", remote_side=[id],
+                                 foreign_keys=[parent_section_id],
+                                 backref="child_sections")
+    test_cases = relationship("TestCaseLocal", back_populates="test_case_section")
+
+
 class TestCaseLocal(Base):
     """測試案例本地中介資料表
 
@@ -354,6 +418,10 @@ class TestCaseLocal(Base):
     # 主鍵與關聯
     id = Column(Integer, primary_key=True)
     team_id = Column(Integer, ForeignKey("teams.id"), nullable=False, index=True)
+
+    # Test Case Set 與 Section 關聯
+    test_case_set_id = Column(Integer, ForeignKey("test_case_sets.id"), nullable=False, index=True)
+    test_case_section_id = Column(Integer, ForeignKey("test_case_sections.id"), nullable=True)
 
     # 與 Lark 的關聯鍵
     lark_record_id = Column(String(255), nullable=True, unique=True, index=True)
@@ -394,11 +462,16 @@ class TestCaseLocal(Base):
     lark_created_at = Column(DateTime, nullable=True)
     lark_updated_at = Column(DateTime, nullable=True)
 
+    # 關聯關係
+    test_case_set = relationship("TestCaseSet", back_populates="test_cases")
+    test_case_section = relationship("TestCaseSection", back_populates="test_cases")
+
     __table_args__ = (
         UniqueConstraint('team_id', 'test_case_number', name='uq_test_cases_team_case_number'),
         Index('ix_test_cases_team_result', 'team_id', 'test_result'),
         Index('ix_test_cases_team_priority', 'team_id', 'priority'),
         Index('ix_test_cases_number', 'test_case_number'),
+        Index('ix_test_cases_set_section', 'test_case_set_id', 'test_case_section_id'),
     )
 
 
