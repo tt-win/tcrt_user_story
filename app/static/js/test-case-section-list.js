@@ -154,8 +154,8 @@ class TestCaseSectionList {
    * 渲染單個節點
    */
   renderNode(section) {
-    const hasChildren =
-      section.child_sections && section.child_sections.length > 0;
+    const children = this.getChildSections(section);
+    const hasChildren = children.length > 0;
     const indent = (section.level - 1) * 15;
     const isUnassigned = section.name === "Unassigned";
 
@@ -185,7 +185,7 @@ class TestCaseSectionList {
           hasChildren
             ? `
           <ul class="list-unstyled section-children" style="display: block;">
-            ${section.child_sections.map((child) => this.renderNode(child)).join("")}
+            ${children.map((child) => this.renderNode(child)).join("")}
           </ul>
         `
             : ""
@@ -431,8 +431,9 @@ class TestCaseSectionList {
             );
           }
         }
-        if (section.child_sections && section.child_sections.length > 0) {
-          flattenSections(section.child_sections, level + 1);
+        const children = this.getChildSections(section);
+        if (children.length > 0) {
+          flattenSections(children, level + 1);
         }
       });
     };
@@ -603,15 +604,7 @@ class TestCaseSectionList {
       const response = await window.AuthClient.fetch(
         `/api/test-case-sets/${this.setId}/sections`,
         {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            name,
-            description: description || null,
-            parent_section_id: parentId ? parseInt(parentId) : null,
-          }),
+          method: "GET",
         },
       );
 
@@ -623,6 +616,7 @@ class TestCaseSectionList {
       this.render();
     } catch (error) {
       console.error("Error loading sections:", error);
+      alert("載入區段失敗: " + error.message);
     }
   }
 
@@ -634,8 +628,9 @@ class TestCaseSectionList {
       if (section.id == sectionId) {
         return section;
       }
-      if (section.child_sections && section.child_sections.length > 0) {
-        const found = this.findSection(sectionId, section.child_sections);
+      const children = this.getChildSections(section);
+      if (children.length > 0) {
+        const found = this.findSection(sectionId, children);
         if (found) return found;
       }
     }
@@ -645,6 +640,13 @@ class TestCaseSectionList {
   isUnassignedSection(section) {
     if (!section || !section.name) return false;
     return section.name.trim().toLowerCase() === "unassigned";
+  }
+
+  getChildSections(section) {
+    if (!section) return [];
+    if (Array.isArray(section.child_sections)) return section.child_sections;
+    if (Array.isArray(section.children)) return section.children;
+    return [];
   }
 
   /**
