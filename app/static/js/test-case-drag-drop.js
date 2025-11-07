@@ -143,6 +143,8 @@ class TestCaseDragDrop {
 
   /**
    * Section 放下
+   * 注意：Section 拖拽功能已在 test-case-section-list.js 中實現
+   * 此方法保留以供向後相容
    */
   async handleSectionDrop(e) {
     e.preventDefault();
@@ -157,21 +159,9 @@ class TestCaseDragDrop {
       node.style.borderTop = '';
     });
 
-    try {
-      // 調用 API 重新排序
-      const parentSection = targetNode.closest('.section-children')?.closest('.section-node');
-      const parentId = parentSection ? parentSection.dataset.sectionId : null;
-
-      // 這裡應該呼叫 API 來更新順序
-      // 暫時註釋，因為還需要完整的排序邏輯
-      console.log(`Moving section ${this.draggedData.sectionId} under section ${parentId}`);
-
-      // 提示用戶功能即將推出
-      alert('拖拽排序功能將在下一版本推出');
-
-    } catch (error) {
-      console.error('Error moving section:', error);
-    }
+    // Section 拖拽功能已在 test-case-section-list.js 中實現
+    // 無需在此處處理
+    console.log('Section drag-drop is now handled by test-case-section-list.js');
   }
 
   /**

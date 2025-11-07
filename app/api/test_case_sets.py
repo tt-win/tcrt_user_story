@@ -205,6 +205,11 @@ async def get_test_case_set(
         def build_section_tree(section, section_dict, test_case_counts):
             # 獲取子節點列表
             children_data = section_dict.get(section.id, {}).get('children', [])
+            if children_data:
+                children_data = sorted(
+                    children_data,
+                    key=lambda child: (child.sort_order or 0, child.id or 0)
+                )
 
             section_data = {
                 'id': section.id,
@@ -212,6 +217,7 @@ async def get_test_case_set(
                 'test_case_set_id': section.test_case_set_id,
                 'parent_section_id': section.parent_section_id,
                 'level': section.level,
+                'sort_order': section.sort_order,
                 'test_case_count': test_case_counts.get(section.id, 0),
                 'child_sections': []
             }
@@ -222,8 +228,13 @@ async def get_test_case_set(
 
             return section_data
 
+        root_sections_ordered = sorted(
+            set_data['sections'],
+            key=lambda s: (s.sort_order or 0, s.id or 0)
+        )
+
         sections_list = []
-        for root_section in set_data['sections']:
+        for root_section in root_sections_ordered:
             sections_list.append(build_section_tree(root_section, set_data['section_dict'], section_test_case_counts))
 
         # 構建完整的回應
