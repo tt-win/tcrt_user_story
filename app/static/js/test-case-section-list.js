@@ -110,8 +110,11 @@ class TestCaseSectionList {
           <!-- Section 樹會插入這裡 -->
         </div>
         <div class="card-footer section-list-footer" style="flex-shrink: 0;">
-          <button class="btn btn-sm btn-primary w-100" onclick="testCaseSectionList.showCreateSectionModal()">
+          <button class="btn btn-sm btn-primary w-100 mb-2" onclick="testCaseSectionList.showCreateSectionModal()">
             <i class="fas fa-plus"></i> 新增區段
+          </button>
+          <button class="btn btn-sm btn-outline-secondary w-100" onclick="testCaseSectionList.showReorderModal()">
+            <i class="fas fa-arrows-up-down"></i> 編輯順序
           </button>
         </div>
       </div>
@@ -1009,6 +1012,558 @@ class TestCaseSectionList {
       "'": "&#039;",
     };
     return text.replace(/[&<>"']/g, (m) => map[m]);
+  }
+
+  /**
+   * 顯示編輯順序 Modal
+   */
+  showReorderModal() {
+    if (!this.setId) {
+      alert('請先選擇一個 Test Case Set');
+      return;
+    }
+
+    // 創建扁平化的 section 列表（包含層級資訊）
+    this.flatSections = this.flattenSections(this.sections);
+    
+    // 創建 modal HTML
+    const modalHtml = `
+      <div class="modal fade" id="reorderSectionModal" tabindex="-1" aria-labelledby="reorderSectionModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+          <div class="modal-content">
+            <div class="modal-header">
+              <h5 class="modal-title" id="reorderSectionModalLabel">
+                <i class="fas fa-arrows-up-down"></i> 編輯區段順序與層級
+              </h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <div class="alert alert-info">
+                <i class="fas fa-info-circle"></i> 
+                <strong>操作說明：</strong>
+                <ul class="mb-0 mt-2" style="font-size: 0.9em;">
+                  <li><strong>上/下按鈕</strong>：同層移動，與前/後兄弟節點交換位置</li>
+                  <li><strong>← 左按鈕</strong>：減少層級（反縮排），從父節點取出並與父節點同層</li>
+                  <li><strong>→ 右按鈕</strong>：增加層級（縮排），成為視覺上相鄰的上一個同層或淺層節點的子節點</li>
+                  <li><strong>注意</strong>：所有操作都會連同子樹一起移動，最多支援 5 層</li>
+                </ul>
+              </div>
+              <div id="reorderSectionList" class="list-group">
+                ${this.renderReorderList()}
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+              <button type="button" class="btn btn-primary" onclick="testCaseSectionList.saveReorder()">
+                <i class="fas fa-save"></i> 儲存變更
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // 移除舊的 modal（如果存在）
+    const oldModal = document.getElementById('reorderSectionModal');
+    if (oldModal) {
+      oldModal.remove();
+    }
+
+    // 添加新的 modal
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    // 顯示 modal
+    const modal = new bootstrap.Modal(document.getElementById('reorderSectionModal'));
+    modal.show();
+  }
+
+  /**
+   * 扁平化 sections 為列表（保留層級資訊）
+   */
+  flattenSections(sections, level = 1, parentId = null, result = []) {
+    const sorted = this.sortSectionsForDisplay(sections);
+    
+    for (const section of sorted) {
+      // 跳過 Unassigned（系統區段）
+      if (this.isUnassignedSection(section)) {
+        continue;
+      }
+
+      result.push({
+        id: section.id,
+        name: section.name,
+        level: level,
+        parent_section_id: parentId,
+        sort_order: section.sort_order || 0,
+        test_case_count: section.test_case_count || 0
+      });
+
+      // 遞迴處理子節點
+      const children = this.getChildSections(section);
+      if (children && children.length > 0) {
+        this.flattenSections(children, level + 1, section.id, result);
+      }
+    }
+
+    return result;
+  }
+
+  /**
+   * 渲染可重新排序的列表
+   */
+  renderReorderList() {
+    if (!this.flatSections || this.flatSections.length === 0) {
+      return '<div class="text-muted text-center py-3">沒有可編輯的區段</div>';
+    }
+
+    return this.flatSections.map((section, index) => {
+      const indent = (section.level - 1) * 20;
+      
+      // 檢查是否可以向上移動（同層）
+      const canMoveUp = this.canMoveUp(index);
+      
+      // 檢查是否可以向下移動（同層）
+      const canMoveDown = this.canMoveDown(index);
+      
+      // 檢查是否可以減少層級（左移）
+      const canDecreaseLevel = section.level > 1;
+      
+      // 檢查是否可以增加層級（右移）- 使用新的檢查方法
+      const canIncreaseLevel = this.canIncreaseLevel(index);
+      
+      return `
+        <div class="list-group-item d-flex align-items-center py-2" data-section-index="${index}">
+          <div style="margin-left: ${indent}px; flex: 1;">
+            <i class="fas fa-folder text-muted me-2"></i>
+            <strong>${this.escapeHtml(section.name)}</strong>
+            <span class="badge bg-secondary ms-2">${section.test_case_count}</span>
+            <small class="text-muted ms-2">(層級 ${section.level})</small>
+          </div>
+          <div class="btn-group btn-group-sm ms-2" role="group">
+            <button type="button" class="btn btn-outline-primary" 
+                    onclick="testCaseSectionList.moveUp(${index})" 
+                    ${!canMoveUp ? 'disabled' : ''} 
+                    title="向上移動（同層）">
+              <i class="fas fa-chevron-up"></i>
+            </button>
+            <button type="button" class="btn btn-outline-primary" 
+                    onclick="testCaseSectionList.moveDown(${index})" 
+                    ${!canMoveDown ? 'disabled' : ''} 
+                    title="向下移動（同層）">
+              <i class="fas fa-chevron-down"></i>
+            </button>
+            <button type="button" class="btn btn-outline-secondary" 
+                    onclick="testCaseSectionList.decreaseLevel(${index})" 
+                    ${!canDecreaseLevel ? 'disabled' : ''} 
+                    title="減少層級（反縮排）">
+              <i class="fas fa-arrow-left"></i>
+            </button>
+            <button type="button" class="btn btn-outline-secondary" 
+                    onclick="testCaseSectionList.increaseLevel(${index})" 
+                    ${!canIncreaseLevel ? 'disabled' : ''} 
+                    title="增加層級（縮排）">
+              <i class="fas fa-arrow-right"></i>
+            </button>
+          </div>
+        </div>
+      `;
+    }).join('');
+  }
+
+  /**
+   * 檢查是否可以向上移動
+   */
+  canMoveUp(index) {
+    const section = this.flatSections[index];
+    const currentLevel = section.level;
+    
+    // 向上找第一個同層級的兄弟節點
+    for (let i = index - 1; i >= 0; i--) {
+      if (this.flatSections[i].level === currentLevel) {
+        return true;
+      }
+      if (this.flatSections[i].level < currentLevel) {
+        // 遇到父節點或更上層，停止
+        break;
+      }
+    }
+    
+    return false;
+  }
+
+  /**
+   * 檢查是否可以向下移動
+   */
+  canMoveDown(index) {
+    const section = this.flatSections[index];
+    const currentLevel = section.level;
+    const subtree = this.getSubtree(index);
+    const subtreeEnd = index + subtree.length;
+    
+    // 向下找第一個同層級的兄弟節點
+    for (let i = subtreeEnd; i < this.flatSections.length; i++) {
+      if (this.flatSections[i].level === currentLevel) {
+        return true;
+      }
+      if (this.flatSections[i].level < currentLevel) {
+        // 遇到更上層，停止
+        break;
+      }
+    }
+    
+    return false;
+  }
+
+  /**
+   * 檢查是否可以增加層級
+   * 規則：向上找到第一個層級 <= 當前層級的節點作為父節點
+   */
+  canIncreaseLevel(index) {
+    const section = this.flatSections[index];
+    
+    // 已達最大層級
+    if (section.level >= 5) {
+      return false;
+    }
+    
+    // 沒有前一個節點
+    if (index === 0) {
+      return false;
+    }
+    
+    // 向上尋找可掛接的父節點（層級 <= 當前層級的第一個節點）
+    for (let i = index - 1; i >= 0; i--) {
+      const node = this.flatSections[i];
+      
+      if (node.level <= section.level) {
+        // 找到了可掛接的父節點
+        const newLevel = node.level + 1;
+        
+        // 檢查新層級是否超過限制
+        if (newLevel > 5) {
+          return false;
+        }
+        
+        return true;
+      }
+    }
+    
+    // 沒有找到可掛接的父節點
+    return false;
+  }
+
+  /**
+   * 向上移動（同層）
+   * 規則：與前一個兄弟節點交換位置，若沒有前一個兄弟節點則無效
+   */
+  moveUp(index) {
+    const section = this.flatSections[index];
+    const currentLevel = section.level;
+    
+    // 向上找第一個同層級的兄弟節點
+    let prevSiblingIndex = -1;
+    for (let i = index - 1; i >= 0; i--) {
+      if (this.flatSections[i].level === currentLevel) {
+        prevSiblingIndex = i;
+        break;
+      }
+      if (this.flatSections[i].level < currentLevel) {
+        // 已經超出同層範圍（遇到父節點或更上層）
+        break;
+      }
+    }
+
+    if (prevSiblingIndex === -1) {
+      console.log('[SectionList] 無法向上移動：沒有前一個兄弟節點');
+      return;
+    }
+
+    // 獲取當前節點和前一個兄弟節點的子樹
+    const currentSubtree = this.getSubtree(index);
+    const prevSubtree = this.getSubtree(prevSiblingIndex);
+
+    // 交換兩個子樹的位置
+    this.swapSubtrees(prevSiblingIndex, index);
+
+    // 重新渲染
+    this.updateReorderList();
+  }
+
+  /**
+   * 向下移動（同層）
+   * 規則：與下一個兄弟節點交換位置，若沒有下一個兄弟節點則無效
+   */
+  moveDown(index) {
+    const section = this.flatSections[index];
+    const currentLevel = section.level;
+    const subtree = this.getSubtree(index);
+    const subtreeEnd = index + subtree.length;
+    
+    // 向下找第一個同層級的兄弟節點
+    let nextSiblingIndex = -1;
+    for (let i = subtreeEnd; i < this.flatSections.length; i++) {
+      if (this.flatSections[i].level === currentLevel) {
+        nextSiblingIndex = i;
+        break;
+      }
+      if (this.flatSections[i].level < currentLevel) {
+        // 已經超出同層範圍
+        break;
+      }
+    }
+
+    if (nextSiblingIndex === -1) {
+      console.log('[SectionList] 無法向下移動：沒有下一個兄弟節點');
+      return;
+    }
+
+    // 獲取下一個兄弟節點的子樹
+    const nextSubtree = this.getSubtree(nextSiblingIndex);
+
+    // 交換兩個子樹的位置
+    this.swapSubtrees(index, nextSiblingIndex);
+
+    // 重新渲染
+    this.updateReorderList();
+  }
+
+  /**
+   * 減少層級（向左移動，反縮排）
+   * 規則：若有父節點，則從父節點取出，插入到父節點的下一個位置（與父同層）
+   */
+  decreaseLevel(index) {
+    const section = this.flatSections[index];
+    
+    // 已是層級 1（根層），無法再減少
+    if (section.level <= 1) {
+      console.log('[SectionList] 無法減少層級：已經是根層');
+      return;
+    }
+
+    // 找到父節點
+    let parentIndex = -1;
+    for (let i = index - 1; i >= 0; i--) {
+      if (this.flatSections[i].level === section.level - 1) {
+        parentIndex = i;
+        break;
+      }
+    }
+
+    if (parentIndex === -1) {
+      console.log('[SectionList] 無法減少層級：找不到父節點');
+      return;
+    }
+
+    // 獲取當前節點的子樹
+    const subtree = this.getSubtree(index);
+    
+    // 減少整個子樹的層級
+    subtree.forEach(node => {
+      node.level--;
+    });
+
+    // 找到父節點的子樹結束位置（即父節點的下一個兄弟節點前）
+    const parentSubtree = this.getSubtree(parentIndex);
+    const insertPosition = parentIndex + parentSubtree.length;
+
+    // 移除當前子樹
+    this.flatSections.splice(index, subtree.length);
+
+    // 插入到新位置
+    const adjustedInsertPos = insertPosition > index ? insertPosition - subtree.length : insertPosition;
+    this.flatSections.splice(adjustedInsertPos, 0, ...subtree);
+
+    // 重新渲染
+    this.updateReorderList();
+  }
+
+  /**
+   * 增加層級（向右移動，縮排）
+   * 規則：成為相鄰上一個節點（視覺順序）的最上層 section 的子節點
+   * 例如：
+   * 111
+   *   |- 222
+   *       |- 333
+   * 444  <- 按右移會成為 111 的子節點
+   */
+  increaseLevel(index) {
+    const section = this.flatSections[index];
+    
+    // 已是層級 5，無法再增加
+    if (section.level >= 5) {
+      console.log('[SectionList] 無法增加層級：已達最大層級 5');
+      return;
+    }
+
+    // 沒有前一個節點
+    if (index === 0) {
+      console.log('[SectionList] 無法增加層級：沒有前一個節點');
+      return;
+    }
+
+    // 向上尋找相鄰的上一個節點的最上層 section
+    // 跳過所有比當前節點深的節點，找到第一個層級 <= 當前層級的節點
+    let targetParentIndex = -1;
+    let targetParent = null;
+    
+    for (let i = index - 1; i >= 0; i--) {
+      const node = this.flatSections[i];
+      
+      // 找到第一個層級 <= 當前層級的節點（這是視覺上相鄰的上一個section）
+      if (node.level <= section.level) {
+        // 這個節點就是我們要掛接的父節點
+        targetParentIndex = i;
+        targetParent = node;
+        break;
+      }
+    }
+    
+    if (!targetParent) {
+      console.log('[SectionList] 無法增加層級：找不到可掛接的父節點');
+      alert('無法增加層級：找不到可掛接的父節點');
+      return;
+    }
+    
+    // 計算新層級：父節點層級 + 1
+    const newLevel = targetParent.level + 1;
+    
+    // 檢查新層級是否超過限制
+    if (newLevel > 5) {
+      console.log('[SectionList] 無法增加層級：超過最大層級 5');
+      alert('無法增加層級：超過最大層級 5');
+      return;
+    }
+
+    // 獲取當前節點的子樹
+    const subtree = this.getSubtree(index);
+    
+    // 計算層級差異
+    const levelDelta = newLevel - section.level;
+    
+    // 調整整個子樹的層級
+    subtree.forEach(node => {
+      node.level += levelDelta;
+    });
+
+    // 設置新的父節點
+    section.parent_section_id = targetParent.id;
+
+    console.log(`[SectionList] 成功增加層級: ${section.name} (層級 ${section.level - levelDelta} -> ${section.level}) 成為 ${targetParent.name} 的子節點`);
+
+    // 重新渲染
+    this.updateReorderList();
+  }
+
+  /**
+   * 獲取節點的子樹（包括節點本身和所有後代）
+   */
+  getSubtree(index) {
+    const subtree = [];
+    const rootLevel = this.flatSections[index].level;
+    
+    // 加入根節點
+    subtree.push(this.flatSections[index]);
+    
+    // 加入所有子節點（層級大於根節點的連續節點）
+    for (let i = index + 1; i < this.flatSections.length; i++) {
+      if (this.flatSections[i].level <= rootLevel) {
+        // 遇到同層或更淺層，子樹結束
+        break;
+      }
+      subtree.push(this.flatSections[i]);
+    }
+    
+    return subtree;
+  }
+
+  /**
+   * 交換兩個子樹的位置
+   */
+  swapSubtrees(index1, index2) {
+    const subtree1 = this.getSubtree(index1);
+    const subtree2 = this.getSubtree(index2);
+    
+    // 確保 index1 < index2
+    if (index1 > index2) {
+      return this.swapSubtrees(index2, index1);
+    }
+    
+    // 移除兩個子樹
+    const removed2 = this.flatSections.splice(index2, subtree2.length);
+    const removed1 = this.flatSections.splice(index1, subtree1.length);
+    
+    // 按新順序插入
+    this.flatSections.splice(index1, 0, ...removed2);
+    this.flatSections.splice(index1 + removed2.length, 0, ...removed1);
+  }
+
+  /**
+   * 更新重新排序列表顯示
+   */
+  updateReorderList() {
+    const listContainer = document.getElementById('reorderSectionList');
+    if (listContainer) {
+      listContainer.innerHTML = this.renderReorderList();
+    }
+  }
+
+  /**
+   * 儲存重新排序結果
+   */
+  async saveReorder() {
+    try {
+      // 重建 parent_section_id 關係
+      const payload = [];
+      
+      for (let i = 0; i < this.flatSections.length; i++) {
+        const section = this.flatSections[i];
+        
+        // 尋找正確的 parent_section_id
+        let parentId = null;
+        if (section.level > 1) {
+          // 向上找第一個層級比自己少1的作為父節點
+          for (let j = i - 1; j >= 0; j--) {
+            if (this.flatSections[j].level === section.level - 1) {
+              parentId = this.flatSections[j].id;
+              break;
+            }
+          }
+        }
+
+        payload.push({
+          id: section.id,
+          sort_order: i,
+          parent_section_id: parentId
+        });
+      }
+
+      console.log('[SectionList] Saving reorder with payload:', payload);
+
+      const response = await window.AuthClient.fetch(
+        `/api/test-case-sets/${this.setId}/sections/reorder`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sections: payload })
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error('Failed to save section order');
+      }
+
+      // 關閉 modal
+      const modal = bootstrap.Modal.getInstance(document.getElementById('reorderSectionModal'));
+      if (modal) {
+        modal.hide();
+      }
+
+      // 重新載入 sections
+      await this.loadSections({ reloadTestCases: true });
+    } catch (error) {
+      console.error('Error saving section order:', error);
+      alert('儲存失敗: ' + error.message);
+    }
   }
 }
 

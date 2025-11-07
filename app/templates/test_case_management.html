@@ -1845,9 +1845,42 @@ function isUnassignedSectionIdValue(sectionId) {
 
 function groupTestCasesBySection(testCases) {
     const grouped = {};
+    
+    // 首先，為所有已知的 sections 創建 groups（包括空的）
+    if (Array.isArray(tcmSectionsTree) && tcmSectionsTree.length > 0) {
+        // 扁平化 sections tree，包含所有層級的 sections
+        const flattenAllSections = (sections, result = []) => {
+            for (const section of sections) {
+                result.push(section);
+                if (section.children && section.children.length > 0) {
+                    flattenAllSections(section.children, result);
+                }
+            }
+            return result;
+        };
+        
+        const allSections = flattenAllSections(tcmSectionsTree);
+        
+        // 為每個 section 創建一個 group
+        for (const section of allSections) {
+            const sectionId = section.id;
+            if (!grouped[sectionId]) {
+                grouped[sectionId] = {
+                    sectionId,
+                    sectionName: section.name || '(未命名)',
+                    sectionPath: buildSectionPath(section, allSections),
+                    sectionLevel: section.level || 1,
+                    testCases: []
+                };
+            }
+        }
+    }
+    
+    // 然後，將 test cases 分配到對應的 sections
     for (const tc of testCases) {
         const sectionId = tc.test_case_section_id ?? UNASSIGNED_SECTION_ID;
         if (!grouped[sectionId]) {
+            // 如果 test case 的 section 不在 sections tree 中，仍然創建一個 group
             grouped[sectionId] = {
                 sectionId,
                 sectionName: tc.section_name || (sectionId === UNASSIGNED_SECTION_ID ? 'Unassigned' : '(未命名)'),
@@ -1859,6 +1892,7 @@ function groupTestCasesBySection(testCases) {
         grouped[sectionId].testCases.push(tc);
     }
 
+    // 排序每個 section 內的 test cases
     Object.values(grouped).forEach(group => {
         const sortState = sectionSortStates.get(String(group.sectionId));
         const field = sortState?.field || tcmSortField;
@@ -1867,6 +1901,24 @@ function groupTestCasesBySection(testCases) {
     });
 
     return grouped;
+}
+
+// 輔助函數：為 section 建立完整路徑
+function buildSectionPath(section, allSections) {
+    const path = [];
+    let current = section;
+    
+    while (current) {
+        path.unshift(current.name);
+        
+        if (current.parent_section_id) {
+            current = allSections.find(s => s.id === current.parent_section_id);
+        } else {
+            break;
+        }
+    }
+    
+    return path.join('/');
 }
 
 function determineSectionLevel(testCase, sectionId) {
@@ -2037,6 +2089,9 @@ function renderSectionBlockHTML(sectionGroup, rowsHtml) {
     const indent = Math.max(sectionGroup.sectionLevel - 1, 0);
     const rowClass = sectionGroup.sectionLevel <= 1 ? 'section-card-row root-divider' : 'section-card-row';
     const headerStyle = sectionGroup.sectionLevel > 1 ? 'background: linear-gradient(90deg, #f9fbff, #eef2f7);' : 'background: #f7f9fc;';
+    const testCaseCount = sectionGroup.testCases.length;
+    const emptyMessage = testCaseCount === 0 ? '<tr><td colspan="8" class="text-center text-muted py-3"><i class="fas fa-inbox me-2"></i>此區段無測試案例</td></tr>' : rowsHtml;
+    
     return `
         <div class="${rowClass}">
             <div class="section-card-container">
@@ -2046,14 +2101,14 @@ function renderSectionBlockHTML(sectionGroup, rowsHtml) {
                             <i class="fas fa-folder"></i>
                             <span>${displayName}</span>
                         </div>
-                        <small class="text-muted">${sectionGroup.testCases.length} 筆</small>
+                        <small class="text-muted">${testCaseCount} 筆</small>
                     </div>
                     <div class="section-card-body table-responsive">
                         <table class="table table-hover table-sm section-table" data-section-id="${sectionGroup.sectionId}">
                             <thead>
                                 <tr class="section-table-header">
                                     <th width="30" class="text-center" style="padding: 0.35rem 0.5rem !important;">
-                                        <input type="checkbox" class="form-check-input section-select-all" data-section-id="${sectionGroup.sectionId}">
+                                        <input type="checkbox" class="form-check-input section-select-all" data-section-id="${sectionGroup.sectionId}" ${testCaseCount === 0 ? 'disabled' : ''}>
                                     </th>
                                     <th class="sortable section-sortable" width="220" style="cursor: pointer;" data-section-id="${sectionGroup.sectionId}" data-sort-field="test_case_number">
                                         <span data-i18n="testCase.testCaseNumber">Test Case Number</span>
@@ -2083,7 +2138,7 @@ function renderSectionBlockHTML(sectionGroup, rowsHtml) {
                                 </tr>
                             </thead>
                             <tbody>
-                                ${rowsHtml}
+                                ${emptyMessage}
                             </tbody>
                         </table>
                     </div>
