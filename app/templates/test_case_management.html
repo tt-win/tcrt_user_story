@@ -819,15 +819,19 @@ body {
 
                     <!-- 固定區域：基本資訊 -->
                     <div class="fixed-section" style="flex-shrink: 0; padding: 1rem; border-bottom: 1px solid #dee2e6; background: #f8f9fa;">
-                        <div class="row mb-3">
-                            <div class="col-md-2">
+                        <!-- 第一列：Test Case Number 和 Title -->
+                        <div class="row mb-2">
+                            <div class="col-md-3">
                                 <label for="testCaseNumber" class="form-label"><span data-i18n="testCase.testCaseNumber">Test Case Number</span> <span class="text-danger">*</span></label>
                                 <input type="text" class="form-control" id="testCaseNumber" name="test_case_number" required>
                             </div>
-                            <div class="col-md-5">
+                            <div class="col-md-9">
                                 <label for="title" class="form-label"><span data-i18n="form.testCaseTitle">測試案例標題</span> <span class="text-danger">*</span></label>
                                 <input type="text" class="form-control" id="title" name="title" required>
                             </div>
+                        </div>
+                        <!-- 第二列：Priority、TCG 和 Section -->
+                        <div class="row">
                             <div class="col-md-2">
                                 <label for="priority" class="form-label"><span data-i18n="testCase.priority">Priority</span></label>
                                 <select class="form-select" id="priority" name="priority">
@@ -836,7 +840,7 @@ body {
                                     <option value="Low" data-i18n="testCase.priorityLow">Low</option>
                                 </select>
                             </div>
-                            <div class="col-md-3">
+                            <div class="col-md-4">
                                 <label for="tcg" class="form-label d-flex align-items-center">
                                     TCG
                                     <button type="button" class="btn-icon-only"
@@ -852,6 +856,12 @@ body {
                                      data-permission-required="update">
                                     <!-- TCG 標籤會顯示在這裡 -->
                                 </div>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="testCaseSectionSelect" class="form-label"><span data-i18n="testCase.section">Section</span></label>
+                                <select class="form-select" id="testCaseSectionSelect" name="test_case_section_id">
+                                    <option value="" data-i18n="testCase.selectSection">請選擇區段</option>
+                                </select>
                             </div>
                         </div>
                     </div>
@@ -5394,6 +5404,13 @@ function showTestCaseModal(testCase = null) {
         document.getElementById('test_steps').value = testCase.steps || '';
         document.getElementById('expected_result').value = testCase.expected_result || '';
 
+        // 填充 section 選擇
+        populateTestCaseSectionSelect();
+        const sectionSelect = document.getElementById('testCaseSectionSelect');
+        if (sectionSelect && testCase.test_case_section_id) {
+            sectionSelect.value = testCase.test_case_section_id;
+        }
+
         // 渲染附件列表（若列表資料沒有附件，補打一筆詳情以取得附件）
         renderAttachmentsList();
         try {
@@ -5463,6 +5480,13 @@ function showTestCaseModal(testCase = null) {
         document.getElementById('precondition').value = '';
         document.getElementById('test_steps').value = '';
         document.getElementById('expected_result').value = '';
+
+        // 填充並清空 section 選擇
+        populateTestCaseSectionSelect();
+        const sectionSelect = document.getElementById('testCaseSectionSelect');
+        if (sectionSelect) {
+            sectionSelect.value = '';
+        }
 
         // 清空 Modal TCG 多選顯示
         modalTCGSelected = [];
@@ -5780,6 +5804,7 @@ async function saveTestCase() {
         title: formData.get('title'),
         test_case_number: formData.get('test_case_number'),
         priority: formData.get('priority'),
+        test_case_section_id: formData.get('test_case_section_id') ? parseInt(formData.get('test_case_section_id')) : null,
         precondition: document.getElementById('precondition').value,
         steps: document.getElementById('test_steps').value,
         expected_result: document.getElementById('expected_result').value,
@@ -9253,9 +9278,10 @@ function buildBatchSectionOptionsHtml() {
         orderedSections.forEach(section => {
             const name = section?.name || '';
             const isUnassigned = isUnassignedSectionName(name);
-            if (!isUnassigned && section?.id !== undefined && section?.id !== null) {
+            if (section?.id !== undefined && section?.id !== null) {
                 const prefix = depth > 0 ? '┣ '.repeat(depth) : '';
-                parts.push(`<option value="${section.id}">${prefix}${escapeHtml(name)}</option>`);
+                const displayName = isUnassigned ? `${name} (系統)` : name;
+                parts.push(`<option value="${section.id}">${prefix}${escapeHtml(displayName)}</option>`);
             }
             // 檢查多種可能的子節點屬性名稱
             const children = section?.children || section?.child_sections || [];
@@ -9267,6 +9293,54 @@ function buildBatchSectionOptionsHtml() {
 
     flatten(tcmSectionsTree, 0);
     console.log('[buildBatchSectionOptionsHtml] Generated', parts.length, 'section options');
+    return parts.join('');
+}
+
+function populateTestCaseSectionSelect() {
+    const select = document.getElementById('testCaseSectionSelect');
+    if (!select) return;
+
+    if (!Array.isArray(tcmSectionsTree) || tcmSectionsTree.length === 0) {
+        select.innerHTML = '<option value="" data-i18n="testCase.selectSection">請選擇區段</option>';
+        if (window.i18n && window.i18n.isReady()) {
+            window.i18n.retranslate(select);
+        }
+        return;
+    }
+
+    const defaultOption = '<option value="" data-i18n="testCase.selectSection">請選擇區段</option>';
+    const optionsHtml = buildSectionOptionsForTestCase();
+    select.innerHTML = defaultOption + optionsHtml;
+
+    if (window.i18n && window.i18n.isReady()) {
+        window.i18n.retranslate(select);
+    }
+}
+
+function buildSectionOptionsForTestCase() {
+    const parts = [];
+
+    function flatten(sections, depth = 0) {
+        if (!Array.isArray(sections)) return;
+        const orderedSections = sortSectionsForDisplayGeneric(sections);
+        orderedSections.forEach(section => {
+            const name = section?.name || '';
+            const isUnassigned = isUnassignedSectionName(name);
+            if (section?.id !== undefined && section?.id !== null) {
+                const prefix = depth > 0 ? '　'.repeat(depth) + '└─ ' : '';
+                const displayName = isUnassigned ? `${name} (系統)` : name;
+                parts.push(`<option value="${section.id}">${prefix}${escapeHtml(displayName)}</option>`);
+            }
+            // 檢查多種可能的子節點屬性名稱
+            const children = section?.children || section?.child_sections || [];
+            if (Array.isArray(children) && children.length > 0) {
+                flatten(children, depth + 1);
+            }
+        });
+    }
+
+    flatten(tcmSectionsTree, 0);
+    console.log('[buildSectionOptionsForTestCase] Generated', parts.length, 'section options');
     return parts.join('');
 }
 
@@ -11687,7 +11761,8 @@ async function saveBulkEditChanges() {
 <script src="/static/js/test-case-section-list.js"></script>
 
 <!-- Test Case 與 Section 整合模組 -->
-<script src="/static/js/test-case-section-integration.js"></script>
+<!-- Section 整合功能已移至 Modal 內建，不再需要外部整合模組 -->
+<!-- <script src="/static/js/test-case-section-integration.js"></script> -->
 
 <!-- Test Case 和 Section 拖拽功能 -->
 <script src="/static/js/test-case-drag-drop.js"></script>

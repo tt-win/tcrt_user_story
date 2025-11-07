@@ -21,6 +21,9 @@ class TestCaseSectionList {
   init() {
     console.log("[SectionList] Initializing TestCaseSectionList");
 
+    // 添加自定義樣式
+    this.injectStyles();
+
     // 監聽 Set 載入事件
     window.addEventListener("testCaseSetLoaded", (e) => {
       console.log("[SectionList] Received testCaseSetLoaded event:", {
@@ -38,6 +41,23 @@ class TestCaseSectionList {
     window.addEventListener("resize", () => {
       this.adjustPanelHeight();
     });
+  }
+
+  /**
+   * 注入自定義樣式
+   */
+  injectStyles() {
+    if (document.getElementById('section-list-custom-styles')) return;
+    
+    const style = document.createElement('style');
+    style.id = 'section-list-custom-styles';
+    style.textContent = `
+      /* Section item 基本樣式 */
+      .section-item {
+        box-sizing: border-box;
+      }
+    `;
+    document.head.appendChild(style);
   }
 
   /**
@@ -180,29 +200,28 @@ class TestCaseSectionList {
   renderNode(section) {
     const children = this.sortSectionsForDisplay(this.getChildSections(section));
     const hasChildren = children.length > 0;
-    const indent = (section.level - 1) * 15;
+    const indent = (section.level - 1) * 20;
     const isUnassigned = section.name === "Unassigned";
 
     return `
-      <li class="section-node" data-section-id="${section.id}" data-parent-id="${section.parent_section_id || ''}" style="margin-left: ${indent}px;" draggable="${!isUnassigned}">
-        <div class="section-item p-2 mb-1 rounded"
+      <li class="section-node" data-section-id="${section.id}" data-parent-id="${section.parent_section_id || ''}" draggable="${!isUnassigned}">
+        <div class="section-item p-2 mb-1 rounded" style="display: flex; align-items: center; gap: 6px; margin-left: ${indent}px;"
              ${!isUnassigned ? `oncontextmenu="testCaseSectionList.showContextMenu(event, ${section.id})"` : ""}
              ${!isUnassigned ? `ondblclick="testCaseSectionList.enterEditMode(${section.id})"` : ""}>
 
-          ${
-            hasChildren
-              ? `
-            <i class="fas fa-chevron-down section-toggle" style="width: 14px; text-align: center; cursor: pointer;"
-               onclick="testCaseSectionList.toggleNode(this)"></i>
-          `
-              : `
-            <span style="width: 14px; display: inline-block;"></span>
-          `
-          }
+          <div style="flex-shrink: 0; width: 14px; display: flex; align-items: center; justify-content: center;">
+            ${
+              hasChildren
+                ? `<i class="fas fa-chevron-down section-toggle" style="cursor: pointer;" onclick="testCaseSectionList.toggleNode(this)"></i>`
+                : ``
+            }
+          </div>
 
-          <i class="fas fa-folder text-muted"></i>
-          <span class="section-name ${isUnassigned ? "fw-bold text-muted" : ""}">${this.escapeHtml(section.name)}${isUnassigned ? " (系統)" : ""}</span>
-          <span class="badge bg-secondary ms-2">${section.test_case_count || 0}</span>
+          <i class="fas fa-folder text-muted" style="flex-shrink: 0;"></i>
+          
+          <span class="section-name ${isUnassigned ? "fw-bold text-muted" : ""}" style="flex: 1; word-break: break-word;">${this.escapeHtml(section.name)}${isUnassigned ? " (系統)" : ""}</span>
+          
+          <span class="badge bg-secondary" style="flex-shrink: 0; margin-left: auto;">${section.test_case_count || 0}</span>
         </div>
 
         ${
@@ -478,15 +497,27 @@ class TestCaseSectionList {
    * 進入編輯模式
    */
   enterEditMode(sectionId) {
-    const node = document.querySelector(`[data-section-id="${sectionId}"]`);
+    // 只在側邊欄中查找，避免選到 reorder modal 中的元素
+    const sidebarContent = document.getElementById('sectionListContent');
+    if (!sidebarContent) return;
+    
+    const node = sidebarContent.querySelector(`[data-section-id="${sectionId}"]`);
+    if (!node) {
+      console.warn('[SectionList] Cannot find section node:', sectionId);
+      return;
+    }
+    
     const nameSpan = node.querySelector(".section-name");
 
-    if (!nameSpan) return;
+    if (!nameSpan) {
+      console.warn('[SectionList] Cannot find section-name span');
+      return;
+    }
 
     const originalName = nameSpan.textContent;
 
     // 防止編輯 Unassigned Section
-    if (originalName === "Unassigned") {
+    if (originalName === "Unassigned" || originalName.includes("Unassigned")) {
       alert('無法編輯系統區段 "Unassigned"');
       return;
     }
