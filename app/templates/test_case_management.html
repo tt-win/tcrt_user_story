@@ -134,12 +134,12 @@ html, body { height: 100%; overflow: hidden; }
   left: 0;
   right: 0;
   bottom: 60px;
-  height: auto;
   overflow: hidden;
   display: flex;
   flex-direction: row;
   gap: 0;
   padding: 0 0.75rem;
+  box-sizing: border-box;
 }
 
 #testCasesMainCol {
@@ -175,12 +175,11 @@ html, body { height: 100%; overflow: hidden; }
 
 #sectionListSidebarCol {
   width: 250px;
-  overflow: visible;
-  flex: 0 0 250px;
+  overflow: hidden;
+  flex: 0 0 auto;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  align-items: stretch;
 }
 
 #sectionListPanel {
