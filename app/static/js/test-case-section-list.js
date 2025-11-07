@@ -134,7 +134,7 @@ class TestCaseSectionList {
             <i class="fas fa-plus"></i> 新增區段
           </button>
           <button class="btn btn-sm btn-outline-secondary w-100" onclick="testCaseSectionList.showReorderModal()">
-            <i class="fas fa-arrows-up-down"></i> 編輯順序
+            <i class="fas fa-list"></i> 編輯列表
           </button>
         </div>
       </div>
@@ -206,8 +206,7 @@ class TestCaseSectionList {
     return `
       <li class="section-node" data-section-id="${section.id}" data-parent-id="${section.parent_section_id || ''}" draggable="${!isUnassigned}">
         <div class="section-item p-2 mb-1 rounded" style="display: flex; align-items: center; gap: 6px; margin-left: ${indent}px;"
-             ${!isUnassigned ? `oncontextmenu="testCaseSectionList.showContextMenu(event, ${section.id})"` : ""}
-             ${!isUnassigned ? `ondblclick="testCaseSectionList.enterEditMode(${section.id})"` : ""}>
+             ${!isUnassigned ? `oncontextmenu="testCaseSectionList.showContextMenu(event, ${section.id})"` : ""}>
 
           <div style="flex-shrink: 0; width: 14px; display: flex; align-items: center; justify-content: center;">
             ${
@@ -578,9 +577,6 @@ class TestCaseSectionList {
       <div class="context-menu position-fixed" style="top: ${event.pageY}px; left: ${event.pageX}px; z-index: 10000;">
         <div class="card shadow-sm">
           <div class="list-group list-group-flush" style="min-width: 200px;">
-            <button class="list-group-item list-group-item-action py-2" onclick="testCaseSectionList.enterEditMode(${sectionId}); document.querySelector('.context-menu')?.remove()">
-              <i class="fas fa-edit"></i> 編輯名稱
-            </button>
             <button class="list-group-item list-group-item-action py-2 text-danger" onclick="testCaseSectionList.deleteSection(${sectionId}); document.querySelector('.context-menu')?.remove()">
               <i class="fas fa-trash"></i> 刪除
             </button>
@@ -804,6 +800,84 @@ class TestCaseSectionList {
    * 刪除 Section
    */
   async deleteSection(sectionId) {
+    // 防止刪除 Unassigned Section
+    const section = this.findSection(sectionId);
+    if (section && section.name === "Unassigned") {
+      alert('無法刪除系統區段 "Unassigned"');
+      return;
+    }
+
+    if (
+      !confirm("確定要刪除此區段嗎？該區段下的測試案例將被移到 Unassigned。")
+    ) {
+      return;
+    }
+
+    try {
+      const response = await window.AuthClient.fetch(
+        `/api/test-case-sets/${this.setId}/sections/${sectionId}`,
+        {
+          method: "DELETE",
+        },
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to delete section");
+      }
+
+      // 重新載入 Sections 並強制更新測試案例
+      await this.loadSections({ reloadTestCases: true });
+    } catch (error) {
+      console.error("Error deleting section:", error);
+      alert("刪除區段失敗: " + error.message);
+    }
+  }
+
+  /**
+   * 在編輯列表 modal 中編輯區段名稱
+   */
+  editSectionNameInModal(sectionId) {
+    // 找到 section 名稱元素
+    const section = this.findSection(sectionId);
+    if (!section) {
+      console.warn('[SectionList] Cannot find section:', sectionId);
+      return;
+    }
+
+    const originalName = section.name;
+
+    // 防止編輯 Unassigned Section
+    if (originalName === "Unassigned") {
+      alert('無法編輯系統區段 "Unassigned"');
+      return;
+    }
+
+    // 提示用戶輸入新名稱
+    const newName = prompt('輸入新的區段名稱:', originalName);
+
+    if (newName === null) {
+      return; // 用戶取消
+    }
+
+    const trimmedName = newName.trim();
+
+    if (!trimmedName) {
+      alert('區段名稱不能為空');
+      return;
+    }
+
+    if (trimmedName === originalName) {
+      return; // 名稱未改變
+    }
+
+    // 調用 updateSection
+    this.updateSection(sectionId, trimmedName);
+  }
+
+  /**
+   * 在編輯列表 modal 中刪除區段
+   */
+  async deleteSectionFromModal(sectionId) {
     // 防止刪除 Unassigned Section
     const section = this.findSection(sectionId);
     if (section && section.name === "Unassigned") {
@@ -1166,7 +1240,7 @@ class TestCaseSectionList {
         <div class="list-group-item d-flex align-items-center py-2" data-section-index="${index}">
           <div style="margin-left: ${indent}px; flex: 1;">
             <i class="fas fa-folder text-muted me-2"></i>
-            <strong>${this.escapeHtml(section.name)}</strong>
+            <strong style="cursor: pointer;" onclick="testCaseSectionList.editSectionNameInModal(${section.id})" title="點擊編輯名稱">${this.escapeHtml(section.name)}</strong>
             <span class="badge bg-secondary ms-2">${section.test_case_count}</span>
             <small class="text-muted ms-2">(層級 ${section.level})</small>
           </div>
@@ -1194,6 +1268,11 @@ class TestCaseSectionList {
                     ${!canIncreaseLevel ? 'disabled' : ''} 
                     title="增加層級（縮排）">
               <i class="fas fa-arrow-right"></i>
+            </button>
+            <button type="button" class="btn btn-outline-danger" 
+                    onclick="testCaseSectionList.deleteSectionFromModal(${section.id})" 
+                    title="刪除區段">
+              <i class="fas fa-trash"></i>
             </button>
           </div>
         </div>
