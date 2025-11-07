@@ -6792,6 +6792,9 @@ function selectBatchTCG(tcgNumber) {
 
 // 立即更新本地測試案例資料
 function updateLocalTestCasesAfterBatchModify(selectedIds, updateData) {
+    // 記錄被修改的舊 section ID
+    const affectedSectionIds = new Set();
+
     // 更新本地 testCases 陣列
     testCases.forEach(testCase => {
         if (selectedIds.includes(testCase.record_id)) {
@@ -6815,10 +6818,16 @@ function updateLocalTestCasesAfterBatchModify(selectedIds, updateData) {
 
             // 更新區段
             if (updateData.section) {
+                // 記錄舊的 section ID，用於更新計數
+                if (testCase.test_case_section_id) {
+                    affectedSectionIds.add(testCase.test_case_section_id);
+                }
                 testCase.test_case_section_id = updateData.section.id;
                 testCase.section_name = updateData.section.name;
                 testCase.section_path = updateData.section.path;
                 testCase.section_level = updateData.section.level;
+                // 新的 section 也需要更新計數
+                affectedSectionIds.add(updateData.section.id);
             }
         }
     });
@@ -6850,6 +6859,33 @@ function updateLocalTestCasesAfterBatchModify(selectedIds, updateData) {
             }
         }
     });
+
+    // 更新受影響的 section 計數
+    if (updateData.section && testCaseSectionList && testCaseSectionList.sections) {
+        affectedSectionIds.forEach(sectionId => {
+            // 遞迴查找和更新 section 計數
+            const updateSectionCount = (sections) => {
+                for (const section of sections) {
+                    if (section.id === sectionId) {
+                        // 計算該 section 中現在有多少個測試案例
+                        const count = testCases.filter(tc => tc.test_case_section_id === sectionId).length;
+                        section.test_case_count = count;
+                        return true;
+                    }
+                    if (section.children && section.children.length > 0) {
+                        if (updateSectionCount(section.children)) {
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            };
+            updateSectionCount(testCaseSectionList.sections);
+        });
+
+        // 重新渲染 section list 以更新計數顯示
+        testCaseSectionList.render();
+    }
 
     // 立即依目前過濾器重新渲染
     applyCurrentFiltersAndRender();
