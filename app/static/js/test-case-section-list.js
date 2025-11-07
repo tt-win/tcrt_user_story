@@ -157,12 +157,13 @@ class TestCaseSectionList {
     const hasChildren =
       section.child_sections && section.child_sections.length > 0;
     const indent = (section.level - 1) * 15;
+    const isUnassigned = section.name === "Unassigned";
 
     return `
       <li class="section-node" data-section-id="${section.id}" style="margin-left: ${indent}px;">
         <div class="section-item p-2 mb-1 rounded"
-             oncontextmenu="testCaseSectionList.showContextMenu(event, ${section.id})"
-             ondblclick="testCaseSectionList.enterEditMode(${section.id})">
+             ${!isUnassigned ? `oncontextmenu="testCaseSectionList.showContextMenu(event, ${section.id})"` : ""}
+             ${!isUnassigned ? `ondblclick="testCaseSectionList.enterEditMode(${section.id})"` : ""}>
 
           ${
             hasChildren
@@ -176,7 +177,7 @@ class TestCaseSectionList {
           }
 
           <i class="fas fa-folder text-muted"></i>
-          <span class="section-name">${this.escapeHtml(section.name)}</span>
+          <span class="section-name ${isUnassigned ? "fw-bold text-muted" : ""}">${this.escapeHtml(section.name)}${isUnassigned ? " (系統)" : ""}</span>
           <span class="badge bg-secondary ms-2">${section.test_case_count || 0}</span>
         </div>
 
@@ -263,14 +264,25 @@ class TestCaseSectionList {
 
     if (!nameSpan) return;
 
-    this.editingNodeId = sectionId;
     const originalName = nameSpan.textContent;
+
+    // 防止編輯 Unassigned Section
+    if (originalName === "Unassigned") {
+      alert('無法編輯系統區段 "Unassigned"');
+      return;
+    }
+
+    this.editingNodeId = sectionId;
 
     // 建立編輯框
     const input = document.createElement("input");
     input.type = "text";
     input.className = "form-control form-control-sm";
     input.value = originalName;
+    input.style.display = "inline-block";
+    input.style.width = "auto";
+    input.style.minWidth = "150px";
+    input.style.maxWidth = "250px";
 
     nameSpan.replaceWith(input);
     input.focus();
@@ -548,6 +560,13 @@ class TestCaseSectionList {
    * 刪除 Section
    */
   async deleteSection(sectionId) {
+    // 防止刪除 Unassigned Section
+    const section = this.findSection(sectionId);
+    if (section && section.name === "Unassigned") {
+      alert('無法刪除系統區段 "Unassigned"');
+      return;
+    }
+
     if (
       !confirm("確定要刪除此區段嗎？該區段下的測試案例將被移到 Unassigned。")
     ) {
