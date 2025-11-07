@@ -95,7 +95,7 @@ class TestCaseSectionList {
 
     // 構建側邊欄面板 HTML
     const panelHtml = `
-      <div id="sectionListPanel" class="card section-list-panel" style="display: flex; flex-direction: column; height: 100%; margin: 0; border-radius: 4px;">
+      <div id="sectionListPanel" class="card section-list-panel" style="display: flex; flex-direction: column; flex: 1; min-height: 0; margin: 0; border-radius: 4px;">
         <div class="card-header bg-light d-flex justify-content-between align-items-center" style="flex-shrink: 0;">
           <h6 class="mb-0">
             <i class="fas fa-folder-tree"></i> 區段列表
