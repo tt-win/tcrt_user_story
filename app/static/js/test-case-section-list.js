@@ -93,8 +93,9 @@ class TestCaseSectionList {
     sidebarCol.className = 'col-12 col-lg-2 d-flex flex-column';
 
     // 構建側邊欄面板 HTML
+    // 注意：footer高度52px，加上padding 8px，所以留出70px空間
     const panelHtml = `
-      <div id="sectionListPanel" class="card sticky-top section-list-panel" style="top: 20px; max-height: calc(100vh - 100px); display: flex; flex-direction: column;">
+      <div id="sectionListPanel" class="card sticky-top section-list-panel" style="top: 20px; max-height: calc(100vh - 90px); display: flex; flex-direction: column;">
         <div class="card-header bg-light d-flex justify-content-between align-items-center">
           <h6 class="mb-0">
             <i class="fas fa-folder-tree"></i> 區段列表
@@ -591,15 +592,18 @@ class TestCaseSectionList {
     const panel = document.getElementById('sectionListPanel');
     if (!panel) return;
 
-    // 計算可用高度：視口高度 - 上邊距離 - 底部安全距離
+    // 計算可用高度：視口高度 - 上邊距離 - footer高度 - 安全邊距
     const topOffset = 20; // 與 top: 20px 對應
-    const bottomMargin = 20; // 底部安全距離，避免被 footer 擋住
-    const availableHeight = window.innerHeight - topOffset - bottomMargin;
+    const footerHeight = 52; // Footer 高度（來自 CSS 變數 --footer-height）
+    const footerPadding = 8; // Footer 下的 padding
+    const safetyMargin = 10; // 額外的安全邊距，避免被完全擋住
+
+    const availableHeight = window.innerHeight - topOffset - footerHeight - footerPadding - safetyMargin;
 
     // 設置 max-height
     panel.style.maxHeight = `${availableHeight}px`;
 
-    console.log(`[SectionList] Panel height adjusted: ${availableHeight}px`);
+    console.log(`[SectionList] Panel height adjusted: ${availableHeight}px (viewport: ${window.innerHeight}px, footer: ${footerHeight}px)`);
   }
 
   /**
