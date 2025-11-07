@@ -32,6 +32,11 @@ class TestCaseSectionList {
       this.sections = e.detail.sections || [];
       this.render();
     });
+
+    // 監聽窗口大小改變，動態調整面板高度
+    window.addEventListener('resize', () => {
+      this.adjustPanelHeight();
+    });
   }
 
   /**
@@ -62,7 +67,7 @@ class TestCaseSectionList {
       // 建立左列包裝器
       const mainCol = document.createElement('div');
       mainCol.id = 'testCasesMainCol';
-      mainCol.className = 'col-lg-10';
+      mainCol.className = 'col-12 col-lg-10';
 
       // 移動所有現有子節點到左列
       const children = Array.from(testCasesPage.children);
@@ -81,29 +86,31 @@ class TestCaseSectionList {
     if (!sidebarCol) {
       sidebarCol = document.createElement('div');
       sidebarCol.id = 'sectionListSidebarCol';
-      sidebarCol.className = 'col-lg-2';
       testCasesPage.appendChild(sidebarCol);
       console.log('[SectionList] Sidebar column created');
     }
 
+    sidebarCol.className = 'col-12 col-lg-2 d-flex flex-column';
+
     // 構建側邊欄面板 HTML
     const panelHtml = `
-      <div id="sectionListPanel" class="card sticky-top" style="top: 20px;">
+      <div id="sectionListPanel" class="card sticky-top section-list-panel" style="top: 20px; max-height: calc(100vh - 100px); display: flex; flex-direction: column;">
         <div class="card-header bg-light d-flex justify-content-between align-items-center">
           <h6 class="mb-0">
             <i class="fas fa-folder-tree"></i> 區段列表
           </h6>
         </div>
-        <div id="sectionListContent" class="card-body p-0" style="max-height: 600px; overflow-y: auto;">
+        <div id="sectionListContent" class="card-body p-0 section-list-content" style="flex: 1; overflow-y: auto; min-height: 0;">
           <!-- Section 樹會插入這裡 -->
         </div>
-        <div class="card-footer">
+        <div class="card-footer section-list-footer">
           <button class="btn btn-sm btn-primary w-100" onclick="testCaseSectionList.showCreateSectionModal()">
             <i class="fas fa-plus"></i> 新增區段
           </button>
         </div>
       </div>
     `;
+
 
     // 插入側邊欄面板
     sidebarCol.innerHTML = panelHtml;
@@ -120,6 +127,9 @@ class TestCaseSectionList {
 
     // 綁定事件
     this.bindEvents();
+
+    // 動態調整高度以適應視口
+    this.adjustPanelHeight();
   }
 
   /**
@@ -242,10 +252,6 @@ class TestCaseSectionList {
     input.type = 'text';
     input.className = 'form-control form-control-sm';
     input.value = originalName;
-    input.style.display = 'inline-block';
-    input.style.width = 'auto';
-    input.style.minWidth = '150px';
-    input.style.maxWidth = '250px';
 
     nameSpan.replaceWith(input);
     input.focus();
@@ -468,12 +474,11 @@ class TestCaseSectionList {
    */
   async updateSection(sectionId, newName) {
     try {
-      const response = await fetch(
+      const response = await window.AuthClient.fetch(
         `/api/test-case-sets/${this.setId}/sections/${sectionId}`,
         {
           method: 'PUT',
           headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`,
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({ name: newName })
@@ -508,13 +513,10 @@ class TestCaseSectionList {
     }
 
     try {
-      const response = await fetch(
+      const response = await window.AuthClient.fetch(
         `/api/test-case-sets/${this.setId}/sections/${sectionId}`,
         {
-          method: 'DELETE',
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          }
+          method: 'DELETE'
         }
       );
 
@@ -539,8 +541,20 @@ class TestCaseSectionList {
 
     try {
       const response = await window.AuthClient.fetch(
-        `/api/test-case-sets/${this.setId}/sections`
+        `/api/test-case-sets/${this.setId}/sections`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            name,
+            description: description || null,
+            parent_section_id: parentId ? parseInt(parentId) : null,
+          })
+        }
       );
+
 
       if (!response.ok) {
         throw new Error('Failed to load sections');
@@ -568,6 +582,24 @@ class TestCaseSectionList {
       }
     }
     return null;
+  }
+
+  /**
+   * 動態調整面板高度以適應視口
+   */
+  adjustPanelHeight() {
+    const panel = document.getElementById('sectionListPanel');
+    if (!panel) return;
+
+    // 計算可用高度：視口高度 - 上邊距離 - 底部安全距離
+    const topOffset = 20; // 與 top: 20px 對應
+    const bottomMargin = 20; // 底部安全距離，避免被 footer 擋住
+    const availableHeight = window.innerHeight - topOffset - bottomMargin;
+
+    // 設置 max-height
+    panel.style.maxHeight = `${availableHeight}px`;
+
+    console.log(`[SectionList] Panel height adjusted: ${availableHeight}px`);
   }
 
   /**
