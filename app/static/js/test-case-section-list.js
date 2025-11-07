@@ -18,14 +18,14 @@ class TestCaseSectionList {
   }
 
   init() {
-    console.log('[SectionList] Initializing TestCaseSectionList');
+    console.log("[SectionList] Initializing TestCaseSectionList");
 
     // 監聽 Set 載入事件
-    window.addEventListener('testCaseSetLoaded', (e) => {
-      console.log('[SectionList] Received testCaseSetLoaded event:', {
+    window.addEventListener("testCaseSetLoaded", (e) => {
+      console.log("[SectionList] Received testCaseSetLoaded event:", {
         setId: e.detail.setId,
         sectionCount: e.detail.sections ? e.detail.sections.length : 0,
-        sections: e.detail.sections
+        sections: e.detail.sections,
       });
 
       this.setId = e.detail.setId;
@@ -34,7 +34,7 @@ class TestCaseSectionList {
     });
 
     // 監聽窗口大小改變，動態調整面板高度
-    window.addEventListener('resize', () => {
+    window.addEventListener("resize", () => {
       this.adjustPanelHeight();
     });
   }
@@ -44,50 +44,54 @@ class TestCaseSectionList {
    */
   render() {
     if (!this.setId) {
-      console.warn('[SectionList] No setId, skipping render');
+      console.warn("[SectionList] No setId, skipping render");
       return;
     }
 
-    console.log(`[SectionList] Rendering with setId=${this.setId}, sections=${this.sections.length}`);
+    console.log(
+      `[SectionList] Rendering with setId=${this.setId}, sections=${this.sections.length}`,
+    );
 
     // 找到 testCasesPage 容器
-    const testCasesPage = document.getElementById('testCasesPage');
+    const testCasesPage = document.getElementById("testCasesPage");
     if (!testCasesPage) {
-      console.error('[SectionList] Cannot find testCasesPage container');
+      console.error("[SectionList] Cannot find testCasesPage container");
       return;
     }
 
     // 第一次初始化時，設置為兩列布局
     if (!testCasesPage.dataset.twoColumnLayout) {
-      testCasesPage.dataset.twoColumnLayout = 'true';
+      testCasesPage.dataset.twoColumnLayout = "true";
 
       // testCasesPage 已由 CSS 設置為 flex row 布局
 
       // 建立左列包裝器
-      const mainCol = document.createElement('div');
-      mainCol.id = 'testCasesMainCol';
+      const mainCol = document.createElement("div");
+      mainCol.id = "testCasesMainCol";
       // 不使用 bootstrap col classes，改用 pure flex
       // 寬度由 CSS 的 flex: 1 控制
 
       // 移動所有現有子節點到左列
       const children = Array.from(testCasesPage.children);
       for (const child of children) {
-        if (child.id !== 'sectionListSidebarCol') {
+        if (child.id !== "sectionListSidebarCol") {
           mainCol.appendChild(child);
         }
       }
 
       testCasesPage.appendChild(mainCol);
-      console.log('[SectionList] Two column layout initialized with flex styles');
+      console.log(
+        "[SectionList] Two column layout initialized with flex styles",
+      );
     }
 
     // 檢查或建立側邊欄列
-    let sidebarCol = document.getElementById('sectionListSidebarCol');
+    let sidebarCol = document.getElementById("sectionListSidebarCol");
     if (!sidebarCol) {
-      sidebarCol = document.createElement('div');
-      sidebarCol.id = 'sectionListSidebarCol';
+      sidebarCol = document.createElement("div");
+      sidebarCol.id = "sectionListSidebarCol";
       testCasesPage.appendChild(sidebarCol);
-      console.log('[SectionList] Sidebar column created');
+      console.log("[SectionList] Sidebar column created");
     }
 
     // 不使用 bootstrap col classes，改用 pure flex
@@ -112,18 +116,19 @@ class TestCaseSectionList {
       </div>
     `;
 
-
     // 插入側邊欄面板
     sidebarCol.innerHTML = panelHtml;
-    console.log('[SectionList] Sidebar panel HTML inserted');
+    console.log("[SectionList] Sidebar panel HTML inserted");
 
     // 渲染 Section 樹
-    const content = document.getElementById('sectionListContent');
+    const content = document.getElementById("sectionListContent");
     if (content) {
       content.innerHTML = this.renderTree(this.sections);
-      console.log(`[SectionList] Section tree rendered with ${this.sections.length} sections`);
+      console.log(
+        `[SectionList] Section tree rendered with ${this.sections.length} sections`,
+      );
     } else {
-      console.error('[SectionList] Cannot find sectionListContent');
+      console.error("[SectionList] Cannot find sectionListContent");
     }
 
     // 綁定事件
@@ -141,7 +146,7 @@ class TestCaseSectionList {
       return '<div class="text-muted text-center py-3"><small>沒有區段</small></div>';
     }
 
-    const html = sections.map(section => this.renderNode(section)).join('');
+    const html = sections.map((section) => this.renderNode(section)).join("");
     return `<ul class="list-unstyled">${html}</ul>`;
   }
 
@@ -149,7 +154,8 @@ class TestCaseSectionList {
    * 渲染單個節點
    */
   renderNode(section) {
-    const hasChildren = section.child_sections && section.child_sections.length > 0;
+    const hasChildren =
+      section.child_sections && section.child_sections.length > 0;
     const indent = (section.level - 1) * 15;
 
     return `
@@ -158,23 +164,31 @@ class TestCaseSectionList {
              oncontextmenu="testCaseSectionList.showContextMenu(event, ${section.id})"
              ondblclick="testCaseSectionList.enterEditMode(${section.id})">
 
-          ${hasChildren ? `
-            <i class="fas fa-chevron-down section-toggle" style="width: 20px; text-align: center; cursor: pointer;"
+          ${
+            hasChildren
+              ? `
+            <i class="fas fa-chevron-down section-toggle" style="width: 14px; text-align: center; cursor: pointer;"
                onclick="testCaseSectionList.toggleNode(this)"></i>
-          ` : `
-            <span style="width: 20px; display: inline-block;"></span>
-          `}
+          `
+              : `
+            <span style="width: 14px; display: inline-block;"></span>
+          `
+          }
 
           <i class="fas fa-folder text-muted"></i>
           <span class="section-name">${this.escapeHtml(section.name)}</span>
           <span class="badge bg-secondary ms-2">${section.test_case_count || 0}</span>
         </div>
 
-        ${hasChildren ? `
+        ${
+          hasChildren
+            ? `
           <ul class="list-unstyled section-children" style="display: block;">
-            ${section.child_sections.map(child => this.renderNode(child)).join('')}
+            ${section.child_sections.map((child) => this.renderNode(child)).join("")}
           </ul>
-        ` : ''}
+        `
+            : ""
+        }
       </li>
     `;
   }
@@ -184,12 +198,12 @@ class TestCaseSectionList {
    */
   bindEvents() {
     // 點擊 Section 過濾 Test Cases
-    document.querySelectorAll('.section-item').forEach(item => {
-      item.addEventListener('click', (e) => {
-        if (e.target.classList.contains('section-toggle')) return;
+    document.querySelectorAll(".section-item").forEach((item) => {
+      item.addEventListener("click", (e) => {
+        if (e.target.classList.contains("section-toggle")) return;
         if (this.editingNodeId) return;
 
-        const sectionId = item.closest('.section-node').dataset.sectionId;
+        const sectionId = item.closest(".section-node").dataset.sectionId;
         this.selectSection(sectionId);
       });
     });
@@ -201,14 +215,14 @@ class TestCaseSectionList {
    * 切換節點展開/折疊
    */
   toggleNode(toggleIcon) {
-    const li = toggleIcon.closest('.section-node');
-    const children = li.querySelector('.section-children');
+    const li = toggleIcon.closest(".section-node");
+    const children = li.querySelector(".section-children");
 
     if (children) {
-      const isVisible = children.style.display !== 'none';
-      children.style.display = isVisible ? 'none' : 'block';
-      toggleIcon.classList.toggle('fa-chevron-right');
-      toggleIcon.classList.toggle('fa-chevron-down');
+      const isVisible = children.style.display !== "none";
+      children.style.display = isVisible ? "none" : "block";
+      toggleIcon.classList.toggle("fa-chevron-right");
+      toggleIcon.classList.toggle("fa-chevron-down");
     }
   }
 
@@ -217,23 +231,27 @@ class TestCaseSectionList {
    */
   selectSection(sectionId) {
     // 移除之前的選擇
-    document.querySelectorAll('.section-item').forEach(item => {
-      item.classList.remove('bg-primary', 'text-white');
+    document.querySelectorAll(".section-item").forEach((item) => {
+      item.classList.remove("bg-primary", "text-white");
     });
 
     // 高亮當前選擇
-    const selected = document.querySelector(`[data-section-id="${sectionId}"] .section-item`);
+    const selected = document.querySelector(
+      `[data-section-id="${sectionId}"] .section-item`,
+    );
     if (selected) {
-      selected.classList.add('bg-primary', 'text-white');
+      selected.classList.add("bg-primary", "text-white");
     }
 
     // 觸發自訂事件，通知其他模組進行過濾
-    window.dispatchEvent(new CustomEvent('sectionSelected', {
-      detail: { sectionId: parseInt(sectionId) }
-    }));
+    window.dispatchEvent(
+      new CustomEvent("sectionSelected", {
+        detail: { sectionId: parseInt(sectionId) },
+      }),
+    );
 
     // 保存選擇
-    sessionStorage.setItem('selectedSectionId', sectionId);
+    sessionStorage.setItem("selectedSectionId", sectionId);
   }
 
   /**
@@ -241,7 +259,7 @@ class TestCaseSectionList {
    */
   enterEditMode(sectionId) {
     const node = document.querySelector(`[data-section-id="${sectionId}"]`);
-    const nameSpan = node.querySelector('.section-name');
+    const nameSpan = node.querySelector(".section-name");
 
     if (!nameSpan) return;
 
@@ -249,9 +267,9 @@ class TestCaseSectionList {
     const originalName = nameSpan.textContent;
 
     // 建立編輯框
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'form-control form-control-sm';
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "form-control form-control-sm";
     input.value = originalName;
 
     nameSpan.replaceWith(input);
@@ -265,8 +283,8 @@ class TestCaseSectionList {
       if (newName && newName !== originalName) {
         await this.updateSection(sectionId, newName);
       } else {
-        const span = document.createElement('span');
-        span.className = 'section-name';
+        const span = document.createElement("span");
+        span.className = "section-name";
         span.textContent = originalName;
         input.replaceWith(span);
       }
@@ -274,13 +292,13 @@ class TestCaseSectionList {
       this.editingNodeId = null;
     };
 
-    input.addEventListener('blur', saveEdit);
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
+    input.addEventListener("blur", saveEdit);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
         saveEdit();
-      } else if (e.key === 'Escape') {
-        const span = document.createElement('span');
-        span.className = 'section-name';
+      } else if (e.key === "Escape") {
+        const span = document.createElement("span");
+        span.className = "section-name";
         span.textContent = originalName;
         input.replaceWith(span);
         this.editingNodeId = null;
@@ -310,15 +328,19 @@ class TestCaseSectionList {
     `;
 
     // 移除舊菜單
-    document.querySelector('.context-menu')?.remove();
+    document.querySelector(".context-menu")?.remove();
 
     // 添加新菜單
-    document.body.insertAdjacentHTML('beforeend', menuHtml);
+    document.body.insertAdjacentHTML("beforeend", menuHtml);
 
     // 點擊其他地方關閉菜單
-    document.addEventListener('click', () => {
-      document.querySelector('.context-menu')?.remove();
-    }, { once: true });
+    document.addEventListener(
+      "click",
+      () => {
+        document.querySelector(".context-menu")?.remove();
+      },
+      { once: true },
+    );
   }
 
   /**
@@ -362,12 +384,14 @@ class TestCaseSectionList {
     `;
 
     // 移除舊 modal
-    document.getElementById('createSectionModal')?.remove();
+    document.getElementById("createSectionModal")?.remove();
 
     // 添加新 modal
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    document.body.insertAdjacentHTML("beforeend", modalHtml);
 
-    const modal = new bootstrap.Modal(document.getElementById('createSectionModal'));
+    const modal = new bootstrap.Modal(
+      document.getElementById("createSectionModal"),
+    );
     modal.show();
   }
 
@@ -377,96 +401,106 @@ class TestCaseSectionList {
   getSectionOptions() {
     const options = [];
 
-    const flattenSections = (sections, prefix = '') => {
-      sections.forEach(section => {
-        if (section.level < 5) {  // 最多 5 層
+    const flattenSections = (sections, level = 0) => {
+      sections.forEach((section) => {
+        if (section.level < 5) {
+          // 最多 5 層
+          // 根據層級生成視覺符號
+          let prefix = "";
+          if (level > 0) {
+            // 使用階層符號：| 表示連接，－ 表示層級
+            prefix = "┣ ".repeat(level);
+          }
           options.push(
-            `<option value="${section.id}">${prefix}${this.escapeHtml(section.name)}</option>`
+            `<option value="${section.id}">${prefix}${this.escapeHtml(section.name)}</option>`,
           );
         }
         if (section.child_sections && section.child_sections.length > 0) {
-          flattenSections(section.child_sections, prefix + '  ');
+          flattenSections(section.child_sections, level + 1);
         }
       });
     };
 
     flattenSections(this.sections);
-    return options.join('');
+    return options.join("");
   }
 
   /**
    * 建立 Section
    */
   async createSection() {
-    const name = document.getElementById('sectionName').value.trim();
-    const description = document.getElementById('sectionDescription').value.trim();
-    const parentId = document.getElementById('parentSection').value || null;
+    const name = document.getElementById("sectionName").value.trim();
+    const description = document
+      .getElementById("sectionDescription")
+      .value.trim();
+    const parentId = document.getElementById("parentSection").value || null;
 
     if (!name) {
-      alert('區段名稱不可空白');
+      alert("區段名稱不可空白");
       return;
     }
 
     try {
       // 獲取 team_id 和當前 set_id
       const urlParams = new URLSearchParams(window.location.search);
-      const teamId = urlParams.get('team_id');
+      const teamId = urlParams.get("team_id");
 
       if (!teamId) {
-        alert('無法取得團隊 ID');
+        alert("無法取得團隊 ID");
         return;
       }
 
       const response = await window.AuthClient.fetch(
         `/api/test-case-sets/${this.setId}/sections`,
         {
-          method: 'POST',
+          method: "POST",
           headers: {
-            'Content-Type': 'application/json'
+            "Content-Type": "application/json",
           },
           body: JSON.stringify({
             name,
             description: description || null,
             parent_section_id: parentId ? parseInt(parentId) : null,
-            sort_order: 0
-          })
-        }
+            sort_order: 0,
+          }),
+        },
       );
 
       if (!response.ok) {
-        let errorDetail = 'Failed to create section';
+        let errorDetail = "Failed to create section";
         try {
           const errorData = await response.json();
-          console.log('API Error response:', errorData);
+          console.log("API Error response:", errorData);
           if (errorData.detail) {
-            if (typeof errorData.detail === 'string') {
+            if (typeof errorData.detail === "string") {
               errorDetail = errorData.detail;
             } else if (Array.isArray(errorData.detail)) {
-              errorDetail = errorData.detail.map(e =>
-                typeof e === 'string' ? e : JSON.stringify(e)
-              ).join('; ');
+              errorDetail = errorData.detail
+                .map((e) => (typeof e === "string" ? e : JSON.stringify(e)))
+                .join("; ");
             } else {
               errorDetail = JSON.stringify(errorData.detail);
             }
           }
         } catch (e) {
-          console.error('Failed to parse error response:', e);
+          console.error("Failed to parse error response:", e);
         }
         throw new Error(errorDetail);
       }
 
-      const modal = bootstrap.Modal.getInstance(document.getElementById('createSectionModal'));
+      const modal = bootstrap.Modal.getInstance(
+        document.getElementById("createSectionModal"),
+      );
       if (modal) {
         modal.hide();
       }
 
       // 重新載入 Sections
-      console.log('[SectionList] Section created, reloading sections...');
+      console.log("[SectionList] Section created, reloading sections...");
       await this.loadSections();
-
     } catch (error) {
-      console.error('Error creating section:', error);
-      alert('建立區段失敗: ' + error.message);
+      console.error("Error creating section:", error);
+      alert("建立區段失敗: " + error.message);
     }
   }
 
@@ -478,16 +512,16 @@ class TestCaseSectionList {
       const response = await window.AuthClient.fetch(
         `/api/test-case-sets/${this.setId}/sections/${sectionId}`,
         {
-          method: 'PUT',
+          method: "PUT",
           headers: {
-            'Content-Type': 'application/json'
+            "Content-Type": "application/json",
           },
-          body: JSON.stringify({ name: newName })
-        }
+          body: JSON.stringify({ name: newName }),
+        },
       );
 
       if (!response.ok) {
-        throw new Error('Failed to update section');
+        throw new Error("Failed to update section");
       }
 
       // 更新本地資料
@@ -498,10 +532,9 @@ class TestCaseSectionList {
 
       // 重新渲染
       this.render();
-
     } catch (error) {
-      console.error('Error updating section:', error);
-      alert('更新區段失敗: ' + error.message);
+      console.error("Error updating section:", error);
+      alert("更新區段失敗: " + error.message);
     }
   }
 
@@ -509,7 +542,9 @@ class TestCaseSectionList {
    * 刪除 Section
    */
   async deleteSection(sectionId) {
-    if (!confirm('確定要刪除此區段嗎？該區段下的測試案例將被移到 Unassigned。')) {
+    if (
+      !confirm("確定要刪除此區段嗎？該區段下的測試案例將被移到 Unassigned。")
+    ) {
       return;
     }
 
@@ -517,20 +552,19 @@ class TestCaseSectionList {
       const response = await window.AuthClient.fetch(
         `/api/test-case-sets/${this.setId}/sections/${sectionId}`,
         {
-          method: 'DELETE'
-        }
+          method: "DELETE",
+        },
       );
 
       if (!response.ok) {
-        throw new Error('Failed to delete section');
+        throw new Error("Failed to delete section");
       }
 
       // 重新載入 Sections
       await this.loadSections();
-
     } catch (error) {
-      console.error('Error deleting section:', error);
-      alert('刪除區段失敗: ' + error.message);
+      console.error("Error deleting section:", error);
+      alert("刪除區段失敗: " + error.message);
     }
   }
 
@@ -544,28 +578,26 @@ class TestCaseSectionList {
       const response = await window.AuthClient.fetch(
         `/api/test-case-sets/${this.setId}/sections`,
         {
-          method: 'POST',
+          method: "POST",
           headers: {
-            'Content-Type': 'application/json'
+            "Content-Type": "application/json",
           },
           body: JSON.stringify({
             name,
             description: description || null,
             parent_section_id: parentId ? parseInt(parentId) : null,
-          })
-        }
+          }),
+        },
       );
 
-
       if (!response.ok) {
-        throw new Error('Failed to load sections');
+        throw new Error("Failed to load sections");
       }
 
       this.sections = await response.json();
       this.render();
-
     } catch (error) {
-      console.error('Error loading sections:', error);
+      console.error("Error loading sections:", error);
     }
   }
 
@@ -591,17 +623,17 @@ class TestCaseSectionList {
   adjustPanelHeight() {
     // 高度分配現在完全由 CSS flexbox 處理
     // 這個方法保留用於日誌和未來可能的調整
-    console.log('[SectionList] Panel layout adjusted by CSS flexbox');
+    console.log("[SectionList] Panel layout adjusted by CSS flexbox");
   }
 
   /**
    * 切換側邊欄
    */
   togglePanel() {
-    const content = document.getElementById('sectionListContent');
+    const content = document.getElementById("sectionListContent");
     if (content) {
-      const isVisible = content.style.display !== 'none';
-      content.style.display = isVisible ? 'none' : 'block';
+      const isVisible = content.style.display !== "none";
+      content.style.display = isVisible ? "none" : "block";
     }
   }
 
@@ -610,13 +642,13 @@ class TestCaseSectionList {
    */
   escapeHtml(text) {
     const map = {
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      '"': '&quot;',
-      "'": '&#039;'
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#039;",
     };
-    return text.replace(/[&<>"']/g, m => map[m]);
+    return text.replace(/[&<>"']/g, (m) => map[m]);
   }
 }
 
@@ -624,8 +656,8 @@ class TestCaseSectionList {
 const testCaseSectionList = new TestCaseSectionList();
 
 // 在 DOM 準備好後初始化
-if (document.readyState === 'loading') {
-  document.addEventListener('DOMContentLoaded', () => {
+if (document.readyState === "loading") {
+  document.addEventListener("DOMContentLoaded", () => {
     testCaseSectionList.init();
   });
 }
