@@ -93,15 +93,14 @@ class TestCaseSectionList {
     sidebarCol.className = 'col-12 col-lg-2 d-flex flex-column';
 
     // 構建側邊欄面板 HTML
-    // 注意：footer高度52px，加上padding 8px，所以留出70px空間
     const panelHtml = `
-      <div id="sectionListPanel" class="card sticky-top section-list-panel" style="top: 20px; max-height: calc(100vh - 90px); display: flex; flex-direction: column;">
+      <div id="sectionListPanel" class="card sticky-top section-list-panel" style="top: 20px; display: flex; flex-direction: column;">
         <div class="card-header bg-light d-flex justify-content-between align-items-center">
           <h6 class="mb-0">
             <i class="fas fa-folder-tree"></i> 區段列表
           </h6>
         </div>
-        <div id="sectionListContent" class="card-body p-0 section-list-content" style="flex: 1; overflow-y: auto; min-height: 0;">
+        <div id="sectionListContent" class="card-body p-0 section-list-content" style="flex: 1; overflow-y: auto; min-height: 0; max-height: calc(100vh - 200px);">
           <!-- Section 樹會插入這裡 -->
         </div>
         <div class="card-footer section-list-footer">
@@ -586,24 +585,28 @@ class TestCaseSectionList {
   }
 
   /**
-   * 動態調整面板高度以適應視口
+   * 動態調整內容區域高度以適應視口
    */
   adjustPanelHeight() {
+    const content = document.getElementById('sectionListContent');
     const panel = document.getElementById('sectionListPanel');
-    if (!panel) return;
 
-    // 計算可用高度：視口高度 - 上邊距離 - footer高度 - 安全邊距
-    const topOffset = 20; // 與 top: 20px 對應
+    if (!content || !panel) return;
+
+    // 計算可用高度：視口高度 - 上邊距離 - footer高度 - header高度 - footer按鈕高度
+    const topOffset = 20; // 與 panel 的 top: 20px 對應
     const footerHeight = 52; // Footer 高度（來自 CSS 變數 --footer-height）
     const footerPadding = 8; // Footer 下的 padding
-    const safetyMargin = 10; // 額外的安全邊距，避免被完全擋住
+    const headerHeight = 50; // Card header 的高度
+    const footerButtonHeight = 50; // Card footer 按鈕區域的高度
+    const safetyMargin = 10; // 額外的安全邊距
 
-    const availableHeight = window.innerHeight - topOffset - footerHeight - footerPadding - safetyMargin;
+    const availableHeight = window.innerHeight - topOffset - footerHeight - footerPadding - headerHeight - footerButtonHeight - safetyMargin;
 
-    // 設置 max-height
-    panel.style.maxHeight = `${availableHeight}px`;
+    // 設置 content 的 max-height
+    content.style.maxHeight = `${Math.max(100, availableHeight)}px`;
 
-    console.log(`[SectionList] Panel height adjusted: ${availableHeight}px (viewport: ${window.innerHeight}px, footer: ${footerHeight}px)`);
+    console.log(`[SectionList] Content height adjusted: ${availableHeight}px (viewport: ${window.innerHeight}px)`);
   }
 
   /**
