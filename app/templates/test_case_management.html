@@ -2211,7 +2211,25 @@ function renderSectionBlockHTML(sectionGroup, rowsHtml) {
     const rowClass = sectionGroup.sectionLevel <= 1 ? 'section-card-row root-divider' : 'section-card-row';
     const headerStyle = sectionGroup.sectionLevel > 1 ? 'background: linear-gradient(90deg, #f9fbff, #eef2f7);' : 'background: #f7f9fc;';
     const testCaseCount = sectionGroup.testCases.length;
-    const emptyMessage = testCaseCount === 0 ? '<tr><td colspan="8" class="text-center text-muted py-3"><i class="fas fa-inbox me-2"></i>此區段無測試案例</td></tr>' : rowsHtml;
+    
+    // 如果沒有 test cases，只顯示 section 名稱，不顯示表格
+    if (testCaseCount === 0) {
+        return `
+            <div class="${rowClass}">
+                <div class="section-card-container">
+                    <div class="section-card" data-section-id="${sectionGroup.sectionId}" style="--section-indent: ${indent};">
+                        <div class="section-card-header" style="${headerStyle}">
+                            <div class="section-title">
+                                <i class="fas fa-folder"></i>
+                                <span>${displayName}</span>
+                            </div>
+                            <small class="text-muted">${testCaseCount} 筆</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
     
     return `
         <div class="${rowClass}">
@@ -2229,7 +2247,7 @@ function renderSectionBlockHTML(sectionGroup, rowsHtml) {
                             <thead>
                                 <tr class="section-table-header">
                                     <th width="30" class="text-center" style="padding: 0.35rem 0.5rem !important;">
-                                        <input type="checkbox" class="form-check-input section-select-all" data-section-id="${sectionGroup.sectionId}" ${testCaseCount === 0 ? 'disabled' : ''}>
+                                        <input type="checkbox" class="form-check-input section-select-all" data-section-id="${sectionGroup.sectionId}">
                                     </th>
                                     <th class="sortable section-sortable" width="220" style="cursor: pointer;" data-section-id="${sectionGroup.sectionId}" data-sort-field="test_case_number">
                                         <span data-i18n="testCase.testCaseNumber">Test Case Number</span>
@@ -2259,7 +2277,7 @@ function renderSectionBlockHTML(sectionGroup, rowsHtml) {
                                 </tr>
                             </thead>
                             <tbody>
-                                ${emptyMessage}
+                                ${rowsHtml}
                             </tbody>
                         </table>
                     </div>
