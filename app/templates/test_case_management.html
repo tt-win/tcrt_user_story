@@ -1541,6 +1541,7 @@ let markdownEditor = null;
 let tcmSectionsTree = [];
 let tcmSectionMetaMap = new Map();
 let tcmSectionOrder = [];
+let tcmUnassignedSectionIds = new Set();
 
 window.addEventListener('testCaseSetLoaded', (event) => {
     try {
@@ -1809,6 +1810,12 @@ function sortFilteredTestCases() {
 }
 
 const UNASSIGNED_SECTION_ID = '__section_unassigned__';
+function isUnassignedSectionIdValue(sectionId) {
+    const key = String(sectionId);
+    if (key === UNASSIGNED_SECTION_ID) return true;
+    if (tcmUnassignedSectionIds && tcmUnassignedSectionIds.has(key)) return true;
+    return false;
+}
 
 function groupTestCasesBySection(testCases) {
     const grouped = {};
@@ -1871,10 +1878,12 @@ function sortSectionIds(sectionIds, grouped) {
         const bRoot = gb.sectionLevel <= 1;
         if (aRoot && !bRoot) return -1;
         if (!aRoot && bRoot) return 1;
+        const aUnassigned = isUnassignedSectionIdValue(a) || isUnassignedSectionName(ga.sectionName);
+        const bUnassigned = isUnassignedSectionIdValue(b) || isUnassignedSectionName(gb.sectionName);
+        if (aUnassigned && !bUnassigned) return 1;
+        if (!aUnassigned && bUnassigned) return -1;
         const aKey = (ga.sectionPath || ga.sectionName || '').toLowerCase();
         const bKey = (gb.sectionPath || gb.sectionName || '').toLowerCase();
-        if (a === UNASSIGNED_SECTION_ID) return 1;
-        if (b === UNASSIGNED_SECTION_ID) return -1;
         return aKey.localeCompare(bKey);
     };
 
@@ -8958,6 +8967,7 @@ function sortSectionsForDisplayGeneric(sections) {
 function rebuildBatchSectionMeta() {
     tcmSectionMetaMap = new Map();
     tcmSectionOrder = [];
+    tcmUnassignedSectionIds = new Set();
 
     function traverse(sections, depth = 0, parentPath = '') {
         if (!Array.isArray(sections)) return;
@@ -8973,7 +8983,9 @@ function rebuildBatchSectionMeta() {
             };
             if (meta.id !== null && meta.id !== undefined) {
                 tcmSectionMetaMap.set(meta.id, meta);
-                if (!isUnassignedSectionName(name)) {
+                if (isUnassignedSectionName(name)) {
+                    tcmUnassignedSectionIds.add(String(meta.id));
+                } else {
                     tcmSectionOrder.push(String(meta.id));
                 }
             }
@@ -8990,7 +9002,15 @@ function rebuildBatchSectionMeta() {
         seenOrder.add(id);
         return true;
     });
-    tcmSectionOrder.push(UNASSIGNED_SECTION_ID);
+    tcmUnassignedSectionIds.forEach(id => {
+        if (!seenOrder.has(id)) {
+            seenOrder.add(id);
+            tcmSectionOrder.push(id);
+        }
+    });
+    if (!seenOrder.has(UNASSIGNED_SECTION_ID)) {
+        tcmSectionOrder.push(UNASSIGNED_SECTION_ID);
+    }
 }
 
 function buildBatchSectionOptionsHtml() {
