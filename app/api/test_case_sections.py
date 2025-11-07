@@ -2,9 +2,9 @@
 測試案例區段 (Test Case Section) API 路由
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.orm import Session
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import logging
 
 from ..database import get_sync_db
@@ -305,7 +305,7 @@ async def reorder_sections(
 async def move_section(
     set_id: int,
     section_id: int,
-    new_parent_id: int = None,
+    new_parent_id: Optional[int] = Query(None),
     current_user: User = Depends(get_current_user),
     test_set: TestCaseSetDB = Depends(verify_test_case_set_access),
     db: Session = Depends(get_sync_db),

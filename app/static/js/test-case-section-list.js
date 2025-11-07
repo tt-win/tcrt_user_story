@@ -14,6 +14,7 @@ class TestCaseSectionList {
     this.setId = null;
     this.sections = [];
     this.editingNodeId = null;
+    this.nextSectionEventMeta = null;
     this.init();
   }
 
@@ -136,6 +137,25 @@ class TestCaseSectionList {
 
     // 動態調整高度以適應視口
     this.adjustPanelHeight();
+
+    try {
+      const snapshot = Array.isArray(this.sections)
+        ? JSON.parse(JSON.stringify(this.sections))
+        : [];
+      const detail = {
+        setId: this.setId,
+        sections: snapshot,
+        ...(this.nextSectionEventMeta || {}),
+      };
+      window.dispatchEvent(
+        new CustomEvent("sectionListUpdated", {
+          detail,
+        }),
+      );
+      this.nextSectionEventMeta = null;
+    } catch (err) {
+      console.warn("[SectionList] Failed to dispatch sectionListUpdated:", err);
+    }
   }
 
   /**
@@ -161,7 +181,7 @@ class TestCaseSectionList {
     const isUnassigned = section.name === "Unassigned";
 
     return `
-      <li class="section-node" data-section-id="${section.id}" style="margin-left: ${indent}px;">
+      <li class="section-node" data-section-id="${section.id}" data-parent-id="${section.parent_section_id || ''}" style="margin-left: ${indent}px;" draggable="${!isUnassigned}">
         <div class="section-item p-2 mb-1 rounded"
              ${!isUnassigned ? `oncontextmenu="testCaseSectionList.showContextMenu(event, ${section.id})"` : ""}
              ${!isUnassigned ? `ondblclick="testCaseSectionList.enterEditMode(${section.id})"` : ""}>
@@ -210,7 +230,202 @@ class TestCaseSectionList {
       });
     });
 
+    // 綁定拖移事件
+    document.querySelectorAll(".section-node[draggable='true']").forEach((node) => {
+      node.addEventListener("dragstart", (e) => this.handleDragStart(e));
+      node.addEventListener("dragover", (e) => this.handleDragOver(e));
+      node.addEventListener("drop", (e) => this.handleDrop(e));
+      node.addEventListener("dragend", (e) => this.handleDragEnd(e));
+      node.addEventListener("dragleave", (e) => this.handleDragLeave(e));
+    });
+
     // 右鍵菜單事件已在 showContextMenu 中處理
+  }
+
+  /**
+   * 拖移開始
+   */
+  handleDragStart(e) {
+    const node = e.target.closest(".section-node");
+    if (!node) return;
+
+    e.dataTransfer.effectAllowed = "move";
+    this.draggedNode = node;
+    this.draggedSectionId = parseInt(node.dataset.sectionId);
+    if (Number.isNaN(this.draggedSectionId)) {
+      this.draggedSectionId = null;
+      this.draggedNode = null;
+      return;
+    }
+    node.style.opacity = "0.5";
+    try {
+      e.dataTransfer.setData("text/plain", String(this.draggedSectionId));
+    } catch (_) {}
+  }
+
+  /**
+   * 拖移經過
+   */
+  handleDragOver(e) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+
+    const target = e.target.closest(".section-node");
+    if (!target || target === this.draggedNode) return;
+
+    const rect = target.getBoundingClientRect();
+    const dropY = e.clientY - rect.top;
+    const threshold = rect.height / 3;
+    this.clearDropIndicators();
+
+    if (dropY < threshold) {
+      target.style.borderTop = "3px solid #007bff";
+    } else if (dropY > threshold * 2) {
+      target.style.borderBottom = "3px solid #007bff";
+    } else {
+      target.style.backgroundColor = "#e3f2fd";
+    }
+  }
+
+  /**
+   * 拖移離開
+   */
+  handleDragLeave(e) {
+    const node = e.target.closest(".section-node");
+    if (node) {
+      node.style.borderTop = "";
+      node.style.borderBottom = "";
+      node.style.backgroundColor = "";
+    }
+  }
+
+  /**
+   * 拖移放下
+   */
+  async handleDrop(e) {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (!this.draggedNode || !this.draggedSectionId) {
+      this.clearDropIndicators();
+      return;
+    }
+
+    const targetNode = e.target.closest(".section-node");
+    if (!targetNode || targetNode === this.draggedNode) {
+      this.clearDropIndicators();
+      return;
+    }
+
+    const targetSectionId = parseInt(targetNode.dataset.sectionId);
+    const rect = targetNode.getBoundingClientRect();
+    const dropY = e.clientY;
+    const threshold = rect.height / 3;
+
+    // 判斷放下位置
+    const dropPosition = dropY - rect.top;
+
+    let dropType = "inside";
+    if (dropPosition < threshold) {
+      dropType = "before";
+    } else if (dropPosition > threshold * 2) {
+      dropType = "after";
+    }
+
+    const success = await this.applySectionDrag(this.draggedSectionId, targetSectionId, dropType);
+    this.clearDropIndicators();
+    this.resetDragState();
+
+    if (success) {
+      await this.loadSections();
+    }
+  }
+
+  /**
+   * 拖移結束
+   */
+  handleDragEnd() {
+    this.clearDropIndicators();
+    if (this.draggedNode) {
+      this.draggedNode.style.opacity = "1";
+      this.draggedNode.style.borderTop = "";
+      this.draggedNode.style.borderBottom = "";
+      this.draggedNode.style.backgroundColor = "";
+    }
+
+    this.resetDragState();
+  }
+
+  resetDragState() {
+    this.draggedNode = null;
+    this.draggedSectionId = null;
+  }
+
+  async applySectionDrag(draggedId, targetId, dropType) {
+    try {
+      const draggedInfo = this.findSectionWithParent(draggedId);
+      if (!draggedInfo) return false;
+      const sourceParentId = draggedInfo.parentId ?? null;
+
+      const targetInfo = this.findSectionWithParent(targetId);
+      const targetParentId =
+        dropType === "inside"
+          ? targetId
+          : targetInfo
+            ? targetInfo.parentId ?? null
+            : null;
+
+      if (targetParentId === draggedId) {
+        console.warn("Cannot move section into itself");
+        return false;
+      }
+
+      if (this.sectionContainsDescendant(draggedId, targetParentId)) {
+        console.warn("Cannot move section into its descendant");
+        return false;
+      }
+
+      const sourceIds = this.getSiblingIds(sourceParentId).filter(id => id !== draggedId);
+      let targetIds;
+      if (sourceParentId === targetParentId) {
+        targetIds = [...sourceIds];
+      } else {
+        targetIds = this.getSiblingIds(targetParentId).filter(id => id !== draggedId);
+      }
+
+      let insertIndex = targetIds.length;
+      if (dropType === "before" || dropType === "after") {
+        const targetIndex = targetIds.indexOf(targetId);
+        if (targetIndex >= 0) {
+          insertIndex = dropType === "before" ? targetIndex : targetIndex + 1;
+        }
+      }
+      if (insertIndex < 0) insertIndex = 0;
+      targetIds.splice(insertIndex, 0, draggedId);
+
+      const payload = [];
+      if (sourceParentId !== targetParentId) {
+        payload.push(
+          ...sourceIds.map((id, idx) => ({
+            id,
+            parent_section_id: sourceParentId,
+            sort_order: idx,
+          })),
+        );
+      }
+      payload.push(
+        ...targetIds.map((id, idx) => ({
+          id,
+          parent_section_id: targetParentId,
+          sort_order: idx,
+        })),
+      );
+
+      return await this.saveSectionOrderPayload(payload);
+    } catch (error) {
+      console.error("applySectionDrag failed:", error);
+      return false;
+    }
   }
 
   /**
@@ -544,14 +759,7 @@ class TestCaseSectionList {
         throw new Error("Failed to update section");
       }
 
-      // 更新本地資料
-      const section = this.findSection(sectionId);
-      if (section) {
-        section.name = newName;
-      }
-
-      // 重新渲染
-      this.render();
+      await this.loadSections({ reloadTestCases: true });
     } catch (error) {
       console.error("Error updating section:", error);
       alert("更新區段失敗: " + error.message);
@@ -587,8 +795,8 @@ class TestCaseSectionList {
         throw new Error("Failed to delete section");
       }
 
-      // 重新載入 Sections
-      await this.loadSections();
+      // 重新載入 Sections 並強制更新測試案例
+      await this.loadSections({ reloadTestCases: true });
     } catch (error) {
       console.error("Error deleting section:", error);
       alert("刪除區段失敗: " + error.message);
@@ -598,8 +806,9 @@ class TestCaseSectionList {
   /**
    * 載入 Sections
    */
-  async loadSections() {
+  async loadSections(options = {}) {
     if (!this.setId) return;
+    const { reloadTestCases = false } = options || {};
 
     try {
       const response = await window.AuthClient.fetch(
@@ -614,6 +823,9 @@ class TestCaseSectionList {
       }
 
       this.sections = await response.json();
+      if (reloadTestCases) {
+        this.nextSectionEventMeta = { reloadTestCases: true };
+      }
       this.render();
     } catch (error) {
       console.error("Error loading sections:", error);
@@ -652,6 +864,18 @@ class TestCaseSectionList {
 
   sortSectionsForDisplay(sections) {
     if (!Array.isArray(sections)) return [];
+
+    const comparator = (a, b) => {
+      const aOrder = Number.isFinite(a?.sort_order) ? a.sort_order : 0;
+      const bOrder = Number.isFinite(b?.sort_order) ? b.sort_order : 0;
+      if (aOrder !== bOrder) {
+        return aOrder - bOrder;
+      }
+      const aName = (a?.name || "").toLowerCase();
+      const bName = (b?.name || "").toLowerCase();
+      return aName.localeCompare(bName);
+    };
+
     const normal = [];
     const unassigned = [];
     sections.forEach((section) => {
@@ -662,7 +886,95 @@ class TestCaseSectionList {
         normal.push(section);
       }
     });
+
+    normal.sort(comparator);
+    unassigned.sort(comparator);
     return normal.concat(unassigned);
+  }
+
+  getSiblingIds(parentId) {
+    const normalized = this.normalizeParentId(parentId);
+    if (normalized === null) {
+      return Array.isArray(this.sections) ? this.sections.map((s) => s.id) : [];
+    }
+    const parent = this.findSection(normalized);
+    if (parent && Array.isArray(parent.child_sections)) {
+      return parent.child_sections.map((s) => s.id);
+    }
+    return [];
+  }
+
+  normalizeParentId(value) {
+    if (value === undefined || value === null || value === "" || value === "null") {
+      return null;
+    }
+    const parsed = Number(value);
+    return Number.isNaN(parsed) ? null : parsed;
+  }
+
+  findSectionWithParent(sectionId, sections = this.sections, parentId = null) {
+    for (const section of sections || []) {
+      if (section.id == sectionId) {
+        return { section, parentId };
+      }
+      if (section.child_sections && section.child_sections.length > 0) {
+        const result = this.findSectionWithParent(sectionId, section.child_sections, section.id);
+        if (result) return result;
+      }
+    }
+    return null;
+  }
+
+  sectionContainsDescendant(sectionId, possibleDescId) {
+    if (possibleDescId === null || possibleDescId === undefined) return false;
+    if (sectionId === possibleDescId) return true;
+    const section = this.findSection(sectionId);
+    if (!section || !Array.isArray(section.child_sections)) return false;
+    for (const child of section.child_sections) {
+      if (child.id === possibleDescId) return true;
+      if (this.sectionContainsDescendant(child.id, possibleDescId)) return true;
+    }
+    return false;
+  }
+
+  async saveSectionOrderPayload(entries) {
+    if (!entries || !entries.length) return false;
+    try {
+      const payload = entries.map((entry) => ({
+        id: entry.id,
+        sort_order: entry.sort_order,
+        parent_section_id:
+          entry.parent_section_id === undefined || entry.parent_section_id === null
+            ? null
+            : entry.parent_section_id,
+      }));
+
+      const response = await window.AuthClient.fetch(
+        `/api/test-case-sets/${this.setId}/sections/reorder`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sections: payload }),
+        },
+      );
+
+      if (!response.ok) {
+        console.error("Failed to save section order:", response.statusText);
+        return false;
+      }
+      return true;
+    } catch (error) {
+      console.error("Error saving section order:", error);
+      return false;
+    }
+  }
+
+  clearDropIndicators() {
+    document.querySelectorAll(".section-node").forEach((node) => {
+      node.style.borderTop = "";
+      node.style.borderBottom = "";
+      node.style.backgroundColor = "";
+    });
   }
 
   /**

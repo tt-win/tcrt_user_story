@@ -132,9 +132,16 @@ class TestCaseSetService:
             return None
 
         # 建立樹狀結構
-        sections = self.db.query(TestCaseSection).filter(
-            TestCaseSection.test_case_set_id == set_id
-        ).all()
+        sections = (
+            self.db.query(TestCaseSection)
+            .filter(TestCaseSection.test_case_set_id == set_id)
+            .order_by(
+                TestCaseSection.parent_section_id.nullsfirst(),
+                TestCaseSection.sort_order,
+                TestCaseSection.id,
+            )
+            .all()
+        )
 
         # 按層級和排序組織
         section_dict = {s.id: {'data': s, 'children': []} for s in sections}

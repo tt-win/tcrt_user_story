@@ -3,8 +3,9 @@
 """
 
 import logging
+from typing import Optional, Union
 from sqlalchemy.orm import Session
-from sqlalchemy import and_
+from sqlalchemy import and_, func
 
 from ..models.database_models import TestCaseSection, TestCaseLocal, TestCaseSet
 
@@ -48,13 +49,14 @@ class TestCaseSectionService:
         if existing:
             raise ValueError(f"此層級下已存在相同名稱的 Section: {name}")
 
-        # 計算 sort_order
-        max_sort = self.db.query(TestCaseSection).filter(
+        # 計算 sort_order (使用同層級現有最大值 + 1，避免刪除後的空缺導致重複序號)
+        max_sort = self.db.query(func.max(TestCaseSection.sort_order)).filter(
             and_(
                 TestCaseSection.test_case_set_id == test_case_set_id,
                 TestCaseSection.parent_section_id == parent_section_id
             )
-        ).count()
+        ).scalar()
+        next_sort = (max_sort if max_sort is not None else -1) + 1
 
         new_section = TestCaseSection(
             test_case_set_id=test_case_set_id,
@@ -62,7 +64,7 @@ class TestCaseSectionService:
             description=description,
             parent_section_id=parent_section_id,
             level=new_level,
-            sort_order=max_sort
+            sort_order=next_sort
         )
 
         self.db.add(new_section)
@@ -77,25 +79,45 @@ class TestCaseSectionService:
         ).first()
 
     def get_by_set(self, test_case_set_id: int) -> list[TestCaseSection]:
-        """取得 Set 下所有 Sections"""
-        return self.db.query(TestCaseSection).filter(
-            TestCaseSection.test_case_set_id == test_case_set_id
-        ).order_by(TestCaseSection.parent_section_id, TestCaseSection.sort_order).all()
+        """取得 Set 下所有 Sections，按 sort_order 和 id 排序"""
+        return (
+            self.db.query(TestCaseSection)
+            .filter(TestCaseSection.test_case_set_id == test_case_set_id)
+            .order_by(
+                TestCaseSection.sort_order,
+                TestCaseSection.id
+            )
+            .all()
+        )
 
     def get_tree_structure(self, test_case_set_id: int) -> list:
         """取得 Section 樹狀結構"""
-        sections = self.get_by_set(test_case_set_id)
+        # 按照 sort_order, id 順序取得所有 sections
+        sections = (
+            self.db.query(TestCaseSection)
+            .filter(TestCaseSection.test_case_set_id == test_case_set_id)
+            .order_by(
+                TestCaseSection.sort_order,
+                TestCaseSection.id
+            )
+            .all()
+        )
 
         # 建立字典以便查詢
-        section_dict = {s.id: {
-            'id': s.id,
-            'name': s.name,
-            'description': s.description,
-            'level': s.level,
-            'sort_order': s.sort_order,
-            'test_case_count': self._get_test_case_count(s.id),
-            'children': []
-        } for s in sections}
+        section_dict = {
+            s.id: {
+                'id': s.id,
+                'name': s.name,
+                'description': s.description,
+                'level': s.level,
+                'sort_order': s.sort_order,
+                'parent_section_id': s.parent_section_id,
+                'test_case_set_id': s.test_case_set_id,
+                'test_case_count': self._get_test_case_count(s.id),
+                'children': [],
+            }
+            for s in sections
+        }
 
         # 建立樹狀結構
         root_sections = []
@@ -107,7 +129,7 @@ class TestCaseSectionService:
                 if section.parent_section_id in section_dict:
                     section_dict[section.parent_section_id]['children'].append(node)
 
-        # 排序子元素
+        # 排序所有層級（根據 sort_order 和 id）
         self._sort_children(root_sections)
 
         return root_sections
@@ -192,12 +214,23 @@ class TestCaseSectionService:
 
             section.sort_order = order_item.get('sort_order', 0)
 
-            # 如果移動到不同的父 Section，需要驗證
-            new_parent_id = order_item.get('parent_section_id')
-            if new_parent_id is not None and new_parent_id != section.parent_section_id:
-                if not self._can_move_to_parent(section.id, new_parent_id, test_case_set_id):
-                    raise ValueError(f"無法移動 Section {section.id} 到父 Section {new_parent_id}")
-                section.parent_section_id = new_parent_id
+            # 如果移動到不同的父 Section，需要驗證並更新層級
+            new_parent_id = self._normalize_parent_id(order_item.get('parent_section_id'))
+
+            if new_parent_id != section.parent_section_id:
+                if new_parent_id is not None:
+                    if not self._can_move_to_parent(section.id, new_parent_id, test_case_set_id):
+                        raise ValueError(f"無法移動 Section {section.id} 到父 Section {new_parent_id}")
+                    parent = self.get_by_id(new_parent_id)
+                    if not parent:
+                        raise ValueError(f"父 Section 不存在: {new_parent_id}")
+                    section.parent_section_id = new_parent_id
+                    section.level = parent.level + 1
+                    self._update_child_levels(section.id)
+                else:
+                    section.parent_section_id = None
+                    section.level = 1
+                    self._update_child_levels(section.id)
 
         self.db.commit()
         return True
@@ -221,9 +254,11 @@ class TestCaseSectionService:
 
             section.parent_section_id = new_parent_id
             section.level = parent.level + 1
+            self._update_child_levels(section.id)
         else:
             section.parent_section_id = None
             section.level = 1
+            self._update_child_levels(section.id)
 
         self.db.commit()
         return section
@@ -249,6 +284,38 @@ class TestCaseSectionService:
 
         return child_ids
 
+    def _normalize_parent_id(self, value):
+        """將輸入的 parent_section_id 轉換為 int 或 None"""
+        if value is None:
+            return None
+        if isinstance(value, str):
+            stripped = value.strip()
+            if stripped == "" or stripped.lower() == "null":
+                return None
+            try:
+                return int(stripped)
+            except ValueError as exc:
+                raise ValueError(f"無效的父 Section ID: {value}") from exc
+        try:
+            return int(value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"無效的父 Section ID: {value}") from exc
+
+    def _update_child_levels(self, section_id: int) -> None:
+        """根據父節點層級遞迴更新所有子節點層級"""
+        root = self.get_by_id(section_id)
+        if not root:
+            return
+        queue = [(root.id, root.level)]
+        while queue:
+            current_id, current_level = queue.pop(0)
+            children = self.db.query(TestCaseSection).filter(
+                TestCaseSection.parent_section_id == current_id
+            ).all()
+            for child in children:
+                child.level = current_level + 1
+                queue.append((child.id, child.level))
+
     def _can_move_to_parent(self, section_id: int, new_parent_id: int, test_case_set_id: int) -> bool:
         """檢查是否可以移動到新的父 Section"""
         # 防止循環參考 (子移到父)
@@ -268,8 +335,14 @@ class TestCaseSectionService:
         return True
 
     def _sort_children(self, nodes: list):
-        """遞迴排序子元素"""
-        nodes.sort(key=lambda x: x['sort_order'])
+        """遞迴排序子元素（按 sort_order, id 排序）"""
+        def sort_key(node):
+            # 先按 sort_order，再按 id 排序，確保順序穩定
+            order = node.get('sort_order')
+            node_id = node.get('id') or 0
+            return (order if order is not None else 999999, node_id)
+
+        nodes.sort(key=sort_key)
         for node in nodes:
             if node.get('children'):
                 self._sort_children(node['children'])

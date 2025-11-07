@@ -1559,6 +1559,32 @@ window.addEventListener('testCaseSetLoaded', (event) => {
     }
 });
 
+window.addEventListener('sectionListUpdated', async (event) => {
+    try {
+        const detail = event?.detail;
+        const updatedSections = detail?.sections;
+        const updatedSetId = detail?.setId;
+        if (!updatedSections || !Array.isArray(updatedSections)) return;
+
+        if (typeof testCaseSectionList !== 'undefined' && testCaseSectionList?.setId && updatedSetId) {
+            if (updatedSetId !== testCaseSectionList.setId) {
+                return;
+            }
+        }
+
+        tcmSectionsTree = updatedSections;
+        rebuildBatchSectionMeta();
+        populateBatchSectionSelect();
+        applyCurrentFiltersAndRender();
+
+        if (detail?.reloadTestCases) {
+            await loadTestCases(false, null, true);
+        }
+    } catch (err) {
+        console.warn('Failed to handle sectionListUpdated:', err);
+    }
+});
+
 function broadcastTestCaseUpdate(testCase, overrides = {}) {
     try {
         const teamId = getTeamIdForCache(true);
