@@ -2343,6 +2343,31 @@ document.addEventListener('DOMContentLoaded', async function() {
     const tcNumber = urlParams.get('tc') || urlParams.get('test_case_number');
     const mode = urlParams.get('mode') || 'preview';
     const openReference = urlParams.get('ref') === '1' || urlParams.get('ref') === 'true';
+    const setId = urlParams.get('set_id') ? parseInt(urlParams.get('set_id')) : null;
+
+    // 如果提供了 set_id，加載該 Set 的 Sections
+    if (setId && activeTeam && activeTeam.id) {
+        try {
+            console.log(`Loading sections for set ${setId}`);
+            const resp = await window.AuthClient.fetch(`/api/teams/${activeTeam.id}/test-case-sets/${setId}`);
+            if (resp.ok) {
+                const setData = await resp.json();
+                console.log('Set data loaded:', setData);
+                // 觸發事件讓 TestCaseSectionList 初始化
+                const event = new CustomEvent('testCaseSetLoaded', {
+                    detail: {
+                        setId: setData.id,
+                        sections: setData.sections || []
+                    }
+                });
+                window.dispatchEvent(event);
+            } else {
+                console.warn(`Failed to load set ${setId}`);
+            }
+        } catch (error) {
+            console.error('Error loading set sections:', error);
+        }
+    }
 
     if (minimal && tcNumber) {
         // 最小模式：不載入列表，直接開啟指定測試案例
@@ -10892,5 +10917,33 @@ async function saveBulkEditChanges() {
     }
 }
 
+</script>
+
+<!-- Test Case Set 和 Section 多語系翻譯 -->
+<script src="/static/js/i18n-test-case-set.js"></script>
+
+<!-- Test Case Set 整合模組 -->
+<script src="/static/js/test-case-set-integration.js"></script>
+
+<!-- Test Case Section List 側邊欄模組 -->
+<script src="/static/js/test-case-section-list.js"></script>
+
+<!-- Test Case 與 Section 整合模組 -->
+<script src="/static/js/test-case-section-integration.js"></script>
+
+<!-- Test Case 和 Section 拖拽功能 -->
+<script src="/static/js/test-case-drag-drop.js"></script>
+
+<!-- 跨 Test Case Set 複製/搬移功能 -->
+<script src="/static/js/test-case-cross-set-ops.js"></script>
+
+<!-- 初始化 Test Case Section List -->
+<script>
+// 立即初始化（不等待 DOMContentLoaded，以確保事件監聽器在事件發送前設置好）
+if (typeof TestCaseSectionList !== 'undefined') {
+    window.testCaseSectionList = new TestCaseSectionList();
+} else {
+    console.warn('TestCaseSectionList class not loaded');
+}
 </script>
 {% endblock %}

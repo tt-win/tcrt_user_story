@@ -81,9 +81,20 @@ async def team_management(request: Request):
 async def audit_logs(request: Request):
     return templates.TemplateResponse("audit_logs.html", {"request": request})
 
+@app.get("/test-case-sets", response_class=HTMLResponse)
+async def test_case_set_list(request: Request):
+    """Test Case Set 選擇頁面"""
+    return templates.TemplateResponse("test_case_set_list.html", {"request": request})
+
 @app.get("/test-case-management", response_class=HTMLResponse)
-async def test_case_management(request: Request):
-    return templates.TemplateResponse("test_case_management.html", {"request": request})
+async def test_case_management(request: Request, set_id: Optional[int] = Query(None)):
+    """Test Case Management 頁面 - 需要先選擇 Set"""
+    # 如果沒有提供 set_id，重定向到 test-case-sets 頁面
+    if set_id is None:
+        from fastapi.responses import RedirectResponse
+        return RedirectResponse(url="/test-case-sets", status_code=303)
+
+    return templates.TemplateResponse("test_case_management.html", {"request": request, "set_id": set_id})
 
 @app.get("/test-run-management", response_class=HTMLResponse)
 async def test_run_management(request: Request):

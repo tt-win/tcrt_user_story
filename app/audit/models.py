@@ -24,8 +24,10 @@ class ActionType(str, Enum):
 class ResourceType(str, Enum):
     """資源類型枚舉"""
     TEAM_SETTING = "team_setting"
-    TEST_RUN = "test_run" 
+    TEST_RUN = "test_run"
     TEST_CASE = "test_case"
+    TEST_CASE_SET = "test_case_set"
+    TEST_CASE_SECTION = "test_case_section"
     USER = "user"
     AUTH = "auth"
     PERMISSION = "permission"

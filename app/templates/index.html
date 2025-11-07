@@ -230,12 +230,12 @@ function renderTeamCards() {
 function selectTeamForTestCases(teamId) {
     const team = teams.find(t => t.id === teamId);
     if (!team) return;
-    
+
     // 儲存選擇的團隊
     if (AppUtils && AppUtils.setCurrentTeam) {
         AppUtils.setCurrentTeam(team);
-        // 直接導向測試案例管理（不顯示 Toast）
-        window.location.href = '/test-case-management';
+        // 先導向到 Test Case Sets 頁面讓用戶選擇 Set（不顯示 Toast）
+        window.location.href = '/test-case-sets';
     }
 }
 
