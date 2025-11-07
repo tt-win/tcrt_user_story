@@ -378,24 +378,26 @@ code.small {
     display: flex;
     flex-direction: column;
     min-height: 0;
-    padding-bottom: calc(var(--footer-height) + 16px);
+    height: 100%;
+    align-self: stretch;
+    padding-bottom: 0;
+    padding-top: 0.15rem;
 }
 
 .section-list-panel {
-    /* Ensure panel fits between fixed header and footer; extra space prevents footer overlap */
-    height: calc(100vh - var(--header-height) - var(--footer-height) - 48px);
-    max-height: calc(
-        100vh - var(--header-height) - var(--footer-height) - 48px
-    );
+    flex: 1 1 auto;
+    min-height: 0;
+    height: 100%;
     display: flex;
     flex-direction: column;
-    margin-bottom: calc(var(--footer-height) + 12px);
+    margin-bottom: 0;
 }
 
 .section-list-content {
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
+    padding: 0.25rem 0.35rem;
 }
 
 .section-list-footer {
@@ -406,13 +408,17 @@ code.small {
 .section-item {
     display: flex;
     align-items: center;
-    gap: 0.5rem;
+    gap: 0.35rem;
     flex-wrap: nowrap;
+    padding: 0.25rem 0.35rem !important;
+    margin-bottom: 0.15rem !important;
+    font-size: 0.9rem;
 }
 
 .section-item .section-name {
     flex: 1 1 auto;
     min-width: 0;
+    font-size: 0.8rem;
 }
 
 .section-item input.form-control {
@@ -424,6 +430,40 @@ code.small {
 
 .section-item .badge {
     flex: 0 0 auto;
+    font-size: 0.65rem;
+    padding: 0.125rem 0.35rem;
+}
+
+.section-list-panel .card-header,
+.section-list-panel .card-footer {
+    padding: 0.4rem 0.5rem;
+}
+
+.section-list-panel .card-header h6 {
+    font-size: 0.95rem;
+    margin: 0;
+}
+
+.section-list-panel .card-footer .btn {
+    padding: 0.3rem 0.45rem;
+    font-size: 0.8rem;
+}
+
+.section-list-content ul {
+    margin: 0;
+    padding-left: 0;
+}
+
+.section-list-content .section-node {
+    margin-bottom: 0.1rem;
+}
+
+.section-list-content .section-node > .section-item {
+    font-size: 0.8rem;
+}
+
+.section-list-content .section-node .section-item i {
+    font-size: 0.8rem;
 }
 
 /* Test Case 資料列樣式 */
@@ -749,7 +789,7 @@ table td:nth-child(2) {
     position: fixed;
     left: 0;
     right: 0;
-    bottom: 0;
+    bottom: calc(var(--footer-height) + 1.5rem);
     z-index: 1040; /* 低於語言切換按鈕 (1070) */
     background-color: transparent;
     padding: 0.25rem 0.75rem;

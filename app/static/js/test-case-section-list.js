@@ -403,6 +403,7 @@ class TestCaseSectionList {
 
     const flattenSections = (sections, level = 0) => {
       sections.forEach((section) => {
+        const isUnassigned = this.isUnassignedSection(section);
         if (section.level < 5) {
           // 最多 5 層
           // 根據層級生成視覺符號
@@ -411,9 +412,12 @@ class TestCaseSectionList {
             // 使用階層符號：| 表示連接，－ 表示層級
             prefix = "┣ ".repeat(level);
           }
-          options.push(
-            `<option value="${section.id}">${prefix}${this.escapeHtml(section.name)}</option>`,
-          );
+
+          if (!isUnassigned) {
+            options.push(
+              `<option value="${section.id}">${prefix}${this.escapeHtml(section.name)}</option>`,
+            );
+          }
         }
         if (section.child_sections && section.child_sections.length > 0) {
           flattenSections(section.child_sections, level + 1);
@@ -439,6 +443,8 @@ class TestCaseSectionList {
       alert("區段名稱不可空白");
       return;
     }
+
+    // Unassigned 已不會出現在父區段選單，這裡不需再次檢查
 
     try {
       // 獲取 team_id 和當前 set_id
@@ -615,6 +621,11 @@ class TestCaseSectionList {
       }
     }
     return null;
+  }
+
+  isUnassignedSection(section) {
+    if (!section || !section.name) return false;
+    return section.name.trim().toLowerCase() === "unassigned";
   }
 
   /**
