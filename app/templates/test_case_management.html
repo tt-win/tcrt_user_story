@@ -175,11 +175,17 @@ html, body { height: 100%; overflow: hidden; }
 
 #sectionListSidebarCol {
   width: 250px;
-  overflow: hidden;
+  overflow: visible;
   flex: 0 0 250px;
   min-height: 0;
   display: flex;
   flex-direction: column;
+  align-items: stretch;
+}
+
+#sectionListPanel {
+  flex: 1 !important;
+  min-height: 0 !important;
 }
 
 .hover-editable {
