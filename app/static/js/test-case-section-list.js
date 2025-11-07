@@ -61,13 +61,13 @@ class TestCaseSectionList {
     if (!testCasesPage.dataset.twoColumnLayout) {
       testCasesPage.dataset.twoColumnLayout = 'true';
 
-      // 改變 testCasesPage 為 row
-      testCasesPage.classList.add('row', 'g-3');
+      // testCasesPage 已由 CSS 設置為 flex row 布局
 
       // 建立左列包裝器
       const mainCol = document.createElement('div');
       mainCol.id = 'testCasesMainCol';
-      mainCol.className = 'col-12 col-lg-10';
+      // 不使用 bootstrap col classes，改用 pure flex
+      // 寬度由 CSS 的 flex: 1 控制
 
       // 移動所有現有子節點到左列
       const children = Array.from(testCasesPage.children);
@@ -78,7 +78,7 @@ class TestCaseSectionList {
       }
 
       testCasesPage.appendChild(mainCol);
-      console.log('[SectionList] Two column layout initialized');
+      console.log('[SectionList] Two column layout initialized with flex styles');
     }
 
     // 檢查或建立側邊欄列
@@ -90,12 +90,13 @@ class TestCaseSectionList {
       console.log('[SectionList] Sidebar column created');
     }
 
-    sidebarCol.className = 'col-12 col-lg-2 d-flex flex-column';
+    // 不使用 bootstrap col classes，改用 pure flex
+    // 寬度和高度由 CSS 的 flex: 0 0 auto 和 overflow-y: auto 控制
 
     // 構建側邊欄面板 HTML
     const panelHtml = `
-      <div id="sectionListPanel" class="card sticky-top section-list-panel" style="top: calc(var(--header-height) + 8px); bottom: calc(var(--footer-height) + 16px); display: flex; flex-direction: column;">
-        <div class="card-header bg-light d-flex justify-content-between align-items-center">
+      <div id="sectionListPanel" class="card section-list-panel" style="display: flex; flex-direction: column; height: 100%; margin: 0; border-radius: 4px;">
+        <div class="card-header bg-light d-flex justify-content-between align-items-center" style="flex-shrink: 0;">
           <h6 class="mb-0">
             <i class="fas fa-folder-tree"></i> 區段列表
           </h6>
@@ -103,7 +104,7 @@ class TestCaseSectionList {
         <div id="sectionListContent" class="card-body p-0 section-list-content" style="flex: 1; overflow-y: auto; min-height: 0;">
           <!-- Section 樹會插入這裡 -->
         </div>
-        <div class="card-footer section-list-footer">
+        <div class="card-footer section-list-footer" style="flex-shrink: 0;">
           <button class="btn btn-sm btn-primary w-100" onclick="testCaseSectionList.showCreateSectionModal()">
             <i class="fas fa-plus"></i> 新增區段
           </button>

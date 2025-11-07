@@ -128,7 +128,30 @@ function setupMarkdownHotkeys(textarea) {
 /* 限定本頁：關閉整頁滾動，只讓列表區域滾動 */
 html, body { height: 100%; overflow: hidden; }
 /* testCasesPage 高度 = 視口高度 - header(64px) - footer(52px) - footer padding(8px) */
-#testCasesPage { height: calc(100vh - 124px); overflow: hidden; display: flex; flex-direction: column; margin-top: 64px; }
+#testCasesPage {
+  height: calc(100vh - 124px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: row;
+  gap: 0.75rem;
+  margin-top: 64px;
+  padding: 0;
+}
+
+#testCasesMainCol {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+#sectionListSidebarCol {
+  width: 250px;
+  overflow-y: auto;
+  flex: 0 0 250px;
+  min-height: 0;
+  padding: 0 0.75rem 0 0;
+}
 
 .hover-editable {
     cursor: pointer;
