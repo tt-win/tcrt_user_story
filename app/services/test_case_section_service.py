@@ -92,6 +92,9 @@ class TestCaseSectionService:
 
     def get_tree_structure(self, test_case_set_id: int) -> list:
         """取得 Section 樹狀結構"""
+        from sqlalchemy import func
+        from ..models.test_case_local import TestCaseLocal
+
         # 按照 sort_order, id 順序取得所有 sections
         sections = (
             self.db.query(TestCaseSection)
@@ -103,6 +106,20 @@ class TestCaseSectionService:
             .all()
         )
 
+        # 一次性查詢所有 section 的 test case 數量（避免 N+1 查詢）
+        test_case_counts = {}
+        if sections:
+            section_ids = [s.id for s in sections]
+            counts_result = (
+                self.db.query(
+                    TestCaseLocal.test_case_section_id,
+                    func.count(TestCaseLocal.id).label('count')
+                ).filter(
+                    TestCaseLocal.test_case_section_id.in_(section_ids)
+                ).group_by(TestCaseLocal.test_case_section_id).all()
+            )
+            test_case_counts = {section_id: count for section_id, count in counts_result}
+
         # 建立字典以便查詢
         section_dict = {
             s.id: {
@@ -113,7 +130,7 @@ class TestCaseSectionService:
                 'sort_order': s.sort_order,
                 'parent_section_id': s.parent_section_id,
                 'test_case_set_id': s.test_case_set_id,
-                'test_case_count': self._get_test_case_count(s.id),
+                'test_case_count': test_case_counts.get(s.id, 0),
                 'children': [],
             }
             for s in sections
