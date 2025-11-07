@@ -92,9 +92,6 @@ class TestCaseSectionService:
 
     def get_tree_structure(self, test_case_set_id: int) -> list:
         """取得 Section 樹狀結構"""
-        from sqlalchemy import func
-        from ..models.test_case_local import TestCaseLocal
-
         # 按照 sort_order, id 順序取得所有 sections
         sections = (
             self.db.query(TestCaseSection)

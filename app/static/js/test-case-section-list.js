@@ -1515,18 +1515,37 @@ class TestCaseSectionList {
       // 重建 parent_section_id 關係
       const payload = [];
       
-      for (let i = 0; i < this.flatSections.length; i++) {
-        const section = this.flatSections[i];
+      // 過濾掉可能的無效 sections
+      const validSections = this.flatSections.filter(section => {
+        if (!section || !section.id) {
+          console.warn('[SectionList] Skipping invalid section:', section);
+          return false;
+        }
+        if (this.isUnassignedSection(section)) {
+          console.log('[SectionList] Skipping Unassigned section');
+          return false;
+        }
+        return true;
+      });
+      
+      console.log('[SectionList] Valid sections for reorder:', validSections.length);
+      
+      for (let i = 0; i < validSections.length; i++) {
+        const section = validSections[i];
         
         // 尋找正確的 parent_section_id
         let parentId = null;
         if (section.level > 1) {
           // 向上找第一個層級比自己少1的作為父節點
           for (let j = i - 1; j >= 0; j--) {
-            if (this.flatSections[j].level === section.level - 1) {
-              parentId = this.flatSections[j].id;
+            if (validSections[j].level === section.level - 1) {
+              parentId = validSections[j].id;
               break;
             }
+          }
+          
+          if (!parentId) {
+            console.warn(`[SectionList] Could not find parent for section ${section.name} (level ${section.level})`);
           }
         }
 
@@ -1549,7 +1568,9 @@ class TestCaseSectionList {
       );
 
       if (!response.ok) {
-        throw new Error('Failed to save section order');
+        const errorText = await response.text();
+        console.error('[SectionList] Reorder failed:', response.status, errorText);
+        throw new Error(`Failed to save section order: ${response.status} - ${errorText}`);
       }
 
       // 關閉 modal

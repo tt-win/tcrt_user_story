@@ -1045,7 +1045,7 @@ body {
                 <!-- TCG 單號批次設定 -->
                 <div class="mb-3">
                     <div class="form-check mb-2">
-                        <input class="form-check-input" type="checkbox" id="batchModifyTCG" checked>
+                        <input class="form-check-input" type="checkbox" id="batchModifyTCG">
                         <label class="form-check-label" for="batchModifyTCG">
                             <strong data-i18n="testCase.batchSetTCG">批次設定 TCG 單號</strong>
                         </label>
@@ -1543,6 +1543,9 @@ let tcmSectionMetaMap = new Map();
 let tcmSectionOrder = [];
 let tcmUnassignedSectionIds = new Set();
 
+// 調試模式開關（在控制台設置 window.DEBUG_SECTIONS = true 來啟用詳細日誌）
+window.DEBUG_SECTIONS = false;
+
 window.addEventListener('testCaseSetLoaded', (event) => {
     try {
         const sections = event?.detail?.sections;
@@ -1564,20 +1567,33 @@ window.addEventListener('sectionListUpdated', async (event) => {
         const detail = event?.detail;
         const updatedSections = detail?.sections;
         const updatedSetId = detail?.setId;
+        
+        console.log('[TCM] sectionListUpdated event received:', {
+            sectionsCount: updatedSections?.length,
+            setId: updatedSetId,
+            reloadTestCases: detail?.reloadTestCases
+        });
+        
         if (!updatedSections || !Array.isArray(updatedSections)) return;
 
         if (typeof testCaseSectionList !== 'undefined' && testCaseSectionList?.setId && updatedSetId) {
             if (updatedSetId !== testCaseSectionList.setId) {
+                console.log('[TCM] Ignoring sectionListUpdated: set ID mismatch');
                 return;
             }
         }
 
         tcmSectionsTree = updatedSections;
+        console.log('[TCM] Updated tcmSectionsTree with', tcmSectionsTree.length, 'sections');
+        
         rebuildBatchSectionMeta();
         populateBatchSectionSelect();
+        
+        // 強制重新渲染測試案例列表（使用新的 section 樹）
         applyCurrentFiltersAndRender();
 
         if (detail?.reloadTestCases) {
+            console.log('[TCM] Reloading test cases...');
             await loadTestCases(false, null, true);
         }
     } catch (err) {
@@ -1852,26 +1868,31 @@ function groupTestCasesBySection(testCases) {
         const flattenAllSections = (sections, result = []) => {
             for (const section of sections) {
                 result.push(section);
-                if (section.children && section.children.length > 0) {
-                    flattenAllSections(section.children, result);
+                // 檢查多種可能的子節點屬性名稱
+                const children = section.children || section.child_sections || [];
+                if (Array.isArray(children) && children.length > 0) {
+                    flattenAllSections(children, result);
                 }
             }
             return result;
         };
         
         const allSections = flattenAllSections(tcmSectionsTree);
+        console.log('[groupTestCasesBySection] All sections found:', allSections.length, allSections);
         
-        // 為每個 section 創建一個 group
+        // 為每個 section 創建一個 group（使用最新的 section 數據）
         for (const section of allSections) {
             const sectionId = section.id;
             if (!grouped[sectionId]) {
+                const sectionPath = buildSectionPath(section, allSections);
                 grouped[sectionId] = {
                     sectionId,
                     sectionName: section.name || '(未命名)',
-                    sectionPath: buildSectionPath(section, allSections),
+                    sectionPath: sectionPath,
                     sectionLevel: section.level || 1,
                     testCases: []
                 };
+                console.log(`[groupTestCasesBySection] Created group for section ${sectionId}:`, grouped[sectionId]);
             }
         }
     }
@@ -1881,6 +1902,8 @@ function groupTestCasesBySection(testCases) {
         const sectionId = tc.test_case_section_id ?? UNASSIGNED_SECTION_ID;
         if (!grouped[sectionId]) {
             // 如果 test case 的 section 不在 sections tree 中，仍然創建一個 group
+            // 但這通常不應該發生，除非數據不同步
+            console.warn('[groupTestCasesBySection] Test case references unknown section:', sectionId, tc);
             grouped[sectionId] = {
                 sectionId,
                 sectionName: tc.section_name || (sectionId === UNASSIGNED_SECTION_ID ? 'Unassigned' : '(未命名)'),
@@ -1891,6 +1914,8 @@ function groupTestCasesBySection(testCases) {
         }
         grouped[sectionId].testCases.push(tc);
     }
+
+    console.log('[groupTestCasesBySection] Final grouped sections:', Object.keys(grouped).length, grouped);
 
     // 排序每個 section 內的 test cases
     Object.values(grouped).forEach(group => {
@@ -1905,11 +1930,15 @@ function groupTestCasesBySection(testCases) {
 
 // 輔助函數：為 section 建立完整路徑
 function buildSectionPath(section, allSections) {
+    if (!section) return '';
+    
     const path = [];
     let current = section;
+    const visited = new Set(); // 防止循環引用
     
-    while (current) {
-        path.unshift(current.name);
+    while (current && !visited.has(current.id)) {
+        visited.add(current.id);
+        path.unshift(current.name || '(未命名)');
         
         if (current.parent_section_id) {
             current = allSections.find(s => s.id === current.parent_section_id);
@@ -1918,7 +1947,12 @@ function buildSectionPath(section, allSections) {
         }
     }
     
-    return path.join('/');
+    const fullPath = path.join('/');
+    // 只在首次建立或有變化時輸出日誌
+    if (window.DEBUG_SECTIONS) {
+        console.log(`[buildSectionPath] Section ${section.id} (${section.name}): ${fullPath}, level=${section.level}, parent=${section.parent_section_id}`);
+    }
+    return fullPath;
 }
 
 function determineSectionLevel(testCase, sectionId) {
@@ -6368,7 +6402,7 @@ function openTestCaseBatchModifyModal() {
     document.getElementById('testCaseBatchModifyCount').textContent = selectedTestCases.size;
 
     // 重置表單
-    document.getElementById('batchModifyTCG').checked = true;
+    document.getElementById('batchModifyTCG').checked = false;
     document.getElementById('batchTCGInput').value = '';
     document.getElementById('batchModifyPriority').checked = false;
     document.getElementById('batchPrioritySelect').value = '';
@@ -9106,13 +9140,16 @@ function rebuildBatchSectionMeta() {
                     tcmSectionOrder.push(String(meta.id));
                 }
             }
-            if (Array.isArray(section?.child_sections) && section.child_sections.length > 0) {
-                traverse(section.child_sections, depth + 1, currentPath);
+            // 檢查多種可能的子節點屬性名稱
+            const children = section?.children || section?.child_sections || [];
+            if (Array.isArray(children) && children.length > 0) {
+                traverse(children, depth + 1, currentPath);
             }
         });
     }
 
     traverse(tcmSectionsTree, 0, '');
+    console.log('[rebuildBatchSectionMeta] Built section order:', tcmSectionOrder);
     const seenOrder = new Set();
     tcmSectionOrder = tcmSectionOrder.filter(id => {
         if (seenOrder.has(id)) return false;
@@ -9143,13 +9180,16 @@ function buildBatchSectionOptionsHtml() {
                 const prefix = depth > 0 ? '┣ '.repeat(depth) : '';
                 parts.push(`<option value="${section.id}">${prefix}${escapeHtml(name)}</option>`);
             }
-            if (Array.isArray(section?.child_sections) && section.child_sections.length > 0) {
-                flatten(section.child_sections, depth + 1);
+            // 檢查多種可能的子節點屬性名稱
+            const children = section?.children || section?.child_sections || [];
+            if (Array.isArray(children) && children.length > 0) {
+                flatten(children, depth + 1);
             }
         });
     }
 
     flatten(tcmSectionsTree, 0);
+    console.log('[buildBatchSectionOptionsHtml] Generated', parts.length, 'section options');
     return parts.join('');
 }
 
