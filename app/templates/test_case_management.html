@@ -137,7 +137,7 @@ html, body { height: 100%; overflow: hidden; }
   overflow: hidden;
   display: flex;
   flex-direction: row;
-  gap: 0;
+  gap: 0.75rem;
   padding: 0 0.75rem;
   box-sizing: border-box;
 }
@@ -149,12 +149,13 @@ html, body { height: 100%; overflow: hidden; }
   min-width: 0;
   display: flex;
   flex-direction: column;
+  gap: 0.75rem;
 }
 
 /* searchFilterCard 自动调整高度，不占用过多空间 */
 #testCasesMainCol #searchFilterCard {
   flex: 0 0 auto;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0;
 }
 
 /* testCasesCard 填充剩余空间 */
@@ -163,6 +164,8 @@ html, body { height: 100%; overflow: hidden; }
   min-height: 0;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  margin-bottom: 0;
 }
 
 #testCasesCard .card-body {
@@ -180,11 +183,14 @@ html, body { height: 100%; overflow: hidden; }
   min-height: 0;
   display: flex;
   flex-direction: column;
+  align-self: stretch;
+  height: 100%;
 }
 
 #sectionListPanel {
   flex: 1 !important;
   min-height: 0 !important;
+  height: 100% !important;
 }
 
 .hover-editable {
@@ -348,6 +354,7 @@ html, body { height: 100%; overflow: hidden; }
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+    padding-bottom: calc(var(--footer-height) + 3rem);
 }
 
 /* 讓標題列固定在列表容器頂部，不跟著內容滾動，並恢復底色與陰影層次 */
@@ -455,12 +462,12 @@ html, body { height: 100%; overflow: hidden; }
         max-width: 95vw !important;
         width: 95vw !important;
     }
-    
+
     #testCaseModal .col-md-5 {
         flex: 0 0 60%;
         max-width: 60%;
     }
-    
+
     #testCaseModal .col-md-3 {
         flex: 0 0 40%;
         max-width: 40%;
@@ -476,7 +483,7 @@ html, body { height: 100%; overflow: hidden; }
         margin: 0 !important;
         border-radius: 0 !important;
     }
-    
+
     #testCaseModal .col-md-2,
     #testCaseModal .col-md-3,
     #testCaseModal .col-md-5 {
@@ -484,7 +491,7 @@ html, body { height: 100%; overflow: hidden; }
         max-width: 100%;
         margin-bottom: 1rem;
     }
-    
+
     .tcg-tags-container {
         max-height: 80px !important;
     }
@@ -537,7 +544,7 @@ html, body { height: 100%; overflow: hidden; }
             <h5 class="card-title mb-3">
                 <i class="fas fa-spinner fa-spin me-2"></i><span data-i18n="common.loading">載入中...</span>
             </h5>
-            
+
             <!-- Test Case 載入進度 -->
             <div class="mb-3">
                 <div class="d-flex justify-content-between align-items-center mb-1">
@@ -548,7 +555,7 @@ html, body { height: 100%; overflow: hidden; }
                     <div class="progress-bar bg-primary" id="testCaseProgressBar" role="progressbar" style="width: 0%"></div>
                 </div>
             </div>
-            
+
             <!-- TCG 快取載入進度 -->
             <div class="mb-2">
                 <div class="d-flex justify-content-between align-items-center mb-1">
@@ -699,7 +706,7 @@ html, body { height: 100%; overflow: hidden; }
                 <form id="testCaseForm" style="height: 100%; display: flex; flex-direction: column;">
                     <input type="hidden" id="testCaseId" name="id">
                     <input type="hidden" id="tcg" name="tcg">
-                    
+
                     <!-- 固定區域：基本資訊 -->
                     <div class="fixed-section" style="flex-shrink: 0; padding: 1rem; border-bottom: 1px solid #dee2e6; background: #f8f9fa;">
                         <div class="row mb-3">
@@ -722,15 +729,15 @@ html, body { height: 100%; overflow: hidden; }
                             <div class="col-md-3">
                                 <label for="tcg" class="form-label d-flex align-items-center">
                                     TCG
-                                    <button type="button" class="btn-icon-only" 
-                                            title="檢視 JIRA Ticket 資訊" 
+                                    <button type="button" class="btn-icon-only"
+                                            title="檢視 JIRA Ticket 資訊"
                                             data-i18n-title="tooltips.viewJiraInfo"
                                             onclick="showTCGPreviewForModal()"
                                             style="border: none; background: none; padding: 0; margin-left: 8px; color: #6c757d; cursor: pointer;">
                                         <i class="fas fa-eye"></i>
                                     </button>
                                 </label>
-                                <div class="tcg-tags-container" id="modalTcgContainer" 
+                                <div class="tcg-tags-container" id="modalTcgContainer"
                                      style="min-height: 32px; padding: 4px 8px; border: 1px solid #dee2e6; border-radius: 4px; background-color: #fff; cursor: text; display: flex; align-items: center; flex-wrap: wrap; gap: 4px; position: relative; max-height: 120px; overflow-y: auto;"
                                      data-permission-required="update">
                                     <!-- TCG 標籤會顯示在這裡 -->
@@ -741,9 +748,9 @@ html, body { height: 100%; overflow: hidden; }
 
                     <!-- 可滾動內容區域 -->
                     <div class="scrollable-content" style="flex: 1; overflow-y: auto; padding: 1rem;">
-                        
+
                         <!-- 測試內容三個區域 -->
-                        
+
                         <!-- 測試內容三個區域 - 統一網格佈局 -->
                         <div class="row">
                             <!-- Precondition 區域 -->
@@ -793,8 +800,8 @@ html, body { height: 100%; overflow: hidden; }
                                                         </button>
                                                     </div>
                                                 </div>
-                                                <textarea id="precondition" name="precondition" class="markdown-textarea" rows="4" 
-                                                        data-i18n-placeholder="testCase.preconditionsPlaceholder" 
+                                                <textarea id="precondition" name="precondition" class="markdown-textarea" rows="4"
+                                                        data-i18n-placeholder="testCase.preconditionsPlaceholder"
                                                         style="border: none; border-radius: 0; height: calc(100% - 32px); resize: none; outline: none; padding: 0.375rem 0.75rem; width: 100%; box-sizing: border-box; overflow-y: auto;"></textarea>
                                             </div>
                                         </div>
@@ -808,7 +815,7 @@ html, body { height: 100%; overflow: hidden; }
                                     </div>
                                 </div>
                             </div>
-                            
+
                             <!-- 測試步驟區域 -->
                             <div class="col-12 mb-4">
                                 <label for="test_steps" class="form-label">
@@ -854,8 +861,8 @@ html, body { height: 100%; overflow: hidden; }
                                                         </button>
                                                     </div>
                                                 </div>
-                                                <textarea id="test_steps" name="test_steps" class="markdown-textarea" rows="6" 
-                                                        data-i18n-placeholder="testCase.stepsPlaceholder" 
+                                                <textarea id="test_steps" name="test_steps" class="markdown-textarea" rows="6"
+                                                        data-i18n-placeholder="testCase.stepsPlaceholder"
                                                         style="border: none; border-radius: 0; height: calc(100% - 32px); resize: none; outline: none; padding: 0.375rem 0.75rem; width: 100%; box-sizing: border-box; overflow-y: auto;"></textarea>
                                             </div>
                                         </div>
@@ -869,7 +876,7 @@ html, body { height: 100%; overflow: hidden; }
                                     </div>
                                 </div>
                             </div>
-                            
+
                             <!-- 預期結果區域 -->
                             <div class="col-12 mb-4">
                                 <label for="expected_result" class="form-label">
@@ -915,8 +922,8 @@ html, body { height: 100%; overflow: hidden; }
                                                         </button>
                                                     </div>
                                                 </div>
-                                                <textarea id="expected_result" name="expected_result" class="markdown-textarea" rows="4" 
-                                                        data-i18n-placeholder="testCase.expectedResultsPlaceholder" 
+                                                <textarea id="expected_result" name="expected_result" class="markdown-textarea" rows="4"
+                                                        data-i18n-placeholder="testCase.expectedResultsPlaceholder"
                                                         style="border: none; border-radius: 0; height: calc(100% - 32px); resize: none; outline: none; padding: 0.375rem 0.75rem; width: 100%; box-sizing: border-box; overflow-y: auto;"></textarea>
                                             </div>
                                         </div>
@@ -931,13 +938,13 @@ html, body { height: 100%; overflow: hidden; }
                                 </div>
                             </div>
                         </div>
-                        
+
                         <!-- 附件區域 -->
                         <div class="mb-3">
                             <label for="attachmentUpload" class="form-label">
                                 <i class="fas fa-paperclip me-2"></i><span data-i18n="form.attachments">附件</span>
                             </label>
-                            <input type="file" class="form-control" id="attachmentUpload" multiple 
+                            <input type="file" class="form-control" id="attachmentUpload" multiple
                                    accept=".jpg,.jpeg,.png,.gif,.pdf,.doc,.docx,.xls,.xlsx,.txt">
                             <div class="form-text" data-i18n="form.attachmentHint">支援圖片、PDF、Office 文件，單檔最大 10MB</div>
                             <div id="attachmentsList" class="mt-2">
@@ -945,7 +952,7 @@ html, body { height: 100%; overflow: hidden; }
                             </div>
                         </div>
                     </div>
-                    
+
                     <!-- 固定按鈕區域 -->
                     <div class="fixed-buttons" style="flex-shrink: 0; padding: 1rem; border-top: 1px solid #dee2e6; background: #ffffff;">
                         <div class="d-flex justify-content-between align-items-center">
@@ -1001,7 +1008,7 @@ html, body { height: 100%; overflow: hidden; }
                     <strong id="testCaseBatchModifyCount">0</strong>
                     <span data-i18n="testCase.itemsApplyChanges">個測試案例套用以下變更：</span>
                 </p>
-                
+
                 <!-- TCG 單號批次設定 -->
                 <div class="mb-3">
                     <div class="form-check mb-2">
@@ -1016,14 +1023,14 @@ html, body { height: 100%; overflow: hidden; }
                         <!-- 隱藏欄位：儲存多選值，以逗號+空白串接，沿用既有提交流程 -->
                         <input type="hidden" id="batchTCGInput" value="">
                         <!-- Dropdown 區塊（與列表一致） -->
-                        <div id="batchTCGDropdown" 
+                        <div id="batchTCGDropdown"
                              style="position: fixed; z-index: 1070; max-height: 220px; overflow-y: auto; display: none; background: white; border: 1px solid #ced4da; border-radius: 0.375rem; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
                             <div class="p-2 text-muted small" data-i18n="testCase.tcgSearchHint">開始輸入以搜尋 TCG...</div>
                         </div>
                     </div>
                     <small class="text-muted" data-i18n="testCase.tcgClearHint">留空可清除 TCG 關聯</small>
                 </div>
-                
+
                 <!-- 優先級批次設定 -->
                 <div class="mb-3">
                     <div class="form-check mb-2">
@@ -1039,7 +1046,7 @@ html, body { height: 100%; overflow: hidden; }
                         <option value="Low" data-i18n="testCase.priorityLow">低</option>
                     </select>
                 </div>
-                
+
                 <div class="alert alert-info" role="alert">
                     <i class="fas fa-info-circle me-2"></i>
                     <span data-i18n="testCase.batchModifyNote">只會套用已勾選的項目，空白值將不會變更現有資料。</span>
@@ -1121,7 +1128,7 @@ html, body { height: 100%; overflow: hidden; }
                         </div>
                     </div>
                 </div>
-                
+
                 <!-- 選取統計：移除顯示數量 -->
 
                 <!-- 列表 -->
@@ -1210,19 +1217,19 @@ html, body { height: 100%; overflow: hidden; }
                         <a href="/static/samples/bulk_test_cases_sample.csv" class="link-dark text-decoration-underline" download data-i18n="testCase.bulkText.sampleLink">下載範例 CSV</a>
                     </div>
                 </div>
-                
+
                 <!-- 文字輸入區 -->
                 <div class="mb-3">
-                    <textarea 
-                        id="bulkTextInput" 
-                        class="form-control font-monospace" 
-                        rows="14" 
+                    <textarea
+                        id="bulkTextInput"
+                        class="form-control font-monospace"
+                        rows="14"
                         data-i18n-placeholder="testCase.bulkText.placeholder"
                         placeholder="TC-1001,登入驗證,\"確認測試帳號存在\",\"1. 開啟登入頁; 2. 輸入正確帳密\",\"顯示主控台\",High
 TC-1002,錯誤密碼流程,,輸入錯誤密碼,顯示錯誤訊息,Low
 TC-1003,API 健康檢查,\"服務已啟動\",\"發送 GET /health\",\"回傳 200\",Medium"></textarea>
                 </div>
-                
+
                 <!-- 狀態列 -->
                 <div class="d-flex justify-content-between align-items-center">
                     <div id="bulkTextStatus" class="text-muted small">
@@ -1232,7 +1239,7 @@ TC-1003,API 健康檢查,\"服務已啟動\",\"發送 GET /health\",\"回傳 200
                         <!-- 顯示驗證錯誤 -->
                     </div>
                 </div>
-                
+
                 <!-- 進度條（建立時顯示） -->
                 <div id="bulkProgress" style="display:none" class="mt-3">
                     <div class="d-flex justify-content-between align-items-center mb-1">
@@ -1333,7 +1340,7 @@ TC-1003,API 健康檢查,\"服務已啟動\",\"發送 GET /health\",\"回傳 200
                         </div>
                     </div>
                 </div>
-                
+
                 <!-- 表格容器 -->
                 <div class="bulk-edit-grid-container">
                     <table class="bulk-edit-grid" id="bulkEditGrid">
@@ -2015,7 +2022,7 @@ function updateTestCaseInCache(testCase) {
                 if (index < 0) {
                     index = data.testCases.findIndex(tc => tc.record_id === testCase.record_id);
                 }
-                
+
                 if (index >= 0) {
                     // 保留原本的 record_id（Lark ID），但更新其他欄位
                     const originalRecordId = data.testCases[index].record_id;
@@ -2024,11 +2031,11 @@ function updateTestCaseInCache(testCase) {
                     console.log(`測試案例快取已更新: ${testCase.test_case_number}`);
                     console.debug('[CACHE] UPDATE list item', { teamId, cacheKey, testCase: testCase.test_case_number, originalRecordId });
                 }
-                else { 
-                    console.debug('[CACHE] UPDATE skipped: record not found in cache list', { 
-                        teamId, 
-                        searchedBy: testCase.test_case_number || testCase.record_id 
-                    }); 
+                else {
+                    console.debug('[CACHE] UPDATE skipped: record not found in cache list', {
+                        teamId,
+                        searchedBy: testCase.test_case_number || testCase.record_id
+                    });
                 }
             }
             else { console.debug('[CACHE] UPDATE skipped: malformed cache payload', { teamId }); }
@@ -2111,13 +2118,13 @@ async function applyTestCaseManagementPermissions() {
             console.warn('AuthClient not available, skipping permission check');
             return;
         }
-        
+
         const resp = await window.AuthClient.fetch('/api/permissions/ui-config?page=test_case_management');
         if (!resp.ok) {
             console.warn('Failed to fetch UI permissions');
             return;
         }
-        
+
         const config = await resp.json();
         const permissions = config.components ? { ...config.components } : {};
 
@@ -2158,12 +2165,12 @@ async function applyTestCaseManagementPermissions() {
         // Header 區按鈕控制
         setElementVisibility('addTestCaseBtn', permissions.addTestCaseBtn);
         setElementVisibility('bulkModeDropdownGroup', permissions.bulkModeDropdownGroup);
-        
+
         // Modal 按鈕控制
         setElementVisibility('saveTestCaseBtn', permissions.saveTestCaseBtn);
         setElementVisibility('saveAndAddNextBtn', permissions.saveAndAddNextBtn);
         setElementVisibility('cloneAndAddNextBtn', permissions.cloneAndAddNextBtn);
-        
+
         // 模式切換按鈕控制
         if (permissions.splitModeBtn) {
             setElementVisibility('modeToggleGroup', true);
@@ -2179,7 +2186,7 @@ async function applyTestCaseManagementPermissions() {
             const cancelBtn = document.querySelector('[data-bs-dismiss="modal"][data-i18n="common.cancel"]');
             if (cancelBtn) cancelBtn.style.display = 'none';
         }
-        
+
         // TCG 編輯權限控制
         const tcgContainer = document.getElementById('modalTcgContainer');
         if (tcgContainer) {
@@ -2193,12 +2200,12 @@ async function applyTestCaseManagementPermissions() {
                 tcgContainer.style.pointerEvents = 'none';
             }
         }
-        
+
         // 附件上傳權限控制
         const attachmentUpload = document.getElementById('attachmentUpload');
         const attachmentLabel = document.querySelector('label[for="attachmentUpload"]');
         const attachmentHelp = attachmentUpload ? attachmentUpload.nextElementSibling : null;
-        
+
         if (permissions.attachmentUpload) {
             // 有上傳權限：顯示上傳控制項
             setElementVisibility('attachmentUpload', true);
@@ -2210,7 +2217,7 @@ async function applyTestCaseManagementPermissions() {
             if (attachmentLabel) attachmentLabel.style.display = 'none';
             if (attachmentHelp) attachmentHelp.style.display = 'none';
         }
-        
+
         // 批次操作工具控制
         const batchToolbar = document.getElementById('batchInlineToolbar');
         if (!permissions.batchInlineToolbar) {
@@ -2232,10 +2239,10 @@ async function applyTestCaseManagementPermissions() {
             setElementVisibility('batchDeleteBtn', permissions.batchDeleteBtn);
             updateBatchToolbar();
         }
-        
+
         // 儲存權限狀態供後續使用
         window._testCasePermissions = permissions;
-        
+
     } catch (error) {
         console.error('Apply test case management permissions failed:', error);
     }
@@ -2299,7 +2306,7 @@ function disableEditingFeatures() {
                 input.style.cursor = 'not-allowed';
             }
         });
-        
+
         // 停用 TCG 編輯容器，但保留預覽功能
         const tcgContainer = document.getElementById('modalTcgContainer');
         if (tcgContainer) {
@@ -2307,7 +2314,7 @@ function disableEditingFeatures() {
             // 不設定 pointerEvents = 'none'，保留 TCG hover 預覽功能
             tcgContainer.classList.add('tcg-readonly');
         }
-        
+
         // 隱藏 Markdown 工具列
         const toolbars = modal.querySelectorAll('.markdown-toolbar');
         toolbars.forEach(toolbar => {
@@ -2324,21 +2331,21 @@ function renderTestCaseActions(testCase) {
             <button class="btn btn-sm btn-primary" onclick="showTestCaseModal(testCases.find(tc => tc.record_id === '${testCase.record_id}'))" data-i18n-title="common.view">
                 <i class="fas fa-eye"></i>
             </button>`;
-    
+
     if (permissions.testCaseActionCopy) {
         actionsHtml += `
             <button class="btn btn-sm btn-secondary" onclick="cloneTestCase('${testCase.record_id}')" data-i18n-title="common.copy">
                 <i class="fas fa-copy"></i>
             </button>`;
     }
-    
+
     if (permissions.testCaseActionDelete) {
         actionsHtml += `
             <button class="btn btn-sm btn-danger" onclick="deleteTestCase('${testCase.record_id}')" data-i18n-title="common.delete">
                 <i class="fas fa-trash"></i>
             </button>`;
     }
-    
+
     actionsHtml += `</div>`;
     return actionsHtml;
 }
@@ -2346,7 +2353,7 @@ function renderTestCaseActions(testCase) {
 document.addEventListener('DOMContentLoaded', async function() {
     // 初始化權限檢查
     await applyTestCaseManagementPermissions();
-    
+
     let activeTeam = null;
 
     // 監聽全域 team 變更事件，隨時更新 URL 的 team_id
@@ -2512,7 +2519,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             }, 0);
         }
     }
-    
+
     // 添加Modal TCG容器的事件委託（與列表一致）
     document.addEventListener('click', function(e) {
         if (e.target.closest('#modalTcgContainer')) {
@@ -2529,15 +2536,15 @@ let modalTCGSelected = [];
 async function editModalTCG() {
     const container = document.getElementById('modalTcgContainer');
     if (!container) return;
-    
+
     // 如果已經有編輯器在運行，先關閉
     if (currentModalTCGEditor) {
         await finishModalTCGEdit();
     }
-    
+
     // 獲取當前 TCG
     const currentTCGs = Array.isArray(modalTCGSelected) ? [...modalTCGSelected] : [];
-    
+
     // 設置編輯器狀態
     currentModalTCGEditor = {
         container: container,
@@ -2546,56 +2553,56 @@ async function editModalTCG() {
         originalContent: container.innerHTML,
         mode: 'search'
     };
-    
+
     // 直接進入搜尋模式
     startModalTCGSearch();
 }
 
 async function startModalTCGSearch() {
     if (!currentModalTCGEditor) return;
-    
+
     const { container, currentTCGs } = currentModalTCGEditor;
-    
+
     // 直接顯示搜尋框 - 隱藏原標籤
     const searchHtml = `
         <div class="tcg-search-container position-relative" style="min-height: 32px; height: 32px; display: flex; align-items: center; overflow: hidden;">
-            <input type="text" class="form-control form-control-sm tcg-search-input" 
-                   data-i18n-placeholder="testCase.tcgPlaceholder" autocomplete="off" 
-                   onkeydown="handleModalTCGSearchKeydown(event)" 
+            <input type="text" class="form-control form-control-sm tcg-search-input"
+                   data-i18n-placeholder="testCase.tcgPlaceholder" autocomplete="off"
+                   onkeydown="handleModalTCGSearchKeydown(event)"
                    oninput="handleModalTCGSearchInput(event)"
                    onclick="event.stopPropagation()"
                    style="height: 28px; width: 100%; font-size: 0.75rem; padding: 0.125rem 0.375rem; border: 1px solid #dee2e6; box-shadow: none; outline: none;">
-            <div class="tcg-dropdown" 
+            <div class="tcg-dropdown"
                  style="position: fixed; z-index: 1050; max-height: 300px; overflow-y: auto; display: none; background: white; border: 1px solid #ccc; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
                 <div class="p-2 text-muted small">開始輸入以搜尋 TCG...</div>
             </div>
         </div>
     `;
-    
+
     container.innerHTML = searchHtml;
     container.classList.add('editing');
-    
+
     // 更新全域狀態
     modalTCGSelected = [...currentTCGs];
-    
+
     // 聚焦搜尋框並立即載入選項
     const searchInput = container.querySelector('.tcg-search-input');
     searchInput.focus();
-    
+
     // 立即載入 TCG 選項並顯示下拉選單
     await searchModalTCGOptions('');
     const dropdown = container.querySelector('.tcg-dropdown');
     if (dropdown) {
         // 計算輸入框的位置
         const rect = searchInput.getBoundingClientRect();
-        
+
         // 設定 fixed 定位的座標
         dropdown.style.top = (rect.bottom + window.scrollY) + 'px';
         dropdown.style.left = rect.left + 'px';
         dropdown.style.width = Math.max(300, rect.width) + 'px';
         dropdown.style.display = 'block';
     }
-    
+
     // 添加點擊外部結束編輯的監聽器
     setTimeout(() => {
         document.addEventListener('click', handleModalTCGOutsideClick, true);
@@ -2604,9 +2611,9 @@ async function startModalTCGSearch() {
 
 function handleModalTCGOutsideClick(event) {
     if (!currentModalTCGEditor) return;
-    
+
     const { container } = currentModalTCGEditor;
-    
+
     // 檢查點擊是否在編輯區域外
     const dropdown = container.querySelector('.tcg-dropdown');
     if (!container.contains(event.target) && (!dropdown || !dropdown.contains(event.target))) {
@@ -2616,20 +2623,20 @@ function handleModalTCGOutsideClick(event) {
 
 async function finishModalTCGEdit() {
     if (!currentModalTCGEditor) return;
-    
+
     const { container, currentTCGs } = currentModalTCGEditor;
-    
+
     // 移除全域點擊監聽器
     document.removeEventListener('click', handleModalTCGOutsideClick, true);
-    
+
     // 立即更新 UI 顯示
     container.classList.remove('editing');
     renderModalTCGDisplay();
-    
+
     // 更新隱藏 input 值
     const hidden = document.getElementById('tcg');
     if (hidden) hidden.value = modalTCGSelected.join(', ');
-    
+
     // 清除編輯器狀態
     currentModalTCGEditor = null;
 }
@@ -2637,13 +2644,13 @@ async function finishModalTCGEdit() {
 function renderModalTCGDisplay() {
     const container = document.getElementById('modalTcgContainer');
     if (!container) return;
-    
+
     if (!Array.isArray(modalTCGSelected) || modalTCGSelected.length === 0) {
         // 清除後留白，但保留點擊事件
         container.innerHTML = '<span class="text-muted" style="font-size: 0.875rem;">點擊選擇 TCG 單號</span>';
     } else {
         // 顯示 TCG 標籤，保留點擊事件
-        const tcgHtml = modalTCGSelected.map(tcg => 
+        const tcgHtml = modalTCGSelected.map(tcg =>
             `<span class="tcg-tag">${tcg}</span>`
         ).join('');
         container.innerHTML = tcgHtml;
@@ -2678,13 +2685,13 @@ function handleModalTCGSearchKeydown(event) {
 
 async function searchModalTCGOptions(keyword) {
     if (!currentModalTCGEditor) return;
-    
+
     const dropdown = currentModalTCGEditor.container.querySelector('.tcg-dropdown');
     if (!dropdown) return;
-    
+
     try {
         console.log('搜尋 Modal TCG:', keyword);
-        
+
         // 優先使用快取
         let results = [];
         if (tcgCache) {
@@ -2701,39 +2708,39 @@ async function searchModalTCGOptions(keyword) {
             results = data.results;
             console.log('從 API 取得 Modal TCG 搜尋結果:', results.length, '筆');
         }
-        
+
         // 始終顯示清除選項作為第一項
         let dropdownHtml = `
-            <div class="tcg-option p-2 border-bottom" 
-                  onclick="event.stopPropagation(); clearModalTCGValue()" 
-                  style="cursor: pointer; border-bottom: 1px solid #f8f9fa; background-color: #fff3cd;" 
-                  onmouseover="this.style.backgroundColor='#ffeaa7'" 
+            <div class="tcg-option p-2 border-bottom"
+                  onclick="event.stopPropagation(); clearModalTCGValue()"
+                  style="cursor: pointer; border-bottom: 1px solid #f8f9fa; background-color: #fff3cd;"
+                  onmouseover="this.style.backgroundColor='#ffeaa7'"
                   onmouseout="this.style.backgroundColor='#fff3cd'">
                 <div class="fw-medium text-warning">
                     <i class="fas fa-times me-2"></i>清除 TCG 單號
                 </div>
             </div>
         `;
-        
+
         if (results.length === 0) {
             dropdownHtml += '<div class="p-2 text-muted small">沒有找到其他結果</div>';
         } else {
             dropdownHtml += results.map(tcg => {
                 const selected = modalTCGSelected && modalTCGSelected.includes(tcg.tcg_number);
                 return `
-                <div class="tcg-option p-2 border-bottom d-flex justify-content-between align-items-center" 
-                      onclick="event.stopPropagation(); selectModalTCGOption('${tcg.tcg_number}')" 
-                      style="cursor: pointer; border-bottom: 1px solid #f8f9fa; padding: 0.25rem 0.75rem;" 
-                      onmouseover="this.style.backgroundColor='#f8f9fa'" 
+                <div class="tcg-option p-2 border-bottom d-flex justify-content-between align-items-center"
+                      onclick="event.stopPropagation(); selectModalTCGOption('${tcg.tcg_number}')"
+                      style="cursor: pointer; border-bottom: 1px solid #f8f9fa; padding: 0.25rem 0.75rem;"
+                      onmouseover="this.style.backgroundColor='#f8f9fa'"
                       onmouseout="this.style.backgroundColor='white'">
                     <div class="fw-medium">${tcg.tcg_number}</div>
                     ${selected ? '<i class="fas fa-check text-success"></i>' : ''}
                 </div>`;
             }).join('');
         }
-        
+
         dropdown.innerHTML = dropdownHtml;
-        
+
         // 更新位置並顯示
         const searchInput = currentModalTCGEditor.container.querySelector('.tcg-search-input');
         if (searchInput) {
@@ -2743,12 +2750,12 @@ async function searchModalTCGOptions(keyword) {
             dropdown.style.width = Math.max(300, rect.width) + 'px';
         }
         dropdown.style.display = 'block';
-        
+
     } catch (error) {
         console.error('搜尋 Modal TCG 失敗:', error);
         const searchFailedMessage = window.i18n ? window.i18n.t('errors.searchFailed') : '搜尋失敗';
         dropdown.innerHTML = `<div class="p-2 text-danger small">${searchFailedMessage}</div>`;
-        
+
         // 更新位置並顯示
         const searchInput = currentModalTCGEditor.container.querySelector('.tcg-search-input');
         if (searchInput) {
@@ -2763,7 +2770,7 @@ async function searchModalTCGOptions(keyword) {
 
 function selectModalTCGOption(tcgNumber) {
     if (!currentModalTCGEditor) return;
-    
+
     // 多選切換：存在則移除，不存在則加入
     const idx = modalTCGSelected.indexOf(tcgNumber);
     if (idx >= 0) {
@@ -2771,7 +2778,7 @@ function selectModalTCGOption(tcgNumber) {
     } else {
         modalTCGSelected.push(tcgNumber);
     }
-    
+
     // 重新渲染下拉，反映選取狀態（不結束編輯）
     const inputEl = currentModalTCGEditor.container.querySelector('.tcg-search-input');
     const kw = inputEl ? inputEl.value : '';
@@ -2780,10 +2787,10 @@ function selectModalTCGOption(tcgNumber) {
 
 function clearModalTCGValue() {
     if (!currentModalTCGEditor) return;
-    
+
     // 清空 TCG 值
     modalTCGSelected = [];
-    
+
     // 立即完成編輯
     finishModalTCGEdit();
 }
@@ -2955,13 +2962,13 @@ async function loadTCGCache(updateProgress = null) {
 
 function searchTCGFromCache(keyword, limit = 20) {
     if (!tcgCache) return [];
-    
+
     if (!keyword || keyword.trim() === '') {
         return tcgCache.slice(0, limit);
     }
-    
+
     const lowerKeyword = keyword.toLowerCase();
-    return tcgCache.filter(tcg => 
+    return tcgCache.filter(tcg =>
         tcg.tcg_number.toLowerCase().includes(lowerKeyword) ||
         tcg.title.toLowerCase().includes(lowerKeyword)
     ).slice(0, limit);
@@ -2970,7 +2977,7 @@ function searchTCGFromCache(keyword, limit = 20) {
 async function initTestCaseManagement() {
     // 顯示進度條
     showLoadingProgress();
-    
+
     try {
         // 載入 TCG 快取 (如果需要)
         const hasCachedTCG = await loadTCGCacheFromStorage();
@@ -2981,12 +2988,12 @@ async function initTestCaseManagement() {
         } else {
             updateTCGCacheProgress(100, `使用快取 (${tcgCache.length} 筆)`);
         }
-        
+
         // 載入測試案例
         await loadTestCases(false, (progress, message) => {
             updateTestCaseProgress(progress, message);
         });
-        
+
     } catch (error) {
         console.error('初始化失敗:', error);
     } finally {
@@ -3007,7 +3014,7 @@ function showLoadingProgress() {
     if (progressDiv) {
         progressDiv.style.display = 'block';
     }
-    
+
     // 隱藏搜尋與篩選區和表格
     const searchCard = document.getElementById('searchFilterCard');
     const tableCard = document.querySelector('#testCasesTable').closest('.card');
@@ -3020,7 +3027,7 @@ function hideLoadingProgress() {
     if (progressDiv) {
         progressDiv.style.display = 'none';
     }
-    
+
     // 顯示搜尋與篩選區和表格
     const searchCard = document.getElementById('searchFilterCard');
     const tableCard = document.querySelector('#testCasesTable').closest('.card');
@@ -3034,7 +3041,7 @@ function hideLoadingProgress() {
 function updateTestCaseProgress(progress, message = '') {
     const progressBar = document.getElementById('testCaseProgressBar');
     const progressText = document.getElementById('testCaseProgress');
-    
+
     if (progressBar) {
         progressBar.style.width = progress + '%';
     }
@@ -3048,7 +3055,7 @@ function updateTestCaseProgress(progress, message = '') {
 function updateTCGCacheProgress(progress, message = '') {
     const progressBar = document.getElementById('tcgCacheProgressBar');
     const progressText = document.getElementById('tcgCacheProgress');
-    
+
     if (progressBar) {
         progressBar.style.width = progress + '%';
     }
@@ -3084,7 +3091,7 @@ function reapplyPersistedFiltersIfAny() {
 async function loadTestCases(showLoadingBlock = true, updateProgress = null, forceRefresh = false) {
     try {
         if (updateProgress) updateProgress(0, '開始載入測試案例...');
-        
+
         // 獲取當前選擇的團隊
         let currentTeam = AppUtils.getCurrentTeam ? AppUtils.getCurrentTeam() : null;
         if (!currentTeam || !currentTeam.id) {
@@ -3094,79 +3101,79 @@ async function loadTestCases(showLoadingBlock = true, updateProgress = null, for
             throw new Error('請先選擇團隊');
         }
         const teamIdForLoad = String(currentTeam.id);
-        
+
         // 非強制刷新時先檢查快取
         if (!forceRefresh) {
             const cachedTestCases = getTestCasesCache(teamIdForLoad);
             if (cachedTestCases) {
                 if (updateProgress) updateProgress(90, '使用快取資料...');
-                
+
                 testCases = cachedTestCases;
                 console.debug('[CACHE] LOAD list from cache', { teamId: teamIdForLoad, count: testCases.length });
-                
+
                 // 預設按 Test Case Number 升冪排序
                 testCases.sort((a, b) => {
                     const aNumber = a.test_case_number || '';
                     const bNumber = b.test_case_number || '';
                     return aNumber.localeCompare(bNumber);
                 });
-                
+
                 // 依目前記憶體中的過濾器計算顯示清單
                 applyCurrentFiltersAndRender();
-                
-                const completedMsg = window.i18n ? 
-                    window.i18n.t('loading.completedWithCount', {count: testCases.length}) + ' (快取)' : 
+
+                const completedMsg = window.i18n ?
+                    window.i18n.t('loading.completedWithCount', {count: testCases.length}) + ' (快取)' :
                     `載入完成 (${testCases.length} 筆，快取)`;
                 if (updateProgress) updateProgress(100, completedMsg);
-                
+
                 return; // 使用快取，直接返回
             }
             console.debug('[CACHE] BYPASS: no cache hit for list', { teamId: teamIdForLoad });
         } else {
             console.debug('[CACHE] BYPASS: forceRefresh=true, skip cache', { teamId: teamIdForLoad });
         }
-        
+
         if (showLoadingBlock) {
             showLoadingState();
         }
-        
+
         // 提供 fallback 參數確保即使 i18n 未完全載入也有正確顯示
         const connectingMsg = window.i18n ? window.i18n.t('loading.connecting', {}, '連接伺服器...') : '連接伺服器...';
         if (updateProgress) updateProgress(30, connectingMsg);
-        
+
         const response = await window.AuthClient.fetch(`/api/teams/${teamIdForLoad}/testcases/?load_all=true`);
         if (!response.ok) {
             throw new Error(`載入測試案例失敗: ${response.status} ${response.statusText}`);
         }
-        
+
         if (updateProgress) updateProgress(60, '解析資料...');
-        
+
         testCases = await response.json();
-        
+
         // 儲存到快取
         if (updateProgress) updateProgress(70, '更新快取...');
         setTestCasesCache(testCases, teamIdForLoad);
-        
+
         if (updateProgress) updateProgress(80, '處理資料...');
-        
+
         // 預設按 Test Case Number 升冪排序
         testCases.sort((a, b) => {
             const aNumber = a.test_case_number || '';
             const bNumber = b.test_case_number || '';
             return aNumber.localeCompare(bNumber);
         });
-        
+
         // 依目前記憶體中的過濾器計算顯示清單
         if (updateProgress) updateProgress(95, '渲染表格...');
-        
+
         applyCurrentFiltersAndRender();
         if (showLoadingBlock) {
             hideLoadingState();
         }
-        
+
         const completedMsg = window.i18n ? window.i18n.t('loading.completedWithCount', {count: testCases.length}) : `載入完成 (${testCases.length} 筆)`;
         if (updateProgress) updateProgress(100, completedMsg);
-        
+
     } catch (error) {
         console.error('載入測試案例失敗:', error);
         const message = window.i18n ? window.i18n.t('errors.loadTestCasesFailed') : '載入測試案例失敗';
@@ -3183,21 +3190,21 @@ async function loadTestCases(showLoadingBlock = true, updateProgress = null, for
 async function refreshTestCases() {
     const refreshBtn = document.getElementById('refreshBtn');
     const originalHTML = refreshBtn.innerHTML;
-    
+
     // 檢查是否有搜尋條件
     const hasFilters = hasAnyFilters();
-    
+
     // 顯示載入動畫在按鈕內
     refreshBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2" role="status"></span>${window.i18n ? window.i18n.t('common.refresh') : '重新載入'}${hasFilters ? (window.i18n ? ' & ' + window.i18n.t('common.filter') : ' & 篩選') : ''}`;
     refreshBtn.disabled = true;
-    
+
     try {
         // 清除所有快取，強制從伺服器重新載入
         clearTestCasesCache();
-        
+
         // 調用 loadTestCases，強制刷新且不顯示載入區塊
         await loadTestCases(false, null, true);
-        
+
         // 重新載入後，自動套用當前的搜尋條件
         if (hasFilters) {
             applyFilters();
@@ -3206,7 +3213,7 @@ async function refreshTestCases() {
         } else {
             AppUtils.showSuccess(window.i18n ? window.i18n.t('messages.dataReloaded') : '資料已重新載入');
         }
-        
+
     } finally {
         // 恢復按鈕原始狀態
         refreshBtn.innerHTML = originalHTML;
@@ -3222,7 +3229,7 @@ function hasAnyFilters() {
     const search = document.getElementById('searchInput').value.trim();
     const tcg = (document.getElementById('tcgFilter')?.value || '').trim();
     const priority = document.getElementById('priorityFilter').value;
-    
+
     return testCaseNumberSearch || search || tcg || priority;
 }
 
@@ -3234,7 +3241,7 @@ function renderTestCasesTable() {
     const startIndex = (currentPage - 1) * pageSize;
     const endIndex = startIndex + pageSize;
     const pageTestCases = filteredTestCases.slice(startIndex, endIndex);
-    
+
     if (pageTestCases.length === 0) {
         tbody.innerHTML = `
             <tr>
@@ -3246,19 +3253,19 @@ function renderTestCasesTable() {
         `;
         return;
     }
-    
+
     tbody.innerHTML = pageTestCases.map(testCase => `
         <tr>
             <td class="align-middle text-center">
-                <input type="checkbox" class="form-check-input test-case-checkbox" 
+                <input type="checkbox" class="form-check-input test-case-checkbox"
                        value="${testCase.record_id}" ${selectedTestCases.has(testCase.record_id) ? 'checked' : ''}>
             </td>
             <td class="align-middle position-relative hover-editable" data-field="test_case_number" data-record-id="${testCase.record_id}">
                 <div style="padding-right: 45px;">
                     <code class="small">${testCase.test_case_number || testCase.record_id}</code>
                 </div>
-                <button type="button" class="btn btn-sm btn-edit position-absolute hover-edit-btn" 
-                        style="top: 50%; right: 5px; transform: translateY(-50%); z-index: 10;" 
+                <button type="button" class="btn btn-sm btn-edit position-absolute hover-edit-btn"
+                        style="top: 50%; right: 5px; transform: translateY(-50%); z-index: 10;"
                         onclick="quickEdit('${testCase.record_id}', 'test_case_number')" data-i18n-title="tooltips.quickEdit">
                     <i class="fas fa-edit"></i>
                 </button>
@@ -3272,16 +3279,16 @@ function renderTestCasesTable() {
                         </div>
                     </div>
                 </div>
-                <button type="button" class="btn btn-sm btn-edit position-absolute hover-edit-btn" 
-                        style="top: 50%; right: 5px; transform: translateY(-50%); z-index: 10;" 
+                <button type="button" class="btn btn-sm btn-edit position-absolute hover-edit-btn"
+                        style="top: 50%; right: 5px; transform: translateY(-50%); z-index: 10;"
                         onclick="quickEdit('${testCase.record_id}', 'title')" data-i18n-title="tooltips.quickEdit">
                     <i class="fas fa-edit"></i>
                 </button>
             </td>
             <td class="align-middle text-center position-relative" data-field="tcg" data-record-id="${testCase.record_id}" style="max-width: 180px;">
-                <div class="tcg-edit-area ${hasTestCasePermission('tcgEditContainer') ? 'tcg-editable' : 'tcg-readonly'}" 
-                     ${hasTestCasePermission('tcgEditContainer') ? 
-                       `onclick="editTCG('${testCase.record_id}')" data-i18n-title="tooltips.clickEditTcg" style="display: flex; flex-wrap: wrap; gap: 2px; justify-content: center; align-items: center; min-height: 24px; padding: 2px; cursor: pointer;"` : 
+                <div class="tcg-edit-area ${hasTestCasePermission('tcgEditContainer') ? 'tcg-editable' : 'tcg-readonly'}"
+                     ${hasTestCasePermission('tcgEditContainer') ?
+                       `onclick="editTCG('${testCase.record_id}')" data-i18n-title="tooltips.clickEditTcg" style="display: flex; flex-wrap: wrap; gap: 2px; justify-content: center; align-items: center; min-height: 24px; padding: 2px; cursor: pointer;"` :
                        'style="display: flex; flex-wrap: wrap; gap: 2px; justify-content: center; align-items: center; min-height: 24px; padding: 2px; cursor: default;"'}>
                     ${getTCGTags(testCase)}
                 </div>
@@ -3301,17 +3308,17 @@ function renderTestCasesTable() {
             </td>
             <td class="align-middle text-center" style="width: 100px;">
                 <div class="test-case-actions d-flex justify-content-center gap-2">
-                    <button type="button" class="btn btn-sm btn-view" 
+                    <button type="button" class="btn btn-sm btn-view"
                             onclick="viewTestCase('${testCase.record_id}')" data-i18n-title="tooltips.viewEdit">
                         <i class="fas fa-eye"></i>
                     </button>
                     ${hasTestCasePermission('testCaseActionCopy') ? `
-                    <button type="button" class="btn btn-sm btn-secondary" 
+                    <button type="button" class="btn btn-sm btn-secondary"
                             onclick="copyTestCase('${testCase.record_id}')" title="${(window.i18n && window.i18n.isReady()) ? window.i18n.t('common.copy') : '複製'}">
                         <i class="fas fa-copy"></i>
                     </button>` : ''}
                     ${hasTestCasePermission('testCaseActionDelete') ? `
-                    <button type="button" class="btn btn-sm btn-danger" 
+                    <button type="button" class="btn btn-sm btn-danger"
                             onclick="deleteTestCase('${testCase.record_id}')" data-i18n-title="tooltips.delete">
                         <i class="fas fa-trash"></i>
                     </button>` : ''}
@@ -3319,12 +3326,12 @@ function renderTestCasesTable() {
             </td>
         </tr>
     `).join('');
-    
+
     // 重新應用翻譯到新生成的表格內容
     if (window.i18n && window.i18n.isReady()) {
         window.i18n.retranslate(tbody);
     }
-    
+
     // 渲染後調整列表可視高度
     adjustTestCasesScrollHeight();
 }
@@ -3335,7 +3342,7 @@ function bindEvents() {
     document.getElementById('addTestCaseBtn').addEventListener('click', () => showTestCaseModal());
     // 監聽大量新增欄位變更以更新預覽
     // 移除舊的前綴/末尾輸入監聽；改由 renderPrefixes 中的 oninput 觸發
-    
+
     // 重新載入按鈕
     document.getElementById('refreshBtn').addEventListener('click', refreshTestCases);
 
@@ -3345,7 +3352,7 @@ function bindEvents() {
     // 批次複製按鈕
     const batchCopyBtn = document.getElementById('batchCopyBtn');
     if (batchCopyBtn) batchCopyBtn.addEventListener('click', openTestCaseBatchCopyModal);
-    
+
     // 搜尋與篩選
     document.getElementById('applyFiltersBtn').addEventListener('click', applyFilters);
     document.getElementById('clearFiltersBtn').addEventListener('click', clearFilters);
@@ -3363,7 +3370,7 @@ function bindEvents() {
     if (hPri) hPri.addEventListener('click', () => setTcmSort('priority'));
     if (hCreated) hCreated.addEventListener('click', () => setTcmSort('created'));
     if (hUpdated) hUpdated.addEventListener('click', () => setTcmSort('updated'));
-    
+
     // 搜尋欄位 Enter 鍵支援
     document.getElementById('testCaseNumberSearch').addEventListener('keydown', function(e) {
         if (e.key === 'Enter') {
@@ -3377,7 +3384,7 @@ function bindEvents() {
             applyFilters();
         }
     });
-    
+
     // 批次操作
     document.getElementById('selectAllCheckbox').addEventListener('change', toggleSelectAll);
     const batchModifyBtn = document.getElementById('batchModifyBtn');
@@ -3386,14 +3393,14 @@ function bindEvents() {
     if (batchDeleteBtn) batchDeleteBtn.addEventListener('click', batchDeleteTestCases);
     const clearSelectionBtnTC = document.getElementById('clearSelectionBtnTC');
     if (clearSelectionBtnTC) clearSelectionBtnTC.addEventListener('click', deselectAll);
-    
+
     // 上一隻/下一隻測試案例按鈕
     document.getElementById('prevTestCaseBtn').addEventListener('click', showPrevTestCase);
     document.getElementById('nextTestCaseBtn').addEventListener('click', showNextTestCase);
-    
+
     // 參考測試案例按鈕 - 使用內聯 onclick，不需要特別繫定
     // 因為 HTML 中已經有 onclick="openReferenceTestCasePopup()"
-    
+
     // 批次修改模態框事件綁定
     const batchModifyPriorityCheckbox = document.getElementById('batchModifyPriority');
     const batchPrioritySelect = document.getElementById('batchPrioritySelect');
@@ -3405,12 +3412,12 @@ function bindEvents() {
             }
         });
     }
-    
+
     const confirmBatchModifyBtn = document.getElementById('confirmTestCaseBatchModifyBtn');
     if (confirmBatchModifyBtn) {
         confirmBatchModifyBtn.addEventListener('click', performTestCaseBatchModify);
     }
-    
+
     // 監聽表格內的複選框變化
     document.addEventListener('change', function(e) {
         if (e.target.classList.contains('test-case-checkbox')) {
@@ -3447,14 +3454,14 @@ function bindEvents() {
         // 更新錨點
         lastCaseCheckboxIndex = currentIndex;
     });
-    
+
     // 大量新增模式（文字輸入）
     const openBulkBtn = document.getElementById('openBulkCreateBtn');
     if (openBulkBtn) openBulkBtn.addEventListener('click', function(e) {
         e.preventDefault();
         openBulkCreateModal();
     });
-    
+
     // 大量編輯模式
     const openBulkEditBtn = document.getElementById('openBulkEditBtn');
     if (openBulkEditBtn) openBulkEditBtn.addEventListener('click', function(e) {
@@ -3465,7 +3472,7 @@ function bindEvents() {
     if (startBulkBtn) startBulkBtn.addEventListener('click', startBulkTextCreate);
     const confirmBulkBtn = document.getElementById('confirmBulkCreateBtn');
     if (confirmBulkBtn) confirmBulkBtn.addEventListener('click', confirmBulkTextCreate);
-    
+
     // 文字輸入區鍵盤快捷鍵支援
     const bulkTextInput = document.getElementById('bulkTextInput');
     if (bulkTextInput) {
@@ -3478,13 +3485,13 @@ function bindEvents() {
         });
         setupMarkdownHotkeys(bulkTextInput);
     }
-    
+
     // 儲存按鈕
     document.getElementById('saveTestCaseBtn').addEventListener('click', saveTestCase);
-    
+
     // 儲存並新增下一筆按鈕
     document.getElementById('saveAndAddNextBtn').addEventListener('click', saveAndAddNext);
-    
+
     // 複製並新增下一筆按鈕
     document.getElementById('cloneAndAddNextBtn').addEventListener('click', showCloneSelector);
     // 啟用「/」快速搜尋
@@ -3927,7 +3934,7 @@ function openBulkCreateModal() {
     if (!bulkModalInstance) bulkModalInstance = new bootstrap.Modal(modalEl);
     if (window.i18n && window.i18n.isReady()) window.i18n.retranslate(modalEl);
     bulkModalInstance.show();
-    
+
     // 聚焦到 textarea
     setTimeout(() => {
         const textarea = document.getElementById('bulkTextInput');
@@ -3939,16 +3946,16 @@ function resetBulkTextState() {
     // 清除文字輸入區內容
     const textarea = document.getElementById('bulkTextInput');
     if (textarea) textarea.value = '';
-    
+
     // 清除狀態顯示
     const statusEl = document.getElementById('bulkTextStatus');
     const validationEl = document.getElementById('bulkTextValidation');
     if (statusEl) statusEl.textContent = '';
     if (validationEl) validationEl.textContent = '';
-    
+
     // 隱藏進度條
     hideBulkProgress();
-    
+
     // 重設解析結果
     bulkTextParsedItems = [];
 }
@@ -4093,21 +4100,21 @@ function parseBulkText(rawText) {
 function updateBulkTextStatus(parseResult) {
     const statusEl = document.getElementById('bulkTextStatus');
     const validationEl = document.getElementById('bulkTextValidation');
-    
+
     if (!statusEl || !validationEl) return;
-    
+
     const { items, errors, duplicates } = parseResult;
-    
+
     // 顯示基本統計
     if (items.length > 0 || errors.length > 0) {
-        const statusText = window.i18n ? 
+        const statusText = window.i18n ?
             window.i18n.t('testCase.bulkText.statusText', { valid: items.length, errors: errors.length }) :
             `已解析 ${items.length} 筆，${errors.length} 筆錯誤`;
         statusEl.textContent = statusText;
     } else {
         statusEl.textContent = '';
     }
-    
+
     // 顯示錯誤訊息
     if (errors.length > 0 || duplicates.length > 0) {
         const messages = [];
@@ -4221,44 +4228,44 @@ async function startBulkTextCreate() {
         AppUtils.showError(message);
         return;
     }
-    
+
     // 檢查輸入內部重複
     if (duplicates.length > 0) {
-        const message = window.i18n ? 
+        const message = window.i18n ?
             window.i18n.t('testCase.bulkTextToast.duplicateInInput') :
             '輸入中有重複的單號';
         AppUtils.showError(message);
         return;
     }
-    
+
     if (items.length === 0) {
         const noItemsMessage = window.i18n ? window.i18n.t('testCase.bulkTextToast.noValidItems') : '沒有有效的資料可以建立';
         AppUtils.showWarning(noItemsMessage);
         return;
     }
-    
+
     // 檢查與資料庫的衝突
     try {
         const conflicts = await checkBulkConflicts(items.map(item => item.case_no));
-        
+
         if (conflicts.length > 0) {
             // 標記衝突的行
             annotateConflictsInEditor(conflicts);
-            
-            const message = window.i18n ? 
+
+            const message = window.i18n ?
                 window.i18n.t('testCase.bulkTextToast.conflict', { count: conflicts.length }) :
                 `發現單號衝突，共 ${conflicts.length} 筆。已在文字前加上「(Conflict)」標記。`;
             AppUtils.showWarning(message);
             return;
         }
-        
+
         // 無衝突，顯示預覽
         bulkTextParsedItems = items;
         showBulkPreviewModal(items);
-        
+
     } catch (error) {
         console.error('Check conflicts failed:', error);
-        const message = window.i18n ? 
+        const message = window.i18n ?
             window.i18n.t('testCase.bulkTextToast.networkError') :
             '網路錯誤，請稍後再試';
         AppUtils.showError(message);
@@ -4273,7 +4280,7 @@ async function checkBulkConflicts(caseNumbers) {
     if (!currentTeam || !currentTeam.id) {
         throw new Error('請先選擇團隊');
     }
-    
+
     // 簡化版：直接檢查現有 testCases 陣列
     const existing = new Set(testCases.map(tc => tc.test_case_number).filter(Boolean));
     return caseNumbers.filter(caseNo => existing.has(caseNo));
@@ -4286,15 +4293,15 @@ function showBulkPreviewModal(items) {
     const modalEl = document.getElementById('bulkPreviewModal');
     const descEl = document.getElementById('bulkPreviewDesc');
     const listEl = document.getElementById('bulkPreviewList');
-    
+
     if (!modalEl || !descEl || !listEl) return;
-    
+
     // 設定描述
-        const descText = window.i18n ? 
+        const descText = window.i18n ?
         window.i18n.t('testCase.bulkText.confirmDesc', { count: items.length }) :
         `將新增以下 ${items.length} 筆測試案例：`;
     descEl.textContent = descText;
-    
+
     // 渲染列表
     listEl.innerHTML = items.map((item, index) => {
         const prioritySuffix = (item.priority || 'Medium');
@@ -4330,16 +4337,16 @@ function showBulkPreviewModal(items) {
         </tr>
         `;
     }).join('');
-    
+
     // 顯示 Modal
     if (!bulkPreviewModalInstance) {
         bulkPreviewModalInstance = new bootstrap.Modal(modalEl);
     }
-    
+
     if (window.i18n && window.i18n.isReady()) {
         window.i18n.retranslate(modalEl);
     }
-    
+
     bulkPreviewModalInstance.show();
 }
 
@@ -4351,26 +4358,26 @@ async function confirmBulkTextCreate() {
         AppUtils.showError('沒有項目可以建立');
         return;
     }
-    
+
     const currentTeam = AppUtils.getCurrentTeam();
     if (!currentTeam || !currentTeam.id) {
         AppUtils.showError('請先選擇團隊');
         return;
     }
-    
+
     // 顯示進度條
     showBulkProgress(bulkTextParsedItems.length);
-    
+
     // 更新按鈕狀態
     const confirmBtn = document.getElementById('confirmBulkCreateBtn');
     const originalHtml = confirmBtn ? confirmBtn.innerHTML : '';
-    
+
     if (confirmBtn) {
         confirmBtn.disabled = true;
         const creatingText = window.i18n ? window.i18n.t('testCase.bulk.creating') : '建立中...';
         confirmBtn.innerHTML = `<i class="fas fa-spinner fa-spin me-2"></i>${creatingText}`;
     }
-    
+
     try {
         // 輔助函數：將字面的 \n 轉換為真正的換行符號
         const convertLiteralNewlines = (text) => {
@@ -4387,15 +4394,15 @@ async function confirmBulkTextCreate() {
             priority: item.priority || 'Medium',
             tcg_numbers: Array.isArray(item.tcg_numbers) ? item.tcg_numbers : []
         }));
-        
+
         const response = await window.AuthClient.fetch(`/api/teams/${currentTeam.id}/testcases/bulk_create`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ items })
         });
-        
+
         const data = await response.json();
-        
+
         if (!response.ok || !data.success) {
             // 檢查是否有新的衝突
             if (data.duplicates && data.duplicates.length > 0) {
@@ -4403,42 +4410,42 @@ async function confirmBulkTextCreate() {
                 if (bulkPreviewModalInstance) {
                     bulkPreviewModalInstance.hide();
                 }
-                
+
                 // 標記衝突
                 annotateConflictsInEditor(data.duplicates);
-                
-                const message = window.i18n ? 
+
+                const message = window.i18n ?
                     window.i18n.t('testCase.bulkTextToast.conflict', { count: data.duplicates.length }) :
                     `發現單號衝突，共 ${data.duplicates.length} 筆。已在文字前加上「(Conflict)」標記。`;
                 AppUtils.showWarning(message);
                 return;
             }
-            
+
             const errorMsg = (data.errors && data.errors.join('; ')) || response.statusText || '未知錯誤';
             throw new Error(errorMsg);
         }
-        
+
         // 成功建立
         updateBulkProgress(bulkTextParsedItems.length, bulkTextParsedItems.length);
-        
-        const message = window.i18n ? 
+
+        const message = window.i18n ?
             window.i18n.t('testCase.bulkTextToast.success', { count: data.created_count || bulkTextParsedItems.length }) :
             `已成功新增 ${data.created_count || bulkTextParsedItems.length} 筆測試案例`;
         AppUtils.showSuccess(message);
-        
+
         // 關閉所有 Modal
         if (bulkPreviewModalInstance) bulkPreviewModalInstance.hide();
         if (bulkModalInstance) bulkModalInstance.hide();
-        
+
         // 清除快取並強制重新載入測試案例列表，確保顯示最新新增資料
         clearTestCasesCache();
         await loadTestCases(false, null, true);
-        
+
     } catch (error) {
         console.error('Bulk create failed:', error);
         const message = error.message || '建立失敗';
         AppUtils.showError(message);
-        
+
     } finally {
         // 恢復按鈕狀態
         if (confirmBtn) {
@@ -4536,14 +4543,14 @@ function showCloneSelector() {
         AppUtils.showError(message);
         return;
     }
-    
+
     // 創建動態 modal 來選擇測試案例
     const modalId = 'cloneSelectorModal';
     const existingModal = document.getElementById(modalId);
     if (existingModal) {
         existingModal.remove();
     }
-    
+
     // 創建選擇器 modal HTML
     const modalHtml = `
         <div class="modal fade" id="${modalId}" tabindex="-1" aria-hidden="true">
@@ -4561,7 +4568,7 @@ function showCloneSelector() {
                             <label class="form-label">${window.i18n ? window.i18n.t('testCase.selectSourceTestCase') : '選擇要複製的測試案例'}</label>
                             <select class="form-select" id="cloneSourceSelect">
                                 <option value="">${window.i18n ? window.i18n.t('common.pleaseSelect') : '請選擇...'}</option>
-                                ${testCases.map(tc => 
+                                ${testCases.map(tc =>
                                     `<option value="${tc.record_id}">${tc.test_case_number || 'N/A'} - ${tc.title || 'No Title'}</option>`
                                 ).join('')}
                             </select>
@@ -4580,13 +4587,13 @@ function showCloneSelector() {
             </div>
         </div>
     `;
-    
+
     // 將 modal 添加到頁面
     document.body.insertAdjacentHTML('beforeend', modalHtml);
-    
+
     // 初始化 modal
     const cloneSelectorModal = new bootstrap.Modal(document.getElementById(modalId));
-    
+
     // 綁定確認按鈕事件
     document.getElementById('confirmCloneBtn').addEventListener('click', function() {
         const selectedId = document.getElementById('cloneSourceSelect').value;
@@ -4594,19 +4601,19 @@ function showCloneSelector() {
             AppUtils.showError(window.i18n ? window.i18n.t('errors.pleaseSelectTestCase') : '請選擇測試案例');
             return;
         }
-        
+
         // 檢查是否有未儲存的變更
         if (hasUnsavedChanges()) {
             // 關閉選擇器 modal 先
             cloneSelectorModal.hide();
-            
+
             // 顯示儲存確認對話框
             const confirmTitle = window.i18n ? window.i18n.t('common.confirm') : '確認';
             const confirmMessage = window.i18n ? window.i18n.t('testCase.unsavedChangesPrompt') : '您有未儲存的變更，是否要先儲存？';
             const saveAndContinue = window.i18n ? window.i18n.t('testCase.saveAndContinue') : '儲存並繼續';
             const continueWithoutSave = window.i18n ? window.i18n.t('testCase.continueWithoutSave') : '不儲存直接繼續';
             const cancelAction = window.i18n ? window.i18n.t('common.cancel') : '取消';
-            
+
             const confirmModalHtml = `
                 <div class="modal fade" id="saveConfirmModal" tabindex="-1" aria-hidden="true">
                     <div class="modal-dialog modal-dialog-centered">
@@ -4632,28 +4639,28 @@ function showCloneSelector() {
                     </div>
                 </div>
             `;
-            
+
             // 移除舊的確認 modal
             const existingConfirmModal = document.getElementById('saveConfirmModal');
             if (existingConfirmModal) {
                 existingConfirmModal.remove();
             }
-            
+
             // 添加確認 modal
             document.body.insertAdjacentHTML('beforeend', confirmModalHtml);
             const saveConfirmModal = new bootstrap.Modal(document.getElementById('saveConfirmModal'));
             saveConfirmModal.show();
-            
+
             // 綁定按鈕事件
             document.getElementById('saveAndContinueBtn').addEventListener('click', async function() {
                 saveConfirmModal.hide();
-                
+
                 // 嘗試儲存當前表單
                 try {
                     const saveBtn = document.getElementById('saveTestCaseBtn');
                     if (saveBtn) {
                         saveBtn.click();
-                        
+
                         // 等待儲存完成，然後執行複製
                         setTimeout(() => {
                             executeCloneAction(selectedId);
@@ -4664,43 +4671,43 @@ function showCloneSelector() {
                     AppUtils.showError(window.i18n ? window.i18n.t('errors.saveFailed') : '儲存失敗');
                 }
             });
-            
+
             document.getElementById('continueWithoutSaveBtn').addEventListener('click', function() {
                 saveConfirmModal.hide();
                 executeCloneAction(selectedId);
             });
-            
+
         } else {
             // 沒有未儲存變更，直接執行複製
             executeCloneAction(selectedId);
         }
     });
-    
+
     // 執行複製操作的共用函數
     function executeCloneAction(selectedId) {
         // 關閉選擇器 modal（如果還開著）
         if (cloneSelectorModal) {
             cloneSelectorModal.hide();
         }
-        
+
         // 關閉當前測試案例 modal
         const testCaseModal = document.getElementById('testCaseModal');
         const testCaseModalInstance = bootstrap.Modal.getInstance(testCaseModal);
         if (testCaseModalInstance) {
             testCaseModalInstance.hide();
         }
-        
+
         // 延遲執行複製，確保 modal 完全關閉
         setTimeout(() => {
             cloneAndAddNext(selectedId);
         }, 300);
     }
-    
+
     // Modal 關閉後清理
     document.getElementById(modalId).addEventListener('hidden.bs.modal', function() {
         this.remove();
     });
-    
+
     // 顯示 modal
     cloneSelectorModal.show();
 }
@@ -4709,7 +4716,7 @@ function showCloneSelector() {
 function cloneAndAddNext(id) {
     const source = testCases.find(tc => tc.record_id === id);
     if (!source) return;
-    
+
     // 先以新增模式打開，確保狀態正確（不帶 record_id，附件清空，按鈕狀態正確）
     showTestCaseModal(null);
 
@@ -4724,11 +4731,11 @@ function cloneAndAddNext(id) {
     // 預填欄位（編號自動遞增，標題保持原樣）
     document.getElementById('testCaseId').value = '';
     document.getElementById('title').value = source.title || '';
-    
+
     // 自動生成下一個測試案例編號
     const nextNumber = generateNextTestCaseNumber(source.test_case_number);
     document.getElementById('testCaseNumber').value = nextNumber;
-    
+
     document.getElementById('priority').value = source.priority || 'MEDIUM';
 
     // 保留來源 TCG 單號（單一或多個以逗號分隔的字串）
@@ -4766,7 +4773,7 @@ function cloneAndAddNext(id) {
 // 生成下一個測試案例編號的輔助函數
 function generateNextTestCaseNumber(currentNumber) {
     if (!currentNumber) return '';
-    
+
     // 嘗試匹配常見的測試案例編號格式
     const patterns = [
         /^([A-Z]+)(\d+)$/,           // TC001, TEST123
@@ -4775,18 +4782,18 @@ function generateNextTestCaseNumber(currentNumber) {
         /^(\d+)$/,                  // 001, 123
         /^([A-Z\d]+)\.(\d+)$/,      // TC.001, V1.123
     ];
-    
+
     for (let pattern of patterns) {
         const match = currentNumber.match(pattern);
         if (match) {
             const prefix = match[1] || '';
             const number = parseInt(match[2] || match[1]);
             const nextNum = number + 1;
-            
+
             // 保持原有的數字位數（零填充）
             const originalNumStr = match[2] || match[1];
             const paddedNext = nextNum.toString().padStart(originalNumStr.length, '0');
-            
+
             if (pattern.source.includes('-')) {
                 return `${prefix}-${paddedNext}`;
             } else if (pattern.source.includes('_')) {
@@ -4800,7 +4807,7 @@ function generateNextTestCaseNumber(currentNumber) {
             }
         }
     }
-    
+
     // 如果沒有匹配到任何模式，返回原編號 + "_NEXT"
     return currentNumber + '_NEXT';
 }
@@ -4816,12 +4823,12 @@ function showTestCaseModal(testCase = null) {
     const saveBtn = document.getElementById('saveTestCaseBtn');
     const saveAndAddNextBtn = document.getElementById('saveAndAddNextBtn');
     const isCopyMode = (modal && modal.dataset && modal.dataset.copyMode === '1');
-    
+
     // 重設表單和狀態
     form.reset();
     isFormChanged = false;
     saveBtn.disabled = false; // 儲存按鈕始終啟用
-    
+
     // 每次開啟 modal 重置暫存上傳 id（避免跨記錄汙染）
     currentTempUploadId = null;
 
@@ -4843,16 +4850,16 @@ function showTestCaseModal(testCase = null) {
         // 新增測試案例時，重設附件資料
         uploadedAttachments = [];
     }
-    
+
     if (testCase) {
         // 找到當前測試案例在 filteredTestCases 中的索引
         currentTestCaseIndex = filteredTestCases.findIndex(tc => tc.record_id === testCase.record_id);
         updateNavigationButtons();
         title.textContent = window.i18n ? window.i18n.t('testCase.viewTestCase') : '檢視測試案例';
-        
+
         // 填入資料
         document.getElementById('testCaseId').value = testCase.record_id;
-        
+
         // 設定 modal 的 recordId dataset 供刪除附件使用
         modal.dataset.recordId = testCase.record_id;
         document.getElementById('title').value = testCase.title || '';
@@ -4884,14 +4891,14 @@ function showTestCaseModal(testCase = null) {
         const tcgList = collectTCGs();
         const tcgValue = tcgList.join(', ');
         document.getElementById('tcg').value = tcgValue;
-        
+
         // 初始化 Modal TCG 多選顯示（每一個單號一個 tag）
         modalTCGSelected = tcgList;
         renderModalTCGDisplay();
         document.getElementById('precondition').value = testCase.precondition || '';
         document.getElementById('test_steps').value = testCase.steps || '';
         document.getElementById('expected_result').value = testCase.expected_result || '';
-        
+
         // 渲染附件列表（若列表資料沒有附件，補打一筆詳情以取得附件）
         renderAttachmentsList();
         try {
@@ -4915,7 +4922,7 @@ function showTestCaseModal(testCase = null) {
                     .catch(() => {});
             }
         } catch (_) {}
-        
+
         // 儲存原始資料用於比較
         originalFormData = {
             title: testCase.title || '',
@@ -4926,12 +4933,12 @@ function showTestCaseModal(testCase = null) {
             steps: testCase.steps || '',
             expected_result: testCase.expected_result || ''
         };
-        
+
         // 初始化 Markdown 預覽內容
         markdownFields.forEach(fieldId => {
             updateMarkdownPreview(fieldId);
         });
-        
+
         // 檢視模式下預設為預覽模式，Viewer 強制為預覽模式
         if (hasTestCasePermission('splitModeBtn')) {
             setEditorMode('preview');
@@ -4941,17 +4948,17 @@ function showTestCaseModal(testCase = null) {
             // 移除編輯模式相關的事件處理
             disableEditingFeatures();
         }
-        
+
         // 隱藏「儲存並新增下一筆」按鈕（編輯模式不需要）
         saveAndAddNextBtn.style.display = 'none';
-        
+
         // 隱藏「複製並新增下一筆」按鈕（編輯模式不需要）
         const cloneAndAddNextBtn = document.getElementById('cloneAndAddNextBtn');
         if (cloneAndAddNextBtn) cloneAndAddNextBtn.style.display = 'none';
-        
+
     } else {
         title.textContent = window.i18n ? window.i18n.t('testCase.createTestCase') : '新增測試案例';
-        
+
         // 清空所有表單欄位
         document.getElementById('testCaseId').value = '';
         document.getElementById('title').value = '';
@@ -4961,19 +4968,19 @@ function showTestCaseModal(testCase = null) {
         document.getElementById('precondition').value = '';
         document.getElementById('test_steps').value = '';
         document.getElementById('expected_result').value = '';
-        
+
         // 清空 Modal TCG 多選顯示
         modalTCGSelected = [];
         renderModalTCGDisplay();
-        
+
         // 清除 modal 的 recordId dataset
         modal.dataset.recordId = '';
-        
+
         originalFormData = {};
         saveBtn.disabled = false; // 儲存按鈕始終啟用
         // 獲取「複製並新增下一筆」按鈕
         const cloneAndAddNextBtn = document.getElementById('cloneAndAddNextBtn');
-        
+
         if (isCopyMode) {
             // 複製模式移除「儲存並新增下一筆」
             saveAndAddNextBtn.disabled = true;
@@ -4991,10 +4998,10 @@ function showTestCaseModal(testCase = null) {
         }
         currentTestCaseIndex = -1;
         updateNavigationButtons();
-        
+
         // 渲染附件列表（新增模式下為空）
         renderAttachmentsList();
-        
+
         // 清空所有 Markdown 預覽內容
         markdownFields.forEach(fieldId => {
             const previewElement = document.querySelector(`.markdown-preview[data-target="${fieldId}"]`);
@@ -5003,14 +5010,14 @@ function showTestCaseModal(testCase = null) {
                 previewElement.innerHTML = `<p class="text-muted">${previewPlaceholder}</p>`;
             }
         });
-        
+
         // 新增模式下預設為編輯模式
         setEditorMode('split');
     }
-    
+
     // 啟用所有欄位（檢視/編輯合一）
     form.querySelectorAll('input, textarea, select').forEach(el => el.disabled = false);
-    
+
     // 綁定變更監聽器
     bindFormChangeListeners();
 
@@ -5022,12 +5029,12 @@ function showTestCaseModal(testCase = null) {
     // 在顯示 modal 前，確保所有滾動位置都在頂部
     // 這樣做可以避免 modal 顯示時的跳動效果
     resetModalScrollPositions(modal);
-    
+
     // 只創建一次 Modal 實例，避免 backdrop 累積
     if (!testCaseModalInstance) {
         const modalOptions = window.__MINIMAL_MODE__ ? { backdrop: false, keyboard: true, focus: true } : undefined;
         testCaseModalInstance = new bootstrap.Modal(modal, modalOptions);
-        
+
         // 只綁定一次事件監聽器
         // 顯示前立即重置滾動，並暫時隱藏內容避免進場彈跳
         modal.addEventListener('show.bs.modal', function() {
@@ -5064,7 +5071,7 @@ function showTestCaseModal(testCase = null) {
             }
         }
     }
-    
+
     // 綁定複製連結按鈕（使用當前測試案例/表單值）
     try {
         const btn = document.getElementById('copyTcmCaseLinkBtn');
@@ -5088,7 +5095,7 @@ function showTestCaseModal(testCase = null) {
     } catch (_) {}
 
     testCaseModalInstance.show();
-    
+
     // 確保按鈕狀態正確（解決可能的時序問題）
     setTimeout(() => {
         const saveBtn = document.getElementById('saveTestCaseBtn');
@@ -5135,7 +5142,7 @@ function bindFormChangeListeners() {
     const form = document.getElementById('testCaseForm');
     const saveBtn = document.getElementById('saveTestCaseBtn');
     const saveAndAddNextBtn = document.getElementById('saveAndAddNextBtn');
-    
+
     // 為所有表單欄位綁定變更事件
     form.querySelectorAll('input, textarea, select').forEach(element => {
         element.addEventListener('input', checkFormChanges);
@@ -5149,20 +5156,20 @@ function checkFormChanges() {
     const saveBtn = document.getElementById('saveTestCaseBtn');
     const saveAndAddNextBtn = document.getElementById('saveAndAddNextBtn');
     const formData = new FormData(form);
-    
+
     // 儲存按鈕始終保持啟用狀態
     saveBtn.disabled = false;
     saveAndAddNextBtn.disabled = false;
-    
+
     // 檢查新增模式
     if (!document.getElementById('testCaseId').value) {
         // 新增模式：所有儲存按鈕都保持啟用
         return;
     }
-    
+
     // 編輯模式：比較與原始資料的差異（僅用於追蹤，不影響按鈕狀態）
     let hasChanges = false;
-    
+
     for (const [key, value] of Object.entries(originalFormData)) {
         const currentValue = formData.get(key) || '';
         if (currentValue !== value) {
@@ -5170,7 +5177,7 @@ function checkFormChanges() {
             break;
         }
     }
-    
+
     isFormChanged = hasChanges;
     // 編輯模式下不再禁用儲存按鈕
 }
@@ -5179,9 +5186,9 @@ function checkFormChanges() {
 function hasUnsavedChanges() {
     const form = document.getElementById('testCaseForm');
     if (!form) return false;
-    
+
     const testCaseId = document.getElementById('testCaseId').value;
-    
+
     // 新增模式：檢查是否有輸入任何內容
     if (!testCaseId) {
         const formData = new FormData(form);
@@ -5189,11 +5196,11 @@ function hasUnsavedChanges() {
         const testCaseNumber = formData.get('test_case_number') || '';
         const steps = formData.get('steps') || '';
         const expectedResults = formData.get('expected_results') || '';
-        
+
         // 如果任何欄位有內容，就認為有變更
         return title.trim() || testCaseNumber.trim() || steps.trim() || expectedResults.trim();
     }
-    
+
     // 編輯模式：比較與原始資料的差異
     const formData = new FormData(form);
     for (const [key, value] of Object.entries(originalFormData)) {
@@ -5202,14 +5209,14 @@ function hasUnsavedChanges() {
             return true;
         }
     }
-    
+
     return false;
 }
 
 function deleteTestCase(id) {
     const testCase = testCases.find(tc => tc.record_id === id);
     if (!testCase) return;
-    
+
     // 設置刪除確認 Modal 的內容
     const deleteList = document.getElementById('deleteList');
     deleteList.innerHTML = `
@@ -5220,11 +5227,11 @@ function deleteTestCase(id) {
             </div>
         </div>
     `;
-    
+
     // 顯示刪除確認 Modal
     const deleteModal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
     deleteModal.show();
-    
+
     // 設置確認刪除的處理
     document.getElementById('confirmDeleteBtn').onclick = async function() {
         try {
@@ -5233,20 +5240,20 @@ function deleteTestCase(id) {
             if (!currentTeam || !currentTeam.id) {
                 throw new Error('請先選擇團隊');
             }
-            
+
             // 發送刪除請求
             const response = await window.AuthClient.fetch(`/api/teams/${currentTeam.id}/testcases/${id}`, {
                 method: 'DELETE'
             });
-            
+
             if (!response.ok) {
                 const errorData = await response.json();
                 throw new Error(errorData.detail || '刪除失敗');
             }
-            
+
             // 關閉 Modal
             deleteModal.hide();
-            
+
             // 從本地陣列移除已刪除的項目
             testCases = testCases.filter(tc => tc.record_id !== id);
             // 依目前過濾器重新渲染
@@ -5254,14 +5261,14 @@ function deleteTestCase(id) {
 
             // 從快取中移除
             removeTestCaseFromCache(id, testCase);
-            
+
             // 重新渲染表格和分頁
             renderTestCasesTable();
             updatePagination();
-            
+
             // 用 toast 通知成功
             AppUtils.showSuccess(window.i18n ? window.i18n.t('messages.testCaseDeleted') : '測試案例刪除成功');
-            
+
         } catch (error) {
             console.error('刪除測試案例失敗:', error);
             const message = window.i18n ? window.i18n.t('errors.deleteFailed') : '刪除失敗';
@@ -5273,7 +5280,7 @@ function deleteTestCase(id) {
 async function saveTestCase() {
     const form = document.getElementById('testCaseForm');
     const formData = new FormData(form);
-    
+
     const testCaseData = {
         title: formData.get('title'),
         test_case_number: formData.get('test_case_number'),
@@ -5289,7 +5296,7 @@ async function saveTestCase() {
     if (currentTempUploadId) {
         testCaseData.temp_upload_id = currentTempUploadId;
     }
-    
+
     // 除錯：檢查 test_steps 是否被正確收集
     const testStepsElement = document.getElementById('test_steps');
     console.log('test_steps element:', testStepsElement);
@@ -5300,7 +5307,7 @@ async function saveTestCase() {
         console.log(`  ${key}: ${value}`);
     }
     console.log('testCaseData:', testCaseData);
-    
+
     // 表單驗證
     if (!testCaseData.title) {
         showError(window.i18n ? window.i18n.t('errors.testCaseTitleRequired') : '請填寫測試案例標題');
@@ -5310,33 +5317,33 @@ async function saveTestCase() {
         showError(window.i18n ? window.i18n.t('errors.testCaseNumberRequired') : '請填寫測試案例編號');
         return;
     }
-    
+
     // 檢查測試案例編號唯一性
     if (testCaseData.test_case_number) {
         const currentTestCaseId = document.getElementById('testCaseId').value;
-        const isDuplicate = testCases.some(tc => 
+        const isDuplicate = testCases.some(tc =>
             tc.test_case_number === testCaseData.test_case_number &&
             tc.record_id !== currentTestCaseId // 排除當前編輯的記錄
         );
-        
+
         if (isDuplicate) {
-            const errorMessage = window.i18n ? 
+            const errorMessage = window.i18n ?
                 window.i18n.t('errors.testCaseNumberDuplicate', {number: testCaseData.test_case_number}, `測試案例編號 '${testCaseData.test_case_number}' 已存在，請使用其他編號`) :
                 `測試案例編號 '${testCaseData.test_case_number}' 已存在，請使用其他編號`;
             showError(errorMessage);
             return;
         }
     }
-    
+
     // 獲取當前選擇的團隊
     const currentTeam = AppUtils.getCurrentTeam();
     if (!currentTeam || !currentTeam.id) {
         showError(window.i18n ? window.i18n.t('errors.pleaseSelectTeam') : '請先選擇團隊');
         return;
     }
-    
+
     const testCaseId = document.getElementById('testCaseId').value;
-    
+
     // 不關閉 Modal，保持編輯窗開啟以支持快速編輯
     // 重置變更狀態並禁用儲存按鈕
     isFormChanged = false;
@@ -5344,18 +5351,18 @@ async function saveTestCase() {
     saveBtn.disabled = true;
     const savingText = window.i18n ? window.i18n.t('messages.saving') : '儲存中...';
     saveBtn.innerHTML = `<i class="fas fa-spinner fa-spin me-2"></i>${savingText}`;
-    
+
     // 顯示儲存中訊息
-    const savingMessage = testCaseId ? 
-        (window.i18n ? window.i18n.t('messages.testCaseSaving') : '測試案例更新中...') : 
+    const savingMessage = testCaseId ?
+        (window.i18n ? window.i18n.t('messages.testCaseSaving') : '測試案例更新中...') :
         (window.i18n ? window.i18n.t('messages.testCaseSaving') : '測試案例新增中...');
     showSuccess(savingMessage);
-    
+
     // 背景處理儲存
     setTimeout(async () => {
         try {
             let response;
-            
+
             if (testCaseId) {
                 // 更新現有測試案例
                 response = await window.AuthClient.fetch(`/api/teams/${currentTeam.id}/testcases/${testCaseId}`, {
@@ -5378,7 +5385,7 @@ async function saveTestCase() {
                     body: JSON.stringify(testCaseData)
                 });
             }
-            
+
             if (!response.ok) {
                 let msg = '儲存失敗';
                 try {
@@ -5395,7 +5402,7 @@ async function saveTestCase() {
                 } catch (_) {}
                 throw new Error(msg);
             }
-            
+
             // 如果是新增測試案例，需要取得新的記錄ID並轉為編輯模式
             if (!testCaseId) {
                 const newTestCase = await response.json();
@@ -5419,7 +5426,7 @@ async function saveTestCase() {
                     }
                 }
             }
-            
+
             // 更新快取而非重新載入全部資料
             // testCaseId 已在函數開頭宣告，這裡直接使用
             if (testCaseId) {
@@ -5428,17 +5435,17 @@ async function saveTestCase() {
                     const response = await window.AuthClient.fetch(`/api/teams/${currentTeam.id}/testcases/${testCaseId}`);
                     if (response.ok) {
                         const updatedTestCase = await response.json();
-                        
+
                         // 更新本地列表
                         const index = testCases.findIndex(tc => tc.record_id === testCaseId);
                         if (index >= 0) {
                             testCases[index] = updatedTestCase;
                             applyCurrentFiltersAndRender();
                         }
-                        
+
                         // 更新快取
                         updateTestCaseInCache(updatedTestCase);
-                        
+
                         // 同步更新執行頁快取：若編號變更則移除舊快取
                         const oldNumber = (originalFormData && originalFormData.test_case_number) ? originalFormData.test_case_number : null;
                         const newNumber = updatedTestCase.test_case_number;
@@ -5457,13 +5464,13 @@ async function saveTestCase() {
                 // 新增測試案例 - 重新載入以取得完整列表（含新記錄）
                 await loadTestCases(false, null, true);
             }
-            
+
             // 恢復儲存按鈕狀態
             const saveBtn = document.getElementById('saveTestCaseBtn');
             saveBtn.disabled = false; // 儲存按鈕始終啟用
             const saveText = window.i18n ? window.i18n.t('common.save') : '儲存';
             saveBtn.innerHTML = `<i class="fas fa-save me-2"></i>${saveText}`;
-            
+
             // 如果是編輯模式，更新 originalFormData 以反映當前保存的狀態
             if (testCaseId) {
                 const form = document.getElementById('testCaseForm');
@@ -5478,25 +5485,25 @@ async function saveTestCase() {
                     expected_result: document.getElementById('expected_result') ? document.getElementById('expected_result').value : ''
                 };
             }
-            
+
             // 成功後清空暫存上傳識別碼（避免影響下一次操作）
             currentTempUploadId = null;
 
             // 更新成功訊息
-            const completedMessage = testCaseId ? 
-                (window.i18n ? window.i18n.t('messages.testCaseUpdated') : '測試案例更新完成') : 
+            const completedMessage = testCaseId ?
+                (window.i18n ? window.i18n.t('messages.testCaseUpdated') : '測試案例更新完成') :
                 (window.i18n ? window.i18n.t('messages.testCaseCreated') : '測試案例新增完成');
             showSuccess(completedMessage);
-            
+
         } catch (error) {
             console.error('儲存測試案例失敗:', error);
-            
+
             // 恢復儲存按鈕狀態
             const saveBtn = document.getElementById('saveTestCaseBtn');
             saveBtn.disabled = false;
             const saveText = window.i18n ? window.i18n.t('common.save') : '儲存';
             saveBtn.innerHTML = `<i class="fas fa-save me-2"></i>${saveText}`;
-            
+
             const saveFailedMessage = window.i18n ? window.i18n.t('errors.saveFailed') : '儲存失敗';
             showError(saveFailedMessage + '：' + error.message);
         }
@@ -5507,7 +5514,7 @@ async function saveTestCase() {
 async function saveAndAddNext() {
     const form = document.getElementById('testCaseForm');
     const formData = new FormData(form);
-    
+
     const testCaseData = {
         title: formData.get('title'),
         test_case_number: formData.get('test_case_number'),
@@ -5523,7 +5530,7 @@ async function saveAndAddNext() {
     if (currentTempUploadId) {
         testCaseData.temp_upload_id = currentTempUploadId;
     }
-    
+
     // 表單驗證
     if (!testCaseData.title) {
         showError(window.i18n ? window.i18n.t('errors.testCaseTitleRequired') : '請填寫測試案例標題');
@@ -5533,29 +5540,29 @@ async function saveAndAddNext() {
         showError(window.i18n ? window.i18n.t('errors.testCaseNumberRequired') : '請填寫測試案例編號');
         return;
     }
-    
+
     // 檢查測試案例編號唯一性（新增模式不需要排除任何記錄）
     if (testCaseData.test_case_number) {
-        const isDuplicate = testCases.some(tc => 
+        const isDuplicate = testCases.some(tc =>
             tc.test_case_number === testCaseData.test_case_number
         );
-        
+
         if (isDuplicate) {
-            const errorMessage = window.i18n ? 
+            const errorMessage = window.i18n ?
                 window.i18n.t('errors.testCaseNumberDuplicate', {number: testCaseData.test_case_number}, `測試案例編號 '${testCaseData.test_case_number}' 已存在，請使用其他編號`) :
                 `測試案例編號 '${testCaseData.test_case_number}' 已存在，請使用其他編號`;
             showError(errorMessage);
             return;
         }
     }
-    
+
     // 獲取當前選擇的團隊
     const currentTeam = AppUtils.getCurrentTeam();
     if (!currentTeam || !currentTeam.id) {
         showError(window.i18n ? window.i18n.t('errors.pleaseSelectTeam') : '請先選擇團隊');
         return;
     }
-    
+
     // 禁用按鈕並顯示載入狀態
     const saveBtn = document.getElementById('saveTestCaseBtn');
     const saveAndAddNextBtn = document.getElementById('saveAndAddNextBtn');
@@ -5563,9 +5570,9 @@ async function saveAndAddNext() {
     saveAndAddNextBtn.disabled = true;
     const savingText = window.i18n ? window.i18n.t('messages.saving') : '儲存中...';
     saveAndAddNextBtn.innerHTML = `<i class="fas fa-spinner fa-spin me-2"></i>${savingText}`;
-    
+
     showSuccess(window.i18n ? window.i18n.t('messages.testCaseSaving') : '測試案例新增中...');
-    
+
     try {
         // 新增測試案例
         // 建立 API 不支援 tcg 字串（僅 update 支援），避免 422 將其移除
@@ -5578,7 +5585,7 @@ async function saveAndAddNext() {
             },
             body: JSON.stringify(testCaseData)
         });
-        
+
         if (!response.ok) {
             let msg = '儲存失敗';
             try {
@@ -5595,7 +5602,7 @@ async function saveAndAddNext() {
             } catch (_) {}
             throw new Error(msg);
         }
-        
+
         // 取得新建記錄資訊以便更新 TCG（若有）
         let createdRecordId = null;
         try {
@@ -5627,9 +5634,9 @@ async function saveAndAddNext() {
                 setExecCachedTestCase(created.test_case_number, created);
             }
         } catch (e) { console.debug('set exec cache (create) skipped:', e); }
-        
+
         showSuccess(window.i18n ? window.i18n.t('messages.testCaseCreatedNext') : '測試案例新增完成，準備下一筆');
-        
+
         // 保存當前資料用於產生下一筆
         const currentNumber = testCaseData.test_case_number;
         const currentTitle = testCaseData.title;
@@ -5638,16 +5645,16 @@ async function saveAndAddNext() {
         const currentExpectedResult = testCaseData.expected_result;
         // 重要：在重置表單前先暫存當前 TCG 單號（建立時不傳，建立後會用於 PUT）
         const currentTCG = (typeof tcgNumberForCreate === 'string' && tcgNumberForCreate.trim()) ? tcgNumberForCreate.trim() : '';
-        
+
         // 成功新增後清空暫存上傳識別碼
         currentTempUploadId = null;
         // 重置表單為新增下一筆狀態
         showTestCaseModal(null); // 呼叫新增模式，會自動清空所有欄位並設定為編輯模式
-        
+
         // 產生下一筆的預填資料
         const nextNumber = generateNextTestCaseNumber(currentNumber);
         const titlePrefix = extractTitlePrefix(currentTitle);
-        
+
         // 設定預填值
         setTimeout(() => {
             if (nextNumber !== currentNumber) {
@@ -5682,13 +5689,13 @@ async function saveAndAddNext() {
 
     } catch (error) {
         console.error('儲存測試案例失敗:', error);
-        
+
         // 恢復按鈕狀態
         saveBtn.disabled = false;
         saveAndAddNextBtn.disabled = false;
         const saveAndNextText = window.i18n ? window.i18n.t('testCase.saveAndNext') : '儲存並新增下一筆';
         saveAndAddNextBtn.innerHTML = `<i class="fas fa-plus me-2"></i>${saveAndNextText}`;
-        
+
         const saveFailedMessage = window.i18n ? window.i18n.t('errors.saveFailed') : '儲存失敗';
         showError(saveFailedMessage + '：' + error.message);
     }
@@ -5753,7 +5760,7 @@ function getTCGDisplay(testCase) {
     if (!testCase.tcg || testCase.tcg.length === 0) {
         return '-';
     }
-    
+
     // 提取所有 TCG 顯示文字（若 text 內含多個以逗號/空白/頓號/豎線分隔，拆成多個）
     const tcgNumbers = [];
     const pushSplit = (text) => {
@@ -5772,7 +5779,7 @@ function getTCGDisplay(testCase) {
             pushSplit(tcgRecord);
         }
     }
-    
+
     return tcgNumbers.length > 0 ? tcgNumbers.join(', ') : '-';
 }
 
@@ -5780,7 +5787,7 @@ function getTCGTags(testCase) {
     if (!testCase.tcg || testCase.tcg.length === 0) {
         return '';
     }
-    
+
     // 提取所有 TCG 顯示文字（若 text 內含多個以逗號/空白/頓號/豎線分隔，拆成多個）
     const tcgNumbers = [];
     const pushSplit = (text) => {
@@ -5799,13 +5806,13 @@ function getTCGTags(testCase) {
             pushSplit(tcgRecord);
         }
     }
-    
+
     if (tcgNumbers.length === 0) {
         return '';
     }
-    
+
     // 創建柔和的 tag（每一個單號一個 tag）
-    return tcgNumbers.map(tcg => 
+    return tcgNumbers.map(tcg =>
         `<span class=\"tcg-tag\">${tcg}</span>`
     ).join('');
 }
@@ -5832,7 +5839,7 @@ function applyFilters() {
 
     // 依記憶體過濾器重新計算
     filteredTestCases = computeFilteredTestCases(testCases);
-    
+
     currentPage = 1;
     renderTestCasesTable();
     updatePagination();
@@ -5854,7 +5861,7 @@ function clearFilters() {
 
     // 重置記憶體過濾器
     tcmCurrentFilters = { testCaseNumberSearch: '', searchInput: '', tcgFilter: '', priorityFilter: '' };
-    
+
     filteredTestCases = [...testCases];
     currentPage = 1;
     renderTestCasesTable();
@@ -5865,10 +5872,10 @@ function clearFilters() {
 function updateFilterStatus() {
     const applyBtn = document.getElementById('applyFiltersBtn');
     const clearBtn = document.getElementById('clearFiltersBtn');
-    
+
     // 檢查是否有任何篩選條件
     const hasFilters = hasAnyFilters();
-    
+
     if (hasFilters) {
         // 有篩選條件時，更新按鈕樣式和文字
         const filteredText = window.i18n ? window.i18n.t('common.filtered', {count: filteredTestCases.length}) : `已篩選 (${filteredTestCases.length})`;
@@ -5887,7 +5894,7 @@ function updateFilterStatus() {
 function toggleSelectAll() {
     const selectAll = document.getElementById('selectAllCheckbox').checked;
     const checkboxes = document.querySelectorAll('.test-case-checkbox');
-    
+
     checkboxes.forEach(checkbox => {
         checkbox.checked = selectAll;
         const id = checkbox.value; // record_id 是字串，勿轉數字
@@ -5897,7 +5904,7 @@ function toggleSelectAll() {
             selectedTestCases.delete(id);
         }
     });
-    
+
     updateBatchToolbar();
     // 重置 Shift 多選錨點
     lastCaseCheckboxIndex = null;
@@ -5906,15 +5913,15 @@ function toggleSelectAll() {
 function updateBatchToolbar() {
     const toolbar = document.getElementById('batchInlineToolbar');
     if (!toolbar) return;
-    
+
     const selectedCount = selectedTestCases ? selectedTestCases.size : 0;
-    
+
     // 更新選中數量顯示
     const countWrapper = document.getElementById('selectedCountWrapper');
     if (countWrapper) {
         // 更新 data-i18n-params
         countWrapper.setAttribute('data-i18n-params', JSON.stringify({count: selectedCount}));
-        
+
         // 如果 i18n 已載入，重新翻譯此元素
         if (window.i18n && window.i18n.updateElement) {
             window.i18n.updateElement(countWrapper);
@@ -5928,7 +5935,7 @@ function updateBatchToolbar() {
             }
         }
     }
-    
+
     // 顯示/隱藏工具列
     if (!toolbar.dataset.defaultDisplay || toolbar.dataset.defaultDisplay === 'none') {
         const computed = window.getComputedStyle(toolbar).display;
@@ -5943,7 +5950,7 @@ function updateBatchToolbar() {
         toolbar.classList.add('d-none');
         toolbar.style.setProperty('display', 'none', 'important');
     }
-    
+
     // 工具列顯示狀態可能改變整體高度，需重新計算列表高度
     adjustTestCasesScrollHeight();
 }
@@ -5973,24 +5980,24 @@ function openTestCaseBatchModifyModal() {
         AppUtils.showError(msg);
         return;
     }
-    
+
     // 更新選中項目數量顯示
     document.getElementById('testCaseBatchModifyCount').textContent = selectedTestCases.size;
-    
+
     // 重置表單
     document.getElementById('batchModifyTCG').checked = true;
     document.getElementById('batchTCGInput').value = '';
     document.getElementById('batchModifyPriority').checked = false;
     document.getElementById('batchPrioritySelect').value = '';
     document.getElementById('batchPrioritySelect').disabled = true;
-    
+
     // 初始化批次 TCG 編輯器
     initializeBatchTCGEditor();
-    
+
     // 顯示模態框
     const modal = new bootstrap.Modal(document.getElementById('testCaseBatchModifyModal'));
     modal.show();
-    
+
     // 模態框顯示後確保 TCG 容器正確顯示
     setTimeout(() => {
         const container = document.getElementById('batchTCGContainer');
@@ -6001,17 +6008,17 @@ function openTestCaseBatchModifyModal() {
             container.style.backgroundColor = '#ffffff';
             container.style.cursor = 'pointer';
             container.setAttribute('title', '點擊編輯 TCG 單號');
-            
+
             // 新增一個提示文字當沒有選擇時
             if (batchTCGSelected.length === 0) {
                 container.innerHTML = '<span class="text-muted small">點擊此處選擇 TCG 單號...</span>';
             }
-            
+
             // **關鍵修正**：重新綁定點擊事件，因為 innerHTML 會清除事件監聽器
             container.removeEventListener('click', openBatchTCGEditor); // 移除舊的（如果有）
             container.addEventListener('click', openBatchTCGEditor); // 重新綁定
         }
-        
+
         // 綁定模態框關閉事件
         const modal = document.getElementById('testCaseBatchModifyModal');
         if (modal) {
@@ -6041,13 +6048,13 @@ function initializeBatchTCGEditor() {
     // 重置狀態
     batchTCGSelected = [];
     batchTCGEditing = false;
-    
+
     // 清理任何存在的監聽器
     document.removeEventListener('click', handleBatchTCGOutsideClick, true);
-    
+
     // 重置顯示
     renderBatchTCGDisplay();
-    
+
     // 確保點擊事件正確綁定
     const container = document.getElementById('batchTCGContainer');
     if (container) {
@@ -6062,7 +6069,7 @@ function initializeBatchTCGEditor() {
 function renderBatchTCGDisplay() {
     const container = document.getElementById('batchTCGContainer');
     if (!container) return;
-    
+
     if (!Array.isArray(batchTCGSelected) || batchTCGSelected.length === 0) {
         // 顯示提示文字當沒有選擇時
         container.innerHTML = '<span class="text-muted small">點擊此處選擇 TCG 單號...</span>';
@@ -6071,7 +6078,7 @@ function renderBatchTCGDisplay() {
         container.addEventListener('click', openBatchTCGEditor);
         return;
     }
-    
+
     const tags = batchTCGSelected.map(t => `<span class="tcg-tag">${t}</span>`).join(' ');
     container.innerHTML = tags;
     // 重新綁定點擊事件（因為 innerHTML 會清除事件）
@@ -6094,9 +6101,9 @@ function openBatchTCGEditor() {
     // 建立與列表一致的搜尋輸入與下拉
     const searchHtml = `
         <div class="tcg-search-container position-relative" style="min-height: 32px; height: 32px; display: flex; align-items: center; overflow: hidden;">
-            <input type="text" class="form-control form-control-sm tcg-search-input" 
-                   data-i18n-placeholder="testCase.tcgPlaceholder" autocomplete="off" 
-                   onkeydown="handleBatchTCGSearchKeydown(event)" 
+            <input type="text" class="form-control form-control-sm tcg-search-input"
+                   data-i18n-placeholder="testCase.tcgPlaceholder" autocomplete="off"
+                   onkeydown="handleBatchTCGSearchKeydown(event)"
                    oninput="handleBatchTCGSearchInput(event)"
                    onclick="event.stopPropagation()"
                    style="height: 28px; width: 100%; font-size: 0.75rem; padding: 0.125rem 0.375rem; border: 1px solid #dee2e6; box-shadow: none; outline: none;">
@@ -6177,7 +6184,7 @@ function handleBatchTCGSearchKeydown(event) {
 async function searchBatchTCGOptions(keyword) {
     const dropdown = document.getElementById('batchTCGDropdown');
     if (!dropdown) return;
-    
+
     try {
         const currentTeam = AppUtils.getCurrentTeam();
         if (!currentTeam || !currentTeam.id) {
@@ -6216,20 +6223,20 @@ function updateBatchTCGDropdown(results) {
     positionBatchTCGDropdown();
     const dropdown = document.getElementById('batchTCGDropdown');
     if (!dropdown) return;
-    
+
     let html = '';
     // 清除選取選項
     html += `
-        <div class="tcg-option p-2 border-bottom" 
-             onclick="event.stopPropagation(); clearBatchTCG()" 
-             style="cursor: pointer; border-bottom: 1px solid #f8f9fa; background-color: #fff3cd;" 
-             onmouseover="this.style.backgroundColor='#ffeaa7'" 
+        <div class="tcg-option p-2 border-bottom"
+             onclick="event.stopPropagation(); clearBatchTCG()"
+             style="cursor: pointer; border-bottom: 1px solid #f8f9fa; background-color: #fff3cd;"
+             onmouseover="this.style.backgroundColor='#ffeaa7'"
              onmouseout="this.style.backgroundColor='#fff3cd'">
           <div class="fw-medium text-warning">
             <i class="fas fa-times me-2"></i>清除 TCG 單號
           </div>
         </div>`;
-    
+
     if (!Array.isArray(results) || results.length === 0) {
         html += '<div class="p-2 text-muted">無符合的結果</div>';
         dropdown.innerHTML = html;
@@ -6240,7 +6247,7 @@ function updateBatchTCGDropdown(results) {
     html += results.map((tcg, index) => {
         const selected = Array.isArray(batchTCGSelected) && batchTCGSelected.includes(tcg.tcg_number);
         return `
-            <div class="tcg-option p-2 border-bottom d-flex justify-content-between align-items-center" 
+            <div class="tcg-option p-2 border-bottom d-flex justify-content-between align-items-center"
                  data-tcg-number="${tcg.tcg_number}"
                  onclick="event.stopPropagation(); toggleBatchTCG('${tcg.tcg_number}')"
                  onmouseenter="highlightBatchTCGOption(${index})"
@@ -6272,17 +6279,17 @@ function updateBatchTCGDropdown(results) {
 function handleBatchTCGKeydown(event) {
     const dropdown = document.getElementById('batchTCGDropdown');
     if (!dropdown || dropdown.style.display === 'none') return;
-    
+
     const options = dropdown.querySelectorAll('.tcg-option');
     let currentIndex = -1;
-    
+
     // 找到當前選中的項目
     options.forEach((option, index) => {
         if (option.classList.contains('active')) {
             currentIndex = index;
         }
     });
-    
+
     switch (event.key) {
         case 'ArrowDown':
             event.preventDefault();
@@ -6313,7 +6320,7 @@ function handleBatchTCGKeydown(event) {
 function highlightBatchTCGOption(index) {
     const dropdown = document.getElementById('batchTCGDropdown');
     if (!dropdown) return;
-    
+
     const options = dropdown.querySelectorAll('.tcg-option');
     options.forEach((option, i) => {
         if (i === index) {
@@ -6333,12 +6340,12 @@ function toggleBatchTCG(tcgNumber) {
     // 同步隱藏欄位，確保按下「確認修改」時可以讀到最新選擇
     const hidden = document.getElementById('batchTCGInput');
     if (hidden) hidden.value = batchTCGSelected.join(', ');
-    
+
     // 編輯狀態下不要重繪容器，避免將搜尋輸入框移除導致後續無法點擊
     if (!batchTCGEditing) {
         renderBatchTCGDisplay();
     }
-    
+
     // 重新搜尋並更新下拉選單，但不先清空避免閃爍
     const inputEl = document.querySelector('#batchTCGContainer .tcg-search-input');
     const kw = inputEl ? inputEl.value : '';
@@ -6350,7 +6357,7 @@ function clearBatchTCG() {
     // 同步隱藏欄位
     const hidden = document.getElementById('batchTCGInput');
     if (hidden) hidden.value = '';
-    
+
     if (!batchTCGEditing) {
         renderBatchTCGDisplay();
     }
@@ -6362,17 +6369,17 @@ function clearBatchTCG() {
 function showBatchTCGDropdown() {
     const input = document.getElementById('batchTCGInput');
     const dropdown = document.getElementById('batchTCGDropdown');
-    
+
     if (input.value.trim().length >= 2) {
         handleBatchTCGSearch(input);
     } else {
         dropdown.innerHTML = '<div class="p-2 text-muted small" data-i18n="testCase.tcgSearchHint">開始輸入以搜尋 TCG...</div>';
-        
+
         // 重新應用翻譯到新生成的內容
         if (window.i18n && window.i18n.isReady()) {
             window.i18n.retranslate(dropdown);
         }
-        
+
         dropdown.style.display = 'block';
     }
 }
@@ -6409,14 +6416,14 @@ function updateLocalTestCasesAfterBatchModify(selectedIds, updateData) {
                     testCase.tcg = [{ text: updateData.tcg, text_arr: [updateData.tcg], display_text: updateData.tcg, type: 'text' }];
                 }
             }
-            
+
             // 更新優先級
             if (updateData.priority !== undefined) {
                 testCase.priority = updateData.priority;
             }
         }
     });
-    
+
     // 更新篩選後的陣列
     filteredTestCases.forEach(testCase => {
         if (selectedIds.includes(testCase.record_id)) {
@@ -6430,14 +6437,14 @@ function updateLocalTestCasesAfterBatchModify(selectedIds, updateData) {
                     testCase.tcg = [{ text: updateData.tcg, text_arr: [updateData.tcg], display_text: updateData.tcg, type: 'text' }];
                 }
             }
-            
+
             // 更新優先級
             if (updateData.priority !== undefined) {
                 testCase.priority = updateData.priority;
             }
         }
     });
-    
+
     // 立即依目前過濾器重新渲染
     applyCurrentFiltersAndRender();
 }
@@ -6445,16 +6452,16 @@ function updateLocalTestCasesAfterBatchModify(selectedIds, updateData) {
 async function performTestCaseBatchModify() {
     const modifyTCG = document.getElementById('batchModifyTCG').checked;
     const modifyPriority = document.getElementById('batchModifyPriority').checked;
-    
+
     if (!modifyTCG && !modifyPriority) {
         const msg = window.i18n ? window.i18n.t('errors.selectModifyFields') : '請至少選擇一個要修改的欄位';
         AppUtils.showError(msg);
         return;
     }
-    
+
     const selectedIds = Array.from(selectedTestCases);
     const updateData = {};
-    
+
     // 收集要修改的資料
     if (modifyTCG) {
         const raw = document.getElementById('batchTCGInput').value || '';
@@ -6467,7 +6474,7 @@ async function performTestCaseBatchModify() {
             updateData.tcg = parts;
         }
     }
-    
+
     if (modifyPriority) {
         const priorityValue = document.getElementById('batchPrioritySelect').value;
         if (!priorityValue) {
@@ -6477,7 +6484,7 @@ async function performTestCaseBatchModify() {
         }
         updateData.priority = priorityValue;
     }
-    
+
     try {
         // 獲取當前團隊
         const currentTeam = AppUtils.getCurrentTeam();
@@ -6486,17 +6493,17 @@ async function performTestCaseBatchModify() {
             AppUtils.showError(msg);
             return;
         }
-        
+
         // 顯示載入狀態
         const confirmBtn = document.getElementById('confirmTestCaseBatchModifyBtn');
         const originalBtnText = confirmBtn.innerHTML;
         confirmBtn.disabled = true;
         confirmBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>修改中...';
-        
+
         // 呼叫後端 API - 需要先擴展 API 支援更多欄位
         let success = true;
         let errorMessages = [];
-        
+
         // 分別處理 TCG 和 Priority（因為現有 API 只支援個別處理）
         if (modifyTCG) {
             const response = await window.AuthClient.fetch(`/api/teams/${currentTeam.id}/testcases/batch`, {
@@ -6510,14 +6517,14 @@ async function performTestCaseBatchModify() {
                     update_data: { tcg: updateData.tcg }
                 })
             });
-            
+
             const result = await response.json();
             if (!result.success) {
                 success = false;
                 errorMessages.push(...(result.error_messages || ['TCG 更新失敗']));
             }
         }
-        
+
         if (modifyPriority) {
             const response = await window.AuthClient.fetch(`/api/teams/${currentTeam.id}/testcases/batch`, {
                 method: 'POST',
@@ -6530,34 +6537,34 @@ async function performTestCaseBatchModify() {
                     update_data: { priority: updateData.priority }
                 })
             });
-            
+
             const result = await response.json();
             if (!result.success) {
                 success = false;
                 errorMessages.push(...(result.error_messages || ['優先級更新失敗']));
             }
         }
-        
+
         // 恢復按鈕狀態
         confirmBtn.disabled = false;
         confirmBtn.innerHTML = originalBtnText;
-        
+
         if (success) {
             // 關閉模態框
             const modal = bootstrap.Modal.getInstance(document.getElementById('testCaseBatchModifyModal'));
             if (modal) modal.hide();
-            
+
             // 立即更新本地資料顯示（不顯示載入動畫）
             updateLocalTestCasesAfterBatchModify(selectedIds, updateData);
-            
+
             // 清除選擇
             deselectAll();
-            
-            const successMsg = window.i18n ? 
-                window.i18n.t('messages.batchModifySuccess', { count: selectedIds.length }) : 
+
+            const successMsg = window.i18n ?
+                window.i18n.t('messages.batchModifySuccess', { count: selectedIds.length }) :
                 `成功修改 ${selectedIds.length} 個測試案例`;
             AppUtils.showSuccess(successMsg);
-            
+
             // 背景重新同步資料（強制刷新快取）
             setTimeout(async () => {
                 try {
@@ -6567,25 +6574,25 @@ async function performTestCaseBatchModify() {
                     console.warn('背景同步資料失敗:', error);
                 }
             }, 1000);
-            
+
         } else {
             const errorMsg = window.i18n ? window.i18n.t('errors.batchModifyFailed') : '批次修改失敗';
             AppUtils.showError(errorMsg + ': ' + errorMessages.join(', '));
         }
-        
+
     } catch (error) {
         console.error('批次修改錯誤:', error);
-        
+
         // 恢復按鈕狀態
         const confirmBtn = document.getElementById('confirmTestCaseBatchModifyBtn');
         confirmBtn.disabled = false;
         confirmBtn.innerHTML = '<i class="fas fa-edit me-2"></i><span data-i18n="testCase.confirmModify">確認修改</span>';
-        
+
         // 重新應用翻譯到按鈕內容
         if (window.i18n && window.i18n.isReady()) {
             window.i18n.retranslate(confirmBtn);
         }
-        
+
         const errorMsg = window.i18n ? window.i18n.t('errors.batchModifyFailed') : '批次修改失敗';
         AppUtils.showError(errorMsg + ': ' + error.message);
     }
@@ -6596,11 +6603,11 @@ function batchDeleteTestCases() {
         showError(window.i18n ? window.i18n.t('errors.pleaseSelectForDelete') : '請先選擇要刪除的測試案例');
         return;
     }
-    
+
     // 獲取選中的測試案例
     const selectedIds = Array.from(selectedTestCases);
     const selectedCases = testCases.filter(tc => selectedIds.includes(tc.record_id));
-    
+
     // 設置批次刪除確認 Modal 的內容
     const deleteList = document.getElementById('deleteList');
     deleteList.innerHTML = `
@@ -6615,11 +6622,11 @@ function batchDeleteTestCases() {
             </div>
         </div>
     `;
-    
+
     // 顯示刪除確認 Modal
     const deleteModal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
     deleteModal.show();
-    
+
     // 設置確認刪除的處理
     document.getElementById('confirmDeleteBtn').onclick = async function() {
         try {
@@ -6628,7 +6635,7 @@ function batchDeleteTestCases() {
             if (!currentTeam || !currentTeam.id) {
                 throw new Error('請先選擇團隊');
             }
-            
+
             // 發送批次刪除請求
             const response = await window.AuthClient.fetch(`/api/teams/${currentTeam.id}/testcases/batch`, {
                 method: 'POST',
@@ -6640,33 +6647,33 @@ function batchDeleteTestCases() {
                     record_ids: selectedIds
                 })
             });
-            
+
             if (!response.ok) {
                 const errorData = await response.json();
                 throw new Error(errorData.detail || '批次刪除失敗');
             }
-            
+
             // 關閉 Modal
             deleteModal.hide();
-            
+
             // 清除選擇
             deselectAll();
-            
+
             // 從本地陣列移除已刪除的項目（背景處理，不顯示載入動畫）
             const deletedIds = Array.from(selectedIds);
             testCases = testCases.filter(tc => !deletedIds.includes(tc.record_id));
             filteredTestCases = filteredTestCases.filter(tc => !deletedIds.includes(tc.record_id));
-            
+
             // 重新渲染表格和分頁
             renderTestCasesTable();
             updatePagination();
-            
+
             // 用 toast 通知成功
-            const batchDeleteMessage = window.i18n ? 
-                window.i18n.t('messages.batchDeleteSuccess', {count: selectedCases.length}) : 
+            const batchDeleteMessage = window.i18n ?
+                window.i18n.t('messages.batchDeleteSuccess', {count: selectedCases.length}) :
                 `成功刪除 ${selectedCases.length} 個測試案例`;
             AppUtils.showSuccess(batchDeleteMessage);
-            
+
         } catch (error) {
             console.error('批次刪除測試案例失敗:', error);
             const batchDeleteFailedMessage = window.i18n ? window.i18n.t('errors.batchDeleteFailed') : '批次刪除失敗';
@@ -6696,7 +6703,7 @@ function hideLoadingState() {
 function updatePagination() {
     const pagination = document.getElementById('pagination');
     const totalPages = Math.ceil(filteredTestCases.length / pageSize);
-    
+
     if (totalPages <= 1) {
         pagination.innerHTML = '';
         // 分頁內容清空後也需要重新計算列表高度，以避免 sticky 分頁高度變化造成重疊
@@ -6705,9 +6712,9 @@ function updatePagination() {
         }
         return;
     }
-    
+
     let paginationHtml = '';
-    
+
     // 上一頁
     const previousText = window.i18n ? window.i18n.t('pagination.previousPage') : '上一頁';
     paginationHtml += `
@@ -6715,7 +6722,7 @@ function updatePagination() {
             <a class="page-link" href="#" onclick="changePage(${currentPage - 1})">${previousText}</a>
         </li>
     `;
-    
+
     // 頁碼
     for (let i = 1; i <= totalPages; i++) {
         if (i === currentPage) {
@@ -6726,7 +6733,7 @@ function updatePagination() {
             paginationHtml += `<li class="page-item disabled"><a class="page-link" href="#">...</a></li>`;
         }
     }
-    
+
     // 下一頁
     const nextText = window.i18n ? window.i18n.t('pagination.nextPage') : '下一頁';
     paginationHtml += `
@@ -6734,14 +6741,14 @@ function updatePagination() {
             <a class="page-link" href="#" onclick="changePage(${currentPage + 1})">${nextText}</a>
         </li>
     `;
-    
+
     pagination.innerHTML = paginationHtml;
-    
+
     // 重新應用翻譯到新生成的分頁內容
     if (window.i18n && window.i18n.isReady()) {
         window.i18n.retranslate(pagination);
     }
-    
+
     // 分頁內容更新後，重新計算列表高度，避免與分頁重疊
     if (typeof adjustTestCasesScrollHeight === 'function') {
         adjustTestCasesScrollHeight();
@@ -6887,13 +6894,13 @@ function quickSearchRender_TCM(query, container) {
 function quickEdit(recordId, field) {
     const testCase = testCases.find(tc => tc.record_id === recordId);
     if (!testCase) return;
-    
+
     const cell = document.querySelector(`[data-record-id="${recordId}"][data-field="${field}"]`);
     if (!cell) return;
-    
+
     // 獲取當前值
     const currentValue = testCase[field] || '';
-    
+
     // 建立輸入框
     const input = document.createElement('input');
     input.type = 'text';
@@ -6908,33 +6915,33 @@ function quickEdit(recordId, field) {
     input.style.border = '1px solid #007bff';
     input.style.borderRadius = '4px';
     input.style.margin = '0';
-    
+
     // 儲存原始內容
     const originalContent = cell.innerHTML;
-    
+
     // 替換內容
     cell.innerHTML = '';
     cell.appendChild(input);
     input.focus();
     input.select();
-    
+
     // 處理儲存
     const saveEdit = async () => {
         const newValue = input.value.trim();
-        
+
         if (newValue === currentValue) {
             // 值沒有變更，恢復原始內容
             cell.innerHTML = originalContent;
             return;
         }
-        
+
         // 立即更新本地資料和 UI
         testCase[field] = newValue;
         cell.innerHTML = originalContent; // 先恢復原始結構
-        
+
         // 立即重新渲染表格以顯示新值
         renderTestCasesTable();
-        
+
         // 在背景處理儲存
         try {
             // 獲取當前團隊
@@ -6942,11 +6949,11 @@ function quickEdit(recordId, field) {
             if (!currentTeam || !currentTeam.id) {
                 throw new Error('請先選擇團隊');
             }
-            
+
             // 構建更新資料
             const updateData = {};
             updateData[field] = newValue;
-            
+
             // 背景發送更新請求，不等待響應
             window.AuthClient.fetch(`/api/teams/${currentTeam.id}/testcases/${recordId}`, {
                 method: 'PUT',
@@ -6960,7 +6967,7 @@ function quickEdit(recordId, field) {
                     throw new Error(errorData.detail || '更新失敗');
                 }
                 // 成功後顯示提示，但不重新渲染（已經渲染過了）
-                const fieldName = field === 'test_case_number' ? 'Test Case Number' : 
+                const fieldName = field === 'test_case_number' ? 'Test Case Number' :
                     (window.i18n ? window.i18n.t('common.title') : '標題');
                 const updateSuccessMessage = window.i18n ? window.i18n.t('messages.fieldUpdated') : '更新成功';
                 showSuccess(`${fieldName} ${updateSuccessMessage}`);
@@ -6968,28 +6975,28 @@ function quickEdit(recordId, field) {
                 console.error('快速編輯失敗:', error);
                 const updateFailedMessage = window.i18n ? window.i18n.t('errors.updateFailed') : '更新失敗';
                 showError(updateFailedMessage + '：' + error.message);
-                
+
                 // 如果儲存失敗，恢復原值並重新渲染
                 testCase[field] = currentValue;
                 renderTestCasesTable();
             });
-            
+
         } catch (error) {
             console.error('快速編輯失敗:', error);
             const updateFailedMessage = window.i18n ? window.i18n.t('errors.updateFailed') : '更新失敗';
             showError(updateFailedMessage + '：' + error.message);
-            
+
             // 恢復原值並重新渲染
             testCase[field] = currentValue;
             renderTestCasesTable();
         }
     };
-    
+
     // 處理取消
     const cancelEdit = () => {
         cell.innerHTML = originalContent;
     };
-    
+
     // 綁定事件
     input.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
@@ -7000,7 +7007,7 @@ function quickEdit(recordId, field) {
             cancelEdit();
         }
     });
-    
+
     input.addEventListener('blur', saveEdit);
 }
 
@@ -7012,18 +7019,18 @@ async function editTCG(recordId) {
     if (!hasTestCasePermission('tcgEditContainer')) {
         return; // Viewer 無權編輯 TCG
     }
-    
+
     const testCase = testCases.find(tc => tc.record_id === recordId);
     if (!testCase) return;
-    
+
     const cell = document.querySelector(`[data-record-id="${recordId}"][data-field="tcg"]`);
     if (!cell) return;
-    
+
     // 如果已經有編輯器在運行，先關閉
     if (currentTCGEditor && currentTCGEditor.recordId !== recordId) {
         await finishTCGEdit();
     }
-    
+
     // 獲取當前 TCG
     const currentTCGs = [];
     for (const tcgRecord of testCase.tcg || []) {
@@ -7033,7 +7040,7 @@ async function editTCG(recordId) {
             currentTCGs.push(tcgRecord.text);
         }
     }
-    
+
     // 設置編輯器狀態
     currentTCGEditor = {
         recordId: recordId,
@@ -7043,39 +7050,39 @@ async function editTCG(recordId) {
         originalContent: cell.innerHTML,
         mode: 'search'
     };
-    
+
     // 直接進入搜尋模式
     startTCGSearch();
 }
 
 async function startTCGSearch() {
     if (!currentTCGEditor) return;
-    
+
     const { cell, currentTCGs, recordId } = currentTCGEditor;
-    
+
     // 直接顯示搜尋框 - 隱藏原標籤
     const searchHtml = `
         <div class="tcg-search-container position-relative" style="min-height: 32px; height: 32px; display: flex; align-items: center; overflow: hidden;">
-            <input type="text" class="form-control form-control-sm tcg-search-input" 
-                   data-i18n-placeholder="testCase.tcgPlaceholder" autocomplete="off" 
-                   onkeydown="handleTCGSearchKeydown(event)" 
+            <input type="text" class="form-control form-control-sm tcg-search-input"
+                   data-i18n-placeholder="testCase.tcgPlaceholder" autocomplete="off"
+                   onkeydown="handleTCGSearchKeydown(event)"
                    oninput="handleTCGSearchInput(event)"
                    onclick="event.stopPropagation()"
                    style="height: 28px; width: 100%; font-size: 0.75rem; padding: 0.125rem 0.375rem; border: 1px solid #dee2e6; box-shadow: none; outline: none;">
-            <div class="tcg-dropdown" 
+            <div class="tcg-dropdown"
                  style="display: none;">
                 <div class="p-2 text-muted small">開始輸入以搜尋 TCG...</div>
             </div>
         </div>
     `;
-    
+
     cell.innerHTML = searchHtml;
     cell.classList.add('editing');
-    
+
     // 聚焦搜尋框並立即載入選項
     const searchInput = cell.querySelector('.tcg-search-input');
     searchInput.focus();
-    
+
     // 立即載入 TCG 選項並顯示下拉選單
     await searchTCGOptions('');
     const dropdown = cell.querySelector('.tcg-dropdown');
@@ -7083,14 +7090,14 @@ async function startTCGSearch() {
         // 計算輸入框的位置
         const searchInput = cell.querySelector('.tcg-search-input');
         const rect = searchInput.getBoundingClientRect();
-        
+
         // 設定 fixed 定位的座標
         dropdown.style.top = (rect.bottom + window.scrollY) + 'px';
         dropdown.style.left = rect.left + 'px';
         dropdown.style.width = Math.max(300, rect.width) + 'px';
         dropdown.style.display = 'block';
     }
-    
+
     // 添加點擊外部結束編輯的監聽器
     setTimeout(() => {
         document.addEventListener('click', handleTCGOutsideClick, true);
@@ -7099,9 +7106,9 @@ async function startTCGSearch() {
 
 function handleTCGOutsideClick(event) {
     if (!currentTCGEditor) return;
-    
+
     const { cell } = currentTCGEditor;
-    
+
     // 檢查點擊是否在編輯區域外
     if (!cell.contains(event.target)) {
         finishTCGEdit();
@@ -7115,28 +7122,28 @@ async function finishTCGEdit() {
         console.log('⚠️ finishTCGEdit: 沒有當前編輯器');
         return;
     }
-    
+
     const { recordId, currentTCGs, originalTCGs, cell } = currentTCGEditor;
-    
+
     console.log('=== finishTCGEdit 開始 ===');
     console.log('recordId:', recordId);
     console.log('currentTCGs:', currentTCGs);
     console.log('originalTCGs:', originalTCGs);
-    
+
     // 移除全域點擊監聽器
     document.removeEventListener('click', handleTCGOutsideClick, true);
-    
+
     // 檢查是否有變更
     const hasChanges = JSON.stringify(currentTCGs.sort()) !== JSON.stringify(originalTCGs.sort());
     console.log('hasChanges:', hasChanges);
-    
+
     // 立即更新 UI 顯示
     cell.classList.remove('editing');
     updateTCGCellDisplay(cell, currentTCGs);
-    
+
     // 清除編輯器狀態
     currentTCGEditor = null;
-    
+
     // 如果有變更，在背景處理儲存
     if (hasChanges) {
         console.log('💾 準備儲存 TCG 變更...');
@@ -7155,18 +7162,18 @@ async function finishTCGEdit() {
 function updateTCGCellDisplay(cell, tcgNumbers) {
     // 更新單個 TCG 欄位的顯示，不重新渲染整個表格
     const recordId = cell.getAttribute('data-record-id');
-    
+
     if (tcgNumbers.length === 0) {
         // 清除後留白，但保留點擊事件
         cell.innerHTML = `<div class="tcg-edit-area" onclick="editTCG('${recordId}')" data-i18n-title="tooltips.clickEditTcg"></div>`;
     } else {
         // 顯示 TCG 標籤，保留點擊事件
-        const tcgHtml = tcgNumbers.map(tcg => 
+        const tcgHtml = tcgNumbers.map(tcg =>
             `<span class="tcg-tag">${tcg}</span>`
         ).join('');
         cell.innerHTML = `<div class="tcg-edit-area" onclick="editTCG('${recordId}')" data-i18n-title="tooltips.clickEditTcg">${tcgHtml}</div>`;
     }
-    
+
     // 重新應用翻譯到新生成的內容
     if (window.i18n && window.i18n.isReady()) {
         window.i18n.retranslate(cell);
@@ -7177,7 +7184,7 @@ function updateTCGCellDisplay(cell, tcgNumbers) {
 
 function restoreTCGDisplay() {
     if (!currentTCGEditor) return;
-    
+
     const { cell } = currentTCGEditor;
     cell.classList.remove('editing');
     renderTestCasesTable(); // 重新渲染以恢復正常顯示
@@ -7211,13 +7218,13 @@ function handleTCGSearchKeydown(event) {
 
 async function searchTCGOptions(keyword) {
     if (!currentTCGEditor) return;
-    
+
     const dropdown = currentTCGEditor.cell.querySelector('.tcg-dropdown');
     if (!dropdown) return;
-    
+
     try {
         console.log('搜尋 TCG:', keyword);
-        
+
         // 優先使用快取
         let results = [];
         if (tcgCache) {
@@ -7234,39 +7241,39 @@ async function searchTCGOptions(keyword) {
             results = data.results;
             console.log('從 API 取得 TCG 搜尋結果:', results.length, '筆');
         }
-        
+
         // 始終顯示清除選項作為第一項
         let dropdownHtml = `
-            <div class="tcg-option p-2 border-bottom" 
-                  onclick="event.stopPropagation(); clearTCGValue()" 
-                  style="cursor: pointer; border-bottom: 1px solid #f8f9fa; background-color: #fff3cd;" 
-                  onmouseover="this.style.backgroundColor='#ffeaa7'" 
+            <div class="tcg-option p-2 border-bottom"
+                  onclick="event.stopPropagation(); clearTCGValue()"
+                  style="cursor: pointer; border-bottom: 1px solid #f8f9fa; background-color: #fff3cd;"
+                  onmouseover="this.style.backgroundColor='#ffeaa7'"
                   onmouseout="this.style.backgroundColor='#fff3cd'">
                 <div class="fw-medium text-warning">
                     <i class="fas fa-times me-2"></i>清除 TCG 單號
                 </div>
             </div>
         `;
-        
+
         if (results.length === 0) {
             dropdownHtml += '<div class="p-2 text-muted small">沒有找到其他結果</div>';
         } else {
             dropdownHtml += results.map(tcg => {
                 const selected = currentTCGEditor.currentTCGs && currentTCGEditor.currentTCGs.includes(tcg.tcg_number);
                 return `
-                <div class="tcg-option p-2 border-bottom d-flex justify-content-between align-items-center" 
-                      onclick="event.stopPropagation(); selectTCGOption('${tcg.tcg_number}')" 
-                      style="cursor: pointer; border-bottom: 1px solid #f8f9fa; padding: 0.25rem 0.75rem;" 
-                      onmouseover="this.style.backgroundColor='#f8f9fa'" 
+                <div class="tcg-option p-2 border-bottom d-flex justify-content-between align-items-center"
+                      onclick="event.stopPropagation(); selectTCGOption('${tcg.tcg_number}')"
+                      style="cursor: pointer; border-bottom: 1px solid #f8f9fa; padding: 0.25rem 0.75rem;"
+                      onmouseover="this.style.backgroundColor='#f8f9fa'"
                       onmouseout="this.style.backgroundColor='white'">
                     <div class="fw-medium">${tcg.tcg_number}</div>
                     ${selected ? '<i class="fas fa-check text-success"></i>' : ''}
                 </div>`;
             }).join('');
         }
-        
+
         dropdown.innerHTML = dropdownHtml;
-        
+
         // 更新位置並顯示
         const searchInput = currentTCGEditor.cell.querySelector('.tcg-search-input');
         if (searchInput) {
@@ -7276,12 +7283,12 @@ async function searchTCGOptions(keyword) {
             dropdown.style.width = Math.max(300, rect.width) + 'px';
         }
         dropdown.style.display = 'block';
-        
+
     } catch (error) {
         console.error('搜尋 TCG 失敗:', error);
         const searchFailedMessage = window.i18n ? window.i18n.t('errors.searchFailed') : '搜尋失敗';
         dropdown.innerHTML = `<div class="p-2 text-danger small">${searchFailedMessage}</div>`;
-        
+
         // 更新位置並顯示
         const searchInput = currentTCGEditor.cell.querySelector('.tcg-search-input');
         if (searchInput) {
@@ -7298,7 +7305,7 @@ async function searchTCGOptions(keyword) {
 
 function selectTCGOption(tcgNumber) {
     if (!currentTCGEditor) return;
-    
+
     // 多選切換：存在則移除，不存在則加入
     const idx = currentTCGEditor.currentTCGs.indexOf(tcgNumber);
     if (idx >= 0) {
@@ -7306,7 +7313,7 @@ function selectTCGOption(tcgNumber) {
     } else {
         currentTCGEditor.currentTCGs.push(tcgNumber);
     }
-    
+
     // 重新渲染下拉，反映選取狀態（不結束編輯）
     const inputEl = currentTCGEditor.cell.querySelector('.tcg-search-input');
     const kw = inputEl ? inputEl.value : '';
@@ -7315,10 +7322,10 @@ function selectTCGOption(tcgNumber) {
 
 function clearTCGValue() {
     if (!currentTCGEditor) return;
-    
+
     // 清空 TCG 值
     currentTCGEditor.currentTCGs = [];
-    
+
     // 立即完成編輯並儲存
     finishTCGEdit();
 }
@@ -7330,7 +7337,7 @@ async function fetchTCGRecordByNumber(tcgNumber) {
         if (!response.ok) {
             return null;
         }
-        
+
         const data = await response.json();
         if (data.results && data.results.length > 0) {
             const tcg = data.results[0];
@@ -7344,7 +7351,7 @@ async function fetchTCGRecordByNumber(tcgNumber) {
                 };
             }
         }
-        
+
         // 如果找不到對應記錄，創建一個模擬記錄
         return {
             record_id: `tcg_${tcgNumber}`,
@@ -7373,19 +7380,19 @@ async function saveTCGChanges(recordId, tcgNumbers) {
         if (!currentTeam || !currentTeam.id) {
             throw new Error('請先選擇團隊');
         }
-        
+
         // 後端 API 支援字串格式（逗號分隔），不需要轉換為 LarkRecord 陣列
         const tcgString = tcgNumbers.join(', ');
-        
+
         console.log('儲存 TCG 變更:', { recordId, tcgString });
-        
+
         // 構建更新資料：使用字串格式
         const updateData = {
             tcg: tcgString
         };
-        
+
         console.log('Request body:', JSON.stringify(updateData));
-        
+
         // 發送更新請求
         const response = await window.AuthClient.fetch(`/api/teams/${currentTeam.id}/testcases/${recordId}`, {
             method: 'PUT',
@@ -7394,22 +7401,22 @@ async function saveTCGChanges(recordId, tcgNumbers) {
             },
             body: JSON.stringify(updateData)
         });
-        
+
         console.log('TCG 更新 Response status:', response.status);
-        
+
         if (!response.ok) {
             const errorData = await response.json();
             console.error('TCG 更新失敗:', errorData);
             throw new Error(errorData.detail || '更新失敗');
         }
-        
+
         // 從 API 返回的資料更新本地資料
         const updatedTestCase = await response.json();
         console.log('API 返回的更新後資料:', updatedTestCase);
         console.log('API 返回的 tcg 欄位:', updatedTestCase.tcg);
         console.log('tcg 類型:', typeof updatedTestCase.tcg);
         console.log('tcg 是否為陣列:', Array.isArray(updatedTestCase.tcg));
-        
+
         const testCase = testCases.find(tc => tc.record_id === recordId);
         if (testCase) {
             console.log('找到 testCase, 原本的 tcg:', testCase.tcg);
@@ -7419,23 +7426,23 @@ async function saveTCGChanges(recordId, tcgNumbers) {
         } else {
             console.error('⚠️ 找不到 testCase, recordId:', recordId);
         }
-        
+
         // 更新快取
         if (updatedTestCase.test_case_number) {
             updateTestCaseInCache(updatedTestCase);
         }
-        
+
         // 重新渲染表格
         renderTestCasesTable();
-        
+
         showSuccess(window.i18n ? window.i18n.t('messages.tcgUpdated') : 'TCG 更新成功');
         console.log('✅ TCG 儲存完成');
-        
+
     } catch (error) {
         console.error('更新 TCG 失敗:', error);
         const updateFailedMessage = window.i18n ? window.i18n.t('errors.updateFailed') : '更新失敗';
         showError(updateFailedMessage + '：' + error.message);
-        
+
         // 恢復原始內容
         restoreTCGDisplay();
     }
@@ -7473,7 +7480,7 @@ function formatDate(dateString, format) {
         const date = new Date(dateString);
         if (isNaN(date.getTime())) return '';
         const browserLocale = navigator.language || navigator.userLanguage || 'en-US';
-        
+
         if (format === 'date') {
             return date.toLocaleDateString(browserLocale);
         } else if (format === 'datetime') {
@@ -7481,7 +7488,7 @@ function formatDate(dateString, format) {
         } else if (format === 'time') {
             return date.toLocaleTimeString(browserLocale);
         }
-        
+
         return date.toLocaleDateString(browserLocale);
     }
 }
@@ -7545,7 +7552,7 @@ function generateMarkdownEditor(fieldId, fieldName, placeholder, rows = 6, heigh
                 <!-- 編輯框容器 -->
                 <div class="form-control markdown-edit-container" style="padding: 0; height: ${height};">
                     ${generateMarkdownToolbar(fieldId)}
-                    <textarea id="${fieldId}" name="${fieldName}" class="markdown-textarea" rows="${rows}" 
+                    <textarea id="${fieldId}" name="${fieldName}" class="markdown-textarea" rows="${rows}"
                               placeholder="${placeholder}" style="border: none; border-radius: 0; height: calc(100% - 32px); resize: none; outline: none; padding: 0.375rem 0.75rem; width: 100%; box-sizing: border-box; overflow-y: auto;"></textarea>
                 </div>
             </div>
@@ -7583,7 +7590,7 @@ function initializeAllMarkdownEditors() {
             height: '200px'
         }
     ];
-    
+
     // 為每個編輯器生成 HTML 並替換現有內容
     editorConfigs.forEach(config => {
         const container = document.getElementById(config.fieldId + '_container');
@@ -7597,7 +7604,7 @@ function initializeAllMarkdownEditors() {
             ).trim();
         }
     });
-    
+
     // 重新綁定事件
     bindMarkdownEvents();
 }
@@ -7613,7 +7620,7 @@ function bindMarkdownEvents() {
             insertMarkdownToField(targetFieldId, mdSyntax);
         });
     });
-    
+
     // 為所有 Markdown 欄位添加事件監聽
     markdownFields.forEach(fieldId => {
         const textarea = document.getElementById(fieldId);
@@ -7622,7 +7629,7 @@ function bindMarkdownEvents() {
             textarea.addEventListener('focus', () => {
                 activeTextarea = textarea;
             });
-            
+
             // 輸入事件：更新預覽
             textarea.addEventListener('input', () => {
                 if (currentEditorMode !== 'edit') {
@@ -7652,7 +7659,7 @@ function bindMarkdownEvents() {
             });
         }
     });
-    
+
 }
 
 // 在列表行中按下 Enter 自動建立下一個項目
@@ -7718,7 +7725,7 @@ function addHelpButtonsToToolbars() {
             helpButton.onclick = () => window.open('https://www.markdownguide.org/cheat-sheet/', '_blank');
             helpButton.innerHTML = '<i class="fas fa-question-circle"></i>';
             toolbar.appendChild(helpButton);
-            
+
             // 手動觸發翻譯
             if (window.i18n && window.i18n.isReady()) {
                 const translatedTitle = window.i18n.t('markdown.help');
@@ -7748,13 +7755,13 @@ function initializeMarkdownEditor() {
             }
         }
     });
-    
+
     // 綁定 Markdown 事件
     bindMarkdownEvents();
-    
+
     // 安全地添加幫助按鈕
     addHelpButtonsToToolbars();
-    
+
     // 附件上傳功能
     const attachmentUpload = document.getElementById('attachmentUpload');
     if (attachmentUpload) {
@@ -7767,7 +7774,7 @@ function initializeMarkdownEditor() {
 // 設置編輯器模式
 function setEditorMode(mode) {
     currentEditorMode = mode;
-    
+
     // 更新按鈕狀態
     document.querySelectorAll('#previewModeBtn, #splitModeBtn').forEach(btn => {
         btn.classList.remove('active', 'btn-secondary');
@@ -7778,19 +7785,19 @@ function setEditorMode(mode) {
         activeBtn.classList.remove('btn-secondary');
         activeBtn.classList.add('btn-secondary', 'active');
     }
-    
+
     // 為所有 Markdown 欄位設置模式
     markdownFields.forEach(fieldId => {
         const container = document.querySelector(`#${fieldId}`).closest('.markdown-field-container');
         if (!container) return;
-        
+
         const editColumn = container.querySelector('.edit-column');
         const previewColumn = container.querySelector('.preview-column');
-        
+
         // 重置類別
         editColumn.className = 'edit-column';
         previewColumn.className = 'preview-column';
-        
+
         switch (mode) {
             case 'edit':
                 editColumn.className = 'col-12 edit-column';
@@ -7808,7 +7815,7 @@ function setEditorMode(mode) {
                 break;
         }
     });
-    
+
     // 控制個別工具列顯示
     markdownFields.forEach(fieldId => {
         const toolbar = document.querySelector(`.markdown-toolbar[data-target="${fieldId}"]`);
@@ -7822,14 +7829,14 @@ function setEditorMode(mode) {
 function insertMarkdownToField(fieldId, syntax) {
     const textarea = document.getElementById(fieldId);
     if (!textarea) return;
-    
+
     const start = textarea.selectionStart;
     const end = textarea.selectionEnd;
     const selectedText = textarea.value.substring(start, end);
-    
+
     let insertText = '';
     let cursorOffset = 0;
-    
+
     if (syntax === '**' || syntax === '*' || syntax === '`') {
         insertText = syntax + selectedText + syntax;
         cursorOffset = syntax.length;
@@ -7858,19 +7865,19 @@ function insertMarkdownToField(fieldId, syntax) {
         insertText = selectedText ? `![${selectedText}](url)` : '![alt](url)';
         cursorOffset = selectedText ? insertText.length - 4 : 2;
     }
-    
+
     // 替換選中的文字
     textarea.value = textarea.value.substring(0, start) + insertText + textarea.value.substring(end);
-    
+
     // 設置光標位置
     if (selectedText) {
         textarea.setSelectionRange(start + cursorOffset, start + insertText.length - (syntax === '**' || syntax === '*' || syntax === '`' ? syntax.length : 0));
     } else {
         textarea.setSelectionRange(start + cursorOffset, start + cursorOffset);
     }
-    
+
     textarea.focus();
-    
+
     // 觸發變更事件
     textarea.dispatchEvent(new Event('input'));
 }
@@ -7879,14 +7886,14 @@ function insertMarkdownToField(fieldId, syntax) {
 function insertMarkdownToActiveField(syntax) {
     const textarea = activeTextarea || document.getElementById('test_steps'); // 預設使用 test_steps
     if (!textarea) return;
-    
+
     const start = textarea.selectionStart;
     const end = textarea.selectionEnd;
     const selectedText = textarea.value.substring(start, end);
-    
+
     let insertText = '';
     let cursorOffset = 0;
-    
+
     if (syntax === '**' || syntax === '*' || syntax === '`') {
         insertText = syntax + selectedText + syntax;
         cursorOffset = syntax.length;
@@ -7915,19 +7922,19 @@ function insertMarkdownToActiveField(syntax) {
         insertText = selectedText ? `![${selectedText}](url)` : '![alt](url)';
         cursorOffset = selectedText ? insertText.length - 4 : 2;
     }
-    
+
     // 替換選中的文字
     textarea.value = textarea.value.substring(0, start) + insertText + textarea.value.substring(end);
-    
+
     // 設置光標位置
     if (selectedText) {
         textarea.setSelectionRange(start + cursorOffset, start + insertText.length - (syntax === '**' || syntax === '*' || syntax === '`' ? syntax.length : 0));
     } else {
         textarea.setSelectionRange(start + cursorOffset, start + cursorOffset);
     }
-    
+
     textarea.focus();
-    
+
     // 觸發變更事件
     textarea.dispatchEvent(new Event('input'));
 }
@@ -7949,11 +7956,11 @@ function updateMarkdownPreview(fieldId) {
 function updateSingleFieldPreview(fieldId) {
     const textarea = document.getElementById(fieldId);
     const previewDiv = document.querySelector(`.markdown-preview[data-target="${fieldId}"]`);
-    
+
     if (!textarea || !previewDiv) return;
-    
+
     const content = textarea.value;
-    
+
     if (typeof marked !== 'undefined') {
         try {
             previewDiv.innerHTML = marked.parse(content);
@@ -7975,7 +7982,7 @@ function updateSingleFieldPreview(fieldId) {
             .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
             .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" style="max-width: 100%; height: auto;">')
             .replace(/\n/g, '<br>');
-        
+
         const previewPlaceholder = window.i18n ? window.i18n.t('messages.previewDisplayHere') : '預覽將在此顯示...';
         previewDiv.innerHTML = html || `<p class="text-muted">${previewPlaceholder}</p>`;
     }
@@ -7992,18 +7999,18 @@ let currentTempUploadId = null;
 function handleAttachmentUpload(event) {
     const files = event.target.files;
     if (!files || files.length === 0) return;
-    
+
     // 驗證檔案
     for (let file of files) {
         if (file.size > 10 * 1024 * 1024) { // 10MB 限制
-            const errorMessage = window.i18n ? 
+            const errorMessage = window.i18n ?
                 window.i18n.t('errors.fileSizeLimitExceeded', {fileName: file.name}, `檔案 "${file.name}" 超過10MB大小限制`) :
                 `檔案 "${file.name}" 超過10MB大小限制`;
             showError(errorMessage);
             return;
         }
     }
-    
+
     // 顯示上傳中狀態
     const attachmentsList = document.getElementById('attachmentsList');
     const uploadingHtml = Array.from(files).map(file => `
@@ -8018,9 +8025,9 @@ function handleAttachmentUpload(event) {
             </div>
         </div>
     `).join('');
-    
+
     attachmentsList.innerHTML = uploadingHtml;
-    
+
     // 實際上傳檔案到伺服器
     uploadFilesToServer(Array.from(files));
 }
@@ -8031,12 +8038,12 @@ async function uploadFilesToServer(files) {
         showError(window.i18n ? window.i18n.t('errors.pleaseSelectTeam') : '請先選擇團隊');
         return;
     }
-    
+
     const attachmentsList = document.getElementById('attachmentsList');
     const uploadedFiles = [];
     let totalFiles = files.length;
     let completedFiles = 0;
-    
+
     try {
         // 顯示上傳進度區域
         attachmentsList.innerHTML = `
@@ -8053,10 +8060,10 @@ async function uploadFilesToServer(files) {
                 </div>
             </div>
         `;
-        
+
         const progressBar = attachmentsList.querySelector('.progress-bar');
         const progressText = attachmentsList.querySelector('span.text-muted');
-        
+
         const isEditingExisting = !!(document.getElementById('testCaseId') && document.getElementById('testCaseId').value);
         const rid = getCurrentRecordId();
         const tcNumberEl2 = document.getElementById('testCaseNumber');
@@ -8144,26 +8151,26 @@ async function uploadFilesToServer(files) {
             if (progressBar) progressBar.style.width = progress + '%';
             if (progressText) progressText.textContent = `${completedFiles}/${totalFiles}`;
         }
-        
+
         // 將上傳成功的檔案加到全域變數
         uploadedAttachments = uploadedAttachments.concat(uploadedFiles);
-        
+
         // 更新附件列表顯示
         renderAttachmentsList();
-        
+
         if (uploadedFiles.length > 0) {
-            const attachmentsUploadedMessage = window.i18n ? 
-                window.i18n.t('messages.attachmentsUploaded', {count: uploadedFiles.length}) : 
+            const attachmentsUploadedMessage = window.i18n ?
+                window.i18n.t('messages.attachmentsUploaded', {count: uploadedFiles.length}) :
                 `成功上傳並附加 ${uploadedFiles.length} 個附件`;
             showSuccess(attachmentsUploadedMessage);
             // 注意：現在不需要觸發表單變更檢查，因為附件已經立即附加到記錄
         }
-        
+
     } catch (error) {
         console.error('上傳附件過程發生錯誤:', error);
         const uploadAttachmentFailedMessage = window.i18n ? window.i18n.t('errors.uploadAttachmentFailed') : '上傳附件失敗';
         showError(uploadAttachmentFailedMessage + '：' + error.message);
-        
+
         // 上傳失敗時顯示錯誤狀態
         attachmentsList.innerHTML = `
             <div class="alert alert-danger d-flex align-items-center">
@@ -8183,7 +8190,7 @@ function renderAttachmentsList() {
         attachmentsList.innerHTML = `<p class="text-muted small mb-0">${noAttachmentsMessage}</p>`;
         return;
     }
-    
+
     const attachmentsHtml = uploadedAttachments.map((attachment, index) => {
         const stored = attachment.stored_name || attachment.file_token || attachment.name;
         const link = attachment.url ? `<a href="${attachment.url}" target="_blank" class="text-decoration-none me-2"><i class=\"fas fa-link\"></i></a>` : '';
@@ -8198,14 +8205,14 @@ function renderAttachmentsList() {
             </div>
             <div>
                 ${link}
-                <button type="button" class="btn btn-sm btn-danger" 
+                <button type="button" class="btn btn-sm btn-danger"
                         onclick="removeAttachment('${stored}', '${attachment.name}', ${index})" data-i18n-title="tooltips.removeAttachment">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
         </div>`;
     }).join('');
-    
+
     attachmentsList.innerHTML = `
         <div class="attachments-header mb-2">
             <h6 class="mb-0 text-secondary">${window.i18n ? window.i18n.t('form.uploadedAttachments') : '已上傳的附件'} (${uploadedAttachments.length})</h6>
@@ -8247,19 +8254,19 @@ function downloadAttachment(storedName) {
 
 // 移除附件
 async function removeAttachment(fileToken, filename, index) {
-    const confirmMessage = window.i18n ? 
-        window.i18n.t('confirm.deleteAttachment', {filename: filename}) : 
+    const confirmMessage = window.i18n ?
+        window.i18n.t('confirm.deleteAttachment', {filename: filename}) :
         `確定要刪除附件 "${filename}" 嗎？`;
     if (confirm(confirmMessage)) {
         try {
             console.log(`正在刪除附件: ${filename}...`);
-            
+
             // 取得當前記錄的 ID
             const currentRecordId = getCurrentRecordId();
             if (!currentRecordId) {
                 throw new Error('無法取得當前記錄 ID');
             }
-            
+
             // 呼叫後端 API 刪除附件
             const currentTeam = AppUtils.getCurrentTeam();
             if (!currentTeam || !currentTeam.id) {
@@ -8271,18 +8278,18 @@ async function removeAttachment(fileToken, filename, index) {
                     'Content-Type': 'application/json'
                 }
             });
-            
+
             if (!response.ok) {
                 const errorData = await response.json();
                 throw new Error(errorData.detail || '刪除附件失敗');
             }
-            
+
             const result = await response.json();
-            
+
             if (result.success) {
                 // 從本地陣列中移除
                 uploadedAttachments.splice(index, 1);
-                
+
                 // 同時更新原始 testCases 資料中的附件資訊
                 const currentRecordId = getCurrentRecordId();
                 if (currentRecordId) {
@@ -8297,7 +8304,7 @@ async function removeAttachment(fileToken, filename, index) {
 att => (att.stored_name !== filename && att.name !== filename)
                         );
                     }
-                    
+
                     // 同時更新 filteredTestCases 中的資料
                     const filteredIndex = filteredTestCases.findIndex(tc => tc.record_id === currentRecordId);
                     if (filteredIndex !== -1) {
@@ -8309,16 +8316,16 @@ att => (att.stored_name !== filename && att.name !== filename)
                         );
                     }
                 }
-                
+
                 // 重新渲染附件列表
                 renderAttachmentsList();
-                const attachmentDeletedMessage = window.i18n ? 
+                const attachmentDeletedMessage = window.i18n ?
                     window.i18n.t('messages.attachmentDeleted') : '已成功刪除附件';
                 showSuccess(`${attachmentDeletedMessage}: ${filename}`);
             } else {
                 throw new Error(result.message || '刪除附件失敗');
             }
-            
+
         } catch (error) {
             console.error('刪除附件錯誤:', error);
             const attachmentDeleteFailedMessage = window.i18n ? window.i18n.t('errors.attachmentDeleteFailed') : '刪除附件失敗';
@@ -8336,24 +8343,24 @@ function resetModalScrollPositions(modal) {
     if (modalBody) {
         modalBody.scrollTop = 0;
     }
-    
+
     const scrollableContent = modal.querySelector('.scrollable-content');
     if (scrollableContent) {
         scrollableContent.scrollTop = 0;
     }
-    
+
     // 重置所有 textarea 和其他可滾動元素
     const textareas = modal.querySelectorAll('textarea');
     textareas.forEach(textarea => {
         textarea.scrollTop = 0;
     });
-    
+
     // 重置所有 markdown 預覽區域
     const markdownPreviews = modal.querySelectorAll('.markdown-preview');
     markdownPreviews.forEach(preview => {
         preview.scrollTop = 0;
     });
-    
+
     // 重置任何其他可能的滾動容器
     const scrollableElements = modal.querySelectorAll('[style*="overflow-y: auto"], .overflow-auto');
     scrollableElements.forEach(el => {
@@ -8399,15 +8406,15 @@ function getCurrentRecordKeyForUpload() {
 function handleTCGSearch(input) {
     const keyword = input.value.trim();
     const dropdown = document.getElementById('modalTCGDropdown');
-    
+
     if (!dropdown) return;
-    
+
     if (keyword.length < 1) {
         // 顯示熱門 TCG
         showPopularTCG();
         return;
     }
-    
+
     // 搜尋 TCG
     const results = searchTCGFromCache(keyword, 10);
     updateTCGDropdown(results);
@@ -8417,9 +8424,9 @@ function handleTCGSearch(input) {
 function showTCGDropdown() {
     const dropdown = document.getElementById('modalTCGDropdown');
     if (!dropdown) return;
-    
+
     dropdown.style.display = 'block';
-    
+
     // 如果沒有內容，顯示熱門 TCG
     if (dropdown.innerHTML.trim() === '') {
         showPopularTCG();
@@ -8446,33 +8453,33 @@ function showPopularTCG() {
 function updateTCGDropdown(results) {
     const dropdown = document.getElementById('modalTCGDropdown');
     if (!dropdown) return;
-    
+
     if (results.length === 0) {
         const noTcgMatchesMessage = window.i18n ? window.i18n.t('errors.noTcgMatches') : '找不到匹配的 TCG';
         dropdown.innerHTML = `<div class="p-2 text-muted">${noTcgMatchesMessage}</div>`;
         return;
     }
-    
+
     const html = results.map(tcg => `
-        <div class="dropdown-item-custom p-2 border-bottom" 
-             onclick="selectTCG('${tcg.tcg_number}', '${tcg.title || ''}')" 
+        <div class="dropdown-item-custom p-2 border-bottom"
+             onclick="selectTCG('${tcg.tcg_number}', '${tcg.title || ''}')"
              style="cursor: pointer; transition: background-color 0.2s;"
              onmouseover="this.style.backgroundColor='#f8f9fa'"
              onmouseout="this.style.backgroundColor='white'">
             <div class="fw-bold">${tcg.tcg_number}</div>
         </div>
     `).join('');
-    
+
     dropdown.innerHTML = html;
 }
 
 function selectTCG(tcgNumber, title) {
     const tcgInput = document.getElementById('tcg');
-    
+
     if (tcgInput) {
         tcgInput.value = tcgNumber;
     }
-    
+
     hideTCGDropdown();
     checkFormChanges();
 }
@@ -8484,16 +8491,16 @@ function calculateDynamicHeights() {
     const fixedSection = modal.querySelector('.fixed-section');
     const fixedButtons = modal.querySelector('.fixed-buttons');
     const scrollableContent = modal.querySelector('.scrollable-content');
-    
+
     // 取得視窗高度
     const viewportHeight = window.innerHeight;
-    
+
     // 設定模態框高度為視窗高度的 90%
     const modalHeight = Math.floor(viewportHeight * 0.9);
     const modalDialog = modal.querySelector('.modal-dialog');
     modalDialog.style.height = modalHeight + 'px';
     modalDialog.style.maxHeight = modalHeight + 'px';
-    
+
     // 等待DOM更新後計算
     setTimeout(() => {
         // 計算固定區域高度
@@ -8501,15 +8508,15 @@ function calculateDynamicHeights() {
         const headerHeight = modalHeader ? modalHeader.offsetHeight : 0;
         const fixedSectionHeight = fixedSection ? fixedSection.offsetHeight : 0;
         const fixedButtonsHeight = fixedButtons ? fixedButtons.offsetHeight : 0;
-        
+
         // 計算可滾動內容區域的可用高度
         const availableHeight = modalHeight - headerHeight - fixedSectionHeight - fixedButtonsHeight - 2; // 2px for borders
-        
+
         if (scrollableContent) {
             scrollableContent.style.height = availableHeight + 'px';
             scrollableContent.style.maxHeight = availableHeight + 'px';
         }
-        
+
         // 根據可用空間決定是否需要滾動
         if (scrollableContent) {
             const contentHeight = scrollableContent.scrollHeight;
@@ -8544,7 +8551,7 @@ try {
 function updateNavigationButtons() {
     const prevBtn = document.getElementById('prevTestCaseBtn');
     const nextBtn = document.getElementById('nextTestCaseBtn');
-    
+
     if (currentTestCaseIndex === -1 || filteredTestCases.length <= 1) {
         // 新增模式或只有一筆資料時，隱藏導航按鈕
         prevBtn.style.display = 'none';
@@ -8552,7 +8559,7 @@ function updateNavigationButtons() {
     } else {
         prevBtn.style.display = 'inline-block';
         nextBtn.style.display = 'inline-block';
-        
+
         // 第一筆時，上一隻按鈕反灰
         if (currentTestCaseIndex === 0) {
             prevBtn.disabled = true;
@@ -8561,7 +8568,7 @@ function updateNavigationButtons() {
             prevBtn.disabled = false;
             prevBtn.classList.remove('disabled');
         }
-        
+
         // 最後一筆時，下一隻按鈕反灰
         if (currentTestCaseIndex === filteredTestCases.length - 1) {
             nextBtn.disabled = true;
@@ -8590,19 +8597,31 @@ function adjustTestCasesScrollHeight() {
     try {
         const scrollBox = document.getElementById('testCasesScroll');
         if (!scrollBox) return;
+
+        const page = document.getElementById('testCasesPage');
         const nav = document.getElementById('testCasesPagination');
-        const ul = document.getElementById('pagination');
-        const viewportHeight = window.innerHeight || document.documentElement.clientHeight;
+        const paginationList = document.getElementById('pagination');
+
+        const paginationVisible = nav && window.getComputedStyle(nav).display !== 'none';
+        const paginationHeight = paginationVisible
+            ? nav.getBoundingClientRect().height
+            : (paginationList ? paginationList.getBoundingClientRect().height : 0);
+
+        const boundary = page
+            ? page.getBoundingClientRect().bottom
+            : (window.innerHeight || document.documentElement.clientHeight);
         const rect = scrollBox.getBoundingClientRect();
-        const top = rect.top; // 距離視窗頂部
-        const paginationHeight = (nav ? nav.getBoundingClientRect().height : (ul ? ul.getBoundingClientRect().height : 0));
-        const gap = 16; // 與下方的間距緩衝
-        let available = viewportHeight - top - paginationHeight - gap;
-        if (available < 200) available = 200; // 設置最小高度
-        scrollBox.style.maxHeight = available + 'px';
+        const top = rect.top;
+
+        const gap = 16; // 預留與分頁/頁尾間距
+        let available = boundary - top - paginationHeight - gap;
+        if (available < 0) {
+            available = 0;
+        }
+
         scrollBox.style.height = available + 'px';
+        scrollBox.style.maxHeight = available + 'px';
         scrollBox.style.overflowY = 'auto';
-        // 避免 sticky 分頁覆蓋列表最後一行，預留底部內距
         scrollBox.style.paddingBottom = (paginationHeight + gap) + 'px';
     } catch (e) {
         console.warn('adjustTestCasesScrollHeight failed:', e);
@@ -8900,7 +8919,7 @@ function formatTicketTooltip(tcgNumber, ticketData) {
 
     // 組合 JIRA URL
     const jiraUrl = ticketData.url || `https://jira.example.com/browse/${tcgNumber}`;
-    
+
     return `
         <div class="tcg-tooltip-content">
             <div class="mb-2">
@@ -9053,22 +9072,22 @@ function cleanupTCGHover() {
 // Modal 中的 TCG 預覽函數 - 獨立實現
 async function showTCGPreviewForModal() {
     console.log('showTCGPreviewForModal called'); // 調試用
-    
+
     const tcgInput = document.getElementById('tcg');
     if (!tcgInput || !tcgInput.value.trim()) {
         alert(window.i18n ? window.i18n.t('errors.noTCGNumber') : '請先輸入 TCG 編號');
         return;
     }
-    
+
     const tcgNumber = tcgInput.value.trim();
     console.log('TCG Number:', tcgNumber); // 調試用
-    
+
     // 移除現有的 tooltip（如果有的話）
     const existingTooltip = document.getElementById('modal-jira-tooltip');
     if (existingTooltip) {
         existingTooltip.remove();
     }
-    
+
     // 創建新的 tooltip
     const tooltip = document.createElement('div');
     tooltip.id = 'modal-jira-tooltip';
@@ -9097,12 +9116,12 @@ async function showTCGPreviewForModal() {
     `;
 
     document.body.appendChild(tooltip);
-    
+
     // 定位 tooltip
     const rect = tcgInput.getBoundingClientRect();
     let top = rect.top - tooltip.offsetHeight - 8;
     let left = rect.left + (rect.width / 2) - (tooltip.offsetWidth / 2);
-    
+
     // 確保不超出視窗邊界
     if (top < 8) {
         top = rect.bottom + 8;
@@ -9112,7 +9131,7 @@ async function showTCGPreviewForModal() {
     } else if (left + tooltip.offsetWidth > window.innerWidth - 8) {
         left = window.innerWidth - tooltip.offsetWidth - 8;
     }
-    
+
     tooltip.style.top = top + 'px';
     tooltip.style.left = left + 'px';
 
@@ -9126,7 +9145,7 @@ async function showTCGPreviewForModal() {
         if (response.ok) {
             const ticketData = await response.json();
             console.log('JIRA 資料:', ticketData); // 調試用
-            
+
             // 格式化 tooltip 內容
             const summary = ticketData.summary || '無標題';
             const status = ticketData.status?.name || '未知狀態';
@@ -9149,7 +9168,7 @@ async function showTCGPreviewForModal() {
             }
 
             const jiraUrl = ticketData.url || `https://jira.example.com/browse/${tcgNumber}`;
-            
+
             tooltip.innerHTML = `
                 <div class="jira-tooltip-content">
                     <div class="mb-2">
@@ -9210,7 +9229,7 @@ async function showTCGPreviewForModal() {
             </div>
         `;
     }
-    
+
     // 點擊其他地方關閉
     const closeHandler = function(e) {
         if (!tooltip.contains(e.target) && e.target !== tcgInput) {
@@ -9218,11 +9237,11 @@ async function showTCGPreviewForModal() {
             document.removeEventListener('click', closeHandler);
         }
     };
-    
+
     setTimeout(() => {
         document.addEventListener('click', closeHandler);
     }, 100);
-    
+
     // 自動隱藏
     setTimeout(() => {
         if (tooltip && tooltip.parentNode) {
@@ -9291,34 +9310,34 @@ function openReferenceTestCasePopup() {
     try {
         const currentTeam = AppUtils.getCurrentTeam();
         if (!currentTeam || !currentTeam.id) {
-            const teamErrorMsg = window.i18n ? 
-                window.i18n.t('errors.noTeamSelected', {}, '請先選擇團隊') : 
+            const teamErrorMsg = window.i18n ?
+                window.i18n.t('errors.noTeamSelected', {}, '請先選擇團隊') :
                 '請先選擇團隊';
             showError(teamErrorMsg);
             return;
         }
-        
+
         const popupUrl = `/test-case-reference?team_id=${currentTeam.id}`;
         const popupFeatures = 'width=1400,height=900,scrollbars=yes,resizable=yes,menubar=no,toolbar=no,location=no,status=no';
         const popupWindow = window.open(popupUrl, 'referenceTestCase', popupFeatures);
-        
+
         if (!popupWindow) {
-            const popupErrorMsg = window.i18n ? 
-                window.i18n.t('errors.popupBlocked', {}, '彈窗被阻擋，請允許彈窗後再試') : 
+            const popupErrorMsg = window.i18n ?
+                window.i18n.t('errors.popupBlocked', {}, '彈窗被阻擋，請允許彈窗後再試') :
                 '彈窗被阻擋，請允許彈窗後再試';
             showError(popupErrorMsg);
             return;
         }
-        
+
         // 焦點到彈窗
         if (popupWindow.focus) {
             popupWindow.focus();
         }
-        
+
     } catch (error) {
         console.error('開啟參考測試案例彈窗失敗:', error);
-        const openErrorMsg = window.i18n ? 
-            window.i18n.t('testCase.referenceTestCaseError', {}, '開啟參考測試案例失敗') : 
+        const openErrorMsg = window.i18n ?
+            window.i18n.t('testCase.referenceTestCaseError', {}, '開啟參考測試案例失敗') :
             '開啟參考測試案例失敗';
         showError(openErrorMsg + ': ' + error.message);
     }
@@ -9356,13 +9375,13 @@ function openBulkEditModal() {
     try {
         // 取得過濾後的測試案例或全部測試案例
         const dataToEdit = filteredTestCases && filteredTestCases.length > 0 ? filteredTestCases : testCases;
-        
+
         if (!dataToEdit || dataToEdit.length === 0) {
             const noDataMsg = window.i18n ? window.i18n.t('errors.noTestCasesToEdit', {}, '沒有可編輯的測試案例') : '沒有可編輯的測試案例';
             AppUtils.showError(noDataMsg);
             return;
         }
-        
+
         // 初始化編輯資料
         bulkEditData = dataToEdit.map((tc, index) => ({
             index: index + 1,
@@ -9374,14 +9393,14 @@ function openBulkEditModal() {
             steps: tc.steps || '',
             expected_result: tc.expected_result || ''
         }));
-        
+
         // 清除變更記錄
         bulkEditChanges.clear();
         bulkEditSelectedCells.clear();
-        
+
         // 渲染表格
         renderBulkEditGrid();
-        
+
         // 打開 Modal
         const modalEl = document.getElementById('bulkEditModal');
         if (!bulkEditModalInstance) {
@@ -9391,10 +9410,10 @@ function openBulkEditModal() {
             window.i18n.retranslate(modalEl);
         }
         bulkEditModalInstance.show();
-        
+
         // 更新狀態
         updateBulkEditStatus();
-        
+
     } catch (error) {
         console.error('openBulkEditModal error:', error);
         AppUtils.showError('開啟大量編輯失敗');
@@ -9404,26 +9423,26 @@ function openBulkEditModal() {
 function renderBulkEditGrid() {
     const tbody = document.getElementById('bulkEditGridBody');
     if (!tbody) return;
-    
+
     tbody.innerHTML = bulkEditData.map(row => {
         const cells = bulkEditColumns.map(col => {
             const value = row[col.key];
             const cellId = `${row.record_id}_${col.key}`;
             const isEditable = col.editable;
             const cellClass = isEditable ? 'editable-cell' : '';
-            
+
             let displayValue = value;
             if (col.type === 'textarea' && value && value.length > 50) {
                 displayValue = value.substring(0, 47) + '...';
             }
-            
+
             let inputHTML = '';
             if (isEditable) {
                 // Escape HTML to prevent XSS and preserve formatting
                 const escapedValue = (value || '').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                
+
                 if (col.type === 'select') {
-                    const options = col.options.map(opt => 
+                    const options = col.options.map(opt =>
                         `<option value="${opt}" ${opt === value ? 'selected' : ''}>${opt}</option>`
                     ).join('');
                     inputHTML = `<select class="cell-input form-select">${options}</select>`;
@@ -9434,20 +9453,20 @@ function renderBulkEditGrid() {
                     inputHTML = `<input type="text" class="cell-input form-control" value="${escapedValue}">`;
                 }
             }
-            
+
             // 對於 textarea，在顯示時去除前後空白
             const sanitizedDisplay = col.type === 'textarea' ? (displayValue || '').trim() : (displayValue || '');
-            
+
             return `
                 <td class="${cellClass}" data-record-id="${row.record_id}" data-column="${col.key}" data-cell-id="${cellId}">
                     <div class="cell-content ${col.type === 'textarea' ? 'multiline' : ''}" title="${value || ''}">${sanitizedDisplay}</div>${inputHTML}${isEditable ? '<div class="drag-handle"></div>' : ''}
                 </td>
             `;
         }).join('');
-        
+
         return `<tr data-record-id="${row.record_id}">${cells}</tr>`;
     }).join('');
-    
+
     // 綁定事件
     bindBulkEditEvents();
 }
@@ -9455,18 +9474,18 @@ function renderBulkEditGrid() {
 function bindBulkEditEvents() {
     const grid = document.getElementById('bulkEditGrid');
     if (!grid) return;
-    
+
     // 避免重複綁定事件：先移除舊的監聽器
     const oldMouseDown = grid._bulkEditMouseDown;
     const oldMouseMove = grid._bulkEditMouseMove;
     const oldMouseUp = grid._bulkEditMouseUp;
     const oldDblClick = grid._bulkEditDblClick;
-    
+
     if (oldMouseDown) grid.removeEventListener('mousedown', oldMouseDown);
     if (oldMouseMove) grid.removeEventListener('mousemove', oldMouseMove);
     if (oldMouseUp) grid.removeEventListener('mouseup', oldMouseUp);
     if (oldDblClick) grid.removeEventListener('dblclick', oldDblClick);
-    
+
     // 儲存格點擊事件
     const mouseDownHandler = function(e) {
         // 先處理 drag handle
@@ -9474,7 +9493,7 @@ function bindBulkEditEvents() {
             handleDragStart(e);
             return;
         }
-        
+
         const cell = e.target.closest('td.editable-cell');
         if (cell) {
             handleCellClick(cell, e);
@@ -9482,7 +9501,7 @@ function bindBulkEditEvents() {
     };
     grid.addEventListener('mousedown', mouseDownHandler);
     grid._bulkEditMouseDown = mouseDownHandler;
-    
+
     // 拖移選取事件
     const mouseMoveHandler = function(e) {
         if (bulkEditSelectDragState) {
@@ -9493,7 +9512,7 @@ function bindBulkEditEvents() {
     };
     grid.addEventListener('mousemove', mouseMoveHandler);
     grid._bulkEditMouseMove = mouseMoveHandler;
-    
+
     const mouseUpHandler = function(e) {
         if (bulkEditSelectDragState) {
             handleSelectDragEnd(e);
@@ -9503,7 +9522,7 @@ function bindBulkEditEvents() {
     };
     grid.addEventListener('mouseup', mouseUpHandler);
     grid._bulkEditMouseUp = mouseUpHandler;
-    
+
     // 儲存格雙擊編輯
     const dblClickHandler = function(e) {
         const cell = e.target.closest('td.editable-cell');
@@ -9513,16 +9532,16 @@ function bindBulkEditEvents() {
     };
     grid.addEventListener('dblclick', dblClickHandler);
     grid._bulkEditDblClick = dblClickHandler;
-    
+
     // 鍵盤事件
     document.addEventListener('keydown', handleBulkEditKeydown);
-    
+
     // 工具列事件
     const openSearchBtn = document.getElementById('bulkEditOpenSearchBtn');
     if (openSearchBtn) {
         openSearchBtn.onclick = openSearchReplaceModal;
     }
-    
+
     const saveBtn = document.getElementById('saveBulkEditBtn');
     if (saveBtn) {
         saveBtn.onclick = saveBulkEditChanges;
@@ -9531,7 +9550,7 @@ function bindBulkEditEvents() {
 
 function handleCellClick(cell, event) {
     const cellId = cell.dataset.cellId;
-    
+
     if (event.ctrlKey || event.metaKey) {
         // Ctrl/Cmd + 點擊: 多選切換
         if (bulkEditSelectedCells.has(cellId)) {
@@ -9549,7 +9568,7 @@ function handleCellClick(cell, event) {
         clearCellSelection();
         bulkEditSelectedCells.add(cellId);
         cell.classList.add('selected');
-        
+
         // 開始拖移選取
         bulkEditSelectDragState = {
             startCell: cell,
@@ -9563,7 +9582,7 @@ function selectCellRange(targetCell) {
     const targetColumn = targetCell.dataset.column;
     const allCellsInColumn = Array.from(document.querySelectorAll(`td[data-column="${targetColumn}"]`));
     const targetIndex = allCellsInColumn.indexOf(targetCell);
-    
+
     // 找到當前選中的同欄位儲存格
     let lastSelectedIndex = -1;
     for (let i = 0; i < allCellsInColumn.length; i++) {
@@ -9573,11 +9592,11 @@ function selectCellRange(targetCell) {
             break;
         }
     }
-    
+
     if (lastSelectedIndex !== -1) {
         const startIndex = Math.min(lastSelectedIndex, targetIndex);
         const endIndex = Math.max(lastSelectedIndex, targetIndex);
-        
+
         clearCellSelection();
         for (let i = startIndex; i <= endIndex; i++) {
             const cell = allCellsInColumn[i];
@@ -9601,16 +9620,16 @@ function startCellEdit(cell) {
     if (bulkEditCurrentCell) {
         finishCellEdit(bulkEditCurrentCell);
     }
-    
+
     const recordId = cell.dataset.recordId;
     const column = cell.dataset.column;
     const colInfo = bulkEditColumns.find(c => c.key === column);
-    
+
     if (!colInfo || !colInfo.editable) return;
-    
+
     bulkEditCurrentCell = cell;
     cell.classList.add('editing');
-    
+
     const input = cell.querySelector('.cell-input');
     if (input) {
         input.focus();
@@ -9647,23 +9666,23 @@ function startCellEdit(cell) {
 
 function finishCellEdit(cell) {
     if (!cell || !cell.classList.contains('editing')) return;
-    
+
     const recordId = cell.dataset.recordId;
     const column = cell.dataset.column;
     const input = cell.querySelector('.cell-input');
     const cellContent = cell.querySelector('.cell-content');
-    
+
     if (input) {
         const newValue = input.value.trim();
         const currentValue = getCellValue(recordId, column);
-        
+
         if (newValue !== currentValue) {
             // 儲存到 undo 堆疊
             pushUndoState(recordId, column, currentValue, newValue);
             setCellValue(recordId, column, newValue);
             updateBulkEditStatus();
         }
-        
+
         // 更新顯示
         let displayValue = newValue;
         if (newValue.length > 50) {
@@ -9672,7 +9691,7 @@ function finishCellEdit(cell) {
         cellContent.textContent = displayValue;
         cellContent.title = newValue;
     }
-    
+
     cell.classList.remove('editing');
     bulkEditCurrentCell = null;
 }
@@ -9687,7 +9706,7 @@ function getNextEditableCell(currentCell, forward = true) {
     const allCells = Array.from(document.querySelectorAll('.bulk-edit-grid td.editable-cell'));
     const currentIndex = allCells.indexOf(currentCell);
     if (currentIndex === -1) return null;
-    
+
     const nextIndex = forward ? currentIndex + 1 : currentIndex - 1;
     if (nextIndex >= 0 && nextIndex < allCells.length) {
         return allCells[nextIndex];
@@ -9701,7 +9720,7 @@ function getCellValue(recordId, column) {
     if (changes && changes.hasOwnProperty(column)) {
         return changes[column];
     }
-    
+
     // 從原始資料中取值
     const row = bulkEditData.find(r => r.record_id === recordId);
     return row ? (row[column] || '') : '';
@@ -9712,7 +9731,7 @@ function setCellValue(recordId, column, value) {
         bulkEditChanges.set(recordId, {});
     }
     bulkEditChanges.get(recordId)[column] = value;
-    
+
     // 同時更新本地資料以便显示
     const row = bulkEditData.find(r => r.record_id === recordId);
     if (row) {
@@ -9731,7 +9750,7 @@ function handleBulkEditKeydown(event) {
 
     // 如果正在編輯儲存格，不處理快捷鍵
     if (bulkEditCurrentCell) return;
-    
+
     if ((event.ctrlKey || event.metaKey) && event.key === 'z') {
         // Ctrl+Z: 復原
         performUndo();
@@ -9768,7 +9787,7 @@ function addToCurrentOperation(recordId, column, oldValue, newValue) {
         console.warn('No current operation, auto-creating one');
         beginUndoOperation('edit');
     }
-    
+
     bulkEditCurrentOperation.changes.push({
         recordId,
         column,
@@ -9783,7 +9802,7 @@ function pushUndoState(recordId, column, oldValue, newValue) {
     if (!bulkEditCurrentOperation) {
         beginUndoOperation('edit');
     }
-    
+
     bulkEditCurrentOperation.changes.push({
         recordId,
         column,
@@ -9798,15 +9817,15 @@ function commitUndoOperation() {
         bulkEditCurrentOperation = null;
         return;
     }
-    
+
     bulkEditUndoStack.push(bulkEditCurrentOperation);
     bulkEditCurrentOperation = null;
-    
+
     // 限制 undo 堆疊大小
     if (bulkEditUndoStack.length > 50) {
         bulkEditUndoStack.shift();
     }
-    
+
     // 啟用 undo 按鈕
     const undoBtn = document.getElementById('bulkEditUndoBtn');
     if (undoBtn) undoBtn.disabled = false;
@@ -9814,39 +9833,39 @@ function commitUndoOperation() {
 
 function performUndo() {
     if (bulkEditUndoStack.length === 0) return;
-    
+
     // 取出最後一個操作
     const operation = bulkEditUndoStack.pop();
     const changesCount = operation.changes.length;
-    
+
     console.log(`復原操作：${operation.type}，共 ${changesCount} 個變更`);
-    
+
     // 批次恢復所有變更
     operation.changes.forEach(change => {
         const { recordId, column, oldValue } = change;
-        
+
         // 恢復舊值
         if (!bulkEditChanges.has(recordId)) {
             bulkEditChanges.set(recordId, {});
         }
         bulkEditChanges.get(recordId)[column] = oldValue;
-        
+
         // 更新本地資料
         const row = bulkEditData.find(r => r.record_id === recordId);
         if (row) {
             row[column] = oldValue;
         }
-        
+
         // 更新顯示
         const cell = document.querySelector(`td[data-record-id="${recordId}"][data-column="${column}"]`);
         if (cell) {
             const cellContent = cell.querySelector('.cell-content');
             const cellInput = cell.querySelector('.cell-input');
-            
+
             // 檢查是否為 textarea 類型
             const colInfo = bulkEditColumns.find(c => c.key === column);
             const isTextarea = colInfo && colInfo.type === 'textarea';
-            
+
             let displayValue = oldValue;
             if (isTextarea) {
                 displayValue = oldValue.trim();
@@ -9854,7 +9873,7 @@ function performUndo() {
             if (displayValue.length > 50) {
                 displayValue = displayValue.substring(0, 47) + '...';
             }
-            
+
             if (cellContent) {
                 cellContent.textContent = displayValue;
                 cellContent.title = oldValue;
@@ -9868,16 +9887,16 @@ function performUndo() {
             }
         }
     });
-    
+
     updateBulkEditStatus();
-    
+
     // 顯示提示
     const toast = document.createElement('div');
     toast.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #17a2b8; color: white; padding: 12px 24px; border-radius: 4px; z-index: 10000; font-size: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);';
     toast.textContent = `↺ 已復原 ${changesCount} 個儲存格`;
     document.body.appendChild(toast);
     setTimeout(() => toast.remove(), 2000);
-    
+
     // 如果 undo 堆疊空了，停用按鈕
     const undoBtn = document.getElementById('bulkEditUndoBtn');
     if (undoBtn) {
@@ -9888,7 +9907,7 @@ function performUndo() {
 async function copySelectedCells() {
     if (bulkEditSelectedCells.size === 0) {
         console.warn('⚠️ 沒有選中任何儲存格');
-        
+
         // 顯示提示
         const toast = document.createElement('div');
         toast.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #dc3545; color: white; padding: 12px 24px; border-radius: 4px; z-index: 10000; font-size: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);';
@@ -9897,13 +9916,13 @@ async function copySelectedCells() {
         setTimeout(() => toast.remove(), 2000);
         return;
     }
-    
+
     // 收集所有選中儲存格的資料
     const selectedData = [];
     const cellsArray = Array.from(bulkEditSelectedCells);
-    
+
     // console.log('複製開始，選中', cellsArray.length, '個儲存格');
-    
+
     // 按行和列排序
     const cellsWithPosition = cellsArray.map(cellId => {
         // 從 DOM 元素直接取得 recordId 和 column，避免 split 問題
@@ -9912,7 +9931,7 @@ async function copySelectedCells() {
             console.warn('找不到儲存格:', cellId);
             return null;
         }
-        
+
         const recordId = cell.dataset.recordId;
         const column = cell.dataset.column;
         const row = cell.closest('tr');
@@ -9920,9 +9939,9 @@ async function copySelectedCells() {
         const rowIndex = allRows.indexOf(row);
         const colIndex = bulkEditColumns.findIndex(c => c.key === column);
         const value = getCellValue(recordId, column);
-        
+
         // console.log(`儲存格 ${cellId}: row=${rowIndex}, col=${colIndex}, column=${column}, value=${value}`);
-        
+
         return {
             cellId,
             recordId,
@@ -9932,22 +9951,22 @@ async function copySelectedCells() {
             value
         };
     }).filter(c => c !== null && c.rowIndex >= 0 && c.colIndex >= 0);
-    
+
     // console.log('有效儲存格數量:', cellsWithPosition.length);
-    
+
     // 排序: 先按行再按列
     cellsWithPosition.sort((a, b) => {
         if (a.rowIndex !== b.rowIndex) return a.rowIndex - b.rowIndex;
         return a.colIndex - b.colIndex;
     });
-    
+
     // 建立二維表格結構
     const grid = {};
     cellsWithPosition.forEach(cell => {
         if (!grid[cell.rowIndex]) grid[cell.rowIndex] = {};
         grid[cell.rowIndex][cell.colIndex] = cell.value;
     });
-    
+
     // 轉換為 TSV 格式 (類似 Excel)
     // 處理特殊字元：如果值包含 \n, \t 或 " 則需要用引號包裹
     function escapeTsvValue(value) {
@@ -9967,23 +9986,23 @@ async function copySelectedCells() {
         const cols = Object.keys(rowData).sort((a, b) => parseInt(a) - parseInt(b));
         return cols.map(colIdx => escapeTsvValue(rowData[colIdx] || '')).join('\t');
     }).join('\n');
-    
+
     // console.log('TSV 資料:', tsvData.substring(0, 100), '...');
     // console.log('TSV 長度:', tsvData.length, '字符');
-    
+
     // 儲存到內部剪貼簿（作為備用）
     bulkEditClipboard.content = tsvData;
     bulkEditClipboard.cellsData = cellsWithPosition;
     bulkEditClipboard.cells = cellsArray;
     // console.log('✅ 已儲存到內部剪貼簿');
-    
+
     // 複製到系統剪貼簿
     let clipboardSuccess = false;
-    
+
     // 檢查當前環境
     const isSecureContext = window.isSecureContext;
     const hasClipboardAPI = navigator.clipboard && navigator.clipboard.writeText;
-    
+
     // 方法1：嘗試使用 Clipboard API（僅在安全上下文下可用）
     if (hasClipboardAPI && isSecureContext) {
         try {
@@ -9994,7 +10013,7 @@ async function copySelectedCells() {
             // console.warn('⚠️ Clipboard API 失敗:', err.name, err.message);
         }
     }
-    
+
     // 方法2：如果 Clipboard API 失敗，嘗試使用 execCommand
     if (!clipboardSuccess) {
         // console.log('嘗試使用 execCommand 方式...');
@@ -10007,7 +10026,7 @@ async function copySelectedCells() {
             textarea.select();
             const success = document.execCommand('copy');
             document.body.removeChild(textarea);
-            
+
             if (success) {
                 // console.log('✅ 系統剪貼簿寫入成功 (execCommand)');
                 clipboardSuccess = true;
@@ -10018,13 +10037,13 @@ async function copySelectedCells() {
             console.error('❌ execCommand 失敗:', err);
         }
     }
-    
+
     // console.log('=== 複製結束 ===');
-    
+
     // 顯示視覺回饋
     const toast = document.createElement('div');
     toast.style.cssText = 'position: fixed; top: 20px; right: 20px; padding: 12px 24px; border-radius: 4px; z-index: 10000; font-size: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);';
-    
+
     if (clipboardSuccess) {
         toast.style.background = '#28a745';
         toast.style.color = 'white';
@@ -10034,17 +10053,17 @@ async function copySelectedCells() {
         toast.style.color = 'black';
         toast.textContent = `⚠️ 已儲存到內部剪貼簿（${cellsWithPosition.length} 個儲存格）`;
     }
-    
+
     document.body.appendChild(toast);
     setTimeout(() => toast.remove(), 2000);
 }
 
 async function pasteToSelectedCells() {
     // console.log('貼上函數被呼叫, 選中', bulkEditSelectedCells.size, '個儲存格');
-    
+
     if (bulkEditSelectedCells.size === 0) {
         console.warn('⚠️ 沒有選中任何儲存格');
-        
+
         const toast = document.createElement('div');
         toast.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #dc3545; color: white; padding: 12px 24px; border-radius: 4px; z-index: 10000; font-size: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);';
         toast.textContent = '⚠️ 請先選取儲存格';
@@ -10052,10 +10071,10 @@ async function pasteToSelectedCells() {
         setTimeout(() => toast.remove(), 2000);
         return;
     }
-    
+
     // 開始新的 undo 操作組
     beginUndoOperation();
-    
+
     try {
         // 嘗試從系統剪貼簿讀取
         let clipboardText = '';
@@ -10065,7 +10084,7 @@ async function pasteToSelectedCells() {
             // 如果無法讀取系統剪貼簿，使用內部剪貼簿
             clipboardText = bulkEditClipboard.content || '';
         }
-        
+
         if (!clipboardText) {
             console.warn('⚠️ 剪貼簿空白');
             return;
@@ -10157,88 +10176,88 @@ async function pasteToSelectedCells() {
         }
 
         const data = rows.map(row => parseTsvRow(row));
-        
+
         // console.log('解析後的資料:', data.length, '行 x', data[0]?.length || 0, '列');
-        
+
         const selectedCellsArray = Array.from(bulkEditSelectedCells);
-        
+
         const cellsWithPosition = selectedCellsArray.map(cellId => {
             const cell = document.querySelector(`td[data-cell-id="${cellId}"]`);
             if (!cell) {
                 console.warn('找不到儲存格:', cellId);
                 return null;
             }
-            
+
             const row = cell.closest('tr');
             const allRows = Array.from(document.querySelectorAll('.bulk-edit-grid tbody tr'));
             const rowIndex = allRows.indexOf(row);
             const colIndex = bulkEditColumns.findIndex(c => c.key === cell.dataset.column);
-            
+
             return { cellId, cell, rowIndex, colIndex, column: cell.dataset.column };
         }).filter(c => c !== null);
-        
+
         if (cellsWithPosition.length === 0) return;
-        
+
         // 排序找到起始儲存格（最左上角）
         cellsWithPosition.sort((a, b) => {
             if (a.rowIndex !== b.rowIndex) return a.rowIndex - b.rowIndex;
             return a.colIndex - b.colIndex;
         });
-        
+
         const firstCellPos = cellsWithPosition[0];
         const startRowIndex = firstCellPos.rowIndex;
         const startColIndex = firstCellPos.colIndex;
         const allRows = Array.from(document.querySelectorAll('.bulk-edit-grid tbody tr'));
-        
+
         // 計算選取範圍的大小
         const lastCellPos = cellsWithPosition[cellsWithPosition.length - 1];
         const selectedRowCount = lastCellPos.rowIndex - startRowIndex + 1;
         const selectedColCount = lastCellPos.colIndex - startColIndex + 1;
-        
+
         const dataRowCount = data.length;
         const dataColCount = data[0]?.length || 0;
-        
+
         let pasteCount = 0;
-        
+
         // 智能貼上：根據選取範圍和資料範圍決定貼上策略
         // 如果選取範圍比資料範圍大，則重複貼上（類似 Excel）
         const targetRowCount = Math.max(selectedRowCount, dataRowCount);
         const targetColCount = Math.max(selectedColCount, dataColCount);
-        
+
         for (let i = 0; i < targetRowCount; i++) {
             const targetRowIndex = startRowIndex + i;
             if (targetRowIndex >= allRows.length) break;
-            
+
             const targetRow = allRows[targetRowIndex];
             const recordId = targetRow.dataset.recordId;
-            
+
             // 使用 modulo 運算實現重複貼上
             const dataRowIndex = i % dataRowCount;
-            
+
             for (let j = 0; j < targetColCount; j++) {
                 const targetColIndex = startColIndex + j;
                 if (targetColIndex >= bulkEditColumns.length) break;
-                
+
                 const column = bulkEditColumns[targetColIndex];
                 if (!column.editable) continue;
-                
+
                 // 使用 modulo 運算實現重複貼上
                 const dataColIndex = j % dataColCount;
                 const value = data[dataRowIndex][dataColIndex] || '';
-                
+
                 const cellId = `${recordId}_${column.key}`;
                 const currentValue = getCellValue(recordId, column.key);
-                
+
                 if (value !== currentValue) {
                     addToCurrentOperation(recordId, column.key, currentValue, value);
                     setCellValue(recordId, column.key, value);
-                    
+
                     // 更新顯示
                     const cell = document.querySelector(`td[data-cell-id="${cellId}"]`);
                     if (cell) {
                         const cellContent = cell.querySelector('.cell-content');
                         const cellInput = cell.querySelector('.cell-input');
-                        
+
                         let displayValue = value;
                         // 檢查是否為 textarea 類型
                         const isTextarea = column.type === 'textarea';
@@ -10248,7 +10267,7 @@ async function pasteToSelectedCells() {
                         if (displayValue.length > 50) {
                             displayValue = displayValue.substring(0, 47) + '...';
                         }
-                        
+
                         if (cellContent) {
                             cellContent.textContent = displayValue;
                             cellContent.title = value;
@@ -10261,18 +10280,18 @@ async function pasteToSelectedCells() {
                             }
                         }
                     }
-                    
+
                     pasteCount++;
                 }
             }
         }
-        
+
         updateBulkEditStatus();
-        
+
         // 提交 undo 操作（只有在有改變時才提交）
         if (pasteCount > 0) {
             commitUndoOperation();
-            
+
             // 顯示成功提示
             const toast = document.createElement('div');
             toast.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #28a745; color: white; padding: 12px 24px; border-radius: 4px; z-index: 10000; font-size: 14px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);';
@@ -10283,7 +10302,7 @@ async function pasteToSelectedCells() {
             // 如果沒有任何改變，取消操作組
             bulkEditCurrentOperation = null;
         }
-        
+
     } catch (err) {
         console.error('貼上失敗:', err);
         AppUtils.showError('貼上失敗');
@@ -10295,35 +10314,35 @@ async function pasteToSelectedCells() {
 function handleDragStart(event) {
     const dragHandle = event.target;
     if (!dragHandle || !dragHandle.classList.contains('drag-handle')) return;
-    
+
     event.preventDefault();
-    
+
     const cell = dragHandle.closest('td');
     if (!cell) return;
-    
+
     const recordId = cell.dataset.recordId;
     const column = cell.dataset.column;
     const sourceValue = getCellValue(recordId, column);
-    
+
     bulkEditDragState = {
         startCell: cell,
         column: column,
         sourceValue: sourceValue,
         affectedCells: new Set([cell])
     };
-    
+
     // 添加視覺回饋
     cell.style.opacity = '0.7';
 }
 
 function handleDragMove(event) {
     if (!bulkEditDragState) return;
-    
+
     event.preventDefault();
-    
+
     const targetElement = document.elementFromPoint(event.clientX, event.clientY);
     const targetCell = targetElement ? targetElement.closest('td.editable-cell') : null;
-    
+
     if (targetCell && targetCell.dataset.column === bulkEditDragState.column) {
         // 添加預覽效果
         if (!bulkEditDragState.affectedCells.has(targetCell)) {
@@ -10335,39 +10354,39 @@ function handleDragMove(event) {
 
 function handleDragEnd(event) {
     if (!bulkEditDragState) return;
-    
+
     event.preventDefault();
-    
+
     const { startCell, column, sourceValue, affectedCells } = bulkEditDragState;
-    
+
     // 移除視覺效果
     startCell.style.opacity = '';
-    
+
     // 開始新的 undo 操作組
     beginUndoOperation();
     let changeCount = 0;
-    
+
     // 應用變更
     affectedCells.forEach(cell => {
         if (cell === startCell) return; // 跳過來源儲存格
-        
+
         const targetRecordId = cell.dataset.recordId;
         const currentValue = getCellValue(targetRecordId, column);
-        
+
         if (currentValue !== sourceValue) {
             addToCurrentOperation(targetRecordId, column, currentValue, sourceValue);
             setCellValue(targetRecordId, column, sourceValue);
             changeCount++;
-            
+
             // 更新顯示
             const cellContent = cell.querySelector('.cell-content');
             const cellInput = cell.querySelector('.cell-input');
-            
+
             let displayValue = sourceValue;
             if (sourceValue.length > 50) {
                 displayValue = sourceValue.substring(0, 47) + '...';
             }
-            
+
             if (cellContent) {
                 cellContent.textContent = displayValue;
                 cellContent.title = sourceValue;
@@ -10376,18 +10395,18 @@ function handleDragEnd(event) {
                 cellInput.value = sourceValue;
             }
         }
-        
+
         // 移除預覽效果
         cell.style.backgroundColor = '';
     });
-    
+
     // 提交 undo 操作（只有在有改變時才提交）
     if (changeCount > 0) {
         commitUndoOperation();
     } else {
         bulkEditCurrentOperation = null;
     }
-    
+
     updateBulkEditStatus();
     bulkEditDragState = null;
 }
@@ -10395,22 +10414,22 @@ function handleDragEnd(event) {
 function updateBulkEditStatus() {
     const statusEl = document.getElementById('bulkEditStatus');
     const changeCountEl = document.getElementById('bulkEditChangeCount');
-    
+
     if (statusEl) {
         const count = bulkEditData.length;
-        const statusText = window.i18n ? 
-            window.i18n.t('testCase.bulkEdit.editingCount', {count}, `編輯 ${count} 筆資料`) : 
+        const statusText = window.i18n ?
+            window.i18n.t('testCase.bulkEdit.editingCount', {count}, `編輯 ${count} 筆資料`) :
             `編輯 ${count} 筆資料`;
         statusEl.innerHTML = `<span>${statusText}</span>`;
     }
-    
+
     if (changeCountEl) {
         const changeCount = bulkEditChanges.size;
-        const changeText = window.i18n ? 
-            window.i18n.t('testCase.bulkEdit.changedCount', {count: changeCount}, `已修改 ${changeCount} 筆`) : 
+        const changeText = window.i18n ?
+            window.i18n.t('testCase.bulkEdit.changedCount', {count: changeCount}, `已修改 ${changeCount} 筆`) :
             `已修改 ${changeCount} 筆`;
         changeCountEl.innerHTML = `<span>${changeText}</span>`;
-        
+
         // 啟用/停用儲存按鈕
         const saveBtn = document.getElementById('saveBulkEditBtn');
         if (saveBtn) {
@@ -10721,48 +10740,48 @@ function performSearchReplace() {
 // ===== 拖移選取功能 =====
 function handleSelectDragMove(event) {
     if (!bulkEditSelectDragState) return;
-    
+
     const targetElement = document.elementFromPoint(event.clientX, event.clientY);
     const targetCell = targetElement ? targetElement.closest('td.editable-cell') : null;
-    
+
     if (!targetCell) return;
-    
+
     // 標記為正在選取（只要滑鼠移動就開始選取）
     if (!bulkEditSelectDragState.isSelecting) {
         bulkEditSelectDragState.isSelecting = true;
         // 清除原本的單一選取
         clearCellSelection();
     }
-    
+
     // 清除舊的選取
     document.querySelectorAll('.bulk-edit-grid td.selecting').forEach(cell => {
         cell.classList.remove('selecting');
     });
-    
+
     // 計算選取範圍
     const startCell = bulkEditSelectDragState.startCell;
     const startRow = startCell.closest('tr');
     const endRow = targetCell.closest('tr');
-    
+
     const allRows = Array.from(document.querySelectorAll('.bulk-edit-grid tbody tr'));
     const startRowIndex = allRows.indexOf(startRow);
     const endRowIndex = allRows.indexOf(endRow);
-    
+
     const startColIndex = bulkEditColumns.findIndex(c => c.key === startCell.dataset.column);
     const endColIndex = bulkEditColumns.findIndex(c => c.key === targetCell.dataset.column);
-    
+
     const minRow = Math.min(startRowIndex, endRowIndex);
     const maxRow = Math.max(startRowIndex, endRowIndex);
     const minCol = Math.min(startColIndex, endColIndex);
     const maxCol = Math.max(startColIndex, endColIndex);
-    
+
     // 選取範圍內的所有儲存格
     for (let r = minRow; r <= maxRow; r++) {
         const row = allRows[r];
         for (let c = minCol; c <= maxCol; c++) {
             const column = bulkEditColumns[c];
             if (!column.editable) continue;
-            
+
             const cellId = `${row.dataset.recordId}_${column.key}`;
             const cell = document.querySelector(`td[data-cell-id="${cellId}"]`);
             if (cell) {
@@ -10774,14 +10793,14 @@ function handleSelectDragMove(event) {
 
 function handleSelectDragEnd(event) {
     if (!bulkEditSelectDragState) return;
-    
+
     // 如果有拖移選取，套用選取
     if (bulkEditSelectDragState.isSelecting) {
         clearCellSelection();
-        
+
         // 同步更新選取狀態，立即生效
         const selectingCells = document.querySelectorAll('.bulk-edit-grid td.selecting');
-        
+
         selectingCells.forEach(cell => {
             const cellId = cell.dataset.cellId;
             bulkEditSelectedCells.add(cellId);
@@ -10789,7 +10808,7 @@ function handleSelectDragEnd(event) {
             cell.classList.add('selected');
         });
     }
-    
+
     bulkEditSelectDragState = null;
 }
 
@@ -10798,24 +10817,24 @@ async function saveBulkEditChanges() {
         AppUtils.showError('沒有要儲存的變更');
         return;
     }
-    
+
     const saveBtn = document.getElementById('saveBulkEditBtn');
     const originalText = saveBtn.innerHTML;
     saveBtn.disabled = true;
     saveBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>儲存中...';
-    
+
     try {
         let successCount = 0;
         let errorCount = 0;
         const errors = []; // 記錄錯誤訊息
-        
+
         console.log('=== 開始儲存 Bulk Edit 變更 ===');
         console.log('總共要更新', bulkEditChanges.size, '筆資料');
-        
+
         for (const [recordId, changes] of bulkEditChanges) {
             try {
                 console.log('\n--- 處理 recordId:', recordId, '---');
-                
+
                 // 找到原始測試案例
                 const originalTestCase = testCases.find(tc => tc.record_id === recordId);
                 if (!originalTestCase) {
@@ -10825,19 +10844,19 @@ async function saveBulkEditChanges() {
                     errorCount++;
                     continue;
                 }
-                
+
                 console.log('=== 準備更新 recordId:', recordId, '===');
                 console.log('changes:', changes);
-                
+
                 // 只發送實際變更的欄位，不發送完整的 test case 物件
                 // 這樣可以避免不必要的欄位被誤更新
                 const updateData = {};
-                
+
                 // API 支援的可更新欄位
                 // 注意：bulk edit 不包含 TCG 欄位，所以不應發送 TCG 更新
                 const updateableFields = [
                     'test_case_number',
-                    'title', 
+                    'title',
                     'priority',
                     'precondition',
                     'steps',
@@ -10850,24 +10869,24 @@ async function saveBulkEditChanges() {
                     'parent_record',
                     'temp_upload_id'
                 ];
-                
+
                 // 只加入實際變更的欄位
                 for (const [key, value] of Object.entries(changes)) {
                     if (updateableFields.includes(key)) {
                         updateData[key] = value;
                     }
                 }
-                
+
                 console.log('updateData:', updateData);
-                
+
                 // 呼叫 API 更新
                 const currentTeam = AppUtils.getCurrentTeam();
                 if (!currentTeam) {
                     throw new Error('請先選擇團隊');
                 }
-                
+
                 console.log('Request body:', JSON.stringify(updateData, null, 2));
-                
+
                 const response = await window.AuthClient.fetch(`/api/teams/${currentTeam.id}/testcases/${recordId}`, {
                     method: 'PUT',
                     headers: {
@@ -10875,9 +10894,9 @@ async function saveBulkEditChanges() {
                     },
                     body: JSON.stringify(updateData)
                 });
-                
+
                 console.log('API Response status:', response.status);
-                
+
                 if (!response.ok) {
                     // 讀取錯誤詳情
                     let errorDetail = '';
@@ -10891,12 +10910,12 @@ async function saveBulkEditChanges() {
                     }
                     throw new Error(`HTTP ${response.status}: ${response.statusText}\n${errorDetail}`);
                 }
-                
+
                 const updatedTestCase = await response.json();
                 console.log('API 返回的更新後資料:', updatedTestCase);
                 console.log('API 返回的 record_id:', updatedTestCase.record_id);
                 console.log('原本的 recordId:', recordId);
-                
+
                 // 更新本地資料：使用原本的 recordId 查找
                 const index = testCases.findIndex(tc => tc.record_id === recordId);
                 if (index >= 0) {
@@ -10907,23 +10926,23 @@ async function saveBulkEditChanges() {
                 } else {
                     console.warn('⚠️ 在 testCases 中找不到 recordId:', recordId);
                 }
-                
+
                 const filteredIndex = filteredTestCases.findIndex(tc => tc.record_id === recordId);
                 if (filteredIndex >= 0) {
                     const originalRecordId = filteredTestCases[filteredIndex].record_id;
                     filteredTestCases[filteredIndex] = { ...updatedTestCase, record_id: originalRecordId };
                     console.log('✅ 已更新 filteredTestCases 索引:', filteredIndex);
                 }
-                
+
                 // 更新快取：使用 test_case_number 作為關鍵字
                 if (updatedTestCase.test_case_number) {
                     updateTestCaseInCache(updatedTestCase);
                     console.log('✅ 已更新快取:', updatedTestCase.test_case_number);
                 }
-                
+
                 console.log('✅ 成功更新 recordId:', recordId);
                 successCount++;
-                
+
             } catch (error) {
                 const errMsg = `更新 ${recordId} 失敗: ${error.message}`;
                 console.error(errMsg, error);
@@ -10931,11 +10950,11 @@ async function saveBulkEditChanges() {
                 errorCount++;
             }
         }
-        
+
         console.log('=== 儲存完成 ===');
         console.log('成功:', successCount, '筆');
         console.log('失敗:', errorCount, '筆');
-        
+
         // 顯示結果
         if (successCount > 0) {
             let message = `儲存成功 ${successCount} 筆`;
@@ -10944,30 +10963,30 @@ async function saveBulkEditChanges() {
                 console.warn('失敗詳情:', errors);
             }
             AppUtils.showSuccess(message);
-            
+
             // 清除變更記錄
             bulkEditChanges.clear();
-            
+
             // 清空 undo 堆疊（因為已經儲存）
             bulkEditUndoStack = [];
-            
+
             // 更新狀態
             updateBulkEditStatus();
-            
+
             // 禁用 undo 按鈕
             const undoBtn = document.getElementById('bulkEditUndoBtn');
             if (undoBtn) undoBtn.disabled = true;
-            
+
             // 刷新表格顯示
             renderTestCasesTable();
-            
+
             // 不關閉 modal，讓用戶繼續編輯
         } else {
             const errorMsg = '儲存失敗：' + (errors.length > 0 ? '\n' + errors.join('\n') : '所有資料都更新失敗');
             console.error(errorMsg);
             AppUtils.showError(errorMsg);
         }
-        
+
     } catch (error) {
         console.error('saveBulkEditChanges error:', error);
         AppUtils.showError('儲存失敗: ' + error.message);
