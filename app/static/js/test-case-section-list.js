@@ -15,6 +15,7 @@ class TestCaseSectionList {
     this.sections = [];
     this.editingNodeId = null;
     this.nextSectionEventMeta = null;
+    this.sectionsToDelete = new Set(); // 待刪除的 section IDs
     this.init();
   }
 
@@ -875,9 +876,9 @@ class TestCaseSectionList {
   }
 
   /**
-   * 在編輯列表 modal 中刪除區段
+   * 在編輯列表中標記/取消標記 section 待刪除
    */
-  async deleteSectionFromModal(sectionId) {
+  toggleSectionDelete(sectionId) {
     // 防止刪除 Unassigned Section
     const section = this.findSection(sectionId);
     if (section && section.name === "Unassigned") {
@@ -885,29 +886,18 @@ class TestCaseSectionList {
       return;
     }
 
-    if (
-      !confirm("確定要刪除此區段嗎？該區段下的測試案例將被移到 Unassigned。")
-    ) {
-      return;
+    if (this.sectionsToDelete.has(sectionId)) {
+      // 取消刪除標記
+      this.sectionsToDelete.delete(sectionId);
+    } else {
+      // 標記待刪除
+      this.sectionsToDelete.add(sectionId);
     }
 
-    try {
-      const response = await window.AuthClient.fetch(
-        `/api/test-case-sets/${this.setId}/sections/${sectionId}`,
-        {
-          method: "DELETE",
-        },
-      );
-
-      if (!response.ok) {
-        throw new Error("Failed to delete section");
-      }
-
-      // 重新載入 Sections 並強制更新測試案例
-      await this.loadSections({ reloadTestCases: true });
-    } catch (error) {
-      console.error("Error deleting section:", error);
-      alert("刪除區段失敗: " + error.message);
+    // 重新渲染列表
+    const reorderList = document.getElementById('reorderSectionList');
+    if (reorderList) {
+      reorderList.innerHTML = this.renderReorderList();
     }
   }
 
@@ -1128,6 +1118,9 @@ class TestCaseSectionList {
       return;
     }
 
+    // 清空待刪除列表（開啟新的編輯會話）
+    this.sectionsToDelete.clear();
+
     // 創建扁平化的 section 列表（包含層級資訊）
     this.flatSections = this.flattenSections(this.sections);
     
@@ -1138,7 +1131,7 @@ class TestCaseSectionList {
           <div class="modal-content">
             <div class="modal-header">
               <h5 class="modal-title" id="reorderSectionModalLabel">
-                <i class="fas fa-arrows-up-down"></i> 編輯區段順序與層級
+                <i class="fas fa-list"></i> 編輯列表
               </h5>
               <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
@@ -1150,6 +1143,8 @@ class TestCaseSectionList {
                   <li><strong>上/下按鈕</strong>：同層移動，與前/後兄弟節點交換位置</li>
                   <li><strong>← 左按鈕</strong>：減少層級（反縮排），從父節點取出並與父節點同層</li>
                   <li><strong>→ 右按鈕</strong>：增加層級（縮排），成為視覺上相鄰的上一個同層或淺層節點的子節點</li>
+                  <li><strong>刪除按鈕</strong>：標記待刪除，按「儲存變更」時才會實際刪除</li>
+                  <li><strong>區段名稱</strong>：點擊即可編輯名稱</li>
                   <li><strong>注意</strong>：所有操作都會連同子樹一起移動，最多支援 5 層</li>
                 </ul>
               </div>
@@ -1223,6 +1218,7 @@ class TestCaseSectionList {
 
     return this.flatSections.map((section, index) => {
       const indent = (section.level - 1) * 20;
+      const isMarkedForDelete = this.sectionsToDelete.has(section.id);
       
       // 檢查是否可以向上移動（同層）
       const canMoveUp = this.canMoveUp(index);
@@ -1237,42 +1233,43 @@ class TestCaseSectionList {
       const canIncreaseLevel = this.canIncreaseLevel(index);
       
       return `
-        <div class="list-group-item d-flex align-items-center py-2" data-section-index="${index}">
+        <div class="list-group-item d-flex align-items-center py-2 ${isMarkedForDelete ? 'bg-danger bg-opacity-10' : ''}" data-section-index="${index}" data-section-id="${section.id}">
           <div style="margin-left: ${indent}px; flex: 1;">
             <i class="fas fa-folder text-muted me-2"></i>
-            <strong style="cursor: pointer;" onclick="testCaseSectionList.editSectionNameInModal(${section.id})" title="點擊編輯名稱">${this.escapeHtml(section.name)}</strong>
+            <strong style="cursor: pointer; ${isMarkedForDelete ? 'text-decoration: line-through; color: #999;' : ''}" onclick="testCaseSectionList.editSectionNameInModal(${section.id})" title="點擊編輯名稱">${this.escapeHtml(section.name)}</strong>
             <span class="badge bg-secondary ms-2">${section.test_case_count}</span>
             <small class="text-muted ms-2">(層級 ${section.level})</small>
+            ${isMarkedForDelete ? '<span class="badge bg-danger ms-2">待刪除</span>' : ''}
           </div>
           <div class="btn-group btn-group-sm ms-2" role="group">
             <button type="button" class="btn btn-outline-primary" 
                     onclick="testCaseSectionList.moveUp(${index})" 
-                    ${!canMoveUp ? 'disabled' : ''} 
+                    ${!canMoveUp || isMarkedForDelete ? 'disabled' : ''} 
                     title="向上移動（同層）">
               <i class="fas fa-chevron-up"></i>
             </button>
             <button type="button" class="btn btn-outline-primary" 
                     onclick="testCaseSectionList.moveDown(${index})" 
-                    ${!canMoveDown ? 'disabled' : ''} 
+                    ${!canMoveDown || isMarkedForDelete ? 'disabled' : ''} 
                     title="向下移動（同層）">
               <i class="fas fa-chevron-down"></i>
             </button>
             <button type="button" class="btn btn-outline-secondary" 
                     onclick="testCaseSectionList.decreaseLevel(${index})" 
-                    ${!canDecreaseLevel ? 'disabled' : ''} 
+                    ${!canDecreaseLevel || isMarkedForDelete ? 'disabled' : ''} 
                     title="減少層級（反縮排）">
               <i class="fas fa-arrow-left"></i>
             </button>
             <button type="button" class="btn btn-outline-secondary" 
                     onclick="testCaseSectionList.increaseLevel(${index})" 
-                    ${!canIncreaseLevel ? 'disabled' : ''} 
+                    ${!canIncreaseLevel || isMarkedForDelete ? 'disabled' : ''} 
                     title="增加層級（縮排）">
               <i class="fas fa-arrow-right"></i>
             </button>
-            <button type="button" class="btn btn-outline-danger" 
-                    onclick="testCaseSectionList.deleteSectionFromModal(${section.id})" 
-                    title="刪除區段">
-              <i class="fas fa-trash"></i>
+            <button type="button" class="btn ${isMarkedForDelete ? 'btn-success' : 'btn-outline-danger'}" 
+                    onclick="testCaseSectionList.toggleSectionDelete(${section.id})" 
+                    title="${isMarkedForDelete ? '取消刪除' : '標記刪除'}">
+              <i class="fas ${isMarkedForDelete ? 'fa-undo' : 'fa-trash'}"></i>
             </button>
           </div>
         </div>
@@ -1622,6 +1619,22 @@ class TestCaseSectionList {
    */
   async saveReorder() {
     try {
+      // 先刪除標記的 sections
+      const sectionsToDeleteArray = Array.from(this.sectionsToDelete);
+      for (const sectionId of sectionsToDeleteArray) {
+        console.log(`[SectionList] Deleting section ${sectionId}`);
+        const response = await window.AuthClient.fetch(
+          `/api/test-case-sets/${this.setId}/sections/${sectionId}`,
+          {
+            method: "DELETE",
+          },
+        );
+
+        if (!response.ok) {
+          throw new Error(`Failed to delete section ${sectionId}`);
+        }
+      }
+
       // 重建 parent_section_id 關係
       const payload = [];
       
@@ -1635,6 +1648,11 @@ class TestCaseSectionList {
           console.log('[SectionList] Skipping Unassigned section');
           return false;
         }
+        // 過濾掉待刪除的 sections
+        if (this.sectionsToDelete.has(section.id)) {
+          console.log('[SectionList] Skipping section marked for deletion:', section.id);
+          return false;
+        }
         return true;
       });
       
@@ -1646,7 +1664,7 @@ class TestCaseSectionList {
         // 尋找正確的 parent_section_id
         let parentId = null;
         if (section.level > 1) {
-          // 向上找第一個層級比自己少1的作為父節點
+          // 向上找第一個層級比自己小1的作為父節點
           for (let j = i - 1; j >= 0; j--) {
             if (validSections[j].level === section.level - 1) {
               parentId = validSections[j].id;
@@ -1682,6 +1700,9 @@ class TestCaseSectionList {
         console.error('[SectionList] Reorder failed:', response.status, errorText);
         throw new Error(`Failed to save section order: ${response.status} - ${errorText}`);
       }
+
+      // 清空待刪除列表
+      this.sectionsToDelete.clear();
 
       // 關閉 modal
       const modal = bootstrap.Modal.getInstance(document.getElementById('reorderSectionModal'));
