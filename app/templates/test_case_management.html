@@ -1080,6 +1080,20 @@ body {
                     </select>
                 </div>
 
+                <!-- 區段批次設定 -->
+                <div class="mb-3">
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" id="batchModifySection">
+                        <label class="form-check-label" for="batchModifySection">
+                            <strong data-i18n="testCase.batchSetSection" data-i18n-fallback="批次設定區段">批次設定區段</strong>
+                        </label>
+                    </div>
+                    <select class="form-select" id="batchSectionSelect" disabled>
+                        <option value="" data-i18n="testCase.selectSection" data-i18n-fallback="請選擇區段">請選擇區段</option>
+                    </select>
+                    <small class="text-muted" data-i18n="testCase.batchSectionHint" data-i18n-fallback="將選擇的測試案例移動到指定區段">將選擇的測試案例移動到指定區段</small>
+                </div>
+
                 <div class="alert alert-info" role="alert">
                     <i class="fas fa-info-circle me-2"></i>
                     <span data-i18n="testCase.batchModifyNote">只會套用已勾選的項目，空白值將不會變更現有資料。</span>
@@ -1496,17 +1510,6 @@ function removeExecCachedTestCase(testCaseNumber) {
     } catch (_) {}
 }
 
-let testCases = [];
-let filteredTestCases = [];
-let selectedTestCases = new Set();
-const sectionSortStates = new Map();
-// Shift 連續多選錨點（Test Case Management）
-let lastCaseCheckboxIndex = null;
-let currentPage = 1;
-let currentTestCaseIndex = -1; // 當前檢視測試案例在 filteredTestCases 中的索引
-let pageSize = 50;
-let markdownEditor = null;
-
 // TCG 快取相關變數
 let tcgCache = null;
 let tcgCacheTimestamp = null;
@@ -1522,6 +1525,38 @@ let tcmSortOrder = 'asc';    // asc|desc
 const TCM_FILTERS_STORAGE_PREFIX = 'tcm_filters_v1';
 
 const TEST_CASE_UPDATE_EVENT_KEY = 'testCaseUpdatedEvent';
+
+let testCases = [];
+let filteredTestCases = [];
+let selectedTestCases = new Set();
+const sectionSortStates = new Map();
+// Shift 連續多選錨點（Test Case Management）
+let lastCaseCheckboxIndex = null;
+let currentPage = 1;
+let currentTestCaseIndex = -1;
+let pageSize = 50;
+let markdownEditor = null;
+
+// 區段資料（供批次設定使用）
+let tcmSectionsTree = [];
+let tcmSectionMetaMap = new Map();
+let tcmSectionOrder = [];
+
+window.addEventListener('testCaseSetLoaded', (event) => {
+    try {
+        const sections = event?.detail?.sections;
+        if (Array.isArray(sections)) {
+            tcmSectionsTree = sections;
+            rebuildBatchSectionMeta();
+            populateBatchSectionSelect();
+            if (Array.isArray(testCases) && testCases.length > 0) {
+                applyCurrentFiltersAndRender();
+            }
+        }
+    } catch (err) {
+        console.warn('Failed to handle testCaseSetLoaded for batch section select:', err);
+    }
+});
 
 function broadcastTestCaseUpdate(testCase, overrides = {}) {
     try {
@@ -1825,7 +1860,10 @@ function getDisplaySectionName(sectionGroup) {
 }
 
 function sortSectionIds(sectionIds, grouped) {
-    return sectionIds.sort((a, b) => {
+    const ids = Array.isArray(sectionIds) ? [...sectionIds] : [];
+    if (!ids.length) return ids;
+
+    const legacyCompare = (a, b) => {
         const ga = grouped[a];
         const gb = grouped[b];
         if (!ga || !gb) return 0;
@@ -1838,6 +1876,26 @@ function sortSectionIds(sectionIds, grouped) {
         if (a === UNASSIGNED_SECTION_ID) return 1;
         if (b === UNASSIGNED_SECTION_ID) return -1;
         return aKey.localeCompare(bKey);
+    };
+
+    if (!Array.isArray(tcmSectionOrder) || tcmSectionOrder.length === 0) {
+        return ids.sort((a, b) => legacyCompare(a, b));
+    }
+
+    const orderMap = new Map();
+    tcmSectionOrder.forEach((id, index) => {
+        orderMap.set(String(id), index);
+    });
+
+    return ids.sort((a, b) => {
+        const aKey = String(a);
+        const bKey = String(b);
+        const aOrder = orderMap.has(aKey) ? orderMap.get(aKey) : Number.MAX_SAFE_INT;
+        const bOrder = orderMap.has(bKey) ? orderMap.get(bKey) : Number.MAX_SAFE_INT;
+        if (aOrder !== bOrder) {
+            return aOrder - bOrder;
+        }
+        return legacyCompare(a, b);
     });
 }
 
@@ -3596,6 +3654,26 @@ function bindEvents() {
             batchPrioritySelect.disabled = !this.checked;
             if (!this.checked) {
                 batchPrioritySelect.value = '';
+            }
+        });
+    }
+    const batchModifySectionCheckbox = document.getElementById('batchModifySection');
+    const batchSectionSelect = document.getElementById('batchSectionSelect');
+    if (batchModifySectionCheckbox && batchSectionSelect) {
+        batchModifySectionCheckbox.addEventListener('change', function() {
+            if (this.checked) {
+                if (!Array.isArray(tcmSectionsTree) || tcmSectionsTree.length === 0) {
+                    const msg = window.i18n ? window.i18n.t('errors.sectionsNotReady', {}, '尚未載入區段列表') : '尚未載入區段列表';
+                    AppUtils.showError(msg);
+                    this.checked = false;
+                    batchSectionSelect.disabled = true;
+                    return;
+                }
+                populateBatchSectionSelect();
+                batchSectionSelect.disabled = false;
+            } else {
+                batchSectionSelect.value = '';
+                batchSectionSelect.disabled = true;
             }
         });
     }
@@ -6205,6 +6283,14 @@ function openTestCaseBatchModifyModal() {
     document.getElementById('batchModifyPriority').checked = false;
     document.getElementById('batchPrioritySelect').value = '';
     document.getElementById('batchPrioritySelect').disabled = true;
+    const batchModifySectionCheckbox = document.getElementById('batchModifySection');
+    const batchSectionSelect = document.getElementById('batchSectionSelect');
+    if (batchModifySectionCheckbox) batchModifySectionCheckbox.checked = false;
+    if (batchSectionSelect) {
+        batchSectionSelect.value = '';
+        batchSectionSelect.disabled = true;
+        populateBatchSectionSelect();
+    }
 
     // 初始化批次 TCG 編輯器
     initializeBatchTCGEditor();
@@ -6636,6 +6722,14 @@ function updateLocalTestCasesAfterBatchModify(selectedIds, updateData) {
             if (updateData.priority !== undefined) {
                 testCase.priority = updateData.priority;
             }
+
+            // 更新區段
+            if (updateData.section) {
+                testCase.test_case_section_id = updateData.section.id;
+                testCase.section_name = updateData.section.name;
+                testCase.section_path = updateData.section.path;
+                testCase.section_level = updateData.section.level;
+            }
         }
     });
 
@@ -6657,6 +6751,13 @@ function updateLocalTestCasesAfterBatchModify(selectedIds, updateData) {
             if (updateData.priority !== undefined) {
                 testCase.priority = updateData.priority;
             }
+
+            if (updateData.section) {
+                testCase.test_case_section_id = updateData.section.id;
+                testCase.section_name = updateData.section.name;
+                testCase.section_path = updateData.section.path;
+                testCase.section_level = updateData.section.level;
+            }
         }
     });
 
@@ -6667,8 +6768,9 @@ function updateLocalTestCasesAfterBatchModify(selectedIds, updateData) {
 async function performTestCaseBatchModify() {
     const modifyTCG = document.getElementById('batchModifyTCG').checked;
     const modifyPriority = document.getElementById('batchModifyPriority').checked;
+    const modifySection = document.getElementById('batchModifySection').checked;
 
-    if (!modifyTCG && !modifyPriority) {
+    if (!modifyTCG && !modifyPriority && !modifySection) {
         const msg = window.i18n ? window.i18n.t('errors.selectModifyFields') : '請至少選擇一個要修改的欄位';
         AppUtils.showError(msg);
         return;
@@ -6676,6 +6778,7 @@ async function performTestCaseBatchModify() {
 
     const selectedIds = Array.from(selectedTestCases);
     const updateData = {};
+    let sectionIdForBatch = null;
 
     // 收集要修改的資料
     if (modifyTCG) {
@@ -6698,6 +6801,35 @@ async function performTestCaseBatchModify() {
             return;
         }
         updateData.priority = priorityValue;
+    }
+
+    if (modifySection) {
+        const sectionSelect = document.getElementById('batchSectionSelect');
+        const sectionValue = sectionSelect ? sectionSelect.value : '';
+        if (!sectionValue) {
+            const msg = window.i18n ? window.i18n.t('errors.selectSectionValue', {}, '請選擇區段') : '請選擇區段';
+            AppUtils.showError(msg);
+            return;
+        }
+        const sectionMeta = getSectionMetaByValue(sectionValue);
+        if (!sectionMeta || sectionMeta.id === undefined || sectionMeta.id === null) {
+            const msg = window.i18n ? window.i18n.t('errors.invalidSection', {}, '區段資訊無效，請重新載入') : '區段資訊無效，請重新載入';
+            AppUtils.showError(msg);
+            return;
+        }
+        const parsedSectionId = Number(sectionMeta.id);
+        if (!Number.isFinite(parsedSectionId)) {
+            const msg = window.i18n ? window.i18n.t('errors.invalidSection', {}, '區段資訊無效，請重新載入') : '區段資訊無效，請重新載入';
+            AppUtils.showError(msg);
+            return;
+        }
+        sectionIdForBatch = parsedSectionId;
+        updateData.section = {
+            id: sectionMeta.id,
+            name: sectionMeta.name || '',
+            path: sectionMeta.path || sectionMeta.name || '',
+            level: sectionMeta.level || 1,
+        };
     }
 
     try {
@@ -6757,6 +6889,26 @@ async function performTestCaseBatchModify() {
             if (!result.success) {
                 success = false;
                 errorMessages.push(...(result.error_messages || ['優先級更新失敗']));
+            }
+        }
+
+        if (modifySection && sectionIdForBatch !== null) {
+            const response = await window.AuthClient.fetch(`/api/teams/${currentTeam.id}/testcases/batch`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    operation: 'update_section',
+                    record_ids: selectedIds,
+                    update_data: { section_id: sectionIdForBatch },
+                }),
+            });
+
+            const result = await response.json();
+            if (!result.success) {
+                success = false;
+                errorMessages.push(...(result.error_messages || ['區段更新失敗']));
             }
         }
 
@@ -8786,6 +8938,119 @@ function adjustTestCasesScrollHeight() {
     } catch (e) {
         console.warn('adjustTestCasesScrollHeight failed:', e);
     }
+}
+
+function sortSectionsForDisplayGeneric(sections) {
+    if (!Array.isArray(sections)) return [];
+    const normal = [];
+    const unassigned = [];
+    sections.forEach(section => {
+        if (!section) return;
+        if (isUnassignedSectionName(section.name)) {
+            unassigned.push(section);
+        } else {
+            normal.push(section);
+        }
+    });
+    return normal.concat(unassigned);
+}
+
+function rebuildBatchSectionMeta() {
+    tcmSectionMetaMap = new Map();
+    tcmSectionOrder = [];
+
+    function traverse(sections, depth = 0, parentPath = '') {
+        if (!Array.isArray(sections)) return;
+        const orderedSections = sortSectionsForDisplayGeneric(sections);
+        orderedSections.forEach(section => {
+            const name = section?.name || '';
+            const currentPath = parentPath ? `${parentPath}/${name}` : name;
+            const meta = {
+                id: section?.id ?? null,
+                name,
+                path: currentPath,
+                level: section?.level ?? (depth + 1),
+            };
+            if (meta.id !== null && meta.id !== undefined) {
+                tcmSectionMetaMap.set(meta.id, meta);
+                if (!isUnassignedSectionName(name)) {
+                    tcmSectionOrder.push(String(meta.id));
+                }
+            }
+            if (Array.isArray(section?.child_sections) && section.child_sections.length > 0) {
+                traverse(section.child_sections, depth + 1, currentPath);
+            }
+        });
+    }
+
+    traverse(tcmSectionsTree, 0, '');
+    const seenOrder = new Set();
+    tcmSectionOrder = tcmSectionOrder.filter(id => {
+        if (seenOrder.has(id)) return false;
+        seenOrder.add(id);
+        return true;
+    });
+    tcmSectionOrder.push(UNASSIGNED_SECTION_ID);
+}
+
+function buildBatchSectionOptionsHtml() {
+    const parts = [];
+
+    function flatten(sections, depth = 0) {
+        if (!Array.isArray(sections)) return;
+        const orderedSections = sortSectionsForDisplayGeneric(sections);
+        orderedSections.forEach(section => {
+            const name = section?.name || '';
+            const isUnassigned = isUnassignedSectionName(name);
+            if (!isUnassigned && section?.id !== undefined && section?.id !== null) {
+                const prefix = depth > 0 ? '┣ '.repeat(depth) : '';
+                parts.push(`<option value="${section.id}">${prefix}${escapeHtml(name)}</option>`);
+            }
+            if (Array.isArray(section?.child_sections) && section.child_sections.length > 0) {
+                flatten(section.child_sections, depth + 1);
+            }
+        });
+    }
+
+    flatten(tcmSectionsTree, 0);
+    return parts.join('');
+}
+
+function populateBatchSectionSelect() {
+    const select = document.getElementById('batchSectionSelect');
+    if (!select) return;
+
+    if (!Array.isArray(tcmSectionsTree) || tcmSectionsTree.length === 0) {
+        select.innerHTML = '<option value="" disabled data-i18n="testCase.sectionsLoading" data-i18n-fallback="尚未載入區段">尚未載入區段</option>';
+        select.value = '';
+        select.disabled = true;
+        if (window.i18n && window.i18n.isReady()) {
+            window.i18n.retranslate(select);
+        }
+        return;
+    }
+
+    const defaultOption = '<option value="" data-i18n="testCase.selectSection" data-i18n-fallback="請選擇區段">請選擇區段</option>';
+    const optionsHtml = buildBatchSectionOptionsHtml();
+    select.innerHTML = defaultOption + optionsHtml;
+    select.value = '';
+
+    if (window.i18n && window.i18n.isReady()) {
+        window.i18n.retranslate(select);
+    }
+}
+
+function getSectionMetaByValue(value) {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) {
+        return null;
+    }
+    return tcmSectionMetaMap.get(parsed) || null;
+}
+
+function isUnassignedSectionName(name) {
+    if (!name) return false;
+    return String(name).trim().toLowerCase() === 'unassigned';
 }
 
 // 顯示下一隻測試案例

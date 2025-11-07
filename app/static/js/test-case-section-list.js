@@ -146,7 +146,8 @@ class TestCaseSectionList {
       return '<div class="text-muted text-center py-3"><small>沒有區段</small></div>';
     }
 
-    const html = sections.map((section) => this.renderNode(section)).join("");
+    const orderedSections = this.sortSectionsForDisplay(sections);
+    const html = orderedSections.map((section) => this.renderNode(section)).join("");
     return `<ul class="list-unstyled">${html}</ul>`;
   }
 
@@ -154,7 +155,7 @@ class TestCaseSectionList {
    * 渲染單個節點
    */
   renderNode(section) {
-    const children = this.getChildSections(section);
+    const children = this.sortSectionsForDisplay(this.getChildSections(section));
     const hasChildren = children.length > 0;
     const indent = (section.level - 1) * 15;
     const isUnassigned = section.name === "Unassigned";
@@ -433,12 +434,12 @@ class TestCaseSectionList {
         }
         const children = this.getChildSections(section);
         if (children.length > 0) {
-          flattenSections(children, level + 1);
+          flattenSections(this.sortSectionsForDisplay(children), level + 1);
         }
       });
     };
 
-    flattenSections(this.sections);
+    flattenSections(this.sortSectionsForDisplay(this.sections));
     return options.join("");
   }
 
@@ -647,6 +648,21 @@ class TestCaseSectionList {
     if (Array.isArray(section.child_sections)) return section.child_sections;
     if (Array.isArray(section.children)) return section.children;
     return [];
+  }
+
+  sortSectionsForDisplay(sections) {
+    if (!Array.isArray(sections)) return [];
+    const normal = [];
+    const unassigned = [];
+    sections.forEach((section) => {
+      if (!section) return;
+      if (this.isUnassignedSection(section)) {
+        unassigned.push(section);
+      } else {
+        normal.push(section);
+      }
+    });
+    return normal.concat(unassigned);
   }
 
   /**

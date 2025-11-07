@@ -42,6 +42,7 @@ from app.models.test_case import (
 from app.models.database_models import (
     Team as TeamDB,
     TestCaseLocal as TestCaseLocalDB,
+    TestCaseSection as TestCaseSectionDB,
     SyncStatus,
 )
 from app.services.test_case_repo_service import TestCaseRepoService
@@ -2166,7 +2167,7 @@ async def batch_operation_test_cases(
     current_user: User = Depends(get_current_user),
 ):
     """批次操作本地測試案例（不呼叫 Lark）。
-    支援：delete、update_priority。update_tcg 暫不支援（需另定規格）。
+    支援：delete、update_priority、update_tcg、update_section。
     record_ids 可為本地整數 id、lark_record_id 或 test_case_number。
     """
     import json
@@ -2470,6 +2471,73 @@ async def batch_operation_test_cases(
                     details={
                         "operation": "batch_update_tcg",
                         "tcg_pairs": rid_pairs,
+                        "success_count": success_count,
+                        "total_count": len(operation.record_ids),
+                        "updated_items": success_items,
+                    },
+                )
+        elif operation.operation == "update_section":
+            payload = operation.update_data or {}
+            section_id_value = payload.get("section_id")
+            if section_id_value is None:
+                raise HTTPException(status_code=400, detail="批次更新區段需要提供 section_id")
+            try:
+                target_section_id = int(section_id_value)
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail="無效的 section_id")
+
+            target_section = (
+                db.query(TestCaseSectionDB)
+                .filter(TestCaseSectionDB.id == target_section_id)
+                .first()
+            )
+            if not target_section:
+                raise HTTPException(status_code=404, detail="指定的區段不存在")
+
+            for rid in operation.record_ids:
+                processed += 1
+                item = resolve_one(rid)
+                if not item:
+                    errors.append(f"找不到測試案例 {rid}")
+                    continue
+                if item.test_case_set_id != target_section.test_case_set_id:
+                    errors.append(f"{rid}: 區段不屬於相同的 Test Case Set")
+                    continue
+                try:
+                    old_section_id = item.test_case_section_id
+                    item.test_case_section_id = target_section.id
+                    item.updated_at = datetime.utcnow()
+                    item.sync_status = SyncStatus.PENDING
+                    success_count += 1
+                    success_items.append({
+                        "id": item.id,
+                        "test_case_number": item.test_case_number,
+                        "title": item.title,
+                        "old_section_id": old_section_id,
+                        "new_section_id": target_section.id,
+                    })
+                except Exception as e:
+                    errors.append(f"{rid}: {e}")
+            db.commit()
+
+            if success_count > 0:
+                test_case_numbers = [item["test_case_number"] for item in success_items if item.get("test_case_number")]
+                action_brief = f"{current_user.username} batch reassigned {success_count} Test Cases to section {target_section.name}"
+                if test_case_numbers[:3]:
+                    action_brief += f": {', '.join(test_case_numbers[:3])}"
+                    if len(test_case_numbers) > 3:
+                        action_brief += f" and {len(test_case_numbers) - 3} more"
+
+                await log_test_case_action(
+                    action_type=ActionType.UPDATE,
+                    current_user=current_user,
+                    team_id=team_id,
+                    resource_id=f"batch_{success_count}_items",
+                    action_brief=action_brief,
+                    details={
+                        "operation": "batch_update_section",
+                        "target_section_id": target_section.id,
+                        "target_section_name": target_section.name,
                         "success_count": success_count,
                         "total_count": len(operation.record_ids),
                         "updated_items": success_items,
