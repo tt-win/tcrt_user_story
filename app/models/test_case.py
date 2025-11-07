@@ -386,7 +386,18 @@ class TestCaseUpdate(BaseModel):
 
 class TestCaseResponse(TestCase):
     """測試案例回應模型"""
-    pass
+    test_case_section_id: Optional[int] = Field(
+        None, description="所屬 Test Case Section ID"
+    )
+    section_name: Optional[str] = Field(
+        None, description="所屬 Test Case Section 名稱"
+    )
+    section_path: Optional[str] = Field(
+        None, description="所屬 Test Case Section 路徑（含層級）"
+    )
+    section_level: Optional[int] = Field(
+        None, description="所屬 Test Case Section 層級"
+    )
 
 
 class TestCaseBatchOperation(BaseModel):

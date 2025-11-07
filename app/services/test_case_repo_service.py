@@ -12,7 +12,7 @@ from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_
 
-from app.models.database_models import TestCaseLocal
+from app.models.database_models import TestCaseLocal, TestCaseSection
 from app.models.test_case import TestCaseResponse
 from app.models.lark_types import Priority, TestResultStatus
 
@@ -27,7 +27,11 @@ def _safe_json_len(text: Optional[str]) -> int:
         return 0
 
 
-def _to_response(row: TestCaseLocal, include_attachments: bool = False) -> TestCaseResponse:
+def _to_response(
+    row: TestCaseLocal,
+    include_attachments: bool = False,
+    section_meta: Optional[Dict[str, Any]] = None,
+) -> TestCaseResponse:
     attachments: list = []
     if include_attachments:
         try:
@@ -74,6 +78,15 @@ def _to_response(row: TestCaseLocal, include_attachments: bool = False) -> TestC
     except Exception:
         tcg_items = []
 
+    section_id = row.test_case_section_id
+    section_info = section_meta or {}
+    section_name = section_info.get("name")
+    section_path = section_info.get("path") or ""
+    section_level = section_info.get("level")
+    if section_id is None:
+        section_name = section_name or "Unassigned"
+        section_level = section_level or 1
+
     return TestCaseResponse(
         record_id=row.lark_record_id or str(row.id),
         test_case_number=row.test_case_number,
@@ -94,6 +107,10 @@ def _to_response(row: TestCaseLocal, include_attachments: bool = False) -> TestC
         updated_at=row.updated_at,
         last_sync_at=row.last_sync_at,
         raw_fields={},
+        test_case_section_id=section_id,
+        section_name=section_name,
+        section_path=section_path,
+        section_level=section_level,
     )
 
 
@@ -163,10 +180,19 @@ class TestCaseRepoService:
         col = sort_field_map.get(sort_by, TestCaseLocal.created_at)
         q = q.order_by(col.desc() if order_desc else col.asc())
 
-        # 分頁
+        # 分頁並取得結果
         q = q.offset(skip).limit(limit)
+        rows = q.all()
+        section_lookup = self._build_section_lookup(rows)
 
-        return [_to_response(r, include_attachments=False) for r in q.all()]
+        return [
+            _to_response(
+                r,
+                include_attachments=False,
+                section_meta=section_lookup.get(r.test_case_section_id),
+            )
+            for r in rows
+        ]
 
     def count(
         self,
@@ -211,4 +237,68 @@ class TestCaseRepoService:
             TestCaseLocal.team_id == team_id,
             TestCaseLocal.lark_record_id == record_id
         ).first()
-        return _to_response(row, include_attachments=include_attachments) if row else None
+        if not row:
+            return None
+        section_meta = self._build_section_lookup([row]).get(row.test_case_section_id)
+        return _to_response(
+            row,
+            include_attachments=include_attachments,
+            section_meta=section_meta,
+        )
+
+    def _build_section_lookup(self, rows: List[TestCaseLocal]) -> Dict[int, Dict[str, Any]]:
+        """建立 Section 快取，供回傳時附帶區段資訊"""
+        lookup: Dict[int, Dict[str, Any]] = {}
+        if not rows:
+            return lookup
+
+        set_ids = {row.test_case_set_id for row in rows if row.test_case_set_id}
+        if not set_ids:
+            return lookup
+
+        sections = (
+            self.db.query(TestCaseSection)
+            .filter(TestCaseSection.test_case_set_id.in_(set_ids))
+            .all()
+        )
+
+        if not sections:
+            return lookup
+
+        raw_map: Dict[int, Dict[str, Any]] = {}
+        for section in sections:
+            raw_map[section.id] = {
+                "name": section.name,
+                "level": section.level,
+                "parent_section_id": section.parent_section_id,
+            }
+
+        path_cache: Dict[int, str] = {}
+
+        def build_path(section_id: Optional[int], seen: Optional[set[int]] = None) -> str:
+            if not section_id or section_id not in raw_map:
+                return ""
+            if section_id in path_cache:
+                return path_cache[section_id]
+            seen = (seen or set()).copy()
+            if section_id in seen:
+                return raw_map[section_id]["name"]
+            seen.add(section_id)
+            parent_id = raw_map[section_id]["parent_section_id"]
+            parent_path = build_path(parent_id, seen)
+            path = (
+                f"{parent_path}/{raw_map[section_id]['name']}"
+                if parent_path
+                else raw_map[section_id]["name"]
+            )
+            path_cache[section_id] = path
+            return path
+
+        for section_id, data in raw_map.items():
+            lookup[section_id] = {
+                "name": data["name"],
+                "level": data["level"],
+                "path": build_path(section_id),
+            }
+
+        return lookup

@@ -125,15 +125,19 @@ function setupMarkdownHotkeys(textarea) {
 
 <!-- 快速編輯樣式 -->
 <style>
-/* 限定本頁：關閉整頁滾動，只讓列表區域滾動 */
-html, body { height: 100%; overflow: hidden; }
-/* testCasesPage 高度 = 視口高度 - header(64px) - footer(52px) - footer padding(8px) */
+/* 限定本頁：鎖住整體頁面，僅內容區塊可滾動 */
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+/* testCasesPage 直接填滿 header/footer 之間的可視高度 */
 #testCasesPage {
   position: fixed;
-  top: 72px;
+  top: calc(var(--header-height) + 8px);
   left: 0;
   right: 0;
-  bottom: 60px;
+  bottom: calc(var(--footer-height) + 8px);
   overflow: hidden;
   display: flex;
   flex-direction: row;
@@ -183,7 +187,6 @@ html, body { height: 100%; overflow: hidden; }
   min-height: 0;
   display: flex;
   flex-direction: column;
-  align-self: stretch;
   height: 100%;
 }
 
@@ -191,6 +194,14 @@ html, body { height: 100%; overflow: hidden; }
   flex: 1 !important;
   min-height: 0 !important;
   height: 100% !important;
+  display: flex;
+  flex-direction: column;
+}
+
+#sectionListContent {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .hover-editable {
@@ -232,15 +243,6 @@ html, body { height: 100%; overflow: hidden; }
     box-sizing: border-box !important;
 }
 
-/* 確保表格行高度一致 */
-#testCasesTable tbody tr {
-    height: 2.5rem;
-}
-
-#testCasesTable tbody td {
-    vertical-align: middle;
-    height: 2.5rem;
-}
 
 /* Markdown 編輯器樣式 */
 .markdown-global-toolbar {
@@ -354,19 +356,90 @@ html, body { height: 100%; overflow: hidden; }
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+    display: flex;
+    flex-direction: column;
     padding-bottom: calc(var(--footer-height) + 3rem);
 }
 
-/* 讓標題列固定在列表容器頂部，不跟著內容滾動，並恢復底色與陰影層次 */
-#testCasesScroll thead th {
-    position: sticky;
-    top: 0;
-    z-index: 20; /* 確保蓋過內容列 */
-    background-color: #f8f9fa; /* 與卡片/表頭風格一致 */
-    border-bottom: 1px solid #dee2e6; /* 清楚的下邊界 */
+#testCasesStack.section-stack {
+    display: block;
+    width: 100%;
 }
-#testCasesScroll thead tr {
-    box-shadow: 0 2px 3px rgba(0,0,0,0.05); /* 輕微陰影強化層次 */
+
+/* Section 卡片容器 */
+.section-stack {
+    display: flex;
+    flex-direction: column;
+}
+
+.section-card-container {
+    width: 100%;
+}
+
+.section-card-row {
+    display: block;
+    width: 100%;
+    padding: 0;
+    margin: 0;
+}
+
+.section-card-row.root-divider:not(:first-child) {
+    padding-top: 1.5rem;
+    border-top: 2px solid #dbe0f0;
+}
+
+.section-card {
+    border: 1px solid #e5e9f3;
+    border-radius: 0.65rem;
+    background: #fff;
+    margin: 0.5rem 0 1.25rem;
+    margin-left: calc(var(--section-indent, 0) * 1.5rem);
+}
+
+.section-card-header {
+    padding: 0.8rem 1rem;
+    border-bottom: 1px solid #eef1f6;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #f7f9fc;
+}
+
+.section-card-title {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-weight: 600;
+    color: #1f2a44;
+}
+
+.section-card-body {
+    padding: 0.5rem 1rem 1rem;
+}
+
+.section-card-body table {
+    margin-bottom: 0;
+}
+
+.section-card-body .table thead th {
+    padding: 0.35rem 0.4rem !important;
+    background: transparent !important;
+    border-bottom: 1px solid #eef1f6 !important;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #51607a;
+}
+
+.section-card-body .table tbody tr {
+    border-bottom: 1px solid #f1f4f8;
+}
+
+.section-card-body .table tbody tr:last-child {
+    border-bottom: none;
+}
+
+.section-card-body .table tbody tr:hover {
+    background-color: inherit !important;
 }
 
 /* 大量新增 Modal 固定高度與卷動區域 */
@@ -627,47 +700,13 @@ html, body { height: 100%; overflow: hidden; }
         </div>
     </div>
 
-    <!-- 測試案例表格 -->
+    <!-- 測試案例卡片 -->
     <div class="card" id="testCasesCard">
         <div class="card-body">
-            <div class="table-responsive" id="testCasesScroll">
-                <table class="table table-hover table-sm" id="testCasesTable">
-                    <thead>
-                        <tr style="height: 32px !important; line-height: 1.2;">
-                            <th width="30" class="text-center" style="padding: 4px 8px !important; vertical-align: middle;">
-                                <input type="checkbox" class="form-check-input" id="selectAllCheckbox">
-                            </th>
-                            <th id="th-tcm-number" class="sortable" width="220" style="padding: 4px 8px !important; vertical-align: middle; cursor: pointer;">
-                                <span data-i18n="testCase.testCaseNumber">Test Case Number</span>
-                                <span class="sort-indicator ms-1"></span>
-                            </th>
-                            <th id="th-tcm-title" class="sortable" style="padding: 4px 8px !important; vertical-align: middle; cursor: pointer;">
-                                <span data-i18n="common.title">標題</span>
-                                <span class="sort-indicator ms-1"></span>
-                            </th>
-                            <th id="th-tcm-tcg" class="sortable text-center" width="180" style="padding: 4px 8px !important; vertical-align: middle; cursor: pointer;">
-                                <span>TCG</span>
-                                <span class="sort-indicator ms-1"></span>
-                            </th>
-                            <th id="th-tcm-priority" class="sortable text-center" width="80" style="padding: 4px 8px !important; vertical-align: middle; cursor: pointer;">
-                                <span data-i18n="testCase.priority">優先級</span>
-                                <span class="sort-indicator ms-1"></span>
-                            </th>
-                            <th id="th-tcm-created" class="sortable text-center" width="100" style="padding: 4px 8px !important; vertical-align: middle; cursor: pointer;">
-                                <span data-i18n="common.createDate">建立日期</span>
-                                <span class="sort-indicator ms-1"></span>
-                            </th>
-                            <th id="th-tcm-updated" class="sortable text-center" width="100" style="padding: 4px 8px !important; vertical-align: middle; cursor: pointer;">
-                                <span data-i18n="common.updateDate">更新日期</span>
-                                <span class="sort-indicator ms-1"></span>
-                            </th>
-                            <th width="100" class="text-center" style="padding: 4px 8px !important; vertical-align: middle;" data-i18n="common.actions">操作</th>
-                        </tr>
-                    </thead>
-                    <tbody id="testCasesTableBody">
-                        <!-- 將由 JavaScript 動態載入 -->
-                    </tbody>
-                </table>
+            <div id="testCasesScroll">
+                <div id="testCasesStack" class="section-stack">
+                    <!-- cards injected here -->
+                </div>
             </div>
         </div>
     </div>
@@ -1460,6 +1499,7 @@ function removeExecCachedTestCase(testCaseNumber) {
 let testCases = [];
 let filteredTestCases = [];
 let selectedTestCases = new Set();
+const sectionSortStates = new Map();
 // Shift 連續多選錨點（Test Case Management）
 let lastCaseCheckboxIndex = null;
 let currentPage = 1;
@@ -1641,29 +1681,20 @@ function applyCurrentFiltersAndRender() {
     }
 }
 
-function setTcmSort(field) {
-    if (tcmSortField === field) {
-        tcmSortOrder = (tcmSortOrder === 'asc') ? 'desc' : 'asc';
-    } else {
-        tcmSortField = field;
-        tcmSortOrder = 'asc';
-    }
-    renderTestCasesTable();
-}
-
 function updateTcmSortIndicators() {
     try {
-        const map = {
-            number: document.querySelector('#th-tcm-number .sort-indicator'),
-            title: document.querySelector('#th-tcm-title .sort-indicator'),
-            tcg: document.querySelector('#th-tcm-tcg .sort-indicator'),
-            priority: document.querySelector('#th-tcm-priority .sort-indicator'),
-            created: document.querySelector('#th-tcm-created .sort-indicator'),
-            updated: document.querySelector('#th-tcm-updated .sort-indicator')
-        };
-        Object.values(map).forEach(el => { if (el) el.textContent = ''; });
-        const target = map[tcmSortField];
-        if (target) target.textContent = (tcmSortOrder === 'asc') ? '▲' : '▼';
+        document.querySelectorAll('.section-table').forEach(table => {
+            const sectionId = table.getAttribute('data-section-id');
+            const state = sectionSortStates.get(sectionId);
+            const field = state?.field || tcmSortField;
+            const order = state?.order || tcmSortOrder;
+            table.querySelectorAll('.sort-indicator').forEach(el => el.textContent = '');
+            const attr = mapFieldToAttr(field);
+            const indicator = table.querySelector(`th[data-sort-field="${attr}"] .sort-indicator`);
+            if (indicator) {
+                indicator.textContent = order === 'asc' ? '▲' : '▼';
+            }
+        });
     } catch (_) {}
 }
 
@@ -1680,65 +1711,305 @@ function updateTcmPlaceholders() {
     } catch (_) {}
 }
 
-function sortFilteredTestCases() {
-    const priRank = v => ({ High: 3, Medium: 2, Low: 1 }[v] || 0);
-    const parseNumberSegments = str => {
-        try {
-            if (!str) return [];
-            const ms = String(str).match(/\d+/g);
-            return ms ? ms.map(s => parseInt(s, 10)) : [];
-        } catch (_) { return []; }
-    };
-    const compareByNumericParts = (aStr, bStr) => {
-        const aSeg = parseNumberSegments(aStr);
-        const bSeg = parseNumberSegments(bStr);
-        const len = Math.min(aSeg.length, bSeg.length);
-        for (let i = 0; i < len; i++) {
-            if (aSeg[i] !== bSeg[i]) return aSeg[i] - bSeg[i];
-        }
-        return aSeg.length - bSeg.length;
-    };
-    const getFirstTCGNumber = tc => {
-        try {
-            if (!tc || !tc.tcg || !tc.tcg.length) return '';
-            for (const r of tc.tcg) {
-                if (r && Array.isArray(r.text_arr) && r.text_arr.length) return r.text_arr[0];
-                if (r && r.text) return r.text;
-            }
-            return '';
-        } catch (_) { return ''; }
-    };
-    const cmp = (a, b) => {
-        let av = '', bv = '';
-        switch (tcmSortField) {
-            case 'number':
-                av = a.test_case_number || '';
-                bv = b.test_case_number || '';
-                return compareByNumericParts(av, bv);
-            case 'title':
-                av = (a.title || '').toLowerCase();
-                bv = (b.title || '').toLowerCase();
-                return av.localeCompare(bv);
-            case 'tcg':
-                av = getFirstTCGNumber(a);
-                bv = getFirstTCGNumber(b);
-                return compareByNumericParts(av, bv);
-            case 'priority':
-                return priRank(a.priority) - priRank(b.priority);
-            case 'created':
-                return new Date(a.created_at || 0) - new Date(b.created_at || 0);
-            case 'updated':
-                return new Date(a.updated_at || 0) - new Date(b.updated_at || 0);
-            default:
-                return 0;
-        }
-    };
+const PRIORITY_RANK = { High: 3, Medium: 2, Low: 1 };
+
+function parseNumberSegments(str) {
     try {
-        filteredTestCases.sort((a, b) => {
-            const r = cmp(a, b);
-            return tcmSortOrder === 'asc' ? r : -r;
-        });
-    } catch (_) {}
+        if (!str) return [];
+        const ms = String(str).match(/\d+/g);
+        return ms ? ms.map(s => parseInt(s, 10)) : [];
+    } catch (_) { return []; }
+}
+
+function compareByNumericParts(aStr, bStr) {
+    const aSeg = parseNumberSegments(aStr);
+    const bSeg = parseNumberSegments(bStr);
+    const len = Math.min(aSeg.length, bSeg.length);
+    for (let i = 0; i < len; i++) {
+        if (aSeg[i] !== bSeg[i]) return aSeg[i] - bSeg[i];
+    }
+    return aSeg.length - bSeg.length;
+}
+
+function getFirstTCGNumber(tc) {
+    try {
+        if (!tc || !tc.tcg || !tc.tcg.length) return '';
+        for (const r of tc.tcg) {
+            if (r && Array.isArray(r.text_arr) && r.text_arr.length) return r.text_arr[0];
+            if (r && r.text) return r.text;
+        }
+        return '';
+    } catch (_) { return ''; }
+}
+
+function compareTestCaseField(a, b, field) {
+    switch (field) {
+        case 'number':
+            return compareByNumericParts(a.test_case_number || '', b.test_case_number || '');
+        case 'title':
+            return (a.title || '').toLowerCase().localeCompare((b.title || '').toLowerCase());
+        case 'tcg':
+            return compareByNumericParts(getFirstTCGNumber(a), getFirstTCGNumber(b));
+        case 'priority':
+            return (PRIORITY_RANK[a.priority] || 0) - (PRIORITY_RANK[b.priority] || 0);
+        case 'created':
+            return new Date(a.created_at || 0) - new Date(b.created_at || 0);
+        case 'updated':
+            return new Date(a.updated_at || 0) - new Date(b.updated_at || 0);
+        default:
+            return 0;
+    }
+}
+
+function sortTestCaseList(list, field, order = 'asc') {
+    if (!Array.isArray(list) || !field) return;
+    list.sort((a, b) => {
+        const result = compareTestCaseField(a, b, field);
+        return order === 'asc' ? result : -result;
+    });
+}
+
+function sortFilteredTestCases() {
+    sortTestCaseList(filteredTestCases, tcmSortField, tcmSortOrder);
+}
+
+const UNASSIGNED_SECTION_ID = '__section_unassigned__';
+
+function groupTestCasesBySection(testCases) {
+    const grouped = {};
+    for (const tc of testCases) {
+        const sectionId = tc.test_case_section_id ?? UNASSIGNED_SECTION_ID;
+        if (!grouped[sectionId]) {
+            grouped[sectionId] = {
+                sectionId,
+                sectionName: tc.section_name || (sectionId === UNASSIGNED_SECTION_ID ? 'Unassigned' : '(未命名)'),
+                sectionPath: tc.section_path || tc.section_name || '',
+                sectionLevel: determineSectionLevel(tc, sectionId),
+                testCases: []
+            };
+        }
+        grouped[sectionId].testCases.push(tc);
+    }
+
+    Object.values(grouped).forEach(group => {
+        const sortState = sectionSortStates.get(String(group.sectionId));
+        const field = sortState?.field || tcmSortField;
+        const order = sortState?.order || tcmSortOrder;
+        sortTestCaseList(group.testCases, field, order);
+    });
+
+    return grouped;
+}
+
+function determineSectionLevel(testCase, sectionId) {
+    if (!sectionId || sectionId === UNASSIGNED_SECTION_ID) return 1;
+    if (typeof testCase.section_level === 'number' && !Number.isNaN(testCase.section_level)) {
+        return testCase.section_level;
+    }
+    const pathLevel = deriveSectionLevelFromPath(testCase.section_path);
+    if (pathLevel !== null) return pathLevel;
+    return 1;
+}
+
+function deriveSectionLevelFromPath(path) {
+    if (!path) return null;
+    const segments = path.split('/').map(seg => seg.trim()).filter(Boolean);
+    return segments.length || null;
+}
+
+function getDisplaySectionName(sectionGroup) {
+    const raw = (sectionGroup.sectionName || sectionGroup.sectionPath || '').trim();
+    if (!raw) return '(未分類)';
+    const parts = raw.split('/').map(seg => seg.trim()).filter(Boolean);
+    return parts.length ? parts[parts.length - 1] : raw;
+}
+
+function sortSectionIds(sectionIds, grouped) {
+    return sectionIds.sort((a, b) => {
+        const ga = grouped[a];
+        const gb = grouped[b];
+        if (!ga || !gb) return 0;
+        const aRoot = ga.sectionLevel <= 1;
+        const bRoot = gb.sectionLevel <= 1;
+        if (aRoot && !bRoot) return -1;
+        if (!aRoot && bRoot) return 1;
+        const aKey = (ga.sectionPath || ga.sectionName || '').toLowerCase();
+        const bKey = (gb.sectionPath || gb.sectionName || '').toLowerCase();
+        if (a === UNASSIGNED_SECTION_ID) return 1;
+        if (b === UNASSIGNED_SECTION_ID) return -1;
+        return aKey.localeCompare(bKey);
+    });
+}
+
+function mapAttrToField(attr) {
+    switch (attr) {
+        case 'test_case_number': return 'number';
+        case 'title': return 'title';
+        case 'tcg': return 'tcg';
+        case 'priority': return 'priority';
+        case 'created_at': return 'created';
+        case 'updated_at': return 'updated';
+        default: return attr;
+    }
+}
+
+function mapFieldToAttr(field) {
+    switch (field) {
+        case 'number': return 'test_case_number';
+        case 'title': return 'title';
+        case 'tcg': return 'tcg';
+        case 'priority': return 'priority';
+        case 'created': return 'created_at';
+        case 'updated': return 'updated_at';
+        default: return field;
+    }
+}
+
+function renderTestCaseRow(testCase) {
+    return `
+        <tr>
+            <td class="align-middle text-center">
+                <input type="checkbox" class="form-check-input test-case-checkbox"
+                       value="${testCase.record_id}" ${selectedTestCases.has(testCase.record_id) ? 'checked' : ''}>
+            </td>
+            <td class="align-middle position-relative hover-editable" data-field="test_case_number" data-record-id="${testCase.record_id}">
+                <div style="padding-right: 45px;">
+                    <code class="small">${testCase.test_case_number || testCase.record_id}</code>
+                </div>
+                <button type="button" class="btn btn-sm btn-edit position-absolute hover-edit-btn"
+                        style="top: 50%; right: 5px; transform: translateY(-50%); z-index: 10;"
+                        onclick="quickEdit('${testCase.record_id}', 'test_case_number')" data-i18n-title="tooltips.quickEdit">
+                    <i class="fas fa-edit"></i>
+                </button>
+            </td>
+            <td class="align-middle position-relative hover-editable" data-field="title" data-record-id="${testCase.record_id}">
+                <div class="d-flex align-items-center" style="padding-right: 45px;">
+                    <div style="flex-grow: 1; min-width: 0;">
+                        <div class="fw-medium text-truncate" title="${testCase.title}">${testCase.title}</div>
+                        <div class="small text-muted text-truncate">
+                            ${testCase.description ? testCase.description.substring(0, 60) + '...' : ''}
+                        </div>
+                    </div>
+                </div>
+                <button type="button" class="btn btn-sm btn-edit position-absolute hover-edit-btn"
+                        style="top: 50%; right: 5px; transform: translateY(-50%); z-index: 10;"
+                        onclick="quickEdit('${testCase.record_id}', 'title')" data-i18n-title="tooltips.quickEdit">
+                    <i class="fas fa-edit"></i>
+                </button>
+            </td>
+            <td class="align-middle text-center position-relative" data-field="tcg" data-record-id="${testCase.record_id}" style="max-width: 180px;">
+                <div class="tcg-edit-area ${hasTestCasePermission('tcgEditContainer') ? 'tcg-editable' : 'tcg-readonly'}"
+                     ${hasTestCasePermission('tcgEditContainer') ?
+                       `onclick="editTCG('${testCase.record_id}')" data-i18n-title="tooltips.clickEditTcg" style="display: flex; flex-wrap: wrap; gap: 2px; justify-content: center; align-items: center; min-height: 24px; padding: 2px; cursor: pointer;"` :
+                       'style="display: flex; flex-wrap: wrap; gap: 2px; justify-content: center; align-items: center; min-height: 24px; padding: 2px; cursor: default;"'}>
+                    ${getTCGTags(testCase)}
+                </div>
+            </td>
+            <td class="align-middle text-center">
+                <span class="badge ${getPriorityBadgeClass(testCase.priority)}">${getPriorityText(testCase.priority)}</span>
+            </td>
+            <td class="align-middle text-center">
+                <div class="small text-muted text-nowrap">
+                    ${formatDate(testCase.created_at, 'date')}
+                </div>
+            </td>
+            <td class="align-middle text-center">
+                <div class="small text-muted text-nowrap">
+                    ${formatDate(testCase.updated_at, 'date')}
+                </div>
+            </td>
+            <td class="align-middle text-center" style="width: 100px;">
+                <div class="test-case-actions d-flex justify-content-center gap-2">
+                    <button type="button" class="btn btn-sm btn-view"
+                            onclick="viewTestCase('${testCase.record_id}')" data-i18n-title="tooltips.viewEdit">
+                        <i class="fas fa-eye"></i>
+                    </button>
+                    ${hasTestCasePermission('testCaseActionCopy') ? `
+                    <button type="button" class="btn btn-sm btn-secondary"
+                            onclick="copyTestCase('${testCase.record_id}')" title="${(window.i18n && window.i18n.isReady()) ? window.i18n.t('common.copy') : '複製'}">
+                        <i class="fas fa-copy"></i>
+                    </button>` : ''}
+                    ${hasTestCasePermission('testCaseActionDelete') ? `
+                    <button type="button" class="btn btn-sm btn-danger"
+                            onclick="deleteTestCase('${testCase.record_id}')" data-i18n-title="tooltips.delete">
+                        <i class="fas fa-trash"></i>
+                    </button>` : ''}
+                </div>
+            </td>
+        </tr>`;
+}
+
+function renderSectionBlockHTML(sectionGroup, rowsHtml) {
+    const displayName = getDisplaySectionName(sectionGroup);
+    const indent = Math.max(sectionGroup.sectionLevel - 1, 0);
+    const rowClass = sectionGroup.sectionLevel <= 1 ? 'section-card-row root-divider' : 'section-card-row';
+    const headerStyle = sectionGroup.sectionLevel > 1 ? 'background: linear-gradient(90deg, #f9fbff, #eef2f7);' : 'background: #f7f9fc;';
+    return `
+        <div class="${rowClass}">
+            <div class="section-card-container">
+                <div class="section-card" data-section-id="${sectionGroup.sectionId}" style="--section-indent: ${indent};">
+                    <div class="section-card-header" style="${headerStyle}">
+                        <div class="section-title">
+                            <i class="fas fa-folder"></i>
+                            <span>${displayName}</span>
+                        </div>
+                        <small class="text-muted">${sectionGroup.testCases.length} 筆</small>
+                    </div>
+                    <div class="section-card-body table-responsive">
+                        <table class="table table-hover table-sm section-table" data-section-id="${sectionGroup.sectionId}">
+                            <thead>
+                                <tr class="section-table-header">
+                                    <th width="30" class="text-center" style="padding: 0.35rem 0.5rem !important;">
+                                        <input type="checkbox" class="form-check-input section-select-all" data-section-id="${sectionGroup.sectionId}">
+                                    </th>
+                                    <th class="sortable section-sortable" width="220" style="cursor: pointer;" data-section-id="${sectionGroup.sectionId}" data-sort-field="test_case_number">
+                                        <span data-i18n="testCase.testCaseNumber">Test Case Number</span>
+                                        <span class="sort-indicator ms-1"></span>
+                                    </th>
+                                    <th class="sortable section-sortable" style="cursor: pointer;" data-section-id="${sectionGroup.sectionId}" data-sort-field="title">
+                                        <span data-i18n="common.title">標題</span>
+                                        <span class="sort-indicator ms-1"></span>
+                                    </th>
+                                    <th class="sortable section-sortable text-center" width="180" style="cursor: pointer;" data-section-id="${sectionGroup.sectionId}" data-sort-field="tcg">
+                                        <span>TCG</span>
+                                        <span class="sort-indicator ms-1"></span>
+                                    </th>
+                                    <th class="sortable section-sortable text-center" width="80" style="cursor: pointer;" data-section-id="${sectionGroup.sectionId}" data-sort-field="priority">
+                                        <span data-i18n="testCase.priority">優先級</span>
+                                        <span class="sort-indicator ms-1"></span>
+                                    </th>
+                                    <th class="sortable section-sortable text-center" width="100" style="cursor: pointer;" data-section-id="${sectionGroup.sectionId}" data-sort-field="created_at">
+                                        <span data-i18n="common.createDate">建立日期</span>
+                                        <span class="sort-indicator ms-1"></span>
+                                    </th>
+                                    <th class="sortable section-sortable text-center" width="100" style="cursor: pointer;" data-section-id="${sectionGroup.sectionId}" data-sort-field="updated_at">
+                                        <span data-i18n="common.updateDate">更新日期</span>
+                                        <span class="sort-indicator ms-1"></span>
+                                    </th>
+                                    <th width="100" class="text-center" data-i18n="common.actions">操作</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${rowsHtml}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function handleSectionSort(sectionId, fieldKey) {
+    if (!sectionId || !fieldKey) return;
+    const key = String(sectionId);
+    const prev = sectionSortStates.get(key);
+    let order = 'asc';
+    if (prev && prev.field === fieldKey) {
+        order = prev.order === 'asc' ? 'desc' : 'asc';
+    }
+    sectionSortStates.set(key, { field: fieldKey, order });
+    renderTestCasesTable();
 }
 
 // ===== 統一快取管理模組 =====
@@ -2440,7 +2711,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             const page = document.getElementById('testCasesPage');
             if (page) {
                 const searchCard = document.getElementById('searchFilterCard');
-                const tableCard = document.querySelector('#testCasesTable')?.closest('.card');
+                const tableCard = document.getElementById('testCasesCard');
                 if (searchCard) searchCard.style.display = 'none';
                 if (tableCard) tableCard.style.display = 'none';
             }
@@ -3011,7 +3282,7 @@ function showLoadingProgress() {
 
     // 隱藏搜尋與篩選區和表格
     const searchCard = document.getElementById('searchFilterCard');
-    const tableCard = document.querySelector('#testCasesTable').closest('.card');
+    const tableCard = document.getElementById('testCasesCard');
     if (searchCard) searchCard.style.display = 'none';
     if (tableCard) tableCard.style.display = 'none';
 }
@@ -3024,7 +3295,7 @@ function hideLoadingProgress() {
 
     // 顯示搜尋與篩選區和表格
     const searchCard = document.getElementById('searchFilterCard');
-    const tableCard = document.querySelector('#testCasesTable').closest('.card');
+    const tableCard = document.getElementById('testCasesCard');
     if (searchCard) searchCard.style.display = 'block';
     if (tableCard) tableCard.style.display = 'block';
     // 顯示後調整列表高度
@@ -3103,6 +3374,7 @@ async function loadTestCases(showLoadingBlock = true, updateProgress = null, for
                 if (updateProgress) updateProgress(90, '使用快取資料...');
 
                 testCases = cachedTestCases;
+                sectionSortStates.clear();
                 console.debug('[CACHE] LOAD list from cache', { teamId: teamIdForLoad, count: testCases.length });
 
                 // 預設按 Test Case Number 升冪排序
@@ -3143,6 +3415,7 @@ async function loadTestCases(showLoadingBlock = true, updateProgress = null, for
         if (updateProgress) updateProgress(60, '解析資料...');
 
         testCases = await response.json();
+        sectionSortStates.clear();
 
         // 儲存到快取
         if (updateProgress) updateProgress(70, '更新快取...');
@@ -3228,104 +3501,38 @@ function hasAnyFilters() {
 }
 
 function renderTestCasesTable() {
-    const tbody = document.getElementById('testCasesTableBody');
+    const stack = document.getElementById('testCasesStack');
+    if (!stack) return;
     // 依目前排序設定排序並更新指示
     sortFilteredTestCases();
-    updateTcmSortIndicators();
-    // 移除分頁機制，一次性顯示所有 test case
+
     const pageTestCases = filteredTestCases;
 
-    if (pageTestCases.length === 0) {
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="9" class="text-center py-4">
-                    <i class="fas fa-search fa-2x text-muted mb-2"></i>
-                    <div class="text-muted" data-i18n="errors.noMatchingTestCases">沒有找到符合條件的測試案例</div>
-                </td>
-            </tr>
+    if (!pageTestCases.length) {
+        stack.innerHTML = `
+            <div class="text-center py-4">
+                <i class="fas fa-search fa-2x text-muted mb-2"></i>
+                <div class="text-muted" data-i18n="errors.noMatchingTestCases">沒有找到符合條件的測試案例</div>
+            </div>
         `;
         return;
     }
 
-    tbody.innerHTML = pageTestCases.map(testCase => `
-        <tr>
-            <td class="align-middle text-center">
-                <input type="checkbox" class="form-check-input test-case-checkbox"
-                       value="${testCase.record_id}" ${selectedTestCases.has(testCase.record_id) ? 'checked' : ''}>
-            </td>
-            <td class="align-middle position-relative hover-editable" data-field="test_case_number" data-record-id="${testCase.record_id}">
-                <div style="padding-right: 45px;">
-                    <code class="small">${testCase.test_case_number || testCase.record_id}</code>
-                </div>
-                <button type="button" class="btn btn-sm btn-edit position-absolute hover-edit-btn"
-                        style="top: 50%; right: 5px; transform: translateY(-50%); z-index: 10;"
-                        onclick="quickEdit('${testCase.record_id}', 'test_case_number')" data-i18n-title="tooltips.quickEdit">
-                    <i class="fas fa-edit"></i>
-                </button>
-            </td>
-            <td class="align-middle position-relative hover-editable" data-field="title" data-record-id="${testCase.record_id}">
-                <div class="d-flex align-items-center" style="padding-right: 45px;">
-                    <div style="flex-grow: 1; min-width: 0;">
-                        <div class="fw-medium text-truncate" title="${testCase.title}">${testCase.title}</div>
-                        <div class="small text-muted text-truncate">
-                            ${testCase.description ? testCase.description.substring(0, 60) + '...' : ''}
-                        </div>
-                    </div>
-                </div>
-                <button type="button" class="btn btn-sm btn-edit position-absolute hover-edit-btn"
-                        style="top: 50%; right: 5px; transform: translateY(-50%); z-index: 10;"
-                        onclick="quickEdit('${testCase.record_id}', 'title')" data-i18n-title="tooltips.quickEdit">
-                    <i class="fas fa-edit"></i>
-                </button>
-            </td>
-            <td class="align-middle text-center position-relative" data-field="tcg" data-record-id="${testCase.record_id}" style="max-width: 180px;">
-                <div class="tcg-edit-area ${hasTestCasePermission('tcgEditContainer') ? 'tcg-editable' : 'tcg-readonly'}"
-                     ${hasTestCasePermission('tcgEditContainer') ?
-                       `onclick="editTCG('${testCase.record_id}')" data-i18n-title="tooltips.clickEditTcg" style="display: flex; flex-wrap: wrap; gap: 2px; justify-content: center; align-items: center; min-height: 24px; padding: 2px; cursor: pointer;"` :
-                       'style="display: flex; flex-wrap: wrap; gap: 2px; justify-content: center; align-items: center; min-height: 24px; padding: 2px; cursor: default;"'}>
-                    ${getTCGTags(testCase)}
-                </div>
-            </td>
-            <td class="align-middle text-center">
-                <span class="badge ${getPriorityBadgeClass(testCase.priority)}">${getPriorityText(testCase.priority)}</span>
-            </td>
-            <td class="align-middle text-center">
-                <div class="small text-muted text-nowrap">
-                    ${formatDate(testCase.created_at, 'date')}
-                </div>
-            </td>
-            <td class="align-middle text-center">
-                <div class="small text-muted text-nowrap">
-                    ${formatDate(testCase.updated_at, 'date')}
-                </div>
-            </td>
-            <td class="align-middle text-center" style="width: 100px;">
-                <div class="test-case-actions d-flex justify-content-center gap-2">
-                    <button type="button" class="btn btn-sm btn-view"
-                            onclick="viewTestCase('${testCase.record_id}')" data-i18n-title="tooltips.viewEdit">
-                        <i class="fas fa-eye"></i>
-                    </button>
-                    ${hasTestCasePermission('testCaseActionCopy') ? `
-                    <button type="button" class="btn btn-sm btn-secondary"
-                            onclick="copyTestCase('${testCase.record_id}')" title="${(window.i18n && window.i18n.isReady()) ? window.i18n.t('common.copy') : '複製'}">
-                        <i class="fas fa-copy"></i>
-                    </button>` : ''}
-                    ${hasTestCasePermission('testCaseActionDelete') ? `
-                    <button type="button" class="btn btn-sm btn-danger"
-                            onclick="deleteTestCase('${testCase.record_id}')" data-i18n-title="tooltips.delete">
-                        <i class="fas fa-trash"></i>
-                    </button>` : ''}
-                </div>
-            </td>
-        </tr>
-    `).join('');
+    const grouped = groupTestCasesBySection(pageTestCases);
+    const sortedSectionIds = sortSectionIds(Object.keys(grouped), grouped);
+    const sectionsHtml = sortedSectionIds.map(sectionId => {
+        const group = grouped[sectionId];
+        const rowsHtml = group.testCases.map(renderTestCaseRow).join('');
+        return renderSectionBlockHTML(group, rowsHtml);
+    }).join('');
 
-    // 重新應用翻譯到新生成的表格內容
+    stack.innerHTML = sectionsHtml;
+
     if (window.i18n && window.i18n.isReady()) {
-        window.i18n.retranslate(tbody);
+        window.i18n.retranslate(stack);
     }
 
-    // 渲染後調整列表可視高度
+    updateTcmSortIndicators();
     adjustTestCasesScrollHeight();
 }
 
@@ -3350,20 +3557,6 @@ function bindEvents() {
     document.getElementById('applyFiltersBtn').addEventListener('click', applyFilters);
     document.getElementById('clearFiltersBtn').addEventListener('click', clearFilters);
 
-    // 表頭排序點擊事件
-    const hNum = document.getElementById('th-tcm-number');
-    const hTitle = document.getElementById('th-tcm-title');
-    const hTcg = document.getElementById('th-tcm-tcg');
-    const hPri = document.getElementById('th-tcm-priority');
-    const hCreated = document.getElementById('th-tcm-created');
-    const hUpdated = document.getElementById('th-tcm-updated');
-    if (hNum) hNum.addEventListener('click', () => setTcmSort('number'));
-    if (hTitle) hTitle.addEventListener('click', () => setTcmSort('title'));
-    if (hTcg) hTcg.addEventListener('click', () => setTcmSort('tcg'));
-    if (hPri) hPri.addEventListener('click', () => setTcmSort('priority'));
-    if (hCreated) hCreated.addEventListener('click', () => setTcmSort('created'));
-    if (hUpdated) hUpdated.addEventListener('click', () => setTcmSort('updated'));
-
     // 搜尋欄位 Enter 鍵支援
     document.getElementById('testCaseNumberSearch').addEventListener('keydown', function(e) {
         if (e.key === 'Enter') {
@@ -3379,7 +3572,8 @@ function bindEvents() {
     });
 
     // 批次操作
-    document.getElementById('selectAllCheckbox').addEventListener('change', toggleSelectAll);
+    const globalSelectAll = document.getElementById('selectAllCheckbox');
+    if (globalSelectAll) globalSelectAll.addEventListener('change', toggleSelectAll);
     const batchModifyBtn = document.getElementById('batchModifyBtn');
     if (batchModifyBtn) batchModifyBtn.addEventListener('click', openTestCaseBatchModifyModal);
     const batchDeleteBtn = document.getElementById('batchDeleteBtn');
@@ -3421,31 +3615,60 @@ function bindEvents() {
                 selectedTestCases.delete(recordId);
             }
             updateBatchToolbar();
+            return;
+        }
+
+        if (e.target.classList.contains('section-select-all')) {
+            const sectionCard = e.target.closest('.section-card');
+            const checkboxes = sectionCard ? sectionCard.querySelectorAll('.test-case-checkbox') : [];
+            checkboxes.forEach(cb => {
+                cb.checked = e.target.checked;
+                const recordId = cb.value;
+                if (e.target.checked) {
+                    selectedTestCases.add(recordId);
+                } else {
+                    selectedTestCases.delete(recordId);
+                }
+            });
+            updateBatchToolbar();
         }
     });
 
     // 支援 Shift-點選 連續多選（同頁範圍）
     document.addEventListener('click', function(e) {
         const cb = e.target;
-        if (!cb.classList || !cb.classList.contains('test-case-checkbox')) return;
-        const checkboxes = Array.from(document.querySelectorAll('.test-case-checkbox'));
-        const currentIndex = checkboxes.indexOf(cb);
-        if (currentIndex === -1) return;
-
-        if (e.shiftKey && lastCaseCheckboxIndex !== null && lastCaseCheckboxIndex !== -1) {
-            const start = Math.min(lastCaseCheckboxIndex, currentIndex);
-            const end = Math.max(lastCaseCheckboxIndex, currentIndex);
-            const shouldCheck = cb.checked;
-            for (let i = start; i <= end; i++) {
-                const c = checkboxes[i];
-                if (c.checked !== shouldCheck) c.checked = shouldCheck;
-                const id = c.value; // record_id 為字串
-                if (shouldCheck) selectedTestCases.add(id); else selectedTestCases.delete(id);
+        if (cb.classList && cb.classList.contains('test-case-checkbox')) {
+            const checkboxes = Array.from(document.querySelectorAll('.test-case-checkbox'));
+            const currentIndex = checkboxes.indexOf(cb);
+            if (currentIndex !== -1) {
+                if (e.shiftKey && lastCaseCheckboxIndex !== null && lastCaseCheckboxIndex !== -1) {
+                    const start = Math.min(lastCaseCheckboxIndex, currentIndex);
+                    const end = Math.max(lastCaseCheckboxIndex, currentIndex);
+                    const shouldCheck = cb.checked;
+                    for (let i = start; i <= end; i++) {
+                        const c = checkboxes[i];
+                        if (c.checked !== shouldCheck) c.checked = shouldCheck;
+                        const id = c.value;
+                        if (shouldCheck) selectedTestCases.add(id); else selectedTestCases.delete(id);
+                    }
+                    updateBatchToolbar();
+                }
+                lastCaseCheckboxIndex = currentIndex;
             }
-            updateBatchToolbar();
+            return;
         }
-        // 更新錨點
-        lastCaseCheckboxIndex = currentIndex;
+
+        const sortableHeader = e.target.closest('.section-table-header th.sortable');
+        if (sortableHeader) {
+            const table = sortableHeader.closest('.section-table');
+            if (!table) return;
+            const sectionId = table.getAttribute('data-section-id');
+            const datasetField = sortableHeader.getAttribute('data-sort-field');
+            const fieldKey = mapAttrToField(datasetField);
+            if (sectionId && fieldKey) {
+                handleSectionSort(sectionId, fieldKey);
+            }
+        }
     });
 
     // 大量新增模式（文字輸入）
@@ -5885,21 +6108,19 @@ function updateFilterStatus() {
 }
 
 function toggleSelectAll() {
-    const selectAll = document.getElementById('selectAllCheckbox').checked;
-    const checkboxes = document.querySelectorAll('.test-case-checkbox');
-
-    checkboxes.forEach(checkbox => {
+    const selectAllEl = document.getElementById('selectAllCheckbox');
+    if (!selectAllEl) return;
+    const selectAll = selectAllEl.checked;
+    document.querySelectorAll('.test-case-checkbox').forEach(checkbox => {
         checkbox.checked = selectAll;
-        const id = checkbox.value; // record_id 是字串，勿轉數字
+        const id = checkbox.value;
         if (selectAll) {
             selectedTestCases.add(id);
         } else {
             selectedTestCases.delete(id);
         }
     });
-
     updateBatchToolbar();
-    // 重置 Shift 多選錨點
     lastCaseCheckboxIndex = null;
 }
 
@@ -5951,7 +6172,8 @@ function updateBatchToolbar() {
 function deselectAll() {
     selectedTestCases.clear();
     document.querySelectorAll('.test-case-checkbox').forEach(cb => cb.checked = false);
-    document.getElementById('selectAllCheckbox').checked = false;
+    const globalSelectAll = document.getElementById('selectAllCheckbox');
+    if (globalSelectAll) globalSelectAll.checked = false;
     updateBatchToolbar();
     lastCaseCheckboxIndex = null;
 }
@@ -6676,16 +6898,15 @@ function batchDeleteTestCases() {
 }
 
 function showLoadingState() {
-    const tbody = document.getElementById('testCasesTableBody');
-    tbody.innerHTML = `
-        <tr>
-            <td colspan="8" class="text-center" style="padding-top: 4rem; padding-bottom: 4rem; padding-left: 1rem; padding-right: 1rem;">
-                <div class="spinner-border text-primary" role="status" style="width: 2.5rem; height: 2.5rem;">
-                    <span class="visually-hidden">載入中...</span>
-                </div>
-                <div class="mt-2 text-muted fs-6">載入測試案例中...</div>
-            </td>
-        </tr>
+    const stack = document.getElementById('testCasesStack');
+    if (!stack) return;
+    stack.innerHTML = `
+        <div class="text-center py-4">
+            <div class="spinner-border text-primary" role="status" style="width: 2.5rem; height: 2.5rem;">
+                <span class="visually-hidden">載入中...</span>
+            </div>
+            <div class="mt-2 text-muted fs-6">載入測試案例中...</div>
+        </div>
     `;
 }
 
