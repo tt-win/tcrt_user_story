@@ -2256,7 +2256,8 @@ function renderSectionBlockHTML(sectionGroup, rowsHtml) {
     const rowClass = sectionGroup.sectionLevel <= 1 ? 'section-card-row root-divider' : 'section-card-row';
     const headerStyle = sectionGroup.sectionLevel > 1 ? 'background: linear-gradient(90deg, #f9fbff, #eef2f7);' : 'background: #f7f9fc;';
     const testCaseCount = sectionGroup.testCases.length;
-    const isCollapsed = sectionCollapsedState && sectionCollapsedState.has(sectionGroup.sectionId);
+    // 使用字符串化的 ID 查檢（Set 區分類型）
+    const isCollapsed = sectionCollapsedState && sectionCollapsedState.has(String(sectionGroup.sectionId));
 
     // 即使沒有 test cases，也要提供收合功能
     if (testCaseCount === 0) {
@@ -2348,15 +2349,17 @@ function handleSectionSort(sectionId, fieldKey) {
 }
 
 function toggleSectionCollapse(sectionId) {
-    const isCollapsing = !sectionCollapsedState.has(sectionId);
+    // 確保使用字符串化的 ID（Set 區分類型，數字 6 和字符串 "6" 不同）
+    const sectionIdStr = String(sectionId);
+    const isCollapsing = !sectionCollapsedState.has(sectionIdStr);
 
     if (isCollapsing) {
         // 收合時：收合該 section 及其所有子 section
-        sectionCollapsedState.add(sectionId);
-        collapseChildSections(sectionId);
+        sectionCollapsedState.add(sectionIdStr);
+        collapseChildSections(sectionIdStr);
     } else {
         // 展開時：只展開該 section（保留子 section 的收合狀態）
-        sectionCollapsedState.delete(sectionId);
+        sectionCollapsedState.delete(sectionIdStr);
     }
 
     renderTestCasesTable();
@@ -2379,9 +2382,10 @@ function collapseChildSections(parentSectionId) {
 
     // 遞迴地找到所有子 section 並添加到收合狀態
     const addChildSections = (parentId) => {
+        const parentIdNum = Number(parentId);  // 轉換為數字進行比較
         for (const section of allSections) {
-            if (section.parent_section_id === parentId) {
-                sectionCollapsedState.add(section.id);
+            if (section.parent_section_id === parentIdNum) {
+                sectionCollapsedState.add(String(section.id));  // 使用字符串化的 ID
                 addChildSections(section.id);
             }
         }
@@ -3841,8 +3845,8 @@ function renderTestCasesTable() {
         // 找到該 section 的父 section ID
         const parentSectionId = findSectionParentId(parseInt(sectionId));
 
-        // 如果父 section 被收合，則隱藏該子 section
-        if (parentSectionId && sectionCollapsedState.has(parentSectionId)) {
+        // 如果父 section 被收合，則隱藏該子 section（使用字符串化 ID）
+        if (parentSectionId && sectionCollapsedState.has(String(parentSectionId))) {
             return false;
         }
 
