@@ -643,6 +643,8 @@
         "wikiTokenPlaceholder": "e.g., Q4XxwaS2Cif80DkAku9lMKuAgof"
     },
     "testCase": {
+        "section": "Section",
+        "selectSection": "Select section",
         "tcgFilterPlaceholder": "Enter TCG number",
         "testCaseNumberPlaceholder": "Enter test case number",
         "searchPlaceholder": "Search title, description...",
