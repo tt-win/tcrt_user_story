@@ -2196,7 +2196,10 @@ const UserStoryMapFlow = () => {
                 `/api/user-story-maps/team/${teamId}/${currentMapId}/move-node`,
                 {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${localStorage.getItem('access_token')}`
+                    },
                     body: JSON.stringify({
                         node_id: sourceNodeId,
                         new_parent_id: targetNodeId,
