@@ -1128,7 +1128,7 @@ const UserStoryMapFlow = () => {
                          class="form-control form-control-sm"
                          style="min-height: 32px; padding: 0.35rem 0.6rem; border: 1px solid #dee2e6; border-radius: 0.25rem; background-color: #fff; cursor: ${canUpdateNode ? 'text' : 'default'}; display: flex; align-items: center; flex-wrap: wrap; gap: 4px; position: relative; overflow-y: auto; max-height: 120px;"
                          ${readOnlyAttr ? '' : 'data-editable="true"'}>
-                        ${(data.jiraTickets || []).length > 0 ? (data.jiraTickets || []).map(ticket => `<span class="badge bg-info" style="font-size: 0.8rem; padding: 0.35rem 0.6rem;">${escapeHtml(ticket)}</span>`).join('') : '<small class="text-muted">未輸入任何票號</small>'}
+                        ${(data.jiraTickets || []).length > 0 ? (data.jiraTickets || []).map(ticket => `<span class="jira-badge">${escapeHtml(ticket)}</span>`).join('') : '<small class="text-muted">未輸入任何票號</small>'}
                     </div>
                     <input type="hidden" id="propJira" name="jira" value="${escapeHtml((data.jiraTickets || []).join(', '))}">
                 </div>
@@ -1380,7 +1380,7 @@ const UserStoryMapFlow = () => {
         // 更新容器內容（顯示 badges）
         if (newTickets.length > 0) {
             container.innerHTML = newTickets.map(ticket =>
-                `<span class="badge bg-info" style="font-size: 0.8rem; padding: 0.35rem 0.6rem;">${escapeHtml(ticket)}</span>`
+                `<span class="jira-badge">${escapeHtml(ticket)}</span>`
             ).join('');
         } else {
             container.innerHTML = '<small class="text-muted">未輸入任何票號</small>';
@@ -2302,7 +2302,7 @@ const UserStoryMapFlow = () => {
                             <div class="mb-3">
                                 <label class="form-label small fw-bold">JIRA Tickets</label>
                                 <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
-                                    ${data.jiraTickets && data.jiraTickets.length > 0 ? data.jiraTickets.map(ticket => `<span class="badge bg-info" style="font-size: 0.8rem; padding: 0.35rem 0.6rem;">${escapeHtml(ticket)}</span>`).join('') : '<small class="text-muted">無</small>'}
+                                    ${data.jiraTickets && data.jiraTickets.length > 0 ? data.jiraTickets.map(ticket => `<span class="jira-badge">${escapeHtml(ticket)}</span>`).join('') : '<small class="text-muted">無</small>'}
                                 </div>
                             </div>
                             
@@ -3483,7 +3483,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                                     <h6 class="mb-1">${escapeHtml(node.title)}</h6>
                                     ${node.description ? `<p class="mb-1 small">${escapeHtml(node.description)}</p>` : ''}
                                     ${node.team ? `<small class="text-muted">團隊: ${escapeHtml(node.team)}</small>` : ''}
-                                    ${node.jira_tickets && node.jira_tickets.length > 0 ? `<div style="margin-top: 0.5rem; display: flex; flex-wrap: wrap; gap: 0.25rem;">${node.jira_tickets.map(ticket => `<span class="badge bg-info" style="font-size: 0.75rem; padding: 0.25rem 0.5rem;">${escapeHtml(ticket)}</span>`).join('')}</div>` : ''}
+                                    ${node.jira_tickets && node.jira_tickets.length > 0 ? `<div style="margin-top: 0.5rem; display: flex; flex-wrap: wrap; gap: 0.25rem;">${node.jira_tickets.map(ticket => `<span class="jira-badge">${escapeHtml(ticket)}</span>`).join('')}</div>` : ''}
                                 </div>
                             `).join('')}
                         </div>
