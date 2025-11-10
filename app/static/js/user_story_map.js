@@ -2193,7 +2193,7 @@ const UserStoryMapFlow = () => {
             addChildren(sourceNodeId);
 
             const response = await fetch(
-                `/api/teams/${teamId}/user-story-maps/${currentMapId}/move-node`,
+                `/api/user-story-maps/team/${teamId}/${currentMapId}/move-node`,
                 {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
