@@ -655,23 +655,16 @@ function renderTeamCards() {
                                     ((window.i18n && window.i18n.isReady()) ? window.i18n.t('team.notConfigured') : '未設定')}</small>
                             </div>
                         </div>
-                        <div class="d-flex gap-2">
-                            <div class="dropdown flex-grow-0">
-                                <button class="btn btn-primary btn-sm dropdown-toggle" type="button" id="enterTeamDropdown${team.id}" data-bs-toggle="dropdown" aria-expanded="false">
-                                    <i class="fas fa-arrow-right me-1"></i><span>${(window.i18n && window.i18n.isReady()) ? window.i18n.t('team.enterTeam') : '進入團隊'}</span>
-                                </button>
-                                <ul class="dropdown-menu" aria-labelledby="enterTeamDropdown${team.id}">
-                                    <li><button class="dropdown-item" type="button" onclick="enterTeamWithPage(${team.id}, 'test-cases')">
-                                        <i class="fas fa-list-check me-2"></i>Test Cases
-                                    </button></li>
-                                    <li><button class="dropdown-item" type="button" onclick="enterTeamWithPage(${team.id}, 'test-runs')">
-                                        <i class="fas fa-play-circle me-2"></i>Test Runs
-                                    </button></li>
-                                    <li><button class="dropdown-item" type="button" onclick="enterTeamWithPage(${team.id}, 'usm')">
-                                        <i class="fas fa-project-diagram me-2"></i>User Story Map
-                                    </button></li>
-                                </ul>
-                            </div>
+                        <div class="d-flex gap-2 team-action-buttons">
+                            <button class="btn btn-primary btn-sm flex-grow-1" onclick="enterTeamWithPage(${team.id}, 'test-cases')">
+                                <i class="fas fa-list-check me-1"></i><span class="d-none d-sm-inline">Test Cases</span>
+                            </button>
+                            <button class="btn btn-primary btn-sm flex-grow-1" onclick="enterTeamWithPage(${team.id}, 'test-runs')">
+                                <i class="fas fa-play-circle me-1"></i><span class="d-none d-sm-inline">Test Runs</span>
+                            </button>
+                            <button class="btn btn-primary btn-sm flex-grow-1" onclick="enterTeamWithPage(${team.id}, 'usm')">
+                                <i class="fas fa-project-diagram me-1"></i><span class="d-none d-sm-inline">User Story Map</span>
+                            </button>
                             <button class="btn btn-secondary btn-sm flex-grow-1" onclick="editTeam(${team.id})">
                                 <i class="fas fa-edit me-1"></i><span>${(window.i18n && window.i18n.isReady()) ? window.i18n.t('common.edit') : '編輯'}</span>
                             </button>
