@@ -1211,24 +1211,36 @@ class TestCaseSectionList {
     const headerH6 = document.querySelector('#sectionListPanel .card-header h6');
     if (!headerH6) return;
 
-    // 從 DOM 的 currentSetName 或 sessionStorage 提取最新名稱
+    // 從 this.setName、DOM 的 currentSetName 或 sessionStorage 提取最新名稱
     let setNameDisplay = '區段列表';
+    let displayName = null;
 
-    // 嘗試從 DOM 提取
-    const currentSetNameEl = document.getElementById('currentSetName');
-    if (currentSetNameEl) {
-      const strongEl = currentSetNameEl.querySelector('strong');
-      if (strongEl) {
-        const nameText = strongEl.textContent.trim();
-        if (nameText) {
-          this.setName = nameText;
-          setNameDisplay = `<span class="section-list-title" title="${this.escapeHtml(nameText)}">${this.escapeHtml(nameText)}</span>`;
+    // 優先使用已設置的 setName
+    if (this.setName) {
+      displayName = this.setName;
+    } else {
+      // 嘗試從 DOM 提取
+      const currentSetNameEl = document.getElementById('currentSetName');
+      if (currentSetNameEl) {
+        const strongEl = currentSetNameEl.querySelector('strong');
+        if (strongEl) {
+          const nameText = strongEl.textContent.trim();
+          if (nameText && nameText !== '集合不存在') {
+            displayName = nameText;
+            this.setName = nameText;
+          }
         }
       }
     }
 
+    // 如果成功獲得名稱，用含 ellipsis 的格式
+    if (displayName) {
+      setNameDisplay = `<span class="section-list-title" title="${this.escapeHtml(displayName)}">${this.escapeHtml(displayName)}</span>`;
+    }
+
     // 更新 h6 的內容
     headerH6.innerHTML = `<i class="fas fa-folder-tree"></i> ${setNameDisplay}`;
+    console.log("[SectionList] Panel header updated:", { displayName, setNameDisplay });
   }
 
   /**
