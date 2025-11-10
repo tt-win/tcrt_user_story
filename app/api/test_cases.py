@@ -111,20 +111,38 @@ TCG_TABLE_ID_DEFAULT = "tblcK6eF3yQCuwwl"
 
 
 def normalize_tcg_number(value: Optional[str]) -> Optional[str]:
+    """
+    正規化 TCG 單號格式。接受任何格式的 TCG 號碼，不驗證其有效性。
+
+    Examples:
+        - "TCG-123" -> "TCG-123"
+        - "tcg-123" -> "TCG-123"
+        - "123" -> "TCG-123"
+        - "TCG123" -> "TCG-123"
+        - "ANY-TEXT" -> "ANY-TEXT" (接受任何格式)
+    """
     if not value:
         return None
-    upper = str(value).strip().upper().replace(" ", "")
-    if not upper:
+
+    raw = str(value).strip()
+    if not raw:
         return None
 
-    if upper.startswith("TCG"):
-        upper = upper[3:]
-        if upper.startswith("-"):
-            upper = upper[1:]
+    upper = raw.upper()
 
-    if upper.isdigit():
-        return f"TCG-{upper}"
-    return None
+    # 如果以 TCG 開頭，進行格式化
+    if upper.startswith("TCG"):
+        upper = upper[3:].lstrip("-").strip()
+        if upper:
+            return f"TCG-{upper}"
+
+    # 如果是純數字，加上 TCG- 前綴
+    if raw.isdigit():
+        return f"TCG-{raw}"
+
+    # 其他情況，直接返回原值（大寫）
+    # 這樣允許使用者輸入任何格式的 TCG 號碼
+    return raw.upper()
 
 
 def build_tcg_items(numbers: List[str]) -> List[str]:
