@@ -2,7 +2,7 @@
 User Story Map API 路由
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, or_, and_, text, update
 from sqlalchemy.orm.attributes import flag_modified
@@ -1478,11 +1478,11 @@ async def replace_relations(
     return RelationBulkUpdateResponse(relations=_normalize_related_ids(source_node_db.related_ids))
 
 
-@router.post("/{map_id}/move-node")
+@router.post("/team/{team_id}/{map_id}/move-node")
 async def move_node(
     team_id: int,
     map_id: str,
-    request_data: Dict[str, Any],
+    request_data: Dict[str, Any] = Body(...),
     current_user: User = Depends(get_current_user),
 ):
     """
