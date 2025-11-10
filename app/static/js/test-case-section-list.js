@@ -678,11 +678,15 @@ class TestCaseSectionList {
    */
   expandSectionAndAncestors(sectionId) {
     console.log('[SectionList] expandSectionAndAncestors called with sectionId:', sectionId);
+    console.log('[SectionList] Before expand - sectionCollapsedState:', Array.from(sectionCollapsedState));
 
     // 移除該 section 的收合狀態
     const wasCollapsed = sectionCollapsedState.has(sectionId);
+    console.log('[SectionList] Target section (ID: ' + sectionId + ') was collapsed:', wasCollapsed);
+
     sectionCollapsedState.delete(sectionId);
-    console.log('[SectionList] Target section was collapsed:', wasCollapsed, 'now expanded');
+    console.log('[SectionList] After deleting target - sectionCollapsedState has ' + sectionId + '?:', sectionCollapsedState.has(sectionId));
+    console.log('[SectionList] After deleting target - sectionCollapsedState:', Array.from(sectionCollapsedState));
 
     // 找到該 section 的父 section ID
     if (typeof findSectionParentId !== 'function') {
@@ -701,6 +705,7 @@ class TestCaseSectionList {
       parentId = findSectionParentId(parentId);
     }
     console.log('[SectionList] Total ancestors expanded:', ancestorCount);
+    console.log('[SectionList] Final sectionCollapsedState:', Array.from(sectionCollapsedState));
   }
 
   /**
