@@ -12,6 +12,7 @@
 class TestCaseSectionList {
   constructor() {
     this.setId = null;
+    this.setName = null; // 當前 Test Case Set 的名稱
     this.sections = [];
     this.editingNodeId = null;
     this.nextSectionEventMeta = null;
@@ -35,6 +36,15 @@ class TestCaseSectionList {
 
       this.setId = e.detail.setId;
       this.sections = e.detail.sections || [];
+
+      // 從 testCaseSetIntegration 獲取當前 Set 的名稱
+      if (typeof testCaseSetIntegration !== 'undefined') {
+        const currentSet = testCaseSetIntegration.testCaseSets.find(s => s.id == this.setId);
+        if (currentSet) {
+          this.setName = currentSet.name;
+        }
+      }
+
       this.render();
     });
 
@@ -49,13 +59,30 @@ class TestCaseSectionList {
    */
   injectStyles() {
     if (document.getElementById('section-list-custom-styles')) return;
-    
+
     const style = document.createElement('style');
     style.id = 'section-list-custom-styles';
     style.textContent = `
       /* Section item 基本樣式 */
       .section-item {
         box-sizing: border-box;
+      }
+
+      /* Section List 標題 - 截斷超長文本 */
+      .section-list-title {
+        max-width: calc(100% - 20px); /* 留出圖標空間 */
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        display: inline-block;
+        vertical-align: middle;
+      }
+
+      #sectionListPanel .card-header h6 {
+        min-width: 0; /* 允許 flexbox 項目縮小 */
+        display: flex;
+        align-items: center;
+        gap: 6px;
       }
     `;
     document.head.appendChild(style);
@@ -120,11 +147,15 @@ class TestCaseSectionList {
     // 寬度和高度由 CSS 的 flex: 0 0 auto 和 overflow-y: auto 控制
 
     // 構建側邊欄面板 HTML
+    const setNameDisplay = this.setName
+      ? `<span class="section-list-title" title="${this.escapeHtml(this.setName)}">${this.escapeHtml(this.setName)}</span>`
+      : '區段列表';
+
     const panelHtml = `
       <div id="sectionListPanel" class="card section-list-panel" style="display: flex; flex-direction: column; flex: 1; min-height: 0; margin: 0; border-radius: 4px;">
         <div class="card-header bg-light d-flex justify-content-between align-items-center" style="flex-shrink: 0;">
           <h6 class="mb-0">
-            <i class="fas fa-folder-tree"></i> 區段列表
+            <i class="fas fa-folder-tree"></i> ${setNameDisplay}
           </h6>
         </div>
         <div id="sectionListContent" class="card-body p-0 section-list-content" style="flex: 1; overflow-y: auto; min-height: 0;">
