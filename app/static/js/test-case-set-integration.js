@@ -168,6 +168,11 @@ class TestCaseSetIntegration {
         headerName.innerHTML = '<strong>集合不存在</strong>';
       }
     }
+
+    // 觸發事件，通知其他模組 Set 頭部已更新
+    window.dispatchEvent(new CustomEvent('setHeaderUpdated', {
+      detail: { currentSetId: this.currentSetId, currentSet: currentSet }
+    }));
   }
 
   /**

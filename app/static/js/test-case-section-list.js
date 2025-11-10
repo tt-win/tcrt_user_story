@@ -36,16 +36,20 @@ class TestCaseSectionList {
 
       this.setId = e.detail.setId;
       this.sections = e.detail.sections || [];
+      this.render();
+    });
 
-      // 從 testCaseSetIntegration 獲取當前 Set 的名稱
+    // 監聽 Set 頭部更新事件，用於獲取 Set 名稱
+    window.addEventListener("setHeaderUpdated", (e) => {
       if (typeof testCaseSetIntegration !== 'undefined') {
-        const currentSet = testCaseSetIntegration.testCaseSets.find(s => s.id == this.setId);
+        const currentSet = testCaseSetIntegration.testCaseSets.find(s => s.id == testCaseSetIntegration.currentSetId);
         if (currentSet) {
           this.setName = currentSet.name;
+          this.setId = currentSet.id;
+          // 重新渲染標題部分
+          this.updatePanelHeader();
         }
       }
-
-      this.render();
     });
 
     // 監聽窗口大小改變，動態調整面板高度
@@ -147,9 +151,15 @@ class TestCaseSectionList {
     // 寬度和高度由 CSS 的 flex: 0 0 auto 和 overflow-y: auto 控制
 
     // 構建側邊欄面板 HTML
-    const setNameDisplay = this.setName
-      ? `<span class="section-list-title" title="${this.escapeHtml(this.setName)}">${this.escapeHtml(this.setName)}</span>`
-      : '區段列表';
+    // 從 testCaseSetIntegration 動態獲取當前 Set 名稱
+    let setNameDisplay = '區段列表';
+    if (typeof testCaseSetIntegration !== 'undefined' && testCaseSetIntegration.testCaseSets.length > 0) {
+      const currentSet = testCaseSetIntegration.testCaseSets.find(s => s.id == this.setId);
+      if (currentSet) {
+        this.setName = currentSet.name;
+        setNameDisplay = `<span class="section-list-title" title="${this.escapeHtml(currentSet.name)}">${this.escapeHtml(currentSet.name)}</span>`;
+      }
+    }
 
     const panelHtml = `
       <div id="sectionListPanel" class="card section-list-panel" style="display: flex; flex-direction: column; flex: 1; min-height: 0; margin: 0; border-radius: 4px;">
@@ -1113,6 +1123,27 @@ class TestCaseSectionList {
     // 高度分配現在完全由 CSS flexbox 處理
     // 這個方法保留用於日誌和未來可能的調整
     console.log("[SectionList] Panel layout adjusted by CSS flexbox");
+  }
+
+  /**
+   * 更新面板標題 - 用於動態更新 Set 名稱
+   */
+  updatePanelHeader() {
+    const headerH6 = document.querySelector('#sectionListPanel .card-header h6');
+    if (!headerH6) return;
+
+    // 從 testCaseSetIntegration 獲取當前 Set 名稱
+    let setNameDisplay = '區段列表';
+    if (typeof testCaseSetIntegration !== 'undefined' && testCaseSetIntegration.testCaseSets.length > 0) {
+      const currentSet = testCaseSetIntegration.testCaseSets.find(s => s.id == testCaseSetIntegration.currentSetId);
+      if (currentSet) {
+        this.setName = currentSet.name;
+        setNameDisplay = `<span class="section-list-title" title="${this.escapeHtml(currentSet.name)}">${this.escapeHtml(currentSet.name)}</span>`;
+      }
+    }
+
+    // 更新 h6 的內容
+    headerH6.innerHTML = `<i class="fas fa-folder-tree"></i> ${setNameDisplay}`;
   }
 
   /**
