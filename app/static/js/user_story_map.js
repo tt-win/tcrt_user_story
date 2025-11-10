@@ -330,7 +330,7 @@ const renderJiraTagsHtml = (tickets) => {
         return '<small class="text-muted">未輸入任何票號</small>';
     }
     return normalized
-        .map(ticket => `<span class="jira-tag" style="cursor: pointer; display: inline-block; background-color: #e3f2fd; color: #1976d2; padding: 2px 6px; margin: 1px 2px; border-radius: 10px; font-size: 0.7rem; font-weight: 500; border: 1px solid #bbdefb;">${escapeHtml(ticket)}</span>`)
+        .map(ticket => `<span class="tcg-tag">${escapeHtml(ticket)}</span>`)
         .join('');
 };
 
@@ -516,11 +516,11 @@ window.hideJiraTooltip = function() {
 // 初始化 JIRA tooltip 事件監聽
 window.initJiraTooltipListeners = function() {
     document.addEventListener('mouseover', function(e) {
-        const jiraTag = e.target.closest('.jira-tag');
-        if (jiraTag) {
-            const ticketNumber = jiraTag.textContent.trim();
+        const tcgTag = e.target.closest('.tcg-tag');
+        if (tcgTag) {
+            const ticketNumber = tcgTag.textContent.trim();
             if (ticketNumber && !jiraTooltipState.isHovering) {
-                window.showJiraTooltip(ticketNumber, jiraTag);
+                window.showJiraTooltip(ticketNumber, tcgTag);
             }
         }
 
@@ -535,10 +535,10 @@ window.initJiraTooltipListeners = function() {
     });
 
     document.addEventListener('mouseout', function(e) {
-        const jiraTag = e.target.closest('.jira-tag');
-        if (jiraTag && !e.relatedTarget?.closest('.jira-tag')) {
+        const tcgTag = e.target.closest('.tcg-tag');
+        if (tcgTag && !e.relatedTarget?.closest('.tcg-tag')) {
             setTimeout(() => {
-                if (!jiraTooltipState.isHovering && !document.querySelector('.jira-tag:hover')) {
+                if (!jiraTooltipState.isHovering && !document.querySelector('.tcg-tag:hover')) {
                     window.hideJiraTooltip();
                 }
             }, 50);
@@ -547,7 +547,7 @@ window.initJiraTooltipListeners = function() {
         if (e.target.closest('#usm-jira-tooltip') && !e.relatedTarget?.closest('#usm-jira-tooltip')) {
             jiraTooltipState.isHovering = false;
             setTimeout(() => {
-                if (!jiraTooltipState.isHovering && !document.querySelector('.jira-tag:hover')) {
+                if (!jiraTooltipState.isHovering && !document.querySelector('.tcg-tag:hover')) {
                     window.hideJiraTooltip();
                 }
             }, 100);
@@ -556,7 +556,7 @@ window.initJiraTooltipListeners = function() {
 
     // 點擊其他地方時隱藏 tooltip
     document.addEventListener('click', function(e) {
-        if (!e.target.closest('.jira-tag') && !e.target.closest('#usm-jira-tooltip')) {
+        if (!e.target.closest('.tcg-tag') && !e.target.closest('#usm-jira-tooltip')) {
             const tooltip = document.getElementById('usm-jira-tooltip');
             if (tooltip) {
                 tooltip.style.display = 'none';
