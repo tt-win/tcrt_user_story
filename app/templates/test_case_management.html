@@ -3145,23 +3145,34 @@ async function startModalTCGSearch() {
 
     const { container, currentTCGs } = currentModalTCGEditor;
 
-    // 簡化為文字輸入 - 逗號分隔的單號
-    const searchHtml = `
-        <div class="tcg-search-container position-relative" style="min-height: 32px; height: 32px; display: flex; align-items: center; overflow: hidden;">
+    // 隱藏原內容但保持高度（使用 visibility 而不是移除）
+    const originalContent = container.querySelector('span, .tcg-tag');
+    if (originalContent) {
+        // 隱藏容器中的所有子元素
+        container.style.visibility = 'hidden';
+        container.style.height = '32px';
+        container.style.position = 'relative';
+    }
+
+    // 創建浮層輸入框 - 使用絕對定位，不會影響版面
+    const editorHtml = `
+        <div class="tcg-inline-editor" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 1000; display: flex; align-items: center;" onclick="event.stopPropagation()">
             <input type="text" class="form-control form-control-sm tcg-search-input"
-                   placeholder="輸入 TCG 單號（逗號分隔）" autocomplete="off"
+                   placeholder="輸入 TCG 單號，以逗號分隔 (例: TCG-123, TCG-456)"
+                   autocomplete="off"
                    onkeydown="handleModalTCGSearchKeydown(event)"
-                   onclick="event.stopPropagation()"
-                   style="height: 28px; width: 100%; font-size: 0.75rem; padding: 0.125rem 0.375rem; border: 1px solid #dee2e6; box-shadow: none; outline: none;">
+                   style="height: 32px; font-size: 0.75rem; padding: 0.25rem 0.375rem; margin: 0; border: 1px solid #dee2e6;">
         </div>
     `;
 
-    container.innerHTML = searchHtml;
+    // 在 container 中插入編輯器（保持相對定位的父容器）
+    container.insertAdjacentHTML('beforeend', editorHtml);
+    container.style.position = 'relative';
     container.classList.add('editing');
 
     // 更新全域狀態：填入現有 TCG
     modalTCGSelected = [...currentTCGs];
-    
+
     // 設定輸入框初始值
     const searchInput = container.querySelector('.tcg-search-input');
     searchInput.value = modalTCGSelected.join(', ');
@@ -3193,6 +3204,19 @@ async function finishModalTCGEdit() {
 
     // 移除全域點擊監聽器
     document.removeEventListener('click', handleModalTCGOutsideClick, true);
+
+    // 清除浮層編輯器
+    const editor = container.querySelector('.tcg-inline-editor');
+    if (editor) {
+        editor.remove();
+    }
+
+    // 恢復原內容的可見性
+    if (container.style.visibility === 'hidden') {
+        container.style.visibility = 'visible';
+        container.style.height = 'auto';
+        container.style.position = 'static';
+    }
 
     // 從輸入框讀取值並解析
     const searchInput = container.querySelector('.tcg-search-input');
