@@ -1651,6 +1651,9 @@ let currentSetId = null; // 當前選擇的 Test Case Set ID
 const sectionSortStates = new Map();
 // Section 收合狀態（存儲已收合的 section IDs）
 const sectionCollapsedState = new Set();
+// 記錄父 section 被收合時，其子 section 的收合狀態
+// 結構: { parentSectionId: { childSectionId: isCollapsed } }
+const savedChildrenCollapseState = new Map();
 // Shift 連續多選錨點（Test Case Management）
 let lastCaseCheckboxIndex = null;
 let currentPage = 1;
@@ -2354,15 +2357,94 @@ function toggleSectionCollapse(sectionId) {
     const isCollapsing = !sectionCollapsedState.has(sectionIdStr);
 
     if (isCollapsing) {
-        // 收合時：收合該 section 及其所有子 section
+        // 收合時：
+        // 1. 保存子 section 的當前收合狀態
+        // 2. 收合該 section 及其所有子 section
+        saveChildrenCollapseState(sectionIdStr);
         sectionCollapsedState.add(sectionIdStr);
         collapseChildSections(sectionIdStr);
     } else {
-        // 展開時：只展開該 section（保留子 section 的收合狀態）
+        // 展開時：
+        // 1. 展開該 section
+        // 2. 恢復之前保存的子 section 收合狀態
         sectionCollapsedState.delete(sectionIdStr);
+        restoreChildrenCollapseState(sectionIdStr);
     }
 
     renderTestCasesTable();
+}
+
+/**
+ * 保存父 section 的所有子 section 的當前收合狀態
+ * 當父 section 被收合時調用，以便在重新展開時恢復子 section 的狀態
+ */
+function saveChildrenCollapseState(parentSectionId) {
+    // 扁平化 section tree 並找到所有子 section
+    const flattenAllSections = (sections, result = []) => {
+        for (const section of sections) {
+            result.push(section);
+            const children = section.children || section.child_sections || [];
+            if (Array.isArray(children) && children.length > 0) {
+                flattenAllSections(children, result);
+            }
+        }
+        return result;
+    };
+
+    const allSections = flattenAllSections(tcmSectionsTree);
+    const parentIdNum = Number(parentSectionId);
+
+    // 收集該父 section 的所有直接和間接子 section
+    const childrenState = {};
+
+    const collectChildren = (searchParentId) => {
+        const searchParentIdNum = Number(searchParentId);
+        for (const section of allSections) {
+            if (section.parent_section_id === searchParentIdNum) {
+                const childIdStr = String(section.id);
+                // 記錄該子 section 是否被收合
+                childrenState[childIdStr] = sectionCollapsedState.has(childIdStr);
+                // 遞迴地收集該子 section 的子 section
+                collectChildren(section.id);
+            }
+        }
+    };
+
+    collectChildren(parentSectionId);
+
+    // 保存到 Map 中
+    if (Object.keys(childrenState).length > 0) {
+        savedChildrenCollapseState.set(parentSectionId, childrenState);
+        console.log(`[Section] Saved collapse state for parent ${parentSectionId}:`, childrenState);
+    }
+}
+
+/**
+ * 恢復父 section 的所有子 section 的之前保存的收合狀態
+ * 當父 section 被展開時調用
+ */
+function restoreChildrenCollapseState(parentSectionId) {
+    const savedState = savedChildrenCollapseState.get(parentSectionId);
+    if (!savedState) {
+        console.log(`[Section] No saved state for parent ${parentSectionId}`);
+        return;
+    }
+
+    // 恢復所有子 section 的狀態
+    for (const [childIdStr, wasCollapsed] of Object.entries(savedState)) {
+        if (wasCollapsed) {
+            // 如果之前是收合的，就恢復為收合
+            sectionCollapsedState.add(childIdStr);
+        } else {
+            // 如果之前是展開的，就確保它是展開的
+            sectionCollapsedState.delete(childIdStr);
+        }
+    }
+
+    console.log(`[Section] Restored collapse state for parent ${parentSectionId}`);
+
+    // 清除該父 section 的保存狀態（已恢復）
+    savedChildrenCollapseState.delete(parentSectionId);
 }
 
 function collapseChildSections(parentSectionId) {
