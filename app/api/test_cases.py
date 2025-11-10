@@ -2172,7 +2172,7 @@ async def batch_operation_test_cases(
     current_user: User = Depends(get_current_user),
 ):
     """批次操作本地測試案例（不呼叫 Lark）。
-    支援：delete、update_priority、update_tcg、update_section。
+    支援：delete、update_priority、update_tcg、update_section、update_test_set。
     record_ids 可為本地整數 id、lark_record_id 或 test_case_number。
     """
     import json
@@ -2543,6 +2543,93 @@ async def batch_operation_test_cases(
                         "operation": "batch_update_section",
                         "target_section_id": target_section.id,
                         "target_section_name": target_section.name,
+                        "success_count": success_count,
+                        "total_count": len(operation.record_ids),
+                        "updated_items": success_items,
+                    },
+                )
+        elif operation.operation == "update_test_set":
+            # 批次更新 Test Set：將 test cases 移動到新的 Test Set，並將其放在 Unassigned 區段
+            payload = operation.update_data or {}
+            test_set_id_value = payload.get("test_set_id")
+            if test_set_id_value is None:
+                raise HTTPException(status_code=400, detail="批次更新 Test Set 需要提供 test_set_id")
+            try:
+                target_test_set_id = int(test_set_id_value)
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail="無效的 test_set_id")
+
+            # 驗證目標 Test Set 存在
+            from app.models.database_models import TestCaseSet as TestCaseSetDB
+            target_test_set = (
+                db.query(TestCaseSetDB)
+                .filter(TestCaseSetDB.id == target_test_set_id, TestCaseSetDB.team_id == team_id)
+                .first()
+            )
+            if not target_test_set:
+                raise HTTPException(status_code=404, detail="指定的 Test Set 不存在")
+
+            # 找到目標 Test Set 的 Unassigned 區段
+            unassigned_section = (
+                db.query(TestCaseSectionDB)
+                .filter(
+                    TestCaseSectionDB.test_case_set_id == target_test_set_id,
+                    TestCaseSectionDB.name == "Unassigned",
+                )
+                .first()
+            )
+            if not unassigned_section:
+                raise HTTPException(status_code=404, detail="目標 Test Set 沒有 Unassigned 區段")
+
+            for rid in operation.record_ids:
+                processed += 1
+                item = resolve_one(rid)
+                if not item:
+                    errors.append(f"找不到測試案例 {rid}")
+                    continue
+                try:
+                    old_set_id = item.test_case_set_id
+                    old_section_id = item.test_case_section_id
+
+                    # 更新為目標 Test Set 和 Unassigned 區段
+                    item.test_case_set_id = target_test_set_id
+                    item.test_case_section_id = unassigned_section.id
+                    item.updated_at = datetime.utcnow()
+                    item.sync_status = SyncStatus.PENDING
+                    success_count += 1
+                    success_items.append({
+                        "id": item.id,
+                        "test_case_number": item.test_case_number,
+                        "title": item.title,
+                        "old_set_id": old_set_id,
+                        "new_set_id": target_test_set_id,
+                        "old_section_id": old_section_id,
+                        "new_section_id": unassigned_section.id,
+                    })
+                except Exception as e:
+                    errors.append(f"{rid}: {e}")
+            db.commit()
+
+            if success_count > 0:
+                test_case_numbers = [item["test_case_number"] for item in success_items if item.get("test_case_number")]
+                action_brief = f"{current_user.username} batch moved {success_count} Test Cases to set {target_test_set.name} (Unassigned)"
+                if test_case_numbers[:3]:
+                    action_brief += f": {', '.join(test_case_numbers[:3])}"
+                    if len(test_case_numbers) > 3:
+                        action_brief += f" and {len(test_case_numbers) - 3} more"
+
+                await log_test_case_action(
+                    action_type=ActionType.UPDATE,
+                    current_user=current_user,
+                    team_id=team_id,
+                    resource_id=f"batch_{success_count}_items",
+                    action_brief=action_brief,
+                    details={
+                        "operation": "batch_update_test_set",
+                        "target_test_set_id": target_test_set_id,
+                        "target_test_set_name": target_test_set.name,
+                        "target_section_id": unassigned_section.id,
+                        "target_section_name": unassigned_section.name,
                         "success_count": success_count,
                         "total_count": len(operation.record_ids),
                         "updated_items": success_items,

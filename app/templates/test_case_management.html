@@ -1184,6 +1184,20 @@ body {
                     <small class="text-muted" data-i18n="testCase.batchSectionHint" data-i18n-fallback="將選擇的測試案例移動到指定區段">將選擇的測試案例移動到指定區段</small>
                 </div>
 
+                <!-- Test Set 批次設定 -->
+                <div class="mb-3">
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" id="batchModifyTestSet">
+                        <label class="form-check-label" for="batchModifyTestSet">
+                            <strong data-i18n="testCase.batchSetTestSet" data-i18n-fallback="批次設定 Test Set">批次設定 Test Set</strong>
+                        </label>
+                    </div>
+                    <select class="form-select" id="batchTestSetSelect" disabled>
+                        <option value="" data-i18n="testCase.selectTestSet" data-i18n-fallback="請選擇 Test Set">請選擇 Test Set</option>
+                    </select>
+                    <small class="text-muted" data-i18n="testCase.batchTestSetHint" data-i18n-fallback="將選擇的測試案例移動到指定 Test Set（會自動設定為 Unassigned 區段）">將選擇的測試案例移動到指定 Test Set（會自動設定為 Unassigned 區段）</small>
+                </div>
+
                 <div class="alert alert-info" role="alert">
                     <i class="fas fa-info-circle me-2"></i>
                     <span data-i18n="testCase.batchModifyNote">只會套用已勾選的項目，空白值將不會變更現有資料。</span>
@@ -3916,9 +3930,19 @@ function bindEvents() {
     }
     const batchModifySectionCheckbox = document.getElementById('batchModifySection');
     const batchSectionSelect = document.getElementById('batchSectionSelect');
+    const batchModifyTestSetCheckbox = document.getElementById('batchModifyTestSet');
+    const batchTestSetSelect = document.getElementById('batchTestSetSelect');
+
     if (batchModifySectionCheckbox && batchSectionSelect) {
         batchModifySectionCheckbox.addEventListener('change', function() {
             if (this.checked) {
+                // 區段與 Test Set 互斥
+                if (batchModifyTestSetCheckbox && batchModifyTestSetCheckbox.checked) {
+                    batchModifyTestSetCheckbox.checked = false;
+                    batchTestSetSelect.value = '';
+                    batchTestSetSelect.disabled = true;
+                }
+
                 if (!Array.isArray(tcmSectionsTree) || tcmSectionsTree.length === 0) {
                     const msg = window.i18n ? window.i18n.t('errors.sectionsNotReady', {}, '尚未載入區段列表') : '尚未載入區段列表';
                     AppUtils.showError(msg);
@@ -3931,6 +3955,34 @@ function bindEvents() {
             } else {
                 batchSectionSelect.value = '';
                 batchSectionSelect.disabled = true;
+            }
+        });
+    }
+
+    if (batchModifyTestSetCheckbox && batchTestSetSelect) {
+        batchModifyTestSetCheckbox.addEventListener('change', function() {
+            if (this.checked) {
+                // Test Set 與區段互斥
+                if (batchModifySectionCheckbox && batchModifySectionCheckbox.checked) {
+                    batchModifySectionCheckbox.checked = false;
+                    batchSectionSelect.value = '';
+                    batchSectionSelect.disabled = true;
+                }
+
+                // 取得當前團隊的所有 Test Sets
+                const currentTeam = AppUtils.getCurrentTeam();
+                if (!currentTeam || !currentTeam.id) {
+                    const msg = window.i18n ? window.i18n.t('errors.pleaseSelectTeam') : '請先選擇團隊';
+                    AppUtils.showError(msg);
+                    this.checked = false;
+                    batchTestSetSelect.disabled = true;
+                    return;
+                }
+                populateBatchTestSetSelect(currentTeam.id);
+                batchTestSetSelect.disabled = false;
+            } else {
+                batchTestSetSelect.value = '';
+                batchTestSetSelect.disabled = true;
             }
         });
     }
@@ -6563,6 +6615,13 @@ function openTestCaseBatchModifyModal() {
         batchSectionSelect.disabled = true;
         populateBatchSectionSelect();
     }
+    const batchModifyTestSetCheckbox = document.getElementById('batchModifyTestSet');
+    const batchTestSetSelect = document.getElementById('batchTestSetSelect');
+    if (batchModifyTestSetCheckbox) batchModifyTestSetCheckbox.checked = false;
+    if (batchTestSetSelect) {
+        batchTestSetSelect.value = '';
+        batchTestSetSelect.disabled = true;
+    }
 
     // 初始化批次 TCG 編輯器
     initializeBatchTCGEditor();
@@ -7073,13 +7132,70 @@ function updateLocalTestCasesAfterBatchModify(selectedIds, updateData) {
     applyCurrentFiltersAndRender();
 }
 
+/**
+ * 填充批次設定 Test Set 的下拉選單
+ * @param {number} teamId - 當前團隊 ID
+ */
+async function populateBatchTestSetSelect(teamId) {
+    const select = document.getElementById('batchTestSetSelect');
+    if (!select) return;
+
+    try {
+        // 獲取當前團隊的所有 Test Sets
+        const response = await window.AuthClient.fetch(`/api/teams/${teamId}/test-case-sets`);
+        if (!response.ok) {
+            const msg = window.i18n ? window.i18n.t('errors.failedToLoadTestSets', {}, '無法載入 Test Sets') : '無法載入 Test Sets';
+            AppUtils.showError(msg);
+            select.disabled = true;
+            return;
+        }
+
+        const testSets = await response.json();
+        if (!Array.isArray(testSets) || testSets.length === 0) {
+            const msg = window.i18n ? window.i18n.t('errors.noTestSets', {}, '此團隊沒有 Test Sets') : '此團隊沒有 Test Sets';
+            select.innerHTML = `<option value="" disabled>${msg}</option>`;
+            select.disabled = true;
+            return;
+        }
+
+        // 只排除當前 Set（如果有指定的話）
+        const filteredSets = currentSetId ? testSets.filter(s => s.id !== currentSetId) : testSets;
+
+        const defaultOption = '<option value="" data-i18n="testCase.selectTestSet" data-i18n-fallback="請選擇 Test Set">請選擇 Test Set</option>';
+        const optionsHtml = filteredSets.map(set =>
+            `<option value="${set.id}">${set.name} (${set.test_case_count || 0})</option>`
+        ).join('');
+
+        select.innerHTML = defaultOption + optionsHtml;
+        select.value = '';
+        select.disabled = false;
+
+        if (window.i18n && window.i18n.isReady()) {
+            window.i18n.retranslate(select);
+        }
+    } catch (error) {
+        console.error('Error populating test sets:', error);
+        const msg = window.i18n ? window.i18n.t('errors.failedToLoadTestSets', {}, '無法載入 Test Sets') : '無法載入 Test Sets';
+        AppUtils.showError(msg);
+        select.disabled = true;
+    }
+}
+
 async function performTestCaseBatchModify() {
     const modifyTCG = document.getElementById('batchModifyTCG').checked;
     const modifyPriority = document.getElementById('batchModifyPriority').checked;
     const modifySection = document.getElementById('batchModifySection').checked;
+    const modifyTestSet = document.getElementById('batchModifyTestSet').checked;
 
-    if (!modifyTCG && !modifyPriority && !modifySection) {
+    if (!modifyTCG && !modifyPriority && !modifySection && !modifyTestSet) {
         const msg = window.i18n ? window.i18n.t('errors.selectModifyFields') : '請至少選擇一個要修改的欄位';
+        AppUtils.showError(msg);
+        return;
+    }
+
+    // 檢查區段和 Test Set 互斥性
+    if (modifySection && modifyTestSet) {
+        const msg = window.i18n ? window.i18n.t('errors.sectionAndTestSetMutuallyExclusive', {}, '區段設定和 Test Set 設定不可同時使用') : '區段設定和 Test Set 設定不可同時使用';
         AppUtils.showError(msg);
         return;
     }
@@ -7087,6 +7203,7 @@ async function performTestCaseBatchModify() {
     const selectedIds = Array.from(selectedTestCases);
     const updateData = {};
     let sectionIdForBatch = null;
+    let testSetIdForBatch = null;
 
     // 收集要修改的資料
     if (modifyTCG) {
@@ -7138,6 +7255,24 @@ async function performTestCaseBatchModify() {
             path: sectionMeta.path || sectionMeta.name || '',
             level: sectionMeta.level || 1,
         };
+    }
+
+    if (modifyTestSet) {
+        const testSetSelect = document.getElementById('batchTestSetSelect');
+        const testSetValue = testSetSelect ? testSetSelect.value : '';
+        if (!testSetValue) {
+            const msg = window.i18n ? window.i18n.t('errors.selectTestSetValue', {}, '請選擇 Test Set') : '請選擇 Test Set';
+            AppUtils.showError(msg);
+            return;
+        }
+        const parsedTestSetId = Number(testSetValue);
+        if (!Number.isFinite(parsedTestSetId)) {
+            const msg = window.i18n ? window.i18n.t('errors.invalidTestSet', {}, 'Test Set 資訊無效') : 'Test Set 資訊無效';
+            AppUtils.showError(msg);
+            return;
+        }
+        testSetIdForBatch = parsedTestSetId;
+        updateData.test_set_id = testSetIdForBatch;
     }
 
     try {
@@ -7217,6 +7352,26 @@ async function performTestCaseBatchModify() {
             if (!result.success) {
                 success = false;
                 errorMessages.push(...(result.error_messages || ['區段更新失敗']));
+            }
+        }
+
+        if (modifyTestSet && testSetIdForBatch !== null) {
+            const response = await window.AuthClient.fetch(`/api/teams/${currentTeam.id}/testcases/batch`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    operation: 'update_test_set',
+                    record_ids: selectedIds,
+                    update_data: { test_set_id: testSetIdForBatch },
+                }),
+            });
+
+            const result = await response.json();
+            if (!result.success) {
+                success = false;
+                errorMessages.push(...(result.error_messages || ['Test Set 更新失敗']));
             }
         }
 
