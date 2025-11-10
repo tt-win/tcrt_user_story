@@ -568,6 +568,7 @@ window.initJiraTooltipListeners = function() {
 // Custom Node Component
 const CustomNode = ({ data, id }) => {
     const { Handle, Position } = window.ReactFlow;
+    const [isHovered, setIsHovered] = React.useState(false);
     const badges = [];
 
     // Node type colors
@@ -646,16 +647,32 @@ const CustomNode = ({ data, id }) => {
           )
         : null;
 
+    // 在搬移模式下判斷節點是否能被選擇
+    const isSelectableInMoveMode = window.moveMode &&
+        window.moveSourceNodeId &&
+        id !== window.moveSourceNodeId &&
+        data.nodeType !== 'user_story';
+
+    // 在搬移模式中，只有能選擇的節點在 hover 時才亮起來
+    const shouldHighlightOnHover = isSelectableInMoveMode && isHovered;
+    const nodeOpacity = data.dimmed && !shouldHighlightOnHover ? 0.3 : 1;
+
     return React.createElement(
         'div',
         {
             className: `custom-node${data.isRoot ? ' root-node' : ''}${data.isOriginalSelected ? ' original-selected-node' : ''}`,
             'data-node-type': data.nodeType,
             style: {
-                opacity: data.dimmed ? 0.3 : 1,
+                opacity: nodeOpacity,
                 transition: 'opacity 0.3s ease',
-                backgroundColor: data.isExternal ? '#e6f7ff' : (data.isOriginalSelected ? '#fff3cd' : undefined), // 外部節點為淺藍色，原始選定節點為淺黃色
-            }
+                backgroundColor: shouldHighlightOnHover ? '#ffffcc' : (data.isExternal ? '#e6f7ff' : (data.isOriginalSelected ? '#fff3cd' : undefined)),
+                cursor: isSelectableInMoveMode ? 'pointer' : 'default',
+                borderWidth: shouldHighlightOnHover ? '2px' : '1px',
+                borderStyle: 'solid',
+                borderColor: shouldHighlightOnHover ? '#ffc107' : 'transparent',
+            },
+            onMouseEnter: () => setIsHovered(true),
+            onMouseLeave: () => setIsHovered(false),
         },
         // Connection Handles - 4 positions (removed corner handles)
         React.createElement(Handle, { type: 'target', position: Position.Top, id: 'top' }),
@@ -2157,21 +2174,20 @@ const UserStoryMapFlow = () => {
         }
         setMoveMode(true);
         setMoveSourceNodeId(selectedNode.id);
-        // 淡化所有節點，只保留源節點及其子節點高亮
-        const nodesToHighlight = [selectedNode.id];
-        const addChildren = (nodeId) => {
-            const children = nodes.filter(n => n.data.parentId == nodeId);
-            children.forEach(child => {
-                nodesToHighlight.push(child.id);
-                addChildren(child.id);
-            });
-        };
-        addChildren(selectedNode.id);
-        setHighlightedNodeIds(nodesToHighlight);
-        const nodesById = new Map(nodes.map((node) => [node.id, node]));
-        applyHighlight(nodesToHighlight, null, nodesById);
+
+        // 淡化所有節點（在 hover 時才會亮起來）
+        setNodes((prevNodes) => {
+            return prevNodes.map(node => ({
+                ...node,
+                data: {
+                    ...node.data,
+                    dimmed: true
+                }
+            }));
+        });
+
         showMessage('請選擇新的父節點（不能是 User Story）', 'info');
-    }, [selectedNode, nodes, applyHighlight]);
+    }, [selectedNode, setNodes]);
 
     // 執行搬移節點
     const performMoveNode = async (sourceNodeId, targetNodeId) => {
@@ -2208,14 +2224,35 @@ const UserStoryMapFlow = () => {
             showMessage('節點搬移成功', 'success');
             setMoveMode(false);
             setMoveSourceNodeId(null);
-            setHighlightedNodeIds([]);
-            clearHighlight();
+
+            // 恢復所有節點的正常狀態
+            setNodes((prevNodes) => {
+                return prevNodes.map(node => ({
+                    ...node,
+                    data: {
+                        ...node.data,
+                        dimmed: false
+                    }
+                }));
+            });
+
             // 重新載入地圖
             loadMap(currentMapId);
         } catch (error) {
             showMessage(`搬移失敗: ${error.message}`, 'error');
             setMoveMode(false);
             setMoveSourceNodeId(null);
+
+            // 恢復所有節點的正常狀態
+            setNodes((prevNodes) => {
+                return prevNodes.map(node => ({
+                    ...node,
+                    data: {
+                        ...node.data,
+                        dimmed: false
+                    }
+                }));
+            });
         }
     };
 
@@ -2223,10 +2260,20 @@ const UserStoryMapFlow = () => {
     const cancelMoveMode = useCallback(() => {
         setMoveMode(false);
         setMoveSourceNodeId(null);
-        setHighlightedNodeIds([]);
-        clearHighlight();
+
+        // 恢復所有節點的正常狀態（取消淡化）
+        setNodes((prevNodes) => {
+            return prevNodes.map(node => ({
+                ...node,
+                data: {
+                    ...node.data,
+                    dimmed: false
+                }
+            }));
+        });
+
         showMessage('已取消搬移操作', 'info');
-    }, [clearHighlight]);
+    }, [setNodes]);
 
     // Show full relation graph
     const showFullRelationGraph = useCallback(async (nodeId) => {
@@ -3206,7 +3253,9 @@ const UserStoryMapFlow = () => {
         window.showFullRelationGraph = showFullRelationGraph;
         window.startMoveNodeMode = startMoveNodeMode;
         window.cancelMoveMode = cancelMoveMode;
-    }, [saveMap, addNode, loadMap, loadMaps, autoLayout, highlightPath, clearHighlight, focusNode, selectedNode, addChildNode, addSiblingNode, setNodes, setEdges, teamName, showFullRelationGraph, currentMapId, teamId, mapIdFromUrl, collapseUserStoryNodes, expandAllNodes, startMoveNodeMode, cancelMoveMode]);
+        window.moveMode = moveMode;
+        window.moveSourceNodeId = moveSourceNodeId;
+    }, [saveMap, addNode, loadMap, loadMaps, autoLayout, highlightPath, clearHighlight, focusNode, selectedNode, addChildNode, addSiblingNode, setNodes, setEdges, teamName, showFullRelationGraph, currentMapId, teamId, mapIdFromUrl, collapseUserStoryNodes, expandAllNodes, startMoveNodeMode, cancelMoveMode, moveMode, moveSourceNodeId]);
 
     // Expose new functions to window for button handlers
     useEffect(() => {
