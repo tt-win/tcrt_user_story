@@ -310,7 +310,7 @@ Web Tool{% endblock %} {% block page_title_text %}
         <!-- Toolbar -->
         <div class="usm-toolbar">
             <select class="form-select form-select-sm" id="currentMapSelect">
-                <option value="">選擇地圖...</option>
+                <option value="" data-i18n="usm.selectMap">選擇地圖...</option>
             </select>
             <div class="vr"></div>
             <button
@@ -318,14 +318,14 @@ Web Tool{% endblock %} {% block page_title_text %}
                 class="btn btn-sm btn-primary"
                 id="addChildBtn"
             >
-                <i class="fas fa-plus"></i> 新增子節點
+                <i class="fas fa-plus"></i> <span data-i18n="usm.addChildNode">新增子節點</span>
             </button>
             <button
                 type="button"
                 class="btn btn-sm btn-primary"
                 id="addSiblingBtn"
             >
-                <i class="fas fa-plus"></i> 新增同級節點
+                <i class="fas fa-plus"></i> <span data-i18n="usm.addSiblingNode">新增同級節點</span>
             </button>
             <button
                 type="button"
@@ -334,7 +334,7 @@ Web Tool{% endblock %} {% block page_title_text %}
                 title="搬移節點到其他父節點"
                 onclick="window.startMoveNodeMode?.()"
             >
-                <i class="fas fa-arrow-right"></i> 搬移節點
+                <i class="fas fa-arrow-right"></i> <span data-i18n="usm.moveNode">搬移節點</span>
             </button>
             <button
                 type="button"
@@ -343,18 +343,18 @@ Web Tool{% endblock %} {% block page_title_text %}
                 title="建立節點關聯"
                 onclick="window.openRelationModal?.()"
             >
-                <i class="fas fa-link"></i> 設定關聯
+                <i class="fas fa-link"></i> <span data-i18n="usm.setRelations">設定關聯</span>
             </button>
             <div class="vr"></div>
             <button type="button" class="btn btn-sm btn-info" id="searchBtn">
-                <i class="fas fa-search"></i> 搜尋
+                <i class="fas fa-search"></i> <span data-i18n="usm.search">搜尋</span>
             </button>
             <button
                 type="button"
                 class="btn btn-sm btn-info"
                 id="highlightPathBtn"
             >
-                <i class="fas fa-route"></i> 高亮路徑
+                <i class="fas fa-route"></i> <span data-i18n="usm.highlightPath">高亮路徑</span>
             </button>
             <button
                 type="button"
@@ -363,7 +363,7 @@ Web Tool{% endblock %} {% block page_title_text %}
                 title="顯示完整相關圖"
                 onclick="window.openFullRelationGraph?.()"
             >
-                <i class="fas fa-project-diagram"></i> 完整相關圖
+                <i class="fas fa-project-diagram"></i> <span data-i18n="usm.fullRelationGraph">完整相關圖</span>
             </button>
             <button
                 type="button"
@@ -371,7 +371,7 @@ Web Tool{% endblock %} {% block page_title_text %}
                 id="reviewTestCasesBtn"
                 title="檢閱相關案例"
             >
-                <i class="fas fa-check-square"></i> 檢閱相關案例
+                <i class="fas fa-check-square"></i> <span data-i18n="usm.reviewTestCases">檢閱相關案例</span>
             </button>
             <button
                 type="button"
@@ -379,7 +379,7 @@ Web Tool{% endblock %} {% block page_title_text %}
                 id="clearHighlightBtn"
                 style="display: none"
             >
-                <i class="fas fa-times"></i> 清除高亮
+                <i class="fas fa-times"></i> <span data-i18n="usm.clearHighlight">清除高亮</span>
             </button>
         </div>
         <div id="highlightInfo" class="alert alert-warning d-none"></div>
@@ -420,9 +420,9 @@ Web Tool{% endblock %} {% block page_title_text %}
 
     <!-- Sidebar -->
     <div class="usm-sidebar">
-        <h6 class="mb-3">節點屬性</h6>
+        <h6 class="mb-3" data-i18n="usm.nodeProperties">節點屬性</h6>
         <div id="nodeProperties">
-            <p class="text-muted small">選擇一個節點以查看和編輯屬性</p>
+            <p class="text-muted small" data-i18n="usm.selectNodeHint">選擇一個節點以查看和編輯屬性</p>
         </div>
     </div>
 </div>
@@ -432,7 +432,7 @@ Web Tool{% endblock %} {% block page_title_text %}
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">設定節點關聯</h5>
+                <h5 class="modal-title" data-i18n="usm.setNodeRelations">設定節點關聯</h5>
                 <button
                     type="button"
                     class="btn-close"
@@ -442,21 +442,22 @@ Web Tool{% endblock %} {% block page_title_text %}
             <div class="modal-body">
                 <!-- Current Node Info -->
                 <div class="alert alert-info mb-3">
-                    <strong>來源節點:</strong>
-                    <span id="relationSourceNodeTitle">未選擇</span>
+                    <strong data-i18n="usm.sourceNode">來源節點:</strong>
+                    <span id="relationSourceNodeTitle" data-i18n="usm.notSelected">未選擇</span>
                     <small class="text-muted d-block"
-                        >ID: <span id="relationSourceNodeId">-</span></small
+                        ><span data-i18n="usm.id">ID:</span> <span id="relationSourceNodeId">-</span></small
                     >
                 </div>
 
                 <!-- Search Section -->
                 <div class="mb-3">
-                    <label class="form-label">搜尋目標節點</label>
+                    <label class="form-label" data-i18n="usm.searchTargetNodes">搜尋目標節點</label>
                     <div class="input-group input-group-sm mb-2">
                         <input
                             type="text"
                             class="form-control"
                             id="relationSearchInput"
+                            data-i18n-placeholder="usm.searchPlaceholder"
                             placeholder="輸入節點名稱或描述..."
                         />
                         <button
@@ -473,15 +474,15 @@ Web Tool{% endblock %} {% block page_title_text %}
                 <div class="row mb-3">
                     <div class="col-md-6">
                         <label class="form-label small text-muted"
-                            >節點類型</label
+                            data-i18n="usm.nodeType">節點類型</label
                         >
                         <select
                             class="form-select form-select-sm"
                             id="relationNodeTypeFilter"
                         >
-                            <option value="">全部類型</option>
-                            <option value="user_story">User Story</option>
-                            <option value="feature_category">功能節點</option>
+                            <option value="" data-i18n="usm.allTypes">全部類型</option>
+                            <option value="user_story" data-i18n="usm.userStory">User Story</option>
+                            <option value="feature_category" data-i18n="usm.featureCategory">功能節點</option>
                         </select>
                     </div>
                     <div class="col-md-6 d-flex align-items-end">
@@ -494,6 +495,7 @@ Web Tool{% endblock %} {% block page_title_text %}
                             <label
                                 class="form-check-label small"
                                 for="relationIncludeExternal"
+                                data-i18n="usm.searchOtherMaps"
                             >
                                 搜尋其他地圖
                             </label>
@@ -503,13 +505,13 @@ Web Tool{% endblock %} {% block page_title_text %}
 
                 <!-- Search Results -->
                 <div class="mt-2 mb-3">
-                    <label class="form-label">搜尋結果</label>
+                    <label class="form-label" data-i18n="usm.searchResults">搜尋結果</label>
                     <div
                         class="list-group list-group-sm"
                         id="relationSearchResults"
                         style="max-height: 250px; overflow-y: auto"
                     >
-                        <p class="text-muted small text-center py-3">
+                        <p class="text-muted small text-center py-3" data-i18n="usm.enterKeyword">
                             輸入關鍵字並搜尋
                         </p>
                     </div>
@@ -520,7 +522,7 @@ Web Tool{% endblock %} {% block page_title_text %}
                             id="relationAddSelectedBtn"
                             disabled
                         >
-                            <i class="fas fa-plus"></i> 增加選中項目
+                            <i class="fas fa-plus"></i> <span data-i18n="usm.addSelectedItems">增加選中項目</span>
                         </button>
                     </div>
                 </div>
@@ -528,7 +530,7 @@ Web Tool{% endblock %} {% block page_title_text %}
                 <!-- Selected Relations -->
                 <div class="mb-3">
                     <label class="form-label"
-                        >已選擇的關聯 (<span id="relationSelectedCount">0</span
+                        ><span data-i18n="usm.selectedRelations">已選擇的關聯</span> (<span id="relationSelectedCount">0</span
                         >)</label
                     >
                     <div
@@ -536,7 +538,7 @@ Web Tool{% endblock %} {% block page_title_text %}
                         id="relationSelectedList"
                         style="max-height: 200px; overflow-y: auto"
                     >
-                        <p class="text-muted small text-center py-3">
+                        <p class="text-muted small text-center py-3" data-i18n="usm.notSelectedYet">
                             尚未選擇
                         </p>
                     </div>
@@ -547,6 +549,7 @@ Web Tool{% endblock %} {% block page_title_text %}
                     type="button"
                     class="btn btn-secondary"
                     data-bs-dismiss="modal"
+                    data-i18n="common.cancel"
                 >
                     取消
                 </button>
@@ -555,7 +558,7 @@ Web Tool{% endblock %} {% block page_title_text %}
                     class="btn btn-success"
                     id="relationSaveBtn"
                 >
-                    <i class="fas fa-save"></i> 儲存關聯
+                    <i class="fas fa-save"></i> <span data-i18n="usm.saveRelations">儲存關聯</span>
                 </button>
             </div>
         </div>
@@ -570,7 +573,7 @@ Web Tool{% endblock %} {% block page_title_text %}
     >
         <div class="modal-content" style="height: 90vh">
             <div class="modal-header">
-                <h5 class="modal-title">節點完整相關圖</h5>
+                <h5 class="modal-title" data-i18n="usm.fullNodeRelationGraph">節點完整相關圖</h5>
                 <button
                     type="button"
                     class="btn-close"
@@ -628,6 +631,7 @@ Web Tool{% endblock %} {% block page_title_text %}
                         >
                             <h6
                                 style="margin: 0; font-weight: 600; color: #333"
+                                data-i18n="usm.nodeProperties"
                             >
                                 節點屬性
                             </h6>
@@ -641,7 +645,7 @@ Web Tool{% endblock %} {% block page_title_text %}
                                 min-height: 0;
                             "
                         >
-                            <p class="text-muted small" style="font-size: 12px">
+                            <p class="text-muted small" style="font-size: 12px" data-i18n="usm.clickNodeHint">
                                 點擊地圖上的節點以查看詳細信息
                             </p>
                         </div>
@@ -649,13 +653,13 @@ Web Tool{% endblock %} {% block page_title_text %}
                 </div>
                 <hr style="margin: 12px 0 0 0" />
                 <div style="padding: 12px; flex-shrink: 0">
-                    <h6 class="mt-3">跨地圖相關節點</h6>
+                    <h6 class="mt-3" data-i18n="usm.crossMapRelatedNodes">跨地圖相關節點</h6>
                     <div
                         id="crossMapNodesList"
                         class="list-group list-group-sm"
                         style="max-height: 120px; overflow-y: auto"
                     >
-                        <p class="text-muted small text-center py-3">
+                        <p class="text-muted small text-center py-3" data-i18n="usm.noCrossMapRelations">
                             無跨地圖關聯
                         </p>
                     </div>
@@ -681,7 +685,7 @@ Web Tool{% endblock %} {% block page_title_text %}
                 <form id="newMapForm">
                     <div class="mb-3">
                         <label for="mapName" class="form-label"
-                            >地圖名稱 <span class="text-danger">*</span></label
+                            ><span data-i18n="usm.mapName">地圖名稱</span> <span class="text-danger">*</span></label
                         >
                         <input
                             type="text"
@@ -692,7 +696,7 @@ Web Tool{% endblock %} {% block page_title_text %}
                     </div>
                     <div class="mb-3">
                         <label for="mapDescription" class="form-label"
-                            >描述</label
+                            data-i18n="usm.description">描述</label
                         >
                         <textarea
                             class="form-control"
@@ -707,10 +711,11 @@ Web Tool{% endblock %} {% block page_title_text %}
                     type="button"
                     class="btn btn-secondary"
                     data-bs-dismiss="modal"
+                    data-i18n="common.cancel"
                 >
                     取消
                 </button>
-                <button type="button" class="btn btn-primary" id="createMapBtn">
+                <button type="button" class="btn btn-primary" id="createMapBtn" data-i18n="usm.create">
                     建立
                 </button>
             </div>
@@ -749,7 +754,7 @@ Web Tool{% endblock %} {% block page_title_text %}
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">編輯地圖</h5>
+                <h5 class="modal-title" data-i18n="usm.editMap">編輯地圖</h5>
                 <button
                     type="button"
                     class="btn-close"
@@ -760,7 +765,7 @@ Web Tool{% endblock %} {% block page_title_text %}
                 <input type="hidden" id="editMapId" />
                 <div class="mb-3">
                     <label for="editMapName" class="form-label"
-                        >地圖名稱 <span class="text-danger">*</span></label
+                        ><span data-i18n="usm.mapName">地圖名稱</span> <span class="text-danger">*</span></label
                     >
                     <input
                         type="text"
@@ -771,7 +776,7 @@ Web Tool{% endblock %} {% block page_title_text %}
                 </div>
                 <div class="mb-3">
                     <label for="editMapDescription" class="form-label"
-                        >描述</label
+                        data-i18n="usm.description">描述</label
                     >
                     <textarea
                         class="form-control"
@@ -785,6 +790,7 @@ Web Tool{% endblock %} {% block page_title_text %}
                     type="button"
                     class="btn btn-secondary"
                     data-bs-dismiss="modal"
+                    data-i18n="common.cancel"
                 >
                     取消
                 </button>
@@ -792,6 +798,7 @@ Web Tool{% endblock %} {% block page_title_text %}
                     type="button"
                     class="btn btn-success"
                     id="saveMapEditBtn"
+                    data-i18n="usm.save"
                 >
                     儲存
                 </button>
@@ -805,7 +812,7 @@ Web Tool{% endblock %} {% block page_title_text %}
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">新增節點</h5>
+                <h5 class="modal-title" data-i18n="usm.addNode">新增節點</h5>
                 <button
                     type="button"
                     class="btn-close"
@@ -816,7 +823,7 @@ Web Tool{% endblock %} {% block page_title_text %}
                 <form id="addNodeForm">
                     <div class="mb-3">
                         <label class="form-label"
-                            >標題 <span class="text-danger">*</span></label
+                            ><span data-i18n="usm.title">標題</span> <span class="text-danger">*</span></label
                         >
                         <input
                             type="text"
@@ -826,7 +833,7 @@ Web Tool{% endblock %} {% block page_title_text %}
                         />
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">描述</label>
+                        <label class="form-label" data-i18n="usm.description">描述</label>
                         <textarea
                             class="form-control"
                             id="nodeDescription"
@@ -835,27 +842,28 @@ Web Tool{% endblock %} {% block page_title_text %}
                     </div>
                     <div class="mb-3">
                         <label class="form-label"
-                            >節點類型 <span class="text-danger">*</span></label
+                            ><span data-i18n="usm.nodeType">節點類型</span> <span class="text-danger">*</span></label
                         >
                         <select class="form-control" id="nodeType" required>
-                            <option value="feature_category">
+                            <option value="feature_category" data-i18n="usm.featureCategoryNode">
                                 功能分類節點
                             </option>
-                            <option value="user_story">User Story</option>
+                            <option value="user_story" data-i18n="usm.userStory">User Story</option>
                         </select>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">團隊</label>
+                        <label class="form-label" data-i18n="usm.team">團隊</label>
                         <p
                             class="form-control-plaintext mb-0"
                             id="nodeTeamDisplay"
+                            data-i18n="common.loading"
                         >
                             載入中…
                         </p>
                     </div>
                     <div class="mb-3">
                         <label class="form-label"
-                            >JIRA Tickets (逗號分隔)</label
+                            data-i18n="usm.jiraTickets">JIRA Tickets (逗號分隔)</label
                         >
                         <input
                             type="text"
@@ -866,7 +874,7 @@ Web Tool{% endblock %} {% block page_title_text %}
                     </div>
                     <div id="bddFields" style="display: none">
                         <div class="mb-3">
-                            <label class="form-label">As a</label>
+                            <label class="form-label" data-i18n="usm.asA">As a</label>
                             <input
                                 type="text"
                                 class="form-control"
@@ -875,7 +883,7 @@ Web Tool{% endblock %} {% block page_title_text %}
                             />
                         </div>
                         <div class="mb-3">
-                            <label class="form-label">I want</label>
+                            <label class="form-label" data-i18n="usm.iWant">I want</label>
                             <input
                                 type="text"
                                 class="form-control"
@@ -884,7 +892,7 @@ Web Tool{% endblock %} {% block page_title_text %}
                             />
                         </div>
                         <div class="mb-3">
-                            <label class="form-label">So that</label>
+                            <label class="form-label" data-i18n="usm.soThat">So that</label>
                             <input
                                 type="text"
                                 class="form-control"
@@ -900,6 +908,7 @@ Web Tool{% endblock %} {% block page_title_text %}
                     type="button"
                     class="btn btn-secondary"
                     data-bs-dismiss="modal"
+                    data-i18n="common.cancel"
                 >
                     取消
                 </button>
@@ -907,6 +916,7 @@ Web Tool{% endblock %} {% block page_title_text %}
                     type="button"
                     class="btn btn-primary"
                     id="confirmAddNodeBtn"
+                    data-i18n="usm.add"
                 >
                     新增
                 </button>
@@ -920,7 +930,7 @@ Web Tool{% endblock %} {% block page_title_text %}
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title">搜尋節點</h5>
+                <h5 class="modal-title" data-i18n="usm.searchNodes">搜尋節點</h5>
                 <button
                     type="button"
                     class="btn-close"
@@ -934,6 +944,7 @@ Web Tool{% endblock %} {% block page_title_text %}
                             type="text"
                             class="form-control"
                             id="searchInput"
+                            data-i18n-placeholder="usm.searchFields"
                             placeholder="搜尋標題、描述、註解或 BDD 欄位..."
                         />
                         <button
@@ -948,20 +959,20 @@ Web Tool{% endblock %} {% block page_title_text %}
                 </div>
                 <div class="mb-3">
                     <label class="form-label small text-muted"
-                        >節點類型篩選</label
+                        data-i18n="usm.nodeTypeFilter">節點類型篩選</label
                     >
                     <select
                         class="form-select form-select-sm"
                         id="searchNodeType"
                     >
-                        <option value="">全部節點</option>
-                        <option value="user_story">User Story</option>
-                        <option value="feature_category">功能節點</option>
+                        <option value="" data-i18n="usm.allNodes">全部節點</option>
+                        <option value="user_story" data-i18n="usm.userStory">User Story</option>
+                        <option value="feature_category" data-i18n="usm.featureCategory">功能節點</option>
                     </select>
                 </div>
                 <div class="mb-3">
                     <label class="form-label small text-muted"
-                        >JIRA Tickets (逗號分隔)</label
+                        data-i18n="usm.jiraTickets">JIRA Tickets (逗號分隔)</label
                     >
                     <input
                         type="text"
@@ -970,7 +981,7 @@ Web Tool{% endblock %} {% block page_title_text %}
                         placeholder="如: TEST-123, TEST-456"
                     />
                     <div class="mt-2">
-                        <small class="text-muted">邏輯:</small>
+                        <small class="text-muted" data-i18n="usm.logic">邏輯:</small>
                         <div class="form-check form-check-inline ms-2">
                             <input
                                 class="form-check-input"
@@ -981,7 +992,7 @@ Web Tool{% endblock %} {% block page_title_text %}
                                 checked
                             />
                             <label class="form-check-label small" for="jiraOr"
-                                >OR</label
+                                data-i18n="usm.or">OR</label
                             >
                         </div>
                         <div class="form-check form-check-inline">
@@ -993,7 +1004,7 @@ Web Tool{% endblock %} {% block page_title_text %}
                                 value="and"
                             />
                             <label class="form-check-label small" for="jiraAnd"
-                                >AND</label
+                                data-i18n="usm.and">AND</label
                             >
                         </div>
                     </div>
@@ -1003,11 +1014,11 @@ Web Tool{% endblock %} {% block page_title_text %}
                     class="btn btn-sm btn-info"
                     id="performSearchBtn"
                 >
-                    <i class="fas fa-search"></i> 搜尋
+                    <i class="fas fa-search"></i> <span data-i18n="usm.search">搜尋</span>
                 </button>
                 <hr />
                 <div id="searchResults">
-                    <p class="text-muted small">輸入搜尋條件並點擊搜尋</p>
+                    <p class="text-muted small" data-i18n="usm.enterSearchCriteria">輸入搜尋條件並點擊搜尋</p>
                 </div>
             </div>
         </div>
@@ -1054,7 +1065,7 @@ Web Tool{% endblock %} {% block page_title_text %}
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title">
-                        <i class="fas fa-tasks me-2"></i>檢閱相關案例
+                        <i class="fas fa-tasks me-2"></i><span data-i18n="usm.reviewRelatedCases">檢閱相關案例</span>
                     </h5>
                     <button
                         type="button"
@@ -1086,9 +1097,9 @@ Web Tool{% endblock %} {% block page_title_text %}
                                             id="selectAllTestCasesCheckbox"
                                         />
                                     </th>
-                                    <th style="width: 160px">編號</th>
-                                    <th>標題</th>
-                                    <th style="width: 100px">優先級</th>
+                                    <th style="width: 160px" data-i18n="testCase.testCaseNumber">編號</th>
+                                    <th data-i18n="testCase.testCaseTitle">標題</th>
+                                    <th style="width: 100px" data-i18n="testCase.priority">優先級</th>
                                 </tr>
                             </thead>
                             <tbody id="testCasesTableBody">
@@ -1096,6 +1107,7 @@ Web Tool{% endblock %} {% block page_title_text %}
                                     <td
                                         colspan="4"
                                         class="text-muted text-center py-3"
+                                        data-i18n="common.loading"
                                     >
                                         載入中...
                                     </td>
@@ -1106,12 +1118,13 @@ Web Tool{% endblock %} {% block page_title_text %}
                 </div>
                 <div class="modal-footer">
                     <div class="me-auto text-muted small">
-                        已選擇 <span id="selectedTestCasesCount">0</span> 個
+                        <span data-i18n="usm.selected">已選擇</span> <span id="selectedTestCasesCount">0</span> <span data-i18n="usm.items">個</span>
                     </div>
                     <button
                         type="button"
                         class="btn btn-secondary"
                         data-bs-dismiss="modal"
+                        data-i18n="common.cancel"
                     >
                         取消
                     </button>
@@ -1120,7 +1133,7 @@ Web Tool{% endblock %} {% block page_title_text %}
                         class="btn btn-primary"
                         id="createTestRunBtn"
                     >
-                        <i class="fas fa-check me-1"></i>建立 Test Run
+                        <i class="fas fa-check me-1"></i><span data-i18n="usm.createTestRun">建立 Test Run</span>
                     </button>
                 </div>
             </div>
@@ -1132,7 +1145,7 @@ Web Tool{% endblock %} {% block page_title_text %}
         <div class="modal-dialog">
             <div class="modal-content">
                 <div class="modal-header">
-                    <h5 class="modal-title">建立 Test Run</h5>
+                    <h5 class="modal-title" data-i18n="usm.createTestRun">建立 Test Run</h5>
                     <button
                         type="button"
                         class="btn-close"
@@ -1141,17 +1154,18 @@ Web Tool{% endblock %} {% block page_title_text %}
                 </div>
                 <div class="modal-body">
                     <div class="mb-3">
-                        <label class="form-label">Test Run 名稱</label>
+                        <label class="form-label" data-i18n="usm.testRunName">Test Run 名稱</label>
                         <input
                             type="text"
                             class="form-control"
                             id="testRunName"
+                            data-i18n-placeholder="usm.enterTestRunName"
                             placeholder="輸入 Test Run 名稱"
                         />
                     </div>
                     <p class="text-muted small">
-                        已選擇
-                        <span id="selectedTestCasesCount">0</span> 個測試案例
+                        <span data-i18n="usm.selected">已選擇</span>
+                        <span id="selectedTestCasesCount">0</span> <span data-i18n="usm.testCases">個測試案例</span>
                     </p>
                 </div>
                 <div class="modal-footer">
@@ -1159,6 +1173,7 @@ Web Tool{% endblock %} {% block page_title_text %}
                         type="button"
                         class="btn btn-secondary"
                         data-bs-dismiss="modal"
+                        data-i18n="common.cancel"
                     >
                         取消
                     </button>
@@ -1166,6 +1181,7 @@ Web Tool{% endblock %} {% block page_title_text %}
                         type="button"
                         class="btn btn-success"
                         id="confirmCreateTestRunBtn"
+                        data-i18n="usm.create"
                     >
                         建立
                     </button>
@@ -1201,6 +1217,7 @@ Web Tool{% endblock %} {% block page_title_text %}
             <input
                 type="text"
                 id="quickSearchInput"
+                data-i18n-placeholder="usm.quickSearchPlaceholder"
                 placeholder="搜尋節點 (標題、描述、As a、I want、So that)..."
                 style="
                     width: 100%;
@@ -1220,7 +1237,7 @@ Web Tool{% endblock %} {% block page_title_text %}
                     border-radius: 0 0 8px 8px;
                 "
             >
-                <div class="list-group-item text-muted text-center py-3">
+                <div class="list-group-item text-muted text-center py-3" data-i18n="usm.enterToSearch">
                     輸入以搜尋...
                 </div>
             </div>
