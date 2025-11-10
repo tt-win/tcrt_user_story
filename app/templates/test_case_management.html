@@ -3671,7 +3671,8 @@ async function loadTestCases(showLoadingBlock = true, updateProgress = null, for
         const teamIdForLoad = String(currentTeam.id);
 
         // 非強制刷新時先檢查快取
-        if (!forceRefresh) {
+        // 注意：如果指定了 currentSetId，則不使用快取（因為快取是按 team 保存的，不區分 set）
+        if (!forceRefresh && !currentSetId) {
             const cachedTestCases = getTestCasesCache(teamIdForLoad);
             if (cachedTestCases) {
                 if (updateProgress) updateProgress(90, '使用快取資料...');
@@ -3699,7 +3700,11 @@ async function loadTestCases(showLoadingBlock = true, updateProgress = null, for
             }
             console.debug('[CACHE] BYPASS: no cache hit for list', { teamId: teamIdForLoad });
         } else {
-            console.debug('[CACHE] BYPASS: forceRefresh=true, skip cache', { teamId: teamIdForLoad });
+            if (forceRefresh) {
+                console.debug('[CACHE] BYPASS: forceRefresh=true, skip cache', { teamId: teamIdForLoad });
+            } else {
+                console.debug('[CACHE] BYPASS: currentSetId=' + currentSetId + ', skip cache', { teamId: teamIdForLoad });
+            }
         }
 
         if (showLoadingBlock) {
