@@ -1495,13 +1495,7 @@ async def move_node(
     """
     try:
         # 驗證權限
-        if not await permission_service.has_usm_access(
-            current_user.id, team_id, PermissionType.USM_WRITE
-        ):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="沒有權限修改此 User Story Map",
-            )
+        await _require_usm_permission(current_user, "update", team_id)
 
         # 取得 USM 資料庫
         usm_db = await get_usm_db(team_id)
