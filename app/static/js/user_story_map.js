@@ -657,6 +657,10 @@ const CustomNode = ({ data, id }) => {
     const shouldHighlightOnHover = isSelectableInMoveMode && isHovered;
     const nodeOpacity = data.dimmed && !shouldHighlightOnHover ? 0.3 : 1;
 
+    // 在搬移模式下，不可選擇的節點禁止點擊
+    const isInMoveMode = window.moveMode && window.moveSourceNodeId;
+    const pointerEvents = isInMoveMode && !isSelectableInMoveMode ? 'none' : 'auto';
+
     return React.createElement(
         'div',
         {
@@ -670,6 +674,7 @@ const CustomNode = ({ data, id }) => {
                 borderWidth: shouldHighlightOnHover ? '2px' : '1px',
                 borderStyle: 'solid',
                 borderColor: shouldHighlightOnHover ? '#ffc107' : 'transparent',
+                pointerEvents: pointerEvents,
             },
             onMouseEnter: () => setIsHovered(true),
             onMouseLeave: () => setIsHovered(false),
@@ -1308,23 +1313,7 @@ const UserStoryMapFlow = () => {
     const onNodeClick = useCallback((event, node) => {
         // 在搬移模式中，處理目標節點選擇
         if (moveMode && moveSourceNodeId) {
-            // 不能選擇 User Story 節點作為目標
-            if (node.data.nodeType === 'user_story') {
-                showMessage('無法將節點搬移至 User Story 節點', 'error');
-                return;
-            }
-            // 不能選擇自己或其子節點作為目標
-            if (node.id === moveSourceNodeId) {
-                showMessage('無法將節點搬移至自己', 'error');
-                return;
-            }
-            // 檢查是否是源節點的子節點
-            const isChild = node.data.parentId == moveSourceNodeId;
-            if (isChild) {
-                showMessage('無法將節點搬移至其子節點', 'error');
-                return;
-            }
-
+            // 此時所有驗證已在 CustomNode 中完成，只有可選擇的節點能被點擊
             // 確認搬移
             const sourceNode = nodes.find(n => n.id === moveSourceNodeId);
             const targetNode = node;
