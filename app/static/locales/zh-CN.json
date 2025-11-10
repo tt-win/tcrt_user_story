@@ -818,6 +818,9 @@
       "copyPaste": "Ctrl+C 复制，Ctrl+V 粘贴"
     }
   },
+  "section": {
+    "unassigned": "Unassigned"
+  },
   "testRun": {
     "addBugTicket": "新增 Bug Ticket",
     "addBugTicketFailed": "新增 Bug Ticket 失败",

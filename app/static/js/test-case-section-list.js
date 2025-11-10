@@ -339,7 +339,7 @@ class TestCaseSectionList {
 
           <i class="fas fa-folder text-muted" style="flex-shrink: 0;"></i>
           
-          <span class="section-name ${isUnassigned ? "fw-bold text-muted" : ""}" style="flex: 1; word-break: break-word;">${this.escapeHtml(section.name)}${isUnassigned ? " (系統)" : ""}</span>
+          <span class="section-name ${isUnassigned ? "fw-bold text-muted" : ""}" style="flex: 1; word-break: break-word;">${this.escapeHtml(section.name)}</span>
           
           <span class="badge bg-secondary" style="flex-shrink: 0; margin-left: auto;">${section.test_case_count || 0}</span>
         </div>
