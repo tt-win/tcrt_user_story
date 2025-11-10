@@ -136,18 +136,8 @@ class TestCaseRepoService:
 
         # 過濾特定 Test Case Set 的 test case
         if test_case_set_id:
-            from app.models.database_models import TestCaseSection
-            # 先查詢該 set 下所有的 section id
-            section_ids = self.db.query(TestCaseSection.id).filter(
-                TestCaseSection.test_case_set_id == test_case_set_id
-            ).all()
-            section_id_list = [s[0] for s in section_ids]
-            # 過濾 test case，只顯示這些 section 下的或沒有分配 section 的（Unassigned）
-            if section_id_list:
-                q = q.filter(TestCaseLocal.test_case_section_id.in_(section_id_list))
-            else:
-                # 如果該 set 沒有 section，則不顯示任何 test case
-                q = q.filter(False)
+            # 直接過濾 test_case_set_id 欄位
+            q = q.filter(TestCaseLocal.test_case_set_id == test_case_set_id)
 
         # 搜尋
         if search and search.strip():
@@ -224,18 +214,8 @@ class TestCaseRepoService:
 
         # 過濾特定 Test Case Set 的 test case
         if test_case_set_id:
-            from app.models.database_models import TestCaseSection
-            # 先查詢該 set 下所有的 section id
-            section_ids = self.db.query(TestCaseSection.id).filter(
-                TestCaseSection.test_case_set_id == test_case_set_id
-            ).all()
-            section_id_list = [s[0] for s in section_ids]
-            # 過濾 test case，只顯示這些 section 下的
-            if section_id_list:
-                q = q.filter(TestCaseLocal.test_case_section_id.in_(section_id_list))
-            else:
-                # 如果該 set 沒有 section，則不顯示任何 test case
-                q = q.filter(False)
+            # 直接過濾 test_case_set_id 欄位
+            q = q.filter(TestCaseLocal.test_case_set_id == test_case_set_id)
 
         if search and search.strip():
             s = f"%{search.strip()}%"
