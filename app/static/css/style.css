@@ -1,3 +1,20 @@
+/* 全局字型設定 */
+:root {
+    --font-sans: 'Noto Sans', 'Noto Sans CJK TC', sans-serif;
+    --font-condensed: 'Noto Sans Condensed', 'Noto Sans CJK TC', sans-serif;
+}
+
+body {
+    font-family: var(--font-sans) !important;
+}
+
+/* Test Case Number 使用 Noto Sans Condensed */
+.test-case-number,
+[class*="case-number"],
+[class*="test-number"] {
+    font-family: var(--font-condensed) !important;
+}
+
 /* 緊湊設計系統 */
 
 /* 僅在所屬分頁為 active 時顯示標記了 data-role="tab-only" 的區塊 */

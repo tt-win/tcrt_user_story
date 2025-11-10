@@ -2169,7 +2169,7 @@ function renderTestCaseRow(testCase) {
             </td>
             <td class="align-middle position-relative hover-editable" data-field="test_case_number" data-record-id="${testCase.record_id}">
                 <div style="padding-right: 45px;">
-                    <code class="small">${testCase.test_case_number || testCase.record_id}</code>
+                    <code style="color: rgb(194, 54, 120); font-weight: 500;">${testCase.test_case_number || testCase.record_id}</code>
                 </div>
                 <button type="button" class="btn btn-sm btn-edit position-absolute hover-edit-btn"
                         style="top: 50%; right: 5px; transform: translateY(-50%); z-index: 10;"
