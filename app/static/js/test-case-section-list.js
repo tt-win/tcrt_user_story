@@ -46,11 +46,17 @@ class TestCaseSectionList {
     window.addEventListener("testCaseSetLoaded", (e) => {
       console.log("[SectionList] Received testCaseSetLoaded event:", {
         setId: e.detail.setId,
+        teamId: e.detail.teamId,
         sectionCount: e.detail.sections ? e.detail.sections.length : 0,
         sections: e.detail.sections,
       });
 
       this.setId = e.detail.setId;
+      // 從事件中獲取 teamId，優先於其他來源
+      if (e.detail.teamId) {
+        this.teamId = e.detail.teamId;
+        console.log("[SectionList] Set teamId from event:", this.teamId);
+      }
       this.sections = e.detail.sections || [];
 
       // 在 render 之前，先嘗試獲取 Set 名稱
@@ -59,16 +65,24 @@ class TestCaseSectionList {
 
     // 監聽 Set 頭部更新事件，用於獲取 Set 名稱
     window.addEventListener("setHeaderUpdated", (e) => {
-      if (typeof testCaseSetIntegration !== 'undefined') {
-        const currentSet = testCaseSetIntegration.testCaseSets.find(s => s.id == testCaseSetIntegration.currentSetId);
-        if (currentSet) {
-          this.setName = currentSet.name;
-          this.setId = currentSet.id;
-          // 保存到 sessionStorage
-          sessionStorage.setItem('selectedTestCaseSetName', currentSet.name);
-          // 重新渲染標題部分
-          this.updatePanelHeader();
+      console.log("[SectionList] Received setHeaderUpdated event:", {
+        setId: e.detail.currentSetId,
+        teamId: e.detail.teamId,
+        currentSet: e.detail.currentSet,
+      });
+
+      if (e.detail.currentSet) {
+        this.setName = e.detail.currentSet.name;
+        this.setId = e.detail.currentSetId;
+        // 從事件中獲取 teamId，優先於其他來源
+        if (e.detail.teamId) {
+          this.teamId = e.detail.teamId;
+          console.log("[SectionList] Set teamId from setHeaderUpdated event:", this.teamId);
         }
+        // 保存到 sessionStorage
+        sessionStorage.setItem('selectedTestCaseSetName', e.detail.currentSet.name);
+        // 重新渲染標題部分
+        this.updatePanelHeader();
       }
     });
 

@@ -2991,6 +2991,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                 const event = new CustomEvent('testCaseSetLoaded', {
                     detail: {
                         setId: setData.id,
+                        teamId: activeTeam.id,
                         sections: setData.sections || []
                     }
                 });
