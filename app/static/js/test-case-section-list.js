@@ -653,7 +653,19 @@ class TestCaseSectionList {
       const sectionBody = document.getElementById(`section-body-${sectionId}`);
       console.log('[SectionList] Looking for element with id:', `section-body-${sectionId}`);
       if (sectionBody) {
-        console.log('[SectionList] Found section body, scrolling into view');
+        const displayStyle = window.getComputedStyle(sectionBody).display;
+        const inlineStyle = sectionBody.getAttribute('style');
+        console.log('[SectionList] Found section body:');
+        console.log('  - Inline style attr:', inlineStyle);
+        console.log('  - Computed display:', displayStyle);
+        console.log('  - sectionCollapsedState has sectionId?:', sectionCollapsedState.has(sectionId));
+
+        if (displayStyle === 'none') {
+          console.warn('[SectionList] Section body is still hidden! Checking collapse state...');
+          console.log('[SectionList] All collapsed section IDs:', Array.from(sectionCollapsedState));
+        }
+
+        console.log('[SectionList] Scrolling into view');
         sectionBody.scrollIntoView({ behavior: 'smooth', block: 'start' });
       } else {
         console.warn('[SectionList] Section body element not found:', `section-body-${sectionId}`);
