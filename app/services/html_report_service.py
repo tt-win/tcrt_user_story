@@ -63,7 +63,10 @@ class HTMLReportService:
             raise ValueError(f"找不到 Test Run 配置 (team_id={team_id}, config_id={config_id})")
 
         # Items
-        items = self.db_session.query(TestRunItemDB).options(joinedload(TestRunItemDB.test_case)).filter(
+        items = self.db_session.query(TestRunItemDB).options(
+            joinedload(TestRunItemDB.test_case),
+            joinedload(TestRunItemDB.histories)
+        ).filter(
             TestRunItemDB.team_id == team_id,
             TestRunItemDB.config_id == config_id,
         ).all()
@@ -111,7 +114,29 @@ class HTMLReportService:
                 if comment_histories:
                     latest_comment = max(comment_histories, key=lambda h: getattr(h, 'changed_at', datetime.min))
                     comment = getattr(latest_comment, 'change_reason', None)
-            
+
+            # 解析測試結果檔案（執行結果附加檔案）
+            # 使用 execution_results_json 而不是 attachments_json
+            # 因為測試結果檔案儲存在 execution_results_json 中
+            attachments: List[Dict[str, Any]] = []
+            execution_results_json_str = getattr(i, 'execution_results_json', None)
+            if execution_results_json_str:
+                try:
+                    execution_results_data = json.loads(execution_results_json_str)
+                    if isinstance(execution_results_data, list):
+                        for result in execution_results_data:
+                            if isinstance(result, dict):
+                                attachments.append({
+                                    'name': result.get('name') or result.get('stored_name') or 'file',
+                                    'file_token': result.get('file_token') or result.get('stored_name') or '',
+                                    'url': f"/attachments/{result.get('relative_path')}" if result.get('relative_path') else '',
+                                    'size': result.get('size') or 0,
+                                })
+                except Exception as e:
+                    import sys
+                    print(f"Error parsing execution_results_json: {str(e)}", file=sys.stderr)
+                    print(f"execution_results_json_str: {execution_results_json_str}", file=sys.stderr)
+
             test_results.append({
                 "test_case_number": i.test_case_number or "",
                 "title": case_title or "",
@@ -119,7 +144,8 @@ class HTMLReportService:
                 "status": i.test_result.value if getattr(i.test_result, 'value', None) else (i.test_result or "未執行"),
                 "executor": i.assignee_name or "",
                 "execution_time": i.executed_at.strftime('%Y-%m-%d %H:%M') if i.executed_at else "",
-                "comment": comment or ""
+                "comment": comment or "",
+                "attachments": attachments
             })
 
         # Bug tickets summary（不請 JIRA，直接顯示票號與關聯測試案例）
@@ -357,11 +383,27 @@ class HTMLReportService:
             """
 
         rows = []
-        rows.append("<tr><th style=\"width:160px;\">Test Case Number</th><th>Title</th><th style=\"width:100px;\">Priority</th><th style=\"width:140px;\">Result</th><th style=\"width:160px;\">Executor</th><th style=\"width:160px;\">Executed At</th><th style=\"width:200px;\">Comment</th></tr>")
+        rows.append("<tr><th style=\"width:160px;\">Test Case Number</th><th>Title</th><th style=\"width:100px;\">Priority</th><th style=\"width:140px;\">Result</th><th style=\"width:160px;\">Executor</th><th style=\"width:160px;\">Executed At</th><th style=\"width:200px;\">Comment</th><th style=\"width:200px;\">Attachments</th></tr>")
         for r in data.get("test_results", []):
             status_text = r.get('status') or ''
             status_class = self._status_class(status_text)
             comment = r.get('comment') or ''
+
+            # 渲染附加檔案
+            attachments = r.get('attachments') or []
+            if attachments:
+                attachments_html = '<div style="font-size: 12px;">'
+                for att in attachments:
+                    att_name = esc(att.get('name', 'file'))
+                    att_url = att.get('url', '')
+                    if att_url:
+                        attachments_html += f'<div><a href="{esc(att_url)}" style="color: #0d6efd; text-decoration: underline;">{att_name}</a></div>'
+                    else:
+                        attachments_html += f'<div>{att_name}</div>'
+                attachments_html += '</div>'
+            else:
+                attachments_html = '-'
+
             rows.append(
                 "<tr>"
                 f"<td>{esc(r.get('test_case_number'))}</td>"
@@ -371,6 +413,7 @@ class HTMLReportService:
                 f"<td>{esc(r.get('executor'))}</td>"
                 f"<td>{esc(r.get('execution_time'))}</td>"
                 f"<td style=\"white-space: pre-wrap;\">{esc(comment)}</td>"
+                f"<td>{attachments_html}</td>"
                 "</tr>"
             )
         details_html = f"""
