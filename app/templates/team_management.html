@@ -656,11 +656,11 @@ function renderTeamCards() {
                             </div>
                         </div>
                         <div class="d-flex gap-2">
-                            <div class="dropdown flex-grow-1">
+                            <div class="dropdown" style="flex: 1;">
                                 <button class="btn btn-primary btn-sm w-100 dropdown-toggle" type="button" id="enterTeamDropdown${team.id}" data-bs-toggle="dropdown" aria-expanded="false">
                                     <i class="fas fa-arrow-right me-1"></i><span>${(window.i18n && window.i18n.isReady()) ? window.i18n.t('team.enterTeam') : '進入團隊'}</span>
                                 </button>
-                                <ul class="dropdown-menu w-100 dropdown-menu-equal-width" aria-labelledby="enterTeamDropdown${team.id}">
+                                <ul class="dropdown-menu" aria-labelledby="enterTeamDropdown${team.id}">
                                     <li>
                                         <button class="dropdown-item" type="button" onclick="enterTeamWithPage(${team.id}, 'test-cases')">
                                             <i class="fas fa-list-check me-2"></i>Test Cases
@@ -678,10 +678,10 @@ function renderTeamCards() {
                                     </li>
                                 </ul>
                             </div>
-                            <button class="btn btn-secondary btn-sm flex-grow-1" onclick="editTeam(${team.id})">
+                            <button class="btn btn-secondary btn-sm" style="flex: 1;" onclick="editTeam(${team.id})">
                                 <i class="fas fa-edit me-1"></i><span>${(window.i18n && window.i18n.isReady()) ? window.i18n.t('common.edit') : '編輯'}</span>
                             </button>
-                            <button class="btn btn-danger btn-sm flex-grow-1" onclick="openDeleteTeamModal(${team.id})">
+                            <button class="btn btn-danger btn-sm" style="flex: 1;" onclick="openDeleteTeamModal(${team.id})">
                                 <i class="fas fa-trash me-1"></i><span>${(window.i18n && window.i18n.isReady()) ? window.i18n.t('common.delete') : '刪除'}</span>
                             </button>
                         </div>
@@ -1893,39 +1893,6 @@ function getI18n(key, fallback = '') {
 
 .btn-group .btn {
     flex: 1;
-}
-
-.dropdown-menu-equal-width {
-    display: flex !important;
-    flex-direction: row;
-    min-width: auto !important;
-    width: 100% !important;
-    padding: 0 !important;
-}
-
-.dropdown-menu-equal-width li {
-    flex: 1;
-    padding: 0;
-}
-
-.dropdown-menu-equal-width .dropdown-item {
-    border-radius: 0;
-    padding: 0.5rem 0.5rem;
-    text-align: center;
-    white-space: normal;
-    flex: 1;
-}
-
-.dropdown-menu-equal-width li:first-child .dropdown-item {
-    border-radius: 0.375rem 0 0 0.375rem;
-}
-
-.dropdown-menu-equal-width li:last-child .dropdown-item {
-    border-radius: 0 0.375rem 0.375rem 0;
-}
-
-.dropdown-menu-equal-width li:not(:last-child) {
-    border-right: 1px solid #dee2e6;
 }
 
 .form-text {
