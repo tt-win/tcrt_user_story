@@ -7423,6 +7423,10 @@ async function generateHtmlReport() {
     }
 
     const url = data.report_url;
+    // 在新 tab 打開報告（主要操作）
+    window.open(url, '_blank', 'noopener,noreferrer');
+
+    // 同時顯示複製 modal，以便用戶也可以複製連結
     if (window.AppUtils && typeof AppUtils.showCopyModal === 'function') {
       AppUtils.showCopyModal(url);
     } else {
