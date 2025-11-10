@@ -318,7 +318,7 @@ function quickSearchRender_TR(query, container) {
     container.innerHTML = matches.map((it, idx) => `
       <button type="button" class="list-group-item list-group-item-action ${idx===0?'active':''}" data-num="${it.test_case_number}">
         <div class="d-flex justify-content-between align-items-center">
-          <code class="small me-2">${escapeHtml(it.test_case_number || '')}</code>
+          <code class="me-2" style="color: rgb(194, 54, 120); font-weight: 500;">${escapeHtml(it.test_case_number || '')}</code>
           <span class="text-truncate">${escapeHtml(it.title || '')}</span>
         </div>
       </button>`).join('');
@@ -3361,7 +3361,7 @@ function createItemRow(item, index, canUpdate) {
                     <input type="checkbox" class="form-check-input test-run-item-checkbox" value="${item.id}">
                 </td>
             ` : ''}
-            <td><code><a href="#" class="text-decoration-none" onclick="navigateToTestCase('${item.test_case_number}'); return false;">${escapeHtml(item.test_case_number)}</a></code></td>
+            <td><code style="color: rgb(194, 54, 120); font-weight: 500;"><a href="#" class="text-decoration-none" style="color: rgb(194, 54, 120);" onclick="navigateToTestCase('${item.test_case_number}'); return false;">${escapeHtml(item.test_case_number)}</a></code></td>
             <td class="text-truncate" title="${safeTitle || (isDeleted ? '測試案例已刪除' : '')}">${titleCellContent}</td>
             <td><span class="${priorityBadgeClass}">${escapeHtml(priorityLabel)}</span></td>
             <td>
@@ -3594,7 +3594,7 @@ function showItemDetail(itemId) {
             <div class="col-md-6">
                 <h6>${basicInfoLabel}</h6>
                 <table class="table table-sm">
-                    <tr><td>${testCaseNumberLabel}</td><td><code>${escapeHtml(item.test_case_number)}</code></td></tr>
+                    <tr><td>${testCaseNumberLabel}</td><td><code style="color: rgb(194, 54, 120); font-weight: 500;">${escapeHtml(item.test_case_number)}</code></td></tr>
                     <tr><td>${titleLabel}</td><td><span class="${isDeleted ? 'text-muted' : ''}">${titleValue || '-'}</span>${deletedNote}</td></tr>
                     <tr><td>${priorityLabel}</td><td>${escapeHtml(priorityValue)}</td></tr>
                     <tr><td>${testResultLabel}</td><td><span class="badge ${getResultClass(item.test_result)}">${getResultText(item.test_result)}</span></td></tr>

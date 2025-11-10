@@ -3895,7 +3895,7 @@ function displayTestCasesReview(testCases) {
                        value="${tc.record_id}" data-tc-id="${tc.record_id}">
             </td>
             <td>
-                <code class="small">${escapeHtml(tc.test_case_number)}</code>
+                <code style="color: rgb(194, 54, 120); font-weight: 500;">${escapeHtml(tc.test_case_number)}</code>
             </td>
             <td>
                 <strong>${escapeHtml(tc.title)}</strong>
@@ -3973,69 +3973,29 @@ document.addEventListener('click', (e) => {
             return;
         }
 
-        document.getElementById('selectedTestCasesCount').textContent = window.selectedTestCases.length;
-        document.getElementById('testRunName').value = '';
-        
-        const reviewModal = bootstrap.Modal.getInstance(document.getElementById('reviewTestCasesModal'));
-        console.log('reviewModal:', reviewModal);
-        reviewModal?.hide();
-
-        const createModal = new bootstrap.Modal(document.getElementById('createTestRunModal'));
-        console.log('showing createTestRunModal');
-        createModal.show();
-    }
-});
-
-// Confirm create test run - use event delegation
-document.addEventListener('click', (e) => {
-    if (e.target.id === 'confirmCreateTestRunBtn') {
-        e.preventDefault();
         (async () => {
-            console.log('confirmCreateTestRunBtn clicked');
-            const testRunName = document.getElementById('testRunName')?.value?.trim();
-            console.log('testRunName:', testRunName);
-            
-            if (!testRunName) {
-                showMessage('請輸入 Test Run 名稱', 'warning');
-                return;
-            }
-
             const teamId = window.teamId;
             const recordIds = window.selectedTestCases.map(tc => tc.record_id);
             console.log('teamId:', teamId, 'recordIds:', recordIds);
 
             try {
-                const response = await fetch(`/api/teams/${teamId}/test-run-sets/from-test-cases`, {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify({
-                        name: testRunName,
-                        test_case_records: recordIds,
-                        description: '',
-                    }),
-                });
-
-                console.log('response status:', response.status);
-                if (response.ok) {
-                    const result = await response.json();
-                    console.log('result:', result);
-                    showMessage('Test Run 已建立', 'success');
-                    
-                    const modal = bootstrap.Modal.getInstance(document.getElementById('createTestRunModal'));
-                    modal?.hide();
-                    
-                    window.selectedTestCases = [];
-                } else {
-                    const errorText = await response.text();
-                    console.error('error response:', errorText);
-                    showMessage('建立 Test Run 失敗: ' + response.status, 'error');
-                }
+                // 保存預選信息到 sessionStorage
+                const preselectedCaseIds = recordIds.join(',');
+                sessionStorage.setItem('testRunSelectedCaseIds', preselectedCaseIds);
+                sessionStorage.setItem('testRunSetId', '0'); // 0 表示從 USM 來
+                
+                console.log('[USM] Saved preselected cases to sessionStorage:', preselectedCaseIds);
+                showMessage('準備建立 Test Run...', 'success');
+                
+                // 關閉 reviewTestCasesModal
+                const reviewModal = bootstrap.Modal.getInstance(document.getElementById('reviewTestCasesModal'));
+                reviewModal?.hide();
+                
+                // 跳轉到 Test Run 管理頁面，由頁面負責打開建立表單
+                window.location.href = `/test-run-management?team_id=${teamId}`;
             } catch (error) {
-                console.error('Failed to create test run:', error);
-                showMessage('建立 Test Run 失敗: ' + error.message, 'error');
+                console.error('Failed to prepare test run:', error);
+                showMessage('準備失敗: ' + error.message, 'error');
             }
         })();
     }

@@ -1528,6 +1528,19 @@ let dataLoadedOnce = false;   // 成功載入過資料後為 true
 let eventsBound = false;      // 避免重複綁定 i18n/page 事件
 
 document.addEventListener('DOMContentLoaded', async function() {
+    // 頁面加載時檢查並顯示調試信息
+    const debugInfo = localStorage.getItem('testRunDebug');
+    if (debugInfo) {
+        console.log('[TestRunDebug] Full debug data:', JSON.parse(debugInfo));
+        // 在 window 上暴露調試函數
+        window.getTestRunDebug = () => {
+            const data = localStorage.getItem('testRunDebug');
+            console.table(JSON.parse(data || '{}'));
+            return JSON.parse(data || '{}');
+        };
+        console.log('[TestRunDebug] Use window.getTestRunDebug() to view full debug info');
+    }
+    
     await applyTestRunManagementPermissions();
     if (window.AuthClient && typeof window.AuthClient.on === 'function') {
         window.AuthClient.on('authReady', async () => {
@@ -1720,6 +1733,21 @@ async function loadTestRunConfigs() {
         showNoConfigs();
     } finally {
         hideLoading();
+        
+        // 檢查是否有從 Test Case Set 預選的 Test Cases
+        const preselectedCaseIds = sessionStorage.getItem('testRunSelectedCaseIds');
+        const setId = sessionStorage.getItem('testRunSetId');
+        if (preselectedCaseIds && setId) {
+          console.log('[TestRunCreate] Preparing to create Test Run with preselected cases');
+          // 保存預選信息到 window，稍後在建立配置後使用
+          window._preselectedCaseIdsFromSet = preselectedCaseIds;
+          window._testCaseSetIdSource = parseInt(setId);
+          // 打開 Test Run Set 建立表單（正規流程的第一步）
+          openConfigFormModal();
+          // 清除 sessionStorage，避免重複使用
+          sessionStorage.removeItem('testRunSelectedCaseIds');
+          sessionStorage.removeItem('testRunSetId');
+        }
     }
 }
 
@@ -2588,6 +2616,19 @@ async function handleSaveConfig() {
             modalMode = 'create';
             selectedCaseMap.clear();
             existingItemIdByCaseNumber.clear();
+            
+            // 檢查是否有從 Test Case Set 預選的 Test Cases
+            if (window._preselectedCaseIdsFromSet) {
+              console.log('[TestRunCreate] Setting up preselected cases from Test Case Set');
+              window._preselectedCaseIds = new Set(window._preselectedCaseIdsFromSet.split(',').map(id => id.trim()));
+              isPreselectedFromTestCaseSet = true;
+              // 清除臨時變數
+              window._preselectedCaseIdsFromSet = null;
+              window._testCaseSetIdSource = null;
+            } else {
+              isPreselectedFromTestCaseSet = false;
+            }
+            
             openCaseSelectModal(data.id);
         }
 
@@ -3364,6 +3405,7 @@ let createdItemsInSession = false; // set true when items are created
 let modalMode = 'create'; // 'create' | 'edit'
 let existingItemIdByCaseNumber = new Map(); // for edit mode: case_number -> item_id
 let currentCaseFilter = 'all'; // 'all' | 'selected' | 'unselected'
+let isPreselectedFromTestCaseSet = false; // 標記是否從 Test Case Set 預選的流程
 
 // Removed confirmation step; open modal directly and rely on hidden handler for rollback
 function openCaseSelectModalWithConfirm(configId) {
@@ -3391,16 +3433,17 @@ function openCaseSelectModal(configId) {
   if (modalMode === 'create') {
     selectedCaseMap.clear();
     existingItemIdByCaseNumber.clear();
-
+    
     // 檢查是否有從 Test Case Set 卡片預選的 Test Cases
-    const preselectedCaseIds = sessionStorage.getItem('testRunSelectedCaseIds');
+    const preselectedCaseIds = window._preselectedCaseIds;
     if (preselectedCaseIds) {
-      // 將逗號分隔的 ID 字符串轉換為集合，供後續使用
-      window._preselectedCaseIds = new Set(preselectedCaseIds.split(',').map(id => parseInt(id)));
-      console.log('Preselected case IDs:', window._preselectedCaseIds);
+      console.log('[TestRunCreate] Using preselected case IDs:', preselectedCaseIds);
     } else {
       window._preselectedCaseIds = null;
     }
+  } else {
+    // 編輯模式
+    isPreselectedFromTestCaseSet = false;
   }
   document.getElementById('selectedCount').textContent = '0';
   document.getElementById('caseListBody').innerHTML = '';
@@ -3545,6 +3588,16 @@ async function editTestCases(configId) {
 
 async function loadTeamTestCases(search) {
   try {
+    // 檢查並記錄 localStorage 中的調試信息
+    const setTestCaseDebug = localStorage.getItem('setTestCaseDebug');
+    if (setTestCaseDebug) {
+      console.log('[TestRunCreate] Debug info from localStorage:', JSON.parse(setTestCaseDebug));
+      localStorage.setItem('testRunDebug', JSON.stringify({
+        ...JSON.parse(setTestCaseDebug),
+        loadCasesStarted: new Date().toISOString()
+      }));
+    }
+    
     console.log('Loading test cases for team ID:', currentTeamId);
     const url = new URL(`/api/teams/${currentTeamId}/testcases/`, window.location.origin);
     if (search) url.searchParams.set('search', search);
@@ -3562,6 +3615,16 @@ async function loadTeamTestCases(search) {
     
     availableCases = await resp.json();
     console.log('Loaded test cases:', availableCases.length);
+    console.log('First case sample:', availableCases[0]);
+    
+    // 記錄 availableCases 的第一個 case 結構用於調試
+    if (availableCases.length > 0) {
+      const debugData = JSON.parse(localStorage.getItem('testRunDebug') || '{}');
+      debugData.firstCaseSample = availableCases[0];
+      debugData.casesLoadedCount = availableCases.length;
+      localStorage.setItem('testRunDebug', JSON.stringify(debugData));
+    }
+    
     // 若為編輯模式：用完整資料覆蓋已選取的項目（確保存檔可帶出完整欄位）
     if (modalMode === 'edit') {
       for (const c of availableCases) {
@@ -3571,15 +3634,36 @@ async function loadTeamTestCases(search) {
       }
     } else if (window._preselectedCaseIds && window._preselectedCaseIds.size > 0) {
       // 如果有從 Test Case Set 卡片預選的 Test Cases，自動選中它們
+      const debugData = JSON.parse(localStorage.getItem('testRunDebug') || '{}');
+      debugData.preselectedCasesProcessing = {
+        startTime: new Date().toISOString(),
+        preselectedCount: window._preselectedCaseIds.size,
+        preselectedIds: Array.from(window._preselectedCaseIds),
+        availableCasesCount: availableCases.length
+      };
+      
+      console.log('[TestRunCreate] Applying preselected cases:', window._preselectedCaseIds);
+      let matchCount = 0;
       for (const c of availableCases) {
-        if (window._preselectedCaseIds.has(c.id)) {
+        const caseId = c.record_id || c.id;
+        if (window._preselectedCaseIds.has(caseId)) {
+          console.log('[TestRunCreate] Selecting case:', c.test_case_number, 'id:', caseId);
           selectedCaseMap.set(c.test_case_number, c);
+          matchCount++;
         }
       }
+      console.log('[TestRunCreate] After applying preselected, selectedCaseMap size:', selectedCaseMap.size, 'matched:', matchCount);
+      
+      debugData.preselectedCasesProcessing.matchedCount = matchCount;
+      debugData.preselectedCasesProcessing.selectedMapSize = selectedCaseMap.size;
+      debugData.preselectedCasesProcessing.endTime = new Date().toISOString();
+      localStorage.setItem('testRunDebug', JSON.stringify(debugData));
+      
       // 清除 sessionStorage 中的預選 ID
       sessionStorage.removeItem('testRunSelectedCaseIds');
       sessionStorage.removeItem('testRunSetId');
       window._preselectedCaseIds = null;
+      isPreselectedFromTestCaseSet = false;
     }
     renderCaseList();
   } catch (e) {
@@ -3589,6 +3673,15 @@ async function loadTeamTestCases(search) {
 }
 
 function renderCaseList() {
+  // 紀錄渲染前的狀態
+  const debugData = JSON.parse(localStorage.getItem('testRunDebug') || '{}');
+  debugData.renderCaseListStart = {
+    time: new Date().toISOString(),
+    selectedMapSize: selectedCaseMap.size,
+    selectedMapSample: Array.from(selectedCaseMap.keys()).slice(0, 5)
+  };
+  localStorage.setItem('testRunDebug', JSON.stringify(debugData));
+  
   const tbody = document.getElementById('caseListBody');
 
   // 根據 filter 篩選 test cases
@@ -3608,7 +3701,7 @@ function renderCaseList() {
     return `
       <tr>
         <td><input type="checkbox" class="case-check" data-num="${num}" ${checked}></td>
-        <td><code>${num}</code></td>
+        <td><code style="color: rgb(194, 54, 120); font-weight: 500;">${num}</code></td>
         <td>${ttl}</td>
         <td>${pri}</td>
         <td>${attCount}</td>
@@ -3775,12 +3868,15 @@ async function createItemsFromSelection() {
     showPermissionDenied();
     return;
   }
-  if (!currentSelectingConfigId) return;
+  
   if (selectedCaseMap.size === 0) {
     const warn = window.i18n ? window.i18n.t('errors.pleaseSelectTestCases') : '請先選擇至少一筆 Test Case';
     AppUtils.showWarning ? AppUtils.showWarning(warn) : alert(warn);
     return;
   }
+  
+  if (!currentSelectingConfigId) return;
+  
   const items = Array.from(selectedCaseMap.values()).map(c => ({
     test_case_number: c.test_case_number,
     title: c.title,

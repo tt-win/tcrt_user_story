@@ -126,7 +126,7 @@
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-        <button type="button" class="btn btn-primary" id="setCaseConfirmBtn" onclick="confirmSetCaseSelection()">
+        <button type="button" class="btn btn-primary" id="setCaseConfirmBtn">
           <i class="fas fa-arrow-right"></i> 建立 Test Run
         </button>
       </div>
@@ -691,13 +691,19 @@ function renderSetCaseList() {
       // 強制顯示標頭（包含 Unassigned 即使沒有內容）
       // if (!hasContent) return '';
 
-      // 只計算該 Section 直接包含的 test cases（不遞迴）
-      const directTestCases = getDirectTestCasesInSection(section);
+      // 取得該 Section 子樹所有 cases（搜尋過濾後）
+      const subtreeCases = [];
+      (function collect(sec){
+        const arr = casesBySectionId[sec.id] || [];
+        subtreeCases.push(...arr);
+        (sec.children || []).forEach(collect);
+      })(section);
 
-      // 檢查該 Section 直接包含的 cases 的選擇狀態
-      const allDirectSelected = directTestCases.length > 0 &&
-                                directTestCases.every(tc => setTestCaseData.selectedCases.has(tc.record_id));
-      const someDirectSelected = directTestCases.some(tc => setTestCaseData.selectedCases.has(tc.record_id));
+      // 檢查子樹 cases 的選擇狀態（含所有子層）
+      const allDirectSelected = subtreeCases.length > 0 &&
+                                subtreeCases.every(tc => setTestCaseData.selectedCases.has(tc.record_id));
+      const someDirectSelected = subtreeCases.length > 0 &&
+                                 subtreeCases.some(tc => setTestCaseData.selectedCases.has(tc.record_id));
       const indentLevel = level * 20;
       let sectionHtml = `
         <div class="section-group" style="margin-left: ${indentLevel}px;">
@@ -730,7 +736,7 @@ function renderSetCaseList() {
                        data-case-id="${testCase.record_id}"
                        ${setTestCaseData.selectedCases.has(testCase.record_id) ? 'checked' : ''}
                        onchange="handleCaseCheckboxChange('${testCase.record_id}', this.checked)">
-                <div class="small me-2" style="min-width: 100px; flex-shrink: 0; color: rgb(194, 54, 120);">${escapeHtml(testCase.test_case_number)}</div>
+                <code class="me-2" style="min-width: 100px; flex-shrink: 0; color: rgb(194, 54, 120); font-size: inherit; font-weight: 500;">${escapeHtml(testCase.test_case_number)}</code>
                 <div class="flex-grow-1 text-truncate">${escapeHtml(testCase.title)}</div>
                 ${testCase.priority ? `<span class="badge bg-secondary ms-2">${escapeHtml(testCase.priority)}</span>` : ''}
               </div>
@@ -787,11 +793,27 @@ function handleSectionCheckboxChange(sectionId, isChecked) {
   const section = findSection(setTestCaseData.sections, sectionId);
   if (!section) return;
 
-  // 只取得該 Section 直接包含的 test cases（不遞迴）
-  const directCases = getDirectTestCasesInSection(section);
+  // 獲取搜尋過濾後的 cases
+  const searchValue = document.getElementById('setCaseSearchInput').value.toLowerCase();
+  const filteredCases = setTestCaseData.testCases.filter(testCase => {
+    const matchesSearch = testCase.test_case_number.toLowerCase().includes(searchValue) ||
+                          testCase.title.toLowerCase().includes(searchValue);
+    return matchesSearch;
+  });
 
-  // 選中或取消選中該 Section 直接包含的 cases
-  directCases.forEach(testCase => {
+  // 收集該 Section 與其所有子 Section 的 id
+  function collectSectionIds(sec, acc = new Set()) {
+    acc.add(sec.id);
+    (sec.children || []).forEach(child => collectSectionIds(child, acc));
+    return acc;
+  }
+  const sectionIds = collectSectionIds(section);
+
+  // 取得該 Section 子樹下且通過搜尋的所有 test cases
+  const subtreeCases = filteredCases.filter(tc => sectionIds.has(tc.test_case_section_id));
+
+  // 選中或取消選中該 Section 子樹下的所有 cases
+  subtreeCases.forEach(testCase => {
     if (isChecked) {
       setTestCaseData.selectedCases.add(testCase.record_id);
     } else {
@@ -836,6 +858,13 @@ function toggleSectionExpand(sectionId) {
  */
 function setupSetCaseEventListeners() {
   document.getElementById('setCaseSearchInput').addEventListener('input', renderSetCaseList);
+  
+  // 綁定「建立 Test Run」按鈕
+  const confirmBtn = document.getElementById('setCaseConfirmBtn');
+  if (confirmBtn) {
+    confirmBtn.addEventListener('click', confirmSetCaseSelection);
+    console.log('[SetCaseSelect] Confirm button event listener bound');
+  }
 }
 
 /**
@@ -850,24 +879,60 @@ function updateSetCaseSelectionSummary() {
  * 確認選擇並建立 Test Run
  */
 async function confirmSetCaseSelection() {
+  console.log('[SetCaseSelect] confirmSetCaseSelection called');
+  
+  // 立即保存調試信息到 localStorage
+  const debugInfo = {
+    timestamp: new Date().toISOString(),
+    step: 'confirmSetCaseSelection_called',
+    selectedCasesCount: setTestCaseData.selectedCases.size,
+    selectedCaseIds: Array.from(setTestCaseData.selectedCases).join(','),
+    currentTestCaseSetId: currentTestCaseSetId,
+    currentTeamId: currentTeamId
+  };
+  
+  console.log('[SetCaseSelect] Debug info at start:', debugInfo);
+  localStorage.setItem('setTestCaseDebug', JSON.stringify(debugInfo));
+
   if (setTestCaseData.selectedCases.size === 0) {
     alert('請至少選擇一個測試案例');
+    console.warn('[SetCaseSelect] No cases selected');
     return;
   }
 
   try {
-    // 導航到 Test Run 管理頁面，並帶上參數
     const selectedCaseIds = Array.from(setTestCaseData.selectedCases).join(',');
+    console.log('[SetCaseSelect] selectedCaseIds:', selectedCaseIds);
+    
     sessionStorage.setItem('testRunSetId', currentTestCaseSetId);
     sessionStorage.setItem('testRunSelectedCaseIds', selectedCaseIds);
+    console.log('[SetCaseSelect] Session storage set. testRunSetId:', currentTestCaseSetId);
+    console.log('[SetCaseSelect] Session storage set. testRunSelectedCaseIds:', selectedCaseIds);
+
+    // 最後更新 localStorage，準備跳轉
+    debugInfo.step = 'ready_to_redirect';
+    debugInfo.sessionStorageSet = true;
+    localStorage.setItem('setTestCaseDebug', JSON.stringify(debugInfo));
 
     // 導航到 Test Run 建立頁面
-    window.location.href = `/test-run-management?team_id=${currentTeamId}&set_id=${currentTestCaseSetId}`;
+    const redirectUrl = `/test-run-management?team_id=${currentTeamId}&set_id=${currentTestCaseSetId}`;
+    console.log('[SetCaseSelect] Redirecting to:', redirectUrl);
+    
+    debugInfo.step = 'redirecting';
+    debugInfo.redirectUrl = redirectUrl;
+    localStorage.setItem('setTestCaseDebug', JSON.stringify(debugInfo));
+    
+    window.location.href = redirectUrl;
   } catch (error) {
-    console.error('Error confirming case selection:', error);
+    console.error('[SetCaseSelect] Error confirming case selection:', error);
+    debugInfo.step = 'error';
+    debugInfo.error = error.message;
+    localStorage.setItem('setTestCaseDebug', JSON.stringify(debugInfo));
     alert('建立失敗，請重試');
   }
 }
+
+
 </script>
 
 <!-- Test Case Set 和 Section 多語系翻譯 -->
