@@ -2517,28 +2517,54 @@ const UserStoryMapFlow = () => {
         });
 
         // 構建邊 - 包含層級邊和關聯邊
+        const edgeSet = new Set(); // 用來追蹤已添加的邊，避免重複
+
         highlightedIds.forEach((id) => {
             const node = nodesById.get(id);
             if (!node) return;
 
-            // 添加父子邊
+            // 添加父子邊（基於 childrenIds）
             if (node.data.childrenIds) {
                 node.data.childrenIds.forEach((childId) => {
                     if (highlightedIds.has(childId)) {
-                        graphEdges.push({
-                            id: `edge-${id}-${childId}`,
-                            source: id,
-                            target: childId,
-                            type: 'smoothstep',
-                            sourceHandle: 'right',
-                            targetHandle: 'left',
-                            animated: false,
-                            style: { stroke: '#999', strokeWidth: 1 },
-                            markerEnd: { type: (window.ReactFlow && window.ReactFlow.MarkerType && window.ReactFlow.MarkerType.ArrowClosed) ? window.ReactFlow.MarkerType.ArrowClosed : 'arrowclosed' }
-                        });
-                        layoutEdges.push({ source: id, target: childId });
+                        const edgeId = `edge-${id}-${childId}`;
+                        if (!edgeSet.has(edgeId)) {
+                            graphEdges.push({
+                                id: edgeId,
+                                source: id,
+                                target: childId,
+                                type: 'smoothstep',
+                                sourceHandle: 'right',
+                                targetHandle: 'left',
+                                animated: false,
+                                style: { stroke: '#999', strokeWidth: 1 },
+                                markerEnd: { type: (window.ReactFlow && window.ReactFlow.MarkerType && window.ReactFlow.MarkerType.ArrowClosed) ? window.ReactFlow.MarkerType.ArrowClosed : 'arrowclosed' }
+                            });
+                            layoutEdges.push({ source: id, target: childId });
+                            edgeSet.add(edgeId);
+                        }
                     }
                 });
+            }
+
+            // 添加父子邊（基於 parentId）- 確保所有父子關係都被連接
+            if (node.data.parentId && highlightedIds.has(node.data.parentId)) {
+                const edgeId = `edge-${node.data.parentId}-${id}`;
+                if (!edgeSet.has(edgeId)) {
+                    graphEdges.push({
+                        id: edgeId,
+                        source: node.data.parentId,
+                        target: id,
+                        type: 'smoothstep',
+                        sourceHandle: 'right',
+                        targetHandle: 'left',
+                        animated: false,
+                        style: { stroke: '#999', strokeWidth: 1 },
+                        markerEnd: { type: (window.ReactFlow && window.ReactFlow.MarkerType && window.ReactFlow.MarkerType.ArrowClosed) ? window.ReactFlow.MarkerType.ArrowClosed : 'arrowclosed' }
+                    });
+                    layoutEdges.push({ source: node.data.parentId, target: id });
+                    edgeSet.add(edgeId);
+                }
             }
 
             // 添加相關邊
@@ -2546,18 +2572,22 @@ const UserStoryMapFlow = () => {
                 const relatedId = typeof entry === 'string' ? entry : (entry.nodeId || entry.node_id || entry.id);
                 // 移除 highlightedIds.has(relatedId) 檢查，這樣外部節點也會被連接
                 if (relatedId && id !== relatedId) {
-                    graphEdges.push({
-                        id: `relation-${id}-${relatedId}`,
-                        source: id,
-                        target: relatedId,
-                        type: 'step',  // 使用階梯式線條讓轉折更明顯
-                        sourceHandle: 'right',
-                        targetHandle: 'right-target',  // 讓關聯邊預設接到右側
-                        pathOptions: RELATION_EDGE_PATH_OPTIONS,
-                        animated: true,
-                        style: { stroke: '#17a2b8', strokeWidth: 2, strokeDasharray: '5,5' },
-                        markerEnd: { type: (window.ReactFlow && window.ReactFlow.MarkerType && window.ReactFlow.MarkerType.ArrowClosed) ? window.ReactFlow.MarkerType.ArrowClosed : 'arrowclosed' }
-                    });
+                    const edgeId = `relation-${id}-${relatedId}`;
+                    if (!edgeSet.has(edgeId)) {
+                        graphEdges.push({
+                            id: edgeId,
+                            source: id,
+                            target: relatedId,
+                            type: 'step',  // 使用階梯式線條讓轉折更明顯
+                            sourceHandle: 'right',
+                            targetHandle: 'right-target',  // 讓關聯邊預設接到右側
+                            pathOptions: RELATION_EDGE_PATH_OPTIONS,
+                            animated: true,
+                            style: { stroke: '#17a2b8', strokeWidth: 2, strokeDasharray: '5,5' },
+                            markerEnd: { type: (window.ReactFlow && window.ReactFlow.MarkerType && window.ReactFlow.MarkerType.ArrowClosed) ? window.ReactFlow.MarkerType.ArrowClosed : 'arrowclosed' }
+                        });
+                        edgeSet.add(edgeId);
+                    }
                 }
             });
         });
