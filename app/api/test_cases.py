@@ -287,6 +287,7 @@ async def get_test_cases(
     priority_filter: Optional[str] = Query(None, description="優先級過濾"),
     test_result_filter: Optional[str] = Query(None, description="測試結果過濾"),
     assignee_filter: Optional[str] = Query(None, description="指派人過濾"),
+    set_id: Optional[int] = Query(None, description="Test Case Set ID 過濾"),
     # 排序參數
     sort_by: Optional[str] = Query("created_at", description="排序欄位"),
     sort_order: Optional[str] = Query("desc", description="排序順序 (asc/desc)"),
@@ -326,6 +327,7 @@ async def get_test_cases(
             priority_filter=priority_filter,
             test_result_filter=test_result_filter,
             assignee_filter=assignee_filter,
+            test_case_set_id=set_id,
         )
         # 一次載入全部（交由前端快取）
         if load_all:
@@ -341,6 +343,7 @@ async def get_test_cases(
             priority_filter=priority_filter,
             test_result_filter=test_result_filter,
             assignee_filter=assignee_filter,
+            test_case_set_id=set_id,
             sort_by=sort_by or "created_at",
             sort_order=sort_order or "desc",
             skip=skip,
