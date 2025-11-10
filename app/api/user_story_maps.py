@@ -1585,9 +1585,32 @@ async def move_node(
                     n["children_ids"].remove(node_id)
                 break
 
+        # 更新邊
+        edges = map_obj.edges or []
+
+        # 找到並更新或創建連接邊
+        parent_edge_found = False
+        for edge in edges:
+            # 如果存在舊的 parent 邊，更新它
+            if edge.get("target") == node_id and edge.get("edge_type") == "parent":
+                edge["source"] = new_parent_id
+                parent_edge_found = True
+                break
+
+        # 如果沒有找到，創建新的 parent 邊
+        if not parent_edge_found:
+            edges.append({
+                "id": f"{new_parent_id}-{node_id}",
+                "source": new_parent_id,
+                "target": node_id,
+                "edge_type": "parent"
+            })
+
         # 保存更改
         map_obj.nodes = nodes
+        map_obj.edges = edges
         flag_modified(map_obj, "nodes")
+        flag_modified(map_obj, "edges")
         map_obj.updated_at = datetime.utcnow()
         usm_db.add(map_obj)
         await usm_db.commit()
