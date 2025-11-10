@@ -55,26 +55,16 @@ def _to_response(
         except Exception:
             attachments = []
 
-    # 解析 TCG（Lark 相容格式）
+    # 解析 TCG - 現在 tcg_json 存儲為簡單字串陣列：["TCG-100007", "TCG-93178"]
     tcg_items: list = []
     try:
         if row.tcg_json:
             data = json.loads(row.tcg_json)
+            # tcg_json 現在是簡單的字串列表，不是複雜的 LarkRecord 物件
             if isinstance(data, list):
-                from app.models.lark_types import LarkRecord
-                for it in data:
-                    try:
-                        # 僅保留必要字段
-                        rec = LarkRecord(
-                            record_ids=it.get('record_ids') or [],
-                            table_id=it.get('table_id') or '',
-                            text=it.get('text') or '',
-                            text_arr=it.get('text_arr') or [],
-                            type=it.get('type') or 'text',
-                        )
-                        tcg_items.append(rec)
-                    except Exception:
-                        continue
+                tcg_items = [str(t) for t in data if t]
+            elif isinstance(data, str):
+                tcg_items = [data]
     except Exception:
         tcg_items = []
 
