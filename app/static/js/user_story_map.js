@@ -705,6 +705,8 @@ const UserStoryMapFlow = () => {
     const [collapsedNodeIds, setCollapsedNodeIds] = useState(new Set());
     const [highlightedPath, setHighlightedPath] = useState(null);
     const [highlightedNodeIds, setHighlightedNodeIds] = useState([]);
+    const [moveMode, setMoveMode] = useState(false);
+    const [moveSourceNodeId, setMoveSourceNodeId] = useState(null);
     const reactFlowInstance = useRef(null);
     const nodesRef = useRef([]);
 
@@ -1287,9 +1289,38 @@ const UserStoryMapFlow = () => {
 
     // Node click handler
     const onNodeClick = useCallback((event, node) => {
+        // 在搬移模式中，處理目標節點選擇
+        if (moveMode && moveSourceNodeId) {
+            // 不能選擇 User Story 節點作為目標
+            if (node.data.nodeType === 'user_story') {
+                showMessage('無法將節點搬移至 User Story 節點', 'error');
+                return;
+            }
+            // 不能選擇自己或其子節點作為目標
+            if (node.id === moveSourceNodeId) {
+                showMessage('無法將節點搬移至自己', 'error');
+                return;
+            }
+            // 檢查是否是源節點的子節點
+            const isChild = node.data.parentId == moveSourceNodeId;
+            if (isChild) {
+                showMessage('無法將節點搬移至其子節點', 'error');
+                return;
+            }
+
+            // 確認搬移
+            const sourceNode = nodes.find(n => n.id === moveSourceNodeId);
+            const targetNode = node;
+            const message = `確定要將「${sourceNode.data.title}」及其所有子節點搬移到「${targetNode.data.title}」下嗎？此操作無法復原。`;
+            if (confirm(message)) {
+                performMoveNode(moveSourceNodeId, node.id);
+            }
+            return;
+        }
+
         setSelectedNode(node);
         updateNodeProperties(node);
-    }, []);
+    }, [moveMode, moveSourceNodeId, nodes]);
 
     // Update node properties in sidebar
     const updateNodeProperties = (node) => {
@@ -2112,6 +2143,90 @@ const UserStoryMapFlow = () => {
         const nodesById = new Map(nodes.map((node) => [node.id, node]));
         applyHighlight([], null, nodesById);
     }, [nodes, applyHighlight]);
+
+    // 啟動搬移節點模式
+    const startMoveNodeMode = useCallback(() => {
+        if (!selectedNode) {
+            showMessage('請先選擇一個節點', 'error');
+            return;
+        }
+        // 不能搬移 User Story 節點
+        if (selectedNode.data.nodeType === 'user_story') {
+            showMessage('無法搬移 User Story 節點', 'error');
+            return;
+        }
+        setMoveMode(true);
+        setMoveSourceNodeId(selectedNode.id);
+        // 淡化所有節點，只保留源節點及其子節點高亮
+        const nodesToHighlight = [selectedNode.id];
+        const addChildren = (nodeId) => {
+            const children = nodes.filter(n => n.data.parentId == nodeId);
+            children.forEach(child => {
+                nodesToHighlight.push(child.id);
+                addChildren(child.id);
+            });
+        };
+        addChildren(selectedNode.id);
+        setHighlightedNodeIds(nodesToHighlight);
+        const nodesById = new Map(nodes.map((node) => [node.id, node]));
+        applyHighlight(nodesToHighlight, null, nodesById);
+        showMessage('請選擇新的父節點（不能是 User Story）', 'info');
+    }, [selectedNode, nodes, applyHighlight]);
+
+    // 執行搬移節點
+    const performMoveNode = async (sourceNodeId, targetNodeId) => {
+        try {
+            // 收集所有要搬移的子節點
+            const nodesToMove = [sourceNodeId];
+            const addChildren = (nodeId) => {
+                const children = nodes.filter(n => n.data.parentId == nodeId);
+                children.forEach(child => {
+                    nodesToMove.push(child.id);
+                    addChildren(child.id);
+                });
+            };
+            addChildren(sourceNodeId);
+
+            const response = await fetch(
+                `/api/teams/${currentTeamId}/user-story-maps/${currentMapId}/move-node`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        node_id: sourceNodeId,
+                        new_parent_id: targetNodeId,
+                        all_nodes_to_move: nodesToMove
+                    })
+                }
+            );
+
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.detail || '搬移節點失敗');
+            }
+
+            showMessage('節點搬移成功', 'success');
+            setMoveMode(false);
+            setMoveSourceNodeId(null);
+            setHighlightedNodeIds([]);
+            clearHighlight();
+            // 重新載入地圖
+            loadMap(currentMapId);
+        } catch (error) {
+            showMessage(`搬移失敗: ${error.message}`, 'error');
+            setMoveMode(false);
+            setMoveSourceNodeId(null);
+        }
+    };
+
+    // 取消搬移模式
+    const cancelMoveMode = useCallback(() => {
+        setMoveMode(false);
+        setMoveSourceNodeId(null);
+        setHighlightedNodeIds([]);
+        clearHighlight();
+        showMessage('已取消搬移操作', 'info');
+    }, [clearHighlight]);
 
     // Show full relation graph
     const showFullRelationGraph = useCallback(async (nodeId) => {
@@ -3080,6 +3195,8 @@ const UserStoryMapFlow = () => {
             getTeamName: () => teamName,
             setNodes,
             setEdges,
+            startMoveNodeMode,
+            cancelMoveMode,
         };
         window.currentMapId = currentMapId;
         window.teamId = teamId;
@@ -3087,7 +3204,9 @@ const UserStoryMapFlow = () => {
         window.addChildNode = addChildNode;
         window.addSiblingNode = addSiblingNode;
         window.showFullRelationGraph = showFullRelationGraph;
-    }, [saveMap, addNode, loadMap, loadMaps, autoLayout, highlightPath, clearHighlight, focusNode, selectedNode, addChildNode, addSiblingNode, setNodes, setEdges, teamName, showFullRelationGraph, currentMapId, teamId, mapIdFromUrl, collapseUserStoryNodes, expandAllNodes]);
+        window.startMoveNodeMode = startMoveNodeMode;
+        window.cancelMoveMode = cancelMoveMode;
+    }, [saveMap, addNode, loadMap, loadMaps, autoLayout, highlightPath, clearHighlight, focusNode, selectedNode, addChildNode, addSiblingNode, setNodes, setEdges, teamName, showFullRelationGraph, currentMapId, teamId, mapIdFromUrl, collapseUserStoryNodes, expandAllNodes, startMoveNodeMode, cancelMoveMode]);
 
     // Expose new functions to window for button handlers
     useEffect(() => {
