@@ -27,9 +27,20 @@ class TestCaseSectionList {
     // 添加自定義樣式
     this.injectStyles();
 
-    // 從 URL 參數獲取 Team ID
+    // 從多個來源獲取 Team ID
     const urlParams = new URLSearchParams(window.location.search);
     this.teamId = urlParams.get('team_id');
+
+    // 如果 URL 中沒有 team_id，嘗試從全域變數或 localStorage 獲取
+    if (!this.teamId) {
+      if (typeof window.teamId !== 'undefined') {
+        this.teamId = window.teamId;
+      } else {
+        this.teamId = localStorage.getItem('currentTeamId');
+      }
+    }
+
+    console.log("[SectionList] Resolved teamId:", this.teamId);
 
     // 監聽 Set 載入事件
     window.addEventListener("testCaseSetLoaded", (e) => {
@@ -117,6 +128,8 @@ class TestCaseSectionList {
         }
       }
 
+      console.log("[SectionList] fetchSetNameAndRender with:", { teamId, setId: this.setId });
+
       if (!teamId || !this.setId) {
         console.log("[SectionList] Missing teamId or setId, skipping API call");
         this.render();
@@ -124,19 +137,21 @@ class TestCaseSectionList {
       }
 
       // 通過 API 獲取 Set 資訊
-      const response = await window.AuthClient.fetch(
-        `/api/teams/${teamId}/test-case-sets/${this.setId}`,
-        { method: 'GET' }
-      );
+      const url = `/api/teams/${teamId}/test-case-sets/${this.setId}`;
+      console.log("[SectionList] Fetching set info from:", url);
+
+      const response = await window.AuthClient.fetch(url, { method: 'GET' });
 
       if (response.ok) {
         const setData = await response.json();
+        console.log("[SectionList] Set data received:", setData);
         this.setName = setData.name;
         // 保存到 sessionStorage，以備其他地方使用
         sessionStorage.setItem('selectedTestCaseSetName', setData.name);
         console.log("[SectionList] Successfully fetched set name:", this.setName);
       } else {
-        console.warn("[SectionList] Failed to fetch set info:", response.status);
+        const errorText = await response.text();
+        console.warn("[SectionList] Failed to fetch set info:", response.status, errorText);
       }
     } catch (error) {
       console.error("[SectionList] Error fetching set name:", error);
