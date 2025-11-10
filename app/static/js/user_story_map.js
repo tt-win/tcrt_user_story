@@ -1124,7 +1124,10 @@ const UserStoryMapFlow = () => {
                 ` : ''}
                 <div class="mb-3">
                     <label class="form-label small fw-bold">JIRA Tickets</label>
-                    <input type="text" class="form-control form-control-sm" id="propJira" ${readOnlyAttr} value="${escapeHtml((data.jiraTickets || []).join(', '))}">
+                    <input type="text" class="form-control form-control-sm" id="propJira" ${readOnlyAttr} value="${escapeHtml((data.jiraTickets || []).join(', '))}" placeholder="輸入 JIRA 票號，以逗號分隔 (例: PROJ-123, PROJ-456)">
+                    ${canUpdateNode ? `<div id="jiraTicketsBadges" class="mt-2" style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                        ${(data.jiraTickets || []).length > 0 ? (data.jiraTickets || []).map(ticket => `<span class="badge bg-info" style="font-size: 0.8rem; padding: 0.35rem 0.6rem;">${escapeHtml(ticket)}</span>`).join('') : '<small class="text-muted">未輸入任何票號</small>'}
+                    </div>` : ''}
                 </div>
                 ${aggregatedTicketsHtml}
                 ${relatedNodesHtml}
@@ -1153,6 +1156,34 @@ const UserStoryMapFlow = () => {
             attachAutoSave('propDescription');
             attachAutoSave('propJira');
             attachAutoSave('propComment');
+
+            // 添加 JIRA Tickets 即時 badge 預覽更新
+            const propJiraEl = document.getElementById('propJira');
+            if (propJiraEl) {
+                propJiraEl.addEventListener('input', (e) => {
+                    const badgesContainer = document.getElementById('jiraTicketsBadges');
+                    if (badgesContainer) {
+                        const inputValue = e.target.value.trim();
+                        if (inputValue) {
+                            // 解析逗號分隔的票號
+                            const tickets = inputValue
+                                .split(',')
+                                .map(t => t.trim())
+                                .filter(t => t.length > 0);
+
+                            if (tickets.length > 0) {
+                                badgesContainer.innerHTML = tickets
+                                    .map(ticket => `<span class="badge bg-info" style="font-size: 0.8rem; padding: 0.35rem 0.6rem;">${escapeHtml(ticket)}</span>`)
+                                    .join('');
+                            } else {
+                                badgesContainer.innerHTML = '<small class="text-muted">未輸入任何票號</small>';
+                            }
+                        } else {
+                            badgesContainer.innerHTML = '<small class="text-muted">未輸入任何票號</small>';
+                        }
+                    }
+                });
+            }
 
             if (data.nodeType === 'user_story') {
                 attachAutoSave('propAsA');
@@ -2081,7 +2112,9 @@ const UserStoryMapFlow = () => {
                     html += `
                             <div class="mb-3">
                                 <label class="form-label small fw-bold">JIRA Tickets</label>
-                                <p class="form-control-plaintext mb-0 small">${data.jiraTickets && data.jiraTickets.length > 0 ? escapeHtml(data.jiraTickets.join(', ')) : '<span class="text-muted">無</span>'}</p>
+                                <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                                    ${data.jiraTickets && data.jiraTickets.length > 0 ? data.jiraTickets.map(ticket => `<span class="badge bg-info" style="font-size: 0.8rem; padding: 0.35rem 0.6rem;">${escapeHtml(ticket)}</span>`).join('') : '<small class="text-muted">無</small>'}
+                                </div>
                             </div>
                             
                             ${aggregatedTicketsHtml}
@@ -3261,7 +3294,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                                     <h6 class="mb-1">${escapeHtml(node.title)}</h6>
                                     ${node.description ? `<p class="mb-1 small">${escapeHtml(node.description)}</p>` : ''}
                                     ${node.team ? `<small class="text-muted">團隊: ${escapeHtml(node.team)}</small>` : ''}
-                                    ${node.jira_tickets && node.jira_tickets.length > 0 ? `<br><small class="text-info">Tickets: ${escapeHtml(node.jira_tickets.join(', '))}</small>` : ''}
+                                    ${node.jira_tickets && node.jira_tickets.length > 0 ? `<div style="margin-top: 0.5rem; display: flex; flex-wrap: wrap; gap: 0.25rem;">${node.jira_tickets.map(ticket => `<span class="badge bg-info" style="font-size: 0.75rem; padding: 0.25rem 0.5rem;">${escapeHtml(ticket)}</span>`).join('')}</div>` : ''}
                                 </div>
                             `).join('')}
                         </div>

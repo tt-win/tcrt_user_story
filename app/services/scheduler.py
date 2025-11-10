@@ -9,7 +9,8 @@ import threading
 import logging
 from typing import Dict, Any
 from datetime import datetime, timedelta
-from app.services.tcg_converter import tcg_converter
+# TCG 轉換器已移除 - 不再需要依賴 TCG 同步
+# from app.services.tcg_converter import tcg_converter
 from app.services.lark_org_sync_service import get_lark_org_sync_service
 
 
@@ -28,15 +29,15 @@ class TaskScheduler:
             return
             
         self.running = True
-        
-        # 註冊 TCG 同步任務（每 2 小時執行一次）
-        self.register_task(
-            name="tcg_sync",
-            func=self._sync_tcg_task,
-            interval_hours=2,
-            run_immediately=True  # 啟動時立即執行一次
-        )
-        
+
+        # 註冊 TCG 同步任務已移除 - 不再需要依賴 TCG 轉換，紀錄欄位已獨立
+        # self.register_task(
+        #     name="tcg_sync",
+        #     func=self._sync_tcg_task,
+        #     interval_hours=2,
+        #     run_immediately=True  # 啟動時立即執行一次
+        # )
+
         # 註冊 Lark 組織架構同步任務已移除 - 改為手動觸發
         # self.register_task(
         #     name="lark_org_sync",
@@ -129,24 +130,25 @@ class TaskScheduler:
             task_info['next_run'] = datetime.now() + timedelta(hours=task_info['interval_hours'])
             
             self.logger.error(f"定時任務 {task_name} 執行失敗: {e}")
-    
-    def _sync_tcg_task(self) -> Dict[str, Any]:
-        """TCG 同步任務"""
-        try:
-            sync_count = tcg_converter.sync_tcg_from_lark()
-            return {
-                'success': True,
-                'sync_count': sync_count,
-                'message': f'成功同步 {sync_count} 筆 TCG 資料'
-            }
-        except Exception as e:
-            self.logger.error(f"TCG 同步任務失敗: {e}")
-            return {
-                'success': False,
-                'sync_count': 0,
-                'message': f'同步失敗: {str(e)}'
-            }
-    
+
+    # TCG 同步任務已移除 - 不再需要依賴 TCG 轉換
+    # def _sync_tcg_task(self) -> Dict[str, Any]:
+    #     """TCG 同步任務"""
+    #     try:
+    #         sync_count = tcg_converter.sync_tcg_from_lark()
+    #         return {
+    #             'success': True,
+    #             'sync_count': sync_count,
+    #             'message': f'成功同步 {sync_count} 筆 TCG 資料'
+    #         }
+    #     except Exception as e:
+    #         self.logger.error(f"TCG 同步任務失敗: {e}")
+    #         return {
+    #             'success': False,
+    #             'sync_count': 0,
+    #             'message': f'同步失敗: {str(e)}'
+    #         }
+
     def _sync_lark_org_task(self) -> Dict[str, Any]:
         """Lark 組織架構同步任務"""
         try:

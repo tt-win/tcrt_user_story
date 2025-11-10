@@ -46,7 +46,6 @@ from app.models.database_models import (
     SyncStatus,
 )
 from app.services.test_case_repo_service import TestCaseRepoService
-from app.services.tcg_converter import tcg_converter
 from app.services.test_case_sync_service import TestCaseSyncService
 from app.services.lark_client import LarkClient
 from app.config import settings
@@ -128,10 +127,18 @@ def normalize_tcg_number(value: Optional[str]) -> Optional[str]:
     return None
 
 
-def build_tcg_items(numbers: List[str]) -> List[dict]:
-    items: List[dict] = []
+def build_tcg_items(numbers: List[str]) -> List[str]:
+    """
+    直接返回 TCG 單號列表（簡化版本）
+    
+    Args:
+        numbers: TCG 單號列表
+    
+    Returns:
+        正規化後的 TCG 單號列表
+    """
+    items: List[str] = []
     seen: set[str] = set()
-    table_id = getattr(tcg_converter, "table_id", TCG_TABLE_ID_DEFAULT)
 
     for raw in numbers:
         normalized = normalize_tcg_number(raw)
@@ -140,25 +147,7 @@ def build_tcg_items(numbers: List[str]) -> List[dict]:
         if normalized in seen:
             continue
         seen.add(normalized)
-
-        record_id: Optional[str] = None
-        try:
-            record_id = tcg_converter.get_record_id_by_tcg_number(normalized)
-        except Exception:
-            record_id = None
-
-        if not record_id:
-            record_id = f"tcg_{normalized.replace('-', '')}"
-
-        items.append(
-            {
-                "record_ids": [record_id],
-                "table_id": table_id,
-                "text": normalized,
-                "text_arr": [normalized],
-                "type": "text",
-            }
-        )
+        items.append(normalized)
 
     return items
 
@@ -210,24 +199,21 @@ async def get_test_cases_by_jira_tickets(
                 try:
                     tcg_data = json.loads(tc.tcg_json)
                     
+                    # 新格式：直接是字符串列表 ["TCG-12345", "ICR-45683"]
                     if isinstance(tcg_data, list):
-                        # Extract 'text' from each element in the array
                         for item in tcg_data:
-                            if isinstance(item, dict) and 'text' in item:
-                                text_val = item['text']
-                                if isinstance(text_val, str) and text_val:
-                                    jira_tickets.append(text_val)
-                                elif isinstance(text_val, list):
-                                    jira_tickets.extend([t for t in text_val if t])
+                            if isinstance(item, str) and item:
+                                jira_tickets.append(item)
+                    # 舊格式相容性：如果還有舊格式的資料
                     elif isinstance(tcg_data, dict):
-                        # Fallback in case it's a dict
-                        for key in ['jira_tickets', 'jira', 'tcg_tickets', 'tcg', 'text', 'tickets']:
+                        # 嘗試各種鍵名
+                        for key in ['jira_tickets', 'jira', 'tcg_tickets', 'tcg', 'text', 'tickets', 'text_arr']:
                             if key in tcg_data:
                                 val = tcg_data.get(key)
                                 if isinstance(val, list):
-                                    jira_tickets = val
-                                elif isinstance(val, str):
-                                    jira_tickets = [val]
+                                    jira_tickets.extend([t for t in val if t])
+                                elif isinstance(val, str) and val:
+                                    jira_tickets.append(val)
                                 break
                 except (json.JSONDecodeError, TypeError, AttributeError) as e:
                     logger.error(f"Error parsing tcg_json for {tc.test_case_number}: {e}")
@@ -608,26 +594,14 @@ async def get_test_case(
             except Exception:
                 attachments = []
 
-            # 解析 TCG
+            # 解析 TCG - 新格式：直接是字符串列表
             tcg_items = []
             try:
                 if item.tcg_json:
                     data = json.loads(item.tcg_json)
+                    # 新格式：["TCG-12345", "ICR-45683"]
                     if isinstance(data, list):
-                        from app.models.lark_types import LarkRecord
-
-                        for it in data:
-                            try:
-                                rec = LarkRecord(
-                                    record_ids=it.get("record_ids") or [],
-                                    table_id=it.get("table_id") or "",
-                                    text=it.get("text") or "",
-                                    text_arr=it.get("text_arr") or [],
-                                    type=it.get("type") or "text",
-                                )
-                                tcg_items.append(rec)
-                            except Exception:
-                                continue
+                        tcg_items = [str(t) for t in data if t]
             except Exception:
                 tcg_items = []
 
@@ -928,109 +902,35 @@ async def update_test_case(
             changed = True
             changed_fields.append("test_result")
 
-        # 處理 TCG 欄位更新：支援字串（單號或逗號/空白/換行分隔多號）或 LarkRecord 陣列
+        # 處理 TCG 欄位更新：支援字串（逗號/空白/換行分隔的單號）或字符串列表
         if hasattr(case_update, "tcg") and case_update.tcg is not None:
             try:
-                tcg_table_id = "tblcK6eF3yQCuwwl"  # 與批次更新所用表格一致
-                tcg_items: list[dict] = []
-
-                def build_items_from_pairs(pairs: list[tuple[str, str]]):
-                    return [
-                        {
-                            "record_ids": [rid],
-                            "table_id": tcg_table_id,
-                            "text": tcg_no,
-                            "text_arr": [tcg_no] if tcg_no else [],
-                            "type": "text",
-                        }
-                        for rid, tcg_no in pairs
-                    ]
-
+                tcg_numbers: list[str] = []
+                
                 if isinstance(case_update.tcg, str):
                     s = case_update.tcg.strip()
-                    if not s:
-                        # 清空
-                        item.tcg_json = json.dumps([], ensure_ascii=False)
-                        changed = True
-                        if "tcg" not in changed_fields:
-                            changed_fields.append("tcg")
-                    else:
-                        # 解析多個單號
+                    if s:
+                        # 解析多個單號（使用逗號、空白或換行分隔）
                         parts = [
                             p.strip()
                             for p in s.replace("\n", ",").replace(" ", ",").split(",")
                         ]
-                        nums = [p for p in parts if p]
-                        pairs: list[tuple[str, str]] = []
-                        try:
-                            from app.services.tcg_converter import tcg_converter
-
-                            for n in nums:
-                                rid = tcg_converter.get_record_id_by_tcg_number(n)
-                                if rid:
-                                    pairs.append((rid, n))
-                                else:
-                                    # 若找不到對應 record_id，仍保留文字但 record_ids 留空，利於後續同步再補
-                                    pairs.append(("", n))
-                        except Exception:
-                            # 轉換器不可用時，仍以純文字保存
-                            pairs = [("", n) for n in nums]
-                        tcg_items = build_items_from_pairs(pairs)
-                        item.tcg_json = json.dumps(tcg_items, ensure_ascii=False)
-                        changed = True
-                        if "tcg" not in changed_fields:
-                            changed_fields.append("tcg")
-                else:
-                    # 嘗試將 LarkRecord 結構序列化
-                    try:
-                        # 允許傳入簡化物件，僅擷取必要欄位
-                        incoming = []
-                        for it in case_update.tcg or []:
-                            rid_list = []
-                            try:
-                                rid_list = list(
-                                    getattr(it, "record_ids", None)
-                                    or it.get("record_ids")
-                                    or []
-                                )
-                            except Exception:
-                                rid_list = []
-                            text_val = None
-                            text_arr = []
-                            try:
-                                text_val = getattr(it, "text", None)
-                            except Exception:
-                                text_val = (
-                                    it.get("text") if isinstance(it, dict) else None
-                                )
-                            try:
-                                text_arr = list(
-                                    getattr(it, "text_arr", None)
-                                    or it.get("text_arr")
-                                    or ([] if not text_val else [text_val])
-                                )
-                            except Exception:
-                                text_arr = [] if not text_val else [text_val]
-                            incoming.append(
-                                {
-                                    "record_ids": rid_list,
-                                    "table_id": tcg_table_id,
-                                    "text": text_val
-                                    or (text_arr[0] if text_arr else ""),
-                                    "text_arr": text_arr,
-                                    "type": "text",
-                                }
-                            )
-                        item.tcg_json = json.dumps(incoming, ensure_ascii=False)
-                        changed = True
-                        if "tcg" not in changed_fields:
-                            changed_fields.append("tcg")
-                    except Exception:
-                        # 無法解析時，清空避免壞資料
-                        item.tcg_json = json.dumps([], ensure_ascii=False)
-                        changed = True
+                        tcg_numbers = [p for p in parts if p]
+                elif isinstance(case_update.tcg, list):
+                    # 直接使用列表中的字符串
+                    tcg_numbers = [str(t) for t in case_update.tcg if t]
+                
+                # 正規化 TCG 單號
+                normalized_numbers = [normalize_tcg_number(n) for n in tcg_numbers]
+                normalized_numbers = [n for n in normalized_numbers if n]
+                
+                # 存儲為 JSON 列表
+                item.tcg_json = json.dumps(normalized_numbers, ensure_ascii=False)
+                changed = True
+                if "tcg" not in changed_fields:
+                    changed_fields.append("tcg")
             except Exception as e:
-                # 若 TCG 處理失敗，丟出 400 錯誤較精確
+                # 若 TCG 處理失敗，丟出 400 錯誤
                 raise HTTPException(status_code=400, detail=f"更新 TCG 欄位失敗: {e}")
 
         # 如有暫存附件，搬移並與既存附件合併
@@ -1979,9 +1879,12 @@ async def bulk_create_test_cases(
                 local_version=1,
             )
 
-            tcg_items = build_tcg_items(it.tcg_numbers or [])
-            if tcg_items:
-                item.tcg_json = json.dumps(tcg_items, ensure_ascii=False)
+            # 正規化並直接存儲 TCG 單號列表
+            tcg_numbers = it.tcg_numbers or []
+            normalized_tcg = [normalize_tcg_number(n) for n in tcg_numbers]
+            normalized_tcg = [n for n in normalized_tcg if n]
+            if normalized_tcg:
+                item.tcg_json = json.dumps(normalized_tcg, ensure_ascii=False)
 
             db.add(item)
             created_count += 1
@@ -2348,38 +2251,12 @@ async def batch_operation_test_cases(
                 )
 
         elif operation.operation == "update_tcg":
-            # 批次更新 TCG：在 DB 的 tcg_json 存 Lark 相容格式（LarkRecord 物件陣列），
-            # 顯示時可透過 TCG 快取將 record_id 轉為單號顯示。
+            # 批次更新 TCG：簡化版本直接存儲單號列表
             payload = operation.update_data or {}
             tcg_value = payload.get("tcg")  # 支援字串（單號或以逗號分隔）、或字串陣列
-            tcg_ids = payload.get(
-                "tcg_record_ids"
-            )  # 可直接提供 record_id 陣列（跳過轉換）
 
-            # 標準化：取得目標 record_ids 陣列
+            # 解析 TCG 單號
             def normalize_tcgs():
-                pairs: list[tuple[str, str]] = []  # (record_id, tcg_number)
-                nonlocal tcg_value, tcg_ids
-                # 若直接提供 record_ids，嘗試回填單號；若不可得，單號留空
-                if tcg_ids and isinstance(tcg_ids, list):
-                    for x in tcg_ids:
-                        rid = str(x).strip()
-                        if not rid:
-                            continue
-                        tcg_no = ""
-                        try:
-                            from app.services.tcg_converter import tcg_converter
-
-                            # 若有反向查詢方法可嘗試（不存在則忽略）
-                            if hasattr(tcg_converter, "get_tcg_number_by_record_id"):
-                                tcg_no = (
-                                    tcg_converter.get_tcg_number_by_record_id(rid) or ""
-                                )
-                        except Exception:
-                            pass
-                        pairs.append((rid, tcg_no))
-                    return pairs
-                # 解析 tcg_value 中的單號
                 nums: list[str] = []
                 if isinstance(tcg_value, str):
                     s = tcg_value.strip()
@@ -2395,38 +2272,14 @@ async def batch_operation_test_cases(
                     nums = [str(x).strip() for x in tcg_value if str(x).strip()]
                 else:
                     return []  # 清空或未提供
-                # 透過快取轉成 record_id
-                try:
-                    from app.services.tcg_converter import tcg_converter
+                
+                # 正規化單號
+                normalized = [normalize_tcg_number(n) for n in nums]
+                return [n for n in normalized if n]
 
-                    for n in nums:
-                        rid = tcg_converter.get_record_id_by_tcg_number(n)
-                        if rid:
-                            pairs.append((rid, n))
-                        else:
-                            errors.append(f"找不到 TCG 單號對應的 record_id: {n}")
-                except Exception as e:
-                    errors.append(f"TCG 轉換失敗: {e}")
-                return pairs
-
-            rid_pairs = normalize_tcgs()
-            # 構造 Lark 相容 TCG 陣列（每筆用 LarkRecord 格式）
-            tcg_table_id = "tblcK6eF3yQCuwwl"  # 既有代碼使用的 TCG 表格固定 ID
-
-            def build_tcg_items(pairs: list[tuple[str, str]]):
-                items = []
-                for rid, tcg_no in pairs:
-                    items.append(
-                        {
-                            "record_ids": [rid],
-                            "table_id": tcg_table_id,
-                            "text": tcg_no,
-                            "text_arr": [tcg_no] if tcg_no else [],
-                            "type": "text",
-                        }
-                    )
-                return items
-
+            # 直接使用正規化的 TCG 單號列表
+            tcg_numbers_list = normalize_tcgs()
+            
             for rid in operation.record_ids:
                 processed += 1
                 item = resolve_one(rid)
@@ -2435,23 +2288,17 @@ async def batch_operation_test_cases(
                     continue
                 # 寫入 tcg_json
                 try:
-                    items = build_tcg_items(rid_pairs)
-                    new_tcg_json = (
-                        json.dumps(items, ensure_ascii=False)
-                        if items
-                        else json.dumps([], ensure_ascii=False)
-                    )
+                    new_tcg_json = json.dumps(tcg_numbers_list, ensure_ascii=False)
                     item.tcg_json = new_tcg_json
                     item.updated_at = datetime.utcnow()
                     item.sync_status = SyncStatus.PENDING
                     success_count += 1
                     # 記錄更新的項目
-                    tcg_numbers = [pair[1] for pair in rid_pairs if pair[1]]
                     success_items.append({
                         "id": item.id,
                         "test_case_number": item.test_case_number,
                         "title": item.title,
-                        "tcg_numbers": tcg_numbers,
+                        "tcg_numbers": tcg_numbers_list,
                     })
                 except Exception as e:
                     errors.append(f"{rid}: {e}")
