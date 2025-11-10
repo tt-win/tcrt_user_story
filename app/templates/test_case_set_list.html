@@ -91,6 +91,49 @@
   </div>
 </div>
 
+<!-- Test Case Selection Modal for Creating Test Run from Set Card -->
+<div class="modal fade" id="setCaseSelectModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+  <div class="modal-dialog modal-xl">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">
+          <i class="fas fa-check-square"></i> 選擇測試案例
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <!-- 搜尋工具列 -->
+        <div class="mb-3">
+          <div class="input-group">
+            <span class="input-group-text"><i class="fas fa-search"></i></span>
+            <input type="text" class="form-control" id="setCaseSearchInput" placeholder="搜尋測試案例...">
+          </div>
+        </div>
+
+        <!-- Section 樹狀結構和 Test Cases -->
+        <div id="setCaseListContainer" style="max-height: 60vh; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 0.25rem; padding: 0.5rem;">
+          <div class="text-center text-muted py-4">
+            <div class="spinner-border spinner-border-sm" role="status">
+              <span class="visually-hidden">載入中...</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 摘要信息 -->
+        <div class="mt-3 pt-2 border-top">
+          <small class="text-muted" id="setCaseSelectionSummary">已選 0 個測試案例</small>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+        <button type="button" class="btn btn-primary" id="setCaseConfirmBtn" onclick="confirmSetCaseSelection()">
+          <i class="fas fa-arrow-right"></i> 建立 Test Run
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
@@ -254,9 +297,12 @@ function renderTestCaseSets() {
             </small>
           </div>
         </div>
-        <div class="card-footer bg-white border-top">
-          <button class="btn btn-primary w-100" onclick="navigateToSet(${set.id})">
+        <div class="card-footer bg-white border-top d-flex gap-2">
+          <button class="btn btn-primary flex-grow-1" onclick="navigateToSet(${set.id})">
             <i class="fas fa-arrow-right"></i> ${i18n.enter || 'Enter'}
+          </button>
+          <button class="btn btn-success" onclick="openSetCaseSelectModal(${set.id})" title="新增 Test Run">
+            <i class="fas fa-plus"></i> <span class="d-none d-md-inline">Test Run</span>
           </button>
         </div>
       </div>
@@ -454,6 +500,374 @@ function escapeHtml(text) {
   };
   return text.replace(/[&<>"']/g, m => map[m]);
 }
+
+// ==================== Test Case Selection for Test Run Creation ====================
+let currentTestCaseSetId = null;
+let setTestCaseData = {
+  sections: [],
+  testCases: [],
+  selectedCases: new Set(),
+  filteredCases: []
+};
+let setSelectModalInstance = null;
+
+/**
+ * 打開從 Test Case Set 卡片建立 Test Run 的選擇畫面
+ */
+async function openSetCaseSelectModal(setId) {
+  currentTestCaseSetId = setId;
+  setTestCaseData.selectedCases.clear();
+
+  const modalEl = document.getElementById('setCaseSelectModal');
+  if (!setSelectModalInstance) {
+    setSelectModalInstance = new bootstrap.Modal(modalEl);
+  }
+
+  setSelectModalInstance.show();
+
+  // 載入該 Set 的 Sections 和 Test Cases
+  await loadSetSectionsAndTestCases(setId);
+  renderSetCaseList();
+}
+
+/**
+ * 載入指定 Test Case Set 的 Sections 和 Test Cases
+ */
+async function loadSetSectionsAndTestCases(setId) {
+  try {
+    // 載入 Sections (樹狀結構)
+    const sectionsResponse = await window.AuthClient.fetch(
+      `/api/test-case-sets/${setId}/sections`,
+      { method: 'GET' }
+    );
+
+    if (!sectionsResponse.ok) {
+      throw new Error('Failed to load sections');
+    }
+
+    setTestCaseData.sections = await sectionsResponse.json();
+
+    // 載入該 Set 內的所有 Test Cases
+    const casesResponse = await window.AuthClient.fetch(
+      `/api/teams/${currentTeamId}/testcases?set_id=${setId}&limit=10000`,
+      { method: 'GET' }
+    );
+
+    if (!casesResponse.ok) {
+      throw new Error('Failed to load test cases');
+    }
+
+    setTestCaseData.testCases = await casesResponse.json();
+    setTestCaseData.filteredCases = setTestCaseData.testCases;
+
+    console.log('Loaded sections structure:', setTestCaseData.sections);
+    console.log('Loaded test cases:', setTestCaseData.testCases);
+    console.log('Full data:', setTestCaseData);
+  } catch (error) {
+    console.error('Error loading sections and test cases:', error);
+    document.getElementById('setCaseListContainer').innerHTML =
+      '<div class="alert alert-danger">載入失敗，請重試</div>';
+  }
+}
+
+/**
+ * 檢查是否為 Unassigned Section
+ */
+function isUnassignedSection(section) {
+  if (!section || !section.name) return false;
+  return section.name.trim().toLowerCase() === 'unassigned';
+}
+
+/**
+ * 取得 Section 及其直接子 Section 下的所有 Test Cases（不包括孫層級及以下）
+ */
+function getDirectTestCasesInSection(section) {
+  // 只取該 Section 直接包含的 test cases
+  const directCases = setTestCaseData.testCases.filter(tc => tc.test_case_section_id === section.id);
+  return directCases;
+}
+
+/**
+ * 取得 Section 及其所有子 Section 下的所有 Test Cases
+ */
+function getAllTestCasesInSection(section, allSections) {
+  const allCases = [];
+
+  // 加入該 Section 直接包含的 test cases
+  const directCases = setTestCaseData.testCases.filter(tc => tc.test_case_section_id === section.id);
+  allCases.push(...directCases);
+
+  // 遞迴加入所有子 Section 的 test cases
+  const childSections = section.children || [];
+  childSections.forEach(child => {
+    const childCases = getAllTestCasesInSection(child, allSections);
+    allCases.push(...childCases);
+  });
+
+  return allCases;
+}
+
+/**
+ * 對 Section 進行排序，確保 Unassigned 排在最後
+ */
+function sortSectionsForDisplay(sections) {
+  if (!sections || sections.length === 0) return [];
+
+  const unassignedSections = [];
+  const normalSections = [];
+
+  sections.forEach(section => {
+    if (isUnassignedSection(section)) {
+      unassignedSections.push(section);
+    } else {
+      normalSections.push(section);
+    }
+  });
+
+  // Normal sections + Unassigned sections
+  return [...normalSections, ...unassignedSections];
+}
+
+/**
+ * 渲染 Test Case 列表（含嵌套 Section 結構）
+ */
+function renderSetCaseList() {
+  const container = document.getElementById('setCaseListContainer');
+  const searchValue = document.getElementById('setCaseSearchInput').value.toLowerCase();
+
+  // 應用搜尋
+  let filteredCases = setTestCaseData.testCases.filter(testCase => {
+    const matchesSearch = testCase.test_case_number.toLowerCase().includes(searchValue) ||
+                          testCase.title.toLowerCase().includes(searchValue);
+    return matchesSearch;
+  });
+
+  setTestCaseData.filteredCases = filteredCases;
+
+  // 建立 case 對應 section 的快速查詢 Map（只包含直接 child cases，不包含孫代）
+  const casesBySectionId = {};
+  filteredCases.forEach(tc => {
+    const sectionId = tc.test_case_section_id || null;
+    if (!casesBySectionId[sectionId]) {
+      casesBySectionId[sectionId] = [];
+    }
+    casesBySectionId[sectionId].push(tc);
+  });
+
+  // 遞迴渲染 Section 樹
+  let html = '<div class="set-case-list">';
+
+  function renderSectionTree(sections, level = 0) {
+    if (!sections || sections.length === 0) return '';
+
+    // 對 sections 進行排序，確保 Unassigned 放最後
+    const sortedSections = sortSectionsForDisplay(sections);
+
+    return sortedSections.map(section => {
+      const sectionId = `section-${section.id}`;
+      const isExpanded = sessionStorage.getItem(sectionId) !== 'collapsed';
+
+      // 該 section 直接包含的 test cases（僅搜尋篩選）
+      const sectionCases = casesBySectionId[section.id] || [];
+      
+      // 計算包含子 section 的總 test case 數量
+      function countCasesInSectionTree(sec) {
+        let count = casesBySectionId[sec.id]?.length || 0;
+        if (sec.children && sec.children.length > 0) {
+          count += sec.children.reduce((sum, child) => sum + countCasesInSectionTree(child), 0);
+        }
+        return count;
+      }
+      const totalCaseCount = countCasesInSectionTree(section);
+
+      // 子 Section
+      const childSections = section.children || [];
+      const hasChildSections = childSections.length > 0;
+
+      // 總是顯示 Section 標頭（包含 Unassigned），不再依賴內容判斷
+      const hasDirectCases = sectionCases.length > 0;
+      const hasContent = hasDirectCases || hasChildSections;
+
+      // 強制顯示標頭（包含 Unassigned 即使沒有內容）
+      // if (!hasContent) return '';
+
+      // 只計算該 Section 直接包含的 test cases（不遞迴）
+      const directTestCases = getDirectTestCasesInSection(section);
+
+      // 檢查該 Section 直接包含的 cases 的選擇狀態
+      const allDirectSelected = directTestCases.length > 0 &&
+                                directTestCases.every(tc => setTestCaseData.selectedCases.has(tc.record_id));
+      const someDirectSelected = directTestCases.some(tc => setTestCaseData.selectedCases.has(tc.record_id));
+      const indentLevel = level * 20;
+      let sectionHtml = `
+        <div class="section-group" style="margin-left: ${indentLevel}px;">
+          <!-- Section Header -->
+          <div class="section-header d-flex align-items-center py-2 px-2 border-bottom" style="background-color: #e8eef5;">
+            <input type="checkbox"
+                   class="section-checkbox me-2"
+                   data-section-id="${section.id}"
+                   ${allDirectSelected ? 'checked' : ''}
+                   ${someDirectSelected && !allDirectSelected ? 'data-indeterminate="true"' : ''}
+                   onchange="handleSectionCheckboxChange(${section.id}, this.checked)">
+            <button class="btn btn-link btn-sm p-0 me-2"
+                    onclick="toggleSectionExpand(${section.id})"
+                    style="width: 24px; height: 24px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; text-decoration: none;"
+                    onmouseover="this.style.textDecoration='none'"
+                    onmouseout="this.style.textDecoration='none'">
+              <i class="fas fa-chevron-${isExpanded ? 'down' : 'right'}"></i>
+            </button>
+            <span class="fw-500 flex-grow-1">${escapeHtml(section.name)}</span>
+            <small class="text-muted">(${totalCaseCount})</small>
+          </div>
+
+          <!-- Test Cases and Child Sections -->
+          <div class="section-content ${isExpanded ? '' : 'd-none'}" id="content-section-${section.id}">
+            <!-- Direct test cases under this section -->
+            ${sectionCases.map(testCase => `
+              <div class="case-item d-flex align-items-center py-2 px-3" style="background-color: #f8f9fa; border-bottom: 1px solid #e9ecef;">
+                <input type="checkbox"
+                       class="case-checkbox me-3"
+                       data-case-id="${testCase.record_id}"
+                       ${setTestCaseData.selectedCases.has(testCase.record_id) ? 'checked' : ''}
+                       onchange="handleCaseCheckboxChange('${testCase.record_id}', this.checked)">
+                <div class="small me-2" style="min-width: 100px; flex-shrink: 0; color: rgb(194, 54, 120);">${escapeHtml(testCase.test_case_number)}</div>
+                <div class="flex-grow-1 text-truncate">${escapeHtml(testCase.title)}</div>
+                ${testCase.priority ? `<span class="badge bg-secondary ms-2">${escapeHtml(testCase.priority)}</span>` : ''}
+              </div>
+            `).join('')}
+
+            <!-- Child Sections -->
+            ${renderSectionTree(childSections, level + 1)}
+          </div>
+        </div>
+      `;
+
+      return sectionHtml;
+    }).join('');
+  }
+
+  if (!setTestCaseData.sections || setTestCaseData.sections.length === 0) {
+    html += '<div class="alert alert-info">沒有符合的測試案例</div>';
+  } else {
+    html += renderSectionTree(setTestCaseData.sections);
+  }
+
+  html += '</div>';
+  container.innerHTML = html;
+
+  // 修復 indeterminate 狀態的 checkbox
+  document.querySelectorAll('[data-indeterminate="true"]').forEach(checkbox => {
+    checkbox.indeterminate = true;
+  });
+
+  updateSetCaseSelectionSummary();
+
+  // 綁定搜尋事件
+  setupSetCaseEventListeners();
+}
+
+/**
+ * 處理 Section Checkbox 變更（只選擇該 Section 直接包含的 test cases）
+ */
+function handleSectionCheckboxChange(sectionId, isChecked) {
+  // 找到該 Section 對象
+  function findSection(sections, id) {
+    for (let section of sections) {
+      if (section.id === id) {
+        return section;
+      }
+      if (section.children) {
+        const found = findSection(section.children, id);
+        if (found) return found;
+      }
+    }
+    return null;
+  }
+
+  const section = findSection(setTestCaseData.sections, sectionId);
+  if (!section) return;
+
+  // 只取得該 Section 直接包含的 test cases（不遞迴）
+  const directCases = getDirectTestCasesInSection(section);
+
+  // 選中或取消選中該 Section 直接包含的 cases
+  directCases.forEach(testCase => {
+    if (isChecked) {
+      setTestCaseData.selectedCases.add(testCase.record_id);
+    } else {
+      setTestCaseData.selectedCases.delete(testCase.record_id);
+    }
+  });
+
+  renderSetCaseList();
+}
+
+/**
+ * 處理 Test Case Checkbox 變更
+ */
+function handleCaseCheckboxChange(caseId, isChecked) {
+  if (isChecked) {
+    setTestCaseData.selectedCases.add(caseId);
+  } else {
+    setTestCaseData.selectedCases.delete(caseId);
+  }
+
+  renderSetCaseList();
+}
+
+/**
+ * 切換 Section 展開/收合
+ */
+function toggleSectionExpand(sectionId) {
+  const sectionId_key = `section-${sectionId}`;
+  const isCurrentlyExpanded = sessionStorage.getItem(sectionId_key) !== 'collapsed';
+
+  if (isCurrentlyExpanded) {
+    sessionStorage.setItem(sectionId_key, 'collapsed');
+  } else {
+    sessionStorage.removeItem(sectionId_key);
+  }
+
+  renderSetCaseList();
+}
+
+/**
+ * 設置搜尋事件監聽
+ */
+function setupSetCaseEventListeners() {
+  document.getElementById('setCaseSearchInput').addEventListener('input', renderSetCaseList);
+}
+
+/**
+ * 更新選擇摘要
+ */
+function updateSetCaseSelectionSummary() {
+  const count = setTestCaseData.selectedCases.size;
+  document.getElementById('setCaseSelectionSummary').textContent = `已選 ${count} 個測試案例`;
+}
+
+/**
+ * 確認選擇並建立 Test Run
+ */
+async function confirmSetCaseSelection() {
+  if (setTestCaseData.selectedCases.size === 0) {
+    alert('請至少選擇一個測試案例');
+    return;
+  }
+
+  try {
+    // 導航到 Test Run 管理頁面，並帶上參數
+    const selectedCaseIds = Array.from(setTestCaseData.selectedCases).join(',');
+    sessionStorage.setItem('testRunSetId', currentTestCaseSetId);
+    sessionStorage.setItem('testRunSelectedCaseIds', selectedCaseIds);
+
+    // 導航到 Test Run 建立頁面
+    window.location.href = `/test-run-management?team_id=${currentTeamId}&set_id=${currentTestCaseSetId}`;
+  } catch (error) {
+    console.error('Error confirming case selection:', error);
+    alert('建立失敗，請重試');
+  }
+}
 </script>
 
 <!-- Test Case Set 和 Section 多語系翻譯 -->
@@ -485,6 +899,60 @@ function escapeHtml(text) {
 
 .test-case-set-card .btn-primary {
   font-weight: 500;
+}
+
+/* Test Case Selection Modal Styles */
+.set-case-list {
+  font-size: 0.9rem;
+}
+
+.section-group {
+  margin-bottom: 0.5rem;
+}
+
+.section-header {
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.section-header:hover {
+  background-color: #e9ecef !important;
+}
+
+.section-header .fw-500 {
+  font-weight: 500;
+}
+
+.section-content {
+  background-color: #f9f9f9;
+  transition: all 0.3s ease;
+}
+
+.section-content.d-none {
+  display: none !important;
+}
+
+.case-item {
+  transition: background-color 0.2s;
+}
+
+.case-item:hover {
+  background-color: #f0f8ff;
+}
+
+.case-number {
+  font-family: monospace;
+}
+
+.case-title {
+  font-weight: 500;
+  margin: 0.25rem 0;
+}
+
+/* Indeterminate checkbox styling */
+input[type="checkbox"]:indeterminate {
+  background-color: #0dcaf0;
+  border-color: #0dcaf0;
 }
 </style>
 {% endblock %}

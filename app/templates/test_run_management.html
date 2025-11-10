@@ -3391,6 +3391,16 @@ function openCaseSelectModal(configId) {
   if (modalMode === 'create') {
     selectedCaseMap.clear();
     existingItemIdByCaseNumber.clear();
+
+    // 檢查是否有從 Test Case Set 卡片預選的 Test Cases
+    const preselectedCaseIds = sessionStorage.getItem('testRunSelectedCaseIds');
+    if (preselectedCaseIds) {
+      // 將逗號分隔的 ID 字符串轉換為集合，供後續使用
+      window._preselectedCaseIds = new Set(preselectedCaseIds.split(',').map(id => parseInt(id)));
+      console.log('Preselected case IDs:', window._preselectedCaseIds);
+    } else {
+      window._preselectedCaseIds = null;
+    }
   }
   document.getElementById('selectedCount').textContent = '0';
   document.getElementById('caseListBody').innerHTML = '';
@@ -3559,6 +3569,17 @@ async function loadTeamTestCases(search) {
           selectedCaseMap.set(c.test_case_number, c);
         }
       }
+    } else if (window._preselectedCaseIds && window._preselectedCaseIds.size > 0) {
+      // 如果有從 Test Case Set 卡片預選的 Test Cases，自動選中它們
+      for (const c of availableCases) {
+        if (window._preselectedCaseIds.has(c.id)) {
+          selectedCaseMap.set(c.test_case_number, c);
+        }
+      }
+      // 清除 sessionStorage 中的預選 ID
+      sessionStorage.removeItem('testRunSelectedCaseIds');
+      sessionStorage.removeItem('testRunSetId');
+      window._preselectedCaseIds = null;
     }
     renderCaseList();
   } catch (e) {
