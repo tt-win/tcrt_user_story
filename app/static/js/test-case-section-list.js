@@ -151,14 +151,38 @@ class TestCaseSectionList {
     // 寬度和高度由 CSS 的 flex: 0 0 auto 和 overflow-y: auto 控制
 
     // 構建側邊欄面板 HTML
-    // 從 testCaseSetIntegration 動態獲取當前 Set 名稱
+    // 從多個來源獲取當前 Set 名稱：優先級為 testCaseSetIntegration > DOM > sessionStorage
     let setNameDisplay = '區段列表';
-    if (typeof testCaseSetIntegration !== 'undefined' && testCaseSetIntegration.testCaseSets.length > 0) {
+    let setNameText = null;
+
+    // 方法 1: 從 testCaseSetIntegration 獲取
+    if (typeof testCaseSetIntegration !== 'undefined' && testCaseSetIntegration.testCaseSets && testCaseSetIntegration.testCaseSets.length > 0) {
       const currentSet = testCaseSetIntegration.testCaseSets.find(s => s.id == this.setId);
       if (currentSet) {
-        this.setName = currentSet.name;
-        setNameDisplay = `<span class="section-list-title" title="${this.escapeHtml(currentSet.name)}">${this.escapeHtml(currentSet.name)}</span>`;
+        setNameText = currentSet.name;
       }
+    }
+
+    // 方法 2: 從 DOM 的 currentSetName 提取
+    if (!setNameText) {
+      const currentSetNameEl = document.getElementById('currentSetName');
+      if (currentSetNameEl) {
+        const strongEl = currentSetNameEl.querySelector('strong');
+        if (strongEl) {
+          setNameText = strongEl.textContent.trim();
+        }
+      }
+    }
+
+    // 方法 3: 保存的名稱
+    if (!setNameText) {
+      setNameText = sessionStorage.getItem('selectedTestCaseSetName');
+    }
+
+    // 使用獲取到的名稱
+    if (setNameText) {
+      this.setName = setNameText;
+      setNameDisplay = `<span class="section-list-title" title="${this.escapeHtml(setNameText)}">${this.escapeHtml(setNameText)}</span>`;
     }
 
     const panelHtml = `
@@ -1132,14 +1156,38 @@ class TestCaseSectionList {
     const headerH6 = document.querySelector('#sectionListPanel .card-header h6');
     if (!headerH6) return;
 
-    // 從 testCaseSetIntegration 獲取當前 Set 名稱
+    // 從多個來源獲取當前 Set 名稱：優先級為 testCaseSetIntegration > DOM > sessionStorage
     let setNameDisplay = '區段列表';
-    if (typeof testCaseSetIntegration !== 'undefined' && testCaseSetIntegration.testCaseSets.length > 0) {
+    let setNameText = null;
+
+    // 方法 1: 從 testCaseSetIntegration 獲取
+    if (typeof testCaseSetIntegration !== 'undefined' && testCaseSetIntegration.testCaseSets && testCaseSetIntegration.testCaseSets.length > 0) {
       const currentSet = testCaseSetIntegration.testCaseSets.find(s => s.id == testCaseSetIntegration.currentSetId);
       if (currentSet) {
-        this.setName = currentSet.name;
-        setNameDisplay = `<span class="section-list-title" title="${this.escapeHtml(currentSet.name)}">${this.escapeHtml(currentSet.name)}</span>`;
+        setNameText = currentSet.name;
       }
+    }
+
+    // 方法 2: 從 DOM 的 currentSetName 提取
+    if (!setNameText) {
+      const currentSetNameEl = document.getElementById('currentSetName');
+      if (currentSetNameEl) {
+        const strongEl = currentSetNameEl.querySelector('strong');
+        if (strongEl) {
+          setNameText = strongEl.textContent.trim();
+        }
+      }
+    }
+
+    // 方法 3: 保存的名稱
+    if (!setNameText) {
+      setNameText = sessionStorage.getItem('selectedTestCaseSetName');
+    }
+
+    // 使用獲取到的名稱
+    if (setNameText) {
+      this.setName = setNameText;
+      setNameDisplay = `<span class="section-list-title" title="${this.escapeHtml(setNameText)}">${this.escapeHtml(setNameText)}</span>`;
     }
 
     // 更新 h6 的內容

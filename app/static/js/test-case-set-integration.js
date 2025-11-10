@@ -164,6 +164,8 @@ class TestCaseSetIntegration {
           <br>
           <small class="text-muted">${currentSet.test_case_count || 0} 個測試案例</small>
         `;
+        // 保存 Set 名稱到 sessionStorage，以備區段列表使用
+        sessionStorage.setItem('selectedTestCaseSetName', currentSet.name);
       } else {
         headerName.innerHTML = '<strong>集合不存在</strong>';
       }
