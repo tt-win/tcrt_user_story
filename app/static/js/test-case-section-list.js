@@ -680,12 +680,15 @@ class TestCaseSectionList {
     console.log('[SectionList] expandSectionAndAncestors called with sectionId:', sectionId);
     console.log('[SectionList] Before expand - sectionCollapsedState:', Array.from(sectionCollapsedState));
 
-    // 移除該 section 的收合狀態
-    const wasCollapsed = sectionCollapsedState.has(sectionId);
-    console.log('[SectionList] Target section (ID: ' + sectionId + ') was collapsed:', wasCollapsed);
+    // 使用字符串化的 ID（Set 區分類型，數字 6 和字符串 "6" 不同）
+    const sectionIdStr = String(sectionId);
 
-    sectionCollapsedState.delete(sectionId);
-    console.log('[SectionList] After deleting target - sectionCollapsedState has ' + sectionId + '?:', sectionCollapsedState.has(sectionId));
+    // 移除該 section 的收合狀態
+    const wasCollapsed = sectionCollapsedState.has(sectionIdStr);
+    console.log('[SectionList] Target section (ID: ' + sectionIdStr + ') was collapsed:', wasCollapsed);
+
+    sectionCollapsedState.delete(sectionIdStr);
+    console.log('[SectionList] After deleting target - sectionCollapsedState has ' + sectionIdStr + '?:', sectionCollapsedState.has(sectionIdStr));
     console.log('[SectionList] After deleting target - sectionCollapsedState:', Array.from(sectionCollapsedState));
 
     // 找到該 section 的父 section ID
@@ -697,11 +700,12 @@ class TestCaseSectionList {
     let parentId = findSectionParentId(sectionId);
     let ancestorCount = 0;
     while (parentId) {
-      // 展開每個祖先 section
-      const parentWasCollapsed = sectionCollapsedState.has(parentId);
-      sectionCollapsedState.delete(parentId);
+      // 展開每個祖先 section（轉換為字符串）
+      const parentIdStr = String(parentId);
+      const parentWasCollapsed = sectionCollapsedState.has(parentIdStr);
+      sectionCollapsedState.delete(parentIdStr);
       ancestorCount++;
-      console.log(`[SectionList] Ancestor ${ancestorCount} (ID: ${parentId}) was collapsed:`, parentWasCollapsed, 'now expanded');
+      console.log(`[SectionList] Ancestor ${ancestorCount} (ID: ${parentIdStr}) was collapsed:`, parentWasCollapsed, 'now expanded');
       parentId = findSectionParentId(parentId);
     }
     console.log('[SectionList] Total ancestors expanded:', ancestorCount);
