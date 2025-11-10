@@ -655,12 +655,23 @@ function renderTeamCards() {
                                     ((window.i18n && window.i18n.isReady()) ? window.i18n.t('team.notConfigured') : '未設定')}</small>
                             </div>
                         </div>
-                        <div class="d-flex gap-2 mb-2">
-                            <button class="btn btn-primary btn-sm flex-grow-1" onclick="selectTeam(${team.id})">
-                                <i class="fas fa-arrow-right me-1"></i><span>${(window.i18n && window.i18n.isReady()) ? window.i18n.t('team.enterTeam') : '進入團隊'}</span>
-                            </button>
-                        </div>
                         <div class="d-flex gap-2">
+                            <div class="dropdown flex-grow-0">
+                                <button class="btn btn-primary btn-sm dropdown-toggle" type="button" id="enterTeamDropdown${team.id}" data-bs-toggle="dropdown" aria-expanded="false">
+                                    <i class="fas fa-arrow-right me-1"></i><span>${(window.i18n && window.i18n.isReady()) ? window.i18n.t('team.enterTeam') : '進入團隊'}</span>
+                                </button>
+                                <ul class="dropdown-menu" aria-labelledby="enterTeamDropdown${team.id}">
+                                    <li><button class="dropdown-item" type="button" onclick="enterTeamWithPage(${team.id}, 'test-cases')">
+                                        <i class="fas fa-flask me-2"></i>Test Cases
+                                    </button></li>
+                                    <li><button class="dropdown-item" type="button" onclick="enterTeamWithPage(${team.id}, 'test-runs')">
+                                        <i class="fas fa-play-circle me-2"></i>Test Runs
+                                    </button></li>
+                                    <li><button class="dropdown-item" type="button" onclick="enterTeamWithPage(${team.id}, 'usm')">
+                                        <i class="fas fa-sitemap me-2"></i>User Story Map
+                                    </button></li>
+                                </ul>
+                            </div>
                             <button class="btn btn-secondary btn-sm flex-grow-1" onclick="editTeam(${team.id})">
                                 <i class="fas fa-edit me-1"></i><span>${(window.i18n && window.i18n.isReady()) ? window.i18n.t('common.edit') : '編輯'}</span>
                             </button>
@@ -846,11 +857,36 @@ async function validateLarkConnection() {
 function selectTeam(teamId) {
     const team = teams.find(t => t.id === teamId);
     if (!team) return;
-    
+
     // 儲存選擇的團隊，直接導向（不顯示 Toast）
     if (AppUtils && AppUtils.setCurrentTeam) {
         AppUtils.setCurrentTeam(team);
         window.location.href = '/test-case-management';
+    }
+}
+
+function enterTeamWithPage(teamId, page) {
+    const team = teams.find(t => t.id === teamId);
+    if (!team) return;
+
+    // 儲存選擇的團隊
+    if (AppUtils && AppUtils.setCurrentTeam) {
+        AppUtils.setCurrentTeam(team);
+    }
+
+    // 根據選擇導向到不同頁面
+    switch(page) {
+        case 'test-cases':
+            window.location.href = '/test-case-management';
+            break;
+        case 'test-runs':
+            window.location.href = '/test-runs';
+            break;
+        case 'usm':
+            window.location.href = `/user-story-map/${teamId}`;
+            break;
+        default:
+            window.location.href = '/test-case-management';
     }
 }
 
