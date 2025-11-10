@@ -2390,6 +2390,24 @@ function collapseChildSections(parentSectionId) {
     addChildSections(parentSectionId);
 }
 
+function findSectionParentId(sectionId) {
+    // 扁平化 section tree 並找到指定 section 的父 ID
+    const flattenAllSections = (sections, result = []) => {
+        for (const section of sections) {
+            result.push(section);
+            const children = section.children || section.child_sections || [];
+            if (Array.isArray(children) && children.length > 0) {
+                flattenAllSections(children, result);
+            }
+        }
+        return result;
+    };
+
+    const allSections = flattenAllSections(tcmSectionsTree);
+    const section = allSections.find(s => s.id === sectionId);
+    return section ? section.parent_section_id : null;
+}
+
 // ===== 統一快取管理模組 =====
 const TEST_CASES_CACHE_KEY = 'test_cases_list_cache_v1';
 const TEST_CASES_CACHE_TTL = 60 * 60 * 1000; // 1小時
@@ -3814,7 +3832,24 @@ function renderTestCasesTable() {
 
     const grouped = groupTestCasesBySection(pageTestCases);
     const sortedSectionIds = sortSectionIds(Object.keys(grouped), grouped);
-    const sectionsHtml = sortedSectionIds.map(sectionId => {
+
+    // 篩選掉被收合的父 section 的子 section（不渲染它們）
+    const visibleSectionIds = sortedSectionIds.filter(sectionId => {
+        const group = grouped[sectionId];
+        if (!group) return false;
+
+        // 找到該 section 的父 section ID
+        const parentSectionId = findSectionParentId(parseInt(sectionId));
+
+        // 如果父 section 被收合，則隱藏該子 section
+        if (parentSectionId && sectionCollapsedState.has(parentSectionId)) {
+            return false;
+        }
+
+        return true;
+    });
+
+    const sectionsHtml = visibleSectionIds.map(sectionId => {
         const group = grouped[sectionId];
         const rowsHtml = group.testCases.map(renderTestCaseRow).join('');
         return renderSectionBlockHTML(group, rowsHtml);
