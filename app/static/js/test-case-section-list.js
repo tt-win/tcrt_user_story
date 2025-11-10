@@ -617,14 +617,14 @@ class TestCaseSectionList {
   }
 
   /**
-   * 滾動到指定 section 並展開它
+   * 滾動到指定 section 並展開它（包括所有祖先 section）
    */
   scrollToAndExpandSection(sectionId) {
     // 確保 sectionCollapsedState 存在（在 test_case_management.html 中定義）
     if (typeof sectionCollapsedState === 'undefined') return;
 
-    // 設定為展開狀態（移除收合狀態）
-    sectionCollapsedState.delete(sectionId);
+    // 展開目標 section 及其所有祖先 section
+    this.expandSectionAndAncestors(sectionId);
 
     // 觸發重新渲染 test case 表格
     if (typeof renderTestCasesTable === 'function') {
@@ -638,6 +638,24 @@ class TestCaseSectionList {
         sectionBody.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
     }, 100);
+  }
+
+  /**
+   * 展開指定 section 及其所有祖先 section
+   */
+  expandSectionAndAncestors(sectionId) {
+    // 移除該 section 的收合狀態
+    sectionCollapsedState.delete(sectionId);
+
+    // 找到該 section 的父 section ID
+    if (typeof findSectionParentId !== 'function') return;
+
+    let parentId = findSectionParentId(sectionId);
+    while (parentId) {
+      // 展開每個祖先 section
+      sectionCollapsedState.delete(parentId);
+      parentId = findSectionParentId(parentId);
+    }
   }
 
   /**
