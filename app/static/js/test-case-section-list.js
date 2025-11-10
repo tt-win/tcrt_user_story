@@ -611,6 +611,33 @@ class TestCaseSectionList {
 
     // 保存選擇
     sessionStorage.setItem("selectedSectionId", sectionId);
+
+    // 滾動到對應的 test case 區段並自動展開
+    this.scrollToAndExpandSection(sectionId);
+  }
+
+  /**
+   * 滾動到指定 section 並展開它
+   */
+  scrollToAndExpandSection(sectionId) {
+    // 確保 sectionCollapsedState 存在（在 test_case_management.html 中定義）
+    if (typeof sectionCollapsedState === 'undefined') return;
+
+    // 設定為展開狀態（移除收合狀態）
+    sectionCollapsedState.delete(sectionId);
+
+    // 觸發重新渲染 test case 表格
+    if (typeof renderTestCasesTable === 'function') {
+      renderTestCasesTable();
+    }
+
+    // 等待 DOM 更新後再滾動
+    setTimeout(() => {
+      const sectionBody = document.getElementById(`section-body-${sectionId}`);
+      if (sectionBody) {
+        sectionBody.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+    }, 100);
   }
 
   /**
