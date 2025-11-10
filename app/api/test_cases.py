@@ -1010,21 +1010,16 @@ async def update_test_case(
             )
 
         # 解析 TCG JSON 以便返回
+        # TCG is stored as List[str] in the model, not LarkRecord
         tcg_list = []
         if item.tcg_json:
             try:
                 tcg_data = json.loads(item.tcg_json)
+                # tcg_json stores normalized TCG numbers as a simple list of strings
                 if isinstance(tcg_data, list):
-                    from app.models.lark_types import LarkRecord
-                    for tcg_item in tcg_data:
-                        if isinstance(tcg_item, dict):
-                            tcg_list.append(LarkRecord(
-                                record_ids=tcg_item.get("record_ids", []),
-                                table_id=tcg_item.get("table_id", ""),
-                                text=tcg_item.get("text", ""),
-                                text_arr=tcg_item.get("text_arr", []),
-                                type=tcg_item.get("type", "text")
-                            ))
+                    tcg_list = [str(t) for t in tcg_data if t]
+                elif isinstance(tcg_data, str):
+                    tcg_list = [tcg_data]
             except Exception as e:
                 # 如果解析失敗，返回空陣列
                 tcg_list = []
@@ -1763,26 +1758,16 @@ async def get_test_case_by_number(
                 )
         except Exception:
             attachments = []
-        # 解析 TCG
+        # 解析 TCG - TCG is stored as List[str], not LarkRecord
         tcg_items = []
         try:
             if item.tcg_json:
                 data = json.loads(item.tcg_json)
+                # tcg_json stores normalized TCG numbers as a simple list of strings
                 if isinstance(data, list):
-                    from app.models.lark_types import LarkRecord
-
-                    for it in data:
-                        try:
-                            rec = LarkRecord(
-                                record_ids=it.get("record_ids") or [],
-                                table_id=it.get("table_id") or "",
-                                text=it.get("text") or "",
-                                text_arr=it.get("text_arr") or [],
-                                type=it.get("type") or "text",
-                            )
-                            tcg_items.append(rec)
-                        except Exception:
-                            continue
+                    tcg_items = [str(t) for t in data if t]
+                elif isinstance(data, str):
+                    tcg_items = [data]
         except Exception:
             tcg_items = []
 
