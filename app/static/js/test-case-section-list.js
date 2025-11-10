@@ -658,9 +658,25 @@ class TestCaseSectionList {
         const sectionHeader = sectionCard.querySelector('.section-card-header');
         if (sectionHeader) {
           console.log('[SectionList] Found section header, scrolling into view');
-          // 使用 center 讓 section header 在視口中央，或使用 start 讓其靠近頂部
-          // 但保留足夠空間給頁眉
-          sectionHeader.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          // 先使用標準 scrollIntoView 移動到視口內
+          sectionHeader.scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+          // 然後使用 requestAnimationFrame 進行精細調整
+          // 將 section header 位置調整到距離視口頂部 10 像素
+          requestAnimationFrame(() => {
+            const rect = sectionHeader.getBoundingClientRect();
+            const currentTop = rect.top;
+            const targetTop = 10; // 距離視口頂部 10 像素
+            const scrollOffset = currentTop - targetTop;
+
+            if (Math.abs(scrollOffset) > 0.5) {
+              // 使用 smooth 滾動進行精細調整
+              window.scrollBy({
+                top: scrollOffset,
+                behavior: 'smooth'
+              });
+            }
+          });
         } else {
           console.warn('[SectionList] Section header not found within section card');
         }
