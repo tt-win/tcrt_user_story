@@ -330,6 +330,15 @@ Web Tool{% endblock %} {% block page_title_text %}
             <button
                 type="button"
                 class="btn btn-sm btn-edit"
+                id="moveNodeBtn"
+                title="搬移節點到其他父節點"
+                onclick="window.startMoveNodeMode?.()"
+            >
+                <i class="fas fa-arrow-right"></i> 搬移節點
+            </button>
+            <button
+                type="button"
+                class="btn btn-sm btn-edit"
                 id="setRelationsBtn"
                 title="建立節點關聯"
                 onclick="window.openRelationModal?.()"
