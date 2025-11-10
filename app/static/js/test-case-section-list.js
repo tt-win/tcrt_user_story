@@ -627,42 +627,68 @@ class TestCaseSectionList {
    * 滾動到指定 section 並展開它（包括所有祖先 section）
    */
   scrollToAndExpandSection(sectionId) {
+    console.log('[SectionList] scrollToAndExpandSection called with sectionId:', sectionId);
+
     // 確保 sectionCollapsedState 存在（在 test_case_management.html 中定義）
-    if (typeof sectionCollapsedState === 'undefined') return;
+    if (typeof sectionCollapsedState === 'undefined') {
+      console.error('[SectionList] sectionCollapsedState is not defined');
+      return;
+    }
 
     // 展開目標 section 及其所有祖先 section
     this.expandSectionAndAncestors(sectionId);
 
     // 觸發重新渲染 test case 表格
     if (typeof renderTestCasesTable === 'function') {
+      console.log('[SectionList] Calling renderTestCasesTable()');
       renderTestCasesTable();
+    } else {
+      console.error('[SectionList] renderTestCasesTable is not defined');
+      return;
     }
 
     // 等待 DOM 更新後再滾動
+    // 增加等待時間以確保 DOM 完全更新
     setTimeout(() => {
       const sectionBody = document.getElementById(`section-body-${sectionId}`);
+      console.log('[SectionList] Looking for element with id:', `section-body-${sectionId}`);
       if (sectionBody) {
+        console.log('[SectionList] Found section body, scrolling into view');
         sectionBody.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      } else {
+        console.warn('[SectionList] Section body element not found:', `section-body-${sectionId}`);
       }
-    }, 100);
+    }, 300);
   }
 
   /**
    * 展開指定 section 及其所有祖先 section
    */
   expandSectionAndAncestors(sectionId) {
+    console.log('[SectionList] expandSectionAndAncestors called with sectionId:', sectionId);
+
     // 移除該 section 的收合狀態
+    const wasCollapsed = sectionCollapsedState.has(sectionId);
     sectionCollapsedState.delete(sectionId);
+    console.log('[SectionList] Target section was collapsed:', wasCollapsed, 'now expanded');
 
     // 找到該 section 的父 section ID
-    if (typeof findSectionParentId !== 'function') return;
+    if (typeof findSectionParentId !== 'function') {
+      console.error('[SectionList] findSectionParentId is not defined');
+      return;
+    }
 
     let parentId = findSectionParentId(sectionId);
+    let ancestorCount = 0;
     while (parentId) {
       // 展開每個祖先 section
+      const parentWasCollapsed = sectionCollapsedState.has(parentId);
       sectionCollapsedState.delete(parentId);
+      ancestorCount++;
+      console.log(`[SectionList] Ancestor ${ancestorCount} (ID: ${parentId}) was collapsed:`, parentWasCollapsed, 'now expanded');
       parentId = findSectionParentId(parentId);
     }
+    console.log('[SectionList] Total ancestors expanded:', ancestorCount);
   }
 
   /**
