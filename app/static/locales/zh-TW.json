@@ -457,17 +457,18 @@
     "permissionDenied": "無權限執行此操作",
     "batchCopySuccess": "已成功複製 {count} 筆測試案例"
   },
-  "navigation": {
-    "backToHome": "首頁",
-    "backToManagement": "回到管理",
-    "pleaseSelect": "請選擇...",
-    "subtitle": "選擇團隊開始管理測試案例",
-    "teamSettings": "團隊設定",
-    "testCaseManagement": "Test Case 管理",
-    "testRunManagement": "Test Run 管理",
-    "userStoryMap": "User Story Map",
-    "title": "Test Case Repository"
-  },
+    "navigation": {
+        "backToHome": "首頁",
+        "backToManagement": "回到管理",
+        "backToSets": "回到 Test Case Sets",
+        "pleaseSelect": "請選擇...",
+        "subtitle": "選擇團隊開始管理測試案例",
+        "teamSettings": "團隊設定",
+        "testCaseManagement": "Test Case 管理",
+        "testRunManagement": "Test Run 管理",
+        "userStoryMap": "User Story Map",
+        "title": "Test Case Repository"
+    },
   "orgSync": {
     "active": "活躍",
     "addTeamFirst": "請先新增團隊後再執行同步",

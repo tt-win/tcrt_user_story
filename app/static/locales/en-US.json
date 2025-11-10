@@ -460,6 +460,7 @@
     "navigation": {
         "backToHome": "Home",
         "backToManagement": "Back to Management",
+        "backToSets": "Back to Test Case Sets",
         "pleaseSelect": "Please select...",
         "subtitle": "Select a team to start managing test cases",
         "teamSettings": "Team Settings",
