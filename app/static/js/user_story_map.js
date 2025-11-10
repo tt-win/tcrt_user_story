@@ -729,7 +729,7 @@ const UserStoryMapFlow = () => {
             instance.zoomBy?.(zoomDelta, { duration: 150 });
         } catch (_) {
             const currentZoom = instance.getZoom?.() ?? 1;
-            const nextZoom = Math.min(2, Math.max(0.2, currentZoom + zoomDelta));
+            const nextZoom = Math.min(2, Math.max(0.05, currentZoom + zoomDelta));
             instance.zoomTo?.(nextZoom, { duration: 150 });
         }
     }, []);
@@ -2519,7 +2519,7 @@ const UserStoryMapFlow = () => {
                         instance.zoomBy?.(zoomDelta, { duration: 150 });
                     } catch (_) {
                         const currentZoom = instance.getZoom?.() ?? 1;
-                        const nextZoom = Math.min(2, Math.max(0.2, currentZoom + zoomDelta));
+                        const nextZoom = Math.min(2, Math.max(0.05, currentZoom + zoomDelta));
                         instance.zoomTo?.(nextZoom, { duration: 150 });
                     }
                 }, []);
@@ -2663,6 +2663,8 @@ const UserStoryMapFlow = () => {
                             zoomOnScroll: false,
                             panOnScroll: true,
                             panOnScrollSpeed: 0.8,
+                            minZoom: 0.05,
+                            maxZoom: 2,
                             onInit: (instance) => { flowInstanceRef.current = instance; },
                             style: { width: '100%', height: '100%' }
                         }
@@ -3123,6 +3125,8 @@ const UserStoryMapFlow = () => {
             zoomOnScroll: false,
             panOnScroll: true,
             panOnScrollSpeed: 0.8,
+            minZoom: 0.05,
+            maxZoom: 2,
         },
         React.createElement(Background, { variant: BackgroundVariant.Dots }),
         React.createElement(MiniMap, { nodeColor: getNodeColor })
