@@ -270,6 +270,7 @@ class TestRunItemResponse(BaseModel):
     executed_at: Optional[datetime]
     execution_duration: Optional[int]
     attachment_count: int = Field(0)
+    attachments: List[Dict[str, Any]] = Field(default_factory=list)
     execution_result_count: int = Field(0)
     execution_results: List[Dict[str, Any]] = Field(default_factory=list)
     comment: Optional[str] = None
@@ -395,6 +396,7 @@ def _get_lark_client_for_team(team_id: int, db: Session):
 
 def _db_to_response(item: TestRunItemDB, case: Optional[TestCaseLocalDB] = None, db: Optional[Session] = None) -> TestRunItemResponse:
     exec_results = _parse_execution_results(item.execution_results_json)
+    attachments = _parse_execution_results(item.attachments_json)  # 使用相同的解析函數
     test_case = case or getattr(item, 'test_case', None)
 
     title = None
@@ -443,6 +445,7 @@ def _db_to_response(item: TestRunItemDB, case: Optional[TestCaseLocalDB] = None,
         executed_at=item.executed_at,
         execution_duration=item.execution_duration,
         attachment_count=_len_json_list(item.attachments_json),
+        attachments=attachments,
         execution_result_count=len(exec_results),
         execution_results=exec_results,
         comment=comment,
