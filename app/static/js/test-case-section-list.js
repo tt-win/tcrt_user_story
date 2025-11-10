@@ -650,25 +650,22 @@ class TestCaseSectionList {
     // 等待 DOM 更新後再滾動
     // 增加等待時間以確保 DOM 完全更新
     setTimeout(() => {
-      const sectionBody = document.getElementById(`section-body-${sectionId}`);
-      console.log('[SectionList] Looking for element with id:', `section-body-${sectionId}`);
-      if (sectionBody) {
-        const displayStyle = window.getComputedStyle(sectionBody).display;
-        const inlineStyle = sectionBody.getAttribute('style');
-        console.log('[SectionList] Found section body:');
-        console.log('  - Inline style attr:', inlineStyle);
-        console.log('  - Computed display:', displayStyle);
-        console.log('  - sectionCollapsedState has sectionId?:', sectionCollapsedState.has(sectionId));
-
-        if (displayStyle === 'none') {
-          console.warn('[SectionList] Section body is still hidden! Checking collapse state...');
-          console.log('[SectionList] All collapsed section IDs:', Array.from(sectionCollapsedState));
+      // 尋找 section header（.section-card-header）而不是 body
+      // 這樣可以確保 header 在視口中可見
+      const sectionCard = document.querySelector(`[data-section-id="${sectionId}"]`);
+      console.log('[SectionList] Looking for section card with data-section-id:', sectionId);
+      if (sectionCard) {
+        const sectionHeader = sectionCard.querySelector('.section-card-header');
+        if (sectionHeader) {
+          console.log('[SectionList] Found section header, scrolling into view');
+          // 使用 center 讓 section header 在視口中央，或使用 start 讓其靠近頂部
+          // 但保留足夠空間給頁眉
+          sectionHeader.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        } else {
+          console.warn('[SectionList] Section header not found within section card');
         }
-
-        console.log('[SectionList] Scrolling into view');
-        sectionBody.scrollIntoView({ behavior: 'smooth', block: 'start' });
       } else {
-        console.warn('[SectionList] Section body element not found:', `section-body-${sectionId}`);
+        console.warn('[SectionList] Section card element not found with data-section-id:', sectionId);
       }
     }, 300);
   }
