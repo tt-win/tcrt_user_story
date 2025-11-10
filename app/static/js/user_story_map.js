@@ -330,7 +330,7 @@ const renderJiraTagsHtml = (tickets) => {
         return '<small class="text-muted">未輸入任何票號</small>';
     }
     return normalized
-        .map(ticket => `<span class="jira-tag" style="cursor: pointer; display: inline-block; background-color: #e3f2fd; color: #1976d2; padding: 2px 6px; margin: 1px 2px; border-radius: 10px; font-size: 0.7rem; font-weight: 500; border: 1px solid #bbdefb;">${escapeHtml(ticket)}</span>`)
+        .map(ticket => `<span class="jira-tag">${escapeHtml(ticket)}</span>`)
         .join('');
 };
 
@@ -361,6 +361,7 @@ window.createJiraTooltip = function() {
         z-index: 10000;
         display: none;
         font-size: 0.875rem;
+        pointer-events: auto;
     `;
     document.body.appendChild(tooltip);
     jiraTooltipState.tooltipElement = tooltip;
