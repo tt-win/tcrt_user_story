@@ -330,8 +330,239 @@ const renderJiraTagsHtml = (tickets) => {
         return '<small class="text-muted">未輸入任何票號</small>';
     }
     return normalized
-        .map(ticket => `<span class="tcg-tag">${escapeHtml(ticket)}</span>`)
+        .map(ticket => `<span class="jira-tag" style="cursor: pointer; display: inline-block; background-color: #e3f2fd; color: #1976d2; padding: 2px 6px; margin: 1px 2px; border-radius: 10px; font-size: 0.7rem; font-weight: 500; border: 1px solid #bbdefb;">${escapeHtml(ticket)}</span>`)
         .join('');
+};
+
+// JIRA Tooltip 全局狀態
+let jiraTooltipState = {
+    currentElement: null,
+    tooltipElement: null,
+    timeout: null,
+    isHovering: false
+};
+
+// 創建 JIRA ticket tooltip 元素
+window.createJiraTooltip = function() {
+    if (jiraTooltipState.tooltipElement) {
+        return jiraTooltipState.tooltipElement;
+    }
+
+    const tooltip = document.createElement('div');
+    tooltip.id = 'usm-jira-tooltip';
+    tooltip.style.cssText = `
+        position: fixed;
+        background: white;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 12px;
+        max-width: 300px;
+        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+        z-index: 10000;
+        display: none;
+        font-size: 0.875rem;
+    `;
+    document.body.appendChild(tooltip);
+    jiraTooltipState.tooltipElement = tooltip;
+    return tooltip;
+};
+
+// 定位 JIRA tooltip
+window.positionJiraTooltip = function(tooltip, element) {
+    if (!element || !tooltip) return;
+
+    const rect = element.getBoundingClientRect();
+    const tooltipHeight = tooltip.offsetHeight || 200;
+
+    let top = rect.bottom + 8;
+    let left = rect.left;
+
+    // 如果超出視窗下方，顯示在上方
+    if (top + tooltipHeight > window.innerHeight) {
+        top = rect.top - tooltipHeight - 8;
+    }
+
+    // 如果超出右邊，調整
+    if (left + 300 > window.innerWidth) {
+        left = window.innerWidth - 312;
+    }
+
+    tooltip.style.top = Math.max(0, top) + 'px';
+    tooltip.style.left = Math.max(0, left) + 'px';
+};
+
+// 取得 JIRA ticket 資訊
+window.fetchJiraTicketInfo = async function(ticketNumber) {
+    try {
+        // 調用後端 API 獲取 ticket 資訊
+        const token = localStorage.getItem('access_token');
+        if (!token) return null;
+
+        const response = await fetch(`/api/jira/ticket/${ticketNumber}`, {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (response.ok) {
+            return await response.json();
+        }
+        return null;
+    } catch (error) {
+        console.error('取得 JIRA ticket 資訊失敗:', error);
+        return null;
+    }
+};
+
+// 格式化 JIRA ticket tooltip 內容
+window.formatJiraTooltip = function(ticketNumber, ticketData) {
+    if (!ticketData) {
+        return `<div class="text-muted small">
+            <i class="fas fa-exclamation-triangle me-1"></i>
+            無法取得 ${escapeHtml(ticketNumber)} 的資訊
+        </div>`;
+    }
+
+    const summary = ticketData.summary || '無標題';
+    const status = ticketData.status?.name || '未知狀態';
+    const statusColor = getStatusColor(status);
+
+    return `
+        <div style="text-align: left;">
+            <div style="font-weight: 600; margin-bottom: 4px; color: #1976d2;">
+                ${escapeHtml(ticketNumber)}
+            </div>
+            <div style="margin-bottom: 4px; color: #333;">
+                <strong>標題:</strong> ${escapeHtml(summary)}
+            </div>
+            <div style="color: #666;">
+                <strong>狀態:</strong> <span style="display: inline-block; background-color: ${statusColor}; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem;">${escapeHtml(status)}</span>
+            </div>
+        </div>
+    `;
+};
+
+// 取得狀態顏色
+window.getStatusColor = function(status) {
+    const statusLower = (status || '').toLowerCase();
+    if (statusLower.includes('done') || statusLower.includes('resolved')) return '#28a745';
+    if (statusLower.includes('progress')) return '#ffc107';
+    if (statusLower.includes('todo') || statusLower.includes('open')) return '#6c757d';
+    return '#17a2b8';
+};
+
+// 顯示 JIRA ticket tooltip
+window.showJiraTooltip = async function(ticketNumber, element) {
+    // 如果正在載入其他 tooltip，先取消
+    if (jiraTooltipState.timeout) {
+        clearTimeout(jiraTooltipState.timeout);
+        jiraTooltipState.timeout = null;
+    }
+
+    jiraTooltipState.currentElement = element;
+
+    const tooltip = window.createJiraTooltip();
+    tooltip.innerHTML = `
+        <div class="d-flex align-items-center">
+            <div class="spinner-border spinner-border-sm me-2" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <span>載入中...</span>
+        </div>
+    `;
+
+    tooltip.style.display = 'block';
+    window.positionJiraTooltip(tooltip, element);
+
+    try {
+        const ticketData = await window.fetchJiraTicketInfo(ticketNumber);
+
+        // 檢查是否還在同一個元素上
+        if (jiraTooltipState.currentElement !== element) {
+            return;
+        }
+
+        tooltip.innerHTML = window.formatJiraTooltip(ticketNumber, ticketData);
+        window.positionJiraTooltip(tooltip, element);
+    } catch (error) {
+        console.error('JIRA tooltip 載入失敗:', error);
+        if (jiraTooltipState.currentElement === element) {
+            tooltip.innerHTML = `
+                <div class="text-danger small">
+                    <i class="fas fa-times-circle me-1"></i>
+                    載入失敗
+                </div>
+            `;
+        }
+    }
+};
+
+// 隱藏 JIRA tooltip
+window.hideJiraTooltip = function() {
+    if (jiraTooltipState.timeout) {
+        clearTimeout(jiraTooltipState.timeout);
+        jiraTooltipState.timeout = null;
+    }
+
+    jiraTooltipState.timeout = setTimeout(() => {
+        const tooltip = document.getElementById('usm-jira-tooltip');
+        if (tooltip && !jiraTooltipState.isHovering) {
+            tooltip.style.display = 'none';
+        }
+    }, 100);
+};
+
+// 初始化 JIRA tooltip 事件監聽
+window.initJiraTooltipListeners = function() {
+    document.addEventListener('mouseover', function(e) {
+        const jiraTag = e.target.closest('.jira-tag');
+        if (jiraTag) {
+            const ticketNumber = jiraTag.textContent.trim();
+            if (ticketNumber && !jiraTooltipState.isHovering) {
+                window.showJiraTooltip(ticketNumber, jiraTag);
+            }
+        }
+
+        // 檢查是否移到 tooltip 上
+        if (e.target.closest('#usm-jira-tooltip')) {
+            jiraTooltipState.isHovering = true;
+            if (jiraTooltipState.timeout) {
+                clearTimeout(jiraTooltipState.timeout);
+                jiraTooltipState.timeout = null;
+            }
+        }
+    });
+
+    document.addEventListener('mouseout', function(e) {
+        const jiraTag = e.target.closest('.jira-tag');
+        if (jiraTag && !e.relatedTarget?.closest('.jira-tag')) {
+            setTimeout(() => {
+                if (!jiraTooltipState.isHovering && !document.querySelector('.jira-tag:hover')) {
+                    window.hideJiraTooltip();
+                }
+            }, 50);
+        }
+
+        if (e.target.closest('#usm-jira-tooltip') && !e.relatedTarget?.closest('#usm-jira-tooltip')) {
+            jiraTooltipState.isHovering = false;
+            setTimeout(() => {
+                if (!jiraTooltipState.isHovering && !document.querySelector('.jira-tag:hover')) {
+                    window.hideJiraTooltip();
+                }
+            }, 100);
+        }
+    });
+
+    // 點擊其他地方時隱藏 tooltip
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.jira-tag') && !e.target.closest('#usm-jira-tooltip')) {
+            const tooltip = document.getElementById('usm-jira-tooltip');
+            if (tooltip) {
+                tooltip.style.display = 'none';
+            }
+        }
+    });
 };
 
 // Custom Node Component
@@ -2927,6 +3158,9 @@ function showMessage(message, type = 'info') {
 document.addEventListener('DOMContentLoaded', async function() {
     await applyUsmPermissions();
     initUserStoryMap();
+
+    // 初始化 JIRA tooltip 事件監聽
+    window.initJiraTooltipListeners();
 
     const mapListModalElement = document.getElementById('mapListModal');
     const mapListContainer = document.getElementById('mapListContainer');
