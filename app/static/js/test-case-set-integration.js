@@ -173,7 +173,11 @@ class TestCaseSetIntegration {
 
     // 觸發事件，通知其他模組 Set 頭部已更新
     window.dispatchEvent(new CustomEvent('setHeaderUpdated', {
-      detail: { currentSetId: this.currentSetId, currentSet: currentSet }
+      detail: {
+        currentSetId: this.currentSetId,
+        teamId: this.currentTeamId,
+        currentSet: currentSet
+      }
     }));
   }
 

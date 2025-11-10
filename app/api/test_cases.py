@@ -381,6 +381,7 @@ async def get_test_cases_count(
     priority_filter: Optional[str] = Query(None, description="優先級過濾"),
     test_result_filter: Optional[str] = Query(None, description="測試結果過濾"),
     assignee_filter: Optional[str] = Query(None, description="指派人過濾"),
+    set_id: Optional[int] = Query(None, description="Test Case Set ID 過濾"),
 ):
     """取得符合條件的測試案例數量（需要對該團隊的讀取權限）"""
     # 權限檢查
@@ -406,6 +407,7 @@ async def get_test_cases_count(
             priority_filter=priority_filter,
             test_result_filter=test_result_filter,
             assignee_filter=assignee_filter,
+            test_case_set_id=set_id,
         )
         return {"total": total}
     except Exception as e:
