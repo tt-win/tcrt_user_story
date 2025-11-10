@@ -60,7 +60,7 @@ class TestCase(BaseModel):
     
     # 關聯欄位
     user_story_map: List[LarkRecord] = Field(default_factory=list, description="User Story Map 關聯")
-    tcg: List[LarkRecord] = Field(default_factory=list, description="TCG 關聯")
+    tcg: List[str] = Field(default_factory=list, description="TCG 單號列表")
     parent_record: List[LarkRecord] = Field(default_factory=list, description="父記錄關聯")
     
     # 系統欄位
@@ -360,7 +360,7 @@ class TestCaseCreate(BaseModel):
     test_result: Optional[TestResultStatus] = None
     attachments: Optional[List[SimpleAttachment]] = None
     user_story_map: Optional[List[LarkRecord]] = None
-    tcg: Optional[List[LarkRecord]] = None
+    tcg: Optional[List[str]] = None
     parent_record: Optional[LarkRecord] = None
     # 新增：暫存上傳的識別碼，若提供則在建立後搬移暫存附件並寫入 DB
     temp_upload_id: Optional[str] = Field(None, description="暫存附件上傳識別碼（例如 UUID）")
@@ -378,7 +378,7 @@ class TestCaseUpdate(BaseModel):
     test_result: Optional[TestResultStatus] = None
     attachments: Optional[List[SimpleAttachment]] = None
     user_story_map: Optional[List[LarkRecord]] = None
-    tcg: Optional[Union[str, List[LarkRecord]]] = None
+    tcg: Optional[Union[str, List[str]]] = None
     parent_record: Optional[LarkRecord] = None
     # 新增：暫存上傳識別碼，若提供則在更新後搬移暫存附件並合併至既有附件
     temp_upload_id: Optional[str] = Field(None, description="暫存附件上傳識別碼（例如 UUID）")

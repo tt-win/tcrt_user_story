@@ -88,43 +88,45 @@ async def get_popular_tcg(
         )
 
 
-@router.post("/sync")
-async def sync_tcg_mapping():
-    """手動同步 TCG 資料從 Lark 到本地資料庫"""
-    try:
-        sync_count = tcg_converter.sync_tcg_from_lark()
-        return {
-            "success": True,
-            "message": f"成功同步 {sync_count} 筆 TCG 資料",
-            "sync_count": sync_count
-        }
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"同步 TCG 資料失敗: {str(e)}"
-        )
+# TCG 同步端點已移除 - 不再需要依賴 TCG 轉換
+# @router.post("/sync")
+# async def sync_tcg_mapping():
+#     """手動同步 TCG 資料從 Lark 到本地資料庫"""
+#     try:
+#         sync_count = tcg_converter.sync_tcg_from_lark()
+#         return {
+#             "success": True,
+#             "message": f"成功同步 {sync_count} 筆 TCG 資料",
+#             "sync_count": sync_count
+#         }
+#     except Exception as e:
+#         raise HTTPException(
+#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#             detail=f"同步 TCG 資料失敗: {str(e)}"
+#         )
 
-@router.get("/status")
-async def get_tcg_status():
-    """取得 TCG 資料庫狀態"""
-    try:
-        # 取得資料庫統計
-        all_tcg = tcg_converter.search_tcg_numbers("", 999999)
-        total_count = len(all_tcg)
-        
-        # 取得調度器狀態
-        from app.services.scheduler import task_scheduler
-        scheduler_status = task_scheduler.get_task_status()
-        
-        return {
-            "database": {
-                "total_records": total_count,
-                "sample_records": all_tcg[:5] if all_tcg else []
-            },
-            "scheduler": scheduler_status
-        }
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"取得 TCG 狀態失敗: {str(e)}"
-        )
+# TCG 狀態端點已移除 - 不再需要監控同步狀態
+# @router.get("/status")
+# async def get_tcg_status():
+#     """取得 TCG 資料庫狀態"""
+#     try:
+#         # 取得資料庫統計
+#         all_tcg = tcg_converter.search_tcg_numbers("", 999999)
+#         total_count = len(all_tcg)
+#
+#         # 取得調度器狀態
+#         from app.services.scheduler import task_scheduler
+#         scheduler_status = task_scheduler.get_task_status()
+#
+#         return {
+#             "database": {
+#                 "total_records": total_count,
+#                 "sample_records": all_tcg[:5] if all_tcg else []
+#             },
+#             "scheduler": scheduler_status
+#         }
+#     except Exception as e:
+#         raise HTTPException(
+#             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+#             detail=f"取得 TCG 狀態失敗: {str(e)}"
+#         )

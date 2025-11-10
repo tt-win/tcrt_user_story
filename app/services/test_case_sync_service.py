@@ -31,7 +31,8 @@ from app.models.database_models import TestCaseLocal, SyncStatus
 from app.models.lark_types import Priority, TestResultStatus
 from app.models.test_case import TestCase
 from app.services.lark_client import LarkClient
-from app.services.tcg_converter import tcg_converter
+# TCG 轉換器已移除 - 不再需要依賴 TCG 同步
+# from app.services.tcg_converter import tcg_converter
 
 
 logger = logging.getLogger(__name__)
