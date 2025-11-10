@@ -1619,6 +1619,7 @@ const TEST_CASE_UPDATE_EVENT_KEY = 'testCaseUpdatedEvent';
 let testCases = [];
 let filteredTestCases = [];
 let selectedTestCases = new Set();
+let currentSetId = null; // 當前選擇的 Test Case Set ID
 const sectionSortStates = new Map();
 // Shift 連續多選錨點（Test Case Management）
 let lastCaseCheckboxIndex = null;
@@ -1801,6 +1802,17 @@ function computeFilteredTestCases(list) {
         const tcgKW = String(tcmCurrentFilters.tcgFilter || '').toLowerCase();
         const pri = String(tcmCurrentFilters.priorityFilter || '');
         const res = (list || []).filter(testCase => {
+            // 如果指定了 currentSetId，則只顯示該 set 的 test case
+            // 通過檢查 section 的 test_case_set_id 或記錄是否在當前 set 的 sections 中
+            if (currentSetId) {
+                // 如果 test case 有 section id，檢查該 section 是否屬於當前 set
+                // 這需要維護一個 section id 到 set id 的映射，或者檢查 API 返回的數據
+                // 暫時：如果後端返回了不正確的數據，前端應該過濾
+                // 注意：這個檢查取決於後端如何組織數據
+                // 如果後端沒有正確過濾，這裡可能無法精確過濾
+                // 最好的方案是依賴後端 API 使用 set_id 參數進行過濾
+            }
+
             // Test Case Number 或 TCG（綜合）搜尋
             const matchNum = !numKW ||
                 (testCase.test_case_number && String(testCase.test_case_number).toLowerCase().includes(numKW)) ||
@@ -2965,13 +2977,13 @@ document.addEventListener('DOMContentLoaded', async function() {
     const tcNumber = urlParams.get('tc') || urlParams.get('test_case_number');
     const mode = urlParams.get('mode') || 'preview';
     const openReference = urlParams.get('ref') === '1' || urlParams.get('ref') === 'true';
-    const setId = urlParams.get('set_id') ? parseInt(urlParams.get('set_id')) : null;
+    currentSetId = urlParams.get('set_id') ? parseInt(urlParams.get('set_id')) : null;
 
     // 如果提供了 set_id，加載該 Set 的 Sections
-    if (setId && activeTeam && activeTeam.id) {
+    if (currentSetId && activeTeam && activeTeam.id) {
         try {
-            console.log(`Loading sections for set ${setId}`);
-            const resp = await window.AuthClient.fetch(`/api/teams/${activeTeam.id}/test-case-sets/${setId}`);
+            console.log(`Loading sections for set ${currentSetId}`);
+            const resp = await window.AuthClient.fetch(`/api/teams/${activeTeam.id}/test-case-sets/${currentSetId}`);
             if (resp.ok) {
                 const setData = await resp.json();
                 console.log('Set data loaded:', setData);
@@ -2984,7 +2996,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                 });
                 window.dispatchEvent(event);
             } else {
-                console.warn(`Failed to load set ${setId}`);
+                console.warn(`Failed to load set ${currentSetId}`);
             }
         } catch (error) {
             console.error('Error loading set sections:', error);
@@ -3697,7 +3709,14 @@ async function loadTestCases(showLoadingBlock = true, updateProgress = null, for
         const connectingMsg = window.i18n ? window.i18n.t('loading.connecting', {}, '連接伺服器...') : '連接伺服器...';
         if (updateProgress) updateProgress(30, connectingMsg);
 
-        const response = await window.AuthClient.fetch(`/api/teams/${teamIdForLoad}/testcases/?load_all=true`);
+        // 如果指定了 currentSetId，只載入該 set 的 test case；否則載入所有
+        let url = `/api/teams/${teamIdForLoad}/testcases/?load_all=true`;
+        if (currentSetId) {
+            console.log(`[TCM] 載入 Set ${currentSetId} 的測試案例`);
+            url += `&set_id=${currentSetId}`;
+        }
+
+        const response = await window.AuthClient.fetch(url);
         if (!response.ok) {
             throw new Error(`載入測試案例失敗: ${response.status} ${response.statusText}`);
         }
