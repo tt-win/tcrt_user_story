@@ -276,6 +276,64 @@ const escapeHtml = (value) => {
         .replace(/'/g, '&#39;');
 };
 
+const parseJiraTicketsInput = (value) => {
+    if (!value) return [];
+    const tokens = String(value)
+        .split(/[\s,，、|/]+/)
+        .map(token => token.trim())
+        .filter(Boolean);
+
+    const unique = [];
+    const seen = new Set();
+    for (const token of tokens) {
+        const key = token.toUpperCase();
+        if (!seen.has(key)) {
+            seen.add(key);
+            unique.push(token);
+        }
+    }
+    return unique;
+};
+
+const normalizeJiraTickets = (tickets) => {
+    if (!tickets) return [];
+    const source = Array.isArray(tickets) ? tickets : [tickets];
+    const flattened = [];
+    source.forEach(item => {
+        if (item === undefined || item === null) return;
+        if (Array.isArray(item)) {
+            flattened.push(...item);
+            return;
+        }
+        String(item)
+            .split(/[\s,，、|/]+/)
+            .map(part => part.trim())
+            .filter(Boolean)
+            .forEach(part => flattened.push(part));
+    });
+
+    const normalized = [];
+    const seen = new Set();
+    flattened.forEach(ticket => {
+        const key = ticket.toUpperCase();
+        if (!seen.has(key)) {
+            seen.add(key);
+            normalized.push(ticket);
+        }
+    });
+    return normalized;
+};
+
+const renderJiraTagsHtml = (tickets) => {
+    const normalized = normalizeJiraTickets(tickets);
+    if (!normalized.length) {
+        return '<small class="text-muted">未輸入任何票號</small>';
+    }
+    return normalized
+        .map(ticket => `<span class="tcg-tag">${escapeHtml(ticket)}</span>`)
+        .join('');
+};
+
 // Custom Node Component
 const CustomNode = ({ data, id }) => {
     const { Handle, Position } = window.ReactFlow;
@@ -626,7 +684,7 @@ const UserStoryMapFlow = () => {
                         description: node.description,
                         nodeType: node.node_type,
                         team: node.team || teamName || '',
-                        jiraTickets: node.jira_tickets,
+                        jiraTickets: normalizeJiraTickets(node.jira_tickets),
                         aggregatedTickets: node.aggregated_tickets || [],
                         comment: node.comment,
                         parentId: node.parent_id,
@@ -1076,6 +1134,7 @@ const UserStoryMapFlow = () => {
         ].filter(Boolean).join('');
 
         // Build a stable render signature to avoid unnecessary re-renders
+        const normalizedJira = normalizeJiraTickets(data.jiraTickets || []);
         const renderSig = JSON.stringify({
             id: node.id,
             nodeType: data.nodeType || '',
@@ -1085,7 +1144,7 @@ const UserStoryMapFlow = () => {
             as_a: data.as_a || '',
             i_want: data.i_want || '',
             so_that: data.so_that || '',
-            jira: (data.jiraTickets || []).join(', '),
+            jira: normalizedJira.join(', '),
             related: Array.isArray(data.relatedIds) ? JSON.stringify(data.relatedIds) : '[]',
             aggregated: Array.isArray(data.aggregatedTickets) ? JSON.stringify(data.aggregatedTickets) : '[]',
             comment: data.comment || ''
@@ -1125,12 +1184,12 @@ const UserStoryMapFlow = () => {
                 <div class="mb-3">
                     <label class="form-label small fw-bold">JIRA Tickets</label>
                     <div id="jiraTicketsContainer"
-                         class="form-control form-control-sm"
-                         style="min-height: 32px; padding: 0.35rem 0.6rem; border: 1px solid #dee2e6; border-radius: 0.25rem; background-color: #fff; cursor: ${canUpdateNode ? 'text' : 'default'}; display: flex; align-items: center; flex-wrap: wrap; gap: 4px; position: relative; overflow-y: auto; max-height: 120px;"
+                         class="tcg-tags-container"
+                         style="min-height: 32px; padding: 4px 8px; border: 1px solid #dee2e6; border-radius: 0.25rem; background-color: #fff; cursor: ${canUpdateNode ? 'text' : 'default'}; display: flex; align-items: center; flex-wrap: wrap; gap: 4px; position: relative; overflow-y: auto; max-height: 120px;"
                          ${readOnlyAttr ? '' : 'data-editable="true"'}>
-                        ${(data.jiraTickets || []).length > 0 ? (data.jiraTickets || []).map(ticket => `<span>${escapeHtml(ticket)}</span>`).join(', ') : '<small class="text-muted">未輸入任何票號</small>'}
+                        ${renderJiraTagsHtml(normalizedJira)}
                     </div>
-                    <input type="hidden" id="propJira" name="jira" value="${escapeHtml((data.jiraTickets || []).join(', '))}">
+                    <input type="hidden" id="propJira" name="jira" value="${escapeHtml(normalizedJira.join(', '))}">
                 </div>
                 ${aggregatedTicketsHtml}
                 ${relatedNodesHtml}
@@ -1164,7 +1223,7 @@ const UserStoryMapFlow = () => {
             if (jiraContainer && jiraContainer.dataset.editable === 'true') {
                 jiraContainer.addEventListener('click', (e) => {
                     // 點擊 badge 或容器時開始編輯
-                    if (e.target === jiraContainer || e.target.classList.contains('badge')) {
+                    if (e.target === jiraContainer || e.target.classList.contains('tcg-tag')) {
                         editJiraTickets(node.id, jiraContainer);
                     }
                 });
@@ -1198,7 +1257,7 @@ const UserStoryMapFlow = () => {
             nds.map((node) => {
                 if (node.id === nodeId) {
                     const jiraText = document.getElementById('propJira')?.value || '';
-                    const jiraTickets = jiraText.split(',').map(t => t.trim()).filter(t => t);
+                    const jiraTickets = parseJiraTicketsInput(jiraText);
                     
                     const updatedData = {
                         ...node.data,
@@ -1238,7 +1297,7 @@ const UserStoryMapFlow = () => {
         }
 
         const currentValue = propJiraInput.value || '';
-        const currentTickets = currentValue.split(',').map(t => t.trim()).filter(t => t);
+        const currentTickets = parseJiraTicketsInput(currentValue);
 
         console.log('✏️ editJiraTickets 開始，找到的 JIRA Tickets 值:', currentTickets);
 
@@ -1272,6 +1331,8 @@ const UserStoryMapFlow = () => {
         container.style.height = '32px';
         container.style.padding = '4px 8px';
         container.style.overflow = 'visible';
+        container.style.flexWrap = 'wrap';
+        container.style.gap = '4px';
 
         // 創建浮層輸入框 - 使用絕對定位，不會影響版面
         const editorHtml = `
@@ -1350,7 +1411,7 @@ const UserStoryMapFlow = () => {
         const inputValue = searchInput ? searchInput.value.trim() : '';
 
         // 解析輸入的 JIRA Tickets
-        const newTickets = inputValue.split(',').map(t => t.trim()).filter(t => t);
+        const newTickets = parseJiraTicketsInput(inputValue);
 
         console.log('🆕 新 JIRA Tickets:', newTickets);
         console.log('📌 原 JIRA Tickets:', originalTickets);
@@ -1371,20 +1432,18 @@ const UserStoryMapFlow = () => {
         container.style.position = 'relative';
         container.style.display = 'flex';
         container.style.alignItems = 'center';
+        container.style.flexWrap = 'wrap';
+        container.style.gap = '4px';
         container.style.minHeight = '32px';
         container.style.height = 'auto';
-        container.style.padding = '0.35rem 0.6rem';
-        container.style.overflow = 'auto';
+        container.style.padding = '4px 8px';
+        container.style.overflowY = 'auto';
+        container.style.overflowX = 'hidden';
+        container.style.maxHeight = '120px';
         container.classList.remove('editing');
 
         // 更新容器內容（顯示為逗號分隔的文本）
-        if (newTickets.length > 0) {
-            container.innerHTML = newTickets.map(ticket =>
-                `<span>${escapeHtml(ticket)}</span>`
-            ).join(', ');
-        } else {
-            container.innerHTML = '<small class="text-muted">未輸入任何票號</small>';
-        }
+        container.innerHTML = renderJiraTagsHtml(newTickets);
 
         // 清除編輯器狀態
         window._jiraTicketsEditor = null;
@@ -1420,10 +1479,14 @@ const UserStoryMapFlow = () => {
         container.style.position = 'relative';
         container.style.display = 'flex';
         container.style.alignItems = 'center';
+        container.style.flexWrap = 'wrap';
+        container.style.gap = '4px';
         container.style.minHeight = '32px';
         container.style.height = 'auto';
-        container.style.padding = '0.35rem 0.6rem';
-        container.style.overflow = 'auto';
+        container.style.padding = '4px 8px';
+        container.style.overflowY = 'auto';
+        container.style.overflowX = 'hidden';
+        container.style.maxHeight = '120px';
         container.classList.remove('editing');
 
         // 清除編輯器狀態
@@ -2301,8 +2364,8 @@ const UserStoryMapFlow = () => {
                     html += `
                             <div class="mb-3">
                                 <label class="form-label small fw-bold">JIRA Tickets</label>
-                                <div style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
-                                    ${data.jiraTickets && data.jiraTickets.length > 0 ? data.jiraTickets.join(', ') : '<small class="text-muted">無</small>'}
+                                <div class="tcg-tags-container" style="display: flex; flex-wrap: wrap; gap: 0.25rem;">
+                                    ${renderJiraTagsHtml(data.jiraTickets)}
                                 </div>
                             </div>
                             
@@ -3269,7 +3332,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             return;
         }
 
-        const jiraTickets = jiraText ? jiraText.split(',').map(t => t.trim()).filter(t => t) : [];
+        const jiraTickets = parseJiraTicketsInput(jiraText);
         const parentId = window._tempParentId || null;
         const level = parentId ? (window._tempParentLevel || 0) + 1 : 0;
         window.userStoryMapFlow?.addNode({
@@ -3443,10 +3506,10 @@ document.addEventListener('DOMContentLoaded', async function() {
 
                 // 前端 JIRA 過濾
                 if (jiraTickets && jiraTickets.trim()) {
-                    const jiraList = jiraTickets.split(',').map(t => t.trim().toUpperCase()).filter(t => t);
+                    const jiraList = parseJiraTicketsInput(jiraTickets).map(t => t.toUpperCase());
                     if (jiraList.length > 0) {
                         results = results.filter(node => {
-                            const nodeJira = (node.jira_tickets || []).map(t => t.toUpperCase());
+                            const nodeJira = normalizeJiraTickets(node.jira_tickets || []).map(t => t.toUpperCase());
                             if (jiraLogic === 'and') {
                                 // AND: 需要包含所有指定的 JIRA tickets
                                 return jiraList.every(ticket => nodeJira.includes(ticket));
@@ -3483,7 +3546,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                                     <h6 class="mb-1">${escapeHtml(node.title)}</h6>
                                     ${node.description ? `<p class="mb-1 small">${escapeHtml(node.description)}</p>` : ''}
                                     ${node.team ? `<small class="text-muted">團隊: ${escapeHtml(node.team)}</small>` : ''}
-                                    ${node.jira_tickets && node.jira_tickets.length > 0 ? `<div style="margin-top: 0.5rem;">${node.jira_tickets.join(', ')}</div>` : ''}
+                                    ${node.jira_tickets && node.jira_tickets.length > 0 ? `<div class="tcg-tags-container" style="margin-top: 0.5rem; display: flex; flex-wrap: wrap; gap: 0.25rem;">${renderJiraTagsHtml(node.jira_tickets)}</div>` : ''}
                                 </div>
                             `).join('')}
                         </div>
