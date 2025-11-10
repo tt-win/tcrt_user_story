@@ -17,6 +17,7 @@ class TestCaseSectionList {
     this.editingNodeId = null;
     this.nextSectionEventMeta = null;
     this.sectionsToDelete = new Set(); // 待刪除的 section IDs
+    this.teamId = null; // 當前 Team ID
     this.init();
   }
 
@@ -25,6 +26,10 @@ class TestCaseSectionList {
 
     // 添加自定義樣式
     this.injectStyles();
+
+    // 從 URL 參數獲取 Team ID
+    const urlParams = new URLSearchParams(window.location.search);
+    this.teamId = urlParams.get('team_id');
 
     // 監聽 Set 載入事件
     window.addEventListener("testCaseSetLoaded", (e) => {
@@ -36,7 +41,9 @@ class TestCaseSectionList {
 
       this.setId = e.detail.setId;
       this.sections = e.detail.sections || [];
-      this.render();
+
+      // 在 render 之前，先嘗試獲取 Set 名稱
+      this.fetchSetNameAndRender();
     });
 
     // 監聽 Set 頭部更新事件，用於獲取 Set 名稱
@@ -46,6 +53,8 @@ class TestCaseSectionList {
         if (currentSet) {
           this.setName = currentSet.name;
           this.setId = currentSet.id;
+          // 保存到 sessionStorage
+          sessionStorage.setItem('selectedTestCaseSetName', currentSet.name);
           // 重新渲染標題部分
           this.updatePanelHeader();
         }
@@ -90,6 +99,51 @@ class TestCaseSectionList {
       }
     `;
     document.head.appendChild(style);
+  }
+
+  /**
+   * 獲取 Set 名稱並渲染
+   * 直接通過 API 調用來獲取 Set 資訊，確保數據準確
+   */
+  async fetchSetNameAndRender() {
+    try {
+      // 如果沒有 teamId，嘗試從全域變數或 localStorage 獲取
+      let teamId = this.teamId;
+      if (!teamId) {
+        if (typeof window.teamId !== 'undefined') {
+          teamId = window.teamId;
+        } else {
+          teamId = localStorage.getItem('currentTeamId');
+        }
+      }
+
+      if (!teamId || !this.setId) {
+        console.log("[SectionList] Missing teamId or setId, skipping API call");
+        this.render();
+        return;
+      }
+
+      // 通過 API 獲取 Set 資訊
+      const response = await window.AuthClient.fetch(
+        `/api/teams/${teamId}/test-case-sets/${this.setId}`,
+        { method: 'GET' }
+      );
+
+      if (response.ok) {
+        const setData = await response.json();
+        this.setName = setData.name;
+        // 保存到 sessionStorage，以備其他地方使用
+        sessionStorage.setItem('selectedTestCaseSetName', setData.name);
+        console.log("[SectionList] Successfully fetched set name:", this.setName);
+      } else {
+        console.warn("[SectionList] Failed to fetch set info:", response.status);
+      }
+    } catch (error) {
+      console.error("[SectionList] Error fetching set name:", error);
+    } finally {
+      // 無論成功或失敗，都要進行渲染
+      this.render();
+    }
   }
 
   /**
@@ -151,38 +205,10 @@ class TestCaseSectionList {
     // 寬度和高度由 CSS 的 flex: 0 0 auto 和 overflow-y: auto 控制
 
     // 構建側邊欄面板 HTML
-    // 從多個來源獲取當前 Set 名稱：優先級為 testCaseSetIntegration > DOM > sessionStorage
+    // 此時 this.setName 應該已經被 fetchSetNameAndRender() 設置，直接使用它
     let setNameDisplay = '區段列表';
-    let setNameText = null;
-
-    // 方法 1: 從 testCaseSetIntegration 獲取
-    if (typeof testCaseSetIntegration !== 'undefined' && testCaseSetIntegration.testCaseSets && testCaseSetIntegration.testCaseSets.length > 0) {
-      const currentSet = testCaseSetIntegration.testCaseSets.find(s => s.id == this.setId);
-      if (currentSet) {
-        setNameText = currentSet.name;
-      }
-    }
-
-    // 方法 2: 從 DOM 的 currentSetName 提取
-    if (!setNameText) {
-      const currentSetNameEl = document.getElementById('currentSetName');
-      if (currentSetNameEl) {
-        const strongEl = currentSetNameEl.querySelector('strong');
-        if (strongEl) {
-          setNameText = strongEl.textContent.trim();
-        }
-      }
-    }
-
-    // 方法 3: 保存的名稱
-    if (!setNameText) {
-      setNameText = sessionStorage.getItem('selectedTestCaseSetName');
-    }
-
-    // 使用獲取到的名稱
-    if (setNameText) {
-      this.setName = setNameText;
-      setNameDisplay = `<span class="section-list-title" title="${this.escapeHtml(setNameText)}">${this.escapeHtml(setNameText)}</span>`;
+    if (this.setName) {
+      setNameDisplay = `<span class="section-list-title" title="${this.escapeHtml(this.setName)}">${this.escapeHtml(this.setName)}</span>`;
     }
 
     const panelHtml = `
@@ -1156,38 +1182,20 @@ class TestCaseSectionList {
     const headerH6 = document.querySelector('#sectionListPanel .card-header h6');
     if (!headerH6) return;
 
-    // 從多個來源獲取當前 Set 名稱：優先級為 testCaseSetIntegration > DOM > sessionStorage
+    // 從 DOM 的 currentSetName 或 sessionStorage 提取最新名稱
     let setNameDisplay = '區段列表';
-    let setNameText = null;
 
-    // 方法 1: 從 testCaseSetIntegration 獲取
-    if (typeof testCaseSetIntegration !== 'undefined' && testCaseSetIntegration.testCaseSets && testCaseSetIntegration.testCaseSets.length > 0) {
-      const currentSet = testCaseSetIntegration.testCaseSets.find(s => s.id == testCaseSetIntegration.currentSetId);
-      if (currentSet) {
-        setNameText = currentSet.name;
-      }
-    }
-
-    // 方法 2: 從 DOM 的 currentSetName 提取
-    if (!setNameText) {
-      const currentSetNameEl = document.getElementById('currentSetName');
-      if (currentSetNameEl) {
-        const strongEl = currentSetNameEl.querySelector('strong');
-        if (strongEl) {
-          setNameText = strongEl.textContent.trim();
+    // 嘗試從 DOM 提取
+    const currentSetNameEl = document.getElementById('currentSetName');
+    if (currentSetNameEl) {
+      const strongEl = currentSetNameEl.querySelector('strong');
+      if (strongEl) {
+        const nameText = strongEl.textContent.trim();
+        if (nameText) {
+          this.setName = nameText;
+          setNameDisplay = `<span class="section-list-title" title="${this.escapeHtml(nameText)}">${this.escapeHtml(nameText)}</span>`;
         }
       }
-    }
-
-    // 方法 3: 保存的名稱
-    if (!setNameText) {
-      setNameText = sessionStorage.getItem('selectedTestCaseSetName');
-    }
-
-    // 使用獲取到的名稱
-    if (setNameText) {
-      this.setName = setNameText;
-      setNameDisplay = `<span class="section-list-title" title="${this.escapeHtml(setNameText)}">${this.escapeHtml(setNameText)}</span>`;
     }
 
     // 更新 h6 的內容
