@@ -1484,6 +1484,7 @@ async def move_node(
     map_id: str,
     request_data: Dict[str, Any] = Body(...),
     current_user: User = Depends(get_current_user),
+    usm_db: AsyncSession = Depends(get_usm_db),
 ):
     """
     搬移節點到新的父節點
@@ -1497,11 +1498,8 @@ async def move_node(
         # 驗證權限
         await _require_usm_permission(current_user, "update", team_id)
 
-        # 取得 USM 資料庫
-        usm_db = await get_usm_db(team_id)
-
         # 取得 map
-        map_obj = usm_db.get_map(map_id)
+        map_obj = await _get_usm_map(usm_db, map_id)
         if not map_obj:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -1510,7 +1508,6 @@ async def move_node(
 
         node_id = request_data.get("node_id")
         new_parent_id = request_data.get("new_parent_id")
-        all_nodes_to_move = request_data.get("all_nodes_to_move", [])
 
         if not node_id or not new_parent_id:
             raise HTTPException(
@@ -1518,16 +1515,19 @@ async def move_node(
                 detail="缺少必要參數: node_id 或 new_parent_id",
             )
 
-        # 驗證源節點存在
-        source_node = map_obj.get_node(node_id)
+        # 取得所有節點
+        nodes = map_obj.nodes or []
+
+        # 找到源節點和目標節點
+        source_node = next((n for n in nodes if n.get("id") == node_id), None)
+        target_node = next((n for n in nodes if n.get("id") == new_parent_id), None)
+
         if not source_node:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"找不到節點 {node_id}",
             )
 
-        # 驗證目標節點存在
-        target_node = map_obj.get_node(new_parent_id)
         if not target_node:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -1535,7 +1535,7 @@ async def move_node(
             )
 
         # 不能搬移到 User Story 節點
-        if target_node.node_type == "user_story":
+        if target_node.get("node_type") == "user_story":
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="無法將節點搬移至 User Story 節點",
@@ -1548,40 +1548,49 @@ async def move_node(
                 detail="無法將節點搬移至自己",
             )
 
-        # 不能搬移到子節點
-        def is_descendant(parent_id, child_id, map_obj):
+        # 檢查是否是源節點的子節點
+        def is_descendant(parent_id, child_id, nodes):
             """檢查 child_id 是否是 parent_id 的後代"""
-            node = map_obj.get_node(child_id)
+            node = next((n for n in nodes if n.get("id") == child_id), None)
             if not node:
                 return False
             current = node
-            while current and current.parent_id:
-                if current.parent_id == parent_id:
+            while current and current.get("parent_id"):
+                if current.get("parent_id") == parent_id:
                     return True
-                current = map_obj.get_node(current.parent_id)
+                current = next((n for n in nodes if n.get("id") == current.get("parent_id")), None)
             return False
 
-        if is_descendant(node_id, new_parent_id, map_obj):
+        if is_descendant(node_id, new_parent_id, nodes):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="無法將節點搬移至其子節點",
             )
 
-        # 執行搬移：更新所有節點的 parent_id
-        # 先更新源節點
-        source_node.parent_id = new_parent_id
+        # 執行搬移：更新源節點的 parent_id
+        source_node["parent_id"] = new_parent_id
 
-        # 更新所有子節點（保持相對位置）
-        for move_node_id in all_nodes_to_move:
-            if move_node_id != node_id:
-                move_node = map_obj.get_node(move_node_id)
-                if move_node:
-                    # 子節點的 parent_id 應該保持不變（它們已經在源節點下面）
-                    # 只有源節點的 parent_id 需要改變
-                    pass
+        # 更新目標節點的 children_ids（如果還沒有）
+        if "children_ids" not in target_node:
+            target_node["children_ids"] = []
+        if node_id not in target_node["children_ids"]:
+            target_node["children_ids"].append(node_id)
 
-        # 保存地圖
-        usm_db.save_map(map_obj)
+        # 更新原父節點的 children_ids（移除源節點）
+        old_parent_id = None
+        for n in nodes:
+            if node_id in (n.get("children_ids") or []):
+                old_parent_id = n.get("id")
+                if node_id in n["children_ids"]:
+                    n["children_ids"].remove(node_id)
+                break
+
+        # 保存更改
+        map_obj.nodes = nodes
+        flag_modified(map_obj, "nodes")
+        map_obj.updated_at = datetime.utcnow()
+        usm_db.add(map_obj)
+        await usm_db.commit()
 
         # 記錄審計日誌
         try:
@@ -1589,14 +1598,14 @@ async def move_node(
                 user=current_user,
                 action=ActionType.UPDATE,
                 resource=ResourceType.USM,
-                resource_id=map_id,
+                resource_id=str(map_id),
                 resource_name=map_obj.name,
                 team_id=team_id,
                 changes={
                     "action": "move_node",
                     "source_node_id": node_id,
                     "new_parent_id": new_parent_id,
-                    "moved_nodes": all_nodes_to_move,
+                    "old_parent_id": old_parent_id,
                 },
                 source="move_node_api",
                 action_brief=f"{current_user.username} moved node {node_id} to parent {new_parent_id}",
