@@ -2408,7 +2408,8 @@ function findSectionParentId(sectionId) {
     };
 
     const allSections = flattenAllSections(tcmSectionsTree);
-    const section = allSections.find(s => s.id === sectionId);
+    // 使用寬鬆相等比較（==）以支援 number 和 string 的相互匹配
+    const section = allSections.find(s => s.id == sectionId);
     return section ? section.parent_section_id : null;
 }
 
