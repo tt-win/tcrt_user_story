@@ -818,6 +818,9 @@
             "copyPaste": "Ctrl+C to copy, Ctrl+V to paste"
         }
     },
+    "section": {
+        "unassigned": "Unassigned"
+    },
     "testRun": {
         "addBugTicket": "Add Bug Ticket",
         "addBugTicketFailed": "Failed to add Bug Ticket",
