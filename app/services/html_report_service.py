@@ -397,7 +397,7 @@ class HTMLReportService:
                     att_name = esc(att.get('name', 'file'))
                     att_url = att.get('url', '')
                     if att_url:
-                        attachments_html += f'<div><a href="{esc(att_url)}" style="color: #0d6efd; text-decoration: underline;">{att_name}</a></div>'
+                        attachments_html += f'<div><a href="{esc(att_url)}" target="_blank" rel="noopener noreferrer" style="color: #0d6efd; text-decoration: underline;">{att_name}</a></div>'
                     else:
                         attachments_html += f'<div>{att_name}</div>'
                 attachments_html += '</div>'
