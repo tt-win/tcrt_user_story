@@ -2348,12 +2348,46 @@ function handleSectionSort(sectionId, fieldKey) {
 }
 
 function toggleSectionCollapse(sectionId) {
-    if (sectionCollapsedState.has(sectionId)) {
-        sectionCollapsedState.delete(sectionId);
-    } else {
+    const isCollapsing = !sectionCollapsedState.has(sectionId);
+
+    if (isCollapsing) {
+        // 收合時：收合該 section 及其所有子 section
         sectionCollapsedState.add(sectionId);
+        collapseChildSections(sectionId);
+    } else {
+        // 展開時：只展開該 section（保留子 section 的收合狀態）
+        sectionCollapsedState.delete(sectionId);
     }
+
     renderTestCasesTable();
+}
+
+function collapseChildSections(parentSectionId) {
+    // 扁平化 section tree 並找到所有子 section
+    const flattenAllSections = (sections, result = []) => {
+        for (const section of sections) {
+            result.push(section);
+            const children = section.children || section.child_sections || [];
+            if (Array.isArray(children) && children.length > 0) {
+                flattenAllSections(children, result);
+            }
+        }
+        return result;
+    };
+
+    const allSections = flattenAllSections(tcmSectionsTree);
+
+    // 遞迴地找到所有子 section 並添加到收合狀態
+    const addChildSections = (parentId) => {
+        for (const section of allSections) {
+            if (section.parent_section_id === parentId) {
+                sectionCollapsedState.add(section.id);
+                addChildSections(section.id);
+            }
+        }
+    };
+
+    addChildSections(parentSectionId);
 }
 
 // ===== 統一快取管理模組 =====
