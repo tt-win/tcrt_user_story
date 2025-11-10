@@ -1124,10 +1124,13 @@ const UserStoryMapFlow = () => {
                 ` : ''}
                 <div class="mb-3">
                     <label class="form-label small fw-bold">JIRA Tickets</label>
-                    <input type="text" class="form-control form-control-sm" id="propJira" ${readOnlyAttr} value="${escapeHtml((data.jiraTickets || []).join(', '))}" placeholder="輸入 JIRA 票號，以逗號分隔 (例: PROJ-123, PROJ-456)">
-                    ${canUpdateNode ? `<div id="jiraTicketsBadges" class="mt-2" style="display: flex; flex-wrap: wrap; gap: 0.5rem;">
+                    <div id="jiraTicketsContainer"
+                         class="form-control form-control-sm"
+                         style="min-height: 32px; padding: 0.35rem 0.6rem; border: 1px solid #dee2e6; border-radius: 0.25rem; background-color: #fff; cursor: ${canUpdateNode ? 'text' : 'default'}; display: flex; align-items: center; flex-wrap: wrap; gap: 4px; position: relative; overflow-y: auto; max-height: 120px;"
+                         ${readOnlyAttr ? '' : 'data-editable="true"'}>
                         ${(data.jiraTickets || []).length > 0 ? (data.jiraTickets || []).map(ticket => `<span class="badge bg-info" style="font-size: 0.8rem; padding: 0.35rem 0.6rem;">${escapeHtml(ticket)}</span>`).join('') : '<small class="text-muted">未輸入任何票號</small>'}
-                    </div>` : ''}
+                    </div>
+                    <input type="hidden" id="propJira" name="jira" value="${escapeHtml((data.jiraTickets || []).join(', '))}">
                 </div>
                 ${aggregatedTicketsHtml}
                 ${relatedNodesHtml}
@@ -1154,33 +1157,15 @@ const UserStoryMapFlow = () => {
 
             attachAutoSave('propTitle');
             attachAutoSave('propDescription');
-            attachAutoSave('propJira');
             attachAutoSave('propComment');
 
-            // 添加 JIRA Tickets 即時 badge 預覽更新
-            const propJiraEl = document.getElementById('propJira');
-            if (propJiraEl) {
-                propJiraEl.addEventListener('input', (e) => {
-                    const badgesContainer = document.getElementById('jiraTicketsBadges');
-                    if (badgesContainer) {
-                        const inputValue = e.target.value.trim();
-                        if (inputValue) {
-                            // 解析逗號分隔的票號
-                            const tickets = inputValue
-                                .split(',')
-                                .map(t => t.trim())
-                                .filter(t => t.length > 0);
-
-                            if (tickets.length > 0) {
-                                badgesContainer.innerHTML = tickets
-                                    .map(ticket => `<span class="badge bg-info" style="font-size: 0.8rem; padding: 0.35rem 0.6rem;">${escapeHtml(ticket)}</span>`)
-                                    .join('');
-                            } else {
-                                badgesContainer.innerHTML = '<small class="text-muted">未輸入任何票號</small>';
-                            }
-                        } else {
-                            badgesContainer.innerHTML = '<small class="text-muted">未輸入任何票號</small>';
-                        }
+            // 添加 JIRA Tickets 浮層編輯器
+            const jiraContainer = document.getElementById('jiraTicketsContainer');
+            if (jiraContainer && jiraContainer.dataset.editable === 'true') {
+                jiraContainer.addEventListener('click', (e) => {
+                    // 點擊 badge 或容器時開始編輯
+                    if (e.target === jiraContainer || e.target.classList.contains('badge')) {
+                        editJiraTickets(node.id, jiraContainer);
                     }
                 });
             }
@@ -1239,6 +1224,210 @@ const UserStoryMapFlow = () => {
         setTimeout(() => {
             window.userStoryMapFlow?.saveMap?.(true);
         }, 0);
+    };
+
+    // JIRA Tickets 浮層編輯功能
+    window.editJiraTickets = function(nodeId, container) {
+        console.log('🟢 editJiraTickets 被呼叫，nodeId:', nodeId);
+
+        // 獲取當前 JIRA Tickets 值
+        const propJiraInput = document.getElementById('propJira');
+        if (!propJiraInput) {
+            console.log('⚠️ editJiraTickets: 找不到 propJira 輸入框');
+            return;
+        }
+
+        const currentValue = propJiraInput.value || '';
+        const currentTickets = currentValue.split(',').map(t => t.trim()).filter(t => t);
+
+        console.log('✏️ editJiraTickets 開始，找到的 JIRA Tickets 值:', currentTickets);
+
+        // 設置編輯器狀態
+        window._jiraTicketsEditor = {
+            nodeId: nodeId,
+            container: container,
+            currentTickets: [...currentTickets],
+            originalContent: container.innerHTML,
+            originalTickets: [...currentTickets],
+        };
+        console.log('✏️ _jiraTicketsEditor 已設置:', window._jiraTicketsEditor);
+
+        // 開始編輯
+        startJiraTicketsSearch(container);
+    };
+
+    window.startJiraTicketsSearch = function(container) {
+        if (!window._jiraTicketsEditor) return;
+
+        const { currentTickets } = window._jiraTicketsEditor;
+
+        console.log('🟢 startJiraTicketsSearch 開始，currentTickets:', currentTickets);
+
+        // 清空容器內容並設置為編輯模式
+        container.innerHTML = '';
+        container.style.position = 'relative';
+        container.style.display = 'flex';
+        container.style.alignItems = 'center';
+        container.style.minHeight = '32px';
+        container.style.height = '32px';
+        container.style.padding = '4px 8px';
+        container.style.overflow = 'visible';
+
+        // 創建浮層輸入框 - 使用絕對定位，不會影響版面
+        const editorHtml = `
+            <div class="jira-inline-editor" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 1000; display: flex; align-items: center; padding: 4px 8px;" onclick="event.stopPropagation()">
+                <input type="text" class="form-control form-control-sm jira-search-input"
+                       placeholder="輸入 JIRA 票號，以逗號分隔 (例: JIRA-123, JIRA-456)"
+                       autocomplete="off"
+                       onkeydown="window.handleJiraSearchKeydown(event)"
+                       style="height: 28px; width: 100%; font-size: 0.75rem; padding: 0.25rem 0.375rem; margin: 0; border: 1px solid #dee2e6; box-sizing: border-box;">
+            </div>
+        `;
+
+        container.insertAdjacentHTML('beforeend', editorHtml);
+        container.classList.add('editing');
+
+        // 聚焦搜尋框
+        const searchInput = container.querySelector('.jira-search-input');
+        if (searchInput) {
+            searchInput.value = currentTickets.join(', ');
+            searchInput.focus();
+            searchInput.select();
+            console.log('✅ JIRA 搜尋框已聚焦，值:', searchInput.value);
+        }
+
+        // 添加點擊外部結束編輯的監聽器
+        setTimeout(() => {
+            document.addEventListener('click', window.handleJiraOutsideClick, true);
+        }, 100);
+    };
+
+    window.handleJiraOutsideClick = function(event) {
+        if (!window._jiraTicketsEditor) {
+            console.log('🔵 handleJiraOutsideClick: _jiraTicketsEditor is null, ignore');
+            return;
+        }
+
+        const { container } = window._jiraTicketsEditor;
+
+        // 檢查點擊是否在編輯區域外
+        if (!container.contains(event.target)) {
+            console.log('🔴 handleJiraOutsideClick: 點擊在編輯區域外，結束編輯');
+            window.finishJiraTicketsEdit();
+        } else {
+            console.log('🟡 handleJiraOutsideClick: 點擊在編輯區域內，保留編輯');
+        }
+    };
+
+    window.handleJiraSearchKeydown = function(event) {
+        console.log('⌨️ handleJiraSearchKeydown 觸發，key:', event.key);
+
+        if (event.key === 'Enter') {
+            event.preventDefault();
+            window.finishJiraTicketsEdit();
+        } else if (event.key === 'Escape') {
+            event.preventDefault();
+            window.cancelJiraTicketsEdit();
+        }
+    };
+
+    window.finishJiraTicketsEdit = async function() {
+        if (!window._jiraTicketsEditor) {
+            console.log('⚠️ finishJiraTicketsEdit: 沒有當前編輯器');
+            return;
+        }
+
+        const { nodeId, container, originalTickets } = window._jiraTicketsEditor;
+
+        console.log('=== finishJiraTicketsEdit 開始 ===');
+        console.log('nodeId:', nodeId);
+
+        // 移除全域點擊監聽器
+        document.removeEventListener('click', window.handleJiraOutsideClick, true);
+
+        // 取得輸入框的值
+        const searchInput = container.querySelector('.jira-search-input');
+        const inputValue = searchInput ? searchInput.value.trim() : '';
+
+        // 解析輸入的 JIRA Tickets
+        const newTickets = inputValue.split(',').map(t => t.trim()).filter(t => t);
+
+        console.log('🆕 新 JIRA Tickets:', newTickets);
+        console.log('📌 原 JIRA Tickets:', originalTickets);
+
+        // 更新 propJira 隱藏輸入框
+        const propJiraInput = document.getElementById('propJira');
+        if (propJiraInput) {
+            propJiraInput.value = newTickets.join(', ');
+        }
+
+        // 清除浮層編輯器
+        const editor = container.querySelector('.jira-inline-editor');
+        if (editor) {
+            editor.remove();
+        }
+
+        // 恢復容器樣式
+        container.style.position = 'relative';
+        container.style.display = 'flex';
+        container.style.alignItems = 'center';
+        container.style.minHeight = '32px';
+        container.style.height = 'auto';
+        container.style.padding = '0.35rem 0.6rem';
+        container.style.overflow = 'auto';
+        container.classList.remove('editing');
+
+        // 更新容器內容（顯示 badges）
+        if (newTickets.length > 0) {
+            container.innerHTML = newTickets.map(ticket =>
+                `<span class="badge bg-info" style="font-size: 0.8rem; padding: 0.35rem 0.6rem;">${escapeHtml(ticket)}</span>`
+            ).join('');
+        } else {
+            container.innerHTML = '<small class="text-muted">未輸入任何票號</small>';
+        }
+
+        // 清除編輯器狀態
+        window._jiraTicketsEditor = null;
+
+        // 如果值有改變，更新節點
+        const ticketsChanged = JSON.stringify(newTickets) !== JSON.stringify(originalTickets);
+        if (ticketsChanged) {
+            console.log('💾 JIRA Tickets 已更改，呼叫 updateNode');
+            updateNode(nodeId);
+        }
+    };
+
+    window.cancelJiraTicketsEdit = function() {
+        if (!window._jiraTicketsEditor) {
+            return;
+        }
+
+        const { container, originalContent } = window._jiraTicketsEditor;
+
+        console.log('❌ cancelJiraTicketsEdit: 取消編輯');
+
+        // 移除全域點擊監聽器
+        document.removeEventListener('click', window.handleJiraOutsideClick, true);
+
+        // 清除浮層編輯器
+        const editor = container.querySelector('.jira-inline-editor');
+        if (editor) {
+            editor.remove();
+        }
+
+        // 恢復原內容和樣式
+        container.innerHTML = originalContent;
+        container.style.position = 'relative';
+        container.style.display = 'flex';
+        container.style.alignItems = 'center';
+        container.style.minHeight = '32px';
+        container.style.height = 'auto';
+        container.style.padding = '0.35rem 0.6rem';
+        container.style.overflow = 'auto';
+        container.classList.remove('editing');
+
+        // 清除編輯器狀態
+        window._jiraTicketsEditor = null;
     };
 
     const computeHighlightDetails = useCallback((nodeId, nodesById) => {
