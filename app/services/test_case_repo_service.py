@@ -126,12 +126,28 @@ class TestCaseRepoService:
         priority_filter: Optional[str] = None,
         test_result_filter: Optional[str] = None,
         assignee_filter: Optional[str] = None,
+        test_case_set_id: Optional[int] = None,
         sort_by: str = 'created_at',
         sort_order: str = 'desc',
         skip: int = 0,
         limit: int = 1000,
     ) -> List[TestCaseResponse]:
         q = self.db.query(TestCaseLocal).filter(TestCaseLocal.team_id == team_id)
+
+        # 過濾特定 Test Case Set 的 test case
+        if test_case_set_id:
+            from app.models.database_models import TestCaseSection
+            # 先查詢該 set 下所有的 section id
+            section_ids = self.db.query(TestCaseSection.id).filter(
+                TestCaseSection.test_case_set_id == test_case_set_id
+            ).all()
+            section_id_list = [s[0] for s in section_ids]
+            # 過濾 test case，只顯示這些 section 下的或沒有分配 section 的（Unassigned）
+            if section_id_list:
+                q = q.filter(TestCaseLocal.test_case_section_id.in_(section_id_list))
+            else:
+                # 如果該 set 沒有 section，則不顯示任何 test case
+                q = q.filter(False)
 
         # 搜尋
         if search and search.strip():
@@ -202,8 +218,24 @@ class TestCaseRepoService:
         priority_filter: Optional[str] = None,
         test_result_filter: Optional[str] = None,
         assignee_filter: Optional[str] = None,
+        test_case_set_id: Optional[int] = None,
     ) -> int:
         q = self.db.query(TestCaseLocal).filter(TestCaseLocal.team_id == team_id)
+
+        # 過濾特定 Test Case Set 的 test case
+        if test_case_set_id:
+            from app.models.database_models import TestCaseSection
+            # 先查詢該 set 下所有的 section id
+            section_ids = self.db.query(TestCaseSection.id).filter(
+                TestCaseSection.test_case_set_id == test_case_set_id
+            ).all()
+            section_id_list = [s[0] for s in section_ids]
+            # 過濾 test case，只顯示這些 section 下的
+            if section_id_list:
+                q = q.filter(TestCaseLocal.test_case_section_id.in_(section_id_list))
+            else:
+                # 如果該 set 沒有 section，則不顯示任何 test case
+                q = q.filter(False)
 
         if search and search.strip():
             s = f"%{search.strip()}%"
