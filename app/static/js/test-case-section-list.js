@@ -364,10 +364,12 @@ class TestCaseSectionList {
     // 點擊 Section 過濾 Test Cases
     document.querySelectorAll(".section-item").forEach((item) => {
       item.addEventListener("click", (e) => {
-        if (e.target.classList.contains("section-toggle")) return;
+        // 如果點擊的是 chevron toggle 圖標，則不選擇 section
+        if (e.target.closest(".section-toggle")) return;
         if (this.editingNodeId) return;
 
         const sectionId = item.closest(".section-node").dataset.sectionId;
+        console.log("[SectionList] Click on section-item, sectionId:", sectionId);
         this.selectSection(sectionId);
       });
     });
@@ -589,6 +591,8 @@ class TestCaseSectionList {
    * 選擇 Section 並過濾 Test Cases
    */
   selectSection(sectionId) {
+    console.log("[SectionList] selectSection called with sectionId:", sectionId);
+
     // 移除之前的選擇
     document.querySelectorAll(".section-item").forEach((item) => {
       item.classList.remove("bg-primary", "text-white");
@@ -600,6 +604,9 @@ class TestCaseSectionList {
     );
     if (selected) {
       selected.classList.add("bg-primary", "text-white");
+      console.log("[SectionList] Section highlighted:", sectionId);
+    } else {
+      console.warn("[SectionList] Section element not found:", sectionId);
     }
 
     // 觸發自訂事件，通知其他模組進行過濾
