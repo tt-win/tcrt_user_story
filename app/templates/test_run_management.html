@@ -861,30 +861,35 @@
 #testRunSetDetailActions {
     display: grid;
     gap: 0.5rem;
-    grid-template-columns: repeat(2, minmax(120px, 1fr));
-    width: 280px;
+    grid-template-columns: repeat(3, minmax(80px, 1fr));
+    width: 100%;
+    max-width: 400px;
 }
 
 #testRunSetDetailActions .btn {
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 0.35rem;
-    padding: 0.375rem 0.5rem;
-    line-height: 1.25;
+    gap: 0.25rem;
+    padding: 0.35rem 0.4rem;
+    line-height: 1.2;
     min-height: auto;
-    font-size: 0.875rem;
+    font-size: 0.75rem;
     white-space: nowrap;
     flex-wrap: nowrap;
+    min-width: 0;
+    width: 100%;
 }
 
 #testRunSetDetailActions .btn span {
     overflow: hidden;
     text-overflow: ellipsis;
+    min-width: 0;
 }
 
 #testRunSetDetailActions .btn i {
     flex-shrink: 0;
+    margin-right: 0 !important;
 }
 
 /* Test Run Detail Run List 樣式 - 左邊內容，右邊按鈕兩排 */
@@ -902,8 +907,9 @@
 .testRunDetailRunActions {
     display: grid;
     gap: 0.5rem;
-    grid-template-columns: repeat(2, minmax(100px, 1fr));
-    width: 260px;
+    grid-template-columns: repeat(3, minmax(75px, 1fr));
+    width: 100%;
+    max-width: 380px;
     flex-shrink: 0;
 }
 
@@ -911,31 +917,37 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 0.25rem;
-    padding: 0.375rem 0.5rem;
-    line-height: 1.25;
+    gap: 0.2rem;
+    padding: 0.3rem 0.35rem;
+    line-height: 1.15;
     min-height: auto;
-    font-size: 0.75rem;
+    font-size: 0.7rem;
     white-space: nowrap;
     flex-wrap: nowrap;
+    min-width: 0;
+    width: 100%;
 }
 
 .testRunDetailRunActions .btn span {
     overflow: hidden;
     text-overflow: ellipsis;
+    min-width: 0;
 }
 
 .testRunDetailRunActions .btn i {
     flex-shrink: 0;
+    margin-right: 0 !important;
 }
 
 .testRunDetailRunActions .dropdown {
     width: 100%;
+    min-width: 0;
 }
 
 .testRunDetailRunActions .btn.dropdown-toggle {
     width: 100%;
     justify-content: center;
+    min-width: 0;
 }
 
 
