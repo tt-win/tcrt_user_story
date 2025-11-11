@@ -220,6 +220,79 @@ function setupMarkdownHotkeys(textarea) {
 </style>
 
 <script>
+// 初始化「跳至」菜單 - 快速切換 Test Runs
+async function initJumpToTestRunMenu() {
+    const jumpToTestRunGroup = document.getElementById('jumpToTestRunGroup');
+    const jumpToTestRunDropdown = document.getElementById('jumpToTestRunDropdown');
+
+    if (!jumpToTestRunGroup || !jumpToTestRunDropdown || !testRunConfig || !testRunConfig.set_id) {
+        return; // 如果沒有 set_id，不顯示菜單
+    }
+
+    try {
+        const teamId = currentTeamId;
+        if (!teamId) {
+            return;
+        }
+
+        // 獲取該 Test Run Set 中的所有 Test Runs
+        const response = await window.AuthClient.fetch(
+            `/api/teams/${teamId}/test-run-sets/${testRunConfig.set_id}`
+        );
+
+        if (!response.ok) {
+            return;
+        }
+
+        const setData = await response.json();
+        const testRuns = setData.test_runs || [];
+
+        // 過濾出不是當前 Test Run 的所有 Test Runs
+        const otherTestRuns = Array.isArray(testRuns) ?
+                             testRuns.filter(tr => tr.id !== currentConfigId) :
+                             [];
+
+        if (otherTestRuns.length === 0) {
+            // 如果沒有其他 Test Runs，隱藏菜單
+            jumpToTestRunGroup.style.display = 'none';
+            return;
+        }
+
+        // 清空現有菜單項
+        jumpToTestRunDropdown.innerHTML = '';
+
+        // 添加每個 Test Run 為菜單項
+        otherTestRuns.forEach(testRun => {
+            const li = document.createElement('li');
+            const a = document.createElement('a');
+            a.className = 'dropdown-item';
+            a.href = '#';
+            a.style.cursor = 'pointer';
+
+            const statusIcon = testRun.status === 'active' ? 'play-circle' :
+                              testRun.status === 'draft' ? 'file-alt' :
+                              testRun.status === 'completed' ? 'check-circle' :
+                              'archive';
+            a.innerHTML = `<i class="fas fa-${statusIcon} me-2"></i>${escapeHtml(testRun.name)}`;
+
+            a.addEventListener('click', (e) => {
+                e.preventDefault();
+                window.location.href = `/test-run-execution?config_id=${testRun.id}&team_id=${teamId}`;
+            });
+
+            li.appendChild(a);
+            jumpToTestRunDropdown.appendChild(li);
+        });
+
+        // 顯示菜單
+        jumpToTestRunGroup.style.display = 'block';
+
+    } catch (error) {
+        console.error('Failed to initialize jump to test run menu:', error);
+        jumpToTestRunGroup.style.display = 'none';
+    }
+}
+
 function setupQuickSearch_TR() {
     if (!document.getElementById('quickSearchOverlay')) {
         const overlay = document.createElement('div');
@@ -1344,6 +1417,14 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
         <i class="fas fa-redo me-2"></i><span data-i18n="testRun.restartExecution">重新執行</span>
     </button>
     <div class="ms-auto d-flex gap-2">
+        <div class="btn-group" role="group" id="jumpToTestRunGroup" style="display: none;">
+            <button type="button" class="btn btn-info dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="fas fa-arrow-right me-2"></i><span data-i18n="common.jumpTo">跳至</span>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end" id="jumpToTestRunDropdown">
+                <!-- 其他 Test Runs 會在此動態列出 -->
+            </ul>
+        </div>
         <button type="button" class="btn btn-primary" id="exportBtn">
             <i class="fas fa-chart-pie me-2"></i><span data-i18n="testRun.chartsReports">Charts & Reports</span>
         </button>
@@ -2779,6 +2860,12 @@ document.addEventListener('DOMContentLoaded', async function() {
     bindEventListeners();
     bindBugTicketEvents();
     setupQuickSearch_TR();
+    // 在加載配置後初始化跳至菜單
+    setTimeout(() => {
+        if (testRunConfig && testRunConfig.set_id) {
+            initJumpToTestRunMenu();
+        }
+    }, 500);
 
     // 確保 i18n 系統準備好後立即套用翻譯
     setTimeout(() => {

@@ -99,7 +99,7 @@ class TestCaseSetService:
         return test_set
 
     def delete(self, set_id: int, team_id: int) -> bool:
-        """刪除 Test Case Set，並將其中的 Test Case 移至預設 Set"""
+        """刪除 Test Case Set，並將其中的 Test Case 移至預設 Set 的 Unassigned Section"""
         test_set = self.get_by_id(set_id, team_id)
         if not test_set:
             raise ValueError(f"Test Case Set 不存在: {set_id}")
@@ -116,12 +116,23 @@ class TestCaseSetService:
         if not default_set:
             raise ValueError("找不到預設 Test Case Set")
 
-        # 將所有 Test Case 移至預設 Set，並移除 section 關聯
+        # 獲取預設 Set 中的 Unassigned Section
+        unassigned_section = self.db.query(TestCaseSection).filter(
+            and_(
+                TestCaseSection.test_case_set_id == default_set.id,
+                TestCaseSection.name == "Unassigned"
+            )
+        ).first()
+
+        if not unassigned_section:
+            raise ValueError("找不到預設 Set 的 Unassigned Section")
+
+        # 將所有 Test Case 移至預設 Set 的 Unassigned Section
         self.db.query(TestCaseLocal).filter(
             TestCaseLocal.test_case_set_id == set_id
         ).update({
             TestCaseLocal.test_case_set_id: default_set.id,
-            TestCaseLocal.test_case_section_id: None
+            TestCaseLocal.test_case_section_id: unassigned_section.id
         }, synchronize_session=False)
 
         # 刪除該 Set 的所有 Sections
