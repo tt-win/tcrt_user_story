@@ -5085,10 +5085,16 @@ async function confirmBulkTextCreate() {
             tcg_numbers: Array.isArray(item.tcg_numbers) ? item.tcg_numbers : []
         }));
 
+        // 包含當前選擇的 Test Case Set ID（如果有的話）
+        const requestBody = {
+            items,
+            ...(currentSetId && { test_case_set_id: currentSetId })
+        };
+
         const response = await window.AuthClient.fetch(`/api/teams/${currentTeam.id}/testcases/bulk_create`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ items })
+            body: JSON.stringify(requestBody)
         });
 
         const data = await response.json();

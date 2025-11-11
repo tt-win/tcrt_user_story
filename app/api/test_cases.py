@@ -42,11 +42,14 @@ from app.models.test_case import (
 from app.models.database_models import (
     Team as TeamDB,
     TestCaseLocal as TestCaseLocalDB,
+    TestCaseSet as TestCaseSetDB,
     TestCaseSection as TestCaseSectionDB,
     SyncStatus,
 )
 from app.services.test_case_repo_service import TestCaseRepoService
 from app.services.test_case_sync_service import TestCaseSyncService
+from app.services.test_case_set_service import TestCaseSetService
+from app.services.test_case_section_service import TestCaseSectionService
 from app.services.lark_client import LarkClient
 from app.config import settings
 from app.audit import audit_service, ActionType, ResourceType, AuditSeverity
@@ -98,6 +101,7 @@ class BulkTestCaseItem(BaseModel):
 
 class BulkCreateRequest(BaseModel):
     items: List[BulkTestCaseItem]
+    test_case_set_id: Optional[int] = None  # 如果不提供，使用 Team 的預設 Set
 
 
 class BulkCreateResponse(BaseModel):
@@ -1833,12 +1837,54 @@ async def bulk_create_test_cases(
     db: Session = Depends(get_sync_db),
     current_user: User = Depends(get_current_user),
 ):
-    """批次建立測試案例（只寫本地 DB）"""
+    """批次建立測試案例（只寫本地 DB）
+
+    如果沒有提供 test_case_set_id，將使用該 Team 的預設 Test Case Set
+    """
     try:
         if not request.items:
             return BulkCreateResponse(
                 success=False, created_count=0, errors=["空的建立清單"]
             )
+
+        # 取得或創建該 Team 的 Test Case Set
+        set_service = TestCaseSetService(db)
+
+        if request.test_case_set_id:
+            # 使用提供的 Set ID
+            test_case_set = db.query(TestCaseSetDB).filter(
+                TestCaseSetDB.id == request.test_case_set_id,
+                TestCaseSetDB.team_id == team_id
+            ).first()
+
+            if not test_case_set:
+                return BulkCreateResponse(
+                    success=False, created_count=0,
+                    errors=[f"Test Case Set {request.test_case_set_id} 不存在或不屬於此 Team"]
+                )
+        else:
+            # 使用預設 Set（如果不存在則建立）
+            test_case_set = set_service.get_or_create_default(team_id)
+
+        # 取得或創建 Unassigned Section
+        section_service = TestCaseSectionService(db)
+        unassigned_section = db.query(TestCaseSectionDB).filter(
+            TestCaseSectionDB.test_case_set_id == test_case_set.id,
+            TestCaseSectionDB.name == "Unassigned"
+        ).first()
+
+        if not unassigned_section:
+            # 建立 Unassigned Section
+            unassigned_section = TestCaseSectionDB(
+                test_case_set_id=test_case_set.id,
+                name="Unassigned",
+                description="未分配的測試案例",
+                level=1,
+                sort_order=0,
+                parent_section_id=None
+            )
+            db.add(unassigned_section)
+            db.flush()
 
         # 取得現有記錄用於重複檢查（本地）
         existing_numbers = set(
@@ -1880,6 +1926,9 @@ async def bulk_create_test_cases(
                 test_result=None,
                 sync_status=SyncStatus.PENDING,
                 local_version=1,
+                # ✅ 設置 Test Case Set 和 Section
+                test_case_set_id=test_case_set.id,
+                test_case_section_id=unassigned_section.id,
             )
 
             # 正規化並直接存儲 TCG 單號列表
@@ -1917,6 +1966,9 @@ async def bulk_create_test_cases(
                     "operation": "bulk_create",
                     "created_count": created_count,
                     "created_items": created_items,
+                    "test_case_set_id": test_case_set.id,
+                    "test_case_set_name": test_case_set.name,
+                    "section_id": unassigned_section.id,
                 },
             )
 
