@@ -452,6 +452,35 @@ The JavaScript handles test run management with multiple functional areas:
 - 移除複雜的 CSS Grid 規則
 - 簡化 HTML 結構
 
+### Fix: Unify Add Card Button Text Across All Pages (Nov 11, 2025)
+
+**Problem**:
+- Add card buttons had inconsistent text: "新增第一個XXX", "新增更多XXX", "新增XXX" mixed together
+- Different text in different states (empty vs. with items) confusing for users
+
+**Solution**:
+
+1. **Test Run Add Card** (Line 2206)
+   - Changed from: `data-i18n="testRun.addMoreConfigs">新增更多 Test Run`
+   - Changed to: `data-i18n="testRun.addConfigs">新增 Test Run`
+   - i18n key updated: testRun.addMoreConfigs → testRun.addConfigs
+   - i18n key updated: testRun.addMoreConfigsHint → testRun.addConfigsHint
+
+2. **Test Run Set Add Card** (Line 2223)
+   - Already uses: `data-i18n="testRun.sets.form.addCardTitle">新增 Test Run Set`
+   - No change needed
+
+**Code Changes**:
+- test_run_management.html, Line 2206-2207: Updated i18n keys and text
+
+**Consistency Applied To**:
+- Team Management (index.html): "新增團隊"
+- Test Run (test_run_management.html): "新增 Test Run"
+- Test Run Set (test_run_management.html): "新增 Test Run Set"
+- Test Case Set (test_case_set_list.html): "新增測試案例集合"
+
+All add cards now use consistent format: "新增[資源類型]"
+
 ## Issues Identified
 1. **Monolithic Structure**: Single file with 5678 lines mixing HTML, CSS, and JS
 2. **Inline Styles**: Large embedded CSS section
