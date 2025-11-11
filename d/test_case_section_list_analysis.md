@@ -33,11 +33,14 @@ The `test-case-section-list.js` file is a JavaScript class module (~2001 lines) 
 - `handleDragEnd(event)`: Cleans up after drag operation
 - `enableDragAndDrop()`, `disableDragAndDrop()`: Toggles drag functionality
 
-### CRUD Operations (Lines ~1101-1600)
+### CRUD Operations (Lines ~1101-1700)
 - `createSection(parentId, name)`: Creates new section under specified parent
 - `editSection(sectionId)`: Shows inline edit form for section name
 - `updateSection(sectionId, newName)`: Updates section name via API
-- `deleteSection(sectionId)`: Deletes section and handles child sections
+- `deleteSection(sectionId)`: Deletes section and handles child sections (immediate deletion via API)
+- `markSectionAndChildrenForDelete(sectionId)` (Lines 1113-1122): Recursively marks section and all child sections for deletion (edit list mode)
+- `unmarkSectionAndChildrenForDelete(sectionId)` (Lines 1127-1136): Recursively unmarks section and all child sections from deletion (edit list mode)
+- `toggleSectionDelete(sectionId)` (Lines 1141-1162): Toggles deletion mark in edit list, including all child sections (cascading delete)
 - `moveSection(sectionId, newParentId, newPosition)`: Moves section in hierarchy
 
 ### Event Handling (Lines ~1601-1900)
@@ -119,6 +122,66 @@ The `test-case-section-list.js` file is a JavaScript class module (~2001 lines) 
 19. **Code Duplication**: Similar patterns repeated for different operations
 
 ## Recent Fixes
+
+### Fix: Cascading Delete for Child Sections in Edit List Mode (Nov 11, 2025)
+
+**Problem**: In the edit list mode (編輯列表), when a parent section was marked for deletion, only that parent section was deleted. Child sections of the deleted parent were not automatically deleted, potentially leaving orphaned sections in the hierarchy.
+
+**Solution**: Implemented cascading delete logic in the edit list deletion mechanism:
+- Added `markSectionAndChildrenForDelete(sectionId)` method (Lines 1113-1122): Recursively marks a section and all its child sections for deletion
+- Added `unmarkSectionAndChildrenForDelete(sectionId)` method (Lines 1127-1136): Recursively unmarks a section and all its child sections
+- Modified `toggleSectionDelete(sectionId)` method (Lines 1141-1162): Now uses the cascading mark/unmark methods
+
+**Code Location**: `TestCaseSectionList` class in `app/static/js/test-case-section-list.js`, lines 1110-1162
+
+**Implementation Details**:
+```javascript
+// Mark section and all children for deletion
+markSectionAndChildrenForDelete(sectionId) {
+  this.sectionsToDelete.add(sectionId);
+  const section = this.findSection(sectionId);
+  if (section) {
+    const children = this.getChildSections(section);
+    for (const child of children) {
+      this.markSectionAndChildrenForDelete(child.id); // Recursive call
+    }
+  }
+}
+
+// Unmark section and all children when canceling deletion
+unmarkSectionAndChildrenForDelete(sectionId) {
+  this.sectionsToDelete.delete(sectionId);
+  const section = this.findSection(sectionId);
+  if (section) {
+    const children = this.getChildSections(section);
+    for (const child of children) {
+      this.unmarkSectionAndChildrenForDelete(child.id); // Recursive call
+    }
+  }
+}
+
+// Updated toggle logic
+toggleSectionDelete(sectionId) {
+  // ... Unassigned check ...
+  if (this.sectionsToDelete.has(sectionId)) {
+    this.unmarkSectionAndChildrenForDelete(sectionId); // Cascading unmark
+  } else {
+    this.markSectionAndChildrenForDelete(sectionId); // Cascading mark
+  }
+  // Re-render list
+}
+```
+
+**How It Works**:
+1. When a user marks a parent section for deletion in edit list mode, all its child sections (recursively) are automatically marked for deletion
+2. When the user saves changes (via `saveReorder()`), all marked sections (parent and children) are deleted via the API
+3. If a user toggles off a deletion mark, all child sections are also unmarked
+4. The UI updates to show all marked sections with a "待刪除" (marked for deletion) badge
+
+**Related Methods**:
+- `getChildSections(section)` (Line 1188-1193): Retrieves immediate children of a section
+- `findSection(sectionId)` (Line 1169): Finds a section by ID across the hierarchy
+- `saveReorder()` (Line 1891+): Processes deletion of all marked sections and saves reorder
 
 ### Fix: Section List Not Refreshing After Batch Test Set/Section Changes (Nov 11, 2025)
 
