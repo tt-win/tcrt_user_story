@@ -896,7 +896,13 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
 /* 隱藏 checkbox 欄位的樣式（completed 狀態） */
 .test-run-items-table.hide-checkbox #checkbox-header,
 .test-run-items-table.hide-checkbox .checkbox-cell {
-    display: none !important;
+    /* 完全移除列寬，不佔用空間 */
+    visibility: collapse !important;
+    width: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    margin: 0 !important;
+    height: 0 !important;
 }
 
 /* 批次操作工具區樣式（統一與 Test Case Management） */
@@ -3323,16 +3329,19 @@ function shouldShowCheckbox(status) {
 function updateTableHeader() {
     const table = document.querySelector('.test-run-items-table');
     const showCheckbox = shouldShowCheckbox(testRunConfig ? testRunConfig.status : 'draft');
-    
+
     if (showCheckbox) {
+        // 顯示 checkbox 列
         table.classList.remove('hide-checkbox');
     } else {
+        // 完全隱藏 checkbox 列
         table.classList.add('hide-checkbox');
         // 清空選擇狀態
         selectedItems.clear();
         updateItemSelectionUI();
     }
 }
+
 function createItemRow(item, index, canUpdate) {
     const permissions = getTrePermissions();
     const resultClass = getResultClass(item.test_result);
