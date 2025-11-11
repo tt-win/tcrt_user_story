@@ -1,7 +1,7 @@
 # Test Run Management Template Analysis
 
 ## Overview
-The `test_run_management.html` file is a large Jinja2 template (~5749 lines) that manages test run configurations and sets. It includes embedded CSS and JavaScript for creating, editing, and managing test runs.
+The `test_run_management.html` file is a large Jinja2 template (~5678 lines) that manages test run configurations and sets. It includes embedded CSS and JavaScript for creating, editing, and managing test runs.
 
 ## File Structure
 
@@ -23,7 +23,7 @@ Embedded CSS for:
 - Responsive design
 - TP ticket management UI
 
-### JavaScript Functions (Lines ~1477-5749)
+### JavaScript Functions (Lines ~1477-5678)
 The JavaScript handles test run management with multiple functional areas:
 
 #### UI Utilities (Lines ~1477-1615)
@@ -131,7 +131,7 @@ The JavaScript handles test run management with multiple functional areas:
 - `clearAllFormErrors()` (Lines 4831-4850): Clears form errors. No parameters.
 - `showNotification(message, type = 'info')` (Lines 4851-4926): Shows notification. Parameters: message (string), type (string).
 
-#### Search and Utilities (Lines ~4927-5749)
+#### Search and Utilities (Lines ~4927-5678)
 - `getSearchResultStatusInfo(status, executionRate, passRate)` (Lines 4927-4938): Gets search status info. Parameters: status (string), executionRate (number), passRate (number).
 - `setupQuickSearch_TPTicket()` (Lines 4939-5022): Sets up TP ticket search. No parameters.
 - `debounce(func, delay)` (Lines 5023-5031): Debounces function. Parameters: func (function), delay (number).
@@ -146,7 +146,7 @@ The JavaScript handles test run management with multiple functional areas:
 - `initNotificationSettings()` (Lines 5436-5476): Initializes notifications. No parameters.
 - `ensureTeamIdInUrl_TRM(teamId)` (Lines 5477-5487): Ensures team ID in URL. Parameters: teamId (string).
 - `clearNotificationSettings()` (Lines 5488-5509): Clears notifications. No parameters.
-- `loadNotificationSettings(enabled, chatIds, chatNames)` (Lines 5510-5749): Loads notification settings. Parameters: enabled (boolean), chatIds (array), chatNames (array).
+- `loadNotificationSettings(enabled, chatIds, chatNames)` (Lines 5510-5678): Loads notification settings. Parameters: enabled (boolean), chatIds (array), chatNames (array).
 
 ## Dependencies
 - **Bootstrap**: UI framework
@@ -357,8 +357,103 @@ The JavaScript handles test run management with multiple functional areas:
 | 文字溢出 | 可能超出 | 自動省略號 ✓ |
 | 緊湊度 | 較寬鬆 | 較緊湊 ✓ |
 
+### Fix: 重新設計模態框布局 - 使用 Flex Wrap 和垂直排列 (Nov 11, 2025)
+
+**問題**:
+- 使用 Grid 的 3 列設計仍然導致按鈕排列為 3 行以上
+- Test Run Set 信息排列散亂，沒有清楚的結構
+- 複雜的 CSS 規則導致維護困難
+
+**解決方案**:
+
+1. **Modal Test Run Set Detail - 垂直排列** (Lines 1352-1395)
+   - 改為垂直分層結構：
+     - 第一層：Test Run Set Description
+     - 第二層：Status 和 Meta 信息（使用 Bootstrap row/col 網格）
+     - 第三層：TP 票號信息（如果存在）
+     - 第四層：操作按鈕（flex-wrap）
+   - HTML 結構：使用 `testRunSetDetailInfoSection`, `testRunSetDetailActionsSection`
+   - 信息區域與按鈕區域明確分離
+
+2. **按鈕容器 - 簡化為 Flex Wrap** (Lines 854-862)
+   - 移除複雜的 Grid 設計
+   - 改為 `display: flex; flex-wrap: wrap;`
+   - 按鈕自然流動，自動換行
+   - 簡單的 gap 設置：0.75rem
+   - 不再限制列數或容器寬度
+
+3. **Test Run 列表項 - 垂直堆疊** (Lines 3103-3120, 865-895)
+   - HTML 結構改為垂直堆疊：
+     - 標題：Test Run name
+     - 信息行：status, metrics, created date（flex-wrap）
+     - 按鈕行：所有操作按鈕（flex-wrap）
+   - 移除 testRunDetailRunContainer 和 testRunDetailRunContent
+   - CSS 簡化為基本的 flex-wrap
+
+4. **CSS 簡化** (Lines 844-895)
+   - 新增 Test Run Set 信息區域樣式：`#testRunSetDetailInfoSection`
+   - 使用 border-bottom 分隔信息和按鈕
+   - 刪除所有複雜的 Grid CSS
+   - 刪除 left-right 分布相關的 CSS
+   - 只保留基本的 flex-wrap 樣式
+
+**程式碼修改位置**:
+- HTML 結構 Modal: lines 1352-1395 (testRunSetDetailModal 內容)
+- HTML 結構 Test Run: lines 3103-3120 (buildSetRunDetailRow 函數)
+- CSS: lines 844-895 (簡化的樣式定義)
+
+**HTML 結構變化**:
+```html
+<!-- 舊結構：左邊內容，右邊按鈕 -->
+<div class="d-flex gap-3 mb-4" id="testRunSetDetailHeaderContainer">
+    <div class="flex-grow-1">內容區域（散亂排列）</div>
+    <div>按鈕容器</div>
+</div>
+
+<!-- 新結構：垂直分層，清楚的區域分隔 -->
+<div id="testRunSetDetailInfoSection">
+    <div>Description</div>
+    <div class="row">Status / Meta</div>
+    <div>TP 票號（如果存在）</div>
+</div>
+<div id="testRunSetDetailActionsSection">
+    <div id="testRunSetDetailActions" class="d-flex flex-wrap gap-2">
+        按鈕們（自動換行）
+    </div>
+</div>
+```
+
+**CSS 簡化對比**:
+```css
+/* 舊設計：複雜的 Grid */
+#testRunSetDetailActions {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(80px, 1fr));
+    width: 100%;
+    max-width: 400px;
+}
+
+/* 新設計：簡單的 Flex Wrap */
+#testRunSetDetailActions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+```
+
+**測試情況**:
+- 按鈕現在自然流動，不再有固定的行數限制
+- 文字不會被截斷（使用 white-space: nowrap）
+- 信息區域清楚分層，視覺結構更好
+- Test Run 列表項垂直堆疊，易於掃描
+- 不同寬度的 Modal 中，按鈕能夠自適應換行
+
+**文件行數變化**: 5749 → 5678 行（-71 行）
+- 移除複雜的 CSS Grid 規則
+- 簡化 HTML 結構
+
 ## Issues Identified
-1. **Monolithic Structure**: Single file with 5749 lines mixing HTML, CSS, and JS
+1. **Monolithic Structure**: Single file with 5678 lines mixing HTML, CSS, and JS
 2. **Inline Styles**: Large embedded CSS section
 3. **Inline Scripts**: ~4000+ lines of JavaScript in template
 4. **Global State**: Extensive use of global variables
