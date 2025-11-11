@@ -266,7 +266,7 @@ async def import_usm_from_lark(
                 username=current_user.username,
                 role=role_value,
                 action_type=ActionType.CREATE,
-                resource_type=ResourceType.TEST_RUN,
+                resource_type=ResourceType.USER_STORY_MAP,
                 resource_id=str(map_id),
                 team_id=request.team_id,
                 details={
