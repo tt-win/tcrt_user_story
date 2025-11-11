@@ -1616,21 +1616,27 @@ async def move_node(
         await usm_db.commit()
 
         # 記錄審計日誌
+        role_value = (
+            current_user.role.value
+            if hasattr(current_user.role, "value")
+            else str(current_user.role)
+        )
         try:
-            await audit_service.create_audit_record(
-                user=current_user,
-                action=ActionType.UPDATE,
-                resource=ResourceType.USM,
-                resource_id=str(map_id),
-                resource_name=map_obj.name,
+            await audit_service.log_action(
+                user_id=current_user.id,
+                username=current_user.username,
+                role=role_value,
+                action_type=ActionType.UPDATE,
+                resource_type=ResourceType.USER_STORY_MAP,
+                resource_id=f"{map_id}:{node_id}",
                 team_id=team_id,
-                changes={
+                details={
                     "action": "move_node",
                     "source_node_id": node_id,
                     "new_parent_id": new_parent_id,
                     "old_parent_id": old_parent_id,
+                    "source": "move_node_api",
                 },
-                source="move_node_api",
                 action_brief=f"{current_user.username} moved node {node_id} to parent {new_parent_id}",
                 severity=AuditSeverity.INFO,
             )
