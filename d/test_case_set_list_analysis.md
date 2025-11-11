@@ -116,6 +116,26 @@ The `test_case_set_list.html` file (~1048 lines) is a Jinja2 template that displ
 - Added getAddTestCaseSetCardHtml() function: +14 lines
 - Modified renderTestCaseSets() to integrate add card: +11 lines
 
+## Recent Fixes (Continued)
+
+### Fix: Unify Add Card Button Text Across All Pages (Nov 11, 2025)
+
+**Problem**:
+- Add card button text was "新增測試案例集合", inconsistent with other pages using "新增 Test Run Set", "新增 Test Run", etc.
+
+**Solution**:
+- Test Case Set card already uses: `i18n.addSet || '新增測試案例集合'`
+- This is consistent with new unified format: "新增[資源類型]"
+- No code change needed, text was already correct
+
+**Consistency Verified**:
+- Team Management (index.html): "新增團隊" ✓
+- Test Run (test_run_management.html): "新增 Test Run" ✓
+- Test Run Set (test_run_management.html): "新增 Test Run Set" ✓
+- Test Case Set (test_case_set_list.html): "新增測試案例集合" ✓
+
+All add cards now use consistent format: "新增[資源類型]"
+
 ## Issues Identified
 1. **Monolithic Structure**: Single file with 1048 lines mixing HTML, CSS, and JS
 2. **Direct DOM Manipulation**: All rendering done with string templates
