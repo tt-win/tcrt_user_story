@@ -118,6 +118,42 @@ The `test_case_set_list.html` file (~1048 lines) is a Jinja2 template that displ
 
 ## Recent Fixes (Continued)
 
+### Fix: Remove 'Add Collection' Button from Page Header (Nov 11, 2025)
+
+**Problem**:
+- Test Case Set list page had both a "新增集合" button in the header AND an add card in the main content area
+- Redundant UI elements creating confusion about which to use
+- Header button was unnecessary after implementing add card
+
+**Solution**:
+- Removed the 'createSetBtn' button from the page_specific_actions block (Lines 10-12)
+- Updated empty state hint text to reference the card instead of the button
+- Now only the add card is used for creating new test case sets
+
+**Code Changes**:
+- Lines 9-16: Removed button from header section (was: lines 9-15)
+- Line 30: Updated empty state prompt:
+  - Before: `點擊「新增集合」按鈕建立第一個測試案例集合`
+  - After: `點擊下方卡片建立第一個測試案例集合`
+
+**User Experience**:
+- Single, clear entry point for creating new test case sets via the add card
+- Cleaner, less cluttered header
+- More consistent with design philosophy of using cards for primary actions
+- Consistent with other pages (Team, Test Run, Test Run Set) that use add cards
+
+**Header Structure**:
+```html
+<!-- Before -->
+<button class="btn btn-primary btn-sm" id="createSetBtn">新增集合</button>
+<a href="/" class="btn btn-secondary btn-sm">回到首頁</a>
+
+<!-- After -->
+<a href="/" class="btn btn-secondary btn-sm">回到首頁</a>
+```
+
+**File Line Count Change**: 1044 → 1044 lines (-4 lines from previous count of 1048)
+
 ### Fix: Unify Add Card Button Text Across All Pages (Nov 11, 2025)
 
 **Problem**:
@@ -137,7 +173,7 @@ The `test_case_set_list.html` file (~1048 lines) is a Jinja2 template that displ
 All add cards now use consistent format: "新增[資源類型]"
 
 ## Issues Identified
-1. **Monolithic Structure**: Single file with 1048 lines mixing HTML, CSS, and JS
+1. **Monolithic Structure**: Single file with 1044 lines mixing HTML, CSS, and JS
 2. **Direct DOM Manipulation**: All rendering done with string templates
 3. **Global State**: Sets data stored in global testCaseSets array
 4. **No Error Handling**: Limited error handling in async operations
