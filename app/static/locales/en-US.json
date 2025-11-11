@@ -829,6 +829,7 @@
         "unassigned": "Unassigned"
     },
     "testRun": {
+        "currentExecution": "Currently Executing: ",
         "addBugTicket": "Add Bug Ticket",
         "addBugTicketFailed": "Failed to add Bug Ticket",
         "addMoreConfigs": "Add More Test Runs",
