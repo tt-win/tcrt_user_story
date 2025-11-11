@@ -121,7 +121,7 @@ function showNoTeams() {
     if (uiPermissions.createFirstTeamCard) {
         noTeamsSection.innerHTML = `
         <div class="row justify-content-center">
-            <div class="col-md-6 col-lg-4">
+            <div class="col-md-6 col-lg-3">
                 <div class="card text-center add-team-card" onclick="goToTeamManagement()" style="cursor: pointer;">
                     <div class="card-body py-5">
                         <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center mx-auto mb-3" 
@@ -160,7 +160,7 @@ function renderTeamCards() {
     
     // 現有團隊卡片
     const teamsHtml = teams.map(team => `
-        <div class="col-md-6 col-lg-4 mb-4">
+        <div class="col-md-6 col-lg-3 mb-4">
             <div class="card h-100 team-card">
                 <div class="card-body d-flex flex-column h-100">
                     <div class="d-flex align-items-start mb-3">
@@ -204,7 +204,7 @@ function renderTeamCards() {
     let addTeamCard = '';
     if (uiPermissions.addMoreTeamsCard) {
         addTeamCard = `
-        <div class="col-md-6 col-lg-4 mb-4">
+        <div class="col-md-6 col-lg-3 mb-4">
             <div class="card h-100 add-team-card text-center" onclick="goToTeamManagement()" style="cursor: pointer;">
                 <div class="card-body d-flex flex-column justify-content-center">
                     <div class="text-primary rounded-circle d-flex align-items-center justify-content-center mx-auto mb-3" 
