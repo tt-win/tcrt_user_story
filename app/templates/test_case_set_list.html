@@ -489,8 +489,13 @@ async function confirmDelete() {
 function navigateToSet(setId) {
   // 保存當前選擇的 Set ID
   sessionStorage.setItem('selectedTestCaseSetId', setId);
+  // 獲取當前團隊 ID
+  const currentTeam = window.AppUtils && window.AppUtils.getCurrentTeam ?
+                      window.AppUtils.getCurrentTeam() : null;
+  const teamId = currentTeam ? currentTeam.id : '';
   // 導航到 Test Case Management
-  window.location.href = `/test-case-management?set_id=${setId}`;
+  const url = `/test-case-management?set_id=${setId}${teamId ? `&team_id=${teamId}` : ''}`;
+  window.location.href = url;
 }
 
 // 顯示警告訊息
