@@ -850,7 +850,8 @@
     "deleteSuccess": "集合已删除，Test Case 已移至默认集合",
     "addSet": "新增集合",
     "createSetHint": "建立新的测试案例集合",
-    "updateSet": "更新集合"
+    "updateSet": "更新集合",
+    "defaultSetDescription": "团队默认测试案例集合"
   },
   "section": {
     "unassigned": "Unassigned"
