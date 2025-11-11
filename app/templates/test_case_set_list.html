@@ -268,43 +268,43 @@ function renderTestCaseSets() {
   const cardsHtml = testCaseSets.map(set => `
     <div class="col-md-6 col-lg-4 mb-4">
       <div class="card h-100 test-case-set-card" data-set-id="${set.id}">
-        <div class="card-header bg-light border-bottom d-flex justify-content-between align-items-center">
-          <h6 class="mb-0">${set.is_default ? '<i class="fas fa-star text-warning"></i> ' : ''}${escapeHtml(set.name)}</h6>
-          <div class="dropdown">
-            <button class="btn btn-sm btn-link" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-              <i class="fas fa-ellipsis-v"></i>
-            </button>
-            <ul class="dropdown-menu dropdown-menu-end">
-              <li><a class="dropdown-item" href="#" onclick="showEditSetModal(${set.id}, '${escapeHtml(set.name)}', '${escapeHtml(set.description || '')}'); return false;">
-                <i class="fas fa-edit"></i> ${i18n.edit || 'Edit'}
-              </a></li>
-              ${!set.is_default ? `
-              <li><hr class="dropdown-divider"></li>
-              <li><a class="dropdown-item text-danger" href="#" onclick="showDeleteConfirm(${set.id}, '${escapeHtml(set.name)}'); return false;">
-                <i class="fas fa-trash"></i> ${i18n.deleteSet || 'Delete'}
-              </a></li>
-              ` : ''}
-            </ul>
+        <div class="card-body d-flex flex-column h-100">
+          <div class="d-flex align-items-start mb-3">
+            <div class="flex-shrink-0 me-3">
+              <div class="bg-secondary text-white rounded-circle d-flex align-items-center justify-content-center"
+                   style="width: 48px; height: 48px; font-size: 18px;">
+                <i class="fas fa-${set.is_default ? 'star' : 'folder'}"></i>
+              </div>
+            </div>
+            <div class="flex-grow-1">
+              <h5 class="card-title text-primary mb-1">${escapeHtml(set.name)}</h5>
+              <p class="card-text text-muted small mb-0">
+                ${set.description ? escapeHtml(set.description) : '<em>無描述</em>'}
+              </p>
+            </div>
           </div>
-        </div>
-        <div class="card-body">
-          <p class="card-text text-muted text-truncate" title="${escapeHtml(set.description || '')}">
-            ${set.description ? escapeHtml(set.description) : '<em>無描述</em>'}
-          </p>
-          <div class="mt-3 mb-3">
+          <div class="mt-2 mb-3">
             <small class="text-muted">
-              <i class="fas fa-list"></i>
-              ${set.test_case_count || 0} ${i18n.testCasesCount || 'Test Cases'}
+              <i class="fas fa-list me-1"></i>
+              <span>${set.test_case_count || 0} ${i18n.testCasesCount || 'Test Cases'}</span>
             </small>
           </div>
-        </div>
-        <div class="card-footer bg-white border-top d-flex gap-2">
-          <button class="btn btn-primary flex-grow-1" onclick="navigateToSet(${set.id})">
-            <i class="fas fa-arrow-right"></i> ${i18n.enter || 'Enter'}
-          </button>
-          <button class="btn btn-success" onclick="openSetCaseSelectModal(${set.id})" title="新增 Test Run">
-            <i class="fas fa-plus"></i> <span class="d-none d-md-inline">Test Run</span>
-          </button>
+          <div class="mt-auto pt-2">
+            <div class="d-flex gap-2" style="flex-wrap: wrap;">
+              <button class="btn btn-primary btn-sm flex-grow-1" onclick="navigateToSet(${set.id})">
+                <i class="fas fa-arrow-right me-1"></i>${i18n.enter || 'Enter'}
+              </button>
+              <button class="btn btn-success btn-sm" onclick="openSetCaseSelectModal(${set.id})">
+                <i class="fas fa-plus"></i> <span class="d-none d-md-inline">Test Run</span>
+              </button>
+              <button class="btn btn-secondary btn-sm" onclick="showEditSetModal(${set.id}, '${escapeHtml(set.name)}', '${escapeHtml(set.description || '')}')">
+                <i class="fas fa-edit"></i> <span class="d-none d-md-inline">${i18n.edit || 'Edit'}</span>
+              </button>
+              <button class="btn btn-danger btn-sm ${set.is_default ? 'disabled' : ''}" ${set.is_default ? 'disabled' : `onclick="showDeleteConfirm(${set.id}, '${escapeHtml(set.name)}')"`}>
+                <i class="fas fa-trash"></i> <span class="d-none d-md-inline">${i18n.deleteSet || 'Delete'}</span>
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
