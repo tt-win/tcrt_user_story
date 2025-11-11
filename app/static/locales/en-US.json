@@ -830,6 +830,7 @@
     },
     "testRun": {
         "currentExecution": "Currently Executing: ",
+        "currentExecutionWithName": "Currently Executing: {name}",
         "addBugTicket": "Add Bug Ticket",
         "addBugTicketFailed": "Failed to add Bug Ticket",
         "addMoreConfigs": "Add More Test Runs",
