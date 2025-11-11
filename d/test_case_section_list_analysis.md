@@ -1,11 +1,11 @@
 # Test Case Section List Analysis
 
 ## Overview
-The `test-case-section-list.js` file is a JavaScript class module (~2001 lines) that handles the sidebar section list functionality for test case management. It provides a hierarchical tree view of test case sections with drag-and-drop, editing, and CRUD operations.
+The `test-case-section-list.js` file is a JavaScript class module (~2029 lines) that handles the sidebar section list functionality for test case management. It provides a hierarchical tree view of test case sections with drag-and-drop, editing, and CRUD operations. It supports cascading deletion of child sections in edit list mode.
 
 ## File Structure
 
-### Class Definition (Lines ~1-2001)
+### Class Definition (Lines ~1-2029)
 - `TestCaseSectionList` class with comprehensive section management functionality
 
 ### Constructor and Initialization (Lines ~1-150)
@@ -43,7 +43,7 @@ The `test-case-section-list.js` file is a JavaScript class module (~2001 lines) 
 - `toggleSectionDelete(sectionId)` (Lines 1141-1162): Toggles deletion mark in edit list, including all child sections (cascading delete)
 - `moveSection(sectionId, newParentId, newPosition)`: Moves section in hierarchy
 
-### Event Handling (Lines ~1601-1900)
+### Event Handling (Lines ~1629-1928)
 - `bindEvents()`: Sets up all DOM event listeners
 - `onSectionClick(event, section)`: Handles section selection
 - `onSectionDoubleClick(event, section)`: Handles section editing trigger
@@ -51,7 +51,7 @@ The `test-case-section-list.js` file is a JavaScript class module (~2001 lines) 
 - `onDeleteClick(event, section)`: Handles section deletion
 - `onCollapseToggle(event, section)`: Handles expand/collapse
 
-### Utility Functions (Lines ~1901-2001)
+### Utility Functions (Lines ~1929-2029)
 - `findSectionById(id)`: Finds section by ID in hierarchy
 - `getSectionPath(section)`: Gets full path from root to section
 - `validateSectionName(name)`: Validates section name input
