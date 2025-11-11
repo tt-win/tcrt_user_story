@@ -441,9 +441,16 @@ async function submitSetForm() {
 
 // 顯示刪除確認
 function showDeleteConfirm(setId, setName) {
+  // 檢查是否為預設 Set
+  const set = testCaseSets.find(s => s.id === setId);
+  if (set && set.is_default) {
+    showAlert('無法刪除預設 Test Case Set', 'warning');
+    return;
+  }
+
   pendingDeleteSetId = setId;
   const confirmText = document.getElementById('deleteConfirmText');
-  confirmText.textContent = `確定要刪除「${setName}」嗎？此操作無法撤銷。`;
+  confirmText.textContent = `確定要刪除「${setName}」嗎？此集合中的所有 Test Case 將移至預設集合。此操作無法撤銷。`;
   const modal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
   modal.show();
 }
@@ -453,9 +460,59 @@ async function confirmDelete() {
   if (!pendingDeleteSetId) return;
 
   try {
-    const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-case-sets/${pendingDeleteSetId}`, {
-      method: 'DELETE'
-    });
+    // 獲取該 Set 中的所有 Test Case
+    const testCasesResponse = await window.AuthClient.fetch(
+      `/api/teams/${currentTeamId}/test-case-sets/${pendingDeleteSetId}/test-cases`
+    );
+
+    const testCasesData = await testCasesResponse.json();
+    const testCases = testCasesData.data || [];
+
+    // 獲取預設 Test Case Set
+    const defaultSet = testCaseSets.find(set => set.is_default);
+    if (!defaultSet) {
+      throw new Error('找不到預設 Test Case Set');
+    }
+
+    // 將所有 Test Case 分配到預設 Set
+    for (const testCase of testCases) {
+      await window.AuthClient.fetch(
+        `/api/teams/${currentTeamId}/test-cases/${testCase.id}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            test_case_set_id: defaultSet.id,
+            section_id: null  // 移除 section 關聯
+          })
+        }
+      );
+    }
+
+    // 刪除該 Set 的所有 Sections
+    const sectionsResponse = await window.AuthClient.fetch(
+      `/api/teams/${currentTeamId}/test-case-sets/${pendingDeleteSetId}/sections`
+    );
+
+    const sectionsData = await sectionsResponse.json();
+    const sections = sectionsData.data || [];
+
+    for (const section of sections) {
+      await window.AuthClient.fetch(
+        `/api/teams/${currentTeamId}/test-case-sets/${pendingDeleteSetId}/sections/${section.id}`,
+        {
+          method: 'DELETE'
+        }
+      );
+    }
+
+    // 刪除 Test Case Set
+    const response = await window.AuthClient.fetch(
+      `/api/teams/${currentTeamId}/test-case-sets/${pendingDeleteSetId}`,
+      {
+        method: 'DELETE'
+      }
+    );
 
     if (!response.ok) {
       throw new Error('Failed to delete set');
@@ -463,7 +520,7 @@ async function confirmDelete() {
 
     bootstrap.Modal.getInstance(document.getElementById('deleteConfirmModal')).hide();
     await loadTestCaseSets();
-    showAlert('集合已刪除', 'success');
+    showAlert('集合已刪除，Test Case 已移至預設集合', 'success');
 
   } catch (error) {
     console.error('Error deleting set:', error);
