@@ -4221,49 +4221,49 @@ async function initJumpToSetMenu() {
     const jumpToSetGroup = document.getElementById('jumpToSetGroup');
     const jumpToSetDropdown = document.getElementById('jumpToSetDropdown');
 
-    console.log('[JumpToMenu] Initializing...', { currentSetId, hasGroup: !!jumpToSetGroup, hasDropdown: !!jumpToSetDropdown });
-
     if (!jumpToSetGroup || !jumpToSetDropdown || !currentSetId) {
-        console.log('[JumpToMenu] Missing required elements or currentSetId');
         return; // 如果沒有當前 Set ID，不顯示菜單
     }
 
     try {
+        // 優先從 AppUtils 獲取，若失敗則從 URL 參數獲取
+        let teamId = null;
         const activeTeam = window.AppUtils && window.AppUtils.getCurrentTeam ?
                           window.AppUtils.getCurrentTeam() : null;
 
-        console.log('[JumpToMenu] Active team:', activeTeam);
+        if (activeTeam && activeTeam.id) {
+            teamId = activeTeam.id;
+        } else {
+            // 從 URL 參數獲取 team_id
+            const urlParams = new URLSearchParams(window.location.search);
+            const teamParam = urlParams.get('team_id') || urlParams.get('teamId') || urlParams.get('team');
+            if (teamParam) {
+                teamId = parseInt(teamParam);
+            }
+        }
 
-        if (!activeTeam || !activeTeam.id) {
-            console.log('[JumpToMenu] No active team');
+        if (!teamId) {
             return;
         }
 
         // 獲取所有 Test Case Sets
-        console.log('[JumpToMenu] Fetching sets from:', `/api/teams/${activeTeam.id}/test-case-sets`);
         const response = await window.AuthClient.fetch(
-            `/api/teams/${activeTeam.id}/test-case-sets`
+            `/api/teams/${teamId}/test-case-sets`
         );
 
-        console.log('[JumpToMenu] API response status:', response.status);
         if (!response.ok) {
-            console.log('[JumpToMenu] API response not ok');
             return;
         }
 
         const sets = await response.json();
-        console.log('[JumpToMenu] Total sets:', sets.length, 'Current set ID:', currentSetId);
 
         // 過濾出不是當前 Set 的所有 Sets
         const otherSets = Array.isArray(sets) ?
                          sets.filter(s => s.id !== currentSetId) :
                          [];
 
-        console.log('[JumpToMenu] Other sets count:', otherSets.length);
-
         if (otherSets.length === 0) {
             // 如果沒有其他 Sets，隱藏菜單
-            console.log('[JumpToMenu] No other sets, hiding menu');
             jumpToSetGroup.style.display = 'none';
             return;
         }
@@ -4272,7 +4272,6 @@ async function initJumpToSetMenu() {
         jumpToSetDropdown.innerHTML = '';
 
         // 添加每個 Set 為菜單項
-        console.log('[JumpToMenu] Creating menu items for sets');
         otherSets.forEach(set => {
             const li = document.createElement('li');
             const a = document.createElement('a');
@@ -4285,7 +4284,10 @@ async function initJumpToSetMenu() {
 
             a.addEventListener('click', (e) => {
                 e.preventDefault();
-                window.location.href = `/test-case-management?set_id=${set.id}`;
+                const currentTeam = window.AppUtils && window.AppUtils.getCurrentTeam ?
+                                   window.AppUtils.getCurrentTeam() : null;
+                const newTeamId = currentTeam ? currentTeam.id : teamId;
+                window.location.href = `/test-case-management?set_id=${set.id}&team_id=${newTeamId}`;
             });
 
             li.appendChild(a);
@@ -4293,11 +4295,10 @@ async function initJumpToSetMenu() {
         });
 
         // 顯示菜單
-        console.log('[JumpToMenu] Showing menu');
         jumpToSetGroup.style.display = 'block';
 
     } catch (error) {
-        console.error('[JumpToMenu] Error:', error);
+        console.error('Failed to initialize jump to set menu:', error);
         jumpToSetGroup.style.display = 'none';
     }
 }
