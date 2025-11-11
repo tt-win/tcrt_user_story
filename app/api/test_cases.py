@@ -102,6 +102,7 @@ class BulkTestCaseItem(BaseModel):
 class BulkCreateRequest(BaseModel):
     items: List[BulkTestCaseItem]
     test_case_set_id: Optional[int] = None  # 如果不提供，使用 Team 的預設 Set
+    test_case_section_id: Optional[int] = None  # 如果不提供，使用 Unassigned Section
 
 
 class BulkCreateResponse(BaseModel):
@@ -711,6 +712,63 @@ async def create_test_case(
                 status_code=status.HTTP_409_CONFLICT, detail="測試案例編號已存在"
             )
 
+        # 取得或確定使用的 Test Case Set
+        set_service = TestCaseSetService(db)
+
+        if case.test_case_set_id:
+            # 驗證提供的 Set ID 有效
+            test_case_set = db.query(TestCaseSetDB).filter(
+                TestCaseSetDB.id == case.test_case_set_id,
+                TestCaseSetDB.team_id == team_id
+            ).first()
+
+            if not test_case_set:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Test Case Set {case.test_case_set_id} 不存在或不屬於此 Team"
+                )
+        else:
+            # 使用預設 Set
+            test_case_set = set_service.get_or_create_default(team_id)
+
+        # 取得或建立 Section
+        section_service = TestCaseSectionService(db)
+        target_section = None
+
+        # 如果前端指定了 Section ID，驗證並使用它
+        if case.test_case_section_id:
+            target_section = db.query(TestCaseSectionDB).filter(
+                TestCaseSectionDB.id == case.test_case_section_id,
+                TestCaseSectionDB.test_case_set_id == test_case_set.id
+            ).first()
+
+            if not target_section:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Section {case.test_case_section_id} 不存在或不屬於此 Test Case Set"
+                )
+
+        # 如果沒有指定 Section，使用 Unassigned
+        if not target_section:
+            unassigned_section = db.query(TestCaseSectionDB).filter(
+                TestCaseSectionDB.test_case_set_id == test_case_set.id,
+                TestCaseSectionDB.name == "Unassigned"
+            ).first()
+
+            if not unassigned_section:
+                unassigned_section = TestCaseSectionDB(
+                    test_case_set_id=test_case_set.id,
+                    name="Unassigned",
+                    description="未分配的測試案例",
+                    level=1,
+                    sort_order=0,
+                    parent_section_id=None
+                )
+                db.add(unassigned_section)
+                db.flush()
+
+            target_section = unassigned_section
+
         item = TestCaseLocalDB(
             team_id=team_id,
             lark_record_id=None,
@@ -729,6 +787,9 @@ async def create_test_case(
             raw_fields_json=None,
             sync_status=SyncStatus.PENDING,
             local_version=1,
+            # ✅ 設置 Test Case Set 和 Section（使用指定的或 Unassigned）
+            test_case_set_id=test_case_set.id,
+            test_case_section_id=target_section.id,
         )
         db.add(item)
         db.flush()  # 取得自增 id
@@ -791,6 +852,17 @@ async def create_test_case(
             },
         )
 
+        # 獲取 section 資訊（使用 target_section 或重新查詢）
+        section_name = None
+        section_path = None
+        section_level = None
+        if item.test_case_section_id:
+            # 直接使用 target_section（已在上面驗證過的）
+            if target_section:
+                section_name = target_section.name
+                section_level = target_section.level
+                section_path = target_section.name
+
         # 回傳本地物件
         return TestCaseResponse(
             record_id=str(item.id),
@@ -817,6 +889,10 @@ async def create_test_case(
             created_at=item.created_at,
             updated_at=item.updated_at,
             last_sync_at=item.last_sync_at,
+            test_case_section_id=item.test_case_section_id,
+            section_name=section_name,
+            section_path=section_path,
+            section_level=section_level,
         )
     except HTTPException:
         raise
@@ -1866,25 +1942,44 @@ async def bulk_create_test_cases(
             # 使用預設 Set（如果不存在則建立）
             test_case_set = set_service.get_or_create_default(team_id)
 
-        # 取得或創建 Unassigned Section
+        # 取得或創建 Section
         section_service = TestCaseSectionService(db)
-        unassigned_section = db.query(TestCaseSectionDB).filter(
-            TestCaseSectionDB.test_case_set_id == test_case_set.id,
-            TestCaseSectionDB.name == "Unassigned"
-        ).first()
+        target_section = None
 
-        if not unassigned_section:
-            # 建立 Unassigned Section
-            unassigned_section = TestCaseSectionDB(
-                test_case_set_id=test_case_set.id,
-                name="Unassigned",
-                description="未分配的測試案例",
-                level=1,
-                sort_order=0,
-                parent_section_id=None
-            )
-            db.add(unassigned_section)
-            db.flush()
+        # 如果前端指定了 Section ID，驗證並使用它
+        if request.test_case_section_id:
+            target_section = db.query(TestCaseSectionDB).filter(
+                TestCaseSectionDB.id == request.test_case_section_id,
+                TestCaseSectionDB.test_case_set_id == test_case_set.id
+            ).first()
+
+            if not target_section:
+                return BulkCreateResponse(
+                    success=False, created_count=0,
+                    errors=[f"Section {request.test_case_section_id} 不存在或不屬於此 Test Case Set"]
+                )
+
+        # 如果沒有指定 Section，使用 Unassigned
+        if not target_section:
+            unassigned_section = db.query(TestCaseSectionDB).filter(
+                TestCaseSectionDB.test_case_set_id == test_case_set.id,
+                TestCaseSectionDB.name == "Unassigned"
+            ).first()
+
+            if not unassigned_section:
+                # 建立 Unassigned Section
+                unassigned_section = TestCaseSectionDB(
+                    test_case_set_id=test_case_set.id,
+                    name="Unassigned",
+                    description="未分配的測試案例",
+                    level=1,
+                    sort_order=0,
+                    parent_section_id=None
+                )
+                db.add(unassigned_section)
+                db.flush()
+
+            target_section = unassigned_section
 
         # 取得現有記錄用於重複檢查（本地）
         existing_numbers = set(
@@ -1926,9 +2021,9 @@ async def bulk_create_test_cases(
                 test_result=None,
                 sync_status=SyncStatus.PENDING,
                 local_version=1,
-                # ✅ 設置 Test Case Set 和 Section
+                # ✅ 設置 Test Case Set 和 Section（使用指定的或 Unassigned）
                 test_case_set_id=test_case_set.id,
-                test_case_section_id=unassigned_section.id,
+                test_case_section_id=target_section.id,
             )
 
             # 正規化並直接存儲 TCG 單號列表
@@ -1968,7 +2063,7 @@ async def bulk_create_test_cases(
                     "created_items": created_items,
                     "test_case_set_id": test_case_set.id,
                     "test_case_set_name": test_case_set.name,
-                    "section_id": unassigned_section.id,
+                    "section_id": target_section.id,
                 },
             )
 
@@ -2362,12 +2457,13 @@ async def batch_operation_test_cases(
             # 記錄批次更新 TCG audit log
             if success_count > 0:
                 test_case_numbers = [item["test_case_number"] for item in success_items if item.get("test_case_number")]
-                tcg_display = ", ".join([pair[1] for pair in rid_pairs if pair[1]][:3])
+                # 構建 TCG 顯示文本
+                tcg_display_str = ", ".join(tcg_numbers_list[:3]) if tcg_numbers_list else "empty"
                 action_brief = f"{current_user.username} batch updated TCG for {success_count} Test Cases"
-                if tcg_display:
-                    action_brief += f" to TCG: {tcg_display}"
-                if len(rid_pairs) > 3:
-                    action_brief += f" and {len(rid_pairs) - 3} more"
+                if tcg_display_str:
+                    action_brief += f" to TCG: {tcg_display_str}"
+                if len(tcg_numbers_list) > 3:
+                    action_brief += f" and {len(tcg_numbers_list) - 3} more"
 
                 await log_test_case_action(
                     action_type=ActionType.UPDATE,
@@ -2377,7 +2473,7 @@ async def batch_operation_test_cases(
                     action_brief=action_brief,
                     details={
                         "operation": "batch_update_tcg",
-                        "tcg_pairs": rid_pairs,
+                        "tcg_numbers": tcg_numbers_list,
                         "success_count": success_count,
                         "total_count": len(operation.record_ids),
                         "updated_items": success_items,
