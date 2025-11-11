@@ -1907,9 +1907,9 @@ function createTestRunSetCard(set, filterStatus) {
         const statusClass = getStatusClass(run.status);
         const statusText = getStatusText(run.status);
         return `
-            <div class="d-flex align-items-center justify-content-between py-1 border-bottom">
-                <div class="me-2 text-truncate"><i class="fas fa-flag text-muted me-2"></i>${escapeHtml(run.name)}</div>
-                <span class="status-badge ${statusClass}">${statusText}</span>
+            <div class="d-flex align-items-center justify-content-between py-1 border-bottom gap-2">
+                <div class="flex-grow-1 min-width-0 text-truncate"><i class="fas fa-flag text-muted me-2"></i>${escapeHtml(run.name)}</div>
+                <span class="status-badge ${statusClass} flex-shrink-0">${statusText}</span>
             </div>
         `;
     }).join('');
