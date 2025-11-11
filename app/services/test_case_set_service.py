@@ -100,9 +100,6 @@ class TestCaseSetService:
 
     def delete(self, set_id: int, team_id: int) -> bool:
         """刪除 Test Case Set，並將其中的 Test Case 移至預設 Set"""
-        from app.models.test_case import TestCaseLocal
-        from app.models.test_case_section import TestCaseSection
-
         test_set = self.get_by_id(set_id, team_id)
         if not test_set:
             raise ValueError(f"Test Case Set 不存在: {set_id}")
