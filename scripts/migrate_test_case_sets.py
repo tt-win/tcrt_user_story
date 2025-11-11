@@ -3,16 +3,27 @@
 測試案例集合 (Test Case Set) 資料遷移腳本
 
 功能：
-- 為每個現有的 Team 建立預設的 Test Case Set (如果不存在)
-- 為每個 Test Case Set 建立 Unassigned Section
-- 將現有的 Test Cases 關聯到 Default Set 的 Unassigned Section
+1. 為每個現有的 Team 建立預設的 Test Case Set (如果不存在)
+   - 命名規則：Default_{team_name}
+   - 標記為預設集合 (is_default=True)
+
+2. 為每個 Test Case Set 建立 Unassigned Section
+   - 用於放置未分配到其他分類的 Test Cases
+
+3. 將現有的 Test Cases 關聯到對應 Team 的 Default Set
+   - 只處理尚未關聯到任何 Set 的 Test Cases (test_case_set_id == NULL)
+   - 同時將其 section_id 設為 Unassigned Section
 
 使用：
-  python migrate_test_case_sets.py [--dry-run] [--verbose]
+  python scripts/migrate_test_case_sets.py [--dry-run] [--verbose]
 
-注意：
-- --dry-run: 模擬執行，不實際更改資料庫
-- --verbose: 顯示詳細執行日誌
+選項：
+  --dry-run:   模擬執行，不實際更改資料庫
+  --verbose:   顯示詳細執行日誌
+
+範例：
+  python scripts/migrate_test_case_sets.py --dry-run --verbose  # 預演執行
+  python scripts/migrate_test_case_sets.py                       # 實際執行
 """
 
 from __future__ import annotations
@@ -24,7 +35,7 @@ from pathlib import Path
 from datetime import datetime
 
 # 確保專案根目錄在匯入路徑
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
@@ -87,9 +98,22 @@ def migrate_test_case_sets(engine, dry_run=False, verbose=False):
 
                 if not default_set:
                     # 3. 建立 Default Set
+                    set_name = f"Default_{team.name}"
+
+                    # 檢查名稱是否已存在（由於全域唯一約束）
+                    existing_by_name = session.query(TestCaseSetDB).filter(
+                        TestCaseSetDB.name == set_name
+                    ).first()
+
+                    if existing_by_name:
+                        # 如果名稱已存在，添加 team_id 以確保唯一性
+                        set_name = f"Default_{team.name}_{team.id}"
+                        if verbose:
+                            logger.warning(f"  名稱衝突，使用替代名稱: {set_name}")
+
                     default_set = TestCaseSetDB(
                         team_id=team.id,
-                        name=f"Default-{team.id}",
+                        name=set_name,
                         description="團隊預設測試案例集合",
                         is_default=True
                     )
