@@ -1925,7 +1925,7 @@ function createTestRunSetCard(set, filterStatus) {
     const statusClass = getStatusClass(set.status || 'active');
     const statusBadge = getSetStatusBadge(set.status);
 
-    let tpLine = '';
+    let tpContent = '';
     if (set.related_tp_tickets && Array.isArray(set.related_tp_tickets) && set.related_tp_tickets.length > 0) {
         const maxDisplay = 5;
         const visibleTickets = set.related_tp_tickets.slice(0, maxDisplay);
@@ -1940,8 +1940,11 @@ function createTestRunSetCard(set, filterStatus) {
         const remainingTag = remainingCount > 0
             ? `<span class="badge bg-light text-dark" style="font-size: 0.75rem;">+${remainingCount}</span>`
             : '';
-        tpLine = `<div class="stats-item"><i class="fas fa-ticket-alt stats-icon"></i><small class="text-muted"><span data-i18n="testRun.relatedTpTickets">相關 TP 開發單</span>: <span class="ms-1">${tpTags}${remainingTag}</span></small></div>`;
+        tpContent = `${tpTags}${remainingTag}`;
+    } else {
+        tpContent = `<span class="text-muted">N/A</span>`;
     }
+    const tpLine = `<div class="d-flex justify-content-between"><span data-i18n="testRun.relatedTpTickets">相關 TP 開發單</span><span>${tpContent}</span></div>`;
 
     return `
         <div class="col-xl-4 col-lg-6 mb-4">
@@ -2058,25 +2061,28 @@ function createConfigCard(config) {
     const envLine = config.test_environment ? `<div class=\"stats-item\"><i class=\"fas fa-server stats-icon\"></i><small class=\"text-muted\"><span data-i18n=\"testRun.testEnvironment\">測試環境</span>: ${escapeHtml(config.test_environment)}</small></div>` : '';
     
     // TP 標籤顯示邏輯
-    let tpLine = '';
+    let tpContent = '';
     if (config.related_tp_tickets && Array.isArray(config.related_tp_tickets) && config.related_tp_tickets.length > 0) {
         const maxDisplay = 5; // 最多顯示5個標籤
         const visibleTickets = config.related_tp_tickets.slice(0, maxDisplay);
         const remainingCount = config.related_tp_tickets.length - maxDisplay;
-        
-        const tpTags = visibleTickets.map(ticket => 
-            `<span class="tp-tag badge bg-secondary me-1" data-tp-ticket="${escapeHtml(ticket)}" 
-                   onmouseenter="showJiraPreview(event, '${escapeHtml(ticket)}')" 
-                   onmouseleave="hideJiraPreview()" 
-                   onclick="event.stopPropagation(); openJiraTicket('${escapeHtml(ticket)}')" 
+
+        const tpTags = visibleTickets.map(ticket =>
+            `<span class="tp-tag badge bg-secondary me-1" data-tp-ticket="${escapeHtml(ticket)}"
+                   onmouseenter="showJiraPreview(event, '${escapeHtml(ticket)}')"
+                   onmouseleave="hideJiraPreview()"
+                   onclick="event.stopPropagation(); openJiraTicket('${escapeHtml(ticket)}')"
                    style="cursor: pointer; font-size: 0.75rem;">${escapeHtml(ticket)}</span>`
         ).join('');
-        
-        const remainingTag = remainingCount > 0 ? 
+
+        const remainingTag = remainingCount > 0 ?
             `<span class="badge bg-light text-dark" style="font-size: 0.75rem;">+${remainingCount}</span>` : '';
-            
-        tpLine = `<div class="stats-item"><i class="fas fa-ticket-alt stats-icon"></i><small class="text-muted"><span data-i18n="testRun.relatedTpTickets">相關 TP 開發單</span>: <span class="ms-1">${tpTags}${remainingTag}</span></small></div>`;
+
+        tpContent = `${tpTags}${remainingTag}`;
+    } else {
+        tpContent = `<span class="text-muted">N/A</span>`;
     }
+    const tpLine = `<div class="d-flex justify-content-between align-items-center mb-1"><small class="text-muted"><span data-i18n="testRun.relatedTpTickets">相關 TP 開發單</span></small><small class="text-muted">${tpContent}</small></div>`;
     
     const buildLine = config.build_number ? `<div class=\"stats-item\"><i class=\"fas fa-code-branch stats-icon\"></i><small class=\"text-muted\"><span data-i18n=\"testRun.buildNumber\">建置版本</span>: ${escapeHtml(config.build_number)}</small></div>` : '';
     
