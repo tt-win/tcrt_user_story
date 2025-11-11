@@ -3231,9 +3231,10 @@ async function loadTestRunItemsWithoutLoading() {
 
 function updateHeader() {
     if (!testRunConfig) return;
-    
-    // 更新頁面標題
-    document.getElementById('test-run-subtitle').textContent = testRunConfig.name;
+
+    // 更新頁面副標題
+    const currentLabel = window.i18n ? window.i18n.t('testRun.currentExecution', {}, '現在執行：') : '現在執行：';
+    document.getElementById('test-run-subtitle').textContent = `${currentLabel}${testRunConfig.name}`;
     
     // 顯示對應的控制按鈕
     updateControlButtons(testRunConfig.status);

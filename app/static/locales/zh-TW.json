@@ -829,6 +829,7 @@
     "unassigned": "Unassigned"
   },
   "testRun": {
+    "currentExecution": "現在執行：",
     "addBugTicket": "新增 Bug Ticket",
     "addBugTicketFailed": "新增 Bug Ticket 失敗",
     "addMoreConfigs": "新增更多 Test Run",
