@@ -848,7 +848,8 @@
     "deleteSuccess": "Set deleted successfully, Test Cases moved to default set",
     "addSet": "Add Set",
     "createSetHint": "Create a new test case set",
-    "updateSet": "Update Set"
+    "updateSet": "Update Set",
+    "defaultSetDescription": "Team default test case set"
   },
   "section": {
     "unassigned": "Unassigned"

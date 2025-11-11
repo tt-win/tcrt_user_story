@@ -308,7 +308,11 @@ function renderTestCaseSets() {
             <div class="flex-grow-1">
               <h5 class="card-title text-primary mb-1">${escapeHtml(set.name)}</h5>
               <p class="card-text text-muted small mb-0">
-                ${set.description ? escapeHtml(set.description) : '<em>無描述</em>'}
+                ${set.is_default
+                  ? (window.i18n && window.i18n.isReady()
+                    ? window.i18n.t('testCaseSet.defaultSetDescription', {}, 'Team default test case set')
+                    : '團隊預設測試案例集合')
+                  : (set.description ? escapeHtml(set.description) : '<em>無描述</em>')}
               </p>
             </div>
           </div>
