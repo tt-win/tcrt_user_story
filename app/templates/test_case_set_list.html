@@ -4,11 +4,11 @@
 
 {% block page_title_text %}Test Case Sets{% endblock %}
 
-{% block page_subtitle_text %}選擇或建立一個測試案例集合來開始管理測試案例{% endblock %}
+{% block page_subtitle_text %}<span data-i18n="testCaseSet.pageSubtitle">選擇或建立一個測試案例集合來開始管理測試案例</span>{% endblock %}
 
 {% block page_specific_actions %}
 <a href="/" class="btn btn-secondary btn-sm">
-  <i class="fas fa-home"></i> 回到首頁
+  <i class="fas fa-home"></i> <span data-i18n="common.home">回到首頁</span>
 </a>
 {% endblock %}
 
@@ -26,8 +26,8 @@
       <div class="card bg-light">
         <div class="card-body text-center py-5">
           <i class="fas fa-inbox fa-3x text-muted mb-3"></i>
-          <h5 class="text-muted" id="emptyStateTitle">沒有測試案例集合</h5>
-          <p class="text-muted" id="emptyStateText">點擊下方卡片建立第一個測試案例集合</p>
+          <h5 class="text-muted" id="emptyStateTitle" data-i18n="testCaseSet.noTestCaseSets">沒有測試案例集合</h5>
+          <p class="text-muted" id="emptyStateText" data-i18n="testCaseSet.createFirstSet">點擊下方卡片建立第一個測試案例集合</p>
         </div>
       </div>
     </div>
@@ -39,20 +39,20 @@
   <div class="modal-dialog modal-dialog-centered" role="document">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title" id="setModalLabel">新增測試案例集合</h5>
+        <h5 class="modal-title" id="setModalLabel" data-i18n="testCaseSet.createSet">新增測試案例集合</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
         <form id="setForm">
           <div class="form-group mb-3">
-            <label for="setName">集合名稱 <span class="text-danger">*</span></label>
+            <label for="setName"><span data-i18n="testCaseSet.setName">集合名稱</span> <span class="text-danger">*</span></label>
             <input type="text" id="setName" class="form-control" placeholder="例如: Smoke Test Set" required>
             <small id="setNameError" class="text-danger d-none"></small>
-            <small class="form-text text-muted">名稱必須全域唯一</small>
+            <small class="form-text text-muted" data-i18n="testCaseSet.nameUnique">名稱必須全域唯一</small>
           </div>
 
           <div class="form-group mb-3">
-            <label for="setDescription">描述</label>
+            <label for="setDescription" data-i18n="common.description">描述</label>
             <textarea id="setDescription" class="form-control" rows="3" placeholder="描述此集合的用途..."></textarea>
           </div>
 
@@ -60,9 +60,9 @@
         </form>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="setModalCloseBtn">取消</button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" id="setModalCloseBtn" data-i18n="common.cancel">取消</button>
         <button type="button" class="btn btn-primary" id="setModalSubmitBtn" onclick="submitSetForm()">
-          <span id="submitBtnText">建立</span>
+          <span id="submitBtnText" data-i18n="testCaseSet.create">建立</span>
         </button>
       </div>
     </div>
@@ -74,15 +74,15 @@
   <div class="modal-dialog modal-dialog-centered" role="document">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title">確認刪除</h5>
+        <h5 class="modal-title" data-i18n="testCaseSet.confirmDelete">確認刪除</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
       </div>
       <div class="modal-body">
-        <p id="deleteConfirmText">確定要刪除此測試案例集合嗎？此操作無法撤銷。</p>
+        <p id="deleteConfirmText" data-i18n="testCaseSet.deleteConfirmMessage">確定要刪除此測試案例集合嗎？此操作無法撤銷。</p>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-        <button type="button" class="btn btn-danger" id="confirmDeleteBtn" onclick="confirmDelete()">刪除</button>
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">取消</button>
+        <button type="button" class="btn btn-danger" id="confirmDeleteBtn" onclick="confirmDelete()" data-i18n="common.delete">刪除</button>
       </div>
     </div>
   </div>
@@ -93,7 +93,7 @@
   <div class="modal-dialog modal-xl">
     <div class="modal-content">
       <div class="modal-header">
-        <h5 class="modal-title">
+        <h5 class="modal-title" data-i18n="testCaseSet.selectTestCases">
           <i class="fas fa-check-square"></i> 選擇測試案例
         </h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
@@ -103,7 +103,7 @@
         <div class="mb-3">
           <div class="input-group">
             <span class="input-group-text"><i class="fas fa-search"></i></span>
-            <input type="text" class="form-control" id="setCaseSearchInput" placeholder="搜尋測試案例...">
+            <input type="text" class="form-control" id="setCaseSearchInput" placeholder="搜尋測試案例..." data-i18n-placeholder="testCaseSet.searchTestCases">
           </div>
         </div>
 
@@ -111,19 +111,19 @@
         <div id="setCaseListContainer" style="max-height: 60vh; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 0.25rem; padding: 0.5rem;">
           <div class="text-center text-muted py-4">
             <div class="spinner-border spinner-border-sm" role="status">
-              <span class="visually-hidden">載入中...</span>
+              <span class="visually-hidden" data-i18n="common.loading">載入中...</span>
             </div>
           </div>
         </div>
 
         <!-- 摘要信息 -->
         <div class="mt-3 pt-2 border-top">
-          <small class="text-muted" id="setCaseSelectionSummary">已選 0 個測試案例</small>
+          <small class="text-muted" id="setCaseSelectionSummary" data-i18n="testCaseSet.selectedCount">已選 0 個測試案例</small>
         </div>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-        <button type="button" class="btn btn-primary" id="setCaseConfirmBtn">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">取消</button>
+        <button type="button" class="btn btn-primary" id="setCaseConfirmBtn" data-i18n="testCaseSet.createTestRun">
           <i class="fas fa-arrow-right"></i> 建立 Test Run
         </button>
       </div>
@@ -161,10 +161,10 @@ const i18n = {
   'search': '搜尋集合',
   'searchPlaceholder': '輸入集合名稱...',
   'noTestCaseSets': '沒有測試案例集合',
-  'createFirstSet': '點擊「新增集合」按鈕建立第一個測試案例集合',
+  'createFirstSet': '點擊下方卡片建立第一個測試案例集合',
   'nameRequired': '集合名稱必須全域唯一',
   'nameAlreadyExists': '集合名稱已存在',
-  'defaultSetCannotDelete': '無法刪除預設集合',
+  'defaultSetCannotDelete': '無法刪除預設 Test Case Set',
   'deleteConfirm': '確定要刪除此測試案例集合嗎？此操作無法撤銷。',
   'loadingFailed': '載入資料失敗'
 };
@@ -193,11 +193,11 @@ document.addEventListener('DOMContentLoaded', async function() {
       await loadTestCaseSets();
     } catch (error) {
       console.error('Error parsing team from localStorage:', error);
-      showAlert('讀取團隊資訊失敗', 'danger');
+      showAlert(window.i18n && window.i18n.isReady() ? window.i18n.t('common.failed') : '讀取團隊資訊失敗', 'danger');
     }
   } else {
     console.warn('No currentTeam found in localStorage');
-    showAlert('未選擇團隊', 'warning');
+    showAlert(window.i18n && window.i18n.isReady() ? window.i18n.t('common.pleaseSelect') : '未選擇團隊', 'warning');
   }
 });
 
@@ -214,7 +214,8 @@ function loadLanguage() {
 function updatePageText() {
   const createBtn = document.getElementById('createSetBtn');
   if (createBtn) {
-    createBtn.innerHTML = `<i class="fas fa-plus"></i> ${i18n.addSet || 'Add Set'}`;
+    const btnText = window.i18n && window.i18n.isReady() ? window.i18n.t('testCaseSet.addSet', {}, 'Add Set') : 'Add Set';
+    createBtn.innerHTML = `<i class="fas fa-plus"></i> ${btnText}`;
   }
 }
 
@@ -244,19 +245,47 @@ async function loadTestCaseSets() {
     renderTestCaseSets();
   } catch (error) {
     console.error('Error loading test case sets:', error);
-    showAlert(i18n.loadingFailed || 'Failed to load data', 'danger');
+    const errorMsg = window.i18n && window.i18n.isReady() ? window.i18n.t('common.loadingFailed', {}, i18n.loadingFailed) : (i18n.loadingFailed || 'Failed to load data');
+    showAlert(errorMsg, 'danger');
   }
+}
+
+// 獲取翻譯後的按鈕文字
+function getButtonTexts() {
+  if (window.i18n && window.i18n.isReady()) {
+    return {
+      enter: window.i18n.t('common.enter', {}, 'Enter'),
+      edit: window.i18n.t('common.edit', {}, 'Edit'),
+      deleteSet: window.i18n.t('common.delete', {}, 'Delete'),
+      testCasesCount: window.i18n.t('testCase.testCasesCount', {}, 'Test Cases'),
+      addSet: window.i18n.t('testCaseSet.addSet', {}, 'Add Set'),
+      createSetHint: window.i18n.t('testCaseSet.createSetHint', {}, 'Create a new test case set'),
+      createSet: window.i18n.t('testCaseSet.create', {}, 'Create'),
+      updateSet: window.i18n.t('testCaseSet.updateSet', {}, 'Update Set')
+    };
+  }
+  return {
+    enter: 'Enter',
+    edit: 'Edit',
+    deleteSet: 'Delete',
+    testCasesCount: 'Test Cases',
+    addSet: 'Add Set',
+    createSetHint: 'Create a new test case set',
+    createSet: 'Create',
+    updateSet: 'Update Set'
+  };
 }
 
 // 渲染 Test Case Sets 卡片
 function renderTestCaseSets() {
   const container = document.getElementById('testCaseSetsContainer');
   const emptyState = document.getElementById('emptyState');
+  const btnTexts = getButtonTexts();
 
   if (testCaseSets.length === 0) {
     container.innerHTML = `
       <div class="col-md-6 col-lg-4 mb-4">
-        ${getAddTestCaseSetCardHtml()}
+        ${getAddTestCaseSetCardHtml(btnTexts)}
       </div>
     `;
     emptyState.classList.add('d-none');
@@ -286,22 +315,22 @@ function renderTestCaseSets() {
           <div class="mt-2 mb-3">
             <small class="text-muted">
               <i class="fas fa-list me-1"></i>
-              <span>${set.test_case_count || 0} ${i18n.testCasesCount || 'Test Cases'}</span>
+              <span>${set.test_case_count || 0} ${btnTexts.testCasesCount}</span>
             </small>
           </div>
           <div class="mt-auto pt-2">
             <div class="d-flex gap-2" style="flex-wrap: wrap;">
               <button class="btn btn-primary btn-sm flex-grow-1" onclick="navigateToSet(${set.id})">
-                <i class="fas fa-arrow-right me-1"></i>${i18n.enter || 'Enter'}
+                <i class="fas fa-arrow-right me-1"></i>${btnTexts.enter}
               </button>
               <button class="btn btn-success btn-sm" onclick="openSetCaseSelectModal(${set.id})">
                 <i class="fas fa-plus"></i> <span class="d-none d-md-inline">Test Run</span>
               </button>
               <button class="btn btn-secondary btn-sm" onclick="showEditSetModal(${set.id}, '${escapeHtml(set.name)}', '${escapeHtml(set.description || '')}')">
-                <i class="fas fa-edit"></i> <span class="d-none d-md-inline">${i18n.edit || 'Edit'}</span>
+                <i class="fas fa-edit"></i> <span class="d-none d-md-inline">${btnTexts.edit}</span>
               </button>
               <button class="btn btn-danger btn-sm ${set.is_default ? 'disabled' : ''}" ${set.is_default ? 'disabled' : `onclick="showDeleteConfirm(${set.id}, '${escapeHtml(set.name)}')"`}>
-                <i class="fas fa-trash"></i> <span class="d-none d-md-inline">${i18n.deleteSet || 'Delete'}</span>
+                <i class="fas fa-trash"></i> <span class="d-none d-md-inline">${btnTexts.deleteSet}</span>
               </button>
             </div>
           </div>
@@ -312,13 +341,15 @@ function renderTestCaseSets() {
 
   container.innerHTML = cardsHtml + `
     <div class="col-md-6 col-lg-4 mb-4">
-      ${getAddTestCaseSetCardHtml()}
+      ${getAddTestCaseSetCardHtml(btnTexts)}
     </div>
   `;
 }
 
 // 新增 Test Case Set 卡片 HTML
-function getAddTestCaseSetCardHtml() {
+function getAddTestCaseSetCardHtml(btnTexts = {}) {
+  const addSetText = btnTexts.addSet || 'Add Set';
+  const createHintText = btnTexts.createSetHint || 'Create a new test case set';
   return `
     <div class="card h-100 add-test-case-set-card text-center" style="cursor: pointer; border: 2px dashed var(--tr-border-light); background-color: transparent;" onclick="showCreateSetModal()">
       <div class="card-body d-flex flex-column justify-content-center">
@@ -326,8 +357,8 @@ function getAddTestCaseSetCardHtml() {
              style="width: 48px; height: 48px; font-size: 18px; border: 2px dashed var(--tr-primary);">
           <i class="fas fa-plus"></i>
         </div>
-        <h6 class="text-primary mb-1">${i18n.addSet || '新增測試案例集合'}</h6>
-        <small class="text-muted">${i18n.createSetHint || '建立新的測試案例集合'}</small>
+        <h6 class="text-primary mb-1">${addSetText}</h6>
+        <small class="text-muted">${createHintText}</small>
       </div>
     </div>
   `;
@@ -336,8 +367,14 @@ function getAddTestCaseSetCardHtml() {
 // 顯示新增 Set Modal
 function showCreateSetModal() {
   currentEditingSetId = null;
-  document.getElementById('setModalLabel').textContent = '新增測試案例集合';
-  document.getElementById('submitBtnText').textContent = i18n.createSet || 'Create';
+  const modalLabel = window.i18n && window.i18n.isReady() ? window.i18n.t('testCaseSet.createSet') : '新增測試案例集合';
+  const submitBtnText = window.i18n && window.i18n.isReady() ? window.i18n.t('testCaseSet.create', {}, 'Create') : 'Create';
+  document.getElementById('setModalLabel').textContent = modalLabel;
+  document.getElementById('submitBtnText').textContent = submitBtnText;
+
+  // 更新標籤文字
+  updateModalLabels('create');
+
   document.getElementById('setForm').reset();
   document.getElementById('setNameError').classList.add('d-none');
   document.getElementById('formAlert').classList.add('d-none');
@@ -348,14 +385,55 @@ function showCreateSetModal() {
 // 顯示編輯 Set Modal
 function showEditSetModal(setId, name, description) {
   currentEditingSetId = setId;
-  document.getElementById('setModalLabel').textContent = '編輯測試案例集合';
-  document.getElementById('submitBtnText').textContent = i18n.updateSet || 'Update';
+  const editLabel = window.i18n && window.i18n.isReady() ? window.i18n.t('testCaseSet.editSet', {}, '編輯測試案例集合') : '編輯測試案例集合';
+  const submitBtnText = window.i18n && window.i18n.isReady() ? window.i18n.t('testCaseSet.updateSet', {}, 'Update') : 'Update';
+  document.getElementById('setModalLabel').textContent = editLabel;
+  document.getElementById('submitBtnText').textContent = submitBtnText;
+
+  // 更新標籤文字
+  updateModalLabels('edit');
+
   document.getElementById('setName').value = name;
   document.getElementById('setDescription').value = description;
   document.getElementById('setNameError').classList.add('d-none');
   document.getElementById('formAlert').classList.add('d-none');
   const modal = new bootstrap.Modal(document.getElementById('setModal'));
   modal.show();
+}
+
+// 更新模態框標籤的翻譯
+function updateModalLabels(mode) {
+  if (!window.i18n || !window.i18n.isReady()) {
+    return; // 如果 i18n 還未準備好，跳過翻譯
+  }
+
+  // 翻譯 Set Name 標籤
+  const setNameLabel = document.querySelector('label[for="setName"] span[data-i18n]');
+  if (setNameLabel) {
+    const setNameText = window.i18n.t('testCaseSet.setName', {}, '集合名稱');
+    setNameLabel.textContent = setNameText;
+  }
+
+  // 翻譯 Name unique 幫助文字
+  const nameUniqueHelp = document.querySelector('small[data-i18n="testCaseSet.nameUnique"]');
+  if (nameUniqueHelp) {
+    const uniqueText = window.i18n.t('testCaseSet.nameUnique', {}, '名稱必須全域唯一');
+    nameUniqueHelp.textContent = uniqueText;
+  }
+
+  // 翻譯 Description 標籤
+  const descLabel = document.querySelector('label[for="setDescription"][data-i18n]');
+  if (descLabel) {
+    const descText = window.i18n.t('common.description', {}, '描述');
+    descLabel.textContent = descText;
+  }
+
+  // 翻譯 Cancel 按鈕
+  const cancelBtn = document.getElementById('setModalCloseBtn');
+  if (cancelBtn && cancelBtn.hasAttribute('data-i18n')) {
+    const cancelText = window.i18n.t('common.cancel', {}, '取消');
+    cancelBtn.textContent = cancelText;
+  }
 }
 
 // 提交 Set 表單
@@ -371,13 +449,15 @@ async function submitSetForm() {
   formAlert.classList.add('d-none');
 
   if (!name) {
-    nameError.textContent = '集合名稱不可空白';
+    const nameEmptyMsg = window.i18n && window.i18n.isReady() ? window.i18n.t('testCaseSet.setName') : '集合名稱';
+    nameError.textContent = nameEmptyMsg + '不可空白';
     nameError.classList.remove('d-none');
     return;
   }
 
   if (!currentTeamId) {
-    formAlert.textContent = '請先選擇團隊';
+    const selectTeamMsg = window.i18n && window.i18n.isReady() ? window.i18n.t('common.pleaseSelect') : '請先選擇團隊';
+    formAlert.textContent = selectTeamMsg;
     formAlert.classList.add('alert-danger');
     formAlert.classList.remove('d-none');
     return;
@@ -386,7 +466,8 @@ async function submitSetForm() {
   try {
     const submitBtn = document.getElementById('setModalSubmitBtn');
     submitBtn.disabled = true;
-    submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>處理中...';
+    const processingMsg = window.i18n && window.i18n.isReady() ? window.i18n.t('common.loading') : '處理中...';
+    submitBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>${processingMsg}`;
 
     const requestBody = JSON.stringify({ name, description });
     console.log('Request body:', requestBody);
@@ -435,7 +516,10 @@ async function submitSetForm() {
   } finally {
     const submitBtn = document.getElementById('setModalSubmitBtn');
     submitBtn.disabled = false;
-    submitBtn.innerHTML = currentEditingSetId ? (i18n.updateSet || 'Update') : (i18n.createSet || 'Create');
+    const btnText = currentEditingSetId
+      ? (window.i18n && window.i18n.isReady() ? window.i18n.t('testCaseSet.updateSet', {}, 'Update') : 'Update')
+      : (window.i18n && window.i18n.isReady() ? window.i18n.t('testCaseSet.create', {}, 'Create') : 'Create');
+    submitBtn.innerHTML = btnText;
   }
 }
 
@@ -444,7 +528,8 @@ function showDeleteConfirm(setId, setName) {
   // 檢查是否為預設 Set
   const set = testCaseSets.find(s => s.id === setId);
   if (set && set.is_default) {
-    showAlert('無法刪除預設 Test Case Set', 'warning');
+    const cantDeleteMsg = window.i18n && window.i18n.isReady() ? window.i18n.t('testCaseSet.defaultSetCannotDelete', {}, i18n.defaultSetCannotDelete) : i18n.defaultSetCannotDelete;
+    showAlert(cantDeleteMsg, 'warning');
     return;
   }
 
@@ -475,11 +560,13 @@ async function confirmDelete() {
 
     bootstrap.Modal.getInstance(document.getElementById('deleteConfirmModal')).hide();
     await loadTestCaseSets();
-    showAlert('集合已刪除，Test Case 已移至預設集合', 'success');
+    const successMsg = window.i18n && window.i18n.isReady() ? window.i18n.t('testCaseSet.deleteSuccess', {}, '集合已刪除，Test Case 已移至預設集合') : '集合已刪除，Test Case 已移至預設集合';
+    showAlert(successMsg, 'success');
 
   } catch (error) {
     console.error('Error deleting set:', error);
-    showAlert('刪除失敗: ' + error.message, 'danger');
+    const errorPrefix = window.i18n && window.i18n.isReady() ? window.i18n.t('common.failed', {}, '刪除失敗: ') : '刪除失敗: ';
+    showAlert(errorPrefix + error.message, 'danger');
   } finally {
     pendingDeleteSetId = null;
   }
@@ -604,8 +691,9 @@ async function loadSetSectionsAndTestCases(setId) {
     console.log('Full data:', setTestCaseData);
   } catch (error) {
     console.error('Error loading sections and test cases:', error);
+    const errorMsg = window.i18n && window.i18n.isReady() ? window.i18n.t('common.loadingFailed') : '載入失敗，請重試';
     document.getElementById('setCaseListContainer').innerHTML =
-      '<div class="alert alert-danger">載入失敗，請重試</div>';
+      `<div class="alert alert-danger">${errorMsg}</div>`;
   }
 }
 
@@ -792,7 +880,8 @@ function renderSetCaseList() {
   }
 
   if (!setTestCaseData.sections || setTestCaseData.sections.length === 0) {
-    html += '<div class="alert alert-info">沒有符合的測試案例</div>';
+    const noMatchMsg = window.i18n && window.i18n.isReady() ? window.i18n.t('testCase.noTestCases', {}, '沒有符合的測試案例') : '沒有符合的測試案例';
+    html += `<div class="alert alert-info">${noMatchMsg}</div>`;
   } else {
     html += renderSectionTree(setTestCaseData.sections);
   }
@@ -911,7 +1000,8 @@ function setupSetCaseEventListeners() {
  */
 function updateSetCaseSelectionSummary() {
   const count = setTestCaseData.selectedCases.size;
-  document.getElementById('setCaseSelectionSummary').textContent = `已選 ${count} 個測試案例`;
+  const summaryMsg = window.i18n && window.i18n.isReady() ? window.i18n.t('testCaseSet.selectedCount', { count }, `已選 ${count} 個測試案例`) : `已選 ${count} 個測試案例`;
+  document.getElementById('setCaseSelectionSummary').textContent = summaryMsg;
 }
 
 /**
@@ -934,7 +1024,8 @@ async function confirmSetCaseSelection() {
   localStorage.setItem('setTestCaseDebug', JSON.stringify(debugInfo));
 
   if (setTestCaseData.selectedCases.size === 0) {
-    alert('請至少選擇一個測試案例');
+    const selectMsg = window.i18n && window.i18n.isReady() ? window.i18n.t('testCaseSet.selectAtLeastOne', {}, '請至少選擇一個測試案例') : '請至少選擇一個測試案例';
+    alert(selectMsg);
     console.warn('[SetCaseSelect] No cases selected');
     return;
   }
@@ -942,7 +1033,7 @@ async function confirmSetCaseSelection() {
   try {
     const selectedCaseIds = Array.from(setTestCaseData.selectedCases).join(',');
     console.log('[SetCaseSelect] selectedCaseIds:', selectedCaseIds);
-    
+
     sessionStorage.setItem('testRunSetId', currentTestCaseSetId);
     sessionStorage.setItem('testRunSelectedCaseIds', selectedCaseIds);
     console.log('[SetCaseSelect] Session storage set. testRunSetId:', currentTestCaseSetId);
@@ -956,18 +1047,19 @@ async function confirmSetCaseSelection() {
     // 導航到 Test Run 建立頁面
     const redirectUrl = `/test-run-management?team_id=${currentTeamId}&set_id=${currentTestCaseSetId}`;
     console.log('[SetCaseSelect] Redirecting to:', redirectUrl);
-    
+
     debugInfo.step = 'redirecting';
     debugInfo.redirectUrl = redirectUrl;
     localStorage.setItem('setTestCaseDebug', JSON.stringify(debugInfo));
-    
+
     window.location.href = redirectUrl;
   } catch (error) {
     console.error('[SetCaseSelect] Error confirming case selection:', error);
     debugInfo.step = 'error';
     debugInfo.error = error.message;
     localStorage.setItem('setTestCaseDebug', JSON.stringify(debugInfo));
-    alert('建立失敗，請重試');
+    const failMsg = window.i18n && window.i18n.isReady() ? window.i18n.t('common.failed') : '建立失敗，請重試';
+    alert(failMsg);
   }
 }
 
