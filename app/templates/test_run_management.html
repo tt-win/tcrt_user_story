@@ -841,113 +841,40 @@
     word-break: break-word;
 }
 
-/* Modal Body 上方區域 - 左邊內容，右邊按鈕 */
-#testRunSetDetailHeaderContainer {
-    display: flex;
-    gap: 1rem;
-    align-items: flex-start;
+/* Test Run Set 信息區域 */
+#testRunSetDetailInfoSection {
+    padding-bottom: 1rem;
+    border-bottom: 1px solid var(--tr-border-light);
 }
 
-#testRunSetDetailContentSection {
-    flex: 1;
-    min-width: 0;
-}
-
-/* 按鈕容器 - 兩排排列（2 列） */
-#testRunSetDetailActionsContainer {
-    flex-shrink: 0;
+#testRunSetDetailInfoSection .row {
+    margin-top: 0.75rem;
 }
 
 #testRunSetDetailActions {
-    display: grid;
-    gap: 0.5rem;
-    grid-template-columns: repeat(3, minmax(80px, 1fr));
-    width: 100%;
-    max-width: 400px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
 }
 
 #testRunSetDetailActions .btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.25rem;
-    padding: 0.35rem 0.4rem;
-    line-height: 1.2;
-    min-height: auto;
-    font-size: 0.75rem;
     white-space: nowrap;
-    flex-wrap: nowrap;
-    min-width: 0;
-    width: 100%;
 }
 
-#testRunSetDetailActions .btn span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    min-width: 0;
-}
-
-#testRunSetDetailActions .btn i {
-    flex-shrink: 0;
-    margin-right: 0 !important;
-}
-
-/* Test Run Detail Run List 樣式 - 左邊內容，右邊按鈕兩排 */
-.testRunDetailRunContainer {
-    display: flex;
-    gap: 1rem;
-    align-items: flex-start;
-}
-
-.testRunDetailRunContent {
-    flex: 1;
-    min-width: 0;
-}
 
 .testRunDetailRunActions {
-    display: grid;
+    display: flex;
+    flex-wrap: wrap;
     gap: 0.5rem;
-    grid-template-columns: repeat(3, minmax(75px, 1fr));
-    width: 100%;
-    max-width: 380px;
-    flex-shrink: 0;
 }
 
 .testRunDetailRunActions .btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.2rem;
-    padding: 0.3rem 0.35rem;
-    line-height: 1.15;
-    min-height: auto;
-    font-size: 0.7rem;
     white-space: nowrap;
-    flex-wrap: nowrap;
-    min-width: 0;
-    width: 100%;
-}
-
-.testRunDetailRunActions .btn span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    min-width: 0;
-}
-
-.testRunDetailRunActions .btn i {
-    flex-shrink: 0;
-    margin-right: 0 !important;
+    font-size: 0.8rem;
 }
 
 .testRunDetailRunActions .dropdown {
-    width: 100%;
-    min-width: 0;
-}
-
-.testRunDetailRunActions .btn.dropdown-toggle {
-    width: 100%;
-    justify-content: center;
-    min-width: 0;
+    display: flex;
 }
 
 
@@ -1350,45 +1277,48 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <!-- 上方：內容（左）+ 按鈕（右） -->
-                <div class="d-flex gap-3 mb-4" id="testRunSetDetailHeaderContainer">
-                    <!-- 左邊：內容區域 -->
-                    <div class="flex-grow-1" id="testRunSetDetailContentSection">
-                        <div class="text-muted" id="testRunSetDetailDescription"></div>
-                        <div class="mt-2">
+                <!-- 上方：Test Run Set 資訊 -->
+                <div class="mb-4" id="testRunSetDetailInfoSection">
+                    <div class="mb-3" id="testRunSetDetailDescription"></div>
+
+                    <div class="row gx-3 gy-2 align-items-start">
+                        <div class="col-auto">
                             <span id="testRunSetDetailStatus"></span>
-                            <small class="text-muted" id="testRunSetDetailMeta"></small>
                         </div>
-                        <div class="mt-3" id="setDetailTpSection" style="display: none;">
-                            <div class="text-muted small mb-1" data-i18n="testRun.sets.detail.relatedTpTickets">相關 TP 開發單</div>
-                            <div id="setDetailTpTags" class="d-flex flex-wrap gap-2"></div>
+                        <div class="col-auto">
+                            <small class="text-muted" id="testRunSetDetailMeta"></small>
                         </div>
                     </div>
 
-                    <!-- 右邊：按鈕容器 - 兩排排列 -->
-                    <div id="testRunSetDetailActionsContainer">
-                        <div id="testRunSetDetailActions">
-                            <button type="button" class="btn btn-primary btn-sm" id="setDetailCreateConfigBtn">
-                                <i class="fas fa-plus me-1"></i><span data-i18n="testRun.sets.detail.createTestRun">新增 Test Run</span>
-                            </button>
-                            <button type="button" class="btn btn-primary btn-sm" id="setDetailAddExistingBtn">
-                                <i class="fas fa-link me-1"></i><span data-i18n="testRun.sets.detail.addExisting">加入既有 Test Run</span>
-                            </button>
-                            <button type="button" class="btn btn-secondary btn-sm" id="setDetailEditBtn">
-                                <i class="fas fa-edit me-1"></i><span data-i18n="common.edit">編輯</span>
-                            </button>
-                            <button type="button" class="btn btn-warning btn-sm" id="setDetailArchiveBtn">
-                                <i class="fas fa-archive me-1"></i><span data-i18n="testRun.sets.detail.archive">Archive</span>
-                            </button>
-                            <button type="button" class="btn btn-danger btn-sm" id="setDetailDeleteBtn">
-                                <i class="fas fa-trash me-1"></i><span data-i18n="common.delete">刪除</span>
-                            </button>
-                        </div>
+                    <div class="mt-3" id="setDetailTpSection" style="display: none;">
+                        <div class="text-muted small mb-2" data-i18n="testRun.sets.detail.relatedTpTickets">相關 TP 開發單</div>
+                        <div id="setDetailTpTags" class="d-flex flex-wrap gap-2"></div>
+                    </div>
+                </div>
+
+                <!-- 按鈕區域 -->
+                <div class="mb-4" id="testRunSetDetailActionsSection">
+                    <div id="testRunSetDetailActions" class="d-flex flex-wrap gap-2">
+                        <button type="button" class="btn btn-primary btn-sm" id="setDetailCreateConfigBtn">
+                            <i class="fas fa-plus me-1"></i><span data-i18n="testRun.sets.detail.createTestRun">新增 Test Run</span>
+                        </button>
+                        <button type="button" class="btn btn-primary btn-sm" id="setDetailAddExistingBtn">
+                            <i class="fas fa-link me-1"></i><span data-i18n="testRun.sets.detail.addExisting">加入既有 Test Run</span>
+                        </button>
+                        <button type="button" class="btn btn-secondary btn-sm" id="setDetailEditBtn">
+                            <i class="fas fa-edit me-1"></i><span data-i18n="common.edit">編輯</span>
+                        </button>
+                        <button type="button" class="btn btn-warning btn-sm" id="setDetailArchiveBtn">
+                            <i class="fas fa-archive me-1"></i><span data-i18n="testRun.sets.detail.archive">Archive</span>
+                        </button>
+                        <button type="button" class="btn btn-danger btn-sm" id="setDetailDeleteBtn">
+                            <i class="fas fa-trash me-1"></i><span data-i18n="common.delete">刪除</span>
+                        </button>
                     </div>
                 </div>
 
                 <!-- 下方：Test Run 列表 -->
-                <div id="testRunSetRunsContainer"></div>
+                <div class="mt-4" id="testRunSetRunsContainer"></div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.close">關閉</button>
@@ -3155,19 +3085,18 @@ function buildSetRunDetailRow(run, setData) {
     return `
         <div class="card mb-3">
             <div class="card-body">
-                <div class="testRunDetailRunContainer">
-                    <!-- 左邊：Test Run 資訊 -->
-                    <div class="testRunDetailRunContent">
-                        <h6 class="mb-1 text-primary text-truncate">${escapeHtml(run.name)}</h6>
-                        <div class="d-flex flex-wrap gap-2 align-items-center small text-muted">
-                            <span class="status-badge ${statusClass}">${statusText}</span>
-                            <span><i class="fas fa-list-ul me-1"></i>${metricsText}</span>
-                            ${createdText ? `<span><i class=\"fas fa-clock me-1\"></i>${createdText}</span>` : ''}
-                        </div>
+                <!-- Test Run 名稱 -->
+                <h6 class="mb-2 text-primary">${escapeHtml(run.name)}</h6>
+                <!-- Test Run 狀態資訊 -->
+                <div class="mb-3 small">
+                    <div class="d-flex gap-2 align-items-center flex-wrap">
+                        <span class="status-badge ${statusClass}">${statusText}</span>
+                        <span class="text-muted"><i class="fas fa-list-ul me-1"></i>${metricsText}</span>
+                        ${createdText ? `<span class="text-muted"><i class="fas fa-clock me-1\"></i>${createdText}</span>` : ''}
                     </div>
-                    <!-- 右邊：按鈕容器 - 兩排排列 -->
-                    ${actionsHtml || ''}
                 </div>
+                <!-- 按鈕區域 -->
+                ${actionsHtml || ''}
             </div>
         </div>
     `;
