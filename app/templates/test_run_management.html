@@ -1942,7 +1942,7 @@ function createTestRunSetCard(set, filterStatus) {
             : '';
         tpContent = `${tpTags}${remainingTag}`;
     } else {
-        tpContent = `<span class="text-muted">N/A</span>`;
+        tpContent = `<span class="tp-tag badge bg-secondary me-1">N/A</span>`;
     }
     const tpLine = `<div class="d-flex justify-content-between"><span data-i18n="testRun.relatedTpTickets">相關 TP 開發單</span><span>${tpContent}</span></div>`;
 
@@ -2080,7 +2080,7 @@ function createConfigCard(config) {
 
         tpContent = `${tpTags}${remainingTag}`;
     } else {
-        tpContent = `<span class="text-muted">N/A</span>`;
+        tpContent = `<span class="tp-tag badge bg-secondary me-1">N/A</span>`;
     }
     const tpLine = `<div class="d-flex justify-content-between align-items-center mb-1"><small class="text-muted"><span data-i18n="testRun.relatedTpTickets">相關 TP 開發單</span></small><small class="text-muted">${tpContent}</small></div>`;
     
