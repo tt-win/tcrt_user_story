@@ -1,7 +1,7 @@
 # Test Run Management Template Analysis
 
 ## Overview
-The `test_run_management.html` file is a large Jinja2 template (~5737 lines) that manages test run configurations and sets. It includes embedded CSS and JavaScript for creating, editing, and managing test runs.
+The `test_run_management.html` file is a large Jinja2 template (~5749 lines) that manages test run configurations and sets. It includes embedded CSS and JavaScript for creating, editing, and managing test runs.
 
 ## File Structure
 
@@ -23,7 +23,7 @@ Embedded CSS for:
 - Responsive design
 - TP ticket management UI
 
-### JavaScript Functions (Lines ~1477-5737)
+### JavaScript Functions (Lines ~1477-5749)
 The JavaScript handles test run management with multiple functional areas:
 
 #### UI Utilities (Lines ~1477-1615)
@@ -131,7 +131,7 @@ The JavaScript handles test run management with multiple functional areas:
 - `clearAllFormErrors()` (Lines 4831-4850): Clears form errors. No parameters.
 - `showNotification(message, type = 'info')` (Lines 4851-4926): Shows notification. Parameters: message (string), type (string).
 
-#### Search and Utilities (Lines ~4927-5737)
+#### Search and Utilities (Lines ~4927-5749)
 - `getSearchResultStatusInfo(status, executionRate, passRate)` (Lines 4927-4938): Gets search status info. Parameters: status (string), executionRate (number), passRate (number).
 - `setupQuickSearch_TPTicket()` (Lines 4939-5022): Sets up TP ticket search. No parameters.
 - `debounce(func, delay)` (Lines 5023-5031): Debounces function. Parameters: func (function), delay (number).
@@ -146,7 +146,7 @@ The JavaScript handles test run management with multiple functional areas:
 - `initNotificationSettings()` (Lines 5436-5476): Initializes notifications. No parameters.
 - `ensureTeamIdInUrl_TRM(teamId)` (Lines 5477-5487): Ensures team ID in URL. Parameters: teamId (string).
 - `clearNotificationSettings()` (Lines 5488-5509): Clears notifications. No parameters.
-- `loadNotificationSettings(enabled, chatIds, chatNames)` (Lines 5510-5737): Loads notification settings. Parameters: enabled (boolean), chatIds (array), chatNames (array).
+- `loadNotificationSettings(enabled, chatIds, chatNames)` (Lines 5510-5749): Loads notification settings. Parameters: enabled (boolean), chatIds (array), chatNames (array).
 
 ## Dependencies
 - **Bootstrap**: UI framework
@@ -282,8 +282,83 @@ The JavaScript handles test run management with multiple functional areas:
 - 按鈕佈局: 固定兩行排列，不隨寬度變化
 - 響應式: Modal 寬度變化時，內容和按鈕比例自動調整
 
+### Fix: 按鈕排列優化 - 從 2 列改為 3 列，解決文字超出問題 (Nov 11, 2025)
+
+**問題**:
+- 按鈕使用 2 列網格，5 個按鈕需要 3 行顯示，超過了"兩排"要求
+- 部分按鈕文字超出容器邊界
+- 按鈕寬度和間距不夠緊湊
+
+**解決方案**:
+
+1. **Modal Set Detail Actions 優化** (Lines 861-893)
+   - 網格改為 3 列：`grid-template-columns: repeat(3, minmax(80px, 1fr))`
+   - 容器寬度改為自適應：`width: 100%; max-width: 400px`（之前固定 280px）
+   - 5 個按鈕現在在 2 行顯示：行1（新增、加入、編輯），行2（歸檔、刪除）
+   - 字體縮小：0.875rem → 0.75rem
+   - 內邊距縮小：0.375rem 0.5rem → 0.35rem 0.4rem
+   - 間距縮小：0.35rem → 0.25rem
+
+2. **Test Run Detail Run Actions 優化** (Lines 907-950)
+   - 網格改為 3 列：`grid-template-columns: repeat(3, minmax(75px, 1fr))`
+   - 容器寬度改為自適應：`width: 100%; max-width: 380px`（之前固定 260px）
+   - 6 個按鈕現在在 2 行顯示：行1（進入、編輯、Test Case），行2（狀態、移出、刪除）
+   - 字體縮小：0.75rem → 0.7rem
+   - 內邊距縮小：0.375rem 0.5rem → 0.3rem 0.35rem
+   - 間距縮小：0.25rem → 0.2rem
+
+3. **文字溢出處理** (Lines 884-893, 931-950)
+   - 所有按鈕文字添加 `min-width: 0` 支持 ellipsis 正確工作
+   - 按鈕容器、文字 span 都設定 `overflow: hidden; text-overflow: ellipsis`
+   - 按鈕 icon 移除右邊距：`margin-right: 0 !important`
+
+**程式碼修改位置**:
+- CSS: lines 861-950 (按鈕容器和按鈕樣式)
+
+**CSS 修改詳情**:
+```css
+/* Modal Set Detail - 3 列網格 */
+#testRunSetDetailActions {
+    display: grid;
+    gap: 0.5rem;
+    grid-template-columns: repeat(3, minmax(80px, 1fr));  /* 2 列 → 3 列 */
+    width: 100%;
+    max-width: 400px;  /* 280px → 400px */
+}
+
+#testRunSetDetailActions .btn {
+    font-size: 0.75rem;  /* 0.875rem → 0.75rem */
+    padding: 0.35rem 0.4rem;  /* 0.375rem 0.5rem → 0.35rem 0.4rem */
+    gap: 0.25rem;  /* 0.35rem → 0.25rem */
+    min-width: 0;  /* 啟用 ellipsis */
+}
+
+/* Test Run Detail - 3 列網格 */
+.testRunDetailRunActions {
+    grid-template-columns: repeat(3, minmax(75px, 1fr));  /* 2 列 → 3 列 */
+    width: 100%;
+    max-width: 380px;  /* 260px → 380px */
+}
+
+.testRunDetailRunActions .btn {
+    font-size: 0.7rem;  /* 0.75rem → 0.7rem */
+    padding: 0.3rem 0.35rem;  /* 0.375rem 0.5rem → 0.3rem 0.35rem */
+    gap: 0.2rem;  /* 0.25rem → 0.2rem */
+    min-width: 0;  /* 啟用 ellipsis */
+}
+```
+
+**效果對比**:
+| 項目 | 舊設計 (2 列) | 新設計 (3 列) |
+|------|-------------|-------------|
+| Set 按鈕 | 5 個 → 3 行 | 5 個 → 2 行 ✓ |
+| Run 按鈕 | 6 個 → 3 行 | 6 個 → 2 行 ✓ |
+| 容器寬度 | 固定 280/260px | 自適應最大 400/380px |
+| 文字溢出 | 可能超出 | 自動省略號 ✓ |
+| 緊湊度 | 較寬鬆 | 較緊湊 ✓ |
+
 ## Issues Identified
-1. **Monolithic Structure**: Single file with 5737 lines mixing HTML, CSS, and JS
+1. **Monolithic Structure**: Single file with 5749 lines mixing HTML, CSS, and JS
 2. **Inline Styles**: Large embedded CSS section
 3. **Inline Scripts**: ~4000+ lines of JavaScript in template
 4. **Global State**: Extensive use of global variables
