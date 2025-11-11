@@ -13,10 +13,12 @@ from sqlalchemy import (
     ForeignKey,
     Float,
     JSON,
+    event,
 )
 from sqlalchemy.orm import declarative_base, relationship
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import NullPool
 from datetime import datetime
 import os
 import logging
@@ -78,11 +80,15 @@ import os as _os
 _ABSOLUTE_DB_PATH = _os.path.abspath(DATABASE_PATH)
 DATABASE_URL = f"sqlite+aiosqlite:///{_ABSOLUTE_DB_PATH}"
 
-# Create async engine
+# Create async engine with proper SQLite configuration
 usm_engine = create_async_engine(
     DATABASE_URL,
     echo=False,
-    connect_args={"check_same_thread": False},
+    poolclass=NullPool,  # SQLite 使用 NullPool 避免連接池問題
+    connect_args={
+        "check_same_thread": False,
+        "timeout": 30,  # 30 秒超時
+    },
 )
 
 # Create session factory
@@ -91,6 +97,31 @@ USMAsyncSessionLocal = sessionmaker(
     class_=AsyncSession,
     expire_on_commit=False,
 )
+
+
+# SQLite 優化參數設定（異步版本）
+@event.listens_for(usm_engine.sync_engine, "connect")
+def set_usm_sqlite_pragma(dbapi_conn, connection_record):
+    """為 USM 數據庫異步連接設定 SQLite 優化參數"""
+    cursor = dbapi_conn.cursor()
+    try:
+        # 啟用 WAL 模式以改善並發
+        cursor.execute("PRAGMA journal_mode=WAL")
+        # 設定 busy timeout 為 30 秒
+        cursor.execute("PRAGMA busy_timeout=30000")
+        # 設定同步模式為 NORMAL（平衡性能與安全）
+        cursor.execute("PRAGMA synchronous=NORMAL")
+        # 啟用外鍵約束
+        cursor.execute("PRAGMA foreign_keys=ON")
+        # 優化記憶體使用
+        cursor.execute("PRAGMA cache_size=-64000")  # 64MB cache
+        # 設定 temp store 在記憶體中
+        cursor.execute("PRAGMA temp_store=MEMORY")
+        logging.debug("SQLite USM 數據庫優化參數設定完成")
+    except Exception as e:
+        logging.warning(f"設定 USM SQLite PRAGMA 失敗: {e}")
+    finally:
+        cursor.close()
 
 
 def _ensure_node_type_nullable(connection):
