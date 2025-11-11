@@ -460,53 +460,7 @@ async function confirmDelete() {
   if (!pendingDeleteSetId) return;
 
   try {
-    // 獲取該 Set 中的所有 Test Case
-    const testCasesResponse = await window.AuthClient.fetch(
-      `/api/teams/${currentTeamId}/test-case-sets/${pendingDeleteSetId}/test-cases`
-    );
-
-    const testCasesData = await testCasesResponse.json();
-    const testCases = testCasesData.data || [];
-
-    // 獲取預設 Test Case Set
-    const defaultSet = testCaseSets.find(set => set.is_default);
-    if (!defaultSet) {
-      throw new Error('找不到預設 Test Case Set');
-    }
-
-    // 將所有 Test Case 分配到預設 Set
-    for (const testCase of testCases) {
-      await window.AuthClient.fetch(
-        `/api/teams/${currentTeamId}/test-cases/${testCase.id}`,
-        {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            test_case_set_id: defaultSet.id,
-            section_id: null  // 移除 section 關聯
-          })
-        }
-      );
-    }
-
-    // 刪除該 Set 的所有 Sections
-    const sectionsResponse = await window.AuthClient.fetch(
-      `/api/teams/${currentTeamId}/test-case-sets/${pendingDeleteSetId}/sections`
-    );
-
-    const sectionsData = await sectionsResponse.json();
-    const sections = sectionsData.data || [];
-
-    for (const section of sections) {
-      await window.AuthClient.fetch(
-        `/api/teams/${currentTeamId}/test-case-sets/${pendingDeleteSetId}/sections/${section.id}`,
-        {
-          method: 'DELETE'
-        }
-      );
-    }
-
-    // 刪除 Test Case Set
+    // 刪除 Test Case Set（後端會自動處理 Test Case 重新分配和 Section 刪除）
     const response = await window.AuthClient.fetch(
       `/api/teams/${currentTeamId}/test-case-sets/${pendingDeleteSetId}`,
       {
@@ -515,7 +469,8 @@ async function confirmDelete() {
     );
 
     if (!response.ok) {
-      throw new Error('Failed to delete set');
+      const error = await response.json().catch(() => ({ detail: 'Failed to delete set' }));
+      throw new Error(error.detail || 'Failed to delete set');
     }
 
     bootstrap.Modal.getInstance(document.getElementById('deleteConfirmModal')).hide();
