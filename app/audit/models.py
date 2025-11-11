@@ -28,6 +28,7 @@ class ResourceType(str, Enum):
     TEST_CASE = "test_case"
     TEST_CASE_SET = "test_case_set"
     TEST_CASE_SECTION = "test_case_section"
+    USER_STORY_MAP = "user_story_map"
     USER = "user"
     AUTH = "auth"
     PERMISSION = "permission"

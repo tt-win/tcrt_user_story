@@ -635,7 +635,7 @@ async def create_map(
             username=current_user.username,
             role=role_value,
             action_type=ActionType.CREATE,
-            resource_type=ResourceType.TEST_RUN,
+            resource_type=ResourceType.USER_STORY_MAP,
             resource_id=str(new_map.id),
             team_id=map_data.team_id,
             details={
@@ -755,7 +755,7 @@ async def update_map(
             username=current_user.username,
             role=role_value,
             action_type=ActionType.UPDATE,
-            resource_type=ResourceType.TEST_RUN,
+            resource_type=ResourceType.USER_STORY_MAP,
             resource_id=str(map_id),
             team_id=map_db.team_id,
             details={
@@ -835,7 +835,7 @@ async def delete_map(
             username=current_user.username,
             role=role_value,
             action_type=ActionType.DELETE,
-            resource_type=ResourceType.TEST_RUN,
+            resource_type=ResourceType.USER_STORY_MAP,
             resource_id=str(map_id),
             team_id=team_id,
             details={
@@ -1174,7 +1174,7 @@ async def create_relation(
             username=current_user.username,
             role=role_value,
             action_type=ActionType.CREATE,
-            resource_type=ResourceType.TEST_RUN,
+            resource_type=ResourceType.USER_STORY_MAP,
             resource_id=f"{map_id}:{node_id}",
             team_id=source_map.team_id,
             details={
@@ -1297,7 +1297,7 @@ async def delete_relation(
                 username=current_user.username,
                 role=role_value,
                 action_type=ActionType.DELETE,
-                resource_type=ResourceType.TEST_RUN,
+                resource_type=ResourceType.USER_STORY_MAP,
                 resource_id=f"{map_id}:{node_id}:{relation_id}",
                 team_id=source_map.team_id,
                 details={
@@ -1460,7 +1460,7 @@ async def replace_relations(
             username=current_user.username,
             role=role_value,
             action_type=ActionType.UPDATE,
-            resource_type=ResourceType.TEST_RUN,
+            resource_type=ResourceType.USER_STORY_MAP,
             resource_id=f"{map_id}:{node_id}",
             team_id=source_map.team_id,
             details={
