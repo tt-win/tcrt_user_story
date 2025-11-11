@@ -1092,3 +1092,17 @@ main > .d-flex.justify-content-between.align-items-center.mb-3 p.text-muted {
 .version-update-pulse:hover {
     animation: none;
 }
+
+/* Team card dropdown layering fix - 讓下拉選單顯示在其他卡片之上 */
+.team-card {
+    position: relative;
+    z-index: 1;
+}
+
+.team-card.dropdown-open {
+    z-index: 1200;
+}
+
+.team-card .dropdown-menu {
+    z-index: 1200;
+}

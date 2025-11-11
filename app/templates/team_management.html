@@ -692,11 +692,28 @@ function renderTeamCards() {
     `).join('');
     
     container.innerHTML = teamsHtml;
-    
+
     // Retranslate the newly added content only within container
     if (window.i18n && window.i18n.isReady()) {
         window.i18n.retranslate(container);
     }
+
+    // 下拉選單開啟時，將對應卡片提升 z-index，避免被其他卡片遮住
+    const dropdownElements = container.querySelectorAll('[data-bs-toggle="dropdown"]');
+    dropdownElements.forEach(btn => {
+        const card = btn.closest('.team-card');
+        btn.addEventListener('show.bs.dropdown', () => {
+            if (card) {
+                card.classList.add('dropdown-open');
+            }
+        });
+
+        btn.addEventListener('hidden.bs.dropdown', () => {
+            if (card) {
+                card.classList.remove('dropdown-open');
+            }
+        });
+    });
 }
 
 function showCreateTeamModal() {
@@ -1878,12 +1895,18 @@ function getI18n(key, fallback = '') {
 .team-card {
     transition: all 0.2s ease;
     border: 1px solid var(--tr-border-light);
+    position: relative;
+    z-index: 1;
 }
 
 .team-card:hover {
     transform: translateY(-2px);
     box-shadow: var(--tr-shadow-md);
     border-color: var(--tr-primary);
+}
+
+.team-card.dropdown-open {
+    z-index: 1200;
 }
 
 .alert-sm {
