@@ -7,7 +7,7 @@
 
 import logging
 from typing import Optional, AsyncGenerator
-from sqlalchemy import create_engine, text, MetaData
+from sqlalchemy import create_engine, text, MetaData, event
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.pool import QueuePool, NullPool
 from sqlalchemy.exc import SQLAlchemyError
@@ -75,19 +75,22 @@ class AuditDatabaseManager:
     async def _initialize_sqlite(self) -> None:
         """初始化 SQLite 連接"""
         logger.info("初始化 SQLite 審計資料庫連接")
-        
+
         # 將 sqlite:// 轉換為 aiosqlite://
         async_url = self.config.database_url.replace("sqlite://", "sqlite+aiosqlite://")
-        
-        # SQLite 使用 NullPool 避免連線池問題
+
+        # SQLite 使用 NullPool 避免連線池問題，並添加超時參數
         self._engine = create_async_engine(
             async_url,
             poolclass=NullPool,
             echo=self.config.debug_sql,
             future=True,
-            connect_args={"check_same_thread": False}
+            connect_args={
+                "check_same_thread": False,
+                "timeout": 30,  # 30 秒超時，避免 database is locked 錯誤
+            }
         )
-        
+
         self._session_factory = async_sessionmaker(
             bind=self._engine,
             class_=AsyncSession,
@@ -95,6 +98,30 @@ class AuditDatabaseManager:
             autoflush=False,
             autocommit=False
         )
+
+        # 為 SQLite 添加優化 PRAGMA 設定
+        @event.listens_for(self._engine.sync_engine, "connect")
+        def set_audit_sqlite_pragma(dbapi_conn, connection_record):
+            """為審計數據庫設定 SQLite 優化參數"""
+            cursor = dbapi_conn.cursor()
+            try:
+                # 啟用 WAL 模式以改善並發
+                cursor.execute("PRAGMA journal_mode=WAL")
+                # 設定 busy timeout 為 30 秒
+                cursor.execute("PRAGMA busy_timeout=30000")
+                # 設定同步模式為 NORMAL（平衡性能與安全）
+                cursor.execute("PRAGMA synchronous=NORMAL")
+                # 啟用外鍵約束
+                cursor.execute("PRAGMA foreign_keys=ON")
+                # 優化記憶體使用
+                cursor.execute("PRAGMA cache_size=-64000")  # 64MB cache
+                # 設定 temp store 在記憶體中
+                cursor.execute("PRAGMA temp_store=MEMORY")
+                logger.debug("SQLite 審計數據庫優化參數設定完成")
+            except Exception as e:
+                logger.warning(f"設定審計 SQLite PRAGMA 失敗: {e}")
+            finally:
+                cursor.close()
 
     async def _ensure_schema(self) -> None:
         """確保資料表與必要欄位存在"""
