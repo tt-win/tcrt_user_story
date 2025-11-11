@@ -1,7 +1,7 @@
 # Test Case Management Template Analysis
 
 ## Overview
-The `test_case_management.html` file is a monolithic Jinja2 template (~11,886 lines) that combines HTML structure, inline CSS styling, and extensive JavaScript functionality for managing test cases. The file violates separation of concerns principles, making it difficult to maintain and debug.
+The `test_case_management.html` file is a monolithic Jinja2 template (~11,895 lines) that combines HTML structure, inline CSS styling, and extensive JavaScript functionality for managing test cases. The file violates separation of concerns principles, making it difficult to maintain and debug.
 
 ## File Structure
 
@@ -29,7 +29,7 @@ The inline CSS includes:
 - **Responsive Design**: Media queries for different screen sizes
 - **Utility Classes**: TCG tags, attachment styling, form controls
 
-### JavaScript Functions (Lines ~1619-11855)
+### JavaScript Functions (Lines ~1619-11895)
 The JavaScript code is organized into several functional areas. Below is a detailed breakdown with line numbers, parameters, and specifications for each function.
 
 #### Cache Management (Lines ~1624-1720)
@@ -84,7 +84,7 @@ The JavaScript code is organized into several functional areas. Below is a detai
 - `viewTestCase(id)` (Lines 5895-5904): Views test case in read-only mode. Parameters: id (number/string). Opens modal in view mode.
 - `deleteTestCase(id)` (Lines 5980-6474): Deletes test case. Parameters: id (number/string). Shows confirmation and performs deletion.
 
-#### Batch Operations (Lines ~4211-7430)
+#### Batch Operations (Lines ~4211-7440)
 - `openTestCaseBatchCopyModal()` (Lines 4211-4246): Opens batch copy modal. No parameters. Initializes modal state.
 - `bindBatchCopyModalEvents()` (Lines 4247-4331): Binds events for batch copy modal. No parameters. Sets up event listeners.
 - `getBatchCopySelectedIndexes()` (Lines 4332-4338): Gets selected row indexes. No parameters. Returns array of indexes.
