@@ -20,6 +20,7 @@
     "description": "描述",
     "details": "詳細資料",
     "edit": "編輯",
+    "enter": "進入",
     "endTime": "結束時間",
     "failed": "失敗",
     "filter": "篩選",
@@ -651,6 +652,7 @@
     "selectSection": "請選擇區段",
     "tcgFilterPlaceholder": "輸入 TCG 單號",
     "testCaseNumberPlaceholder": "輸入測試案例編號",
+    "testCasesCount": "個測試案例",
     "searchPlaceholder": "搜尋標題、描述...",
     "batchActions": "批次操作",
     "batchDelete": "批次刪除",
@@ -824,6 +826,31 @@
       "selectMultiple": "按住 Ctrl/Cmd 點擊多選，Shift 點擊範圍選取",
       "copyPaste": "Ctrl+C 複製，Ctrl+V 貼上"
     }
+  },
+  "testCaseSet": {
+    "pageSubtitle": "選擇或建立一個測試案例集合來開始管理測試案例",
+    "setName": "集合名稱",
+    "createSet": "新增測試案例集合",
+    "editSet": "編輯測試案例集合",
+    "create": "建立",
+    "update": "更新",
+    "nameUnique": "名稱必須全域唯一",
+    "confirmDelete": "確認刪除",
+    "deleteConfirmMessage": "確定要刪除此測試案例集合嗎？此操作無法撤銷。",
+    "selectTestCases": "選擇測試案例",
+    "searchTestCases": "搜尋測試案例...",
+    "selectedCount": "已選 {count} 個測試案例",
+    "createTestRun": "建立 Test Run",
+    "noTestCases": "沒有測試案例",
+    "noTestCaseSets": "沒有測試案例集合",
+    "createFirstSet": "點擊下方卡片建立第一個測試案例集合",
+    "selectOrCreate": "選擇或建立一個測試案例集合來開始管理測試案例",
+    "defaultSetCannotDelete": "無法刪除預設 Test Case Set",
+    "selectAtLeastOne": "請至少選擇一個測試案例",
+    "deleteSuccess": "集合已刪除，Test Case 已移至預設集合",
+    "addSet": "新增集合",
+    "createSetHint": "建立新的測試案例集合",
+    "updateSet": "更新集合"
   },
   "section": {
     "unassigned": "Unassigned"
