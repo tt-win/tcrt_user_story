@@ -117,13 +117,12 @@ class TestCaseSetService:
             raise ValueError("找不到預設 Test Case Set")
 
         # 將所有 Test Case 移至預設 Set，並移除 section 關聯
-        test_cases = self.db.query(TestCaseLocal).filter(
+        self.db.query(TestCaseLocal).filter(
             TestCaseLocal.test_case_set_id == set_id
-        ).all()
-
-        for test_case in test_cases:
-            test_case.test_case_set_id = default_set.id
-            test_case.test_case_section_id = None
+        ).update({
+            TestCaseLocal.test_case_set_id: default_set.id,
+            TestCaseLocal.test_case_section_id: None
+        }, synchronize_session=False)
 
         # 刪除該 Set 的所有 Sections
         sections = self.db.query(TestCaseSection).filter(
