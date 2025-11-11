@@ -58,10 +58,13 @@ class TestCaseSetService:
         return query.first()
 
     def list_by_team(self, team_id: int) -> list[TestCaseSet]:
-        """列出指定團隊的所有 Test Case Sets"""
+        """列出指定團隊的所有 Test Case Sets (默認 Set 始終在前)"""
         return self.db.query(TestCaseSet).filter(
             TestCaseSet.team_id == team_id
-        ).order_by(TestCaseSet.name).all()
+        ).order_by(
+            TestCaseSet.is_default.desc(),  # 默認 Set 優先 (true 在前)
+            TestCaseSet.name.asc()  # 其他 Set 按名稱排序
+        ).all()
 
     def get_or_create_default(self, team_id: int) -> TestCaseSet:
         """取得或建立團隊的預設 Test Case Set"""
