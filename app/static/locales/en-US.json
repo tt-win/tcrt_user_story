@@ -711,7 +711,8 @@
             "invalidTcg": "Invalid TCG format: {numbers}",
             "validationErrors": "{count} lines have format errors",
             "validationDuplicates": "{count} duplicate case numbers",
-            "sampleLink": "Download sample CSV"
+            "sampleLink": "Download sample CSV",
+            "bulkCreateSectionHint": "Select the section where all test cases in this batch will be placed"
         },
         "bulkTextToast": {
             "conflict": "Conflicting case numbers found: {count}. Marked with \"(Conflict)\" in the editor.",
