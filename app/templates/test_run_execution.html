@@ -889,20 +889,56 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
 
 /* Checkbox 欄位狀態控制 */
 .checkbox-cell {
-    width: 25px !important;
-    padding: 0.5rem 0.25rem !important;
+    width: 25px;
+    padding: 0.5rem 0.25rem;
 }
 
 /* 隱藏 checkbox 欄位的樣式（completed 狀態） */
 .test-run-items-table.hide-checkbox #checkbox-header,
 .test-run-items-table.hide-checkbox .checkbox-cell {
-    /* 完全移除列寬，不佔用空間 */
-    visibility: collapse !important;
+    /* 完全隱藏 checkbox 列，不佔用空間 */
+    display: none !important;
     width: 0 !important;
+    min-width: 0 !important;
     padding: 0 !important;
-    border: none !important;
+    border: 0 !important;
     margin: 0 !important;
-    height: 0 !important;
+}
+
+/* 當隱藏 checkbox 時，調整其他列的寬度（使用 nth-child 重新對應） */
+.test-run-items-table.hide-checkbox th:nth-child(2),
+.test-run-items-table.hide-checkbox td:nth-child(2) { /* 案例編號 - 原本是 :nth-child(2)，現在變成 :nth-child(1) */
+    width: 170px;
+    min-width: 170px;
+}
+
+.test-run-items-table.hide-checkbox th:nth-child(3),
+.test-run-items-table.hide-checkbox td:nth-child(3) { /* 標題 - 原本是 :nth-child(3)，現在變成 :nth-child(2) */
+    min-width: 200px;
+}
+
+.test-run-items-table.hide-checkbox th:nth-child(4),
+.test-run-items-table.hide-checkbox td:nth-child(4) { /* 優先級 - 原本是 :nth-child(4)，現在變成 :nth-child(3) */
+    width: 160px;
+    min-width: 160px;
+}
+
+.test-run-items-table.hide-checkbox th:nth-child(5),
+.test-run-items-table.hide-checkbox td:nth-child(5) { /* 測試結果 - 原本是 :nth-child(5)，現在變成 :nth-child(4) */
+    width: 170px;
+    min-width: 170px;
+}
+
+.test-run-items-table.hide-checkbox th:nth-child(6),
+.test-run-items-table.hide-checkbox td:nth-child(6) { /* 執行者 - 原本是 :nth-child(6)，現在變成 :nth-child(5) */
+    width: 175px;
+    min-width: 175px;
+}
+
+.test-run-items-table.hide-checkbox th:nth-child(7),
+.test-run-items-table.hide-checkbox td:nth-child(7) { /* 執行時間 - 原本是 :nth-child(7)，現在變成 :nth-child(6) */
+    width: 160px;
+    min-width: 160px;
 }
 
 /* 批次操作工具區樣式（統一與 Test Case Management） */
