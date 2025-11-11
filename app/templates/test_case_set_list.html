@@ -268,24 +268,8 @@ function renderTestCaseSets() {
   const cardsHtml = testCaseSets.map(set => `
     <div class="col-md-6 col-lg-4 mb-4">
       <div class="card h-100 test-case-set-card" data-set-id="${set.id}">
-        <div class="card-header bg-light border-bottom d-flex justify-content-between align-items-center">
+        <div class="card-header bg-light border-bottom">
           <h6 class="mb-0">${set.is_default ? '<i class="fas fa-star text-warning"></i> ' : ''}${escapeHtml(set.name)}</h6>
-          <div class="dropdown">
-            <button class="btn btn-sm btn-link" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-              <i class="fas fa-ellipsis-v"></i>
-            </button>
-            <ul class="dropdown-menu dropdown-menu-end">
-              <li><a class="dropdown-item" href="#" onclick="showEditSetModal(${set.id}, '${escapeHtml(set.name)}', '${escapeHtml(set.description || '')}'); return false;">
-                <i class="fas fa-edit"></i> ${i18n.edit || 'Edit'}
-              </a></li>
-              ${!set.is_default ? `
-              <li><hr class="dropdown-divider"></li>
-              <li><a class="dropdown-item text-danger" href="#" onclick="showDeleteConfirm(${set.id}, '${escapeHtml(set.name)}'); return false;">
-                <i class="fas fa-trash"></i> ${i18n.deleteSet || 'Delete'}
-              </a></li>
-              ` : ''}
-            </ul>
-          </div>
         </div>
         <div class="card-body">
           <p class="card-text text-muted text-truncate" title="${escapeHtml(set.description || '')}">
@@ -298,13 +282,23 @@ function renderTestCaseSets() {
             </small>
           </div>
         </div>
-        <div class="card-footer bg-white border-top d-flex gap-2">
-          <button class="btn btn-primary flex-grow-1" onclick="navigateToSet(${set.id})">
-            <i class="fas fa-arrow-right"></i> ${i18n.enter || 'Enter'}
-          </button>
-          <button class="btn btn-success" onclick="openSetCaseSelectModal(${set.id})" title="新增 Test Run">
-            <i class="fas fa-plus"></i> <span class="d-none d-md-inline">Test Run</span>
-          </button>
+        <div class="card-footer bg-white border-top d-flex flex-column gap-2">
+          <div class="d-flex gap-2">
+            <button class="btn btn-primary flex-grow-1 btn-sm" onclick="navigateToSet(${set.id})">
+              <i class="fas fa-arrow-right"></i> ${i18n.enter || 'Enter'}
+            </button>
+            <button class="btn btn-success btn-sm" onclick="openSetCaseSelectModal(${set.id})" title="新增 Test Run">
+              <i class="fas fa-plus"></i> <span class="d-none d-md-inline">Test Run</span>
+            </button>
+          </div>
+          <div class="d-flex gap-2">
+            <button class="btn btn-secondary btn-sm flex-grow-1" onclick="showEditSetModal(${set.id}, '${escapeHtml(set.name)}', '${escapeHtml(set.description || '')}')">
+              <i class="fas fa-edit"></i> ${i18n.edit || 'Edit'}
+            </button>
+            <button class="btn btn-danger btn-sm ${set.is_default ? 'disabled' : ''}" onclick="${set.is_default ? '' : `showDeleteConfirm(${set.id}, '${escapeHtml(set.name)}')`}" ${set.is_default ? 'disabled' : ''}>
+              <i class="fas fa-trash"></i> <span class="d-none d-md-inline">${i18n.deleteSet || 'Delete'}</span>
+            </button>
+          </div>
         </div>
       </div>
     </div>
