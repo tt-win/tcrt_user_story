@@ -3263,10 +3263,14 @@ document.addEventListener('DOMContentLoaded', async function() {
         await initTestCaseManagement();
         bindEvents();
         initializeMarkdownEditor();
-        // 初始化「跳至」菜單
-        await initJumpToSetMenu();
         // 初始化列表高度（等待初始排版完成）
         setTimeout(adjustTestCasesScrollHeight, 0);
+        // 延遲初始化「跳至」菜單，確保所有數據已加載
+        setTimeout(() => {
+            if (currentSetId) {
+                initJumpToSetMenu().catch(e => console.error('Failed to init jump menu:', e));
+            }
+        }, 1000);
         try {
             if (tcNumber) {
                 const openAfterLoad = async () => {
@@ -4217,7 +4221,10 @@ async function initJumpToSetMenu() {
     const jumpToSetGroup = document.getElementById('jumpToSetGroup');
     const jumpToSetDropdown = document.getElementById('jumpToSetDropdown');
 
+    console.log('[JumpToMenu] Initializing...', { currentSetId, hasGroup: !!jumpToSetGroup, hasDropdown: !!jumpToSetDropdown });
+
     if (!jumpToSetGroup || !jumpToSetDropdown || !currentSetId) {
+        console.log('[JumpToMenu] Missing required elements or currentSetId');
         return; // 如果沒有當前 Set ID，不顯示菜單
     }
 
@@ -4225,28 +4232,38 @@ async function initJumpToSetMenu() {
         const activeTeam = window.AppUtils && window.AppUtils.getCurrentTeam ?
                           window.AppUtils.getCurrentTeam() : null;
 
+        console.log('[JumpToMenu] Active team:', activeTeam);
+
         if (!activeTeam || !activeTeam.id) {
+            console.log('[JumpToMenu] No active team');
             return;
         }
 
         // 獲取所有 Test Case Sets
+        console.log('[JumpToMenu] Fetching sets from:', `/api/teams/${activeTeam.id}/test-case-sets`);
         const response = await window.AuthClient.fetch(
             `/api/teams/${activeTeam.id}/test-case-sets`
         );
 
+        console.log('[JumpToMenu] API response status:', response.status);
         if (!response.ok) {
+            console.log('[JumpToMenu] API response not ok');
             return;
         }
 
         const sets = await response.json();
+        console.log('[JumpToMenu] Total sets:', sets.length, 'Current set ID:', currentSetId);
 
         // 過濾出不是當前 Set 的所有 Sets
         const otherSets = Array.isArray(sets) ?
                          sets.filter(s => s.id !== currentSetId) :
                          [];
 
+        console.log('[JumpToMenu] Other sets count:', otherSets.length);
+
         if (otherSets.length === 0) {
             // 如果沒有其他 Sets，隱藏菜單
+            console.log('[JumpToMenu] No other sets, hiding menu');
             jumpToSetGroup.style.display = 'none';
             return;
         }
@@ -4255,6 +4272,7 @@ async function initJumpToSetMenu() {
         jumpToSetDropdown.innerHTML = '';
 
         // 添加每個 Set 為菜單項
+        console.log('[JumpToMenu] Creating menu items for sets');
         otherSets.forEach(set => {
             const li = document.createElement('li');
             const a = document.createElement('a');
@@ -4275,10 +4293,11 @@ async function initJumpToSetMenu() {
         });
 
         // 顯示菜單
+        console.log('[JumpToMenu] Showing menu');
         jumpToSetGroup.style.display = 'block';
 
     } catch (error) {
-        console.error('Failed to initialize jump to set menu:', error);
+        console.error('[JumpToMenu] Error:', error);
         jumpToSetGroup.style.display = 'none';
     }
 }
