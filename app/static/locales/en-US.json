@@ -597,6 +597,8 @@
     "team": {
         "addMoreTeams": "Add More Teams",
         "addMoreTeamsHint": "Create new team projects",
+        "addTeams": "Add Teams",
+        "addTeamsHint": "Create new team projects",
         "autoCreateBugs": "Auto Create Bugs",
         "basicInfo": "Basic Information",
         "configured": "Configured",
@@ -830,6 +832,8 @@
         "addBugTicketFailed": "Failed to add Bug Ticket",
         "addMoreConfigs": "Add More Test Runs",
         "addMoreConfigsHint": "Create new test execution configurations",
+        "addConfigs": "Add Test Runs",
+        "addConfigsHint": "Create new test execution configurations",
         "addedTpTickets": "Added TP Tickets",
         "allAssignees": "All Assignees",
         "allStatuses": "All Statuses",

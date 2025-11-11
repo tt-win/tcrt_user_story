@@ -597,6 +597,8 @@
   "team": {
     "addMoreTeams": "新增更多团队",
     "addMoreTeamsHint": "建立新的团队项目",
+    "addTeams": "新增团队",
+    "addTeamsHint": "建立新的团队项目",
     "autoCreateBugs": "自动建立 Bug",
     "basicInfo": "基本信息",
     "configured": "已设置",
@@ -830,6 +832,8 @@
     "addBugTicketFailed": "新增 Bug Ticket 失败",
     "addMoreConfigs": "新增更多 Test Run",
     "addMoreConfigsHint": "建立新的测试执行配置",
+    "addConfigs": "新增 Test Run",
+    "addConfigsHint": "建立新的测试执行配置",
     "addedTpTickets": "已新增的 TP 开发单",
     "allAssignees": "全部执行者",
     "allStatuses": "全部状态",
