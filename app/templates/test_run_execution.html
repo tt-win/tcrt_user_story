@@ -889,19 +889,19 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
 
 /* Checkbox 欄位狀態控制 */
 .checkbox-cell {
-    width: 25px;
-    padding: 0.5rem 0.25rem;
+    width: 25px !important;
+    padding: 0.5rem 0.25rem !important;
 }
 
 /* 隱藏 checkbox 欄位的樣式（completed 狀態） */
-.test-run-items-table.hide-checkbox .checkbox-header-cell,
+.test-run-items-table.hide-checkbox #checkbox-header,
 .test-run-items-table.hide-checkbox .checkbox-cell {
-    /* 完全隱藏 checkbox 列，不佔用空間 */
-    display: none !important;
     width: 0 !important;
     padding: 0 !important;
-    border: 0 !important;
-    margin: 0 !important;
+    min-width: 0 !important;
+    max-width: 0 !important;
+    visibility: collapse !important;
+    border: none !important;
 }
 
 /* 批次操作工具區樣式（統一與 Test Case Management） */
@@ -1515,7 +1515,7 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
             <table class="table table-hover table-sm">
                 <thead>
                     <tr id="table-header-row">
-                        <th id="checkbox-header" class="checkbox-header-cell">
+                        <th id="checkbox-header">
                             <input type="checkbox" class="form-check-input" id="selectAllItemsCheckbox">
                         </th>
                         <th id="th-tre-number" class="sortable" style="cursor: pointer;">
@@ -3327,33 +3327,32 @@ function shouldShowCheckbox(status) {
 
 function updateTableHeader() {
     const table = document.querySelector('.test-run-items-table');
-    const checkboxHeader = document.querySelector('.checkbox-header-cell');
+    const checkboxHeader = document.getElementById('checkbox-header');
     const showCheckbox = shouldShowCheckbox(testRunConfig ? testRunConfig.status : 'draft');
 
     if (showCheckbox) {
-        // 顯示 checkbox 列
-        if (checkboxHeader) {
-            checkboxHeader.style.display = 'table-cell';
-        }
         table.classList.remove('hide-checkbox');
-    } else {
-        // 完全移除 checkbox 列單元格（不只隱藏，而是移除）
-        // 這樣表頭和內容行都基於相同的列數計算列寬
         if (checkboxHeader) {
-            checkboxHeader.style.display = 'none';
+            checkboxHeader.style.display = '';
+            checkboxHeader.style.visibility = '';
+            checkboxHeader.style.width = '';
+            checkboxHeader.style.padding = '';
         }
-        // 移除所有已渲染的 checkbox 單元格
-        const checkboxCells = document.querySelectorAll('.checkbox-cell');
-        checkboxCells.forEach(cell => {
-            cell.remove();
-        });
+    } else {
         table.classList.add('hide-checkbox');
+        if (checkboxHeader) {
+            // Completely hide the column while maintaining table structure
+            checkboxHeader.style.width = '0';
+            checkboxHeader.style.padding = '0';
+            checkboxHeader.style.minWidth = '0';
+            checkboxHeader.style.maxWidth = '0';
+            checkboxHeader.style.visibility = 'collapse';
+        }
         // 清空選擇狀態
         selectedItems.clear();
         updateItemSelectionUI();
     }
 }
-
 function createItemRow(item, index, canUpdate) {
     const permissions = getTrePermissions();
     const resultClass = getResultClass(item.test_result);
@@ -3376,11 +3375,9 @@ function createItemRow(item, index, canUpdate) {
 
     return `
         <tr data-item-id="${item.id}">
-            ${showCheckbox ? `
-                <td class="checkbox-cell">
-                    <input type="checkbox" class="form-check-input test-run-item-checkbox" value="${item.id}">
-                </td>
-            ` : ''}
+            <td class="checkbox-cell">
+                <input type="checkbox" class="form-check-input test-run-item-checkbox" value="${item.id}">
+            </td>
             <td><code style="color: rgb(194, 54, 120); font-weight: 500;"><a href="#" class="text-decoration-none" style="color: rgb(194, 54, 120);" onclick="navigateToTestCase('${item.test_case_number}'); return false;">${escapeHtml(item.test_case_number)}</a></code></td>
             <td class="text-truncate" title="${safeTitle || (isDeleted ? '測試案例已刪除' : '')}">${titleCellContent}</td>
             <td><span class="${priorityBadgeClass}">${escapeHtml(priorityLabel)}</span></td>
