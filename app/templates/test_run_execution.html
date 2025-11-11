@@ -1417,20 +1417,20 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
         <i class="fas fa-redo me-2"></i><span data-i18n="testRun.restartExecution">重新執行</span>
     </button>
     <div class="ms-auto d-flex gap-2">
-        <div class="btn-group" role="group" id="jumpToTestRunGroup" style="display: none;">
-            <button type="button" class="btn btn-info dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
-                <i class="fas fa-arrow-right me-2"></i><span data-i18n="common.jumpTo">跳至</span>
-            </button>
-            <ul class="dropdown-menu dropdown-menu-end" id="jumpToTestRunDropdown">
-                <!-- 其他 Test Runs 會在此動態列出 -->
-            </ul>
-        </div>
         <button type="button" class="btn btn-primary" id="exportBtn">
             <i class="fas fa-chart-pie me-2"></i><span data-i18n="testRun.chartsReports">Charts & Reports</span>
         </button>
         <button type="button" class="btn btn-secondary" id="refreshBtn">
             <i class="fas fa-sync-alt me-2"></i><span data-i18n="common.refresh">重新整理</span>
         </button>
+        <div class="btn-group" role="group" id="jumpToTestRunGroup" style="display: none;">
+            <button type="button" class="btn btn-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                <i class="fas fa-arrow-right me-2"></i><span data-i18n="common.jumpTo">跳至</span>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end" id="jumpToTestRunDropdown">
+                <!-- 其他 Test Runs 會在此動態列出 -->
+            </ul>
+        </div>
         <a href="/test-run-management" class="btn btn-secondary">
             <i class="fas fa-arrow-left me-2"></i><span data-i18n="navigation.backToManagement">回到管理</span>
         </a>
