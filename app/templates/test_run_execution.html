@@ -3333,14 +3333,20 @@ function updateTableHeader() {
     if (showCheckbox) {
         // 顯示 checkbox 列
         if (checkboxHeader) {
-            checkboxHeader.style.display = '';
+            checkboxHeader.style.display = 'table-cell';
         }
         table.classList.remove('hide-checkbox');
     } else {
-        // 完全隱藏 checkbox 列（表頭和所有行）
+        // 完全移除 checkbox 列單元格（不只隱藏，而是移除）
+        // 這樣表頭和內容行都基於相同的列數計算列寬
         if (checkboxHeader) {
             checkboxHeader.style.display = 'none';
         }
+        // 移除所有已渲染的 checkbox 單元格
+        const checkboxCells = document.querySelectorAll('.checkbox-cell');
+        checkboxCells.forEach(cell => {
+            cell.remove();
+        });
         table.classList.add('hide-checkbox');
         // 清空選擇狀態
         selectedItems.clear();
