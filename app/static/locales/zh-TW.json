@@ -643,6 +643,8 @@
     "wikiTokenPlaceholder": "例：Q4XxwaS2Cif80DkAku9lMKuAgof"
   },
   "testCase": {
+    "section": "區段",
+    "selectSection": "請選擇區段",
     "tcgFilterPlaceholder": "輸入 TCG 單號",
     "testCaseNumberPlaceholder": "輸入測試案例編號",
     "searchPlaceholder": "搜尋標題、描述...",
