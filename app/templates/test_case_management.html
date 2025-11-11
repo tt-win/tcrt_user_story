@@ -7354,6 +7354,16 @@ async function performTestCaseBatchModify() {
                 try {
                     clearTestCasesCache(); // 清除快取確保資料同步
                     await loadTestCases(false, null, true); // 強制從伺服器重新載入
+
+                    // 如果修改了 Test Set 或 Section，需要刷新 Section List 以更新 test case 計數
+                    if ((modifyTestSet || modifySection) && typeof window.testCaseSectionList !== 'undefined' && window.testCaseSectionList?.loadSections) {
+                        console.log('[TCM] Refreshing section list after batch modify (test set or section changed)');
+                        try {
+                            await window.testCaseSectionList.loadSections({ reloadTestCases: false });
+                        } catch (error) {
+                            console.warn('刷新 Section List 失敗:', error);
+                        }
+                    }
                 } catch (error) {
                     console.warn('背景同步資料失敗:', error);
                 }
