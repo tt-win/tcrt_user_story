@@ -3232,9 +3232,11 @@ async function loadTestRunItemsWithoutLoading() {
 function updateHeader() {
     if (!testRunConfig) return;
 
-    // 更新頁面副標題
-    const currentLabel = window.i18n ? window.i18n.t('testRun.currentExecution', {}, '現在執行：') : '現在執行：';
-    document.getElementById('test-run-subtitle').textContent = `${currentLabel}${testRunConfig.name}`;
+    // 更新頁面副標題 - 使用 i18n 翻譯
+    const subtitleText = window.i18n ?
+        window.i18n.t('testRun.currentExecutionWithName', { name: testRunConfig.name }, `現在執行：${testRunConfig.name}`) :
+        `現在執行：${testRunConfig.name}`;
+    document.getElementById('test-run-subtitle').textContent = subtitleText;
     
     // 顯示對應的控制按鈕
     updateControlButtons(testRunConfig.status);
