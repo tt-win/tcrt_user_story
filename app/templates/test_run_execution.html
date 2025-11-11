@@ -894,51 +894,14 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
 }
 
 /* 隱藏 checkbox 欄位的樣式（completed 狀態） */
-.test-run-items-table.hide-checkbox #checkbox-header,
+.test-run-items-table.hide-checkbox .checkbox-header-cell,
 .test-run-items-table.hide-checkbox .checkbox-cell {
     /* 完全隱藏 checkbox 列，不佔用空間 */
     display: none !important;
     width: 0 !important;
-    min-width: 0 !important;
     padding: 0 !important;
     border: 0 !important;
     margin: 0 !important;
-}
-
-/* 當隱藏 checkbox 時，調整其他列的寬度（使用 nth-child 重新對應） */
-.test-run-items-table.hide-checkbox th:nth-child(2),
-.test-run-items-table.hide-checkbox td:nth-child(2) { /* 案例編號 - 原本是 :nth-child(2)，現在變成 :nth-child(1) */
-    width: 170px;
-    min-width: 170px;
-}
-
-.test-run-items-table.hide-checkbox th:nth-child(3),
-.test-run-items-table.hide-checkbox td:nth-child(3) { /* 標題 - 原本是 :nth-child(3)，現在變成 :nth-child(2) */
-    min-width: 200px;
-}
-
-.test-run-items-table.hide-checkbox th:nth-child(4),
-.test-run-items-table.hide-checkbox td:nth-child(4) { /* 優先級 - 原本是 :nth-child(4)，現在變成 :nth-child(3) */
-    width: 160px;
-    min-width: 160px;
-}
-
-.test-run-items-table.hide-checkbox th:nth-child(5),
-.test-run-items-table.hide-checkbox td:nth-child(5) { /* 測試結果 - 原本是 :nth-child(5)，現在變成 :nth-child(4) */
-    width: 170px;
-    min-width: 170px;
-}
-
-.test-run-items-table.hide-checkbox th:nth-child(6),
-.test-run-items-table.hide-checkbox td:nth-child(6) { /* 執行者 - 原本是 :nth-child(6)，現在變成 :nth-child(5) */
-    width: 175px;
-    min-width: 175px;
-}
-
-.test-run-items-table.hide-checkbox th:nth-child(7),
-.test-run-items-table.hide-checkbox td:nth-child(7) { /* 執行時間 - 原本是 :nth-child(7)，現在變成 :nth-child(6) */
-    width: 160px;
-    min-width: 160px;
 }
 
 /* 批次操作工具區樣式（統一與 Test Case Management） */
@@ -1552,7 +1515,7 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
             <table class="table table-hover table-sm">
                 <thead>
                     <tr id="table-header-row">
-                        <th id="checkbox-header">
+                        <th id="checkbox-header" class="checkbox-header-cell">
                             <input type="checkbox" class="form-check-input" id="selectAllItemsCheckbox">
                         </th>
                         <th id="th-tre-number" class="sortable" style="cursor: pointer;">
@@ -3364,13 +3327,20 @@ function shouldShowCheckbox(status) {
 
 function updateTableHeader() {
     const table = document.querySelector('.test-run-items-table');
+    const checkboxHeader = document.querySelector('.checkbox-header-cell');
     const showCheckbox = shouldShowCheckbox(testRunConfig ? testRunConfig.status : 'draft');
 
     if (showCheckbox) {
         // 顯示 checkbox 列
+        if (checkboxHeader) {
+            checkboxHeader.style.display = '';
+        }
         table.classList.remove('hide-checkbox');
     } else {
-        // 完全隱藏 checkbox 列
+        // 完全隱藏 checkbox 列（表頭和所有行）
+        if (checkboxHeader) {
+            checkboxHeader.style.display = 'none';
+        }
         table.classList.add('hide-checkbox');
         // 清空選擇狀態
         selectedItems.clear();
