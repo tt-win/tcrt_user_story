@@ -944,7 +944,7 @@
     <!-- 無配置時的提示區域 -->
     <div id="no-configs-section" style="display: none;">
         <div class="row justify-content-center">
-            <div class="col-md-6 col-lg-3">
+            <div class="col-md-6 col-lg-4">
                 <div class="card text-center add-test-run-card" onclick="openConfigFormModal()">
                     <div class="card-body py-5">
                         <div class="text-primary rounded-circle d-flex align-items-center justify-content-center mx-auto mb-3" 
@@ -1944,7 +1944,7 @@ function createTestRunSetCard(set, filterStatus) {
     }
 
     return `
-        <div class="col-xl-3 col-lg-4 mb-4">
+        <div class="col-xl-4 col-lg-6 mb-4">
             <div class="card h-100 test-run-card ${statusClass}" onclick="openTestRunSetDetail(${set.id})">
                 <div class="card-body d-flex flex-column">
                     <div class="d-flex justify-content-between align-items-start mb-3 gap-2">
@@ -2143,7 +2143,7 @@ function createConfigCard(config) {
     })();
 
     return `
-        <div class="col-md-6 col-lg-3 mb-4">
+        <div class="col-md-6 col-lg-4 mb-4">
             <div class="card h-100 test-run-card ${getStatusClass(config.status)}" onclick="enterTestRun(${config.id})">
                 <div class="card-body d-flex flex-column h-100">
                     <div class="d-flex align-items-start mb-3">
@@ -2198,7 +2198,7 @@ function createConfigCard(config) {
 
 function getAddTestRunCardHtml() {
     return `
-        <div class="col-md-6 col-lg-3 mb-4">
+        <div class="col-md-6 col-lg-4 mb-4">
             <div class="card h-100 add-test-run-card text-center" data-card-type="run">
                 <div class="card-body d-flex flex-column justify-content-center">
                     <div class="text-primary rounded-circle d-flex align-items-center justify-content-center mx-auto mb-3" 
@@ -2215,7 +2215,7 @@ function getAddTestRunCardHtml() {
 
 function getAddTestRunSetCardHtml() {
     return `
-        <div class="col-xl-3 col-lg-4 mb-4">
+        <div class="col-xl-4 col-lg-6 mb-4">
             <div class="card h-100 add-test-run-card text-center" data-card-type="set">
                 <div class="card-body d-flex flex-column justify-content-center">
                     <div class="text-primary rounded-circle d-flex align-items-center justify-content-center mx-auto mb-3"
