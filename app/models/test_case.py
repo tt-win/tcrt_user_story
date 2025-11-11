@@ -364,6 +364,10 @@ class TestCaseCreate(BaseModel):
     parent_record: Optional[LarkRecord] = None
     # 新增：暫存上傳的識別碼，若提供則在建立後搬移暫存附件並寫入 DB
     temp_upload_id: Optional[str] = Field(None, description="暫存附件上傳識別碼（例如 UUID）")
+    # 新增：Test Case Set ID（如果不提供，將使用預設 Set）
+    test_case_set_id: Optional[int] = Field(None, description="所屬 Test Case Set ID")
+    # 新增：Test Case Section ID（如果不提供，將使用 Unassigned Section）
+    test_case_section_id: Optional[int] = Field(None, description="所屬 Test Case Section ID")
 
 
 class TestCaseUpdate(BaseModel):

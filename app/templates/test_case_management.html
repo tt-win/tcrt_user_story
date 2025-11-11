@@ -1383,6 +1383,17 @@ body {
                     </div>
                 </div>
 
+                <!-- Section 選擇 -->
+                <div class="mb-3">
+                    <label for="bulkCreateSectionSelect" class="form-label">
+                        <span data-i18n="testCase.section">Section</span>
+                    </label>
+                    <select class="form-select" id="bulkCreateSectionSelect">
+                        <option value="" data-i18n="testCase.selectSection" data-i18n-fallback="不指定（使用 Unassigned）">不指定（使用 Unassigned）</option>
+                    </select>
+                    <small class="form-text text-muted" data-i18n="testCase.bulkText.bulkCreateSectionHint">選擇此批次的所有測試案例要放入的區段</small>
+                </div>
+
                 <!-- 文字輸入區 -->
                 <div class="mb-3">
                     <textarea
@@ -4625,11 +4636,71 @@ function openBulkCreateModal() {
     if (window.i18n && window.i18n.isReady()) window.i18n.retranslate(modalEl);
     bulkModalInstance.show();
 
+    // 初始化 Section 選擇框
+    populateBulkCreateSectionSelect();
+
     // 聚焦到 textarea
     setTimeout(() => {
         const textarea = document.getElementById('bulkTextInput');
         if (textarea) textarea.focus();
     }, 150);
+}
+
+async function populateBulkCreateSectionSelect() {
+    const select = document.getElementById('bulkCreateSectionSelect');
+    if (!select) return;
+
+    try {
+        const currentTeam = AppUtils.getCurrentTeam();
+        if (!currentTeam || !currentTeam.id || !currentSetId) {
+            // 如果沒有指定 Set，禁用 Section 選擇
+            select.disabled = true;
+            return;
+        }
+
+        // 獲取當前 Set 的 Sections
+        const response = await window.AuthClient.fetch(
+            `/api/teams/${currentTeam.id}/test-case-sets/${currentSetId}`
+        );
+
+        if (!response.ok) {
+            select.disabled = true;
+            return;
+        }
+
+        const setData = await response.json();
+        const sections = setData.sections || [];
+
+        // 構建 Section 選項（遞迴處理子 Section）
+        const defaultOption = '<option value="" data-i18n="testCase.selectSection" data-i18n-fallback="不指定（使用 Unassigned）">不指定（使用 Unassigned）</option>';
+
+        function buildSectionOptions(sectionList, depth = 0) {
+            const parts = [];
+            sectionList.forEach(section => {
+                const prefix = depth > 0 ? '　'.repeat(depth) + '└─ ' : '';
+                const displayName = section.name || '';
+                parts.push(`<option value="${section.id}">${prefix}${escapeHtml(displayName)}</option>`);
+
+                // 遞迴處理子 Section（使用 child_sections）
+                if (Array.isArray(section.child_sections) && section.child_sections.length > 0) {
+                    parts.push(...buildSectionOptions(section.child_sections, depth + 1));
+                }
+            });
+            return parts;
+        }
+
+        const optionsHtml = buildSectionOptions(sections).join('');
+
+        select.innerHTML = defaultOption + optionsHtml;
+        select.disabled = false;
+
+        if (window.i18n && window.i18n.isReady()) {
+            window.i18n.retranslate(select);
+        }
+    } catch (error) {
+        console.error('Error populating bulk section select:', error);
+        select.disabled = true;
+    }
 }
 
 function resetBulkTextState() {
@@ -5085,10 +5156,14 @@ async function confirmBulkTextCreate() {
             tcg_numbers: Array.isArray(item.tcg_numbers) ? item.tcg_numbers : []
         }));
 
-        // 包含當前選擇的 Test Case Set ID（如果有的話）
+        // 包含當前選擇的 Test Case Set ID 和 Section ID（如果有的話）
+        const bulkSectionSelect = document.getElementById('bulkCreateSectionSelect');
+        const selectedSectionId = bulkSectionSelect && bulkSectionSelect.value ? parseInt(bulkSectionSelect.value) : null;
+
         const requestBody = {
             items,
-            ...(currentSetId && { test_case_set_id: currentSetId })
+            ...(currentSetId && { test_case_set_id: currentSetId }),
+            ...(selectedSectionId && { test_case_section_id: selectedSectionId })
         };
 
         const response = await window.AuthClient.fetch(`/api/teams/${currentTeam.id}/testcases/bulk_create`, {
@@ -5978,7 +6053,9 @@ async function saveTestCase() {
         precondition: document.getElementById('precondition').value,
         steps: document.getElementById('test_steps').value,
         expected_result: document.getElementById('expected_result').value,
-        tcg: document.getElementById('tcg').value  // 從隱藏欄位取得 TCG（由 Modal 多選系統維護）
+        tcg: document.getElementById('tcg').value,  // 從隱藏欄位取得 TCG（由 Modal 多選系統維護）
+        // 新增：包含當前選擇的 Test Case Set ID
+        ...(currentSetId && { test_case_set_id: currentSetId })
         // 注意：不再包含 attachments，因為附件現在是立即附加到記錄的
     };
 
@@ -6209,11 +6286,14 @@ async function saveAndAddNext() {
         title: formData.get('title'),
         test_case_number: formData.get('test_case_number'),
         priority: formData.get('priority'),
+        test_case_section_id: formData.get('test_case_section_id') ? parseInt(formData.get('test_case_section_id')) : null,
         precondition: document.getElementById('precondition').value,
         steps: document.getElementById('test_steps').value,
         expected_result: document.getElementById('expected_result').value,
         // 直接取用 tcg 的字串（單號或多號逗號分隔），建立後再以 PUT 更新
-        tcg: document.getElementById('tcg').value
+        tcg: document.getElementById('tcg').value,
+        // 新增：包含當前選擇的 Test Case Set ID
+        ...(currentSetId && { test_case_set_id: currentSetId })
     };
 
     // 若存在暫存上傳，帶入 temp_upload_id

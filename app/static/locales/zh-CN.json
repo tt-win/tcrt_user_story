@@ -711,7 +711,8 @@
       "invalidTcg": "TCG 单号格式错误：{numbers}",
       "validationErrors": "{count} 行格式错误",
       "validationDuplicates": "{count} 条重复的单号",
-      "sampleLink": "下载范例 CSV"
+      "sampleLink": "下载范例 CSV",
+      "bulkCreateSectionHint": "选择此批次的所有测试案例要放入的区段"
     },
     "bulkTextToast": {
       "conflict": "发现单号冲突，共 {count} 条。已在文本前加上\"(Conflict)\"标记。",
