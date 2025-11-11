@@ -690,6 +690,14 @@ body {
             </a></li>
         </ul>
     </div>
+    <div class="btn-group" role="group" id="jumpToSetGroup" style="display: none;">
+        <button type="button" class="btn btn-info dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+            <i class="fas fa-arrow-right me-2"></i><span data-i18n="common.jumpTo">跳至</span>
+        </button>
+        <ul class="dropdown-menu" id="jumpToSetDropdown">
+            <!-- 其他 Test Case Sets 會在此動態列出 -->
+        </ul>
+    </div>
     <button type="button" class="btn btn-secondary" id="refreshBtn">
         <i class="fas fa-sync-alt me-2"></i><span data-i18n="common.refresh">重新整理</span>
     </button>
@@ -3255,6 +3263,8 @@ document.addEventListener('DOMContentLoaded', async function() {
         await initTestCaseManagement();
         bindEvents();
         initializeMarkdownEditor();
+        // 初始化「跳至」菜單
+        await initJumpToSetMenu();
         // 初始化列表高度（等待初始排版完成）
         setTimeout(adjustTestCasesScrollHeight, 0);
         try {
@@ -4200,6 +4210,77 @@ function bindEvents() {
 
     // 批次複製 Modal 內部事件
     bindBatchCopyModalEvents();
+}
+
+// 初始化「跳至」菜單 - 快速切換 Test Case Sets
+async function initJumpToSetMenu() {
+    const jumpToSetGroup = document.getElementById('jumpToSetGroup');
+    const jumpToSetDropdown = document.getElementById('jumpToSetDropdown');
+
+    if (!jumpToSetGroup || !jumpToSetDropdown || !currentSetId) {
+        return; // 如果沒有當前 Set ID，不顯示菜單
+    }
+
+    try {
+        const activeTeam = window.AppUtils && window.AppUtils.getCurrentTeam ?
+                          window.AppUtils.getCurrentTeam() : null;
+
+        if (!activeTeam || !activeTeam.id) {
+            return;
+        }
+
+        // 獲取所有 Test Case Sets
+        const response = await window.AuthClient.fetch(
+            `/api/teams/${activeTeam.id}/test-case-sets`
+        );
+
+        if (!response.ok) {
+            return;
+        }
+
+        const sets = await response.json();
+
+        // 過濾出不是當前 Set 的所有 Sets
+        const otherSets = Array.isArray(sets) ?
+                         sets.filter(s => s.id !== currentSetId) :
+                         [];
+
+        if (otherSets.length === 0) {
+            // 如果沒有其他 Sets，隱藏菜單
+            jumpToSetGroup.style.display = 'none';
+            return;
+        }
+
+        // 清空現有菜單項
+        jumpToSetDropdown.innerHTML = '';
+
+        // 添加每個 Set 為菜單項
+        otherSets.forEach(set => {
+            const li = document.createElement('li');
+            const a = document.createElement('a');
+            a.className = 'dropdown-item';
+            a.href = '#';
+            a.style.cursor = 'pointer';
+
+            const icon = set.is_default ? 'star' : 'folder';
+            a.innerHTML = `<i class="fas fa-${icon} me-2"></i>${escapeHtml(set.name)}`;
+
+            a.addEventListener('click', (e) => {
+                e.preventDefault();
+                window.location.href = `/test-case-management?set_id=${set.id}`;
+            });
+
+            li.appendChild(a);
+            jumpToSetDropdown.appendChild(li);
+        });
+
+        // 顯示菜單
+        jumpToSetGroup.style.display = 'block';
+
+    } catch (error) {
+        console.error('Failed to initialize jump to set menu:', error);
+        jumpToSetGroup.style.display = 'none';
+    }
 }
 
 // ===== 批次複製（Batch Copy） =====
