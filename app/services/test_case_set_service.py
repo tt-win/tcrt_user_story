@@ -99,7 +99,10 @@ class TestCaseSetService:
         return test_set
 
     def delete(self, set_id: int, team_id: int) -> bool:
-        """刪除 Test Case Set"""
+        """刪除 Test Case Set，並將其中的 Test Case 移至預設 Set"""
+        from app.models.test_case import TestCaseLocal
+        from app.models.test_case_section import TestCaseSection
+
         test_set = self.get_by_id(set_id, team_id)
         if not test_set:
             raise ValueError(f"Test Case Set 不存在: {set_id}")
@@ -108,6 +111,32 @@ class TestCaseSetService:
         if test_set.is_default:
             raise ValueError("無法刪除預設 Test Case Set")
 
+        # 獲取預設 Set
+        default_set = self.db.query(TestCaseSet).filter(
+            and_(TestCaseSet.team_id == team_id, TestCaseSet.is_default == True)
+        ).first()
+
+        if not default_set:
+            raise ValueError("找不到預設 Test Case Set")
+
+        # 將所有 Test Case 移至預設 Set，並移除 section 關聯
+        test_cases = self.db.query(TestCaseLocal).filter(
+            TestCaseLocal.test_case_set_id == set_id
+        ).all()
+
+        for test_case in test_cases:
+            test_case.test_case_set_id = default_set.id
+            test_case.test_case_section_id = None
+
+        # 刪除該 Set 的所有 Sections
+        sections = self.db.query(TestCaseSection).filter(
+            TestCaseSection.test_case_set_id == set_id
+        ).all()
+
+        for section in sections:
+            self.db.delete(section)
+
+        # 刪除 Test Case Set
         self.db.delete(test_set)
         self.db.commit()
         return True
