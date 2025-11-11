@@ -1108,7 +1108,35 @@ class TestCaseSectionList {
   }
 
   /**
-   * 在編輯列表中標記/取消標記 section 待刪除
+   * 遞迴標記 section 及其所有子 sections 待刪除
+   */
+  markSectionAndChildrenForDelete(sectionId) {
+    this.sectionsToDelete.add(sectionId);
+    const section = this.findSection(sectionId);
+    if (section) {
+      const children = this.getChildSections(section);
+      for (const child of children) {
+        this.markSectionAndChildrenForDelete(child.id);
+      }
+    }
+  }
+
+  /**
+   * 遞迴取消標記 section 及其所有子 sections 的刪除標記
+   */
+  unmarkSectionAndChildrenForDelete(sectionId) {
+    this.sectionsToDelete.delete(sectionId);
+    const section = this.findSection(sectionId);
+    if (section) {
+      const children = this.getChildSections(section);
+      for (const child of children) {
+        this.unmarkSectionAndChildrenForDelete(child.id);
+      }
+    }
+  }
+
+  /**
+   * 在編輯列表中標記/取消標記 section 待刪除（包括其所有子 sections）
    */
   toggleSectionDelete(sectionId) {
     // 防止刪除 Unassigned Section
@@ -1119,11 +1147,11 @@ class TestCaseSectionList {
     }
 
     if (this.sectionsToDelete.has(sectionId)) {
-      // 取消刪除標記
-      this.sectionsToDelete.delete(sectionId);
+      // 取消刪除標記（包括子 sections）
+      this.unmarkSectionAndChildrenForDelete(sectionId);
     } else {
-      // 標記待刪除
-      this.sectionsToDelete.add(sectionId);
+      // 標記待刪除（包括子 sections）
+      this.markSectionAndChildrenForDelete(sectionId);
     }
 
     // 重新渲染列表
