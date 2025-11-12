@@ -827,7 +827,9 @@
     }
   },
   "section": {
-    "unassigned": "Unassigned"
+    "unassigned": "Unassigned",
+    "addSection": "Add Section",
+    "editList": "Edit List"
   },
   "testCaseSet": {
     "title": "Test Case Set",

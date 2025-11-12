@@ -856,7 +856,9 @@
     "setDescriptionPlaceholder": "描述此集合的用途"
   },
   "section": {
-    "unassigned": "Unassigned"
+    "unassigned": "Unassigned",
+    "addSection": "新增區段",
+    "editList": "編輯列表"
   },
   "testRun": {
     "currentExecution": "現在執行：",
