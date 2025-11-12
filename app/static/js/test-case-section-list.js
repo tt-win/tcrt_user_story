@@ -855,31 +855,32 @@ class TestCaseSectionList {
         <div class="modal-dialog modal-dialog-centered">
           <div class="modal-content">
             <div class="modal-header">
-              <h5 class="modal-title">新增區段</h5>
+              <h5 class="modal-title" data-i18n="section.addSection">新增區段</h5>
               <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
               <form id="createSectionForm">
                 <div class="form-group mb-3">
-                  <label for="sectionName">區段名稱 <span class="text-danger">*</span></label>
+                  <label for="sectionName" data-i18n="section.sectionName">區段名稱</label>
+                  <span class="text-danger">*</span>
                   <input type="text" id="sectionName" class="form-control" placeholder="例如: Smoke Tests" required>
                 </div>
                 <div class="form-group mb-3">
-                  <label for="sectionDescription">描述</label>
+                  <label for="sectionDescription" data-i18n="section.description">描述</label>
                   <textarea id="sectionDescription" class="form-control" rows="2" placeholder="區段描述..."></textarea>
                 </div>
                 <div class="form-group mb-3">
-                  <label for="parentSection">父區段</label>
+                  <label for="parentSection" data-i18n="section.parentSection">父區段</label>
                   <select id="parentSection" class="form-control">
-                    <option value="">無 (頂層)</option>
+                    <option value="" data-i18n="section.noParent">無 (頂層)</option>
                     ${this.getSectionOptions()}
                   </select>
                 </div>
               </form>
             </div>
             <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-              <button type="button" class="btn btn-primary" onclick="testCaseSectionList.createSection()">建立</button>
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="section.cancel">取消</button>
+              <button type="button" class="btn btn-primary" onclick="testCaseSectionList.createSection()" data-i18n="section.create">建立</button>
             </div>
           </div>
         </div>
@@ -891,6 +892,36 @@ class TestCaseSectionList {
 
     // 添加新 modal
     document.body.insertAdjacentHTML("beforeend", modalHtml);
+
+    // 翻譯模態框內容
+    if (window.i18n && window.i18n.isReady()) {
+      const modal = document.getElementById("createSectionModal");
+
+      const labels = modal.querySelectorAll('[data-i18n]');
+      labels.forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        const translated = window.i18n.t(key, {}, el.textContent);
+        el.textContent = translated;
+      });
+
+      // 翻譯標題
+      const title = modal.querySelector('h5[data-i18n="section.addSection"]');
+      if (title) {
+        title.textContent = window.i18n.t('section.addSection', {}, '新增區段');
+      }
+
+      // 翻譯按鈕中的文本
+      const createBtn = modal.querySelector('button[data-i18n="section.create"]');
+      if (createBtn) {
+        createBtn.textContent = window.i18n.t('section.create', {}, '建立');
+      }
+
+      // 翻譯 Cancel 按鈕
+      const cancelBtn = modal.querySelector('button[data-i18n="section.cancel"]');
+      if (cancelBtn) {
+        cancelBtn.textContent = window.i18n.t('section.cancel', {}, '取消');
+      }
+    }
 
     const modal = new bootstrap.Modal(
       document.getElementById("createSectionModal"),
@@ -1441,22 +1472,22 @@ class TestCaseSectionList {
         <div class="modal-dialog modal-lg">
           <div class="modal-content">
             <div class="modal-header">
-              <h5 class="modal-title" id="reorderSectionModalLabel">
-                <i class="fas fa-list"></i> 編輯列表
+              <h5 class="modal-title" id="reorderSectionModalLabel" data-i18n="section.editList">
+                <i class="fas fa-list"></i> <span>編輯列表</span>
               </h5>
               <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
               <div class="alert alert-info">
-                <i class="fas fa-info-circle"></i> 
-                <strong>操作說明：</strong>
+                <i class="fas fa-info-circle"></i>
+                <strong data-i18n="section.operationGuide">操作說明：</strong>
                 <ul class="mb-0 mt-2" style="font-size: 0.9em;">
-                  <li><strong>上/下按鈕</strong>：同層移動，與前/後兄弟節點交換位置</li>
-                  <li><strong>← 左按鈕</strong>：減少層級（反縮排），從父節點取出並與父節點同層</li>
-                  <li><strong>→ 右按鈕</strong>：增加層級（縮排），成為視覺上相鄰的上一個同層或淺層節點的子節點</li>
-                  <li><strong>刪除按鈕</strong>：標記待刪除，按「儲存變更」時才會實際刪除</li>
-                  <li><strong>區段名稱</strong>：點擊即可編輯名稱</li>
-                  <li><strong>注意</strong>：所有操作都會連同子樹一起移動，最多支援 5 層</li>
+                  <li data-i18n="section.moveUpDown"><strong>上/下按鈕</strong>：同層移動，與前/後兄弟節點交換位置</li>
+                  <li data-i18n="section.moveLeft"><strong>← 左按鈕</strong>：減少層級（反縮排），從父節點取出並與父節點同層</li>
+                  <li data-i18n="section.moveRight"><strong>→ 右按鈕</strong>：增加層級（縮排），成為視覺上相鄰的上一個同層或淺層節點的子節點</li>
+                  <li data-i18n="section.deleteBtn"><strong>刪除按鈕</strong>：標記待刪除，按「儲存變更」時才會實際刪除</li>
+                  <li data-i18n="section.editName"><strong>區段名稱</strong>：點擊即可編輯名稱</li>
+                  <li data-i18n="section.notice"><strong>注意</strong>：所有操作都會連同子樹一起移動，最多支援 5 層</li>
                 </ul>
               </div>
               <div id="reorderSectionList" class="list-group">
@@ -1464,9 +1495,9 @@ class TestCaseSectionList {
               </div>
             </div>
             <div class="modal-footer">
-              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-              <button type="button" class="btn btn-primary" onclick="testCaseSectionList.saveReorder()">
-                <i class="fas fa-save"></i> 儲存變更
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="section.cancel">取消</button>
+              <button type="button" class="btn btn-primary" onclick="testCaseSectionList.saveReorder()" data-i18n="section.save">
+                <i class="fas fa-save"></i> <span>儲存變更</span>
               </button>
             </div>
           </div>
@@ -1482,6 +1513,51 @@ class TestCaseSectionList {
 
     // 添加新的 modal
     document.body.insertAdjacentHTML('beforeend', modalHtml);
+
+    // 翻譯模態框內容
+    if (window.i18n && window.i18n.isReady()) {
+      const reorderModal = document.getElementById('reorderSectionModal');
+
+      const labels = reorderModal.querySelectorAll('[data-i18n]');
+      labels.forEach(el => {
+        const key = el.getAttribute('data-i18n');
+        const translated = window.i18n.t(key, {}, el.textContent);
+        if (el.querySelector('span')) {
+          // 如果有 span 子元素，只翻译第一个文本节点或保留 span
+          const span = el.querySelector('span');
+          const parentText = Array.from(el.childNodes)
+            .filter(node => node.nodeType === 3)
+            .map(node => node.textContent.trim())
+            .join(' ');
+          if (parentText) {
+            el.textContent = translated;
+          }
+        } else {
+          el.textContent = translated;
+        }
+      });
+
+      // 翻譯標題中的 span 元素
+      const titleSpan = reorderModal.querySelector('h5[data-i18n="section.editList"] span');
+      if (titleSpan) {
+        titleSpan.textContent = window.i18n.t('section.editList', {}, '編輯列表');
+      }
+
+      // 翻譯 Cancel 按鈕
+      const cancelBtn = reorderModal.querySelector('button[data-i18n="section.cancel"]');
+      if (cancelBtn) {
+        cancelBtn.textContent = window.i18n.t('section.cancel', {}, '取消');
+      }
+
+      // 翻譯按鈕中的 span 元素
+      const saveBtn = reorderModal.querySelector('button[data-i18n="section.save"]');
+      if (saveBtn) {
+        const span = saveBtn.querySelector('span');
+        if (span) {
+          span.textContent = window.i18n.t('section.save', {}, '儲存變更');
+        }
+      }
+    }
 
     // 顯示 modal
     const modal = new bootstrap.Modal(document.getElementById('reorderSectionModal'));
