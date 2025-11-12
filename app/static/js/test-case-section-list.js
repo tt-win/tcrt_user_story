@@ -251,11 +251,11 @@ class TestCaseSectionList {
           <!-- Section 樹會插入這裡 -->
         </div>
         <div class="card-footer section-list-footer" style="flex-shrink: 0;">
-           <button class="btn btn-sm btn-primary w-100 mb-2" onclick="testCaseSectionList.showCreateSectionModal()">
-             <i class="fas fa-plus"></i> ${i18n.t('addSection')}
+           <button class="btn btn-sm btn-primary w-100 mb-2" onclick="testCaseSectionList.showCreateSectionModal()" data-i18n="addSection">
+             <i class="fas fa-plus"></i> addSection
            </button>
-           <button class="btn btn-sm btn-outline-secondary w-100" onclick="testCaseSectionList.showReorderModal()">
-             <i class="fas fa-list"></i> ${i18n.t('editList')}
+           <button class="btn btn-sm btn-outline-secondary w-100" onclick="testCaseSectionList.showReorderModal()" data-i18n="editList">
+             <i class="fas fa-list"></i> editList
            </button>
         </div>
       </div>
@@ -264,6 +264,16 @@ class TestCaseSectionList {
     // 插入側邊欄面板
     sidebarCol.innerHTML = panelHtml;
     console.log("[SectionList] Sidebar panel HTML inserted");
+
+    // 翻譯按鈕文本
+    const addButton = sidebarCol.querySelector('button[data-i18n="addSection"]');
+    if (addButton && window.i18n) {
+      addButton.innerHTML = `<i class="fas fa-plus"></i> ${window.i18n.t('addSection')}`;
+    }
+    const editButton = sidebarCol.querySelector('button[data-i18n="editList"]');
+    if (editButton && window.i18n) {
+      editButton.innerHTML = `<i class="fas fa-list"></i> ${window.i18n.t('editList')}`;
+    }
 
     // 渲染 Section 樹
     const content = document.getElementById("sectionListContent");
