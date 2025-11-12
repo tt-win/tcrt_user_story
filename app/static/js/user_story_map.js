@@ -4170,8 +4170,13 @@ document.addEventListener('DOMContentLoaded', async function() {
             document.getElementById('relationSourceNodeTitle').textContent = selectedNode.data?.title || '未知節點';
             document.getElementById('relationSourceNodeId').textContent = selectedNode.id;
             document.getElementById('relationSearchInput').value = '';
+            document.getElementById('relationJiraSearchInput').value = '';
+            document.querySelector('input[name="jiraLogic"][value="and"]').checked = true;
             document.getElementById('relationSearchResults').innerHTML = '<p class="text-muted small text-center py-3">輸入關鍵字並搜尋</p>';
-            
+
+            // Initialize team filter with available teams
+            await initializeTeamFilter();
+
             // Load existing relations
             const existingRelations = normalizeRelatedEntries(selectedNode.data?.relatedIds || []);
             window.selectedRelationTargets = existingRelations.map(rel => cloneRelationEntry(rel));
@@ -4232,19 +4237,56 @@ document.addEventListener('DOMContentLoaded', async function() {
             alert('請先選擇一個節點');
         }
     };
-    
+
+    // Initialize team filter with available teams
+    const initializeTeamFilter = async () => {
+        try {
+            const currentMapId = parseInt(document.getElementById('currentMapSelect').value, 10);
+            if (isNaN(currentMapId)) return;
+
+            const token = localStorage.getItem('access_token');
+            const headers = {
+                'Content-Type': 'application/json',
+            };
+            if (token) {
+                headers.Authorization = `Bearer ${token}`;
+            }
+
+            // Fetch all available teams (via search API or team list)
+            const response = await fetch(`/api/teams?map_id=${currentMapId}`, {
+                method: 'GET',
+                headers,
+            });
+
+            if (response.ok) {
+                const teams = await response.json();
+                const teamFilterEl = document.getElementById('relationTeamFilter');
+                if (teamFilterEl) {
+                    teamFilterEl.innerHTML = teams.map(team =>
+                        `<option value="${team.id}">${escapeHtml(team.name)}</option>`
+                    ).join('');
+                }
+            }
+        } catch (error) {
+            console.error('[Relation] Failed to load teams:', error);
+        }
+    };
+
     // Relation Search Button
     document.getElementById('relationSearchBtn')?.addEventListener('click', async () => {
         console.log('[Relation] Search button clicked');
-        
+
         const query = document.getElementById('relationSearchInput').value.trim();
+        const jiraQuery = document.getElementById('relationJiraSearchInput').value.trim();
+        const jiraLogic = document.querySelector('input[name="jiraLogic"]:checked')?.value || 'and';
         const nodeType = document.getElementById('relationNodeTypeFilter').value;
+        const selectedTeams = Array.from(document.getElementById('relationTeamFilter').selectedOptions || []).map(o => o.value);
         const includeExternal = document.getElementById('relationIncludeExternal').checked;
         const currentMapId = parseInt(document.getElementById('currentMapSelect').value, 10);
 
-        console.log('[Relation] Search params:', { query, nodeType, includeExternal, currentMapId });
+        console.log('[Relation] Search params:', { query, jiraQuery, jiraLogic, nodeType, selectedTeams, includeExternal, currentMapId });
 
-        if (!query && !nodeType) {
+        if (!query && !jiraQuery && !nodeType && selectedTeams.length === 0) {
             showMessage('請輸入搜尋條件', 'warning');
             return;
         }
@@ -4253,15 +4295,22 @@ document.addEventListener('DOMContentLoaded', async function() {
             showMessage('請先選擇一個地圖', 'warning');
             return;
         }
-        
+
         try {
             const params = new URLSearchParams();
             params.set('map_id', String(currentMapId));
             if (query) {
                 params.set('q', query);
             }
+            if (jiraQuery) {
+                params.set('jira_tickets', jiraQuery);
+                params.set('jira_logic', jiraLogic);
+            }
             if (nodeType) {
                 params.set('node_type', nodeType);
+            }
+            if (selectedTeams.length > 0) {
+                params.set('team_ids', selectedTeams.join(','));
             }
             if (includeExternal) {
                 params.set('include_external', 'true');

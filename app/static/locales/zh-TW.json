@@ -1496,6 +1496,11 @@
     "relatedNodes": "相關節點",
     "unknownTeam": "未知團隊",
     "untitled": "無標題",
-    "updateNode": "更新節點"
+    "updateNode": "更新節點",
+    "jiraTicketSearch": "JIRA 單號",
+    "jiraTicketPlaceholder": "例如：JIRA-123, JIRA-456",
+    "teamFilter": "團隊",
+    "selectTeams": "選擇團隊 (全選表示不過濾)",
+    "allTeams": "全選"
   }
 }
