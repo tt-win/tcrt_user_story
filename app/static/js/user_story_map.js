@@ -4344,7 +4344,9 @@ document.addEventListener('DOMContentLoaded', async function() {
             return;
         }
 
-        if (!query && !jiraQuery && !nodeType) {
+        // When "Search Other Maps" is unchecked, require other search conditions
+        // When "Search Other Maps" is checked, team selection alone is valid
+        if (!includeExternal && !query && !jiraQuery && !nodeType) {
             showMessage('請輸入搜尋條件', 'warning');
             return;
         }
