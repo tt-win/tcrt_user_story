@@ -1486,6 +1486,16 @@
     "enterTestRunName": "輸入 Test Run 名稱",
     "testCases": "個測試案例",
     "quickSearchPlaceholder": "搜尋節點 (標題、描述、As a、I want、So that)...",
-    "enterToSearch": "輸入以搜尋..."
+    "enterToSearch": "輸入以搜尋...",
+    "aggregatedTickets": "聚合票證 (含子節點)",
+    "clear": "清除",
+    "comment": "註解",
+    "deleteNode": "刪除節點",
+    "none": "無",
+    "notSet": "未設定",
+    "relatedNodes": "相關節點",
+    "unknownTeam": "未知團隊",
+    "untitled": "無標題",
+    "updateNode": "更新節點"
   }
 }
