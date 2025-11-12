@@ -3928,12 +3928,51 @@ document.addEventListener('DOMContentLoaded', async function() {
     document.getElementById('collapseUserStoryNodesBtn')?.addEventListener('click', () => {
         window.userStoryMapFlow?.collapseUserStoryNodes();
         showMessage('已收合所有 User Story 節點', 'success');
+        // Trigger auto-layout after collapse
+        setTimeout(() => {
+            window.userStoryMapFlow?.autoLayout();
+        }, 0);
     });
 
     // Expand all nodes button
     document.getElementById('expandAllNodesBtn')?.addEventListener('click', () => {
         window.userStoryMapFlow?.expandAllNodes();
         showMessage('已展開所有節點', 'success');
+        // Trigger auto-layout after expand
+        setTimeout(() => {
+            window.userStoryMapFlow?.autoLayout();
+            // Check if we need to zoom out
+            setTimeout(() => {
+                const nodes = window.userStoryMapFlow?.getNodes?.() || [];
+                const rootNode = nodes.find(n => !n.data.parentId);
+
+                if (reactFlowInstance.current && nodes.length > 0) {
+                    const nodeWidth = 200;
+                    const nodeHeight = 110;
+
+                    // Calculate graph bounds
+                    const minX = Math.min(...nodes.map(n => n.position.x));
+                    const maxX = Math.max(...nodes.map(n => n.position.x + nodeWidth));
+                    const minY = Math.min(...nodes.map(n => n.position.y));
+                    const maxY = Math.max(...nodes.map(n => n.position.y + nodeHeight));
+                    const graphWidth = maxX - minX + nodeWidth * 2;
+                    const graphHeight = maxY - minY + nodeHeight * 2;
+
+                    // If graph is too large (larger than 4x viewport), zoom to 1/4
+                    // Standard viewport is ~1200x800
+                    if (graphWidth > 4800 || graphHeight > 3200) {
+                        if (rootNode) {
+                            // Center on root node and zoom to 0.25
+                            reactFlowInstance.current.setCenter(
+                                rootNode.position.x + nodeWidth / 2,
+                                rootNode.position.y + nodeHeight / 2,
+                                { zoom: 0.25, duration: 500 }
+                            );
+                        }
+                    }
+                }
+            }, 100);
+        }, 0);
     });
 
     // Highlight path button
