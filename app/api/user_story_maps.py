@@ -370,8 +370,11 @@ async def search_global_nodes(
     node_type: Optional[str] = Query(None, description="節點類型"),
     map_id: Optional[int] = Query(None, description="限制在特定地圖"),
     team_id: Optional[int] = Query(None, description="限制在特定團隊"),
+    team_ids: Optional[str] = Query(None, description="限制在特定團隊們 (逗號分隔)"),
     include_external: bool = Query(False, description="是否搜尋外部地圖"),
     exclude_node_id: Optional[str] = Query(None, description="排除的節點ID"),
+    jira_tickets: Optional[str] = Query(None, description="JIRA 單號 (逗號分隔)"),
+    jira_logic: str = Query("and", description="JIRA 搜尋邏輯 (and/or)"),
     current_user: User = Depends(get_current_user),
     usm_db: AsyncSession = Depends(get_usm_db),
     db: AsyncSession = Depends(get_db),
@@ -412,7 +415,14 @@ async def search_global_nodes(
     if node_type:
         query = query.where(UserStoryMapNodeDB.node_type == node_type)
 
-    if team_id:
+    # Support both team_id (single) and team_ids (multiple, comma-separated)
+    if team_ids:
+        team_id_list = [int(tid.strip()) for tid in team_ids.split(',') if tid.strip().isdigit()]
+        if team_id_list:
+            query = query.where(UserStoryMapNodeDB.map_id.in_(
+                select(UserStoryMapDB.id).where(UserStoryMapDB.team_id.in_(team_id_list))
+            ))
+    elif team_id:
         query = query.where(UserStoryMapNodeDB.map_id.in_(
             select(UserStoryMapDB.id).where(UserStoryMapDB.team_id == team_id)
         ))
@@ -423,6 +433,17 @@ async def search_global_nodes(
     # 排除指定的節點
     if exclude_node_id:
         nodes = [node for node in nodes if node.node_id != exclude_node_id]
+
+    # 處理 JIRA 票號過濾 (AND/OR 邏輯)
+    if jira_tickets:
+        ticket_list = [t.strip() for t in jira_tickets.split(',') if t.strip()]
+        if ticket_list:
+            if jira_logic == 'or':
+                # OR 邏輯：節點包含任何一個 JIRA 票號
+                nodes = [n for n in nodes if any(t in (n.jira_tickets or []) for t in ticket_list)]
+            else:
+                # AND 邏輯：節點包含所有 JIRA 票號
+                nodes = [n for n in nodes if all(t in (n.jira_tickets or []) for t in ticket_list)]
 
     search_results = []
     for node in nodes:
