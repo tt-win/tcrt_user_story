@@ -852,6 +852,8 @@
     "createSetHint": "建立新的測試案例集合",
     "updateSet": "更新集合",
     "defaultSetDescription": "團隊預設測試案例集合",
+    "title": "測試案例集合",
+    "editTitle": "編輯測試案例集合",
     "setDescription": "集合描述",
     "setDescriptionPlaceholder": "描述此集合的用途"
   },
