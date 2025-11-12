@@ -872,7 +872,10 @@
     "deleteBtn": "删除按钮：标记待删除，按「保存变更」时才会实际删除",
     "editName": "区段名称：点击即可编辑名称",
     "notice": "注意：所有操作都会连同子树一起移动，最多支持 5 层",
-    "save": "保存变更"
+    "save": "保存变更",
+    "sectionNamePlaceholder": "例如: Smoke Tests",
+    "descriptionPlaceholder": "区段描述",
+    "noEditableSections": "没有可编辑的区段"
   },
   "testRun": {
     "currentExecution": "现在执行：",
