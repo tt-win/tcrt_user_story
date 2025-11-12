@@ -4218,9 +4218,6 @@ document.addEventListener('DOMContentLoaded', async function() {
             modalInstance.show();
 
             // Set up event listener for "Search Other Maps" checkbox
-            const includeExternalCheckbox = document.getElementById('relationIncludeExternal');
-            const teamFilterEl = document.getElementById('relationTeamFilter');
-
             // Remove any previous event listeners by cloning
             const newCheckbox = includeExternalCheckbox.cloneNode(true);
             includeExternalCheckbox.parentNode.replaceChild(newCheckbox, includeExternalCheckbox);
