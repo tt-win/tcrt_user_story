@@ -52,7 +52,7 @@
           </div>
 
           <div class="form-group mb-3">
-            <label for="setDescription" data-i18n="common.description">描述</label>
+            <label for="setDescription" data-i18n="testCaseSet.setDescription">集合描述</label>
             <textarea id="setDescription" class="form-control" rows="3" data-i18n-placeholder="testCaseSet.setDescriptionPlaceholder" placeholder="描述此集合的用途..."></textarea>
           </div>
 
@@ -428,8 +428,15 @@ function updateModalLabels(mode) {
   // 翻譯 Description 標籤
   const descLabel = document.querySelector('label[for="setDescription"][data-i18n]');
   if (descLabel) {
-    const descText = window.i18n.t('common.description', {}, '描述');
+    const descText = window.i18n.t('testCaseSet.setDescription', {}, '集合描述');
     descLabel.textContent = descText;
+  }
+
+  // 翻譯 Description Placeholder
+  const descTextarea = document.getElementById('setDescription');
+  if (descTextarea) {
+    const placeholderText = window.i18n.t('testCaseSet.setDescriptionPlaceholder', {}, '描述此集合的用途');
+    descTextarea.placeholder = placeholderText;
   }
 
   // 翻譯 Cancel 按鈕
