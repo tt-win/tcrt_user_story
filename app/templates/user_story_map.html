@@ -468,6 +468,31 @@ Web Tool{% endblock %} {% block page_title_text %}
                             <i class="fas fa-search"></i>
                         </button>
                     </div>
+
+                    <!-- JIRA Ticket Search -->
+                    <div class="mb-2">
+                        <label class="form-label small text-muted" data-i18n="usm.jiraTicketSearch">JIRA 單號</label>
+                        <input
+                            type="text"
+                            class="form-control form-control-sm"
+                            id="relationJiraSearchInput"
+                            data-i18n-placeholder="usm.jiraTicketPlaceholder"
+                            placeholder="例如：JIRA-123, JIRA-456"
+                        />
+                        <small class="text-muted d-block mt-1">
+                            <span data-i18n="usm.logic">邏輯:</span>
+                            <span class="ms-2">
+                                <label class="form-check-label me-3">
+                                    <input class="form-check-input" type="radio" name="jiraLogic" value="and" checked />
+                                    <span data-i18n="usm.and">AND</span>
+                                </label>
+                                <label class="form-check-label">
+                                    <input class="form-check-input" type="radio" name="jiraLogic" value="or" />
+                                    <span data-i18n="usm.or">OR</span>
+                                </label>
+                            </span>
+                        </small>
+                    </div>
                 </div>
 
                 <!-- Filters -->
@@ -485,21 +510,34 @@ Web Tool{% endblock %} {% block page_title_text %}
                             <option value="feature_category" data-i18n="usm.featureCategory">功能節點</option>
                         </select>
                     </div>
-                    <div class="col-md-6 d-flex align-items-end">
-                        <div class="form-check mb-0">
-                            <input
-                                class="form-check-input"
-                                type="checkbox"
-                                id="relationIncludeExternal"
-                            />
-                            <label
-                                class="form-check-label small"
-                                for="relationIncludeExternal"
-                                data-i18n="usm.searchOtherMaps"
-                            >
-                                搜尋其他地圖
-                            </label>
-                        </div>
+                    <div class="col-md-6">
+                        <label class="form-label small text-muted" data-i18n="usm.teamFilter">團隊</label>
+                        <select
+                            class="form-select form-select-sm"
+                            id="relationTeamFilter"
+                            multiple
+                            data-i18n-placeholder="usm.selectTeams"
+                        >
+                            <!-- Options will be populated dynamically -->
+                        </select>
+                        <small class="text-muted d-block mt-1" data-i18n="usm.selectTeams">選擇團隊 (全選表示不過濾)</small>
+                    </div>
+                </div>
+
+                <div class="mb-3">
+                    <div class="form-check">
+                        <input
+                            class="form-check-input"
+                            type="checkbox"
+                            id="relationIncludeExternal"
+                        />
+                        <label
+                            class="form-check-label small"
+                            for="relationIncludeExternal"
+                            data-i18n="usm.searchOtherMaps"
+                        >
+                            搜尋其他地圖
+                        </label>
                     </div>
                 </div>
 

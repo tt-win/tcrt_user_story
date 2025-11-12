@@ -1497,6 +1497,11 @@
     "relatedNodes": "Related nodes",
     "unknownTeam": "Unknown team",
     "untitled": "Untitled",
-    "updateNode": "Update node"
+    "updateNode": "Update node",
+    "jiraTicketSearch": "JIRA Ticket Number",
+    "jiraTicketPlaceholder": "e.g., JIRA-123, JIRA-456",
+    "teamFilter": "Team",
+    "selectTeams": "Select teams (All for no filter)",
+    "allTeams": "All"
   }
 }
