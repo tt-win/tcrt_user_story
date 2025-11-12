@@ -742,6 +742,7 @@
     "duplicateNumber": "Test case number already exists",
     "editMode": "Edit Mode",
     "editTestCase": "Edit Test Case",
+    "editTestCaseSet": "Edit Test Case Set",
     "enterTCGNumber": "Enter TCG number or search keyword",
     "expectedResults": "Expected Results",
     "expectedResultsPlaceholder": "Describe expected test results, supports Markdown format",
@@ -827,6 +828,14 @@
   },
   "section": {
     "unassigned": "Unassigned"
+  },
+  "testCaseSet": {
+    "title": "Test Case Set",
+    "editTitle": "Edit Test Case Set",
+    "setName": "Set Name",
+    "setNameRequired": "Set name must be globally unique",
+    "setDescription": "Set Description",
+    "setDescriptionPlaceholder": "Describe the purpose of this set"
   },
   "testRun": {
     "currentExecution": "Currently Executing: ",
