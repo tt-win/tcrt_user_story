@@ -775,30 +775,69 @@ const UserStoryMapFlow = () => {
         };
     }, [selectedNode]);
 
+    // Helper function to get translated labels
+    const getTranslations = () => {
+        if (!window.i18n || !window.i18n.isReady()) {
+            return {
+                title: '標題',
+                description: '描述',
+                team: '團隊',
+                asA: 'As a (使用者角色)',
+                iWant: 'I want (需求描述)',
+                soThat: 'So that (價值目的)',
+                jiraTickets: 'JIRA Tickets',
+                aggregatedTickets: '聚合 Tickets (含子節點)',
+                relatedNodes: '相關節點',
+                comment: '註解',
+                notSet: '未設定',
+                none: '無',
+                highlightPath: '高亮路徑',
+                clear: '清除'
+            };
+        }
+        return {
+            title: window.i18n.t('usm.title', {}, '標題'),
+            description: window.i18n.t('usm.description', {}, '描述'),
+            team: window.i18n.t('usm.team', {}, '團隊'),
+            asA: window.i18n.t('usm.asA', {}, 'As a (使用者角色)'),
+            iWant: window.i18n.t('usm.iWant', {}, 'I want (需求描述)'),
+            soThat: window.i18n.t('usm.soThat', {}, 'So that (價值目的)'),
+            jiraTickets: window.i18n.t('usm.jiraTickets', {}, 'JIRA Tickets'),
+            aggregatedTickets: window.i18n.t('usm.aggregatedTickets', {}, '聚合 Tickets (含子節點)'),
+            relatedNodes: window.i18n.t('usm.relatedNodes', {}, '相關節點'),
+            comment: window.i18n.t('usm.comment', {}, '註解'),
+            notSet: window.i18n.t('usm.notSet', {}, '未設定'),
+            none: window.i18n.t('usm.none', {}, '無'),
+            highlightPath: window.i18n.t('usm.highlightPath', {}, '高亮路徑'),
+            clear: window.i18n.t('usm.clear', {}, '清除')
+        };
+    };
+
     // Handle node click to show properties and highlight path
     const onNodeClick = useCallback((event, node) => {
         console.log('Node clicked:', node.id, node.data);
         setSelectedNode(node);
-        
+
         const content = document.getElementById('nodePropertiesContent');
         if (!content) return;
-        
+
         const data = node.data;
-        
+        const t = getTranslations();
+
         // Build aggregated tickets section
         const aggregatedTicketsHtml = data.aggregatedTickets && data.aggregatedTickets.length > 0
             ? `<div class="mb-3">
-                    <label class="form-label small fw-bold">聚合 Tickets (含子節點)</label>
+                    <label class="form-label small fw-bold">${escapeHtml(t.aggregatedTickets)}</label>
                     <div class="alert alert-warning p-2 small" style="word-break: break-word;">
                         ${escapeHtml(data.aggregatedTickets.join(', '))}
                     </div>
                 </div>`
             : '';
-        
+
         // Build related nodes section
         const relatedNodesHtml = data.relatedIds && data.relatedIds.length > 0
             ? `<div class="mb-3">
-                    <label class="form-label small fw-bold">相關節點 (<span id="relatedNodesCount">${data.relatedIds.length}</span>)</label>
+                    <label class="form-label small fw-bold">${escapeHtml(t.relatedNodes)} (<span id="relatedNodesCount">${data.relatedIds.length}</span>)</label>
                     <div class="list-group list-group-sm" id="relatedNodesList" style="max-height: 200px; overflow-y: auto;">
                         ${(Array.isArray(data.relatedIds) ? data.relatedIds : []).map((rel, idx) => {
                             if (typeof rel === 'string') {
@@ -822,67 +861,67 @@ const UserStoryMapFlow = () => {
                     </div>
                 </div>`
             : '';
-        
+
         // Build main HTML matching main view layout
         let html = `
             <div class="node-properties-content">
                 <div class="mb-3">
-                    <label class="form-label small fw-bold">標題</label>
+                    <label class="form-label small fw-bold">${escapeHtml(t.title)}</label>
                     <p class="form-control-plaintext mb-0 small">${escapeHtml(data.title || '')}</p>
                 </div>
-                
+
                 <div class="mb-3">
-                    <label class="form-label small fw-bold">描述</label>
+                    <label class="form-label small fw-bold">${escapeHtml(t.description)}</label>
                     <p class="form-control-plaintext mb-0 small" style="white-space: pre-wrap; word-break: break-word;">${escapeHtml(data.description || '')}</p>
                 </div>
-                
+
                 <div class="mb-3">
-                    <label class="form-label small fw-bold">團隊</label>
-                    <p class="form-control-plaintext mb-0 small">${data.team ? escapeHtml(data.team) : '<span class="text-muted">未設定</span>'}</p>
+                    <label class="form-label small fw-bold">${escapeHtml(t.team)}</label>
+                    <p class="form-control-plaintext mb-0 small">${data.team ? escapeHtml(data.team) : '<span class="text-muted">' + escapeHtml(t.notSet) + '</span>'}</p>
                 </div>
         `;
-        
+
         // Add user story fields if applicable
         if (data.nodeType === 'user_story') {
             html += `
                 <div class="mb-3">
-                    <label class="form-label small fw-bold">As a <small class="text-muted">(使用者角色)</small></label>
+                    <label class="form-label small fw-bold">${escapeHtml(t.asA)}</label>
                     <p class="form-control-plaintext mb-0 small">${escapeHtml(data.asA || '')}</p>
                 </div>
-                
+
                 <div class="mb-3">
-                    <label class="form-label small fw-bold">I want <small class="text-muted">(需求描述)</small></label>
+                    <label class="form-label small fw-bold">${escapeHtml(t.iWant)}</label>
                     <p class="form-control-plaintext mb-0 small" style="white-space: pre-wrap; word-break: break-word;">${escapeHtml(data.iWant || '')}</p>
                 </div>
-                
+
                 <div class="mb-3">
-                    <label class="form-label small fw-bold">So that <small class="text-muted">(價值目的)</small></label>
+                    <label class="form-label small fw-bold">${escapeHtml(t.soThat)}</label>
                     <p class="form-control-plaintext mb-0 small" style="white-space: pre-wrap; word-break: break-word;">${escapeHtml(data.soThat || '')}</p>
                 </div>
             `;
         }
-        
+
         html += `
                 <div class="mb-3">
-                    <label class="form-label small fw-bold">JIRA Tickets</label>
-                    <p class="form-control-plaintext mb-0 small">${data.jiraTickets && data.jiraTickets.length > 0 ? escapeHtml(data.jiraTickets.join(', ')) : '<span class="text-muted">無</span>'}</p>
+                    <label class="form-label small fw-bold">${escapeHtml(t.jiraTickets)}</label>
+                    <p class="form-control-plaintext mb-0 small">${data.jiraTickets && data.jiraTickets.length > 0 ? escapeHtml(data.jiraTickets.join(', ')) : '<span class="text-muted">' + escapeHtml(t.none) + '</span>'}</p>
                 </div>
-                
+
                 ${aggregatedTicketsHtml}
-                
+
                 ${relatedNodesHtml}
-                
+
                 <div class="mb-3">
-                    <label class="form-label small fw-bold">註解</label>
+                    <label class="form-label small fw-bold">${escapeHtml(t.comment)}</label>
                     <p class="form-control-plaintext mb-0 small" style="white-space: pre-wrap; word-break: break-word;">${escapeHtml(data.comment || '')}</p>
                 </div>
-                
+
                 <div style="margin-top: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
                     <button id="highlightPathBtn" class="btn btn-warning btn-sm" data-node-id="${node.id}">
-                        <i class="fas fa-lightbulb"></i> 高亮路徑
+                        <i class="fas fa-lightbulb"></i> ${escapeHtml(t.highlightPath)}
                     </button>
                     <button id="clearHighlightBtn" class="btn btn-secondary btn-sm">
-                        <i class="fas fa-times"></i> 清除
+                        <i class="fas fa-times"></i> ${escapeHtml(t.clear)}
                     </button>
                 </div>
             </div>

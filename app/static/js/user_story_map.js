@@ -1328,9 +1328,46 @@ const UserStoryMapFlow = () => {
         updateNodeProperties(node);
     }, [moveMode, moveSourceNodeId, nodes]);
 
+    // Helper function to get translated labels
+    const getUsmTranslations = () => {
+        if (!window.i18n || !window.i18n.isReady()) {
+            return {
+                title: '標題',
+                description: '描述',
+                team: '團隊',
+                asA: 'As a (使用者角色)',
+                iWant: 'I want (需求描述)',
+                soThat: 'So that (價值目的)',
+                jiraTickets: 'JIRA Tickets',
+                aggregatedTickets: '聚合 Tickets (含子節點)',
+                relatedNodes: '相關節點',
+                comment: '註解',
+                notSet: '未設定',
+                updateNode: '更新節點',
+                deleteNode: '刪除節點'
+            };
+        }
+        return {
+            title: window.i18n.t('usm.title', {}, '標題'),
+            description: window.i18n.t('usm.description', {}, '描述'),
+            team: window.i18n.t('usm.team', {}, '團隊'),
+            asA: window.i18n.t('usm.asA', {}, 'As a (使用者角色)'),
+            iWant: window.i18n.t('usm.iWant', {}, 'I want (需求描述)'),
+            soThat: window.i18n.t('usm.soThat', {}, 'So that (價值目的)'),
+            jiraTickets: window.i18n.t('usm.jiraTickets', {}, 'JIRA Tickets'),
+            aggregatedTickets: window.i18n.t('usm.aggregatedTickets', {}, '聚合 Tickets (含子節點)'),
+            relatedNodes: window.i18n.t('usm.relatedNodes', {}, '相關節點'),
+            comment: window.i18n.t('usm.comment', {}, '註解'),
+            notSet: window.i18n.t('usm.notSet', {}, '未設定'),
+            updateNode: window.i18n.t('usm.updateNode', {}, '更新節點'),
+            deleteNode: window.i18n.t('usm.deleteNode', {}, '刪除節點')
+        };
+    };
+
     // Update node properties in sidebar
     const updateNodeProperties = (node) => {
         const container = document.getElementById('nodeProperties');
+        const t = getUsmTranslations();
         if (!node) {
             container.innerHTML = '<p class="text-muted small">選擇一個節點以查看和編輯屬性</p>';
             // 隱藏按鈕
@@ -1359,7 +1396,7 @@ const UserStoryMapFlow = () => {
 
         const aggregatedTicketsHtml = data.aggregatedTickets && data.aggregatedTickets.length > 0
             ? `<div class="mb-3">
-                    <label class="form-label small fw-bold">聚合 Tickets (含子節點)</label>
+                    <label class="form-label small fw-bold">${escapeHtml(t.aggregatedTickets)}</label>
                     <div class="alert alert-warning p-2 small">
                         ${escapeHtml(data.aggregatedTickets.join(', '))}
                     </div>
@@ -1368,7 +1405,7 @@ const UserStoryMapFlow = () => {
 
         const relatedNodesHtml = data.relatedIds && data.relatedIds.length > 0
             ? `<div class="mb-3">
-                    <label class="form-label small fw-bold">相關節點 (<span id="relatedNodesCount">${data.relatedIds.length}</span>)</label>
+                    <label class="form-label small fw-bold">${escapeHtml(t.relatedNodes)} (<span id="relatedNodesCount">${data.relatedIds.length}</span>)</label>
                     <div class="list-group list-group-sm" id="relatedNodesList" style="max-height: 200px; overflow-y: auto;">
                         ${(Array.isArray(data.relatedIds) ? data.relatedIds : []).map((rel, idx) => {
                             if (typeof rel === 'string') {
@@ -1397,8 +1434,8 @@ const UserStoryMapFlow = () => {
             : '';
 
         const actionButtonsHtml = [
-            canUpdateNode ? '<button type="button" class="btn btn-sm btn-primary w-100" id="updateNodeBtn">更新節點</button>' : '',
-            canDeleteNode ? '<button type="button" class="btn btn-sm btn-danger w-100" id="deleteNodeBtn">刪除節點</button>' : '',
+            canUpdateNode ? `<button type="button" class="btn btn-sm btn-primary w-100" id="updateNodeBtn">${escapeHtml(t.updateNode)}</button>` : '',
+            canDeleteNode ? `<button type="button" class="btn btn-sm btn-danger w-100" id="deleteNodeBtn">${escapeHtml(t.deleteNode)}</button>` : '',
         ].filter(Boolean).join('');
 
         // Build a stable render signature to avoid unnecessary re-renders
@@ -1424,33 +1461,33 @@ const UserStoryMapFlow = () => {
         const newHtml = `
             <div class="node-properties-content">
                 <div class="mb-3">
-                    <label class="form-label small fw-bold">標題</label>
+                    <label class="form-label small fw-bold">${escapeHtml(t.title)}</label>
                     <input type="text" class="form-control form-control-sm" id="propTitle" ${readOnlyAttr} value="${escapeHtml(data.title || '')}">
                 </div>
                 <div class="mb-3">
-                    <label class="form-label small fw-bold">描述</label>
+                    <label class="form-label small fw-bold">${escapeHtml(t.description)}</label>
                     <textarea class="form-control form-control-sm" id="propDescription" rows="3" ${readOnlyAttr}>${escapeHtml(data.description || '')}</textarea>
                 </div>
                 <div class="mb-3">
-                    <label class="form-label small fw-bold">團隊</label>
-                    <p class="form-control-plaintext mb-0">${resolvedTeam ? escapeHtml(resolvedTeam) : '<span class="text-muted">未設定</span>'}</p>
+                    <label class="form-label small fw-bold">${escapeHtml(t.team)}</label>
+                    <p class="form-control-plaintext mb-0">${resolvedTeam ? escapeHtml(resolvedTeam) : '<span class="text-muted">' + escapeHtml(t.notSet) + '</span>'}</p>
                 </div>
                 ${data.nodeType === 'user_story' ? `
                 <div class="mb-3">
-                    <label class="form-label small fw-bold">As a <small class="text-muted">(使用者角色)</small></label>
+                    <label class="form-label small fw-bold">${escapeHtml(t.asA)}</label>
                     <input type="text" class="form-control form-control-sm" id="propAsA" ${readOnlyAttr} value="${escapeHtml(data.as_a || '')}" placeholder="As a user...">
                 </div>
                 <div class="mb-3">
-                    <label class="form-label small fw-bold">I want <small class="text-muted">(需求描述)</small></label>
+                    <label class="form-label small fw-bold">${escapeHtml(t.iWant)}</label>
                     <textarea class="form-control form-control-sm" id="propIWant" rows="3" ${readOnlyAttr} placeholder="I want to...">${escapeHtml(data.i_want || '')}</textarea>
                 </div>
                 <div class="mb-3">
-                    <label class="form-label small fw-bold">So that <small class="text-muted">(價值目的)</small></label>
+                    <label class="form-label small fw-bold">${escapeHtml(t.soThat)}</label>
                     <textarea class="form-control form-control-sm" id="propSoThat" rows="3" ${readOnlyAttr} placeholder="So that...">${escapeHtml(data.so_that || '')}</textarea>
                 </div>
                 ` : ''}
                 <div class="mb-3">
-                    <label class="form-label small fw-bold">JIRA Tickets</label>
+                    <label class="form-label small fw-bold">${escapeHtml(t.jiraTickets)}</label>
                     <div id="jiraTicketsContainer"
                          class="tcg-tags-container"
                          style="min-height: 32px; padding: 4px 8px; border: 1px solid #dee2e6; border-radius: 0.25rem; background-color: #fff; cursor: ${canUpdateNode ? 'text' : 'default'}; display: flex; align-items: center; flex-wrap: wrap; gap: 4px; position: relative; overflow-y: auto; max-height: 120px;"
@@ -1462,7 +1499,7 @@ const UserStoryMapFlow = () => {
                 ${aggregatedTicketsHtml}
                 ${relatedNodesHtml}
                 <div class="mb-3">
-                    <label class="form-label small fw-bold">註解</label>
+                    <label class="form-label small fw-bold">${escapeHtml(t.comment)}</label>
                     <textarea class="form-control form-control-sm" id="propComment" rows="2" ${readOnlyAttr}>${escapeHtml(data.comment || '')}</textarea>
                 </div>
             </div>
@@ -2721,75 +2758,76 @@ const UserStoryMapFlow = () => {
                 const onNodeClick = React.useCallback((event, node) => {
                     const content = document.getElementById('fullRelationNodeProperties');
                     if (!content) return;
-                    
+
                     const data = node.data;
-                    
+                    const t = getUsmTranslations();
+
                     // Build aggregated tickets section
                     const aggregatedTicketsHtml = data.aggregatedTickets && data.aggregatedTickets.length > 0
                         ? `<div class="mb-3">
-                                <label class="form-label small fw-bold">聚合 Tickets (含子節點)</label>
+                                <label class="form-label small fw-bold">${escapeHtml(t.aggregatedTickets)}</label>
                                 <div class="alert alert-warning p-2 small" style="word-break: break-word;">
                                     ${escapeHtml(data.aggregatedTickets.join(', '))}
                                 </div>
                             </div>`
                         : '';
-                    
+
                     // 在完整關係圖的右側面板中不顯示相關節點，以避免與跨地圖節點列表重複
                     const relatedNodesHtml = '';
-                    
+
                     // Build main HTML matching main view layout
                     let html = `
                         <div class="node-properties-content">
                             <div class="mb-3">
-                                <label class="form-label small fw-bold">標題</label>
+                                <label class="form-label small fw-bold">${escapeHtml(t.title)}</label>
                                 <p class="form-control-plaintext mb-0 small">${escapeHtml(data.title || '')}</p>
                             </div>
-                            
+
                             <div class="mb-3">
-                                <label class="form-label small fw-bold">描述</label>
+                                <label class="form-label small fw-bold">${escapeHtml(t.description)}</label>
                                 <p class="form-control-plaintext mb-0 small" style="white-space: pre-wrap; word-break: break-word;">${escapeHtml(data.description || '')}</p>
                             </div>
-                            
+
                             <div class="mb-3">
-                                <label class="form-label small fw-bold">團隊</label>
-                                <p class="form-control-plaintext mb-0 small">${data.team ? escapeHtml(data.team) : '<span class="text-muted">未設定</span>'}</p>
+                                <label class="form-label small fw-bold">${escapeHtml(t.team)}</label>
+                                <p class="form-control-plaintext mb-0 small">${data.team ? escapeHtml(data.team) : '<span class="text-muted">' + escapeHtml(t.notSet) + '</span>'}</p>
                             </div>
                     `;
-                    
+
                     // Add user story fields if applicable
                     if (data.nodeType === 'user_story') {
                         html += `
                             <div class="mb-3">
-                                <label class="form-label small fw-bold">As a <small class="text-muted">(使用者角色)</small></label>
+                                <label class="form-label small fw-bold">${escapeHtml(t.asA)}</label>
                                 <p class="form-control-plaintext mb-0 small">${escapeHtml(data.as_a || data.asA || '')}</p>
                             </div>
-                            
+
                             <div class="mb-3">
-                                <label class="form-label small fw-bold">I want <small class="text-muted">(需求描述)</small></label>
+                                <label class="form-label small fw-bold">${escapeHtml(t.iWant)}</label>
                                 <p class="form-control-plaintext mb-0 small" style="white-space: pre-wrap; word-break: break-word;">${escapeHtml(data.i_want || data.iWant || '')}</p>
                             </div>
-                            
+
                             <div class="mb-3">
-                                <label class="form-label small fw-bold">So that <small class="text-muted">(價值目的)</small></label>
+                                <label class="form-label small fw-bold">${escapeHtml(t.soThat)}</label>
                                 <p class="form-control-plaintext mb-0 small" style="white-space: pre-wrap; word-break: break-word;">${escapeHtml(data.so_that || data.soThat || '')}</p>
                             </div>
                         `;
                     }
-                    
+
                     html += `
                             <div class="mb-3">
-                                <label class="form-label small fw-bold">JIRA Tickets</label>
+                                <label class="form-label small fw-bold">${escapeHtml(t.jiraTickets)}</label>
                                 <div class="tcg-tags-container" style="display: flex; flex-wrap: wrap; gap: 0.25rem;">
                                     ${renderJiraTagsHtml(data.jiraTickets)}
                                 </div>
                             </div>
-                            
+
                             ${aggregatedTicketsHtml}
-                            
+
                             ${relatedNodesHtml}
-                            
+
                             <div class="mb-3">
-                                <label class="form-label small fw-bold">註解</label>
+                                <label class="form-label small fw-bold">${escapeHtml(t.comment)}</label>
                                 <p class="form-control-plaintext mb-0 small" style="white-space: pre-wrap; word-break: break-word;">${escapeHtml(data.comment || '')}</p>
                             </div>
                         </div>

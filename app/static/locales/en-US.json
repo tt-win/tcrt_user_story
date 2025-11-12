@@ -1487,6 +1487,16 @@
     "enterTestRunName": "Enter Test Run name",
     "testCases": "test cases",
     "quickSearchPlaceholder": "Search nodes (title, description, As a, I want, So that)...",
-    "enterToSearch": "Enter to search..."
+    "enterToSearch": "Enter to search...",
+    "aggregatedTickets": "Aggregated Tickets (including child nodes)",
+    "clear": "Clear",
+    "comment": "Comment",
+    "deleteNode": "Delete node",
+    "none": "None",
+    "notSet": "Not set",
+    "relatedNodes": "Related nodes",
+    "unknownTeam": "Unknown team",
+    "untitled": "Untitled",
+    "updateNode": "Update node"
   }
 }

@@ -1486,6 +1486,16 @@
     "enterTestRunName": "输入测试运行名称",
     "testCases": "个测试案例",
     "quickSearchPlaceholder": "搜索节点 (标题、描述、作为、我想要、以便)...",
-    "enterToSearch": "输入以搜索..."
+    "enterToSearch": "输入以搜索...",
+    "aggregatedTickets": "聚合票证 (包含子节点)",
+    "clear": "清除",
+    "comment": "注释",
+    "deleteNode": "删除节点",
+    "none": "无",
+    "notSet": "未设置",
+    "relatedNodes": "相关节点",
+    "unknownTeam": "未知团队",
+    "untitled": "无标题",
+    "updateNode": "更新节点"
   }
 }
