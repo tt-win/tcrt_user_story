@@ -872,7 +872,10 @@
     "deleteBtn": "刪除按鈕：標記待刪除，按「儲存變更」時才會實際刪除",
     "editName": "區段名稱：點擊即可編輯名稱",
     "notice": "注意：所有操作都會連同子樹一起移動，最多支援 5 層",
-    "save": "儲存變更"
+    "save": "儲存變更",
+    "sectionNamePlaceholder": "例如: Smoke Tests",
+    "descriptionPlaceholder": "區段描述",
+    "noEditableSections": "沒有可編輯的區段"
   },
   "testRun": {
     "currentExecution": "現在執行：",

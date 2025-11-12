@@ -863,11 +863,11 @@ class TestCaseSectionList {
                 <div class="form-group mb-3">
                   <label for="sectionName" data-i18n="section.sectionName">區段名稱</label>
                   <span class="text-danger">*</span>
-                  <input type="text" id="sectionName" class="form-control" placeholder="例如: Smoke Tests" required>
+                  <input type="text" id="sectionName" class="form-control" data-i18n-placeholder="section.sectionNamePlaceholder" placeholder="例如: Smoke Tests" required>
                 </div>
                 <div class="form-group mb-3">
                   <label for="sectionDescription" data-i18n="section.description">描述</label>
-                  <textarea id="sectionDescription" class="form-control" rows="2" placeholder="區段描述..."></textarea>
+                  <textarea id="sectionDescription" class="form-control" rows="2" data-i18n-placeholder="section.descriptionPlaceholder" placeholder="區段描述..."></textarea>
                 </div>
                 <div class="form-group mb-3">
                   <label for="parentSection" data-i18n="section.parentSection">父區段</label>
@@ -902,6 +902,14 @@ class TestCaseSectionList {
         const key = el.getAttribute('data-i18n');
         const translated = window.i18n.t(key, {}, el.textContent);
         el.textContent = translated;
+      });
+
+      // 翻譯 Placeholder
+      const placeholders = modal.querySelectorAll('[data-i18n-placeholder]');
+      placeholders.forEach(el => {
+        const key = el.getAttribute('data-i18n-placeholder');
+        const translated = window.i18n.t(key, {}, el.placeholder);
+        el.placeholder = translated;
       });
 
       // 翻譯標題
@@ -1600,7 +1608,10 @@ class TestCaseSectionList {
    */
   renderReorderList() {
     if (!this.flatSections || this.flatSections.length === 0) {
-      return '<div class="text-muted text-center py-3">沒有可編輯的區段</div>';
+      const noSectionsMsg = window.i18n && window.i18n.isReady()
+        ? window.i18n.t('section.noEditableSections', {}, '沒有可編輯的區段')
+        : '沒有可編輯的區段';
+      return `<div class="text-muted text-center py-3">${noSectionsMsg}</div>`;
     }
 
     return this.flatSections.map((section, index) => {
