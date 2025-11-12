@@ -1024,6 +1024,53 @@ const UserStoryMapFlow = () => {
         }
     }, [setNodes, setEdges, applyTreeLayout, teamName, toggleNodeCollapse, setSelectedNode, setCurrentMapId, setCollapsedNodeIds, setHighlightedNodeIds, setHighlightedPath]);
 
+    // Update aggregated tickets without reloading the entire map
+    const updateAggregatedTickets = useCallback(async (mapId) => {
+        try {
+            const response = await fetch(`/api/user-story-maps/${mapId}`, {
+                headers: {
+                    'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+                },
+            });
+            if (response.ok) {
+                const map = await response.json();
+                // Only update aggregatedTickets in the current nodes
+                setNodes(prevNodes =>
+                    prevNodes.map(node => {
+                        const updatedNode = map.nodes.find(n => n.id === node.id);
+                        if (updatedNode && updatedNode.aggregated_tickets) {
+                            return {
+                                ...node,
+                                data: {
+                                    ...node.data,
+                                    aggregatedTickets: updatedNode.aggregated_tickets
+                                }
+                            };
+                        }
+                        return node;
+                    })
+                );
+                // Update selectedNode if it exists
+                setSelectedNode(prevSelected => {
+                    if (!prevSelected) return prevSelected;
+                    const updatedNode = map.nodes.find(n => n.id === prevSelected.id);
+                    if (updatedNode && updatedNode.aggregated_tickets) {
+                        return {
+                            ...prevSelected,
+                            data: {
+                                ...prevSelected.data,
+                                aggregatedTickets: updatedNode.aggregated_tickets
+                            }
+                        };
+                    }
+                    return prevSelected;
+                });
+            }
+        } catch (error) {
+            console.error('Failed to update aggregated tickets:', error);
+        }
+    }, [setNodes, setSelectedNode]);
+
     // Save map
     const saveMap = useCallback(async (silent = false) => {
         if (!hasUsmAccess('mapUpdate')) {
@@ -3289,6 +3336,8 @@ const UserStoryMapFlow = () => {
             addNode,
             loadMap,
             loadMaps,
+            updateAggregatedTickets,
+            updateNodeProperties,
             fitView: () => reactFlowInstance.current?.fitView(),
             zoomIn: () => reactFlowInstance.current?.zoomIn(),
             zoomOut: () => reactFlowInstance.current?.zoomOut(),
@@ -3315,7 +3364,7 @@ const UserStoryMapFlow = () => {
         window.cancelMoveMode = cancelMoveMode;
         window.moveMode = moveMode;
         window.moveSourceNodeId = moveSourceNodeId;
-    }, [saveMap, addNode, loadMap, loadMaps, autoLayout, highlightPath, clearHighlight, focusNode, selectedNode, addChildNode, addSiblingNode, setNodes, setEdges, teamName, showFullRelationGraph, currentMapId, teamId, mapIdFromUrl, collapseUserStoryNodes, expandAllNodes, startMoveNodeMode, cancelMoveMode, moveMode, moveSourceNodeId]);
+    }, [saveMap, addNode, loadMap, loadMaps, updateAggregatedTickets, updateNodeProperties, autoLayout, highlightPath, clearHighlight, focusNode, selectedNode, addChildNode, addSiblingNode, setNodes, setEdges, teamName, showFullRelationGraph, currentMapId, teamId, mapIdFromUrl, collapseUserStoryNodes, expandAllNodes, startMoveNodeMode, cancelMoveMode, moveMode, moveSourceNodeId]);
 
     // Expose new functions to window for button handlers
     useEffect(() => {
@@ -3694,8 +3743,13 @@ document.addEventListener('DOMContentLoaded', async function() {
 
             if (response.ok) {
                 showMessage('已計算聚合票證', 'success');
-                // Reload map to get updated data
-                window.userStoryMapFlow?.loadMap(parseInt(mapId));
+                // Update aggregated tickets only, without reloading the entire map
+                await window.userStoryMapFlow?.updateAggregatedTickets(parseInt(mapId));
+                // Refresh properties panel if a node is selected
+                const selectedNode = window.userStoryMapFlow?.getSelectedNode();
+                if (selectedNode) {
+                    window.userStoryMapFlow?.updateNodeProperties(selectedNode);
+                }
             } else {
                 showMessage('計算失敗', 'error');
             }
