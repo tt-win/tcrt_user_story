@@ -4177,6 +4177,14 @@ document.addEventListener('DOMContentLoaded', async function() {
             // Initialize team filter with available teams
             await initializeTeamFilter();
 
+            // Ensure team filter is initially disabled (in case checkbox is unchecked)
+            const teamFilterEl = document.getElementById('relationTeamFilter');
+            const includeExternalCheckbox = document.getElementById('relationIncludeExternal');
+            if (teamFilterEl && !includeExternalCheckbox.checked) {
+                teamFilterEl.classList.add('opacity-50');
+                teamFilterEl.style.pointerEvents = 'none';
+            }
+
             // Load existing relations
             const existingRelations = normalizeRelatedEntries(selectedNode.data?.relatedIds || []);
             window.selectedRelationTargets = existingRelations.map(rel => cloneRelationEntry(rel));
@@ -4221,14 +4229,16 @@ document.addEventListener('DOMContentLoaded', async function() {
             updatedCheckbox.addEventListener('change', (e) => {
                 if (e.target.checked) {
                     // Enable team filter and select all teams
-                    teamFilterEl.disabled = false;
+                    teamFilterEl.classList.remove('opacity-50');
+                    teamFilterEl.style.pointerEvents = 'auto';
                     Array.from(teamFilterEl.options).forEach(option => {
                         option.selected = true;
                     });
                     console.log('[Relation] Include external enabled, team filter enabled and all teams selected');
                 } else {
                     // Disable team filter and clear selection
-                    teamFilterEl.disabled = true;
+                    teamFilterEl.classList.add('opacity-50');
+                    teamFilterEl.style.pointerEvents = 'none';
                     Array.from(teamFilterEl.options).forEach(option => {
                         option.selected = false;
                     });
@@ -4296,13 +4306,15 @@ document.addEventListener('DOMContentLoaded', async function() {
                     // If "Search Other Maps" is checked, enable and select all teams
                     const includeExternal = document.getElementById('relationIncludeExternal').checked;
                     if (includeExternal) {
-                        teamFilterEl.disabled = false;
+                        teamFilterEl.classList.remove('opacity-50');
+                        teamFilterEl.style.pointerEvents = 'auto';
                         // Select all teams
                         Array.from(teamFilterEl.options).forEach(option => {
                             option.selected = true;
                         });
                     } else {
-                        teamFilterEl.disabled = true;
+                        teamFilterEl.classList.add('opacity-50');
+                        teamFilterEl.style.pointerEvents = 'none';
                         // Clear selection
                         Array.from(teamFilterEl.options).forEach(option => {
                             option.selected = false;
@@ -4329,14 +4341,14 @@ document.addEventListener('DOMContentLoaded', async function() {
 
         console.log('[Relation] Search params:', { query, jiraQuery, jiraLogic, nodeType, selectedTeams, includeExternal, currentMapId });
 
-        if (!query && !jiraQuery && !nodeType && selectedTeams.length === 0) {
-            showMessage('請輸入搜尋條件', 'warning');
-            return;
-        }
-
         // If "Search Other Maps" is checked, must select at least one team
         if (includeExternal && selectedTeams.length === 0) {
             showMessage('勾選「搜尋其他地圖」時，必須至少選擇一個團隊', 'warning');
+            return;
+        }
+
+        if (!query && !jiraQuery && !nodeType) {
+            showMessage('請輸入搜尋條件', 'warning');
             return;
         }
 
@@ -4358,11 +4370,12 @@ document.addEventListener('DOMContentLoaded', async function() {
             if (nodeType) {
                 params.set('node_type', nodeType);
             }
-            if (selectedTeams.length > 0) {
-                params.set('team_ids', selectedTeams.join(','));
-            }
+            // Only apply team filter if "Search Other Maps" is checked
             if (includeExternal) {
                 params.set('include_external', 'true');
+                if (selectedTeams.length > 0) {
+                    params.set('team_ids', selectedTeams.join(','));
+                }
             }
             if (window.currentRelationNode && window.currentRelationNode.id) {
                 params.set('exclude_node_id', window.currentRelationNode.id);
