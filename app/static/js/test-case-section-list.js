@@ -251,11 +251,11 @@ class TestCaseSectionList {
           <!-- Section 樹會插入這裡 -->
         </div>
         <div class="card-footer section-list-footer" style="flex-shrink: 0;">
-           <button class="btn btn-sm btn-primary w-100 mb-2" onclick="testCaseSectionList.showCreateSectionModal()" data-i18n="addSection">
-             <i class="fas fa-plus"></i> addSection
+           <button class="btn btn-sm btn-primary w-100 mb-2" onclick="testCaseSectionList.showCreateSectionModal()" data-i18n="section.addSection">
+             <i class="fas fa-plus"></i> <span>新增區段</span>
            </button>
-           <button class="btn btn-sm btn-outline-secondary w-100" onclick="testCaseSectionList.showReorderModal()" data-i18n="editList">
-             <i class="fas fa-list"></i> editList
+           <button class="btn btn-sm btn-outline-secondary w-100" onclick="testCaseSectionList.showReorderModal()" data-i18n="section.editList">
+             <i class="fas fa-list"></i> <span>編輯列表</span>
            </button>
         </div>
       </div>
@@ -266,13 +266,15 @@ class TestCaseSectionList {
     console.log("[SectionList] Sidebar panel HTML inserted");
 
     // 翻譯按鈕文本
-    const addButton = sidebarCol.querySelector('button[data-i18n="addSection"]');
+    const addButton = sidebarCol.querySelector('button[data-i18n="section.addSection"]');
     if (addButton && window.i18n) {
-      addButton.innerHTML = `<i class="fas fa-plus"></i> ${window.i18n.t('addSection')}`;
+      const addText = window.i18n.t('section.addSection', {}, '新增區段');
+      addButton.innerHTML = `<i class="fas fa-plus"></i> <span>${addText}</span>`;
     }
-    const editButton = sidebarCol.querySelector('button[data-i18n="editList"]');
+    const editButton = sidebarCol.querySelector('button[data-i18n="section.editList"]');
     if (editButton && window.i18n) {
-      editButton.innerHTML = `<i class="fas fa-list"></i> ${window.i18n.t('editList')}`;
+      const editText = window.i18n.t('section.editList', {}, '編輯列表');
+      editButton.innerHTML = `<i class="fas fa-list"></i> <span>${editText}</span>`;
     }
 
     // 渲染 Section 樹
