@@ -4137,7 +4137,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     // ============ Relation Settings ============
     
     // Set Relations Button - Global function
-    window.openRelationModal = function() {
+    window.openRelationModal = async function() {
         console.log('[Relation] openRelationModal called');
 
         if (!hasUsmAccess('nodeUpdate')) {
