@@ -858,7 +858,21 @@
   "section": {
     "unassigned": "Unassigned",
     "addSection": "新增區段",
-    "editList": "編輯列表"
+    "editList": "編輯列表",
+    "sectionName": "區段名稱",
+    "description": "描述",
+    "parentSection": "父區段",
+    "noParent": "無 (頂層)",
+    "cancel": "取消",
+    "create": "建立",
+    "operationGuide": "操作說明",
+    "moveUpDown": "上/下按鈕：同層移動，與前/後兄弟節點交換位置",
+    "moveLeft": "← 左按鈕：減少層級（反縮排），從父節點取出並與父節點同層",
+    "moveRight": "→ 右按鈕：增加層級（縮排），成為視覺上相鄰的上一個同層或淺層節點的子節點",
+    "deleteBtn": "刪除按鈕：標記待刪除，按「儲存變更」時才會實際刪除",
+    "editName": "區段名稱：點擊即可編輯名稱",
+    "notice": "注意：所有操作都會連同子樹一起移動，最多支援 5 層",
+    "save": "儲存變更"
   },
   "testRun": {
     "currentExecution": "現在執行：",
