@@ -4208,13 +4208,40 @@ document.addEventListener('DOMContentLoaded', async function() {
             });
             console.log('[Relation] Showing modal');
             modalInstance.show();
-            
+
+            // Set up event listener for "Search Other Maps" checkbox
+            const includeExternalCheckbox = document.getElementById('relationIncludeExternal');
+            const teamFilterEl = document.getElementById('relationTeamFilter');
+
+            // Remove any previous event listeners by cloning
+            const newCheckbox = includeExternalCheckbox.cloneNode(true);
+            includeExternalCheckbox.parentNode.replaceChild(newCheckbox, includeExternalCheckbox);
+
+            const updatedCheckbox = document.getElementById('relationIncludeExternal');
+            updatedCheckbox.addEventListener('change', (e) => {
+                if (e.target.checked) {
+                    // Enable team filter and select all teams
+                    teamFilterEl.disabled = false;
+                    Array.from(teamFilterEl.options).forEach(option => {
+                        option.selected = true;
+                    });
+                    console.log('[Relation] Include external enabled, team filter enabled and all teams selected');
+                } else {
+                    // Disable team filter and clear selection
+                    teamFilterEl.disabled = true;
+                    Array.from(teamFilterEl.options).forEach(option => {
+                        option.selected = false;
+                    });
+                    console.log('[Relation] Include external disabled, team filter disabled and cleared');
+                }
+            });
+
             // Verify modal is visible
             setTimeout(() => {
                 console.log('[Relation] Modal visible:', modalElement.style.display);
                 console.log('[Relation] Modal opacity:', window.getComputedStyle(modalElement).opacity);
             }, 100);
-            
+
             console.log('[Relation] Modal shown successfully');
         } catch (error) {
             console.error('[Relation] Error setting up modal:', error);
@@ -4265,6 +4292,22 @@ document.addEventListener('DOMContentLoaded', async function() {
                     teamFilterEl.innerHTML = teams.map(team =>
                         `<option value="${team.id}">${escapeHtml(team.name)}</option>`
                     ).join('');
+
+                    // If "Search Other Maps" is checked, enable and select all teams
+                    const includeExternal = document.getElementById('relationIncludeExternal').checked;
+                    if (includeExternal) {
+                        teamFilterEl.disabled = false;
+                        // Select all teams
+                        Array.from(teamFilterEl.options).forEach(option => {
+                            option.selected = true;
+                        });
+                    } else {
+                        teamFilterEl.disabled = true;
+                        // Clear selection
+                        Array.from(teamFilterEl.options).forEach(option => {
+                            option.selected = false;
+                        });
+                    }
                 }
             }
         } catch (error) {
@@ -4288,6 +4331,12 @@ document.addEventListener('DOMContentLoaded', async function() {
 
         if (!query && !jiraQuery && !nodeType && selectedTeams.length === 0) {
             showMessage('請輸入搜尋條件', 'warning');
+            return;
+        }
+
+        // If "Search Other Maps" is checked, must select at least one team
+        if (includeExternal && selectedTeams.length === 0) {
+            showMessage('勾選「搜尋其他地圖」時，必須至少選擇一個團隊', 'warning');
             return;
         }
 
