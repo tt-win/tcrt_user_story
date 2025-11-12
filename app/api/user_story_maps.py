@@ -430,7 +430,8 @@ async def search_global_nodes(
     result = await usm_db.execute(query)
     nodes = result.scalars().all()
 
-    # 排除指定的節點
+    # 排除根節點和指定的節點
+    nodes = [node for node in nodes if node.node_type != 'root']
     if exclude_node_id:
         nodes = [node for node in nodes if node.node_id != exclude_node_id]
 
