@@ -251,12 +251,12 @@ class TestCaseSectionList {
           <!-- Section 樹會插入這裡 -->
         </div>
         <div class="card-footer section-list-footer" style="flex-shrink: 0;">
-          <button class="btn btn-sm btn-primary w-100 mb-2" onclick="testCaseSectionList.showCreateSectionModal()">
-            <i class="fas fa-plus"></i> 新增區段
-          </button>
-          <button class="btn btn-sm btn-outline-secondary w-100" onclick="testCaseSectionList.showReorderModal()">
-            <i class="fas fa-list"></i> 編輯列表
-          </button>
+           <button class="btn btn-sm btn-primary w-100 mb-2" onclick="testCaseSectionList.showCreateSectionModal()">
+             <i class="fas fa-plus"></i> ${i18n.t('addSection')}
+           </button>
+           <button class="btn btn-sm btn-outline-secondary w-100" onclick="testCaseSectionList.showReorderModal()">
+             <i class="fas fa-list"></i> ${i18n.t('editList')}
+           </button>
         </div>
       </div>
     `;
