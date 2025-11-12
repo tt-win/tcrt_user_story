@@ -825,32 +825,6 @@
       "copyPaste": "Ctrl+C to copy, Ctrl+V to paste"
     }
   },
-  "testCaseSet": {
-    "pageSubtitle": "Select or create a test case set to start managing test cases",
-    "setName": "Set Name",
-    "createSet": "Create Test Case Set",
-    "editSet": "Edit Test Case Set",
-    "create": "Create",
-    "update": "Update",
-    "nameUnique": "Name must be globally unique",
-    "confirmDelete": "Confirm Delete",
-    "deleteConfirmMessage": "Are you sure you want to delete this test case set? This action cannot be undone.",
-    "selectTestCases": "Select Test Cases",
-    "searchTestCases": "Search test cases...",
-    "selectedCount": "Selected {count} test cases",
-    "createTestRun": "Create Test Run",
-    "noTestCases": "No test cases",
-    "noTestCaseSets": "No test case sets",
-    "createFirstSet": "Click the card below to create the first test case set",
-    "selectOrCreate": "Select or create a test case set to start managing test cases",
-    "defaultSetCannotDelete": "Cannot delete the default Test Case Set",
-    "selectAtLeastOne": "Please select at least one test case",
-    "deleteSuccess": "Set deleted successfully, Test Cases moved to default set",
-    "addSet": "Add Set",
-    "createSetHint": "Create a new test case set",
-    "updateSet": "Update Set",
-    "defaultSetDescription": "Team default test case set"
-  },
   "section": {
     "unassigned": "Unassigned"
   },
