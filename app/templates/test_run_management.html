@@ -4448,16 +4448,16 @@ const jiraDataCache = new Map();
 
 // 創建或獲取 tooltip 元素
 function getOrCreateJiraTooltip() {
-    let tooltip = document.getElementById('jira-preview-tooltip');
+    let tooltip = document.getElementById('tcg-tooltip-content');
     if (!tooltip) {
         tooltip = document.createElement('div');
-        tooltip.id = 'jira-preview-tooltip';
-        tooltip.className = 'jira-preview-tooltip';
-        
+        tooltip.id = 'tcg-tooltip-content';
+        tooltip.className = 'tcg-tooltip-content';
+
         // 添加鼠標事件，讓用戶可以移動到 tooltip 上而不會消失
         tooltip.addEventListener('mouseenter', cancelHideTooltip);
         tooltip.addEventListener('mouseleave', hideJiraPreview);
-        
+
         document.body.appendChild(tooltip);
     }
     return tooltip;
@@ -4520,7 +4520,7 @@ let hideTooltipTimer = null;
 function hideJiraPreview() {
     // 設定延遲隱藏，讓用戶有時間移動到 tooltip 上
     hideTooltipTimer = setTimeout(() => {
-        const tooltip = document.getElementById('jira-preview-tooltip');
+        const tooltip = document.getElementById('tcg-tooltip-content');
         if (tooltip) {
             tooltip.classList.remove('show');
         }
