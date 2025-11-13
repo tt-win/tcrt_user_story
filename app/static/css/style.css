@@ -967,7 +967,7 @@ main > .d-flex.justify-content-between.align-items-center.mb-3 p.text-muted {
     border-radius: 8px;
     box-shadow: 0 4px 12px rgba(0,0,0,0.15);
     padding: 0;
-    max-width: 300px;
+    width: 360px;
     z-index: 1070;
     pointer-events: auto;
     overflow: hidden;
@@ -975,7 +975,7 @@ main > .d-flex.justify-content-between.align-items-center.mb-3 p.text-muted {
 }
 
 .tcg-tooltip-content {
-    max-width: 300px;
+    width: 100%;
     word-wrap: break-word;
 }
 
