@@ -178,7 +178,6 @@ Web Tool{% endblock %} {% block page_title_text %}
         display: flex;
         flex-direction: column;
         min-height: 0;
-        overflow-y: auto;
     }
 
     .relation-selected-column {
@@ -190,13 +189,26 @@ Web Tool{% endblock %} {% block page_title_text %}
         padding-left: 16px;
     }
 
-    .relation-search-results {
-        flex: 1;
+    .relation-search-container {
+        display: flex;
+        flex-direction: column;
         min-height: 0;
+        flex: 1;
+    }
+
+    .relation-search-results {
+        height: 300px;
+        flex-shrink: 0;
         overflow-y: auto;
         border: 1px solid #dee2e6;
         border-radius: 4px;
         margin-bottom: 12px;
+    }
+
+    .relation-search-actions {
+        flex-shrink: 0;
+        padding-top: 8px;
+        border-top: 1px solid #dee2e6;
     }
 
     .relation-selected-list {
@@ -591,7 +603,7 @@ Web Tool{% endblock %} {% block page_title_text %}
                     </div>
 
                     <!-- Search Results -->
-                    <div class="mt-2">
+                    <div class="relation-search-container">
                         <label class="form-label" data-i18n="usm.searchResults">搜尋結果</label>
                         <div
                             class="list-group list-group-sm relation-search-results"
@@ -601,10 +613,10 @@ Web Tool{% endblock %} {% block page_title_text %}
                                 輸入關鍵字並搜尋
                             </p>
                         </div>
-                        <div class="mt-2">
+                        <div class="relation-search-actions">
                             <button
                                 type="button"
-                                class="btn btn-sm btn-primary"
+                                class="btn btn-sm btn-primary w-100"
                                 id="relationAddSelectedBtn"
                                 disabled
                             >
