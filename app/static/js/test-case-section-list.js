@@ -876,11 +876,16 @@ class TestCaseSectionList {
                     ${this.getSectionOptions()}
                   </select>
                 </div>
+                <div id="successMessage" class="alert alert-success" style="display: none;">
+                  <i class="fas fa-check-circle"></i> <span class="ms-2"></span>
+                </div>
               </form>
             </div>
             <div class="modal-footer">
               <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="section.cancel">取消</button>
-              <button type="button" class="btn btn-primary" onclick="testCaseSectionList.createSection()" data-i18n="section.create">建立</button>
+              <button type="button" class="btn btn-primary" onclick="testCaseSectionList.createSection()" data-i18n="section.create">
+                <i class="fas fa-plus"></i> <span>建立</span>
+              </button>
             </div>
           </div>
         </div>
@@ -921,7 +926,10 @@ class TestCaseSectionList {
       // 翻譯按鈕中的文本
       const createBtn = modal.querySelector('button[data-i18n="section.create"]');
       if (createBtn) {
-        createBtn.textContent = window.i18n.t('section.create', {}, '建立');
+        const span = createBtn.querySelector('span');
+        if (span) {
+          span.textContent = window.i18n.t('section.create', {}, '建立');
+        }
       }
 
       // 翻譯 Cancel 按鈕
@@ -935,6 +943,11 @@ class TestCaseSectionList {
       document.getElementById("createSectionModal"),
     );
     modal.show();
+
+    // 焦點設置在名稱欄
+    setTimeout(() => {
+      document.getElementById("sectionName")?.focus();
+    }, 100);
   }
 
   /**
@@ -972,6 +985,9 @@ class TestCaseSectionList {
     return options.join("");
   }
 
+  /**
+   * 建立 Section
+   */
   /**
    * 建立 Section
    */
@@ -1037,14 +1053,34 @@ class TestCaseSectionList {
         throw new Error(errorDetail);
       }
 
-      const modal = bootstrap.Modal.getInstance(
-        document.getElementById("createSectionModal"),
-      );
-      if (modal) {
-        modal.hide();
+      // 顯示成功訊息
+      const successMsg = document.getElementById("successMessage");
+      if (successMsg) {
+        const span = successMsg.querySelector("span");
+        if (span) {
+          span.textContent = `已成功建立區段「${this.escapeHtml(name)}」`;
+        }
+        successMsg.style.display = "block";
       }
 
-      // 重新載入 Sections
+      // 清除表單欄位
+      document.getElementById("sectionName").value = "";
+      document.getElementById("sectionDescription").value = "";
+      document.getElementById("parentSection").value = "";
+
+      // 3 秒後移除成功訊息
+      setTimeout(() => {
+        if (successMsg) {
+          successMsg.style.display = "none";
+        }
+      }, 3000);
+
+      // 焦點回到名稱欄，準備輸入下一個區段
+      setTimeout(() => {
+        document.getElementById("sectionName")?.focus();
+      }, 100);
+
+      // 重新載入 Sections（但不關閉 modal）
       console.log("[SectionList] Section created, reloading sections...");
       await this.loadSections();
     } catch (error) {
