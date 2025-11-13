@@ -960,7 +960,7 @@ main > .d-flex.justify-content-between.align-items-center.mb-3 p.text-muted {
 }
 
 /* TCG Hover Tooltip 樣式 */
-#tcg-tooltip {
+#tcg-tooltip-content {
     z-index: 1070;
     pointer-events: auto;
     animation: tooltipFadeIn 0.2s ease-out;

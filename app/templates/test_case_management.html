@@ -9684,14 +9684,14 @@ let isInitialized = false;
 // 建立 TCG tooltip 元素
 function createTCGTTooltip() {
     // 如果已經存在，先移除
-    const existingTooltip = document.getElementById('tcg-tooltip');
+    const existingTooltip = document.getElementById('tcg-tooltip-content');
     if (existingTooltip) {
         existingTooltip.remove();
     }
 
     const tooltip = document.createElement('div');
-    tooltip.id = 'tcg-tooltip';
-    tooltip.className = 'tcg-tooltip';
+    tooltip.id = 'tcg-tooltip-content';
+    tooltip.className = 'tcg-tooltip-content';
     tooltip.style.cssText = `
         position: fixed;
         background: white;
@@ -9799,7 +9799,7 @@ function hideTCGTTooltip(immediate = false) {
     }
 
     const hideTooltip = () => {
-        const tooltip = document.getElementById('tcg-tooltip');
+        const tooltip = document.getElementById('tcg-tooltip-content');
         if (tooltip) {
             tooltip.style.display = 'none';
         }
@@ -9977,7 +9977,7 @@ function initializeTCGHover() {
         }
 
         // 檢查是否移到 tooltip 上
-        if (e.target.closest('#tcg-tooltip')) {
+        if (e.target.closest('#tcg-tooltip-content')) {
             isHoveringTooltip = true;
             if (tooltipTimeout) {
                 clearTimeout(tooltipTimeout);
@@ -9999,7 +9999,7 @@ function initializeTCGHover() {
         }
 
         // 檢查是否離開 tooltip
-        if (e.target.closest('#tcg-tooltip') && !e.relatedTarget?.closest('#tcg-tooltip')) {
+        if (e.target.closest('#tcg-tooltip-content') && !e.relatedTarget?.closest('#tcg-tooltip-content')) {
             isHoveringTooltip = false;
             // 延遲檢查是否需要隱藏 tooltip
             setTimeout(() => {
@@ -10012,7 +10012,7 @@ function initializeTCGHover() {
 
     // 點擊其他地方時隱藏 tooltip
     document.addEventListener('click', function(e) {
-        if (!e.target.closest('.tcg-tag') && !e.target.closest('#tcg-tooltip')) {
+        if (!e.target.closest('.tcg-tag') && !e.target.closest('#tcg-tooltip-content')) {
             hideTCGTTooltip(true);
         }
     });
@@ -10050,14 +10050,14 @@ async function showTCGPreviewForModal() {
     console.log('TCG Number:', tcgNumber); // 調試用
 
     // 移除現有的 tooltip（如果有的話）
-    const existingTooltip = document.getElementById('modal-jira-tooltip');
+    const existingTooltip = document.getElementById('tcg-tooltip-content');
     if (existingTooltip) {
         existingTooltip.remove();
     }
 
     // 創建新的 tooltip
     const tooltip = document.createElement('div');
-    tooltip.id = 'modal-jira-tooltip';
+    tooltip.id = 'tcg-tooltip-content';
     tooltip.style.cssText = `
         position: fixed;
         background: white;
@@ -10231,7 +10231,7 @@ window.addEventListener('beforeunload', function() {
 // 動態內容更新時重新初始化
 document.addEventListener('dynamicContentLoaded', function() {
     // 重新初始化，但不清理由有的事件監聽器
-    const tooltip = document.getElementById('tcg-tooltip');
+    const tooltip = document.getElementById('tcg-tooltip-content');
     if (tooltip) {
         tooltip.remove();
     }
@@ -10247,7 +10247,7 @@ document.addEventListener('dynamicContentLoaded', function() {
 
     // 當滑鼠移到 tooltip 上時，不要隱藏
     document.addEventListener('mouseover', function(e) {
-        if (e.target.closest('#tcg-tooltip')) {
+        if (e.target.closest('#tcg-tooltip-content')) {
             if (tooltipTimeout) {
                 clearTimeout(tooltipTimeout);
                 tooltipTimeout = null;
@@ -10257,7 +10257,7 @@ document.addEventListener('dynamicContentLoaded', function() {
 
     // 當滑鼠離開 tooltip 時，隱藏
     document.addEventListener('mouseout', function(e) {
-        if (e.target.closest('#tcg-tooltip')) {
+        if (e.target.closest('#tcg-tooltip-content')) {
             hideTCGTTooltip();
         }
     });

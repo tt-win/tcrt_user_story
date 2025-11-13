@@ -5436,14 +5436,14 @@ let isJiraHoveringTooltip = false;
 // 建立 JIRA tooltip 元素
 function createJIRATooltip() {
     // 如果已經存在，先移除
-    const existingTooltip = document.getElementById('jira-tooltip');
+    const existingTooltip = document.getElementById('tcg-tooltip-content');
     if (existingTooltip) {
         existingTooltip.remove();
     }
 
     const tooltip = document.createElement('div');
-    tooltip.id = 'jira-tooltip';
-    tooltip.className = 'jira-tooltip';
+    tooltip.id = 'tcg-tooltip-content';
+    tooltip.className = 'tcg-tooltip-content';
     tooltip.style.cssText = `
         position: fixed;
         background: white;
@@ -5528,7 +5528,7 @@ function formatJIRATicketTooltip(tcgNumber, ticketData) {
     const jiraUrl = ticketData.url || `https://jira.example.com/browse/${tcgNumber}`;
     
     return `
-        <div class="jira-tooltip-content">
+        <div class="tcg-tooltip-content">
             <div class="mb-2">
                 <div class="fw-bold">
                     <a href="${jiraUrl}" target="_blank" class="text-primary text-decoration-none" style="cursor: pointer;">
