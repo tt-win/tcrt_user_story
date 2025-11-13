@@ -18,6 +18,7 @@ class TestCaseSectionList {
     this.nextSectionEventMeta = null;
     this.sectionsToDelete = new Set(); // 待刪除的 section IDs
     this.teamId = null; // 當前 Team ID
+    this.sectionSuccessMessageTimer = null;
     this.init();
   }
 
@@ -92,6 +93,18 @@ class TestCaseSectionList {
     });
   }
 
+  translate(key, values = {}, fallback = "") {
+    try {
+      if (window.i18n && typeof window.i18n.t === "function") {
+        const defaultText = fallback || key;
+        return window.i18n.t(key, values, defaultText);
+      }
+    } catch (error) {
+      console.warn("[SectionList] Failed to translate key:", key, error);
+    }
+    return fallback || key;
+  }
+
   /**
    * 注入自定義樣式
    */
@@ -121,6 +134,19 @@ class TestCaseSectionList {
         display: flex;
         align-items: center;
         gap: 6px;
+      }
+
+      #reorderSectionModal .modal-body {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+        max-height: 70vh;
+      }
+
+      #reorderSectionModal .reorder-list-wrapper {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
       }
     `;
     document.head.appendChild(style);
@@ -850,6 +876,42 @@ class TestCaseSectionList {
    * 顯示建立 Section Modal
    */
   showCreateSectionModal() {
+    const sectionNameLabel = this.translate(
+      'section.sectionName',
+      {},
+      '區段名稱',
+    );
+    const sectionNamePlaceholder = this.translate(
+      'section.sectionNamePlaceholder',
+      {},
+      '例如: Smoke Tests',
+    );
+    const descriptionLabel = this.translate(
+      'section.description',
+      {},
+      '描述',
+    );
+    const descriptionPlaceholder = this.translate(
+      'section.descriptionPlaceholder',
+      {},
+      '區段描述',
+    );
+    const parentLabel = this.translate(
+      'section.parentSection',
+      {},
+      '父區段',
+    );
+    const noParentText = this.translate(
+      'section.noParent',
+      {},
+      '無 (頂層)',
+    );
+    const nameRequiredText = this.translate(
+      'section.nameRequired',
+      {},
+      '區段名稱不可空白',
+    );
+
     const modalHtml = `
       <div class="modal fade" id="createSectionModal" tabindex="-1">
         <div class="modal-dialog modal-dialog-centered">
@@ -860,19 +922,19 @@ class TestCaseSectionList {
             </div>
             <div class="modal-body">
               <form id="createSectionForm">
-                <div class="form-group mb-3">
-                  <label for="sectionName" data-i18n="section.sectionName">區段名稱</label>
-                  <span class="text-danger">*</span>
-                  <input type="text" id="sectionName" class="form-control" data-i18n-placeholder="section.sectionNamePlaceholder" placeholder="例如: Smoke Tests" required>
+                <div class="mb-3">
+                  <label class="form-label" for="sectionName" data-i18n="section.sectionName">${this.escapeHtml(sectionNameLabel)}</label>
+                  <input type="text" class="form-control" id="sectionName" placeholder="${this.escapeHtml(sectionNamePlaceholder)}" data-i18n-placeholder="section.sectionNamePlaceholder" />
+                  <div class="invalid-feedback">${this.escapeHtml(nameRequiredText)}</div>
                 </div>
-                <div class="form-group mb-3">
-                  <label for="sectionDescription" data-i18n="section.description">描述</label>
-                  <textarea id="sectionDescription" class="form-control" rows="2" data-i18n-placeholder="section.descriptionPlaceholder" placeholder="區段描述..."></textarea>
+                <div class="mb-3">
+                  <label class="form-label" for="sectionDescription" data-i18n="section.description">${this.escapeHtml(descriptionLabel)}</label>
+                  <textarea class="form-control" id="sectionDescription" rows="2" placeholder="${this.escapeHtml(descriptionPlaceholder)}" data-i18n-placeholder="section.descriptionPlaceholder"></textarea>
                 </div>
-                <div class="form-group mb-3">
-                  <label for="parentSection" data-i18n="section.parentSection">父區段</label>
-                  <select id="parentSection" class="form-control">
-                    <option value="" data-i18n="section.noParent">無 (頂層)</option>
+                <div class="mb-3">
+                  <label class="form-label" for="parentSection" data-i18n="section.parentSection">${this.escapeHtml(parentLabel)}</label>
+                  <select class="form-select section-parent-select" id="parentSection">
+                    <option value="">${this.escapeHtml(noParentText)}</option>
                     ${this.getSectionOptions()}
                   </select>
                 </div>
@@ -898,11 +960,13 @@ class TestCaseSectionList {
     // 添加新 modal
     document.body.insertAdjacentHTML("beforeend", modalHtml);
 
-    // 翻譯模態框內容
-    if (window.i18n && window.i18n.isReady()) {
-      const modal = document.getElementById("createSectionModal");
+    const modalElement = document.getElementById("createSectionModal");
+    this.resetCreateSectionFormFields({ hideSuccessMessage: true });
+    this.refreshParentOptionsInForm();
 
-      const labels = modal.querySelectorAll('[data-i18n]');
+    // 翻譯模態框內容
+    if (modalElement && window.i18n && window.i18n.isReady()) {
+      const labels = modalElement.querySelectorAll('[data-i18n]');
       labels.forEach(el => {
         const key = el.getAttribute('data-i18n');
         const translated = window.i18n.t(key, {}, el.textContent);
@@ -910,7 +974,7 @@ class TestCaseSectionList {
       });
 
       // 翻譯 Placeholder
-      const placeholders = modal.querySelectorAll('[data-i18n-placeholder]');
+      const placeholders = modalElement.querySelectorAll('[data-i18n-placeholder]');
       placeholders.forEach(el => {
         const key = el.getAttribute('data-i18n-placeholder');
         const translated = window.i18n.t(key, {}, el.placeholder);
@@ -918,13 +982,13 @@ class TestCaseSectionList {
       });
 
       // 翻譯標題
-      const title = modal.querySelector('h5[data-i18n="section.addSection"]');
+      const title = modalElement.querySelector('h5[data-i18n="section.addSection"]');
       if (title) {
         title.textContent = window.i18n.t('section.addSection', {}, '新增區段');
       }
 
       // 翻譯按鈕中的文本
-      const createBtn = modal.querySelector('button[data-i18n="section.create"]');
+      const createBtn = modalElement.querySelector('button[data-i18n="section.create"]');
       if (createBtn) {
         const span = createBtn.querySelector('span');
         if (span) {
@@ -933,21 +997,115 @@ class TestCaseSectionList {
       }
 
       // 翻譯 Cancel 按鈕
-      const cancelBtn = modal.querySelector('button[data-i18n="section.cancel"]');
+      const cancelBtn = modalElement.querySelector('button[data-i18n="section.cancel"]');
       if (cancelBtn) {
         cancelBtn.textContent = window.i18n.t('section.cancel', {}, '取消');
       }
     }
 
-    const modal = new bootstrap.Modal(
-      document.getElementById("createSectionModal"),
+    const modal = new bootstrap.Modal(modalElement);
+    modalElement.addEventListener(
+      "hidden.bs.modal",
+      () => {
+        this.resetCreateSectionFormFields({ hideSuccessMessage: true });
+        if (this.sectionSuccessMessageTimer) {
+          clearTimeout(this.sectionSuccessMessageTimer);
+          this.sectionSuccessMessageTimer = null;
+        }
+      },
+      { once: true },
     );
+    const nameInput = modalElement.querySelector("#sectionName");
+    if (nameInput) {
+      nameInput.addEventListener("input", () => {
+        nameInput.classList.remove("is-invalid");
+      });
+    }
+
     modal.show();
 
     // 焦點設置在名稱欄
     setTimeout(() => {
-      document.getElementById("sectionName")?.focus();
+      this.focusFirstSectionNameInput();
     }, 100);
+  }
+
+  resetCreateSectionFormFields(options = {}) {
+    const { hideSuccessMessage = false } = options || {};
+    const nameInput = document.getElementById("sectionName");
+    const descriptionInput = document.getElementById("sectionDescription");
+    const parentSelect = document.getElementById("parentSection");
+    const successMsg = document.getElementById("successMessage");
+
+    if (nameInput) {
+      nameInput.value = "";
+      nameInput.classList.remove("is-invalid");
+    }
+    if (descriptionInput) {
+      descriptionInput.value = "";
+    }
+    if (parentSelect) {
+      parentSelect.value = "";
+    }
+    if (hideSuccessMessage && successMsg) {
+      successMsg.style.display = "none";
+    }
+
+    this.focusFirstSectionNameInput();
+  }
+
+  focusFirstSectionNameInput() {
+    const firstInput = document.getElementById("sectionName");
+    if (firstInput) {
+      firstInput.focus();
+    }
+  }
+
+  showCreateSectionSuccess(name) {
+    if (!name) return;
+    const successMsg = document.getElementById("successMessage");
+    if (!successMsg) return;
+    const span = successMsg.querySelector("span");
+    if (!span) return;
+
+    const key = "section.singleCreateSuccess";
+    const fallback = `已成功建立區段「${name}」`;
+    span.textContent = this.translate(
+      key,
+      {
+        name,
+      },
+      fallback,
+    );
+    successMsg.style.display = "block";
+
+    if (this.sectionSuccessMessageTimer) {
+      clearTimeout(this.sectionSuccessMessageTimer);
+    }
+    this.sectionSuccessMessageTimer = setTimeout(() => {
+      successMsg.style.display = "none";
+      this.sectionSuccessMessageTimer = null;
+    }, 3000);
+  }
+
+  refreshParentOptionsInForm() {
+    const select = document.getElementById("parentSection");
+    if (!select) return;
+
+    const previousValue = select.value;
+    const noParentText = this.translate(
+      "section.noParent",
+      {},
+      "無 (頂層)",
+    );
+    const optionsHtml = this.getSectionOptions();
+    select.innerHTML = `<option value="">${this.escapeHtml(noParentText)}</option>${optionsHtml}`;
+    if (previousValue) {
+      const optionExists = Array.from(select.options).some(
+        (opt) => opt.value === previousValue,
+      );
+      select.value = optionExists ? previousValue : "";
+    }
   }
 
   /**
@@ -988,27 +1146,32 @@ class TestCaseSectionList {
   /**
    * 建立 Section
    */
-  /**
-   * 建立 Section
-   */
   async createSection() {
-    const name = document.getElementById("sectionName").value.trim();
-    const description = document
-      .getElementById("sectionDescription")
-      .value.trim();
-    const parentId = document.getElementById("parentSection").value || null;
+    const nameInput = document.getElementById("sectionName");
+    const descriptionInput = document.getElementById("sectionDescription");
+    const parentSelect = document.getElementById("parentSection");
 
-    if (!name) {
-      alert("區段名稱不可空白");
+    if (!nameInput) {
+      console.warn("[SectionList] sectionName input not found");
       return;
     }
 
-    // Unassigned 已不會出現在父區段選單，這裡不需再次檢查
+    const name = nameInput.value.trim();
+    const description = descriptionInput ? descriptionInput.value.trim() : "";
+    const parentId = parentSelect ? parentSelect.value : null;
+
+    if (!name) {
+      nameInput.classList.add("is-invalid");
+      nameInput.focus();
+      alert(this.translate("section.nameRequired", {}, "區段名稱不可空白"));
+      return;
+    }
+
+    nameInput.classList.remove("is-invalid");
 
     try {
-      // 獲取 team_id 和當前 set_id
       const urlParams = new URLSearchParams(window.location.search);
-      const teamId = urlParams.get("team_id");
+      const teamId = urlParams.get("team_id") || this.teamId;
 
       if (!teamId) {
         alert("無法取得團隊 ID");
@@ -1025,7 +1188,7 @@ class TestCaseSectionList {
           body: JSON.stringify({
             name,
             description: description || null,
-            parent_section_id: parentId ? parseInt(parentId) : null,
+            parent_section_id: this.normalizeParentId(parentId),
             sort_order: 0,
           }),
         },
@@ -1053,36 +1216,12 @@ class TestCaseSectionList {
         throw new Error(errorDetail);
       }
 
-      // 顯示成功訊息
-      const successMsg = document.getElementById("successMessage");
-      if (successMsg) {
-        const span = successMsg.querySelector("span");
-        if (span) {
-          span.textContent = `已成功建立區段「${this.escapeHtml(name)}」`;
-        }
-        successMsg.style.display = "block";
-      }
+      this.showCreateSectionSuccess(name);
+      this.resetCreateSectionFormFields();
 
-      // 清除表單欄位
-      document.getElementById("sectionName").value = "";
-      document.getElementById("sectionDescription").value = "";
-      document.getElementById("parentSection").value = "";
-
-      // 3 秒後移除成功訊息
-      setTimeout(() => {
-        if (successMsg) {
-          successMsg.style.display = "none";
-        }
-      }, 3000);
-
-      // 焦點回到名稱欄，準備輸入下一個區段
-      setTimeout(() => {
-        document.getElementById("sectionName")?.focus();
-      }, 100);
-
-      // 重新載入 Sections（但不關閉 modal）
       console.log("[SectionList] Section created, reloading sections...");
       await this.loadSections();
+      this.refreshParentOptionsInForm();
     } catch (error) {
       console.error("Error creating section:", error);
       alert("建立區段失敗: " + error.message);
@@ -1272,6 +1411,7 @@ class TestCaseSectionList {
         this.nextSectionEventMeta = { reloadTestCases: true };
       }
       this.render();
+      this.refreshParentOptionsInForm();
     } catch (error) {
       console.error("Error loading sections:", error);
       alert("載入區段失敗: " + error.message);
@@ -1513,7 +1653,7 @@ class TestCaseSectionList {
     // 創建 modal HTML
     const modalHtml = `
       <div class="modal fade" id="reorderSectionModal" tabindex="-1" aria-labelledby="reorderSectionModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-lg">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
           <div class="modal-content">
             <div class="modal-header">
               <h5 class="modal-title" id="reorderSectionModalLabel" data-i18n="section.editList">
@@ -1534,8 +1674,10 @@ class TestCaseSectionList {
                   <li data-i18n="section.notice"><strong>注意</strong>：所有操作都會連同子樹一起移動，最多支援 5 層</li>
                 </ul>
               </div>
-              <div id="reorderSectionList" class="list-group">
-                ${this.renderReorderList()}
+              <div class="reorder-list-wrapper">
+                <div id="reorderSectionList" class="list-group">
+                  ${this.renderReorderList()}
+                </div>
               </div>
             </div>
             <div class="modal-footer">

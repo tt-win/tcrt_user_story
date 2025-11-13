@@ -59,7 +59,9 @@
     "view": "查看",
     "yes": "是",
     "saving": "保存中...",
-    "processing": "处理中..."
+    "processing": "处理中...",
+    "languageMalay": "马来语",
+    "languageJapanese": "日语"
   },
   "user": {
     "menu": {
@@ -389,7 +391,10 @@
     "chinese": "简体中文",
     "current": "简体中文",
     "english": "English",
-    "traditional": "繁体中文"
+    "traditional": "繁体中文",
+    "simplifiedChinese": "简体中文",
+    "malay": "马来语",
+    "japanese": "日语"
   },
   "loading": {
     "completed": "加载完成",
@@ -460,18 +465,18 @@
     "permissionDenied": "无权限执行此操作",
     "batchCopySuccess": "已成功复制 {count} 条测试案例"
   },
-    "navigation": {
-        "backToHome": "首页",
-        "backToManagement": "回到管理",
-        "backToSets": "回到 Test Case Sets",
-        "pleaseSelect": "请选择...",
-        "subtitle": "选择团队开始管理测试案例",
-        "teamSettings": "团队设置",
-        "testCaseManagement": "Test Case 管理",
-        "testRunManagement": "Test Run 管理",
-        "userStoryMap": "User Story Map",
-        "title": "Test Case Repository"
-    },
+  "navigation": {
+    "backToHome": "首页",
+    "backToManagement": "回到管理",
+    "backToSets": "回到 Test Case Sets",
+    "pleaseSelect": "请选择...",
+    "subtitle": "选择团队开始管理测试案例",
+    "teamSettings": "团队设置",
+    "testCaseManagement": "Test Case 管理",
+    "testRunManagement": "Test Run 管理",
+    "userStoryMap": "User Story Map",
+    "title": "Test Case Repository"
+  },
   "orgSync": {
     "active": "活跃",
     "addTeamFirst": "请先新增团队后再执行同步",
@@ -865,6 +870,7 @@
     "description": "描述",
     "parentSection": "父区段",
     "noParent": "无 (顶层)",
+    "nameRequired": "区段名称不可为空",
     "cancel": "取消",
     "create": "建立",
     "operationGuide": "操作说明",
@@ -877,7 +883,8 @@
     "save": "保存变更",
     "sectionNamePlaceholder": "例如: Smoke Tests",
     "descriptionPlaceholder": "区段描述",
-    "noEditableSections": "没有可编辑的区段"
+    "noEditableSections": "没有可编辑的区段",
+    "singleCreateSuccess": "已成功建立区段「{name}」"
   },
   "testRun": {
     "currentExecution": "现在执行：",
@@ -1501,6 +1508,8 @@
     "jiraTicketPlaceholder": "例如：JIRA-123, JIRA-456",
     "teamFilter": "团队",
     "selectTeams": "选择团队 (全选表示不过滤)",
-    "allTeams": "全选"
+    "allTeams": "全选",
+    "noJiraTickets": "未输入任何票号",
+    "jiraTicketInputPlaceholder": "输入 JIRA 票号，以逗号分隔 (例: JIRA-123, JIRA-456)"
   }
 }

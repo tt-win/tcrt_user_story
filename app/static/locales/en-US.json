@@ -59,7 +59,9 @@
     "view": "View",
     "yes": "Yes",
     "saving": "Saving...",
-    "processing": "Processing..."
+    "processing": "Processing...",
+    "languageMalay": "Bahasa Melayu",
+    "languageJapanese": "日本語"
   },
   "user": {
     "menu": {
@@ -386,10 +388,13 @@
     "quickSearchTP": "Press / to search TP tickets"
   },
   "language": {
-    "chinese": "Chinese (Simplified)",
+    "chinese": "Chinese (Traditional)",
     "current": "English",
     "english": "English",
-    "traditional": "Chinese (Traditional)"
+    "traditional": "Chinese (Traditional)",
+    "simplifiedChinese": "Chinese (Simplified)",
+    "malay": "Bahasa Melayu",
+    "japanese": "日本語"
   },
   "loading": {
     "completed": "Load completed",
@@ -836,6 +841,7 @@
     "description": "Description",
     "parentSection": "Parent Section",
     "noParent": "None (Top Level)",
+    "nameRequired": "Section name is required",
     "cancel": "Cancel",
     "create": "Create",
     "operationGuide": "Operation Guide",
@@ -848,7 +854,8 @@
     "save": "Save Changes",
     "sectionNamePlaceholder": "e.g., Smoke Tests",
     "descriptionPlaceholder": "Section Description",
-    "noEditableSections": "No editable sections"
+    "noEditableSections": "No editable sections",
+    "singleCreateSuccess": "Section \"{name}\" has been created"
   },
   "testCaseSet": {
     "pageSubtitle": "Select or create a test case set to start managing test cases",
@@ -1502,6 +1509,8 @@
     "jiraTicketPlaceholder": "e.g., JIRA-123, JIRA-456",
     "teamFilter": "Team",
     "selectTeams": "Select teams (All for no filter)",
-    "allTeams": "All"
+    "allTeams": "All",
+    "noJiraTickets": "No tickets entered",
+    "jiraTicketInputPlaceholder": "Enter JIRA ticket numbers, comma separated (e.g., JIRA-123, JIRA-456)"
   }
 }
