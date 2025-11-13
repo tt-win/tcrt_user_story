@@ -327,7 +327,8 @@ const normalizeJiraTickets = (tickets) => {
 const renderJiraTagsHtml = (tickets) => {
     const normalized = normalizeJiraTickets(tickets);
     if (!normalized.length) {
-        return '<small class="text-muted">未輸入任何票號</small>';
+        const emptyText = window.i18n ? window.i18n.t('usm.noJiraTickets', {}, '未輸入任何票號') : '未輸入任何票號';
+        return `<small class="text-muted">${emptyText}</small>`;
     }
     return normalized
         .map(ticket => `<span class="tcg-tag">${escapeHtml(ticket)}</span>`)
@@ -1687,10 +1688,11 @@ const UserStoryMapFlow = () => {
         container.style.gap = '4px';
 
         // 創建浮層輸入框 - 使用絕對定位，不會影響版面
+        const placeholderText = window.i18n ? window.i18n.t('usm.jiraTicketInputPlaceholder', {}, '輸入 JIRA 票號，以逗號分隔 (例: JIRA-123, JIRA-456)') : '輸入 JIRA 票號，以逗號分隔 (例: JIRA-123, JIRA-456)';
         const editorHtml = `
             <div class="jira-inline-editor" style="position: absolute; top: 0; left: 0; right: 0; bottom: 0; z-index: 1000; display: flex; align-items: center; padding: 4px 8px;" onclick="event.stopPropagation()">
                 <input type="text" class="form-control form-control-sm jira-search-input"
-                       placeholder="輸入 JIRA 票號，以逗號分隔 (例: JIRA-123, JIRA-456)"
+                       placeholder="${placeholderText}"
                        autocomplete="off"
                        onkeydown="window.handleJiraSearchKeydown(event)"
                        style="height: 28px; width: 100%; font-size: 0.75rem; padding: 0.25rem 0.375rem; margin: 0; border: 1px solid #dee2e6; box-sizing: border-box;">
