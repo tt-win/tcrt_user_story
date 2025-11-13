@@ -419,27 +419,57 @@ window.fetchJiraTicketInfo = async function(ticketNumber) {
 // 格式化 JIRA ticket tooltip 內容
 window.formatJiraTooltip = function(ticketNumber, ticketData) {
     if (!ticketData) {
-        return `<div class="text-muted small">
-            <i class="fas fa-exclamation-triangle me-1"></i>
-            無法取得 ${escapeHtml(ticketNumber)} 的資訊
-        </div>`;
+        return `
+            <div class="tcg-tooltip-header">
+                <div class="tcg-ticket-info">
+                    <span class="tcg-ticket-number">${escapeHtml(ticketNumber)}</span>
+                </div>
+            </div>
+            <div class="tcg-ticket-content">
+                <div style="color: #dc3545; font-size: 0.8rem;">
+                    <i class="fas fa-exclamation-triangle me-1"></i>
+                    無法取得 ${escapeHtml(ticketNumber)} 的資訊
+                </div>
+            </div>
+        `;
     }
 
     const summary = ticketData.summary || '無標題';
     const status = ticketData.status?.name || '未知狀態';
-    const statusColor = getStatusColor(status);
+    const assignee = ticketData.assignee?.displayName || '未指派';
+    const url = ticketData.url || '#';
+
+    let statusClass = 'status-todo';
+    if (status.toLowerCase().includes('in progress')) {
+        statusClass = 'status-in-progress';
+    } else if (status.toLowerCase().includes('done') || status.toLowerCase().includes('resolved')) {
+        statusClass = 'status-done';
+    }
 
     return `
-        <div style="text-align: left;">
-            <div style="font-weight: 600; margin-bottom: 4px; color: #1976d2;">
-                ${escapeHtml(ticketNumber)}
+        <div class="tcg-tooltip-header">
+            <div class="tcg-ticket-info">
+                <span class="tcg-ticket-number">${escapeHtml(ticketNumber)}</span>
+                <span class="tcg-ticket-status ${statusClass}">${escapeHtml(status)}</span>
             </div>
-            <div style="margin-bottom: 4px; color: #333;">
-                <strong>標題:</strong> ${escapeHtml(summary)}
+        </div>
+
+        <div class="tcg-ticket-content">
+            <div class="tcg-ticket-title">${escapeHtml(summary)}</div>
+
+            <div class="tcg-ticket-meta">
+                <div class="tcg-assignee">
+                    <span class="tcg-label">負責人:</span>
+                    <span class="tcg-value">${escapeHtml(assignee)}</span>
+                </div>
             </div>
-            <div style="color: #666;">
-                <strong>狀態:</strong> <span style="display: inline-block; background-color: ${statusColor}; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.75rem;">${escapeHtml(status)}</span>
-            </div>
+        </div>
+
+        <div class="tcg-tooltip-footer">
+            <a href="${url}" target="_blank" class="tcg-jira-link">
+                <i class="fas fa-external-link-alt me-1"></i>
+                在 JIRA 中檢視
+            </a>
         </div>
     `;
 };

@@ -959,11 +959,111 @@ main > .d-flex.justify-content-between.align-items-center.mb-3 p.text-muted {
     }
 }
 
-/* TCG Hover Tooltip 樣式 */
+/* TCG Hover Tooltip 樣式 - 統一設計 */
 #tcg-tooltip-content {
+    position: fixed;
+    background: white;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+    padding: 0;
+    max-width: 300px;
     z-index: 1070;
     pointer-events: auto;
-    animation: tooltipFadeIn 0.2s ease-out;
+    overflow: hidden;
+    display: none;
+}
+
+.tcg-tooltip-content {
+    max-width: 300px;
+    word-wrap: break-word;
+}
+
+.tcg-tooltip-content .tcg-tooltip-header {
+    background: #f8fafc;
+    padding: 12px 16px;
+    border-bottom: 1px solid #e2e8f0;
+    margin: 0;
+}
+
+.tcg-tooltip-content .tcg-ticket-info {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.tcg-tooltip-content .tcg-ticket-number {
+    font-weight: 600;
+    color: #1e40af;
+    font-size: 0.9rem;
+}
+
+.tcg-tooltip-content .tcg-ticket-status {
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+}
+
+.tcg-tooltip-content .tcg-ticket-content {
+    padding: 14px 16px;
+}
+
+.tcg-tooltip-content .tcg-ticket-title {
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: #1f2937;
+    margin-bottom: 12px;
+    line-height: 1.4;
+}
+
+.tcg-tooltip-content .tcg-ticket-meta {
+    display: grid;
+    gap: 8px;
+}
+
+.tcg-tooltip-content .tcg-assignee,
+.tcg-tooltip-content .tcg-priority {
+    display: flex;
+    align-items: center;
+}
+
+.tcg-tooltip-content .tcg-label {
+    font-size: 0.8rem;
+    color: #6b7280;
+    font-weight: 500;
+    min-width: 65px;
+    margin-right: 8px;
+}
+
+.tcg-tooltip-content .tcg-value {
+    font-size: 0.8rem;
+    color: #374151;
+    font-weight: 400;
+}
+
+.tcg-tooltip-content .tcg-tooltip-footer {
+    background: #f8fafc;
+    padding: 10px 16px;
+    border-top: 1px solid #e2e8f0;
+    margin: 0;
+}
+
+.tcg-tooltip-content .tcg-jira-link {
+    display: inline-flex;
+    align-items: center;
+    color: #3b82f6;
+    text-decoration: none;
+    font-size: 0.8rem;
+    font-weight: 500;
+    transition: color 0.15s ease;
+}
+
+.tcg-tooltip-content .tcg-jira-link:hover {
+    color: #1d4ed8;
+    text-decoration: underline;
 }
 
 @keyframes tooltipFadeIn {
@@ -975,19 +1075,6 @@ main > .d-flex.justify-content-between.align-items-center.mb-3 p.text-muted {
         opacity: 1;
         transform: translateY(0);
     }
-}
-
-.tcg-tooltip-content {
-    max-width: 300px;
-    word-wrap: break-word;
-}
-
-.tcg-tooltip-content .fw-bold {
-    word-break: break-all;
-}
-
-.tcg-tooltip-content .small {
-    font-size: 0.75rem;
 }
 
 /* TCG tag hover 效果增強 */
