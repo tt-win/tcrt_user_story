@@ -178,6 +178,12 @@ Web Tool{% endblock %} {% block page_title_text %}
         display: flex;
         flex-direction: column;
         min-height: 0;
+        gap: 12px;
+    }
+
+    .relation-filters-section {
+        flex-shrink: 0;
+        overflow-y: auto;
     }
 
     .relation-selected-column {
@@ -190,25 +196,21 @@ Web Tool{% endblock %} {% block page_title_text %}
     }
 
     .relation-search-container {
+        flex-shrink: 0;
         display: flex;
         flex-direction: column;
-        min-height: 0;
-        flex: 1;
+        gap: 8px;
     }
 
     .relation-search-results {
         height: 300px;
-        flex-shrink: 0;
         overflow-y: auto;
         border: 1px solid #dee2e6;
         border-radius: 4px;
-        margin-bottom: 12px;
     }
 
     .relation-search-actions {
         flex-shrink: 0;
-        padding-top: 8px;
-        border-top: 1px solid #dee2e6;
     }
 
     .relation-selected-list {
@@ -504,100 +506,103 @@ Web Tool{% endblock %} {% block page_title_text %}
             <div class="modal-body relation-modal-body">
                 <!-- Left Column: Search Section (2/3) -->
                 <div class="relation-search-column">
-                    <!-- Current Node Info -->
-                    <div class="alert alert-info mb-3">
-                        <strong data-i18n="usm.sourceNode">來源節點:</strong>
-                        <span id="relationSourceNodeTitle" data-i18n="usm.notSelected">未選擇</span>
-                        <small class="text-muted d-block"
-                            ><span data-i18n="usm.id">ID:</span> <span id="relationSourceNodeId">-</span></small
-                        >
-                    </div>
-
-                    <!-- Search Section -->
-                    <div class="mb-3">
-                        <label class="form-label" data-i18n="usm.searchTargetNodes">搜尋目標節點</label>
-                        <div class="input-group input-group-sm mb-2">
-                            <input
-                                type="text"
-                                class="form-control"
-                                id="relationSearchInput"
-                                data-i18n-placeholder="usm.searchPlaceholder"
-                                placeholder="輸入節點名稱或描述..."
-                            />
-                            <button
-                                class="btn btn-secondary"
-                                type="button"
-                                id="relationSearchBtn"
+                    <!-- Filters Section (scrollable) -->
+                    <div class="relation-filters-section">
+                        <!-- Current Node Info -->
+                        <div class="alert alert-info mb-3">
+                            <strong data-i18n="usm.sourceNode">來源節點:</strong>
+                            <span id="relationSourceNodeTitle" data-i18n="usm.notSelected">未選擇</span>
+                            <small class="text-muted d-block"
+                                ><span data-i18n="usm.id">ID:</span> <span id="relationSourceNodeId">-</span></small
                             >
-                                <i class="fas fa-search"></i>
-                            </button>
                         </div>
 
-                        <!-- JIRA Ticket Search -->
-                        <div class="mb-2">
-                            <label class="form-label small text-muted" data-i18n="usm.jiraTicketSearch">JIRA 單號</label>
-                            <input
-                                type="text"
-                                class="form-control form-control-sm"
-                                id="relationJiraSearchInput"
-                                data-i18n-placeholder="usm.jiraTicketPlaceholder"
-                                placeholder="例如：JIRA-123, JIRA-456"
-                            />
-                            <small class="text-muted d-block mt-1">
-                                <span data-i18n="usm.logic">邏輯:</span>
-                                <span class="ms-2">
-                                    <label class="form-check-label me-3">
-                                        <input class="form-check-input" type="radio" name="jiraLogic" value="and" checked />
-                                        <span data-i18n="usm.and">AND</span>
-                                    </label>
-                                    <label class="form-check-label">
-                                        <input class="form-check-input" type="radio" name="jiraLogic" value="or" />
-                                        <span data-i18n="usm.or">OR</span>
-                                    </label>
-                                </span>
-                            </small>
-                        </div>
-                    </div>
-
-                    <!-- Filters -->
-                    <div class="row mb-3">
-                        <div class="col-md-6">
-                            <label class="form-label small text-muted"
-                                data-i18n="usm.nodeType">節點類型</label
-                            >
-                            <select
-                                class="form-select form-select-sm"
-                                id="relationNodeTypeFilter"
-                            >
-                                <option value="" data-i18n="usm.allTypes">全部類型</option>
-                                <option value="user_story" data-i18n="usm.userStory">User Story</option>
-                                <option value="feature_category" data-i18n="usm.featureCategory">功能節點</option>
-                            </select>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label small text-muted" data-i18n="usm.teamFilter">團隊</label>
-                            <select
-                                class="form-select form-select-sm"
-                                id="relationTeamFilter"
-                                multiple
-                                data-i18n-placeholder="usm.selectTeams"
-                            >
-                                <!-- Options will be populated dynamically -->
-                            </select>
-                            <small class="text-muted d-block mt-1" data-i18n="usm.selectTeams">選擇團隊 (全選表示不過濾)</small>
-                            <div class="form-check mt-2">
+                        <!-- Search Section -->
+                        <div class="mb-3">
+                            <label class="form-label" data-i18n="usm.searchTargetNodes">搜尋目標節點</label>
+                            <div class="input-group input-group-sm mb-2">
                                 <input
-                                    class="form-check-input"
-                                    type="checkbox"
-                                    id="relationIncludeExternal"
+                                    type="text"
+                                    class="form-control"
+                                    id="relationSearchInput"
+                                    data-i18n-placeholder="usm.searchPlaceholder"
+                                    placeholder="輸入節點名稱或描述..."
                                 />
-                                <label
-                                    class="form-check-label small"
-                                    for="relationIncludeExternal"
-                                    data-i18n="usm.searchOtherMaps"
+                                <button
+                                    class="btn btn-secondary"
+                                    type="button"
+                                    id="relationSearchBtn"
                                 >
-                                    搜尋其他地圖
-                                </label>
+                                    <i class="fas fa-search"></i>
+                                </button>
+                            </div>
+
+                            <!-- JIRA Ticket Search -->
+                            <div class="mb-2">
+                                <label class="form-label small text-muted" data-i18n="usm.jiraTicketSearch">JIRA 單號</label>
+                                <input
+                                    type="text"
+                                    class="form-control form-control-sm"
+                                    id="relationJiraSearchInput"
+                                    data-i18n-placeholder="usm.jiraTicketPlaceholder"
+                                    placeholder="例如：JIRA-123, JIRA-456"
+                                />
+                                <small class="text-muted d-block mt-1">
+                                    <span data-i18n="usm.logic">邏輯:</span>
+                                    <span class="ms-2">
+                                        <label class="form-check-label me-3">
+                                            <input class="form-check-input" type="radio" name="jiraLogic" value="and" checked />
+                                            <span data-i18n="usm.and">AND</span>
+                                        </label>
+                                        <label class="form-check-label">
+                                            <input class="form-check-input" type="radio" name="jiraLogic" value="or" />
+                                            <span data-i18n="usm.or">OR</span>
+                                        </label>
+                                    </span>
+                                </small>
+                            </div>
+                        </div>
+
+                        <!-- Filters -->
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label small text-muted"
+                                    data-i18n="usm.nodeType">節點類型</label
+                                >
+                                <select
+                                    class="form-select form-select-sm"
+                                    id="relationNodeTypeFilter"
+                                >
+                                    <option value="" data-i18n="usm.allTypes">全部類型</option>
+                                    <option value="user_story" data-i18n="usm.userStory">User Story</option>
+                                    <option value="feature_category" data-i18n="usm.featureCategory">功能節點</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label small text-muted" data-i18n="usm.teamFilter">團隊</label>
+                                <select
+                                    class="form-select form-select-sm"
+                                    id="relationTeamFilter"
+                                    multiple
+                                    data-i18n-placeholder="usm.selectTeams"
+                                >
+                                    <!-- Options will be populated dynamically -->
+                                </select>
+                                <small class="text-muted d-block mt-1" data-i18n="usm.selectTeams">選擇團隊 (全選表示不過濾)</small>
+                                <div class="form-check mt-2">
+                                    <input
+                                        class="form-check-input"
+                                        type="checkbox"
+                                        id="relationIncludeExternal"
+                                    />
+                                    <label
+                                        class="form-check-label small"
+                                        for="relationIncludeExternal"
+                                        data-i18n="usm.searchOtherMaps"
+                                    >
+                                        搜尋其他地圖
+                                    </label>
+                                </div>
                             </div>
                         </div>
                     </div>
