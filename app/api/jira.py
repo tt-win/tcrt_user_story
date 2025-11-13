@@ -3,6 +3,7 @@ JIRA API 路由
 提供 JIRA 相關的 API 端點
 """
 
+import asyncio
 from fastapi import APIRouter, HTTPException, Depends
 from typing import Optional, Dict, Any
 import re
@@ -80,10 +81,11 @@ async def get_ticket_info(
         Dict: 包含 ticket 基本資訊的字典
     """
     try:
-        # 取得 ticket 詳細資訊
-        ticket_data = jira_client.get_issue(
+        # 使用 asyncio.to_thread() 在後台線程中進行同步的 JIRA 調用
+        ticket_data = await asyncio.to_thread(
+            jira_client.get_issue,
             ticket_key,
-            fields=['summary', 'status', 'assignee', 'created', 'updated', 'description']
+            ['summary', 'status', 'assignee', 'created', 'updated', 'description']
         )
 
         if not ticket_data:
@@ -134,7 +136,8 @@ async def test_jira_connection(
         Dict: 包含連接狀態和使用者資訊
     """
     try:
-        connection_ok = jira_client.test_connection()
+        # 使用 asyncio.to_thread() 在後台線程中進行連接測試
+        connection_ok = await asyncio.to_thread(jira_client.test_connection)
 
         if connection_ok:
             return {
@@ -168,7 +171,8 @@ async def get_jira_projects(
         Dict: 包含專案列表
     """
     try:
-        projects = jira_client.get_projects()
+        # 使用 asyncio.to_thread() 在後台線程中獲取專案列表
+        projects = await asyncio.to_thread(jira_client.get_projects)
 
         return {
             'projects': projects,
@@ -188,16 +192,16 @@ async def validate_tp_ticket(
 ) -> Dict[str, Any]:
     """
     驗證 TP 票號有效性
-    
+
     Args:
         tp_number: TP 票號 (例如: TP-12345)
-        
+
     Returns:
         Dict: 驗證結果包含格式檢查和 JIRA 存在性檢查
     """
     # TP 票號格式驗證
     format_valid, error_message = validate_tp_format(tp_number)
-    
+
     if not format_valid:
         return {
             'ticket_number': tp_number,
@@ -206,12 +210,14 @@ async def validate_tp_ticket(
             'exists_in_jira': False,
             'error': error_message
         }
-    
+
     # JIRA 存在性檢查
     try:
-        ticket_data = jira_client.get_issue(
+        # 使用 asyncio.to_thread() 在後台線程中查詢票號
+        ticket_data = await asyncio.to_thread(
+            jira_client.get_issue,
             tp_number,
-            fields=['summary', 'status', 'key']
+            ['summary', 'status', 'key']
         )
         
         if ticket_data:
@@ -249,28 +255,29 @@ async def get_tp_ticket_details(
 ) -> Dict[str, Any]:
     """
     取得 TP 票號詳細資訊
-    
+
     Args:
         tp_number: TP 票號 (例如: TP-12345)
-        
+
     Returns:
         Dict: 完整的 TP 票號 JIRA 資訊包含標題、狀態、負責人、優先級、連結
     """
     # TP 票號格式驗證
     format_valid, error_message = validate_tp_format(tp_number)
-    
+
     if not format_valid:
         raise HTTPException(
             status_code=400,
             detail=error_message
         )
-    
+
     try:
-        # 查詢完整的票號資訊
-        ticket_data = jira_client.get_issue(
+        # 使用 asyncio.to_thread() 在後台線程中查詢完整的票號資訊
+        ticket_data = await asyncio.to_thread(
+            jira_client.get_issue,
             tp_number,
-            fields=['summary', 'status', 'assignee', 'priority', 'created', 
-                   'updated', 'description', 'issuetype', 'project']
+            ['summary', 'status', 'assignee', 'priority', 'created',
+             'updated', 'description', 'issuetype', 'project']
         )
         
         if not ticket_data:
@@ -362,11 +369,11 @@ async def get_tp_tickets_batch(
 ) -> Dict[str, Any]:
     """
     批次查詢多個 TP 票號資訊
-    
+
     Args:
         tp_numbers: TP 票號列表
         fields: 要返回的欄位列表 (可選)
-        
+
     Returns:
         Dict: 批次查詢結果包含所有票號的詳細資訊
     """
@@ -377,7 +384,7 @@ async def get_tp_tickets_batch(
             'invalid_count': 0,
             'results': {}
         }
-    
+
     # 限制批次查詢數量
     max_batch_size = 50
     if len(tp_numbers) > max_batch_size:
@@ -385,10 +392,15 @@ async def get_tp_tickets_batch(
             status_code=400,
             detail=f"批次查詢數量超過限制 {max_batch_size}，當前: {len(tp_numbers)}"
         )
-    
+
     try:
-        # 呼叫服務層批次查詢方法
-        results = jira_client.get_tp_tickets_batch(tp_numbers, fields)
+        # 使用 asyncio.to_thread() 在後台線程中進行批次查詢
+        # 這樣可以避免如果 JIRA 連接超時時阻塞整個 async 路由
+        results = await asyncio.to_thread(
+            jira_client.get_tp_tickets_batch,
+            tp_numbers,
+            fields
+        )
         
         # 統計結果
         valid_count = sum(1 for result in results.values() if result.get('valid', False))
