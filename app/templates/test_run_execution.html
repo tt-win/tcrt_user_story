@@ -5444,19 +5444,8 @@ function createJIRATooltip() {
     const tooltip = document.createElement('div');
     tooltip.id = 'tcg-tooltip-content';
     tooltip.className = 'tcg-tooltip-content';
-    tooltip.style.cssText = `
-        position: fixed;
-        background: white;
-        border: 1px solid #dee2e6;
-        border-radius: 8px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-        padding: 12px;
-        max-width: 300px;
-        z-index: 1100;
-        display: none;
-        font-size: 0.875rem;
-        pointer-events: auto;
-    `;
+    tooltip.style.position = 'fixed';
+    tooltip.style.display = 'none';
 
     document.body.appendChild(tooltip);
     return tooltip;

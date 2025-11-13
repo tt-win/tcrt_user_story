@@ -351,18 +351,9 @@ window.createJiraTooltip = function() {
 
     const tooltip = document.createElement('div');
     tooltip.id = 'tcg-tooltip-content';
-    tooltip.style.cssText = `
-        position: fixed;
-        background: white;
-        border: 1px solid #dee2e6;
-        border-radius: 8px;
-        padding: 12px;
-        max-width: 300px;
-        box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
-        z-index: 10000;
-        display: none;
-        font-size: 0.875rem;
-    `;
+    tooltip.className = 'tcg-tooltip-content';
+    tooltip.style.position = 'fixed';
+    tooltip.style.display = 'none';
     document.body.appendChild(tooltip);
     jiraTooltipState.tooltipElement = tooltip;
     return tooltip;
