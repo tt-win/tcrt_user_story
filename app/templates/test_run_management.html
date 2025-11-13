@@ -451,7 +451,7 @@
 }
 
 /* JIRA 預覽 tooltip 樣式 */
-.jira-preview-tooltip {
+.tcg-tooltip-content {
     position: absolute;
     z-index: 9999;
     background: #ffffff;
@@ -467,13 +467,13 @@
     pointer-events: auto;
 }
 
-.jira-preview-tooltip.show {
+.tcg-tooltip-content.show {
     opacity: 1;
     visibility: visible;
     transform: translateY(0);
 }
 
-.jira-preview-tooltip .tooltip-header {
+.tcg-tooltip-content .tooltip-header {
     display: flex;
     align-items: center;
     gap: 8px;
@@ -482,13 +482,13 @@
     border-bottom: 1px solid #eee;
 }
 
-.jira-preview-tooltip .ticket-number {
+.tcg-tooltip-content .ticket-number {
     font-weight: 600;
     color: var(--tr-primary);
     font-size: 0.875rem;
 }
 
-.jira-preview-tooltip .ticket-status {
+.tcg-tooltip-content .ticket-status {
     padding: 2px 8px;
     border-radius: 12px;
     font-size: 0.75rem;
@@ -496,22 +496,22 @@
     text-transform: uppercase;
 }
 
-.jira-preview-tooltip .status-todo {
+.tcg-tooltip-content .status-todo {
     background-color: #e3f2fd;
     color: #1976d2;
 }
 
-.jira-preview-tooltip .status-in-progress {
+.tcg-tooltip-content .status-in-progress {
     background-color: #fff3e0;
     color: #f57c00;
 }
 
-.jira-preview-tooltip .status-done {
+.tcg-tooltip-content .status-done {
     background-color: #e8f5e8;
     color: #388e3c;
 }
 
-.jira-preview-tooltip .ticket-title {
+.tcg-tooltip-content .ticket-title {
     font-size: 0.9rem;
     font-weight: 500;
     color: #333;
@@ -519,25 +519,25 @@
     line-height: 1.4;
 }
 
-.jira-preview-tooltip .ticket-details {
+.tcg-tooltip-content .ticket-details {
     font-size: 0.8rem;
     color: #666;
     margin-bottom: 8px;
 }
 
-.jira-preview-tooltip .assignee-info {
+.tcg-tooltip-content .assignee-info {
     display: flex;
     align-items: center;
     gap: 6px;
     margin-bottom: 8px;
 }
 
-.jira-preview-tooltip .assignee-info .fas {
+.tcg-tooltip-content .assignee-info .fas {
     color: #666;
     width: 14px;
 }
 
-.jira-preview-tooltip .jira-link {
+.tcg-tooltip-content .jira-link {
     display: inline-flex;
     align-items: center;
     gap: 4px;
@@ -550,12 +550,12 @@
     border-top: 1px solid #eee;
 }
 
-.jira-preview-tooltip .jira-link:hover {
+.tcg-tooltip-content .jira-link:hover {
     color: var(--tr-primary-dark);
     text-decoration: underline;
 }
 
-.jira-preview-tooltip .loading-spinner {
+.tcg-tooltip-content .loading-spinner {
     display: flex;
     align-items: center;
     justify-content: center;
@@ -563,7 +563,7 @@
     color: #666;
 }
 
-.jira-preview-tooltip .error-message {
+.tcg-tooltip-content .error-message {
     color: #dc3545;
     font-size: 0.8rem;
     text-align: center;
@@ -571,26 +571,26 @@
 }
 
 /* TCG 風格的 tooltip 樣式 */
-.jira-preview-tooltip .tcg-tooltip-header {
+.tcg-tooltip-content .tcg-tooltip-header {
     background: #f8fafc;
     padding: 12px 16px;
     border-bottom: 1px solid #e2e8f0;
     margin: 0;
 }
 
-.jira-preview-tooltip .tcg-ticket-info {
+.tcg-tooltip-content .tcg-ticket-info {
     display: flex;
     align-items: center;
     justify-content: space-between;
 }
 
-.jira-preview-tooltip .tcg-ticket-number {
+.tcg-tooltip-content .tcg-ticket-number {
     font-weight: 600;
     color: #1e40af;
     font-size: 0.9rem;
 }
 
-.jira-preview-tooltip .tcg-ticket-status {
+.tcg-tooltip-content .tcg-ticket-status {
     padding: 3px 10px;
     border-radius: 12px;
     font-size: 0.75rem;
@@ -599,11 +599,11 @@
     letter-spacing: 0.025em;
 }
 
-.jira-preview-tooltip .tcg-ticket-content {
+.tcg-tooltip-content .tcg-ticket-content {
     padding: 14px 16px;
 }
 
-.jira-preview-tooltip .tcg-ticket-title {
+.tcg-tooltip-content .tcg-ticket-title {
     font-size: 0.95rem;
     font-weight: 500;
     color: #1f2937;
@@ -611,18 +611,18 @@
     line-height: 1.4;
 }
 
-.jira-preview-tooltip .tcg-ticket-meta {
+.tcg-tooltip-content .tcg-ticket-meta {
     display: grid;
     gap: 8px;
 }
 
-.jira-preview-tooltip .tcg-assignee,
-.jira-preview-tooltip .tcg-priority {
+.tcg-tooltip-content .tcg-assignee,
+.tcg-tooltip-content .tcg-priority {
     display: flex;
     align-items: center;
 }
 
-.jira-preview-tooltip .tcg-label {
+.tcg-tooltip-content .tcg-label {
     font-size: 0.8rem;
     color: #6b7280;
     font-weight: 500;
@@ -630,20 +630,20 @@
     margin-right: 8px;
 }
 
-.jira-preview-tooltip .tcg-value {
+.tcg-tooltip-content .tcg-value {
     font-size: 0.8rem;
     color: #374151;
     font-weight: 400;
 }
 
-.jira-preview-tooltip .tcg-tooltip-footer {
+.tcg-tooltip-content .tcg-tooltip-footer {
     background: #f8fafc;
     padding: 10px 16px;
     border-top: 1px solid #e2e8f0;
     margin: 0;
 }
 
-.jira-preview-tooltip .tcg-jira-link {
+.tcg-tooltip-content .tcg-jira-link {
     display: inline-flex;
     align-items: center;
     color: #3b82f6;
@@ -653,7 +653,7 @@
     transition: color 0.15s ease;
 }
 
-.jira-preview-tooltip .tcg-jira-link:hover {
+.tcg-tooltip-content .tcg-jira-link:hover {
     color: #1d4ed8;
     text-decoration: underline;
 }

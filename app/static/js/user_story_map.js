@@ -350,7 +350,7 @@ window.createJiraTooltip = function() {
     }
 
     const tooltip = document.createElement('div');
-    tooltip.id = 'usm-jira-tooltip';
+    tooltip.id = 'tcg-tooltip-content';
     tooltip.style.cssText = `
         position: fixed;
         background: white;
@@ -507,7 +507,7 @@ window.hideJiraTooltip = function() {
     }
 
     jiraTooltipState.timeout = setTimeout(() => {
-        const tooltip = document.getElementById('usm-jira-tooltip');
+        const tooltip = document.getElementById('tcg-tooltip-content');
         if (tooltip && !jiraTooltipState.isHovering) {
             tooltip.style.display = 'none';
         }
@@ -526,7 +526,7 @@ window.initJiraTooltipListeners = function() {
         }
 
         // 檢查是否移到 tooltip 上
-        if (e.target.closest('#usm-jira-tooltip')) {
+        if (e.target.closest('#tcg-tooltip-content')) {
             jiraTooltipState.isHovering = true;
             if (jiraTooltipState.timeout) {
                 clearTimeout(jiraTooltipState.timeout);
@@ -545,7 +545,7 @@ window.initJiraTooltipListeners = function() {
             }, 50);
         }
 
-        if (e.target.closest('#usm-jira-tooltip') && !e.relatedTarget?.closest('#usm-jira-tooltip')) {
+        if (e.target.closest('#tcg-tooltip-content') && !e.relatedTarget?.closest('#tcg-tooltip-content')) {
             jiraTooltipState.isHovering = false;
             setTimeout(() => {
                 if (!jiraTooltipState.isHovering && !document.querySelector('.tcg-tag:hover')) {
@@ -557,8 +557,8 @@ window.initJiraTooltipListeners = function() {
 
     // 點擊其他地方時隱藏 tooltip
     document.addEventListener('click', function(e) {
-        if (!e.target.closest('.tcg-tag') && !e.target.closest('#usm-jira-tooltip')) {
-            const tooltip = document.getElementById('usm-jira-tooltip');
+        if (!e.target.closest('.tcg-tag') && !e.target.closest('#tcg-tooltip-content')) {
+            const tooltip = document.getElementById('tcg-tooltip-content');
             if (tooltip) {
                 tooltip.style.display = 'none';
             }
