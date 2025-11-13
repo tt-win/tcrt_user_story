@@ -181,10 +181,42 @@ Web Tool{% endblock %} {% block page_title_text %}
         gap: 12px;
     }
 
-    .relation-filters-section {
-        flex: 0 1 auto;
+    .relation-search-inputs {
+        flex-shrink: 0;
+    }
+
+    .relation-bottom-section {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        gap: 12px;
+    }
+
+    .relation-filters-column {
+        flex: 0 0 auto;
+        width: 35%;
         overflow-y: auto;
-        max-height: 280px;
+        padding-right: 8px;
+    }
+
+    .relation-results-column {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .relation-search-results {
+        flex: 1;
+        min-height: 0;
+        overflow-y: auto;
+        border: 1px solid #dee2e6;
+        border-radius: 4px;
+    }
+
+    .relation-search-actions {
+        flex-shrink: 0;
     }
 
     .relation-selected-column {
@@ -194,24 +226,6 @@ Web Tool{% endblock %} {% block page_title_text %}
         min-height: 0;
         border-left: 1px solid #dee2e6;
         padding-left: 16px;
-    }
-
-    .relation-search-container {
-        flex-shrink: 0;
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-    }
-
-    .relation-search-results {
-        height: 300px;
-        overflow-y: auto;
-        border: 1px solid #dee2e6;
-        border-radius: 4px;
-    }
-
-    .relation-search-actions {
-        flex-shrink: 0;
     }
 
     .relation-selected-list {
@@ -507,8 +521,8 @@ Web Tool{% endblock %} {% block page_title_text %}
             <div class="modal-body relation-modal-body">
                 <!-- Left Column: Search Section (2/3) -->
                 <div class="relation-search-column">
-                    <!-- Filters Section (scrollable) -->
-                    <div class="relation-filters-section">
+                    <!-- Top Section: Search Inputs -->
+                    <div class="relation-search-inputs">
                         <!-- Current Node Info -->
                         <div class="alert alert-info mb-3">
                             <strong data-i18n="usm.sourceNode">來源節點:</strong>
@@ -563,71 +577,69 @@ Web Tool{% endblock %} {% block page_title_text %}
                                 </small>
                             </div>
                         </div>
-
-                        <!-- Filters -->
-                        <div class="row mb-3">
-                            <div class="col-md-6">
-                                <label class="form-label small text-muted"
-                                    data-i18n="usm.nodeType">節點類型</label
-                                >
-                                <select
-                                    class="form-select form-select-sm"
-                                    id="relationNodeTypeFilter"
-                                >
-                                    <option value="" data-i18n="usm.allTypes">全部類型</option>
-                                    <option value="user_story" data-i18n="usm.userStory">User Story</option>
-                                    <option value="feature_category" data-i18n="usm.featureCategory">功能節點</option>
-                                </select>
-                            </div>
-                            <div class="col-md-6">
-                                <label class="form-label small text-muted" data-i18n="usm.teamFilter">團隊</label>
-                                <select
-                                    class="form-select form-select-sm"
-                                    id="relationTeamFilter"
-                                    multiple
-                                    data-i18n-placeholder="usm.selectTeams"
-                                >
-                                    <!-- Options will be populated dynamically -->
-                                </select>
-                                <small class="text-muted d-block mt-1" data-i18n="usm.selectTeams">選擇團隊 (全選表示不過濾)</small>
-                                <div class="form-check mt-2">
-                                    <input
-                                        class="form-check-input"
-                                        type="checkbox"
-                                        id="relationIncludeExternal"
-                                    />
-                                    <label
-                                        class="form-check-label small"
-                                        for="relationIncludeExternal"
-                                        data-i18n="usm.searchOtherMaps"
-                                    >
-                                        搜尋其他地圖
-                                    </label>
-                                </div>
-                            </div>
-                        </div>
                     </div>
 
-                    <!-- Search Results -->
-                    <div class="relation-search-container">
-                        <label class="form-label" data-i18n="usm.searchResults">搜尋結果</label>
-                        <div
-                            class="list-group list-group-sm relation-search-results"
-                            id="relationSearchResults"
-                        >
-                            <p class="text-muted small text-center py-3" data-i18n="usm.enterKeyword">
-                                輸入關鍵字並搜尋
-                            </p>
-                        </div>
-                        <div class="relation-search-actions">
-                            <button
-                                type="button"
-                                class="btn btn-sm btn-primary w-100"
-                                id="relationAddSelectedBtn"
-                                disabled
+                    <!-- Bottom Section: Split into Filters (left) and Results (right) -->
+                    <div class="relation-bottom-section">
+                        <!-- Filters Column (left) -->
+                        <div class="relation-filters-column">
+                            <label class="form-label small text-muted" data-i18n="usm.nodeType">節點類型</label>
+                            <select
+                                class="form-select form-select-sm mb-3"
+                                id="relationNodeTypeFilter"
                             >
-                                <i class="fas fa-plus"></i> <span data-i18n="usm.addSelectedItems">增加選中項目</span>
-                            </button>
+                                <option value="" data-i18n="usm.allTypes">全部類型</option>
+                                <option value="user_story" data-i18n="usm.userStory">User Story</option>
+                                <option value="feature_category" data-i18n="usm.featureCategory">功能節點</option>
+                            </select>
+
+                            <label class="form-label small text-muted" data-i18n="usm.teamFilter">團隊</label>
+                            <select
+                                class="form-select form-select-sm"
+                                id="relationTeamFilter"
+                                multiple
+                                data-i18n-placeholder="usm.selectTeams"
+                            >
+                                <!-- Options will be populated dynamically -->
+                            </select>
+                            <small class="text-muted d-block mt-2 mb-2" data-i18n="usm.selectTeams">選擇團隊 (全選表示不過濾)</small>
+                            <div class="form-check">
+                                <input
+                                    class="form-check-input"
+                                    type="checkbox"
+                                    id="relationIncludeExternal"
+                                />
+                                <label
+                                    class="form-check-label small"
+                                    for="relationIncludeExternal"
+                                    data-i18n="usm.searchOtherMaps"
+                                >
+                                    搜尋其他地圖
+                                </label>
+                            </div>
+                        </div>
+
+                        <!-- Results Column (right) -->
+                        <div class="relation-results-column">
+                            <label class="form-label" data-i18n="usm.searchResults">搜尋結果</label>
+                            <div
+                                class="list-group list-group-sm relation-search-results"
+                                id="relationSearchResults"
+                            >
+                                <p class="text-muted small text-center py-3" data-i18n="usm.enterKeyword">
+                                    輸入關鍵字並搜尋
+                                </p>
+                            </div>
+                            <div class="relation-search-actions">
+                                <button
+                                    type="button"
+                                    class="btn btn-sm btn-primary w-100"
+                                    id="relationAddSelectedBtn"
+                                    disabled
+                                >
+                                    <i class="fas fa-plus"></i> <span data-i18n="usm.addSelectedItems">增加選中項目</span>
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
