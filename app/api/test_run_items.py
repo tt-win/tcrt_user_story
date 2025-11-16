@@ -8,7 +8,7 @@ Items are created by selecting Test Cases and copying necessary fields.
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
 from sqlalchemy.orm import Session, aliased, contains_eager, joinedload
 from sqlalchemy import and_, or_
-from typing import List, Optional, Any, Dict
+from typing import List, Optional, Any, Dict, Union
 from datetime import datetime
 import json
 import logging
@@ -200,6 +200,9 @@ class LinkedRecord(BaseModel):
     type: Optional[str] = None
 
 
+LinkedRecordInput = Union[LinkedRecord, Dict[str, Any], str]
+
+
 class AssigneeModel(BaseModel):
     id: Optional[str] = None
     name: Optional[str] = None
@@ -227,9 +230,9 @@ class TestRunItemCreate(BaseModel):
     # Attachments and relations
     attachments: Optional[List[AttachmentItem]] = None
     execution_results: Optional[List[AttachmentItem]] = None
-    user_story_map: Optional[List[LinkedRecord]] = None
-    tcg: Optional[List[LinkedRecord]] = None
-    parent_record: Optional[List[LinkedRecord]] = None
+    user_story_map: Optional[List[LinkedRecordInput]] = None
+    tcg: Optional[List[LinkedRecordInput]] = None
+    parent_record: Optional[List[LinkedRecordInput]] = None
     raw_fields: Optional[Dict[str, Any]] = None
 
 
@@ -364,6 +367,46 @@ def _parse_execution_results(text: Optional[str]) -> List[Dict[str, Any]]:
     except Exception:
         return []
 
+
+def _normalize_linked_records(records: Optional[List[LinkedRecordInput]]) -> Optional[List[Dict[str, Any]]]:
+    """
+    將多種來源格式（LinkedRecord/ dict / str）正規化為統一的字典列表，
+    以避免前端傳入簡化的字串陣列時觸發驗證錯誤。
+    """
+    if not records:
+        return None
+
+    normalized: List[Dict[str, Any]] = []
+    for rec in records:
+        if rec is None:
+            continue
+        if isinstance(rec, LinkedRecord):
+            normalized.append(rec.model_dump())
+            continue
+        if isinstance(rec, dict):
+            rid = rec.get("record_ids")
+            text_val = rec.get("text") or rec.get("record_id") or rec.get("id")
+            if isinstance(rid, list) and rid:
+                normalized.append({
+                    "record_ids": [str(r) for r in rid if r],
+                    "table_id": rec.get("table_id"),
+                    "text": rec.get("text"),
+                    "text_arr": rec.get("text_arr") if isinstance(rec.get("text_arr"), list) else None,
+                    "type": rec.get("type"),
+                })
+                continue
+            if text_val:
+                normalized.append({"record_ids": [str(text_val)], "text": str(text_val)})
+                continue
+        if isinstance(rec, str):
+            normalized.append({"record_ids": [rec], "text": rec})
+            continue
+        try:
+            normalized.append({"record_ids": [str(rec)]})
+        except Exception:
+            continue
+
+    return normalized or None
 
 def _verify_team_and_config(team_id: int, config_id: int, db: Session) -> TestRunConfigDB:
     team = db.query(TeamDB).filter(TeamDB.id == team_id).first()
@@ -605,9 +648,9 @@ async def batch_create_items(
                 execution_duration=item.execution_duration,
                 attachments_json=_to_json([a.model_dump() for a in (item.attachments or [])]) if item.attachments else None,
                 execution_results_json=_to_json([a.model_dump() for a in (item.execution_results or [])]) if item.execution_results else None,
-                user_story_map_json=_to_json([r.model_dump() for r in (item.user_story_map or [])]) if item.user_story_map else None,
-                tcg_json=_to_json([r.model_dump() for r in (item.tcg or [])]) if item.tcg else None,
-                parent_record_json=_to_json([r.model_dump() for r in (item.parent_record or [])]) if item.parent_record else None,
+                user_story_map_json=_to_json(_normalize_linked_records(item.user_story_map)),
+                tcg_json=_to_json(_normalize_linked_records(item.tcg)),
+                parent_record_json=_to_json(_normalize_linked_records(item.parent_record)),
                 raw_fields_json=_to_json(item.raw_fields) if item.raw_fields else None,
             )
             db.add(db_item)

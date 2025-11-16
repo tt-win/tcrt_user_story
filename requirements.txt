@@ -33,9 +33,16 @@ casbin==1.36.3
 reportlab==4.2.5
 matplotlib==3.9.2
 
+# Testing
+pytest==8.3.4
+pytest-asyncio==0.24.0
+httpx==0.28.1
+
 # Notes:
 # - python-dotenv is required by app/config.py (load_dotenv())
 # - JS assets are pulled via CDN by default; see scripts/install_dependencies.sh for local JS setup
 # - cryptography is required for password encryption/decryption (RSA)
 # - aiohttp is required for async HTTP requests in lark_client
 # - casbin is required for role-based access control (RBAC)
+# - pytest and pytest-asyncio are required for running test suites
+# - httpx is required for async HTTP testing and API client testing
