@@ -599,25 +599,36 @@
   }
 
   async function fetchLarkPreview(larkId, showToast) {
-      console.log('Fetching Lark for', larkId);
+      const normalizedLarkId = String(larkId ?? '').trim();
+      if (!normalizedLarkId) {
+        console.warn('fetchLarkPreview called without larkId');
+        return;
+      }
+      console.log('Fetching Lark for', normalizedLarkId);
       try {
-        const resp = await window.AuthClient.fetch(`/api/lark/users/${encodeURIComponent(larkId)}`);
+        const resp = await window.AuthClient.fetch(`/api/lark/users/${encodeURIComponent(normalizedLarkId)}`);
         if (!resp.ok) throw new Error('HTTP ' + resp.status);
         const json = await resp.json();
         console.log('Received avatar from API: ' + json.avatar);
-        state.larkCache.set(larkId, { name: json?.name || '', avatar: json?.avatar || '' });
-        console.log('Fetched Lark for', larkId, 'name:', json.name, 'avatar:', json.avatar);
+        state.larkCache.set(normalizedLarkId, { name: json?.name || '', avatar: json?.avatar || '' });
+        console.log('Fetched Lark for', normalizedLarkId, 'name:', json.name, 'avatar:', json.avatar);
         // 更新搜尋框顯示值為名稱
         const larkSearch = document.getElementById('pm-lark-search');
-        if (larkSearch && larkSearch.value === larkId) {
-          larkSearch.value = json?.name || larkId;
+        if (larkSearch && larkSearch.value === normalizedLarkId) {
+          larkSearch.value = json?.name || normalizedLarkId;
         }
-        updateLarkPreviewBox(larkId);
+        const currentHiddenLarkId = val('pm-lark-id').trim();
+        if (normalizedLarkId && currentHiddenLarkId === normalizedLarkId) {
+          updateLarkPreviewBox(normalizedLarkId);
+        }
         if (showToast) toastSuccess('已載入 Lark 資訊');
       } catch (e) {
-        console.error('Fetch error for', larkId, e);
-        state.larkCache.delete(larkId);
-        updateLarkPreviewBox(null);
+        console.error('Fetch error for', normalizedLarkId, e);
+        state.larkCache.delete(normalizedLarkId);
+        const currentHiddenLarkId = val('pm-lark-id').trim();
+        if (normalizedLarkId && currentHiddenLarkId === normalizedLarkId) {
+          updateLarkPreviewBox(null);
+        }
         if (showToast) toastError('無法取得 Lark 使用者資訊');
       }
     }
