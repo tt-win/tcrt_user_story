@@ -2319,11 +2319,6 @@ const UserStoryMapFlow = () => {
             showMessage('請先選擇一個節點', 'error');
             return;
         }
-        // 不能搬移 User Story 節點
-        if (selectedNode.data.nodeType === 'user_story') {
-            showMessage('無法搬移 User Story 節點', 'error');
-            return;
-        }
         setMoveMode(true);
         setMoveSourceNodeId(selectedNode.id);
 
@@ -2344,6 +2339,12 @@ const UserStoryMapFlow = () => {
     // 執行搬移節點
     const performMoveNode = async (sourceNodeId, targetNodeId) => {
         try {
+            const targetNode = nodes.find(n => n.id === targetNodeId);
+            if (!targetNode || targetNode.data?.nodeType === 'user_story') {
+                showMessage('目標節點不可為 User Story，請重新選擇', 'error');
+                return;
+            }
+
             // 收集所有要搬移的子節點
             const nodesToMove = [sourceNodeId];
             const addChildren = (nodeId) => {
@@ -2429,6 +2430,13 @@ const UserStoryMapFlow = () => {
 
         showMessage('已取消搬移操作', 'info');
     }, [setNodes]);
+
+    // 空白處點擊：若在搬移模式則取消
+    const onPaneClick = useCallback((event) => {
+        if (!moveMode) return;
+        event.preventDefault();
+        cancelMoveMode();
+    }, [moveMode, cancelMoveMode]);
 
     // Show full relation graph
     const showFullRelationGraph = useCallback(async (nodeId) => {
@@ -3559,6 +3567,7 @@ const UserStoryMapFlow = () => {
             onEdgesChange: onEdgesChange,
             onConnect: onConnect,
             onNodeClick: onNodeClick,
+            onPaneClick: onPaneClick,
             onInit: (instance) => { reactFlowInstance.current = instance; },
             nodeTypes: nodeTypes,
             fitView: true,
