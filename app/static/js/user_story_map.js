@@ -1597,14 +1597,13 @@ const UserStoryMapFlow = () => {
             attachAutoSave('propDescription');
             attachAutoSave('propComment');
 
-            // 添加 JIRA Tickets 浮層編輯器
+            // 添加 JIRA Tickets 浮層編輯器（容器內任何區域可啟動，避免點擊 placeholder 無觸發）
             const jiraContainer = document.getElementById('jiraTicketsContainer');
             if (jiraContainer && jiraContainer.dataset.editable === 'true') {
-                jiraContainer.addEventListener('click', (e) => {
-                    // 點擊 badge 或容器時開始編輯
-                    if (e.target === jiraContainer || e.target.classList.contains('tcg-tag')) {
-                        editJiraTickets(node.id, jiraContainer);
-                    }
+                jiraContainer.addEventListener('click', () => {
+                    // 若已處於編輯狀態則不重複進入
+                    if (jiraContainer.classList.contains('editing')) return;
+                    editJiraTickets(node.id, jiraContainer);
                 });
             }
 
