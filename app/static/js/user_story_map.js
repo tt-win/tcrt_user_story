@@ -78,6 +78,25 @@ const updateUsmUiVisibility = () => {
     setElementVisibility('confirmAddNodeBtn', hasUsmAccess('nodeAdd'));
 };
 
+const updateAddChildButtonState = (node = null) => {
+    const btn = document.getElementById('addChildBtn');
+    if (!btn) return;
+    const isUserStoryNode = node?.data?.nodeType === 'user_story';
+    const shouldDisable = isUserStoryNode || !hasUsmAccess('nodeAdd');
+
+    btn.disabled = shouldDisable;
+
+    if (isUserStoryNode) {
+        btn.classList.add('btn-secondary');
+        btn.classList.remove('btn-primary');
+        btn.title = 'User Story 節點無法新增子節點';
+    } else {
+        btn.classList.remove('btn-secondary');
+        btn.classList.add('btn-primary');
+        btn.removeAttribute('title');
+    }
+};
+
 const ensureRelatedDisplayTitle = (entry) => {
     if (!entry || typeof entry === 'string') {
         return entry;
@@ -763,6 +782,10 @@ const UserStoryMapFlow = () => {
         edgesRef.current = edges;
     }, [edges]);
 
+    useEffect(() => {
+        updateAddChildButtonState(selectedNode);
+    }, [selectedNode]);
+
     // Handle wheel event for zoom with Cmd/Ctrl
     const handleWheel = useCallback((event) => {
         const isCtrlPressed = event.ctrlKey || event.getModifierState?.('Control');
@@ -1290,6 +1313,10 @@ const UserStoryMapFlow = () => {
         }
         const parentNode = nodes.find(n => n.id === parentId);
         if (!parentNode) return;
+        if (parentNode.data.nodeType === 'user_story') {
+            showMessage('User Story 節點無法新增子節點', 'error');
+            return;
+        }
 
         // Clean up any lingering modal backdrops
         document.querySelectorAll('.modal-backdrop').forEach((backdrop) => backdrop.remove());
@@ -1449,6 +1476,7 @@ const UserStoryMapFlow = () => {
             const graphBtn = document.getElementById('fullRelationGraphBtn');
             if (highlightBtn) highlightBtn.style.display = 'none';
             if (graphBtn) graphBtn.style.display = 'none';
+            updateAddChildButtonState(null);
             return;
         }
 
@@ -1461,6 +1489,7 @@ const UserStoryMapFlow = () => {
         if (graphBtn) {
             graphBtn.style.display = 'inline-block';
         }
+        updateAddChildButtonState(node);
 
         const data = node.data;
         const resolvedTeam = data.team || teamName || '';
@@ -3336,6 +3365,7 @@ const UserStoryMapFlow = () => {
                 if (container) {
                     container.innerHTML = '<p class="text-muted small">選擇一個節點以查看和編輯屬性</p>';
                 }
+                updateAddChildButtonState(null);
             } else {
                 const refreshed = layoutedNodes.find((node) => node.id === selectedNode.id);
                 if (refreshed && refreshed !== selectedNode) {
@@ -4004,6 +4034,10 @@ document.addEventListener('DOMContentLoaded', async function() {
         const selectedNode = window.userStoryMapFlow?.getSelectedNode();
         if (!selectedNode) {
             alert('請先選擇一個節點');
+            return;
+        }
+        if (selectedNode.data?.nodeType === 'user_story') {
+            showMessage('User Story 節點無法新增子節點', 'error');
             return;
         }
         if (window.addChildNode) {
