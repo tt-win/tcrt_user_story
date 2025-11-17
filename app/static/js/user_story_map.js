@@ -2999,43 +2999,101 @@ const UserStoryMapFlow = () => {
             return;
         }
 
-        // 更新 React Flow 的選取狀態
-        setNodes((nds) => {
-            const updated = nds.map((node) => ({
-                ...node,
-                selected: node.id === nodeId,
-            }));
-            nodesRef.current = updated;
-            return updated;
-        });
+        // 展開節點鏈條：如果節點被收合，需要先展開所有相關的父節點
+        const expandNodeChain = (nodeIdToExpand) => {
+            // 構建節點 ID 到節點的映射
+            const nodeMap = new Map(nodesRef.current.map((node) => [node.id, node]));
+            const nodesToExpand = new Set();
+            
+            // 收集所有需要展開的父節點
+            const collectParents = (currentNodeId) => {
+                const node = nodeMap.get(currentNodeId);
+                if (!node || !node.data.parentId) {
+                    return;
+                }
+                const parentId = node.data.parentId;
+                // 如果父節點被收合，需要展開它
+                if (collapsedNodeIds.has(parentId)) {
+                    nodesToExpand.add(parentId);
+                }
+                // 遞歸檢查父節點的父節點
+                collectParents(parentId);
+            };
+            
+            // 收集目標節點及其所有父節點
+            collectParents(nodeIdToExpand);
+            
+            return nodesToExpand;
+        };
 
-        // 將視窗平移至節點附近（維持現有縮放）
-        if (instance.setCenter) {
-            const { x, y } = targetNode.position;
-            instance.setCenter(x + (targetNode.width || 0) / 2, y + (targetNode.height || 0) / 2, {
-                zoom: instance.getZoom?.() ?? undefined,
-                duration: 300,
-            });
-        }
-
-        setSelectedNode(targetNode);
-        updateNodeProperties(targetNode);
-
-        const highlightIds = Array.isArray(highlightNodeIds) && highlightNodeIds.length
-            ? new Set(highlightNodeIds)
-            : null;
-
-        if (highlightIds) {
-            setTimeout(() => {
-                highlightIds.forEach((id) => {
-                    const nodeElement = document.querySelector(`[data-id="${id}"]`);
-                    if (nodeElement) {
-                        nodeElement.style.boxShadow = '0 0 20px 5px #ffc107';
-                    }
+        // 獲取需要展開的節點集合
+        const nodesToExpand = expandNodeChain(nodeId);
+        
+        // 如果有節點需要展開，先展開它們
+        if (nodesToExpand.size > 0) {
+            setCollapsedNodeIds((prev) => {
+                const next = new Set(prev);
+                nodesToExpand.forEach((nodeId) => {
+                    next.delete(nodeId);
                 });
-            }, 120);
+                return next;
+            });
+            
+            // 等待節點展開完成後再進行聚焦
+            setTimeout(() => {
+                performFocus(nodeId, highlightNodeIds);
+            }, 100);
+        } else {
+            // 如果沒有節點需要展開，直接聚焦
+            performFocus(nodeId, highlightNodeIds);
         }
-    }, [setNodes, setSelectedNode, updateNodeProperties]);
+
+        // 執行聚焦操作的函數
+        const performFocus = (nodeIdToFocus, highlightNodeIds) => {
+            const targetNodeToFocus = nodesRef.current.find((node) => node.id === nodeIdToFocus);
+            if (!instance || !targetNodeToFocus) {
+                showMessage('找不到指定節點，請重新載入地圖', 'error');
+                return;
+            }
+
+            // 更新 React Flow 的選取狀態
+            setNodes((nds) => {
+                const updated = nds.map((node) => ({
+                    ...node,
+                    selected: node.id === nodeIdToFocus,
+                }));
+                nodesRef.current = updated;
+                return updated;
+            });
+
+            // 將視窗平移至節點附近（維持現有縮放）
+            if (instance.setCenter) {
+                const { x, y } = targetNodeToFocus.position;
+                instance.setCenter(x + (targetNodeToFocus.width || 0) / 2, y + (targetNodeToFocus.height || 0) / 2, {
+                    zoom: instance.getZoom?.() ?? undefined,
+                    duration: 300,
+                });
+            }
+
+            setSelectedNode(targetNodeToFocus);
+            updateNodeProperties(targetNodeToFocus);
+
+            const highlightIds = Array.isArray(highlightNodeIds) && highlightNodeIds.length
+                ? new Set(highlightNodeIds)
+                : null;
+
+            if (highlightIds) {
+                setTimeout(() => {
+                    highlightIds.forEach((id) => {
+                        const nodeElement = document.querySelector(`[data-id="${id}"]`);
+                        if (nodeElement) {
+                            nodeElement.style.boxShadow = '0 0 20px 5px #ffc107';
+                        }
+                    });
+                }, 120);
+            }
+        };
+    }, [setNodes, setSelectedNode, updateNodeProperties, collapsedNodeIds, setCollapsedNodeIds]);
 
     // Auto layout
     const autoLayout = useCallback(() => {
