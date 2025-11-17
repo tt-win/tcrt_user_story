@@ -753,10 +753,15 @@ const UserStoryMapFlow = () => {
     const [moveSourceNodeId, setMoveSourceNodeId] = useState(null);
     const reactFlowInstance = useRef(null);
     const nodesRef = useRef([]);
+    const edgesRef = useRef([]);
 
     useEffect(() => {
         nodesRef.current = nodes;
     }, [nodes]);
+
+    useEffect(() => {
+        edgesRef.current = edges;
+    }, [edges]);
 
     // Handle wheel event for zoom with Cmd/Ctrl
     const handleWheel = useCallback((event) => {
@@ -3026,28 +3031,6 @@ const UserStoryMapFlow = () => {
             return nodesToExpand;
         };
 
-        // 獲取需要展開的節點集合
-        const nodesToExpand = expandNodeChain(nodeId);
-        
-        // 如果有節點需要展開，先展開它們
-        if (nodesToExpand.size > 0) {
-            setCollapsedNodeIds((prev) => {
-                const next = new Set(prev);
-                nodesToExpand.forEach((nodeId) => {
-                    next.delete(nodeId);
-                });
-                return next;
-            });
-            
-            // 等待節點展開完成後再進行聚焦
-            setTimeout(() => {
-                performFocus(nodeId, highlightNodeIds);
-            }, 100);
-        } else {
-            // 如果沒有節點需要展開，直接聚焦
-            performFocus(nodeId, highlightNodeIds);
-        }
-
         // 執行聚焦操作的函數
         const performFocus = (nodeIdToFocus, highlightNodeIds) => {
             const targetNodeToFocus = nodesRef.current.find((node) => node.id === nodeIdToFocus);
@@ -3083,16 +3066,66 @@ const UserStoryMapFlow = () => {
                 : null;
 
             if (highlightIds) {
-                setTimeout(() => {
-                    highlightIds.forEach((id) => {
-                        const nodeElement = document.querySelector(`[data-id="${id}"]`);
-                        if (nodeElement) {
-                            nodeElement.style.boxShadow = '0 0 20px 5px #ffc107';
-                        }
-                    });
-                }, 120);
+                // 使用 Set 以便於快速檢查並避免重複
+                const isHighlighted = (edge) =>
+                    (edge.data?.featureId && highlightIds.has(edge.data.featureId)) ||
+                    (edge.data?.rowId && highlightIds.has(edge.data.rowId)) ||
+                    (edge.data?.testContextId && highlightIds.has(edge.data.testContextId)) ||
+                    (edge.data?.testCaseId && highlightIds.has(edge.data.testCaseId));
+
+                setEdges((eds) => {
+                    const nextEdges = eds.map((edge) => ({
+                        ...edge,
+                        selected: isHighlighted(edge),
+                        style: {
+                            ...(edge.style || {}),
+                            stroke: isHighlighted(edge) ? '#ffa500' : edge.style?.stroke,
+                            strokeWidth: isHighlighted(edge) ? 3 : edge.style?.strokeWidth || 1,
+                        },
+                    }));
+                    edgesRef.current = nextEdges;
+                    return nextEdges;
+                });
+            } else {
+                // 清除高亮
+                setEdges((eds) => {
+                    const resetEdges = eds.map((edge) => ({
+                        ...edge,
+                        selected: false,
+                        style: {
+                            ...(edge.style || {}),
+                            stroke: edge.style?.stroke ?? '#b1b1b7',
+                            strokeWidth: edge.style?.strokeWidth ?? 1,
+                        },
+                    }));
+                    edgesRef.current = resetEdges;
+                    return resetEdges;
+                });
             }
+
         };
+
+        // 獲取需要展開的節點集合
+        const nodesToExpand = expandNodeChain(nodeId);
+        
+        // 如果有節點需要展開，先展開它們
+        if (nodesToExpand.size > 0) {
+            setCollapsedNodeIds((prev) => {
+                const next = new Set(prev);
+                nodesToExpand.forEach((nodeId) => {
+                    next.delete(nodeId);
+                });
+                return next;
+            });
+            
+            // 等待節點展開完成後再進行聚焦
+            setTimeout(() => {
+                performFocus(nodeId, highlightNodeIds);
+            }, 100);
+        } else {
+            // 如果沒有節點需要展開，直接聚焦
+            performFocus(nodeId, highlightNodeIds);
+        }
     }, [setNodes, setSelectedNode, updateNodeProperties, collapsedNodeIds, setCollapsedNodeIds]);
 
     // Auto layout
