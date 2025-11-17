@@ -7857,6 +7857,9 @@ let currentTCGEditor = null;
 async function editTCG(recordId) {
     console.log('🟢 editTCG 被呼叫，recordId:', recordId);
 
+    // 先強制重置可能殘留的編輯器狀態/DOM（避免上一輪外部事件阻斷）
+    resetTCGEditorState();
+
     // 檢查權限
     if (!hasTestCasePermission('tcgEditContainer')) {
         console.log('⛔ editTCG: 沒有編輯權限');
@@ -7876,10 +7879,8 @@ async function editTCG(recordId) {
     }
     console.log('✅ editTCG: cell 找到');
 
-    // 如果已經有編輯器在運行，先關閉
-    if (currentTCGEditor && currentTCGEditor.recordId !== recordId) {
-        await finishTCGEdit();
-    }
+    // 確保無殘留 DOM（例如外部點擊未觸發/提前阻斷）
+    forceCloseTCGInlineEditor(cell);
 
     // 獲取當前 TCG - tcg 就是一個字串陣列
     const currentTCGs = testCase.tcg && Array.isArray(testCase.tcg) ? [...testCase.tcg] : [];
@@ -7898,6 +7899,52 @@ async function editTCG(recordId) {
 
     // 直接進入搜尋模式
     startTCGSearch();
+}
+
+// 依 recordId 取得當前 TCG 陣列（優先使用快取的 testCases）
+function getCurrentTCGsByRecordId(recordId) {
+    const tc = testCases.find(t => t.record_id === recordId);
+    if (!tc || !Array.isArray(tc.tcg)) return [];
+    return [...tc.tcg];
+}
+
+// 全域重置 TCG 編輯狀態與殘留 DOM
+function resetTCGEditorState() {
+    // 清除外部點擊監聽
+    document.removeEventListener('click', handleTCGOutsideClick, true);
+
+    // 移除任何殘留的 inline 編輯器
+    document.querySelectorAll('.tcg-inline-editor').forEach((el) => el.remove());
+
+    // 移除 editing 樣式
+    document.querySelectorAll('[data-field="tcg"].editing').forEach((cell) => cell.classList.remove('editing'));
+    document.querySelectorAll('.tcg-edit-area.editing').forEach((el) => el.classList.remove('editing'));
+
+    // 清空狀態
+    currentTCGEditor = null;
+}
+
+// 強制清理殘留的 TCG Inline 編輯 DOM（當 state 已清空但 DOM 尚在時）
+function forceCloseTCGInlineEditor(cell) {
+    if (!cell) return;
+
+    // 移除殘留編輯器
+    const editor = cell.querySelector('.tcg-inline-editor');
+    if (editor) {
+        editor.remove();
+    }
+
+    // 移除 editing 樣式
+    cell.classList.remove('editing');
+
+    // 清理全域監聽
+    document.removeEventListener('click', handleTCGOutsideClick, true);
+
+    // 還原顯示 DOM（保留點擊事件）
+    const recordId = cell.getAttribute('data-record-id');
+    if (recordId) {
+        updateTCGCellDisplay(cell, getCurrentTCGsByRecordId(recordId));
+    }
 }
 
 async function startTCGSearch() {
@@ -8031,16 +8078,21 @@ async function finishTCGEdit() {
 function updateTCGCellDisplay(cell, tcgNumbers) {
     // 更新單個 TCG 欄位的顯示，不重新渲染整個表格
     const recordId = cell.getAttribute('data-record-id');
+    const editable = hasTestCasePermission('tcgEditContainer');
+    const baseClass = editable ? 'tcg-edit-area tcg-editable' : 'tcg-edit-area tcg-readonly';
+    const baseStyle = 'display: flex; flex-wrap: wrap; gap: 2px; justify-content: center; align-items: center; min-height: 24px; padding: 2px;'
+        + (editable ? ' cursor: pointer;' : ' cursor: default;');
+    const clickAttr = editable ? ` onclick="editTCG('${recordId}')"` : '';
 
     if (tcgNumbers.length === 0) {
-        // 清除後留白，但保留點擊事件
-        cell.innerHTML = `<div class="tcg-edit-area" onclick="editTCG('${recordId}')" data-i18n-title="tooltips.clickEditTcg"></div>`;
+        // 清除後留白，但保留點擊事件/狀態
+        cell.innerHTML = `<div class="${baseClass}"${clickAttr} data-i18n-title="tooltips.clickEditTcg" style="${baseStyle}"></div>`;
     } else {
         // 顯示 TCG 標籤，保留點擊事件
         const tcgHtml = tcgNumbers.map(tcg =>
             `<span class="tcg-tag">${tcg}</span>`
         ).join('');
-        cell.innerHTML = `<div class="tcg-edit-area" onclick="editTCG('${recordId}')" data-i18n-title="tooltips.clickEditTcg">${tcgHtml}</div>`;
+        cell.innerHTML = `<div class="${baseClass}"${clickAttr} data-i18n-title="tooltips.clickEditTcg" style="${baseStyle}">${tcgHtml}</div>`;
     }
 
     // 重新應用翻譯到新生成的內容
