@@ -4280,7 +4280,7 @@ async function showJiraPreview(event, ticketNumber) {
     const tooltip = getOrCreateJiraTooltip();
     const targetElement = event.currentTarget;
     
-    // 設定 tooltip 位置（現在 positionTooltip 能正確處理隱藏元素）
+    // 設定 tooltip 位置，確保畫面內可見
     positionTooltip(tooltip, targetElement);
     
     // 顯示載入中狀態

@@ -379,27 +379,50 @@ window.createJiraTooltip = function() {
 };
 
 // 定位 JIRA tooltip
+// Tooltip 定位：避免超出視窗邊界
 window.positionJiraTooltip = function(tooltip, element) {
     if (!element || !tooltip) return;
 
+    const spacing = 10;
+    const maxWidth = tooltip.offsetWidth || 360;
+
     const rect = element.getBoundingClientRect();
-    const tooltipHeight = tooltip.offsetHeight || 200;
 
-    let top = rect.bottom + 8;
-    let left = rect.left;
+    // 先做暫時顯示以取得尺寸
+    const prevDisplay = tooltip.style.display;
+    const prevVisibility = tooltip.style.visibility;
+    tooltip.style.visibility = 'hidden';
+    tooltip.style.display = 'block';
+    const tipRect = tooltip.getBoundingClientRect();
+    const tipWidth = tipRect.width || maxWidth;
+    const tipHeight = tipRect.height || 200;
+    tooltip.style.display = prevDisplay || 'none';
+    tooltip.style.visibility = prevVisibility || '';
 
-    // 如果超出視窗下方，顯示在上方
-    if (top + tooltipHeight > window.innerHeight) {
-        top = rect.top - tooltipHeight - 8;
+    // 預設放在下方置中
+    let top = rect.bottom + spacing;
+    let left = rect.left + (rect.width / 2) - (tipWidth / 2);
+
+    // 若下方空間不足，改放上方
+    const overflowBottom = top + tipHeight - window.innerHeight;
+    if (overflowBottom > 0) {
+        const topCandidate = rect.top - tipHeight - spacing;
+        if (topCandidate > spacing) {
+            top = topCandidate;
+        }
     }
 
-    // 如果超出右邊，調整
-    if (left + 300 > window.innerWidth) {
-        left = window.innerWidth - 312;
+    // 左右邊界防護
+    if (left < spacing) left = spacing;
+    if (left + tipWidth > window.innerWidth - spacing) {
+        left = window.innerWidth - spacing - tipWidth;
     }
 
-    tooltip.style.top = Math.max(0, top) + 'px';
-    tooltip.style.left = Math.max(0, left) + 'px';
+    // 上邊界防護
+    if (top < spacing) top = spacing;
+
+    tooltip.style.top = `${Math.round(top)}px`;
+    tooltip.style.left = `${Math.round(left)}px`;
 };
 
 // 取得 JIRA ticket 資訊
