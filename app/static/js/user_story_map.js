@@ -4186,6 +4186,24 @@ document.addEventListener('DOMContentLoaded', async function() {
         modal.show();
     });
 
+    // 清除搜尋高亮（工具列按鈕）
+    const clearSearchHighlightBtn = document.getElementById('clearSearchHighlightBtn');
+    const clearSearchHighlights = () => {
+        // 清除節點的 box-shadow
+        document.querySelectorAll('[data-id]').forEach(nodeEl => {
+            nodeEl.style.boxShadow = '';
+        });
+        // 清除 React Flow 高亮
+        window.userStoryMapFlow?.clearHighlight();
+        // 隱藏按鈕
+        if (clearSearchHighlightBtn) {
+            clearSearchHighlightBtn.style.display = 'none';
+        }
+    };
+    clearSearchHighlightBtn?.addEventListener('click', () => {
+        clearSearchHighlights();
+    });
+
     // Clear search
     document.getElementById('clearSearchBtn')?.addEventListener('click', () => {
         const searchInput = document.getElementById('searchInput');
@@ -4205,13 +4223,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
 
         // Clear highlights
-        window.userStoryMapFlow?.clearHighlight();
-
-        // Remove box shadows from nodes
-        const nodeElements = document.querySelectorAll('[data-id]');
-        nodeElements.forEach(nodeEl => {
-            nodeEl.style.boxShadow = '';
-        });
+        clearSearchHighlights();
     });
 
     // Perform search
@@ -4261,6 +4273,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 
                 if (results.length === 0) {
                     container.innerHTML = '<p class="text-muted">無搜尋結果</p>';
+                    clearSearchHighlights();
                 } else {
                     window.userStoryMapFlow?.clearHighlight();
 
@@ -4274,6 +4287,9 @@ document.addEventListener('DOMContentLoaded', async function() {
                                     nodeEl.style.boxShadow = '0 0 20px 5px #ffc107';
                                 }
                             });
+                            if (clearSearchHighlightBtn) {
+                                clearSearchHighlightBtn.style.display = 'inline-block';
+                            }
                         }, 100);
                     }
 

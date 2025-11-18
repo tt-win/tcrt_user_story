@@ -1442,6 +1442,7 @@
     "fullRelationGraph": "Full relation graph",
     "reviewTestCases": "Review related cases",
     "clearHighlight": "Clear highlight",
+    "clearSearchHighlight": "Clear search highlight",
     "nodeProperties": "Node properties",
     "selectNodeHint": "Select a node to view and edit properties",
     "setNodeRelations": "Set node relations",
