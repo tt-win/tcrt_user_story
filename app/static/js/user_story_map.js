@@ -2373,6 +2373,7 @@ const UserStoryMapFlow = () => {
             }
 
             // 先在前端立即更新節點與邊的狀態，避免使用者快速按「儲存」時覆寫後端已搬移的資料
+            let uncollapseIds = new Set();
             setNodes((prevNodes) => {
                 const nodeMap = new Map(
                     prevNodes.map((node) => [
@@ -2448,6 +2449,18 @@ const UserStoryMapFlow = () => {
                 const startLevel = (targetNode.data.level || 0) + 1;
                 updateLevels(sourceNodeId, startLevel);
 
+                // 確保新父節點與其祖先展開，避免搬移後節點因收合而「消失」
+                const collectAncestors = (nodeId) => {
+                    let currentId = nodeId;
+                    while (currentId) {
+                        uncollapseIds.add(currentId);
+                        const parentId = nodeMap.get(currentId)?.data?.parentId || null;
+                        currentId = parentId;
+                    }
+                };
+                collectAncestors(targetNodeId);
+                collectAncestors(sourceNodeId);
+
                 const nextNodes = Array.from(nodeMap.values());
                 nodesRef.current = nextNodes;
                 return nextNodes;
@@ -2481,6 +2494,13 @@ const UserStoryMapFlow = () => {
                 }
 
                 return updatedEdges;
+            });
+
+            // 解除收合的節點，讓搬移後立刻可見
+            setCollapsedNodeIds((prev) => {
+                const next = new Set(prev);
+                uncollapseIds.forEach((id) => next.delete(id));
+                return next;
             });
 
             showMessage('節點搬移成功', 'success');
