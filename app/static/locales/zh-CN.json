@@ -1441,6 +1441,7 @@
     "fullRelationGraph": "完整关联图",
     "reviewTestCases": "检查相关案例",
     "clearHighlight": "清除高亮",
+    "clearSearchHighlight": "清除搜索高亮",
     "nodeProperties": "节点属性",
     "selectNodeHint": "选择一个节点以查看和编辑属性",
     "setNodeRelations": "设置节点关联",

@@ -219,6 +219,16 @@ Web Tool{% endblock %} {% block page_title_text %}
         flex-shrink: 0;
     }
 
+    /* 搜尋節點 Modal - 固定結果區高度，內部捲動 */
+    #searchResults {
+        max-height: 55vh;
+        overflow-y: auto;
+        border: 1px solid #e9ecef;
+        border-radius: 6px;
+        padding: 0.75rem;
+        background: #fff;
+    }
+
     .relation-selected-column {
         flex: 1;
         display: flex;
@@ -427,6 +437,16 @@ Web Tool{% endblock %} {% block page_title_text %}
             <div class="vr"></div>
             <button type="button" class="btn btn-sm btn-info" id="searchBtn">
                 <i class="fas fa-search"></i> <span data-i18n="usm.search">搜尋</span>
+            </button>
+            <button
+                type="button"
+                class="btn btn-sm btn-outline-secondary"
+                id="clearSearchHighlightBtn"
+                style="display: none"
+                title="清除搜尋高亮"
+            >
+                <i class="fas fa-times"></i>
+                <span data-i18n="usm.clearSearchHighlight">清除搜尋高亮</span>
             </button>
             <button
                 type="button"
