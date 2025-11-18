@@ -784,6 +784,7 @@ const UserStoryMapFlow = () => {
     const reactFlowInstance = useRef(null);
     const nodesRef = useRef([]);
     const edgesRef = useRef([]);
+    const loadMapRequestIdRef = useRef(0);
 
     useEffect(() => {
         nodesRef.current = nodes;
@@ -979,106 +980,112 @@ const UserStoryMapFlow = () => {
 
     // Load specific map
     const loadMap = useCallback(async (mapId) => {
+        // 避免多次搬移造成時間競賽：僅採用最後一次回應
+        const requestId = ++loadMapRequestIdRef.current;
         try {
             const response = await fetch(`/api/user-story-maps/${mapId}`, {
                 headers: {
                     'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
                 },
             });
-            if (response.ok) {
-                const map = await response.json();
-                
-                // Convert nodes
-                const flowNodes = map.nodes.map(node => ({
-                    id: node.id,
-                    type: 'custom',
-                    position: { x: node.position_x, y: node.position_y },
-                    targetPosition: 'left',
-                    sourcePosition: 'right',
-                    data: {
-                        title: node.title,
-                        description: node.description,
-                        nodeType: node.node_type,
-                        team: node.team || teamName || '',
-                        jiraTickets: normalizeJiraTickets(node.jira_tickets),
-                        aggregatedTickets: node.aggregated_tickets || [],
-                        comment: node.comment,
-                        parentId: node.parent_id,
-                        childrenIds: node.children_ids || [],
-                        relatedIds: normalizeRelatedEntries(node.related_ids),
-                        level: node.level || 0,
-                        dimmed: false,
-                        isRoot: !node.parent_id,
-                        as_a: node.as_a,
-                        i_want: node.i_want,
-                        so_that: node.so_that,
-                    },
-                }));
+            if (!response.ok) return;
+            const map = await response.json();
 
-                // Convert edges
-                const flowEdges = map.edges.map(edge => {
-                    const isRelationEdge = edge.edge_type === 'related' || edge.id.startsWith('relation-');
-                    const targetHandle = isRelationEdge ? 'right-target' : 'left';
-                    const baseEdge = {
-                        id: edge.id,
-                        source: edge.source,
-                        target: edge.target,
-                        type: edge.edge_type === 'parent' ? 'smoothstep' : 'default',
-                        animated: isRelationEdge,
-                        style: isRelationEdge ? {
-                            strokeDasharray: '5,5',
-                            stroke: '#17a2b8',
-                            strokeWidth: 2,
-                        } : {},
-                        markerEnd: {
-                            type: MarkerType.ArrowClosed,
-                        },
-                        sourceHandle: 'right',
-                        targetHandle,
-                    };
-                    if (isRelationEdge) {
-                        baseEdge.type = 'step';
-                        baseEdge.pathOptions = RELATION_EDGE_PATH_OPTIONS;
-                    }
-                    return baseEdge;
-                });
+            // 如果這不是最新的請求，直接丟棄，避免覆寫較新的狀態
+            if (requestId !== loadMapRequestIdRef.current) {
+                return;
+            }
+            
+            // Convert nodes
+            const flowNodes = map.nodes.map(node => ({
+                id: node.id,
+                type: 'custom',
+                position: { x: node.position_x, y: node.position_y },
+                targetPosition: 'left',
+                sourcePosition: 'right',
+                data: {
+                    title: node.title,
+                    description: node.description,
+                    nodeType: node.node_type,
+                    team: node.team || teamName || '',
+                    jiraTickets: normalizeJiraTickets(node.jira_tickets),
+                    aggregatedTickets: node.aggregated_tickets || [],
+                    comment: node.comment,
+                    parentId: node.parent_id,
+                    childrenIds: node.children_ids || [],
+                    relatedIds: normalizeRelatedEntries(node.related_ids),
+                    level: node.level || 0,
+                    dimmed: false,
+                    isRoot: !node.parent_id,
+                    as_a: node.as_a,
+                    i_want: node.i_want,
+                    so_that: node.so_that,
+                },
+            }));
 
-                const layoutedNodes = applyTreeLayout(flowNodes, flowEdges);
-                const decoratedNodes = layoutedNodes.map(node => ({
-                    ...node,
-                    data: {
-                        ...node.data,
-                        collapsed: false,
-                        toggleCollapse: toggleNodeCollapse,
+            // Convert edges
+            const flowEdges = map.edges.map(edge => {
+                const isRelationEdge = edge.edge_type === 'related' || edge.id.startsWith('relation-');
+                const targetHandle = isRelationEdge ? 'right-target' : 'left';
+                const baseEdge = {
+                    id: edge.id,
+                    source: edge.source,
+                    target: edge.target,
+                    type: edge.edge_type === 'parent' ? 'smoothstep' : 'default',
+                    animated: isRelationEdge,
+                    style: isRelationEdge ? {
+                        strokeDasharray: '5,5',
+                        stroke: '#17a2b8',
+                        strokeWidth: 2,
+                    } : {},
+                    markerEnd: {
+                        type: MarkerType.ArrowClosed,
                     },
-                }));
-                
-                // Clean up orphaned edges (pointing to non-existent nodes)
-                const nodeIds = new Set(decoratedNodes.map(n => n.id));
-                const validEdges = flowEdges.filter(edge => 
-                    nodeIds.has(edge.source) && nodeIds.has(edge.target)
-                );
-                
-                nodesRef.current = decoratedNodes;
-                setNodes(decoratedNodes);
-                setSelectedNode((prevSelected) => {
-                    if (!prevSelected) {
-                        return prevSelected;
-                    }
-                    const refreshed = decoratedNodes.find(node => node.id === prevSelected.id);
-                    return refreshed || null;
-                });
-                setEdges(validEdges.map(edge => ({ ...edge, hidden: false })));
-                setCurrentMapId(mapId);
-                setCollapsedNodeIds(() => new Set());
-                setHighlightedNodeIds([]);
-                setHighlightedPath(null);
-                const highlightInfoEl = document.getElementById('highlightInfo');
-                if (highlightInfoEl) {
-                    highlightInfoEl.classList.remove('show');
-                    highlightInfoEl.classList.add('d-none');
-                    highlightInfoEl.innerHTML = '';
+                    sourceHandle: 'right',
+                    targetHandle,
+                };
+                if (isRelationEdge) {
+                    baseEdge.type = 'step';
+                    baseEdge.pathOptions = RELATION_EDGE_PATH_OPTIONS;
                 }
+                return baseEdge;
+            });
+
+            const layoutedNodes = applyTreeLayout(flowNodes, flowEdges);
+            const decoratedNodes = layoutedNodes.map(node => ({
+                ...node,
+                data: {
+                    ...node.data,
+                    collapsed: false,
+                    toggleCollapse: toggleNodeCollapse,
+                },
+            }));
+            
+            // Clean up orphaned edges (pointing to non-existent nodes)
+            const nodeIds = new Set(decoratedNodes.map(n => n.id));
+            const validEdges = flowEdges.filter(edge => 
+                nodeIds.has(edge.source) && nodeIds.has(edge.target)
+            );
+            
+            nodesRef.current = decoratedNodes;
+            setNodes(decoratedNodes);
+            setSelectedNode((prevSelected) => {
+                if (!prevSelected) {
+                    return prevSelected;
+                }
+                const refreshed = decoratedNodes.find(node => node.id === prevSelected.id);
+                return refreshed || null;
+            });
+            setEdges(validEdges.map(edge => ({ ...edge, hidden: false })));
+            setCurrentMapId(mapId);
+            setCollapsedNodeIds(() => new Set());
+            setHighlightedNodeIds([]);
+            setHighlightedPath(null);
+            const highlightInfoEl = document.getElementById('highlightInfo');
+            if (highlightInfoEl) {
+                highlightInfoEl.classList.remove('show');
+                highlightInfoEl.classList.add('d-none');
+                highlightInfoEl.innerHTML = '';
             }
         } catch (error) {
             console.error('Failed to load map:', error);
@@ -2364,6 +2371,117 @@ const UserStoryMapFlow = () => {
                 const error = await response.json();
                 throw new Error(error.detail || '搬移節點失敗');
             }
+
+            // 先在前端立即更新節點與邊的狀態，避免使用者快速按「儲存」時覆寫後端已搬移的資料
+            setNodes((prevNodes) => {
+                const nodeMap = new Map(
+                    prevNodes.map((node) => [
+                        node.id,
+                        {
+                            ...node,
+                            data: {
+                                ...node.data,
+                                childrenIds: [...(node.data.childrenIds || [])],
+                                dimmed: false,
+                            },
+                        },
+                    ])
+                );
+
+                const sourceNode = nodeMap.get(sourceNodeId);
+                const targetNode = nodeMap.get(targetNodeId);
+                if (!sourceNode || !targetNode) {
+                    nodesRef.current = prevNodes;
+                    return prevNodes;
+                }
+
+                const oldParentId = sourceNode.data.parentId;
+
+                // 從舊父節點移除
+                if (oldParentId && nodeMap.has(oldParentId)) {
+                    const oldParent = nodeMap.get(oldParentId);
+                    nodeMap.set(oldParentId, {
+                        ...oldParent,
+                        data: {
+                            ...oldParent.data,
+                            childrenIds: (oldParent.data.childrenIds || []).filter(
+                                (id) => id !== sourceNodeId
+                            ),
+                            dimmed: false,
+                        },
+                    });
+                }
+
+                // 加入新父節點
+                nodeMap.set(targetNodeId, {
+                    ...targetNode,
+                    data: {
+                        ...targetNode.data,
+                        childrenIds: Array.from(
+                            new Set([...(targetNode.data.childrenIds || []), sourceNodeId])
+                        ),
+                        dimmed: false,
+                    },
+                });
+
+                // 更新來源節點與其子孫的層級與父節點資訊
+                const updateLevels = (nodeId, nextLevel) => {
+                    const node = nodeMap.get(nodeId);
+                    if (!node) return;
+
+                    nodeMap.set(nodeId, {
+                        ...node,
+                        data: {
+                            ...node.data,
+                            parentId: nodeId === sourceNodeId ? targetNodeId : node.data.parentId,
+                            level: nextLevel,
+                            isRoot: false,
+                            dimmed: false,
+                        },
+                    });
+
+                    (node.data.childrenIds || []).forEach((childId) =>
+                        updateLevels(childId, nextLevel + 1)
+                    );
+                };
+
+                const startLevel = (targetNode.data.level || 0) + 1;
+                updateLevels(sourceNodeId, startLevel);
+
+                const nextNodes = Array.from(nodeMap.values());
+                nodesRef.current = nextNodes;
+                return nextNodes;
+            });
+
+            setEdges((prevEdges) => {
+                let updatedEdges = prevEdges.map((edge) => {
+                    if (edge.type === 'smoothstep' && edge.target === sourceNodeId) {
+                        return { ...edge, source: targetNodeId };
+                    }
+                    return edge;
+                });
+
+                const hasParentEdge = updatedEdges.some(
+                    (edge) => edge.type === 'smoothstep' && edge.target === sourceNodeId
+                );
+
+                if (!hasParentEdge) {
+                    updatedEdges = updatedEdges.concat({
+                        id: `edge-${targetNodeId}-${sourceNodeId}-${Date.now()}`,
+                        source: targetNodeId,
+                        target: sourceNodeId,
+                        sourceHandle: 'right',
+                        targetHandle: 'left',
+                        type: 'smoothstep',
+                        markerEnd: {
+                            type: MarkerType.ArrowClosed,
+                        },
+                        hidden: false,
+                    });
+                }
+
+                return updatedEdges;
+            });
 
             showMessage('節點搬移成功', 'success');
             setMoveMode(false);

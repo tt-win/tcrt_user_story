@@ -1520,8 +1520,14 @@ async def move_node(
         # 驗證權限
         await _require_usm_permission(current_user, "update", team_id)
 
+        # 確保 map_id 為整數
+        try:
+            map_id_int = int(map_id)
+        except Exception:
+            map_id_int = map_id
+
         # 取得 map
-        map_obj = await _get_usm_map(usm_db, map_id)
+        map_obj = await _get_usm_map(usm_db, map_id_int)
         if not map_obj:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -1592,49 +1598,93 @@ async def move_node(
         # 執行搬移：更新源節點的 parent_id
         source_node["parent_id"] = new_parent_id
 
-        # 更新目標節點的 children_ids（如果還沒有）
-        if "children_ids" not in target_node:
-            target_node["children_ids"] = []
-        if node_id not in target_node["children_ids"]:
-            target_node["children_ids"].append(node_id)
+        # 以 parent_id 重新建立 children_ids（全量重建避免殘留/重複）
+        node_dict = {n.get("id"): n for n in nodes}
+        for n in node_dict.values():
+            n["children_ids"] = []
+        for nid, n in node_dict.items():
+            pid = n.get("parent_id")
+            if pid and pid in node_dict:
+                parent_children = node_dict[pid].setdefault("children_ids", [])
+                parent_children.append(nid)
 
-        # 更新原父節點的 children_ids（移除源節點）
-        old_parent_id = None
-        for n in nodes:
-            if node_id in (n.get("children_ids") or []):
-                old_parent_id = n.get("id")
-                if node_id in n["children_ids"]:
-                    n["children_ids"].remove(node_id)
-                break
+        # 去重 children_ids
+        for n in node_dict.values():
+            if n.get("children_ids"):
+                n["children_ids"] = list(dict.fromkeys(n["children_ids"]))
 
-        # 更新邊
-        edges = map_obj.edges or []
+        # 更新邊：去掉所有 parent edge，依 parent-child 關係重建一次
+        edges = [e for e in (map_obj.edges or []) if e.get("edge_type") != "parent"]
+        for child_id, n in node_dict.items():
+            pid = n.get("parent_id")
+            if pid:
+                edges.append({
+                    "id": f"{pid}-{child_id}",
+                    "source": pid,
+                    "target": child_id,
+                    "edge_type": "parent",
+                })
 
-        # 找到並更新或創建連接邊
-        parent_edge_found = False
-        for edge in edges:
-            # 如果存在舊的 parent 邊，更新它
-            if edge.get("target") == node_id and edge.get("edge_type") == "parent":
-                edge["source"] = new_parent_id
-                parent_edge_found = True
-                break
+        # 重新計算各節點的層級，避免搬移多次後 level 不一致
+        visited = set()
 
-        # 如果沒有找到，創建新的 parent 邊
-        if not parent_edge_found:
-            edges.append({
-                "id": f"{new_parent_id}-{node_id}",
-                "source": new_parent_id,
-                "target": node_id,
-                "edge_type": "parent"
-            })
+        def assign_level(node_id: str, level: int):
+            if node_id in visited:
+                return
+            visited.add(node_id)
+            node = node_dict.get(node_id)
+            if not node:
+                return
+            node["level"] = level
+            for child_id in node.get("children_ids") or []:
+                assign_level(child_id, level + 1)
 
-        # 保存更改
+        # 根節點（無 parent_id）作為起點
+        root_ids = [nid for nid, n in node_dict.items() if not n.get("parent_id")]
+        for rid in root_ids:
+            assign_level(rid, 0)
+
+        # 保存更改到主 JSON
         map_obj.nodes = nodes
         map_obj.edges = edges
         flag_modified(map_obj, "nodes")
         flag_modified(map_obj, "edges")
         map_obj.updated_at = datetime.utcnow()
         usm_db.add(map_obj)
+
+        # 重新寫入 node table（先刪再全量插入），確保含子節點的搬移也被正確落盤
+        await usm_db.execute(
+            delete(UserStoryMapNodeDB).where(UserStoryMapNodeDB.map_id == map_id_int)
+        )
+
+        new_node_rows = []
+        for n in nodes:
+            new_node_rows.append(
+                UserStoryMapNodeDB(
+                    map_id=map_id_int,
+                    node_id=n.get("id"),
+                    title=n.get("title"),
+                    description=n.get("description"),
+                    node_type=n.get("node_type"),
+                    parent_id=n.get("parent_id"),
+                    children_ids=n.get("children_ids") or [],
+                    related_ids=n.get("related_ids") or [],
+                    comment=n.get("comment"),
+                    jira_tickets=n.get("jira_tickets") or [],
+                    team=n.get("team"),
+                    aggregated_tickets=n.get("aggregated_tickets") or [],
+                    position_x=float(n.get("position_x", 0) or 0),
+                    position_y=float(n.get("position_y", 0) or 0),
+                    level=n.get("level", 0),
+                    as_a=n.get("as_a"),
+                    i_want=n.get("i_want"),
+                    so_that=n.get("so_that"),
+                    updated_at=datetime.utcnow(),
+                )
+            )
+
+        usm_db.add_all(new_node_rows)
+
         await usm_db.commit()
 
         # 記錄審計日誌
@@ -1680,4 +1730,3 @@ async def move_node(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"搬移節點失敗: {str(exc)}",
         )
-
