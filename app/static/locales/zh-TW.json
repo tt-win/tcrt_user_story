@@ -1441,6 +1441,7 @@
     "fullRelationGraph": "完整相關圖",
     "reviewTestCases": "檢閱相關案例",
     "clearHighlight": "清除高亮",
+    "clearSearchHighlight": "清除搜尋高亮",
     "nodeProperties": "節點屬性",
     "selectNodeHint": "選擇一個節點以查看和編輯屬性",
     "setNodeRelations": "設定節點關聯",
