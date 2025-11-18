@@ -5101,7 +5101,8 @@ function displayTestCasesReview(testCases) {
 
 // Create Test Run button - use event delegation
 document.addEventListener('click', (e) => {
-    if (e.target.id === 'createTestRunBtn') {
+    const createTestRunBtn = e.target.closest?.('#createTestRunBtn');
+    if (createTestRunBtn) {
         console.log('createTestRunBtn clicked');
         console.log('selectedTestCases:', window.selectedTestCases);
         
