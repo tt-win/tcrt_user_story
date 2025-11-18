@@ -648,18 +648,6 @@ const CustomNode = ({ data, id }) => {
         user_story: 'Story',
     };
 
-    if (data.jiraTickets && data.jiraTickets.length > 0) {
-        badges.push(
-            React.createElement(
-                'span',
-                { key: 'jira', className: 'node-badge bg-info text-white' },
-                React.createElement('i', { className: 'fas fa-ticket-alt' }),
-                ' ',
-                data.jiraTickets.length
-            )
-        );
-    }
-
     if (data.aggregatedTickets && data.aggregatedTickets.length > 0) {
         badges.push(
             React.createElement(
