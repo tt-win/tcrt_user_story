@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, Query
+from fastapi import FastAPI, Request, Query, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
@@ -6,6 +6,7 @@ from pathlib import Path
 import logging
 import os
 from typing import Optional
+from sqlalchemy.orm import Session
 
 app = FastAPI(
     title="Test Case Repository Web Tool",
@@ -22,6 +23,8 @@ except Exception as _e:
     logging.warning(f"GZipMiddleware 啟用失敗（不影響服務）：{_e}")
 
 from app.middlewares import AuditMiddleware
+from app.database import get_sync_db
+from app.models.database_models import TestCaseLocal
 
 app.add_middleware(AuditMiddleware)
 
@@ -87,14 +90,38 @@ async def test_case_set_list(request: Request):
     return templates.TemplateResponse("test_case_set_list.html", {"request": request})
 
 @app.get("/test-case-management", response_class=HTMLResponse)
-async def test_case_management(request: Request, set_id: Optional[int] = Query(None)):
+async def test_case_management(
+    request: Request,
+    set_id: Optional[int] = Query(None),
+    tc: Optional[str] = Query(None, description="Test case number for direct access"),
+    team_id: Optional[int] = Query(None, description="Team ID for resolving test case set"),
+    db: Session = Depends(get_sync_db),
+):
     """Test Case Management 頁面 - 需要先選擇 Set"""
-    # 如果沒有提供 set_id，重定向到 test-case-sets 頁面
-    if set_id is None:
+    resolved_set_id = set_id
+
+    # 允許透過 test case 編號直接解析所屬的 Test Case Set，避免彈窗被重導
+    if resolved_set_id is None and tc and team_id:
+        normalized_tc = tc.strip()
+        if normalized_tc:
+            test_case = (
+                db.query(TestCaseLocal)
+                .filter(TestCaseLocal.team_id == team_id)
+                .filter(TestCaseLocal.test_case_number == normalized_tc)
+                .first()
+            )
+            if test_case:
+                resolved_set_id = test_case.test_case_set_id
+
+    # 如果仍然無法取得 set_id，維持原本導向邏輯
+    if resolved_set_id is None:
         from fastapi.responses import RedirectResponse
         return RedirectResponse(url="/test-case-sets", status_code=303)
 
-    return templates.TemplateResponse("test_case_management.html", {"request": request, "set_id": set_id})
+    return templates.TemplateResponse(
+        "test_case_management.html",
+        {"request": request, "set_id": resolved_set_id},
+    )
 
 @app.get("/test-run-management", response_class=HTMLResponse)
 async def test_run_management(request: Request):
