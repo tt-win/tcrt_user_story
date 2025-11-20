@@ -1,0 +1,111 @@
+/* Login Page Specific Styles */
+
+/* 隱藏 header 和 footer */
+.app-header,
+.app-footer {
+    display: none !important;
+}
+
+/* 使 main 填滿全屏 */
+.app-main {
+    height: 100vh !important;
+    padding: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    background: var(--tr-bg-body);
+}
+
+.login-container {
+    padding: 1.5rem;
+    width: 100%;
+}
+
+.login-card {
+    background: var(--tr-bg-card);
+    border: 1px solid var(--tr-border-light);
+    border-radius: 8px;
+    box-shadow: var(--tr-shadow-md);
+    overflow: hidden;
+    max-width: 420px;
+    width: 100%;
+    margin: 0 auto;
+}
+
+.login-header {
+    background: linear-gradient(135deg, var(--tr-primary) 0%, #5BA0F2 100%);
+    color: white;
+    text-align: center;
+    padding: 2rem;
+}
+
+.login-header h4 {
+    color: white;
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.login-header p {
+    color: rgba(255, 255, 255, 0.9);
+    margin: 0;
+}
+
+.form-label {
+    font-weight: 500;
+    color: var(--tr-text-primary);
+    margin-bottom: 0.5rem;
+    font-size: 0.875rem;
+}
+
+.form-control {
+    border: 1px solid var(--tr-border);
+    border-radius: 6px;
+    font-size: 14px;
+    padding: 0.625rem 0.875rem;
+    transition: all 0.2s ease;
+    background-color: var(--tr-bg-card);
+    color: var(--tr-text-primary);
+}
+
+.form-control:focus {
+    border-color: var(--tr-primary);
+    box-shadow: 0 0 0 0.2rem rgba(var(--tr-primary-rgb), 0.25);
+    background-color: var(--tr-bg-card);
+    color: var(--tr-text-primary);
+}
+
+.loading-spinner {
+    width: 1rem;
+    height: 1rem;
+}
+
+.alert-floating {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 1060;
+    min-width: 300px;
+    animation: slideInRight 0.3s ease-out;
+    border-radius: 6px;
+    box-shadow: var(--tr-shadow-md);
+}
+
+.form-check-label {
+    color: var(--tr-text-secondary);
+    font-size: 0.875rem;
+}
+
+.text-muted {
+    color: var(--tr-text-muted) !important;
+}
+
+@keyframes slideInRight {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}
