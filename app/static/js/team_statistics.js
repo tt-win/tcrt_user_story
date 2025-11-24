@@ -1461,14 +1461,8 @@
      */
     function formatDateTime(isoString) {
         if (!isoString) return '-';
-        const date = new Date(isoString);
-        return date.toLocaleString('zh-TW', {
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit'
-        });
+        // 使用 AppUtils.formatDate 以支援自動時區轉換 (UTC -> Local)
+        return AppUtils.formatDate(isoString, 'datetime');
     }
 
     /**

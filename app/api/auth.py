@@ -18,7 +18,7 @@ from app.auth.permission_service import permission_service
 from app.auth.dependencies import get_current_user
 from app.auth.password_service import PasswordService
 from app.database import get_async_session
-from app.models.database_models import User
+from app.models.database_models import User, LarkUser
 from app.audit import audit_service, ActionType, ResourceType, AuditSeverity
 
 logger = logging.getLogger(__name__)
@@ -91,6 +91,7 @@ class UserInfoResponse(BaseModel):
     permissions: Dict[str, Any]
     accessible_teams: list[int]
     lark_name: Optional[str] = None
+    avatar_url: Optional[str] = None
 
 
 def get_client_ip(request: Request) -> str:
@@ -635,6 +636,17 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
         from app.services.user_service import UserService
         lark_status = await UserService.check_lark_integration_status(current_user.id)
  
+        # 嘗試獲取 Lark 頭像
+        avatar_url = None
+        if current_user.lark_user_id:
+            try:
+                async with get_async_session() as session:
+                    lark_user = await session.get(LarkUser, current_user.lark_user_id)
+                    if lark_user:
+                        avatar_url = lark_user.avatar_240
+            except Exception as e:
+                logger.warning(f"獲取 Lark 頭像失敗: {e}")
+
         return UserInfoResponse(
             user_id=current_user.id,
             username=current_user.username,
@@ -644,7 +656,8 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
             is_active=current_user.is_active,
             permissions=permissions,
             accessible_teams=accessible_teams,
-            lark_name=lark_status.get("name")
+            lark_name=lark_status.get("name"),
+            avatar_url=avatar_url
         )
         
     except Exception as e:

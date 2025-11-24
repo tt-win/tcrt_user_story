@@ -16,7 +16,7 @@ from app.auth.dependencies import get_current_user
 from app.auth.models import UserRole, UserCreate
 from app.auth.password_service import PasswordService
 from app.services.user_service import UserService
-from app.models.database_models import User
+from app.models.database_models import User, LarkUser
 from app.database import get_async_session
 from sqlalchemy import select, and_, or_, func
 import logging
@@ -98,6 +98,7 @@ class UserResponse(BaseModel):
     role: str
     is_active: bool
     lark_user_id: Optional[str] = None
+    avatar_url: Optional[str] = None
     created_at: datetime
     updated_at: Optional[datetime]
     last_login_at: Optional[datetime]
@@ -130,6 +131,8 @@ class UserSelfOut(BaseModel):
     created_at: datetime
     updated_at: Optional[datetime]
     last_login_at: Optional[datetime]
+    avatar_url: Optional[str] = None
+    lark_name: Optional[str] = None
     teams: List[str] = []  # 所屬團隊名稱列表
 
 
@@ -186,7 +189,9 @@ async def list_users(
     try:
         async with get_async_session() as session:
             # 建立基礎查詢
-            query = select(User)
+            query = select(User, LarkUser.avatar_240).outerjoin(
+                LarkUser, User.lark_user_id == LarkUser.user_id
+            )
 
             # 搜尋條件
             if search:
@@ -215,7 +220,8 @@ async def list_users(
             query = query.offset(offset).limit(per_page).order_by(User.created_at.desc())
 
             result = await session.execute(query)
-            users = result.scalars().all()
+            # result now contains (User, avatar_url) tuples
+            rows = result.all()
 
             user_responses = [
                 UserResponse(
@@ -226,11 +232,12 @@ async def list_users(
                     role=user.role.value,
                     is_active=user.is_active,
                     lark_user_id=getattr(user, 'lark_user_id', None),
+                    avatar_url=avatar_url,
                     created_at=user.created_at,
                     updated_at=user.updated_at,
                     last_login_at=user.last_login_at
                 )
-                for user in users
+                for user, avatar_url in rows
             ]
 
             return UserListResponse(
@@ -297,6 +304,17 @@ async def create_user(
         # 使用統一的 UserService 建立使用者
         new_user = await UserService.create_user_async(user_create)
 
+        # 嘗試獲取 Lark 頭像
+        avatar_url = None
+        if new_user.lark_user_id:
+            try:
+                async with get_async_session() as session:
+                    lark_user = await session.get(LarkUser, new_user.lark_user_id)
+                    if lark_user:
+                        avatar_url = lark_user.avatar_240
+            except Exception as e:
+                logger.warning(f"獲取 Lark 頭像失敗: {e}")
+
         logger.info(f"管理員 {current_user.username} 建立了新使用者 {new_user.username}")
 
         action_brief = f"{current_user.username} created user {new_user.username}"
@@ -320,6 +338,7 @@ async def create_user(
             role=new_user.role.value,
             is_active=new_user.is_active,
             lark_user_id=getattr(new_user, 'lark_user_id', None),
+            avatar_url=avatar_url,
             created_at=new_user.created_at,
             updated_at=new_user.updated_at,
             last_login_at=new_user.last_login_at
@@ -357,6 +376,19 @@ async def get_current_user_profile(
         
         role_value = str(current_user.role.value) if isinstance(current_user.role, UserRole) else str(current_user.role)
 
+        # 嘗試獲取 Lark 頭像
+        avatar_url = None
+        lark_name = None
+        if current_user.lark_user_id:
+            try:
+                async with get_async_session() as session:
+                    lark_user = await session.get(LarkUser, current_user.lark_user_id)
+                    if lark_user:
+                        avatar_url = lark_user.avatar_240
+                        lark_name = lark_user.name
+            except Exception as e:
+                logger.warning(f"獲取 Lark 資訊失敗: {e}")
+
         return UserSelfOut(
             id=current_user.id,
             username=current_user.username,
@@ -367,6 +399,8 @@ async def get_current_user_profile(
             created_at=current_user.created_at,
             updated_at=current_user.updated_at,
             last_login_at=current_user.last_login_at,
+            avatar_url=avatar_url,
+            lark_name=lark_name,
             teams=teams
         )
         
@@ -429,6 +463,15 @@ async def update_current_user_profile(
             # TODO: 取得使用者所屬的團隊名稱
             teams = []
 
+            # 嘗試獲取 Lark 頭像
+            avatar_url = None
+            lark_name = None
+            if user.lark_user_id:
+                lark_user = await session.get(LarkUser, user.lark_user_id)
+                if lark_user:
+                    avatar_url = lark_user.avatar_240
+                    lark_name = lark_user.name
+
             return UserSelfOut(
                 id=user.id,
                 username=user.username,
@@ -439,6 +482,8 @@ async def update_current_user_profile(
                 created_at=user.created_at,
                 updated_at=user.updated_at,
                 last_login_at=user.last_login_at,
+                avatar_url=avatar_url,
+                lark_name=lark_name,
                 teams=teams
             )
 
@@ -558,6 +603,13 @@ async def get_user(
                     detail="使用者不存在"
                 )
 
+            # 嘗試獲取 Lark 頭像
+            avatar_url = None
+            if user.lark_user_id:
+                lark_user = await session.get(LarkUser, user.lark_user_id)
+                if lark_user:
+                    avatar_url = lark_user.avatar_240
+
             return UserResponse(
                 id=user.id,
                 username=user.username,
@@ -566,6 +618,7 @@ async def get_user(
                 role=user.role.value,
                 is_active=user.is_active,
                 lark_user_id=getattr(user, 'lark_user_id', None),
+                avatar_url=avatar_url,
                 created_at=user.created_at,
                 updated_at=user.updated_at,
                 last_login_at=user.last_login_at
@@ -719,6 +772,13 @@ async def update_user(
                     },
                 )
 
+            # 嘗試獲取 Lark 頭像
+            avatar_url = None
+            if user.lark_user_id:
+                lark_user = await session.get(LarkUser, user.lark_user_id)
+                if lark_user:
+                    avatar_url = lark_user.avatar_240
+
             return UserResponse(
                 id=user.id,
                 username=user.username,
@@ -727,6 +787,7 @@ async def update_user(
                 role=user.role.value,
                 is_active=user.is_active,
                 lark_user_id=getattr(user, 'lark_user_id', None),
+                avatar_url=avatar_url,
                 created_at=user.created_at,
                 updated_at=user.updated_at,
                 last_login_at=user.last_login_at

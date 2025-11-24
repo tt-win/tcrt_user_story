@@ -61,6 +61,7 @@ class BaseAuthManager {
         this.userInfoRole = document.getElementById('user-info-role');
         this.userInfoTeams = document.getElementById('user-info-teams');
         this.userAvatarIcon = document.getElementById('user-avatar-icon');
+        this.userAvatarImage = document.getElementById('user-avatar-image');
     }
 
     /**
@@ -160,6 +161,18 @@ class BaseAuthManager {
         
         console.log('[BaseAuthManager] 處理後的數據 - displayName:', displayName, 'role:', role, 'teams:', teams);
         
+        // 更新頭像
+        if (this.userAvatarImage && this.userAvatarIcon) {
+            if (userInfo.avatar_url) {
+                this.userAvatarImage.src = userInfo.avatar_url;
+                this.userAvatarImage.classList.remove('d-none');
+                this.userAvatarIcon.classList.add('d-none');
+            } else {
+                this.userAvatarImage.classList.add('d-none');
+                this.userAvatarIcon.classList.remove('d-none');
+            }
+        }
+
         // 更新主要顯示區域 (header 按鈕)
         if (this.userDisplayName) {
             // 移除 data-i18n 屬性以防止翻譯系統覆蓋內容
