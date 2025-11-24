@@ -800,3 +800,46 @@ async function showHiddenModeModal() {
 
     document.addEventListener('keydown', onKeydown, { passive: true });
 })();
+
+// 自動聚焦功能
+(function() {
+    // 輔助函數：尋找容器內第一個可聚焦的輸入框
+    function findFirstFocusableInput(container) {
+        return container.querySelector('input:not([type="hidden"]):not([disabled]):not([readonly]), textarea:not([disabled]):not([readonly]), select:not([disabled]):not([readonly])');
+    }
+
+    // 1. 處理 Bootstrap Modal
+    document.addEventListener('shown.bs.modal', function (event) {
+        const modal = event.target;
+        const input = findFirstFocusableInput(modal);
+        if (input) {
+            input.focus();
+            // 如果是文字輸入框，選取文字內容以便直接編輯
+            if (input.tagName === 'INPUT' && (input.type === 'text' || input.type === 'password' || input.type === 'email' || input.type === 'number')) {
+                input.select();
+            }
+        }
+    });
+
+    // 2. 處理頁面載入
+    document.addEventListener('DOMContentLoaded', function() {
+        // 優先檢查是否有指定 autofocus 屬性的元素
+        const explicitAutofocus = document.querySelector('[autofocus]');
+        if (explicitAutofocus) {
+            explicitAutofocus.focus();
+            return;
+        }
+
+        // 否則尋找主要內容區域的第一個輸入框（避免導覽列等非主要區域）
+        // 我們檢查 input.offsetParent !== null 來確保元素是可見的
+        const allInputs = document.querySelectorAll('input:not([type="hidden"]):not([disabled]):not([readonly]), textarea:not([disabled]):not([readonly]), select:not([disabled]):not([readonly])');
+        
+        for (const input of allInputs) {
+            // 確保輸入框可見且不位於隱藏的 modal 中
+            if (input.offsetParent !== null && !input.closest('.modal')) {
+                input.focus();
+                break; 
+            }
+        }
+    });
+})();
