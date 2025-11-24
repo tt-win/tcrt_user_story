@@ -791,7 +791,14 @@ async function saveTeam() {
             let errMsg = '';
             try {
                 const error = await response.clone().json();
-                errMsg = error?.detail || error?.message || '';
+                if (Array.isArray(error?.detail)) {
+                    errMsg = error.detail.map(e => {
+                        const field = e.loc && e.loc.length > 0 ? e.loc[e.loc.length - 1] : 'Unknown field';
+                        return `${field}: ${e.msg}`;
+                    }).join('; ');
+                } else {
+                    errMsg = error?.detail || error?.message || '';
+                }
             } catch (_) {
                 try {
                     errMsg = (await response.text()) || '';
