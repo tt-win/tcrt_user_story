@@ -246,7 +246,7 @@ async def get_team_activity(
                 text("""
                     SELECT team_id, action_type, COUNT(*) as count
                     FROM audit_logs
-                    WHERE timestamp >= :start_dt
+                    WHERE timestamp >= :start_dt AND team_id > 0
                     GROUP BY team_id, action_type
                     ORDER BY team_id, action_type
                 """),
@@ -377,6 +377,8 @@ async def get_test_case_trends(
         per_team_daily: List[Dict[str, Any]] = []
 
         for team_id in sorted(involved_team_ids):
+            if team_id == 0:
+                continue
             team_name = team_name_map.get(team_id, f"未命名團隊 #{team_id}")
             total_created = 0
             total_updated = 0
@@ -529,7 +531,7 @@ async def get_test_run_metrics(
                     SELECT tri.team_id, t.name, COUNT(*) as cnt
                     FROM test_run_items tri
                     LEFT JOIN teams t ON tri.team_id = t.id
-                    WHERE date(tri.created_at) >= :start_date
+                    WHERE date(tri.created_at) >= :start_date AND tri.team_id > 0
                     GROUP BY tri.team_id, t.name
                     ORDER BY cnt DESC
                 """),
@@ -570,6 +572,8 @@ async def get_test_run_metrics(
         # 構建團隊別每日執行數據
         per_team_daily: List[Dict[str, Any]] = []
         for team_id in sorted(involved_team_ids):
+            if team_id == 0:
+                continue
             team_name = team_name_map.get(team_id, f"未命名團隊 #{team_id}")
             daily_entries: List[Dict[str, Any]] = []
             total_executions = 0
@@ -597,6 +601,8 @@ async def get_test_run_metrics(
         # 構建團隊別每日通過率數據
         per_team_pass_rate: List[Dict[str, Any]] = []
         for team_id in sorted(involved_team_ids):
+            if team_id == 0:
+                continue
             team_name = team_name_map.get(team_id, f"未命名團隊 #{team_id}")
             daily_entries: List[Dict[str, Any]] = []
             total_pass = 0

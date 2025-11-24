@@ -211,7 +211,7 @@ class ProfileManager {
         console.log('[ProfileManager] 開始顯示用戶資料:', userData);
         
         // 基本資訊顯示
-        const displayName = userData.full_name || userData.username;
+        const displayName = userData.full_name || userData.lark_name || userData.username;
         const username = `@${userData.username}`;
         const email = userData.email || '未設定';
         
@@ -224,16 +224,24 @@ class ProfileManager {
         console.log('[ProfileManager] 設定電子信箱:', email);
         this.setElementText('profile-email', email);
         
+        // 設定頭像
+        const avatarImg = document.getElementById('profile-avatar-img');
+        const avatarIcon = document.getElementById('profile-avatar-icon');
+        
+        if (avatarImg && avatarIcon) {
+            if (userData.avatar_url) {
+                avatarImg.src = userData.avatar_url;
+                avatarImg.classList.remove('d-none');
+                avatarIcon.classList.add('d-none');
+            } else {
+                avatarImg.classList.add('d-none');
+                avatarIcon.classList.remove('d-none');
+            }
+        }
+        
         // 角色顯示
         console.log('[ProfileManager] 設定用戶角色:', userData.role);
         this.displayUserRole(userData.role);
-        
-        // 團隊顯示
-        const teams = userData.teams && userData.teams.length > 0 
-            ? userData.teams.join(', ') 
-            : '無';
-        console.log('[ProfileManager] 設定團隊:', teams);
-        this.setElementText('profile-teams', teams);
         
         // 時間顯示
         const createdAt = this.formatDateTime(userData.created_at);

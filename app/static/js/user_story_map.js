@@ -5133,6 +5133,16 @@ function sortTestCasesByNumber(testCases) {
 
 function displayTestCasesReview(testCases) {
     const tbody = document.getElementById('testCasesTableBody');
+    
+    // Reset UI state immediately
+    const countEl = document.getElementById('selectedTestCasesCount');
+    const selectAllEl = document.getElementById('selectAllTestCasesCheckbox');
+    
+    window.selectedTestCases = [];
+    window.lastCheckedCheckbox = null;
+    
+    if (countEl) countEl.textContent = '0';
+    if (selectAllEl) selectAllEl.checked = false;
 
     if (!testCases || testCases.length === 0) {
         tbody.innerHTML = '<tr><td colspan="4" class="text-muted text-center py-3">沒有相關的測試案例</td></tr>';
@@ -5141,9 +5151,6 @@ function displayTestCasesReview(testCases) {
 
     // Sort test cases by test case number
     const sortedTestCases = sortTestCasesByNumber(testCases);
-
-    window.selectedTestCases = []; // Store selected cases
-    window.lastCheckedCheckbox = null; // For shift-click support
 
     const getPriorityBadgeClass = (priority) => {
         const classes = {
