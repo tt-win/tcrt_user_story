@@ -125,12 +125,34 @@ function setupMarkdownHotkeys(textarea) {
 
 <!-- 快速編輯樣式 -->
 <style>
+/* ============================================================
+   TEST CASE MANAGEMENT - CSS STYLES
+   ============================================================
+   目錄:
+   1. 頁面佈局 (Page Layout)
+   2. 側邊欄 (Sidebar)
+   3. 快速編輯 (Quick Edit)
+   4. Markdown 編輯器 (Markdown Editor)
+   5. 附件 (Attachments)
+   6. 搜尋篩選卡片 (Search Filter Card)
+   7. Section 卡片 (Section Cards)
+   8. 測試案例表格 (Test Case Table)
+   9. 大量新增 Modal (Bulk Create Modal)
+   10. 大量編輯 Modal (Bulk Edit Modal)
+   11. TCG 標籤 (TCG Tags)
+   12. 響應式設計 (Responsive)
+   ============================================================ */
+
+/* ------------------------------------------------------------
+   1. 頁面佈局 (Page Layout)
+   ------------------------------------------------------------ */
 /* 限定本頁：鎖住整體頁面，僅內容區塊可滾動 */
 html,
 body {
   height: 100%;
   overflow: hidden;
 }
+
 /* testCasesPage 直接填滿 header/footer 之間的可視高度 */
 #testCasesPage {
   position: fixed;
@@ -180,6 +202,9 @@ body {
   overflow: hidden;
 }
 
+/* ------------------------------------------------------------
+   2. 側邊欄 (Sidebar)
+   ------------------------------------------------------------ */
 #sectionListSidebarCol {
   width: 250px;
   overflow: hidden;
@@ -204,6 +229,9 @@ body {
   overflow-y: auto;
 }
 
+/* ------------------------------------------------------------
+   3. 快速編輯 (Quick Edit)
+   ------------------------------------------------------------ */
 .hover-editable {
     cursor: pointer;
     transition: background-color 0.2s;
@@ -243,8 +271,9 @@ body {
     box-sizing: border-box !important;
 }
 
-
-/* Markdown 編輯器樣式 */
+/* ------------------------------------------------------------
+   4. Markdown 編輯器 (Markdown Editor)
+   ------------------------------------------------------------ */
 .markdown-global-toolbar {
     display: flex;
     gap: 0.5rem;
@@ -308,7 +337,9 @@ body {
     text-decoration: underline;
 }
 
-/* 附件樣式 */
+/* ------------------------------------------------------------
+   5. 附件 (Attachments)
+   ------------------------------------------------------------ */
 .attachment-item {
     background-color: var(--tr-bg-sidebar);
     transition: background-color 0.2s;
@@ -318,14 +349,9 @@ body {
     background-color: var(--tr-border-light);
 }
 
-/* (reverted) removed modal TCG custom styles */
-
-/* Markdown 預覽區域：移除首尾多餘邊距，避免卡片內留下額外留白 */
-
-/* 卡片與編輯容器對齊：確保卡片本身不產生額外外距 */
-/* (revert) remove special markdown preview margin normalization */
-
-
+/* ------------------------------------------------------------
+   6. 搜尋篩選卡片 (Search Filter Card)
+   ------------------------------------------------------------ */
 /* 在顯示前先隱藏 modal 內容，避免進場時可見的滾動回頂彈跳感 */
 .modal-preparing .modal-body {
     visibility: hidden;
@@ -338,11 +364,12 @@ body {
 
 /* 精準收斂搜尋卡片的內邊距，避免上方留白過多 */
 #searchFilterCard .card-body {
-    padding-top: 0.25rem;   /* 再更緊：由 0.5rem 降為 0.25rem */
-    padding-bottom: 0.5rem; /* 底部同步略收斂 */
+    padding-top: 0.25rem;
+    padding-bottom: 0.5rem;
 }
+
 #searchFilterCard .form-label {
-    margin-bottom: 0.125rem; /* 再更緊：由 0.25rem 降為 0.125rem */
+    margin-bottom: 0.125rem;
 }
 
 /* 同層級其他卡片一併收斂頂部空白 */
@@ -351,6 +378,14 @@ body {
     padding-top: 0.5rem;
 }
 
+/* 專門收斂 #searchInput 的父層之上緣空白 */
+#searchFilterCard .card-body .row.g-3 {
+    --bs-gutter-y: 0.125rem;
+}
+
+/* ------------------------------------------------------------
+   7. Section 卡片 (Section Cards)
+   ------------------------------------------------------------ */
 /* 讓列表容器可滾動（高度由 flexbox 自動計算）*/
 #testCasesScroll {
     flex: 1;
@@ -366,7 +401,6 @@ body {
     width: 100%;
 }
 
-/* Section 卡片容器 */
 .section-stack {
     display: flex;
     flex-direction: column;
@@ -437,6 +471,9 @@ body {
     padding: 0.15rem 0.35rem 0.35rem;
 }
 
+/* ------------------------------------------------------------
+   8. 測試案例表格 (Test Case Table)
+   ------------------------------------------------------------ */
 .section-card-body table {
     margin-bottom: 0;
     font-size: 0.8rem;
@@ -533,7 +570,9 @@ body {
     line-height: 1.1;
 }
 
-/* 大量新增 Modal 固定高度與卷動區域 */
+/* ------------------------------------------------------------
+   9. 大量新增 Modal (Bulk Create Modal)
+   ------------------------------------------------------------ */
 #bulkCreateModal .modal-content { font-size: 0.9rem; }
 #bulkCreateModal .modal-body { height: 65vh; overflow: hidden; }
 #bulkCreateModal .bulk-left-scroll { max-height: 60vh; overflow: auto; padding-right: .25rem; }
@@ -542,7 +581,9 @@ body {
 /* 讓結構說明支援換行（以 \n 分行） */
 #bulkCreateModal [data-i18n="testCase.bulk.structureHint"] { white-space: pre-line; }
 
-/* 大量編輯模式樣式 */
+/* ------------------------------------------------------------
+   10. 大量編輯 Modal (Bulk Edit Modal)
+   ------------------------------------------------------------ */
 #bulkEditModal .modal-dialog { max-width: 90vw; min-width: 1200px; }
 #bulkEditModal .modal-body { height: 75vh; overflow: hidden; padding: 0; }
 #bulkEditModal .bulk-edit-toolbar { padding: 0.75rem; border-bottom: 1px solid var(--tr-border-light); background: var(--tr-bg-sidebar); }
@@ -563,13 +604,9 @@ body {
 #bulkEditModal .bulk-edit-grid td.selecting { background-color: #e0f0ff; }
 #bulkEditModal .bulk-edit-grid { user-select: none; }
 
-/* 專門收斂 #searchInput 的父層（col-）之上緣空白：縮小該 row 的垂直 gutter */
-#searchFilterCard .card-body .row.g-3 {
-    --bs-gutter-y: 0.125rem; /* 再更緊：由 0.25rem 降為 0.125rem */
-}
-
-
-/* Modal 和 Batch TCG 標籤樣式 */
+/* ------------------------------------------------------------
+   11. TCG 標籤 (TCG Tags)
+   ------------------------------------------------------------ */
 .tcg-tag {
     display: inline-block;
     background-color: #e3f2fd;
@@ -586,6 +623,11 @@ body {
     text-overflow: ellipsis;
 }
 
+.tcg-tags-container {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
 .tcg-tags-container:hover {
     border-color: #86b7fe;
     box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
@@ -599,13 +641,9 @@ body {
     background-color: #e3f2fd !important;
 }
 
-/* TCG 容器的響應式設計 */
-.tcg-tags-container {
-    word-wrap: break-word;
-    overflow-wrap: break-word;
-}
-
-/* Modal 響應式設計 */
+/* ------------------------------------------------------------
+   12. 響應式設計 (Responsive)
+   ------------------------------------------------------------ */
 @media (max-width: 1500px) {
     #testCaseModal .modal-dialog {
         max-width: 90vw !important;
@@ -1617,60 +1655,147 @@ TC-1003,API 健康檢查,\"服務已啟動\",\"發送 GET /health\",\"回傳 200
 
 {% block scripts %}
 <script>
-// 與執行頁共用的 Test Case 詳細快取設定（localStorage）
+/* ============================================================
+   TEST CASE MANAGEMENT - JAVASCRIPT
+   ============================================================
+   
+   目錄 (Table of Contents):
+   ──────────────────────────────────────────────────────────────
+   1.  常數定義 (Constants)                         ~Line 30
+   2.  全域變數 (Global Variables)                  ~Line 60
+   3.  事件監聽器 (Event Listeners)                 ~Line 100
+   4.  快取管理 (Cache Management)                  ~Line 200
+       - 執行快取 (Exec Cache)
+       - 測試案例快取 (Test Cases Cache)
+       - TCG 快取 (TCG Cache)
+       - 篩選器儲存 (Filters Storage)
+   5.  團隊管理 (Team Management)                   ~Line 500
+   6.  權限管理 (Permissions)                       ~Line 600
+   7.  排序與分組 (Sorting & Grouping)              ~Line 800
+       - 欄位排序
+       - Section 分組
+   8.  渲染函數 (Rendering)                         ~Line 1000
+       - 表格渲染
+       - Section 渲染
+   9.  篩選器 (Filters)                             ~Line 1400
+   10. 初始化 (Initialization)                      ~Line 1600
+   11. 測試案例載入 (Loading)                       ~Line 1800
+   12. 測試案例 Modal (Test Case Modal)             ~Line 2200
+       - 顯示/隱藏
+       - 表單處理
+       - 儲存/刪除
+   13. TCG 編輯器 (TCG Editor)                      ~Line 3000
+       - Modal TCG 編輯
+       - 行內 TCG 編輯
+   14. 批次操作 (Batch Operations)                  ~Line 3500
+       - 批次複製
+       - 批次修改
+       - 批次刪除
+   15. 大量新增 (Bulk Create)                       ~Line 4200
+   16. 複製/克隆 (Copy/Clone)                       ~Line 5000
+   17. 快速搜尋 (Quick Search)                      ~Line 5400
+   18. Markdown 編輯器 (Markdown Editor)            ~Line 5700
+   19. 附件處理 (Attachments)                       ~Line 6200
+   20. 導航功能 (Navigation)                        ~Line 6600
+   21. Section 管理 (Section Management)            ~Line 6900
+   22. TCG Tooltip (TCG Hover)                      ~Line 7200
+   23. 參考測試案例 (Reference Test Case)           ~Line 7600
+   24. 大量編輯 (Bulk Edit)                         ~Line 7800
+   25. 拖移選取 (Drag Selection)                    ~Line 9000
+   26. 工具函數 (Utilities)                         ~Line 9200
+   
+   ============================================================ */
+
+
+/* ============================================================
+   1. 常數定義 (Constants)
+   ============================================================ */
+
+// ─────────────────────────────────────────────────────────────
+// 1.1 快取相關常數 (Cache Constants)
+// ─────────────────────────────────────────────────────────────
+
+// 執行快取設定（與執行頁共用）
 const EXEC_TC_CACHE_PREFIX = 'tr_exec_tc_cache_v1';
 const EXEC_TC_CACHE_TTL_MS = 60 * 60 * 1000; // 1 小時
 
-function setExecCachedTestCase(testCaseNumber, data) {
-    try {
-        const teamId = getTeamIdForCache(false);
-        if (!teamId) { console.debug('[CACHE] SKIP WRITE exec: no valid teamId', { testCaseNumber }); return; } // 沒有有效 teamId 就不寫入，避免污染
-        console.debug('[CACHE] QUEUE WRITE exec', { teamId, testCaseNumber });
-        // 非阻塞寫入 TRCache（IndexedDB + gzip）
-        Promise.resolve().then(() => TRCache.setExecDetail(teamId, testCaseNumber, data)).catch(()=>{});
-    } catch (_) {}
-}
-
-function removeExecCachedTestCase(testCaseNumber) {
-    try {
-        const teamId = getTeamIdForCache(false);
-        if (!teamId || !testCaseNumber) return;
-        Promise.resolve().then(() => TRCache.removeExecDetail(teamId, testCaseNumber)).catch(()=>{});
-    } catch (_) {}
-}
-
-// TCG 快取相關變數
-let tcgCache = null;
-let tcgCacheTimestamp = null;
+// TCG 快取設定
 const TCG_CACHE_KEY = 'tcg_cache';
 const TCG_CACHE_TIMESTAMP_KEY = 'tcg_cache_timestamp';
 const TCG_CACHE_EXPIRY = 24 * 60 * 60 * 1000; // 24小時過期
 
-// ===== 排序狀態（TCM） =====
-let tcmSortField = 'number'; // number|title|tcg|priority|created|updated
-let tcmSortOrder = 'asc';    // asc|desc
+// 測試案例快取設定
+const TEST_CASES_CACHE_KEY = 'test_cases_list_cache_v1';
+const TEST_CASES_CACHE_TTL = 60 * 60 * 1000; // 1小時
 
-// ===== 篩選器持久化（依 team 隔離） =====
+// 團隊快取設定
+const TEAMS_CACHE_TTL = 60 * 1000; // 1分鐘
+
+// 篩選器儲存設定
 const TCM_FILTERS_STORAGE_PREFIX = 'tcm_filters_v1';
 
+// ─────────────────────────────────────────────────────────────
+// 1.2 UI 與格式常數 (UI & Format Constants)
+// ─────────────────────────────────────────────────────────────
+
+// 優先級排序權重
+const PRIORITY_RANK = { High: 3, Medium: 2, Low: 1 };
+
+// 未分配 Section 識別碼
+const UNASSIGNED_SECTION_ID = '__section_unassigned__';
+
+// 大量新增允許的優先級值
+const BULK_PRIORITY_ALLOWED = ['High', 'Medium', 'Low'];
+
+// ─────────────────────────────────────────────────────────────
+// 1.3 事件與通訊常數 (Event & Communication Constants)
+// ─────────────────────────────────────────────────────────────
+
+// 事件廣播 Key
 const TEST_CASE_UPDATE_EVENT_KEY = 'testCaseUpdatedEvent';
+
+
+/* ============================================================
+   2. 全域變數 (Global Variables)
+   ============================================================ */
+
+// ─────────────────────────────────────────────────────────────
+// 2.1 快取狀態 (Cache State)
+// ─────────────────────────────────────────────────────────────
+
+// TCG 快取
+let tcgCache = null;
+let tcgCacheTimestamp = null;
+
+// 團隊快取（在 Section 5 使用）
+let teamContextPromise = null;
+let teamsCache = null;
+let teamsCacheLastLoaded = 0;
+
+// ─────────────────────────────────────────────────────────────
+// 2.2 測試案例資料 (Test Cases Data)
+// ─────────────────────────────────────────────────────────────
 
 let testCases = [];
 let filteredTestCases = [];
 let selectedTestCases = new Set();
 let currentSetId = null; // 當前選擇的 Test Case Set ID
+
+// 篩選器狀態
+let tcmCurrentFilters = { testCaseNumberSearch: '', searchInput: '', tcgFilter: '', priorityFilter: '' };
+
+// ─────────────────────────────────────────────────────────────
+// 2.3 排序與 Section 狀態 (Sorting & Section State)
+// ─────────────────────────────────────────────────────────────
+
+// 排序狀態
+let tcmSortField = 'number'; // number|title|tcg|priority|created|updated
+let tcmSortOrder = 'asc';    // asc|desc
+
+// Section 狀態
 const sectionSortStates = new Map();
-// Section 收合狀態（存儲已收合的 section IDs）
-const sectionCollapsedState = new Set();
-// 記錄父 section 被收合時，其子 section 的收合狀態
-// 結構: { parentSectionId: { childSectionId: isCollapsed } }
-const savedChildrenCollapseState = new Map();
-// Shift 連續多選錨點（Test Case Management）
-let lastCaseCheckboxIndex = null;
-let currentPage = 1;
-let currentTestCaseIndex = -1;
-let pageSize = 50;
-let markdownEditor = null;
+const sectionCollapsedState = new Set();        // 已收合的 section IDs
+const savedChildrenCollapseState = new Map();   // 記錄子 section 收合狀態
 
 // 區段資料（供批次設定使用）
 let tcmSectionsTree = [];
@@ -1678,9 +1803,99 @@ let tcmSectionMetaMap = new Map();
 let tcmSectionOrder = [];
 let tcmUnassignedSectionIds = new Set();
 
-// 調試模式開關（在控制台設置 window.DEBUG_SECTIONS = true 來啟用詳細日誌）
+// ─────────────────────────────────────────────────────────────
+// 2.4 分頁與導航 (Pagination & Navigation)
+// ─────────────────────────────────────────────────────────────
+
+let lastCaseCheckboxIndex = null;  // Shift 連續多選錨點
+let currentPage = 1;
+let currentTestCaseIndex = -1;
+let pageSize = 50;
+
+// ─────────────────────────────────────────────────────────────
+// 2.5 Modal 實例與編輯器狀態 (Modal Instances & Editor State)
+// ─────────────────────────────────────────────────────────────
+
+// Markdown 編輯器
+let markdownEditor = null;
+let currentEditorMode = 'preview'; // preview|edit|split
+let markdownPreviewTimeout;
+let activeTextarea = null;
+
+// 測試案例 Modal
+let testCaseModalInstance = null;
+let originalFormData = {};
+let isFormChanged = false;
+
+// Modal TCG 編輯器
+let currentModalTCGEditor = null;
+let modalTCGSearchTimeout = null;
+let modalTCGSelected = [];
+
+// 批次複製 Modal
+let batchCopyModalInstance = null;
+let batchCopyPreviewModalInstance = null;
+let batchCopyItems = [];
+let lastBatchCopyCheckboxIndex = null;
+
+// 大量新增 Modal
+let bulkModalInstance = null;
+let bulkPreviewModalInstance = null;
+let bulkTextParsedItems = [];
+
+// 批次修改 TCG 編輯器
+let batchTCGSearchTimeout;
+let batchTCGEditing = false;
+let batchTCGSelected = [];
+
+// 行內 TCG 編輯器
+let currentTCGEditor = null;
+let tcgSearchTimeout;
+
+// 大量編輯 Modal
+let bulkEditModalInstance = null;
+let bulkEditSearchModalInstance = null;
+let bulkEditData = [];
+let bulkEditChanges = new Map();
+let bulkEditSelectedCells = new Set();
+let bulkEditClipboard = { content: '', column: '', cells: [] };
+let bulkEditUndoStack = [];
+let bulkEditCurrentOperation = null;
+let bulkEditCurrentCell = null;
+let bulkEditDragState = null;
+let bulkEditSelectDragState = null;
+let bulkEditSearchResults = [];
+let bulkEditCheckedResults = new Set();
+
+// ─────────────────────────────────────────────────────────────
+// 2.6 附件與上傳 (Attachments & Upload)
+// ─────────────────────────────────────────────────────────────
+
+let uploadedAttachments = [];
+let currentTempUploadId = null;
+
+// ─────────────────────────────────────────────────────────────
+// 2.7 TCG Tooltip 狀態 (TCG Tooltip State)
+// ─────────────────────────────────────────────────────────────
+
+let currentTooltip = null;
+let tooltipTimeout = null;
+let currentHoveredElement = null;
+let isHoveringTooltip = false;
+let isInitialized = false;
+
+// ─────────────────────────────────────────────────────────────
+// 2.8 調試開關 (Debug Flags)
+// ─────────────────────────────────────────────────────────────
+
 window.DEBUG_SECTIONS = false;
 
+
+/* ============================================================
+   3. 事件監聽器 (Event Listeners)
+   ============================================================ */
+
+// 測試案例集載入事件
 window.addEventListener('testCaseSetLoaded', (event) => {
     try {
         const sections = event?.detail?.sections;
@@ -1697,6 +1912,7 @@ window.addEventListener('testCaseSetLoaded', (event) => {
     }
 });
 
+// Section 列表更新事件
 window.addEventListener('sectionListUpdated', async (event) => {
     try {
         const detail = event?.detail;
@@ -1736,6 +1952,54 @@ window.addEventListener('sectionListUpdated', async (event) => {
     }
 });
 
+
+/* ============================================================
+   4. 快取管理 (Cache Management)
+   ============================================================ */
+
+/* ------------------------------------------------------------
+   4.1 執行快取 (Exec Cache)
+   ------------------------------------------------------------ */
+
+/**
+ * 設定執行快取的測試案例
+ * @param {string} testCaseNumber - 測試案例編號
+ * @param {object} data - 測試案例資料
+ */
+function setExecCachedTestCase(testCaseNumber, data) {
+    try {
+        const teamId = getTeamIdForCache(false);
+        if (!teamId) {
+            console.debug('[CACHE] SKIP WRITE exec: no valid teamId', { testCaseNumber });
+            return;
+        }
+        console.debug('[CACHE] QUEUE WRITE exec', { teamId, testCaseNumber });
+        // 非阻塞寫入 TRCache（IndexedDB + gzip）
+        Promise.resolve().then(() => TRCache.setExecDetail(teamId, testCaseNumber, data)).catch(() => {});
+    } catch (_) {}
+}
+
+/**
+ * 移除執行快取的測試案例
+ * @param {string} testCaseNumber - 測試案例編號
+ */
+function removeExecCachedTestCase(testCaseNumber) {
+    try {
+        const teamId = getTeamIdForCache(false);
+        if (!teamId || !testCaseNumber) return;
+        Promise.resolve().then(() => TRCache.removeExecDetail(teamId, testCaseNumber)).catch(() => {});
+    } catch (_) {}
+}
+
+/* ------------------------------------------------------------
+   4.2 廣播更新 (Broadcast Updates)
+   ------------------------------------------------------------ */
+
+/**
+ * 廣播測試案例更新事件（跨分頁同步）
+ * @param {object} testCase - 測試案例物件
+ * @param {object} overrides - 覆蓋的屬性
+ */
 function broadcastTestCaseUpdate(testCase, overrides = {}) {
     try {
         const teamId = getTeamIdForCache(true);
@@ -1766,14 +2030,23 @@ function broadcastTestCaseUpdate(testCase, overrides = {}) {
     }
 }
 
+/* ------------------------------------------------------------
+   4.3 篩選器儲存 (Filters Storage)
+   ------------------------------------------------------------ */
+
+/**
+ * 取得篩選器儲存的 key（依團隊隔離）
+ */
 function getTcmFiltersStorageKey() {
     try {
-        // 與快取相同邏輯取 teamId（優先 URL，再 AppUtils，再 sessionStorage 容錯）
         const teamId = getTeamIdForCache(false);
         return teamId ? `${TCM_FILTERS_STORAGE_PREFIX}:${String(teamId)}` : null;
     } catch (_) { return null; }
 }
 
+/**
+ * 儲存篩選器到 localStorage
+ */
 function saveTcmFiltersToStorage(filters) {
     try {
         const key = getTcmFiltersStorageKey();
@@ -1836,8 +2109,7 @@ function restoreTcmFiltersToUI() {
     } catch (_) { return false; }
 }
 
-// 目前過濾器（常駐於記憶體，不依賴 UI）
-let tcmCurrentFilters = { testCaseNumberSearch: '', searchInput: '', tcgFilter: '', priorityFilter: '' };
+// NOTE: tcmCurrentFilters 已統一定義於 Section 2 (全域變數)
 
 function computeFilteredTestCases(list) {
     try {
@@ -1935,7 +2207,7 @@ function updateTcmPlaceholders() {
     } catch (_) {}
 }
 
-const PRIORITY_RANK = { High: 3, Medium: 2, Low: 1 };
+// NOTE: PRIORITY_RANK 已統一定義於 Section 1 (常數定義)
 
 function parseNumberSegments(str) {
     try {
@@ -1997,7 +2269,7 @@ function sortFilteredTestCases() {
     sortTestCaseList(filteredTestCases, tcmSortField, tcmSortOrder);
 }
 
-const UNASSIGNED_SECTION_ID = '__section_unassigned__';
+// NOTE: UNASSIGNED_SECTION_ID 已統一定義於 Section 1 (常數定義)
 function isUnassignedSectionIdValue(sectionId) {
     const key = String(sectionId);
     if (key === UNASSIGNED_SECTION_ID) return true;
@@ -2506,15 +2778,18 @@ function findSectionParentId(sectionId) {
     return section ? section.parent_section_id : null;
 }
 
-// ===== 統一快取管理模組 =====
-const TEST_CASES_CACHE_KEY = 'test_cases_list_cache_v1';
-const TEST_CASES_CACHE_TTL = 60 * 60 * 1000; // 1小時
 
-// 取得用於快取的 teamId：
-// - 先取 AppUtils.getCurrentTeam().id
-// - 再取 URL 查詢參數 team_id/teamId/team
-// - 最後可選用 sessionStorage('lastTeamId') 作為容錯
-// strict=true: 無法解析就回傳 null（不讀不寫）
+/* ============================================================
+   5. 團隊管理 (Team Management)
+   ============================================================ */
+
+// NOTE: TEST_CASES_CACHE_KEY, TEST_CASES_CACHE_TTL 已統一定義於 Section 1 (常數定義)
+
+/**
+ * 取得用於快取的 teamId
+ * 優先順序: URL > AppUtils > sessionStorage
+ * @param {boolean} strict - 嚴格模式下無法解析就回傳 null
+ */
 function getTeamIdForCache(strict = true) {
     // 1) 以 URL 為權威（使用者導航後最準確）
     try {
@@ -2545,10 +2820,7 @@ function getTeamIdForCache(strict = true) {
     return null;
 }
 
-let teamContextPromise = null;
-let teamsCache = null;
-let teamsCacheLastLoaded = 0;
-const TEAMS_CACHE_TTL = 60 * 1000;
+// NOTE: teamContextPromise, teamsCache, teamsCacheLastLoaded, TEAMS_CACHE_TTL 已統一定義於 Section 1/2
 
 async function fetchTeamsList(forceRefresh = false) {
     if (!window.AuthClient) {
@@ -2842,7 +3114,15 @@ function removeTestCaseFromCache(recordId, fallbackTestCase = null) {
     }
 }
 
-// 權限檢查與 UI 控制函數
+
+/* ============================================================
+   6. 權限管理 (Permissions)
+   ============================================================ */
+
+/**
+ * 套用測試案例管理權限設定
+ * 根據使用者權限顯示/隱藏 UI 元素
+ */
 async function applyTestCaseManagementPermissions() {
     try {
         if (!window.AuthClient) {
@@ -3239,11 +3519,20 @@ document.addEventListener('DOMContentLoaded', async function() {
     });
 });
 
-// Modal TCG 編輯器（與列表一致的體驗）
-let currentModalTCGEditor = null;
-let modalTCGSearchTimeout = null;
-let modalTCGSelected = [];
 
+/* ============================================================
+   13. TCG 編輯器 (TCG Editor)
+   ============================================================ */
+
+/* ------------------------------------------------------------
+   13.1 Modal TCG 編輯器
+   ------------------------------------------------------------ */
+
+// NOTE: currentModalTCGEditor, modalTCGSearchTimeout, modalTCGSelected 已統一定義於 Section 2
+
+/**
+ * 開始編輯 Modal 中的 TCG
+ */
 async function editModalTCG() {
     const container = document.getElementById('modalTcgContainer');
     if (!container) return;
@@ -3569,6 +3858,14 @@ async function loadTCGCache(updateProgress = null) {
     }
 }
 
+
+/* ============================================================
+   10. 初始化 (Initialization)
+   ============================================================ */
+
+/**
+ * 初始化測試案例管理頁面
+ */
 async function initTestCaseManagement() {
     // 顯示進度條
     showLoadingProgress();
@@ -4200,12 +4497,20 @@ async function initJumpToSetMenu() {
     }
 }
 
-// ===== 批次複製（Batch Copy） =====
-let batchCopyModalInstance = null;
-let batchCopyPreviewModalInstance = null;
-let batchCopyItems = []; // { source_record_id, original_number, original_title, new_number, new_title, selected, conflict, errors }
-let lastBatchCopyCheckboxIndex = null;
 
+/* ============================================================
+   14. 批次操作 (Batch Operations)
+   ============================================================ */
+
+/* ------------------------------------------------------------
+   14.1 批次複製 (Batch Copy)
+   ------------------------------------------------------------ */
+
+// NOTE: batchCopyModalInstance, batchCopyPreviewModalInstance, batchCopyItems, lastBatchCopyCheckboxIndex 已統一定義於 Section 2
+
+/**
+ * 開啟批次複製 Modal
+ */
 function openTestCaseBatchCopyModal() {
     try {
         const selectedIds = Array.from(selectedTestCases || []);
@@ -4515,11 +4820,16 @@ async function confirmBatchCopyRequest() {
     }
 }
 
-// ===== 大量新增模式（文字輸入） =====
-let bulkModalInstance = null;
-let bulkPreviewModalInstance = null;
-let bulkTextParsedItems = []; // 已解析的項目
 
+/* ============================================================
+   15. 大量新增 (Bulk Create)
+   ============================================================ */
+
+// NOTE: bulkModalInstance, bulkPreviewModalInstance, bulkTextParsedItems 已統一定義於 Section 2
+
+/**
+ * 正規化批次 TCG 編號輸入
+ */
 function normalizeBulkTcgNumbers(rawValue) {
     const result = {
         tcgNumbers: [],
@@ -4576,7 +4886,8 @@ function normalizeSingleTcg(input) {
 
     return `TCG-${digits}`;
 }
-const BULK_PRIORITY_ALLOWED = ['High', 'Medium', 'Low'];
+
+// NOTE: BULK_PRIORITY_ALLOWED 已統一定義於 Section 1 (常數定義)
 
 function parseCsvLine(line) {
     const result = [];
@@ -5530,8 +5841,22 @@ function cloneAndAddNext(id) {
 }
 
 // 生成下一個測試案例編號的輔助函數
-function generateNextTestCaseNumber(currentNumber) {
+// 統一處理各種格式：TC001, TC-001, TCG-93178.020.050 等
+function generateNextTestCaseNumber(currentNumber, options = {}) {
     if (!currentNumber) return '';
+
+    const { increment = 1 } = options; // 預設遞增 1，TCG 格式用 10
+
+    // 優先處理 TCG 格式：TCG-93178.020.050（多段式，最後一段遞增）
+    const tcgMatch = currentNumber.match(/^(.+\.)(\d+)$/);
+    if (tcgMatch) {
+        const prefix = tcgMatch[1];  // TCG-93178.020.
+        const lastNumber = parseInt(tcgMatch[2]);
+        // TCG 格式預設遞增 10
+        const tcgIncrement = (increment === 1) ? 10 : increment;
+        const nextNumber = (lastNumber + tcgIncrement).toString().padStart(tcgMatch[2].length, '0');
+        return prefix + nextNumber;
+    }
 
     // 嘗試匹配常見的測試案例編號格式
     const patterns = [
@@ -5539,7 +5864,6 @@ function generateNextTestCaseNumber(currentNumber) {
         /^([A-Z]+)-(\d+)$/,         // TC-001, TEST-123
         /^([A-Z]+)_(\d+)$/,         // TC_001, TEST_123
         /^(\d+)$/,                  // 001, 123
-        /^([A-Z\d]+)\.(\d+)$/,      // TC.001, V1.123
     ];
 
     for (let pattern of patterns) {
@@ -5547,7 +5871,7 @@ function generateNextTestCaseNumber(currentNumber) {
         if (match) {
             const prefix = match[1] || '';
             const number = parseInt(match[2] || match[1]);
-            const nextNum = number + 1;
+            const nextNum = number + increment;
 
             // 保持原有的數字位數（零填充）
             const originalNumStr = match[2] || match[1];
@@ -5557,8 +5881,6 @@ function generateNextTestCaseNumber(currentNumber) {
                 return `${prefix}-${paddedNext}`;
             } else if (pattern.source.includes('_')) {
                 return `${prefix}_${paddedNext}`;
-            } else if (pattern.source.includes('\\.')) {
-                return `${prefix}.${paddedNext}`;
             } else if (prefix) {
                 return `${prefix}${paddedNext}`;
             } else {
@@ -5571,10 +5893,17 @@ function generateNextTestCaseNumber(currentNumber) {
     return currentNumber + '_NEXT';
 }
 
-let originalFormData = {}; // 存儲原始表單資料
-let isFormChanged = false; // 追蹤表單是否有變更
-let testCaseModalInstance = null; // 全域 Modal 實例
 
+/* ============================================================
+   12. 測試案例 Modal (Test Case Modal)
+   ============================================================ */
+
+// NOTE: originalFormData, isFormChanged, testCaseModalInstance 已統一定義於 Section 2
+
+/**
+ * 顯示測試案例 Modal
+ * @param {object|null} testCase - 測試案例資料，null 表示新增
+ */
 function showTestCaseModal(testCase = null) {
     const modal = document.getElementById('testCaseModal');
     const title = document.getElementById('testCaseModalTitle');
@@ -6459,18 +6788,7 @@ async function saveAndAddNext() {
     }
 }
 
-// 工具函數
-function generateNextTestCaseNumber(currentNumber) {
-    // 解析格式：TCG-93178.020.050
-    const match = currentNumber.match(/^(.+\.)(\d+)$/);
-    if (match) {
-        const prefix = match[1];  // TCG-93178.020.
-        const lastNumber = parseInt(match[2]);  // 050 → 50
-        const nextNumber = (lastNumber + 10).toString().padStart(3, '0');  // 060
-        return prefix + nextNumber;
-    }
-    return currentNumber;  // 無法解析則返回原值
-}
+// NOTE: generateNextTestCaseNumber 已統一定義於 Section 16 (複製/克隆)
 
 function extractTitlePrefix(title) {
     // 找到最後一個 hyphen 並保留前面部分
@@ -6752,10 +7070,7 @@ function openTestCaseBatchModifyModal() {
     }, 100);
 }
 
-// 批次修改 TCG 多選顯示與搜尋（與列表一致）
-let batchTCGSearchTimeout;
-let batchTCGEditing = false;
-let batchTCGSelected = [];
+// NOTE: batchTCGSearchTimeout, batchTCGEditing, batchTCGSelected 已統一定義於 Section 2
 
 // 初始化批次 TCG 編輯器
 function initializeBatchTCGEditor() {
@@ -7398,7 +7713,14 @@ function updatePagination() {
     }
 }
 
-// ===== 快速搜尋（Test Case Management） =====
+
+/* ============================================================
+   17. 快速搜尋 (Quick Search)
+   ============================================================ */
+
+/**
+ * 設定快速搜尋功能
+ */
 function setupQuickSearch_TCM() {
     if (!document.getElementById('quickSearchOverlay')) {
         const overlay = document.createElement('div');
@@ -7643,8 +7965,7 @@ function quickEdit(recordId, field) {
     input.addEventListener('blur', saveEdit);
 }
 
-// TCG 編輯功能 - 簡化直接編輯
-let currentTCGEditor = null;
+// NOTE: currentTCGEditor 已統一定義於 Section 2
 
 async function editTCG(recordId) {
     console.log('🟢 editTCG 被呼叫，recordId:', recordId);
@@ -7903,8 +8224,7 @@ function restoreTCGDisplay() {
     renderTestCasesTable(); // 重新渲染以恢復正常顯示
 }
 
-
-let tcgSearchTimeout;
+// NOTE: tcgSearchTimeout 已統一定義於 Section 2
 
 function handleTCGSearchInput(event) {
     // 即時更新顯示的 badge，支援 comma 分隔
@@ -8078,15 +8398,19 @@ function formatDate(dateString, format) {
     }
 }
 
-// Markdown 編輯器功能
-let currentEditorMode = 'preview'; // 預設為預覽模式
-let markdownPreviewTimeout;
-let activeTextarea = null; // 當前焦點的 textarea
+
+/* ============================================================
+   18. Markdown 編輯器 (Markdown Editor)
+   ============================================================ */
+
+// NOTE: currentEditorMode, markdownPreviewTimeout, activeTextarea 已統一定義於 Section 2
 
 // 支援 Markdown 的欄位
 const markdownFields = ['precondition', 'test_steps', 'expected_result'];
 
-// 綁定 Markdown 事件
+/**
+ * 綁定 Markdown 事件
+ */
 function bindMarkdownEvents() {
     // Markdown 工具列按鈕 (個別工具列)
     document.querySelectorAll('.markdown-toolbar button[data-md]').forEach(btn => {
@@ -8412,12 +8736,16 @@ function updateSingleFieldPreview(fieldId) {
     adjustTestCasesScrollHeight();
 }
 
-// 附件管理功能
-// 全域變數來儲存上傳的附件
-let uploadedAttachments = [];
-// 新增：用於新增/更新尚未有正式記錄時，暫存上傳的識別碼
-let currentTempUploadId = null;
 
+/* ============================================================
+   19. 附件處理 (Attachments)
+   ============================================================ */
+
+// NOTE: uploadedAttachments, currentTempUploadId 已統一定義於 Section 2
+
+/**
+ * 處理附件上傳
+ */
 function handleAttachmentUpload(event) {
     const files = event.target.files;
     if (!files || files.length === 0) return;
@@ -9189,14 +9517,12 @@ function ensureTeamIdInUrl_TCM(teamId) {
 document.addEventListener('i18nReady', updatePageTitle);
 document.addEventListener('languageChanged', updatePageTitle);
 
-// ===== TCG Hover Tooltip 功能 =====
 
-// TCG tooltip 相關變數
-let currentTooltip = null;
-let tooltipTimeout = null;
-let currentHoveredElement = null;
-let isHoveringTooltip = false;
-let isInitialized = false;
+/* ============================================================
+   22. TCG Tooltip (TCG Hover)
+   ============================================================ */
+
+// NOTE: currentTooltip, tooltipTimeout, currentHoveredElement, isHoveringTooltip, isInitialized 已統一定義於 Section 2
 
 // 建立 TCG tooltip 元素
 function createTCGTTooltip() {
@@ -9743,7 +10069,14 @@ document.addEventListener('dynamicContentLoaded', function() {
     initializeTCGHover();
 });
 
-// ===== 參考測試案例功能 (彈窗版本) =====
+
+/* ============================================================
+   23. 參考測試案例 (Reference Test Case)
+   ============================================================ */
+
+/**
+ * 開啟參考測試案例彈窗
+ */
 function openReferenceTestCasePopup() {
     try {
         const currentTeam = AppUtils.getCurrentTeam();
@@ -9781,22 +10114,12 @@ function openReferenceTestCasePopup() {
     }
 }
 
-// ===== 大量編輯功能 =====
-let bulkEditModalInstance = null;
-let bulkEditSearchModalInstance = null;
-let bulkEditData = []; // 編輯中的資料
-let bulkEditChanges = new Map(); // 記錄變更: record_id -> { field: value }
-let bulkEditSelectedCells = new Set(); // 選取的儲存格
-let bulkEditClipboard = { content: '', column: '', cells: [] }; // 剪貼簿
-let bulkEditUndoStack = []; // 復原堆疊：每個元素是一個操作（包含多個儲存格變更）
-let bulkEditCurrentOperation = null; // 當前正在執行的操作
-let bulkEditCurrentCell = null; // 當前編輯的儲存格
-let bulkEditDragState = null; // 拖曳狀態
-let bulkEditSelectDragState = null; // 拖移選取狀態
 
-// 搜尋結果管理
-let bulkEditSearchResults = []; // 搜尋結果列表：{ resultId, recordId, column, matchText, contextBefore, contextAfter, checked }
-let bulkEditCheckedResults = new Set(); // 被勾選的搜尋結果 ID
+/* ============================================================
+   24. 大量編輯 (Bulk Edit)
+   ============================================================ */
+
+// NOTE: bulkEdit* 相關變數已統一定義於 Section 2 (全域變數)
 
 // 欄位對應表
 const bulkEditColumns = [
@@ -11175,7 +11498,14 @@ function performSearchReplace() {
     AppUtils.showSuccess(successMsg);
 }
 
-// ===== 拖移選取功能 =====
+
+/* ============================================================
+   25. 拖移選取功能 (Drag Selection)
+   ============================================================ */
+
+/**
+ * 處理拖移選取移動
+ */
 function handleSelectDragMove(event) {
     if (!bulkEditSelectDragState) return;
 
