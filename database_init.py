@@ -432,6 +432,35 @@ def create_all_tables(engine: Engine, logger: Logger):
         raise RuntimeError(f"建立資料表失敗：{e}")
 
 
+def ensure_schema_compatibility(engine: Engine, logger: Logger):
+    """確保資料庫結構與模型相容 (補上可能缺失的欄位)"""
+    inspector = inspect(engine)
+    
+    # 檢查 test_cases 表是否存在
+    if not inspector.has_table("test_cases"):
+        return
+
+    columns = {col['name'] for col in inspector.get_columns('test_cases')}
+    
+    with engine.begin() as conn:
+        if 'test_case_set_id' not in columns:
+            logger.info("補上缺失欄位: test_cases.test_case_set_id")
+            conn.execute(text("ALTER TABLE test_cases ADD COLUMN test_case_set_id INTEGER"))
+            
+        if 'test_case_section_id' not in columns:
+            logger.info("補上缺失欄位: test_cases.test_case_section_id")
+            conn.execute(text("ALTER TABLE test_cases ADD COLUMN test_case_section_id INTEGER"))
+            
+        # 順便補上附件欄位，避免其他潛在錯誤
+        if 'has_attachments' not in columns:
+            logger.info("補上缺失欄位: test_cases.has_attachments")
+            conn.execute(text("ALTER TABLE test_cases ADD COLUMN has_attachments INTEGER NOT NULL DEFAULT 0"))
+            
+        if 'attachment_count' not in columns:
+            logger.info("補上缺失欄位: test_cases.attachment_count")
+            conn.execute(text("ALTER TABLE test_cases ADD COLUMN attachment_count INTEGER NOT NULL DEFAULT 0"))
+
+
 def verify_required_tables(engine: Engine, logger: Logger) -> Tuple[bool, List[str]]:
     inspector = inspect(engine)
     existing = {t.lower() for t in inspector.get_table_names()}
@@ -883,6 +912,9 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         # 建表
         create_all_tables(engine, logger)
+
+        # 確保結構相容 (補上缺失欄位，例如 test_case_set_id)
+        ensure_schema_compatibility(engine, logger)
 
         # 驗證重要表
         ok, missing = verify_required_tables(engine, logger)
