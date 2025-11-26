@@ -66,10 +66,13 @@ from app.api import api_router
 from app.api.system import router as system_router
 from app.api.user_story_maps import router as usm_router
 from app.api.usm_import import router as usm_import_router
+from app.api.llm_context import router as llm_context_router
+
 app.include_router(api_router, prefix="/api")
 app.include_router(system_router)
 app.include_router(usm_router, prefix="/api")
 app.include_router(usm_import_router)
+app.include_router(llm_context_router, prefix="/api")
 
 # 前端頁面路由
 @app.get("/", response_class=HTMLResponse)
