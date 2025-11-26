@@ -41,30 +41,43 @@ def extract_tcg_numbers_from_old_format(tcg_json_str: str) -> List[str]:
 
     try:
         data = json.loads(tcg_json_str)
+        numbers = []
 
-        # 如果是列表格式
+        # 如果是列表格式 (可能是舊格式 [{"text":...}] 或新格式 ["TCG-...", null])
         if isinstance(data, list):
-            numbers = []
             for item in data:
                 if isinstance(item, dict):
+                    # 舊格式物件處理
                     # 優先使用 text_arr
                     if 'text_arr' in item and isinstance(item['text_arr'], list):
-                        numbers.extend(item['text_arr'])
+                        numbers.extend([t for t in item['text_arr'] if t])
                     # 其次使用 text
-                    elif 'text' in item:
+                    elif 'text' in item and item['text']:
                         numbers.append(item['text'])
-            return numbers
+                elif isinstance(item, str) and item:
+                    # 新格式字串處理 (過濾空字串)
+                    numbers.append(item)
+                # 忽略 None (已被錯誤遷移的髒資料) 或其他非預期類型
 
-        # 如果是字典格式
+        # 如果是單一字典格式 (舊格式變體)
         elif isinstance(data, dict):
             # 優先使用 text_arr
             if 'text_arr' in data and isinstance(data['text_arr'], list):
-                return data['text_arr']
+                numbers.extend([t for t in data['text_arr'] if t])
             # 其次使用 text
-            elif 'text' in data:
-                return [data['text']]
+            elif 'text' in data and data['text']:
+                numbers.append(data['text'])
 
-        return []
+        # 去除重複並保持順序
+        seen = set()
+        unique_numbers = []
+        for n in numbers:
+            if n not in seen:
+                unique_numbers.append(n)
+                seen.add(n)
+        
+        return unique_numbers
+
     except json.JSONDecodeError as e:
         logger.error(f"JSON 解析失敗: {e}, 內容: {tcg_json_str}")
         return []
@@ -109,10 +122,12 @@ def migrate_tcg_data():
                 # 提取 TCG 單號
                 tcg_numbers = extract_tcg_numbers_from_old_format(tcg_json_str)
 
-                if tcg_numbers:
-                    # 新格式：直接存儲單號列表
-                    new_tcg_json = json.dumps(tcg_numbers, ensure_ascii=False)
+                # 新格式：直接存儲單號列表
+                new_tcg_json = json.dumps(tcg_numbers, ensure_ascii=False)
 
+                # 如果內容有變更 (例如髒資料被清洗為 [])，則執行更新
+                # 注意：忽略空白字符差異
+                if new_tcg_json.replace(" ", "") != tcg_json_str.replace(" ", ""):
                     cursor.execute(
                         "UPDATE test_cases SET tcg_json = ? WHERE id = ?",
                         (new_tcg_json, record_id)
@@ -120,7 +135,7 @@ def migrate_tcg_data():
 
                     updated_count += 1
 
-                    if updated_count <= 3:  # 只顯示前 3 筆的詳細信息
+                    if updated_count <= 5:  # 只顯示前 5 筆的詳細信息
                         logger.info(
                             f"更新 {test_case_number}: "
                             f"舊格式 -> 新格式 {tcg_numbers}"
