@@ -1343,7 +1343,9 @@
       "archiveSuccess": "Test Run Set 已歸檔",
       "unarchiveSuccess": "Test Run Set 已啟用",
       "deleteConfirm": "確定要刪除「{name}」以及底下的所有 Test Run？",
-      "deleteSuccess": "Test Run Set 已刪除"
+      "deleteSuccess": "Test Run Set 已刪除",
+      "deleteWarningPart1": "確定要刪除此 Test Run Set 嗎？",
+      "deleteWarningPart2": "此操作將刪除其下所有 Test Run，且無法復原。"
     },
     "quickSearch": {
       "testRunsHeading": "Test Run",
