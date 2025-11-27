@@ -3653,6 +3653,11 @@ const UserStoryMapFlow = () => {
             setEdges,
             startMoveNodeMode,
             cancelMoveMode,
+            clearGraph: () => {
+                setNodes([]);
+                setEdges([]);
+                setCurrentMapId(null);
+            },
         };
         window.currentMapId = currentMapId;
         window.teamId = teamId;
@@ -3664,7 +3669,7 @@ const UserStoryMapFlow = () => {
         window.cancelMoveMode = cancelMoveMode;
         window.moveMode = moveMode;
         window.moveSourceNodeId = moveSourceNodeId;
-    }, [saveMap, addNode, loadMap, loadMaps, updateAggregatedTickets, updateNodeProperties, autoLayout, highlightPath, clearHighlight, focusNode, selectedNode, addChildNode, addSiblingNode, setNodes, setEdges, teamName, showFullRelationGraph, currentMapId, teamId, mapIdFromUrl, collapseUserStoryNodes, expandAllNodes, startMoveNodeMode, cancelMoveMode, moveMode, moveSourceNodeId]);
+    }, [saveMap, addNode, loadMap, loadMaps, updateAggregatedTickets, updateNodeProperties, autoLayout, highlightPath, clearHighlight, focusNode, selectedNode, addChildNode, addSiblingNode, setNodes, setEdges, teamName, showFullRelationGraph, currentMapId, teamId, mapIdFromUrl, collapseUserStoryNodes, expandAllNodes, startMoveNodeMode, cancelMoveMode, moveMode, moveSourceNodeId, setCurrentMapId]);
 
     // Expose new functions to window for button handlers
     useEffect(() => {
@@ -3880,7 +3885,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 
         if (hasUsmAccess('mapDelete')) {
             mapListContainer.querySelectorAll('.delete-map-btn').forEach(btn => {
-                btn.addEventListener('click', async (e) => {
+                btn.addEventListener('click', (e) => {
                     e.preventDefault();
                     e.stopPropagation();
                     const mapId = parseInt(btn.dataset.mapId);
@@ -3890,39 +3895,79 @@ document.addEventListener('DOMContentLoaded', async function() {
                         return;
                     }
 
-                    if (!confirm(`確定要刪除地圖「${mapName}」嗎？此操作無法復原。`)) {
-                        return;
-                    }
+                    const deleteModalEl = document.getElementById('deleteMapModal');
+                    const confirmBtn = document.getElementById('confirmDeleteMapBtn');
+                    const titleEl = document.getElementById('deleteMapModalTitle');
 
-                    try {
-                        const response = await fetch(`/api/user-story-maps/${mapId}`, {
-                            method: 'DELETE',
-                            headers: {
-                                'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
-                            },
+                    if (deleteModalEl && confirmBtn) {
+                        // Set localized title with map name
+                        const params = { name: mapName };
+                        titleEl.setAttribute('data-i18n-params', JSON.stringify(params));
+                        
+                        if (window.i18n && window.i18n.isReady()) {
+                            window.i18n.translateElement(titleEl);
+                        } else {
+                            titleEl.textContent = `確定要刪除地圖「${mapName}」嗎？`;
+                        }
+
+                        // Clean up old listeners
+                        const newConfirmBtn = confirmBtn.cloneNode(true);
+                        confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+
+                        newConfirmBtn.addEventListener('click', async () => {
+                            try {
+                                const response = await window.AuthClient.fetch(`/api/user-story-maps/${mapId}`, {
+                                    method: 'DELETE'
+                                });
+
+                                if (response.ok) {
+                                    // Reload map list in modal
+                                    loadMapList();
+                                    
+                                    // Refresh main dropdown and wait for it to complete to avoid race condition
+                                    if (window.userStoryMapFlow) {
+                                        await window.userStoryMapFlow.loadMaps();
+                                    }
+                                    
+                                    // Clear current selection if deleted map was selected
+                                    const currentMapSelect = document.getElementById('currentMapSelect');
+                                    const isCurrentMap = (currentMapSelect && parseInt(currentMapSelect.value) === mapId) || 
+                                                         (window.currentMapId === mapId);
+                                    
+                                    if (isCurrentMap) {
+                                        // Update URL to remove deleted ID to prevent re-fetching on refresh/effect
+                                        const pathParts = window.location.pathname.split('/');
+                                        const urlMapId = parseInt(pathParts[pathParts.length - 1]);
+                                        if (!isNaN(urlMapId) && urlMapId === mapId) {
+                                            const newPath = `/user-story-map/${window.teamId}`;
+                                            window.history.replaceState({}, '', newPath);
+                                        }
+
+                                        if (currentMapSelect) currentMapSelect.value = "";
+                                        if (window.userStoryMapFlow) {
+                                            if (typeof window.userStoryMapFlow.clearGraph === 'function') {
+                                                window.userStoryMapFlow.clearGraph();
+                                            } else if (typeof window.userStoryMapFlow.setNodes === 'function' && typeof window.userStoryMapFlow.setEdges === 'function') {
+                                                window.userStoryMapFlow.setNodes([]);
+                                                window.userStoryMapFlow.setEdges([]);
+                                            }
+                                        }
+                                    }
+
+                                    bootstrap.Modal.getInstance(deleteModalEl).hide();
+                                    // Keep map list modal open to show updated list
+                                } else {
+                                    const data = await response.json();
+                                    alert(data.detail || '刪除失敗');
+                                }
+                            } catch (error) {
+                                console.error('Failed to delete map:', error);
+                                alert('發生錯誤，請稍後再試');
+                            }
                         });
 
-                        if (response.ok) {
-                            showMessage('地圖已刪除', 'success');
-
-                            const currentSelect = document.getElementById('currentMapSelect');
-                            const currentMapId = parseInt(currentSelect?.value);
-                            if (currentMapId === mapId) {
-                                window.userStoryMapFlow?.setNodes([]);
-                                window.userStoryMapFlow?.setEdges([]);
-                                if (currentSelect) {
-                                    currentSelect.value = '';
-                                }
-                            }
-
-                            await window.userStoryMapFlow?.loadMaps?.();
-                            await loadMapList();
-                        } else {
-                            showMessage('刪除失敗', 'error');
-                        }
-                    } catch (error) {
-                        console.error('Failed to delete map:', error);
-                        showMessage('刪除失敗', 'error');
+                        const deleteModal = new bootstrap.Modal(deleteModalEl);
+                        deleteModal.show();
                     }
                 });
             });
@@ -3936,11 +3981,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         mapListContainer.innerHTML = '<div class="text-center py-4"><div class="spinner-border text-primary"></div></div>';
 
         try {
-            const response = await fetch(`/api/user-story-maps/team/${teamId}`, {
-                headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
-                },
-            });
+            const response = await window.AuthClient.fetch(`/api/user-story-maps/team/${teamId}`);
 
             if (response.ok) {
                 const maps = await response.json();
@@ -3972,11 +4013,10 @@ document.addEventListener('DOMContentLoaded', async function() {
         const newDescription = (editMapDescriptionInput?.value || '').trim();
 
         try {
-            const response = await fetch(`/api/user-story-maps/${mapId}`, {
+            const response = await window.AuthClient.fetch(`/api/user-story-maps/${mapId}`, {
                 method: 'PUT',
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+                    'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
                     name: newName,
@@ -4035,11 +4075,8 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
 
         try {
-            const response = await fetch(`/api/user-story-maps/${mapId}/calculate-aggregated-tickets`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
-                },
+            const response = await window.AuthClient.fetch(`/api/user-story-maps/${mapId}/calculate-aggregated-tickets`, {
+                method: 'POST'
             });
 
             if (response.ok) {
@@ -4085,11 +4122,10 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
 
         try {
-            const response = await fetch('/api/user-story-maps/', {
+            const response = await window.AuthClient.fetch('/api/user-story-maps/', {
                 method: 'POST',
                 headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+                    'Content-Type': 'application/json'
                 },
                 body: JSON.stringify({
                     team_id: teamId,
@@ -4100,10 +4136,17 @@ document.addEventListener('DOMContentLoaded', async function() {
 
             if (response.ok) {
                 const map = await response.json();
-                showMessage('地圖已建立', 'success');
+                showMessage(window.i18n ? window.i18n.t('usm.mapCreated') : '地圖已建立', 'success');
                 bootstrap.Modal.getInstance(document.getElementById('newMapModal')).hide();
-                window.userStoryMapFlow?.loadMaps();
-                window.userStoryMapFlow?.loadMap(map.id);
+                
+                if (window.userStoryMapFlow) {
+                    await window.userStoryMapFlow.loadMaps();
+                    // Set dropdown value manually after options are reloaded
+                    const select = document.getElementById('currentMapSelect');
+                    if (select) select.value = map.id;
+                    
+                    window.userStoryMapFlow.loadMap(map.id);
+                }
             } else {
                 showMessage('建立失敗', 'error');
             }

@@ -1096,6 +1096,7 @@
     "notConfigured": "Not Configured",
     "notExecuted": "Not Executed",
     "notFound": "Test run record not found",
+    "notRequired": "Not Required",
     "onlyActiveStatus": "(Only for active status)",
     "onlyCompletedCanRestart": "Only completed Test Runs can be restarted",
     "openInNewWindow": "Open in new window",
@@ -1108,6 +1109,7 @@
     "passedCases": "Passed",
     "passedItems": "Passed",
     "pdfGenerationFailed": "PDF generation failed, please try again or contact administrator",
+    "pending": "Pending",
     "plannedDate": "Planned Execution Date",
     "planning": "Planning",
     "pleaseEnterName": "Please enter test run name",
@@ -1514,6 +1516,9 @@
     "selectTeams": "Select teams (All for no filter)",
     "allTeams": "All",
     "noJiraTickets": "No tickets entered",
-    "jiraTicketInputPlaceholder": "Enter JIRA ticket numbers, comma separated (e.g., JIRA-123, JIRA-456)"
+    "jiraTicketInputPlaceholder": "Enter JIRA ticket numbers, comma separated (e.g., JIRA-123, JIRA-456)",
+    "deleteMapConfirm": "Are you sure you want to delete map \"{name}\"?",
+    "deleteMapWarning": "This will delete the map and all its nodes. This action cannot be undone.",
+    "mapCreated": "Map created successfully"
   }
 }

@@ -208,12 +208,23 @@ class PDFReportService:
         
         # 計算基本統計
         total_count = len(items)
-        executed_count = len([item for item in items if item.test_result is not None])
+        # executed_count: 排除 Pending 的所有非空狀態 (包含 Not Required)
+        executed_count = len([item for item in items if item.test_result is not None and item.test_result != TestResultStatus.PENDING])
+        
         passed_count = len([item for item in items if item.test_result == TestResultStatus.PASSED])
         failed_count = len([item for item in items if item.test_result == TestResultStatus.FAILED])
         retest_count = len([item for item in items if item.test_result == TestResultStatus.RETEST])
         na_count = len([item for item in items if item.test_result == TestResultStatus.NOT_AVAILABLE])
-        not_executed_count = total_count - executed_count
+        pending_count = len([item for item in items if item.test_result == TestResultStatus.PENDING])
+        not_required_count = len([item for item in items if item.test_result == TestResultStatus.NOT_REQUIRED])
+        
+        # 未執行 = 總數 - 已執行 - Pending (如果 Pending 算未執行的一種)
+        # 實際上 Pending 就是 explicit "Not Executed". 
+        # implicit "Not Executed" 是 test_result is None.
+        implicit_not_executed_count = len([item for item in items if item.test_result is None])
+        
+        # 總未執行 = Implicit None + Explicit Pending
+        not_executed_total = implicit_not_executed_count + pending_count
         
         execution_rate = (executed_count / total_count * 100) if total_count > 0 else 0.0
         pass_rate = (passed_count / executed_count * 100) if executed_count > 0 else 0.0
@@ -253,11 +264,16 @@ class PDFReportService:
             priority_str = None
             if case_priority is not None:
                 priority_str = case_priority.value if hasattr(case_priority, 'value') else case_priority
+            
+            status_str = '未執行'
+            if item.test_result:
+                status_str = item.test_result.value if hasattr(item.test_result, 'value') else item.test_result
+                
             test_results.append({
                 'test_case_number': item.test_case_number or '',
                 'title': case_title or '',
                 'priority': priority_str or '',
-                'status': item.test_result.value if item.test_result else '未執行',
+                'status': status_str,
                 'executor': item.assignee_name or '',
                 'execution_time': item.executed_at.strftime('%Y-%m-%d %H:%M') if item.executed_at else ''
             })
@@ -281,7 +297,9 @@ class PDFReportService:
                 'failed_count': failed_count,
                 'retest_count': retest_count,
                 'not_available_count': na_count,
-                'not_executed_count': not_executed_count,
+                'pending_count': pending_count,
+                'not_required_count': not_required_count,
+                'not_executed_count': not_executed_total,
                 'execution_rate': execution_rate,
                 'pass_rate': pass_rate,
                 'bug_tickets_count': len(unique_bug_tickets)
@@ -291,7 +309,9 @@ class PDFReportService:
                 'Failed': failed_count,
                 'Retest': retest_count,
                 'Not Available': na_count,
-                'Not Executed': not_executed_count
+                'Pending': pending_count,
+                'Not Required': not_required_count,
+                'Not Executed': implicit_not_executed_count
             },
             'priority_distribution': {
                 '高': high_priority,
@@ -378,7 +398,9 @@ class PDFReportService:
             ['失敗案例數', str(stats['failed_count']), f"{(stats['failed_count']/stats['total_count']*100) if stats['total_count'] > 0 else 0:.1f}%"],
             ['需重測案例數', str(stats['retest_count']), f"{(stats['retest_count']/stats['total_count']*100) if stats['total_count'] > 0 else 0:.1f}%"],
             ['不適用案例數', str(stats['not_available_count']), f"{(stats['not_available_count']/stats['total_count']*100) if stats['total_count'] > 0 else 0:.1f}%"],
+            ['不需要案例數', str(stats['not_required_count']), f"{(stats['not_required_count']/stats['total_count']*100) if stats['total_count'] > 0 else 0:.1f}%"],
             ['未執行案例數', str(stats['not_executed_count']), f"{(stats['not_executed_count']/stats['total_count']*100) if stats['total_count'] > 0 else 0:.1f}%"],
+            ['待處理案例數', str(stats['pending_count']), f"{(stats['pending_count']/stats['total_count']*100) if stats['total_count'] > 0 else 0:.1f}%"],
             ['', '', ''],  # 分隔行
             ['執行通過率', f"{stats['pass_rate']:.1f}%", '(已執行中的通過比例)'],
             ['Bug Tickets 數量', str(stats['bug_tickets_count']), '']
@@ -400,12 +422,12 @@ class PDFReportService:
             ('ALIGN', (1, 1), (1, -1), 'CENTER'),  # 第二列置中
             ('ALIGN', (2, 1), (2, -1), 'CENTER'),  # 第三列置中
             
-            # 分隔行樣式
-            ('BACKGROUND', (0, 8), (-1, 8), colors.lightgrey),
-            ('LINEBELOW', (0, 8), (-1, 8), 1, colors.grey),
+            # 分隔行樣式 (index 10)
+            ('BACKGROUND', (0, 10), (-1, 10), colors.lightgrey),
+            ('LINEBELOW', (0, 10), (-1, 10), 1, colors.grey),
             
-            # 總結行樣式  
-            ('BACKGROUND', (0, 9), (-1, -1), colors.lightyellow),
+            # 總結行樣式 (index 11+)
+            ('BACKGROUND', (0, 11), (-1, -1), colors.lightyellow),
             
             # 整體格線
             ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
