@@ -1205,6 +1205,37 @@
   </div>
 </div>
 
+<!-- Test Run Set Delete Confirmation Dialog -->
+<div class="modal fade" id="deleteTestRunSetModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-danger">
+      <div class="modal-header bg-danger text-white">
+        <h5 class="modal-title d-flex align-items-center">
+          <i class="fas fa-exclamation-triangle me-2"></i>
+          <span data-i18n="common.confirm">確認刪除</span>
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div class="alert alert-danger mb-0">
+          <i class="fas fa-exclamation-circle me-2"></i>
+          <span data-i18n="testRun.sets.deleteWarningPart1">確定要刪除此 Test Run Set 嗎？</span><br>
+          <span data-i18n="testRun.sets.deleteWarningPart2">此操作將刪除其下所有 Test Run，且無法復原。</span>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+          <span data-i18n="common.cancel">取消</span>
+        </button>
+        <button type="button" class="btn btn-danger" id="confirmDeleteTestRunSetBtn">
+          <i class="fas fa-trash me-2"></i>
+          <span data-i18n="common.delete">刪除</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- 自訂狀態下拉選單 - Fixed positioning -->
 <div class="custom-status-dropdown-overlay" id="statusDropdownOverlay" onclick="hideCustomStatusDropdown()"></div>
 <div class="custom-status-dropdown" id="customStatusDropdown">
@@ -2756,7 +2787,29 @@ function renderTestRunSetDetail(setData, filterStatus = 'all') {
 
     if (deleteBtn) {
         deleteBtn.disabled = !perms.canDelete;
-        deleteBtn.onclick = () => confirmDeleteTestRunSet(setData);
+        const newDeleteBtn = deleteBtn.cloneNode(true);
+        deleteBtn.parentNode.replaceChild(newDeleteBtn, deleteBtn);
+
+        newDeleteBtn.addEventListener('click', () => {
+            const deleteModalEl = document.getElementById('deleteTestRunSetModal');
+            if (deleteModalEl) {
+                const deleteModal = new bootstrap.Modal(deleteModalEl);
+                const confirmBtn = document.getElementById('confirmDeleteTestRunSetBtn');
+                
+                const handleConfirm = () => {
+                    deleteTestRunSet(setData.id);
+                    deleteModal.hide();
+                };
+                
+                const newConfirmBtn = confirmBtn.cloneNode(true);
+                confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+                newConfirmBtn.addEventListener('click', handleConfirm);
+                
+                deleteModal.show();
+            } else if (confirm(window.i18n ? window.i18n.t('testRun.sets.deleteConfirm') : '確定要刪除此 Test Run Set 嗎？此操作將刪除其下所有 Test Run，且無法復原。')) {
+                deleteTestRunSet(setData.id);
+            }
+        });
     }
 
     const runs = filterTestRunsByStatus(setData.test_runs || [], filterStatus);
@@ -3031,6 +3084,44 @@ async function toggleArchiveTestRunSet(setData, targetStatus) {
         await refreshCurrentSetDetail();
     } catch (error) {
         console.error('Toggle archive Test Run Set failed:', error);
+        AppUtils.showError(error.message);
+    }
+}
+
+async function deleteTestRunSet(setId) {
+    const currentTeamId = AppUtils.getCurrentTeamId();
+    if (!currentTeamId) {
+        console.error('No team selected');
+        return;
+    }
+
+    try {
+        const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-sets/${setId}`, {
+            method: 'DELETE'
+        });
+
+        if (!response.ok) {
+            const payload = await response.json().catch(() => ({ detail: null }));
+            throw new Error(payload?.detail || '刪除失敗');
+        }
+
+        AppUtils.showSuccess(window.i18n?.t('testRun.sets.deleteSuccess') || 'Test Run Set 已刪除');
+        
+        // Close modals if open
+        const deleteModalEl = document.getElementById('deleteTestRunSetModal');
+        if (deleteModalEl) {
+            const modal = bootstrap.Modal.getInstance(deleteModalEl);
+            if (modal) modal.hide();
+        }
+        
+        // Close detail modal if open
+        if (testRunSetDetailModalInstance) {
+            testRunSetDetailModalInstance.hide();
+        }
+
+        await loadTestRunConfigs();
+    } catch (error) {
+        console.error('Delete Test Run Set failed:', error);
         AppUtils.showError(error.message);
     }
 }
