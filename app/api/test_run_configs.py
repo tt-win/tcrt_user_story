@@ -339,7 +339,8 @@ def detach_config_from_set(
 async def delete_test_run_config_cascade(
     db: Session,
     team_id: int,
-    config_db: TestRunConfigDB
+    config_db: TestRunConfigDB,
+    detach: bool = True
 ) -> None:
     """刪除 Test Run Config 與相關紀錄與檔案"""
     from ..services.test_result_cleanup_service import TestResultCleanupService
@@ -352,20 +353,21 @@ async def delete_test_run_config_cascade(
     )
     affected_set_id = membership.set_id if membership else None
 
-    # 先清除 set membership
-    detach_config_from_set(db, config_db.id)
+    if detach:
+        # 先清除 set membership
+        detach_config_from_set(db, config_db.id)
 
-    if affected_set_id is not None:
-        affected_set = (
-            db.query(TestRunSetDB)
-            .filter(
-                TestRunSetDB.id == affected_set_id,
-                TestRunSetDB.team_id == team_id,
+        if affected_set_id is not None:
+            affected_set = (
+                db.query(TestRunSetDB)
+                .filter(
+                    TestRunSetDB.id == affected_set_id,
+                    TestRunSetDB.team_id == team_id,
+                )
+                .first()
             )
-            .first()
-        )
-        if affected_set:
-            recalculate_set_status(db, affected_set)
+            if affected_set:
+                recalculate_set_status(db, affected_set)
 
     # 清理檔案與資料
     cleanup_service = TestResultCleanupService()

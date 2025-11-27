@@ -108,7 +108,7 @@
         </div>
 
         <!-- Section 樹狀結構和 Test Cases -->
-        <div id="setCaseListContainer" style="max-height: 60vh; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 0.25rem; padding: 0.5rem;">
+        <div id="setCaseListContainer" style="max-height: 50vh; overflow-y: auto; border: 1px solid #dee2e6; border-radius: 0.25rem; padding: 0.5rem;">
           <div class="text-center text-muted py-4">
             <div class="spinner-border spinner-border-sm" role="status">
               <span class="visually-hidden" data-i18n="common.loading">載入中...</span>
@@ -116,15 +116,21 @@
           </div>
         </div>
 
+        <!-- Test Run Set 名稱輸入 -->
+        <div class="mt-3">
+            <label for="newTestRunSetName" class="form-label small fw-bold">Test Run Set 名稱</label>
+            <input type="text" class="form-control" id="newTestRunSetName" placeholder="預設：Test Run Set - YYYY-MM-DD">
+        </div>
+
         <!-- 摘要信息 -->
-        <div class="mt-3 pt-2 border-top">
+        <div class="mt-2 pt-2 border-top">
           <small class="text-muted" id="setCaseSelectionSummary" data-i18n="testCaseSet.selectedCount">已選 0 個測試案例</small>
         </div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">取消</button>
-        <button type="button" class="btn btn-primary" id="setCaseConfirmBtn" data-i18n="testCaseSet.createTestRun">
-          <i class="fas fa-arrow-right"></i> 建立 Test Run
+        <button type="button" class="btn btn-primary" id="setCaseConfirmBtn">
+          <i class="fas fa-arrow-right me-1"></i> <span data-i18n="testCaseSet.createTestRun">建立 Test Run</span>
         </button>
       </div>
     </div>
@@ -1021,57 +1027,102 @@ function updateSetCaseSelectionSummary() {
 async function confirmSetCaseSelection() {
   console.log('[SetCaseSelect] confirmSetCaseSelection called');
   
-  // 立即保存調試信息到 localStorage
-  const debugInfo = {
-    timestamp: new Date().toISOString(),
-    step: 'confirmSetCaseSelection_called',
-    selectedCasesCount: setTestCaseData.selectedCases.size,
-    selectedCaseIds: Array.from(setTestCaseData.selectedCases).join(','),
-    currentTestCaseSetId: currentTestCaseSetId,
-    currentTeamId: currentTeamId
-  };
-  
-  console.log('[SetCaseSelect] Debug info at start:', debugInfo);
-  localStorage.setItem('setTestCaseDebug', JSON.stringify(debugInfo));
-
   if (setTestCaseData.selectedCases.size === 0) {
     const selectMsg = window.i18n && window.i18n.isReady() ? window.i18n.t('testCaseSet.selectAtLeastOne', {}, '請至少選擇一個測試案例') : '請至少選擇一個測試案例';
     alert(selectMsg);
-    console.warn('[SetCaseSelect] No cases selected');
     return;
   }
 
-  try {
-    const selectedCaseIds = Array.from(setTestCaseData.selectedCases).join(',');
-    console.log('[SetCaseSelect] selectedCaseIds:', selectedCaseIds);
-
-    sessionStorage.setItem('testRunSetId', currentTestCaseSetId);
-    sessionStorage.setItem('testRunSelectedCaseIds', selectedCaseIds);
-    console.log('[SetCaseSelect] Session storage set. testRunSetId:', currentTestCaseSetId);
-    console.log('[SetCaseSelect] Session storage set. testRunSelectedCaseIds:', selectedCaseIds);
-
-    // 最後更新 localStorage，準備跳轉
-    debugInfo.step = 'ready_to_redirect';
-    debugInfo.sessionStorageSet = true;
-    localStorage.setItem('setTestCaseDebug', JSON.stringify(debugInfo));
-
-    // 導航到 Test Run 建立頁面
-    const redirectUrl = `/test-run-management?team_id=${currentTeamId}&set_id=${currentTestCaseSetId}`;
-    console.log('[SetCaseSelect] Redirecting to:', redirectUrl);
-
-    debugInfo.step = 'redirecting';
-    debugInfo.redirectUrl = redirectUrl;
-    localStorage.setItem('setTestCaseDebug', JSON.stringify(debugInfo));
-
-    window.location.href = redirectUrl;
-  } catch (error) {
-    console.error('[SetCaseSelect] Error confirming case selection:', error);
-    debugInfo.step = 'error';
-    debugInfo.error = error.message;
-    localStorage.setItem('setTestCaseDebug', JSON.stringify(debugInfo));
-    const failMsg = window.i18n && window.i18n.isReady() ? window.i18n.t('common.failed') : '建立失敗，請重試';
-    alert(failMsg);
+  const nameInput = document.getElementById('newTestRunSetName');
+  let name = nameInput ? nameInput.value.trim() : '';
+  if (!name) {
+      const today = new Date().toISOString().split('T')[0];
+      name = `Test Run Set - ${today}`;
   }
+
+  const btn = document.getElementById('setCaseConfirmBtn');
+  const originalBtnContent = btn.innerHTML;
+
+  try {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 建立中...';
+
+    const selectedCaseIds = Array.from(setTestCaseData.selectedCases);
+    
+    const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-sets/from-test-cases`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            name: name,
+            description: 'Created from Test Case Set card',
+            test_case_records: selectedCaseIds
+        })
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.detail || '建立失敗');
+    }
+
+    const result = await response.json();
+    setSelectModalInstance.hide();
+    
+    showTestRunSetSuccessModal(currentTeamId);
+
+  } catch (error) {
+    console.error('[SetCaseSelect] Error creating test run set:', error);
+    const failMsg = window.i18n && window.i18n.isReady() ? window.i18n.t('common.failed') : '建立失敗';
+    alert(`${failMsg}: ${error.message}`);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = originalBtnContent;
+  }
+}
+
+function showTestRunSetSuccessModal(teamId) {
+    let modalEl = document.getElementById('testRunSetSuccessModal');
+    if (!modalEl) {
+        const modalHtml = `
+            <div class="modal fade" id="testRunSetSuccessModal" tabindex="-1">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                        <div class="modal-header bg-success text-white">
+                            <h5 class="modal-title"><i class="fas fa-check-circle me-2"></i>建立成功</h5>
+                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body text-center py-4">
+                            <div class="mb-3">
+                                <i class="fas fa-clipboard-check fa-4x text-success"></i>
+                            </div>
+                            <h5 class="mb-2">Test Run Set 已成功建立！</h5>
+                            <p class="text-muted">系統已根據 JIRA Ticket 自動分組建立 Test Runs。</p>
+                            <p class="text-muted small mb-0">您要前往 Test Run 管理頁面查看嗎？</p>
+                        </div>
+                        <div class="modal-footer justify-content-center border-top-0 pb-4">
+                            <button type="button" class="btn btn-outline-secondary px-4" data-bs-dismiss="modal">留在本頁</button>
+                            <button type="button" class="btn btn-success px-4" id="goToTestRunMgmtBtn">
+                                <i class="fas fa-arrow-right me-2"></i>前往查看
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        modalEl = document.getElementById('testRunSetSuccessModal');
+    }
+    
+    // Update button handler
+    const goBtn = document.getElementById('goToTestRunMgmtBtn');
+    const newBtn = goBtn.cloneNode(true);
+    goBtn.parentNode.replaceChild(newBtn, goBtn);
+    
+    newBtn.addEventListener('click', () => {
+        window.location.href = `/test-run-management?team_id=${teamId}`;
+    });
+    
+    const modal = new bootstrap.Modal(modalEl);
+    modal.show();
 }
 
 

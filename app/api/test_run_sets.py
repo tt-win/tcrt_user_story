@@ -22,7 +22,7 @@ from app.models.database_models import (
     TestCaseLocal as TestCaseLocalDB,
     TestRunItem as TestRunItemDB,
 )
-from app.models.test_run_config import TestRunConfigSummary
+from app.models.test_run_config import TestRunConfigSummary, TestRunStatus
 from app.models.test_run_set import (
     TestRunSet,
     TestRunSetCreate,
@@ -468,12 +468,19 @@ async def delete_test_run_set(
     # 記錄要刪除的 Set 名稱
     set_name = test_run_set.name
     config_count = len(test_run_set.memberships)
+    
+    # 預先收集要刪除的 Configs (因為刪除 Set 後 memberships 會被清空)
+    configs_to_delete = [m.config for m in test_run_set.memberships if m.config]
 
     try:
-        for membership in list(test_run_set.memberships):
-            if membership.config:
-                await delete_test_run_config_cascade(db, team_id, membership.config)
+        # 1. 先刪除 TestRunSet (這會 Cascade 刪除 Memberships)
         db.delete(test_run_set)
+        db.flush() # 強制執行 SQL，確保 DB 中的 Set 和 Memberships 已移除
+
+        # 2. 再刪除 Configs (傳入 detach=False 以避免重複刪除 membership)
+        for config in configs_to_delete:
+            await delete_test_run_config_cascade(db, team_id, config, detach=False)
+            
         db.commit()
 
         # 記錄審計日誌
@@ -567,112 +574,172 @@ def search_test_run_sets_by_tp_tickets(
 
 
 # ============ USM Integration: Create Test Run with Test Cases ============
-@router.post("/from-test-cases")
-async def create_test_run_from_test_cases(
+@router.post("/from-test-cases", response_model=TestRunSetDetail)
+async def create_test_run_set_from_cases(
     team_id: int,
     payload: dict = Body(...),
     db: Session = Depends(get_sync_db),
     current_user: User = Depends(get_current_user),
 ):
     """
-    从选定的测试案例创建 Test Run
+    從選定的測試案例建立 Test Run Set，並根據 JIRA Ticket 自動分組建立 Test Run Configs
 
     Parameters:
-        team_id: 团队 ID
+        team_id: 團隊 ID
         payload: {
-            "name": "Test Run 名称",
+            "name": "Test Run Set 名稱",
             "test_case_records": [record_id1, record_id2, ...],
-            "description": "可选描述"
+            "description": "可選描述"
         }
 
     Returns:
-        Created TestRunConfig with added test cases
+        Created TestRunSetDetail
     """
     try:
+        from collections import defaultdict
+
         verify_team_exists(team_id, db)
 
         name = payload.get("name", "")
         if not name or not name.strip():
-            raise HTTPException(status_code=400, detail="Test Run 名称不能为空")
+            raise HTTPException(status_code=400, detail="Test Run Set 名稱不能為空")
 
         test_case_records = payload.get("test_case_records", [])
         if not test_case_records:
-            raise HTTPException(status_code=400, detail="必须至少选择一个测试案例")
+            raise HTTPException(status_code=400, detail="必須至少選擇一個測試案例")
 
         description = payload.get("description", "")
 
-        # Create a Test Run Config
-        config = TestRunConfigDB(
+        # 1. 建立 Test Run Set
+        new_set = TestRunSetDB(
             team_id=team_id,
             name=name.strip(),
             description=description,
-            status='active',
-            total_test_cases=0
+            status=TestRunSetStatus.ACTIVE,
         )
-
-        db.add(config)
+        db.add(new_set)
         db.flush()
 
-        # Add each test case as a Test Run Item
-        for record_id in test_case_records:
-            # Get the test case by lark_record_id
-            test_case = db.query(TestCaseLocalDB).filter(
-                TestCaseLocalDB.lark_record_id == record_id,
-                TestCaseLocalDB.team_id == team_id
-            ).first()
+        # 2. 根據 JIRA Ticket 分組測試案例
+        # Key: Ticket Number (e.g., "TCG-123") or "No Ticket"
+        # Value: List of TestCaseLocalDB
+        ticket_groups: Dict[str, List[TestCaseLocalDB]] = defaultdict(list)
+        all_tickets_found = set()
 
+        # 用於避免重複查詢
+        # record_id 可能是 lark_record_id 或 str(id)
+        # 這裡我們假設前端傳來的是 lark_record_id (這是 USM 前端的行為)
+        # 但為了保險，我們也可以處理 id
+        
+        # 先一次取出所有相關的 Test Case
+        # 注意：如果 record_id 是 lark_record_id
+        test_cases = db.query(TestCaseLocalDB).filter(
+            TestCaseLocalDB.team_id == team_id,
+            TestCaseLocalDB.lark_record_id.in_(test_case_records)
+        ).all()
+        
+        # 建立查找 map
+        tc_map = {tc.lark_record_id: tc for tc in test_cases}
+
+        for record_id in test_case_records:
+            test_case = tc_map.get(record_id)
+            if not test_case:
+                # 嘗試用 ID 查找 (fallback)
+                if str(record_id).isdigit():
+                     test_case = db.query(TestCaseLocalDB).filter(
+                        TestCaseLocalDB.team_id == team_id,
+                        TestCaseLocalDB.id == int(record_id)
+                    ).first()
+            
             if not test_case:
                 continue
 
-            # Create Test Run Item for this test case
-            item = TestRunItemDB(
+            # 解析 TCG Json
+            tickets = []
+            if test_case.tcg_json:
+                try:
+                    parsed = json.loads(test_case.tcg_json)
+                    if isinstance(parsed, list):
+                        tickets = [str(t) for t in parsed if t]
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            
+            if not tickets:
+                ticket_groups["No Ticket"].append(test_case)
+            else:
+                for t in tickets:
+                    ticket_groups[t].append(test_case)
+                    all_tickets_found.add(t)
+
+        # 3. 為每個分組建立 Test Run Config
+        configs_created = []
+        
+        # 排序 Groups: No Ticket 最後，其他按字母序
+        sorted_groups = sorted(ticket_groups.items(), key=lambda x: (x[0] == "No Ticket", x[0]))
+
+        for ticket, cases in sorted_groups:
+            if not cases:
+                continue
+
+            run_name = f"[{ticket}] {name}" if ticket != "No Ticket" else f"[No Ticket] {name}"
+            
+            config = TestRunConfigDB(
                 team_id=team_id,
-                config_id=config.id,
-                test_case_number=test_case.test_case_number
+                name=run_name,
+                description=f"Auto-generated from Set '{name}' for ticket {ticket}",
+                status=TestRunStatus.ACTIVE, # 直接設為 Active? 或者 Draft? 這裡設為 Active 以便直接開始
+                total_test_cases=len(cases)
             )
-            db.add(item)
+            db.add(config)
+            db.flush()
+            
+            configs_created.append(config)
 
-        db.flush()
+            # 建立關聯 (Set Membership)
+            attach_config_to_set(db, team_id, config, new_set.id)
 
-        # Update test case count
-        config.total_test_cases = db.query(TestRunItemDB).filter(
-            TestRunItemDB.config_id == config.id
-        ).count()
+            # 加入 Test Case Items
+            for tc in cases:
+                item = TestRunItemDB(
+                    team_id=team_id,
+                    config_id=config.id,
+                    test_case_number=tc.test_case_number
+                )
+                db.add(item)
+
+        # 更新 Set 的相關票號
+        if all_tickets_found:
+            sync_tp_tickets_to_db(new_set, list(all_tickets_found))
+
+        recalculate_set_status(db, new_set)
 
         db.commit()
-        db.refresh(config)
+        db.refresh(new_set)
 
-        # 记录审计日志
-        action_brief = f"{current_user.username} created Test Run from test cases: {config.name}"
+        loaded_set = _load_set_or_404(db, team_id, new_set.id)
+
+        # 記錄審計日誌
+        action_brief = f"{current_user.username} created Test Run Set from cases: {new_set.name}"
         await log_test_run_set_action(
             action_type=ActionType.CREATE,
             current_user=current_user,
             team_id=team_id,
-            resource_id=str(config.id),
+            resource_id=str(new_set.id),
             action_brief=action_brief,
             details={
-                "config_id": config.id,
-                "name": config.name,
-                "description": config.description,
-                "test_case_count": config.total_test_cases,
+                "set_id": new_set.id,
+                "name": new_set.name,
+                "config_count": len(configs_created),
+                "groups": list(ticket_groups.keys()),
                 "source": "from_test_cases",
             },
         )
 
-        # Return the created Test Run Config
-        return {
-            "id": config.id,
-            "team_id": config.team_id,
-            "name": config.name,
-            "description": config.description,
-            "status": config.status,
-            "total_test_cases": config.total_test_cases,
-            "created_at": config.created_at.isoformat() if config.created_at else None
-        }
+        return _build_set_detail(loaded_set)
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error creating test run from test cases: {str(e)}", exc_info=True)
+        logger.error(f"Error creating test run set from cases: {str(e)}", exc_info=True)
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"创建 Test Run 失败: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"建立 Test Run Set 失敗: {str(e)}")

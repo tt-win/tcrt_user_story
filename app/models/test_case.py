@@ -60,7 +60,7 @@ class TestCase(BaseModel):
     
     # 關聯欄位
     user_story_map: List[LarkRecord] = Field(default_factory=list, description="User Story Map 關聯")
-    tcg: List[str] = Field(default_factory=list, description="TCG 單號列表")
+    tcg: List[str] = Field(default_factory=list, description="JIRA Tickets 列表")
     parent_record: List[LarkRecord] = Field(default_factory=list, description="父記錄關聯")
     
     # 系統欄位

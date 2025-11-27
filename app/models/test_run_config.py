@@ -35,7 +35,7 @@ class TestRunConfig(BaseModel):
     build_number: Optional[str] = Field(None, description="建置編號")
     
     # TP 開發單票號
-    related_tp_tickets: Optional[List[str]] = Field(None, description="相關 TP 開發單票號")
+    related_tp_tickets: Optional[List[str]] = Field(None, description="相關 JIRA Tickets 票號")
     
     # 狀態與時間
     status: TestRunStatus = Field(TestRunStatus.ACTIVE, description="執行狀態")
@@ -179,7 +179,7 @@ class TestRunConfigCreate(BaseModel):
     build_number: Optional[str] = Field(None, description="建置編號")
     
     # TP 開發單票號
-    related_tp_tickets: Optional[List[str]] = Field(None, description="相關 TP 開發單票號")
+    related_tp_tickets: Optional[List[str]] = Field(None, description="相關 JIRA Tickets 票號")
     
     status: TestRunStatus = Field(TestRunStatus.DRAFT, description="初始狀態")
     start_date: Optional[datetime] = Field(None, description="開始日期")
@@ -270,7 +270,7 @@ class TestRunConfigUpdate(BaseModel):
     build_number: Optional[str] = Field(None, description="建置編號")
     
     # TP 開發單票號
-    related_tp_tickets: Optional[List[str]] = Field(None, description="相關 TP 開發單票號")
+    related_tp_tickets: Optional[List[str]] = Field(None, description="相關 JIRA Tickets 票號")
     
     status: Optional[TestRunStatus] = Field(None, description="執行狀態")
     start_date: Optional[datetime] = Field(None, description="開始日期")
@@ -373,7 +373,7 @@ class TestRunConfigSummary(BaseModel):
     test_version: Optional[str] = Field(None, description="測試版本")
 
     # TP 開發單票號 (摘要顯示)
-    related_tp_tickets: Optional[List[str]] = Field(None, description="相關 TP 開發單票號")
+    related_tp_tickets: Optional[List[str]] = Field(None, description="相關 JIRA Tickets 票號")
     tp_tickets_count: int = Field(0, description="TP 票號數量")
 
     status: TestRunStatus = Field(..., description="執行狀態")

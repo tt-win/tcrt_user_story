@@ -26,7 +26,7 @@ class TestRunSetBase(BaseModel):
     description: Optional[str] = Field(None, description="Test Run Set 描述")
     related_tp_tickets: Optional[List[str]] = Field(
         default=None,
-        description="相關 TP 開發單票號",
+        description="相關 JIRA Tickets 票號",
     )
 
     @validator("name")
@@ -88,7 +88,7 @@ class TestRunSetUpdate(BaseModel):
     status: Optional[TestRunSetStatus] = Field(None, description="Test Run Set 狀態")
     related_tp_tickets: Optional[List[str]] = Field(
         default=None,
-        description="相關 TP 開發單票號",
+        description="相關 JIRA Tickets 票號",
     )
 
     @validator("name")
@@ -113,7 +113,7 @@ class TestRunSet(BaseModel):
     description: Optional[str] = Field(None, description="Test Run Set 描述")
     status: TestRunSetStatus = Field(TestRunSetStatus.ACTIVE, description="Test Run Set 狀態")
     archived_at: Optional[datetime] = Field(None, description="歸檔時間")
-    related_tp_tickets: Optional[List[str]] = Field(default=None, description="相關 TP 開發單票號")
+    related_tp_tickets: Optional[List[str]] = Field(default=None, description="相關 JIRA Tickets 票號")
     created_at: datetime = Field(..., description="建立時間")
     updated_at: datetime = Field(..., description="更新時間")
 
@@ -125,7 +125,7 @@ class TestRunSetSummary(BaseModel):
     name: str = Field(..., description="Test Run Set 名稱")
     status: TestRunSetStatus = Field(..., description="Test Run Set 狀態")
     test_run_count: int = Field(0, description="包含的 Test Run 數量")
-    related_tp_tickets: Optional[List[str]] = Field(default=None, description="相關 TP 開發單票號")
+    related_tp_tickets: Optional[List[str]] = Field(default=None, description="相關 JIRA Tickets 票號")
     created_at: datetime = Field(..., description="建立時間")
     updated_at: datetime = Field(..., description="更新時間")
 
