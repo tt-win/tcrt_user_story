@@ -1344,7 +1344,9 @@
       "archiveSuccess": "Test Run Set archived",
       "unarchiveSuccess": "Test Run Set reactivated",
       "deleteConfirm": "Delete \"{name}\" and all of its Test Runs?",
-      "deleteSuccess": "Test Run Set deleted"
+      "deleteSuccess": "Test Run Set deleted",
+      "deleteWarningPart1": "Are you sure you want to delete this Test Run Set?",
+      "deleteWarningPart2": "This action will delete all Test Runs under it and cannot be undone."
     },
     "quickSearch": {
       "testRunsHeading": "Test Runs",
