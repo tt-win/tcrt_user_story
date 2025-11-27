@@ -1011,11 +1011,14 @@ async def get_items_statistics(
         TestRunItemDB.config_id == config_id,
     )
     total = q.count()
-    executed = q.filter(TestRunItemDB.test_result.isnot(None)).count()
+    # Executed exclude Pending, but include Not Required (implicit since it is not None)
+    executed = q.filter(and_(TestRunItemDB.test_result.isnot(None), TestRunItemDB.test_result != TestResultStatus.PENDING)).count()
     passed = q.filter(TestRunItemDB.test_result == TestResultStatus.PASSED).count()
     failed = q.filter(TestRunItemDB.test_result == TestResultStatus.FAILED).count()
     retest = q.filter(TestRunItemDB.test_result == TestResultStatus.RETEST).count()
     na = q.filter(TestRunItemDB.test_result == TestResultStatus.NOT_AVAILABLE).count()
+    pending = q.filter(TestRunItemDB.test_result == TestResultStatus.PENDING).count()
+    not_required = q.filter(TestRunItemDB.test_result == TestResultStatus.NOT_REQUIRED).count()
 
     # 添加詳細的資料狀態診斷日誌
     logger.warning(f"PASS_RATE_DATA_DEBUG: team_id={team_id}, config_id={config_id}")
@@ -1025,6 +1028,8 @@ async def get_items_statistics(
     logger.warning(f"PASS_RATE_DATA_DEBUG: failed items: {failed}")
     logger.warning(f"PASS_RATE_DATA_DEBUG: retest items: {retest}")
     logger.warning(f"PASS_RATE_DATA_DEBUG: not_available items: {na}")
+    logger.warning(f"PASS_RATE_DATA_DEBUG: pending items: {pending}")
+    logger.warning(f"PASS_RATE_DATA_DEBUG: not_required items: {not_required}")
 
     # 檢查是否有任何項目有 test_result 欄位
     sample_items = q.limit(5).all()
@@ -1069,6 +1074,8 @@ async def get_items_statistics(
         "failed_runs": failed,
         "retest_runs": retest,
         "not_available_runs": na,
+        "pending_runs": pending,
+        "not_required_runs": not_required,
         "unique_bug_tickets_count": bug_tickets_count,
         # 無條件捨去為整數
         "execution_rate": int(execution_rate // 1),

@@ -909,6 +909,7 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
 .result-retest { color: var(--tr-warning-dark); background: var(--tr-warning-light); }
 .result-na { color: var(--tr-secondary-dark); background: var(--tr-secondary-light); }
 .result-pending { color: var(--tr-text-muted); background: var(--tr-bg-light); }
+.result-not-required { color: #495057; background: #e9ecef; }
 
 /* 操作按鈕樣式 */
 .item-actions {
@@ -1540,6 +1541,14 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                             <span class="form-check-label" data-i18n="testRun.notAvailable">Not Available</span>
                         </label>
                         <label class="form-check form-check-inline">
+                            <input class="form-check-input execution-status-filter" type="checkbox" value="Pending" checked>
+                            <span class="form-check-label" data-i18n="testRun.pending">Pending</span>
+                        </label>
+                        <label class="form-check form-check-inline">
+                            <input class="form-check-input execution-status-filter" type="checkbox" value="Not Required" checked>
+                            <span class="form-check-label" data-i18n="testRun.notRequired">Not Required</span>
+                        </label>
+                        <label class="form-check form-check-inline">
                             <input class="form-check-input execution-status-filter" type="checkbox" value="Not Executed" checked>
                             <span class="form-check-label" data-i18n="testRun.notExecuted">Not Executed</span>
                         </label>
@@ -2080,7 +2089,7 @@ let currentConfigId = null;
 let currentTeamId = null; // 由 AppUtils 取得，無則退回 1
 let testRunConfig = null;
 let testRunItems = [];
-const EXECUTION_STATUS_VALUES = ['Passed', 'Failed', 'Retest', 'Not Available', 'Not Executed'];
+const EXECUTION_STATUS_VALUES = ['Passed', 'Failed', 'Retest', 'Not Available', 'Pending', 'Not Required', 'Not Executed'];
 const executionFilterState = {
     statuses: new Set(['ALL']),
     searchNumber: '',
@@ -2756,7 +2765,7 @@ function updateTreSortIndicators() {
 
 function sortTestRunItems() {
     const priRank = v => ({ High: 3, Medium: 2, Low: 1 }[v] || 0);
-    const resRank = v => ({ Passed: 4, Failed: 3, Retest: 2, 'Not Available': 1 }[v] || 0);
+    const resRank = v => ({ Passed: 6, Failed: 5, Retest: 4, 'Not Available': 3, 'Not Required': 2, Pending: 1 }[v] || 0);
     const assigneeOf = it => (it.assignee_name || (it.assignee && it.assignee.name) || '').toLowerCase();
     const parseNumberSegments = str => {
         try {
@@ -3480,6 +3489,8 @@ function createItemRow(item, index, canUpdate) {
                         <option value="Failed" ${item.test_result === 'Failed' ? 'selected' : ''}>${escapeHtml('{{ i18n.t("testRun.failed") if i18n else "Failed" }}')}</option>
                         <option value="Retest" ${item.test_result === 'Retest' ? 'selected' : ''}>${escapeHtml('{{ i18n.t("testRun.retest") if i18n else "Retest" }}')}</option>
                         <option value="Not Available" ${item.test_result === 'Not Available' ? 'selected' : ''}>${escapeHtml('{{ i18n.t("testRun.notAvailable") if i18n else "Not Available" }}')}</option>
+                        <option value="Pending" ${item.test_result === 'Pending' ? 'selected' : ''}>${escapeHtml('{{ i18n.t("testRun.pending") if i18n else "Pending" }}')}</option>
+                        <option value="Not Required" ${item.test_result === 'Not Required' ? 'selected' : ''}>${escapeHtml('{{ i18n.t("testRun.notRequired") if i18n else "Not Required" }}')}</option>
                     </select>
                 ` : `
                     <span class="badge result-badge-lg ${resultClass}">${resultText}</span>
@@ -3863,7 +3874,9 @@ function getResultClass(result) {
         'Passed': 'result-passed',
         'Failed': 'result-failed', 
         'Retest': 'result-retest',
-        'Not Available': 'result-na'
+        'Not Available': 'result-na',
+        'Pending': 'result-pending',
+        'Not Required': 'result-not-required'
     };
     return classMap[result] || 'result-pending';
 }
@@ -3873,7 +3886,9 @@ function getResultText(result) {
         'Passed': '{{ i18n.t("testRun.passed") if i18n else "Passed" }}',
         'Failed': '{{ i18n.t("testRun.failed") if i18n else "Failed" }}',
         'Retest': '{{ i18n.t("testRun.retest") if i18n else "Retest" }}',
-        'Not Available': '{{ i18n.t("testRun.notAvailable") if i18n else "Not Available" }}'
+        'Not Available': '{{ i18n.t("testRun.notAvailable") if i18n else "Not Available" }}',
+        'Pending': '{{ i18n.t("testRun.pending") if i18n else "Pending" }}',
+        'Not Required': '{{ i18n.t("testRun.notRequired") if i18n else "Not Required" }}'
     };
     return textMap[result] || '{{ i18n.t("testRun.notExecuted") if i18n else "Not Executed" }}';
 }
@@ -6587,11 +6602,13 @@ async function initializeChartsAndReports() {
 function collectTestRunStats() {
     const stats = {
         statusData: {
-            passed: parseInt(document.getElementById('passed-count')?.textContent || '0'),
-            failed: parseInt(document.getElementById('failed-count')?.textContent || '0'),
-            retest: 0, // 需要從 testRunItems 中計算
-            notAvailable: 0, // 需要從 testRunItems 中計算
-            notExecuted: parseInt(document.getElementById('total-count')?.textContent || '0') - parseInt(document.getElementById('executed-count')?.textContent || '0')
+            passed: 0,
+            failed: 0,
+            retest: 0,
+            notAvailable: 0,
+            pending: 0,
+            notRequired: 0,
+            notExecuted: 0
         },
         priorityData: {
             high: 0,
@@ -6615,11 +6632,26 @@ function collectTestRunStats() {
         testRunItems.forEach(item => {
             // 計算測試結果分布
             switch (item.test_result) {
+                case 'Passed':
+                    stats.statusData.passed++;
+                    break;
+                case 'Failed':
+                    stats.statusData.failed++;
+                    break;
                 case 'Retest':
                     stats.statusData.retest++;
                     break;
                 case 'Not Available':
                     stats.statusData.notAvailable++;
+                    break;
+                case 'Pending':
+                    stats.statusData.pending++;
+                    break;
+                case 'Not Required':
+                    stats.statusData.notRequired++;
+                    break;
+                default:
+                    stats.statusData.notExecuted++;
                     break;
             }
             
@@ -6726,6 +6758,8 @@ function updateReportBasicInfo(statsData) {
     document.getElementById('chartFailedCount').textContent = statsData.statusData.failed;
     document.getElementById('chartRetestCount').textContent = statsData.statusData.retest;
     document.getElementById('chartNotAvailableCount').textContent = statsData.statusData.notAvailable;
+    document.getElementById('chartPendingCount').textContent = statsData.statusData.pending;
+    document.getElementById('chartNotRequiredCount').textContent = statsData.statusData.notRequired;
 }
 
 let testRunCharts = {};
@@ -6764,7 +6798,9 @@ async function renderTestRunCharts(statsData) {
         failed: '#dc3545',
         retest: '#ffc107',
         notAvailable: '#6c757d',
-        notExecuted: '#adb5bd',
+        pending: '#ffca2c',
+        notRequired: '#adb5bd',
+        notExecuted: '#dee2e6',
         high: '#dc3545',
         medium: '#ffc107',
         low: '#28a745'
@@ -6778,13 +6814,15 @@ async function renderTestRunCharts(statsData) {
         testRunCharts.statusPie = new Chart(statusCtx, {
             type: 'pie',
             data: {
-                labels: ['Passed', 'Failed', 'Retest', 'Not Available', 'Not Executed'],
+                labels: ['Passed', 'Failed', 'Retest', 'Not Available', 'Pending', 'Not Required', 'Not Executed'],
                 datasets: [{
                     data: [
                         statsData.statusData.passed,
                         statsData.statusData.failed,
                         statsData.statusData.retest,
                         statsData.statusData.notAvailable,
+                        statsData.statusData.pending,
+                        statsData.statusData.notRequired,
                         statsData.statusData.notExecuted
                     ],
                     backgroundColor: [
@@ -6792,6 +6830,8 @@ async function renderTestRunCharts(statsData) {
                         colorScheme.failed,
                         colorScheme.retest,
                         colorScheme.notAvailable,
+                        colorScheme.pending,
+                        colorScheme.notRequired,
                         colorScheme.notExecuted
                     ],
                     borderWidth: 2,
@@ -7361,7 +7401,23 @@ async function downloadReportAsPDF() {
                         <div class="card text-center border-left-secondary">
                             <div class="card-body">
                                 <div class="h4 text-secondary mb-1" id="chartNotAvailableCount">0</div>
-                                <div class="text-muted" data-i18n="testRun.notAvailableItems">Not Available</div>
+                                <div class="text-muted" data-i18n="testRun.notAvailable">Not Available</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <div class="card text-center border-left-warning">
+                            <div class="card-body">
+                                <div class="h4 text-muted mb-1" id="chartPendingCount">0</div>
+                                <div class="text-muted" data-i18n="testRun.pending">Pending</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-3 mb-3">
+                        <div class="card text-center border-left-secondary">
+                            <div class="card-body">
+                                <div class="h4 text-secondary mb-1" id="chartNotRequiredCount">0</div>
+                                <div class="text-muted" data-i18n="testRun.notRequired">Not Required</div>
                             </div>
                         </div>
                     </div>
