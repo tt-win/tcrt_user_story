@@ -110,9 +110,9 @@ class TestRunConfig(Base):
     
     # TP 開發單票號欄位
     related_tp_tickets_json = Column(Text, nullable=True, 
-                                   comment="相關 TP 開發單票號 JSON 陣列")
+                                   comment="相關 JIRA Tickets 票號 JSON 陣列")
     tp_tickets_search = Column(String(1000), nullable=True, index=True,
-                             comment="TP 票號搜尋索引欄位")
+                             comment="JIRA Ticket 搜尋索引欄位")
     
     # 通知設定
     notifications_enabled = Column(Boolean, default=False, nullable=False,
@@ -166,9 +166,9 @@ class TestRunSet(Base):
     status = Column(Enum(TestRunSetStatus), default=TestRunSetStatus.ACTIVE, nullable=False)
     archived_at = Column(DateTime, nullable=True)
     related_tp_tickets_json = Column(Text, nullable=True,
-                                     comment="相關 TP 開發單票號 JSON 陣列")
+                                     comment="相關 JIRA Tickets 票號 JSON 陣列")
     tp_tickets_search = Column(String(1000), nullable=True, index=True,
-                               comment="TP 票號搜尋索引欄位")
+                               comment="JIRA Ticket 搜尋索引欄位")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

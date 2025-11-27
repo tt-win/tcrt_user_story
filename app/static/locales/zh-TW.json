@@ -1124,7 +1124,7 @@
     "quickEdit": "快速編輯",
     "refreshBugStatus": "重新整理狀態",
     "relatedTestCases": "相關測試案例",
-    "relatedTpTickets": "相關 TP 開發單",
+    "relatedTpTickets": "相關 JIRA Tickets",
     "relatedTpTicketsPlaceholder": "輸入 TP 票號，例如：TP-12345",
     "renderingTable": "渲染表格中...",
     "rerunCreated": "已建立新的 Test Run",
@@ -1300,7 +1300,7 @@
         "createSuccess": "Test Run Set 建立成功",
         "addCardTitle": "新增 Test Run Set",
         "addCardHint": "將相關的 Test Run 分組管理",
-        "relatedTpTickets": "相關 TP 開發單",
+        "relatedTpTickets": "相關 JIRA Tickets",
         "relatedTpTicketsHint": "按 Enter 鍵新增票號，格式為 TP-12345",
         "relatedTpTicketsSelected": "已選 TP 票號"
       },
@@ -1327,7 +1327,7 @@
         "noRuns": "尚未加入任何 Test Run",
         "noFilterMatches": "目前沒有符合篩選條件的 Test Run",
         "moveToOther": "搬移至其他 Set",
-        "relatedTpTickets": "相關 TP 開發單",
+        "relatedTpTickets": "相關 JIRA Tickets",
         "remove": "移出 Test Run Set"
       },
       "addExisting": {
