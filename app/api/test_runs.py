@@ -872,21 +872,28 @@ async def get_test_run_statistics(
         failed_runs = 0
         retest_runs = 0
         not_available_runs = 0
+        pending_runs = 0
+        not_required_runs = 0
 
         for record in records:
             fields = record.get("fields", {})
             test_result = fields.get("Test Result")
 
             if test_result:
-                executed_runs += 1
-                if test_result == "Passed":
-                    passed_runs += 1
-                elif test_result == "Failed":
-                    failed_runs += 1
-                elif test_result == "Retest":
-                    retest_runs += 1
-                elif test_result == "N/A":
-                    not_available_runs += 1
+                if test_result == "Pending":
+                    pending_runs += 1
+                else:
+                    executed_runs += 1
+                    if test_result == "Passed":
+                        passed_runs += 1
+                    elif test_result == "Failed":
+                        failed_runs += 1
+                    elif test_result == "Retest":
+                        retest_runs += 1
+                    elif test_result == "N/A" or test_result == "Not Available":
+                        not_available_runs += 1
+                    elif test_result == "Not Required":
+                        not_required_runs += 1
 
         return TestRunStatistics.create(
             total_runs=total_runs,
@@ -895,6 +902,8 @@ async def get_test_run_statistics(
             failed_runs=failed_runs,
             retest_runs=retest_runs,
             not_available_runs=not_available_runs,
+            pending_runs=pending_runs,
+            not_required_runs=not_required_runs,
         )
 
     except Exception as e:

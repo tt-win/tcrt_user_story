@@ -1095,18 +1095,20 @@
     "notConfigured": "未设置",
     "notExecuted": "未执行",
     "notFound": "找不到测试执行记录",
+    "notRequired": "不需要",
     "onlyActiveStatus": "（仅适用于执行中状态）",
     "onlyCompletedCanRestart": "只有已完成的 Test Run 才能重新执行",
     "openInNewWindow": "在新窗口打开",
     "openInTestCaseManagement": "在测试案例管理中打开",
     "pagination": "测试执行分页",
     "pass": "通过",
-    "passRate": "通过率",
-    "passRateLabel": "通过率",
     "passed": "通过",
     "passedCases": "通过",
     "passedItems": "通过",
+    "passRate": "通过率",
+    "passRateLabel": "通过率",
     "pdfGenerationFailed": "PDF 生成失败，请重试或联系管理员",
+    "pending": "待处理",
     "plannedDate": "计划执行日期",
     "planning": "计划中",
     "pleaseEnterName": "请填写测试执行名称",
@@ -1513,6 +1515,9 @@
     "selectTeams": "选择团队 (全选表示不过滤)",
     "allTeams": "全选",
     "noJiraTickets": "未输入任何票号",
-    "jiraTicketInputPlaceholder": "输入 JIRA 票号，以逗号分隔 (例: JIRA-123, JIRA-456)"
+    "jiraTicketInputPlaceholder": "输入 JIRA 票号，以逗号分隔 (例: JIRA-123, JIRA-456)",
+    "deleteMapConfirm": "确定要删除地图“{name}”吗？",
+    "deleteMapWarning": "此操作将删除地图及其所有节点，且无法恢复。",
+    "mapCreated": "地图已创建"
   }
 }
