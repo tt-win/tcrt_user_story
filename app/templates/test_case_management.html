@@ -764,7 +764,7 @@ body {
             <!-- TCG 快取載入進度 -->
             <div class="mb-2">
                 <div class="d-flex justify-content-between align-items-center mb-1">
-                    <small class="text-muted" data-i18n="testCase.loadingTCG">載入 TCG 單號快取</small>
+                    <small class="text-muted" data-i18n="testCase.loadingTCG">載入 JIRA Tickets 快取</small>
                     <small class="text-muted" id="tcgCacheProgress">0%</small>
                 </div>
                 <div class="progress" style="height: 6px;">
@@ -787,8 +787,8 @@ body {
                     <input type="text" class="form-control" id="searchInput" data-i18n-placeholder="testCase.searchPlaceholder">
                 </div>
                 <div class="col-md-2 col-lg-1">
-                    <label for="tcgFilter" class="form-label">TCG</label>
-                    <input type="text" class="form-control" id="tcgFilter" data-i18n-placeholder="testCase.tcgFilterPlaceholder" data-i18n-placeholder-fallback="輸入 TCG 單號">
+                    <label for="tcgFilter" class="form-label">JIRA Tickets</label>
+                    <input type="text" class="form-control" id="tcgFilter" data-i18n-placeholder="testCase.tcgFilterPlaceholder" data-i18n-placeholder-fallback="輸入 JIRA Ticket">
                 </div>
                 <div class="col-md-1 col-lg-1">
                     <label for="priorityFilter" class="form-label" data-i18n="testCase.priority">優先級</label>
@@ -897,7 +897,7 @@ body {
                             </div>
                             <div class="col-md-4">
                                 <label for="tcg" class="form-label d-flex align-items-center">
-                                    TCG
+                                    JIRA Tickets
                                     <button type="button" class="btn-icon-only"
                                             title="檢視 JIRA Ticket 資訊"
                                             data-i18n-title="tooltips.viewJiraInfo"
@@ -1189,7 +1189,7 @@ body {
                     <div class="form-check mb-2">
                         <input class="form-check-input" type="checkbox" id="batchModifyTCG">
                         <label class="form-check-label" for="batchModifyTCG">
-                            <strong data-i18n="testCase.batchSetTCG">批次設定 TCG 單號</strong>
+                            <strong data-i18n="testCase.batchSetTCG">批次設定 JIRA Tickets</strong>
                         </label>
                     </div>
                     <div class="position-relative">
@@ -1200,10 +1200,10 @@ body {
                         <!-- Dropdown 區塊（與列表一致） -->
                         <div id="batchTCGDropdown"
                              style="position: fixed; z-index: 1070; max-height: 220px; overflow-y: auto; display: none; background: white; border: 1px solid #ced4da; border-radius: 0.375rem; box-shadow: 0 4px 12px rgba(0,0,0,0.15);">
-                            <div class="p-2 text-muted small" data-i18n="testCase.tcgSearchHint">開始輸入以搜尋 TCG...</div>
+                            <div class="p-2 text-muted small" data-i18n="testCase.tcgSearchHint">開始輸入以搜尋 JIRA Ticket...</div>
                         </div>
                     </div>
-                    <small class="text-muted" data-i18n="testCase.tcgClearHint">留空可清除 TCG 關聯</small>
+                    <small class="text-muted" data-i18n="testCase.tcgClearHint">留空可清除 JIRA Ticket 關聯</small>
                 </div>
 
                 <!-- 優先級批次設定 -->
@@ -1500,7 +1500,7 @@ TC-1003,API 健康檢查,\"服務已啟動\",\"發送 GET /health\",\"回傳 200
                                 <th style="width: 180px;" data-i18n="testCase.preconditions">前置條件</th>
                                 <th style="width: 220px;" data-i18n="testCase.steps">測試步驟</th>
                                 <th style="width: 220px;" data-i18n="testCase.expectedResults">預期結果</th>
-                                <th style="width: 280px; min-width: 21ch;" data-i18n="testCase.tcgColumn">TCG 單號</th>
+                                <th style="width: 280px; min-width: 21ch;" data-i18n="testCase.tcgColumn">JIRA Tickets</th>
                                 <th style="width: 100px;" data-i18n="testCase.priority">優先級</th>
                             </tr>
                         </thead>
@@ -1658,7 +1658,7 @@ TC-1003,API 健康檢查,\"服務已啟動\",\"發送 GET /health\",\"回傳 200
 /* ============================================================
    TEST CASE MANAGEMENT - JAVASCRIPT
    ============================================================
-   
+
    目錄 (Table of Contents):
    ──────────────────────────────────────────────────────────────
    1.  常數定義 (Constants)                         ~Line 30
@@ -1703,7 +1703,7 @@ TC-1003,API 健康檢查,\"服務已啟動\",\"發送 GET /health\",\"回傳 200
    24. 大量編輯 (Bulk Edit)                         ~Line 7800
    25. 拖移選取 (Drag Selection)                    ~Line 9000
    26. 工具函數 (Utilities)                         ~Line 9200
-   
+
    ============================================================ */
 
 
@@ -1918,13 +1918,13 @@ window.addEventListener('sectionListUpdated', async (event) => {
         const detail = event?.detail;
         const updatedSections = detail?.sections;
         const updatedSetId = detail?.setId;
-        
+
         console.log('[TCM] sectionListUpdated event received:', {
             sectionsCount: updatedSections?.length,
             setId: updatedSetId,
             reloadTestCases: detail?.reloadTestCases
         });
-        
+
         if (!updatedSections || !Array.isArray(updatedSections)) return;
 
         if (typeof testCaseSectionList !== 'undefined' && testCaseSectionList?.setId && updatedSetId) {
@@ -1936,10 +1936,10 @@ window.addEventListener('sectionListUpdated', async (event) => {
 
         tcmSectionsTree = updatedSections;
         console.log('[TCM] Updated tcmSectionsTree with', tcmSectionsTree.length, 'sections');
-        
+
         rebuildBatchSectionMeta();
         populateBatchSectionSelect();
-        
+
         // 強制重新渲染測試案例列表（使用新的 section 樹）
         applyCurrentFiltersAndRender();
 
@@ -2279,7 +2279,7 @@ function isUnassignedSectionIdValue(sectionId) {
 
 function groupTestCasesBySection(testCases) {
     const grouped = {};
-    
+
     // 首先，為所有已知的 sections 創建 groups（包括空的）
     if (Array.isArray(tcmSectionsTree) && tcmSectionsTree.length > 0) {
         // 扁平化 sections tree，包含所有層級的 sections
@@ -2294,10 +2294,10 @@ function groupTestCasesBySection(testCases) {
             }
             return result;
         };
-        
+
         const allSections = flattenAllSections(tcmSectionsTree);
         console.log('[groupTestCasesBySection] All sections found:', allSections.length, allSections);
-        
+
         // 為每個 section 創建一個 group（使用最新的 section 數據）
         for (const section of allSections) {
             const sectionId = section.id;
@@ -2314,7 +2314,7 @@ function groupTestCasesBySection(testCases) {
             }
         }
     }
-    
+
     // 然後，將 test cases 分配到對應的 sections
     for (const tc of testCases) {
         const sectionId = tc.test_case_section_id ?? UNASSIGNED_SECTION_ID;
@@ -2349,22 +2349,22 @@ function groupTestCasesBySection(testCases) {
 // 輔助函數：為 section 建立完整路徑
 function buildSectionPath(section, allSections) {
     if (!section) return '';
-    
+
     const path = [];
     let current = section;
     const visited = new Set(); // 防止循環引用
-    
+
     while (current && !visited.has(current.id)) {
         visited.add(current.id);
         path.unshift(current.name || '(未命名)');
-        
+
         if (current.parent_section_id) {
             current = allSections.find(s => s.id === current.parent_section_id);
         } else {
             break;
         }
     }
-    
+
     const fullPath = path.join('/');
     // 只在首次建立或有變化時輸出日誌
     if (window.DEBUG_SECTIONS) {
@@ -2593,7 +2593,7 @@ function renderSectionBlockHTML(sectionGroup, rowsHtml) {
                                         <span class="sort-indicator ms-1"></span>
                                     </th>
                                     <th class="sortable section-sortable text-center" width="180" style="cursor: pointer;" data-section-id="${sectionGroup.sectionId}" data-sort-field="tcg">
-                                        <span>TCG</span>
+                                        <span>JIRA Tickets</span>
                                         <span class="sort-indicator ms-1"></span>
                                     </th>
                                     <th class="sortable section-sortable text-center" width="80" style="cursor: pointer;" data-section-id="${sectionGroup.sectionId}" data-sort-field="priority">
@@ -7128,7 +7128,7 @@ function openBatchTCGEditor() {
         return;
     }
     batchTCGEditing = true;
-    
+
     // 簡化為文字輸入 - 逗號分隔的單號
     const searchHtml = `
         <div class="tcg-search-container position-relative" style="min-height: 32px; height: 32px; display: flex; align-items: center; overflow: hidden;">
@@ -7143,7 +7143,7 @@ function openBatchTCGEditor() {
     input.value = batchTCGSelected.join(', ');
     input.focus();
     input.select();
-    
+
     // 監聽外部點擊以結束編輯
     setTimeout(() => { document.addEventListener('click', handleBatchTCGOutsideClick, true); }, 50);
 }
@@ -7162,7 +7162,7 @@ function handleBatchTCGOutsideClick(e) {
 function finishBatchTCGEdit() {
     document.removeEventListener('click', handleBatchTCGOutsideClick, true);
     batchTCGEditing = false;
-    
+
     // 從輸入框讀取值並解析
     const container = document.getElementById('batchTCGContainer');
     const input = container?.querySelector('.tcg-search-input');
@@ -7178,11 +7178,11 @@ function finishBatchTCGEdit() {
             batchTCGSelected = [];
         }
     }
-    
+
     // 回寫隱藏 input 值
     const hidden = document.getElementById('batchTCGInput');
     if (hidden) hidden.value = batchTCGSelected.join(', ');
-    
+
     renderBatchTCGDisplay();
 }
 
