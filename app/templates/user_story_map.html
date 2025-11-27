@@ -893,6 +893,35 @@ Web Tool{% endblock %} {% block page_title_text %}
     </div>
 </div>
 
+<!-- Delete Map Confirmation Modal -->
+<div class="modal fade" id="deleteMapModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-danger">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title d-flex align-items-center">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    <span id="deleteMapModalTitle" data-i18n="usm.deleteMapConfirm">確定要刪除此 User Story Map 嗎？</span>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-danger mb-0">
+                    <i class="fas fa-exclamation-circle me-2"></i>
+                    <span data-i18n="usm.deleteMapWarning">此操作將刪除地圖及其所有節點，且無法復原。</span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <span data-i18n="common.cancel">取消</span>
+                </button>
+                <button type="button" class="btn btn-danger" id="confirmDeleteMapBtn">
+                    <i class="fas fa-trash me-2"></i><span data-i18n="common.delete">刪除</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Edit Map Modal -->
 <div class="modal fade" id="editMapModal" tabindex="-1">
     <div class="modal-dialog">
@@ -1201,7 +1230,7 @@ Web Tool{% endblock %} {% block page_title_text %}
         }
     </script>
 
-    <script src="/static/js/user_story_map.js"></script>
+    <script src="/static/js/user_story_map.js?v=2"></script>
 
     <!-- Test Cases Review Modal -->
     <div class="modal fade" id="reviewTestCasesModal" tabindex="-1">

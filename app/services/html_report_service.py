@@ -73,12 +73,18 @@ class HTMLReportService:
 
         # Stats
         total_count = len(items)
-        executed_count = len([i for i in items if i.test_result is not None])
+        # Executed excludes Pending
+        executed_count = len([i for i in items if i.test_result is not None and i.test_result != TestResultStatus.PENDING])
+        
         passed_count = len([i for i in items if i.test_result == TestResultStatus.PASSED])
         failed_count = len([i for i in items if i.test_result == TestResultStatus.FAILED])
         retest_count = len([i for i in items if i.test_result == TestResultStatus.RETEST])
         na_count = len([i for i in items if i.test_result == TestResultStatus.NOT_AVAILABLE])
-        not_executed_count = total_count - executed_count
+        pending_count = len([i for i in items if i.test_result == TestResultStatus.PENDING])
+        not_required_count = len([i for i in items if i.test_result == TestResultStatus.NOT_REQUIRED])
+        
+        implicit_not_executed = len([i for i in items if i.test_result is None])
+        not_executed_count = implicit_not_executed + pending_count
 
         execution_rate = (executed_count / total_count * 100) if total_count > 0 else 0.0
         pass_rate = (passed_count / executed_count * 100) if executed_count > 0 else 0.0
@@ -116,8 +122,6 @@ class HTMLReportService:
                     comment = getattr(latest_comment, 'change_reason', None)
 
             # 解析測試結果檔案（執行結果附加檔案）
-            # 使用 execution_results_json 而不是 attachments_json
-            # 因為測試結果檔案儲存在 execution_results_json 中
             attachments: List[Dict[str, Any]] = []
             execution_results_json_str = getattr(i, 'execution_results_json', None)
             if execution_results_json_str:
@@ -135,7 +139,6 @@ class HTMLReportService:
                 except Exception as e:
                     import sys
                     print(f"Error parsing execution_results_json: {str(e)}", file=sys.stderr)
-                    print(f"execution_results_json_str: {execution_results_json_str}", file=sys.stderr)
 
             test_results.append({
                 "test_case_number": i.test_case_number or "",
@@ -148,7 +151,7 @@ class HTMLReportService:
                 "attachments": attachments
             })
 
-        # Bug tickets summary（不請 JIRA，直接顯示票號與關聯測試案例）
+        # Bug tickets summary
         bug_map: Dict[str, Dict[str, Any]] = {}
         for i in items:
             if getattr(i, 'bug_tickets_json', None):
@@ -190,6 +193,8 @@ class HTMLReportService:
                 "failed_count": failed_count,
                 "retest_count": retest_count,
                 "not_available_count": na_count,
+                "pending_count": pending_count,
+                "not_required_count": not_required_count,
                 "not_executed_count": not_executed_count,
                 "execution_rate": execution_rate,
                 "pass_rate": pass_rate,
@@ -204,7 +209,9 @@ class HTMLReportService:
                 "Failed": failed_count,
                 "Retest": retest_count,
                 "Not Available": na_count,
-                "Not Executed": not_executed_count,
+                "Pending": pending_count,
+                "Not Required": not_required_count,
+                "Not Executed": implicit_not_executed,
             },
             "test_results": test_results,
             "bug_tickets": bug_tickets,
@@ -221,7 +228,9 @@ class HTMLReportService:
             return 'retest'
         if st in ('not available', 'n/a'):
             return 'na'
-        if st in ('not executed', '未執行'):
+        if st == 'not required':
+            return 'not-required'
+        if st in ('not executed', '未執行', 'pending'):
             return 'pending'
         return 'pending'
 
@@ -270,6 +279,7 @@ class HTMLReportService:
         .pill.failed { background: rgba(220,53,69,.12); color: var(--tr-danger); border: 1px solid rgba(220,53,69,.3); }
         .pill.retest { background: rgba(13,110,253,.12); color: var(--tr-primary); border: 1px solid rgba(13,110,253,.3); }
         .pill.na { background: rgba(108,117,125,.12); color: var(--tr-secondary); border: 1px solid rgba(108,117,125,.3); }
+        .pill.not-required { background: rgba(108,117,125,.12); color: var(--tr-secondary); border: 1px solid rgba(108,117,125,.3); }
         .pill.pending { background: rgba(255,193,7,.12); color: var(--tr-warning); border: 1px solid rgba(255,193,7,.3); }
         .footer { margin-top: 32px; border-top: 1px solid var(--tr-border); padding-top: 12px; font-size: 12px; color: #6b7280; }
         @media print { .no-print { display: none; } body { margin: 0; } }
@@ -331,6 +341,8 @@ class HTMLReportService:
                 <tr><th>Failed</th><td>{sd.get('Failed', 0)}</td></tr>
                 <tr><th>Retest</th><td>{sd.get('Retest', 0)}</td></tr>
                 <tr><th>Not Available</th><td>{sd.get('Not Available', 0)}</td></tr>
+                <tr><th>Pending</th><td>{sd.get('Pending', 0)}</td></tr>
+                <tr><th>Not Required</th><td>{sd.get('Not Required', 0)}</td></tr>
                 <tr><th>Not Executed</th><td>{sd.get('Not Executed', 0)}</td></tr>
               </table>
             </div>
@@ -345,6 +357,112 @@ class HTMLReportService:
           </div>
         </div>
         """
+
+        # Bug tickets section (unchanged)
+        bt = data.get('bug_tickets', [])
+        if bt:
+            bug_rows = []
+            for t in bt:
+                cases_html = "".join([
+                    f"<tr><td><code>{esc(c.get('test_case_number'))}</code></td><td>{esc(c.get('title'))}</td><td><span class='pill {self._status_class(c.get('test_result'))}'>{esc(c.get('test_result'))}</span></td></tr>"
+                    for c in t.get('test_cases', [])
+                ])
+                bug_rows.append(
+                    f"""
+                    <div class=\"card\" style=\"margin-bottom:12px;\">
+                      <div><strong>Ticket</strong>: <span class=\"badge\">{esc(t.get('ticket_number'))}</span></div>
+                      <div class=\"section\" style=\"margin-top:8px;\">
+                        <table>
+                          <tr><th style=\"width:180px;\">Test Case Number</th><th>Title</th><th style=\"width:140px;\">Result</th></tr>
+                          {cases_html}
+                        </table>
+                      </div>
+                    </div>
+                    """
+                )
+            bugs_html = f"""
+            <div class=\"section card\">
+              <h2>Bug Tickets</h2>
+              {''.join(bug_rows)}
+            </div>
+            """
+        else:
+            bugs_html = f"""
+            <div class=\"section card\">
+              <h2>Bug Tickets</h2>
+              <div class=\"muted\">無關聯的 Bug Tickets</div>
+            </div>
+            """
+
+        rows = []
+        rows.append("<tr><th style=\"width:160px;\">Test Case Number</th><th>Title</th><th style=\"width:100px;\">Priority</th><th style=\"width:140px;\">Result</th><th style=\"width:160px;\">Executor</th><th style=\"width:160px;\">Executed At</th><th style=\"width:200px;\">Comment</th><th style=\"width:200px;\">Attachments</th></tr>")
+        for r in data.get("test_results", []):
+            status_text = r.get('status') or ''
+            status_class = self._status_class(status_text)
+            comment = r.get('comment') or ''
+
+            # 渲染附加檔案
+            attachments = r.get('attachments') or []
+            if attachments:
+                attachments_html = '<div style="font-size: 12px;">'
+                for att in attachments:
+                    att_name = esc(att.get('name', 'file'))
+                    att_url = att.get('url', '')
+                    if att_url:
+                        attachments_html += f'<div><a href="{esc(att_url)}" target="_blank" rel="noopener noreferrer" style="color: #0d6efd; text-decoration: underline;">{att_name}</a></div>'
+                    else:
+                        attachments_html += f'<div>{att_name}</div>'
+                attachments_html += '</div>'
+            else:
+                attachments_html = '-'
+
+            rows.append(
+                "<tr>"
+                f"<td>{esc(r.get('test_case_number'))}</td>"
+                f"<td>{esc(r.get('title'))}</td>"
+                f"<td>{esc(r.get('priority'))}</td>"
+                f"<td><span class=\"pill {status_class}\">{esc(status_text)}</span></td>"
+                f"<td>{esc(r.get('executor'))}</td>"
+                f"<td>{esc(r.get('execution_time'))}</td>"
+                f"<td style=\"white-space: pre-wrap;\">{esc(comment)}</td>"
+                f"<td>{attachments_html}</td>"
+                "</tr>"
+            )
+        details_html = f"""
+        <div class="section card">
+          <h2>詳細測試結果</h2>
+          <table>
+            {''.join(rows)}
+          </table>
+        </div>
+        """
+
+        footer = """
+        <div class="footer">
+          <div>本頁為靜態報告，僅呈現測試執行結果，不提供任何操作介面。</div>
+        </div>
+        """
+
+        html = f"""<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+  <meta name="robots" content="noindex,nofollow" />
+  <title>Test Run 報告 - {esc(data.get('test_run_name'))}</title>
+  <style>{css}</style>
+</head>
+<body>
+  {header_html}
+  {stats_html}
+  {bugs_html}
+  {details_html}
+  {footer}
+</body>
+</html>
+"""
+        return html
 
         # Bug tickets section
         bt = data.get('bug_tickets', [])

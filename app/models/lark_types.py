@@ -150,6 +150,8 @@ class TestResultStatus(str, Enum):
     FAILED = "Failed"
     RETEST = "Retest"
     NOT_AVAILABLE = "Not Available"
+    PENDING = "Pending"
+    NOT_REQUIRED = "Not Required"
 
 
 # 輔助函數
