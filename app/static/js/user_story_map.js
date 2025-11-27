@@ -5244,43 +5244,180 @@ function displayTestCasesReview(testCases) {
     }
 }
 
+// Create Test Run Set Modal Logic
+function openCreateTestRunSetModal() {
+    let modalEl = document.getElementById('createTestRunSetModal');
+    
+    // 如果 Modal 不存在，動態建立
+    if (!modalEl) {
+        const modalHtml = `
+            <div class="modal fade" id="createTestRunSetModal" tabindex="-1">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">建立 Test Run Set</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="mb-3">
+                                <label for="testRunSetNameInput" class="form-label">Test Run Set 名稱</label>
+                                <input type="text" class="form-control" id="testRunSetNameInput">
+                            </div>
+                            <div class="alert alert-info small mb-0">
+                                <i class="fas fa-info-circle me-1"></i>
+                                已選擇 <strong id="testRunSetSelectedCount">0</strong> 個測試案例
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                            <button type="button" class="btn btn-primary" id="confirmCreateTestRunSetBtn">建立</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        modalEl = document.getElementById('createTestRunSetModal');
+        
+        // 綁定建立按鈕事件
+        document.getElementById('confirmCreateTestRunSetBtn').addEventListener('click', handleCreateTestRunSet);
+    }
+    
+    // 更新 UI
+    const countEl = document.getElementById('testRunSetSelectedCount');
+    if (countEl) countEl.textContent = window.selectedTestCases ? window.selectedTestCases.length : 0;
+    
+    const nameInput = document.getElementById('testRunSetNameInput');
+    if (nameInput) {
+        const today = new Date().toISOString().split('T')[0];
+        nameInput.value = `Test Run Set - ${today}`;
+    }
+    
+    const modal = new bootstrap.Modal(modalEl);
+    modal.show();
+}
+
+async function handleCreateTestRunSet() {
+    const btn = document.getElementById('confirmCreateTestRunSetBtn');
+    const nameInput = document.getElementById('testRunSetNameInput');
+    const name = nameInput?.value?.trim();
+    
+    if (!name) {
+        alert('請輸入 Test Run Set 名稱');
+        return;
+    }
+
+    if (!window.selectedTestCases || window.selectedTestCases.length === 0) {
+        alert('未選擇測試案例');
+        return;
+    }
+
+    const teamId = window.teamId;
+    const recordIds = window.selectedTestCases.map(tc => tc.record_id);
+    
+    try {
+        btn.disabled = true;
+        const originalText = btn.innerHTML;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 建立中...';
+
+        const response = await fetch(`/api/teams/${teamId}/test-run-sets/from-test-cases`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+            },
+            body: JSON.stringify({
+                name: name,
+                description: 'Created from User Story Map',
+                test_case_records: recordIds
+            }),
+        });
+
+        if (response.ok) {
+            // showMessage('Test Run Set 建立成功', 'success'); // Modal 本身就是成功提示，可省略 toast
+            
+            const modalEl = document.getElementById('createTestRunSetModal');
+            const modal = bootstrap.Modal.getInstance(modalEl);
+            modal?.hide();
+            
+            showTestRunSetSuccessModal(teamId);
+        } else {
+            const error = await response.json();
+            showMessage(`建立失敗: ${error.detail || error.message}`, 'error');
+        }
+    } catch (error) {
+        console.error('Failed to create test run set:', error);
+        showMessage(`建立失敗: ${error.message}`, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = '建立';
+    }
+}
+
+function showTestRunSetSuccessModal(teamId) {
+    let modalEl = document.getElementById('testRunSetSuccessModal');
+    if (!modalEl) {
+        const modalHtml = `
+            <div class="modal fade" id="testRunSetSuccessModal" tabindex="-1">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                        <div class="modal-header bg-success text-white">
+                            <h5 class="modal-title"><i class="fas fa-check-circle me-2"></i>建立成功</h5>
+                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body text-center py-4">
+                            <div class="mb-3">
+                                <i class="fas fa-clipboard-check fa-4x text-success"></i>
+                            </div>
+                            <h5 class="mb-2">Test Run Set 已成功建立！</h5>
+                            <p class="text-muted">系統已根據 JIRA Ticket 自動分組建立 Test Runs。</p>
+                            <p class="text-muted small mb-0">您要前往 Test Run 管理頁面查看嗎？</p>
+                        </div>
+                        <div class="modal-footer justify-content-center border-top-0 pb-4">
+                            <button type="button" class="btn btn-outline-secondary px-4" data-bs-dismiss="modal">留在本頁</button>
+                            <button type="button" class="btn btn-success px-4" id="goToTestRunMgmtBtn">
+                                <i class="fas fa-arrow-right me-2"></i>前往查看
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        modalEl = document.getElementById('testRunSetSuccessModal');
+    }
+    
+    // Update button handler
+    const goBtn = document.getElementById('goToTestRunMgmtBtn');
+    const newBtn = goBtn.cloneNode(true);
+    goBtn.parentNode.replaceChild(newBtn, goBtn);
+    
+    newBtn.addEventListener('click', () => {
+        window.location.href = `/test-run-management?team_id=${teamId}`;
+    });
+    
+    const modal = new bootstrap.Modal(modalEl);
+    modal.show();
+}
+
 // Create Test Run button - use event delegation
 document.addEventListener('click', (e) => {
     const createTestRunBtn = e.target.closest?.('#createTestRunBtn');
     if (createTestRunBtn) {
         console.log('createTestRunBtn clicked');
-        console.log('selectedTestCases:', window.selectedTestCases);
         
         if (!window.selectedTestCases || window.selectedTestCases.length === 0) {
             showMessage('請先選擇至少一個測試案例', 'warning');
             return;
         }
 
-        (async () => {
-            const teamId = window.teamId;
-            const recordIds = window.selectedTestCases.map(tc => tc.record_id);
-            console.log('teamId:', teamId, 'recordIds:', recordIds);
+        // 關閉 reviewTestCasesModal
+        const reviewModalEl = document.getElementById('reviewTestCasesModal');
+        const reviewModal = bootstrap.Modal.getInstance(reviewModalEl);
+        reviewModal?.hide();
 
-            try {
-                // 保存預選信息到 sessionStorage
-                const preselectedCaseIds = recordIds.join(',');
-                sessionStorage.setItem('testRunSelectedCaseIds', preselectedCaseIds);
-                sessionStorage.setItem('testRunSetId', '0'); // 0 表示從 USM 來
-                
-                console.log('[USM] Saved preselected cases to sessionStorage:', preselectedCaseIds);
-                showMessage('準備建立 Test Run...', 'success');
-                
-                // 關閉 reviewTestCasesModal
-                const reviewModal = bootstrap.Modal.getInstance(document.getElementById('reviewTestCasesModal'));
-                reviewModal?.hide();
-                
-                // 跳轉到 Test Run 管理頁面，由頁面負責打開建立表單
-                window.location.href = `/test-run-management?team_id=${teamId}`;
-            } catch (error) {
-                console.error('Failed to prepare test run:', error);
-                showMessage('準備失敗: ' + error.message, 'error');
-            }
-        })();
+        // 打開專用的 Test Run Set Modal
+        openCreateTestRunSetModal();
     }
 });
 
