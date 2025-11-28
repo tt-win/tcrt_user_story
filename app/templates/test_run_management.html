@@ -764,6 +764,17 @@
 
         <div class="test-run-section-divider"></div>
 
+        <div id="adhoc-runs-section" class="mb-5" style="display: none;">
+            <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+                <div>
+                    <h4 class="mb-0" data-i18n="adhoc.title">Ad-hoc Runs</h4>
+                    <small class="text-muted">{{ i18n.t("adhoc.desc") if i18n else "Quick test runs without predefined test cases" }}</small>
+                </div>
+            </div>
+            <div class="row" id="adhoc-runs-container"></div>
+            <div class="test-run-section-divider"></div>
+        </div>
+
         <div id="unassigned-test-runs-section">
             <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
                 <div>
@@ -775,6 +786,70 @@
             <div id="no-unassigned-test-runs" class="text-center text-muted py-4" style="display: none;">
                 <i class="fas fa-clipboard-check fa-2x mb-3"></i>
                 <div data-i18n="testRun.unassigned.empty">所有 Test Run 皆已加入 Test Run Set</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Ad-hoc Run 建立 Modal -->
+<div class="modal fade" id="adHocRunFormModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="adHocRunFormTitle">Create Ad-hoc Run</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="adHocRunForm">
+                    <div class="mb-3">
+                        <label for="adHocName" class="form-label">Name <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" id="adHocName" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="adHocDescription" class="form-label">Description</label>
+                        <textarea class="form-control" id="adHocDescription" rows="3"></textarea>
+                    </div>
+                    
+                    <div class="row">
+                      <div class="col-md-4">
+                        <div class="mb-3">
+                          <label for="adHocTestEnvironment" class="form-label">Test Environment <span class="badge bg-secondary ms-2">Optional</span></label>
+                          <input type="text" class="form-control" id="adHocTestEnvironment" placeholder="e.g. Staging / UAT">
+                        </div>
+                      </div>
+                      <div class="col-md-4">
+                        <div class="mb-3">
+                          <label for="adHocBuildNumber" class="form-label">Build Number <span class="badge bg-secondary ms-2">Optional</span></label>
+                          <input type="text" class="form-control" id="adHocBuildNumber" placeholder="e.g. v1.2.3">
+                        </div>
+                      </div>
+                      <div class="col-md-4">
+                        <div class="mb-3">
+                          <label for="adHocRelatedTpTickets" class="form-label">Related JIRA Tickets <span class="badge bg-secondary ms-2">Optional</span></label>
+                          <input type="text" class="form-control" id="adHocRelatedTpTicketsInput" 
+                                 placeholder="Enter JIRA ticket (e.g. TP-12345)"
+                                 autocomplete="off">
+                          <div class="form-text">
+                            <i class="fas fa-info-circle me-1"></i>
+                            <span>Press Enter to add ticket</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- TP Tickets Display Area -->
+                    <div class="mb-3" id="adHocTpTicketsDisplay" style="display: none;">
+                        <label class="form-label">Selected Tickets:</label>
+                        <div id="adHocTpTicketTags" class="d-flex flex-wrap gap-2"></div>
+                    </div>
+                    
+                    <!-- Legacy JIRA Ticket (Hidden or Removed? Keeping hidden for backward compat if needed, but logic should use tags) -->
+                    <input type="hidden" id="adHocJira"> 
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="saveAdHocRunBtn">Create</button>
             </div>
         </div>
     </div>
@@ -1244,9 +1319,9 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/js/adhoc_run_manager.js"></script>
 <script>
 // Test Run 配置管理
-
 let testRunConfigs = [];
 let testRunSets = [];
 let unassignedTestRuns = [];
@@ -1534,6 +1609,8 @@ function bindEventListeners() {
             const cardType = addCard.dataset.cardType || 'run';
             if (cardType === 'set') {
                 openTestRunSetFormModal();
+            } else if (cardType === 'adhoc') {
+                openAdHocRunModal();
             } else {
                 openConfigFormModal();
             }
@@ -1590,6 +1667,21 @@ async function loadTestRunConfigs() {
         const payload = await response.json();
         testRunSets = Array.isArray(payload.sets) ? payload.sets : [];
         unassignedTestRuns = Array.isArray(payload.unassigned) ? payload.unassigned : [];
+        
+        // Load Ad-hoc Runs
+        try {
+            const adhocResponse = await window.AuthClient.fetch(`/api/adhoc-runs/team/${currentTeamId}`);
+            if (adhocResponse.ok) {
+                const adhocRuns = await adhocResponse.json();
+                renderAdHocRuns(adhocRuns);
+            } else {
+                renderAdHocRuns([]);
+            }
+        } catch (e) {
+            console.error('Failed to load adhoc runs', e);
+            renderAdHocRuns([]);
+        }
+
         rebuildTestRunConfigIndex();
         dataLoadedOnce = true;
         console.log('Loaded Test Run Sets:', testRunSets.length, 'Unassigned:', unassignedTestRuns.length);
@@ -1755,7 +1847,7 @@ function createTestRunSetCard(set, filterStatus) {
             return `<span class="tcg-tag me-1" data-tp-ticket="${safe}"` +
                 ` onmouseenter="showJiraPreview(event, '${safe}')"` +
                 ` onmouseleave="hideJiraPreview()"` +
-                ` onclick="event.stopPropagation(); openJiraTicket('${safe}')" style="cursor:pointer;">${safe}</span>`;
+                ` onclick="event.stopPropagation(); openJiraTicket('${safe}')" style="cursor:pointer; font-size: 0.75rem;">${safe}</span>`;
         }).join('');
         const remainingTag = remainingCount > 0
             ? `<span class="badge bg-light text-dark" style="font-size: 0.75rem;">+${remainingCount}</span>`
@@ -1764,7 +1856,11 @@ function createTestRunSetCard(set, filterStatus) {
     } else {
         tpContent = `<span class="tp-tag badge bg-secondary me-1">N/A</span>`;
     }
-    const tpLine = `<div class="d-flex justify-content-between"><span data-i18n="testRun.relatedTpTickets">相關 JIRA Tickets</span><span>${tpContent}</span></div>`;
+    const tpLine = `<div class="stats-item mb-1">
+        <i class="fas fa-tags stats-icon"></i>
+        <small class="text-muted flex-grow-1" data-i18n="testRun.relatedTpTickets">相關 JIRA Tickets</small>
+        <div class="d-flex flex-wrap gap-1 justify-content-end ms-auto">${tpContent}</div>
+    </div>`;
 
     return `
         <div class="col-xl-4 col-lg-6 mb-4">
@@ -1781,10 +1877,12 @@ function createTestRunSetCard(set, filterStatus) {
                             ${statusBadge}
                         </div>
                     </div>
-                    <div class="small text-muted mb-3">
-                        <div class="d-flex justify-content-between"><span data-i18n="testRun.sets.card.totalRuns">包含 Test Run</span><span>${filteredCount}/${totalRuns}</span></div>
-                        <div class="d-flex justify-content-between"><span data-i18n="testRun.progressLabel">執行進度</span><span>${filteredMetrics.executionRate.toFixed(1)}%</span></div>
-                        <div class="d-flex justify-content-between"><span data-i18n="testRun.passRateLabel">Pass Rate</span><span>${filteredMetrics.passRate.toFixed(1)}%</span></div>
+                    <div class="mb-3">
+                        <div class="small text-muted">
+                            <div class="d-flex justify-content-between"><span data-i18n="testRun.sets.card.totalRuns">包含 Test Run</span><span>${filteredCount}/${totalRuns}</span></div>
+                            <div class="d-flex justify-content-between"><span data-i18n="testRun.progressLabel">執行進度</span><span>${filteredMetrics.executionRate.toFixed(1)}%</span></div>
+                            <div class="d-flex justify-content-between"><span data-i18n="testRun.passRateLabel">Pass Rate</span><span>${filteredMetrics.passRate.toFixed(1)}%</span></div>
+                        </div>
                         ${tpLine}
                     </div>
                     <div class="border rounded p-2 bg-light flex-grow-1">
@@ -1902,7 +2000,11 @@ function createConfigCard(config) {
     } else {
         tpContent = `<span class="tp-tag badge bg-secondary me-1">N/A</span>`;
     }
-    const tpLine = `<div class="d-flex justify-content-between align-items-center mb-1"><small class="text-muted"><span data-i18n="testRun.relatedTpTickets">相關 JIRA Tickets</span></small><small class="text-muted">${tpContent}</small></div>`;
+    const tpLine = `<div class="stats-item mb-1">
+        <i class="fas fa-tags stats-icon"></i>
+        <small class="text-muted flex-grow-1"><span data-i18n="testRun.relatedTpTickets">相關 JIRA Tickets</span></small>
+        <div class="d-flex flex-wrap gap-1 justify-content-end ms-auto">${tpContent}</div>
+    </div>`;
     
     const buildLine = config.build_number ? `<div class=\"stats-item\"><i class=\"fas fa-code-branch stats-icon\"></i><small class=\"text-muted\"><span data-i18n=\"testRun.buildNumber\">建置版本</span>: ${escapeHtml(config.build_number)}</small></div>` : '';
     
@@ -1972,18 +2074,20 @@ function createConfigCard(config) {
         <div class="col-md-6 col-lg-4 mb-4">
             <div class="card h-100 test-run-card ${getStatusClass(config.status)}" onclick="enterTestRun(${config.id})">
                 <div class="card-body d-flex flex-column h-100">
-                    <div class="d-flex align-items-start mb-3">
-                        <div class="flex-shrink-0 me-3">
-                            <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center" 
-                                 style="width: 48px; height: 48px; font-size: 16px; font-weight: bold;">
-                                <i class="fas fa-play"></i>
+                    <div class="d-flex justify-content-between align-items-start mb-3 gap-2">
+                        <div class="d-flex align-items-center overflow-hidden flex-grow-1">
+                            <div class="flex-shrink-0 me-3">
+                                <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center" 
+                                     style="width: 48px; height: 48px; font-size: 16px; font-weight: bold;">
+                                    <i class="fas fa-play"></i>
+                                </div>
+                            </div>
+                            <div class="min-width-0">
+                                <h5 class="card-title text-primary mb-1 text-truncate">${escapeHtml(config.name)}</h5>
                             </div>
                         </div>
-                        <div class="flex-grow-1 min-width-0">
-                            <h5 class="card-title text-primary mb-1 text-truncate">${escapeHtml(config.name)}</h5>
-                            <div class="d-flex align-items-center mb-2">
-                                <span class="status-badge ${statusClass} me-2">${statusText}</span>
-                            </div>
+                        <div class="flex-shrink-0">
+                            <span class="status-badge ${statusClass}">${statusText}</span>
                         </div>
                     </div>
                     <div class="mb-3">

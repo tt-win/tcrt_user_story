@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+
+{% block title %}Ad-hoc Test Run - Test Case Repository Web Tool{% endblock %}
+
+{% block page_title_text %}Ad-Hoc Test Run{% endblock %}
+{% block page_subtitle_text %}<span id="runNameDisplay" data-i18n="common.loading">Loading...</span>{% endblock %}
+
+{% block page_specific_actions %}
+<div class="d-flex gap-2 align-items-center">
+    <button type="button" class="btn btn-primary" id="reportsBtn">
+        <i class="fas fa-chart-pie me-2"></i><span data-i18n="testRun.chartsReports">Charts & Reports</span>
+    </button>
+    <a id="backToMgmtBtn" href="#" class="btn btn-secondary">
+        <i class="fas fa-arrow-left me-2"></i><span data-i18n="testRun.backToManagement">Back to Management</span>
+    </a>
+    <a href="/" class="btn btn-secondary">
+        <i class="fas fa-home me-2"></i><span data-i18n="navigation.backToHome">首頁</span>
+    </a>
+</div>
+{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/handsontable@14.3.0/dist/handsontable.full.min.css" />
+<style>
+    /* Layout */
+    .adhoc-wrapper {
+        display: flex;
+        flex-direction: column;
+        height: calc(100vh - var(--header-height) - var(--footer-height) - 2rem);
+        background: #f8f9fa;
+        border: 1px solid #e5e7eb;
+        border-radius: 6px;
+        overflow: hidden;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    }
+
+    .adhoc-toolbar {
+        padding: 6px 12px;
+        background: #f1f3f4;
+        border-bottom: 1px solid #e5e7eb;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-shrink: 0;
+        height: 46px;
+    }
+
+    .adhoc-grid-container {
+        flex: 1;
+        background: #fff;
+        position: relative;
+    }
+
+    /* Sheet bar like Google Sheets */
+    .adhoc-sheet-bar {
+        height: 34px;
+        background: #f8f9fa;
+        border-top: 1px solid #e5e7eb;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 0 6px;
+    }
+    .sheet-add-btn {
+        width: 28px; height: 28px;
+        border: none;
+        background: transparent;
+        color: #5f6368;
+        border-radius: 4px;
+    }
+    .sheet-add-btn:hover { background: #e3e6ea; }
+    .sheet-tabs-container { display: flex; overflow-x: auto; scrollbar-width: none; }
+    .sheet-tabs-container::-webkit-scrollbar { display: none; }
+    .sheet-tab {
+        display: flex; align-items: center;
+        height: 26px; padding: 0 10px;
+        background: #e8eaed;
+        border: 1px solid #e5e7eb;
+        border-radius: 6px 6px 0 0;
+        margin-top: 6px; margin-right: 4px;
+        font-size: 0.82rem; color: #3c4043;
+        cursor: pointer; user-select: none;
+    }
+    .sheet-tab.active {
+        background: #fff;
+        color: #1a73e8;
+        border-bottom-color: #fff;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+    }
+    .sheet-tab:hover { background: #dde0e4; }
+    .tab-name { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* Handsontable look & feel */
+    :root { --hot-selection: #1a73e8; }
+    .handsontable {
+        font-family: "Roboto", "Noto Sans TC", -apple-system, "system-ui", "Segoe UI", sans-serif;
+        font-size: 13px;
+    }
+    .handsontable th {
+        background: #f8f9fa;
+        color: #5f6368;
+        font-weight: 600;
+        border-color: #e5e7eb;
+    }
+    .handsontable td { border-color: #e5e7eb; padding: 4px 6px; }
+    .handsontable .wtBorder { background: var(--hot-selection) !important; }
+    .handsontable .area { background: rgba(26,115,232,0.08) !important; }
+    .handsontable .current { box-shadow: inset 0 0 0 2px var(--hot-selection) !important; }
+    .handsontable .htInvalid { background: #fdecea !important; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="adhoc-wrapper">
+    <!-- Toolbar -->
+    <div class="adhoc-toolbar">
+        <div class="d-flex gap-2">
+            <button class="btn btn-sm btn-primary" id="addRowBtn">
+                <i class="fas fa-plus me-1"></i> Add Row
+            </button>
+        </div>
+        <div class="d-flex align-items-center gap-2">
+            <span id="saveStatus" class="text-muted small" style="font-size: 0.75rem;">All changes saved</span>
+        </div>
+    </div>
+
+    <!-- Grid -->
+    <div class="adhoc-grid-container">
+        <div id="adhocGrid"></div>
+    </div>
+
+    <!-- Bottom Sheet Bar -->
+    <div class="adhoc-sheet-bar">
+        <button class="sheet-add-btn" id="addSheetBtn" title="Add Sheet">
+            <i class="fas fa-plus"></i>
+        </button>
+        <div class="sheet-tabs-container" id="sheetTabsContainer">
+            <!-- Tabs will be populated here -->
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/handsontable@14.3.0/dist/handsontable.full.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/Chart.min.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="/static/js/adhoc_test_run.js"></script>
+{% endblock %}

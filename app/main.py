@@ -67,12 +67,14 @@ from app.api.system import router as system_router
 from app.api.user_story_maps import router as usm_router
 from app.api.usm_import import router as usm_import_router
 from app.api.llm_context import router as llm_context_router
+from app.api.adhoc import router as adhoc_router
 
 app.include_router(api_router, prefix="/api")
 app.include_router(system_router)
 app.include_router(usm_router, prefix="/api")
 app.include_router(usm_import_router)
 app.include_router(llm_context_router, prefix="/api")
+app.include_router(adhoc_router, prefix="/api")
 
 # 前端頁面路由
 @app.get("/", response_class=HTMLResponse)
@@ -82,6 +84,10 @@ async def index(request: Request):
 @app.get("/team-management", response_class=HTMLResponse)
 async def team_management(request: Request):
     return templates.TemplateResponse("team_management.html", {"request": request})
+
+@app.get("/adhoc-runs/{run_id}/execution", response_class=HTMLResponse)
+async def adhoc_run_execution(request: Request, run_id: int):
+    return templates.TemplateResponse("adhoc_test_run_execution.html", {"request": request})
 
 @app.get("/audit-logs", response_class=HTMLResponse)
 async def audit_logs(request: Request):

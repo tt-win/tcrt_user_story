@@ -788,3 +788,94 @@ class PasswordResetToken(Base):
 
 # 建立資料庫表格的函數
 logger = logging.getLogger(__name__)
+
+# --- Ad-hoc Test Run Models ---
+
+class AdHocRun(Base):
+    """Ad-hoc 測試執行容器（相當於 Test Run Set，但專用於 Ad-hoc 模式）"""
+    __tablename__ = "adhoc_runs"
+    __table_args__ = {'sqlite_autoincrement': True}
+
+    id = Column(Integer, primary_key=True)
+    team_id = Column(Integer, ForeignKey("teams.id"), nullable=False, index=True)
+    
+    name = Column(String(120), nullable=False)
+    description = Column(Text, nullable=True)
+    jira_ticket = Column(String(255), nullable=True)
+    status = Column(Enum(TestRunStatus), default=TestRunStatus.ACTIVE, nullable=False)
+    
+    # Enhanced Basic Settings (matching TestRunConfig)
+    test_version = Column(String(50), nullable=True)
+    test_environment = Column(String(100), nullable=True)
+    build_number = Column(String(100), nullable=True)
+    
+    related_tp_tickets_json = Column(Text, nullable=True, comment="相關 JIRA Tickets 票號 JSON 陣列")
+    tp_tickets_search = Column(String(1000), nullable=True, index=True, comment="JIRA Ticket 搜尋索引欄位")
+    
+    notifications_enabled = Column(Boolean, default=False, nullable=False, comment="是否啟用通知")
+    notify_chat_ids_json = Column(Text, nullable=True, comment="選擇的 Lark chat IDs（JSON 陣列）")
+    notify_chat_names_snapshot = Column(Text, nullable=True, comment="群組名稱快照（JSON 陣列）")
+    notify_chats_search = Column(String(1000), nullable=True, index=True, comment="群組名稱搜尋索引")
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    team = relationship("Team", backref="adhoc_runs")
+    sheets = relationship("AdHocRunSheet", back_populates="run", cascade="all, delete-orphan")
+
+
+class AdHocRunSheet(Base):
+    """Ad-hoc 測試執行的 Sheet（相當於 Excel 的分頁）"""
+    __tablename__ = "adhoc_run_sheets"
+    __table_args__ = {'sqlite_autoincrement': True}
+
+    id = Column(Integer, primary_key=True)
+    adhoc_run_id = Column(Integer, ForeignKey("adhoc_runs.id", ondelete="CASCADE"), nullable=False, index=True)
+    
+    name = Column(String(100), nullable=False)
+    sort_order = Column(Integer, default=0, nullable=False)
+    
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    run = relationship("AdHocRun", back_populates="sheets")
+    items = relationship("AdHocRunItem", back_populates="sheet", cascade="all, delete-orphan")
+
+
+class AdHocRunItem(Base):
+    """Ad-hoc 測試執行項目（相當於 Test Run Item，但不需要關聯 Test Case）"""
+    __tablename__ = "adhoc_run_items"
+    __table_args__ = {'sqlite_autoincrement': True}
+
+    id = Column(Integer, primary_key=True)
+    sheet_id = Column(Integer, ForeignKey("adhoc_run_sheets.id", ondelete="CASCADE"), nullable=False, index=True)
+    
+    # 排序
+    row_index = Column(Integer, nullable=False, index=True)
+
+    # 測試內容欄位 (比照 Test Run Item / Test Case)
+    test_case_number = Column(String(100), nullable=True) # 可以手動輸入或留空
+    title = Column(Text, nullable=True)
+    priority = Column(Enum(Priority), default=Priority.MEDIUM)
+    precondition = Column(Text, nullable=True)
+    steps = Column(Text, nullable=True)
+    expected_result = Column(Text, nullable=True)
+    comments = Column(Text, nullable=True)
+    bug_list = Column(Text, nullable=True)
+
+    # 執行資訊
+    test_result = Column(Enum(TestResultStatus), nullable=True)
+    assignee_name = Column(String(255), nullable=True)
+    executed_at = Column(DateTime, nullable=True)
+    
+    # 附件與結果 (JSON)
+    attachments_json = Column(Text, nullable=True) # 一般附件
+    execution_results_json = Column(Text, nullable=True) # 執行結果證明 (截圖等)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    # Relationships
+    sheet = relationship("AdHocRunSheet", back_populates="items")

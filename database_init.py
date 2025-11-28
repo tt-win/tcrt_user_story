@@ -97,6 +97,9 @@ IMPORTANT_TABLES: List[str] = [
     "test_run_set_memberships",
     "test_run_items",
     "test_run_item_result_history",
+    "adhoc_runs",
+    "adhoc_run_sheets",
+    "adhoc_run_items",
     "tcg_records",
     "lark_departments",
     "lark_users",
@@ -170,6 +173,10 @@ class ColumnConstraintChange:
             if not col_info:
                 return False
             
+            # 特殊處理 adhoc_runs.status，總是允許執行資料遷移 (update DRAFT -> ACTIVE)
+            if self.table == "adhoc_runs" and self.column == "status":
+                return True
+
             # 檢查 NOT NULL 約束
             if self.old_constraint == "NOT NULL" and self.new_constraint == "NULL":
                 return col_info.get("notnull", False)  # 如果目前是 NOT NULL，需要遷移
@@ -192,6 +199,13 @@ COLUMN_CONSTRAINT_CHANGES: List[ColumnConstraintChange] = [
         old_constraint="NOT NULL",
         new_constraint="NULL",
         notes="節點類型屬性已移除，欄位改為允許 NULL 以維持相容性"
+    ),
+    ColumnConstraintChange(
+        table="adhoc_runs",
+        column="status",
+        old_constraint="DRAFT",
+        new_constraint="ACTIVE",
+        notes="Ad-hoc Run 預設狀態變更為 Active"
     ),
 ]
 
@@ -222,9 +236,21 @@ COLUMN_CHECKS: Dict[str, List[ColumnSpec]] = {
         ColumnSpec("notify_chat_names_snapshot", "TEXT", nullable=True, default=None),
         ColumnSpec("notify_chats_search", "TEXT", nullable=True, default=None),
     ],
-    "test_run_sets": [
+    "adhoc_runs": [
+        ColumnSpec("test_version", "VARCHAR(50)", nullable=True, default=None),
+        ColumnSpec("test_environment", "VARCHAR(100)", nullable=True, default=None),
+        ColumnSpec("build_number", "VARCHAR(100)", nullable=True, default=None),
         ColumnSpec("related_tp_tickets_json", "TEXT", nullable=True, default=None),
-        ColumnSpec("tp_tickets_search", "TEXT", nullable=True, default=None),
+        ColumnSpec("tp_tickets_search", "VARCHAR(1000)", nullable=True, default=None),
+        ColumnSpec("notifications_enabled", "INTEGER", nullable=False, default=0),
+        ColumnSpec("notify_chat_ids_json", "TEXT", nullable=True, default=None),
+        ColumnSpec("notify_chat_names_snapshot", "TEXT", nullable=True, default=None),
+        ColumnSpec("notify_chats_search", "VARCHAR(1000)", nullable=True, default=None),
+    ],
+    "adhoc_run_sheets": [
+        # ... existing checks if any, or empty
+    ],
+    "adhoc_run_items": [
     ],
     # TestCaseLocal 需要新增的附件標記欄位和 Set/Section 關聯欄位
     "test_cases": [
@@ -272,6 +298,9 @@ INDEX_SPECS: List[Dict[str, Any]] = [
     {"name": "idx_lu_primary_department_id", "table": "lark_users", "columns": ["primary_department_id"]},
     # Sync History
     {"name": "idx_sh_teamid_starttime", "table": "sync_history", "columns": ["team_id", "start_time"]},
+    # Ad-hoc Runs Search Indexes
+    {"name": "idx_adhoc_tp_tickets_search", "table": "adhoc_runs", "columns": ["tp_tickets_search"]},
+    {"name": "idx_adhoc_notify_chats_search", "table": "adhoc_runs", "columns": ["notify_chats_search"]},
 ]
 
 
@@ -572,6 +601,12 @@ def auto_fix_constraint_changes(engine: Engine, logger: Logger, constraint_chang
                 logger.info(f"已修復約束：{change.table}.{change.column}")
             except Exception as e:
                 logger.error(f"修復約束失敗：{change.table}.{change.column} -> {e}")
+        elif change.table == "adhoc_runs" and change.column == "status":
+            try:
+                _migrate_adhoc_run_status_default(engine, logger)
+                logger.info(f"已遷移狀態：{change.table}.{change.column}")
+            except Exception as e:
+                logger.error(f"遷移狀態失敗：{change.table}.{change.column} -> {e}")
         else:
             logger.warn(f"跳過不支援的約束變更：{change.table}.{change.column}")
 
@@ -629,6 +664,19 @@ def _migrate_users_email_to_nullable(engine: Engine, logger: Logger):
         conn.exec_driver_sql("DROP TABLE users_backup")
     
     logger.info("users.email 欄位約束遷移完成")
+
+def _migrate_adhoc_run_status_default(engine: Engine, logger: Logger):
+    """將 adhoc_runs 的 status 預設值變更為 ACTIVE，並更新既有 DRAFT 資料"""
+    logger.info("開始遷移 adhoc_runs.status 預設值...")
+    
+    with engine.begin() as conn:
+        # 更新現有 DRAFT 狀態為 ACTIVE (因為 DRAFT 已被移除)
+        conn.exec_driver_sql("UPDATE adhoc_runs SET status = 'active' WHERE status = 'draft'")
+        
+        # SQLite 不支援直接 ALTER COLUMN SET DEFAULT，需重建表或忽略（僅資料更新即可滿足需求）
+        # 這裡主要確保資料一致性
+    
+    logger.info("adhoc_runs.status 資料遷移完成")
 
 def auto_fix_columns(engine: Engine, logger: Logger, missing: Dict[str, List[ColumnSpec]]):
     if not missing:
