@@ -234,7 +234,9 @@
     const el = document.getElementById('pm-page-indicator');
     if (!el) return;
     const maxPage = Math.max(1, Math.ceil(state.total / state.perPage));
-    el.textContent = `${state.page}/${maxPage}（共 ${state.total} 筆）`;
+    el.textContent = window.i18n ? 
+      window.i18n.t('personnel.pageInfo', { page: state.page, maxPage: maxPage, total: state.total }) :
+      `${state.page}/${maxPage}（共 ${state.total} 筆）`;
   }
 
   function renderUserList() {
@@ -242,7 +244,7 @@
     const box = document.getElementById('pm-user-list');
     if (!box) return;
     if (!state.users.length) {
-      box.innerHTML = '<div class="list-group-item text-center text-muted">無使用者</div>';
+      box.innerHTML = `<div class="list-group-item text-center text-muted">${window.i18n ? window.i18n.t('messages.noUsers') : '無使用者'}</div>`;
       return;
     }
   
