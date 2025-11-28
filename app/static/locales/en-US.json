@@ -1701,7 +1701,27 @@
     "processing": "Processing..."
   },
   "personnel": {
+    "tabTitle": "Personnel Management",
+    "userList": "User List",
+    "userDetail": "User Detail",
+    "selectUser": "Select User",
+    "selectUserHint": "Pick a user from the list or click \"New User\" to create one",
+    "searchPlaceholder": "Search users (name/email)",
+    "prevPage": "Prev",
+    "nextPage": "Next",
     "pageIndicator": "{page}/{maxPage} (total {total})",
+    "username": "Username",
+    "email": "Email",
+    "fullName": "Full Name",
+    "role": "Role",
+    "active": "Active",
+    "larkUserId": "Lark User",
+    "larkSearchPlaceholder": "Search Lark user",
+    "larkNotLinked": "Lark account not linked",
+    "unlink": "Unlink",
+    "preview": "Preview",
+    "primaryTeam": "Primary Team",
+    "unsaved": "Unsaved changes",
     "loadUsersFailed": "Failed to load users",
     "preloadLarkFailed": "Failed to preload Lark data",
     "preloadLarkFailedIds": "Some Lark data failed to preload",
@@ -1721,6 +1741,18 @@
     "resetPwdFailedPrefix": "Reset password failed: ",
     "larkUnlinked": "Lark link removed, click Save to apply changes",
     "larkLoaded": "Lark info loaded",
-    "larkLoadFailed": "Failed to fetch Lark user info"
+    "larkLoadFailed": "Failed to fetch Lark user info",
+    "newUser": "New User",
+    "save": "Save",
+    "resetPassword": "Reset Password",
+    "delete": "Delete",
+    "deactivate": "Deactivate/Delete",
+    "create": "Create",
+    "roleLabel": {
+      "viewer": "Viewer",
+      "user": "User",
+      "admin": "Admin",
+      "super_admin": "Super Admin"
+    }
   }
 }
