@@ -17,12 +17,21 @@
     larkCache: new Map(), // lark_user_id -> { name, avatar }
   };
 
-  const ROLE_LABELS = {
+  const ROLE_LABEL_FALLBACK = {
     viewer: 'Viewer',
     user: 'User',
     admin: 'Admin',
     super_admin: 'Super Admin',
   };
+
+  function roleLabel(role) {
+    const key = `personnel.roleLabel.${role}`;
+    if (window.i18n && window.i18n.isReady && window.i18n.isReady()) {
+      const translated = window.i18n.t(key);
+      if (translated && translated !== key) return translated;
+    }
+    return ROLE_LABEL_FALLBACK[role] || role;
+  }
 
   function hasAuth() {
     const role = (state.me && state.me.role) || '';
@@ -377,12 +386,12 @@
       const value = role.toLowerCase();
       if (seen.has(value)) return;
       seen.add(value);
-      options.push({ value, label: ROLE_LABELS[value] || value, locked: false });
+      options.push({ value, label: roleLabel(value), locked: false });
     });
 
     if (normalizedSelected && !seen.has(normalizedSelected)) {
       seen.add(normalizedSelected);
-      options.push({ value: normalizedSelected, label: ROLE_LABELS[normalizedSelected] || normalizedSelected, locked: true });
+      options.push({ value: normalizedSelected, label: roleLabel(normalizedSelected), locked: true });
     }
 
     sel.innerHTML = options
@@ -596,9 +605,10 @@
     
     // 提示使用者需要儲存變更
     if (window.AppUtils && AppUtils.showWarning) {
-      AppUtils.showWarning('已解除 Lark 連結，請點擊儲存按鈕以保存變更');
+      const msg = window.i18n ? window.i18n.t('personnel.larkUnlinked') : '已解除 Lark 連結，請點擊儲存按鈕以保存變更';
+      AppUtils.showWarning(msg);
     } else {
-      console.log('已解除 Lark 連結，請點擊儲存按鈕以保存變更');
+      console.log(window.i18n ? window.i18n.t('personnel.larkUnlinked') : '已解除 Lark 連結，請點擊儲存按鈕以保存變更');
     }
   }
 
