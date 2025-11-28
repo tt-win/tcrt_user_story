@@ -1,20 +1,20 @@
 {% extends "base.html" %}
 
-{% block title %}系統初始化 - Test Case Repository Web Tool{% endblock %}
+{% block title %}{{ _('setup.title') if _ else '系統初始化 - Test Case Repository Web Tool' }}{% endblock %}
 
-<!-- 禁用基礎模板的 header 和 footer -->
+<!-- Disable base header/footer for fullscreen setup -->
 {% block page_title %}{% endblock %}
 {% block page_actions %}{% endblock %}
 
 {% block head %}
 <style>
-        /* 隐藏 header 和 footer */
+        /* hide header/footer */
         .app-header,
         .app-footer {
             display: none !important;
         }
         
-        /* 使 main 填滿全屏 */
+        /* make main fullscreen */
         .app-main {
             min-height: 100vh !important;
             padding: 0 !important;
@@ -292,8 +292,8 @@
                 <div class="logo">
                     <i class="fas fa-cogs"></i>
                 </div>
-                <h1>系統初始化</h1>
-                <div class="subtitle">建立第一個 Super Admin 帳戶</div>
+                <h1 data-i18n="setup.title">系統初始化</h1>
+                <div class="subtitle" data-i18n="setup.subtitle">建立第一個 Super Admin 帳戶</div>
             </div>
             
             <!-- Body -->
@@ -303,8 +303,8 @@
                     <div class="icon">
                         <i class="fas fa-rocket"></i>
                     </div>
-                    <h2>歡迎使用測試用例管理系統！</h2>
-                    <p>系統需要建立第一個 Super Admin 帳戶才能開始使用。</p>
+                    <h2 data-i18n="setup.welcome">歡迎使用測試用例管理系統！</h2>
+                    <p data-i18n="setup.needAdmin">系統需要建立第一個 Super Admin 帳戶才能開始使用。</p>
                 </div>
                 
                 <!-- Steps Section -->
@@ -312,24 +312,24 @@
                     <div class="step-item">
                         <div class="step-number">1</div>
                         <div class="step-content">
-                            <h5>建立 Super Admin 帳戶</h5>
-                            <p>設定系統管理員的使用者名稱和密碼</p>
+                            <h5 data-i18n="setup.createAdmin">建立 Super Admin 帳戶</h5>
+                            <p data-i18n="setup.setCredentials">設定系統管理員的使用者名稱和密碼</p>
                         </div>
                     </div>
                     
                     <div class="step-item">
                         <div class="step-number">2</div>
                         <div class="step-content">
-                            <h5>登入系統</h5>
-                            <p>使用建立的帳戶登入系統</p>
+                            <h5 data-i18n="setup.stepLoginTitle">登入系統</h5>
+                            <p data-i18n="setup.stepLoginDesc">使用建立的帳戶登入系統</p>
                         </div>
                     </div>
                     
                     <div class="step-item">
                         <div class="step-number">3</div>
                         <div class="step-content">
-                            <h5>建立團隊和使用者</h5>
-                            <p>開始建立團隊並邀請其他使用者</p>
+                            <h5 data-i18n="setup.stepTeamTitle">建立團隊和使用者</h5>
+                            <p data-i18n="setup.stepTeamDesc">開始建立團隊並邀請其他使用者</p>
                         </div>
                     </div>
                 </div>
@@ -342,52 +342,55 @@
                     <form id="setup-form">
                         <div class="mb-3">
                             <label for="username" class="form-label">
-                                <i class="fas fa-user me-2"></i>使用者名稱
+                                <i class="fas fa-user me-2"></i><span data-i18n="setup.username">使用者名稱</span>
                             </label>
                             <input type="text" class="form-control" id="username" name="username" 
+                                   data-i18n-placeholder="setup.usernamePlaceholder"
                                    placeholder="請輸入管理員使用者名稱" required
                                    minlength="3" maxlength="50">
                             <div class="requirements-list">
-                                <i class="fas fa-info-circle me-1"></i>需要 3-50 個字符
+                                <i class="fas fa-info-circle me-1"></i><span data-i18n="setup.usernameRule">需要 3-50 個字符</span>
                             </div>
                         </div>
                         
                         <div class="mb-3">
                             <label for="password" class="form-label">
-                                <i class="fas fa-lock me-2"></i>密碼
+                                <i class="fas fa-lock me-2"></i><span data-i18n="setup.password">密碼</span>
                             </label>
                             <div class="password-input-group">
                                 <input type="password" class="form-control" id="password" name="password" 
+                                       data-i18n-placeholder="setup.passwordPlaceholder"
                                        placeholder="請輸入密碼" required minlength="8">
                                 <button type="button" class="password-toggle" onclick="togglePassword('password')">
                                     <i class="fas fa-eye" id="password-eye"></i>
                                 </button>
                             </div>
                             <div class="requirements-list">
-                                <i class="fas fa-info-circle me-1"></i>至少需要 8 個字符
+                                <i class="fas fa-info-circle me-1"></i><span data-i18n="setup.passwordRule">至少需要 8 個字符</span>
                             </div>
                         </div>
                         
                         <div class="mb-3">
                             <label for="confirm_password" class="form-label">
-                                <i class="fas fa-lock me-2"></i>確認密碼
+                                <i class="fas fa-lock me-2"></i><span data-i18n="setup.passwordConfirm">確認密碼</span>
                             </label>
                             <div class="password-input-group">
                                 <input type="password" class="form-control" id="confirm_password" name="confirm_password" 
+                                       data-i18n-placeholder="setup.passwordConfirmPlaceholder"
                                        placeholder="請再次輸入密碼" required minlength="8">
                                 <button type="button" class="password-toggle" onclick="togglePassword('confirm_password')">
                                     <i class="fas fa-eye" id="confirm_password-eye"></i>
                                 </button>
                             </div>
                             <div class="requirements-list">
-                                <i class="fas fa-info-circle me-1"></i>必須與上方密碼一致
+                                <i class="fas fa-info-circle me-1"></i><span data-i18n="setup.passwordMatch">必須與上方密碼一致</span>
                             </div>
                         </div>
                         
                         <div class="text-center">
                             <button type="submit" class="btn btn-primary" id="submit-btn">
                                 <i class="fas fa-rocket me-2"></i>
-                                <span id="submit-text">建立 Super Admin 並初始化系統</span>
+                                <span id="submit-text" data-i18n="setup.submit">建立 Super Admin 並初始化系統</span>
                             </button>
                         </div>
                     </form>
@@ -395,11 +398,11 @@
                 
                 <!-- Security Notes -->
                 <div class="security-notes">
-                    <h6><i class="fas fa-shield-alt icon"></i>安全提醒</h6>
+                    <h6><i class="fas fa-shield-alt icon"></i><span data-i18n="setup.securityTitle">安全提醒</span></h6>
                     <ul>
-                        <li>請使用強密碼保護 Super Admin 帳戶</li>
-                        <li>Super Admin 擁有系統所有權限，請妥善保管</li>
-                        <li>建議完成初始化後建立其他管理員帳戶分散風險</li>
+                        <li data-i18n="setup.security1">請使用強密碼保護 Super Admin 帳戶</li>
+                        <li data-i18n="setup.security2">Super Admin 擁有系統所有權限，請妥善保管</li>
+                        <li data-i18n="setup.security3">建議完成初始化後建立其他管理員帳戶分散風險</li>
                     </ul>
                 </div>
             </div>
@@ -517,33 +520,33 @@
                         }, 3000);
                         
                     } else {
-                        const errorMsg = result.error || '初始化失敗，請稍後再試';
-                        this.showAlert('danger', '初始化失敗', errorMsg);
+                        const errorMsg = result.error || (window.i18n ? window.i18n.t('setup.initFailedMsg') : '初始化失敗，請稍後再試');
+                        this.showAlert('danger', window.i18n ? window.i18n.t('setup.initFailedTitle') : '初始化失敗', errorMsg);
                         this.setSubmitState(false);
                     }
                     
                 } catch (error) {
                     console.error('系統初始化錯誤:', error);
-                    this.showAlert('danger', '系統錯誤', '初始化時發生未知錯誤，請重新整理頁面後再試');
+                    this.showAlert('danger', window.i18n ? window.i18n.t('setup.systemErrorTitle') : '系統錯誤', window.i18n ? window.i18n.t('setup.systemErrorMsg') : '初始化時發生未知錯誤，請重新整理頁面後再試');
                     this.setSubmitState(false);
                 }
             }
             
             validateSetupData(data) {
                 if (!data.username || data.username.length < 3) {
-                    return '使用者名稱至少需要3個字符';
+                    return window.i18n ? window.i18n.t('setup.usernameMin') : '使用者名稱至少需要3個字符';
                 }
                 
                 if (data.username.length > 50) {
-                    return '使用者名稱不能超過50個字符';
+                    return window.i18n ? window.i18n.t('setup.usernameMax') : '使用者名稱不能超過50個字符';
                 }
                 
                 if (!data.password || data.password.length < 8) {
-                    return '密碼至少需要8個字符';
+                    return window.i18n ? window.i18n.t('setup.passwordMin') : '密碼至少需要8個字符';
                 }
                 
                 if (data.password !== data.confirm_password) {
-                    return '密碼與確認密碼不一致';
+                    return window.i18n ? window.i18n.t('setup.passwordMismatch') : '密碼與確認密碼不一致';
                 }
                 
                 return null;
@@ -554,13 +557,13 @@
                     this.submitBtn.disabled = true;
                     this.submitBtn.innerHTML = `
                         <i class="fas fa-spinner fa-spin me-2"></i>
-                        <span>${text || '處理中...'}</span>
+                        <span>${text || (window.i18n ? window.i18n.t('setup.processing') : '處理中...')}</span>
                     `;
                 } else {
                     this.submitBtn.disabled = false;
                     this.submitBtn.innerHTML = `
                         <i class="fas fa-rocket me-2"></i>
-                        <span>建立 Super Admin 並初始化系統</span>
+                        <span data-i18n="setup.submit">${window.i18n ? window.i18n.t('setup.submit') : '建立 Super Admin 並初始化系統'}</span>
                     `;
                 }
             }
