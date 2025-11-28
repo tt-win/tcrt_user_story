@@ -68,7 +68,7 @@ class ProfileManager {
             
         } catch (error) {
             console.error('ProfileManager setup error:', error);
-            this.showError('初始化失敗，請重新載入頁面');
+            this.showError(window.i18n ? window.i18n.t('profile.initFailed') : '初始化失敗，請重新載入頁面');
         }
     }
 
@@ -198,7 +198,7 @@ class ProfileManager {
 
         } catch (error) {
             console.error('載入使用者資料失敗:', error);
-            this.showError('載入使用者資料失敗，請稍後再試');
+            this.showError(window.i18n ? window.i18n.t('profile.loadFailed') : '載入使用者資料失敗，請稍後再試');
         } finally {
             this.hideLoadingState();
         }
@@ -213,7 +213,7 @@ class ProfileManager {
         // 基本資訊顯示
         const displayName = userData.full_name || userData.lark_name || userData.username;
         const username = `@${userData.username}`;
-        const email = userData.email || '未設定';
+        const email = userData.email || (window.i18n ? window.i18n.t('common.notSet') : '未設定');
         
         console.log('[ProfileManager] 設定顯示名稱:', displayName);
         this.setElementText('profile-display-name', displayName);
@@ -247,7 +247,7 @@ class ProfileManager {
         const createdAt = this.formatDateTime(userData.created_at);
         const lastLogin = userData.last_login_at 
             ? this.formatDateTime(userData.last_login_at) 
-            : '從未登入';
+            : (window.i18n ? window.i18n.t('profile.neverLoggedIn') : '從未登入');
             
         console.log('[ProfileManager] 設定註冊時間:', createdAt);
         this.setElementText('profile-created-at', createdAt);
@@ -380,11 +380,11 @@ class ProfileManager {
             // 更新成功
             this.userData = result;
             this.displayUserProfile(result);
-            this.showSuccess('個人資料更新成功');
+            this.showSuccess(window.i18n ? window.i18n.t('profile.updateSuccess') : '個人資料更新成功');
 
         } catch (error) {
             console.error('更新個人資料失敗:', error);
-            this.showError('更新個人資料失敗，請稍後再試');
+            this.showError(window.i18n ? window.i18n.t('profile.updateFailed') : '更新個人資料失敗，請稍後再試');
         } finally {
             this.setSubmittingState('profile', false);
         }
@@ -476,11 +476,11 @@ class ProfileManager {
             // 密碼修改成功
             this.passwordForm.reset();
             this.hidePasswordStrength();
-            this.showSuccess('密碼修改成功');
+            this.showSuccess(window.i18n ? window.i18n.t('profile.passwordChanged') : '密碼修改成功');
 
         } catch (error) {
             console.error('修改密碼失敗:', error);
-            this.showError('修改密碼失敗，請稍後再試');
+            this.showError(window.i18n ? window.i18n.t('profile.passwordChangeFailed') : '修改密碼失敗，請稍後再試');
         } finally {
             this.setSubmittingState('password', false);
         }
@@ -498,25 +498,25 @@ class ProfileManager {
 
         // 檢查目前密碼
         if (!currentPassword) {
-            this.showFieldError(this.currentPasswordInput, '請輸入目前密碼');
+            this.showFieldError(this.currentPasswordInput, window.i18n ? window.i18n.t('profile.enterCurrentPassword') : '請輸入目前密碼');
             isValid = false;
         }
 
         // 檢查新密碼長度
         if (newPassword.length < 8) {
-            this.showFieldError(this.newPasswordInput, '新密碼至少需要 8 個字符');
+            this.showFieldError(this.newPasswordInput, window.i18n ? window.i18n.t('profile.passwordLengthError') : '新密碼至少需要 8 個字符');
             isValid = false;
         }
 
         // 檢查密碼確認
         if (newPassword !== confirmPassword) {
-            this.showFieldError(this.confirmPasswordInput, '兩次輸入的密碼不相符');
+            this.showFieldError(this.confirmPasswordInput, window.i18n ? window.i18n.t('profile.passwordMatchError') : '兩次輸入的密碼不相符');
             isValid = false;
         }
 
         // 檢查新舊密碼是否相同
         if (currentPassword && newPassword && currentPassword === newPassword) {
-            this.showFieldError(this.newPasswordInput, '新密碼不能與目前密碼相同');
+            this.showFieldError(this.newPasswordInput, window.i18n ? window.i18n.t('profile.passwordSameError') : '新密碼不能與目前密碼相同');
             isValid = false;
         }
 
@@ -611,14 +611,14 @@ class ProfileManager {
                         this.showError(result.detail);
                     }
                 } else {
-                    this.showError('請求格式錯誤');
+                    this.showError(window.i18n ? window.i18n.t('errors.badRequest') : '請求格式錯誤');
                 }
                 break;
             case 409:
                 // 衝突錯誤（如 email 重複）
                 const emailInput = form.querySelector('#email');
                 if (emailInput) {
-                    this.showFieldError(emailInput, result.detail || '電子信箱已被使用');
+                    this.showFieldError(emailInput, result.detail || (window.i18n ? window.i18n.t('profile.emailInUse') : '電子信箱已被使用'));
                 }
                 break;
             case 422:
@@ -632,11 +632,11 @@ class ProfileManager {
                         }
                     });
                 } else {
-                    this.showError('輸入資料格式錯誤');
+                    this.showError(window.i18n ? window.i18n.t('errors.validationError') : '輸入資料格式錯誤');
                 }
                 break;
             default:
-                this.showError(result.detail || '操作失敗，請稍後再試');
+                this.showError(result.detail || (window.i18n ? window.i18n.t('errors.operationFailed') : '操作失敗，請稍後再試'));
         }
     }
 
