@@ -36,6 +36,7 @@
     "no": "否",
     "noDescription": "無描述",
     "none": "無",
+    "notSet": "未設定",
     "optional": "選填",
     "pleaseSelect": "請選擇...",
     "passed": "通過",
@@ -165,6 +166,7 @@
   },
   "profile": {
     "title": "個人資料",
+    "subtitle": "查看和編輯您的個人資訊",
     "email": "電子郵件",
     "fullName": "全名",
     "role": "角色",
@@ -179,7 +181,24 @@
     "passwordRequirements": "密碼要求：",
     "reqLength": "至少 8 個字元",
     "reqDifferent": "與目前密碼不同",
-    "reqMatch": "兩次輸入密碼需相符"
+    "reqMatch": "兩次輸入密碼需相符",
+    "initFailed": "初始化失敗，請重新載入頁面",
+    "loadFailed": "載入使用者資料失敗，請稍後再試",
+    "neverLoggedIn": "從未登入",
+    "updateSuccess": "個人資料更新成功",
+    "updateFailed": "更新個人資料失敗，請稍後再試",
+    "enterCurrentPassword": "請輸入目前密碼",
+    "passwordLengthError": "新密碼至少需要 8 個字符",
+    "passwordMatchError": "兩次輸入的密碼不相符",
+    "passwordSameError": "新密碼不能與目前密碼相同",
+    "passwordChanged": "密碼修改成功",
+    "passwordChangeFailed": "修改密碼失敗，請稍後再試",
+    "fullNamePlaceholder": "請輸入您的全名",
+    "emailPlaceholder": "請輸入電子信箱",
+    "currentPasswordPlaceholder": "請輸入目前密碼",
+    "newPasswordPlaceholder": "請輸入新密碼",
+    "confirmPasswordPlaceholder": "請再次輸入新密碼",
+    "emailInUse": "電子信箱已被使用"
   },
   "roles": {
     "super_admin": "超級管理員",
@@ -335,7 +354,10 @@
     "suffixOutOfRange": "末尾單號超過 990，無法套用",
     "batchCopyNoSelection": "請先選擇要套用的項目",
     "duplicateInternal": "清單內存在重複的 Case Number",
-    "duplicateExternal": "與既有 Case Number 衝突：{numbers}"
+    "duplicateExternal": "與既有 Case Number 衝突：{numbers}",
+    "badRequest": "請求格式錯誤",
+    "validationError": "輸入資料格式錯誤",
+    "operationFailed": "操作失敗，請稍後再試"
   },
   "copyModal": {
     "title": "手動複製連結",

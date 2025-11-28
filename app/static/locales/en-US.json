@@ -36,6 +36,7 @@
     "no": "No",
     "noDescription": "No description",
     "none": "None",
+    "notSet": "Not Set",
     "optional": "Optional",
     "pleaseSelect": "Please select...",
     "passed": "Passed",
@@ -165,6 +166,7 @@
   },
   "profile": {
     "title": "Profile",
+    "subtitle": "View and edit your profile information",
     "email": "Email",
     "fullName": "Full Name",
     "role": "Role",
@@ -179,7 +181,24 @@
     "passwordRequirements": "Password Requirements:",
     "reqLength": "At least 8 characters",
     "reqDifferent": "Different from current password",
-    "reqMatch": "Two password entries match"
+    "reqMatch": "Two password entries match",
+    "initFailed": "Initialization failed, please reload the page",
+    "loadFailed": "Failed to load user data, please try again later",
+    "neverLoggedIn": "Never logged in",
+    "updateSuccess": "Profile updated successfully",
+    "updateFailed": "Failed to update profile, please try again later",
+    "enterCurrentPassword": "Please enter current password",
+    "passwordLengthError": "New password must be at least 8 characters",
+    "passwordMatchError": "Passwords do not match",
+    "passwordSameError": "New password cannot be the same as current password",
+    "passwordChanged": "Password changed successfully",
+    "passwordChangeFailed": "Failed to change password, please try again later",
+    "fullNamePlaceholder": "Please enter your full name",
+    "emailPlaceholder": "Please enter email",
+    "currentPasswordPlaceholder": "Please enter current password",
+    "newPasswordPlaceholder": "Please enter new password",
+    "confirmPasswordPlaceholder": "Please confirm new password",
+    "emailInUse": "Email already in use"
   },
   "roles": {
     "super_admin": "Super Admin",
@@ -335,7 +354,10 @@
     "suffixOutOfRange": "Suffix exceeds 990, cannot apply",
     "batchCopyNoSelection": "Please select items to apply",
     "duplicateInternal": "Duplicate case numbers in the list",
-    "duplicateExternal": "Conflicts with existing case numbers: {numbers}"
+    "duplicateExternal": "Conflicts with existing case numbers: {numbers}",
+    "badRequest": "Bad Request",
+    "validationError": "Validation Error",
+    "operationFailed": "Operation failed, please try again later"
   },
   "copyModal": {
     "title": "Copy link manually",
