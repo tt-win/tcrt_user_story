@@ -95,6 +95,7 @@ class UserResponse(BaseModel):
     username: str
     email: Optional[str]
     full_name: Optional[str]
+    lark_name: Optional[str] = None
     role: str
     is_active: bool
     lark_user_id: Optional[str] = None
@@ -189,7 +190,7 @@ async def list_users(
     try:
         async with get_async_session() as session:
             # 建立基礎查詢
-            query = select(User, LarkUser.avatar_240).outerjoin(
+            query = select(User, LarkUser.avatar_240, LarkUser.name).outerjoin(
                 LarkUser, User.lark_user_id == LarkUser.user_id
             )
 
@@ -220,7 +221,7 @@ async def list_users(
             query = query.offset(offset).limit(per_page).order_by(User.created_at.desc())
 
             result = await session.execute(query)
-            # result now contains (User, avatar_url) tuples
+            # result now contains (User, avatar_url, lark_name) tuples
             rows = result.all()
 
             user_responses = [
@@ -229,6 +230,7 @@ async def list_users(
                     username=user.username,
                     email=user.email,
                     full_name=user.full_name,
+                    lark_name=lark_name or (user.lark_user.name if getattr(user, 'lark_user', None) else None),  # type: ignore[attr-defined]
                     role=user.role.value,
                     is_active=user.is_active,
                     lark_user_id=getattr(user, 'lark_user_id', None),
@@ -237,7 +239,7 @@ async def list_users(
                     updated_at=user.updated_at,
                     last_login_at=user.last_login_at
                 )
-                for user, avatar_url in rows
+                for user, avatar_url, lark_name in rows
             ]
 
             return UserListResponse(
