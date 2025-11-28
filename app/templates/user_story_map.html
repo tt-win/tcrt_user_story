@@ -380,14 +380,11 @@ Web Tool{% endblock %} {% block page_title_text %}
         <i class="fas fa-list me-2"></i
         ><span data-i18n="usm.mapList">地圖列表</span>
     </button>
-    <button type="button" class="btn btn-primary" id="newMapBtn">
-        <i class="fas fa-plus me-2"></i
-        ><span data-i18n="usm.newMap">新增地圖</span>
-    </button>
     <button
         type="button"
         class="btn btn-info"
         id="calcTicketsBtn"
+        data-i18n-title="usm.calcTicketsTooltip"
         title="重新計算所有節點的聚合票證"
     >
         <i class="fas fa-calculator me-2"></i
@@ -428,6 +425,7 @@ Web Tool{% endblock %} {% block page_title_text %}
                 type="button"
                 class="btn btn-sm btn-edit"
                 id="moveNodeBtn"
+                data-i18n-title="usm.moveNodeTooltip"
                 title="搬移節點到其他父節點"
                 onclick="window.startMoveNodeMode?.()"
             >
@@ -437,6 +435,7 @@ Web Tool{% endblock %} {% block page_title_text %}
                 type="button"
                 class="btn btn-sm btn-edit"
                 id="setRelationsBtn"
+                data-i18n-title="usm.setRelationsTooltip"
                 title="建立節點關聯"
                 onclick="window.openRelationModal?.()"
             >
@@ -451,6 +450,7 @@ Web Tool{% endblock %} {% block page_title_text %}
                 class="btn btn-sm btn-outline-secondary"
                 id="clearSearchHighlightBtn"
                 style="display: none"
+                data-i18n-title="usm.clearSearchHighlightTooltip"
                 title="清除搜尋高亮"
             >
                 <i class="fas fa-times"></i>
@@ -467,6 +467,7 @@ Web Tool{% endblock %} {% block page_title_text %}
                 type="button"
                 class="btn btn-sm btn-info"
                 id="fullRelationGraphBtn"
+                data-i18n-title="usm.fullRelationGraphTooltip"
                 title="顯示完整相關圖"
                 onclick="window.openFullRelationGraph?.()"
             >
@@ -476,6 +477,7 @@ Web Tool{% endblock %} {% block page_title_text %}
                 type="button"
                 class="btn btn-sm btn-info"
                 id="reviewTestCasesBtn"
+                data-i18n-title="usm.reviewTestCasesTooltip"
                 title="檢閱相關案例"
             >
                 <i class="fas fa-check-square"></i> <span data-i18n="usm.reviewTestCases">檢閱相關案例</span>
@@ -501,6 +503,7 @@ Web Tool{% endblock %} {% block page_title_text %}
                     type="button"
                     class="btn btn-sm btn-secondary usm-map-btn"
                     id="autoLayoutBtn"
+                    data-i18n-title="usm.autoLayoutTooltip"
                     title="自動排版"
                 >
                     <i class="fas fa-project-diagram"></i>
@@ -509,6 +512,7 @@ Web Tool{% endblock %} {% block page_title_text %}
                     type="button"
                     class="btn btn-sm btn-secondary usm-map-btn"
                     id="collapseUserStoryNodesBtn"
+                    data-i18n-title="usm.collapseUserStoryTooltip"
                     title="收合所有 User Story 節點"
                 >
                     <i class="fas fa-compress-alt"></i>
@@ -517,6 +521,7 @@ Web Tool{% endblock %} {% block page_title_text %}
                     type="button"
                     class="btn btn-sm btn-secondary usm-map-btn"
                     id="expandAllNodesBtn"
+                    data-i18n-title="usm.expandAllTooltip"
                     title="展開所有節點"
                 >
                     <i class="fas fa-expand-alt"></i>
@@ -682,9 +687,7 @@ Web Tool{% endblock %} {% block page_title_text %}
                         class="list-group list-group-sm relation-selected-list"
                         id="relationSelectedList"
                     >
-                        <p class="text-muted small text-center py-3" data-i18n="usm.notSelectedYet">
-                            尚未選擇
-                        </p>
+                        <p class="text-muted small text-center py-3" data-i18n="usm.notSelected">尚未選擇</p>
                     </div>
                 </div>
             </div>
@@ -871,13 +874,18 @@ Web Tool{% endblock %} {% block page_title_text %}
 <div class="modal fade" id="mapListModal" tabindex="-1">
     <div class="modal-dialog modal-lg">
         <div class="modal-content">
-            <div class="modal-header">
+            <div class="modal-header d-flex align-items-center justify-content-between">
                 <h5 class="modal-title" data-i18n="usm.mapList">地圖列表</h5>
-                <button
-                    type="button"
-                    class="btn-close"
-                    data-bs-dismiss="modal"
-                ></button>
+                <div class="d-flex align-items-center gap-2">
+                    <button type="button" class="btn btn-primary btn-sm" id="newMapBtn">
+                        <i class="fas fa-plus me-2"></i><span data-i18n="usm.newMap">新增地圖</span>
+                    </button>
+                    <button
+                        type="button"
+                        class="btn-close"
+                        data-bs-dismiss="modal"
+                    ></button>
+                </div>
             </div>
             <div class="modal-body">
                 <div id="mapListContainer">
@@ -888,6 +896,25 @@ Web Tool{% endblock %} {% block page_title_text %}
                         ></div>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Select Map Prompt Modal -->
+<div class="modal fade" id="selectMapModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" data-i18n="usm.selectMapTitle">請先選擇地圖</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" data-i18n-aria-label="common.close" aria-label="關閉"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-0" data-i18n="usm.selectMapMessage">請先選擇一個地圖以進行此操作。</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.close">關閉</button>
+                <button type="button" class="btn btn-primary" id="selectMapModalListBtn" data-i18n="usm.openMapList">開啟地圖列表</button>
             </div>
         </div>
     </div>
@@ -1124,6 +1151,7 @@ Web Tool{% endblock %} {% block page_title_text %}
                             class="btn btn-danger"
                             type="button"
                             id="clearSearchBtn"
+                            data-i18n-title="usm.clearSearch"
                             title="清除搜尋"
                         >
                             <i class="fas fa-times"></i>
@@ -1151,6 +1179,7 @@ Web Tool{% endblock %} {% block page_title_text %}
                         type="text"
                         class="form-control form-control-sm"
                         id="searchJiraTickets"
+                        data-i18n-placeholder="usm.jiraTicketPlaceholder"
                         placeholder="如: TEST-123, TEST-456"
                     />
                     <div class="mt-2">

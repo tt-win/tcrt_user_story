@@ -89,7 +89,7 @@ const updateAddChildButtonState = (node = null) => {
     if (isUserStoryNode) {
         btn.classList.add('btn-secondary');
         btn.classList.remove('btn-primary');
-        btn.title = 'User Story 節點無法新增子節點';
+        btn.title = tUsm('userStoryNoChild', 'User Story 節點無法新增子節點');
     } else {
         btn.classList.remove('btn-secondary');
         btn.classList.add('btn-primary');
@@ -451,6 +451,9 @@ window.fetchJiraTicketInfo = async function(ticketNumber) {
 
 // 格式化 JIRA ticket tooltip 內容
 window.formatJiraTooltip = function(ticketNumber, ticketData) {
+    const tJira = (key, fallback, params = {}) =>
+        window.i18n ? window.i18n.t(`usm.${key}`, params, fallback) : fallback;
+
     if (!ticketData) {
         return `
             <div class="tcg-tooltip-header">
@@ -461,15 +464,15 @@ window.formatJiraTooltip = function(ticketNumber, ticketData) {
             <div class="tcg-ticket-content">
                 <div style="color: #dc3545; font-size: 0.8rem;">
                     <i class="fas fa-exclamation-triangle me-1"></i>
-                    無法取得 ${escapeHtml(ticketNumber)} 的資訊
+                    ${tJira('jiraInfoUnavailable', `無法取得 ${escapeHtml(ticketNumber)} 的資訊`, { ticket: escapeHtml(ticketNumber) })}
                 </div>
             </div>
         `;
     }
 
-    const summary = ticketData.summary || '無標題';
-    const status = ticketData.status?.name || '未知狀態';
-    const assignee = ticketData.assignee?.displayName || '未指派';
+    const summary = ticketData.summary || tJira('untitled', '無標題');
+    const status = ticketData.status?.name || tJira('unknownStatus', '未知狀態');
+    const assignee = ticketData.assignee?.displayName || tJira('unassigned', '未指派');
     const url = ticketData.url || '#';
 
     let statusClass = 'status-todo';
@@ -492,7 +495,7 @@ window.formatJiraTooltip = function(ticketNumber, ticketData) {
 
             <div class="tcg-ticket-meta">
                 <div class="tcg-assignee">
-                    <span class="tcg-label">負責人:</span>
+                    <span class="tcg-label">${tJira('assigneeLabel', '負責人:')}</span>
                     <span class="tcg-value">${escapeHtml(assignee)}</span>
                 </div>
             </div>
@@ -501,7 +504,7 @@ window.formatJiraTooltip = function(ticketNumber, ticketData) {
         <div class="tcg-tooltip-footer">
             <a href="${url}" target="_blank" class="tcg-jira-link">
                 <i class="fas fa-external-link-alt me-1"></i>
-                在 JIRA 中檢視
+                ${tJira('viewInJira', '在 JIRA 中檢視')}
             </a>
         </div>
     `;
@@ -532,7 +535,7 @@ window.showJiraTooltip = async function(ticketNumber, element) {
             <div class="spinner-border spinner-border-sm me-2" role="status">
                 <span class="visually-hidden">Loading...</span>
             </div>
-            <span>載入中...</span>
+            <span>${window.i18n ? window.i18n.t('common.loading', {}, '載入中...') : '載入中...'}</span>
         </div>
     `;
 
@@ -555,7 +558,7 @@ window.showJiraTooltip = async function(ticketNumber, element) {
             tooltip.innerHTML = `
                 <div class="text-danger small">
                     <i class="fas fa-times-circle me-1"></i>
-                    載入失敗
+                    ${tJira('loadFailed', '載入失敗')}
                 </div>
             `;
         }
@@ -667,7 +670,7 @@ const CustomNode = ({ data, id }) => {
     // Add team and map name for external nodes
     let additionalInfo = null;
     if (data.isExternal && (data.team || data.mapName)) {
-        const displayText = `${data.team || '未知團隊'} / ${data.mapName || `地圖 ${data.mapId}`}`;
+        const displayText = `${data.team || tUsm('unknownTeam', '未知團隊')} / ${data.mapName || tUsm('mapLabel', `地圖 ${data.mapId}`, { id: data.mapId })}`;
         additionalInfo = React.createElement(
             'div',
             { 
@@ -692,8 +695,8 @@ const CustomNode = ({ data, id }) => {
                       data.toggleCollapse?.(id);
                   },
                   title: data.collapsed
-                      ? '目前為收合狀態，點擊以展開子節點'
-                      : '目前為展開狀態，點擊以收合子節點',
+                      ? tUsm('collapsedHint', '目前為收合狀態，點擊以展開子節點')
+                      : tUsm('expandedHint', '目前為展開狀態，點擊以收合子節點'),
               },
               React.createElement('i', { className: `fas fa-chevron-${data.collapsed ? 'down' : 'right'}` })
           )
@@ -964,7 +967,8 @@ const UserStoryMapFlow = () => {
                 // Update select dropdown
                 const select = document.getElementById('currentMapSelect');
                 if (select) {
-                    select.innerHTML = '<option value="">選擇地圖...</option>';
+                    const defaultText = window.i18n ? window.i18n.t('usm.selectMap', {}, '選擇地圖...') : '選擇地圖...';
+                    select.innerHTML = `<option value="" data-i18n="usm.selectMap">${defaultText}</option>`;
                     data.forEach(map => {
                         const option = document.createElement('option');
                         option.value = map.id;
@@ -1143,13 +1147,13 @@ const UserStoryMapFlow = () => {
     const saveMap = useCallback(async (silent = false) => {
         if (!hasUsmAccess('mapUpdate')) {
             if (!silent) {
-                showMessage('您沒有權限儲存此地圖', 'error');
+                showMessage(tUsm('noPermissionSaveMap', '您沒有權限儲存此地圖'), 'error');
             }
             return;
         }
 
         if (!currentMapId) {
-            alert('請先選擇一個地圖');
+            showSelectMapModal();
             return;
         }
 
@@ -1200,21 +1204,21 @@ const UserStoryMapFlow = () => {
 
             if (response.ok) {
                 if (!silent) {
-                    showMessage('地圖已儲存', 'success');
+                    showMessage(tUsm('mapSaved', '地圖已儲存'), 'success');
                 }
             } else {
-                showMessage('儲存失敗', 'error');
+                showMessage(tUsm('saveFailed', '儲存失敗'), 'error');
             }
         } catch (error) {
             console.error('Failed to save map:', error);
-            showMessage('儲存失敗', 'error');
+            showMessage(tUsm('saveFailed', '儲存失敗'), 'error');
         }
     }, [currentMapId, nodes, edges, teamName]);
 
     // Add node
     const addNode = useCallback((nodeData) => {
         if (!hasUsmAccess('nodeAdd')) {
-            showMessage('您沒有權限新增節點', 'error');
+            showUsmMessage('noPermissionAddNode', '您沒有權限新增節點', 'error');
             return null;
         }
         // Calculate position based on tree layout
@@ -1326,13 +1330,13 @@ const UserStoryMapFlow = () => {
     // Add child node
     const addChildNode = useCallback((parentId) => {
         if (!hasUsmAccess('nodeAdd')) {
-            showMessage('您沒有權限新增節點', 'error');
+            showUsmMessage('noPermissionAddNode', '您沒有權限新增節點', 'error');
             return;
         }
         const parentNode = nodes.find(n => n.id === parentId);
         if (!parentNode) return;
         if (parentNode.data.nodeType === 'user_story') {
-            showMessage('User Story 節點無法新增子節點', 'error');
+            showUsmMessage('userStoryNoChild', 'User Story 節點無法新增子節點', 'error');
             return;
         }
 
@@ -1368,7 +1372,7 @@ const UserStoryMapFlow = () => {
         const teamLabel = document.getElementById('nodeTeamDisplay');
         if (teamLabel) {
             const name = window.userStoryMapFlow?.getTeamName?.();
-            teamLabel.textContent = name || '載入中…';
+            teamLabel.textContent = name || (window.i18n ? window.i18n.t('common.loading', {}, '載入中…') : '載入中…');
         }
 
         // Store parent info for later use
@@ -1379,7 +1383,7 @@ const UserStoryMapFlow = () => {
     // Add sibling node
     const addSiblingNode = useCallback((siblingId) => {
         if (!hasUsmAccess('nodeAdd')) {
-            showMessage('您沒有權限新增節點', 'error');
+            showUsmMessage('noPermissionAddNode', '您沒有權限新增節點', 'error');
             return;
         }
         const siblingNode = nodes.find(n => n.id === siblingId);
@@ -1387,7 +1391,7 @@ const UserStoryMapFlow = () => {
 
         // Root node cannot have siblings - check by level and parentId
         if (siblingNode.data.level === 0 || !siblingNode.data.parentId) {
-            alert('根節點不能新增同級節點');
+            showUsmMessage('rootNoSibling', '根節點不能新增同級節點', 'warning');
             return;
         }
 
@@ -1415,7 +1419,7 @@ const UserStoryMapFlow = () => {
         const teamLabel = document.getElementById('nodeTeamDisplay');
         if (teamLabel) {
             const name = window.userStoryMapFlow?.getTeamName?.();
-            teamLabel.textContent = name || '載入中…';
+            teamLabel.textContent = name || (window.i18n ? window.i18n.t('common.loading', {}, '載入中…') : '載入中…');
         }
 
         // Store sibling info
@@ -1436,7 +1440,11 @@ const UserStoryMapFlow = () => {
             // 確認搬移
             const sourceNode = nodes.find(n => n.id === moveSourceNodeId);
             const targetNode = node;
-            const message = `確定要將「${sourceNode.data.title}」及其所有子節點搬移到「${targetNode.data.title}」下嗎？此操作無法復原。`;
+            const message = tUsm(
+                'moveConfirm',
+                `確定要將「${sourceNode.data.title}」及其所有子節點搬移到「${targetNode.data.title}」下嗎？此操作無法復原。`,
+                { source: sourceNode.data.title, target: targetNode.data.title }
+            );
             if (confirm(message)) {
                 performMoveNode(moveSourceNodeId, node.id);
             }
@@ -1488,7 +1496,7 @@ const UserStoryMapFlow = () => {
         const container = document.getElementById('nodeProperties');
         const t = getUsmTranslations();
         if (!node) {
-            container.innerHTML = '<p class="text-muted small">選擇一個節點以查看和編輯屬性</p>';
+            container.innerHTML = `<p class="text-muted small">${tUsm('selectNodeHint', '選擇一個節點以查看和編輯屬性')}</p>`;
             // 隱藏按鈕
             const highlightBtn = document.getElementById('highlightPathBtn');
             const graphBtn = document.getElementById('fullRelationGraphBtn');
@@ -1537,16 +1545,18 @@ const UserStoryMapFlow = () => {
                             // 2. map_id is different from current map
                             // 3. map_id is not 0 or empty string (treating falsy values as same map)
                             const isCrossMap = rel.map_id && String(rel.map_id) !== String(window.currentMapId);
+                            const navTitle = tUsm('navigateToNode', '點擊導航到該節點');
+                            const openExternalTitle = tUsm('openExternalMap', '在新視窗開啟外部地圖');
                             return `
                                 <div class="list-group-item small" style="display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px;">
-                                    <button type="button" class="flex-grow-1 btn btn-secondary btn-sm text-start p-0" data-related-idx="${idx}" title="點擊導航到該節點">
+                                    <button type="button" class="flex-grow-1 btn btn-secondary btn-sm text-start p-0" data-related-idx="${idx}" title="${escapeHtml(navTitle)}">
                                         <strong>${escapeHtml(rel.display_title || rel.node_id)}</strong>
                                         <br>
                                         <small class="text-muted">
                                             ${escapeHtml(rel.team_name || '')} / ${escapeHtml(rel.map_name || '')}
                                         </small>
                                     </button>
-                                    ${isCrossMap ? `<button type="button" class="btn btn-sm btn-info" data-related-popup-idx="${idx}" data-map-id="${rel.map_id || rel.mapId || ''}" data-team-id="${rel.team_id || rel.teamId || ''}" title="在新視窗開啟外部地圖" style="flex-shrink: 0; position: relative; z-index: 2; pointer-events: auto;"><i class="fas fa-external-link-alt"></i></button>` : ''}
+                                    ${isCrossMap ? `<button type="button" class="btn btn-sm btn-info" data-related-popup-idx="${idx}" data-map-id="${rel.map_id || rel.mapId || ''}" data-team-id="${rel.team_id || rel.teamId || ''}" title="${escapeHtml(openExternalTitle)}" style="flex-shrink: 0; position: relative; z-index: 2; pointer-events: auto;"><i class="fas fa-external-link-alt"></i></button>` : ''}
                                 </div>
                             `;
                         }).join('')}
@@ -1558,6 +1568,7 @@ const UserStoryMapFlow = () => {
             canUpdateNode ? `<button type="button" class="btn btn-sm btn-primary w-100" id="updateNodeBtn">${escapeHtml(t.updateNode)}</button>` : '',
             canDeleteNode ? `<button type="button" class="btn btn-sm btn-danger w-100" id="deleteNodeBtn">${escapeHtml(t.deleteNode)}</button>` : '',
         ].filter(Boolean).join('');
+        const noActionsText = tUsm('noAvailableActions', '目前角色無可用操作');
 
         // Build a stable render signature to avoid unnecessary re-renders
         const normalizedJira = normalizeJiraTickets(data.jiraTickets || []);
@@ -1625,7 +1636,7 @@ const UserStoryMapFlow = () => {
                 </div>
             </div>
             <div class="node-properties-actions">
-                ${actionButtonsHtml || '<p class="text-muted small mb-0">目前角色無可用操作</p>'}
+                ${actionButtonsHtml || `<p class="text-muted small mb-0">${escapeHtml(noActionsText)}</p>`}
             </div>
         `;
 
@@ -1675,7 +1686,7 @@ const UserStoryMapFlow = () => {
     // Update node
     const updateNode = (nodeId) => {
         if (!hasUsmAccess('nodeUpdate')) {
-            showMessage('您沒有權限更新節點', 'error');
+            showUsmMessage('noPermissionUpdateNode', '您沒有權限更新節點', 'error');
             return;
         }
         setNodes((nds) =>
@@ -2210,23 +2221,38 @@ const UserStoryMapFlow = () => {
                 .map(formatNodeBadge)
                 .join('');
 
-            let htmlContent = `<div><strong>已選擇節點：</strong>${selectedBadges || '<span class="text-muted">無</span>'}</div>`;
+            const selectedLabel = tUsm('highlightSelected', '已選擇節點：');
+            const noneText = tUsm('none', '無');
+            let htmlContent = `<div><strong>${escapeHtml(selectedLabel)}</strong>${selectedBadges || `<span class="text-muted">${escapeHtml(noneText)}</span>`}</div>`;
 
             if (focusDetails) {
+                const noneParent = tUsm('noParentNodes', '無父節點');
+                const noneChild = tUsm('noChildNodes', '無子節點');
+                const noneRelation = tUsm('noSameMapRelations', '本圖無關聯節點');
+                const noneCrossMap = tUsm('noCrossMapRelations', '無跨圖關聯');
+                const currentNodeLabel = tUsm('currentNode', '當前節點：');
+                const parentLabel = tUsm('parentNodes', '父節點：');
+                const childLabel = tUsm('childNodes', '子節點：');
+                const relationLabel = tUsm('sameMapRelations', '本圖關聯：');
+                const crossMapLabel = tUsm('crossMapRelations', '跨圖關聯：');
+                const mapLabelTpl = (id) => tUsm('mapLabel', `地圖 ${id}`, { id });
+                const otherMapLabel = tUsm('otherMap', '其他地圖');
+                const unknownNodeLabel = tUsm('unknownNode', '未知節點');
+
                 const parentHtml =
                     focusDetails.parentNodes.length > 0
                         ? focusDetails.parentNodes.map(formatNodeBadge).join('')
-                        : '<span class="text-muted">無父節點</span>';
+                        : `<span class="text-muted">${escapeHtml(noneParent)}</span>`;
 
                 const childrenHtml =
                     focusDetails.childNodes.length > 0
                         ? focusDetails.childNodes.map(formatNodeBadge).join('')
-                        : '<span class="text-muted">無子節點</span>';
+                        : `<span class="text-muted">${escapeHtml(noneChild)}</span>`;
 
                 const relatedHtml =
                     focusDetails.relatedSameMapNodes.length > 0
                         ? focusDetails.relatedSameMapNodes.map(formatNodeBadge).join('')
-                        : '<span class="text-muted">本圖無關聯節點</span>';
+                        : `<span class="text-muted">${escapeHtml(noneRelation)}</span>`;
 
                 const crossMapHtml =
                     focusDetails.crossMapRelations.length > 0
@@ -2235,24 +2261,24 @@ const UserStoryMapFlow = () => {
                                   const mapLabel =
                                       rel.mapName ??
                                       (rel.mapId !== null && rel.mapId !== undefined
-                                          ? `地圖 ${rel.mapId}`
-                                          : '其他地圖');
+                                          ? mapLabelTpl(rel.mapId)
+                                          : otherMapLabel);
                                   const nodeLabel =
                                       rel.nodeTitle ??
                                       rel.nodeId ??
                                       rel.raw ??
-                                      '未知節點';
+                                      unknownNodeLabel;
                                   return `<li>${escapeHtml(mapLabel)} - ${escapeHtml(nodeLabel)}</li>`;
                               })
                               .join('')}</ul>`
-                        : '<span class="text-muted">無跨圖關聯</span>';
+                        : `<span class="text-muted">${escapeHtml(noneCrossMap)}</span>`;
 
                 htmlContent += `
-                    <div class="mt-1"><strong>當前節點：</strong>${escapeHtml(focusDetails.node.data.title || focusDetails.node.id)}</div>
-                    <div class="mt-1"><strong>父節點：</strong>${parentHtml}</div>
-                    <div class="mt-1"><strong>子節點：</strong>${childrenHtml}</div>
-                    <div class="mt-1"><strong>本圖關聯：</strong>${relatedHtml}</div>
-                    <div class="mt-1"><strong>跨圖關聯：</strong>${crossMapHtml}</div>
+                    <div class="mt-1"><strong>${escapeHtml(currentNodeLabel)}</strong>${escapeHtml(focusDetails.node.data.title || focusDetails.node.id)}</div>
+                    <div class="mt-1"><strong>${escapeHtml(parentLabel)}</strong>${parentHtml}</div>
+                    <div class="mt-1"><strong>${escapeHtml(childLabel)}</strong>${childrenHtml}</div>
+                    <div class="mt-1"><strong>${escapeHtml(relationLabel)}</strong>${relatedHtml}</div>
+                    <div class="mt-1"><strong>${escapeHtml(crossMapLabel)}</strong>${crossMapHtml}</div>
                 `;
             }
 
@@ -2272,7 +2298,7 @@ const UserStoryMapFlow = () => {
 
         const nodesById = new Map(nodes.map((node) => [node.id, node]));
         if (!nodesById.has(nodeId)) {
-            showMessage('找不到指定節點，請重新載入地圖', 'error');
+            showUsmMessage('nodeNotFoundReload', '找不到指定節點，請重新載入地圖', 'error');
             return;
         }
 
@@ -2311,7 +2337,7 @@ const UserStoryMapFlow = () => {
     // 啟動搬移節點模式
     const startMoveNodeMode = useCallback(() => {
         if (!selectedNode) {
-            showMessage('請先選擇一個節點', 'error');
+            showMessage(tUsm('selectNodeFirst', '請先選擇一個節點'), 'error');
             return;
         }
         setMoveMode(true);
@@ -2328,7 +2354,7 @@ const UserStoryMapFlow = () => {
             }));
         });
 
-        showMessage('請選擇新的父節點（不能是 User Story）', 'info');
+        showMessage(tUsm('selectNewParent', '請選擇新的父節點（不能是 User Story）'), 'info');
     }, [selectedNode, setNodes]);
 
     // 執行搬移節點
@@ -2336,7 +2362,7 @@ const UserStoryMapFlow = () => {
         try {
             const targetNode = nodes.find(n => n.id === targetNodeId);
             if (!targetNode || targetNode.data?.nodeType === 'user_story') {
-                showMessage('目標節點不可為 User Story，請重新選擇', 'error');
+                showMessage(tUsm('invalidMoveTarget', '目標節點不可為 User Story，請重新選擇'), 'error');
                 return;
             }
 
@@ -2503,7 +2529,7 @@ const UserStoryMapFlow = () => {
                 return next;
             });
 
-            showMessage('節點搬移成功', 'success');
+            showMessage(tUsm('moveNodeSuccess', '節點搬移成功'), 'success');
             setMoveMode(false);
             setMoveSourceNodeId(null);
 
@@ -2521,7 +2547,7 @@ const UserStoryMapFlow = () => {
             // 重新載入地圖
             loadMap(currentMapId);
         } catch (error) {
-            showMessage(`搬移失敗: ${error.message}`, 'error');
+            showMessage(tUsm('moveFailed', `搬移失敗: ${error.message}`, { reason: error.message }), 'error');
             setMoveMode(false);
             setMoveSourceNodeId(null);
 
@@ -2554,7 +2580,7 @@ const UserStoryMapFlow = () => {
             }));
         });
 
-        showMessage('已取消搬移操作', 'info');
+        showMessage(tUsm('moveCancelled', '已取消搬移操作'), 'info');
     }, [setNodes]);
 
     // 空白處點擊：若在搬移模式則取消
@@ -2574,7 +2600,7 @@ const UserStoryMapFlow = () => {
         const targetNode = nodesById.get(activeIds[0]);
 
         if (!targetNode) {
-            showMessage('找不到指定節點', 'error');
+            showUsmMessage('nodeNotFound', '找不到指定節點', 'error');
             return;
         }
 
@@ -2617,7 +2643,7 @@ const UserStoryMapFlow = () => {
                         
                         if (targetNode) {
                             // 獲取團隊名稱
-                            let teamName = '未知團隊';
+                            let teamName = tUsm('unknownTeam', '未知團隊');
                             const teamId = mapData?.team_id || rel.team_id || rel.teamId; // 根據實際API響應結構
                             if (teamId) {
                                 const teamResponse = await fetch(`/api/teams/${teamId}`, {
@@ -2628,9 +2654,9 @@ const UserStoryMapFlow = () => {
                                 
                                 if (teamResponse.ok) {
                                     const teamData = await teamResponse.json();
-                                    teamName = teamData.name || `團隊 ${teamId}`;
+                                    teamName = teamData.name || tUsm('teamWithId', `團隊 ${teamId}`, { id: teamId });
                                 } else {
-                                    teamName = `團隊 ${teamId}`;
+                                    teamName = tUsm('teamWithId', `團隊 ${teamId}`, { id: teamId });
                                 }
                             }
                             
@@ -2639,7 +2665,7 @@ const UserStoryMapFlow = () => {
                                 ...targetNode,
                                 isExternal: true, // 標記為外部節點
                                 mapId: rel.mapId,
-                                mapName: rel.mapName || mapData?.name || `地圖 ${rel.mapId}`,
+                                mapName: rel.mapName || mapData?.name || tUsm('mapLabel', `地圖 ${rel.mapId}`, { id: rel.mapId }),
                                 team: teamName,
                             });
                         }
@@ -2668,7 +2694,7 @@ const UserStoryMapFlow = () => {
                         const targetNode = mapData.nodes.find(n => n.id === rel.nodeId);
                         
                         // 獲取團隊名稱
-                        let teamName = rel.team_name || '未知團隊';
+                        let teamName = rel.team_name || tUsm('unknownTeam', '未知團隊');
                         const teamId = mapData?.team_id || rel.team_id || rel.teamId;
                         if (teamId && !rel.team_name) {
                             const teamResponse = await fetch(`/api/teams/${teamId}`, {
@@ -2679,9 +2705,9 @@ const UserStoryMapFlow = () => {
                             
                             if (teamResponse.ok) {
                                 const teamData = await teamResponse.json();
-                                teamName = teamData.name || `團隊 ${teamId}`;
+                                teamName = teamData.name || tUsm('teamWithId', `團隊 ${teamId}`, { id: teamId });
                             } else {
-                                teamName = `團隊 ${teamId}`;
+                                teamName = tUsm('teamWithId', `團隊 ${teamId}`, { id: teamId });
                             }
                         }
                         
@@ -2704,7 +2730,7 @@ const UserStoryMapFlow = () => {
                         }
                     } else {
                         const teamId = rel.team_id || rel.teamId;
-                        const teamName = rel.team_name || (teamId ? `團隊 ${teamId}` : '未知團隊');
+                        const teamName = rel.team_name || (teamId ? tUsm('teamWithId', `團隊 ${teamId}`, { id: teamId }) : tUsm('unknownTeam', '未知團隊'));
                         enhancedCrossMapRelations.push({
                             ...rel,
                             resolvedTeamName: teamName,
@@ -2714,7 +2740,7 @@ const UserStoryMapFlow = () => {
                 } catch (error) {
                     console.error('獲取跨圖節點資訊失敗:', error);
                     const teamId = rel.team_id || rel.teamId;
-                    const teamName = rel.team_name || (teamId ? `團隊 ${teamId}` : '未知團隊');
+                    const teamName = rel.team_name || (teamId ? tUsm('teamWithId', `團隊 ${teamId}`, { id: teamId }) : tUsm('unknownTeam', '未知團隊'));
                     enhancedCrossMapRelations.push({
                         ...rel,
                         resolvedTeamName: teamName,
@@ -2723,7 +2749,7 @@ const UserStoryMapFlow = () => {
                 }
             } else {
                 const teamId = rel.team_id || rel.teamId;
-                const teamName = rel.team_name || (teamId ? `團隊 ${teamId}` : '未知團隊');
+                const teamName = rel.team_name || (teamId ? tUsm('teamWithId', `團隊 ${teamId}`, { id: teamId }) : tUsm('unknownTeam', '未知團隊'));
                 enhancedCrossMapRelations.push({
                     ...rel,
                     resolvedTeamName: teamName,
@@ -3108,7 +3134,7 @@ const UserStoryMapFlow = () => {
                             const teamId = relatedNode.team_id || relatedNode.teamId;
                             
                             if (!mapId || !teamId) {
-                                showMessage('無法開啟外部地圖：缺少必要的資訊', 'error');
+                                showUsmMessage('openExternalMapMissingInfo', '無法開啟外部地圖：缺少必要的資訊', 'error');
                                 return;
                             }
                             
@@ -3119,7 +3145,7 @@ const UserStoryMapFlow = () => {
                             if (popupWindow) {
                                 showMessage(`已在新視窗開啟 "${relatedNode.map_name || `地圖 ${mapId}`}" 地圖`, 'success');
                             } else {
-                                showMessage('無法開啟新視窗，請檢查瀏覽器設定', 'error');
+                                showUsmMessage('popupBlocked', '無法開啟新視窗，請檢查瀏覽器設定', 'error');
                             }
                         });
                     });
@@ -3185,7 +3211,7 @@ const UserStoryMapFlow = () => {
         const targetNode = nodesRef.current.find((node) => node.id === nodeId);
 
         if (!instance || !targetNode) {
-            showMessage('找不到指定節點，請重新載入地圖', 'error');
+            showUsmMessage('nodeNotFoundReload', '找不到指定節點，請重新載入地圖', 'error');
             return;
         }
 
@@ -3220,7 +3246,7 @@ const UserStoryMapFlow = () => {
         const performFocus = (nodeIdToFocus, highlightNodeIds) => {
             const targetNodeToFocus = nodesRef.current.find((node) => node.id === nodeIdToFocus);
             if (!instance || !targetNodeToFocus) {
-                showMessage('找不到指定節點，請重新載入地圖', 'error');
+                showUsmMessage('nodeNotFoundReload', '找不到指定節點，請重新載入地圖', 'error');
                 return;
             }
 
@@ -3316,7 +3342,7 @@ const UserStoryMapFlow = () => {
     // Auto layout
     const autoLayout = useCallback(() => {
         if (!hasUsmAccess('nodeAdd')) {
-            showMessage('您沒有權限調整地圖排版', 'error');
+            showUsmMessage('noPermissionLayout', '您沒有權限調整地圖排版', 'error');
             return;
         }
         const layoutedNodes = applyTreeLayout(nodes, edges);
@@ -3357,10 +3383,10 @@ const UserStoryMapFlow = () => {
     // Delete node
     const deleteNode = (nodeId) => {
         if (!hasUsmAccess('nodeDelete')) {
-            showMessage('您沒有權限刪除節點', 'error');
+            showUsmMessage('noPermissionDeleteNode', '您沒有權限刪除節點', 'error');
             return;
         }
-        if (confirm('確定要刪除此節點嗎？')) {
+        if (confirm(tUsm('deleteNodeConfirm', '確定要刪除此節點嗎？'))) {
             let remainingIds = new Set();
             setNodes((nds) => {
                 const updated = nds
@@ -3383,7 +3409,7 @@ const UserStoryMapFlow = () => {
             });
             setEdges((eds) => eds.filter((edge) => edge.source !== nodeId && edge.target !== nodeId));
             setSelectedNode(null);
-            document.getElementById('nodeProperties').innerHTML = '<p class="text-muted small">選擇一個節點以查看和編輯屬性</p>';
+            document.getElementById('nodeProperties').innerHTML = `<p class="text-muted small">${tUsm('selectNodeHint', '選擇一個節點以查看和編輯屬性')}</p>`;
             setCollapsedNodeIds((prev) => {
                 const next = new Set();
                 remainingIds.forEach((id) => {
@@ -3396,7 +3422,7 @@ const UserStoryMapFlow = () => {
             setTimeout(() => {
                 window.userStoryMapFlow?.saveMap?.(true);
             }, 0);
-            showMessage('節點已刪除', 'success');
+            showUsmMessage('nodeDeleted', '節點已刪除', 'success');
         }
     };
 
@@ -3463,7 +3489,7 @@ const UserStoryMapFlow = () => {
     useEffect(() => {
         const teamLabel = document.getElementById('nodeTeamDisplay');
         if (teamLabel) {
-            teamLabel.textContent = teamName || '載入中…';
+            teamLabel.textContent = teamName || (window.i18n ? window.i18n.t('common.loading', {}, '載入中…') : '載入中…');
         }
     }, [teamName]);
 
@@ -3520,7 +3546,7 @@ const UserStoryMapFlow = () => {
                 setSelectedNode(null);
                 const container = document.getElementById('nodeProperties');
                 if (container) {
-                    container.innerHTML = '<p class="text-muted small">選擇一個節點以查看和編輯屬性</p>';
+                    container.innerHTML = `<p class="text-muted small">${tUsm('selectNodeHint', '選擇一個節點以查看和編輯屬性')}</p>`;
                 }
                 updateAddChildButtonState(null);
             } else {
@@ -3574,7 +3600,7 @@ const UserStoryMapFlow = () => {
             const isCrossMap = mapId && String(mapId) !== String(window.currentMapId);
             
             if (isCrossMap) {
-                showMessage('外部節點，請使用「開啟」按鈕在彈出視窗中查看', 'info');
+                showUsmMessage('externalNodeOpenInPopup', '外部節點，請使用「開啟」按鈕在彈出視窗中查看', 'info');
                 return;
             }
             
@@ -3603,7 +3629,7 @@ const UserStoryMapFlow = () => {
             const teamId = relatedNode.team_id || relatedNode.teamId;
             
             if (!mapId || !teamId) {
-                showMessage('無法開啟外部地圖：缺少必要的資訊', 'error');
+                showUsmMessage('openExternalMapMissingInfo', '無法開啟外部地圖：缺少必要的資訊', 'error');
                 return;
             }
             
@@ -3613,7 +3639,7 @@ const UserStoryMapFlow = () => {
             if (popupWindow) {
                 showMessage(`已在新視窗開啟 "${relatedNode.map_name || `地圖 ${mapId}`}" 地圖`, 'success');
             } else {
-                showMessage('無法開啟新視窗，請檢查瀏覽器設定', 'error');
+                showUsmMessage('popupBlocked', '無法開啟新視窗，請檢查瀏覽器設定', 'error');
             }
         };
 
@@ -3741,6 +3767,33 @@ function showMessage(message, type = 'info') {
     setTimeout(() => alert.remove(), 3000);
 }
 
+const tUsm = (key, fallback, params = {}) =>
+    window.i18n ? window.i18n.t(`usm.${key}`, params, fallback) : fallback;
+
+const showUsmMessage = (key, fallback, type = 'info', params = {}) => {
+    showMessage(tUsm(key, fallback, params), type);
+};
+
+function showSelectMapModal() {
+    const modalEl = document.getElementById('selectMapModal');
+    if (!modalEl) {
+        showUsmMessage('selectMapFirst', '請先選擇一個地圖', 'warning');
+        return;
+    }
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    modal.show();
+}
+
+function requireCurrentMapId() {
+    const select = document.getElementById('currentMapSelect');
+    const value = select ? parseInt(select.value, 10) : NaN;
+    if (Number.isNaN(value) || !value) {
+        showSelectMapModal();
+        return null;
+    }
+    return value;
+}
+
 // Event handlers
 document.addEventListener('DOMContentLoaded', async function() {
     await applyUsmPermissions();
@@ -3813,7 +3866,8 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
 
         if (!maps || maps.length === 0) {
-            mapListContainer.innerHTML = '<p class="text-muted text-center">尚無地圖</p>';
+            const emptyText = window.i18n ? window.i18n.t('usm.noMaps', {}, '尚無地圖') : '尚無地圖';
+            mapListContainer.innerHTML = `<p class="text-muted text-center" data-i18n="usm.noMaps">${emptyText}</p>`;
             return;
         }
 
@@ -3831,18 +3885,21 @@ document.addEventListener('DOMContentLoaded', async function() {
             const actionButtons = editBtn || deleteBtn
                 ? `<div class="btn-group btn-group-sm" role="group">${editBtn}${deleteBtn}</div>`
                 : '';
+            const noDescription = tUsm('noDescription', '尚未設定描述');
+            const nodeCountLabel = tUsm('nodeCount', '{count} 個節點', { count: map.nodes.length });
+            const updatedLabel = tUsm('updatedAt', '更新: {time}', { time: new Date(map.updated_at).toLocaleString() });
 
             return `
                 <a href="#" class="list-group-item list-group-item-action" data-map-id="${map.id}">
                     <div class="d-flex w-100 justify-content-between align-items-start">
                         <div class="me-3">
                             <h6 class="mb-1">${escapeHtml(map.name)}</h6>
-                            ${map.description ? `<p class="mb-1 small">${escapeHtml(map.description)}</p>` : '<p class="mb-1 small text-muted fst-italic">尚未設定描述</p>'}
-                            <small class="text-muted">${map.nodes.length} 個節點</small>
+                            ${map.description ? `<p class="mb-1 small">${escapeHtml(map.description)}</p>` : `<p class="mb-1 small text-muted fst-italic">${escapeHtml(noDescription)}</p>`}
+                            <small class="text-muted">${escapeHtml(nodeCountLabel)}</small>
                         </div>
                         <div class="d-flex flex-column gap-2 align-items-end">
                             ${actionButtons}
-                            <small class="text-muted">更新: ${new Date(map.updated_at).toLocaleString()}</small>
+                            <small class="text-muted">${escapeHtml(updatedLabel)}</small>
                         </div>
                     </div>
                 </a>
@@ -3962,7 +4019,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                                 }
                             } catch (error) {
                                 console.error('Failed to delete map:', error);
-                                alert('發生錯誤，請稍後再試');
+                                showUsmMessage('genericError', '發生錯誤，請稍後再試', 'error');
                             }
                         });
 
@@ -3987,17 +4044,17 @@ document.addEventListener('DOMContentLoaded', async function() {
                 const maps = await response.json();
                 renderMapList(maps);
             } else {
-                mapListContainer.innerHTML = '<p class="text-danger text-center">載入失敗</p>';
+                mapListContainer.innerHTML = `<p class="text-danger text-center">${tUsm('loadFailed', '載入失敗')}</p>`;
             }
         } catch (error) {
             console.error('Failed to load maps:', error);
-            mapListContainer.innerHTML = '<p class="text-danger text-center">載入失敗</p>';
+            mapListContainer.innerHTML = `<p class="text-danger text-center">${tUsm('loadFailed', '載入失敗')}</p>`;
         }
     };
 
     document.getElementById('saveMapEditBtn')?.addEventListener('click', async () => {
         if (!hasUsmAccess('mapUpdate')) {
-            showMessage('您沒有權限編輯地圖', 'error');
+            showUsmMessage('noPermissionEditMap', '您沒有權限編輯地圖', 'error');
             return;
         }
         const mapId = parseInt(editMapIdInput?.value);
@@ -4007,7 +4064,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 
         const newName = (editMapNameInput?.value || '').trim();
         if (!newName) {
-            alert('請輸入地圖名稱');
+            showUsmMessage('mapNameRequired', '請輸入地圖名稱', 'warning');
             return;
         }
         const newDescription = (editMapDescriptionInput?.value || '').trim();
@@ -4025,7 +4082,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             });
 
             if (response.ok) {
-                showMessage('地圖已更新', 'success');
+                showUsmMessage('mapUpdated', '地圖已更新', 'success');
                 if (editMapModalElement) {
                     editMapModalInstance = bootstrap.Modal.getOrCreateInstance(editMapModalElement);
                     editMapModalInstance.hide();
@@ -4045,18 +4102,18 @@ document.addEventListener('DOMContentLoaded', async function() {
                     }
                 }
             } else {
-                showMessage('更新失敗', 'error');
+                showUsmMessage('updateFailed', '更新失敗', 'error');
             }
         } catch (error) {
             console.error('Failed to update map:', error);
-            showMessage('更新失敗', 'error');
+            showUsmMessage('updateFailed', '更新失敗', 'error');
         }
     });
 
     // Save button
     document.getElementById('saveMapBtn')?.addEventListener('click', () => {
         if (!hasUsmAccess('mapUpdate')) {
-            showMessage('您沒有權限儲存此地圖', 'error');
+            showUsmMessage('noPermissionSaveMap', '您沒有權限儲存此地圖', 'error');
             return;
         }
         window.userStoryMapFlow?.saveMap();
@@ -4065,14 +4122,11 @@ document.addEventListener('DOMContentLoaded', async function() {
     // Calculate tickets button
     document.getElementById('calcTicketsBtn')?.addEventListener('click', async () => {
         if (!hasUsmAccess('mapUpdate')) {
-            showMessage('您沒有權限更新聚合票證', 'error');
+            showUsmMessage('noPermissionCalcTickets', '您沒有權限更新聚合票證', 'error');
             return;
         }
-        const mapId = document.getElementById('currentMapSelect')?.value;
-        if (!mapId) {
-            alert('請先選擇一個地圖');
-            return;
-        }
+        const mapId = requireCurrentMapId();
+        if (!mapId) return;
 
         try {
             const response = await window.AuthClient.fetch(`/api/user-story-maps/${mapId}/calculate-aggregated-tickets`, {
@@ -4080,7 +4134,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             });
 
             if (response.ok) {
-                showMessage('已計算聚合票證', 'success');
+                showMessage(tUsm('calcTicketsSuccess', '已計算聚合票證'), 'success');
                 // Update aggregated tickets only, without reloading the entire map
                 await window.userStoryMapFlow?.updateAggregatedTickets(parseInt(mapId));
                 // Refresh properties panel if a node is selected
@@ -4089,35 +4143,55 @@ document.addEventListener('DOMContentLoaded', async function() {
                     window.userStoryMapFlow?.updateNodeProperties(selectedNode);
                 }
             } else {
-                showMessage('計算失敗', 'error');
+                showUsmMessage('calcTicketsFailed', '計算失敗', 'error');
             }
         } catch (error) {
             console.error('Failed to calculate tickets:', error);
-            showMessage('計算失敗', 'error');
+            showUsmMessage('calcTicketsFailed', '計算失敗', 'error');
         }
     });
 
     // New map button
     document.getElementById('newMapBtn')?.addEventListener('click', () => {
         if (!hasUsmAccess('mapCreate')) {
-            showMessage('您沒有權限建立地圖', 'error');
+            showUsmMessage('noPermissionCreateMap', '您沒有權限建立地圖', 'error');
             return;
         }
-        const modal = new bootstrap.Modal(document.getElementById('newMapModal'));
-        modal.show();
+        const newMapModalEl = document.getElementById('newMapModal');
+        if (!newMapModalEl) return;
+
+        const showNewMapModal = () => {
+            const modal = bootstrap.Modal.getOrCreateInstance(newMapModalEl);
+            modal.show();
+        };
+
+        // 若地圖列表開著，先關閉再打開新增地圖，避免被遮擋
+        if (mapListModalElement) {
+            const listModal = bootstrap.Modal.getInstance(mapListModalElement) || bootstrap.Modal.getOrCreateInstance(mapListModalElement);
+            if (mapListModalElement.classList.contains('show')) {
+                mapListModalElement.addEventListener('hidden.bs.modal', function handler() {
+                    mapListModalElement.removeEventListener('hidden.bs.modal', handler);
+                    showNewMapModal();
+                });
+                listModal.hide();
+                return;
+            }
+        }
+
+        showNewMapModal();
     });
 
     // Create map
     document.getElementById('createMapBtn')?.addEventListener('click', async () => {
         if (!hasUsmAccess('mapCreate')) {
-            showMessage('您沒有權限建立地圖', 'error');
+            showUsmMessage('noPermissionCreateMap', '您沒有權限建立地圖', 'error');
             return;
         }
         const name = document.getElementById('mapName')?.value;
         const description = document.getElementById('mapDescription')?.value;
 
         if (!name) {
-            alert('請輸入地圖名稱');
+            showUsmMessage('mapNameRequired', '請輸入地圖名稱', 'warning');
             return;
         }
 
@@ -4148,11 +4222,11 @@ document.addEventListener('DOMContentLoaded', async function() {
                     window.userStoryMapFlow.loadMap(map.id);
                 }
             } else {
-                showMessage('建立失敗', 'error');
+                showUsmMessage('createFailed', '建立失敗', 'error');
             }
         } catch (error) {
             console.error('Failed to create map:', error);
-            showMessage('建立失敗', 'error');
+            showUsmMessage('createFailed', '建立失敗', 'error');
         }
     });
 
@@ -4175,7 +4249,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     // Confirm add node
     document.getElementById('confirmAddNodeBtn')?.addEventListener('click', () => {
         if (!hasUsmAccess('nodeAdd')) {
-            showMessage('您沒有權限新增節點', 'error');
+            showUsmMessage('noPermissionAddNode', '您沒有權限新增節點', 'error');
             return;
         }
         const title = document.getElementById('nodeTitle')?.value;
@@ -4187,12 +4261,12 @@ document.addEventListener('DOMContentLoaded', async function() {
         const soThat = document.getElementById('nodeSoThat')?.value;
 
         if (!title) {
-            alert('請輸入標題');
+            showUsmMessage('titleRequired', '請輸入標題', 'warning');
             return;
         }
 
         if (!nodeType) {
-            alert('請選擇節點類型');
+            showUsmMessage('nodeTypeRequired', '請選擇節點類型', 'warning');
             return;
         }
 
@@ -4216,7 +4290,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         const teamLabel = document.getElementById('nodeTeamDisplay');
         if (teamLabel) {
             const name = window.userStoryMapFlow?.getTeamName?.();
-            teamLabel.textContent = name || '載入中…';
+            teamLabel.textContent = name || (window.i18n ? window.i18n.t('common.loading', {}, '載入中…') : '載入中…');
         }
 
         // Clear temp variables
@@ -4229,16 +4303,16 @@ document.addEventListener('DOMContentLoaded', async function() {
     // Add child node (toolbar)
     document.getElementById('addChildBtn')?.addEventListener('click', () => {
         if (!hasUsmAccess('nodeAdd')) {
-            showMessage('您沒有權限新增節點', 'error');
+            showUsmMessage('noPermissionAddNode', '您沒有權限新增節點', 'error');
             return;
         }
         const selectedNode = window.userStoryMapFlow?.getSelectedNode();
         if (!selectedNode) {
-            alert('請先選擇一個節點');
+            showMessage(tUsm('selectNodeFirst', '請先選擇一個節點'), 'warning');
             return;
         }
         if (selectedNode.data?.nodeType === 'user_story') {
-            showMessage('User Story 節點無法新增子節點', 'error');
+            showUsmMessage('userStoryNoChild', 'User Story 節點無法新增子節點', 'error');
             return;
         }
         if (window.addChildNode) {
@@ -4249,12 +4323,12 @@ document.addEventListener('DOMContentLoaded', async function() {
     // Add sibling node (toolbar)
     document.getElementById('addSiblingBtn')?.addEventListener('click', () => {
         if (!hasUsmAccess('nodeAdd')) {
-            showMessage('您沒有權限新增節點', 'error');
+            showUsmMessage('noPermissionAddNode', '您沒有權限新增節點', 'error');
             return;
         }
         const selectedNode = window.userStoryMapFlow?.getSelectedNode();
         if (!selectedNode) {
-            alert('請先選擇一個節點');
+            showMessage(tUsm('selectNodeFirst', '請先選擇一個節點'), 'warning');
             return;
         }
         if (window.addSiblingNode) {
@@ -4265,17 +4339,17 @@ document.addEventListener('DOMContentLoaded', async function() {
     // Auto layout button
     document.getElementById('autoLayoutBtn')?.addEventListener('click', () => {
         if (!hasUsmAccess('nodeAdd')) {
-            showMessage('您沒有權限調整地圖排版', 'error');
+            showUsmMessage('noPermissionLayout', '您沒有權限調整地圖排版', 'error');
             return;
         }
         window.userStoryMapFlow?.autoLayout();
-        showMessage('已套用樹狀排版', 'success');
+        showUsmMessage('layoutApplied', '已套用樹狀排版', 'success');
     });
 
     // Collapse User Story nodes button
     document.getElementById('collapseUserStoryNodesBtn')?.addEventListener('click', () => {
         window.userStoryMapFlow?.collapseUserStoryNodes();
-        showMessage('已收合所有 User Story 節點', 'success');
+        showUsmMessage('collapseUserStorySuccess', '已收合所有 User Story 節點', 'success');
         // Trigger auto-layout after collapse
         setTimeout(() => {
             window.userStoryMapFlow?.autoLayout();
@@ -4285,7 +4359,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     // Expand all nodes button
     document.getElementById('expandAllNodesBtn')?.addEventListener('click', () => {
         window.userStoryMapFlow?.expandAllNodes();
-        showMessage('已展開所有節點', 'success');
+        showUsmMessage('expandAllSuccess', '已展開所有節點', 'success');
         // Trigger auto-layout after expand
         setTimeout(() => {
             window.userStoryMapFlow?.autoLayout();
@@ -4330,7 +4404,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         if (selectedNode) {
             window.userStoryMapFlow?.highlightPath(selectedNode.id, isMultiSelect);
         } else {
-            alert('請先選擇一個節點');
+            showMessage(tUsm('selectNodeFirst', '請先選擇一個節點'), 'warning');
         }
     });
 
@@ -4344,6 +4418,17 @@ document.addEventListener('DOMContentLoaded', async function() {
         if (!mapListModalElement) {
             return;
         }
+        mapListModalInstance = bootstrap.Modal.getOrCreateInstance(mapListModalElement);
+        mapListModalInstance.show();
+        loadMapList();
+    });
+
+    document.getElementById('selectMapModalListBtn')?.addEventListener('click', () => {
+        const selectModalEl = document.getElementById('selectMapModal');
+        const selectModalInstance = selectModalEl ? bootstrap.Modal.getInstance(selectModalEl) || bootstrap.Modal.getOrCreateInstance(selectModalEl) : null;
+        selectModalInstance?.hide();
+
+        if (!mapListModalElement) return;
         mapListModalInstance = bootstrap.Modal.getOrCreateInstance(mapListModalElement);
         mapListModalInstance.show();
         loadMapList();
@@ -4388,7 +4473,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
 
         if (searchResults) {
-            searchResults.innerHTML = '<p class="text-muted small">輸入搜尋條件並點擊搜尋</p>';
+            searchResults.innerHTML = `<p class="text-muted small">${tUsm('enterSearchCriteria', '輸入搜尋條件並點擊搜尋')}</p>`;
         }
 
         // Clear highlights
@@ -4397,11 +4482,8 @@ document.addEventListener('DOMContentLoaded', async function() {
 
     // Perform search
     document.getElementById('performSearchBtn')?.addEventListener('click', async () => {
-        const mapId = document.getElementById('currentMapSelect')?.value;
-        if (!mapId) {
-            alert('請先選擇一個地圖');
-            return;
-        }
+        const mapId = requireCurrentMapId();
+        if (!mapId) return;
 
         const query = document.getElementById('searchInput')?.value;
         const nodeTypeFilter = document.getElementById('searchNodeType')?.value;
@@ -4441,7 +4523,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                 }
 
                 if (results.length === 0) {
-                    container.innerHTML = '<p class="text-muted">無搜尋結果</p>';
+                    container.innerHTML = `<p class="text-muted">${tUsm('noSearchResults', '無搜尋結果')}</p>`;
                     clearSearchHighlights();
                 } else {
                     window.userStoryMapFlow?.clearHighlight();
@@ -4468,7 +4550,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                                 <div class="list-group-item" data-node-id="${node.node_id}">
                                     <h6 class="mb-1">${escapeHtml(node.title)}</h6>
                                     ${node.description ? `<p class="mb-1 small">${escapeHtml(node.description)}</p>` : ''}
-                                    ${node.team ? `<small class="text-muted">團隊: ${escapeHtml(node.team)}</small>` : ''}
+                                    ${node.team ? `<small class="text-muted">${escapeHtml(tUsm('team', '團隊'))}: ${escapeHtml(node.team)}</small>` : ''}
                                     ${node.jira_tickets && node.jira_tickets.length > 0 ? `<div class="tcg-tags-container" style="margin-top: 0.5rem; display: flex; flex-wrap: wrap; gap: 0.25rem;">${renderJiraTagsHtml(node.jira_tickets)}</div>` : ''}
                                 </div>
                             `).join('')}
@@ -4494,7 +4576,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             }
         } catch (error) {
             console.error('Search failed:', error);
-            showMessage('搜尋失敗', 'error');
+            showUsmMessage('searchFailed', '搜尋失敗', 'error');
         }
     });
 
@@ -4505,7 +4587,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         console.log('[Relation] openRelationModal called');
 
         if (!hasUsmAccess('nodeUpdate')) {
-            showMessage('您沒有權限編輯關聯', 'error');
+            showUsmMessage('noPermissionEditRelation', '您沒有權限編輯關聯', 'error');
             console.warn('[Relation] Permission denied: nodeUpdate');
             return;
         }
@@ -4514,7 +4596,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         console.log('[Relation] Selected node:', selectedNode);
 
         if (!selectedNode) {
-            showMessage('請先選擇一個節點', 'warning');
+            showMessage(tUsm('selectNodeFirst', '請先選擇一個節點'), 'warning');
             console.warn('[Relation] No node selected');
 
             // 移除可能遺留的 Bootstrap backdrop 與樣式，避免畫面無法操作
@@ -4531,12 +4613,12 @@ document.addEventListener('DOMContentLoaded', async function() {
             window.currentRelationNode = selectedNode;
             console.log('[Relation] Setting up modal with node:', selectedNode.id);
 
-            document.getElementById('relationSourceNodeTitle').textContent = selectedNode.data?.title || '未知節點';
+            document.getElementById('relationSourceNodeTitle').textContent = selectedNode.data?.title || tUsm('unknownNode', '未知節點');
             document.getElementById('relationSourceNodeId').textContent = selectedNode.id;
             document.getElementById('relationSearchInput').value = '';
             document.getElementById('relationJiraSearchInput').value = '';
             document.querySelector('input[name="jiraLogic"][value="and"]').checked = true;
-            document.getElementById('relationSearchResults').innerHTML = '<p class="text-muted small text-center py-3">輸入關鍵字並搜尋</p>';
+            document.getElementById('relationSearchResults').innerHTML = `<p class="text-muted small text-center py-3">${tUsm('enterKeyword', '輸入關鍵字並搜尋')}</p>`;
 
             // Initialize team filter with available teams
             await initializeTeamFilter();
@@ -4558,7 +4640,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             const modalElement = document.getElementById('relationSettingsModal');
             if (!modalElement) {
                 console.error('[Relation] Modal element not found');
-                showMessage('關聯設定視窗載入失敗', 'error');
+                showUsmMessage('relationModalLoadFailed', '關聯設定視窗載入失敗', 'error');
                 return;
             }
 
@@ -4616,7 +4698,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             console.log('[Relation] Modal shown successfully');
         } catch (error) {
             console.error('[Relation] Error setting up modal:', error);
-            showMessage('打開關聯設定視窗時出錯: ' + error.message, 'error');
+            showUsmMessage('relationModalOpenError', `打開關聯設定視窗時出錯: ${error.message}`, 'error', { reason: error.message });
         }
     };
     
@@ -4632,7 +4714,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         if (selectedNode) {
             window.showFullRelationGraph?.(selectedNode.id);
         } else {
-            alert('請先選擇一個節點');
+            showMessage(tUsm('selectNodeFirst', '請先選擇一個節點'), 'warning');
         }
     };
 
@@ -4698,27 +4780,24 @@ document.addEventListener('DOMContentLoaded', async function() {
         const nodeType = document.getElementById('relationNodeTypeFilter').value;
         const selectedTeams = Array.from(document.getElementById('relationTeamFilter').selectedOptions || []).map(o => o.value);
         const includeExternal = document.getElementById('relationIncludeExternal').checked;
-        const currentMapId = parseInt(document.getElementById('currentMapSelect').value, 10);
+        const currentMapId = requireCurrentMapId();
 
         console.log('[Relation] Search params:', { query, jiraQuery, jiraLogic, nodeType, selectedTeams, includeExternal, currentMapId });
 
         // If "Search Other Maps" is checked, must select at least one team
         if (includeExternal && selectedTeams.length === 0) {
-            showMessage('勾選「搜尋其他地圖」時，必須至少選擇一個團隊', 'warning');
+            showUsmMessage('relationExternalTeamRequired', '勾選「搜尋其他地圖」時，必須至少選擇一個團隊', 'warning');
             return;
         }
 
         // When "Search Other Maps" is unchecked, require other search conditions
         // When "Search Other Maps" is checked, team selection alone is valid
         if (!includeExternal && !query && !jiraQuery && !nodeType) {
-            showMessage('請輸入搜尋條件', 'warning');
+            showUsmMessage('relationEnterCriteria', '請輸入搜尋條件', 'warning');
             return;
         }
 
-        if (Number.isNaN(currentMapId)) {
-            showMessage('請先選擇一個地圖', 'warning');
-            return;
-        }
+        if (!currentMapId) return;
 
         try {
             const params = new URLSearchParams();
@@ -4774,7 +4853,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             const resultsContainer = document.getElementById('relationSearchResults');
             
             if (results.length === 0) {
-                resultsContainer.innerHTML = '<p class="text-muted small text-center py-3">找不到符合的節點</p>';
+                resultsContainer.innerHTML = `<p class="text-muted small text-center py-3">${tUsm('noMatchingNodes', '找不到符合的節點')}</p>`;
                 return;
             }
             
@@ -4785,7 +4864,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                             <div class="d-flex align-items-start">
                                 <div class="form-check me-3">
                                     <input class="form-check-input" type="checkbox" id="relationCheck${idx}" data-result-idx="${idx}">
-                                    <label class="form-check-label visually-hidden" for="relationCheck${idx}">選擇此節點</label>
+                                    <label class="form-check-label visually-hidden" for="relationCheck${idx}">${tUsm('selectThisNode', '選擇此節點')}</label>
                                 </div>
                                 <div class="flex-grow-1">
                                     <h6 class="mb-1">${escapeHtml(node.node_title)}</h6>
@@ -4835,7 +4914,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             updateAddButtonState();
         } catch (error) {
             console.error('[Relation] Relation search failed:', error);
-            showMessage('搜尋失敗: ' + error.message, 'error');
+            showUsmMessage('relationSearchFailed', `搜尋失敗: ${error.message}`, 'error', { reason: error.message });
         }
     });
 
@@ -4851,7 +4930,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         const checkedBoxes = resultsContainer.querySelectorAll('input[type="checkbox"]:checked');
 
         if (checkedBoxes.length === 0) {
-            showMessage('請先選擇要增加的節點', 'warning');
+            showUsmMessage('relationSelectNodesFirst', '請先選擇要增加的節點', 'warning');
             return;
         }
 
@@ -4874,10 +4953,10 @@ document.addEventListener('DOMContentLoaded', async function() {
         });
 
         if (addedCount > 0) {
-            showMessage(`已增加 ${addedCount} 個關聯節點`, 'success');
+            showUsmMessage('relationAdded', `已增加 ${addedCount} 個關聯節點`, 'success', { count: addedCount });
             updateRelationSelectedList({ refreshSearch: true });
         } else {
-            showMessage('選中的節點都已經在關聯列表中', 'info');
+            showUsmMessage('relationAlreadySelected', '選中的節點都已經在關聯列表中', 'info');
         }
 
         // Uncheck all checkboxes after adding
@@ -4899,7 +4978,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         window.selectedRelationTargets = targets;
 
         if (!targets.length) {
-            selectedContainer.innerHTML = '<p class="text-muted small text-center py-3">尚未選擇</p>';
+            selectedContainer.innerHTML = `<p class="text-muted small text-center py-3" data-i18n="usm.notSelected">${tUsm('notSelected', '尚未選擇')}</p>`;
             if (countDisplay) {
                 countDisplay.textContent = '0';
             }
@@ -4976,17 +5055,14 @@ document.addEventListener('DOMContentLoaded', async function() {
         const targets = window.selectedRelationTargets || [];
 
         if (!sourceNode) {
-            showMessage('請先選擇一個節點', 'warning');
+            showMessage(tUsm('selectNodeFirst', '請先選擇一個節點'), 'warning');
             return;
         }
 
-        const currentMapId = parseInt(document.getElementById('currentMapSelect').value, 10);
-        if (Number.isNaN(currentMapId)) {
-            showMessage('請先選擇一個地圖', 'warning');
-            return;
-        }
+        const currentMapId = requireCurrentMapId();
+        if (!currentMapId) return;
 
-        showMessage('正在保存關聯...', 'info');
+        showUsmMessage('relationSaving', '正在保存關聯...', 'info');
 
         try {
             const token = localStorage.getItem('access_token');
@@ -5015,7 +5091,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             if (!response.ok) {
                 const errorBody = await response.text();
                 console.error('[Relation] Bulk update failed:', errorBody);
-                showMessage('保存關聯失敗', 'error');
+                showUsmMessage('relationSaveFailed', '保存關聯失敗', 'error');
                 return;
             }
 
@@ -5038,7 +5114,7 @@ document.addEventListener('DOMContentLoaded', async function() {
                 nodes.map((node) => (node.id === sourceNode.id ? updatedSourceNode : node))
             );
 
-            showMessage('關聯已更新', 'success');
+            showUsmMessage('relationSaveSuccess', '關聯已更新', 'success');
 
             // 關閉 Modal
             const modalElement = document.getElementById('relationSettingsModal');
@@ -5055,23 +5131,20 @@ document.addEventListener('DOMContentLoaded', async function() {
             }
         } catch (error) {
             console.error('[Relation] Save relations failed:', error);
-            showMessage('保存關聯失敗: ' + error.message, 'error');
+            showUsmMessage('relationSaveFailedWithReason', `保存關聯失敗: ${error.message}`, 'error', { reason: error.message });
         }
     });
 });
 
 // ============ Test Cases Review Feature ============
 document.getElementById('reviewTestCasesBtn')?.addEventListener('click', async () => {
-    const currentMapId = parseInt(document.getElementById('currentMapSelect').value, 10);
-    if (Number.isNaN(currentMapId)) {
-        showMessage('請先選擇一個地圖', 'warning');
-        return;
-    }
+    const currentMapId = requireCurrentMapId();
+    if (!currentMapId) return;
 
     // Get all selected node IDs
     const selectedNodeIds = window.userStoryMapFlow?.getSelectedNodeIds?.() || [];
     if (selectedNodeIds.length === 0) {
-        showMessage('請先選擇一個或多個節點', 'warning');
+        showUsmMessage('selectNodesFirst', '請先選擇一個或多個節點', 'warning');
         return;
     }
 
@@ -5105,7 +5178,7 @@ document.getElementById('reviewTestCasesBtn')?.addEventListener('click', async (
     });
 
     if (aggregatedTickets.size === 0) {
-        showMessage('選定的節點沒有關聯票券', 'info');
+        showUsmMessage('noAggregatedTickets', '選定的節點沒有關聯票券', 'info');
         return;
     }
 
@@ -5115,7 +5188,7 @@ document.getElementById('reviewTestCasesBtn')?.addEventListener('click', async (
         // Fetch test cases by aggregated tickets
         const teamId = window.teamId;
         if (!teamId) {
-            showMessage('無法取得團隊資訊', 'warning');
+            showUsmMessage('teamInfoFailed', '無法取得團隊資訊', 'warning');
             return;
         }
 
@@ -5136,11 +5209,11 @@ document.getElementById('reviewTestCasesBtn')?.addEventListener('click', async (
         } else {
             const errorMsg = await response.text();
             console.error('API error:', errorMsg);
-            showMessage('無法載入相關案例', 'error');
+            showUsmMessage('relatedCasesLoadFailed', '無法載入相關案例', 'error');
         }
     } catch (error) {
         console.error('Failed to fetch test cases:', error);
-        showMessage('載入相關案例失敗: ' + error.message, 'error');
+        showUsmMessage('relatedCasesLoadFailedWithReason', `載入相關案例失敗: ${error.message}`, 'error', { reason: error.message });
     }
 });
 
@@ -5188,7 +5261,7 @@ function displayTestCasesReview(testCases) {
     if (selectAllEl) selectAllEl.checked = false;
 
     if (!testCases || testCases.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" class="text-muted text-center py-3">沒有相關的測試案例</td></tr>';
+        tbody.innerHTML = `<tr><td colspan="4" class="text-muted text-center py-3">${tUsm('noRelatedTestCases', '沒有相關的測試案例')}</td></tr>`;
         return;
     }
 
@@ -5293,27 +5366,32 @@ function openCreateTestRunSetModal() {
     
     // 如果 Modal 不存在，動態建立
     if (!modalEl) {
+        const title = tUsm('createTestRunSet', '建立 Test Run Set');
+        const nameLabel = tUsm('testRunSetNameLabel', 'Test Run Set 名稱');
+        const selectedLabel = tUsm('selectedTestCasesCount', '已選擇 {count} 個測試案例', { count: '<strong id="testRunSetSelectedCount">0</strong>' });
+        const cancelText = tUsm('cancel', '取消');
+        const createText = tUsm('create', '建立');
         const modalHtml = `
             <div class="modal fade" id="createTestRunSetModal" tabindex="-1">
                 <div class="modal-dialog">
                     <div class="modal-content">
                         <div class="modal-header">
-                            <h5 class="modal-title">建立 Test Run Set</h5>
+                            <h5 class="modal-title">${escapeHtml(title)}</h5>
                             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                         </div>
                         <div class="modal-body">
                             <div class="mb-3">
-                                <label for="testRunSetNameInput" class="form-label">Test Run Set 名稱</label>
+                                <label for="testRunSetNameInput" class="form-label">${escapeHtml(nameLabel)}</label>
                                 <input type="text" class="form-control" id="testRunSetNameInput">
                             </div>
                             <div class="alert alert-info small mb-0">
                                 <i class="fas fa-info-circle me-1"></i>
-                                已選擇 <strong id="testRunSetSelectedCount">0</strong> 個測試案例
+                                ${selectedLabel}
                             </div>
                         </div>
                         <div class="modal-footer">
-                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                            <button type="button" class="btn btn-primary" id="confirmCreateTestRunSetBtn">建立</button>
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">${escapeHtml(cancelText)}</button>
+                            <button type="button" class="btn btn-primary" id="confirmCreateTestRunSetBtn">${escapeHtml(createText)}</button>
                         </div>
                     </div>
                 </div>
@@ -5346,12 +5424,12 @@ async function handleCreateTestRunSet() {
     const name = nameInput?.value?.trim();
     
     if (!name) {
-        alert('請輸入 Test Run Set 名稱');
+        showUsmMessage('testRunSetNameRequired', '請輸入 Test Run Set 名稱', 'warning');
         return;
     }
 
     if (!window.selectedTestCases || window.selectedTestCases.length === 0) {
-        alert('未選擇測試案例');
+        showUsmMessage('noTestCasesSelected', '未選擇測試案例', 'warning');
         return;
     }
 
@@ -5361,7 +5439,7 @@ async function handleCreateTestRunSet() {
     try {
         btn.disabled = true;
         const originalText = btn.innerHTML;
-        btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 建立中...';
+        btn.innerHTML = `<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> ${tUsm('creating', '建立中...')}`;
 
         const response = await fetch(`/api/teams/${teamId}/test-run-sets/from-test-cases`, {
             method: 'POST',
@@ -5386,40 +5464,46 @@ async function handleCreateTestRunSet() {
             showTestRunSetSuccessModal(teamId);
         } else {
             const error = await response.json();
-            showMessage(`建立失敗: ${error.detail || error.message}`, 'error');
+            showMessage(tUsm('createFailed', `建立失敗: ${error.detail || error.message}`, { reason: error.detail || error.message }), 'error');
         }
     } catch (error) {
         console.error('Failed to create test run set:', error);
-        showMessage(`建立失敗: ${error.message}`, 'error');
+        showMessage(tUsm('createFailed', `建立失敗: ${error.message}`, { reason: error.message }), 'error');
     } finally {
         btn.disabled = false;
-        btn.textContent = '建立';
+        btn.textContent = tUsm('create', '建立');
     }
 }
 
 function showTestRunSetSuccessModal(teamId) {
     let modalEl = document.getElementById('testRunSetSuccessModal');
     if (!modalEl) {
+        const title = tUsm('createSuccessTitle', '建立成功');
+        const successHeading = tUsm('testRunSetCreated', 'Test Run Set 已成功建立！');
+        const successDesc = tUsm('testRunSetCreatedDesc', '系統已根據 JIRA Ticket 自動分組建立 Test Runs。');
+        const goToManageHint = tUsm('goToTestRunManageHint', '您要前往 Test Run 管理頁面查看嗎？');
+        const stayText = tUsm('stayHere', '留在本頁');
+        const goText = tUsm('goToManage', '前往查看');
         const modalHtml = `
             <div class="modal fade" id="testRunSetSuccessModal" tabindex="-1">
                 <div class="modal-dialog modal-dialog-centered">
                     <div class="modal-content">
                         <div class="modal-header bg-success text-white">
-                            <h5 class="modal-title"><i class="fas fa-check-circle me-2"></i>建立成功</h5>
+                            <h5 class="modal-title"><i class="fas fa-check-circle me-2"></i>${escapeHtml(title)}</h5>
                             <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                         </div>
                         <div class="modal-body text-center py-4">
                             <div class="mb-3">
                                 <i class="fas fa-clipboard-check fa-4x text-success"></i>
                             </div>
-                            <h5 class="mb-2">Test Run Set 已成功建立！</h5>
-                            <p class="text-muted">系統已根據 JIRA Ticket 自動分組建立 Test Runs。</p>
-                            <p class="text-muted small mb-0">您要前往 Test Run 管理頁面查看嗎？</p>
+                            <h5 class="mb-2">${escapeHtml(successHeading)}</h5>
+                            <p class="text-muted">${escapeHtml(successDesc)}</p>
+                            <p class="text-muted small mb-0">${escapeHtml(goToManageHint)}</p>
                         </div>
                         <div class="modal-footer justify-content-center border-top-0 pb-4">
-                            <button type="button" class="btn btn-outline-secondary px-4" data-bs-dismiss="modal">留在本頁</button>
+                            <button type="button" class="btn btn-outline-secondary px-4" data-bs-dismiss="modal">${escapeHtml(stayText)}</button>
                             <button type="button" class="btn btn-success px-4" id="goToTestRunMgmtBtn">
-                                <i class="fas fa-arrow-right me-2"></i>前往查看
+                                <i class="fas fa-arrow-right me-2"></i>${escapeHtml(goText)}
                             </button>
                         </div>
                     </div>
@@ -5450,7 +5534,7 @@ document.addEventListener('click', (e) => {
         console.log('createTestRunBtn clicked');
         
         if (!window.selectedTestCases || window.selectedTestCases.length === 0) {
-            showMessage('請先選擇至少一個測試案例', 'warning');
+            showUsmMessage('selectTestCasesFirst', '請先選擇至少一個測試案例', 'warning');
             return;
         }
 
@@ -5483,7 +5567,8 @@ document.addEventListener('DOMContentLoaded', function() {
     hint.id = 'quickSearchHint';
     hint.className = 'position-fixed';
     hint.style.cssText = 'left:12px; bottom:12px; z-index:1040; opacity:0.85; pointer-events:none;';
-    hint.innerHTML = `<span class="badge bg-secondary-subtle text-secondary border" style="--bs-bg-opacity:.65;">按 / 開啟快速搜尋</span>`;
+    const hintText = window.i18n ? window.i18n.t('usm.quickSearchHint', {}, '按 / 開啟快速搜尋') : '按 / 開啟快速搜尋';
+    hint.innerHTML = `<span class="badge bg-secondary-subtle text-secondary border" style="--bs-bg-opacity:.65;" data-i18n="usm.quickSearchHint">${hintText}</span>`;
     document.body.appendChild(hint);
 });
 
@@ -5615,7 +5700,7 @@ function quickSearchRenderUSM(query, container) {
     }
     
     if (matches.length === 0) {
-        container.innerHTML = `<div class="list-group-item text-muted text-center py-3">沒有找到符合條件的節點</div>`;
+        container.innerHTML = `<div class="list-group-item text-muted text-center py-3">${tUsm('noMatchingNodes', '找不到符合的節點')}</div>`;
         return;
     }
     

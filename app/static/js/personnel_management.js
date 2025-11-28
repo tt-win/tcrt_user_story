@@ -197,7 +197,7 @@
       renderUserList();
     } catch (e) {
       console.error('load users failed', e);
-      toastError('載入使用者清單失敗');
+      toastError(window.i18n ? window.i18n.t('personnel.loadUsersFailed') : '載入使用者清單失敗');
     }
   }
 
@@ -221,11 +221,11 @@
       // 記錄失敗的 ID（可選，用於 debug）
       const failedIds = results.filter(r => r.status === 'rejected').map((_, idx) => larkIds[idx]);
       if (failedIds.length > 0) {
-        console.warn('部分 Lark 資料預載失敗，ID:', failedIds);
+        console.warn(window.i18n ? window.i18n.t('personnel.preloadLarkFailedIds') : '部分 Lark 資料預載失敗，ID:', failedIds);
       }
       console.log('Preload complete, cache size:', state.larkCache.size, 'cache keys:', Array.from(state.larkCache.keys()));
     } catch (e) {
-      console.error('預載 Lark 資料失敗', e);
+      console.error(window.i18n ? window.i18n.t('personnel.preloadLarkFailed') : '預載 Lark 資料失敗', e);
       // 不中斷流程，僅記錄錯誤
     }
   }
@@ -234,7 +234,11 @@
     const el = document.getElementById('pm-page-indicator');
     if (!el) return;
     const maxPage = Math.max(1, Math.ceil(state.total / state.perPage));
-    el.textContent = `${state.page}/${maxPage}（共 ${state.total} 筆）`;
+    const params = { page: state.page, maxPage, total: state.total };
+    const fallback = window.i18n ? window.i18n.t('personnel.pageIndicator', params) : `${state.page}/${maxPage}（共 ${state.total} 筆）`;
+    el.setAttribute('data-i18n', 'personnel.pageIndicator');
+    el.setAttribute('data-i18n-params', JSON.stringify(params));
+    el.textContent = window.i18n ? window.i18n.t('personnel.pageIndicator', params, fallback) : fallback;
   }
 
   function renderUserList() {
@@ -242,7 +246,7 @@
     const box = document.getElementById('pm-user-list');
     if (!box) return;
     if (!state.users.length) {
-      box.innerHTML = '<div class="list-group-item text-center text-muted">無使用者</div>';
+      box.innerHTML = `<div class="list-group-item text-center text-muted">${window.i18n ? window.i18n.t('personnel.noUsers') : '無使用者'}</div>`;
       return;
     }
   
@@ -297,7 +301,7 @@
   }
 
   async function onSelectUser(userId) {
-    if (state.dirty && !confirm('有未儲存的變更，確定要切換嗎？')) return;
+    if (state.dirty && !confirm(window.i18n ? window.i18n.t('personnel.unsavedConfirm') : '有未儲存的變更，確定要切換嗎？')) return;
     clearDirty();
 
     const u = state.users.find(x => x.id === userId);
@@ -463,7 +467,7 @@
   async function onSave(e) {
     e.preventDefault();
     if (!hasAuth()) {
-      toastError('權限不足');
+      toastError(window.i18n ? window.i18n.t('personnel.noPermission') : '權限不足');
       return;
     }
 
@@ -475,18 +479,18 @@
           method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
         });
         if (!resp.ok) throw await respError(resp);
-        toastSuccess('已儲存');
+        toastSuccess(window.i18n ? window.i18n.t('personnel.saved') : '已儲存');
         clearDirty();
         await loadUsers();
       } catch (e) {
         console.error('Save user error:', e);
-        toastError('儲存失敗：' + (e?.message || e));
+        toastError((window.i18n ? window.i18n.t('personnel.saveFailedPrefix') : '儲存失敗：') + (e?.message || e));
       }
     } else {
       // 建立新使用者
       const username = val('pm-username').trim();
       if (!username) {
-        toastError('請填寫使用者名稱');
+        toastError(window.i18n ? window.i18n.t('personnel.usernameRequired') : '請填寫使用者名稱');
         return;
       }
       try {
@@ -495,13 +499,13 @@
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
         });
         if (!resp.ok) throw await respError(resp);
-        toastSuccess('使用者建立成功');
+        toastSuccess(window.i18n ? window.i18n.t('personnel.userCreated') : '使用者建立成功');
         clearDirty();
         clearForm(); // 清空表單
         await loadUsers();
       } catch (e) {
         console.error('Create user error:', e);
-        toastError('建立失敗：' + (e?.message || e));
+        toastError((window.i18n ? window.i18n.t('personnel.createFailedPrefix') : '建立失敗：') + (e?.message || e));
       }
     }
   }
@@ -509,37 +513,37 @@
   async function onDelete(e) {
     e.preventDefault();
     if (!hasAuth() || !state.selected) return;
-    if (!confirm('確定要停用/刪除此使用者？')) return;
+    if (!confirm(window.i18n ? window.i18n.t('personnel.deleteConfirm') : '確定要停用/刪除此使用者？')) return;
     try {
       const resp = await window.AuthClient.fetch(`/api/users/${state.selected.id}`, { method: 'DELETE' });
       if (!resp.ok) throw await respError(resp);
-      toastSuccess('已停用/刪除');
+      toastSuccess(window.i18n ? window.i18n.t('personnel.deleted') : '已停用/刪除');
       state.selected = null;
       clearForm();
       clearDirty();
       await loadUsers();
     } catch (e) {
-      toastError('刪除失敗：' + (e?.message || e));
+      toastError((window.i18n ? window.i18n.t('personnel.deleteFailedPrefix') : '刪除失敗：') + (e?.message || e));
     }
   }
 
   async function onResetPwd(e) {
     e.preventDefault();
     if (!hasAuth() || !state.selected) return;
-    if (!confirm('確定要重設密碼？')) return;
+    if (!confirm(window.i18n ? window.i18n.t('personnel.resetPwdConfirm') : '確定要重設密碼？')) return;
     try {
       const url = `/api/users/${state.selected.id}/reset-password?generate_new=true`;
       const resp = await window.AuthClient.fetch(url, { method: 'POST' });
       const json = await resp.json().catch(() => ({}));
       if (!resp.ok) throw await respError(resp, json);
       const newPwd = json?.new_password || '';
-      toastSuccess('密碼已重設' + (newPwd ? `：${newPwd}` : ''));
+      toastSuccess((window.i18n ? window.i18n.t('personnel.resetPwdSuccess') : '密碼已重設') + (newPwd ? `：${newPwd}` : ''));
       // 可選：自動複製
       if (newPwd && navigator.clipboard) {
         try { await navigator.clipboard.writeText(newPwd); } catch(_) {}
       }
     } catch (e) {
-      toastError('重設密碼失敗：' + (e?.message || e));
+      toastError((window.i18n ? window.i18n.t('personnel.resetPwdFailedPrefix') : '重設密碼失敗：') + (e?.message || e));
     }
   }
 
@@ -621,7 +625,7 @@
         if (normalizedLarkId && currentHiddenLarkId === normalizedLarkId) {
           updateLarkPreviewBox(normalizedLarkId);
         }
-        if (showToast) toastSuccess('已載入 Lark 資訊');
+        if (showToast) toastSuccess(window.i18n ? window.i18n.t('personnel.larkLoaded') : '已載入 Lark 資訊');
       } catch (e) {
         console.error('Fetch error for', normalizedLarkId, e);
         state.larkCache.delete(normalizedLarkId);
@@ -629,7 +633,7 @@
         if (normalizedLarkId && currentHiddenLarkId === normalizedLarkId) {
           updateLarkPreviewBox(null);
         }
-        if (showToast) toastError('無法取得 Lark 使用者資訊');
+        if (showToast) toastError(window.i18n ? window.i18n.t('personnel.larkLoadFailed') : '無法取得 Lark 使用者資訊');
       }
     }
 
