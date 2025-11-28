@@ -46,7 +46,7 @@ async function populateTeamSelect() {
         });
         
         if (!response.ok) {
-            throw new Error('獲取團隊列表失敗');
+            throw new Error(window.i18n ? window.i18n.t('usmImport.loadTeamsFailed') : '獲取團隊列表失敗');
         }
         
         const teams = await response.json();
@@ -67,7 +67,7 @@ async function populateTeamSelect() {
         
     } catch (error) {
         console.error('Error loading teams:', error);
-        AppUtils.showError('載入團隊列表失敗');
+        AppUtils.showError(window.i18n ? window.i18n.t('usmImport.loadTeamsFailed') : '載入團隊列表失敗');
     }
 }
 
@@ -79,20 +79,20 @@ async function preprocessLarkTable() {
         const larkUrl = document.getElementById('larkUrlInput').value.trim();
         
         if (!larkUrl) {
-            AppUtils.showError('請輸入 Lark URL');
+            AppUtils.showError(window.i18n ? window.i18n.t('usmImport.enterLarkUrl') : '請輸入 Lark URL');
             return;
         }
         
         // 驗證 URL 格式
         if (!larkUrl.includes('larksuite.com')) {
-            AppUtils.showError('URL 格式無效，請輸入有效的 Lark 連結');
+            AppUtils.showError(window.i18n ? window.i18n.t('usmImport.invalidUrl') : 'URL 格式無效，請輸入有效的 Lark 連結');
             return;
         }
         
         // 顯示加載狀態
         const countSpan = document.getElementById('larkRecordCount');
         countSpan.style.display = 'inline';
-        countSpan.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>預處理中...';
+        countSpan.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>' + (window.i18n ? window.i18n.t('usmImport.preprocessing') : '預處理中...');
 
         // 調用預覽 API
         const response = await window.AuthClient.fetch(
@@ -105,7 +105,7 @@ async function preprocessLarkTable() {
 
         if (!response.ok) {
             const error = await response.json();
-            throw new Error(error.detail || '預處理失敗');
+            throw new Error(error.detail || (window.i18n ? window.i18n.t('usmImport.preprocessFailed') : '預處理失敗'));
         }
 
         const data = await response.json();
@@ -115,13 +115,14 @@ async function preprocessLarkTable() {
         usmImportData.larkUrl = larkUrl;
 
         // 顯示總筆數
-        countSpan.innerHTML = `共 ${data.total_records} 筆記錄`;
+        const totalText = window.i18n ? window.i18n.t('usmImport.totalRecords', { count: data.total_records }) : `共 ${data.total_records} 筆記錄`;
+        countSpan.innerHTML = totalText;
         
     } catch (error) {
         console.error('Preprocess error:', error);
         const countSpan = document.getElementById('larkRecordCount');
         countSpan.style.display = 'none';
-        AppUtils.showError(`預處理失敗: ${error.message}`);
+        AppUtils.showError((window.i18n ? window.i18n.t('usmImport.preprocessFailed') : '預處理失敗') + `: ${error.message}`);
     }
 }
 
@@ -138,29 +139,33 @@ async function confirmUSMImport() {
         const teamId = parseInt(document.getElementById('targetTeamSelect').value);
         
         if (!larkUrl) {
-            AppUtils.showError('請輸入 Lark URL');
+            AppUtils.showError(window.i18n ? window.i18n.t('usmImport.enterLarkUrl') : '請輸入 Lark URL');
             return;
         }
         
         if (!rootName) {
-            AppUtils.showError('請輸入根節點名稱');
+            AppUtils.showError(window.i18n ? window.i18n.t('usmImport.enterRootNodeName') : '請輸入根節點名稱');
             return;
         }
         
         if (!teamId || teamId <= 0) {
-            AppUtils.showError('請選擇目標團隊');
+            AppUtils.showError(window.i18n ? window.i18n.t('usmImport.selectTargetTeam') : '請選擇目標團隊');
             return;
         }
         
         if (!usmImportData.previewData) {
-            AppUtils.showError('請先預處理數據');
+            AppUtils.showError(window.i18n ? window.i18n.t('usmImport.preprocessFirst') : '請先預處理數據');
             return;
         }
         
         // 確認匯入
-        const confirmed = await AppUtils.showConfirm(
-            `確認要匯入 ${usmImportData.previewData.total_records} 條記錄到 User Story Map 嗎？\n\n根節點名稱: ${rootName}`
-        );
+        const confirmText = window.i18n ? 
+            window.i18n.t('usmImport.confirmImport', { 
+                count: usmImportData.previewData.total_records, 
+                rootName: rootName 
+            }) : 
+            `確認要匯入 ${usmImportData.previewData.total_records} 條記錄到 User Story Map 嗎？\n\n根節點名稱: ${rootName}`;
+        const confirmed = await AppUtils.showConfirm(confirmText);
         
         if (!confirmed) {
             return;
@@ -189,11 +194,14 @@ async function confirmUSMImport() {
         const result = await response.json();
         
         if (!response.ok) {
-            throw new Error(result.message || '匯入失敗');
+            throw new Error(result.message || (window.i18n ? window.i18n.t('usmImport.importFailed') : '匯入失敗'));
         }
         
         if (result.success) {
-            AppUtils.showSuccess(`匯入成功！已建立 User Story Map: ${result.map_id}`);
+            const successText = window.i18n ? 
+            window.i18n.t('usmImport.importSuccess', { mapId: result.map_id }) : 
+            `匯入成功！已建立 User Story Map: ${result.map_id}`;
+        AppUtils.showSuccess(successText);
             
             // 刷新頁面或導向到新建的 map
             if (result.map_id) {
@@ -205,12 +213,12 @@ async function confirmUSMImport() {
                 location.reload();
             }
         } else {
-            AppUtils.showError(result.message || '匯入失敗');
+            AppUtils.showError(result.message || (window.i18n ? window.i18n.t('usmImport.importFailed') : '匯入失敗'));
         }
         
     } catch (error) {
         console.error('Import error:', error);
-        AppUtils.showError(`匯入失敗: ${error.message}`);
+        AppUtils.showError((window.i18n ? window.i18n.t('usmImport.importFailed') : '匯入失敗') + `: ${error.message}`);
     }
 }
 

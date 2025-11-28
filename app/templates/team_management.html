@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}團隊管理 - Test Case Repository Web Tool{% endblock %}
+{% block title %}<span data-i18n="team.management">團隊管理</span> - Test Case Repository Web Tool{% endblock %}
 
 {% block page_title_text %}
 <span class="text-primary" data-i18n="team.management">團隊管理</span>
@@ -18,12 +18,12 @@
     <!-- 匯入工具下拉選單 -->
     <div class="btn-group" role="group" id="importMenuGroup">
         <button type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
-            <i class="fas fa-file-import me-2"></i><span>匯入工具</span>
+            <i class="fas fa-file-import me-2"></i><span data-i18n="usmImport.importTool">匯入工具</span>
         </button>
         <ul class="dropdown-menu">
             <li>
                 <a class="dropdown-item" href="#" id="importUSMBtn">
-                    <i class="fas fa-project-diagram me-2"></i><span>匯入 USM</span>
+                    <i class="fas fa-project-diagram me-2"></i><span data-i18n="usmImport.importUSM">匯入 USM</span>
                 </a>
             </li>
         </ul>
@@ -1973,7 +1973,7 @@ function getI18n(key, fallback = '') {
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title" id="usmImportModalLabel">
-                    <i class="fas fa-file-import me-2"></i>匯入 User Story Map
+                    <i class="fas fa-file-import me-2"></i><span data-i18n="usmImport.modalTitle">匯入 User Story Map</span>
                 </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
@@ -1982,25 +1982,26 @@ function getI18n(key, fallback = '') {
                     <!-- Lark URL 輸入 -->
                     <div class="mb-3">
                         <label for="larkUrlInput" class="form-label">
-                            <i class="fas fa-link me-2"></i>Lark 多維表格 URL
+                            <i class="fas fa-link me-2"></i><span data-i18n="usmImport.larkUrlLabel">Lark 多維表格 URL</span>
                             <span class="text-danger">*</span>
                         </label>
                         <input 
                             type="url" 
                             class="form-control" 
                             id="larkUrlInput" 
+                            data-i18n-placeholder="usmImport.larkUrlPlaceholder"
                             placeholder="https://igxy0zaeo1r.sg.larksuite.com/wiki/..." 
                             required
                         >
                         <small class="form-text text-muted">
-                            輸入要匯入的 Lark 多維表格分享連結
+                            <span data-i18n="usmImport.larkUrlHint">輸入要匯入的 Lark 多維表格分享連結</span>
                         </small>
                     </div>
 
                     <!-- 預覽按鈕 -->
                     <div class="mb-3">
                         <button type="button" class="btn btn-info btn-sm" id="preprocessLarkTableBtn">
-                            <i class="fas fa-cog me-1"></i>預處理
+                            <i class="fas fa-cog me-1"></i><span data-i18n="usmImport.preprocess">預處理</span>
                         </button>
                         <span id="larkRecordCount" class="ms-2 text-muted small" style="display: none;"></span>
                     </div>
@@ -2008,59 +2009,60 @@ function getI18n(key, fallback = '') {
                     <!-- 根節點名稱 -->
                     <div class="mb-3">
                         <label for="rootNodeNameInput" class="form-label">
-                            <i class="fas fa-star me-2"></i>根節點名稱
+                            <i class="fas fa-star me-2"></i><span data-i18n="usmImport.rootNodeName">根節點名稱</span>
                             <span class="text-danger">*</span>
                         </label>
                         <input 
                             type="text" 
                             class="form-control" 
                             id="rootNodeNameInput" 
+                            data-i18n-placeholder="usmImport.rootNodeNamePlaceholder"
                             placeholder="輸入根節點的名稱"
                             required
                         >
                         <small class="form-text text-muted">
-                            這將成為 User Story Map 的頂層節點名稱
+                            <span data-i18n="usmImport.rootNodeNameHint">這將成為 User Story Map 的頂層節點名稱</span>
                         </small>
                     </div>
 
                     <!-- 團隊選擇 -->
                     <div class="mb-3">
                         <label for="targetTeamSelect" class="form-label">
-                            <i class="fas fa-users me-2"></i>目標團隊
+                            <i class="fas fa-users me-2"></i><span data-i18n="usmImport.targetTeam">目標團隊</span>
                             <span class="text-danger">*</span>
                         </label>
                         <select class="form-select" id="targetTeamSelect" required>
-                            <option value="">-- 請選擇團隊 --</option>
+                            <option value="" data-i18n="usmImport.selectTeam">-- 請選擇團隊 --</option>
                         </select>
                         <small class="form-text text-muted">
-                            選擇要匯入到的團隊
+                            <span data-i18n="usmImport.targetTeamHint">選擇要匯入到的團隊</span>
                         </small>
                     </div>
 
                     <!-- 映射說明 -->
                     <div class="alert alert-info" role="alert">
                         <h6 class="alert-heading">
-                            <i class="fas fa-info-circle me-2"></i>欄位映射
+                            <i class="fas fa-info-circle me-2"></i><span data-i18n="usmImport.fieldMapping">欄位映射</span>
                         </h6>
                         <ul class="mb-0 small">
-                            <li><strong>Features</strong> → 節點標題</li>
-                            <li><strong>Criteria</strong> → 描述</li>
-                            <li><strong>As a</strong> → 使用者角色</li>
-                            <li><strong>I want</strong> → 需求描述</li>
-                            <li><strong>TCG</strong> → JIRA Tickets</li>
-                            <li><strong>Parent Tickets</strong> → 父節點關聯</li>
-                            <li><strong>最底層節點</strong> → User Story 類型</li>
-                            <li><strong>其他節點</strong> → Features 類型</li>
+                            <li><strong>Features</strong> → <span data-i18n="usmImport.fieldMappingDescription">節點標題</span></li>
+                            <li><strong>Criteria</strong> → <span data-i18n="usmImport.criteriaMapping">描述</span></li>
+                            <li><strong>As a</strong> → <span data-i18n="usmImport.asAMapping">使用者角色</span></li>
+                            <li><strong>I want</strong> → <span data-i18n="usmImport.iWantMapping">需求描述</span></li>
+                            <li><strong>TCG</strong> → <span data-i18n="usmImport.tcgMapping">JIRA Tickets</span></li>
+                            <li><strong>Parent Tickets</strong> → <span data-i18n="usmImport.parentTicketsMapping">父節點關聯</span></li>
+                            <li><strong>最底層節點</strong> → <span data-i18n="usmImport.bottomNodeMapping">User Story 類型</span></li>
+                            <li><strong>其他節點</strong> → <span data-i18n="usmImport.otherNodesMapping">Features 類型</span></li>
                         </ul>
                     </div>
                 </form>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
-                    <i class="fas fa-times me-1"></i>取消
+                    <i class="fas fa-times me-1"></i><span data-i18n="usmImport.cancel">取消</span>
                 </button>
                 <button type="button" class="btn btn-primary" id="confirmUSMImportBtn">
-                    <i class="fas fa-file-import me-1"></i>開始匯入
+                    <i class="fas fa-file-import me-1"></i><span data-i18n="usmImport.startImport">開始匯入</span>
                 </button>
             </div>
         </div>
