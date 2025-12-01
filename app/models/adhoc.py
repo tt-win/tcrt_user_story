@@ -17,6 +17,7 @@ class AdHocRunItemBase(BaseModel):
     test_result: Optional[TestResultStatus] = None
     assignee_name: Optional[str] = None
     executed_at: Optional[datetime] = None
+    meta_json: Optional[str] = None
 
 class AdHocRunItemCreate(AdHocRunItemBase):
     row_index: int

@@ -873,6 +873,7 @@ class AdHocRunItem(Base):
     # 附件與結果 (JSON)
     attachments_json = Column(Text, nullable=True) # 一般附件
     execution_results_json = Column(Text, nullable=True) # 執行結果證明 (截圖等)
+    meta_json = Column(Text, nullable=True) # 其他元數據 (如樣式、顏色等)
 
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
