@@ -25,6 +25,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     let currentSheetId = null;
     let autoSaveTimer = null;
     let assigneeOptions = [];
+    let deletedItemIds = new Set();
+    let isSaving = false;
+    let isPendingSave = false;
 
     const PRIORITY = ['High', 'Medium', 'Low'];
     const RESULT = ['', 'Passed', 'Failed', 'Retest', 'Not Available', 'Pending', 'Not Required'];
@@ -50,24 +53,33 @@ document.addEventListener('DOMContentLoaded', async () => {
         ];
     };
 
+    // Move listeners to bottom or after definitions
+    // ... definitions ...
+
+    // Helper function to setup listeners
+    function setupListeners() {
+        dom.addSheet?.addEventListener('click', onAddSheet);
+        dom.addRow?.addEventListener('click', onAddRow);
+        const reportsBtn = document.getElementById('reportsBtn');
+        if (reportsBtn) {
+            reportsBtn.addEventListener('click', () => {
+                console.info('Opening Ad-hoc Charts & Reports');
+                openReports();
+            });
+        } else {
+            console.warn('reportsBtn not found');
+        }
+        const exportHtmlBtn = document.getElementById('exportHtmlBtn');
+        if (exportHtmlBtn) {
+            exportHtmlBtn.addEventListener('click', exportHtmlReport);
+        }
+    }
+
+    // ... (rest of the file) ...
+
     await loadRun();
     await loadAssignees();
-
-    dom.addSheet?.addEventListener('click', onAddSheet);
-    dom.addRow?.addEventListener('click', onAddRow);
-    const reportsBtn = document.getElementById('reportsBtn');
-    if (reportsBtn) {
-        reportsBtn.addEventListener('click', () => {
-            console.info('Opening Ad-hoc Charts & Reports');
-            openReports();
-        });
-    } else {
-        console.warn('reportsBtn not found');
-    }
-    const exportHtmlBtn = document.getElementById('exportHtmlBtn');
-    if (exportHtmlBtn) {
-        exportHtmlBtn.addEventListener('click', exportHtmlReport);
-    }
+    setupListeners(); // Call it here
 
     async function loadRun() {
         try {
@@ -85,13 +97,25 @@ document.addEventListener('DOMContentLoaded', async () => {
                 dom.backBtn.href = `/test-run-management?team_id=${currentRun.team_id}`;
             }
 
+            // Handle case where no sheets exist after deletion
+            if (!currentRun.sheets || currentRun.sheets.length === 0) {
+                currentRun.sheets = [];
+                if (hot) {
+                    hot.destroy();
+                    hot = null;
+                    dom.gridHost.innerHTML = '<div class="text-center mt-5 text-muted">No sheets. Click "+" to add one.</div>';
+                }
+                dom.sheetTabs.innerHTML = '';
+                return;
+            }
+
             renderTabs();
-            const firstSheetId = currentRun?.sheets?.[0]?.id;
+            const firstSheetId = currentRun.sheets[0].id;
+            // If currentSheetId is invalid (e.g. deleted), switch to first
             const targetSheet = currentSheetId && currentRun.sheets.find(s => s.id == currentSheetId) ? currentSheetId : firstSheetId;
-            if (targetSheet) switchToSheet(targetSheet);
-            else if (dom.runName && !dom.runName.textContent) {
-                dom.runName.textContent = runName;
-                dom.runName.removeAttribute('data-i18n');
+            
+            if (targetSheet) {
+                switchToSheet(targetSheet);
             }
         } catch (e) {
             console.error(e);
@@ -117,43 +141,67 @@ document.addEventListener('DOMContentLoaded', async () => {
             name.className = 'tab-name';
             name.textContent = sheet.name;
 
+            // Container for buttons
+            const btnContainer = document.createElement('span');
+            btnContainer.className = 'ms-2 d-flex align-items-center';
+
             const rename = document.createElement('button');
-            rename.className = 'btn btn-link btn-sm p-0 ms-1';
+            rename.className = 'btn btn-link btn-sm p-0 text-secondary';
             rename.innerHTML = '<i class="fas fa-edit"></i>';
             rename.title = 'Rename sheet';
+            rename.style.fontSize = '0.85rem';
+            rename.style.lineHeight = '1';
+
+            const delBtn = document.createElement('button');
+            delBtn.className = 'btn btn-link btn-sm p-0 ms-2 text-danger';
+            delBtn.innerHTML = '<i class="fas fa-trash-alt"></i>';
+            delBtn.title = 'Delete sheet';
+            delBtn.style.fontSize = '0.85rem';
+            delBtn.style.lineHeight = '1';
 
             const startRename = () => {
                 if (tab.dataset.editing === 'true') return;
                 tab.dataset.editing = 'true';
                 const tabWidth = tab.getBoundingClientRect().width;
+                const tabHeight = tab.getBoundingClientRect().height;
+                
                 tab.style.width = `${tabWidth}px`;
                 tab.style.minWidth = `${tabWidth}px`;
+                
+                // Hide content with visibility to keep size
+                name.style.visibility = 'hidden';
+                btnContainer.style.visibility = 'hidden';
+
                 const input = document.createElement('input');
                 input.type = 'text';
                 input.className = 'form-control form-control-sm';
                 input.value = sheet.name;
+                
+                // Absolute positioning to cover the tab
                 input.style.position = 'absolute';
-                input.style.top = '50%';
-                input.style.left = '4px';
-                input.style.transform = 'translateY(-50%)';
-                input.style.height = '24px';
-                input.style.padding = '2px 6px';
+                input.style.left = '0';
+                input.style.top = '0';
+                input.style.width = '100%';
+                input.style.height = '100%';
+                input.style.padding = '0 6px';
+                input.style.fontSize = '13px';
                 input.style.lineHeight = '1.2';
-                input.style.maxWidth = `${Math.max(80, tabWidth - 28)}px`;
-                input.style.width = `${Math.max(80, tabWidth - 28)}px`;
-                name.style.visibility = 'hidden';
-                rename.style.visibility = 'hidden';
+                input.style.boxSizing = 'border-box';
+                input.style.borderRadius = '6px 6px 0 0'; // Match tab border radius
+                input.style.zIndex = '10';
+                
                 tab.appendChild(input);
                 input.focus();
                 input.select();
 
                 const commit = async () => {
                     tab.dataset.editing = 'false';
-                    tab.removeChild(input);
+                    if (input.parentNode === tab) tab.removeChild(input);
                     tab.style.width = '';
                     tab.style.minWidth = '';
                     name.style.visibility = '';
-                    rename.style.visibility = '';
+                    btnContainer.style.visibility = '';
+                    
                     const newName = input.value.trim();
                     if (!newName || newName === sheet.name) {
                         name.textContent = sheet.name;
@@ -162,50 +210,66 @@ document.addEventListener('DOMContentLoaded', async () => {
                     name.textContent = newName;
                     await renameSheet(sheet.id, newName);
                 };
+                
                 const cancel = () => {
                     tab.dataset.editing = 'false';
-                    tab.removeChild(input);
+                    if (input.parentNode === tab) tab.removeChild(input);
                     tab.style.width = '';
                     tab.style.minWidth = '';
                     name.style.visibility = '';
-                    rename.style.visibility = '';
+                    btnContainer.style.visibility = '';
                 };
+
                 input.addEventListener('keydown', (e) => {
                     if (e.key === 'Enter') { e.preventDefault(); commit(); }
                     if (e.key === 'Escape') { e.preventDefault(); cancel(); }
                 });
-                // click outside to commit
-                const outsideHandler = (e) => {
-                    if (!input.contains(e.target)) {
-                        commit();
-                    }
-                };
                 input.addEventListener('blur', commit);
-                setTimeout(() => document.addEventListener('mousedown', outsideHandler), 0);
-                const cleanup = () => document.removeEventListener('mousedown', outsideHandler);
-                const originalCommit = commit;
-                commit = async () => {
-                    cleanup();
-                    await originalCommit();
-                };
-                const originalCancel = cancel;
-                cancel = () => {
-                    cleanup();
-                    originalCancel();
-                };
             };
 
-            tab.addEventListener('click', () => {
+            tab.addEventListener('click', (e) => {
+                // Prevent switching if clicking input or during edit
+                if (tab.dataset.editing === 'true' && e.target.tagName === 'INPUT') return;
                 if (tab.dataset.editing === 'true') return;
                 switchToSheet(sheet.id);
             });
+            
             name.addEventListener('dblclick', (e) => { e.stopPropagation(); startRename(); });
             rename.addEventListener('click', (e) => { e.stopPropagation(); startRename(); });
+            
+            delBtn.addEventListener('click', async (e) => {
+                e.stopPropagation();
+                if (confirm(tt('adhoc.confirmDeleteSheet', 'Are you sure you want to delete this sheet?'))) {
+                    await deleteSheet(sheet.id);
+                }
+            });
 
+            btnContainer.appendChild(rename);
+            btnContainer.appendChild(delBtn);
             tab.appendChild(name);
-            tab.appendChild(rename);
+            tab.appendChild(btnContainer);
             dom.sheetTabs.appendChild(tab);
         });
+    }
+
+    async function deleteSheet(id) {
+        try {
+            const resp = await window.AuthClient.fetch(`/api/adhoc-runs/${runId}/sheets/${id}`, {
+                method: 'DELETE'
+            });
+            if (resp.ok) {
+                // If we deleted the current sheet, set ID to null so loadRun picks a new one
+                if (currentSheetId == id) {
+                    currentSheetId = null;
+                }
+                await loadRun();
+            } else {
+                alert('Delete failed');
+            }
+        } catch (e) {
+            console.error(e);
+            alert('Delete error');
+        }
     }
 
     async function renameSheet(id, name) {
@@ -253,8 +317,85 @@ document.addEventListener('DOMContentLoaded', async () => {
             test_result: item?.test_result || '',
             assignee_name: item?.assignee_name || '',
             comments: item?.comments || '',
-            bug_list: item?.bug_list || ''
+            bug_list: item?.bug_list || '',
+            meta_json: item?.meta_json || '{}'
         };
+    }
+
+    function applyCommonStyles(instance, td, row, col, prop, value) {
+        if (typeof row !== 'number' || row < 0) return;
+        const physicalRow = instance.toPhysicalRow(row);
+        if (physicalRow === null) return;
+        
+        const rowData = instance.getSourceDataAtRow(physicalRow);
+        if (!rowData) return;
+
+        const meta = rowData.meta || {};
+        
+        // Try to parse meta_json if meta object is empty
+        let bgColor = null;
+        if (meta.backgroundColor) {
+            bgColor = meta.backgroundColor;
+        } else if (rowData.meta_json) {
+            try {
+                const m = JSON.parse(rowData.meta_json);
+                bgColor = m.backgroundColor;
+            } catch (e) {}
+        }
+
+        const isSection = rowData.test_case_number === 'SECTION';
+
+        // 1. Background Color
+        if (bgColor) {
+            td.style.backgroundColor = bgColor;
+        } else if (isSection) {
+            td.style.backgroundColor = '#f3f4f6';
+        } else {
+            // For standard cells, we don't clear background because:
+            // - Default renderers might have set it (e.g. conditional formatting).
+            // - If we want "No Color" to mean "Default", we leave it.
+            // - If user explicitly set "No Color", bgColor would be null/undefined.
+        }
+
+        // 2. Section Row Logic
+        if (isSection) {
+            td.classList.add('adhoc-section-cell');
+            
+            if (prop === 'title' || prop === 'test_case_number') {
+                td.classList.add('adhoc-section-center');
+                
+                if (prop === 'test_case_number') {
+                    td.style.color = '#6b7280';
+                }
+            } else {
+                // Hide content for other columns explicitly
+                td.innerHTML = '';
+                td.innerText = ''; 
+            }
+        }
+    }
+
+    function updateSectionMerges() {
+        if (!hot) return;
+        const plugin = hot.getPlugin('mergeCells');
+        if (!plugin) return;
+
+        plugin.clearCollections();
+        
+        const count = hot.countRows();
+        
+        for (let r = 0; r < count; r++) {
+            // Use visual row index 'r' for checking
+            const physicalRow = hot.toPhysicalRow(r);
+            if (physicalRow === null) continue;
+            
+            const rowData = hot.getSourceDataAtRow(physicalRow);
+            if (rowData && rowData.test_case_number === 'SECTION') {
+                // Merge Title (col 1) to end (col 9) - Visual indices
+                plugin.merge(r, 1, r, 9); 
+            }
+        }
+        hot.render();
     }
 
     function initHot(data) {
@@ -281,6 +422,42 @@ document.addEventListener('DOMContentLoaded', async () => {
             dropdownMenu: ['filter_by_condition','filter_by_value','filter_action_bar'],
             filters: true,
             fillHandle: true,
+            search: true, // Enable Search Plugin
+            outsideClickDeselects: false, // Keep selection when clicking toolbar buttons
+            mergeCells: true, // Enable Merging
+            undoRedo: false, // Disable Undo/Redo
+            afterLoadData: updateSectionMerges,
+            afterSort: updateSectionMerges,
+            afterFilter: updateSectionMerges,
+            beforeRemoveRow: (index, amount, physicalRows) => {
+                if (!hot) return;
+                physicalRows.forEach(row => {
+                    const item = hot.getSourceDataAtRow(row);
+                    if (item && item.id) {
+                        deletedItemIds.add(item.id);
+                    }
+                });
+            },
+            afterRemoveRow: () => {
+                handleChange();
+            },
+            cells: function(row, col) {
+                const cellProps = {};
+                if (typeof row !== 'number' || row < 0) return cellProps;
+                
+                const physicalRow = this.instance.toPhysicalRow(row);
+                if (physicalRow === null) return cellProps;
+                
+                const rowData = this.instance.getSourceDataAtRow(physicalRow);
+                
+                if (rowData && rowData.test_case_number === 'SECTION') {
+                    // Renderer is now handled by columns config, so no need to set here
+                    if (this.instance.colToProp(col) !== 'title') {
+                        cellProps.readOnly = true;
+                    }
+                }
+                return cellProps;
+            },
             afterInit: fixAriaHidden,
             afterBeginEditing: fixAriaHidden,
             afterChange: (changes, source) => {
@@ -291,13 +468,201 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    function onAddRow() {
+    // --- Search & Replace Feature ---
+
+    // Inject Button
+    if (dom.addRow && !document.getElementById('addSectionBtn')) {
+        const btn = document.createElement('button');
+        btn.id = 'addSectionBtn';
+        btn.className = 'btn btn-sm btn-outline-secondary ms-2';
+        btn.innerHTML = '<i class="fas fa-heading me-1"></i> <span>Add Section</span>';
+        btn.onclick = onAddSection;
+        dom.addRow.parentNode.insertBefore(btn, dom.addRow.nextSibling);
+    }
+
+    // Inject Button
+    if (dom.addRow && !document.getElementById('addSectionBtn')) {
+        const btn = document.createElement('button');
+        btn.id = 'addSectionBtn';
+        btn.className = 'btn btn-sm btn-outline-secondary ms-2';
+        btn.innerHTML = '<i class="fas fa-heading me-1"></i> <span>Add Section</span>';
+        btn.onclick = onAddSection;
+        dom.addRow.parentNode.insertBefore(btn, dom.addRow.nextSibling);
+    }
+
+    // Color picker disabled (all)
+
+
+    // Inject Button
+    if (dom.addRow && !document.getElementById('searchReplaceBtn')) {
+        const btn = document.createElement('button');
+        btn.id = 'searchReplaceBtn';
+        btn.className = 'btn btn-sm btn-secondary ms-2';
+        btn.innerHTML = '<i class="fas fa-search me-1"></i> <span>Search & Replace</span>';
+        btn.onclick = openSearchModal;
+        btn.title = "Ctrl+F / ⌘+F";
+        dom.addRow.parentNode.insertBefore(btn, dom.addRow.nextSibling);
+    }
+
+    // Keyboard shortcut: Ctrl+F or Cmd+F
+    document.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f') {
+            e.preventDefault();
+            openSearchModal();
+        }
+    });
+
+    let searchModal = null;
+    let searchResults = [];
+    let currentSearchIdx = -1;
+
+    function ensureSearchModal() {
+        if (document.getElementById('adhocSearchModal')) return;
+        
+        const modalHtml = `
+        <div class="modal fade" id="adhocSearchModal" tabindex="-1" data-bs-backdrop="false">
+            <div class="modal-dialog modal-dialog-scrollable modal-sm" style="margin-right: 20px; margin-top: 60px; margin-left: auto;">
+                <div class="modal-content shadow">
+                    <div class="modal-header p-2">
+                        <h6 class="modal-title small">Find & Replace</h6>
+                        <button type="button" class="btn-close btn-sm" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body p-3">
+                        <div class="mb-2">
+                            <input type="text" id="findInput" class="form-control form-control-sm" placeholder="Find what...">
+                        </div>
+                        <div class="mb-3">
+                            <input type="text" id="replaceInput" class="form-control form-control-sm" placeholder="Replace with...">
+                        </div>
+                        <div class="d-flex justify-content-between mb-2">
+                            <button id="findNextBtn" class="btn btn-sm btn-outline-primary flex-grow-1 me-1">Find Next</button>
+                            <button id="findPrevBtn" class="btn btn-sm btn-outline-primary flex-grow-1">Find Prev</button>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <button id="replaceBtn" class="btn btn-sm btn-outline-dark flex-grow-1 me-1">Replace</button>
+                            <button id="replaceAllBtn" class="btn btn-sm btn-outline-dark flex-grow-1">Replace All</button>
+                        </div>
+                        <div id="searchMsg" class="text-muted small mt-2 text-center" style="min-height: 1.2em;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+        
+        const div = document.createElement('div');
+        div.innerHTML = modalHtml;
+        document.body.appendChild(div.firstElementChild);
+
+        const m = document.getElementById('adhocSearchModal');
+        m.addEventListener('shown.bs.modal', () => document.getElementById('findInput').focus());
+        
+        document.getElementById('findNextBtn').addEventListener('click', () => doFind(1));
+        document.getElementById('findPrevBtn').addEventListener('click', () => doFind(-1));
+        document.getElementById('replaceBtn').addEventListener('click', doReplace);
+        document.getElementById('replaceAllBtn').addEventListener('click', doReplaceAll);
+        document.getElementById('findInput').addEventListener('keydown', e => {
+            if(e.key === 'Enter') doFind(1);
+        });
+    }
+
+    function openSearchModal() {
+        ensureSearchModal();
+        if (!searchModal) {
+            searchModal = new bootstrap.Modal(document.getElementById('adhocSearchModal'));
+        }
+        searchModal.show();
+    }
+
+    function doFind(direction = 1) {
         if (!hot) return;
-        const data = hot.getSourceData();
-        data.push(convertItemToRow(null));
-        hot.loadData(data);
-        hot.selectCell(data.length - 1, 0);
-        handleChange();
+        const query = document.getElementById('findInput').value;
+        if (!query) return;
+
+        const plugin = hot.getPlugin('search');
+        const result = plugin.query(query);
+        searchResults = result || [];
+
+        const msg = document.getElementById('searchMsg');
+        if (searchResults.length === 0) {
+            msg.textContent = 'No matches found.';
+            currentSearchIdx = -1;
+            hot.render();
+            return;
+        }
+
+        // Cycle index
+        currentSearchIdx += direction;
+        if (currentSearchIdx >= searchResults.length) currentSearchIdx = 0;
+        if (currentSearchIdx < 0) currentSearchIdx = searchResults.length - 1;
+
+        msg.textContent = `${currentSearchIdx + 1} / ${searchResults.length}`;
+
+        const match = searchResults[currentSearchIdx];
+        hot.selectCell(match.row, match.col);
+        hot.scrollViewportTo(match.row, match.col);
+        hot.render();
+    }
+
+    function doReplace() {
+        if (!hot || searchResults.length === 0 || currentSearchIdx < 0) {
+            doFind(1); // Try to find first
+            return;
+        }
+
+        const replaceVal = document.getElementById('replaceInput').value || '';
+        const match = searchResults[currentSearchIdx];
+        
+        // Verify if cell still contains value (in case user edited)
+        const cellData = hot.getDataAtCell(match.row, match.col);
+        // Simple check, might need regex if partial match? 
+        // Handsontable search is partial by default.
+        // We will replace the WHOLE cell content or partial?
+        // Usually "Replace" in spreadsheets replaces the whole content if it matches, 
+        // OR replaces the substring. 
+        // Let's do substring replacement for better UX.
+        
+        const query = document.getElementById('findInput').value;
+        const newVal = String(cellData).replace(new RegExp(escapeRegExp(query), 'gi'), replaceVal); // Global case-insensitive
+
+        hot.setDataAtCell(match.row, match.col, newVal);
+        
+        // Move to next
+        doFind(1);
+    }
+
+    function doReplaceAll() {
+        if (!hot) return;
+        const query = document.getElementById('findInput').value;
+        const replaceVal = document.getElementById('replaceInput').value || '';
+        if (!query) return;
+
+        const plugin = hot.getPlugin('search');
+        const result = plugin.query(query);
+        
+        if (!result || result.length === 0) {
+            document.getElementById('searchMsg').textContent = '0 matches replaced.';
+            return;
+        }
+
+        const changes = [];
+        const regex = new RegExp(escapeRegExp(query), 'gi');
+
+        // Group by cell to avoid multiple replacements in same cell confusing indices (though query returns unique cells usually?)
+        // plugin.query returns array of {row, col, data}.
+        
+        result.forEach(({row, col, data}) => {
+            const newVal = String(data).replace(regex, replaceVal);
+            changes.push([row, col, newVal]);
+        });
+
+        hot.setDataAtCell(changes);
+        document.getElementById('searchMsg').textContent = `Replaced ${changes.length} instances.`;
+        searchResults = [];
+        currentSearchIdx = -1;
+        hot.render();
+    }
+
+    function escapeRegExp(string) {
+        return string.replace(/[.*+?^`{`}();|[\]\\]/g, '\\$&');
     }
 
     async function onAddSheet() {
@@ -319,6 +684,40 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     }
 
+    function onAddRow() {
+        if (!hot) return;
+        const data = hot.getSourceData();
+        data.push(convertItemToRow(null));
+        hot.loadData(data);
+        hot.selectCell(data.length - 1, 0);
+        handleChange();
+    }
+
+    function onAddSection() {
+        if (!hot) return;
+        const data = hot.getSourceData();
+        // Insert a section row
+        data.push({
+            id: null,
+            test_case_number: 'SECTION',
+            title: '--- Section Header ---',
+            priority: 'Medium',
+            precondition: '',
+            steps: '',
+            expected_result: '',
+            test_result: 'Not Required',
+            assignee_name: '',
+            comments: '',
+            bug_list: '',
+            meta_json: JSON.stringify({ backgroundColor: '#f3f4f6' })
+        });
+        hot.loadData(data);
+        hot.selectCell(data.length - 1, 1); // Select Title column
+        handleChange();
+    }
+
+    // updateSectionRowsColor removed
+
     function handleChange() {
         if (!dom.saveStatus) return;
         dom.saveStatus.textContent = tt('adhoc.unsaved','Unsaved changes...');
@@ -329,34 +728,106 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     async function saveChanges() {
         if (!hot || !currentSheetId) return;
-        const data = hot.getSourceData();
-        const payload = data
-            .map((row, idx) => ({
-                id: row.id ? Number(row.id) : null,
-                row_index: idx,
-                test_case_number: (row.test_case_number || '').trim(),
-                title: (row.title || '').trim(),
-                priority: row.priority,
-                precondition: (row.precondition || '').trim(),
-                steps: (row.steps || '').trim(),
-                expected_result: (row.expected_result || '').trim(),
-                test_result: row.test_result || null,
-                assignee_name: (row.assignee_name || '').trim(),
-                comments: (row.comments || '').trim(),
-                bug_list: (row.bug_list || '').trim(),
-            }))
-            .filter(r => r.id || r.title || r.test_case_number || r.comments || r.bug_list || r.assignee_name);
-
-        if (payload.length === 0) {
-            dom.saveStatus.textContent = tt('adhoc.saved','All changes saved');
-            dom.saveStatus.className = 'text-muted small';
+        
+        if (isSaving) {
+            isPendingSave = true;
             return;
         }
-
-        dom.saveStatus.textContent = tt('adhoc.saving','Saving...');
-        dom.saveStatus.className = 'text-info small';
-
+        
+        isSaving = true;
+        
         try {
+            // Normalization maps
+            const PRIORITY_MAP = {
+                'high': 'High',
+                'medium': 'Medium',
+                'low': 'Low'
+            };
+            const RESULT_MAP = {
+                'passed': 'Passed',
+                'failed': 'Failed',
+                'retest': 'Retest',
+                'not available': 'Not Available',
+                'pending': 'Pending',
+                'not required': 'Not Required'
+            };
+            const RESULT_VALUES = Object.values(RESULT_MAP);
+    
+            const data = hot.getSourceData();
+            
+            // Prune deletedItemIds
+            const currentIds = new Set(data.map(i => i.id).filter(id => id));
+            for (const id of deletedItemIds) {
+                if (currentIds.has(id)) {
+                    deletedItemIds.delete(id);
+                }
+            }
+    
+            const payload = data
+                .map((row, idx) => {
+                    // Check if Section
+                    const isSection = row.test_case_number === 'SECTION';
+    
+                    // Sanitize Priority
+                    let prio = (row.priority || '').toString().trim();
+                    const prioLower = prio.toLowerCase();
+                    
+                    if (isSection) {
+                        prio = 'Medium'; 
+                    } else {
+                        if (PRIORITY_MAP[prioLower]) {
+                            prio = PRIORITY_MAP[prioLower];
+                        } else if (!['High', 'Medium', 'Low'].includes(prio)) {
+                            prio = 'Medium'; 
+                        }
+                    }
+    
+                    // Sanitize Result
+                    let res = (row.test_result || '').toString().trim();
+                    const resLower = res.toLowerCase();
+                    
+                    if (isSection) {
+                        res = 'Not Required';
+                    } else {
+                        if (RESULT_MAP[resLower]) {
+                            res = RESULT_MAP[resLower];
+                        } else if (!RESULT_VALUES.includes(res)) {
+                            res = null; 
+                        }
+                    }
+    
+                    return {
+                        id: row.id ? Number(row.id) : null,
+                        row_index: idx,
+                        test_case_number: isSection ? 'SECTION' : (row.test_case_number || '').trim(),
+                        title: (row.title || '').trim(),
+                        priority: prio,
+                        precondition: (row.precondition || '').trim(),
+                        steps: (row.steps || '').trim(),
+                        expected_result: (row.expected_result || '').trim(),
+                        test_result: res,
+                        assignee_name: (row.assignee_name || '').trim(),
+                        comments: (row.comments || '').trim(),
+                        bug_list: (row.bug_list || '').trim(),
+                        meta_json: row.meta_json
+                    };
+                })
+                .filter(r => r.id || r.title || r.test_case_number || r.comments || r.bug_list || r.assignee_name);
+    
+            // Append Deletions
+            deletedItemIds.forEach(id => {
+                payload.push({ id: id, _delete: true });
+            });
+    
+            if (payload.length === 0) {
+                dom.saveStatus.textContent = tt('adhoc.saved','All changes saved');
+                dom.saveStatus.className = 'text-muted small';
+                return;
+            }
+    
+            dom.saveStatus.textContent = tt('adhoc.saving','Saving...');
+            dom.saveStatus.className = 'text-info small';
+    
             const resp = await window.AuthClient.fetch(`/api/adhoc-runs/${runId}/sheets/${currentSheetId}/items/batch`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -364,16 +835,22 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
             if (!resp.ok) throw new Error(tt('adhoc.saveFailed','Failed to save'));
             const result = await resp.json().catch(() => ({}));
+            
+            // Success - Clear deletions
+            deletedItemIds.clear();
+    
             if (result?.items?.length) {
-                const source = hot.getSourceData();
+                // Update IDs using setSourceDataAtCell
                 result.items.forEach(({ id, row_index }) => {
                     const idx = Number(row_index);
                     const newId = Number(id);
-                    if (Number.isInteger(idx) && idx >= 0 && idx < source.length && Number.isInteger(newId) && newId > 0) {
-                        source[idx].id = newId;
+                    
+                    if (Number.isInteger(idx) && idx >= 0 && Number.isInteger(newId) && newId > 0) {
+                        // Use physical index from getSourceData mapping
+                        hot.setSourceDataAtCell(idx, 'id', newId);
                     }
                 });
-                hot.loadData(source);
+                hot.render();
             }
             dom.saveStatus.textContent = tt('adhoc.saved','All changes saved');
             dom.saveStatus.className = 'text-muted small';
@@ -381,6 +858,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             console.error(e);
             dom.saveStatus.textContent = tt('adhoc.saveFailed','Error saving!');
             dom.saveStatus.className = 'text-danger small';
+        } finally {
+            isSaving = false;
+            if (isPendingSave) {
+                isPendingSave = false;
+                setTimeout(saveChanges, 100); // Small delay to debounce
+            }
         }
     }
 
@@ -429,7 +912,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function priorityRenderer(instance, td, row, col, prop, value, cellProperties) {
+        const rowData = instance.getSourceDataAtRow(instance.toPhysicalRow(row));
+        const isSection = rowData?.test_case_number === 'SECTION';
         Handsontable.renderers.TextRenderer.apply(this, arguments);
+        if (isSection) {
+            td.textContent = '';
+            td.style.backgroundColor = '#f3f4f6';
+            td.style.color = '#6b7280';
+            td.style.fontWeight = '600';
+            td.style.textAlign = 'center';
+            td.style.verticalAlign = 'middle';
+            return;
+        }
         const val = (value || '').toLowerCase();
         td.style.fontWeight = '600';
         td.style.textAlign = 'center';
@@ -451,7 +945,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function resultRenderer(instance, td, row, col, prop, value, cellProperties) {
+        const rowData = instance.getSourceDataAtRow(instance.toPhysicalRow(row));
+        const isSection = rowData?.test_case_number === 'SECTION';
         Handsontable.renderers.TextRenderer.apply(this, arguments);
+        if (isSection) {
+            td.textContent = '';
+            td.style.backgroundColor = '#f3f4f6';
+            td.style.color = '#6b7280';
+            td.style.fontWeight = '600';
+            td.style.textAlign = 'center';
+            td.style.verticalAlign = 'middle';
+            return;
+        }
         const val = (value || '').toLowerCase();
         td.style.fontWeight = '600';
         td.style.textAlign = 'center';

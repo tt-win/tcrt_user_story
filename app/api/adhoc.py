@@ -145,6 +145,7 @@ async def get_adhoc_run(
                     "bug_list": item.bug_list,
                     "attachments_json": item.attachments_json,
                     "execution_results_json": item.execution_results_json,
+                    "meta_json": item.meta_json,
                     "executed_at": item.executed_at,
                     "created_at": item.created_at,
                     "updated_at": item.updated_at
@@ -372,7 +373,7 @@ async def batch_update_items(
                     for field in [
                         'test_case_number', 'title', 'priority', 'precondition', 'steps',
                         'expected_result', 'comments', 'bug_list', 'test_result',
-                        'assignee_name', 'row_index'
+                        'assignee_name', 'row_index', 'meta_json'
                     ]:
                         if field in item_data:
                             setattr(item, field, item_data[field])
@@ -392,7 +393,8 @@ async def batch_update_items(
                 comments=item_data.get('comments'),
                 bug_list=item_data.get('bug_list'),
                 test_result=item_data.get('test_result'),
-                assignee_name=item_data.get('assignee_name')
+                assignee_name=item_data.get('assignee_name'),
+                meta_json=item_data.get('meta_json')
             )
             db.add(new_item)
             db.flush() # to get ID
