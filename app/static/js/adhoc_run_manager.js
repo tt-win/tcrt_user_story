@@ -244,7 +244,19 @@ function renderAdHocRuns(runs) {
                     <small class="text-muted">${escapeHtml(run.build_number)}</small>
                 </div>` : '';
 
-            const totalText = adhocT('adhoc.totalLabel','Total: {total} | Executed: {executed}').replace('{total}', String(run.total_test_cases || 0)).replace('{executed}', String(run.executed_cases || 0));
+            const adhocCounts = { total: 0, executed: 0 };
+            (run.sheets || []).forEach(s => {
+                (s.items || []).forEach(it => {
+                    const tcNum = String(it.test_case_number || '').toUpperCase();
+                    if (tcNum === 'SECTION') return;
+                    adhocCounts.total += 1;
+                    const res = (it.test_result || '').toLowerCase();
+                    if (res && res !== 'pending') adhocCounts.executed += 1;
+                });
+            });
+            const totalText = adhocT('adhoc.totalLabel','Total: {total} | Executed: {executed}')
+                .replace('{total}', String(adhocCounts.total))
+                .replace('{executed}', String(adhocCounts.executed));
             const totalLine = `
                 <div class="stats-item justify-content-between gap-2">
                     <div class="d-flex align-items-center gap-2 flex-grow-1">
@@ -305,8 +317,8 @@ function renderAdHocRuns(runs) {
                                 ${rerunBtn}
                                 <div class="position-relative flex-grow-1" style="min-width: 80px;" onclick="event.stopPropagation()">
                                     <button type="button" class="btn btn-warning btn-sm w-100" 
-                                            onclick="event.stopPropagation(); toggleAdHoc${getStatusText ? getStatusText(status) : status}Dropdown(this, ${run.id})">
-                                        <i class="fas fa-exchange-alt me-1"></i><span>${getStatusText ? getStatusText(status) : status}</span>
+                                            onclick="event.stopPropagation(); toggleAdHocStatusDropdown(this, ${run.id}, '${status}')">
+                                        <i class="fas fa-exchange-alt me-1"></i><span>${adhocT('common.status', 'Status')}</span>
                                         <i class="fas fa-chevron-down ms-1"></i>
                                     </button>
                                 </div>
@@ -363,7 +375,106 @@ async function deleteAdHocRun(id) {
     }
 }
 
+async function updateAdHocStatus(id, newStatus) {
+    try {
+        await window.AuthClient.fetch(`/api/adhoc-runs/${id}`, { 
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: newStatus })
+        });
+        loadTestRunConfigs();
+    } catch (e) {
+        console.error(e);
+        alert(adhocT('common.updateFailed','Failed to update status'));
+    }
+}
+
+async function rerunAdHocRun(id) {
+    if (!confirm(adhocT('adhoc.rerunConfirm','Re-run this Ad-hoc run? This will create a new active copy.'))) return;
+    try {
+        const resp = await window.AuthClient.fetch(`/api/adhoc-runs/${id}/rerun`, { method: 'POST' });
+        if (resp.ok) {
+            loadTestRunConfigs();
+        } else {
+            alert(adhocT('adhoc.rerunFailed','Failed to re-run'));
+        }
+    } catch (e) {
+        console.error(e);
+        alert(adhocT('adhoc.rerunFailed','Failed to re-run'));
+    }
+}
+
+function toggleAdHocStatusDropdown(btn, id, currentStatus) {
+    const dropdown = document.getElementById('customStatusDropdown');
+    const overlay = document.getElementById('statusDropdownOverlay');
+    if (!dropdown || !overlay) return;
+
+    // Define options (Active is starting state, cannot return to it)
+    const allOptions = [
+        { value: 'completed', label: 'Completed', icon: 'fa-check', color: 'text-success' },
+        { value: 'archived', label: 'Archived', icon: 'fa-archive', color: 'text-secondary' }
+    ];
+
+    // Status Transition Logic
+    const status = (currentStatus || 'active').toLowerCase();
+    let allowed = [];
+
+    switch (status) {
+        case 'active':
+            allowed = ['completed', 'archived'];
+            break;
+        case 'completed':
+            allowed = ['archived'];
+            break;
+        case 'archived':
+            allowed = [];
+            break;
+        default:
+            // Fallback for unknown states
+            allowed = ['completed', 'archived'];
+    }
+
+    // Filter options
+    const options = allOptions.filter(opt => allowed.includes(opt.value));
+
+    if (options.length === 0) {
+        // If no transitions allowed, maybe show a message or just don't show dropdown?
+        // Better to give feedback.
+        dropdown.innerHTML = '<div class="p-2 text-muted small text-center">No actions available</div>';
+    } else {
+        // Build HTML
+        dropdown.innerHTML = options.map(opt => `
+            <button class="custom-status-dropdown-item" onclick="updateAdHocStatus(${id}, '${opt.value}'); hideCustomStatusDropdown()">
+                <i class="fas ${opt.icon} ${opt.color} me-2"></i>
+                ${opt.label}
+            </button>
+        `).join('');
+    }
+
+    // Position logic (simple version, can be enhanced with Popper.js if available)
+    const rect = btn.getBoundingClientRect();
+    dropdown.style.top = `${rect.bottom + window.scrollY + 5}px`;
+    dropdown.style.left = `${rect.left + window.scrollX}px`;
+    // dropdown.style.display = 'block'; // Removed to rely on class
+    dropdown.classList.add('show');
+    overlay.classList.add('show');
+}
+
+// Global hide helper
+window.hideCustomStatusDropdown = function() {
+    const d = document.getElementById('customStatusDropdown');
+    const o = document.getElementById('statusDropdownOverlay');
+    if(d) {
+        d.classList.remove('show');
+        d.style.display = ''; // Clear inline style if any
+    }
+    if(o) o.classList.remove('show');
+};
+
 // Expose globals for inline handlers
 window.renderAdHocRuns = renderAdHocRuns;
 window.openAdHocRunModal = openAdHocRunModal;
 window.deleteAdHocRun = deleteAdHocRun;
+window.toggleAdHocStatusDropdown = toggleAdHocStatusDropdown;
+window.updateAdHocStatus = updateAdHocStatus;
+window.rerunAdHocRun = rerunAdHocRun;

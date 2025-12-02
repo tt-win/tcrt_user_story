@@ -252,6 +252,7 @@ COLUMN_CHECKS: Dict[str, List[ColumnSpec]] = {
     ],
     "adhoc_run_items": [
         ColumnSpec("meta_json", "TEXT", nullable=True, default=None),
+        ColumnSpec("jira_tickets", "TEXT", nullable=True, default=None),
     ],
     # TestCaseLocal 需要新增的附件標記欄位和 Set/Section 關聯欄位
     "test_cases": [
