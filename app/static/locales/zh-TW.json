@@ -708,7 +708,7 @@
   "testCase": {
     "section": "區段",
     "selectSection": "請選擇區段",
-    "tcgFilterPlaceholder": "輸入 TCG 單號",
+    "tcgFilterPlaceholder": "JIRA 單號",
     "testCaseNumberPlaceholder": "輸入測試案例編號",
     "testCasesCount": "個測試案例",
     "searchPlaceholder": "搜尋標題、描述...",

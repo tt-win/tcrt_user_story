@@ -709,7 +709,7 @@
     "section": "Section",
     "selectSection": "Select section",
     "testCasesCount": "Test Cases",
-    "tcgFilterPlaceholder": "Enter Ticket number",
+    "tcgFilterPlaceholder": "JIRA Ticket",
     "testCaseNumberPlaceholder": "Enter test case number",
     "searchPlaceholder": "Search title, description...",
     "batchActions": "Batch Actions",
