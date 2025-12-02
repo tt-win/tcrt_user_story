@@ -7,6 +7,12 @@
 
 {% block page_specific_actions %}
 <div class="d-flex gap-2 align-items-center">
+    <button type="button" class="btn btn-success" id="convertBtn">
+        <i class="fas fa-file-import me-2"></i><span data-i18n="adhoc.convertToTestCase">Convert to Test Case</span>
+    </button>
+    <button type="button" class="btn btn-info d-none" id="rerunBtn">
+        <i class="fas fa-redo me-2"></i><span data-i18n="adhoc.rerun">Re-run</span>
+    </button>
     <button type="button" class="btn btn-primary" id="reportsBtn">
         <i class="fas fa-chart-pie me-2"></i><span data-i18n="testRun.chartsReports">Charts & Reports</span>
     </button>
