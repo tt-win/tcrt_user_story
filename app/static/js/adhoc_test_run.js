@@ -306,16 +306,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function convertItemToRow(item) {
+        const isSection = (item?.test_case_number || '').trim().toUpperCase() === 'SECTION';
         return {
             id: item?.id || null,
             test_case_number: item?.test_case_number || '',
             title: item?.title || '',
-            priority: item?.priority || 'Medium',
-            precondition: item?.precondition || '',
-            steps: item?.steps || '',
-            expected_result: item?.expected_result || '',
-            test_result: item?.test_result || '',
-            assignee_name: item?.assignee_name || '',
+            priority: isSection ? '' : (item?.priority || 'Medium'),
+            precondition: isSection ? '' : (item?.precondition || ''),
+            steps: isSection ? '' : (item?.steps || ''),
+            expected_result: isSection ? '' : (item?.expected_result || ''),
+            test_result: isSection ? '' : (item?.test_result || ''),
+            assignee_name: isSection ? '' : (item?.assignee_name || ''),
             comments: item?.comments || '',
             bug_list: item?.bug_list || '',
             meta_json: item?.meta_json || '{}'
@@ -360,43 +361,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         // 2. Section Row Logic
         if (isSection) {
             td.classList.add('adhoc-section-cell');
-            
-            if (prop === 'title' || prop === 'test_case_number') {
-                td.classList.add('adhoc-section-center');
-                
-                if (prop === 'test_case_number') {
-                    td.style.color = '#6b7280';
-                }
+            td.style.textAlign = 'center';
+            td.style.backgroundColor = '#f3f4f6';
+            td.style.color = '#374151';
+            if (prop === 'test_case_number') {
+                td.style.color = '#6b7280';
+            } else if (prop === 'title') {
+                td.style.fontWeight = '700';
             } else {
-                // Hide content for other columns explicitly
-                td.innerHTML = '';
-                td.innerText = ''; 
+                td.textContent = '';
             }
         }
     }
 
-    function updateSectionMerges() {
-        if (!hot) return;
-        const plugin = hot.getPlugin('mergeCells');
-        if (!plugin) return;
-
-        plugin.clearCollections();
-        
-        const count = hot.countRows();
-        
-        for (let r = 0; r < count; r++) {
-            // Use visual row index 'r' for checking
-            const physicalRow = hot.toPhysicalRow(r);
-            if (physicalRow === null) continue;
-            
-            const rowData = hot.getSourceDataAtRow(physicalRow);
-            if (rowData && rowData.test_case_number === 'SECTION') {
-                // Merge Title (col 1) to end (col 9) - Visual indices
-                plugin.merge(r, 1, r, 9); 
-            }
-        }
-        hot.render();
-    }
+    // Merge disabled for Section rows (render-only styling)
 
     function initHot(data) {
         if (hot) {
@@ -424,11 +402,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             fillHandle: true,
             search: true, // Enable Search Plugin
             outsideClickDeselects: false, // Keep selection when clicking toolbar buttons
-            mergeCells: true, // Enable Merging
             undoRedo: false, // Disable Undo/Redo
-            afterLoadData: updateSectionMerges,
-            afterSort: updateSectionMerges,
-            afterFilter: updateSectionMerges,
             beforeRemoveRow: (index, amount, physicalRows) => {
                 if (!hot) return;
                 physicalRows.forEach(row => {
@@ -451,54 +425,61 @@ document.addEventListener('DOMContentLoaded', async () => {
                 const rowData = this.instance.getSourceDataAtRow(physicalRow);
                 
                 if (rowData && rowData.test_case_number === 'SECTION') {
-                    // Renderer is now handled by columns config, so no need to set here
-                    if (this.instance.colToProp(col) !== 'title') {
+                    const prop = this.instance.colToProp(col);
+                    cellProps.renderer = function(instance, td) {
+                        td.textContent = '';
+                        td.style.backgroundColor = '#f3f4f6';
+                        td.style.color = '#374151';
+                        td.style.textAlign = 'center';
+                        if (prop === 'test_case_number') {
+                            td.style.color = '#6b7280';
+                            td.textContent = rowData.test_case_number || 'SECTION';
+                        } else if (prop === 'title') {
+                            td.style.fontWeight = '700';
+                            td.textContent = rowData.title || '';
+                        }
+                    };
+                    if (prop !== 'title') {
                         cellProps.readOnly = true;
                     }
                 }
                 return cellProps;
             },
-            afterInit: fixAriaHidden,
+            afterInit: function() {
+                fixAriaHidden();
+                
+            },
             afterBeginEditing: fixAriaHidden,
             afterChange: (changes, source) => {
-                if (source === 'loadData' || source === 'autosave') return;
+                if (source === 'loadData' || source === 'autosave') {
+                    return;
+                }
                 handleChange();
             },
-            afterPaste: handleChange,
+            afterPaste: () => { handleChange(); },
         });
     }
 
     // --- Search & Replace Feature ---
 
-    // Inject Button
+    // Inject Button: Add Section (align with system button style)
     if (dom.addRow && !document.getElementById('addSectionBtn')) {
         const btn = document.createElement('button');
         btn.id = 'addSectionBtn';
-        btn.className = 'btn btn-sm btn-outline-secondary ms-2';
-        btn.innerHTML = '<i class="fas fa-heading me-1"></i> <span>Add Section</span>';
-        btn.onclick = onAddSection;
-        dom.addRow.parentNode.insertBefore(btn, dom.addRow.nextSibling);
-    }
-
-    // Inject Button
-    if (dom.addRow && !document.getElementById('addSectionBtn')) {
-        const btn = document.createElement('button');
-        btn.id = 'addSectionBtn';
-        btn.className = 'btn btn-sm btn-outline-secondary ms-2';
-        btn.innerHTML = '<i class="fas fa-heading me-1"></i> <span>Add Section</span>';
+        btn.className = 'btn btn-sm btn-primary ms-2';
+        btn.innerHTML = '<i class="fas fa-heading me-1"></i><span data-i18n="adhoc.addSection">Add Section</span>';
         btn.onclick = onAddSection;
         dom.addRow.parentNode.insertBefore(btn, dom.addRow.nextSibling);
     }
 
     // Color picker disabled (all)
 
-
-    // Inject Button
+    // Inject Button: Find & Replace (align with system secondary style)
     if (dom.addRow && !document.getElementById('searchReplaceBtn')) {
         const btn = document.createElement('button');
         btn.id = 'searchReplaceBtn';
         btn.className = 'btn btn-sm btn-secondary ms-2';
-        btn.innerHTML = '<i class="fas fa-search me-1"></i> <span>Search & Replace</span>';
+        btn.innerHTML = '<i class="fas fa-search me-1"></i><span data-i18n="adhoc.findReplace">Find & Replace</span>';
         btn.onclick = openSearchModal;
         btn.title = "Ctrl+F / ⌘+F";
         dom.addRow.parentNode.insertBefore(btn, dom.addRow.nextSibling);
@@ -535,12 +516,12 @@ document.addEventListener('DOMContentLoaded', async () => {
                             <input type="text" id="replaceInput" class="form-control form-control-sm" placeholder="Replace with...">
                         </div>
                         <div class="d-flex justify-content-between mb-2">
-                            <button id="findNextBtn" class="btn btn-sm btn-outline-primary flex-grow-1 me-1">Find Next</button>
-                            <button id="findPrevBtn" class="btn btn-sm btn-outline-primary flex-grow-1">Find Prev</button>
+                            <button id="findNextBtn" class="btn btn-sm btn-primary flex-grow-1 me-1">Find Next</button>
+                            <button id="findPrevBtn" class="btn btn-sm btn-primary flex-grow-1">Find Prev</button>
                         </div>
                         <div class="d-flex justify-content-between">
-                            <button id="replaceBtn" class="btn btn-sm btn-outline-dark flex-grow-1 me-1">Replace</button>
-                            <button id="replaceAllBtn" class="btn btn-sm btn-outline-dark flex-grow-1">Replace All</button>
+                            <button id="replaceBtn" class="btn btn-sm btn-secondary flex-grow-1 me-1">Replace</button>
+                            <button id="replaceAllBtn" class="btn btn-sm btn-secondary flex-grow-1">Replace All</button>
                         </div>
                         <div id="searchMsg" class="text-muted small mt-2 text-center" style="min-height: 1.2em;"></div>
                     </div>

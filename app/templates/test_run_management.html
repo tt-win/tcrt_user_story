@@ -1174,6 +1174,9 @@
                         <button type="button" class="btn btn-warning btn-sm" id="setDetailArchiveBtn">
                             <i class="fas fa-archive me-1"></i><span data-i18n="testRun.sets.detail.archive">Archive</span>
                         </button>
+                        <button type="button" class="btn btn-outline-primary btn-sm" id="setDetailReportBtn">
+                            <i class="fas fa-chart-pie me-1"></i><span data-i18n="testRun.sets.detail.report">Report</span>
+                        </button>
                         <button type="button" class="btn btn-danger btn-sm" id="setDetailDeleteBtn">
                             <i class="fas fa-trash me-1"></i><span data-i18n="common.delete">刪除</span>
                         </button>
@@ -1184,6 +1187,68 @@
                 <div class="mt-4" id="testRunSetRunsContainer"></div>
             </div>
             <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.close">關閉</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Test Run Set Report Modal -->
+<div class="modal fade" id="testRunSetReportModal" tabindex="-1">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable" style="max-width: 1400px;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title d-flex align-items-center gap-2">
+                    <i class="fas fa-chart-pie text-primary"></i>
+                    <span id="setReportTitle"></span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3 d-flex flex-wrap gap-3 align-items-center">
+                    <span id="setReportStatusBadge"></span>
+                    <span class="text-muted small" id="setReportMeta"></span>
+                </div>
+                <div class="mb-3" id="setReportDescription"></div>
+
+                <div class="card mb-3">
+                    <div class="card-body p-3">
+                        <div class="row g-3" id="setReportStatGrid"></div>
+                    </div>
+                </div>
+
+                <div class="mb-2 d-flex flex-wrap align-items-center gap-2" id="setReportHtmlRow">
+                    <span class="fw-semibold" data-i18n="testRun.sets.detail.reportLink">HTML Report</span>
+                    <span class="text-muted small" id="setReportHtmlStatus"></span>
+                    <a class="btn btn-outline-secondary btn-sm d-none" target="_blank" rel="noopener noreferrer" id="setReportOpenHtmlBtn">
+                        <i class="fas fa-external-link-alt me-1"></i><span data-i18n="testRun.sets.detail.openReport">開啟報告</span>
+                    </a>
+                </div>
+
+                <div class="table-responsive border rounded">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Test Run</th>
+                                <th>狀態</th>
+                                <th class="text-center">執行率</th>
+                                <th class="text-center">Pass Rate</th>
+                                <th class="text-center">總案例</th>
+                                <th class="text-center">已執行</th>
+                                <th class="text-center">通過</th>
+                                <th>環境</th>
+                                <th>版本</th>
+                            </tr>
+                        </thead>
+                        <tbody id="setReportRunsBody"></tbody>
+                    </table>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-primary" id="setReportGenerateHtmlBtn">
+                    <i class="fas fa-file-alt me-1" id="setReportGenerateIcon"></i>
+                    <span id="setReportGenerateText" data-i18n="testRun.generateHtmlButton">生成並複製連結</span>
+                </button>
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.close">關閉</button>
             </div>
         </div>
@@ -1625,6 +1690,9 @@ function bindEventListeners() {
 
     const confirmAddExistingBtn = document.getElementById('confirmAddExistingToSetBtn');
     if (confirmAddExistingBtn) confirmAddExistingBtn.addEventListener('click', confirmAddExistingToSet);
+
+    const setReportGenerateBtn = document.getElementById('setReportGenerateHtmlBtn');
+    if (setReportGenerateBtn) setReportGenerateBtn.addEventListener('click', generateTestRunSetHtmlReport);
     
     // 狀態過濾事件監聽器
     document.querySelectorAll('input[name="statusFilter"]').forEach(radio => {
@@ -1805,6 +1873,175 @@ function summarizeSetMetrics(testRuns) {
     const passRate = executedCases > 0 ? (passedCases / executedCases) * 100 : 0;
 
     return { totalCases, executedCases, passedCases, executionRate, passRate };
+}
+
+// ------- Test Run Set Report -------
+let testRunSetReportModalInstance = null;
+
+function openTestRunSetReport(setData) {
+    if (!setData) return;
+    renderTestRunSetReport(setData);
+    refreshSetHtmlReportStatus(setData.id);
+    if (!testRunSetReportModalInstance) {
+        testRunSetReportModalInstance = new bootstrap.Modal(document.getElementById('testRunSetReportModal'));
+    }
+    testRunSetReportModalInstance.show();
+}
+
+function renderTestRunSetReport(setData) {
+    const titleEl = document.getElementById('setReportTitle');
+    const statusEl = document.getElementById('setReportStatusBadge');
+    const metaEl = document.getElementById('setReportMeta');
+    const descEl = document.getElementById('setReportDescription');
+    const statGrid = document.getElementById('setReportStatGrid');
+    const runsBody = document.getElementById('setReportRunsBody');
+
+    const runs = Array.isArray(setData.test_runs) ? setData.test_runs : [];
+    const metrics = summarizeSetMetrics(runs);
+    const statusCounts = runs.reduce((acc, run) => {
+        const key = String(run.status || 'unknown').toLowerCase();
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+    }, {});
+
+    if (titleEl) titleEl.textContent = setData.name || '';
+    if (statusEl) statusEl.innerHTML = getSetStatusBadge(setData.status);
+    if (metaEl) metaEl.textContent = `Test Run: ${runs.length} · 總案例: ${metrics.totalCases} · 執行率 ${Math.round(metrics.executionRate)}% · Pass Rate ${Math.round(metrics.passRate)}%`;
+    if (descEl) {
+        descEl.innerHTML = setData.description ? escapeHtml(setData.description).replace(/\n/g, '<br>') : '<span class="text-muted" data-i18n="testRun.sets.detail.noDescription">尚未填寫描述</span>';
+    }
+
+    if (statGrid) {
+        statGrid.innerHTML = `
+            <div class="col-6 col-md-3">
+                <div class="small text-muted">Active</div>
+                <div class="fw-semibold">${statusCounts['active'] || 0}</div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="small text-muted">Completed</div>
+                <div class="fw-semibold">${statusCounts['completed'] || 0}</div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="small text-muted">Archived</div>
+                <div class="fw-semibold">${statusCounts['archived'] || 0}</div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="small text-muted">草稿/其他</div>
+                <div class="fw-semibold">${statusCounts['draft'] || 0}</div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="small text-muted">總案例</div>
+                <div class="fw-semibold">${metrics.totalCases}</div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="small text-muted">已執行</div>
+                <div class="fw-semibold">${metrics.executedCases}</div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="small text-muted">執行率</div>
+                <div class="fw-semibold">${Math.round(metrics.executionRate)}%</div>
+            </div>
+            <div class="col-6 col-md-3">
+                <div class="small text-muted">Pass Rate</div>
+                <div class="fw-semibold">${Math.round(metrics.passRate)}%</div>
+            </div>
+        `;
+    }
+
+    if (runsBody) {
+        if (!runs.length) {
+            runsBody.innerHTML = '<tr><td colspan="9" class="text-center text-muted py-3">尚未加入任何 Test Run</td></tr>';
+        } else {
+            runsBody.innerHTML = runs.map(run => {
+                const execRate = run.total_test_cases > 0 ? Math.round((run.executed_cases || 0) / run.total_test_cases * 100) : 0;
+                const passRate = (run.executed_cases || 0) > 0 ? Math.round((run.passed_cases || 0) / run.executed_cases * 100) : 0;
+                return `
+                    <tr>
+                        <td>${escapeHtml(run.name || '')}</td>
+                        <td><span class="status-badge ${getStatusClass(run.status)}">${getStatusText(run.status)}</span></td>
+                        <td class="text-center">${execRate}%</td>
+                        <td class="text-center">${passRate}%</td>
+                        <td class="text-center">${run.total_test_cases || 0}</td>
+                        <td class="text-center">${run.executed_cases || 0}</td>
+                        <td class="text-center">${run.passed_cases || 0}</td>
+                        <td>${escapeHtml(run.test_environment || '-')}</td>
+                        <td>${escapeHtml(run.test_version || '-')}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+    }
+}
+
+async function refreshSetHtmlReportStatus(setId) {
+    const statusEl = document.getElementById('setReportHtmlStatus');
+    const openBtn = document.getElementById('setReportOpenHtmlBtn');
+    if (openBtn) openBtn.classList.add('d-none');
+    if (statusEl) statusEl.textContent = '';
+    if (!currentTeamId) return;
+
+    try {
+        const resp = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-sets/${setId}/report`);
+        const data = await resp.json();
+        if (resp.ok && data.exists) {
+            if (statusEl) statusEl.textContent = '已有報告，可直接開啟';
+            if (openBtn && data.report_url) {
+                openBtn.href = data.report_url;
+                openBtn.classList.remove('d-none');
+            }
+        } else if (statusEl) {
+            statusEl.textContent = '尚未生成報告';
+        }
+    } catch (e) {
+        if (statusEl) statusEl.textContent = '查詢報告狀態失敗';
+    }
+}
+
+async function generateTestRunSetHtmlReport() {
+    const btn = document.getElementById('setReportGenerateHtmlBtn');
+    const icon = document.getElementById('setReportGenerateIcon');
+    const text = document.getElementById('setReportGenerateText');
+    if (!currentSetContext || !currentTeamId || !btn) return;
+
+    const defaultLabel = (window.i18n?.t('testRun.generateHtmlButton') || '生成並複製連結');
+    const loadingLabel = (window.i18n?.t('testRun.generatingHtml') || '生成中...');
+
+    try {
+        btn.disabled = true;
+        if (icon) {
+            icon.classList.remove('fa-file-alt');
+            icon.classList.add('fa-spinner', 'fa-spin');
+        }
+        if (text) text.textContent = loadingLabel;
+
+        const resp = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-sets/${currentSetContext.id}/generate-html`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await resp.json();
+        if (!resp.ok || !data.success) {
+            throw new Error(data?.detail || '生成失敗');
+        }
+
+        if (data.report_url) {
+            if (window.AppUtils?.showCopyModal) {
+                window.AppUtils.showCopyModal(data.report_url);
+            } else {
+                window.prompt('請手動複製此連結：', data.report_url);
+            }
+        }
+        refreshSetHtmlReportStatus(currentSetContext.id);
+    } catch (error) {
+        const msg = error?.message || '生成失敗';
+        AppUtils.showError(`生成 HTML 報告時發生錯誤：${msg}`);
+    } finally {
+        btn.disabled = false;
+        if (icon) {
+            icon.classList.remove('fa-spinner', 'fa-spin');
+            icon.classList.add('fa-file-alt');
+        }
+        if (text) text.textContent = defaultLabel;
+    }
 }
 
 function createTestRunSetCard(set, filterStatus) {
@@ -2855,12 +3092,14 @@ function renderTestRunSetDetail(setData, filterStatus = 'all') {
     const addExistingBtn = document.getElementById('setDetailAddExistingBtn');
     const editBtn = document.getElementById('setDetailEditBtn');
     const archiveBtn = document.getElementById('setDetailArchiveBtn');
+    const reportBtn = document.getElementById('setDetailReportBtn');
     const deleteBtn = document.getElementById('setDetailDeleteBtn');
 
     setElementVisibility('setDetailCreateConfigBtn', perms.canCreate);
     setElementVisibility('setDetailAddExistingBtn', perms.canCreate);
     setElementVisibility('setDetailEditBtn', perms.canUpdate);
     setElementVisibility('setDetailArchiveBtn', perms.canUpdate);
+    setElementVisibility('setDetailReportBtn', true);
     setElementVisibility('setDetailDeleteBtn', perms.canDelete);
 
     if (createBtn) {
@@ -2887,6 +3126,11 @@ function renderTestRunSetDetail(setData, filterStatus = 'all') {
             archiveBtn.innerHTML = '<i class="fas fa-archive me-1"></i><span data-i18n="testRun.sets.detail.archive">Archive</span>';
             archiveBtn.onclick = () => toggleArchiveTestRunSet(setData, 'archived');
         }
+    }
+
+    if (reportBtn) {
+        reportBtn.disabled = false;
+        reportBtn.onclick = () => openTestRunSetReport(setData);
     }
 
     if (deleteBtn) {

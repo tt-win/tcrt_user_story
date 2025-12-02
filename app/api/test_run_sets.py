@@ -7,7 +7,7 @@ from typing import List, Optional
 import json
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status, Body
+from fastapi import APIRouter, Depends, HTTPException, Query, status, Body, Request
 from sqlalchemy.orm import Session, joinedload
 from typing import Dict, Any
 
@@ -528,6 +528,63 @@ def archive_test_run_set(
         created_at=test_run_set.created_at,
         updated_at=test_run_set.updated_at,
     )
+
+
+@router.post("/{set_id}/generate-html")
+def generate_test_run_set_html_report(
+    team_id: int,
+    set_id: int,
+    request: Request,
+    db: Session = Depends(get_sync_db),
+):
+    """生成 Test Run Set 的靜態 HTML 報告並回傳可存取連結"""
+    verify_team_exists(team_id, db)
+    _load_set_or_404(db, team_id, set_id)
+
+    try:
+        from ..services.html_report_service import HTMLReportService
+
+        service = HTMLReportService(db_session=db)
+        result = service.generate_test_run_set_report(team_id=team_id, set_id=set_id)
+        base = str(request.base_url).rstrip("/")
+        absolute_url = f"{base}{result['report_url']}"
+        return {
+            "success": True,
+            "report_id": result["report_id"],
+            "report_url": absolute_url,
+            "generated_at": result.get("generated_at"),
+            "overwritten": result.get("overwritten", True),
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"HTML 報告生成失敗: {str(e)}",
+        )
+
+
+@router.get("/{set_id}/report", response_model=dict)
+def get_test_run_set_report_status(
+    team_id: int,
+    set_id: int,
+    request: Request,
+    db: Session = Depends(get_sync_db),
+):
+    """查詢 Test Run Set 的 HTML 報告是否存在，存在則回傳連結"""
+
+    verify_team_exists(team_id, db)
+    _load_set_or_404(db, team_id, set_id)
+
+    from ..services.html_report_service import HTMLReportService
+
+    service = HTMLReportService(db_session=db)
+    report_id = f"team-{team_id}-set-{set_id}"
+    report_path = service.report_root / f"{report_id}.html"
+    exists = report_path.exists()
+    base = str(request.base_url).rstrip("/")
+    report_url = f"{base}/reports/{report_id}.html"
+    return {"exists": exists, "report_url": report_url if exists else None}
 
 
 @router.get("/search/tp", response_model=List[TestRunSetSummary])
