@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any, Dict, List, Optional
+from collections import Counter
 import os
 import json
 from pathlib import Path
@@ -36,6 +37,24 @@ class HTMLReportService:
         html = self._render_html(data)
 
         # Atomic write
+        final_path = self.report_root / f"{report_id}.html"
+        tmp_path = self.tmp_root / f"{report_id}-{datetime.utcnow().timestamp()}.html"
+        with open(tmp_path, "w", encoding="utf-8") as f:
+            f.write(html)
+        os.replace(tmp_path, final_path)
+
+        return {
+            "report_id": report_id,
+            "report_url": f"/reports/{report_id}.html",
+            "generated_at": datetime.utcnow().isoformat(),
+            "overwritten": True,
+        }
+
+    def generate_test_run_set_report(self, team_id: int, set_id: int) -> Dict[str, Any]:
+        data = self._collect_set_report_data(team_id, set_id)
+        report_id = f"team-{team_id}-set-{set_id}"
+        html = self._render_set_html(data)
+
         final_path = self.report_root / f"{report_id}.html"
         tmp_path = self.tmp_root / f"{report_id}-{datetime.utcnow().timestamp()}.html"
         with open(tmp_path, "w", encoding="utf-8") as f:
@@ -217,6 +236,121 @@ class HTMLReportService:
             "bug_tickets": bug_tickets,
         }
 
+    def _collect_set_report_data(self, team_id: int, set_id: int) -> Dict[str, Any]:
+        from ..models.database_models import (
+            TestRunSet as TestRunSetDB,
+            TestRunSetMembership as TestRunSetMembershipDB,
+            TestRunConfig as TestRunConfigDB,
+        )
+        from ..models.test_run_set import TestRunSetStatus
+        from ..models.test_run_config import TestRunStatus
+
+        # 預先載入 memberships 與 config 以避免 N+1
+        set_db: Optional[TestRunSetDB] = (
+            self.db_session.query(TestRunSetDB)
+            .outerjoin(
+                TestRunSetMembershipDB,
+                TestRunSetMembershipDB.set_id == TestRunSetDB.id,
+            )
+            .outerjoin(
+                TestRunConfigDB,
+                TestRunSetMembershipDB.config_id == TestRunConfigDB.id,
+            )
+            .options(joinedload(TestRunSetDB.memberships).joinedload(TestRunSetMembershipDB.config))
+            .filter(TestRunSetDB.id == set_id, TestRunSetDB.team_id == team_id)
+            .first()
+        )
+
+        if not set_db:
+            raise ValueError(f"找不到 Test Run Set (team_id={team_id}, set_id={set_id})")
+
+        runs: List[Dict[str, Any]] = []
+        status_counter: Counter[str] = Counter()
+        total_cases = executed_cases = passed_cases = failed_cases = 0
+
+        # 依 position/id 排序，避免輸出順序不固定
+        memberships = sorted(
+            getattr(set_db, "memberships", []) or [],
+            key=lambda m: (m.position or 0, m.id or 0),
+        )
+
+        for member in memberships:
+            cfg: Optional[TestRunConfigDB] = getattr(member, "config", None)
+            if not cfg or cfg.team_id != team_id:
+                continue
+
+            total = cfg.total_test_cases or 0
+            executed = cfg.executed_cases or 0
+            passed = cfg.passed_cases or 0
+            failed = cfg.failed_cases or 0
+            status_val = cfg.status.value if hasattr(cfg.status, "value") else cfg.status
+
+            total_cases += total
+            executed_cases += executed
+            passed_cases += passed
+            failed_cases += failed
+            status_counter[status_val or "unknown"] += 1
+
+            execution_rate = (executed / total * 100) if total > 0 else 0
+            pass_rate = (passed / executed * 100) if executed > 0 else 0
+
+            runs.append({
+                "id": cfg.id,
+                "name": cfg.name,
+                "status": status_val,
+                "execution_rate": execution_rate,
+                "pass_rate": pass_rate,
+                "total_test_cases": total,
+                "executed_cases": executed,
+                "passed_cases": passed,
+                "failed_cases": failed,
+                "test_environment": cfg.test_environment,
+                "build_number": cfg.build_number,
+                "test_version": cfg.test_version,
+                "created_at": cfg.created_at,
+                "start_date": cfg.start_date,
+                "end_date": cfg.end_date,
+            })
+
+        overall_execution_rate = (executed_cases / total_cases * 100) if total_cases > 0 else 0
+        overall_pass_rate = (passed_cases / executed_cases * 100) if executed_cases > 0 else 0
+
+        set_status = set_db.status.value if hasattr(set_db.status, "value") else set_db.status
+        resolved_status = set_status
+        if set_status != TestRunSetStatus.ARCHIVED:
+            # 若未歸檔，透過成員狀態計算呈現狀態
+            member_statuses = [TestRunStatus(str(s)) for s in status_counter.elements() if s]
+            if member_statuses and all(s in (TestRunStatus.COMPLETED, TestRunStatus.ARCHIVED) for s in member_statuses):
+                resolved_status = TestRunSetStatus.COMPLETED.value
+            else:
+                resolved_status = TestRunSetStatus.ACTIVE.value
+
+        return {
+            "team_id": team_id,
+            "set_id": set_id,
+            "generated_at": datetime.utcnow(),
+            "set_name": set_db.name,
+            "set_description": set_db.description or "",
+            "status": resolved_status,
+            "run_count": len(runs),
+            "created_at": set_db.created_at,
+            "updated_at": set_db.updated_at,
+            "related_tp_tickets": []
+            if not set_db.related_tp_tickets_json
+            else json.loads(set_db.related_tp_tickets_json) if isinstance(set_db.related_tp_tickets_json, str) else set_db.related_tp_tickets_json,
+            "statistics": {
+                "total_runs": len(runs),
+                "status_counts": dict(status_counter),
+                "total_cases": total_cases,
+                "executed_cases": executed_cases,
+                "passed_cases": passed_cases,
+                "failed_cases": failed_cases,
+                "execution_rate": overall_execution_rate,
+                "pass_rate": overall_pass_rate,
+            },
+            "runs": runs,
+        }
+
     # ---------------- Rendering ----------------
     def _status_class(self, status_text: str) -> str:
         st = (status_text or '').strip().lower()
@@ -233,6 +367,21 @@ class HTMLReportService:
         if st in ('not executed', '未執行', 'pending'):
             return 'pending'
         return 'pending'
+
+    def _set_status_badge(self, status: str) -> str:
+        key = (status or '').lower()
+        class_name = 'status-active'
+        label = status or 'unknown'
+        if key == 'completed':
+            class_name = 'status-completed'
+            label = 'Completed'
+        elif key == 'archived':
+            class_name = 'status-archived'
+            label = 'Archived'
+        elif key == 'active':
+            class_name = 'status-active'
+            label = 'Active'
+        return f'<span class="pill {class_name}">{self._html_escape(label)}</span>'
 
     def _html_escape(self, text: Any) -> str:
         if text is None:
@@ -464,79 +613,112 @@ class HTMLReportService:
 """
         return html
 
-        # Bug tickets section
-        bt = data.get('bug_tickets', [])
-        if bt:
-            bug_rows = []
-            for t in bt:
-                cases_html = "".join([
-                    f"<tr><td><code>{esc(c.get('test_case_number'))}</code></td><td>{esc(c.get('title'))}</td><td><span class='pill {self._status_class(c.get('test_result'))}'>{esc(c.get('test_result'))}</span></td></tr>"
-                    for c in t.get('test_cases', [])
-                ])
-                bug_rows.append(
-                    f"""
-                    <div class=\"card\" style=\"margin-bottom:12px;\">
-                      <div><strong>Ticket</strong>: <span class=\"badge\">{esc(t.get('ticket_number'))}</span></div>
-                      <div class=\"section\" style=\"margin-top:8px;\">
-                        <table>
-                          <tr><th style=\"width:180px;\">Test Case Number</th><th>Title</th><th style=\"width:140px;\">Result</th></tr>
-                          {cases_html}
-                        </table>
-                      </div>
-                    </div>
-                    """
-                )
-            bugs_html = f"""
-            <div class=\"section card\">
-              <h2>Bug Tickets</h2>
-              {''.join(bug_rows)}
+    def _render_set_html(self, data: Dict[str, Any]) -> str:
+        css = """
+        :root {
+          --tr-primary: #0d6efd;
+          --tr-success: #198754;
+          --tr-danger: #dc3545;
+          --tr-warning: #ffc107;
+          --tr-secondary: #6c757d;
+          --tr-surface: #ffffff;
+          --tr-border: #e5e7eb;
+          --tr-muted: #666;
+          --tr-text: #222;
+          --tr-table-head: #f8fafc;
+        }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Noto Sans TC', 'Helvetica Neue', Arial, 'PingFang TC', 'Microsoft JhengHei', sans-serif; color: var(--tr-text); margin: 24px; background: var(--tr-surface); }
+        h1, h2, h3 { margin: 0.2em 0; }
+        h1 { color: var(--tr-primary); }
+        .muted { color: var(--tr-muted); }
+        .section { margin-top: 24px; }
+        .card { border: 1px solid var(--tr-border); border-radius: 8px; padding: 16px; background: #fff; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid var(--tr-border); padding: 8px; text-align: left; vertical-align: top; }
+        th { background: var(--tr-table-head); color: #374151; }
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px,1fr)); gap: 12px; }
+        .stat { font-size: 20px; font-weight: 600; }
+        .small { font-size: 12px; }
+        .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+        .pill.status-active { background: rgba(13,110,253,.12); color: var(--tr-primary); border: 1px solid rgba(13,110,253,.3); }
+        .pill.status-completed { background: rgba(25,135,84,.12); color: var(--tr-success); border: 1px solid rgba(25,135,84,.3); }
+        .pill.status-archived { background: rgba(108,117,125,.12); color: var(--tr-secondary); border: 1px solid rgba(108,117,125,.3); }
+        .footer { margin-top: 32px; border-top: 1px solid var(--tr-border); padding-top: 12px; font-size: 12px; color: #6b7280; }
+        @media print { .no-print { display: none; } body { margin: 0; } }
+        """
+
+        esc = self._html_escape
+        stats = data.get("statistics", {})
+        status_counts = stats.get("status_counts", {})
+        runs = data.get("runs", [])
+
+        header_html = f"""
+        <div>
+          <h1>Test Run Set 報告</h1>
+          <div class=\"muted\">生成時間：{esc(data.get('generated_at').strftime('%Y-%m-%d %H:%M'))}</div>
+          <div class=\"section card\">
+            <div class=\"grid\">
+              <div>
+                <div class=\"small muted\">名稱</div>
+                <div class=\"stat\">{esc(data.get('set_name'))}</div>
+              </div>
+              <div>
+                <div class=\"small muted\">狀態</div>
+                <div>{self._set_status_badge(data.get('status'))}</div>
+              </div>
+              <div>
+                <div class=\"small muted\">成員 Test Run</div>
+                <div class=\"stat\">{stats.get('total_runs', 0)}</div>
+              </div>
+              <div>
+                <div class=\"small muted\">建立時間</div>
+                <div>{esc(data.get('created_at').strftime('%Y-%m-%d %H:%M') if data.get('created_at') else '')}</div>
+              </div>
             </div>
-            """
-        else:
-            bugs_html = f"""
-            <div class=\"section card\">
-              <h2>Bug Tickets</h2>
-              <div class=\"muted\">無關聯的 Bug Tickets</div>
+            <div class=\"section\">
+              <div class=\"small muted\">描述</div>
+              <div>{esc(data.get('set_description'))}</div>
             </div>
-            """
+          </div>
+        </div>
+        """
 
-        rows = []
-        rows.append("<tr><th style=\"width:160px;\">Test Case Number</th><th>Title</th><th style=\"width:100px;\">Priority</th><th style=\"width:140px;\">Result</th><th style=\"width:160px;\">Executor</th><th style=\"width:160px;\">Executed At</th><th style=\"width:200px;\">Comment</th><th style=\"width:200px;\">Attachments</th></tr>")
-        for r in data.get("test_results", []):
-            status_text = r.get('status') or ''
-            status_class = self._status_class(status_text)
-            comment = r.get('comment') or ''
+        summary_html = f"""
+        <div class=\"section card\">
+          <h2>執行摘要</h2>
+          <div class=\"grid\">
+            <div><div class=\"small muted\">Active</div><div class=\"stat\">{status_counts.get('active', 0)}</div></div>
+            <div><div class=\"small muted\">Completed</div><div class=\"stat\">{status_counts.get('completed', 0)}</div></div>
+            <div><div class=\"small muted\">Archived</div><div class=\"stat\">{status_counts.get('archived', 0)}</div></div>
+            <div><div class=\"small muted\">總案例</div><div class=\"stat\">{stats.get('total_cases', 0)}</div></div>
+            <div><div class=\"small muted\">已執行案例</div><div class=\"stat\">{stats.get('executed_cases', 0)}</div></div>
+            <div><div class=\"small muted\">執行率</div><div class=\"stat\">{int(stats.get('execution_rate', 0))}%</div></div>
+            <div><div class=\"small muted\">Pass Rate</div><div class=\"stat\">{int(stats.get('pass_rate', 0))}%</div></div>
+          </div>
+        </div>
+        """
 
-            # 渲染附加檔案
-            attachments = r.get('attachments') or []
-            if attachments:
-                attachments_html = '<div style="font-size: 12px;">'
-                for att in attachments:
-                    att_name = esc(att.get('name', 'file'))
-                    att_url = att.get('url', '')
-                    if att_url:
-                        attachments_html += f'<div><a href="{esc(att_url)}" target="_blank" rel="noopener noreferrer" style="color: #0d6efd; text-decoration: underline;">{att_name}</a></div>'
-                    else:
-                        attachments_html += f'<div>{att_name}</div>'
-                attachments_html += '</div>'
-            else:
-                attachments_html = '-'
-
+        rows = [
+            "<tr><th style=\"width:260px;\">Test Run</th><th style=\"width:120px;\">狀態</th><th style=\"width:120px;\">執行率</th><th style=\"width:120px;\">Pass Rate</th><th style=\"width:120px;\">總案例</th><th style=\"width:120px;\">已執行</th><th style=\"width:120px;\">通過</th><th>環境</th><th>版本</th></tr>"
+        ]
+        for run in runs:
             rows.append(
                 "<tr>"
-                f"<td>{esc(r.get('test_case_number'))}</td>"
-                f"<td>{esc(r.get('title'))}</td>"
-                f"<td>{esc(r.get('priority'))}</td>"
-                f"<td><span class=\"pill {status_class}\">{esc(status_text)}</span></td>"
-                f"<td>{esc(r.get('executor'))}</td>"
-                f"<td>{esc(r.get('execution_time'))}</td>"
-                f"<td style=\"white-space: pre-wrap;\">{esc(comment)}</td>"
-                f"<td>{attachments_html}</td>"
+                f"<td>{esc(run.get('name'))}</td>"
+                f"<td>{self._set_status_badge(run.get('status'))}</td>"
+                f"<td>{int(run.get('execution_rate', 0))}%</td>"
+                f"<td>{int(run.get('pass_rate', 0))}%</td>"
+                f"<td>{run.get('total_test_cases', 0)}</td>"
+                f"<td>{run.get('executed_cases', 0)}</td>"
+                f"<td>{run.get('passed_cases', 0)}</td>"
+                f"<td>{esc(run.get('test_environment') or '-')}</td>"
+                f"<td>{esc(run.get('test_version') or '-')}</td>"
                 "</tr>"
             )
-        details_html = f"""
-        <div class="section card">
-          <h2>詳細測試結果</h2>
+
+        runs_html = f"""
+        <div class=\"section card\">
+          <h2>成員 Test Run 概覽</h2>
           <table>
             {''.join(rows)}
           </table>
@@ -544,26 +726,25 @@ class HTMLReportService:
         """
 
         footer = """
-        <div class="footer">
-          <div>本頁為靜態報告，僅呈現測試執行結果，不提供任何操作介面。</div>
+        <div class=\"footer\">
+          <div>本頁為靜態報告，僅呈現 Test Run Set 統計，資訊來源於當前資料庫快照。</div>
         </div>
         """
 
         html = f"""<!doctype html>
-<html lang="zh-Hant">
+<html lang=\"zh-Hant\">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-  <meta name="robots" content="noindex,nofollow" />
-  <title>Test Run 報告 - {esc(data.get('test_run_name'))}</title>
+  <meta charset=\"utf-8\" />
+  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\" />
+  <meta http-equiv=\"X-UA-Compatible\" content=\"IE=edge\" />
+  <meta name=\"robots\" content=\"noindex,nofollow\" />
+  <title>Test Run Set 報告 - {esc(data.get('set_name'))}</title>
   <style>{css}</style>
 </head>
 <body>
   {header_html}
-  {stats_html}
-  {bugs_html}
-  {details_html}
+  {summary_html}
+  {runs_html}
   {footer}
 </body>
 </html>

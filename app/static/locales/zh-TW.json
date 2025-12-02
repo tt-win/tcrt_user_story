@@ -1383,7 +1383,10 @@
         "noFilterMatches": "目前沒有符合篩選條件的 Test Run",
         "moveToOther": "搬移至其他 Set",
         "relatedTpTickets": "相關 JIRA Tickets",
-        "remove": "移出 Test Run Set"
+        "remove": "移出 Test Run Set",
+        "report": "報告",
+        "reportLink": "報告連結",
+        "openReport": "開啟報告"
       },
       "addExisting": {
         "title": "加入既有 Test Run",
@@ -1842,6 +1845,8 @@
     "enter": "進入",
     "editLabel": "編輯",
     "deleteLabel": "刪除",
-    "basicSettings": "基本設定"
+    "basicSettings": "基本設定",
+    "findReplace": "尋找與取代",
+    "addSection": "新增 Section"
   }
 }

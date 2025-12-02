@@ -1351,7 +1351,10 @@
         "noFilterMatches": "目前没有符合筛选条件的 Test Run",
         "moveToOther": "搬移至其他 Set",
         "relatedTpTickets": "相关 TP 开发单",
-        "remove": "移出 Test Run Set"
+        "remove": "移出 Test Run Set",
+        "report": "報告",
+        "reportLink": "報告連結",
+        "openReport": "開啟報告"
       },
       "addExisting": {
         "title": "加入既有 Test Run",
@@ -1700,6 +1703,8 @@
     "deleteLabel": "删除",
     "basicSettings": "基本设置",
     "status": "状态",
-    "totalLabel": "总数: {total} ｜ 已执行: {executed}"
+    "totalLabel": "总数: {total} ｜ 已执行: {executed}",
+    "findReplace": "查找与替换",
+    "addSection": "新增 Section"
   }
 }

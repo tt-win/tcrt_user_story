@@ -1384,7 +1384,10 @@
         "noFilterMatches": "No test runs match the current filter",
         "moveToOther": "Move to another set",
         "relatedTpTickets": "Related Tickets",
-        "remove": "Remove from Set"
+        "remove": "Remove from Set",
+        "report": "Report",
+        "reportLink": "HTML Report",
+        "openReport": "Open Report"
       },
       "addExisting": {
         "title": "Add Existing Test Run",
@@ -1748,6 +1751,8 @@
     "editLabel": "Edit",
     "deleteLabel": "Delete",
     "basicSettings": "Basic Settings",
-    "status": "Status"
+    "status": "Status",
+    "findReplace": "Find & Replace",
+    "addSection": "Add Section"
   }
 }
