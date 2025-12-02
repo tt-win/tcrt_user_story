@@ -862,6 +862,7 @@ class AdHocRunItem(Base):
     precondition = Column(Text, nullable=True)
     steps = Column(Text, nullable=True)
     expected_result = Column(Text, nullable=True)
+    jira_tickets = Column(Text, nullable=True)
     comments = Column(Text, nullable=True)
     bug_list = Column(Text, nullable=True)
 

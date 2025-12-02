@@ -12,6 +12,7 @@ class AdHocRunItemBase(BaseModel):
     precondition: Optional[str] = None
     steps: Optional[str] = None
     expected_result: Optional[str] = None
+    jira_tickets: Optional[str] = None
     comments: Optional[str] = None
     bug_list: Optional[str] = None
     test_result: Optional[TestResultStatus] = None
@@ -80,8 +81,18 @@ class AdHocRunBase(BaseModel):
 class AdHocRunCreate(AdHocRunBase):
     team_id: int
 
-class AdHocRunUpdate(AdHocRunBase):
-    pass
+class AdHocRunUpdate(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    status: Optional[TestRunStatus] = None
+    jira_ticket: Optional[str] = None
+    test_version: Optional[str] = None
+    test_environment: Optional[str] = None
+    build_number: Optional[str] = None
+    related_tp_tickets_json: Optional[str] = None
+    notifications_enabled: Optional[bool] = None
+    notify_chat_ids_json: Optional[str] = None
+    notify_chat_names_snapshot: Optional[str] = None
 
 class AdHocRunResponse(AdHocRunBase):
     id: int

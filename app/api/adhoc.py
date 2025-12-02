@@ -139,6 +139,7 @@ async def get_adhoc_run(
                     "precondition": item.precondition,
                     "steps": item.steps,
                     "expected_result": item.expected_result,
+                    "jira_tickets": item.jira_tickets,
                     "test_result": clean_result,
                     "assignee_name": item.assignee_name,
                     "comments": item.comments,
@@ -172,20 +173,12 @@ async def update_adhoc_run(
     if not run:
         raise HTTPException(status_code=404, detail="Ad-hoc run not found")
     
-    run.name = payload.name
-    run.description = payload.description
-    run.jira_ticket = payload.jira_ticket
-    # Enhanced Basic Settings
-    run.test_version = payload.test_version
-    run.test_environment = payload.test_environment
-    run.build_number = payload.build_number
-    run.related_tp_tickets_json = payload.related_tp_tickets_json
-    run.notifications_enabled = payload.notifications_enabled
-    run.notify_chat_ids_json = payload.notify_chat_ids_json
-    run.notify_chat_names_snapshot = payload.notify_chat_names_snapshot
+    update_data = payload.model_dump(exclude_unset=True)
     
-    if payload.status:
-        run.status = payload.status
+    for key, value in update_data.items():
+        if hasattr(run, key):
+            setattr(run, key, value)
+            
     run.updated_at = datetime.utcnow()
     
     db.commit()
@@ -372,7 +365,7 @@ async def batch_update_items(
                     # Update fields
                     for field in [
                         'test_case_number', 'title', 'priority', 'precondition', 'steps',
-                        'expected_result', 'comments', 'bug_list', 'test_result',
+                        'expected_result', 'jira_tickets', 'comments', 'bug_list', 'test_result',
                         'assignee_name', 'row_index', 'meta_json'
                     ]:
                         if field in item_data:
@@ -390,6 +383,7 @@ async def batch_update_items(
                 precondition=item_data.get('precondition'),
                 steps=item_data.get('steps'),
                 expected_result=item_data.get('expected_result'),
+                jira_tickets=item_data.get('jira_tickets'),
                 comments=item_data.get('comments'),
                 bug_list=item_data.get('bug_list'),
                 test_result=item_data.get('test_result'),
