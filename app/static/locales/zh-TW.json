@@ -1847,6 +1847,13 @@
     "deleteLabel": "刪除",
     "basicSettings": "基本設定",
     "findReplace": "尋找與取代",
-    "addSection": "新增 Section"
+    "addSection": "新增 Section",
+    "rerun": "重新執行",
+    "rerunConfirm": "確定要重新執行此 Ad-hoc Run 嗎？這將會建立一個新的執行副本。",
+    "rerunFailed": "重新執行失敗",
+    "confirmDeleteSheet": "確定要刪除此分頁嗎？",
+    "convertToTestCase": "轉換為 Test Case",
+    "convertConfirm": "確定要將此 Ad-hoc Run 的有效項目轉換為團隊 Test Case 嗎？相同編號的案例將會被更新。",
+    "convertSuccess": "轉換成功"
   }
 }

@@ -211,7 +211,7 @@ function renderAdHocRuns(runs) {
             
             const rerunBtn = canRerun ? `
                 <button class="btn btn-info btn-sm flex-grow-1" onclick="event.stopPropagation(); rerunAdHocRun(${run.id})">
-                    <i class="fas fa-redo me-1"></i><span>Re-run</span>
+                    <i class="fas fa-redo me-1"></i><span>${adhocT('adhoc.rerun', 'Re-run')}</span>
                 </button>` : '';
 
             // Stats Items
@@ -365,43 +365,144 @@ function renderAdHocRuns(runs) {
     });
 }
 
-async function deleteAdHocRun(id) {
-    if (!confirm(adhocT('adhoc.deleteConfirm','Delete this Ad-hoc run?'))) return;
-    try {
-        await window.AuthClient.fetch(`/api/adhoc-runs/${id}`, { method: 'DELETE' });
-        loadTestRunConfigs();
-    } catch (e) {
-        alert(adhocT('common.deleteFailed','Failed to delete'));
+function showAdHocConfirmModal({ title, message, confirmText, confirmClass, type = 'danger', onConfirm }) {
+    let modalEl = document.getElementById('adhocConfirmModal');
+    
+    // Determine styles based on type
+    let headerClass = 'bg-light';
+    let closeBtnClass = '';
+    let iconClass = 'text-secondary';
+    let iconName = 'fa-question-circle';
+    let alertClass = 'alert-secondary';
+
+    if (type === 'danger') {
+        headerClass = 'bg-danger text-white';
+        closeBtnClass = 'btn-close-white';
+        iconClass = ''; // Icon inherits text-white
+        iconName = 'fa-exclamation-triangle';
+        alertClass = 'alert-danger';
+    } else if (type === 'info') {
+        headerClass = 'bg-info text-white';
+        closeBtnClass = 'btn-close-white';
+        iconClass = '';
+        iconName = 'fa-info-circle';
+        alertClass = 'alert-info';
+    } else if (type === 'primary') {
+        headerClass = 'bg-primary text-white';
+        closeBtnClass = 'btn-close-white';
+        iconClass = '';
+        iconName = 'fa-redo'; // Use redo icon for primary/rerun
+        alertClass = 'alert-primary';
     }
+
+    if (!modalEl) {
+        const div = document.createElement('div');
+        div.innerHTML = `
+        <div class="modal fade" id="adhocConfirmModal" tabindex="-1" style="z-index: 1060;">
+            <div class="modal-dialog modal-dialog-centered">
+                <div class="modal-content border-${type === 'danger' ? 'danger' : (type === 'info' ? 'info' : 'secondary')}">
+                    <div class="modal-header ${headerClass}">
+                        <h5 class="modal-title d-flex align-items-center">
+                            <i class="fas ${iconName} me-2 ${iconClass}"></i>
+                            <span id="adhocConfirmTitle"></span>
+                        </h5>
+                        <button type="button" class="btn-close ${closeBtnClass}" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="alert ${alertClass} mb-0 d-flex align-items-center">
+                            <i class="fas fa-exclamation-circle me-2"></i>
+                            <span id="adhocConfirmMessage"></span>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn" id="adhocConfirmBtn"></button>
+                    </div>
+                </div>
+            </div>
+        </div>`;
+        document.body.appendChild(div.firstElementChild);
+        modalEl = document.getElementById('adhocConfirmModal');
+    } else {
+        // Update existing modal structure/classes if reused
+        const content = modalEl.querySelector('.modal-content');
+        content.className = `modal-content border-${type === 'danger' ? 'danger' : (type === 'info' ? 'info' : 'secondary')}`;
+        
+        const header = modalEl.querySelector('.modal-header');
+        header.className = `modal-header ${headerClass}`;
+        
+        const icon = header.querySelector('i');
+        icon.className = `fas ${iconName} me-2 ${iconClass}`;
+        
+        const closeBtn = header.querySelector('.btn-close');
+        closeBtn.className = `btn-close ${closeBtnClass}`;
+
+        const alertBox = modalEl.querySelector('.alert');
+        alertBox.className = `alert ${alertClass} mb-0 d-flex align-items-center`;
+    }
+    
+    document.getElementById('adhocConfirmTitle').textContent = title;
+    document.getElementById('adhocConfirmMessage').textContent = message;
+    
+    const btn = document.getElementById('adhocConfirmBtn');
+    btn.textContent = confirmText;
+    btn.className = `btn ${confirmClass}`;
+    
+    // Remove old listeners by cloning
+    const newBtn = btn.cloneNode(true);
+    btn.parentNode.replaceChild(newBtn, btn);
+    
+    newBtn.onclick = () => {
+        onConfirm();
+        const modalInstance = bootstrap.Modal.getInstance(modalEl);
+        if (modalInstance) modalInstance.hide();
+    };
+    
+    const modal = new bootstrap.Modal(modalEl);
+    modal.show();
 }
 
-async function updateAdHocStatus(id, newStatus) {
-    try {
-        await window.AuthClient.fetch(`/api/adhoc-runs/${id}`, { 
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ status: newStatus })
-        });
-        loadTestRunConfigs();
-    } catch (e) {
-        console.error(e);
-        alert(adhocT('common.updateFailed','Failed to update status'));
-    }
-}
-
-async function rerunAdHocRun(id) {
-    if (!confirm(adhocT('adhoc.rerunConfirm','Re-run this Ad-hoc run? This will create a new active copy.'))) return;
-    try {
-        const resp = await window.AuthClient.fetch(`/api/adhoc-runs/${id}/rerun`, { method: 'POST' });
-        if (resp.ok) {
-            loadTestRunConfigs();
-        } else {
-            alert(adhocT('adhoc.rerunFailed','Failed to re-run'));
+function deleteAdHocRun(id) {
+    showAdHocConfirmModal({
+        title: adhocT('common.confirm', 'Confirm'),
+        message: adhocT('adhoc.deleteConfirm', 'Delete this Ad-hoc run?'),
+        confirmText: adhocT('common.delete', 'Delete'),
+        confirmClass: 'btn-danger',
+        type: 'danger',
+        onConfirm: async () => {
+            try {
+                await window.AuthClient.fetch(`/api/adhoc-runs/${id}`, { method: 'DELETE' });
+                loadTestRunConfigs();
+            } catch (e) {
+                alert(adhocT('common.deleteFailed','Failed to delete'));
+            }
         }
-    } catch (e) {
-        console.error(e);
-        alert(adhocT('adhoc.rerunFailed','Failed to re-run'));
-    }
+    });
+}
+
+// ... updateAdHocStatus ...
+
+function rerunAdHocRun(id) {
+    showAdHocConfirmModal({
+        title: adhocT('common.confirm', 'Confirm'),
+        message: adhocT('adhoc.rerunConfirm', 'Re-run this Ad-hoc run? This will create a new active copy.'),
+        confirmText: adhocT('adhoc.rerun', 'Re-run'),
+        confirmClass: 'btn-info',
+        type: 'info',
+        onConfirm: async () => {
+            try {
+                const resp = await window.AuthClient.fetch(`/api/adhoc-runs/${id}/rerun`, { method: 'POST' });
+                if (resp.ok) {
+                    loadTestRunConfigs();
+                } else {
+                    alert(adhocT('adhoc.rerunFailed','Failed to re-run'));
+                }
+            } catch (e) {
+                console.error(e);
+                alert(adhocT('adhoc.rerunFailed','Failed to re-run'));
+            }
+        }
+    });
 }
 
 function toggleAdHocStatusDropdown(btn, id, currentStatus) {
