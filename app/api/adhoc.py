@@ -7,7 +7,9 @@ import traceback
 
 from app.database import get_sync_db
 from app.auth.dependencies import get_current_user
-from app.models.database_models import User, AdHocRun, AdHocRunSheet, AdHocRunItem
+from app.models.database_models import User, AdHocRun, AdHocRunSheet, AdHocRunItem, TestCaseLocal, TestCaseSet, TestCaseSection
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy import or_
 from app.models.adhoc import (
     AdHocRunCreate, AdHocRunUpdate, AdHocRunResponse,
     AdHocRunSheetCreate, AdHocRunSheetUpdate, AdHocRunSheetResponse,
@@ -17,9 +19,133 @@ from app.models.adhoc import (
 logger = logging.getLogger(__name__)
 from app.models.lark_types import Priority
 from app.models.test_run_config import TestRunStatus
+
 router = APIRouter(prefix="/adhoc-runs", tags=["adhoc-runs"])
 
-# --- AdHoc Run Endpoints ---
+@router.post("/{run_id}/convert-to-testcases", status_code=status.HTTP_200_OK)
+async def convert_adhoc_to_testcases(
+    run_id: int,
+    db: Session = Depends(get_sync_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Convert Ad-hoc run items to formal Test Cases.
+    - Ignores SECTION rows.
+    - Ignores rows without Test Case Number or Title.
+    - Updates existing Test Cases (by Number) or Creates new ones.
+    """
+    run = db.query(AdHocRun).filter(AdHocRun.id == run_id).first()
+    if not run:
+        raise HTTPException(status_code=404, detail="Ad-hoc run not found")
+    
+    count_created = 0
+    count_updated = 0
+    
+    try:
+        # Resolve Target Test Case Set
+        # 1. Try is_default
+        target_set = db.query(TestCaseSet).filter(
+            TestCaseSet.team_id == run.team_id,
+            TestCaseSet.is_default == True
+        ).first()
+        
+        # 2. Try name match
+        if not target_set:
+            target_set = db.query(TestCaseSet).filter(
+                TestCaseSet.team_id == run.team_id,
+                or_(TestCaseSet.name == "Default Set", TestCaseSet.name == "Default")
+            ).first()
+            
+        # 3. Fallback to any set
+        if not target_set:
+            target_set = db.query(TestCaseSet).filter(TestCaseSet.team_id == run.team_id).first()
+            
+        # 4. Create if none
+        if not target_set:
+            target_set = TestCaseSet(
+                team_id=run.team_id,
+                name="Default Set",
+                is_default=True
+            )
+            db.add(target_set)
+            db.flush()
+
+        # Find "Unassigned" section for this set
+        unassigned_section = db.query(TestCaseSection).filter(
+            TestCaseSection.test_case_set_id == target_set.id,
+            TestCaseSection.name == "Unassigned"
+        ).first()
+        
+        target_section_id = unassigned_section.id if unassigned_section else None
+
+        # Collect all items
+        all_items = []
+        for sheet in run.sheets:
+            all_items.extend(sheet.items)
+            
+        for item in all_items:
+            tc_num = (item.test_case_number or "").strip()
+            title = (item.title or "").strip()
+            
+            if not tc_num or not title:
+                continue
+            if tc_num.upper() == 'SECTION':
+                continue
+                
+            # Check if exists
+            existing_tc = db.query(TestCaseLocal).filter(
+                TestCaseLocal.team_id == run.team_id,
+                TestCaseLocal.test_case_number == tc_num
+            ).first()
+            
+            tcg_data = None
+            if item.jira_tickets:
+                normalized_tickets = item.jira_tickets.replace('|', ',')
+                tickets = [t.strip() for t in normalized_tickets.split(',') if t.strip()]
+                if tickets:
+                    import json
+                    tcg_data = json.dumps(tickets)
+            
+            if existing_tc:
+                # Update
+                existing_tc.title = title
+                existing_tc.precondition = item.precondition
+                existing_tc.steps = item.steps
+                existing_tc.expected_result = item.expected_result
+                existing_tc.priority = item.priority
+                existing_tc.tcg_json = tcg_data
+                existing_tc.updated_at = datetime.utcnow()
+                count_updated += 1
+            else:
+                # Create
+                new_tc = TestCaseLocal(
+                    team_id=run.team_id,
+                    test_case_number=tc_num,
+                    title=title,
+                    precondition=item.precondition,
+                    steps=item.steps,
+                    expected_result=item.expected_result,
+                    priority=item.priority,
+                    tcg_json=tcg_data,
+                    test_case_set_id=target_set.id,
+                    test_case_section_id=target_section_id 
+                )
+                db.add(new_tc)
+                count_created += 1
+        
+        db.commit()
+        return {
+            "success": True,
+            "created": count_created,
+            "updated": count_updated,
+            "message": f"Successfully converted: {count_created} created, {count_updated} updated."
+        }
+        
+    except Exception as e:
+        db.rollback()
+        logger.error(f"Convert Ad-hoc to Test Cases failed: {e}")
+        logger.error(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Conversion failed: {str(e)}")
 
 @router.post("/", response_model=AdHocRunResponse, status_code=status.HTTP_201_CREATED)
 async def create_adhoc_run(

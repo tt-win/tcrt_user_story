@@ -1705,6 +1705,13 @@
     "status": "状态",
     "totalLabel": "总数: {total} ｜ 已执行: {executed}",
     "findReplace": "查找与替换",
-    "addSection": "新增 Section"
+    "addSection": "新增 Section",
+    "rerun": "重新执行",
+    "rerunConfirm": "确定要重新执行此 Ad-hoc Run 吗？这将创建一个新的执行副本。",
+    "rerunFailed": "重新执行失败",
+    "confirmDeleteSheet": "确定要删除此分页吗？",
+    "convertToTestCase": "转换为 Test Case",
+    "convertConfirm": "确定要将此 Ad-hoc Run 的有效项目转换为团队 Test Case 吗？相同编号的案例将会被更新。",
+    "convertSuccess": "转换成功"
   }
 }
