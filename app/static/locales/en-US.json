@@ -709,7 +709,7 @@
     "section": "Section",
     "selectSection": "Select section",
     "testCasesCount": "Test Cases",
-    "tcgFilterPlaceholder": "Enter Ticket number",
+    "tcgFilterPlaceholder": "JIRA Ticket",
     "testCaseNumberPlaceholder": "Enter test case number",
     "searchPlaceholder": "Search title, description...",
     "batchActions": "Batch Actions",
@@ -1753,6 +1753,13 @@
     "basicSettings": "Basic Settings",
     "status": "Status",
     "findReplace": "Find & Replace",
-    "addSection": "Add Section"
+    "addSection": "Add Section",
+    "rerun": "Re-run",
+    "rerunConfirm": "Re-run this Ad-hoc run? This will create a new active copy.",
+    "rerunFailed": "Failed to re-run",
+    "confirmDeleteSheet": "Are you sure you want to delete this sheet?",
+    "convertToTestCase": "Convert to Test Case",
+    "convertConfirm": "Convert valid items to Team Test Cases? Existing cases with the same number will be updated.",
+    "convertSuccess": "Conversion successful"
   }
 }

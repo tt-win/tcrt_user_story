@@ -2140,6 +2140,9 @@ function computeFilteredTestCases(list) {
             const matchTCG = !tcgKW || (testCase.tcg && testCase.tcg.some(tcgItem => {
                 // 支援 text 與 text_arr
                 const texts = [];
+                if (typeof tcgItem === 'string') {
+                    texts.push(tcgItem);
+                }
                 if (tcgItem && Array.isArray(tcgItem.text_arr) && tcgItem.text_arr.length) {
                     texts.push(...tcgItem.text_arr);
                 }
@@ -3959,7 +3962,7 @@ function updateTCGCacheProgress(progress, message = '') {
 }
 
 
-async function loadTestCases(showLoadingBlock = true, updateProgress = null, forceRefresh = false) {
+async function loadTestCases(showLoadingBlock = true, updateProgress = null, forceRefresh = false, preserveState = false) {
     try {
         if (updateProgress) updateProgress(0, '開始載入測試案例...');
 
@@ -3981,15 +3984,11 @@ async function loadTestCases(showLoadingBlock = true, updateProgress = null, for
                 if (updateProgress) updateProgress(90, '使用快取資料...');
 
                 testCases = cachedTestCases;
-                sectionSortStates.clear();
+                if (!preserveState) sectionSortStates.clear();
                 console.debug('[CACHE] LOAD list from cache', { teamId: teamIdForLoad, count: testCases.length });
 
-                // 預設按 Test Case Number 升冪排序
-                testCases.sort((a, b) => {
-                    const aNumber = a.test_case_number || '';
-                    const bNumber = b.test_case_number || '';
-                    return aNumber.localeCompare(bNumber);
-                });
+                // 依當前排序狀態排序（預設 number/asc）
+                sortTestCaseList(testCases, tcmSortField, tcmSortOrder);
 
                 // 依目前記憶體中的過濾器計算顯示清單
                 applyCurrentFiltersAndRender();
@@ -4033,7 +4032,7 @@ async function loadTestCases(showLoadingBlock = true, updateProgress = null, for
         if (updateProgress) updateProgress(60, '解析資料...');
 
         testCases = await response.json();
-        sectionSortStates.clear();
+        if (!preserveState) sectionSortStates.clear();
 
         // 儲存到快取
         if (updateProgress) updateProgress(70, '更新快取...');
@@ -4041,12 +4040,8 @@ async function loadTestCases(showLoadingBlock = true, updateProgress = null, for
 
         if (updateProgress) updateProgress(80, '處理資料...');
 
-        // 預設按 Test Case Number 升冪排序
-        testCases.sort((a, b) => {
-            const aNumber = a.test_case_number || '';
-            const bNumber = b.test_case_number || '';
-            return aNumber.localeCompare(bNumber);
-        });
+        // 依當前排序狀態排序（預設 number/asc）
+        sortTestCaseList(testCases, tcmSortField, tcmSortOrder);
 
         // 依目前記憶體中的過濾器計算顯示清單
         if (updateProgress) updateProgress(95, '渲染表格...');
@@ -6454,7 +6449,11 @@ async function saveTestCase() {
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify(testCaseData)
+                    body: JSON.stringify({
+                        ...testCaseData,
+                        // 後端需要 section_id 包含 UNASSIGNED_SECTION_ID 時亦需傳遞
+                        test_case_section_id: formData.get('test_case_section_id') ? parseInt(formData.get('test_case_section_id')) : null,
+                    })
                 });
             } else {
                 // 新增測試案例
@@ -6466,7 +6465,10 @@ async function saveTestCase() {
                     headers: {
                         'Content-Type': 'application/json',
                     },
-                    body: JSON.stringify(testCaseData)
+                    body: JSON.stringify({
+                        ...testCaseData,
+                        test_case_section_id: formData.get('test_case_section_id') ? parseInt(formData.get('test_case_section_id')) : null,
+                    })
                 });
             }
 
@@ -6513,41 +6515,9 @@ async function saveTestCase() {
 
             // 更新快取而非重新載入全部資料
             // testCaseId 已在函數開頭宣告，這裡直接使用
-            if (testCaseId) {
-                // 更新現有測試案例 - 先取得最新資料
-                try {
-                    const response = await window.AuthClient.fetch(`/api/teams/${currentTeam.id}/testcases/${testCaseId}`);
-                    if (response.ok) {
-                        const updatedTestCase = await response.json();
-
-                        // 更新本地列表
-                        const index = testCases.findIndex(tc => tc.record_id === testCaseId);
-                        if (index >= 0) {
-                            testCases[index] = updatedTestCase;
-                            applyCurrentFiltersAndRender();
-                        }
-
-                        // 更新快取
-                        updateTestCaseInCache(updatedTestCase);
-
-                        // 同步更新執行頁快取：若編號變更則移除舊快取
-                        const oldNumber = (originalFormData && originalFormData.test_case_number) ? originalFormData.test_case_number : null;
-                        const newNumber = updatedTestCase.test_case_number;
-                        if (oldNumber && oldNumber !== newNumber) {
-                            removeExecCachedTestCase(oldNumber);
-                        }
-                    } else {
-                        // 單筆更新失敗，降級為重新載入全部資料
-                        await loadTestCases(false, null, true);
-                    }
-                } catch (error) {
-                    console.debug('快取更新失敗，降級為重新載入:', error);
-                    await loadTestCases(false, null, true);
-                }
-            } else {
-                // 新增測試案例 - 重新載入以取得完整列表（含新記錄）
-                await loadTestCases(false, null, true);
-            }
+            // 清快取並重載，但保留目前的排序/篩選/區段狀態
+            clearTestCasesCache();
+            await loadTestCases(false, null, true, true);
 
             // 恢復儲存按鈕狀態
             const saveBtn = document.getElementById('saveTestCaseBtn');

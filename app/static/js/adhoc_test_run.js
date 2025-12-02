@@ -83,6 +83,17 @@ document.addEventListener("DOMContentLoaded", async () => {
   function setupListeners() {
     dom.addSheet?.addEventListener("click", onAddSheet);
     dom.addRow?.addEventListener("click", onAddRow);
+    
+    const rerunBtn = document.getElementById("rerunBtn");
+    if (rerunBtn) {
+        rerunBtn.addEventListener("click", handleRerun);
+    }
+
+    const convertBtn = document.getElementById("convertBtn");
+    if (convertBtn) {
+        convertBtn.addEventListener("click", handleConvert);
+    }
+
     const reportsBtn = document.getElementById("reportsBtn");
     if (reportsBtn) {
       reportsBtn.addEventListener("click", () => {
@@ -98,14 +109,195 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
-  // ... (rest of the file) ...
-
-  await loadRun();
-  await loadAssignees();
-  setupListeners(); // Call it here
-
-  async function loadRun() {
-    try {
+      // ... (rest of the file) ...
+  
+      await loadRun();
+      await loadAssignees();
+      setupListeners(); // Call it here
+  
+      function showConfirmModal({ title, message, confirmText, confirmClass, type = 'danger', onConfirm }) {
+          let modalEl = document.getElementById('adhocExecutionConfirmModal');
+          
+          let headerClass = 'bg-light';
+          let closeBtnClass = '';
+          let iconClass = 'text-secondary';
+          let iconName = 'fa-question-circle';
+          let alertClass = 'alert-secondary';
+  
+          if (type === 'danger') {
+              headerClass = 'bg-danger text-white';
+              closeBtnClass = 'btn-close-white';
+              iconName = 'fa-exclamation-triangle';
+              alertClass = 'alert-danger';
+          } else if (type === 'info') {
+              headerClass = 'bg-info text-white';
+              closeBtnClass = 'btn-close-white';
+              iconName = 'fa-info-circle';
+              alertClass = 'alert-info';
+          }
+  
+          if (!modalEl) {
+              const div = document.createElement('div');
+              div.innerHTML = `
+              <div class="modal fade" id="adhocExecutionConfirmModal" tabindex="-1" style="z-index: 1060;">
+                  <div class="modal-dialog modal-dialog-centered">
+                      <div class="modal-content">
+                          <div class="modal-header">
+                              <h5 class="modal-title d-flex align-items-center">
+                                  <i class="fas me-2"></i>
+                                  <span id="execConfirmTitle"></span>
+                              </h5>
+                              <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                          </div>
+                          <div class="modal-body">
+                              <div class="alert mb-0 d-flex align-items-center">
+                                  <i class="fas fa-exclamation-circle me-2"></i>
+                                  <span id="execConfirmMessage"></span>
+                              </div>
+                          </div>
+                          <div class="modal-footer">
+                              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                              <button type="button" class="btn" id="execConfirmBtn"></button>
+                          </div>
+                      </div>
+                  </div>
+              </div>`;
+              document.body.appendChild(div.firstElementChild);
+              modalEl = document.getElementById('adhocExecutionConfirmModal');
+          }
+  
+          const content = modalEl.querySelector('.modal-content');
+          content.className = `modal-content border-${type === 'danger' ? 'danger' : (type === 'info' ? 'info' : 'secondary')}`;
+          
+          const header = modalEl.querySelector('.modal-header');
+          header.className = `modal-header ${headerClass}`;
+          
+          const icon = header.querySelector('i');
+          icon.className = `fas ${iconName} me-2 ${iconClass}`;
+          
+          const closeBtn = header.querySelector('.btn-close');
+          closeBtn.className = `btn-close ${closeBtnClass}`;
+  
+          const alertBox = modalEl.querySelector('.alert');
+          alertBox.className = `alert ${alertClass} mb-0 d-flex align-items-center`;
+          
+          document.getElementById('execConfirmTitle').textContent = title;
+          document.getElementById('execConfirmMessage').textContent = message;
+          
+          const btn = document.getElementById('execConfirmBtn');
+          btn.textContent = confirmText;
+          btn.className = `btn ${confirmClass}`;
+          
+          const newBtn = btn.cloneNode(true);
+          btn.parentNode.replaceChild(newBtn, btn);
+          
+          newBtn.onclick = () => {
+              onConfirm();
+              const modalInstance = bootstrap.Modal.getInstance(modalEl);
+              if (modalInstance) modalInstance.hide();
+          };
+          
+          const modal = new bootstrap.Modal(modalEl);
+          modal.show();
+      }
+  
+          async function handleRerun() {
+  
+              showConfirmModal({
+  
+                  title: tt('common.confirm', 'Confirm'),
+  
+                  message: tt('adhoc.rerunConfirm', 'Re-run this Ad-hoc run? This will create a new active copy.'),
+  
+                  confirmText: tt('adhoc.rerun', 'Re-run'),
+  
+                  confirmClass: 'btn-info',
+  
+                  type: 'info',
+  
+                  onConfirm: async () => {
+  
+                      try {
+  
+                          const resp = await window.AuthClient.fetch(`/api/adhoc-runs/${runId}/rerun`, { method: 'POST' });
+  
+                          if (resp.ok) {
+  
+                              const newRun = await resp.json();
+  
+                              window.location.href = `/adhoc-runs/${newRun.id}/execution`;
+  
+                          } else {
+  
+                              alert(tt('adhoc.rerunFailed','Failed to re-run'));
+  
+                          }
+  
+                      } catch (e) {
+  
+                          console.error(e);
+  
+                          alert(tt('adhoc.rerunFailed','Failed to re-run'));
+  
+                      }
+  
+                  }
+  
+              });
+  
+          }
+  
+      
+  
+          async function handleConvert() {
+  
+              showConfirmModal({
+  
+                  title: tt('adhoc.convertToTestCase', 'Convert to Test Case'),
+  
+                  message: tt('adhoc.convertConfirm', 'Convert all items in this Ad-hoc run to formal Test Cases? Existing cases with the same number will be updated.'),
+  
+                  confirmText: tt('common.confirm', 'Confirm'),
+  
+                  confirmClass: 'btn-success',
+  
+                  type: 'info',
+  
+                  onConfirm: async () => {
+  
+                      try {
+  
+                          const resp = await window.AuthClient.fetch(`/api/adhoc-runs/${runId}/convert-to-testcases`, { method: 'POST' });
+  
+                          if (resp.ok) {
+  
+                              const res = await resp.json();
+  
+                              alert(res.message || tt('adhoc.convertSuccess', 'Conversion successful'));
+  
+                          } else {
+  
+                              alert(tt('common.error', 'Operation failed'));
+  
+                          }
+  
+                      } catch (e) {
+  
+                          console.error(e);
+  
+                          alert(tt('common.error', 'Operation failed'));
+  
+                      }
+  
+                  }
+  
+              });
+  
+          }
+  
+      
+  
+          async function loadRun() {    try {
       const resp = await window.AuthClient.fetch(`/api/adhoc-runs/${runId}`);
       if (!resp.ok)
         throw new Error(tt("adhoc.loadFailed", "Failed to load run"));
@@ -116,6 +308,16 @@ document.addEventListener("DOMContentLoaded", async () => {
         dom.runName.textContent = runName;
         dom.runName.removeAttribute("data-i18n");
       }
+      
+      const rerunBtn = document.getElementById('rerunBtn');
+      if (rerunBtn) {
+          if (currentRun.status === 'completed') {
+              rerunBtn.classList.remove('d-none');
+          } else {
+              rerunBtn.classList.add('d-none');
+          }
+      }
+
       document.title = `${runName} - Ad-hoc Test Run`;
       if (currentRun.team_id && dom.backBtn) {
         dom.backBtn.href = `/test-run-management?team_id=${currentRun.team_id}`;
@@ -977,6 +1179,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             precondition: (row.precondition || "").trim(),
             steps: (row.steps || "").trim(),
             expected_result: (row.expected_result || "").trim(),
+            jira_tickets: (row.jira_tickets || "").trim(),
             test_result: res,
             assignee_name: (row.assignee_name || "").trim(),
             comments: (row.comments || "").trim(),
