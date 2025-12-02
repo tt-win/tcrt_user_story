@@ -137,10 +137,24 @@ class TestCaseRepoService:
                 TestCaseLocal.test_case_number.ilike(s)
             ))
 
-        # TCG 過濾（簡化：在 tcg_json 文字中 LIKE）
+        # TCG 過濾（支援多個票號搜尋，以逗號分隔）
         if tcg_filter and tcg_filter.strip():
-            s = f"%{tcg_filter.strip()}%"
-            q = q.filter(TestCaseLocal.tcg_json.ilike(s))
+            tickets = [t.strip() for t in tcg_filter.split(',') if t.strip()]
+            if tickets:
+                # 使用 SQLite json_each 進行精確搜尋，避免字串比對誤判
+                # 需確保 tcg_json 是有效 JSON 陣列且非空
+                # 使用 literal params 避免 SQL Injection
+                conditions = []
+                for t in tickets:
+                    conditions.append(
+                        text(f"EXISTS (SELECT 1 FROM json_each(test_cases.tcg_json) WHERE value LIKE '%{t}%')")
+                    )
+                
+                q = q.filter(and_(
+                    TestCaseLocal.tcg_json.is_not(None),
+                    TestCaseLocal.tcg_json != '',
+                    or_(*conditions)
+                ))
 
         # 優先級
         if priority_filter:
@@ -214,8 +228,18 @@ class TestCaseRepoService:
                 TestCaseLocal.test_case_number.ilike(s)
             ))
         if tcg_filter and tcg_filter.strip():
-            s = f"%{tcg_filter.strip()}%"
-            q = q.filter(TestCaseLocal.tcg_json.ilike(s))
+            tickets = [t.strip() for t in tcg_filter.split(',') if t.strip()]
+            if tickets:
+                conditions = []
+                for t in tickets:
+                    conditions.append(
+                        text(f"EXISTS (SELECT 1 FROM json_each(test_cases.tcg_json) WHERE value LIKE '%{t}%')")
+                    )
+                q = q.filter(and_(
+                    TestCaseLocal.tcg_json.is_not(None),
+                    TestCaseLocal.tcg_json != '',
+                    or_(*conditions)
+                ))
         if priority_filter:
             try:
                 pr = Priority(priority_filter)
