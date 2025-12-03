@@ -1,0 +1,62 @@
+# USM 文字格式範例
+# 基於實際資料庫資料生成
+# Map: ACS (Account System)
+
+[@acs_root] root: ACS
+  desc: Account System 帳戶系統
+  
+  [@accounts] story: accounts
+    
+  [@get_balance] story: 获取玩家的总余额（根据customerId）
+    desc: GET /accounts/customer/{customerId}/balance
+    jira: TCG-122992
+    as_a: 上层模块
+    i_want: 获取玩家的账户列表 (根据customerId）
+    
+  [@get_accounts_by_customer] story: 获取玩家的账户列表 (根据customerId）
+    desc: GET /accounts/customer/{customerId}
+    jira: TCG-122994
+    as_a: 上层模块
+    i_want: 获取玩家的账户列表 (根据accountId列表）
+    
+  [@get_accounts_by_ids] story: 获取玩家的账户列表 (根据accountId列表）
+    desc: GET /accounts
+    jira: TCG-122995
+    as_a: 上层模块
+    i_want: 获取特定账户信息 (根据accountId）
+    
+  [@get_account_detail] story: 获取特定账户信息 (根据accountId）
+    desc: GET /accounts/{accountId}
+    jira: TCG-122996
+    as_a: 上层模块
+    i_want: 根据accountId 更新帐户余额
+    
+  [@update_balance] story: 根据accountId 更新帐户余额
+    desc: POST /accounts/{accountId}/balance
+    jira: TCG-122997
+    as_a: 上层模块
+    i_want: 更新玩家账户冻结金额
+    
+  [@update_freeze] story: 更新玩家账户冻结金额
+    desc: POST /accounts/{accountId}/freeze
+    jira: TCG-122998
+    as_a: 上层模块
+    i_want: 根据 accountId 删除账户（软删除）
+    
+  [@soft_delete_account] story: 根据 accountId 删除账户（软删除）
+    desc: DELETE /accounts/{accountId}
+    jira: TCG-122999
+    as_a: 上层模块
+    i_want: 根据 accountId 重新激活账户
+    
+  [@reactivate_account] story: 根据 accountId 重新激活账户
+    desc: POST /accounts/{accountId}/reactivate
+    jira: TCG-123000
+    as_a: 上层模块
+    i_want: 根据customerId 创建玩家账户
+    
+  [@create_account] story: 根据customerId 创建玩家账户
+    desc: POST /accounts
+    jira: TCG-123001
+    as_a: 上层模块
+    i_want: 根据accountId获取账户交易记录列表
