@@ -1339,8 +1339,9 @@ Web Tool{% endblock %} {% block page_title_text %}
         const sidebar = document.querySelector('.usm-sidebar');
         const textTab = document.getElementById('text-tab');
         const visualTab = document.getElementById('visual-tab');
-        const hideSidebarForText = () => { if (sidebar) sidebar.classList.add('d-none'); };
-        const showSidebarForVisual = () => { if (sidebar) sidebar.classList.remove('d-none'); };
+        const mapBtns = document.querySelector('.usm-map-btn-container');
+        const hideSidebarForText = () => { if (sidebar) sidebar.classList.add('d-none'); if (mapBtns) mapBtns.classList.add('d-none'); };
+        const showSidebarForVisual = () => { if (sidebar) sidebar.classList.remove('d-none'); if (mapBtns) mapBtns.classList.remove('d-none'); };
         if (textTab) textTab.addEventListener('shown.bs.tab', hideSidebarForText);
         if (visualTab) visualTab.addEventListener('shown.bs.tab', showSidebarForVisual);
         const textPane = document.getElementById('text-pane');

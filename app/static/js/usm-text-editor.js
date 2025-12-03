@@ -252,7 +252,7 @@
      * 從文字匯入（取代所有現有節點）
      */
     async function importReplaceAll(options = {}) {
-        const { skipConfirm = false } = options;
+        const { skipConfirm = false, switchToVisual = false } = options;
         const mapId = getCurrentMapId();
         
         if (!mapId) {
@@ -303,7 +303,12 @@
 
             showMessage(data.message || `成功取代並匯入 ${data.nodes_count} 個節點`, 'success');
             
-            // 嘗試重新載入地圖（不自動切換頁籤），失敗則重整
+            // 先切換到視覺化，再嘗試重新載入；若失敗則重整
+            if (switchToVisual) {
+                const visualTab = document.getElementById('visual-tab');
+                if (visualTab) visualTab.click();
+            }
+
             let refreshed = false;
             if (window.userStoryMapFlow && typeof window.userStoryMapFlow.loadMap === 'function') {
                 try {
@@ -313,10 +318,10 @@
                     console.warn('loadMap 失敗', e);
                 }
             }
-            const redirectUrl = `/user-story-map/${window.teamId || ''}/${mapId}`;
+
             if (!refreshed) {
+                const redirectUrl = `/user-story-map/${window.teamId || ''}/${mapId}`;
                 window.location.href = redirectUrl;
-                return;
             }
 
         } catch (error) {
@@ -341,10 +346,12 @@
      * 初始化事件監聽器
      */
     function initEventListeners() {
-        // 套用文字到地圖
+        // 套用文字到地圖（套用後跳回視覺化）
         const applyBtn = document.getElementById('applyTextSaveBtn');
         if (applyBtn) {
-            applyBtn.addEventListener('click', () => importReplaceAll({ skipConfirm: true }));
+            applyBtn.addEventListener('click', async () => {
+                await importReplaceAll({ skipConfirm: true, switchToVisual: true });
+            });
         }
 
         // 在文字模式按「儲存」時，強制走文字匯入流程
