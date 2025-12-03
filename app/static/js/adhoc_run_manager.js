@@ -1,5 +1,3 @@
-function adhocT(key, fallback) { try { if (window.i18n && window.i18n.isReady && window.i18n.isReady()) { const v = window.i18n.t(key); if (v && v !== key) return v; } } catch(_) {} return fallback; }
-
 function adhocT(key, fallback) {
     try {
         if (window.i18n && window.i18n.isReady && window.i18n.isReady()) {
@@ -9,6 +7,30 @@ function adhocT(key, fallback) {
     } catch (_) {}
     return fallback;
 }
+
+let currentAdHocEditingId = null;
+
+// 確保狀態更新函式始終存在（供 inline onclick 使用）
+async function updateAdHocStatus(id, status) {
+    try {
+        const resp = await window.AuthClient.fetch(`/api/adhoc-runs/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status })
+        });
+        if (resp.ok) {
+            loadTestRunConfigs();
+        } else {
+            const msg = adhocT('adhoc.updateFailed','Failed to update status');
+            AppUtils.showError ? AppUtils.showError(msg) : alert(msg);
+        }
+    } catch (e) {
+        console.error('updateAdHocStatus error', e);
+        const msg = adhocT('adhoc.updateFailed','Failed to update status');
+        AppUtils.showError ? AppUtils.showError(msg) : alert(msg);
+    }
+}
+window.updateAdHocStatus = updateAdHocStatus;
 
 let currentAdHocTpTickets = [];
 
@@ -196,7 +218,8 @@ function renderAdHocRuns(runs) {
             // Locking Logic
             const locked = (status === 'completed' || status === 'archived');
             const canRerun = (status === 'completed');
-            const canEnter = (status !== "archived");
+            // Archived / Completed 仍可進入，但在執行頁會變唯讀
+            const canEnter = true;
 
             // Action Buttons Logic
             const enterBtn = canEnter ? `
@@ -479,8 +502,6 @@ function deleteAdHocRun(id) {
         }
     });
 }
-
-// ... updateAdHocStatus ...
 
 function rerunAdHocRun(id) {
     showAdHocConfirmModal({

@@ -904,20 +904,15 @@ function enterTeamWithPage(teamId, page) {
         AppUtils.setCurrentTeam(team);
     }
 
-    // 根據選擇導向到不同頁面
-    switch(page) {
-        case 'test-cases':
-            window.location.href = '/test-case-management';
-            break;
-        case 'test-runs':
-            window.location.href = '/test-runs';
-            break;
-        case 'usm':
-            window.location.href = `/user-story-map/${teamId}`;
-            break;
-        default:
-            window.location.href = '/test-case-management';
-    }
+    // 根據選擇導向到不同頁面，帶上 team_id 參數
+    const urlMap = {
+        'test-cases': '/test-case-management',
+        'test-runs': '/test-run-management',
+        'usm': `/user-story-map/${teamId}`
+    };
+    const base = urlMap[page] || urlMap['test-cases'];
+    const needsQuery = !base.includes('/user-story-map/');
+    window.location.href = needsQuery ? `${base}?team_id=${encodeURIComponent(teamId)}` : base;
 }
 
 let pendingDeleteTeamId = null;

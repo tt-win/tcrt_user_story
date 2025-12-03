@@ -36,6 +36,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   let deletedItemIds = new Set();
   let isSaving = false;
   let isPendingSave = false;
+  let isRunReadOnly = false;
+  let currentSheetItems = [];
 
   const PRIORITY = ["High", "Medium", "Low"];
   const RESULT = [
@@ -109,8 +111,34 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
+  function applyReadOnlyMode(readOnly) {
+    const addSectionBtn = document.getElementById("addSectionBtn");
+    [dom.addRow, addSectionBtn, dom.addSheet].forEach((btn) => {
+      if (!btn) return;
+      btn.disabled = !!readOnly;
+      btn.classList.toggle("disabled", !!readOnly);
+    });
+
+    // Sheets: hide rename/delete for read-only
+    const sheetTools = document.querySelectorAll(".sheet-tab .btn");
+    sheetTools.forEach((btn) => {
+      btn.disabled = !!readOnly;
+      btn.classList.toggle("disabled", !!readOnly);
+    });
+
+    if (dom.saveStatus) {
+      if (readOnly) {
+        dom.saveStatus.textContent = tt("adhoc.readonly", "Read-only (archived)");
+        dom.saveStatus.className = "text-muted small";
+      } else {
+        dom.saveStatus.textContent = "";
+        dom.saveStatus.className = "";
+      }
+    }
+  }
+
       // ... (rest of the file) ...
-  
+
       await loadRun();
       await loadAssignees();
       setupListeners(); // Call it here
@@ -250,49 +278,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       
   
           async function handleConvert() {
-  
-              showConfirmModal({
-  
-                  title: tt('adhoc.convertToTestCase', 'Convert to Test Case'),
-  
-                  message: tt('adhoc.convertConfirm', 'Convert all items in this Ad-hoc run to formal Test Cases? Existing cases with the same number will be updated.'),
-  
-                  confirmText: tt('common.confirm', 'Confirm'),
-  
-                  confirmClass: 'btn-success',
-  
-                  type: 'info',
-  
-                  onConfirm: async () => {
-  
-                      try {
-  
-                          const resp = await window.AuthClient.fetch(`/api/adhoc-runs/${runId}/convert-to-testcases`, { method: 'POST' });
-  
-                          if (resp.ok) {
-  
-                              const res = await resp.json();
-  
-                              alert(res.message || tt('adhoc.convertSuccess', 'Conversion successful'));
-  
-                          } else {
-  
-                              alert(tt('common.error', 'Operation failed'));
-  
-                          }
-  
-                      } catch (e) {
-  
-                          console.error(e);
-  
-                          alert(tt('common.error', 'Operation failed'));
-  
-                      }
-  
-                  }
-  
-              });
-  
+              openConvertModal();
           }
   
       
@@ -310,8 +296,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
       
       const rerunBtn = document.getElementById('rerunBtn');
+      const statusLower = (currentRun.status || "").toLowerCase();
       if (rerunBtn) {
-          if (currentRun.status === 'completed') {
+          if (statusLower === 'completed') {
               rerunBtn.classList.remove('d-none');
           } else {
               rerunBtn.classList.add('d-none');
@@ -335,6 +322,9 @@ document.addEventListener("DOMContentLoaded", async () => {
         dom.sheetTabs.innerHTML = "";
         return;
       }
+
+      isRunReadOnly = statusLower === "archived" || statusLower === "completed";
+      applyReadOnlyMode(isRunReadOnly);
 
       renderTabs();
       const firstSheetId = currentRun.sheets[0].id;
@@ -381,6 +371,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       rename.title = "Rename sheet";
       rename.style.fontSize = "0.85rem";
       rename.style.lineHeight = "1";
+      if (isRunReadOnly) {
+        rename.disabled = true;
+        rename.classList.add("disabled");
+      }
 
       const delBtn = document.createElement("button");
       delBtn.className = "btn btn-link btn-sm p-0 ms-2 text-danger";
@@ -388,8 +382,13 @@ document.addEventListener("DOMContentLoaded", async () => {
       delBtn.title = "Delete sheet";
       delBtn.style.fontSize = "0.85rem";
       delBtn.style.lineHeight = "1";
+      if (isRunReadOnly) {
+        delBtn.disabled = true;
+        delBtn.classList.add("disabled");
+      }
 
       const startRename = () => {
+        if (isRunReadOnly) return;
         if (tab.dataset.editing === "true") return;
         tab.dataset.editing = "true";
         const tabWidth = tab.getBoundingClientRect().width;
@@ -473,15 +472,18 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       name.addEventListener("dblclick", (e) => {
         e.stopPropagation();
+        if (isRunReadOnly) return;
         startRename();
       });
       rename.addEventListener("click", (e) => {
         e.stopPropagation();
+        if (isRunReadOnly) return;
         startRename();
       });
 
       delBtn.addEventListener("click", async (e) => {
         e.stopPropagation();
+        if (isRunReadOnly) return;
         if (
           confirm(
             tt(
@@ -500,9 +502,11 @@ document.addEventListener("DOMContentLoaded", async () => {
       tab.appendChild(btnContainer);
       dom.sheetTabs.appendChild(tab);
     });
+    if (isRunReadOnly) applyReadOnlyMode(true);
   }
 
   async function deleteSheet(id) {
+    if (isRunReadOnly) return;
     try {
       const resp = await window.AuthClient.fetch(
         `/api/adhoc-runs/${runId}/sheets/${id}`,
@@ -526,6 +530,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   async function renameSheet(id, name) {
+    if (isRunReadOnly) return;
     try {
       const resp = await window.AuthClient.fetch(
         `/api/adhoc-runs/${runId}/sheets/${id}`,
@@ -559,6 +564,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const items = (sheet.items || [])
       .slice()
       .sort((a, b) => a.row_index - b.row_index);
+    currentSheetItems = items.map((i) => ({ ...i }));
     const rows = items.map(convertItemToRow);
     initHot(rows);
   }
@@ -683,6 +689,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
 
         const columns = buildColumns();
+        const isReadOnly = isRunReadOnly;
 
         hot = new Handsontable(dom.gridHost, {
             data,
@@ -696,10 +703,11 @@ document.addEventListener("DOMContentLoaded", async () => {
             manualRowResize: true,
             stretchH: 'none',
             licenseKey: 'non-commercial-and-evaluation',
-            contextMenu: ['copy','cut','paste','---------','row_above','row_below','remove_row','---------','undo','redo'],
+            readOnly: isReadOnly,
+            contextMenu: isReadOnly ? ['copy'] : ['copy','cut','paste','---------','row_above','row_below','remove_row','---------','undo','redo'],
             dropdownMenu: ['filter_by_condition','filter_by_value','filter_action_bar'],
             filters: true,
-            fillHandle: true,
+            fillHandle: !isReadOnly,
             search: true, // Enable Search Plugin
             outsideClickDeselects: false, // Keep selection when clicking toolbar buttons
             mergeCells: true, // Enable Merging
@@ -708,6 +716,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             afterSort: updateSectionMerges,
             afterFilter: updateSectionMerges,
             beforeRemoveRow: (index, amount, physicalRows) => {
+        if (isRunReadOnly) return false;
         if (!hot) return;
         physicalRows.forEach((row) => {
           const item = hot.getSourceDataAtRow(row);
@@ -799,6 +808,289 @@ document.addEventListener("DOMContentLoaded", async () => {
       openSearchModal();
     }
   });
+
+  // --- Convert to Test Case Modal ---
+  let convertModalInstance = null;
+  let convertSetCache = [];
+  const convertSectionCache = new Map();
+
+  function ensureConvertModal() {
+    if (document.getElementById("adhocConvertModal")) return;
+    const modalHtml = `
+      <div class="modal fade" id="adhocConvertModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+          <div class="modal-content shadow">
+            <div class="modal-header">
+              <h5 class="modal-title"><i class="fas fa-exchange-alt me-2"></i>${tt('adhoc.convertToTestCase','Convert to Test Case')}</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+              <div class="mb-3">
+                <label class="form-label">${tt('adhoc.convertTargetSet','Target Test Case Set')}</label>
+                <select id="convertTargetSet" class="form-select"></select>
+              </div>
+              <div class="mb-3">
+                <label class="form-label">${tt('adhoc.convertTargetSection','Target Section')}</label>
+                <select id="convertTargetSection" class="form-select"></select>
+              </div>
+              <div class="mb-3">
+                <div class="d-flex align-items-center justify-content-between">
+                  <label class="form-label mb-0">${tt('adhoc.convertSelectItems','Select Ad-hoc Test Cases (current sheet)')}</label>
+                  <small class="text-muted">${tt('adhoc.convertHintCurrentSheet','Only current sheet items are listed')}</small>
+                </div>
+                <div id="convertItemsList" class="border rounded p-2" style="max-height: 320px; overflow-y: auto;"></div>
+              </div>
+            </div>
+            <div class="modal-footer">
+              <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">${tt('common.cancel','Cancel')}</button>
+              <button type="button" class="btn btn-success" id="confirmConvertBtn">
+                <i class="fas fa-check me-1"></i>${tt('common.confirm','Confirm')}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>`;
+    document.body.insertAdjacentHTML("beforeend", modalHtml);
+    const btn = document.getElementById("confirmConvertBtn");
+    btn.addEventListener("click", submitConvertSelection);
+    const setSelect = document.getElementById("convertTargetSet");
+    setSelect.addEventListener("change", async () => {
+      await loadConvertSections(setSelect.value);
+    });
+  }
+
+  async function loadConvertSets() {
+    if (convertSetCache.length > 0) return convertSetCache;
+    if (!currentRun?.team_id) return [];
+    const resp = await window.AuthClient.fetch(`/api/teams/${currentRun.team_id}/test-case-sets`);
+    if (!resp.ok) return [];
+    convertSetCache = await resp.json();
+    return convertSetCache;
+  }
+
+  function flattenSections(tree, res = [], depth = 0) {
+    tree.forEach((node) => {
+      res.push({ id: node.id, name: node.name, depth });
+      if (Array.isArray(node.children) && node.children.length > 0) {
+        flattenSections(node.children, res, depth + 1);
+      }
+    });
+    return res;
+  }
+
+  async function loadConvertSections(setId) {
+    const sectionSelect = document.getElementById("convertTargetSection");
+    if (!setId || !sectionSelect) return;
+    if (convertSectionCache.has(setId)) {
+      renderSectionOptions(convertSectionCache.get(setId));
+      return;
+    }
+    const resp = await window.AuthClient.fetch(`/api/test-case-sets/${setId}/sections`);
+    if (!resp.ok) {
+      sectionSelect.innerHTML = `<option value="">${tt('adhoc.convertNoSection','No sections')}</option>`;
+      return;
+    }
+    const tree = await resp.json();
+    const flat = flattenSections(tree);
+    convertSectionCache.set(setId, flat);
+    renderSectionOptions(flat);
+  }
+
+  function renderSectionOptions(list) {
+    const sectionSelect = document.getElementById("convertTargetSection");
+    if (!sectionSelect) return;
+    if (!list || list.length === 0) {
+      sectionSelect.innerHTML = `<option value="">${tt('adhoc.convertNoSection','No sections')}</option>`;
+      return;
+    }
+    sectionSelect.innerHTML = list
+      .map((s) => {
+        const depth = s.depth || 0;
+        const nbsp = "&nbsp;".repeat(depth * 3);
+        const indicator = depth > 0 ? "&nbsp;&nbsp;↳ " : "";
+        return `<option value="${s.id}">${nbsp}${indicator}${escapeHtml(s.name)}</option>`;
+      })
+      .join("");
+  }
+
+  function renderConvertItems() {
+    const listEl = document.getElementById("convertItemsList");
+    if (!listEl) return;
+    const data = hot ? hot.getSourceData() : [];
+    if (!data || data.length === 0) {
+      listEl.innerHTML = `<div class="text-muted small">${tt('adhoc.noItems','No data')}</div>`;
+      return;
+    }
+    const items = data
+      .filter((row) => (row?.test_case_number || "").toUpperCase() !== "SECTION")
+      .map((row, idx) => {
+        const id = row.id;
+        const disabled = !id;
+        const title = escapeHtml(row.title || "");
+        const num = escapeHtml(row.test_case_number || "");
+        const label = num ? `${num} — ${title}` : title || tt('adhoc.convertUntitled','Untitled');
+        return { id, disabled, label, idx };
+      });
+
+    if (items.length === 0) {
+      listEl.innerHTML = `<div class="text-muted small">${tt('adhoc.noItems','No data')}</div>`;
+      return;
+    }
+
+    const rowsHtml = items
+      .map(({ id, disabled, label, idx }) => {
+        return `<div class="form-check mb-1">
+            <input class="form-check-input convert-item-checkbox" data-index="${idx}" type="checkbox" value="${id || ''}" id="convertItem${idx}" ${disabled ? 'disabled' : 'checked'}>
+            <label class="form-check-label" for="convertItem${idx}">
+              ${label} ${disabled ? '<span class="text-muted small">(' + tt('adhoc.convertSaveHint','Save first to convert') + ')</span>' : ''}
+            </label>
+          </div>`;
+      })
+      .join("");
+
+    listEl.innerHTML = `
+      <div class="d-flex align-items-center mb-2">
+        <input type="checkbox" class="form-check-input me-2" id="convertSelectAll">
+        <label for="convertSelectAll" class="form-check-label mb-0">${tt('adhoc.selectAll','Select All')}</label>
+      </div>
+      ${rowsHtml}
+    `;
+
+    wireConvertSelectionHandlers();
+  }
+
+  function wireConvertSelectionHandlers() {
+    const listEl = document.getElementById("convertItemsList");
+    if (!listEl) return;
+    let lastCheckedIndex = null;
+
+    const updateSelectAllState = () => {
+      const checkboxes = Array.from(listEl.querySelectorAll(".convert-item-checkbox")).filter(c => !c.disabled);
+      const allChecked = checkboxes.length > 0 && checkboxes.every(c => c.checked);
+      const selectAll = document.getElementById("convertSelectAll");
+      if (selectAll) selectAll.checked = allChecked;
+    };
+
+    listEl.addEventListener("click", (e) => {
+      const target = e.target;
+      if (target && target.classList.contains("convert-item-checkbox")) {
+        const idx = Number(target.dataset.index);
+        if (!Number.isNaN(idx)) {
+          if (e.shiftKey && lastCheckedIndex !== null) {
+            const start = Math.min(lastCheckedIndex, idx);
+            const end = Math.max(lastCheckedIndex, idx);
+            const state = target.checked;
+            const boxes = Array.from(listEl.querySelectorAll(".convert-item-checkbox")).filter(c => !c.disabled);
+            boxes.forEach((box) => {
+              const bIdx = Number(box.dataset.index);
+              if (bIdx >= start && bIdx <= end) box.checked = state;
+            });
+          }
+          lastCheckedIndex = idx;
+          updateSelectAllState();
+        }
+      }
+      if (target && target.id === "convertSelectAll") {
+        const checked = target.checked;
+        const boxes = Array.from(listEl.querySelectorAll(".convert-item-checkbox")).filter(c => !c.disabled);
+        boxes.forEach((box) => {
+          box.checked = checked;
+        });
+      }
+    });
+
+    updateSelectAllState();
+  }
+
+  async function openConvertModal() {
+    ensureConvertModal();
+    convertSetCache = []; // Always refresh to avoid stale team switch
+    convertSectionCache.clear();
+    const setSelect = document.getElementById("convertTargetSet");
+    const sectionSelect = document.getElementById("convertTargetSection");
+    if (setSelect) setSelect.innerHTML = `<option value="">${tt('loading.loading','Loading...')}</option>`;
+    if (sectionSelect) sectionSelect.innerHTML = `<option value="">${tt('loading.loading','Loading...')}</option>`;
+    renderConvertItems();
+
+    const sets = await loadConvertSets();
+    if (setSelect) {
+      if (!sets || sets.length === 0) {
+        setSelect.innerHTML = `<option value="">${tt('adhoc.convertNoSet','No Test Case Set')}</option>`;
+      } else {
+        setSelect.innerHTML = sets
+          .map((s) => `<option value="${s.id}">${escapeHtml(s.name)}</option>`)
+          .join("");
+      }
+    }
+    if (sets && sets.length > 0) {
+      await loadConvertSections(sets[0].id);
+    }
+
+    const modalEl = document.getElementById("adhocConvertModal");
+    convertModalInstance = bootstrap.Modal.getOrCreateInstance(modalEl);
+    convertModalInstance.show();
+  }
+
+  async function submitConvertSelection() {
+    const setSelect = document.getElementById("convertTargetSet");
+    const sectionSelect = document.getElementById("convertTargetSection");
+    const setId = setSelect?.value;
+    const sectionId = sectionSelect?.value || null;
+    const checks = Array.from(document.querySelectorAll(".convert-item-checkbox")).filter((c) => c.checked && c.value);
+    if (!setId) {
+      alert(tt('adhoc.convertSelectSet','Please select a Test Case Set'));
+      return;
+    }
+    if (checks.length === 0) {
+      alert(tt('adhoc.convertSelectItems','Select at least one test case'));
+      return;
+    }
+    const itemIds = checks.map((c) => Number(c.value)).filter((v) => !Number.isNaN(v));
+    try {
+      const resp = await window.AuthClient.fetch(`/api/adhoc-runs/${runId}/convert-to-testcases`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sheet_id: currentSheetId,
+          item_ids: itemIds,
+          target_set_id: Number(setId),
+          target_section_id: sectionId ? Number(sectionId) : null
+        })
+      });
+      if (resp.ok) {
+        const res = await resp.json();
+        const msg = res.message || tt('adhoc.convertSuccess','Conversion successful');
+        if (window.AppUtils && AppUtils.showSuccess) {
+          AppUtils.showSuccess(msg);
+        } else {
+          // Fallback to bootstrap modal alert
+          const fallback = document.createElement('div');
+          fallback.className = 'alert alert-success position-fixed top-0 start-50 translate-middle-x mt-3 shadow';
+          fallback.style.zIndex = '2000';
+          fallback.textContent = msg;
+          document.body.appendChild(fallback);
+          setTimeout(() => { fallback.remove(); }, 2500);
+        }
+        if (convertModalInstance) convertModalInstance.hide();
+      } else {
+        const msg = tt('common.error','Operation failed');
+        if (window.AppUtils && AppUtils.showError) {
+          AppUtils.showError(msg);
+        } else {
+          alert(msg);
+        }
+      }
+    } catch (e) {
+      console.error(e);
+      const msg = tt('common.error','Operation failed');
+      if (window.AppUtils && AppUtils.showError) {
+        AppUtils.showError(msg);
+      } else {
+        alert(msg);
+      }
+    }
+  }
+
 
           let searchModal = null;
 
@@ -1024,6 +1316,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   async function onAddSheet() {
+    if (isRunReadOnly) {
+      alert(tt("adhoc.readonly", "Read-only (archived)"));
+      return;
+    }
     const name = prompt(
       "Sheet name",
       `Sheet${(currentRun?.sheets?.length || 0) + 1}`,
@@ -1052,6 +1348,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   function onAddRow() {
+    if (isRunReadOnly) {
+      alert(tt("adhoc.readonly", "Read-only (archived)"));
+      return;
+    }
     if (!hot) return;
     const newRow = convertItemToRow(null);
     const lastRow = hot.countRows() - 1;
@@ -1064,6 +1364,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   function onAddSection() {
+    if (isRunReadOnly) {
+      alert(tt("adhoc.readonly", "Read-only (archived)"));
+      return;
+    }
     if (!hot) return;
     const lastRow = hot.countRows() - 1;
     const sectionRow = {
@@ -1091,6 +1395,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   // updateSectionRowsColor removed
 
   function handleChange() {
+    if (isRunReadOnly) {
+      if (dom.saveStatus) {
+        dom.saveStatus.textContent = tt("adhoc.readonly", "Read-only (archived)");
+        dom.saveStatus.className = "text-muted small";
+      }
+      return;
+    }
     if (!dom.saveStatus) return;
     dom.saveStatus.textContent = tt("adhoc.unsaved", "Unsaved changes...");
     dom.saveStatus.className = "text-warning small";
@@ -1099,6 +1410,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   async function saveChanges() {
+    if (isRunReadOnly) return;
     if (!hot || !currentSheetId) return;
 
     if (isSaving) {
