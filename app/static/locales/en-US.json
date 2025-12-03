@@ -1699,7 +1699,8 @@
     "goToManage": "Go view",
     "deleteMapConfirm": "Are you sure you want to delete map \"{name}\"?",
     "deleteMapWarning": "This will delete the map and all its nodes. This action cannot be undone.",
-    "mapCreated": "Map created successfully"
+    "mapCreated": "Map created successfully",
+    "applyText": "Apply text to map"
   },
   "setup": {
     "title": "System Setup",

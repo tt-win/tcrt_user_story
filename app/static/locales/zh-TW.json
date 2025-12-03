@@ -1698,7 +1698,8 @@
     "testRunSetCreatedDesc": "系統已根據 JIRA Ticket 自動分組建立 Test Runs。",
     "goToTestRunManageHint": "您要前往 Test Run 管理頁面查看嗎？",
     "stayHere": "留在本頁",
-    "goToManage": "前往查看"
+    "goToManage": "前往查看",
+    "applyText": "套用文字到地圖"
   },
   "setup": {
     "title": "系統初始化",

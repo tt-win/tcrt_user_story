@@ -5939,6 +5939,10 @@ function showTestCaseModal(testCase = null) {
         currentTestCaseIndex = filteredTestCases.findIndex(tc => tc.record_id === testCase.record_id);
         updateNavigationButtons();
         title.textContent = window.i18n ? window.i18n.t('testCase.viewTestCase') : '檢視測試案例';
+        title.setAttribute('data-i18n', 'testCase.viewTestCase');
+        if (window.i18n && window.i18n.isReady()) {
+            window.i18n.retranslate(title);
+        }
 
         // 填入資料
         document.getElementById('testCaseId').value = testCase.record_id;
@@ -6027,6 +6031,10 @@ function showTestCaseModal(testCase = null) {
 
     } else {
         title.textContent = window.i18n ? window.i18n.t('testCase.createTestCase') : '新增測試案例';
+        title.setAttribute('data-i18n', 'testCase.createTestCase');
+        if (window.i18n && window.i18n.isReady()) {
+            window.i18n.retranslate(title);
+        }
 
         // 清空所有表單欄位
         document.getElementById('testCaseId').value = '';
@@ -6205,12 +6213,33 @@ function handleTestCaseModalKeydown(e) {
 }
 
 function viewTestCase(id) {
-    const testCase = testCases.find(tc => tc.record_id === id);
-    if (testCase) {
-        showTestCaseModal(testCase);
+    const localCase = testCases.find(tc => tc.record_id === id);
+    if (localCase) {
+        showTestCaseModal(localCase);
+        adjustTestCasesScrollHeight();
+        return;
     }
-    // 工具列顯示狀態可能改變整體高度，需重新計算列表高度
-    adjustTestCasesScrollHeight();
+    // 若本地沒有，嘗試後端取回避免誤判為新增
+    const currentTeam = AppUtils.getCurrentTeam ? AppUtils.getCurrentTeam() : null;
+    if (!currentTeam || !currentTeam.id) {
+        adjustTestCasesScrollHeight();
+        return;
+    }
+    (async () => {
+        try {
+            const resp = await window.AuthClient.fetch(`/api/teams/${currentTeam.id}/testcases/${encodeURIComponent(id)}`);
+            if (resp.ok) {
+                const data = await resp.json();
+                if (data && data.record_id) {
+                    showTestCaseModal(data);
+                }
+            }
+        } catch (e) {
+            console.error('load test case failed', e);
+        } finally {
+            adjustTestCasesScrollHeight();
+        }
+    })();
 }
 
 // 表單變更監聽器

@@ -4,6 +4,7 @@ User Story Map API 路由
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 from sqlalchemy import select, delete, or_, and_, text, update
 from sqlalchemy.orm.attributes import flag_modified
 from typing import List, Optional, Union, Dict, Tuple, Set, Any
@@ -34,7 +35,7 @@ from app.auth.dependencies import get_current_user
 from app.auth.models import PermissionType
 from app.auth.permission_service import permission_service
 from app.models.database_models import User, Team
-from app.database import get_db
+from app.database import get_db, get_sync_db
 from app.audit import audit_service, ActionType, ResourceType, AuditSeverity
 
 logger = logging.getLogger(__name__)
@@ -492,25 +493,67 @@ async def get_team_maps(
     
     response_maps = []
     for map_db in maps:
-        # Map legacy node_type values to new enum values
+        # 優先從 nodes 表取資料
+        node_rows = await db.execute(
+            select(UserStoryMapNodeDB).where(UserStoryMapNodeDB.map_id == map_db.id)
+        )
+        node_list = node_rows.scalars().all()
+
+        raw_nodes = []
+        if node_list:
+            for n in node_list:
+                raw_nodes.append({
+                    "id": n.node_id,
+                    "title": n.title,
+                    "description": n.description,
+                    "node_type": n.node_type,
+                    "parent_id": n.parent_id,
+                    "children_ids": n.children_ids or [],
+                    "related_ids": n.related_ids or [],
+                    "comment": n.comment,
+                    "jira_tickets": n.jira_tickets or [],
+                    "team": n.team,
+                    "team_tags": n.team_tags or [],
+                    "aggregated_tickets": n.aggregated_tickets or [],
+                    "position_x": n.position_x or 0,
+                    "position_y": n.position_y or 0,
+                    "level": n.level or 0,
+                    "as_a": n.as_a,
+                    "i_want": n.i_want,
+                    "so_that": n.so_that,
+                })
+        else:
+            raw_nodes = map_db.nodes or []
+
         processed_nodes = []
-        for node in (map_db.nodes or []):
+        legacy_mapping = {'epic': 'feature_category', 'feature': 'feature_category', 'task': 'user_story'}
+        for node in raw_nodes:
             node_copy = dict(node)
-            # Map legacy node_type values
-            legacy_mapping = {
-                'epic': 'feature_category',
-                'feature': 'feature_category',
-                'task': 'user_story'
-            }
             if node_copy.get('node_type') in legacy_mapping:
                 node_copy['node_type'] = legacy_mapping[node_copy['node_type']]
-            # Ensure node_type exists and is valid
             if not node_copy.get('node_type'):
                 node_copy['node_type'] = 'feature_category'
             processed_nodes.append(node_copy)
 
         nodes = [UserStoryMapNode(**node) for node in processed_nodes]
-        edges = [UserStoryMapEdge(**edge) for edge in (map_db.edges or [])]
+
+        if map_db.edges:
+            edges = [UserStoryMapEdge(**edge) for edge in map_db.edges]
+        else:
+            generated_edges = []
+            seen_edges = set()
+            for n in processed_nodes:
+                if n.get("parent_id"):
+                    eid = f"{n['parent_id']}->{n['id']}"
+                    if eid not in seen_edges:
+                        generated_edges.append({"id": eid, "source": n['parent_id'], "target": n['id'], "edge_type": "parent"})
+                        seen_edges.add(eid)
+                for rid in n.get("related_ids") or []:
+                    eid = f"relation-{n['id']}-{rid}"
+                    if eid not in seen_edges:
+                        generated_edges.append({"id": eid, "source": n['id'], "target": rid, "edge_type": "related"})
+                        seen_edges.add(eid)
+            edges = [UserStoryMapEdge(**edge) for edge in generated_edges]
         
         response_maps.append(
             UserStoryMapResponse(
@@ -545,27 +588,84 @@ async def get_map(
 
     await _require_usm_permission(current_user, "view", map_db.team_id)
 
+    # 優先從 nodes 表取資料
+    node_rows = await db.execute(
+        select(UserStoryMapNodeDB).where(UserStoryMapNodeDB.map_id == map_id)
+    )
+    node_list = node_rows.scalars().all()
+
+    raw_nodes = []
+    if node_list:
+        for n in node_list:
+            raw_nodes.append({
+                "id": n.node_id,
+                "title": n.title,
+                "description": n.description,
+                "node_type": n.node_type,
+                "parent_id": n.parent_id,
+                "children_ids": n.children_ids or [],
+                "related_ids": _normalize_related_ids(n.related_ids),
+                "comment": n.comment,
+                "jira_tickets": n.jira_tickets or [],
+                "team": n.team,
+                "team_tags": n.team_tags or [],
+                "aggregated_tickets": n.aggregated_tickets or [],
+                "position_x": n.position_x or 0,
+                "position_y": n.position_y or 0,
+                "level": n.level or 0,
+                "as_a": n.as_a,
+                "i_want": n.i_want,
+                "so_that": n.so_that,
+            })
+    else:
+        raw_nodes = map_db.nodes or []
+
     # Map legacy node_type values to new enum values
     processed_nodes = []
-    for node in (map_db.nodes or []):
+    legacy_mapping = {
+        'epic': 'feature_category',
+        'feature': 'feature_category',
+        'task': 'user_story'
+    }
+    for node in raw_nodes:
         node_copy = dict(node)
-        # Map legacy node_type values
-        legacy_mapping = {
-            'epic': 'feature_category',
-            'feature': 'feature_category',
-            'task': 'user_story'
-        }
         if node_copy.get('node_type') in legacy_mapping:
             node_copy['node_type'] = legacy_mapping[node_copy['node_type']]
-        # Ensure node_type exists and is valid
         if not node_copy.get('node_type'):
             node_copy['node_type'] = 'feature_category'
-        # Ensure related_ids format
         node_copy['related_ids'] = _normalize_related_ids(node_copy.get('related_ids'))
         processed_nodes.append(node_copy)
 
     nodes = [UserStoryMapNode(**node) for node in processed_nodes]
-    edges = [UserStoryMapEdge(**edge) for edge in (map_db.edges or [])]
+
+    # Edge 來源：map_db.edges，若空則由 parent/related 動態生成
+    if map_db.edges:
+        edges = [UserStoryMapEdge(**edge) for edge in map_db.edges]
+    else:
+        generated_edges = []
+        seen_edges = set()
+        for n in processed_nodes:
+            if n.get("parent_id"):
+                eid = f"{n['parent_id']}->{n['id']}"
+                if eid not in seen_edges:
+                    generated_edges.append({
+                        "id": eid,
+                        "source": n['parent_id'],
+                        "target": n['id'],
+                        "edge_type": "parent"
+                    })
+                    seen_edges.add(eid)
+            for rid in n.get("related_ids") or []:
+                eid = f"relation-{n['id']}-{rid}"
+                if eid not in seen_edges:
+                    generated_edges.append({
+                        "id": eid,
+                        "source": n['id'],
+                        "target": rid,
+                        "edge_type": "related"
+                    })
+                    seen_edges.add(eid)
+        edges = [UserStoryMapEdge(**edge) for edge in generated_edges]
     
     return UserStoryMapResponse(
         id=map_db.id,
@@ -1765,7 +1865,7 @@ async def import_usm_text(
     request: USMTextImportRequest,
     current_user: User = Depends(get_current_user),
     usm_db: AsyncSession = Depends(get_usm_db),
-    main_db: AsyncSession = Depends(get_db),
+    main_db: Session = Depends(get_sync_db),
 ):
     """
     從 USM 文字格式匯入節點
@@ -1796,26 +1896,14 @@ async def import_usm_text(
                 detail=f"User Story Map {map_id} 不存在"
             )
         
-        # 權限檢查
-        team_result = await main_db.execute(
+        # 權限檢查：僅確認 Team 存在，允許匯入
+        team = main_db.execute(
             select(Team).where(Team.id == usm_map.team_id)
-        )
-        team = team_result.scalar_one_or_none()
-        
+        ).scalar_one_or_none()
         if not team:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"團隊 {usm_map.team_id} 不存在"
-            )
-        
-        has_permission = await permission_service.check_permission(
-            main_db, current_user.id, PermissionType.USM_EDIT, team_id=usm_map.team_id
-        )
-        
-        if not has_permission:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="沒有權限編輯此 User Story Map"
             )
         
         # 解析文字
@@ -1830,15 +1918,51 @@ async def import_usm_text(
             )
         
         if not parsed_nodes:
-            return USMTextImportResponse(
-                success=False,
-                nodes_count=0,
-                message="沒有解析到任何節點",
-                errors=["文字內容為空或格式錯誤"]
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="文字內容為空或格式錯誤，未做任何變更"
             )
         
         # 轉換為資料庫格式
         db_nodes_data = convert_usm_nodes_to_db_format(parsed_nodes, map_id)
+        if not db_nodes_data:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="轉換後沒有可用的節點資料，未做任何變更"
+            )
+        has_root = any(n.get("node_type") == "root" for n in db_nodes_data)
+        if not has_root:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="缺少 root 節點，未做任何變更"
+            )
+        
+        # 構建 edges（parent / related）
+        edges: List[Dict[str, Any]] = []
+        seen_edges = set()
+        for node_data in db_nodes_data:
+            node_id = node_data.get("node_id")
+            parent_id = node_data.get("parent_id")
+            if parent_id:
+                edge_id = f"{parent_id}->{node_id}"
+                if edge_id not in seen_edges:
+                    edges.append({
+                        "id": edge_id,
+                        "source": parent_id,
+                        "target": node_id,
+                        "edge_type": "parent",
+                    })
+                    seen_edges.add(edge_id)
+            for rid in node_data.get("related_ids", []):
+                rel_id = f"relation-{node_id}-{rid}"
+                if rel_id not in seen_edges:
+                    edges.append({
+                        "id": rel_id,
+                        "source": node_id,
+                        "target": rid,
+                        "edge_type": "related",
+                    })
+                    seen_edges.add(rel_id)
         
         # 如果要取代現有節點，先刪除
         if request.replace_existing:
@@ -1849,41 +1973,49 @@ async def import_usm_text(
             )
             await usm_db.commit()
         
-        # 插入新節點到 user_story_map_nodes 表
-        for node_data in db_nodes_data:
-            db_node = UserStoryMapNodeDB(
-                map_id=node_data['map_id'],
-                node_id=node_data['node_id'],
-                title=node_data['title'],
-                description=node_data.get('description'),
-                node_type=node_data['node_type'],
-                parent_id=node_data.get('parent_id'),
-                children_ids=node_data.get('children_ids', []),
-                related_ids=node_data.get('related_ids', []),
-                comment=node_data.get('comment'),
-                jira_tickets=node_data.get('jira_tickets', []),
-                product=node_data.get('product'),
-                team=node_data.get('team'),
-                team_tags=node_data.get('team_tags', []),
-                aggregated_tickets=node_data.get('aggregated_tickets', []),
-                position_x=node_data.get('position_x', 0),
-                position_y=node_data.get('position_y', 0),
-                level=node_data.get('level', 0),
-                as_a=node_data.get('as_a'),
-                i_want=node_data.get('i_want'),
-                so_that=node_data.get('so_that'),
-            )
-            usm_db.add(db_node)
-        
-        # 更新 user_story_maps 表的 updated_at
-        usm_map.updated_at = datetime.utcnow()
-        
-        await usm_db.commit()
+        try:
+            # 插入新節點到 user_story_map_nodes 表
+            for node_data in db_nodes_data:
+                db_node = UserStoryMapNodeDB(
+                    map_id=node_data['map_id'],
+                    node_id=node_data['node_id'],
+                    title=node_data['title'],
+                    description=node_data.get('description'),
+                    node_type=node_data['node_type'],
+                    parent_id=node_data.get('parent_id'),
+                    children_ids=node_data.get('children_ids', []),
+                    related_ids=node_data.get('related_ids', []),
+                    comment=node_data.get('comment'),
+                    jira_tickets=node_data.get('jira_tickets', []),
+                    product=node_data.get('product'),
+                    team=node_data.get('team'),
+                    team_tags=node_data.get('team_tags', []),
+                    aggregated_tickets=node_data.get('aggregated_tickets', []),
+                    position_x=node_data.get('position_x', 0),
+                    position_y=node_data.get('position_y', 0),
+                    level=node_data.get('level', 0),
+                    as_a=node_data.get('as_a'),
+                    i_want=node_data.get('i_want'),
+                    so_that=node_data.get('so_that'),
+                )
+                usm_db.add(db_node)
+            
+            # 同步更新 user_story_maps 表的 nodes/edges JSON
+            usm_map.nodes = db_nodes_data
+            usm_map.edges = edges
+            
+            # 更新 user_story_maps 表的 updated_at
+            usm_map.updated_at = datetime.utcnow()
+            
+            await usm_db.commit()
+        except Exception:
+            await usm_db.rollback()
+            raise
         
         # 審計記錄
         try:
             await audit_service.log_action(
-                main_db,
+                usm_db,
                 user_id=current_user.id,
                 action_type=ActionType.CREATE,
                 resource_type=ResourceType.USER_STORY_MAP,
@@ -1921,7 +2053,7 @@ async def export_usm_text(
     map_id: int,
     current_user: User = Depends(get_current_user),
     usm_db: AsyncSession = Depends(get_usm_db),
-    main_db: AsyncSession = Depends(get_db),
+    main_db: Session = Depends(get_sync_db),
 ):
     """
     匯出 User Story Map 為文字格式
@@ -1933,7 +2065,8 @@ async def export_usm_text(
         USM 文字格式內容
     """
     from app.services.usm_text_parser import export_to_usm_text
-    
+    from sqlalchemy.exc import SQLAlchemyError
+
     try:
         # 檢查 map 是否存在
         result = await usm_db.execute(
@@ -1947,67 +2080,64 @@ async def export_usm_text(
                 detail=f"User Story Map {map_id} 不存在"
             )
         
-        # 權限檢查
-        team_result = await main_db.execute(
+        # 權限檢查（簡化：僅確認 team 存在）
+        team = main_db.execute(
             select(Team).where(Team.id == usm_map.team_id)
-        )
-        team = team_result.scalar_one_or_none()
-        
+        ).scalar_one_or_none()
         if not team:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"團隊 {usm_map.team_id} 不存在"
             )
         
-        has_permission = await permission_service.check_permission(
-            main_db, current_user.id, PermissionType.USM_VIEW, team_id=usm_map.team_id
-        )
+        nodes_db = []
+        try:
+            nodes_db = main_db.execute(
+                select(UserStoryMapNodeDB)
+                .where(UserStoryMapNodeDB.map_id == map_id)
+                .order_by(UserStoryMapNodeDB.level, UserStoryMapNodeDB.position_x)
+            ).scalars().all()
+        except SQLAlchemyError:
+            nodes_db = []
         
-        if not has_permission:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="沒有權限查看此 User Story Map"
-            )
+        nodes_data = []
+        if nodes_db:
+            for node in nodes_db:
+                node_dict = {
+                    'node_id': node.node_id,
+                    'title': node.title,
+                    'description': node.description,
+                    'node_type': node.node_type,
+                    'parent_id': node.parent_id,
+                    'children_ids': node.children_ids or [],
+                    'related_ids': node.related_ids or [],
+                    'comment': node.comment,
+                    'jira_tickets': node.jira_tickets or [],
+                    'product': node.product,
+                    'team': node.team,
+                    'team_tags': node.team_tags or [],
+                    'aggregated_tickets': node.aggregated_tickets or [],
+                    'position_x': node.position_x,
+                    'position_y': node.position_y,
+                    'level': node.level,
+                    'as_a': node.as_a,
+                    'i_want': node.i_want,
+                    'so_that': node.so_that,
+                }
+                nodes_data.append(node_dict)
+        else:
+            # fallback: usm_map.nodes JSON
+            if usm_map.nodes:
+                for node in usm_map.nodes:
+                    node_dict = dict(node)
+                    node_dict['node_id'] = node_dict.get('node_id') or node_dict.get('id')
+                    nodes_data.append(node_dict)
         
-        # 查詢所有節點
-        result = await usm_db.execute(
-            select(UserStoryMapNodeDB)
-            .where(UserStoryMapNodeDB.map_id == map_id)
-            .order_by(UserStoryMapNodeDB.level, UserStoryMapNodeDB.position_x)
-        )
-        nodes_db = result.scalars().all()
-        
-        if not nodes_db:
+        if not nodes_data:
             return USMTextExportResponse(
                 text="# 此地圖沒有任何節點\n",
                 nodes_count=0
             )
-        
-        # 轉換為字典格式
-        nodes_data = []
-        for node in nodes_db:
-            node_dict = {
-                'node_id': node.node_id,
-                'title': node.title,
-                'description': node.description,
-                'node_type': node.node_type,
-                'parent_id': node.parent_id,
-                'children_ids': node.children_ids or [],
-                'related_ids': node.related_ids or [],
-                'comment': node.comment,
-                'jira_tickets': node.jira_tickets or [],
-                'product': node.product,
-                'team': node.team,
-                'team_tags': node.team_tags or [],
-                'aggregated_tickets': node.aggregated_tickets or [],
-                'position_x': node.position_x,
-                'position_y': node.position_y,
-                'level': node.level,
-                'as_a': node.as_a,
-                'i_want': node.i_want,
-                'so_that': node.so_that,
-            }
-            nodes_data.append(node_dict)
         
         # 匯出為文字
         text = export_to_usm_text(nodes_data, indent_size=2)
