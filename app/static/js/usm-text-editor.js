@@ -114,7 +114,7 @@
         }
 
         try {
-            const response = await fetch(`/user-story-maps/${mapIdFromUrl}/export-text`, {
+            const response = await fetch(`/api/user-story-maps/${mapIdFromUrl}/export-text`, {
                 method: 'GET',
                 headers: {
                     'Content-Type': 'application/json',
@@ -163,7 +163,7 @@
         }
 
         try {
-            const response = await fetch(`/user-story-maps/${mapIdFromUrl}/import-text`, {
+            const response = await fetch(`/api/user-story-maps/${mapIdFromUrl}/import-text`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -230,7 +230,7 @@
         }
 
         try {
-            const response = await fetch(`/user-story-maps/${mapIdFromUrl}/import-text`, {
+            const response = await fetch(`/api/user-story-maps/${mapIdFromUrl}/import-text`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
