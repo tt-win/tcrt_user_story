@@ -936,13 +936,23 @@ const UserStoryMapFlow = () => {
         });
     }, []);
 
+    const authedFetch = async (url, options = {}) => {
+        if (window.AuthClient && typeof window.AuthClient.fetch === 'function') {
+            return window.AuthClient.fetch(url, { credentials: 'include', ...options });
+        }
+        return fetch(url, {
+            credentials: 'include',
+            ...options,
+            headers: {
+                'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
+                ...(options.headers || {}),
+            },
+        });
+    };
+
     const loadTeamInfo = useCallback(async () => {
         try {
-            const response = await fetch(`/api/teams/${teamId}`, {
-                headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
-                },
-            });
+            const response = await authedFetch(`/api/teams/${teamId}`, {});
             if (response.ok) {
                 const team = await response.json();
                 setTeamName(team.name || `Team ${teamId}`);
@@ -955,16 +965,11 @@ const UserStoryMapFlow = () => {
     // Load maps for team
     const loadMaps = useCallback(async () => {
         try {
-            const response = await fetch(`/api/user-story-maps/team/${teamId}`, {
-                headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
-                },
-            });
+            const response = await authedFetch(`/api/user-story-maps/team/${teamId}`, {});
             if (response.ok) {
                 const data = await response.json();
                 setMaps(data);
 
-                // Update select dropdown
                 const select = document.getElementById('currentMapSelect');
                 if (select) {
                     const defaultText = window.i18n ? window.i18n.t('usm.selectMap', {}, '選擇地圖...') : '選擇地圖...';
@@ -987,11 +992,7 @@ const UserStoryMapFlow = () => {
         // 避免多次搬移造成時間競賽：僅採用最後一次回應
         const requestId = ++loadMapRequestIdRef.current;
         try {
-            const response = await fetch(`/api/user-story-maps/${mapId}`, {
-                headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('access_token')}`,
-                },
-            });
+            const response = await authedFetch(`/api/user-story-maps/${mapId}`, {});
             if (!response.ok) return;
             const map = await response.json();
 
@@ -1082,7 +1083,18 @@ const UserStoryMapFlow = () => {
             });
             setEdges(validEdges.map(edge => ({ ...edge, hidden: false })));
             setCurrentMapId(mapId);
-            setCollapsedNodeIds(() => new Set());
+            // 預設收合含 user story 子節點的父節點
+            const defaultCollapsed = new Set();
+            decoratedNodes.forEach((node) => {
+                if (Array.isArray(node.data.childrenIds) && node.data.childrenIds.length > 0) {
+                    const hasUserStoryChild = node.data.childrenIds.some((cid) => {
+                        const child = decoratedNodes.find((n) => n.id === cid);
+                        return child && child.data.nodeType === 'user_story';
+                    });
+                    if (hasUserStoryChild) defaultCollapsed.add(node.id);
+                }
+            });
+            setCollapsedNodeIds(() => defaultCollapsed);
             setHighlightedNodeIds([]);
             setHighlightedPath(null);
             const highlightInfoEl = document.getElementById('highlightInfo');
@@ -1091,6 +1103,15 @@ const UserStoryMapFlow = () => {
                 highlightInfoEl.classList.add('d-none');
                 highlightInfoEl.innerHTML = '';
             }
+            // 自動排版與 fitView
+            setTimeout(() => {
+                try {
+                    window.userStoryMapFlow?.autoLayout?.();
+                    reactFlowInstance.current?.fitView({ padding: 0.05, duration: 300 });
+                } catch (e) {
+                    console.warn('auto layout/fitView failed', e);
+                }
+            }, 20);
         } catch (error) {
             console.error('Failed to load map:', error);
         }
@@ -3685,6 +3706,7 @@ const UserStoryMapFlow = () => {
                 setEdges([]);
                 setCurrentMapId(null);
             },
+            collapseUserStoryNodes,
         };
         window.currentMapId = currentMapId;
         window.teamId = teamId;

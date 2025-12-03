@@ -524,7 +524,7 @@ Web Tool{% endblock %} {% block page_title_text %}
         </ul>
 
         <!-- Tab Content -->
-        <div class="tab-content" style="flex: 1; display: flex; flex-direction: column;">
+        <div class="tab-content usm-tab-content" style="flex: 1; display: flex; flex-direction: column;">
             <!-- Visual Mode -->
             <div class="tab-pane fade show active" id="visual-pane" role="tabpanel" style="flex: 1; display: flex; flex-direction: column;">
                 <!-- React Flow Container -->
@@ -533,27 +533,13 @@ Web Tool{% endblock %} {% block page_title_text %}
 
             <!-- Text Mode -->
             <div class="tab-pane fade" id="text-pane" role="tabpanel" style="flex: 1; display: flex; flex-direction: column;">
-                <div class="mb-2">
-                    <button type="button" class="btn btn-sm btn-primary" id="exportToTextBtn">
-                        <i class="fas fa-download"></i> <span data-i18n="usm.exportText">匯出為文字</span>
+                <div class="mb-2 d-flex gap-2 flex-wrap">
+                    <button type="button" class="btn btn-sm btn-warning" id="applyTextSaveBtn">
+                        <i class="fas fa-save"></i> <span data-i18n="usm.applyText">套用文字到地圖</span>
                     </button>
-                    <button type="button" class="btn btn-sm btn-success" id="importFromTextBtn">
-                        <i class="fas fa-upload"></i> <span data-i18n="usm.importText">從文字匯入</span>
-                    </button>
-                    <button type="button" class="btn btn-sm btn-danger" id="importReplaceBtn">
-                        <i class="fas fa-sync-alt"></i> <span data-i18n="usm.replaceAll">取代全部</span>
-                    </button>
-                    <button type="button" class="btn btn-sm btn-secondary" id="downloadTextBtn">
-                        <i class="fas fa-file-download"></i> <span data-i18n="usm.download">下載</span>
-                    </button>
-                    <a
-                        href="/static/samples/usm_example.usm"
-                        class="btn btn-sm btn-info"
-                        download
-                        target="_blank"
-                    >
+                    <button type="button" class="btn btn-sm btn-info" id="openUsmSpecBtn">
                         <i class="fas fa-book"></i> <span data-i18n="usm.viewSpec">查看規範</span>
-                    </a>
+                    </button>
                 </div>
                 <div id="usmTextEditor" style="flex: 1; border: 1px solid #dee2e6; border-radius: 4px;"></div>
                 <div class="mt-2">
@@ -1333,6 +1319,92 @@ Web Tool{% endblock %} {% block page_title_text %}
 
     <script src="/static/js/user_story_map.js?v=2"></script>
     <script src="/static/js/usm-text-editor.js"></script>
+    <style>
+      .tab-content.usm-tab-content {
+        display: flex;
+        flex: 1;
+        min-height: 0;
+      }
+      .tab-content.usm-tab-content .tab-pane {
+        display: none !important;
+      }
+      .tab-content.usm-tab-content .tab-pane.active.show {
+        display: flex !important;
+        flex-direction: column;
+        flex: 1;
+      }
+    </style>
+    <script>
+      document.addEventListener('DOMContentLoaded', () => {
+        const sidebar = document.querySelector('.usm-sidebar');
+        const textTab = document.getElementById('text-tab');
+        const visualTab = document.getElementById('visual-tab');
+        const hideSidebarForText = () => { if (sidebar) sidebar.classList.add('d-none'); };
+        const showSidebarForVisual = () => { if (sidebar) sidebar.classList.remove('d-none'); };
+        if (textTab) textTab.addEventListener('shown.bs.tab', hideSidebarForText);
+        if (visualTab) visualTab.addEventListener('shown.bs.tab', showSidebarForVisual);
+        const textPane = document.getElementById('text-pane');
+        if (textPane && textPane.classList.contains('active')) hideSidebarForText();
+
+        // USM 規範 modal
+        const specModalHtml = `
+          <div class="modal fade" id="usmSpecModal" tabindex="-1">
+            <div class="modal-dialog modal-lg modal-dialog-scrollable">
+              <div class="modal-content">
+                <div class="modal-header">
+                  <h5 class="modal-title"><i class="fas fa-book me-2"></i>${(window.i18n ? window.i18n.t('usm.viewSpec') : 'USM Syntax')}</h5>
+                  <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+<pre class="mb-0" style="white-space: pre-wrap; font-size: 13px; line-height: 1.5;">
+root: <名稱>
+  team: <團隊名稱>
+  desc: <描述>
+  feature: <名稱>
+    desc: <描述>
+    story: <名稱>
+      desc: <描述>
+      as_a: <角色>
+      i_want: <需求>
+      so_that: <價值>
+jira: TCM-123,TCM-456
+comment: 文字
+related: [@node_id1], [@node_id2]
+desc: |
+  第一行
+  第二行
+</pre>
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', specModalHtml);
+        const specBtn = document.getElementById('openUsmSpecBtn');
+        if (specBtn) {
+          specBtn.addEventListener('click', () => {
+            const modalEl = document.getElementById('usmSpecModal');
+            const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+            modal.show();
+          });
+        }
+
+        // 切換回視覺化模式時自動排版
+        if (visualTab) {
+          visualTab.addEventListener('shown.bs.tab', () => {
+            // 延遲至 pane 可見後再排版 + fitView，避免尺寸計算為 0
+            setTimeout(() => {
+              try {
+                window.userStoryMapFlow?.autoLayout?.();
+                window.userStoryMapFlow?.fitView?.({ padding: 0.2 });
+              } catch (e) {
+                console.warn('fitView on visual tab failed', e);
+              }
+            }, 150);
+          });
+        }
+      });
+    </script>
 
     <!-- Test Cases Review Modal -->
     <div class="modal fade" id="reviewTestCasesModal" tabindex="-1">

@@ -1000,6 +1000,89 @@ async def update_test_case(
             changed = True
             changed_fields.append("test_result")
 
+        # Set / Section 更新
+        if case_update.test_case_set_id is not None or case_update.test_case_section_id is not None:
+            set_service = TestCaseSetService(db)
+            section_service = TestCaseSectionService(db)
+
+            # 決定目標 Set
+            target_set = None
+            if case_update.test_case_set_id is not None:
+                target_set = (
+                    db.query(TestCaseSetDB)
+                    .filter(
+                        TestCaseSetDB.id == case_update.test_case_set_id,
+                        TestCaseSetDB.team_id == team_id,
+                    )
+                    .first()
+                )
+                if not target_set:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Test Case Set {case_update.test_case_set_id} 不存在或不屬於此 Team",
+                    )
+            else:
+                if item.test_case_set_id:
+                    target_set = (
+                        db.query(TestCaseSetDB)
+                        .filter(
+                            TestCaseSetDB.id == item.test_case_set_id,
+                            TestCaseSetDB.team_id == team_id,
+                        )
+                        .first()
+                    )
+                if not target_set:
+                    target_set = set_service.get_or_create_default(team_id)
+
+            # 決定目標 Section
+            target_section_id = item.test_case_section_id
+            if case_update.test_case_section_id is not None:
+                target_section = (
+                    db.query(TestCaseSectionDB)
+                    .filter(
+                        TestCaseSectionDB.id == case_update.test_case_section_id,
+                        TestCaseSectionDB.test_case_set_id == target_set.id,
+                    )
+                    .first()
+                )
+                if not target_section:
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail=f"Section {case_update.test_case_section_id} 不存在或不屬於 Test Case Set {target_set.id}",
+                    )
+                target_section_id = target_section.id
+            elif case_update.test_case_set_id is not None:
+                # 換 Set 但沒指定 Section，使用 Unassigned
+                target_section = (
+                    db.query(TestCaseSectionDB)
+                    .filter(
+                        TestCaseSectionDB.test_case_set_id == target_set.id,
+                        TestCaseSectionDB.name == "Unassigned",
+                    )
+                    .first()
+                )
+                if not target_section:
+                    target_section = TestCaseSectionDB(
+                        test_case_set_id=target_set.id,
+                        name="Unassigned",
+                        description="未分配的測試案例",
+                        level=1,
+                        sort_order=0,
+                        parent_section_id=None,
+                    )
+                    db.add(target_section)
+                    db.flush()
+                target_section_id = target_section.id
+
+            if target_set and target_set.id != item.test_case_set_id:
+                item.test_case_set_id = target_set.id
+                changed = True
+                changed_fields.append("test_case_set_id")
+            if target_section_id != item.test_case_section_id:
+                item.test_case_section_id = target_section_id
+                changed = True
+                changed_fields.append("test_case_section_id")
+
         # 處理 TCG 欄位更新：支援字串（逗號/空白/換行分隔的單號）或字符串列表
         if hasattr(case_update, "tcg") and case_update.tcg is not None:
             try:
@@ -1148,6 +1231,10 @@ async def update_test_case(
             created_at=item.created_at,
             updated_at=item.updated_at,
             last_sync_at=item.last_sync_at,
+            test_case_section_id=item.test_case_section_id,
+            section_name=None,
+            section_path=None,
+            section_level=None,
         )
     except HTTPException:
         raise

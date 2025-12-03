@@ -8,6 +8,19 @@
     let currentMapId = null;
     let editorReady = false;
 
+    function authedFetch(url, options = {}) {
+        if (window.AuthClient && typeof window.AuthClient.fetch === 'function') {
+            return window.AuthClient.fetch(url, options);
+        }
+        return fetch(url, {
+            credentials: 'include',
+            ...options,
+            headers: {
+                ...(options.headers || {}),
+            },
+        });
+    }
+
     /**
      * 獲取當前地圖 ID
      */
@@ -23,17 +36,28 @@
         return pathParts[teamIdIndex + 1] ? parseInt(pathParts[teamIdIndex + 1]) : null;
     }
 
+    function warmupMonacoLoader() {
+        if (!window.__monacoLoaderPromise) {
+            require.config({
+                paths: {
+                    'vs': 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs'
+                }
+            });
+            window.__monacoLoaderPromise = new Promise((resolve, reject) => {
+                require(['vs/editor/editor.main'], () => resolve(), reject);
+            });
+        }
+        return window.__monacoLoaderPromise;
+    }
+
     /**
      * 初始化 Monaco Editor
      */
     function initMonacoEditor() {
-        require.config({ 
-            paths: { 
-                'vs': 'https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs' 
-            } 
-        });
+        if (editor) return;
+        const loader = warmupMonacoLoader();
 
-        require(['vs/editor/editor.main'], function () {
+        loader.then(function () {
             // 註冊 USM 語言
             monaco.languages.register({ id: 'usm' });
 
@@ -113,21 +137,13 @@
 
             editorReady = true;
             console.log('Monaco Editor 初始化完成');
-            
-            // 如果已經在文字模式，立即匯出
-            const textPane = document.getElementById('text-pane');
-            const mapId = getCurrentMapId();
-            if (textPane && textPane.classList.contains('active') && mapId) {
-                console.log('編輯器初始化完成且已在文字模式，立即匯出');
-                exportToText();
-            }
         });
     }
 
     /**
      * 匯出當前地圖為文字格式
      */
-    async function exportToText() {
+    async function exportToText(showToast = true) {
         const mapId = getCurrentMapId();
         console.log('exportToText - 當前 mapId:', mapId);
         
@@ -137,12 +153,11 @@
         }
 
         try {
-            const response = await fetch(`/api/user-story-maps/${mapId}/export-text`, {
+            const response = await authedFetch(`/api/user-story-maps/${mapId}/export-text`, {
                 method: 'GET',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                credentials: 'include',
             });
 
             if (!response.ok) {
@@ -154,7 +169,9 @@
             
             if (editor) {
                 editor.setValue(data.text);
-                showMessage(`成功匯出 ${data.nodes_count} 個節點`, 'success');
+                if (showToast) {
+                    showMessage(`成功匯出 ${data.nodes_count} 個節點`, 'success');
+                }
             }
         } catch (error) {
             console.error('匯出文字失敗:', error);
@@ -189,12 +206,11 @@
         }
 
         try {
-            const response = await fetch(`/api/user-story-maps/${mapId}/import-text`, {
+            const response = await authedFetch(`/api/user-story-maps/${mapId}/import-text`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                credentials: 'include',
                 body: JSON.stringify({
                     text: text,
                     replace_existing: false,
@@ -235,7 +251,8 @@
     /**
      * 從文字匯入（取代所有現有節點）
      */
-    async function importReplaceAll() {
+    async function importReplaceAll(options = {}) {
+        const { skipConfirm = false } = options;
         const mapId = getCurrentMapId();
         
         if (!mapId) {
@@ -254,17 +271,18 @@
             return;
         }
 
-        if (!confirm('⚠️ 警告：這將會刪除現有的所有節點並以文字內容取代。\n\n確定要繼續嗎？')) {
-            return;
+        if (!skipConfirm) {
+            if (!confirm('⚠️ 警告：這將會刪除現有的所有節點並以文字內容取代。\n\n確定要繼續嗎？')) {
+                return;
+            }
         }
 
         try {
-            const response = await fetch(`/api/user-story-maps/${mapId}/import-text`, {
+            const response = await authedFetch(`/api/user-story-maps/${mapId}/import-text`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                 },
-                credentials: 'include',
                 body: JSON.stringify({
                     text: text,
                     replace_existing: true,
@@ -285,45 +303,26 @@
 
             showMessage(data.message || `成功取代並匯入 ${data.nodes_count} 個節點`, 'success');
             
-            // 切換回視覺化模式並重新載入地圖
-            setTimeout(() => {
-                const visualTab = document.getElementById('visual-tab');
-                if (visualTab) {
-                    visualTab.click();
+            // 嘗試重新載入地圖（不自動切換頁籤），失敗則重整
+            let refreshed = false;
+            if (window.userStoryMapFlow && typeof window.userStoryMapFlow.loadMap === 'function') {
+                try {
+                    await window.userStoryMapFlow.loadMap(mapId);
+                    refreshed = true;
+                } catch (e) {
+                    console.warn('loadMap 失敗', e);
                 }
-                if (window.userStoryMapFlow && window.userStoryMapFlow.loadMap) {
-                    window.userStoryMapFlow.loadMap(mapId);
-                }
-            }, 1000);
+            }
+            const redirectUrl = `/user-story-map/${window.teamId || ''}/${mapId}`;
+            if (!refreshed) {
+                window.location.href = redirectUrl;
+                return;
+            }
 
         } catch (error) {
             console.error('匯入取代失敗:', error);
             showMessage(`匯入失敗: ${error.message}`, 'error');
         }
-    }
-
-    /**
-     * 下載文字檔案
-     */
-    function downloadText() {
-        if (!editor) {
-            showMessage('編輯器尚未初始化', 'error');
-            return;
-        }
-
-        const mapId = getCurrentMapId();
-        const text = editor.getValue();
-        const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `usm_map_${mapId || 'export'}_${new Date().getTime()}.usm`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        
-        showMessage('文字檔案已下載', 'success');
     }
 
     /**
@@ -342,59 +341,46 @@
      * 初始化事件監聽器
      */
     function initEventListeners() {
-        // 匯出按鈕
-        const exportBtn = document.getElementById('exportToTextBtn');
-        if (exportBtn) {
-            exportBtn.addEventListener('click', exportToText);
+        // 套用文字到地圖
+        const applyBtn = document.getElementById('applyTextSaveBtn');
+        if (applyBtn) {
+            applyBtn.addEventListener('click', () => importReplaceAll({ skipConfirm: true }));
         }
 
-        // 匯入按鈕
-        const importBtn = document.getElementById('importFromTextBtn');
-        if (importBtn) {
-            importBtn.addEventListener('click', importFromText);
+        // 在文字模式按「儲存」時，強制走文字匯入流程
+        const saveBtn = document.getElementById('saveMapBtn');
+        if (saveBtn) {
+            saveBtn.addEventListener('click', async (e) => {
+                const textPane = document.getElementById('text-pane');
+                if (textPane && textPane.classList.contains('active')) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    await importReplaceAll({ skipConfirm: true });
+                }
+            });
         }
 
-        // 取代全部按鈕
-        const replaceBtn = document.getElementById('importReplaceBtn');
-        if (replaceBtn) {
-            replaceBtn.addEventListener('click', importReplaceAll);
-        }
-
-        // 下載按鈕
-        const downloadBtn = document.getElementById('downloadTextBtn');
-        if (downloadBtn) {
-            downloadBtn.addEventListener('click', downloadText);
-        }
-
-        // 當切換到文字模式時，自動匯出
+        // 切換到文字模式時自動載入文字（不顯示重複提示）
         const textTab = document.getElementById('text-tab');
         if (textTab) {
-            textTab.addEventListener('shown.bs.tab', function () {
+            textTab.addEventListener('shown.bs.tab', () => {
                 const mapId = getCurrentMapId();
-                console.log('切換到文字模式，mapId:', mapId, 'editorReady:', editorReady, 'editor:', !!editor);
-                if (mapId) {
-                    // 如果編輯器還沒準備好，等待一下
-                    if (!editorReady || !editor) {
-                        console.log('編輯器尚未準備好，等待...');
-                        let attempts = 0;
-                        const maxAttempts = 10;
-                        const checkEditor = setInterval(() => {
-                            attempts++;
-                            console.log(`檢查編輯器... 第 ${attempts} 次`);
-                            if (editorReady && editor) {
-                                console.log('編輯器已準備好，開始匯出');
-                                clearInterval(checkEditor);
-                                exportToText();
-                            } else if (attempts >= maxAttempts) {
-                                console.error('編輯器初始化逾時');
-                                clearInterval(checkEditor);
-                                showMessage('編輯器初始化逾時，請重新整理頁面', 'error');
-                            }
-                        }, 500);
-                    } else {
-                        console.log('編輯器已準備好，立即匯出');
-                        exportToText();
-                    }
+                if (!mapId) return;
+                const doExport = () => exportToText(false);
+                if (!editorReady || !editor) {
+                    let attempts = 0;
+                    const maxAttempts = 10;
+                    const timer = setInterval(() => {
+                        attempts++;
+                        if (editorReady && editor) {
+                            clearInterval(timer);
+                            doExport();
+                        } else if (attempts >= maxAttempts) {
+                            clearInterval(timer);
+                        }
+                    }, 300);
+                } else {
+                    doExport();
                 }
             });
         }
@@ -407,10 +393,12 @@
         // 等待 DOM 載入完成
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', () => {
+                warmupMonacoLoader();
                 initMonacoEditor();
                 initEventListeners();
             });
         } else {
+            warmupMonacoLoader();
             initMonacoEditor();
             initEventListeners();
         }
@@ -425,6 +413,5 @@
         exportToText,
         importFromText,
         importReplaceAll,
-        downloadText,
     };
 })();
