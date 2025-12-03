@@ -3664,6 +3664,7 @@ const UserStoryMapFlow = () => {
             loadMaps,
             updateAggregatedTickets,
             updateNodeProperties,
+            getCurrentMapId: () => currentMapId,
             fitView: () => reactFlowInstance.current?.fitView(),
             zoomIn: () => reactFlowInstance.current?.zoomIn(),
             zoomOut: () => reactFlowInstance.current?.zoomOut(),

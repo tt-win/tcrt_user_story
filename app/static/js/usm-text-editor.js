@@ -8,10 +8,20 @@
     let currentMapId = null;
     let editorReady = false;
 
-    // 從 URL 取得 map_id
-    const pathParts = window.location.pathname.split('/').filter(p => p);
-    const teamIdIndex = pathParts.indexOf('user-story-map') + 1;
-    const mapIdFromUrl = pathParts[teamIdIndex + 1] ? parseInt(pathParts[teamIdIndex + 1]) : null;
+    /**
+     * 獲取當前地圖 ID
+     */
+    function getCurrentMapId() {
+        // 優先使用全局變數（由主要的 user_story_map.js 設定）
+        if (window.userStoryMapFlow && window.userStoryMapFlow.getCurrentMapId) {
+            return window.userStoryMapFlow.getCurrentMapId();
+        }
+        
+        // 備用：從 URL 解析
+        const pathParts = window.location.pathname.split('/').filter(p => p);
+        const teamIdIndex = pathParts.indexOf('user-story-map') + 1;
+        return pathParts[teamIdIndex + 1] ? parseInt(pathParts[teamIdIndex + 1]) : null;
+    }
 
     /**
      * 初始化 Monaco Editor
@@ -106,7 +116,8 @@
             
             // 如果已經在文字模式，立即匯出
             const textPane = document.getElementById('text-pane');
-            if (textPane && textPane.classList.contains('active') && mapIdFromUrl) {
+            const mapId = getCurrentMapId();
+            if (textPane && textPane.classList.contains('active') && mapId) {
                 console.log('編輯器初始化完成且已在文字模式，立即匯出');
                 exportToText();
             }
@@ -117,13 +128,16 @@
      * 匯出當前地圖為文字格式
      */
     async function exportToText() {
-        if (!mapIdFromUrl) {
+        const mapId = getCurrentMapId();
+        console.log('exportToText - 當前 mapId:', mapId);
+        
+        if (!mapId) {
             showMessage('請先選擇一個地圖', 'warning');
             return;
         }
 
         try {
-            const response = await fetch(`/api/user-story-maps/${mapIdFromUrl}/export-text`, {
+            const response = await fetch(`/api/user-story-maps/${mapId}/export-text`, {
                 method: 'GET',
                 headers: {
                     'Content-Type': 'application/json',
@@ -151,7 +165,9 @@
      * 從文字匯入（不取代現有節點）
      */
     async function importFromText() {
-        if (!mapIdFromUrl) {
+        const mapId = getCurrentMapId();
+        
+        if (!mapId) {
             showMessage('請先選擇一個地圖', 'warning');
             return;
         }
@@ -172,7 +188,7 @@
         }
 
         try {
-            const response = await fetch(`/api/user-story-maps/${mapIdFromUrl}/import-text`, {
+            const response = await fetch(`/api/user-story-maps/${mapId}/import-text`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -204,7 +220,7 @@
                     visualTab.click();
                 }
                 if (window.userStoryMapFlow && window.userStoryMapFlow.loadMap) {
-                    window.userStoryMapFlow.loadMap(mapIdFromUrl);
+                    window.userStoryMapFlow.loadMap(mapId);
                 }
             }, 1000);
 
@@ -218,7 +234,9 @@
      * 從文字匯入（取代所有現有節點）
      */
     async function importReplaceAll() {
-        if (!mapIdFromUrl) {
+        const mapId = getCurrentMapId();
+        
+        if (!mapId) {
             showMessage('請先選擇一個地圖', 'warning');
             return;
         }
@@ -239,7 +257,7 @@
         }
 
         try {
-            const response = await fetch(`/api/user-story-maps/${mapIdFromUrl}/import-text`, {
+            const response = await fetch(`/api/user-story-maps/${mapId}/import-text`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -271,7 +289,7 @@
                     visualTab.click();
                 }
                 if (window.userStoryMapFlow && window.userStoryMapFlow.loadMap) {
-                    window.userStoryMapFlow.loadMap(mapIdFromUrl);
+                    window.userStoryMapFlow.loadMap(mapId);
                 }
             }, 1000);
 
@@ -290,12 +308,13 @@
             return;
         }
 
+        const mapId = getCurrentMapId();
         const text = editor.getValue();
         const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `usm_map_${mapIdFromUrl || 'export'}_${new Date().getTime()}.usm`;
+        a.download = `usm_map_${mapId || 'export'}_${new Date().getTime()}.usm`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -348,8 +367,9 @@
         const textTab = document.getElementById('text-tab');
         if (textTab) {
             textTab.addEventListener('shown.bs.tab', function () {
-                console.log('切換到文字模式，mapId:', mapIdFromUrl, 'editorReady:', editorReady, 'editor:', !!editor);
-                if (mapIdFromUrl) {
+                const mapId = getCurrentMapId();
+                console.log('切換到文字模式，mapId:', mapId, 'editorReady:', editorReady, 'editor:', !!editor);
+                if (mapId) {
                     // 如果編輯器還沒準備好，等待一下
                     if (!editorReady || !editor) {
                         console.log('編輯器尚未準備好，等待...');
