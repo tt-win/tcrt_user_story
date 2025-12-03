@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from sqlalchemy.orm import Session, joinedload
 from typing import List, Dict, Any
 from datetime import datetime
@@ -10,6 +10,7 @@ from app.auth.dependencies import get_current_user
 from app.models.database_models import User, AdHocRun, AdHocRunSheet, AdHocRunItem, TestCaseLocal, TestCaseSet, TestCaseSection
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import or_
+from app.audit import audit_service, ActionType, ResourceType, AuditSeverity
 from app.models.adhoc import (
     AdHocRunCreate, AdHocRunUpdate, AdHocRunResponse,
     AdHocRunSheetCreate, AdHocRunSheetUpdate, AdHocRunSheetResponse,
@@ -25,6 +26,7 @@ router = APIRouter(prefix="/adhoc-runs", tags=["adhoc-runs"])
 @router.post("/{run_id}/convert-to-testcases", status_code=status.HTTP_200_OK)
 async def convert_adhoc_to_testcases(
     run_id: int,
+    payload: Dict[str, Any] = Body(None),
     db: Session = Depends(get_sync_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -33,6 +35,13 @@ async def convert_adhoc_to_testcases(
     - Ignores SECTION rows.
     - Ignores rows without Test Case Number or Title.
     - Updates existing Test Cases (by Number) or Creates new ones.
+    - Optional payload:
+        {
+            "sheet_id": <limit to a specific sheet>,
+            "item_ids": [<only convert these item IDs>],
+            "target_set_id": <explicit Test Case Set>,
+            "target_section_id": <explicit Section in that set>
+        }
     """
     run = db.query(AdHocRun).filter(AdHocRun.id == run_id).first()
     if not run:
@@ -42,46 +51,71 @@ async def convert_adhoc_to_testcases(
     count_updated = 0
     
     try:
+        payload = payload or {}
+        requested_set_id = payload.get("target_set_id")
+        requested_section_id = payload.get("target_section_id")
+        limit_sheet_id = payload.get("sheet_id")
+        limit_item_ids = payload.get("item_ids") if isinstance(payload.get("item_ids"), list) else None
+
         # Resolve Target Test Case Set
-        # 1. Try is_default
-        target_set = db.query(TestCaseSet).filter(
-            TestCaseSet.team_id == run.team_id,
-            TestCaseSet.is_default == True
-        ).first()
-        
-        # 2. Try name match
-        if not target_set:
+        if requested_set_id:
+            target_set = db.query(TestCaseSet).filter(
+                TestCaseSet.id == requested_set_id,
+                TestCaseSet.team_id == run.team_id
+            ).first()
+            if not target_set:
+                raise HTTPException(status_code=400, detail="Invalid target Test Case Set")
+        else:
             target_set = db.query(TestCaseSet).filter(
                 TestCaseSet.team_id == run.team_id,
-                or_(TestCaseSet.name == "Default Set", TestCaseSet.name == "Default")
+                TestCaseSet.is_default == True
             ).first()
             
-        # 3. Fallback to any set
-        if not target_set:
-            target_set = db.query(TestCaseSet).filter(TestCaseSet.team_id == run.team_id).first()
-            
-        # 4. Create if none
-        if not target_set:
-            target_set = TestCaseSet(
-                team_id=run.team_id,
-                name="Default Set",
-                is_default=True
-            )
-            db.add(target_set)
-            db.flush()
+            # 2. Try name match
+            if not target_set:
+                target_set = db.query(TestCaseSet).filter(
+                    TestCaseSet.team_id == run.team_id,
+                    or_(TestCaseSet.name == "Default Set", TestCaseSet.name == "Default")
+                ).first()
+                
+            # 3. Fallback to any set
+            if not target_set:
+                target_set = db.query(TestCaseSet).filter(TestCaseSet.team_id == run.team_id).first()
+                
+            # 4. Create if none
+            if not target_set:
+                target_set = TestCaseSet(
+                    team_id=run.team_id,
+                    name="Default Set",
+                    is_default=True
+                )
+                db.add(target_set)
+                db.flush()
 
-        # Find "Unassigned" section for this set
-        unassigned_section = db.query(TestCaseSection).filter(
-            TestCaseSection.test_case_set_id == target_set.id,
-            TestCaseSection.name == "Unassigned"
-        ).first()
-        
-        target_section_id = unassigned_section.id if unassigned_section else None
+        # Resolve target section
+        if requested_section_id:
+            target_section = db.query(TestCaseSection).filter(
+                TestCaseSection.id == requested_section_id,
+                TestCaseSection.test_case_set_id == target_set.id
+            ).first()
+            target_section_id = target_section.id if target_section else None
+        else:
+            unassigned_section = db.query(TestCaseSection).filter(
+                TestCaseSection.test_case_set_id == target_set.id,
+                TestCaseSection.name == "Unassigned"
+            ).first()
+            target_section_id = unassigned_section.id if unassigned_section else None
 
         # Collect all items
         all_items = []
         for sheet in run.sheets:
+            if limit_sheet_id and sheet.id != limit_sheet_id:
+                continue
             all_items.extend(sheet.items)
+        
+        if limit_item_ids:
+            limit_set = set(limit_item_ids)
+            all_items = [i for i in all_items if i.id in limit_set]
             
         for item in all_items:
             tc_num = (item.test_case_number or "").strip()
@@ -107,7 +141,7 @@ async def convert_adhoc_to_testcases(
                     tcg_data = json.dumps(tickets)
             
             if existing_tc:
-                # Update
+                # Update and also move to chosen Set / Section
                 existing_tc.title = title
                 existing_tc.precondition = item.precondition
                 existing_tc.steps = item.steps
@@ -115,6 +149,8 @@ async def convert_adhoc_to_testcases(
                 existing_tc.priority = item.priority
                 existing_tc.tcg_json = tcg_data
                 existing_tc.updated_at = datetime.utcnow()
+                existing_tc.test_case_set_id = target_set.id
+                existing_tc.test_case_section_id = target_section_id
                 count_updated += 1
             else:
                 # Create
@@ -134,6 +170,21 @@ async def convert_adhoc_to_testcases(
                 count_created += 1
         
         db.commit()
+        
+        # Audit Log
+        await audit_service.log_action(
+            user_id=current_user.id,
+            username=current_user.username,
+            role=str(current_user.role.value if hasattr(current_user.role, 'value') else current_user.role),
+            action_type=ActionType.CREATE, # or UPDATE, mixed here
+            resource_type=ResourceType.TEST_CASE,
+            resource_id=str(run.id), # Related run ID as resource ID or maybe "batch"
+            team_id=run.team_id,
+            severity=AuditSeverity.INFO,
+            action_brief=f"Converted Ad-hoc Run '{run.name}' to Test Cases",
+            details={"created": count_created, "updated": count_updated}
+        )
+
         return {
             "success": True,
             "created": count_created,
@@ -199,9 +250,25 @@ async def create_adhoc_run(
         db.commit()
         
         # Query back with relationships to ensure Pydantic model validation works
-        return db.query(AdHocRun).options(
+        result = db.query(AdHocRun).options(
             joinedload(AdHocRun.sheets).joinedload(AdHocRunSheet.items)
         ).filter(AdHocRun.id == new_run.id).first()
+
+        # Audit Log
+        await audit_service.log_action(
+            user_id=current_user.id,
+            username=current_user.username,
+            role=str(current_user.role.value if hasattr(current_user.role, 'value') else current_user.role),
+            action_type=ActionType.CREATE,
+            resource_type=ResourceType.TEST_RUN,
+            resource_id=str(new_run.id),
+            team_id=new_run.team_id,
+            details={"initial_sheets": 1, "initial_items": 5},
+            action_brief=f"Created Ad-hoc Run: {new_run.name}",
+            severity=AuditSeverity.INFO,
+        )
+        
+        return result
         
     except Exception as e:
         logger.error(f"Create Ad-hoc Run failed: {e}")
@@ -309,6 +376,21 @@ async def update_adhoc_run(
     
     db.commit()
     db.refresh(run)
+    
+    # Audit Log
+    await audit_service.log_action(
+        user_id=current_user.id,
+        username=current_user.username,
+        role=str(current_user.role.value if hasattr(current_user.role, 'value') else current_user.role),
+        action_type=ActionType.UPDATE,
+        resource_type=ResourceType.TEST_RUN,
+        resource_id=str(run.id),
+        team_id=run.team_id,
+        severity=AuditSeverity.INFO,
+        action_brief=f"Updated Ad-hoc Run: {run.name}",
+        details={"payload_keys": list(update_data.keys())}
+    )
+
     return run
 
 @router.delete("/{run_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -321,8 +403,25 @@ async def delete_adhoc_run(
     if not run:
         raise HTTPException(status_code=404, detail="Ad-hoc run not found")
     
+    run_name = run.name
+    team_id = run.team_id
+    run_id_str = str(run.id)
+
     db.delete(run)
     db.commit()
+
+    # Audit Log
+    await audit_service.log_action(
+        user_id=current_user.id,
+        username=current_user.username,
+        role=str(current_user.role.value if hasattr(current_user.role, 'value') else current_user.role),
+        action_type=ActionType.DELETE,
+        resource_type=ResourceType.TEST_RUN,
+        resource_id=run_id_str,
+        team_id=team_id,
+        severity=AuditSeverity.CRITICAL,
+        action_brief=f"Deleted Ad-hoc Run: {run_name}"
+    )
 
 @router.post("/{run_id}/rerun", response_model=AdHocRunResponse, status_code=status.HTTP_201_CREATED)
 async def rerun_adhoc_run(
@@ -396,6 +495,20 @@ async def rerun_adhoc_run(
         
         db.commit()
         
+        # Audit Log
+        await audit_service.log_action(
+            user_id=current_user.id,
+            username=current_user.username,
+            role=str(current_user.role.value if hasattr(current_user.role, 'value') else current_user.role),
+            action_type=ActionType.CREATE,
+            resource_type=ResourceType.TEST_RUN,
+            resource_id=str(new_run.id),
+            team_id=new_run.team_id,
+            severity=AuditSeverity.INFO,
+            action_brief=f"Rerun Ad-hoc Run: {new_run.name}",
+            details={"source_run_id": run_id}
+        )
+
         # Return full structure
         return db.query(AdHocRun).options(
             joinedload(AdHocRun.sheets).joinedload(AdHocRunSheet.items)
@@ -521,6 +634,26 @@ async def batch_update_items(
             response_data.append(new_item)
             
     db.commit()
+
+    # Audit Log (Fetch run for team_id if needed, or optimize)
+    try:
+        run = db.query(AdHocRun).filter(AdHocRun.id == run_id).first()
+        if run:
+            await audit_service.log_action(
+                user_id=current_user.id,
+                username=current_user.username,
+                role=str(current_user.role.value if hasattr(current_user.role, 'value') else current_user.role),
+                action_type=ActionType.UPDATE,
+                resource_type=ResourceType.TEST_RUN,
+                resource_id=str(run_id),
+                team_id=run.team_id,
+                severity=AuditSeverity.INFO,
+                action_brief="Batch updated Ad-hoc items",
+                details={"items": len(payload), "sheet_id": sheet_id}
+            )
+    except Exception:
+        pass # Don't fail batch update if audit fails
+
     return {
         "success": True,
         "items": [
