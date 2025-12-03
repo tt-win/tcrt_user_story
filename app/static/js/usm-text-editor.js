@@ -6,6 +6,7 @@
 (function () {
     let editor = null;
     let currentMapId = null;
+    let editorReady = false;
 
     // 從 URL 取得 map_id
     const pathParts = window.location.pathname.split('/').filter(p => p);
@@ -100,7 +101,15 @@
                 formatOnType: true,
             });
 
+            editorReady = true;
             console.log('Monaco Editor 初始化完成');
+            
+            // 如果已經在文字模式，立即匯出
+            const textPane = document.getElementById('text-pane');
+            if (textPane && textPane.classList.contains('active') && mapIdFromUrl) {
+                console.log('編輯器初始化完成且已在文字模式，立即匯出');
+                exportToText();
+            }
         });
     }
 
@@ -339,8 +348,30 @@
         const textTab = document.getElementById('text-tab');
         if (textTab) {
             textTab.addEventListener('shown.bs.tab', function () {
-                if (mapIdFromUrl && editor) {
-                    exportToText();
+                console.log('切換到文字模式，mapId:', mapIdFromUrl, 'editorReady:', editorReady, 'editor:', !!editor);
+                if (mapIdFromUrl) {
+                    // 如果編輯器還沒準備好，等待一下
+                    if (!editorReady || !editor) {
+                        console.log('編輯器尚未準備好，等待...');
+                        let attempts = 0;
+                        const maxAttempts = 10;
+                        const checkEditor = setInterval(() => {
+                            attempts++;
+                            console.log(`檢查編輯器... 第 ${attempts} 次`);
+                            if (editorReady && editor) {
+                                console.log('編輯器已準備好，開始匯出');
+                                clearInterval(checkEditor);
+                                exportToText();
+                            } else if (attempts >= maxAttempts) {
+                                console.error('編輯器初始化逾時');
+                                clearInterval(checkEditor);
+                                showMessage('編輯器初始化逾時，請重新整理頁面', 'error');
+                            }
+                        }, 500);
+                    } else {
+                        console.log('編輯器已準備好，立即匯出');
+                        exportToText();
+                    }
                 }
             });
         }
