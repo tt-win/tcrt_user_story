@@ -1730,3 +1730,317 @@ async def move_node(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"搬移節點失敗: {str(exc)}",
         )
+
+
+# ============================================================================
+# USM 文字模式 API Endpoints
+# ============================================================================
+
+from pydantic import BaseModel
+
+
+class USMTextImportRequest(BaseModel):
+    """USM 文字匯入請求"""
+    text: str
+    replace_existing: bool = False  # 是否取代現有節點
+
+
+class USMTextImportResponse(BaseModel):
+    """USM 文字匯入回應"""
+    success: bool
+    nodes_count: int
+    message: str
+    errors: Optional[List[str]] = None
+
+
+class USMTextExportResponse(BaseModel):
+    """USM 文字匯出回應"""
+    text: str
+    nodes_count: int
+
+
+@router.post("/{map_id}/import-text", response_model=USMTextImportResponse)
+async def import_usm_text(
+    map_id: int,
+    request: USMTextImportRequest,
+    current_user: User = Depends(get_current_user),
+    usm_db: AsyncSession = Depends(get_usm_db),
+    main_db: AsyncSession = Depends(get_db),
+):
+    """
+    從 USM 文字格式匯入節點
+    
+    Args:
+        map_id: User Story Map ID
+        request: 匯入請求（包含文字內容）
+        
+    Returns:
+        匯入結果
+    """
+    from app.services.usm_text_parser import (
+        parse_usm_text,
+        convert_usm_nodes_to_db_format,
+        ParseError,
+    )
+    
+    try:
+        # 檢查 map 是否存在
+        result = await usm_db.execute(
+            select(UserStoryMapDB).where(UserStoryMapDB.id == map_id)
+        )
+        usm_map = result.scalar_one_or_none()
+        
+        if not usm_map:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"User Story Map {map_id} 不存在"
+            )
+        
+        # 權限檢查
+        team_result = await main_db.execute(
+            select(Team).where(Team.id == usm_map.team_id)
+        )
+        team = team_result.scalar_one_or_none()
+        
+        if not team:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"團隊 {usm_map.team_id} 不存在"
+            )
+        
+        has_permission = await permission_service.check_permission(
+            main_db, current_user.id, PermissionType.USM_EDIT, team_id=usm_map.team_id
+        )
+        
+        if not has_permission:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="沒有權限編輯此 User Story Map"
+            )
+        
+        # 解析文字
+        try:
+            parsed_nodes = parse_usm_text(request.text)
+        except ParseError as e:
+            return USMTextImportResponse(
+                success=False,
+                nodes_count=0,
+                message=f"解析錯誤",
+                errors=[f"第 {e.line_num} 行: {e.message}"]
+            )
+        
+        if not parsed_nodes:
+            return USMTextImportResponse(
+                success=False,
+                nodes_count=0,
+                message="沒有解析到任何節點",
+                errors=["文字內容為空或格式錯誤"]
+            )
+        
+        # 轉換為資料庫格式
+        db_nodes_data = convert_usm_nodes_to_db_format(parsed_nodes, map_id)
+        
+        # 如果要取代現有節點，先刪除
+        if request.replace_existing:
+            await usm_db.execute(
+                delete(UserStoryMapNodeDB).where(
+                    UserStoryMapNodeDB.map_id == map_id
+                )
+            )
+            await usm_db.commit()
+        
+        # 插入新節點到 user_story_map_nodes 表
+        for node_data in db_nodes_data:
+            db_node = UserStoryMapNodeDB(
+                map_id=node_data['map_id'],
+                node_id=node_data['node_id'],
+                title=node_data['title'],
+                description=node_data.get('description'),
+                node_type=node_data['node_type'],
+                parent_id=node_data.get('parent_id'),
+                children_ids=node_data.get('children_ids', []),
+                related_ids=node_data.get('related_ids', []),
+                comment=node_data.get('comment'),
+                jira_tickets=node_data.get('jira_tickets', []),
+                product=node_data.get('product'),
+                team=node_data.get('team'),
+                team_tags=node_data.get('team_tags', []),
+                aggregated_tickets=node_data.get('aggregated_tickets', []),
+                position_x=node_data.get('position_x', 0),
+                position_y=node_data.get('position_y', 0),
+                level=node_data.get('level', 0),
+                as_a=node_data.get('as_a'),
+                i_want=node_data.get('i_want'),
+                so_that=node_data.get('so_that'),
+            )
+            usm_db.add(db_node)
+        
+        # 更新 user_story_maps 表的 updated_at
+        usm_map.updated_at = datetime.utcnow()
+        
+        await usm_db.commit()
+        
+        # 審計記錄
+        try:
+            await audit_service.log_action(
+                main_db,
+                user_id=current_user.id,
+                action_type=ActionType.CREATE,
+                resource_type=ResourceType.USER_STORY_MAP,
+                resource_id=str(map_id),
+                team_id=usm_map.team_id,
+                details={
+                    "action": "import_text",
+                    "nodes_count": len(parsed_nodes),
+                    "replace_existing": request.replace_existing,
+                },
+                action_brief=f"{current_user.username} 從文字匯入 {len(parsed_nodes)} 個節點到 map {map_id}",
+                severity=AuditSeverity.INFO,
+            )
+        except Exception as exc:
+            logger.warning("寫入 USM 文字匯入審計記錄失敗: %s", exc, exc_info=True)
+        
+        return USMTextImportResponse(
+            success=True,
+            nodes_count=len(parsed_nodes),
+            message=f"成功匯入 {len(parsed_nodes)} 個節點"
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("匯入 USM 文字失敗: %s", exc, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"匯入失敗: {str(exc)}"
+        )
+
+
+@router.get("/{map_id}/export-text", response_model=USMTextExportResponse)
+async def export_usm_text(
+    map_id: int,
+    current_user: User = Depends(get_current_user),
+    usm_db: AsyncSession = Depends(get_usm_db),
+    main_db: AsyncSession = Depends(get_db),
+):
+    """
+    匯出 User Story Map 為文字格式
+    
+    Args:
+        map_id: User Story Map ID
+        
+    Returns:
+        USM 文字格式內容
+    """
+    from app.services.usm_text_parser import export_to_usm_text
+    
+    try:
+        # 檢查 map 是否存在
+        result = await usm_db.execute(
+            select(UserStoryMapDB).where(UserStoryMapDB.id == map_id)
+        )
+        usm_map = result.scalar_one_or_none()
+        
+        if not usm_map:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"User Story Map {map_id} 不存在"
+            )
+        
+        # 權限檢查
+        team_result = await main_db.execute(
+            select(Team).where(Team.id == usm_map.team_id)
+        )
+        team = team_result.scalar_one_or_none()
+        
+        if not team:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"團隊 {usm_map.team_id} 不存在"
+            )
+        
+        has_permission = await permission_service.check_permission(
+            main_db, current_user.id, PermissionType.USM_VIEW, team_id=usm_map.team_id
+        )
+        
+        if not has_permission:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="沒有權限查看此 User Story Map"
+            )
+        
+        # 查詢所有節點
+        result = await usm_db.execute(
+            select(UserStoryMapNodeDB)
+            .where(UserStoryMapNodeDB.map_id == map_id)
+            .order_by(UserStoryMapNodeDB.level, UserStoryMapNodeDB.position_x)
+        )
+        nodes_db = result.scalars().all()
+        
+        if not nodes_db:
+            return USMTextExportResponse(
+                text="# 此地圖沒有任何節點\n",
+                nodes_count=0
+            )
+        
+        # 轉換為字典格式
+        nodes_data = []
+        for node in nodes_db:
+            node_dict = {
+                'node_id': node.node_id,
+                'title': node.title,
+                'description': node.description,
+                'node_type': node.node_type,
+                'parent_id': node.parent_id,
+                'children_ids': node.children_ids or [],
+                'related_ids': node.related_ids or [],
+                'comment': node.comment,
+                'jira_tickets': node.jira_tickets or [],
+                'product': node.product,
+                'team': node.team,
+                'team_tags': node.team_tags or [],
+                'aggregated_tickets': node.aggregated_tickets or [],
+                'position_x': node.position_x,
+                'position_y': node.position_y,
+                'level': node.level,
+                'as_a': node.as_a,
+                'i_want': node.i_want,
+                'so_that': node.so_that,
+            }
+            nodes_data.append(node_dict)
+        
+        # 匯出為文字
+        text = export_to_usm_text(nodes_data, indent_size=2)
+        
+        # 審計記錄
+        try:
+            await audit_service.log_action(
+                main_db,
+                user_id=current_user.id,
+                action_type=ActionType.READ,
+                resource_type=ResourceType.USER_STORY_MAP,
+                resource_id=str(map_id),
+                team_id=usm_map.team_id,
+                details={
+                    "action": "export_text",
+                    "nodes_count": len(nodes_data),
+                },
+                action_brief=f"{current_user.username} 匯出 map {map_id} 為文字格式",
+                severity=AuditSeverity.INFO,
+            )
+        except Exception as exc:
+            logger.warning("寫入 USM 文字匯出審計記錄失敗: %s", exc, exc_info=True)
+        
+        return USMTextExportResponse(
+            text=text,
+            nodes_count=len(nodes_data)
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error("匯出 USM 文字失敗: %s", exc, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"匯出失敗: {str(exc)}"
+        )

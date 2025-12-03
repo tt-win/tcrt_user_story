@@ -493,8 +493,77 @@ Web Tool{% endblock %} {% block page_title_text %}
         </div>
         <div id="highlightInfo" class="alert alert-warning d-none"></div>
 
-        <!-- React Flow Container -->
-        <div id="reactFlowWrapper" class="reactflow-wrapper"></div>
+        <!-- View Mode Tabs -->
+        <ul class="nav nav-tabs mb-2" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button
+                    class="nav-link active"
+                    id="visual-tab"
+                    data-bs-toggle="tab"
+                    data-bs-target="#visual-pane"
+                    type="button"
+                    role="tab"
+                >
+                    <i class="fas fa-project-diagram"></i>
+                    <span data-i18n="usm.visualMode">視覺化模式</span>
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button
+                    class="nav-link"
+                    id="text-tab"
+                    data-bs-toggle="tab"
+                    data-bs-target="#text-pane"
+                    type="button"
+                    role="tab"
+                >
+                    <i class="fas fa-code"></i>
+                    <span data-i18n="usm.textMode">文字模式</span>
+                </button>
+            </li>
+        </ul>
+
+        <!-- Tab Content -->
+        <div class="tab-content" style="flex: 1; display: flex; flex-direction: column;">
+            <!-- Visual Mode -->
+            <div class="tab-pane fade show active" id="visual-pane" role="tabpanel" style="flex: 1; display: flex; flex-direction: column;">
+                <!-- React Flow Container -->
+                <div id="reactFlowWrapper" class="reactflow-wrapper"></div>
+            </div>
+
+            <!-- Text Mode -->
+            <div class="tab-pane fade" id="text-pane" role="tabpanel" style="flex: 1; display: flex; flex-direction: column;">
+                <div class="mb-2">
+                    <button type="button" class="btn btn-sm btn-primary" id="exportToTextBtn">
+                        <i class="fas fa-download"></i> <span data-i18n="usm.exportText">匯出為文字</span>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-success" id="importFromTextBtn">
+                        <i class="fas fa-upload"></i> <span data-i18n="usm.importText">從文字匯入</span>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-danger" id="importReplaceBtn">
+                        <i class="fas fa-sync-alt"></i> <span data-i18n="usm.replaceAll">取代全部</span>
+                    </button>
+                    <button type="button" class="btn btn-sm btn-secondary" id="downloadTextBtn">
+                        <i class="fas fa-file-download"></i> <span data-i18n="usm.download">下載</span>
+                    </button>
+                    <a
+                        href="/static/samples/usm_example.usm"
+                        class="btn btn-sm btn-info"
+                        download
+                        target="_blank"
+                    >
+                        <i class="fas fa-book"></i> <span data-i18n="usm.viewSpec">查看規範</span>
+                    </a>
+                </div>
+                <div id="usmTextEditor" style="flex: 1; border: 1px solid #dee2e6; border-radius: 4px;"></div>
+                <div class="mt-2">
+                    <small class="text-muted">
+                        <i class="fas fa-info-circle"></i>
+                        <span data-i18n="usm.textModeHelp">使用縮排表達節點層級關係，支援自訂 node_id 或自動生成。詳細語法請參考規範文件。</span>
+                    </small>
+                </div>
+            </div>
+        </div>
 
         <!-- Toolbar for layout and collapse operations -->
         <div class="usm-map-btn-container">
@@ -1243,6 +1312,9 @@ Web Tool{% endblock %} {% block page_title_text %}
     <!-- React Flow Library -->
     <script src="https://unpkg.com/reactflow@11.11.0"></script>
 
+    <!-- Monaco Editor -->
+    <script src="https://cdn.jsdelivr.net/npm/monaco-editor@0.45.0/min/vs/loader.js"></script>
+
     <!-- Setup library globals and initialize app -->
     <script>
         // Ensure React Flow is available in window scope
@@ -1260,6 +1332,7 @@ Web Tool{% endblock %} {% block page_title_text %}
     </script>
 
     <script src="/static/js/user_story_map.js?v=2"></script>
+    <script src="/static/js/usm-text-editor.js"></script>
 
     <!-- Test Cases Review Modal -->
     <div class="modal fade" id="reviewTestCasesModal" tabindex="-1">
