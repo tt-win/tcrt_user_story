@@ -6542,11 +6542,17 @@ async function saveTestCase() {
                 }
             }
 
-            // 更新快取而非重新載入全部資料
-            // testCaseId 已在函數開頭宣告，這裡直接使用
             // 清快取並重載，但保留目前的排序/篩選/區段狀態
             clearTestCasesCache();
             await loadTestCases(false, null, true, true);
+            // 重新載入 section 清單（更新數量顯示）
+            if (typeof window.testCaseSectionList !== 'undefined' && window.testCaseSectionList?.loadSections) {
+                try {
+                    await window.testCaseSectionList.loadSections({ reloadTestCases: false });
+                } catch (e) {
+                    console.warn('[TCM] reload sections after save failed', e);
+                }
+            }
 
             // 恢復儲存按鈕狀態
             const saveBtn = document.getElementById('saveTestCaseBtn');
