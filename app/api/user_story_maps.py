@@ -2014,9 +2014,13 @@ async def import_usm_text(
         
         # 審計記錄
         try:
+            role_value = getattr(current_user, "role", None)
+            if hasattr(role_value, "value"):
+                role_value = role_value.value
             await audit_service.log_action(
-                usm_db,
                 user_id=current_user.id,
+                username=getattr(current_user, "username", ""),
+                role=role_value,
                 action_type=ActionType.CREATE,
                 resource_type=ResourceType.USER_STORY_MAP,
                 resource_id=str(map_id),
@@ -2026,7 +2030,7 @@ async def import_usm_text(
                     "nodes_count": len(parsed_nodes),
                     "replace_existing": request.replace_existing,
                 },
-                action_brief=f"{current_user.username} 從文字匯入 {len(parsed_nodes)} 個節點到 map {map_id}",
+                action_brief=f"{getattr(current_user, 'username', '')} 從文字匯入 {len(parsed_nodes)} 個節點到 map {map_id}",
                 severity=AuditSeverity.INFO,
             )
         except Exception as exc:
@@ -2144,9 +2148,13 @@ async def export_usm_text(
         
         # 審計記錄
         try:
+            role_value = getattr(current_user, "role", None)
+            if hasattr(role_value, "value"):
+                role_value = role_value.value
             await audit_service.log_action(
-                main_db,
                 user_id=current_user.id,
+                username=getattr(current_user, "username", ""),
+                role=role_value,
                 action_type=ActionType.READ,
                 resource_type=ResourceType.USER_STORY_MAP,
                 resource_id=str(map_id),
@@ -2155,7 +2163,7 @@ async def export_usm_text(
                     "action": "export_text",
                     "nodes_count": len(nodes_data),
                 },
-                action_brief=f"{current_user.username} 匯出 map {map_id} 為文字格式",
+                action_brief=f"{getattr(current_user, 'username', '')} 匯出 map {map_id} 為文字格式",
                 severity=AuditSeverity.INFO,
             )
         except Exception as exc:
