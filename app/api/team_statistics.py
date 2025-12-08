@@ -89,6 +89,63 @@ def _format_department_name(dept_id: Optional[str], path: Optional[str]) -> str:
     return dept_id
 
 
+def _safe_json_loads(raw: Any) -> Optional[Dict[str, Any]]:
+    """將字串安全轉為 JSON，失敗時回傳 None；如果已是 dict 則直接回傳"""
+    if raw is None:
+        return None
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str):
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            return None
+    return None
+
+
+def _enum_value(value: Any) -> str:
+    """取得 Enum 的 value，若非 Enum 則轉為字串"""
+    if hasattr(value, "value"):
+        return value.value
+    return str(value)
+
+
+def _get_action_weight(resource_type: Any, details_raw: Any) -> int:
+    """
+    取得行為的權重（受影響筆數）。
+    - Bulk/Batch 相關會使用 details 裡的 count / items 長度作為權重
+    - USM 文字模式匯出（export_text）不列入統計，回傳 0
+    """
+    details = _safe_json_loads(details_raw)
+
+    # 排除 USM 文字匯出
+    if details:
+        action = details.get("action") or details.get("operation")
+        resource_value = _enum_value(resource_type)
+        if action == "export_text" and resource_value == ResourceType.USER_STORY_MAP.value:
+            return 0
+
+    weight = 1
+    if not details:
+        return weight
+
+    candidate_counts: List[int] = []
+    for key in ("created_count", "updated_count", "success_count", "nodes_count", "count", "items_count", "total_count"):
+        val = details.get(key)
+        if isinstance(val, int):
+            candidate_counts.append(val)
+
+    for list_key in ("created_items", "updated_items", "deleted_items"):
+        val = details.get(list_key)
+        if isinstance(val, list):
+            candidate_counts.append(len(val))
+
+    if candidate_counts:
+        weight = max(1, max(candidate_counts))
+
+    return weight
+
+
 @router.get("/overview", include_in_schema=False)
 async def get_overview(
     current_user: User = Depends(require_admin()),
@@ -241,16 +298,17 @@ async def get_team_activity(
 
         # 從審計日誌統計團隊活動
         async with get_audit_session() as audit_session:
-            # 統計各團隊的操作數量（按操作類型分組）
             activity_result = await audit_session.execute(
-                text("""
-                    SELECT team_id, action_type, COUNT(*) as count
-                    FROM audit_logs
-                    WHERE timestamp >= :start_dt AND team_id > 0
-                    GROUP BY team_id, action_type
-                    ORDER BY team_id, action_type
-                """),
-                {"start_dt": start_dt}
+                select(
+                    AuditLogTable.team_id,
+                    AuditLogTable.action_type,
+                    AuditLogTable.resource_type,
+                    AuditLogTable.details
+                )
+                .where(
+                    AuditLogTable.timestamp >= start_dt,
+                    AuditLogTable.team_id > 0
+                )
             )
             activity_rows = activity_result.all()
 
@@ -265,7 +323,10 @@ async def get_team_activity(
             }
 
         # 填入審計日誌數據
-        for team_id, action_type, count in activity_rows:
+        for team_id, action_type, resource_type, details in activity_rows:
+            weight = _get_action_weight(resource_type, details)
+            if weight <= 0:
+                continue
             if team_id not in by_team:
                 # 理論上不應該發生（除非有已刪除團隊的日誌），但也處理一下
                 by_team[team_id] = {
@@ -274,8 +335,9 @@ async def get_team_activity(
                     "total": 0,
                     "by_action": {}
                 }
-            by_team[team_id]["total"] += count
-            by_team[team_id]["by_action"][action_type] = count
+            by_team[team_id]["total"] += weight
+            action_key = _enum_value(action_type)
+            by_team[team_id]["by_action"][action_key] = by_team[team_id]["by_action"].get(action_key, 0) + weight
 
         # 排序取得最活躍團隊
         all_teams_activity = sorted(
@@ -708,59 +770,46 @@ async def get_user_activity(
         start_dt = datetime.fromisoformat(start_date + "T00:00:00+00:00")
 
         async with get_audit_session() as audit_session:
-            # 最活躍使用者
-            top_users_result = await audit_session.execute(
-                text("""
-                    SELECT user_id, username, role, COUNT(*) as action_count
-                    FROM audit_logs
-                    WHERE timestamp >= :start_dt
-                    GROUP BY user_id, username, role
-                    ORDER BY action_count DESC
-                    LIMIT 20
-                """),
-                {"start_dt": start_dt}
+            logs_result = await audit_session.execute(
+                select(
+                    AuditLogTable.user_id,
+                    AuditLogTable.username,
+                    AuditLogTable.role,
+                    AuditLogTable.action_type,
+                    AuditLogTable.resource_type,
+                    AuditLogTable.details,
+                    AuditLogTable.timestamp
+                ).where(AuditLogTable.timestamp >= start_dt)
             )
-            top_users = [
-                {
-                    "user_id": row[0],
-                    "username": row[1],
-                    "role": row[2],
-                    "action_count": int(row[3])
-                }
-                for row in top_users_result.all()
-            ]
+            user_counter: Dict[int, Dict[str, Any]] = {}
+            operation_counter: Dict[str, int] = {}
+            hourly_counter: Dict[int, int] = {}
 
-            # 操作類型分佈
-            operation_result = await audit_session.execute(
-                text("""
-                    SELECT action_type, COUNT(*) as cnt
-                    FROM audit_logs
-                    WHERE timestamp >= :start_dt
-                    GROUP BY action_type
-                    ORDER BY cnt DESC
-                """),
-                {"start_dt": start_dt}
-            )
-            by_operation = {
-                row[0]: int(row[1])
-                for row in operation_result.all()
-            }
+            for row in logs_result.all():
+                weight = _get_action_weight(row.resource_type, row.details)
+                if weight <= 0:
+                    continue
 
-            # 每小時活動分佈（0-23 小時）
-            hourly_result = await audit_session.execute(
-                text("""
-                    SELECT strftime('%H', timestamp) as hour, COUNT(*) as cnt
-                    FROM audit_logs
-                    WHERE timestamp >= :start_dt
-                    GROUP BY hour
-                    ORDER BY hour
-                """),
-                {"start_dt": start_dt}
-            )
-            hourly_distribution = {
-                int(row[0]): int(row[1])
-                for row in hourly_result.all()
-            }
+                uid = row.user_id
+                hour_val = row.timestamp.hour if row.timestamp else None
+                action_key = _enum_value(row.action_type)
+
+                entry = user_counter.setdefault(uid, {
+                    "user_id": uid,
+                    "username": row.username,
+                    "role": row.role,
+                    "action_count": 0
+                })
+                entry["action_count"] += weight
+
+                operation_counter[action_key] = operation_counter.get(action_key, 0) + weight
+
+                if hour_val is not None:
+                    hourly_counter[hour_val] = hourly_counter.get(hour_val, 0) + weight
+
+            top_users = sorted(user_counter.values(), key=lambda x: x["action_count"], reverse=True)[:20]
+            by_operation = operation_counter
+            hourly_distribution = hourly_counter
 
         return JSONResponse({
             "top_users": top_users,
