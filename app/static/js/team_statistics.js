@@ -159,7 +159,11 @@
     }
 
     async function fetchStatsJson(url) {
-        const response = await authFetch(url);
+        // 加入時間戳記以防止快取
+        const separator = url.includes('?') ? '&' : '?';
+        const urlWithTimestamp = `${url}${separator}_t=${Date.now()}`;
+        
+        const response = await authFetch(urlWithTimestamp);
         if (!response.ok) {
             const body = await response.text().catch(() => '');
             throw new Error(`Failed to fetch ${url}: ${response.status} ${body}`);
