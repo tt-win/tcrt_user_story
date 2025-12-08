@@ -10,11 +10,7 @@ endblock %} {% block page_title_text %}<span data-i18n="teamStats.pageTitle"
     <button type="button" class="btn btn-sm btn-primary" data-days="7">
         <span data-i18n="teamStats.days7">7天</span>
     </button>
-    <button
-        type="button"
-        class="btn btn-sm btn-primary active"
-        data-days="30"
-    >
+    <button type="button" class="btn btn-sm btn-primary active" data-days="30">
         <span data-i18n="teamStats.days30">30天</span>
     </button>
     <button type="button" class="btn btn-sm btn-primary" data-days="90">
@@ -42,6 +38,28 @@ endblock %} {% block page_title_text %}<span data-i18n="teamStats.pageTitle"
     <span data-i18n="team.management">團隊管理</span>
 </a>
 {% endblock %} {% block content %}
+<style>
+        /* 專門針對團隊活動區域的樣式 */
+        #team-activity-pane .card {
+            height: calc(100vh - 300px); /* 固定高度為視窗高度扣除頂部區域，避免超出 */
+            min-height: 500px; /* 保持基本高度 */
+        }
+        #team-activity-pane .card-body {
+            height: calc(100% - 45px);  /* 為 card header 預留空間 */
+            display: flex;
+            flex-direction: column;
+            overflow: hidden; /* 防止內容撐開 card */
+        }
+        #team-activity-pane canvas {
+            max-height: none !important; /* 移除 canvas 最大高度限制 */
+            flex: 1; /* 讓 canvas 占據剩餘空間 */
+        }
+        .table-responsive.auto-height {
+            max-height: none !important; /* 移除表格最大高度限制 */
+            flex: 1; /* 讓表格佔據剩餘空間 */
+            overflow-y: auto; /* 啟用內部滾動 */
+        }
+</style>
 <div class="container-fluid py-3">
     <!-- 標籤頁導航 -->
     <ul class="nav nav-tabs mb-3" id="statsTab" role="tablist">
@@ -387,7 +405,7 @@ endblock %} {% block page_title_text %}<span data-i18n="teamStats.pageTitle"
                         <div class="card-body">
                             <canvas
                                 id="team-activity-chart"
-                                height="300"
+                                height="800"
                             ></canvas>
                         </div>
                     </div>
@@ -402,10 +420,7 @@ endblock %} {% block page_title_text %}<span data-i18n="teamStats.pageTitle"
                             >
                         </div>
                         <div class="card-body">
-                            <div
-                                class="table-responsive"
-                                style="max-height: 350px; overflow-y: auto"
-                            >
+                            <div class="table-responsive auto-height">
                                 <table class="table table-sm">
                                     <thead class="sticky-top bg-white">
                                         <tr>
