@@ -268,15 +268,17 @@ async def get_team_activity(
             by_team[team_id]["by_action"][action_type] = count
 
         # 排序取得最活躍團隊
-        top_active_teams = sorted(
+        all_teams_activity = sorted(
             by_team.values(),
             key=lambda x: x["total"],
             reverse=True
-        )[:10]
+        )
+        top_active_teams = all_teams_activity[:10]
 
         return JSONResponse({
             "by_team": by_team,
             "top_active_teams": top_active_teams,
+            "all_teams_activity": all_teams_activity,
             "date_range": {
                 "start": start_date,
                 "end": end_date,
