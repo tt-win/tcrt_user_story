@@ -254,10 +254,20 @@ async def get_team_activity(
             )
             activity_rows = activity_result.all()
 
-        # 整理數據
+        # 整理數據 - 先為所有團隊初始化 0
         by_team = {}
+        for team_id, team_name in teams_dict.items():
+            by_team[team_id] = {
+                "team_id": team_id,
+                "team_name": team_name,
+                "total": 0,
+                "by_action": {}
+            }
+
+        # 填入審計日誌數據
         for team_id, action_type, count in activity_rows:
             if team_id not in by_team:
+                # 理論上不應該發生（除非有已刪除團隊的日誌），但也處理一下
                 by_team[team_id] = {
                     "team_id": team_id,
                     "team_name": teams_dict.get(team_id, f"Team {team_id}"),
