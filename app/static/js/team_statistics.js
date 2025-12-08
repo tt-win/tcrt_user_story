@@ -245,8 +245,10 @@
 
             // 更新活動詳情表格
             const tbody = document.getElementById('team-activity-tbody');
-            if (data.top_active_teams && data.top_active_teams.length > 0) {
-                tbody.innerHTML = data.top_active_teams.map(team => `
+            const tableData = data.all_teams_activity || data.top_active_teams;
+            
+            if (tableData && tableData.length > 0) {
+                tbody.innerHTML = tableData.map(team => `
                     <tr>
                         <td>${escapeHtml(team.team_name)}</td>
                         <td><strong>${team.total}</strong></td>
