@@ -1275,7 +1275,8 @@
       "heading": "未歸組 Test Run",
       "subtitle": "不屬於任何集合的測試執行",
       "empty": "所有測試執行都已歸組",
-      "noFilterMatches": "沒有符合篩選條件的測試執行"
+      "noFilterMatches": "沒有符合篩選條件的測試執行",
+      "label": "未指定區段"
     },
     "unnamed": "未命名",
     "updateAssigneeFailed": "更新執行者失敗",
@@ -1342,6 +1343,10 @@
     "sets": {
       "heading": "Test Run Set",
       "subtitle": "集中管理多個 Test Run 組合",
+      "selectSet": "選擇 Test Case Set",
+      "selectSetHint": "僅可從同一個 Test Case Set 選取案例",
+      "selectSetPlaceholder": "請選擇 Test Case Set",
+      "selectSetFirst": "請先選擇一個 Test Case Set",
       "create": "新增 Test Run Set",
       "empty": "",
       "form": {
@@ -1408,7 +1413,9 @@
     "quickSearch": {
       "testRunsHeading": "Test Run",
       "testRunSetsHeading": "Test Run Set"
-    }
+    },
+    "sections": "區段",
+    "noSections": "目前沒有區段"
   },
   "tooltip": {
     "assignedTo": "指派給",
