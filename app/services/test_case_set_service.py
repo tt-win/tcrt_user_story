@@ -47,7 +47,8 @@ class TestCaseSetService:
         )
         self.db.add(unassigned_section)
         self.db.commit()
-
+        
+        self.db.refresh(new_set)
         return new_set
 
     def get_by_id(self, set_id: int, team_id: int = None) -> TestCaseSet:
