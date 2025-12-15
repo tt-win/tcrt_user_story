@@ -379,17 +379,30 @@ function showCreateSetModal() {
   currentEditingSetId = null;
   const modalLabel = window.i18n && window.i18n.isReady() ? window.i18n.t('testCaseSet.createSet') : '新增測試案例集合';
   const submitBtnText = window.i18n && window.i18n.isReady() ? window.i18n.t('testCaseSet.create', {}, 'Create') : 'Create';
-  document.getElementById('setModalLabel').textContent = modalLabel;
-  document.getElementById('submitBtnText').textContent = submitBtnText;
+  
+  const labelEl = document.getElementById('setModalLabel');
+  if (labelEl) labelEl.textContent = modalLabel;
+  
+  const btnTextEl = document.getElementById('submitBtnText');
+  if (btnTextEl) btnTextEl.textContent = submitBtnText;
 
   // 更新標籤文字
   updateModalLabels('create');
 
-  document.getElementById('setForm').reset();
-  document.getElementById('setNameError').classList.add('d-none');
-  document.getElementById('formAlert').classList.add('d-none');
-  const modal = new bootstrap.Modal(document.getElementById('setModal'));
-  modal.show();
+  const form = document.getElementById('setForm');
+  if (form) form.reset();
+  
+  const nameError = document.getElementById('setNameError');
+  if (nameError) nameError.classList.add('d-none');
+  
+  const formAlert = document.getElementById('formAlert');
+  if (formAlert) formAlert.classList.add('d-none');
+  
+  const modalEl = document.getElementById('setModal');
+  if (modalEl) {
+      const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+      modal.show();
+  }
 }
 
 // 顯示編輯 Set Modal
@@ -397,18 +410,33 @@ function showEditSetModal(setId, name, description) {
   currentEditingSetId = setId;
   const editLabel = window.i18n && window.i18n.isReady() ? window.i18n.t('testCaseSet.editSet', {}, '編輯測試案例集合') : '編輯測試案例集合';
   const submitBtnText = window.i18n && window.i18n.isReady() ? window.i18n.t('testCaseSet.updateSet', {}, 'Update') : 'Update';
-  document.getElementById('setModalLabel').textContent = editLabel;
-  document.getElementById('submitBtnText').textContent = submitBtnText;
+  
+  const labelEl = document.getElementById('setModalLabel');
+  if (labelEl) labelEl.textContent = editLabel;
+  
+  const btnTextEl = document.getElementById('submitBtnText');
+  if (btnTextEl) btnTextEl.textContent = submitBtnText;
 
   // 更新標籤文字
   updateModalLabels('edit');
 
-  document.getElementById('setName').value = name;
-  document.getElementById('setDescription').value = description;
-  document.getElementById('setNameError').classList.add('d-none');
-  document.getElementById('formAlert').classList.add('d-none');
-  const modal = new bootstrap.Modal(document.getElementById('setModal'));
-  modal.show();
+  const nameInput = document.getElementById('setName');
+  if (nameInput) nameInput.value = name;
+  
+  const descInput = document.getElementById('setDescription');
+  if (descInput) descInput.value = description;
+  
+  const nameError = document.getElementById('setNameError');
+  if (nameError) nameError.classList.add('d-none');
+  
+  const formAlert = document.getElementById('formAlert');
+  if (formAlert) formAlert.classList.add('d-none');
+  
+  const modalEl = document.getElementById('setModal');
+  if (modalEl) {
+      const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+      modal.show();
+  }
 }
 
 // 更新模態框標籤的翻譯
@@ -522,7 +550,11 @@ async function submitSetForm() {
     }
 
     // 關閉 Modal 並重新載入
-    bootstrap.Modal.getInstance(document.getElementById('setModal')).hide();
+    const modalEl = document.getElementById('setModal');
+    if (modalEl) {
+        const modal = bootstrap.Modal.getInstance(modalEl);
+        if (modal) modal.hide();
+    }
     await loadTestCaseSets();
 
   } catch (error) {
