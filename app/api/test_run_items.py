@@ -24,6 +24,7 @@ from app.models.database_models import (
     Team as TeamDB,
     TestRunItemResultHistory as ResultHistoryDB,
     TestCaseLocal as TestCaseLocalDB,
+    TestCaseSection,
     User,
 )
 from app.models.lark_types import Priority, TestResultStatus
@@ -265,6 +266,8 @@ class TestRunItemResponse(BaseModel):
     precondition: Optional[str]
     steps: Optional[str]
     expected_result: Optional[str]
+    test_case_section: Optional[Dict[str, Any]] = None
+    test_case_set_id: Optional[int] = None
     assignee_id: Optional[str]
     assignee_name: Optional[str]
     assignee_en_name: Optional[str]
@@ -437,6 +440,37 @@ def _get_lark_client_for_team(team_id: int, db: Session):
     return lark_client, team_config
 
 
+def _serialize_section_with_parents(section: Optional[TestCaseSection], max_depth: int = 10) -> Optional[Dict[str, Any]]:
+    """
+    將 Section 轉成帶完整父節點鏈的 dict。
+    使用 max_depth 防止資料庫錯誤造成的循環引用。
+    """
+    if section is None:
+        return None
+
+    visited = set()
+
+    def build(sec: TestCaseSection, depth: int) -> Optional[Dict[str, Any]]:
+        if sec is None or depth > max_depth:
+            return None
+        sec_id = getattr(sec, "id", None)
+        if sec_id in visited:
+            return None
+        visited.add(sec_id)
+
+        parent = getattr(sec, "parent_section", None)
+        parent_dict = build(parent, depth + 1) if parent else None
+
+        return {
+            "id": sec_id,
+            "name": getattr(sec, "name", None),
+            "parent_id": getattr(sec, "parent_section_id", None),
+            "parent": parent_dict,
+        }
+
+    return build(section, 0)
+
+
 def _db_to_response(item: TestRunItemDB, case: Optional[TestCaseLocalDB] = None, db: Optional[Session] = None) -> TestRunItemResponse:
     exec_results = _parse_execution_results(item.execution_results_json)
     attachments = _parse_execution_results(item.attachments_json)  # 使用相同的解析函數
@@ -448,6 +482,8 @@ def _db_to_response(item: TestRunItemDB, case: Optional[TestCaseLocalDB] = None,
     steps = None
     expected_result = None
     comment = None
+    test_case_section = None
+    test_case_set_id = None
 
     if test_case is not None:
         title = getattr(test_case, 'title', None)
@@ -457,6 +493,12 @@ def _db_to_response(item: TestRunItemDB, case: Optional[TestCaseLocalDB] = None,
         precondition = getattr(test_case, 'precondition', None)
         steps = getattr(test_case, 'steps', None)
         expected_result = getattr(test_case, 'expected_result', None)
+        test_case_set_id = getattr(test_case, 'test_case_set_id', None)
+
+        # 獲取 Section 資訊
+        section = getattr(test_case, 'test_case_section', None)
+        if section:
+            test_case_section = _serialize_section_with_parents(section)
 
     # 從歷史記錄中取得最新的 comment（change_source = 'comment'）
     if db is not None:
@@ -480,6 +522,8 @@ def _db_to_response(item: TestRunItemDB, case: Optional[TestCaseLocalDB] = None,
         precondition=precondition,
         steps=steps,
         expected_result=expected_result,
+        test_case_section=test_case_section,
+        test_case_set_id=test_case_set_id,
         assignee_id=item.assignee_id,
         assignee_name=item.assignee_name,
         assignee_en_name=item.assignee_en_name,
@@ -550,24 +594,24 @@ async def list_items(
 ):
     _verify_team_and_config(team_id, config_id, db)
 
-    Tc = aliased(TestCaseLocalDB)
+    # Tc = aliased(TestCaseLocalDB)  # Removed alias to simplify eager loading chain
     q = db.query(TestRunItemDB).outerjoin(
-        Tc,
-        and_(
-            TestRunItemDB.team_id == Tc.team_id,
-            TestRunItemDB.test_case_number == Tc.test_case_number,
-        )
+        TestRunItemDB.test_case
     ).filter(
         TestRunItemDB.team_id == team_id,
         TestRunItemDB.config_id == config_id,
-    ).options(contains_eager(TestRunItemDB.test_case, alias=Tc))
+    ).options(
+        contains_eager(TestRunItemDB.test_case)
+        .joinedload(TestCaseLocalDB.test_case_section)
+        .joinedload(TestCaseSection.parent_section)
+    )
 
     if search:
         s = f"%{search}%"
         q = q.filter(
             or_(
                 TestRunItemDB.test_case_number.like(s),
-                Tc.title.like(s)
+                TestCaseLocalDB.title.like(s)
             )
         )
 
@@ -575,7 +619,7 @@ async def list_items(
         priority_lookup = {p.value.lower(): p for p in Priority}
         priority_value = priority_lookup.get(priority_filter.lower()) if isinstance(priority_filter, str) else None
         if priority_value is not None:
-            q = q.filter(Tc.priority == priority_value)
+            q = q.filter(TestCaseLocalDB.priority == priority_value)
     if test_result_filter:
         q = q.filter(TestRunItemDB.test_result == test_result_filter)
     if executed_only:
@@ -585,9 +629,9 @@ async def list_items(
     sort_map = {
         'created_at': TestRunItemDB.created_at,
         'updated_at': TestRunItemDB.updated_at,
-        'priority': Tc.priority,
+        'priority': TestCaseLocalDB.priority,
         'test_result': TestRunItemDB.test_result,
-        'title': Tc.title,
+        'title': TestCaseLocalDB.title,
     }
     sort_col = sort_map.get(sort_by, TestRunItemDB.created_at)
     if sort_order.lower() == 'asc':

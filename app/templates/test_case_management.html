@@ -6735,6 +6735,7 @@ async function saveAndAddNext() {
         const currentPrecondition = testCaseData.precondition;
         const currentSteps = testCaseData.steps;
         const currentExpectedResult = testCaseData.expected_result;
+        const currentSectionId = testCaseData.test_case_section_id || '';
         // 重要：在重置表單前先暫存當前 TCG 單號（建立時不傳，建立後會用於 PUT）
         const currentTCG = (typeof tcgNumberForCreate === 'string' && tcgNumberForCreate.trim()) ? tcgNumberForCreate.trim() : '';
 
@@ -6764,6 +6765,12 @@ async function saveAndAddNext() {
             }
             if (currentExpectedResult) {
                 document.getElementById('expected_result').value = currentExpectedResult;
+            }
+            // 保留 Section 選擇
+            const sectionSelect = document.getElementById('testCaseSectionSelect');
+            if (sectionSelect && currentSectionId) {
+                sectionSelect.value = currentSectionId;
+                sectionSelect.dispatchEvent(new Event('change', { bubbles: true }));
             }
             // 保留相同 TCG 單號
             const tcgDisplayNext = document.getElementById('tcg');

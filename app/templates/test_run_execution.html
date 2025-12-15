@@ -753,15 +753,20 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
     overflow: visible;
     border: 1px solid var(--tr-border-light);
     border-radius: 0.375rem;
+    width: 100%;
+    max-width: 100%;
 }
 
 .test-run-items-table {
     height: 100%;
     overflow-y: auto;
+    overflow-x: auto;
+    width: 100%;
 }
 
 .test-run-items-table table {
     margin-bottom: 0;
+    width: 100%;
 }
 
 .test-run-items-table th {
@@ -945,6 +950,19 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
 .test-run-items-table tbody tr:hover {
     background-color: var(--tr-bg-light, #f8f9fa);
     transition: background-color 0.15s ease-in-out;
+}
+
+.tre-section-row {
+    background: #f5f7fb;
+    font-weight: 600;
+}
+
+.tre-section-row .section-toggle {
+    cursor: pointer;
+}
+
+.tre-section-row td {
+    border-top: 2px solid var(--tr-border-light, #e5e7eb);
 }
 
 /* 表格整體美化 */
@@ -1248,6 +1266,52 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
 .section-expected { background: rgba(25, 135, 84, 0.08); border-color: rgba(25, 135, 84, 0.25); }
 .section-attachments { background: rgba(108, 117, 125, 0.06); border-color: rgba(108, 117, 125, 0.25); }
 
+/* Section 清單（依 Test Run Items 的 Section 分組） */
+.tre-section-tree {
+    max-height: 320px;
+    overflow-y: auto;
+    border: 1px solid var(--tr-border-light);
+    border-radius: 0.5rem;
+    padding: 0.5rem;
+    background: #fff;
+}
+
+.tre-section-node {
+    padding: 0.35rem 0.5rem;
+    border-radius: 0.35rem;
+    transition: background-color 0.2s;
+}
+
+.tre-section-node:hover {
+    background-color: #f5f7fb;
+}
+
+.tre-section-node.active {
+    background-color: #e7f1ff;
+    border: 1px solid #d0e4ff;
+}
+
+.tre-section-toggle {
+    border: none;
+    background: transparent;
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.tre-section-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-weight: 600;
+}
+
+.tre-section-count {
+    font-size: 0.8rem;
+}
+
 /* AssigneeSelector 在 Modal 中的樣式調整 */
 #testCaseDetailModal .assignee-selector-container {
     width: 100%;
@@ -1501,145 +1565,60 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                     <i class="fas fa-trash me-2"></i><span data-i18n="testRun.batchDelete">批次刪除</span>
                 </button>
             </div>
-        </div>
-            <div id="executionFilterPanel" class="execution-filter-panel shadow-sm">
-            <div class="filter-panel-header">
-                <div class="d-flex align-items-center gap-2">
-                    <i class="fas fa-filter text-secondary"></i>
-                    <span data-i18n="common.filter">篩選</span>
-                </div>
-                <div class="d-flex align-items-center gap-2">
-                    <button type="button" class="btn btn-secondary btn-sm p-0" id="resetExecutionFiltersBtn">
-                        <i class="fas fa-undo-alt me-1"></i><span data-i18n="testRun.filterReset">清除篩選</span>
-                    </button>
-                    <button type="button" class="btn btn-secondary btn-sm" id="closeExecutionFiltersBtn" aria-label="Close">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-            </div>
-            <div class="filter-panel-body">
-                <div class="filter-section mb-3">
-                    <div class="filter-status-options mt-2">
-                        <label class="form-check form-check-inline">
-                            <input class="form-check-input execution-status-filter" type="checkbox" value="ALL" checked>
-                            <span class="form-check-label" data-i18n="testRun.statusFilter.all">All</span>
-                        </label>
-                        <label class="form-check form-check-inline">
-                            <input class="form-check-input execution-status-filter" type="checkbox" value="Passed" checked>
-                            <span class="form-check-label" data-i18n="testRun.passed">Passed</span>
-                        </label>
-                        <label class="form-check form-check-inline">
-                            <input class="form-check-input execution-status-filter" type="checkbox" value="Failed" checked>
-                            <span class="form-check-label" data-i18n="testRun.failed">Failed</span>
-                        </label>
-                        <label class="form-check form-check-inline">
-                            <input class="form-check-input execution-status-filter" type="checkbox" value="Retest" checked>
-                            <span class="form-check-label" data-i18n="testRun.retest">Retest</span>
-                        </label>
-                        <label class="form-check form-check-inline">
-                            <input class="form-check-input execution-status-filter" type="checkbox" value="Not Available" checked>
-                            <span class="form-check-label" data-i18n="testRun.notAvailable">Not Available</span>
-                        </label>
-                        <label class="form-check form-check-inline">
-                            <input class="form-check-input execution-status-filter" type="checkbox" value="Pending" checked>
-                            <span class="form-check-label" data-i18n="testRun.pending">Pending</span>
-                        </label>
-                        <label class="form-check form-check-inline">
-                            <input class="form-check-input execution-status-filter" type="checkbox" value="Not Required" checked>
-                            <span class="form-check-label" data-i18n="testRun.notRequired">Not Required</span>
-                        </label>
-                        <label class="form-check form-check-inline">
-                            <input class="form-check-input execution-status-filter" type="checkbox" value="Not Executed" checked>
-                            <span class="form-check-label" data-i18n="testRun.notExecuted">Not Executed</span>
-                        </label>
-                    </div>
-                </div>
+            </div> <!-- /d-flex stats + toolbar -->
+        </div> <!-- /execution-stats-wrapper -->
+    </div> <!-- /test-run-header -->
 
-                <div class="filter-section">
-                    <!-- 第一排：案例編號和標題 -->
-                    <div class="filter-search-controls mt-2">
-                        <div class="filter-field case-field">
-                            <label class="form-label form-label-sm" data-i18n="testRun.caseNumber">案例編號</label>
-                            <input type="text" class="form-control form-control-sm" id="filterCaseNumberInput" data-i18n-placeholder="testRun.filterCaseNumberPlaceholder" placeholder="輸入案例編號關鍵字">
-                        </div>
-                        <div class="filter-field title-field">
-                            <label class="form-label form-label-sm" data-i18n="form.title">標題</label>
-                            <input type="text" class="form-control form-control-sm" id="filterTitleInput" data-i18n-placeholder="testRun.filterTitlePlaceholder" placeholder="輸入標題關鍵字">
-                        </div>
-                    </div>
-
-                    <!-- 第二排：優先級和執行者 -->
-                    <div class="filter-search-controls filter-priority-assignee-row mt-2">
-                        <div class="filter-field priority-field">
-                            <label class="form-label form-label-sm" data-i18n="testRun.priority">優先級</label>
-                            <select class="form-select form-select-sm" id="filterPrioritySelect">
-                                <option value="ALL" data-i18n="testRun.filterPriorityAll">全部優先級</option>
-                                <option value="High" data-i18n="testRun.priorityHigh">High</option>
-                                <option value="Medium" data-i18n="testRun.priorityMedium">Medium</option>
-                                <option value="Low" data-i18n="testRun.priorityLow">Low</option>
-                            </select>
-                        </div>
-                        <div class="filter-field assignee-field">
-                            <label class="form-label form-label-sm" data-i18n="testRun.assignee">執行者</label>
-                            <input type="text" class="form-control form-control-sm" id="filterAssigneeInput" data-i18n-placeholder="testRun.filterAssigneePlaceholder" placeholder="搜尋並選擇執行者">
-                            <div id="filterAssigneeChips" class="filter-assignee-chips mt-2"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            </div>
-        </div>
-    </div>
-
+    <!-- 篩選 + Section 清單 + 列表 (左右欄版型) -->
     <!-- Test Run Items 表格 -->
-    <div id="test-run-items-container" class="test-run-items-container" style="display: none;">
-        <!-- 列表區載入動畫（預設隱藏） -->
-        <div id="items-loading" class="align-items-center justify-content-center py-5 d-none" style="min-height: 240px;">
-            <div class="text-center text-muted">
-                <div class="spinner-border text-primary" role="status"></div>
-                <div class="mt-2" data-i18n="testRun.loadingItems">載入測試項目中...</div>
+        <div id="test-run-items-container" class="test-run-items-container" style="display: none; min-width:0;">
+            <!-- 列表區載入動畫（預設隱藏） -->
+            <div id="items-loading" class="align-items-center justify-content-center py-5 d-none" style="min-height: 240px;">
+                <div class="text-center text-muted">
+                    <div class="spinner-border text-primary" role="status"></div>
+                    <div class="mt-2" data-i18n="testRun.loadingItems">載入測試項目中...</div>
+                </div>
+            </div>
+
+            <div class="test-run-items-table">
+                <table class="table table-hover table-sm">
+                    <thead>
+                        <tr id="table-header-row">
+                            <th id="checkbox-header">
+                                <input type="checkbox" class="form-check-input" id="selectAllItemsCheckbox">
+                            </th>
+                            <th id="th-tre-number" class="sortable" style="cursor: pointer;">
+                                <span data-i18n="testRun.caseNumber">案例編號</span>
+                                <span class="sort-indicator ms-1"></span>
+                            </th>
+                            <th id="th-tre-title" class="sortable" style="cursor: pointer;">
+                                <span data-i18n="testRun.caseTitle">標題</span>
+                                <span class="sort-indicator ms-1"></span>
+                            </th>
+                            <th id="th-tre-priority" class="sortable" style="cursor: pointer;">
+                                <span data-i18n="testRun.priority">優先級</span>
+                                <span class="sort-indicator ms-1"></span>
+                            </th>
+                            <th id="th-tre-result" class="sortable" style="cursor: pointer;">
+                                <span data-i18n="testRun.testResult">測試結果</span>
+                                <span class="sort-indicator ms-1"></span>
+                            </th>
+                            <th id="th-tre-assignee" class="sortable" style="cursor: pointer;">
+                                <span data-i18n="testRun.assignee">執行者</span>
+                                <span class="sort-indicator ms-1"></span>
+                            </th>
+                            <th id="th-tre-executed" class="sortable" style="cursor: pointer;">
+                                <span data-i18n="testRun.executedAt">執行時間</span>
+                                <span class="sort-indicator ms-1"></span>
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody id="items-table-body">
+                        <!-- Test Run Items 將在此處動態載入 -->
+                    </tbody>
+                </table>
             </div>
         </div>
-
-        <div class="test-run-items-table">
-            <table class="table table-hover table-sm">
-                <thead>
-                    <tr id="table-header-row">
-                        <th id="checkbox-header">
-                            <input type="checkbox" class="form-check-input" id="selectAllItemsCheckbox">
-                        </th>
-                        <th id="th-tre-number" class="sortable" style="cursor: pointer;">
-                            <span data-i18n="testRun.caseNumber">案例編號</span>
-                            <span class="sort-indicator ms-1"></span>
-                        </th>
-                        <th id="th-tre-title" class="sortable" style="cursor: pointer;">
-                            <span data-i18n="testRun.caseTitle">標題</span>
-                            <span class="sort-indicator ms-1"></span>
-                        </th>
-                        <th id="th-tre-priority" class="sortable" style="cursor: pointer;">
-                            <span data-i18n="testRun.priority">優先級</span>
-                            <span class="sort-indicator ms-1"></span>
-                        </th>
-                        <th id="th-tre-result" class="sortable" style="cursor: pointer;">
-                            <span data-i18n="testRun.testResult">測試結果</span>
-                            <span class="sort-indicator ms-1"></span>
-                        </th>
-                        <th id="th-tre-assignee" class="sortable" style="cursor: pointer;">
-                            <span data-i18n="testRun.assignee">執行者</span>
-                            <span class="sort-indicator ms-1"></span>
-                        </th>
-                        <th id="th-tre-executed" class="sortable" style="cursor: pointer;">
-                            <span data-i18n="testRun.executedAt">執行時間</span>
-                            <span class="sort-indicator ms-1"></span>
-                        </th>
-                    </tr>
-                </thead>
-                <tbody id="items-table-body">
-                    <!-- Test Run Items 將在此處動態載入 -->
-                </tbody>
-            </table>
-        </div>
-    </div>
 </div>
 
 <!-- Test Run Item 詳情 Modal -->
@@ -2084,7 +2063,6 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
 <script src="/static/js/assignee-selector.js"></script>
 <script>
 // Test Run 執行頁面
-console.log('=== Test Run 執行頁面 JavaScript 已載入 ===');
 let currentConfigId = null;
 let currentTeamId = null; // 由 AppUtils 取得，無則退回 1
 let testRunConfig = null;
@@ -2097,6 +2075,12 @@ const executionFilterState = {
     priority: 'ALL',
     assignees: []
 };
+
+// Section 篩選
+let treSections = [];
+let sectionIndexById = new Map(); // id -> { name, parentId }
+let treSectionFilterId = null;
+let treSectionFilterIds = null; // Set of allowed section ids (string)，含子節點，'unassigned' 為未指派
 let executionFilterInitialized = false;
 let executionFilterAssigneeSelector = null;
 let executionFilterPanelEl = null;
@@ -2700,6 +2684,21 @@ function getExecutionItemStatus(item) {
     return result ? result : 'Not Executed';
 }
 
+function getItemSectionId(item) {
+    const sec = item.test_case_section || item.section || {};
+    const explicit =
+        item.test_case_section_id ||
+        item.__exec_section_id ||
+        sec.id || sec.section_id || sec.record_id || sec.parent_id ||
+        item.section_id || item.section_record_id ||
+        item.test_case_section_record_id;
+    if (explicit) return explicit;
+    // fallback：若只有名稱仍建立分組鍵，避免全部落到 Unassigned
+    if (item.__exec_section_name) return `name:${item.__exec_section_name}`;
+    if (sec.name) return `name:${sec.name}`;
+    return null;
+}
+
 function getFilteredTestRunItems() {
     const numberKeyword = executionFilterState.searchNumber;
     const titleKeyword = executionFilterState.searchTitle;
@@ -2711,6 +2710,12 @@ function getFilteredTestRunItems() {
         const itemStatus = getExecutionItemStatus(item);
         if (!matchAllStatuses && !executionFilterState.statuses.has(itemStatus)) {
             return false;
+        }
+
+        if (treSectionFilterIds) {
+            const sid = getItemSectionId(item);
+            const key = sid === null || typeof sid === 'undefined' ? 'unassigned' : String(sid);
+            if (!treSectionFilterIds.has(key)) return false;
         }
 
         if (numberKeyword) {
@@ -2933,7 +2938,6 @@ function initializePage() {
     currentTeamId = AppUtils.getCurrentTeam()?.id;
     if (!currentTeamId) {
         currentTeamId = 1;
-        console.log('Using temporary hardcoded team ID:', currentTeamId);
     }
     // 確保網址列包含 team_id（不重新載入頁面）
     try { ensureTeamIdInUrl_TRE(currentTeamId); } catch (_) {}
@@ -2961,10 +2965,7 @@ function initializePage() {
             const options = {
                 teamId: currentTeamId,
                 allowCustomValue: true,  // 批次修改允許自定義值
-                onSelect: (contact) => {
-                    // 批次修改不需要立即更新，只需要設定值
-                    console.log('Batch assignee selected:', contact.name);
-                }
+                onSelect: () => {}
             };
             
             if (batchInput._assigneeSelector) {
@@ -3174,6 +3175,7 @@ async function loadTestRunConfig() {
         
         testRunConfig = await response.json();
         updateHeader();
+        await loadTreSections();
         await loadTestRunItems();
         await updateStatistics();
         
@@ -3200,10 +3202,12 @@ async function loadTestRunItems() {
                 return aNumber.localeCompare(bNumber);
             });
         } catch (_) { /* 忽略排序中的非致命錯誤 */ }
-        // 比照 Test Case Management：一次抓取整個團隊的測試案例清單，
-        // 並將本次 Test Run 需要的案例寫入本地快取（改為背景預抓，不阻塞列表顯示）。
-        Promise.resolve().then(() => preloadAllTeamTestCasesForRun(testRunItems)).catch(() => {});
+        // 預抓案例並補齊 Section 資訊後再渲染
+        await preloadAllTeamTestCasesForRun(testRunItems);
+        await hydrateItemSections(testRunItems);
+        rebuildSectionIndexFromItems(testRunItems);
         renderTestRunItems();
+        renderTreSectionTree();
         hideItemsLoading();
         
     } catch (error) {
@@ -3229,13 +3233,60 @@ async function loadTestRunItemsWithoutLoading() {
             });
         } catch (_) { /* 忽略排序中的非致命錯誤 */ }
         
+        await preloadAllTeamTestCasesForRun(testRunItems);
+        await hydrateItemSections(testRunItems);
+        rebuildSectionIndexFromItems(testRunItems);
         // 直接渲染，不顯示載入動畫
         renderTestRunItems();
+        renderTreSectionTree();
         
     } catch (error) {
         console.error('Failed to load test items:', error);
         AppUtils.showError('{{ i18n.t("testRun.loadItemsFailed") if i18n else "載入測試項目失敗" }}' + ': ' + error.message);
     }
+}
+
+async function loadTreSections() {
+    if (!testRunConfig || !testRunConfig.set_id) {
+        treSections = [];
+        sectionIndexById = new Map();
+        renderTreSectionTree();
+        return;
+    }
+    try {
+        const resp = await window.AuthClient.fetch(`/api/test-case-sets/${testRunConfig.set_id}/sections`);
+        if (resp.ok) {
+            treSections = await resp.json();
+        } else {
+            treSections = [];
+        }
+    } catch (e) {
+        console.warn('loadTreSections failed', e);
+        treSections = [];
+    }
+    // 建立扁平索引，方便還原完整 parent chain
+    sectionIndexById = new Map();
+    const upsertIndex = (id, name, parentId) => {
+        const key = String(id);
+        const existing = sectionIndexById.get(key) || {};
+        sectionIndexById.set(key, {
+            name: name || existing.name || `Section ${key}`,
+            parentId: parentId !== undefined ? (parentId !== null ? String(parentId) : null) : (existing.parentId ?? null)
+        });
+    };
+    const indexSections = (nodes, parentId = null) => {
+        (nodes || []).forEach(node => {
+            const id = node && node.id != null ? String(node.id) : null;
+            if (!id) return;
+            const pId = node.parent_id ?? (node.parent && node.parent.id != null ? node.parent.id : parentId);
+            upsertIndex(id, node.name, pId);
+            if (node.children && node.children.length) {
+                indexSections(node.children, id);
+            }
+        });
+    };
+    indexSections(treSections, null);
+    renderTreSectionTree();
 }
 
 function updateHeader() {
@@ -3330,7 +3381,168 @@ function renderTestRunItems() {
 
     const showCheckbox = shouldShowCheckbox(testRunConfig ? testRunConfig.status : 'draft');
 
-    if (!filteredItems.length) {
+    // 依 Section 分組
+    const sectionMap = new Map();
+    const sectionNameById = new Map();
+    const sectionOrder = [];
+
+    filteredItems.forEach(item => {
+        const sidRaw = getItemSectionId(item);
+        const sid = sidRaw ? String(sidRaw) : 'unassigned';
+        if (!sectionMap.has(sid)) sectionMap.set(sid, []);
+        sectionMap.get(sid).push(item);
+        // Populate sectionNameById from item's section info if available
+        if (sid !== 'unassigned' && item.test_case_section && item.test_case_section.name) {
+            sectionNameById.set(sid, item.test_case_section.name);
+        } else if (sid === 'unassigned') {
+            sectionNameById.set('unassigned', window.i18n && window.i18n.isReady() ? (window.i18n.t('testRun.unassigned.label') || window.i18n.t('testRun.unassigned')) : 'Unassigned');
+        }
+    });
+
+    const finalSectionOrder = [];
+    const explicitUnassignedIds = []; // 儲存名稱為 "Unassigned" 的實體 Section ID
+
+    // 1. 從 treSections (已排序的樹狀結構) 收集 Section ID
+    function collectOrderedSectionsFromTree(sections) {
+        (sections || []).forEach(sec => {
+            const sid = String(sec.id);
+            const isUnassignedByName = (sec.name || '').trim().toLowerCase() === 'unassigned';
+            
+            // Populate sectionNameById (important for display)
+            sectionNameById.set(sid, sec.name || `Section ${sid}`);
+
+            if (sectionMap.has(sid) && sectionMap.get(sid).length > 0) {
+                if (isUnassignedByName) {
+                    explicitUnassignedIds.push(sid);
+                } else {
+                    finalSectionOrder.push(sid);
+                }
+            }
+            
+            if (sec.children && sec.children.length) collectOrderedSectionsFromTree(sec.children);
+        });
+    }
+    collectOrderedSectionsFromTree(treSections || []);
+
+    // 2. 找出 sectionMap 中有但 finalSectionOrder + explicitUnassignedIds 中沒有的 section (孤立 Section)
+    const knownSections = new Set([...finalSectionOrder, ...explicitUnassignedIds]);
+    const orphanSections = [];
+    sectionMap.forEach((_, sid) => {
+        if (sid !== 'unassigned' && !knownSections.has(sid)) {
+            orphanSections.push(sid);
+        }
+    });
+    
+    // 對孤立 Section 排序，並檢查名稱是否為 Unassigned
+    orphanSections.sort((a, b) => {
+        return a.localeCompare(b);
+    });
+    
+    // 將孤立 Section 分流 (一般 vs Unassigned)
+    orphanSections.forEach(sid => {
+        const name = (sectionNameById.get(sid) || '').toLowerCase();
+        if (name === 'unassigned') {
+            explicitUnassignedIds.push(sid);
+        } else {
+            finalSectionOrder.push(sid);
+        }
+    });
+
+    // 3. 將 "Unassigned" 實體 Section 放到列表後方
+    finalSectionOrder.push(...explicitUnassignedIds);
+
+    // 4. 確保 Virtual Unassigned (null ID) 永遠在最後
+    if (sectionMap.has('unassigned') && sectionMap.get('unassigned').length > 0) {
+        finalSectionOrder.push('unassigned');
+    }
+
+    // 將最終排序應用到 sectionOrder
+    sectionOrder.push(...finalSectionOrder);
+
+    // Helper to build section path
+    function getSectionDisplayName(sid, sections) {
+        if (sid === 'unassigned') {
+            return window.i18n && window.i18n.isReady() 
+                ? (window.i18n.t('testRun.unassigned.label') || window.i18n.t('testRun.unassigned')) 
+                : 'Unassigned';
+        }
+
+        // 0. 透過索引從 parent chain 還原完整路徑
+        if (sectionIndexById && sectionIndexById.size > 0) {
+            const path = [];
+            let cursor = String(sid);
+            let guard = 0;
+            while (sectionIndexById.has(cursor) && guard < 50) {
+                const entry = sectionIndexById.get(cursor);
+                path.unshift(entry.name || `Section ${cursor}`);
+                if (!entry.parentId) break;
+                cursor = entry.parentId;
+                guard += 1;
+            }
+            if (path.length) return path.join(' > ');
+        }
+
+        // 1. Try to find path in treSections (Tree data)
+        if (sections && sections.length > 0) {
+            const findPath = (nodes, targetId, currentPath) => {
+                for (const node of nodes) {
+                    if (String(node.id) === String(targetId)) {
+                        return [...currentPath, node.name];
+                    }
+                    if (node.children && node.children.length > 0) {
+                        const found = findPath(node.children, targetId, [...currentPath, node.name]);
+                        if (found) return found;
+                    }
+                }
+                return null;
+            };
+            const pathArr = findPath(sections, sid, []);
+            if (pathArr) return pathArr.join(' > ');
+        }
+
+        // 2. Fallback: Use item info (limited to immediate parent based on current API)
+        // Find an item that belongs to this section to get the info
+        const itemWithSec = (testRunItems || []).find(it => String(getItemSectionId(it)) === String(sid));
+        if (itemWithSec && itemWithSec.test_case_section) {
+            const s = itemWithSec.test_case_section;
+            if (s.parent) {
+                return `${s.parent.name} > ${s.name}`;
+            }
+            if (s.name) return s.name;
+        }
+
+        return sectionNameById.get(sid) || `Section ${sid}`;
+    }
+
+    const rows = [];
+    sectionOrder.forEach(sid => {
+        const items = sectionMap.get(sid) || [];
+        if (!items.length) return;
+        
+        const displayName = getSectionDisplayName(sid, treSections);
+        
+        const collapsed = sessionStorage.getItem(`tre-section-${sid}`) === 'collapsed';
+        const caret = collapsed ? 'fa-chevron-right' : 'fa-chevron-down';
+        const colspan = showCheckbox ? 7 : 6;
+        rows.push(`
+            <tr class="tre-section-row" data-section-id="${sid}">
+                <td colspan="${colspan}">
+                    <div class="d-flex align-items-center gap-2">
+                        <i class="fas ${caret} section-toggle" data-section-id="${sid}"></i>
+                        <span>${escapeHtml(displayName)}</span>
+                        <span class="badge bg-light text-muted">${items.length}</span>
+                    </div>
+                </td>
+            </tr>
+        `);
+        items.forEach((item, idx) => {
+            const rowHtml = createItemRow(item, idx + 1, canUpdate);
+            const wrapped = collapsed ? rowHtml.replace('<tr ', '<tr style="display:none" ') : rowHtml;
+            rows.push(wrapped.replace('<tr ', `<tr data-section-id="${sid}" `));
+        });
+    });
+
+    if (!rows.length) {
         const colspan = showCheckbox ? 7 : 6;
         tbody.innerHTML = `
             <tr class="no-items">
@@ -3339,17 +3551,13 @@ function renderTestRunItems() {
                 </td>
             </tr>
         `;
-        if (window.i18n && window.i18n.isReady()) {
-            window.i18n.retranslate(tbody);
-        }
+        if (window.i18n && window.i18n.isReady()) window.i18n.retranslate(tbody);
         updateItemSelectionUI();
         hideItemsLoading();
         return;
     }
 
-    tbody.innerHTML = filteredItems.map((item, index) => {
-        return createItemRow(item, index + 1, canUpdate);
-    }).join('');
+    tbody.innerHTML = rows.join('');
     
     // 重新應用翻譯到新生成的內容
     if (window.i18n && window.i18n.isReady()) {
@@ -3358,6 +3566,16 @@ function renderTestRunItems() {
     
     // 綁定事件處理器
     bindItemEventHandlers(canUpdate);
+    // Section 展開/收合事件
+    tbody.querySelectorAll('.section-toggle').forEach(icon => {
+        icon.addEventListener('click', () => {
+            const sid = icon.getAttribute('data-section-id');
+            const key = `tre-section-${sid}`;
+            const collapsed = sessionStorage.getItem(key) === 'collapsed';
+            if (collapsed) sessionStorage.removeItem(key); else sessionStorage.setItem(key, 'collapsed');
+            renderTestRunItems();
+        });
+    });
     updateItemSelectionUI();
 
     // 嘗試處理從 URL 帶入的 tc（只執行一次）
@@ -3366,6 +3584,138 @@ function renderTestRunItems() {
     // 確保載入動畫關閉，顯示列表
     hideItemsLoading();
 }
+
+function renderTreSectionTree() {
+    const container = document.getElementById('treSectionTree');
+    if (!container) return;
+    const items = testRunItems || [];
+
+    const sectionIdToCount = new Map();
+    const unassignedCount = items.filter(it => !getItemSectionId(it)).length;
+
+    function collectSectionIds(sec, acc = []) {
+        acc.push(String(sec.id));
+        (sec.children || []).forEach(child => collectSectionIds(child, acc));
+        return acc;
+    }
+
+    function countItemsInSectionTree(sec) {
+        const ids = collectSectionIds(sec, []);
+        const count = items.reduce((sum, item) => {
+            const sid = getItemSectionId(item);
+            return ids.includes(String(sid)) ? sum + 1 : sum;
+        }, 0);
+        sectionIdToCount.set(String(sec.id), count);
+        return count;
+    }
+
+    treSections.forEach(sec => countItemsInSectionTree(sec));
+
+    const renderNodes = (sections, level = 0) => {
+        return sections.map(sec => {
+            const sid = String(sec.id);
+            const count = sectionIdToCount.get(sid) || 0;
+            const indent = level * 16;
+            const key = `tre-section-${sid}`;
+            const collapsed = sessionStorage.getItem(key) === 'collapsed';
+            const isActive = treSectionFilterId && treSectionFilterId === sid;
+            const hasChildren = Array.isArray(sec.children) && sec.children.length > 0;
+            const label = getSectionDisplayName(sid, treSections);
+            return `
+                <div class="tre-section-node ${isActive ? 'active' : ''}" data-section-id="${sid}" style="margin-left:${indent}px;">
+                    <div class="d-flex align-items-center justify-content-between">
+                        <div class="d-flex align-items-center gap-2 flex-grow-1">
+                            ${hasChildren ? `
+                                <button class="tre-section-toggle" data-toggle-id="${sid}" aria-label="toggle">
+                                    <i class="fas fa-chevron-${collapsed ? 'right' : 'down'}"></i>
+                                </button>` : `<span style="width:28px;"></span>`}
+                            <button class="btn btn-link btn-sm text-start p-0 tre-section-select" data-section-id="${sid}">
+                                <span class="tre-section-label">${escapeHtml(label || sec.name || `Section #${sid}`)}</span>
+                            </button>
+                        </div>
+                        <span class="badge bg-light text-muted tre-section-count">${count}</span>
+                    </div>
+                    ${hasChildren ? `
+                        <div class="${collapsed ? 'd-none' : ''}" data-children-of="${sid}">
+                            ${renderNodes(sec.children, level + 1)}
+                        </div>` : ''}
+                </div>
+            `;
+        }).join('');
+    };
+
+        const unassignedHtml = `
+        <div class="tre-section-node ${treSectionFilterId === 'unassigned' ? 'active' : ''}">
+            <div class="d-flex align-items-center justify-content-between">
+                <div class="d-flex align-items-center gap-2 flex-grow-1">
+                    <span style="width:28px;"></span>
+                    <button class="btn btn-link btn-sm text-start p-0 tre-section-select" data-section-id="unassigned">
+                        <span class="tre-section-label">${window.i18n && window.i18n.isReady() ? (window.i18n.t('testRun.unassigned.label') || window.i18n.t('testRun.unassigned')) : 'Unassigned'}</span>
+                    </button>
+                </div>
+                <span class="badge bg-light text-muted tre-section-count">${unassignedCount}</span>
+            </div>
+        </div>`;
+
+    if (!treSections || treSections.length === 0) {
+        container.innerHTML = unassignedHtml;
+    } else {
+        container.innerHTML = renderNodes(treSections) + unassignedHtml;
+    }
+
+    container.querySelectorAll('.tre-section-select').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const sid = btn.getAttribute('data-section-id');
+            if (sid === 'unassigned') {
+                treSectionFilterId = 'unassigned';
+                treSectionFilterIds = new Set(['unassigned']);
+            } else {
+                const targetSection = findSectionById(sid, treSections);
+                if (!targetSection) {
+                    treSectionFilterId = null;
+                    treSectionFilterIds = null;
+                } else {
+                    treSectionFilterId = sid;
+                    treSectionFilterIds = new Set(collectSectionIds(targetSection, []));
+                }
+            }
+            renderTreSectionTree();
+            renderTestRunItems();
+        });
+    });
+
+    container.querySelectorAll('.tre-section-toggle').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const sid = btn.getAttribute('data-toggle-id');
+            const key = `tre-section-${sid}`;
+            const collapsed = sessionStorage.getItem(key) === 'collapsed';
+            if (collapsed) sessionStorage.removeItem(key); else sessionStorage.setItem(key, 'collapsed');
+            renderTreSectionTree();
+        });
+    });
+
+    const clearBtn = document.getElementById('clearTreSectionFilterBtn');
+    if (clearBtn) {
+        clearBtn.onclick = () => {
+            treSectionFilterId = null;
+            treSectionFilterIds = null;
+            renderTreSectionTree();
+            renderTestRunItems();
+        };
+    }
+
+    if (window.i18n && window.i18n.isReady()) window.i18n.retranslate(container);
+}
+
+function findSectionById(id, sections) {
+    for (const sec of sections || []) {
+        if (String(sec.id) === String(id)) return sec;
+        const child = findSectionById(id, sec.children || []);
+        if (child) return child;
+    }
+    return null;
+}
+
 
 // 初始化表頭排序點擊事件（一次性）
 (function initTreHeaderSorting(){
@@ -4616,7 +4966,6 @@ async function loadTestCaseDetail(testCaseNumber) {
 
 function displayTestCaseDetail(testCase) {
     const permissions = getTrePermissions();
-    console.log('Debug: displayTestCaseDetail called with permissions:', permissions);
 
     // 隱藏載入狀態
     document.getElementById('testCaseDetailLoading').style.display = 'none';
@@ -5181,6 +5530,10 @@ async function preloadAllTeamTestCasesForRun(items) {
         let writeCount = 0;
         for (const tc of all) {
             if (tc && tc.test_case_number && need.has(tc.test_case_number)) {
+                if (tc.test_case_section_id || (tc.test_case_section && tc.test_case_section.id)) {
+                    tc.__exec_section_id = tc.test_case_section_id || tc.test_case_section.id;
+                    tc.__exec_section_name = (tc.test_case_section && tc.test_case_section.name) || null;
+                }
                 await setCachedTestCase(tc.test_case_number, tc);
                 writeCount++;
             }
@@ -5190,6 +5543,81 @@ async function preloadAllTeamTestCasesForRun(items) {
         console.debug('preloadAllTeamTestCasesForRun failed, fallback to prefetch each:', e);
         await prefetchTestCasesForItems(items);
     }
+}
+
+// 補齊 items 的 Section 資訊（從快取/預抓資料帶入）
+async function hydrateItemSections(items) {
+    if (!Array.isArray(items)) return;
+    for (const it of items) {
+        // 若已經有 section id / 名稱就跳過
+        const hasId = it.test_case_section_id || (it.test_case_section && (it.test_case_section.id || it.test_case_section.section_id || it.test_case_section.record_id));
+        const hasName = it.test_case_section && it.test_case_section.name;
+        if (hasId && hasName) continue;
+
+        // 嘗試從預抓的 __exec_section_* 帶入
+        if (it.__exec_section_id || it.__exec_section_name) {
+            it.test_case_section = it.test_case_section || {};
+            if (it.__exec_section_id) {
+                it.test_case_section.id = it.__exec_section_id;
+                it.test_case_section_id = it.test_case_section_id || it.__exec_section_id;
+            }
+            if (it.__exec_section_name && !it.test_case_section.name) {
+                it.test_case_section.name = it.__exec_section_name;
+            }
+            continue;
+        }
+
+        // 從快取撈 test case 詳細補上 section
+        try {
+            const cached = await getCachedTestCase(it.test_case_number);
+            if (cached && cached.data) {
+                const tc = cached.data;
+                const sec = tc.test_case_section || {};
+                if (sec.id || sec.section_id || sec.record_id) {
+                    const sid = sec.id || sec.section_id || sec.record_id;
+                    it.test_case_section = it.test_case_section || {};
+                    it.test_case_section.id = sid;
+                    it.test_case_section_id = it.test_case_section_id || sid;
+                    it.__exec_section_id = it.__exec_section_id || sid;
+                }
+                if (sec.name) {
+                    it.test_case_section = it.test_case_section || {};
+                    it.test_case_section.name = it.test_case_section.name || sec.name;
+                    it.__exec_section_name = it.__exec_section_name || sec.name;
+                }
+            }
+        } catch (_) {
+            /* ignore */
+        }
+    }
+}
+
+// 從 items 的 section parent 鏈補充索引（API 可能只給單層）
+function rebuildSectionIndexFromItems(items) {
+    if (!sectionIndexById) sectionIndexById = new Map();
+    const upsert = (id, name, parentId) => {
+        if (id == null) return;
+        const key = String(id);
+        const existing = sectionIndexById.get(key) || {};
+        sectionIndexById.set(key, {
+            name: name || existing.name || `Section ${key}`,
+            parentId: parentId !== undefined ? (parentId !== null ? String(parentId) : null) : (existing.parentId ?? null)
+        });
+    };
+    const visitSectionChain = (section) => {
+        if (!section || section.id == null) return;
+        const id = section.id || section.section_id || section.record_id;
+        const parentId = section.parent?.id ?? section.parent_id ?? null;
+        upsert(id, section.name, parentId);
+        if (parentId && section.parent) {
+            visitSectionChain(section.parent);
+        }
+    };
+    (items || []).forEach(it => {
+        if (it && it.test_case_section) {
+            visitSectionChain(it.test_case_section);
+        }
+    });
 }
 
 // 在 Test Run 項目清單中，根據目前 Test Case 移動到前/後一筆
@@ -5291,8 +5719,6 @@ function renderMarkdown(content) {
 
 // 處理附件點擊事件
 function handleAttachmentClick(attachmentName, fileToken, fileUrl) {
-    console.log('附件點擊:', { attachmentName, fileToken, fileUrl });
-    
     // 1) 本地附件：直接打開 /attachments 相對路徑
     if (fileUrl && fileUrl.trim().startsWith('/attachments')) {
         window.open(fileUrl, '_blank', 'noopener,noreferrer');
@@ -5325,7 +5751,6 @@ function handleAttachmentClick(attachmentName, fileToken, fileUrl) {
     }
     
     // 4) 沒有可用資訊：顯示說明
-    console.log('沒有有效的附件 token 或 URL，顯示附件信息');
     showAttachmentInfo(attachmentName, fileToken, fileUrl);
 }
 
@@ -5404,8 +5829,6 @@ function showAttachmentInfo(attachmentName, fileToken, fileUrl) {
 
 // 處理附件下載（從信息模態框中）
 function handleAttachmentDownload(attachmentName, fileToken, fileUrl) {
-    console.log('附件下載:', { attachmentName, fileToken, fileUrl });
-
     // 1) 本地附件：直接開啟 /attachments 相對路徑
     if (fileUrl && fileUrl.trim().startsWith('/attachments')) {
         window.open(fileUrl, '_blank', 'noopener,noreferrer');
@@ -6189,8 +6612,6 @@ function getCurrentItemId() {
 // Bug Ticket 直接打開 JIRA 頁面
 async function showBugTicketPreview(ticketNumber, triggerElement) {
     try {
-        console.log('Opening JIRA page for:', ticketNumber);
-
         // 獲取 JIRA ticket 資訊（包括 URL）
         const response = await window.AuthClient.fetch(`/api/jira/ticket/${encodeURIComponent(ticketNumber)}`);
         if (!response.ok) {
@@ -6279,11 +6700,9 @@ function filterBugTicketsByStatus(status) {
 
 // 初始化 Bug Tickets Summary Modal
 function initBugTicketsSummaryModal() {
-    console.log('初始化 Bug Tickets Summary Modal');
     const modalElement = document.getElementById('bugTicketsSummaryModal');
     if (modalElement && !bugTicketsSummaryModal) {
         bugTicketsSummaryModal = new bootstrap.Modal(modalElement);
-        console.log('Modal 已初始化');
     } else if (!modalElement) {
         console.error('找不到 bugTicketsSummaryModal 元素');
     }
@@ -6291,13 +6710,10 @@ function initBugTicketsSummaryModal() {
 
 // 顯示 Bug Tickets Summary Modal
 async function showBugTicketsModal() {
-    console.log('=== 開始顯示 Bug Tickets Modal ===');
-    console.log('準備顯示 Bug Tickets Modal');
     initBugTicketsSummaryModal();
     
     if (bugTicketsSummaryModal) {
         bugTicketsSummaryModal.show();
-        console.log('Modal 已顯示，開始載入資料');
         
         // 延遲一下確保 Modal 完全打開
         setTimeout(() => {
@@ -6310,9 +6726,6 @@ async function showBugTicketsModal() {
 
 // 載入 Bug Tickets Summary 資料
 async function loadBugTicketsSummary() {
-    console.log('開始載入 Bug Tickets Summary 資料');
-    console.log('當前 Team ID:', currentTeamId, 'Config ID:', currentConfigId);
-    
     const loadingEl = document.getElementById('bugTicketsSummaryLoading');
     const emptyEl = document.getElementById('bugTicketsSummaryEmpty');
     const contentEl = document.getElementById('bugTicketsSummaryContent');
@@ -6330,8 +6743,6 @@ async function loadBugTicketsSummary() {
         console.error('找不到 bugTicketsSummaryContent 元素');
         return;
     }
-    
-    console.log('所有必要元素都存在，開始載入');
     
     // 重置所有狀態
     loadingEl.style.display = 'block';
@@ -6505,46 +6916,6 @@ function showTestCaseQuickView(testCaseNumber) {
     showTestCaseDetailModal(testCaseNumber);
 }
 
-// 頁面載入完成後進行基礎檢查
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('=== DOM 載入完成，開始檢查 Bug Tickets 功能 ===');
-    
-    // 檢查 Bug Tickets 卡片
-    const bugTicketsCard = document.querySelector('.bug-tickets-card');
-    if (bugTicketsCard) {
-        console.log('✓ Bug Tickets 卡片元素存在');
-        console.log('✓ 點擊事件:', bugTicketsCard.getAttribute('onclick'));
-    } else {
-        console.error('✗ 找不到 Bug Tickets 卡片元素');
-    }
-    
-    // 檢查 Modal 元素
-    const modal = document.getElementById('bugTicketsSummaryModal');
-    if (modal) {
-        console.log('✓ Bug Tickets Modal 元素存在');
-    } else {
-        console.error('✗ 找不到 Bug Tickets Modal 元素');
-    }
-    
-    // 檢查關鍵子元素
-    const loading = document.getElementById('bugTicketsSummaryLoading');
-    const empty = document.getElementById('bugTicketsSummaryEmpty');
-    const content = document.getElementById('bugTicketsSummaryContent');
-    const list = document.getElementById('bugTicketsSummaryList');
-    
-    console.log('Modal 子元素檢查:');
-    console.log('  Loading元素:', loading ? '✓存在' : '✗缺失');
-    console.log('  Empty元素:', empty ? '✓存在' : '✗缺失');
-    console.log('  Content元素:', content ? '✓存在' : '✗缺失');
-    console.log('  List元素:', list ? '✓存在' : '✗缺失');
-    
-    // 檢查函數是否存在
-    console.log('函數檢查:');
-    console.log('  showBugTicketsModal:', typeof showBugTicketsModal);
-    console.log('  loadBugTicketsSummary:', typeof loadBugTicketsSummary);
-    console.log('  renderBugTicketsSummary:', typeof renderBugTicketsSummary);
-});
-
 // Charts & Reports 功能
 document.getElementById('exportBtn').addEventListener('click', function() {
     showChartsReportsModal();
@@ -6553,12 +6924,8 @@ document.getElementById('exportBtn').addEventListener('click', function() {
 function showChartsReportsModal() {
     const modal = new bootstrap.Modal(document.getElementById('chartsReportsModal'));
     modal.show();
-    
-    console.log('準備顯示 Charts & Reports modal');
-    
     // Modal 顯示後載入圖表
     document.getElementById('chartsReportsModal').addEventListener('shown.bs.modal', function() {
-        console.log('Modal 已完全顯示，開始初始化圖表');
         // 稍微延遲以確保所有元素都已渲染
         setTimeout(() => {
             initializeChartsAndReports();
@@ -6567,30 +6934,21 @@ function showChartsReportsModal() {
 }
 
 async function initializeChartsAndReports() {
-    console.log('開始初始化 Charts & Reports');
-    
     try {
         // 顯示載入狀態
         showChartsLoading();
-        console.log('顯示載入狀態');
         
         // 收集統計資料
-        console.log('開始收集統計資料...');
         const statsData = collectTestRunStats();
-        console.log('收集到的統計資料:', statsData);
         
         // 更新基本資訊
-        console.log('更新基本資訊...');
         updateReportBasicInfo(statsData);
         
         // 渲染圖表
-        console.log('開始渲染圖表...');
         await renderTestRunCharts(statsData);
-        console.log('圖表渲染完成');
         
         // 隱藏載入狀態
         hideChartsLoading();
-        console.log('Charts & Reports 初始化完成');
         
     } catch (error) {
         console.error('初始化圖表失敗:', error);
@@ -6765,8 +7123,6 @@ function updateReportBasicInfo(statsData) {
 let testRunCharts = {};
 
 async function renderTestRunCharts(statsData) {
-    console.log('開始渲染圖表，統計資料:', statsData);
-    
     // 清理舊圖表
     Object.values(testRunCharts).forEach(chart => {
         if (chart) chart.destroy();
@@ -6777,14 +7133,11 @@ async function renderTestRunCharts(statsData) {
     if (typeof Chart === 'undefined') {
         throw new Error('Chart.js not loaded');
     }
-    
-    console.log('Chart.js 已載入，版本:', Chart.version);
-    
+
     // 註冊 DataLabels 插件（如果可用）
     try {
         if (typeof ChartDataLabels !== 'undefined') {
             Chart.register(ChartDataLabels);
-            console.log('ChartDataLabels 插件已註冊');
         } else {
             console.warn('ChartDataLabels 插件未載入，圖表將不顯示數據標籤');
         }
@@ -6808,9 +7161,7 @@ async function renderTestRunCharts(statsData) {
     
     // 1. 測試狀態分布圓餅圖
     const statusCtx = document.getElementById('statusPieChart');
-    console.log('圓餅圖 Canvas 元素:', statusCtx);
     if (statusCtx) {
-        console.log('開始創建圓餅圖...');
         testRunCharts.statusPie = new Chart(statusCtx, {
             type: 'pie',
             data: {
@@ -6843,10 +7194,7 @@ async function renderTestRunCharts(statsData) {
                 maintainAspectRatio: false,
                 animation: {
                     duration: 1500,
-                    easing: 'easeInOutQuart',
-                    onComplete: function() {
-                        console.log('圓餅圖動畫完成');
-                    }
+                    easing: 'easeInOutQuart'
                 },
                 plugins: {
                     legend: {
@@ -6882,14 +7230,11 @@ async function renderTestRunCharts(statsData) {
                 }
             }
         });
-        console.log('圓餅圖創建完成');
     }
     
     // 2. 優先級分布長條圖
     const priorityCtx = document.getElementById('priorityBarChart');
-    console.log('長條圖 Canvas 元素:', priorityCtx);
     if (priorityCtx) {
-        console.log('開始創建長條圖...');
         testRunCharts.priorityBar = new Chart(priorityCtx, {
             type: 'bar',
             data: {
@@ -6919,10 +7264,7 @@ async function renderTestRunCharts(statsData) {
                 maintainAspectRatio: false,
                 animation: {
                     duration: 1200,
-                    easing: 'easeInOutQuart',
-                    onComplete: function() {
-                        console.log('長條圖動畫完成');
-                    }
+                    easing: 'easeInOutQuart'
                 },
                 plugins: {
                     legend: {
@@ -6939,19 +7281,16 @@ async function renderTestRunCharts(statsData) {
                 }
             }
         });
-        console.log('長條圖創建完成');
     }
 }
 
 function showChartsLoading() {
     const loadingElement = document.getElementById('chartsLoadingOverlay');
-    console.log('準備顯示載入畫面，元素:', loadingElement);
     if (loadingElement) {
         // 確保載入畫面可以顯示
         loadingElement.style.display = 'flex';
         loadingElement.style.visibility = 'visible';
         loadingElement.classList.remove('d-none');
-        console.log('載入畫面已顯示');
     } else {
         console.error('找不到載入畫面元素 chartsLoadingOverlay');
     }
@@ -6959,8 +7298,6 @@ function showChartsLoading() {
 
 function hideChartsLoading() {
     const loadingElement = document.getElementById('chartsLoadingOverlay');
-    console.log('準備隱藏載入畫面，元素:', loadingElement);
-    console.log('當前 display 樣式:', loadingElement?.style.display);
     if (loadingElement) {
         // 使用多種方式確保載入畫面被隱藏
         loadingElement.style.display = 'none';
@@ -6968,8 +7305,6 @@ function hideChartsLoading() {
         loadingElement.classList.add('d-none');
         // 強制刷新樣式
         loadingElement.offsetHeight;
-        console.log('載入畫面已隱藏，新的 display 樣式:', loadingElement.style.display);
-        console.log('是否有 d-none 類:', loadingElement.classList.contains('d-none'));
     } else {
         console.error('找不到載入畫面元素 chartsLoadingOverlay');
     }
@@ -6987,13 +7322,10 @@ function showChartsError() {
 async function convertChartsToImages() {
     const conversions = [];
     const canvasElements = document.querySelectorAll('#chartsReportsModal canvas');
-    
-    console.log(`找到 ${canvasElements.length} 個圖表需要轉換`);
-    
+
     // 首先等待所有圖表完全渲染（包括動畫和插件）
     await waitForAllChartsToRender(canvasElements);
-    console.log('所有圖表渲染完成，開始轉換...');
-    
+
     // 使用 Promise.all 確保所有轉換都完成
     const conversionPromises = Array.from(canvasElements).map((canvas, index) => {
         return new Promise(async (resolve) => {
@@ -7012,8 +7344,6 @@ async function convertChartsToImages() {
                     // 獲取高品質的圖片資料，考慮高DPI顯示
                     const deviceRatio = window.devicePixelRatio || 1;
                     const imageData = canvas.toDataURL('image/png', 1.0);
-                    
-                    console.log(`圖表 ${index + 1} 轉換 - 裝置比率: ${deviceRatio}, 圖片大小: ${imageData.length}`);
                     
                     // 驗證圖片數據是否有效
                     if (!imageData || imageData === 'data:,' || imageData.length < 100) {
@@ -7046,7 +7376,6 @@ async function convertChartsToImages() {
                     canvas.parentNode.insertBefore(img, canvas.nextSibling);
                     
                     const conversionResult = { canvas, img, chart, originalAnimation };
-                    console.log(`圖表 ${index + 1} 轉換成功`);
                     conversions.push(conversionResult);
                     resolve(conversionResult);
                 } else {
@@ -7062,15 +7391,11 @@ async function convertChartsToImages() {
     
     // 等待所有轉換完成
     await Promise.all(conversionPromises);
-    console.log(`完成轉換，成功轉換 ${conversions.length} 個圖表`);
-    
     return conversions;
 }
 
 // 等待所有圖表完全渲染的輔助函數
 async function waitForAllChartsToRender(canvasElements) {
-    console.log('開始等待圖表渲染完成...');
-    
     const chartPromises = Array.from(canvasElements).map(async (canvas, index) => {
         const chart = Chart.getChart(canvas);
         if (chart) {
@@ -7083,23 +7408,17 @@ async function waitForAllChartsToRender(canvasElements) {
     
     // 額外等待時間確保插件（如 DataLabels）完全渲染
     await new Promise(resolve => setTimeout(resolve, 800));
-    console.log('所有圖表和插件渲染等待完成');
 }
 
 // 等待單個圖表渲染完成
 async function waitForSingleChartRender(chart, index) {
     return new Promise(resolve => {
-        console.log(`等待圖表 ${index + 1} 渲染完成...`);
-        
         // 檢查圖表是否正在動畫中
         if (chart.isAnimating && chart.isAnimating()) {
-            console.log(`圖表 ${index + 1} 正在動畫中，等待完成...`);
-            
             // Chart.js 3.x 使用 onAnimationComplete
             const originalOnComplete = chart.options.animation?.onComplete;
             chart.options.animation = chart.options.animation || {};
             chart.options.animation.onComplete = function(context) {
-                console.log(`圖表 ${index + 1} 動畫完成`);
                 // 恢復原始回調
                 if (originalOnComplete) {
                     originalOnComplete.call(this, context);
@@ -7114,7 +7433,6 @@ async function waitForSingleChartRender(chart, index) {
             }, 3000);
         } else {
             // 如果沒有動畫，短暫等待確保渲染穩定
-            console.log(`圖表 ${index + 1} 沒有動畫，直接等待渲染穩定`);
             setTimeout(resolve, 300);
         }
     });
@@ -7167,7 +7485,6 @@ function restoreChartsFromImages(conversions) {
                 if (originalAnimation) {
                     chart.update(); // 使用預設動畫重新渲染
                 }
-                console.log(`圖表 ${index + 1} 動畫設置已恢復`);
             }
             
             // 清理 dataset
@@ -7185,8 +7502,6 @@ async function downloadReportAsPDF() {
     showPDFLoadingState();
     
     try {
-        console.log('開始生成 PDF 報告...');
-        
         // 檢查必要參數
         if (!currentTeamId || !currentConfigId) {
             throw new Error('缺少必要參數：team_id 或 config_id');
@@ -7229,8 +7544,6 @@ async function downloadReportAsPDF() {
         
         // 釋放記憶體
         window.URL.revokeObjectURL(url);
-        
-        console.log('PDF 報告下載完成');
         
     } catch (error) {
         console.error('PDF 生成錯誤:', error);
