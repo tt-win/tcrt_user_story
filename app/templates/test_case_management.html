@@ -2539,7 +2539,7 @@ function renderTestCaseRow(testCase) {
         </tr>`;
 }
 
-function renderSectionBlockHTML(sectionGroup, rowsHtml) {
+function renderSectionBlockHTML(sectionGroup, rowsHtml, visible = true) {
     const displayName = getDisplaySectionName(sectionGroup);
     const indent = Math.max(sectionGroup.sectionLevel - 1, 0);
     const rowClass = sectionGroup.sectionLevel <= 1 ? 'section-card-row root-divider' : 'section-card-row';
@@ -2547,16 +2547,17 @@ function renderSectionBlockHTML(sectionGroup, rowsHtml) {
     const testCaseCount = sectionGroup.testCases.length;
     // 使用字符串化的 ID 查檢（Set 區分類型）
     const isCollapsed = sectionCollapsedState && sectionCollapsedState.has(String(sectionGroup.sectionId));
+    const displayStyle = visible ? '' : 'display: none;';
 
     // 即使沒有 test cases，也要提供收合功能
     if (testCaseCount === 0) {
         return `
-            <div class="${rowClass}">
+            <div class="${rowClass}" data-section-row-id="${sectionGroup.sectionId}" style="${displayStyle}">
                 <div class="section-card-container">
                     <div class="section-card" data-section-id="${sectionGroup.sectionId}" style="--section-indent: ${indent};">
                         <div class="section-card-header" style="${headerStyle}; cursor: pointer;" onclick="toggleSectionCollapse(${sectionGroup.sectionId})">
                             <div class="section-title">
-                                <i class="fas fa-chevron-${isCollapsed ? 'right' : 'down'} me-2 section-toggle-icon" data-section-id="${sectionGroup.sectionId}"></i>
+                                <i class="fas fa-chevron-${isCollapsed ? 'right' : 'down'} me-2 section-toggle-icon" id="icon-${sectionGroup.sectionId}" data-section-id="${sectionGroup.sectionId}"></i>
                                 <i class="fas fa-folder"></i>
                                 <span>${displayName}</span>
                             </div>
@@ -2569,12 +2570,12 @@ function renderSectionBlockHTML(sectionGroup, rowsHtml) {
     }
 
     return `
-        <div class="${rowClass}">
+        <div class="${rowClass}" data-section-row-id="${sectionGroup.sectionId}" style="${displayStyle}">
             <div class="section-card-container">
                 <div class="section-card" data-section-id="${sectionGroup.sectionId}" style="--section-indent: ${indent};">
                     <div class="section-card-header" style="${headerStyle}; cursor: pointer;" onclick="toggleSectionCollapse(${sectionGroup.sectionId})">
                         <div class="section-title">
-                            <i class="fas fa-chevron-${isCollapsed ? 'right' : 'down'} me-2 section-toggle-icon" data-section-id="${sectionGroup.sectionId}"></i>
+                            <i class="fas fa-chevron-${isCollapsed ? 'right' : 'down'} me-2 section-toggle-icon" id="icon-${sectionGroup.sectionId}" data-section-id="${sectionGroup.sectionId}"></i>
                             <i class="fas fa-folder"></i>
                             <span>${displayName}</span>
                         </div>
@@ -2637,27 +2638,64 @@ function handleSectionSort(sectionId, fieldKey) {
     renderTestCasesTable();
 }
 
+// 檢查是否應該顯示某個 section (基於父 section 的收合狀態)
+function isSectionVisible(sectionId) {
+    let currentId = parseInt(sectionId);
+    let parentId = findSectionParentId(currentId);
+    
+    while (parentId) {
+        // 如果任何一層父 section 被收合，則此 section 不可見
+        if (sectionCollapsedState.has(String(parentId))) {
+            return false;
+        }
+        parentId = findSectionParentId(parentId);
+    }
+    return true;
+}
+
+function updateAllSectionsVisibility() {
+    const rows = document.querySelectorAll('.section-card-row');
+    rows.forEach(row => {
+        const id = row.dataset.sectionRowId;
+        if (!id) return;
+        
+        if (isSectionVisible(id)) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+}
+
 function toggleSectionCollapse(sectionId) {
     // 確保使用字符串化的 ID（Set 區分類型，數字 6 和字符串 "6" 不同）
     const sectionIdStr = String(sectionId);
     const isCollapsing = !sectionCollapsedState.has(sectionIdStr);
 
+    // 1. 更新狀態
     if (isCollapsing) {
-        // 收合時：
-        // 1. 保存子 section 的當前收合狀態
-        // 2. 收合該 section 及其所有子 section
         saveChildrenCollapseState(sectionIdStr);
         sectionCollapsedState.add(sectionIdStr);
-        collapseChildSections(sectionIdStr);
+        // collapseChildSections(sectionIdStr); // 不需要了，由 updateAllSectionsVisibility 處理
     } else {
-        // 展開時：
-        // 1. 展開該 section
-        // 2. 恢復之前保存的子 section 收合狀態
         sectionCollapsedState.delete(sectionIdStr);
         restoreChildrenCollapseState(sectionIdStr);
     }
 
-    renderTestCasesTable();
+    // 2. 更新當前 Section 的 Body 顯示/隱藏
+    const body = document.getElementById(`section-body-${sectionId}`);
+    if (body) {
+        body.style.display = isCollapsing ? 'none' : 'block';
+    }
+
+    // 3. 更新 Icon
+    const icon = document.getElementById(`icon-${sectionId}`);
+    if (icon) {
+        icon.className = `fas fa-chevron-${isCollapsing ? 'right' : 'down'} me-2 section-toggle-icon`;
+    }
+
+    // 4. 更新所有子/後代 Section 的 Row 可見性 (取代 renderTestCasesTable)
+    updateAllSectionsVisibility();
 }
 
 /**
@@ -4134,26 +4172,12 @@ function renderTestCasesTable() {
     const grouped = groupTestCasesBySection(pageTestCases);
     const sortedSectionIds = sortSectionIds(Object.keys(grouped), grouped);
 
-    // 篩選掉被收合的父 section 的子 section（不渲染它們）
-    const visibleSectionIds = sortedSectionIds.filter(sectionId => {
-        const group = grouped[sectionId];
-        if (!group) return false;
-
-        // 找到該 section 的父 section ID
-        const parentSectionId = findSectionParentId(parseInt(sectionId));
-
-        // 如果父 section 被收合，則隱藏該子 section（使用字符串化 ID）
-        if (parentSectionId && sectionCollapsedState.has(String(parentSectionId))) {
-            return false;
-        }
-
-        return true;
-    });
-
-    const sectionsHtml = visibleSectionIds.map(sectionId => {
+    const sectionsHtml = sortedSectionIds.map(sectionId => {
         const group = grouped[sectionId];
         const rowsHtml = group.testCases.map(renderTestCaseRow).join('');
-        return renderSectionBlockHTML(group, rowsHtml);
+        const visible = isSectionVisible(sectionId);
+        // 傳遞 visible 參數給 renderSectionBlockHTML
+        return renderSectionBlockHTML(group, rowsHtml, visible);
     }).join('');
 
     stack.innerHTML = sectionsHtml;
@@ -7823,7 +7847,10 @@ function openQuickSearch_TCM() {
         }
     };
     input.onkeydown = handleKey;
-    input.oninput = () => quickSearchRender_TCM(input.value, results);
+    
+    // T030: 使用 debounce 優化搜尋，300ms 延遲減少重繪
+    const debouncedSearch = debounce(() => quickSearchRender_TCM(input.value, results), 300);
+    input.oninput = debouncedSearch;
 }
 
 function closeQuickSearch() {
