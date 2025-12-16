@@ -1783,6 +1783,9 @@ let currentSetId = null; // 當前選擇的 Test Case Set ID
 
 // 篩選器狀態
 let tcmCurrentFilters = { testCaseNumberSearch: '', searchInput: '', tcgFilter: '', priorityFilter: '' };
+const TCM_RENDER_BATCH = 200;
+let tcmRenderQueue = [];
+let tcmRenderedCount = 0;
 
 // ─────────────────────────────────────────────────────────────
 // 2.3 排序與 Section 狀態 (Sorting & Section State)
@@ -4157,9 +4160,7 @@ function renderTestCasesTable() {
     // 依目前排序設定排序並更新指示
     sortFilteredTestCases();
 
-    const pageTestCases = filteredTestCases;
-
-    if (!pageTestCases.length) {
+    if (!filteredTestCases.length) {
         stack.innerHTML = `
             <div class="text-center py-4">
                 <i class="fas fa-search fa-2x text-muted mb-2"></i>
@@ -4169,18 +4170,37 @@ function renderTestCasesTable() {
         return;
     }
 
-    const grouped = groupTestCasesBySection(pageTestCases);
+    // 建立待渲染佇列（依 Section 分組，按排序好的 Section 順序）
+    const grouped = groupTestCasesBySection(filteredTestCases);
     const sortedSectionIds = sortSectionIds(Object.keys(grouped), grouped);
+    tcmRenderQueue = sortedSectionIds.map(sectionId => ({
+        sectionId,
+        group: grouped[sectionId]
+    }));
+    tcmRenderedCount = 0;
+    stack.innerHTML = '';
+    ensureVirtualScrollHandler();
+    renderNextBatch(); // 首次渲染一批
+}
 
-    const sectionsHtml = sortedSectionIds.map(sectionId => {
-        const group = grouped[sectionId];
+function renderNextBatch() {
+    const stack = document.getElementById('testCasesStack');
+    if (!stack || !tcmRenderQueue.length) return;
+    const fragment = document.createDocumentFragment();
+    let renderedNow = 0;
+
+    while (tcmRenderQueue.length && renderedNow < TCM_RENDER_BATCH) {
+        const { sectionId, group } = tcmRenderQueue.shift();
         const rowsHtml = group.testCases.map(renderTestCaseRow).join('');
         const visible = isSectionVisible(sectionId);
-        // 傳遞 visible 參數給 renderSectionBlockHTML
-        return renderSectionBlockHTML(group, rowsHtml, visible);
-    }).join('');
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = renderSectionBlockHTML(group, rowsHtml, visible);
+        fragment.appendChild(wrapper.firstElementChild);
+        renderedNow += group.testCases.length;
+        tcmRenderedCount += group.testCases.length;
+    }
 
-    stack.innerHTML = sectionsHtml;
+    stack.appendChild(fragment);
 
     if (window.i18n && window.i18n.isReady()) {
         window.i18n.retranslate(stack);
@@ -4188,6 +4208,20 @@ function renderTestCasesTable() {
 
     updateTcmSortIndicators();
     adjustTestCasesScrollHeight();
+}
+
+let tcmVirtualScrollBound = false;
+function ensureVirtualScrollHandler() {
+    if (tcmVirtualScrollBound) return;
+    const scrollBox = document.getElementById('testCasesScroll');
+    if (!scrollBox) return;
+    tcmVirtualScrollBound = true;
+    scrollBox.addEventListener('scroll', () => {
+        const threshold = 200;
+        if (scrollBox.scrollTop + scrollBox.clientHeight + threshold >= scrollBox.scrollHeight) {
+            renderNextBatch();
+        }
+    });
 }
 
 
@@ -7741,9 +7775,54 @@ function hideLoadingState() {
     // hideLoadingState 現在由 renderTestCasesTable 來處理
 }
 
+function ensurePaginationControls() {
+    const cardBody = document.querySelector('#testCasesCard .card-body');
+    if (!cardBody) return null;
+    let controls = document.getElementById('testCasesPagination');
+    if (!controls) {
+        controls = document.createElement('div');
+        controls.id = 'testCasesPagination';
+        controls.className = 'd-flex align-items-center justify-content-between mt-2 flex-wrap gap-2';
+        controls.innerHTML = `
+            <div id="tcmPageInfo" class="text-muted small"></div>
+            <div class="d-flex gap-2">
+                <button class="btn btn-outline-secondary btn-sm" id="tcmPrevPageBtn" type="button">
+                    <i class="fas fa-chevron-left"></i>
+                </button>
+                <button class="btn btn-outline-secondary btn-sm" id="tcmNextPageBtn" type="button">
+                    <i class="fas fa-chevron-right"></i>
+                </button>
+            </div>
+        `;
+        cardBody.appendChild(controls);
+        const prevBtn = controls.querySelector('#tcmPrevPageBtn');
+        const nextBtn = controls.querySelector('#tcmNextPageBtn');
+        if (prevBtn) {
+            prevBtn.addEventListener('click', () => {
+                if (currentPage > 1) {
+                    currentPage -= 1;
+                    renderTestCasesTable();
+                    updatePagination();
+                }
+            });
+        }
+        if (nextBtn) {
+            nextBtn.addEventListener('click', () => {
+                const total = filteredTestCases.length;
+                const totalPages = Math.max(1, Math.ceil(total / pageSize));
+                if (currentPage < totalPages) {
+                    currentPage += 1;
+                    renderTestCasesTable();
+                    updatePagination();
+                }
+            });
+        }
+    }
+    return controls;
+}
+
 function updatePagination() {
-    // 分頁機制已移除，一次性顯示所有 test case
-    // 重新計算列表高度
+    // 分頁控制已停用；僅重新計算列表高度
     if (typeof adjustTestCasesScrollHeight === 'function') {
         adjustTestCasesScrollHeight();
     }
@@ -7930,10 +8009,16 @@ function quickEdit(recordId, field) {
 
         // 立即更新本地資料和 UI
         testCase[field] = newValue;
-        cell.innerHTML = originalContent; // 先恢復原始結構
-
-        // 立即重新渲染表格以顯示新值
-        renderTestCasesTable();
+        
+        // 優化：直接更新 DOM 而不重繪整個表格
+        if (field === 'test_case_number') {
+            cell.innerHTML = `<code class="hover-editable" onclick="quickEdit('${recordId}', 'test_case_number')">${escapeHtml(newValue)} <i class="fas fa-pencil-alt hover-edit-btn"></i></code>`;
+        } else if (field === 'title') {
+            cell.innerHTML = `<div class="hover-editable" onclick="quickEdit('${recordId}', 'title')">${escapeHtml(newValue)} <i class="fas fa-pencil-alt hover-edit-btn"></i></div>`;
+        } else {
+            // Fallback for other fields
+            cell.innerHTML = `<div class="hover-editable" onclick="quickEdit('${recordId}', '${field}')">${escapeHtml(newValue)} <i class="fas fa-pencil-alt hover-edit-btn"></i></div>`;
+        }
 
         // 在背景處理儲存
         try {
@@ -7959,7 +8044,7 @@ function quickEdit(recordId, field) {
                     const errorData = await response.json();
                     throw new Error(errorData.detail || '更新失敗');
                 }
-                // 成功後顯示提示，但不重新渲染（已經渲染過了）
+                // 成功後顯示提示，但不重新渲染（已經手動更新 DOM 了）
                 const fieldName = field === 'test_case_number' ? 'Test Case Number' :
                     (window.i18n ? window.i18n.t('common.title') : '標題');
                 const updateSuccessMessage = window.i18n ? window.i18n.t('messages.fieldUpdated') : '更新成功';
@@ -7969,9 +8054,9 @@ function quickEdit(recordId, field) {
                 const updateFailedMessage = window.i18n ? window.i18n.t('errors.updateFailed') : '更新失敗';
                 showError(updateFailedMessage + '：' + error.message);
 
-                // 如果儲存失敗，恢復原值並重新渲染
+                // 如果儲存失敗，恢復原值並恢復 DOM
                 testCase[field] = currentValue;
-                renderTestCasesTable();
+                cell.innerHTML = originalContent;
             });
 
         } catch (error) {
@@ -7979,9 +8064,9 @@ function quickEdit(recordId, field) {
             const updateFailedMessage = window.i18n ? window.i18n.t('errors.updateFailed') : '更新失敗';
             showError(updateFailedMessage + '：' + error.message);
 
-            // 恢復原值並重新渲染
+            // 恢復原值並恢復 DOM
             testCase[field] = currentValue;
-            renderTestCasesTable();
+            cell.innerHTML = originalContent;
         }
     };
 
@@ -8376,8 +8461,8 @@ async function saveTCGChanges(recordId, tcgNumbers) {
             updateTestCaseInCache(updatedTestCase);
         }
 
-        // 重新渲染表格
-        renderTestCasesTable();
+        // 重新渲染表格 -> 移除以優化效能 (DOM 已由 finishTCGEdit 更新)
+        // renderTestCasesTable();
 
         showSuccess(window.i18n ? window.i18n.t('messages.tcgUpdated') : 'TCG 更新成功');
         console.log('✅ TCG 儲存完成');
@@ -8387,8 +8472,12 @@ async function saveTCGChanges(recordId, tcgNumbers) {
         const updateFailedMessage = window.i18n ? window.i18n.t('errors.updateFailed') : '更新失敗';
         showError(updateFailedMessage + '：' + error.message);
 
-        // 恢復原始內容
-        restoreTCGDisplay();
+        // 恢復原始內容 (從尚未更新的 testCases 資料中恢復)
+        const testCase = testCases.find(tc => tc.record_id === recordId);
+        if (testCase) {
+             const cell = document.querySelector(`[data-record-id="${recordId}"][data-field="tcg"]`);
+             if (cell) updateTCGCellDisplay(cell, testCase.tcg || []);
+        }
     }
     // 工具列顯示狀態可能改變整體高度，需重新計算列表高度
     adjustTestCasesScrollHeight();
