@@ -116,10 +116,10 @@
           </div>
         </div>
 
-        <!-- Test Run Set 名稱輸入 -->
+        <!-- Test Run Name 輸入 -->
         <div class="mt-3">
-            <label for="newTestRunSetName" class="form-label small fw-bold">Test Run Set 名稱</label>
-            <input type="text" class="form-control" id="newTestRunSetName" placeholder="預設：Test Run Set - YYYY-MM-DD">
+            <label for="newTestRunName" class="form-label small fw-bold">Test Run 名稱</label>
+            <input type="text" class="form-control" id="newTestRunName" placeholder="預設：Test Run - YYYY-MM-DD">
         </div>
 
         <!-- 摘要信息 -->
@@ -1065,11 +1065,11 @@ async function confirmSetCaseSelection() {
     return;
   }
 
-  const nameInput = document.getElementById('newTestRunSetName');
+  const nameInput = document.getElementById('newTestRunName');
   let name = nameInput ? nameInput.value.trim() : '';
   if (!name) {
       const today = new Date().toISOString().split('T')[0];
-      name = `Test Run Set - ${today}`;
+      name = `Test Run - ${today}`;
   }
 
   const btn = document.getElementById('setCaseConfirmBtn');
@@ -1079,30 +1079,63 @@ async function confirmSetCaseSelection() {
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 建立中...';
 
-    const selectedCaseIds = Array.from(setTestCaseData.selectedCases);
-    
-    const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-sets/from-test-cases`, {
+    // 1. 建立 Test Run Config
+    const configResponse = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             name: name,
             description: 'Created from Test Case Set card',
-            test_case_records: selectedCaseIds
+            status: 'active',
+            team_id: currentTeamId
         })
     });
 
-    if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.detail || '建立失敗');
+    if (!configResponse.ok) {
+        const errorData = await configResponse.json().catch(() => ({}));
+        throw new Error(errorData.detail || '建立 Test Run 失敗');
     }
 
-    const result = await response.json();
+    const configResult = await configResponse.json();
+    const newConfigId = configResult.id;
+
+    // 2. 準備 Test Run Items Payload
+    const selectedCaseIds = Array.from(setTestCaseData.selectedCases);
+    // 根據 record_id 找到對應的 test_case_number
+    const itemsPayload = [];
+    for (const recordId of selectedCaseIds) {
+        const testCase = setTestCaseData.testCases.find(tc => tc.record_id === recordId || String(tc.id) === String(recordId));
+        if (testCase) {
+            itemsPayload.push({
+                test_case_number: testCase.test_case_number
+            });
+        }
+    }
+
+    if (itemsPayload.length === 0) {
+        throw new Error('無法找到選中測試案例的編號');
+    }
+
+    // 3. 批次新增 Test Run Items
+    const itemsResponse = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${newConfigId}/items`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            items: itemsPayload
+        })
+    });
+
+    if (!itemsResponse.ok) {
+        const errorData = await itemsResponse.json().catch(() => ({}));
+        throw new Error(errorData.detail || '新增測試案例失敗');
+    }
+
     setSelectModalInstance.hide();
     
-    showTestRunSetSuccessModal(currentTeamId);
+    showTestRunSuccessModal(currentTeamId, newConfigId);
 
   } catch (error) {
-    console.error('[SetCaseSelect] Error creating test run set:', error);
+    console.error('[SetCaseSelect] Error creating test run:', error);
     const failMsg = window.i18n && window.i18n.isReady() ? window.i18n.t('common.failed') : '建立失敗';
     alert(`${failMsg}: ${error.message}`);
   } finally {
@@ -1111,11 +1144,11 @@ async function confirmSetCaseSelection() {
   }
 }
 
-function showTestRunSetSuccessModal(teamId) {
-    let modalEl = document.getElementById('testRunSetSuccessModal');
+function showTestRunSuccessModal(teamId, configId) {
+    let modalEl = document.getElementById('testRunSuccessModal');
     if (!modalEl) {
         const modalHtml = `
-            <div class="modal fade" id="testRunSetSuccessModal" tabindex="-1">
+            <div class="modal fade" id="testRunSuccessModal" tabindex="-1">
                 <div class="modal-dialog modal-dialog-centered">
                     <div class="modal-content">
                         <div class="modal-header bg-success text-white">
@@ -1126,13 +1159,12 @@ function showTestRunSetSuccessModal(teamId) {
                             <div class="mb-3">
                                 <i class="fas fa-clipboard-check fa-4x text-success"></i>
                             </div>
-                            <h5 class="mb-2">Test Run Set 已成功建立！</h5>
-                            <p class="text-muted">系統已根據 JIRA Ticket 自動分組建立 Test Runs。</p>
-                            <p class="text-muted small mb-0">您要前往 Test Run 管理頁面查看嗎？</p>
+                            <h5 class="mb-2">Test Run 已成功建立！</h5>
+                            <p class="text-muted small mb-0">您要前往 Test Run 執行頁面查看嗎？</p>
                         </div>
                         <div class="modal-footer justify-content-center border-top-0 pb-4">
                             <button type="button" class="btn btn-outline-secondary px-4" data-bs-dismiss="modal">留在本頁</button>
-                            <button type="button" class="btn btn-success px-4" id="goToTestRunMgmtBtn">
+                            <button type="button" class="btn btn-success px-4" id="goToTestRunExecBtn">
                                 <i class="fas fa-arrow-right me-2"></i>前往查看
                             </button>
                         </div>
@@ -1141,16 +1173,16 @@ function showTestRunSetSuccessModal(teamId) {
             </div>
         `;
         document.body.insertAdjacentHTML('beforeend', modalHtml);
-        modalEl = document.getElementById('testRunSetSuccessModal');
+        modalEl = document.getElementById('testRunSuccessModal');
     }
     
     // Update button handler
-    const goBtn = document.getElementById('goToTestRunMgmtBtn');
+    const goBtn = document.getElementById('goToTestRunExecBtn');
     const newBtn = goBtn.cloneNode(true);
     goBtn.parentNode.replaceChild(newBtn, goBtn);
     
     newBtn.addEventListener('click', () => {
-        window.location.href = `/test-run-management?team_id=${teamId}`;
+        window.location.href = `/test-run-execution?config_id=${configId}&team_id=${teamId}`;
     });
     
     const modal = new bootstrap.Modal(modalEl);
