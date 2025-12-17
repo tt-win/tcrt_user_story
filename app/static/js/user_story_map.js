@@ -1000,6 +1000,17 @@ const UserStoryMapFlow = () => {
             if (requestId !== loadMapRequestIdRef.current) {
                 return;
             }
+
+            // 預防 Ctrl+R 後 map 被切換：若目前 flow 有 mapId 且與目標不符，先清空再載入
+            if (currentMapId && currentMapId !== mapId) {
+                nodesRef.current = [];
+                setNodes([]);
+                setEdges([]);
+                setSelectedNode(null);
+                setCollapsedNodeIds(new Set());
+                setHighlightedNodeIds([]);
+                setHighlightedPath(null);
+            }
             
             // Convert nodes
             const flowNodes = map.nodes.map(node => ({
@@ -1028,8 +1039,31 @@ const UserStoryMapFlow = () => {
                 },
             }));
 
+            const buildEdgesFromNodes = (nodesArr) => {
+                const built = [];
+                nodesArr.forEach(n => {
+                    (n.data.childrenIds || []).forEach(cid => {
+                        built.push({
+                            id: `${n.id}->${cid}`,
+                            source: n.id,
+                            target: cid,
+                            edge_type: 'parent',
+                        });
+                    });
+                    (n.data.relatedIds || []).forEach(rid => {
+                        built.push({
+                            id: `relation-${n.id}-${rid}`,
+                            source: n.id,
+                            target: rid,
+                            edge_type: 'related',
+                        });
+                    });
+                });
+                return built;
+            };
+
             // Convert edges
-            const flowEdges = map.edges.map(edge => {
+            const flowEdges = map.edges?.map(edge => {
                 const isRelationEdge = edge.edge_type === 'related' || edge.id.startsWith('relation-');
                 const targetHandle = isRelationEdge ? 'right-target' : 'left';
                 const baseEdge = {
@@ -1056,7 +1090,33 @@ const UserStoryMapFlow = () => {
                 return baseEdge;
             });
 
-            const layoutedNodes = applyTreeLayout(flowNodes, flowEdges);
+            const computeLayout = (nodesArr, edgesArr) => {
+                if (window.dagre) {
+                    return applyTreeLayout(nodesArr, edgesArr);
+                }
+                // Fallback: simple level-based layout to avoid nodes collapsing at origin
+                const copy = nodesArr.map(n => ({ ...n }));
+                const levelMap = new Map();
+                copy.forEach(n => {
+                    const lvl = Number.isFinite(n.data.level) ? n.data.level : 0;
+                    if (!levelMap.has(lvl)) levelMap.set(lvl, []);
+                    levelMap.get(lvl).push(n);
+                });
+                const levelKeys = Array.from(levelMap.keys()).sort((a, b) => a - b);
+                const xGap = 260;
+                const yGap = 180;
+                levelKeys.forEach((lvl, li) => {
+                    const list = levelMap.get(lvl) || [];
+                    list.forEach((n, idx) => {
+                        n.position = { x: idx * xGap, y: li * yGap };
+                        n.targetPosition = 'left';
+                        n.sourcePosition = 'right';
+                    });
+                });
+                return copy;
+            };
+
+            const layoutedNodes = computeLayout(flowNodes, flowEdges);
             const decoratedNodes = layoutedNodes.map(node => ({
                 ...node,
                 data: {
@@ -1068,9 +1128,39 @@ const UserStoryMapFlow = () => {
             
             // Clean up orphaned edges (pointing to non-existent nodes)
             const nodeIds = new Set(decoratedNodes.map(n => n.id));
-            const validEdges = flowEdges.filter(edge => 
+            let validEdges = (flowEdges || []).filter(edge => 
                 nodeIds.has(edge.source) && nodeIds.has(edge.target)
             );
+            // 若 API 回傳的 edges 全部無效，透過 parent/related 關係重建一次
+            if (!validEdges.length) {
+                const rebuilt = buildEdgesFromNodes(decoratedNodes).filter(e => nodeIds.has(e.source) && nodeIds.has(e.target));
+                validEdges = rebuilt.map(edge => {
+                    const isRelationEdge = edge.edge_type === 'related' || edge.id.startsWith('relation-');
+                    const targetHandle = isRelationEdge ? 'right-target' : 'left';
+                    const baseEdge = {
+                        id: edge.id,
+                        source: edge.source,
+                        target: edge.target,
+                        type: edge.edge_type === 'parent' ? 'smoothstep' : 'default',
+                        animated: isRelationEdge,
+                        style: isRelationEdge ? {
+                            strokeDasharray: '5,5',
+                            stroke: '#17a2b8',
+                            strokeWidth: 2,
+                        } : {},
+                        markerEnd: {
+                            type: MarkerType.ArrowClosed,
+                        },
+                        sourceHandle: 'right',
+                        targetHandle,
+                    };
+                    if (isRelationEdge) {
+                        baseEdge.type = 'step';
+                        baseEdge.pathOptions = RELATION_EDGE_PATH_OPTIONS;
+                    }
+                    return baseEdge;
+                });
+            }
             
             nodesRef.current = decoratedNodes;
             setNodes(decoratedNodes);
