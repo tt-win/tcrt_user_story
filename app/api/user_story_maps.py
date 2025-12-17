@@ -37,6 +37,7 @@ from app.auth.permission_service import permission_service
 from app.models.database_models import User, Team
 from app.database import get_db, get_sync_db
 from app.audit import audit_service, ActionType, ResourceType, AuditSeverity
+from sqlalchemy import insert
 
 logger = logging.getLogger(__name__)
 
@@ -1054,49 +1055,136 @@ async def calculate_aggregated_tickets(
     
     await _require_usm_permission(current_user, "update", map_db.team_id)
 
-    nodes = map_db.nodes or []
-    node_dict = {node["id"]: node for node in nodes}
-    
+    raw_nodes = map_db.nodes or []
+
+    def normalize_list(value) -> list[str]:
+        """將 jira/children 清洗成字串列表"""
+        if value is None:
+            return []
+        if isinstance(value, list):
+            res = []
+            for v in value:
+                if v is None:
+                    continue
+                if isinstance(v, (int, float)):
+                    res.append(str(v))
+                elif isinstance(v, str):
+                    if "," in v or " " in v:
+                        parts = [p.strip() for p in v.replace(";", ",").replace(" ", ",").split(",") if p.strip()]
+                        res.extend(parts)
+                    else:
+                        if v.strip():
+                            res.append(v.strip())
+                else:
+                    res.append(str(v))
+            return res
+        if isinstance(value, (int, float)):
+            return [str(value)]
+        if isinstance(value, str):
+            parts = [p.strip() for p in value.replace(";", ",").replace(" ", ",").split(",") if p.strip()]
+            return parts
+        return []
+    # 清理無效節點：必須有 id，且 children_ids/jira_tickets 為列表
+    nodes: list[dict] = []
+    for node in raw_nodes:
+        if not isinstance(node, dict):
+            continue
+        node_id = node.get("id")
+        if node_id is None:
+            continue
+        node["children_ids"] = normalize_list(node.get("children_ids"))
+        node["jira_tickets"] = normalize_list(node.get("jira_tickets"))
+        nodes.append(node)
+
+    # 安全建立索引（忽略缺少 id 的節點），並將 key 標準化為字串避免型別不一致
+    node_dict = {}
+    for node in nodes:
+        node_id = node.get("id")
+        if node_id is None:
+            continue
+        node_dict[str(node_id)] = node
+
     def aggregate_tickets(node_id: str, visited: set = None) -> List[str]:
         """遞迴聚合子節點的 tickets"""
         if visited is None:
             visited = set()
-        
-        if node_id in visited:
+
+        node_key = str(node_id)
+        if node_key in visited:
             return []
-        
-        visited.add(node_id)
-        node = node_dict.get(node_id)
-        
+
+        visited.add(node_key)
+        node = node_dict.get(node_key)
+
         if not node:
             return []
-        
+
         tickets = set(node.get("jira_tickets", []))
-        
+
         for child_id in node.get("children_ids", []):
-            tickets.update(aggregate_tickets(child_id, visited))
-        
+            if child_id is None:
+                continue
+            tickets.update(aggregate_tickets(str(child_id), visited))
+
         return list(tickets)
-    
+
     for node in nodes:
-        node["aggregated_tickets"] = aggregate_tickets(node["id"])
+        node_id = node.get("id")
+        if node_id is None:
+            continue
+        node["aggregated_tickets"] = aggregate_tickets(str(node_id))
 
     map_db.nodes = nodes
     flag_modified(map_db, "nodes")
 
     for node in nodes:
-        await db.execute(
-            update(UserStoryMapNodeDB)
-            .where(
-                UserStoryMapNodeDB.map_id == map_id,
-                UserStoryMapNodeDB.node_id == node["id"],
+        node_id = node.get("id")
+        if node_id is None:
+            continue
+        try:
+            result = await db.execute(
+                update(UserStoryMapNodeDB)
+                .where(
+                    UserStoryMapNodeDB.map_id == map_id,
+                    UserStoryMapNodeDB.node_id == node_id,
+                )
+                .values(
+                    aggregated_tickets=node.get("aggregated_tickets", []),
+                    jira_tickets=node.get("jira_tickets", []),
+                    updated_at=datetime.utcnow(),
+                )
             )
-            .values(
-                aggregated_tickets=node.get("aggregated_tickets", []),
-                jira_tickets=node.get("jira_tickets", []),
-                updated_at=datetime.utcnow(),
-            )
-        )
+            # 若索引表沒有此節點，補上一筆基礎資料
+            if result.rowcount == 0:
+                await db.execute(
+                    insert(UserStoryMapNodeDB).values(
+                        map_id=map_id,
+                        node_id=node_id,
+                        title=node.get("title") or "",
+                        description=node.get("description") or "",
+                        node_type=node.get("node_type") or None,
+                        parent_id=node.get("parent_id"),
+                        children_ids=node.get("children_ids") or [],
+                        related_ids=node.get("related_ids") or [],
+                        comment=node.get("comment") or "",
+                        jira_tickets=node.get("jira_tickets") or [],
+                        product=node.get("product") or None,
+                        team=node.get("team") or None,
+                        team_tags=node.get("team_tags") or [],
+                        aggregated_tickets=node.get("aggregated_tickets") or [],
+                        position_x=node.get("position_x") or 0,
+                        position_y=node.get("position_y") or 0,
+                        level=node.get("level") or 0,
+                        as_a=node.get("as_a") or None,
+                        i_want=node.get("i_want") or None,
+                        so_that=node.get("so_that") or None,
+                        created_at=datetime.utcnow(),
+                        updated_at=datetime.utcnow(),
+                    )
+                )
+        except Exception as exc:
+            logger.error("Failed to update aggregated tickets for node %s in map %s: %s", node_id, map_id, exc)
+            continue
 
     await db.commit()
     await db.refresh(map_db)
