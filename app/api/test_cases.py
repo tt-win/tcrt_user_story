@@ -18,6 +18,7 @@ from fastapi import (
     Response,
     Form,
 )
+from sqlalchemy import or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any
@@ -2188,7 +2189,7 @@ async def bulk_clone_test_cases(
     current_user: User = Depends(get_current_user),
 ):
     """批次複製測試案例（只寫本地 DB）
-    - 從來源記錄（以 lark_record_id 尋找）複製 Precondition、Steps、Expected Result、Priority
+    - 從來源記錄（以 lark_record_id 或本地 id 尋找）複製 Precondition、Steps、Expected Result、Priority
     - 不複製：TCG、附件、測試結果檔案、User Story Map、Parent Record
     - 新的 Test Case Number 與 Title 由請求提供（Title 缺省時沿用來源）
     """
@@ -2212,17 +2213,32 @@ async def bulk_clone_test_cases(
                 success=False, created_count=0, duplicates=duplicates, errors=[]
             )
 
-        # 快速索引來源（本地以 lark_record_id 尋找）
+        # 快速索引來源（本地以 lark_record_id 或本地 id 尋找）
         source_ids = [it.source_record_id for it in request.items]
+        source_id_ints: List[int] = []
+        for source_id in source_ids:
+            try:
+                source_id_ints.append(int(source_id))
+            except (TypeError, ValueError):
+                continue
+
+        filters = [TestCaseLocalDB.lark_record_id.in_(source_ids)]
+        if source_id_ints:
+            filters.append(TestCaseLocalDB.id.in_(source_id_ints))
+
         src_rows = (
             db.query(TestCaseLocalDB)
-            .filter(
-                TestCaseLocalDB.team_id == team_id,
-                TestCaseLocalDB.lark_record_id.in_(source_ids),
-            )
+            .filter(TestCaseLocalDB.team_id == team_id)
+            .filter(or_(*filters))
             .all()
         )
-        src_map = {r.lark_record_id: r for r in src_rows if r.lark_record_id}
+        src_map = {}
+        for row in src_rows:
+            if row.lark_record_id:
+                src_map[row.lark_record_id] = row
+            row_key = str(row.id)
+            if row_key not in src_map:
+                src_map[row_key] = row
 
         created = 0
         errors: List[str] = []
