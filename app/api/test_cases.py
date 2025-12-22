@@ -2252,6 +2252,8 @@ async def bulk_clone_test_cases(
                     test_result=None,
                     sync_status=SyncStatus.PENDING,
                     local_version=1,
+                    test_case_set_id=src.test_case_set_id,
+                    test_case_section_id=src.test_case_section_id,
                 )
                 db.add(item)
                 created += 1
