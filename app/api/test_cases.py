@@ -657,6 +657,7 @@ async def get_test_case(
                 created_at=item.created_at,
                 updated_at=item.updated_at,
                 last_sync_at=item.last_sync_at,
+                test_case_set_id=item.test_case_set_id,
                 raw_fields={},
             )
         return result
@@ -890,6 +891,7 @@ async def create_test_case(
             created_at=item.created_at,
             updated_at=item.updated_at,
             last_sync_at=item.last_sync_at,
+            test_case_set_id=item.test_case_set_id,
             test_case_section_id=item.test_case_section_id,
             section_name=section_name,
             section_path=section_path,
@@ -1232,6 +1234,7 @@ async def update_test_case(
             created_at=item.created_at,
             updated_at=item.updated_at,
             last_sync_at=item.last_sync_at,
+            test_case_set_id=item.test_case_set_id,
             test_case_section_id=item.test_case_section_id,
             section_name=None,
             section_path=None,
@@ -1985,6 +1988,7 @@ async def get_test_case_by_number(
             created_at=item.created_at,
             updated_at=item.updated_at,
             last_sync_at=item.last_sync_at,
+            test_case_set_id=item.test_case_set_id,
             raw_fields={},
         )
     except HTTPException:

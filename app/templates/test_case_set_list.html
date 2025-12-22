@@ -147,6 +147,10 @@ let testCaseSets = [];
 let allTeams = [];
 let currentEditingSetId = null;
 let pendingDeleteSetId = null;
+let quickSearchTestCases = [];
+let quickSearchTeamId = null;
+let quickSearchLoadPromise = null;
+let quickSearchInitialized = false;
 
 // 國際化
 const i18n = {
@@ -179,6 +183,7 @@ const i18n = {
 document.addEventListener('DOMContentLoaded', async function() {
   console.log('Test Case Sets page loaded');
   loadLanguage();
+  setupQuickSearch_TestCaseSets();
 
   // 從 localStorage 獲取當前選擇的團隊 (由 AppUtils.setCurrentTeam 設定)
   const savedTeam = localStorage.getItem('currentTeam');
@@ -632,6 +637,232 @@ function navigateToSet(setId) {
   // 導航到 Test Case Management
   const url = `/test-case-management?set_id=${setId}${teamId ? `&team_id=${teamId}` : ''}`;
   window.location.href = url;
+}
+
+/* ============================================================
+   快速搜尋 (Quick Search) - Test Case Sets Page
+   ============================================================ */
+
+function debounce(func, delay) {
+  let timeoutId;
+  return function (...args) {
+    clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => func.apply(this, args), delay);
+  };
+}
+
+function getQuickSearchTeamId() {
+  if (currentTeamId) return currentTeamId;
+  try {
+    const team = window.AppUtils && window.AppUtils.getCurrentTeam ? window.AppUtils.getCurrentTeam() : null;
+    if (team && team.id) return team.id;
+  } catch (_) {}
+  try {
+    const savedTeam = localStorage.getItem('currentTeam');
+    if (savedTeam) {
+      const team = JSON.parse(savedTeam);
+      return team && team.id ? team.id : null;
+    }
+  } catch (_) {}
+  return null;
+}
+
+async function ensureQuickSearchTestCases() {
+  const teamId = getQuickSearchTeamId();
+  if (!teamId) return false;
+  if (quickSearchTeamId === teamId) return true;
+  if (quickSearchLoadPromise) return quickSearchLoadPromise;
+
+  quickSearchLoadPromise = (async () => {
+    try {
+      if (!window.AuthClient) throw new Error('AuthClient 尚未初始化');
+      const resp = await window.AuthClient.fetch(`/api/teams/${teamId}/testcases?load_all=true`);
+      if (!resp.ok) {
+        const errorText = await resp.text();
+        throw new Error(errorText || `Failed to load test cases (${resp.status})`);
+      }
+      const data = await resp.json();
+      quickSearchTestCases = Array.isArray(data) ? data : [];
+      quickSearchTeamId = teamId;
+      return true;
+    } catch (error) {
+      console.error('快速搜尋載入測試案例失敗:', error);
+      return false;
+    } finally {
+      quickSearchLoadPromise = null;
+    }
+  })();
+
+  return quickSearchLoadPromise;
+}
+
+function setupQuickSearch_TestCaseSets() {
+  if (quickSearchInitialized) return;
+  quickSearchInitialized = true;
+
+  if (!document.getElementById('quickSearchSetOverlay')) {
+    const overlay = document.createElement('div');
+    overlay.id = 'quickSearchSetOverlay';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:1060;display:none;background:rgba(0,0,0,0.35)';
+    overlay.innerHTML = `
+      <div class="position-fixed" style="top:34vh; left:50%; transform: translateX(-50%); width:min(720px, 92vw);">
+        <div class="card shadow">
+          <div class="card-body p-2">
+            <input id="quickSearchSetInput" type="text" class="form-control form-control-lg" placeholder="${window.i18n ? window.i18n.t('testCase.searchPlaceholder') : '搜尋測試案例...'}" autocomplete="off" />
+            <div id="quickSearchSetResults" class="list-group list-group-flush" style="max-height:30vh; overflow:auto;"></div>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+
+    try {
+      const input = overlay.querySelector('#quickSearchSetInput');
+      const applyPlaceholder = () => {
+        if (input && window.i18n && window.i18n.isReady()) {
+          input.placeholder = window.i18n.t('testCase.searchPlaceholder');
+        }
+      };
+      applyPlaceholder();
+      document.addEventListener('languageChanged', applyPlaceholder);
+      if (!window.i18n || !window.i18n.isReady || !window.i18n.isReady()) {
+        document.addEventListener('i18nReady', applyPlaceholder);
+      }
+    } catch (_) {}
+
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) closeQuickSearch_TestCaseSets(); });
+  }
+
+  if (!document.getElementById('quickSearchSetHint')) {
+    const hint = document.createElement('div');
+    hint.id = 'quickSearchSetHint';
+    hint.className = 'position-fixed';
+    hint.style.cssText = 'left:12px; bottom:12px; z-index:1040; opacity:0.85; pointer-events:none;';
+    const label = window.i18n && window.i18n.isReady() ? window.i18n.t('hotkeys.quickSearch') : '按 / 開啟快速搜尋';
+    hint.innerHTML = `<span class="badge bg-secondary-subtle text-secondary border" style="--bs-bg-opacity:.65;">${label}</span>`;
+    document.body.appendChild(hint);
+
+    const updateHint = () => {
+      const text = window.i18n ? window.i18n.t('hotkeys.quickSearch') : '按 / 開啟快速搜尋';
+      const badge = document.querySelector('#quickSearchSetHint .badge');
+      if (badge) badge.textContent = text;
+    };
+    document.addEventListener('i18nReady', updateHint);
+    document.addEventListener('languageChanged', updateHint);
+  }
+
+  document.addEventListener('keydown', function(e) {
+    const tag = (e.target && e.target.tagName || '').toLowerCase();
+    const isTyping = ['input','textarea','select'].includes(tag) || (e.target && e.target.isContentEditable);
+    if (!isTyping && e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      openQuickSearch_TestCaseSets();
+    }
+  });
+}
+
+async function openQuickSearch_TestCaseSets() {
+  const overlay = document.getElementById('quickSearchSetOverlay');
+  const input = document.getElementById('quickSearchSetInput');
+  const results = document.getElementById('quickSearchSetResults');
+  if (!overlay || !input || !results) return;
+
+  overlay.style.display = 'block';
+  input.value = '';
+  results.innerHTML = `<div class="list-group-item text-muted">${window.i18n ? window.i18n.t('common.loading') : '載入中...'}</div>`;
+  input.focus();
+
+  const handleKey = (e) => {
+    if (e.key === 'Escape') { closeQuickSearch_TestCaseSets(); return; }
+    if (e.key === 'Enter') {
+      const active = results.querySelector('.active');
+      if (active) { active.click(); }
+    } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const items = Array.from(results.querySelectorAll('.list-group-item'));
+      if (items.length === 0) return;
+      let idx = items.findIndex(li => li.classList.contains('active'));
+      if (idx < 0) idx = 0;
+      idx = (e.key === 'ArrowDown') ? Math.min(idx + 1, items.length - 1) : Math.max(idx - 1, 0);
+      items.forEach(li => li.classList.remove('active'));
+      items[idx].classList.add('active');
+      items[idx].scrollIntoView({ block: 'nearest' });
+    }
+  };
+  input.onkeydown = handleKey;
+
+  const loaded = await ensureQuickSearchTestCases();
+  if (!loaded) {
+    results.innerHTML = `<div class="list-group-item text-muted">${window.i18n ? window.i18n.t('common.failed') : '載入失敗'}</div>`;
+    return;
+  }
+
+  const debouncedSearch = debounce(() => quickSearchRender_TestCaseSets(input.value, results), 300);
+  input.oninput = debouncedSearch;
+  quickSearchRender_TestCaseSets('', results);
+}
+
+function closeQuickSearch_TestCaseSets() {
+  const overlay = document.getElementById('quickSearchSetOverlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+function getSetNameById(setId) {
+  if (!setId) return window.i18n ? window.i18n.t('testCaseSet.unassigned', {}, '未分配') : '未分配';
+  const matched = (testCaseSets || []).find(s => String(s.id) === String(setId));
+  return matched ? matched.name : `Set ${setId}`;
+}
+
+function navigateToTestCaseFromSearch(setId, testCaseNumber) {
+  if (!testCaseNumber) return;
+  const teamId = getQuickSearchTeamId();
+  const params = new URLSearchParams();
+  if (setId) params.set('set_id', setId);
+  if (teamId) params.set('team_id', teamId);
+  params.set('tc', testCaseNumber);
+  window.location.href = `/test-case-management?${params.toString()}`;
+}
+
+function quickSearchRender_TestCaseSets(query, container) {
+  const q = (query || '').trim().toLowerCase();
+  let matches = [];
+  if (q.length > 0) {
+    matches = (quickSearchTestCases || []).filter(tc => {
+      const num = (tc.test_case_number || '').toLowerCase();
+      const title = (tc.title || '').toLowerCase();
+      return num.includes(q) || title.includes(q);
+    }).slice(0, 100);
+  }
+
+  if (matches.length === 0) {
+    container.innerHTML = `<div class="list-group-item text-muted">${window.i18n ? window.i18n.t('errors.noMatchingTestCases') : '沒有找到符合條件的測試案例'}</div>`;
+    return;
+  }
+
+  container.innerHTML = matches.map((tc, idx) => {
+    const tcNumber = tc.test_case_number || tc.record_id || '';
+    const setId = tc.test_case_set_id || '';
+    const setLabel = getSetNameById(setId);
+    return `
+      <button type="button" class="list-group-item list-group-item-action ${idx === 0 ? 'active' : ''}" data-tc-number="${escapeHtml(tcNumber)}" data-set-id="${escapeHtml(String(setId))}">
+        <div class="d-flex justify-content-between align-items-center">
+          <div class="d-flex align-items-center gap-2 overflow-hidden">
+            <code class="small" style="min-width: 120px; color: rgb(194, 54, 120); font-weight: 500;">${escapeHtml(tcNumber)}</code>
+            <span class="text-truncate">${escapeHtml(tc.title || '')}</span>
+          </div>
+          <span class="badge bg-light text-muted border ms-2">${escapeHtml(setLabel)}</span>
+        </div>
+      </button>
+    `;
+  }).join('');
+
+  container.querySelectorAll('.list-group-item').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tcNumber = btn.getAttribute('data-tc-number');
+      const setId = btn.getAttribute('data-set-id');
+      closeQuickSearch_TestCaseSets();
+      navigateToTestCaseFromSearch(setId, tcNumber);
+    });
+  });
 }
 
 // 顯示警告訊息

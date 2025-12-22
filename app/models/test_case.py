@@ -393,6 +393,9 @@ class TestCaseUpdate(BaseModel):
 
 class TestCaseResponse(TestCase):
     """測試案例回應模型"""
+    test_case_set_id: Optional[int] = Field(
+        None, description="所屬 Test Case Set ID"
+    )
     test_case_section_id: Optional[int] = Field(
         None, description="所屬 Test Case Section ID"
     )

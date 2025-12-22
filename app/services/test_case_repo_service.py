@@ -97,6 +97,7 @@ def _to_response(
         updated_at=row.updated_at,
         last_sync_at=row.last_sync_at,
         raw_fields={},
+        test_case_set_id=row.test_case_set_id,
         test_case_section_id=section_id,
         section_name=section_name,
         section_path=section_path,
