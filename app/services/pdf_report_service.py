@@ -217,6 +217,7 @@ class PDFReportService:
         na_count = len([item for item in items if item.test_result == TestResultStatus.NOT_AVAILABLE])
         pending_count = len([item for item in items if item.test_result == TestResultStatus.PENDING])
         not_required_count = len([item for item in items if item.test_result == TestResultStatus.NOT_REQUIRED])
+        skip_count = len([item for item in items if item.test_result == TestResultStatus.SKIP])
         
         # 未執行 = 總數 - 已執行 - Pending (如果 Pending 算未執行的一種)
         # 實際上 Pending 就是 explicit "Not Executed". 
@@ -299,6 +300,7 @@ class PDFReportService:
                 'not_available_count': na_count,
                 'pending_count': pending_count,
                 'not_required_count': not_required_count,
+                'skip_count': skip_count,
                 'not_executed_count': not_executed_total,
                 'execution_rate': execution_rate,
                 'pass_rate': pass_rate,
@@ -311,6 +313,7 @@ class PDFReportService:
                 'Not Available': na_count,
                 'Pending': pending_count,
                 'Not Required': not_required_count,
+                'Skip': skip_count,
                 'Not Executed': implicit_not_executed_count
             },
             'priority_distribution': {

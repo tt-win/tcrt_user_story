@@ -1117,6 +1117,7 @@
     "notExecuted": "未执行",
     "notFound": "找不到测试执行记录",
     "notRequired": "不需要",
+    "skip": "跳过",
     "onlyActiveStatus": "（仅适用于执行中状态）",
     "onlyCompletedCanRestart": "只有已完成的 Test Run 才能重新执行",
     "openInNewWindow": "在新窗口打开",

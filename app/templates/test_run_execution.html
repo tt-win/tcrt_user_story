@@ -915,6 +915,7 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
 .result-na { color: var(--tr-secondary-dark); background: var(--tr-secondary-light); }
 .result-pending { color: var(--tr-text-muted); background: var(--tr-bg-light); }
 .result-not-required { color: #495057; background: #e9ecef; }
+.result-skip { color: #0d6efd; background: #e7f1ff; }
 
 /* 操作按鈕樣式 */
 .item-actions {
@@ -1706,11 +1707,14 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                         </label>
                     </div>
                     <select class="form-select" id="batchResultSelect" disabled>
-                        <option value="" data-i18n="testRun.selectResult">請選擇結果</option>
-                        <option value="Passed" data-i18n="testRun.passed">Passed</option>
-                        <option value="Failed" data-i18n="testRun.failed">Failed</option>
-                        <option value="Retest" data-i18n="testRun.retest">Retest</option>
-                        <option value="Not Available" data-i18n="testRun.notAvailable">Not Available</option>
+                        <option value="">Select Result</option>
+                        <option value="Passed">Passed</option>
+                        <option value="Failed">Failed</option>
+                        <option value="Retest">Retest</option>
+                        <option value="Not Available">Not Available</option>
+                        <option value="Pending">Pending</option>
+                        <option value="Not Required">Not Required</option>
+                        <option value="Skip">Skip</option>
                     </select>
                 </div>
                 
@@ -2067,7 +2071,7 @@ let currentConfigId = null;
 let currentTeamId = null; // 由 AppUtils 取得，無則退回 1
 let testRunConfig = null;
 let testRunItems = [];
-const EXECUTION_STATUS_VALUES = ['Passed', 'Failed', 'Retest', 'Not Available', 'Pending', 'Not Required', 'Not Executed'];
+const EXECUTION_STATUS_VALUES = ['Passed', 'Failed', 'Retest', 'Not Available', 'Pending', 'Not Required', 'Skip', 'Not Executed'];
 const executionFilterState = {
     statuses: new Set(['ALL']),
     searchNumber: '',
@@ -2079,6 +2083,8 @@ const executionFilterState = {
 // Section 篩選
 let treSections = [];
 let sectionIndexById = new Map(); // id -> { name, parentId }
+let sectionDisplayNameCache = new Map();
+let sectionHydrationInFlight = false;
 let treSectionFilterId = null;
 let treSectionFilterIds = null; // Set of allowed section ids (string)，含子節點，'unassigned' 為未指派
 let executionFilterInitialized = false;
@@ -2685,18 +2691,143 @@ function getExecutionItemStatus(item) {
 }
 
 function getItemSectionId(item) {
+    if (!item) return null;
+    if (item.__exec_section_key) {
+        return item.__exec_section_key === 'unassigned' ? null : item.__exec_section_key;
+    }
     const sec = item.test_case_section || item.section || {};
     const explicit =
-        item.test_case_section_id ||
         item.__exec_section_id ||
+        item.test_case_section_id ||
         sec.id || sec.section_id || sec.record_id || sec.parent_id ||
         item.section_id || item.section_record_id ||
         item.test_case_section_record_id;
-    if (explicit) return explicit;
+    if (explicit) {
+        item.__exec_section_id = item.__exec_section_id || explicit;
+        item.test_case_section_id = item.test_case_section_id || explicit;
+        item.__exec_section_key = String(explicit);
+        return explicit;
+    }
     // fallback：若只有名稱仍建立分組鍵，避免全部落到 Unassigned
-    if (item.__exec_section_name) return `name:${item.__exec_section_name}`;
-    if (sec.name) return `name:${sec.name}`;
+    const nameKey = item.__exec_section_name || sec.name;
+    if (nameKey) {
+        item.__exec_section_key = `name:${nameKey}`;
+        return item.__exec_section_key;
+    }
+    item.__exec_section_key = 'unassigned';
     return null;
+}
+
+function hasSectionInfo(item) {
+    if (!item) return false;
+    const sec = item.test_case_section || {};
+    return !!(
+        item.__exec_section_id ||
+        item.test_case_section_id ||
+        sec.id || sec.section_id || sec.record_id
+    );
+}
+
+function normalizeRunItemSectionInfo(items) {
+    (items || []).forEach(it => {
+        if (!it) return;
+        const sec = it.test_case_section || {};
+        const sid = it.__exec_section_id || it.test_case_section_id || sec.id || sec.section_id || sec.record_id || null;
+        if (sid) {
+            it.__exec_section_id = it.__exec_section_id || sid;
+            it.test_case_section_id = it.test_case_section_id || sid;
+            it.test_case_section = it.test_case_section || {};
+            if (!it.test_case_section.id) it.test_case_section.id = sid;
+            it.__exec_section_key = String(sid);
+        }
+        const secName = it.__exec_section_name || sec.name;
+        if (secName) {
+            it.__exec_section_name = secName;
+            it.test_case_section = it.test_case_section || {};
+            if (!it.test_case_section.name) it.test_case_section.name = secName;
+        }
+        if (!it.__exec_section_key) {
+            it.__exec_section_key = sid ? String(sid) : 'unassigned';
+        }
+    });
+}
+
+function resetSectionDisplayNameCache() {
+    sectionDisplayNameCache = new Map();
+}
+
+function getSectionDisplayName(sid, sections) {
+    if (sid === 'unassigned') {
+        return window.i18n && window.i18n.isReady()
+            ? (window.i18n.t('testRun.unassigned.label') || window.i18n.t('testRun.unassigned'))
+            : 'Unassigned';
+    }
+
+    const key = String(sid);
+    if (sectionDisplayNameCache.has(key)) {
+        return sectionDisplayNameCache.get(key);
+    }
+
+    // 0. 透過索引從 parent chain 還原完整路徑
+    if (sectionIndexById && sectionIndexById.size > 0) {
+        const path = [];
+        let cursor = key;
+        let guard = 0;
+        while (sectionIndexById.has(cursor) && guard < 50) {
+            const entry = sectionIndexById.get(cursor);
+            path.unshift(entry.name || `Section ${cursor}`);
+            if (!entry.parentId) break;
+            cursor = entry.parentId;
+            guard += 1;
+        }
+        if (path.length) {
+            const result = path.join(' > ');
+            sectionDisplayNameCache.set(key, result);
+            return result;
+        }
+    }
+
+    // 1. Try to find path in treSections (Tree data)
+    if (sections && sections.length > 0) {
+        const findPath = (nodes, targetId, currentPath) => {
+            for (const node of nodes) {
+                if (String(node.id) === String(targetId)) {
+                    return [...currentPath, node.name];
+                }
+                if (node.children && node.children.length > 0) {
+                    const found = findPath(node.children, targetId, [...currentPath, node.name]);
+                    if (found) return found;
+                }
+            }
+            return null;
+        };
+        const pathArr = findPath(sections, key, []);
+        if (pathArr) {
+            const result = pathArr.join(' > ');
+            sectionDisplayNameCache.set(key, result);
+            return result;
+        }
+    }
+
+    // 2. Fallback: Use item info (limited to immediate parent based on current API)
+    const itemWithSec = (testRunItems || []).find(it => String(getItemSectionId(it)) === key);
+    if (itemWithSec && itemWithSec.test_case_section) {
+        const s = itemWithSec.test_case_section;
+        if (s.parent) {
+            const result = `${s.parent.name} > ${s.name}`;
+            sectionDisplayNameCache.set(key, result);
+            return result;
+        }
+        if (s.name) {
+            const result = s.name;
+            sectionDisplayNameCache.set(key, result);
+            return result;
+        }
+    }
+
+    const fallback = `Section ${key}`;
+    sectionDisplayNameCache.set(key, fallback);
+    return fallback;
 }
 
 function getFilteredTestRunItems() {
@@ -2770,7 +2901,7 @@ function updateTreSortIndicators() {
 
 function sortTestRunItems() {
     const priRank = v => ({ High: 3, Medium: 2, Low: 1 }[v] || 0);
-    const resRank = v => ({ Passed: 6, Failed: 5, Retest: 4, 'Not Available': 3, 'Not Required': 2, Pending: 1 }[v] || 0);
+    const resRank = v => ({ Passed: 6, Failed: 5, Retest: 4, 'Not Available': 3, 'Not Required': 2, Skip: 2, Pending: 1 }[v] || 0);
     const assigneeOf = it => (it.assignee_name || (it.assignee && it.assignee.name) || '').toLowerCase();
     const parseNumberSegments = str => {
         try {
@@ -3016,7 +3147,6 @@ function bindEventListeners() {
                 }
 
                 await loadTestRunItemsWithoutLoading();
-                await preloadAllTeamTestCasesForRun(testRunItems);
                 await updateStatistics();
                 try {
                     await refreshBugTicketsStatus();
@@ -3202,13 +3332,13 @@ async function loadTestRunItems() {
                 return aNumber.localeCompare(bNumber);
             });
         } catch (_) { /* 忽略排序中的非致命錯誤 */ }
-        // 預抓案例並補齊 Section 資訊後再渲染
-        await preloadAllTeamTestCasesForRun(testRunItems);
-        await hydrateItemSections(testRunItems);
+        // 先用現有資料渲染，避免因預抓而阻塞頁面
+        normalizeRunItemSectionInfo(testRunItems);
         rebuildSectionIndexFromItems(testRunItems);
         renderTestRunItems();
         renderTreSectionTree();
         hideItemsLoading();
+        scheduleSectionHydration(testRunItems);
         
     } catch (error) {
         console.error('Failed to load test items:', error);
@@ -3233,12 +3363,12 @@ async function loadTestRunItemsWithoutLoading() {
             });
         } catch (_) { /* 忽略排序中的非致命錯誤 */ }
         
-        await preloadAllTeamTestCasesForRun(testRunItems);
-        await hydrateItemSections(testRunItems);
+        normalizeRunItemSectionInfo(testRunItems);
         rebuildSectionIndexFromItems(testRunItems);
         // 直接渲染，不顯示載入動畫
         renderTestRunItems();
         renderTreSectionTree();
+        scheduleSectionHydration(testRunItems);
         
     } catch (error) {
         console.error('Failed to load test items:', error);
@@ -3286,6 +3416,7 @@ async function loadTreSections() {
         });
     };
     indexSections(treSections, null);
+    resetSectionDisplayNameCache();
     renderTreSectionTree();
 }
 
@@ -3459,61 +3590,6 @@ function renderTestRunItems() {
     // 將最終排序應用到 sectionOrder
     sectionOrder.push(...finalSectionOrder);
 
-    // Helper to build section path
-    function getSectionDisplayName(sid, sections) {
-        if (sid === 'unassigned') {
-            return window.i18n && window.i18n.isReady() 
-                ? (window.i18n.t('testRun.unassigned.label') || window.i18n.t('testRun.unassigned')) 
-                : 'Unassigned';
-        }
-
-        // 0. 透過索引從 parent chain 還原完整路徑
-        if (sectionIndexById && sectionIndexById.size > 0) {
-            const path = [];
-            let cursor = String(sid);
-            let guard = 0;
-            while (sectionIndexById.has(cursor) && guard < 50) {
-                const entry = sectionIndexById.get(cursor);
-                path.unshift(entry.name || `Section ${cursor}`);
-                if (!entry.parentId) break;
-                cursor = entry.parentId;
-                guard += 1;
-            }
-            if (path.length) return path.join(' > ');
-        }
-
-        // 1. Try to find path in treSections (Tree data)
-        if (sections && sections.length > 0) {
-            const findPath = (nodes, targetId, currentPath) => {
-                for (const node of nodes) {
-                    if (String(node.id) === String(targetId)) {
-                        return [...currentPath, node.name];
-                    }
-                    if (node.children && node.children.length > 0) {
-                        const found = findPath(node.children, targetId, [...currentPath, node.name]);
-                        if (found) return found;
-                    }
-                }
-                return null;
-            };
-            const pathArr = findPath(sections, sid, []);
-            if (pathArr) return pathArr.join(' > ');
-        }
-
-        // 2. Fallback: Use item info (limited to immediate parent based on current API)
-        // Find an item that belongs to this section to get the info
-        const itemWithSec = (testRunItems || []).find(it => String(getItemSectionId(it)) === String(sid));
-        if (itemWithSec && itemWithSec.test_case_section) {
-            const s = itemWithSec.test_case_section;
-            if (s.parent) {
-                return `${s.parent.name} > ${s.name}`;
-            }
-            if (s.name) return s.name;
-        }
-
-        return sectionNameById.get(sid) || `Section ${sid}`;
-    }
-
     const rows = [];
     sectionOrder.forEach(sid => {
         const items = sectionMap.get(sid) || [];
@@ -3585,31 +3661,44 @@ function renderTestRunItems() {
     hideItemsLoading();
 }
 
+function buildSectionCounts(items, sections) {
+    const directCounts = new Map();
+    let unassignedCount = 0;
+
+    (items || []).forEach(item => {
+        const sid = getItemSectionId(item);
+        if (!sid) {
+            unassignedCount += 1;
+            return;
+        }
+        const key = String(sid);
+        directCounts.set(key, (directCounts.get(key) || 0) + 1);
+    });
+
+    const totals = new Map();
+    const countNode = (node) => {
+        if (!node || node.id == null) return 0;
+        const sid = String(node.id);
+        let total = directCounts.get(sid) || 0;
+        if (Array.isArray(node.children) && node.children.length) {
+            node.children.forEach(child => {
+                total += countNode(child);
+            });
+        }
+        totals.set(sid, total);
+        return total;
+    };
+
+    (sections || []).forEach(sec => countNode(sec));
+
+    return { sectionIdToCount: totals, unassignedCount };
+}
+
 function renderTreSectionTree() {
     const container = document.getElementById('treSectionTree');
     if (!container) return;
     const items = testRunItems || [];
-
-    const sectionIdToCount = new Map();
-    const unassignedCount = items.filter(it => !getItemSectionId(it)).length;
-
-    function collectSectionIds(sec, acc = []) {
-        acc.push(String(sec.id));
-        (sec.children || []).forEach(child => collectSectionIds(child, acc));
-        return acc;
-    }
-
-    function countItemsInSectionTree(sec) {
-        const ids = collectSectionIds(sec, []);
-        const count = items.reduce((sum, item) => {
-            const sid = getItemSectionId(item);
-            return ids.includes(String(sid)) ? sum + 1 : sum;
-        }, 0);
-        sectionIdToCount.set(String(sec.id), count);
-        return count;
-    }
-
-    treSections.forEach(sec => countItemsInSectionTree(sec));
+    const { sectionIdToCount, unassignedCount } = buildSectionCounts(items, treSections);
 
     const renderNodes = (sections, level = 0) => {
         return sections.map(sec => {
@@ -3841,6 +3930,7 @@ function createItemRow(item, index, canUpdate) {
                         <option value="Not Available" ${item.test_result === 'Not Available' ? 'selected' : ''}>${escapeHtml('{{ i18n.t("testRun.notAvailable") if i18n else "Not Available" }}')}</option>
                         <option value="Pending" ${item.test_result === 'Pending' ? 'selected' : ''}>${escapeHtml('{{ i18n.t("testRun.pending") if i18n else "Pending" }}')}</option>
                         <option value="Not Required" ${item.test_result === 'Not Required' ? 'selected' : ''}>${escapeHtml('{{ i18n.t("testRun.notRequired") if i18n else "Not Required" }}')}</option>
+                        <option value="Skip" ${item.test_result === 'Skip' ? 'selected' : ''}>${escapeHtml('{{ i18n.t("testRun.skip") if i18n else "Skip" }}')}</option>
                     </select>
                 ` : `
                     <span class="badge result-badge-lg ${resultClass}">${resultText}</span>
@@ -4226,7 +4316,8 @@ function getResultClass(result) {
         'Retest': 'result-retest',
         'Not Available': 'result-na',
         'Pending': 'result-pending',
-        'Not Required': 'result-not-required'
+        'Not Required': 'result-not-required',
+        'Skip': 'result-skip'
     };
     return classMap[result] || 'result-pending';
 }
@@ -4238,7 +4329,8 @@ function getResultText(result) {
         'Retest': '{{ i18n.t("testRun.retest") if i18n else "Retest" }}',
         'Not Available': '{{ i18n.t("testRun.notAvailable") if i18n else "Not Available" }}',
         'Pending': '{{ i18n.t("testRun.pending") if i18n else "Pending" }}',
-        'Not Required': '{{ i18n.t("testRun.notRequired") if i18n else "Not Required" }}'
+        'Not Required': '{{ i18n.t("testRun.notRequired") if i18n else "Not Required" }}',
+        'Skip': '{{ i18n.t("testRun.skip") if i18n else "Skip" }}'
     };
     return textMap[result] || '{{ i18n.t("testRun.notExecuted") if i18n else "Not Executed" }}';
 }
@@ -5300,6 +5392,9 @@ function renderModalHeaderResult(testCase) {
                 <option value="Failed" ${currentResult === 'Failed' ? 'selected' : ''}>${escapeHtml('{{ i18n.t("testRun.failed") if i18n else "Failed" }}')}</option>
                 <option value="Retest" ${currentResult === 'Retest' ? 'selected' : ''}>${escapeHtml('{{ i18n.t("testRun.retest") if i18n else "Retest" }}')}</option>
                 <option value="Not Available" ${currentResult === 'Not Available' ? 'selected' : ''}>${escapeHtml('{{ i18n.t("testRun.notAvailable") if i18n else "Not Available" }}')}</option>
+                <option value="Pending" ${currentResult === 'Pending' ? 'selected' : ''}>${escapeHtml('{{ i18n.t("testRun.pending") if i18n else "Pending" }}')}</option>
+                <option value="Not Required" ${currentResult === 'Not Required' ? 'selected' : ''}>${escapeHtml('{{ i18n.t("testRun.notRequired") if i18n else "Not Required" }}')}</option>
+                <option value="Skip" ${currentResult === 'Skip' ? 'selected' : ''}>${escapeHtml('{{ i18n.t("testRun.skip") if i18n else "Skip" }}')}</option>
             </select>
         `;
         const select = container.querySelector('select');
@@ -5514,31 +5609,12 @@ async function prefetchTestCasesForItems(items) {
     }
 }
 
-// 參考 Test Case Management 的做法：
-// 一次性抓取整個團隊的 Test Cases，將與本次 Test Run 有關的案例寫入快取
+// 避免一次性抓取全團隊：僅預先抓取缺少 section 的 items
 async function preloadAllTeamTestCasesForRun(items) {
     try {
-        const resp = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/testcases/`);
-        if (!resp.ok) {
-            // 若整批抓取失敗，退回逐筆預抓策略
-            await prefetchTestCasesForItems(items);
-            return;
-        }
-        const all = await resp.json();
-        const need = new Set((items || []).map(i => i.test_case_number).filter(Boolean));
-        if (!all || !Array.isArray(all)) return;
-        let writeCount = 0;
-        for (const tc of all) {
-            if (tc && tc.test_case_number && need.has(tc.test_case_number)) {
-                if (tc.test_case_section_id || (tc.test_case_section && tc.test_case_section.id)) {
-                    tc.__exec_section_id = tc.test_case_section_id || tc.test_case_section.id;
-                    tc.__exec_section_name = (tc.test_case_section && tc.test_case_section.name) || null;
-                }
-                await setCachedTestCase(tc.test_case_number, tc);
-                writeCount++;
-            }
-        }
-        console.debug('[CACHE][EXEC] Preloaded team cases for run', { teamId: currentTeamId, totalFetched: all.length || 0, writes: writeCount });
+        const targets = (items || []).filter(it => !hasSectionInfo(it));
+        if (!targets.length) return;
+        await prefetchTestCasesForItems(targets);
     } catch (e) {
         console.debug('preloadAllTeamTestCasesForRun failed, fallback to prefetch each:', e);
         await prefetchTestCasesForItems(items);
@@ -5547,49 +5623,61 @@ async function preloadAllTeamTestCasesForRun(items) {
 
 // 補齊 items 的 Section 資訊（從快取/預抓資料帶入）
 async function hydrateItemSections(items) {
-    if (!Array.isArray(items)) return;
-    for (const it of items) {
-        // 若已經有 section id / 名稱就跳過
-        const hasId = it.test_case_section_id || (it.test_case_section && (it.test_case_section.id || it.test_case_section.section_id || it.test_case_section.record_id));
-        const hasName = it.test_case_section && it.test_case_section.name;
-        if (hasId && hasName) continue;
+    if (!Array.isArray(items)) return 0;
+    const targets = items.filter(it => !hasSectionInfo(it));
+    if (!targets.length) return 0;
+    let changed = 0;
+    const queue = [...targets];
+    const concurrency = Math.min(6, queue.length);
+    const workers = new Array(concurrency).fill(0).map(async () => {
+        while (queue.length > 0) {
+            const it = queue.pop();
+            if (!it) continue;
+            // 若已經有 section id / 名稱就跳過
+            const hasId = it.test_case_section_id || (it.test_case_section && (it.test_case_section.id || it.test_case_section.section_id || it.test_case_section.record_id));
+            const hasName = it.test_case_section && it.test_case_section.name;
+            if (hasId && hasName) continue;
 
-        // 嘗試從預抓的 __exec_section_* 帶入
-        if (it.__exec_section_id || it.__exec_section_name) {
-            it.test_case_section = it.test_case_section || {};
-            if (it.__exec_section_id) {
-                it.test_case_section.id = it.__exec_section_id;
-                it.test_case_section_id = it.test_case_section_id || it.__exec_section_id;
+            // 嘗試從預抓的 __exec_section_* 帶入
+            if (it.__exec_section_id || it.__exec_section_name) {
+                it.test_case_section = it.test_case_section || {};
+                if (it.__exec_section_id) {
+                    it.test_case_section.id = it.__exec_section_id;
+                    it.test_case_section_id = it.test_case_section_id || it.__exec_section_id;
+                }
+                if (it.__exec_section_name && !it.test_case_section.name) {
+                    it.test_case_section.name = it.__exec_section_name;
+                }
+                continue;
             }
-            if (it.__exec_section_name && !it.test_case_section.name) {
-                it.test_case_section.name = it.__exec_section_name;
-            }
-            continue;
-        }
 
-        // 從快取撈 test case 詳細補上 section
-        try {
-            const cached = await getCachedTestCase(it.test_case_number);
-            if (cached && cached.data) {
-                const tc = cached.data;
-                const sec = tc.test_case_section || {};
-                if (sec.id || sec.section_id || sec.record_id) {
-                    const sid = sec.id || sec.section_id || sec.record_id;
-                    it.test_case_section = it.test_case_section || {};
-                    it.test_case_section.id = sid;
-                    it.test_case_section_id = it.test_case_section_id || sid;
-                    it.__exec_section_id = it.__exec_section_id || sid;
+            // 從快取撈 test case 詳細補上 section
+            try {
+                const cached = await getCachedTestCase(it.test_case_number);
+                if (cached && cached.data) {
+                    const tc = cached.data;
+                    const sec = tc.test_case_section || {};
+                    if (sec.id || sec.section_id || sec.record_id) {
+                        const sid = sec.id || sec.section_id || sec.record_id;
+                        it.test_case_section = it.test_case_section || {};
+                        it.test_case_section.id = sid;
+                        it.test_case_section_id = it.test_case_section_id || sid;
+                        it.__exec_section_id = it.__exec_section_id || sid;
+                    }
+                    if (sec.name) {
+                        it.test_case_section = it.test_case_section || {};
+                        it.test_case_section.name = it.test_case_section.name || sec.name;
+                        it.__exec_section_name = it.__exec_section_name || sec.name;
+                    }
+                    changed += 1;
                 }
-                if (sec.name) {
-                    it.test_case_section = it.test_case_section || {};
-                    it.test_case_section.name = it.test_case_section.name || sec.name;
-                    it.__exec_section_name = it.__exec_section_name || sec.name;
-                }
+            } catch (_) {
+                /* ignore */
             }
-        } catch (_) {
-            /* ignore */
         }
-    }
+    });
+    await Promise.all(workers);
+    return changed;
 }
 
 // 從 items 的 section parent 鏈補充索引（API 可能只給單層）
@@ -5618,6 +5706,37 @@ function rebuildSectionIndexFromItems(items) {
             visitSectionChain(it.test_case_section);
         }
     });
+    resetSectionDisplayNameCache();
+}
+
+function scheduleSectionHydration(items) {
+    if (sectionHydrationInFlight) return;
+    const targets = (items || []).filter(it => !hasSectionInfo(it));
+    if (!targets.length) return;
+
+    const run = async () => {
+        sectionHydrationInFlight = true;
+        try {
+            await preloadAllTeamTestCasesForRun(targets);
+            const changed = await hydrateItemSections(targets);
+            if (changed > 0) {
+                normalizeRunItemSectionInfo(items);
+                rebuildSectionIndexFromItems(items);
+                renderTestRunItems();
+                renderTreSectionTree();
+            }
+        } catch (e) {
+            console.debug('scheduleSectionHydration failed:', e);
+        } finally {
+            sectionHydrationInFlight = false;
+        }
+    };
+
+    if (typeof requestIdleCallback === 'function') {
+        requestIdleCallback(() => run(), { timeout: 1000 });
+    } else {
+        setTimeout(run, 0);
+    }
 }
 
 // 在 Test Run 項目清單中，根據目前 Test Case 移動到前/後一筆
@@ -6966,6 +7085,7 @@ function collectTestRunStats() {
             notAvailable: 0,
             pending: 0,
             notRequired: 0,
+            skip: 0,
             notExecuted: 0
         },
         priorityData: {
@@ -7007,6 +7127,9 @@ function collectTestRunStats() {
                     break;
                 case 'Not Required':
                     stats.statusData.notRequired++;
+                    break;
+                case 'Skip':
+                    stats.statusData.skip++;
                     break;
                 default:
                     stats.statusData.notExecuted++;
@@ -7153,6 +7276,7 @@ async function renderTestRunCharts(statsData) {
         notAvailable: '#6c757d',
         pending: '#ffca2c',
         notRequired: '#adb5bd',
+        skip: '#0d6efd',
         notExecuted: '#dee2e6',
         high: '#dc3545',
         medium: '#ffc107',
@@ -7165,7 +7289,7 @@ async function renderTestRunCharts(statsData) {
         testRunCharts.statusPie = new Chart(statusCtx, {
             type: 'pie',
             data: {
-                labels: ['Passed', 'Failed', 'Retest', 'Not Available', 'Pending', 'Not Required', 'Not Executed'],
+                labels: ['Passed', 'Failed', 'Retest', 'Not Available', 'Pending', 'Not Required', 'Skip', 'Not Executed'],
                 datasets: [{
                     data: [
                         statsData.statusData.passed,
@@ -7174,6 +7298,7 @@ async function renderTestRunCharts(statsData) {
                         statsData.statusData.notAvailable,
                         statsData.statusData.pending,
                         statsData.statusData.notRequired,
+                        statsData.statusData.skip,
                         statsData.statusData.notExecuted
                     ],
                     backgroundColor: [
@@ -7183,6 +7308,7 @@ async function renderTestRunCharts(statsData) {
                         colorScheme.notAvailable,
                         colorScheme.pending,
                         colorScheme.notRequired,
+                        colorScheme.skip,
                         colorScheme.notExecuted
                     ],
                     borderWidth: 2,
