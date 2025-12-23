@@ -1150,6 +1150,7 @@
     "notExecuted": "Not Executed",
     "notFound": "Test run record not found",
     "notRequired": "Not Required",
+    "skip": "Skip",
     "onlyActiveStatus": "(Only for active status)",
     "onlyCompletedCanRestart": "Only completed Test Runs can be restarted",
     "openInNewWindow": "Open in new window",

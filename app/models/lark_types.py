@@ -152,6 +152,7 @@ class TestResultStatus(str, Enum):
     NOT_AVAILABLE = "Not Available"
     PENDING = "Pending"
     NOT_REQUIRED = "Not Required"
+    SKIP = "Skip"
 
 
 # 輔助函數

@@ -101,6 +101,7 @@ class HTMLReportService:
         na_count = len([i for i in items if i.test_result == TestResultStatus.NOT_AVAILABLE])
         pending_count = len([i for i in items if i.test_result == TestResultStatus.PENDING])
         not_required_count = len([i for i in items if i.test_result == TestResultStatus.NOT_REQUIRED])
+        skip_count = len([i for i in items if i.test_result == TestResultStatus.SKIP])
         
         implicit_not_executed = len([i for i in items if i.test_result is None])
         not_executed_count = implicit_not_executed + pending_count
@@ -214,6 +215,7 @@ class HTMLReportService:
                 "not_available_count": na_count,
                 "pending_count": pending_count,
                 "not_required_count": not_required_count,
+                "skip_count": skip_count,
                 "not_executed_count": not_executed_count,
                 "execution_rate": execution_rate,
                 "pass_rate": pass_rate,
@@ -230,6 +232,7 @@ class HTMLReportService:
                 "Not Available": na_count,
                 "Pending": pending_count,
                 "Not Required": not_required_count,
+                "Skip": skip_count,
                 "Not Executed": implicit_not_executed,
             },
             "test_results": test_results,
@@ -363,6 +366,8 @@ class HTMLReportService:
         if st in ('not available', 'n/a'):
             return 'na'
         if st == 'not required':
+            return 'not-required'
+        if st == 'skip':
             return 'not-required'
         if st in ('not executed', '未執行', 'pending'):
             return 'pending'
