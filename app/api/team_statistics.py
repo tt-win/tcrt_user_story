@@ -26,12 +26,35 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin/team_statistics", tags=["team_statistics"])
 
+MAX_STAT_RANGE_DAYS = 90
 
-def _get_date_range(days: int) -> tuple[str, str]:
-    """計算日期範圍（ISO 格式字符串）"""
+
+def _resolve_date_range(
+    days: int,
+    start_date: Optional[date],
+    end_date: Optional[date]
+) -> tuple[str, str, datetime, datetime, int]:
+    """解析日期範圍，支援 days 或自訂日期區間。"""
+    if start_date or end_date:
+        if not start_date or not end_date:
+            raise HTTPException(status_code=400, detail={"error": "請同時提供開始與結束日期"})
+        if end_date < start_date:
+            raise HTTPException(status_code=400, detail={"error": "結束日期不可早於開始日期"})
+        total_days = (end_date - start_date).days + 1
+        if total_days < 1:
+            raise HTTPException(status_code=400, detail={"error": "日期區間至少需要 1 天"})
+        if total_days > MAX_STAT_RANGE_DAYS:
+            raise HTTPException(
+                status_code=400,
+                detail={"error": f"日期區間不可超過 {MAX_STAT_RANGE_DAYS} 天"}
+            )
+        start_dt = datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
+        end_dt = datetime.combine(end_date, datetime.max.time(), tzinfo=timezone.utc)
+        return start_date.isoformat(), end_date.isoformat(), start_dt, end_dt, total_days
+
     end_dt = datetime.now(timezone.utc)
     start_dt = end_dt - timedelta(days=days)
-    return start_dt.date().isoformat(), end_dt.date().isoformat()
+    return start_dt.date().isoformat(), end_dt.date().isoformat(), start_dt, end_dt, days
 
 
 def _extract_assignee_names(payload: Any) -> List[str]:
@@ -149,7 +172,9 @@ def _get_action_weight(resource_type: Any, details_raw: Any) -> int:
 @router.get("/overview", include_in_schema=False)
 async def get_overview(
     current_user: User = Depends(require_admin()),
-    days: int = Query(30, ge=1, le=90, description="統計天數")
+    days: int = Query(30, ge=1, le=MAX_STAT_RANGE_DAYS, description="統計天數"),
+    start_date: Optional[date] = Query(None, description="開始日期 (YYYY-MM-DD)"),
+    end_date: Optional[date] = Query(None, description="結束日期 (YYYY-MM-DD)")
 ):
     """
     總覽儀表板 - 顯示關鍵指標
@@ -164,7 +189,7 @@ async def get_overview(
         - recent_activity: 最近活動摘要（前10筆）
     """
     try:
-        start_date, end_date = _get_date_range(days)
+        start_date, end_date, _, _, range_days = _resolve_date_range(days, start_date, end_date)
 
         async with SessionLocal() as session:
             # 統計團隊數
@@ -264,7 +289,7 @@ async def get_overview(
             "date_range": {
                 "start": start_date,
                 "end": end_date,
-                "days": days
+                "days": range_days
             }
         })
 
@@ -276,7 +301,9 @@ async def get_overview(
 @router.get("/team_activity", include_in_schema=False)
 async def get_team_activity(
     current_user: User = Depends(require_admin()),
-    days: int = Query(30, ge=1, le=90, description="統計天數")
+    days: int = Query(30, ge=1, le=MAX_STAT_RANGE_DAYS, description="統計天數"),
+    start_date: Optional[date] = Query(None, description="開始日期 (YYYY-MM-DD)"),
+    end_date: Optional[date] = Query(None, description="結束日期 (YYYY-MM-DD)")
 ):
     """
     團隊活動分析 - 基於審計日誌
@@ -286,8 +313,7 @@ async def get_team_activity(
         - top_active_teams: 最活躍團隊列表（前10）
     """
     try:
-        start_date, end_date = _get_date_range(days)
-        start_dt = datetime.fromisoformat(start_date + "T00:00:00+00:00")
+        start_date, end_date, start_dt, end_dt, range_days = _resolve_date_range(days, start_date, end_date)
 
         # 獲取團隊資訊
         async with SessionLocal() as session:
@@ -307,6 +333,7 @@ async def get_team_activity(
                 )
                 .where(
                     AuditLogTable.timestamp >= start_dt,
+                    AuditLogTable.timestamp <= end_dt,
                     AuditLogTable.team_id > 0
                 )
             )
@@ -354,7 +381,7 @@ async def get_team_activity(
             "date_range": {
                 "start": start_date,
                 "end": end_date,
-                "days": days
+                "days": range_days
             }
         })
 
@@ -366,7 +393,9 @@ async def get_team_activity(
 @router.get("/test_case_trends", include_in_schema=False)
 async def get_test_case_trends(
     current_user: User = Depends(require_admin()),
-    days: int = Query(30, ge=1, le=90, description="統計天數")
+    days: int = Query(30, ge=1, le=MAX_STAT_RANGE_DAYS, description="統計天數"),
+    start_date: Optional[date] = Query(None, description="開始日期 (YYYY-MM-DD)"),
+    end_date: Optional[date] = Query(None, description="結束日期 (YYYY-MM-DD)")
 ):
     """
     測試案例趨勢分析
@@ -377,7 +406,7 @@ async def get_test_case_trends(
         - overall: 全域彙總（每日新增/更新及總量）
     """
     try:
-        start_date_str, end_date_str = _get_date_range(days)
+        start_date_str, end_date_str, _, _, range_days = _resolve_date_range(days, start_date, end_date)
         start_date_obj = date.fromisoformat(start_date_str)
         end_date_obj = date.fromisoformat(end_date_str)
 
@@ -506,7 +535,7 @@ async def get_test_case_trends(
             "date_range": {
                 "start": start_date_str,
                 "end": end_date_str,
-                "days": days
+                "days": range_days
             }
         }
 
@@ -520,7 +549,9 @@ async def get_test_case_trends(
 @router.get("/test_run_metrics", include_in_schema=False)
 async def get_test_run_metrics(
     current_user: User = Depends(require_admin()),
-    days: int = Query(30, ge=1, le=90, description="統計天數")
+    days: int = Query(30, ge=1, le=MAX_STAT_RANGE_DAYS, description="統計天數"),
+    start_date: Optional[date] = Query(None, description="開始日期 (YYYY-MM-DD)"),
+    end_date: Optional[date] = Query(None, description="結束日期 (YYYY-MM-DD)")
 ):
     """
     測試執行指標分析
@@ -534,7 +565,7 @@ async def get_test_run_metrics(
         - overall: 全域彙總（每日執行及通過率）
     """
     try:
-        start_date_str, end_date_str = _get_date_range(days)
+        start_date_str, end_date_str, _, _, range_days = _resolve_date_range(days, start_date, end_date)
         start_date_obj = date.fromisoformat(start_date_str)
         end_date_obj = date.fromisoformat(end_date_str)
 
@@ -574,10 +605,10 @@ async def get_test_run_metrics(
                 text("""
                     SELECT new_result, COUNT(*) as cnt
                     FROM test_run_item_result_history
-                    WHERE date(changed_at) >= :start_date
+                    WHERE date(changed_at) BETWEEN :start_date AND :end_date
                     GROUP BY new_result
                 """),
-                {"start_date": start_date_str}
+                {"start_date": start_date_str, "end_date": end_date_str}
             )
             by_status = {
                 row[0] or "unknown": int(row[1])
@@ -605,11 +636,11 @@ async def get_test_run_metrics(
                     SELECT tri.team_id, t.name, COUNT(*) as cnt
                     FROM test_run_items tri
                     LEFT JOIN teams t ON tri.team_id = t.id
-                    WHERE date(tri.created_at) >= :start_date AND tri.team_id > 0
+                    WHERE date(tri.created_at) BETWEEN :start_date AND :end_date AND tri.team_id > 0
                     GROUP BY tri.team_id, t.name
                     ORDER BY cnt DESC
                 """),
-                {"start_date": start_date_str}
+                {"start_date": start_date_str, "end_date": end_date_str}
             )
             by_team = [
                 {
@@ -741,7 +772,7 @@ async def get_test_run_metrics(
             "date_range": {
                 "start": start_date_str,
                 "end": end_date_str,
-                "days": days
+                "days": range_days
             }
         }
 
@@ -755,7 +786,9 @@ async def get_test_run_metrics(
 @router.get("/user_activity", include_in_schema=False)
 async def get_user_activity(
     current_user: User = Depends(require_admin()),
-    days: int = Query(30, ge=1, le=90, description="統計天數")
+    days: int = Query(30, ge=1, le=MAX_STAT_RANGE_DAYS, description="統計天數"),
+    start_date: Optional[date] = Query(None, description="開始日期 (YYYY-MM-DD)"),
+    end_date: Optional[date] = Query(None, description="結束日期 (YYYY-MM-DD)")
 ):
     """
     使用者行為分析 - 基於審計日誌
@@ -766,8 +799,7 @@ async def get_user_activity(
         - hourly_distribution: 每小時活動分佈
     """
     try:
-        start_date, end_date = _get_date_range(days)
-        start_dt = datetime.fromisoformat(start_date + "T00:00:00+00:00")
+        start_date, end_date, start_dt, end_dt, range_days = _resolve_date_range(days, start_date, end_date)
 
         async with get_audit_session() as audit_session:
             logs_result = await audit_session.execute(
@@ -779,7 +811,10 @@ async def get_user_activity(
                     AuditLogTable.resource_type,
                     AuditLogTable.details,
                     AuditLogTable.timestamp
-                ).where(AuditLogTable.timestamp >= start_dt)
+                ).where(
+                    AuditLogTable.timestamp >= start_dt,
+                    AuditLogTable.timestamp <= end_dt
+                )
             )
             user_counter: Dict[int, Dict[str, Any]] = {}
             operation_counter: Dict[str, int] = {}
@@ -818,7 +853,7 @@ async def get_user_activity(
             "date_range": {
                 "start": start_date,
                 "end": end_date,
-                "days": days
+                "days": range_days
             }
         })
 
@@ -830,7 +865,9 @@ async def get_user_activity(
 @router.get("/audit_analysis", include_in_schema=False)
 async def get_audit_analysis(
     current_user: User = Depends(require_admin()),
-    days: int = Query(30, ge=1, le=90, description="統計天數")
+    days: int = Query(30, ge=1, le=MAX_STAT_RANGE_DAYS, description="統計天數"),
+    start_date: Optional[date] = Query(None, description="開始日期 (YYYY-MM-DD)"),
+    end_date: Optional[date] = Query(None, description="結束日期 (YYYY-MM-DD)")
 ):
     """
     審計日誌深度分析
@@ -842,8 +879,7 @@ async def get_audit_analysis(
         - daily_trend: 每日操作趨勢
     """
     try:
-        start_date, end_date = _get_date_range(days)
-        start_dt = datetime.fromisoformat(start_date + "T00:00:00+00:00")
+        start_date, end_date, start_dt, end_dt, range_days = _resolve_date_range(days, start_date, end_date)
 
         async with get_audit_session() as audit_session:
             # 按資源類型分佈
@@ -851,11 +887,11 @@ async def get_audit_analysis(
                 text("""
                     SELECT resource_type, COUNT(*) as cnt
                     FROM audit_logs
-                    WHERE timestamp >= :start_dt
+                    WHERE timestamp >= :start_dt AND timestamp <= :end_dt
                     GROUP BY resource_type
                     ORDER BY cnt DESC
                 """),
-                {"start_dt": start_dt}
+                {"start_dt": start_dt, "end_dt": end_dt}
             )
             by_resource_type = {
                 row[0]: int(row[1])
@@ -867,10 +903,10 @@ async def get_audit_analysis(
                 text("""
                     SELECT severity, COUNT(*) as cnt
                     FROM audit_logs
-                    WHERE timestamp >= :start_dt
+                    WHERE timestamp >= :start_dt AND timestamp <= :end_dt
                     GROUP BY severity
                 """),
-                {"start_dt": start_dt}
+                {"start_dt": start_dt, "end_dt": end_dt}
             )
             by_severity = {
                 row[0]: int(row[1])
@@ -883,11 +919,11 @@ async def get_audit_analysis(
                     SELECT id, timestamp, username, action_type, resource_type,
                            resource_id, action_brief, team_id
                     FROM audit_logs
-                    WHERE timestamp >= :start_dt AND severity = 'critical'
+                    WHERE timestamp >= :start_dt AND timestamp <= :end_dt AND severity = 'critical'
                     ORDER BY timestamp DESC
                     LIMIT 50
                 """),
-                {"start_dt": start_dt}
+                {"start_dt": start_dt, "end_dt": end_dt}
             )
             critical_actions = [
                 {
@@ -908,11 +944,11 @@ async def get_audit_analysis(
                 text("""
                     SELECT date(timestamp) as day, COUNT(*) as cnt
                     FROM audit_logs
-                    WHERE timestamp >= :start_dt
+                    WHERE timestamp >= :start_dt AND timestamp <= :end_dt
                     GROUP BY day
                     ORDER BY day ASC
                 """),
-                {"start_dt": start_dt}
+                {"start_dt": start_dt, "end_dt": end_dt}
             )
             daily_trend = [
                 {"date": row[0], "count": int(row[1])}
@@ -927,7 +963,7 @@ async def get_audit_analysis(
             "date_range": {
                 "start": start_date,
                 "end": end_date,
-                "days": days
+                "days": range_days
             }
         })
 
@@ -939,7 +975,9 @@ async def get_audit_analysis(
 @router.get("/department_stats", include_in_schema=False)
 async def get_department_stats(
     current_user: User = Depends(require_admin()),
-    days: int = Query(30, ge=1, le=90, description="統計天數")
+    days: int = Query(30, ge=1, le=MAX_STAT_RANGE_DAYS, description="統計天數"),
+    start_date: Optional[date] = Query(None, description="開始日期 (YYYY-MM-DD)"),
+    end_date: Optional[date] = Query(None, description="結束日期 (YYYY-MM-DD)")
 ):
     """
     部門與人員統計 - 基於 Lark 組織架構
@@ -950,8 +988,7 @@ async def get_department_stats(
         - user_distribution: 使用者角色分佈
     """
     try:
-        start_date, end_date = _get_date_range(days)
-        start_dt = datetime.fromisoformat(start_date + "T00:00:00+00:00")
+        start_date, end_date, start_dt, end_dt, range_days = _resolve_date_range(days, start_date, end_date)
 
         async with SessionLocal() as session:
             dept_rows = await session.execute(
@@ -1033,12 +1070,12 @@ async def get_department_stats(
                 text("""
                     SELECT username, COUNT(*) as action_count
                     FROM audit_logs
-                    WHERE timestamp >= :start_dt
+                    WHERE timestamp >= :start_dt AND timestamp <= :end_dt
                     GROUP BY username
                     ORDER BY action_count DESC
                     LIMIT 50
                 """),
-                {"start_dt": start_dt}
+                {"start_dt": start_dt, "end_dt": end_dt}
             )
             by_department_users = [
                 {"username": row[0], "action_count": int(row[1])}
@@ -1052,7 +1089,7 @@ async def get_department_stats(
             "date_range": {
                 "start": start_date,
                 "end": end_date,
-                "days": days
+                "days": range_days
             }
         })
 

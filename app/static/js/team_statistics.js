@@ -16,6 +16,9 @@
 
     // 全域變數
     let currentDays = 30;  // 預設統計天數
+    let customStartDate = null;
+    let customEndDate = null;
+    const MAX_CUSTOM_RANGE_DAYS = 90;
     const charts = {};  // 儲存所有圖表實例
     let authClient = null;
     let cachedUserInfo = null;
@@ -75,10 +78,10 @@
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 
-    function translate(key, fallback) {
+    function translate(key, fallback, params = {}) {
         try {
             if (window.i18n && typeof window.i18n.t === 'function') {
-                const value = window.i18n.t(key);
+                const value = window.i18n.t(key, params);
                 if (value && value !== key) {
                     return value;
                 }
@@ -87,6 +90,106 @@
             console.warn('翻譯字串取得失敗:', err);
         }
         return fallback;
+    }
+
+    function buildStatsQueryParams() {
+        if (customStartDate && customEndDate) {
+            return `start_date=${encodeURIComponent(customStartDate)}&end_date=${encodeURIComponent(customEndDate)}`;
+        }
+        return `days=${currentDays}`;
+    }
+
+    function buildStatsUrl(endpoint) {
+        return `/api/admin/team_statistics/${endpoint}?${buildStatsQueryParams()}`;
+    }
+
+    function parseDateValue(value) {
+        if (!value) return null;
+        const parts = value.split('-').map(Number);
+        if (parts.length !== 3 || parts.some(Number.isNaN)) {
+            return null;
+        }
+        return new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
+    }
+
+    function calculateRangeDays(startValue, endValue) {
+        const startDateObj = parseDateValue(startValue);
+        const endDateObj = parseDateValue(endValue);
+        if (!startDateObj || !endDateObj) return null;
+        const diffMs = endDateObj.getTime() - startDateObj.getTime();
+        return Math.floor(diffMs / (24 * 60 * 60 * 1000)) + 1;
+    }
+
+    function updateCustomRangeDisplay(startValue, endValue) {
+        const display = document.getElementById('custom-range-display');
+        if (!display) return;
+
+        if (startValue && endValue) {
+            const separator = translate('teamStats.to', 'to');
+            display.textContent = `${startValue} ${separator} ${endValue}`;
+            return;
+        }
+
+        display.textContent = '';
+    }
+
+    function clearCustomRangeInputs() {
+        const startInput = document.getElementById('custom-range-start');
+        const endInput = document.getElementById('custom-range-end');
+        if (startInput) startInput.value = '';
+        if (endInput) endInput.value = '';
+        updateCustomRangeDisplay(null, null);
+        const dropdownToggle = document.getElementById('custom-range-toggle');
+        if (dropdownToggle) dropdownToggle.classList.remove('active');
+    }
+
+    function applyCustomRange() {
+        const startInput = document.getElementById('custom-range-start');
+        const endInput = document.getElementById('custom-range-end');
+        const startValue = startInput ? startInput.value : '';
+        const endValue = endInput ? endInput.value : '';
+
+        if (!startValue || !endValue) {
+            AppUtils.showError(
+                translate('teamStats.customRangeMissing', '請選擇開始與結束日期')
+            );
+            return;
+        }
+
+        const rangeDays = calculateRangeDays(startValue, endValue);
+        if (!rangeDays || rangeDays <= 0) {
+            AppUtils.showError(
+                translate('teamStats.customRangeInvalid', '結束日期不可早於開始日期')
+            );
+            return;
+        }
+
+        if (rangeDays > MAX_CUSTOM_RANGE_DAYS) {
+            AppUtils.showError(
+                translate(
+                    'teamStats.customRangeTooLong',
+                    `日期區間不可超過 ${MAX_CUSTOM_RANGE_DAYS} 天`,
+                    { max: MAX_CUSTOM_RANGE_DAYS }
+                )
+            );
+            return;
+        }
+
+        customStartDate = startValue;
+        customEndDate = endValue;
+        currentDays = rangeDays;
+
+        document.querySelectorAll('[data-days]').forEach(btn => btn.classList.remove('active'));
+        updateCustomRangeDisplay(startValue, endValue);
+        loadAllStatistics();
+
+        const dropdownToggle = document.getElementById('custom-range-toggle');
+        if (dropdownToggle) dropdownToggle.classList.add('active');
+        if (dropdownToggle && window.bootstrap && window.bootstrap.Dropdown) {
+            const instance = window.bootstrap.Dropdown.getInstance(dropdownToggle)
+                || new window.bootstrap.Dropdown(dropdownToggle);
+            instance.hide();
+        }
     }
 
     /**
@@ -99,9 +202,19 @@
                 document.querySelectorAll('[data-days]').forEach(b => b.classList.remove('active'));
                 this.classList.add('active');
                 currentDays = parseInt(this.getAttribute('data-days'));
+                customStartDate = null;
+                customEndDate = null;
+                clearCustomRangeInputs();
                 loadAllStatistics();
             });
         });
+
+        const customApplyBtn = document.getElementById('custom-range-apply');
+        if (customApplyBtn) {
+            customApplyBtn.addEventListener('click', function() {
+                applyCustomRange();
+            });
+        }
 
         // 刷新按鈕
         document.getElementById('refresh-stats-btn').addEventListener('click', async function() {
@@ -177,7 +290,7 @@
     async function loadOverview() {
         try {
             const data = await fetchStatsJson(
-                `/api/admin/team_statistics/overview?days=${currentDays}`
+                buildStatsUrl('overview')
             );
 
             // 更新關鍵指標卡片
@@ -239,7 +352,7 @@
     async function loadTeamActivity() {
         try {
             const data = await fetchStatsJson(
-                `/api/admin/team_statistics/team_activity?days=${currentDays}`
+                buildStatsUrl('team_activity')
             );
 
             // 渲染最活躍團隊圖表
@@ -276,7 +389,7 @@
     async function loadTestCaseTrends() {
         try {
             const data = await fetchStatsJson(
-                `/api/admin/team_statistics/test_case_trends?days=${currentDays}`
+                buildStatsUrl('test_case_trends')
             );
 
             const hasTeamDaily = Array.isArray(data?.per_team_daily) && data.per_team_daily.length > 0;
@@ -305,7 +418,7 @@
     async function loadTestRunMetrics() {
         try {
             const data = await fetchStatsJson(
-                `/api/admin/team_statistics/test_run_metrics?days=${currentDays}`
+                buildStatsUrl('test_run_metrics')
             );
 
             const dates = data.dates || [];
@@ -355,7 +468,7 @@
     async function loadUserActivity() {
         try {
             const data = await fetchStatsJson(
-                `/api/admin/team_statistics/user_activity?days=${currentDays}`
+                buildStatsUrl('user_activity')
             );
 
             // 渲染最活躍使用者圖表
@@ -384,7 +497,7 @@
     async function loadAuditAnalysis() {
         try {
             const data = await fetchStatsJson(
-                `/api/admin/team_statistics/audit_analysis?days=${currentDays}`
+                buildStatsUrl('audit_analysis')
             );
 
             // 渲染資源類型分佈圖表
@@ -429,7 +542,7 @@
     async function loadDepartmentStats() {
         try {
             const data = await fetchStatsJson(
-                `/api/admin/team_statistics/department_stats?days=${currentDays}`
+                buildStatsUrl('department_stats')
             );
 
             // 更新部門列表表格

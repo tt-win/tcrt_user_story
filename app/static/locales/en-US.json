@@ -83,6 +83,13 @@
     "days7": "7 Days",
     "days30": "30 Days",
     "days90": "90 Days",
+    "customRange": "Custom Range",
+    "startDate": "Start Date",
+    "endDate": "End Date",
+    "to": "to",
+    "customRangeMissing": "Please select both start and end dates",
+    "customRangeInvalid": "End date cannot be earlier than start date",
+    "customRangeTooLong": "Date range cannot exceed {max} days",
     "tabs": {
       "overview": "Overview",
       "teamActivity": "Team Activity",

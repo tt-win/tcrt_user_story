@@ -18,6 +18,54 @@ endblock %} {% block page_title_text %}<span data-i18n="teamStats.pageTitle"
     </button>
 </div>
 
+<!-- 自訂日期範圍 -->
+<div class="dropdown me-2">
+    <button
+        class="btn btn-sm btn-primary dropdown-toggle"
+        type="button"
+        id="custom-range-toggle"
+        data-bs-toggle="dropdown"
+        data-bs-auto-close="outside"
+        aria-expanded="false"
+    >
+        <span data-i18n="teamStats.customRange">自訂區間</span>
+        <span class="ms-1 small opacity-75" id="custom-range-display"></span>
+    </button>
+    <div
+        class="dropdown-menu dropdown-menu-end p-2 team-stats-range-menu"
+        aria-labelledby="custom-range-toggle"
+    >
+        <div class="input-group input-group-sm team-stats-range-group">
+            <input
+                type="date"
+                class="form-control"
+                id="custom-range-start"
+                aria-label="開始日期"
+                data-i18n-aria-label="teamStats.startDate"
+                data-i18n-title="teamStats.startDate"
+                title="開始日期"
+            />
+            <span class="input-group-text" data-i18n="teamStats.to">至</span>
+            <input
+                type="date"
+                class="form-control"
+                id="custom-range-end"
+                aria-label="結束日期"
+                data-i18n-aria-label="teamStats.endDate"
+                data-i18n-title="teamStats.endDate"
+                title="結束日期"
+            />
+            <button
+                type="button"
+                class="btn btn-primary btn-sm"
+                id="custom-range-apply"
+            >
+                <span data-i18n="common.apply">套用</span>
+            </button>
+        </div>
+    </div>
+</div>
+
 <!-- 刷新按鈕 -->
 <button
     type="button"
@@ -58,6 +106,24 @@ endblock %} {% block page_title_text %}<span data-i18n="teamStats.pageTitle"
             max-height: none !important; /* 移除表格最大高度限制 */
             flex: 1; /* 讓表格佔據剩餘空間 */
             overflow-y: auto; /* 啟用內部滾動 */
+        }
+        .team-stats-range-group {
+            margin-bottom: 0 !important;
+            flex-wrap: nowrap;
+        }
+        .team-stats-range-group .form-control {
+            min-width: 140px;
+        }
+        .team-stats-range-menu {
+            min-width: 380px;
+        }
+        @media (max-width: 1200px) {
+            .team-stats-range-group .form-control {
+                min-width: 120px;
+            }
+            .team-stats-range-menu {
+                min-width: 340px;
+            }
         }
 </style>
 <div class="container-fluid py-3">
