@@ -986,6 +986,8 @@
     "batchModifySuccess": "已批次修改 {count} 個項目",
     "batchSetAssignee": "批次設定執行者",
     "batchSetResult": "批次設定測試結果",
+    "batchSetComment": "批次設定註釋",
+    "enterComment": "輸入註釋內容",
     "batchStart": "批次開始",
     "batchStartFailed": "批次開始失敗",
     "bugTicketAdded": "Bug Ticket 新增成功",

@@ -1717,6 +1717,24 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                         <option value="Skip">Skip</option>
                     </select>
                 </div>
+
+                <!-- 註釋批次設定 -->
+                <div class="mb-3">
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" id="batchModifyComment">
+                        <label class="form-check-label" for="batchModifyComment">
+                            <strong data-i18n="testRun.batchSetComment">批次設定註釋</strong>
+                        </label>
+                    </div>
+                    <textarea
+                        class="form-control"
+                        id="batchCommentInput"
+                        rows="2"
+                        disabled
+                        data-i18n-placeholder="testRun.enterComment"
+                        placeholder="{{ i18n.t('testRun.enterComment') if i18n else '輸入註釋內容' }}"
+                    ></textarea>
+                </div>
                 
                 <div class="alert alert-info" role="alert">
                     <i class="fas fa-info-circle me-2"></i>
@@ -3087,6 +3105,7 @@ function initializePage() {
     document.getElementById('confirmBatchModifyBtn').addEventListener('click', handleBatchModifyConfirm);
     document.getElementById('batchModifyAssignee').addEventListener('change', toggleBatchAssigneeInput);
     document.getElementById('batchModifyResult').addEventListener('change', toggleBatchResultSelect);
+    document.getElementById('batchModifyComment').addEventListener('change', toggleBatchCommentInput);
     
     // 初始化 AssigneeSelector 元件（批次修改模態框中的）
     if (window.AssigneeSelector && currentTeamId) {
@@ -4530,9 +4549,12 @@ function showBatchModifyModal() {
     document.getElementById('batchResultSelect').value = '';
     document.getElementById('batchModifyAssignee').checked = true;
     document.getElementById('batchModifyResult').checked = false;
+    document.getElementById('batchCommentInput').value = '';
+    document.getElementById('batchModifyComment').checked = false;
     
     toggleBatchAssigneeInput();
     toggleBatchResultSelect();
+    toggleBatchCommentInput();
     
     batchModifyModal.show();
 }
@@ -4549,6 +4571,12 @@ function toggleBatchResultSelect() {
     select.disabled = !checkbox.checked;
 }
 
+function toggleBatchCommentInput() {
+    const checkbox = document.getElementById('batchModifyComment');
+    const input = document.getElementById('batchCommentInput');
+    input.disabled = !checkbox.checked;
+}
+
 async function handleBatchModifyConfirm() {
     if (!getTrePermissions().canBatchModify) {
         showExecutionPermissionDenied();
@@ -4557,10 +4585,12 @@ async function handleBatchModifyConfirm() {
     try {
         const modifyAssignee = document.getElementById('batchModifyAssignee').checked;
         const modifyResult = document.getElementById('batchModifyResult').checked;
+        const modifyComment = document.getElementById('batchModifyComment').checked;
         const assigneeName = document.getElementById('batchAssigneeInput').value.trim();
         const testResult = document.getElementById('batchResultSelect').value;
+        const comment = document.getElementById('batchCommentInput').value.trim();
         
-        if (!modifyAssignee && !modifyResult) {
+        if (!modifyAssignee && !modifyResult && !modifyComment) {
             const selectOptionMsg = window.i18n && window.i18n.isReady() 
                 ? window.i18n.t('testRun.selectAtLeastOneOption')
                 : '{{ i18n.t("testRun.selectAtLeastOneOption") if i18n else "請至少選擇一個要修改的項目" }}';
@@ -4583,8 +4613,16 @@ async function handleBatchModifyConfirm() {
             AppUtils.showWarning(selectResultMsg);
             return;
         }
+
+        if (modifyComment && !comment) {
+            const enterCommentMsg = window.i18n && window.i18n.isReady()
+                ? window.i18n.t('testRun.enterComment')
+                : '{{ i18n.t("testRun.enterComment") if i18n else "請輸入註釋內容" }}';
+            AppUtils.showWarning(enterCommentMsg);
+            return;
+        }
         
-        await batchModifyItems({ modifyAssignee, modifyResult, assigneeName, testResult });
+        await batchModifyItems({ modifyAssignee, modifyResult, modifyComment, assigneeName, testResult, comment });
         batchModifyModal.hide();
         
     } catch (error) {
@@ -4614,6 +4652,10 @@ async function batchModifyItems(modifications) {
             if (modifications.modifyResult) {
                 updateData.test_result = modifications.testResult;
                 updateData.executed_at = new Date().toISOString();
+            }
+
+            if (modifications.modifyComment) {
+                updateData.comment = modifications.comment;
             }
 
             return updateData;
@@ -4664,6 +4706,10 @@ async function batchModifyItems(modifications) {
             const isShown = modalEl && modalEl.classList.contains('show');
             if (isShown && currentDetailTestCase && currentDetailTestCase.test_case_number) {
                 renderResultHistoryTimeline({ test_case_number: currentDetailTestCase.test_case_number });
+                const detailItem = testRunItems.find(it => it.test_case_number === currentDetailTestCase.test_case_number);
+                if (detailItem && detailItem.id) {
+                    loadComment(detailItem.id);
+                }
             }
         } catch (_) {}
 
