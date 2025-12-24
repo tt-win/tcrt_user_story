@@ -93,8 +93,19 @@
     }
 
     function buildStatsQueryParams() {
-        if (customStartDate && customEndDate) {
-            return `start_date=${encodeURIComponent(customStartDate)}&end_date=${encodeURIComponent(customEndDate)}`;
+        let startValue = customStartDate;
+        let endValue = customEndDate;
+        if (!startValue || !endValue) {
+            const inputs = getCustomRangeInputValues();
+            if (inputs.startValue && inputs.endValue) {
+                startValue = inputs.startValue;
+                endValue = inputs.endValue;
+                customStartDate = startValue;
+                customEndDate = endValue;
+            }
+        }
+        if (startValue && endValue) {
+            return `start_date=${encodeURIComponent(startValue)}&end_date=${encodeURIComponent(endValue)}`;
         }
         return `days=${currentDays}`;
     }
@@ -133,6 +144,14 @@
         display.textContent = '';
     }
 
+    function getCustomRangeInputValues() {
+        const startInput = document.getElementById('custom-range-start');
+        const endInput = document.getElementById('custom-range-end');
+        const startValue = startInput ? startInput.value.trim() : '';
+        const endValue = endInput ? endInput.value.trim() : '';
+        return { startValue, endValue };
+    }
+
     function clearCustomRangeInputs() {
         const startInput = document.getElementById('custom-range-start');
         const endInput = document.getElementById('custom-range-end');
@@ -144,10 +163,7 @@
     }
 
     function applyCustomRange() {
-        const startInput = document.getElementById('custom-range-start');
-        const endInput = document.getElementById('custom-range-end');
-        const startValue = startInput ? startInput.value : '';
-        const endValue = endInput ? endInput.value : '';
+        const { startValue, endValue } = getCustomRangeInputValues();
 
         if (!startValue || !endValue) {
             AppUtils.showError(
@@ -211,10 +227,30 @@
 
         const customApplyBtn = document.getElementById('custom-range-apply');
         if (customApplyBtn) {
-            customApplyBtn.addEventListener('click', function() {
+            customApplyBtn.addEventListener('click', function(event) {
+                event.preventDefault();
+                event.stopPropagation();
                 applyCustomRange();
             });
         }
+
+        const rangeStartInput = document.getElementById('custom-range-start');
+        const rangeEndInput = document.getElementById('custom-range-end');
+        const rangeInputs = [rangeStartInput, rangeEndInput].filter(Boolean);
+        rangeInputs.forEach(input => {
+            input.addEventListener('change', () => {
+                const { startValue, endValue } = getCustomRangeInputValues();
+                if (startValue && endValue) {
+                    updateCustomRangeDisplay(startValue, endValue);
+                }
+            });
+            input.addEventListener('keydown', (event) => {
+                if (event.key === 'Enter') {
+                    event.preventDefault();
+                    applyCustomRange();
+                }
+            });
+        });
 
         // 刷新按鈕
         document.getElementById('refresh-stats-btn').addEventListener('click', async function() {
