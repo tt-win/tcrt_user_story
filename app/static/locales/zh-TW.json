@@ -83,6 +83,13 @@
     "days7": "7天",
     "days30": "30天",
     "days90": "90天",
+    "customRange": "自訂區間",
+    "startDate": "開始日期",
+    "endDate": "結束日期",
+    "to": "至",
+    "customRangeMissing": "請選擇開始與結束日期",
+    "customRangeInvalid": "結束日期不可早於開始日期",
+    "customRangeTooLong": "日期區間不可超過 {max} 天",
     "tabs": {
       "overview": "總覽",
       "teamActivity": "團隊活動",
