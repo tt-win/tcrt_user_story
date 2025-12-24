@@ -987,6 +987,8 @@
     "batchModifySuccess": "Modified {count} items",
     "batchSetAssignee": "Batch Set Assignee",
     "batchSetResult": "Batch Set Test Result",
+    "batchSetComment": "Batch Set Comment",
+    "enterComment": "Enter comment",
     "batchStart": "Batch Start",
     "batchStartFailed": "Batch start failed",
     "bugTicketAdded": "Bug Ticket added successfully",

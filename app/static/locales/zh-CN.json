@@ -954,6 +954,8 @@
     "batchModifySuccess": "已批次修改 {count} 个项目",
     "batchSetAssignee": "批次设置执行者",
     "batchSetResult": "批次设置测试结果",
+    "batchSetComment": "批次设置备注",
+    "enterComment": "输入备注内容",
     "batchStart": "批次开始",
     "batchStartFailed": "批次开始失败",
     "bugTicketAdded": "Bug Ticket 新增成功",

@@ -310,7 +310,7 @@ class BatchCreateResponse(BaseModel):
 
 
 class BatchUpdateResultRequest(BaseModel):
-    updates: List[Dict[str, Any]]  # each { id: int, test_result?: str, executed_at?: datetime, assignee_name?: str, change_reason?: str }
+    updates: List[Dict[str, Any]]  # each { id: int, test_result?: str, executed_at?: datetime, assignee_name?: str, comment?: str, change_reason?: str }
     change_source: Optional[str] = None  # batch
 
 
@@ -891,8 +891,12 @@ async def batch_update_results(
     for upd in payload.updates:
         try:
             item_id = upd.get('id')
+            comment_raw = upd.get('comment') if 'comment' in upd else None
+            comment_text = comment_raw.strip() if isinstance(comment_raw, str) else None
+            has_basic_update = any(key in upd for key in ['test_result', 'assignee_name', 'executed_at'])
+            has_comment_update = bool(comment_text)
             # 檢查是否至少有一個要更新的欄位
-            if not item_id or not any(key in upd for key in ['test_result', 'assignee_name', 'executed_at']):
+            if not item_id or (not has_basic_update and not has_comment_update):
                 errors.append("缺少 id 或更新欄位")
                 continue
 
@@ -955,6 +959,18 @@ async def batch_update_results(
                 changed_by_id=str(current_user.id) if current_user else None,
                 changed_by_name=current_user.full_name or current_user.username if current_user else None
             )
+
+            # 記錄註釋（comment）歷程
+            if has_comment_update:
+                _add_result_history(
+                    db, item,
+                    item.test_result, item.executed_at,
+                    item.test_result, item.executed_at,
+                    source='comment',
+                    reason=comment_text,
+                    changed_by_id=str(current_user.id) if current_user else None,
+                    changed_by_name=current_user.full_name or current_user.username if current_user else None
+                )
 
             item.updated_at = datetime.utcnow()
             success += 1
