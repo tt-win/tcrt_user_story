@@ -2712,6 +2712,8 @@ function toggleSectionCollapse(sectionId) {
 
     // 4. 更新所有子/後代 Section 的 Row 可見性 (取代 renderTestCasesTable)
     updateAllSectionsVisibility();
+    // 收合後補足渲染，避免尾端區段（如 Unassigned）尚未載入
+    setTimeout(() => fillViewportIfNeeded('collapse'), 0);
 }
 
 /**
@@ -4194,6 +4196,7 @@ function renderTestCasesTable() {
     stack.innerHTML = '';
     ensureVirtualScrollHandler();
     renderNextBatch(); // 首次渲染一批
+    fillViewportIfNeeded('initial');
 }
 
 function renderNextBatch() {
@@ -4224,6 +4227,7 @@ function renderNextBatch() {
 }
 
 let tcmVirtualScrollBound = false;
+let tcmFillViewportLock = false;
 function ensureVirtualScrollHandler() {
     if (tcmVirtualScrollBound) return;
     const scrollBox = document.getElementById('testCasesScroll');
@@ -4235,6 +4239,29 @@ function ensureVirtualScrollHandler() {
             renderNextBatch();
         }
     });
+}
+
+function fillViewportIfNeeded(reason = '') {
+    if (tcmFillViewportLock) return;
+    const scrollBox = document.getElementById('testCasesScroll');
+    if (!scrollBox || typeof renderNextBatch !== 'function') return;
+    if (!Array.isArray(tcmRenderQueue) || tcmRenderQueue.length === 0) return;
+    tcmFillViewportLock = true;
+    try {
+        const threshold = 120;
+        let guard = 0;
+        while (tcmRenderQueue.length &&
+               scrollBox.scrollHeight <= scrollBox.clientHeight + threshold &&
+               guard < 50) {
+            renderNextBatch();
+            guard += 1;
+        }
+        if (guard >= 50) {
+            console.warn('[TCM] fillViewportIfNeeded guard hit', { reason });
+        }
+    } finally {
+        tcmFillViewportLock = false;
+    }
 }
 
 
