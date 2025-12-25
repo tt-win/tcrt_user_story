@@ -685,9 +685,26 @@ class TestCaseSectionList {
       return;
     }
 
+    const ensureSectionRendered = () => {
+      if (typeof renderNextBatch !== 'function' || typeof tcmRenderQueue === 'undefined') {
+        return;
+      }
+      let guard = 0;
+      while (!document.querySelector(`[data-section-id="${sectionId}"]`) &&
+             tcmRenderQueue.length > 0 &&
+             guard < 50) {
+        renderNextBatch();
+        guard += 1;
+      }
+      if (guard >= 50) {
+        console.warn('[SectionList] renderNextBatch guard hit while looking for section:', sectionId);
+      }
+    };
+
     // 等待 DOM 更新後再滾動
     // 增加等待時間以確保 DOM 完全更新
     setTimeout(() => {
+      ensureSectionRendered();
       // 尋找 section header（.section-card-header）而不是 body
       // 這樣可以確保 header 在視口中可見
       const sectionCard = document.querySelector(`[data-section-id="${sectionId}"]`);
