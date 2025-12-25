@@ -2283,6 +2283,19 @@ function isUnassignedSectionIdValue(sectionId) {
     return false;
 }
 
+function resolveSectionIdForGrouping(testCase) {
+    if (testCase && testCase.test_case_section_id !== null && testCase.test_case_section_id !== undefined) {
+        return testCase.test_case_section_id;
+    }
+    if (tcmUnassignedSectionIds && tcmUnassignedSectionIds.size > 0) {
+        const fallbackId = Array.from(tcmUnassignedSectionIds)[0];
+        if (fallbackId !== undefined) {
+            return fallbackId;
+        }
+    }
+    return UNASSIGNED_SECTION_ID;
+}
+
 function groupTestCasesBySection(testCases) {
     const grouped = {};
 
@@ -2323,7 +2336,7 @@ function groupTestCasesBySection(testCases) {
 
     // 然後，將 test cases 分配到對應的 sections
     for (const tc of testCases) {
-        const sectionId = tc.test_case_section_id ?? UNASSIGNED_SECTION_ID;
+        const sectionId = resolveSectionIdForGrouping(tc);
         if (!grouped[sectionId]) {
             // 如果 test case 的 section 不在 sections tree 中，仍然創建一個 group
             // 但這通常不應該發生，除非數據不同步
@@ -2558,7 +2571,7 @@ function renderSectionBlockHTML(sectionGroup, rowsHtml, visible = true) {
             <div class="${rowClass}" data-section-row-id="${sectionGroup.sectionId}" style="${displayStyle}">
                 <div class="section-card-container">
                     <div class="section-card" data-section-id="${sectionGroup.sectionId}" style="--section-indent: ${indent};">
-                        <div class="section-card-header" style="${headerStyle}; cursor: pointer;" onclick="toggleSectionCollapse(${sectionGroup.sectionId})">
+                        <div class="section-card-header" style="${headerStyle}; cursor: pointer;" onclick="toggleSectionCollapse('${sectionGroup.sectionId}')">
                             <div class="section-title">
                                 <i class="fas fa-chevron-${isCollapsed ? 'right' : 'down'} me-2 section-toggle-icon" id="icon-${sectionGroup.sectionId}" data-section-id="${sectionGroup.sectionId}"></i>
                                 <i class="fas fa-folder"></i>
@@ -2576,7 +2589,7 @@ function renderSectionBlockHTML(sectionGroup, rowsHtml, visible = true) {
         <div class="${rowClass}" data-section-row-id="${sectionGroup.sectionId}" style="${displayStyle}">
             <div class="section-card-container">
                 <div class="section-card" data-section-id="${sectionGroup.sectionId}" style="--section-indent: ${indent};">
-                    <div class="section-card-header" style="${headerStyle}; cursor: pointer;" onclick="toggleSectionCollapse(${sectionGroup.sectionId})">
+                    <div class="section-card-header" style="${headerStyle}; cursor: pointer;" onclick="toggleSectionCollapse('${sectionGroup.sectionId}')">
                         <div class="section-title">
                             <i class="fas fa-chevron-${isCollapsed ? 'right' : 'down'} me-2 section-toggle-icon" id="icon-${sectionGroup.sectionId}" data-section-id="${sectionGroup.sectionId}"></i>
                             <i class="fas fa-folder"></i>
