@@ -90,6 +90,14 @@
     "customRangeMissing": "請選擇開始與結束日期",
     "customRangeInvalid": "結束日期不可早於開始日期",
     "customRangeTooLong": "日期區間不可超過 {max} 天",
+    "teamFilter": {
+      "label": "顯示團隊",
+      "summaryAll": "全部",
+      "summaryCount": "已選 {count} 個",
+      "noTeams": "無可用團隊",
+      "emptyError": "請至少選擇一個團隊",
+      "loadFailed": "載入團隊清單失敗"
+    },
     "tabs": {
       "overview": "總覽",
       "teamActivity": "團隊活動",

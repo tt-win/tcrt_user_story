@@ -22,6 +22,11 @@
     const charts = {};  // 儲存所有圖表實例
     let authClient = null;
     let cachedUserInfo = null;
+    let teamFilterTeams = [];
+    let teamFilterSelectedIds = new Set();
+    let teamFilterPendingIds = new Set();
+    let teamFilterInitialized = false;
+    const TEAM_FILTER_STORAGE_KEY = 'teamStatsSelectedTeams';
 
     bootstrapFallbackChart();
 
@@ -48,6 +53,7 @@
                 return;
             }
 
+            await initTeamFilter();
             initEventListeners();
             await loadAllStatistics();
         } catch (error) {
@@ -90,6 +96,193 @@
             console.warn('翻譯字串取得失敗:', err);
         }
         return fallback;
+    }
+
+    async function initTeamFilter() {
+        const toggle = document.getElementById('team-filter-toggle');
+        if (!toggle || teamFilterInitialized) return;
+        teamFilterInitialized = true;
+
+        try {
+            const response = await authFetch('/api/teams');
+            if (!response.ok) {
+                const body = await response.text().catch(() => '');
+                throw new Error(`Failed to load teams: ${response.status} ${body}`);
+            }
+            const teams = await response.json();
+            teamFilterTeams = Array.isArray(teams)
+                ? teams.filter(team => team && team.id !== null && team.id !== undefined)
+                : [];
+            teamFilterTeams.sort((a, b) => {
+                const nameA = String(a.name || '');
+                const nameB = String(b.name || '');
+                return nameA.localeCompare(nameB, 'zh-Hant');
+            });
+        } catch (error) {
+            console.error('載入團隊清單失敗:', error);
+            AppUtils.showError(translate('teamStats.teamFilter.loadFailed', '載入團隊清單失敗'));
+            teamFilterTeams = [];
+        }
+
+        initTeamFilterSelection();
+        renderTeamFilterOptions();
+        bindTeamFilterEvents();
+        updateTeamFilterSummary();
+    }
+
+    function initTeamFilterSelection() {
+        const allIds = teamFilterTeams.map(team => String(team.id));
+        let storedIds = [];
+        try {
+            const raw = sessionStorage.getItem(TEAM_FILTER_STORAGE_KEY);
+            if (raw) {
+                const parsed = JSON.parse(raw);
+                if (Array.isArray(parsed)) {
+                    storedIds = parsed.map(id => String(id));
+                }
+            }
+        } catch (_) {
+            storedIds = [];
+        }
+        const validStoredIds = storedIds.filter(id => allIds.includes(id));
+        const initialIds = validStoredIds.length > 0 ? validStoredIds : allIds;
+        teamFilterSelectedIds = new Set(initialIds);
+        teamFilterPendingIds = new Set(initialIds);
+    }
+
+    function renderTeamFilterOptions() {
+        const container = document.getElementById('team-filter-options');
+        if (!container) return;
+        if (container.hasAttribute('data-i18n')) {
+            container.removeAttribute('data-i18n');
+        }
+
+        if (!Array.isArray(teamFilterTeams) || teamFilterTeams.length === 0) {
+            container.innerHTML = `
+                <div class="text-muted small">
+                    ${translate('teamStats.teamFilter.noTeams', '無可用團隊')}
+                </div>
+            `;
+            return;
+        }
+
+        container.innerHTML = teamFilterTeams.map(team => `
+            <div class="form-check">
+                <input
+                    class="form-check-input team-filter-checkbox"
+                    type="checkbox"
+                    value="${escapeHtml(String(team.id))}"
+                    id="team-filter-${escapeHtml(String(team.id))}"
+                />
+                <label class="form-check-label" for="team-filter-${escapeHtml(String(team.id))}">
+                    ${escapeHtml(team.name || `Team #${team.id}`)}
+                </label>
+            </div>
+        `).join('');
+
+        syncTeamFilterCheckboxes();
+    }
+
+    function syncTeamFilterCheckboxes() {
+        const checkboxes = document.querySelectorAll('.team-filter-checkbox');
+        if (!checkboxes.length) return;
+        checkboxes.forEach(box => {
+            const id = String(box.value);
+            box.checked = teamFilterPendingIds.has(id);
+        });
+    }
+
+    function bindTeamFilterEvents() {
+        const options = document.getElementById('team-filter-options');
+        if (options && !options.dataset.bound) {
+            options.addEventListener('change', handleTeamFilterOptionChange);
+            options.dataset.bound = '1';
+        }
+
+        const applyBtn = document.getElementById('team-filter-apply');
+        if (applyBtn && !applyBtn.dataset.bound) {
+            applyBtn.addEventListener('click', () => applyTeamFilterSelection());
+            applyBtn.dataset.bound = '1';
+        }
+
+        const resetBtn = document.getElementById('team-filter-reset');
+        if (resetBtn && !resetBtn.dataset.bound) {
+            resetBtn.addEventListener('click', () => resetTeamFilterSelection());
+            resetBtn.dataset.bound = '1';
+        }
+    }
+
+    function handleTeamFilterOptionChange(event) {
+        const target = event.target;
+        if (!target || !target.classList.contains('team-filter-checkbox')) return;
+        const id = String(target.value);
+        if (target.checked) {
+            teamFilterPendingIds.add(id);
+        } else {
+            teamFilterPendingIds.delete(id);
+        }
+    }
+
+    function applyTeamFilterSelection() {
+        if (!teamFilterTeams.length) return;
+        if (teamFilterPendingIds.size === 0) {
+            AppUtils.showError(translate('teamStats.teamFilter.emptyError', '請至少選擇一個團隊'));
+            teamFilterPendingIds = new Set(teamFilterSelectedIds);
+            syncTeamFilterCheckboxes();
+            return;
+        }
+        teamFilterSelectedIds = new Set(teamFilterPendingIds);
+        try {
+            sessionStorage.setItem(
+                TEAM_FILTER_STORAGE_KEY,
+                JSON.stringify(Array.from(teamFilterSelectedIds))
+            );
+        } catch (_) {}
+        updateTeamFilterSummary();
+        loadAllStatistics();
+    }
+
+    function resetTeamFilterSelection() {
+        if (!teamFilterTeams.length) return;
+        const allIds = teamFilterTeams.map(team => String(team.id));
+        teamFilterPendingIds = new Set(allIds);
+        syncTeamFilterCheckboxes();
+        applyTeamFilterSelection();
+    }
+
+    function updateTeamFilterSummary() {
+        const summary = document.getElementById('team-filter-summary');
+        if (!summary) return;
+        if (!teamFilterTeams.length) {
+            summary.textContent = '';
+            return;
+        }
+        if (!shouldFilterTeams()) {
+            summary.textContent = translate('teamStats.teamFilter.summaryAll', '全部');
+            return;
+        }
+        summary.textContent = translate(
+            'teamStats.teamFilter.summaryCount',
+            '已選 {count} 個',
+            { count: teamFilterSelectedIds.size }
+        );
+    }
+
+    function shouldFilterTeams() {
+        if (!teamFilterTeams.length) return false;
+        if (teamFilterSelectedIds.size === 0) return false;
+        return teamFilterSelectedIds.size < teamFilterTeams.length;
+    }
+
+    function filterTeamList(list, idKey = 'team_id') {
+        if (!Array.isArray(list)) return [];
+        if (!shouldFilterTeams()) return list;
+        return list.filter(item => teamFilterSelectedIds.has(String(item[idKey])));
+    }
+
+    function sumByField(list, field) {
+        if (!Array.isArray(list)) return 0;
+        return list.reduce((sum, item) => sum + (Number(item?.[field]) || 0), 0);
     }
 
     function buildStatsQueryParams() {
@@ -329,16 +522,28 @@
                 buildStatsUrl('overview')
             );
 
+            const filteredTeamTestCases = filterTeamList(data.team_test_cases, 'team_id');
+            const filteredTeamTestRuns = filterTeamList(data.team_test_runs, 'team_id');
+            const teamCountValue = shouldFilterTeams()
+                ? teamFilterSelectedIds.size
+                : (data.team_count || 0);
+            const testCaseTotal = shouldFilterTeams()
+                ? sumByField(filteredTeamTestCases, 'test_case_count')
+                : (data.test_case_total || 0);
+            const testRunTotal = shouldFilterTeams()
+                ? sumByField(filteredTeamTestRuns, 'test_run_count')
+                : (data.test_run_total || 0);
+
             // 更新關鍵指標卡片
-            document.getElementById('overview-team-count').textContent = data.team_count || 0;
+            document.getElementById('overview-team-count').textContent = teamCountValue;
             document.getElementById('overview-user-count').textContent = data.user_count || 0;
-            document.getElementById('overview-test-case-total').textContent = data.test_case_total || 0;
-            document.getElementById('overview-test-run-total').textContent = data.test_run_total || 0;
+            document.getElementById('overview-test-case-total').textContent = testCaseTotal;
+            document.getElementById('overview-test-run-total').textContent = testRunTotal;
 
             // 更新團隊 Test Case 統計表格
             const teamTestCasesTbody = document.getElementById('team-test-cases-tbody');
-            if (data.team_test_cases && data.team_test_cases.length > 0) {
-                teamTestCasesTbody.innerHTML = data.team_test_cases.map(team => `
+            if (filteredTeamTestCases && filteredTeamTestCases.length > 0) {
+                teamTestCasesTbody.innerHTML = filteredTeamTestCases.map(team => `
                     <tr>
                         <td>${escapeHtml(team.team_name)}</td>
                         <td><strong>${team.test_case_count}</strong></td>
@@ -350,8 +555,8 @@
 
             // 更新團隊 Test Run 統計表格
             const teamTestRunsTbody = document.getElementById('team-test-runs-tbody');
-            if (data.team_test_runs && data.team_test_runs.length > 0) {
-                teamTestRunsTbody.innerHTML = data.team_test_runs.map(team => `
+            if (filteredTeamTestRuns && filteredTeamTestRuns.length > 0) {
+                teamTestRunsTbody.innerHTML = filteredTeamTestRuns.map(team => `
                     <tr>
                         <td>${escapeHtml(team.team_name)}</td>
                         <td><strong>${team.test_run_count}</strong></td>
@@ -391,17 +596,19 @@
                 buildStatsUrl('team_activity')
             );
 
+            const allTeamsActivity = filterTeamList(
+                data.all_teams_activity || data.top_active_teams || [],
+                'team_id'
+            );
+            const topTeams = allTeamsActivity.slice(0, 10);
+
             // 渲染最活躍團隊圖表
-            if (data.top_active_teams && data.top_active_teams.length > 0) {
-                renderTeamActivityChart(data.top_active_teams);
-            }
+            renderTeamActivityChart(topTeams);
 
             // 更新活動詳情表格
             const tbody = document.getElementById('team-activity-tbody');
-            const tableData = data.all_teams_activity || data.top_active_teams;
-            
-            if (tableData && tableData.length > 0) {
-                tbody.innerHTML = tableData.map(team => `
+            if (allTeamsActivity && allTeamsActivity.length > 0) {
+                tbody.innerHTML = allTeamsActivity.map(team => `
                     <tr>
                         <td>${escapeHtml(team.team_name)}</td>
                         <td><strong>${team.total}</strong></td>
@@ -428,19 +635,20 @@
                 buildStatsUrl('test_case_trends')
             );
 
-            const hasTeamDaily = Array.isArray(data?.per_team_daily) && data.per_team_daily.length > 0;
+            const filteredTeamDaily = filterTeamList(data?.per_team_daily, 'team_id');
+            const hasTeamDaily = Array.isArray(filteredTeamDaily) && filteredTeamDaily.length > 0;
 
             if (hasTeamDaily) {
                 const dates = Array.isArray(data.dates) ? data.dates : [];
-                renderTestCaseCreatedChart(dates, data.per_team_daily);
-                renderTestCaseUpdatedChart(dates, data.per_team_daily);
-                renderTestCaseTeamDailyTable(data.per_team_daily);
-                renderTestCaseTeamSummaryTable(data.per_team_daily, data.overall);
+                renderTestCaseCreatedChart(dates, filteredTeamDaily);
+                renderTestCaseUpdatedChart(dates, filteredTeamDaily);
+                renderTestCaseTeamDailyTable(filteredTeamDaily);
+                renderTestCaseTeamSummaryTable(filteredTeamDaily, null);
             } else {
                 renderTestCaseCreatedChart([], []);
                 renderTestCaseUpdatedChart([], []);
                 renderTestCaseTeamDailyTable([]);
-                renderTestCaseTeamSummaryTable([], data.overall);
+                renderTestCaseTeamSummaryTable([], null);
             }
         } catch (error) {
             console.error('載入測試案例趨勢失敗:', error);
@@ -458,8 +666,9 @@
             );
 
             const dates = data.dates || [];
-            const perTeamDaily = data.per_team_daily || [];
-            const perTeamPassRate = data.per_team_pass_rate || [];
+            const perTeamDaily = filterTeamList(data.per_team_daily || [], 'team_id');
+            const perTeamPassRate = filterTeamList(data.per_team_pass_rate || [], 'team_id');
+            const filteredByTeam = filterTeamList(data.by_team || [], 'team_id');
 
             // 渲染每日執行次數圖表（按團隊分組）
             if (dates.length > 0 && perTeamDaily.length > 0) {
@@ -482,8 +691,8 @@
 
             // 更新團隊統計表格
             const tbody = document.getElementById('test-run-team-tbody');
-            if (data.by_team && data.by_team.length > 0) {
-                tbody.innerHTML = data.by_team.map(team => `
+            if (filteredByTeam && filteredByTeam.length > 0) {
+                tbody.innerHTML = filteredByTeam.map(team => `
                     <tr>
                         <td>${escapeHtml(team.team_name)}</td>
                         <td><strong>${team.count}</strong></td>
@@ -1011,6 +1220,11 @@
         if (!ctx) return;
 
         destroyChart('team-activity-chart');
+
+        if (!Array.isArray(data) || data.length === 0) {
+            ctx.getContext('2d')?.clearRect(0, 0, ctx.width, ctx.height);
+            return;
+        }
 
         charts['team-activity-chart'] = new Chart(ctx, {
             type: 'bar',

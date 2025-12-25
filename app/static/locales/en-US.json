@@ -90,6 +90,14 @@
     "customRangeMissing": "Please select both start and end dates",
     "customRangeInvalid": "End date cannot be earlier than start date",
     "customRangeTooLong": "Date range cannot exceed {max} days",
+    "teamFilter": {
+      "label": "Teams",
+      "summaryAll": "All",
+      "summaryCount": "Selected {count}",
+      "noTeams": "No teams available",
+      "emptyError": "Select at least one team",
+      "loadFailed": "Failed to load teams"
+    },
     "tabs": {
       "overview": "Overview",
       "teamActivity": "Team Activity",

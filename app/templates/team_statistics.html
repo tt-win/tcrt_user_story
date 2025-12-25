@@ -66,6 +66,38 @@ endblock %} {% block page_title_text %}<span data-i18n="teamStats.pageTitle"
     </div>
 </div>
 
+<!-- 團隊篩選 -->
+<div class="dropdown me-2">
+    <button
+        class="btn btn-sm btn-primary dropdown-toggle"
+        type="button"
+        id="team-filter-toggle"
+        data-bs-toggle="dropdown"
+        data-bs-auto-close="outside"
+        aria-expanded="false"
+    >
+        <i class="fas fa-users me-1"></i>
+        <span data-i18n="teamStats.teamFilter.label">顯示團隊</span>
+        <span class="ms-1 small opacity-75" id="team-filter-summary"></span>
+    </button>
+    <div
+        class="dropdown-menu dropdown-menu-end p-2 team-filter-menu"
+        aria-labelledby="team-filter-toggle"
+    >
+        <div class="team-filter-options text-muted small" id="team-filter-options">
+            <span data-i18n="common.loading">載入中...</span>
+        </div>
+        <div class="d-flex gap-2 mt-2">
+            <button type="button" class="btn btn-sm btn-primary w-100" id="team-filter-apply">
+                <span data-i18n="common.apply">套用</span>
+            </button>
+            <button type="button" class="btn btn-sm btn-secondary w-100" id="team-filter-reset">
+                <span data-i18n="common.selectAll">全選</span>
+            </button>
+        </div>
+    </div>
+</div>
+
 <!-- 刷新按鈕 -->
 <button
     type="button"
@@ -116,6 +148,17 @@ endblock %} {% block page_title_text %}<span data-i18n="teamStats.pageTitle"
         }
         .team-stats-range-menu {
             min-width: 380px;
+        }
+        .team-filter-menu {
+            min-width: 260px;
+        }
+        .team-filter-options {
+            max-height: 240px;
+            overflow-y: auto;
+            padding-right: 4px;
+        }
+        .team-filter-options .form-check {
+            margin-bottom: 0.35rem;
         }
         @media (max-width: 1200px) {
             .team-stats-range-group .form-control {
