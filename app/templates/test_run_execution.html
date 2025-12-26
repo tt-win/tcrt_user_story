@@ -4517,6 +4517,51 @@ function updateItemSelectionUI() {
     }
 }
 
+function getBatchAssigneePrefillValue() {
+    if (!selectedItems || selectedItems.size === 0) return '';
+    let resolved = null;
+    selectedItems.forEach(itemId => {
+        const item = (testRunItems || []).find(it => it.id === itemId);
+        if (!item) return;
+        const name = (item.assignee_name || (item.assignee && item.assignee.name) || '').trim();
+        if (!name) {
+            resolved = '';
+            return;
+        }
+        if (resolved === null) {
+            resolved = name;
+        } else if (resolved !== name) {
+            resolved = '';
+        }
+    });
+    return resolved || '';
+}
+
+function syncBatchAssigneeInput(value) {
+    const input = document.getElementById('batchAssigneeInput');
+    if (!input) return;
+    const nextValue = value ? String(value) : '';
+    if (input._assigneeSelector && typeof input._assigneeSelector.setValue === 'function') {
+        input._assigneeSelector.setValue(nextValue);
+    } else {
+        input.value = nextValue;
+    }
+}
+
+function getBatchAssigneeValue() {
+    const input = document.getElementById('batchAssigneeInput');
+    if (!input) return '';
+    let value = (input.value || '').trim();
+    if (value) return value;
+    if (input._assigneeSelector && input._assigneeSelector.displayInput) {
+        value = (input._assigneeSelector.displayInput.value || '').trim();
+        if (value && typeof input._assigneeSelector.setValue === 'function') {
+            input._assigneeSelector.setValue(value);
+        }
+    }
+    return value;
+}
+
 function showBatchModifyModal() {
     if (!getTrePermissions().canBatchModify) {
         showExecutionPermissionDenied();
@@ -4554,7 +4599,7 @@ function showBatchModifyModal() {
     }
     
     // 重置表單
-    document.getElementById('batchAssigneeInput').value = '';
+    syncBatchAssigneeInput(getBatchAssigneePrefillValue());
     document.getElementById('batchResultSelect').value = '';
     document.getElementById('batchModifyAssignee').checked = true;
     document.getElementById('batchModifyResult').checked = false;
@@ -4595,7 +4640,7 @@ async function handleBatchModifyConfirm() {
         const modifyAssignee = document.getElementById('batchModifyAssignee').checked;
         const modifyResult = document.getElementById('batchModifyResult').checked;
         const modifyComment = document.getElementById('batchModifyComment').checked;
-        const assigneeName = document.getElementById('batchAssigneeInput').value.trim();
+        const assigneeName = getBatchAssigneeValue();
         const testResult = document.getElementById('batchResultSelect').value;
         const comment = document.getElementById('batchCommentInput').value.trim();
         
