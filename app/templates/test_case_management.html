@@ -1813,6 +1813,7 @@ let tcmUnassignedSectionIds = new Set();
 let lastCaseCheckboxIndex = null;  // Shift 連續多選錨點
 let currentPage = 1;
 let currentTestCaseIndex = -1;
+let tcmNavigationTestCases = [];
 let pageSize = 50;
 
 // ─────────────────────────────────────────────────────────────
@@ -4176,6 +4177,7 @@ function renderTestCasesTable() {
     sortFilteredTestCases();
 
     if (!filteredTestCases.length) {
+        tcmNavigationTestCases = [];
         stack.innerHTML = `
             <div class="text-center py-4">
                 <i class="fas fa-search fa-2x text-muted mb-2"></i>
@@ -4188,6 +4190,7 @@ function renderTestCasesTable() {
     // 建立待渲染佇列（依 Section 分組，按排序好的 Section 順序）
     const grouped = groupTestCasesBySection(filteredTestCases);
     const sortedSectionIds = sortSectionIds(Object.keys(grouped), grouped);
+    tcmNavigationTestCases = buildNavigationTestCasesFromGroups(grouped, sortedSectionIds);
     tcmRenderQueue = sortedSectionIds.map(sectionId => ({
         sectionId,
         group: grouped[sectionId]
@@ -6033,8 +6036,9 @@ function showTestCaseModal(testCase = null) {
     }
 
     if (testCase) {
-        // 找到當前測試案例在 filteredTestCases 中的索引
-        currentTestCaseIndex = filteredTestCases.findIndex(tc => tc.record_id === testCase.record_id);
+        // 找到當前測試案例在導航清單中的索引
+        const navigationList = getNavigationTestCases();
+        currentTestCaseIndex = navigationList.findIndex(tc => tc.record_id === testCase.record_id);
         updateNavigationButtons();
         title.textContent = window.i18n ? window.i18n.t('testCase.viewTestCase') : '檢視測試案例';
         title.setAttribute('data-i18n', 'testCase.viewTestCase');
@@ -9379,12 +9383,73 @@ try {
     document.addEventListener('languageChanged', function(){ updateTcmPlaceholders(); });
 } catch (_) {}
 
+function buildNavigationTestCasesFromGroups(grouped, sortedSectionIds) {
+    const ordered = [];
+    if (!Array.isArray(sortedSectionIds) || !grouped) return ordered;
+    sortedSectionIds.forEach(sectionId => {
+        const group = grouped[sectionId];
+        if (group && Array.isArray(group.testCases) && group.testCases.length) {
+            ordered.push(...group.testCases);
+        }
+    });
+    return ordered;
+}
+
+function rebuildNavigationTestCases() {
+    if (!Array.isArray(filteredTestCases) || filteredTestCases.length === 0) {
+        tcmNavigationTestCases = [];
+        return tcmNavigationTestCases;
+    }
+    const grouped = groupTestCasesBySection(filteredTestCases);
+    const sortedSectionIds = sortSectionIds(Object.keys(grouped), grouped);
+    tcmNavigationTestCases = buildNavigationTestCasesFromGroups(grouped, sortedSectionIds);
+    return tcmNavigationTestCases;
+}
+
+function getNavigationTestCases() {
+    if (Array.isArray(tcmNavigationTestCases) && tcmNavigationTestCases.length > 0) {
+        return tcmNavigationTestCases;
+    }
+    if (!Array.isArray(filteredTestCases) || filteredTestCases.length === 0) {
+        return [];
+    }
+    return rebuildNavigationTestCases();
+}
+
+function getModalTestCaseRecordId() {
+    const modal = document.getElementById('testCaseModal');
+    const recordId = modal && modal.dataset ? modal.dataset.recordId : '';
+    return recordId || '';
+}
+
+function resolveNavigationIndex(navigationList) {
+    if (!Array.isArray(navigationList) || navigationList.length === 0) {
+        currentTestCaseIndex = -1;
+        return -1;
+    }
+    const recordId = getModalTestCaseRecordId();
+    if (recordId) {
+        const idx = navigationList.findIndex(tc => tc.record_id === recordId);
+        if (idx !== -1) {
+            currentTestCaseIndex = idx;
+            return idx;
+        }
+    }
+    if (currentTestCaseIndex >= 0 && currentTestCaseIndex < navigationList.length) {
+        return currentTestCaseIndex;
+    }
+    currentTestCaseIndex = -1;
+    return -1;
+}
+
 // 更新導航按鈕狀態
 function updateNavigationButtons() {
     const prevBtn = document.getElementById('prevTestCaseBtn');
     const nextBtn = document.getElementById('nextTestCaseBtn');
+    const navigationList = getNavigationTestCases();
+    const navigationIndex = resolveNavigationIndex(navigationList);
 
-    if (currentTestCaseIndex === -1 || filteredTestCases.length <= 1) {
+    if (navigationIndex === -1 || navigationList.length <= 1) {
         // 新增模式或只有一筆資料時，隱藏導航按鈕
         prevBtn.style.display = 'none';
         nextBtn.style.display = 'none';
@@ -9393,7 +9458,7 @@ function updateNavigationButtons() {
         nextBtn.style.display = 'inline-block';
 
         // 第一筆時，上一隻按鈕反灰
-        if (currentTestCaseIndex === 0) {
+        if (navigationIndex === 0) {
             prevBtn.disabled = true;
             prevBtn.classList.add('disabled');
         } else {
@@ -9402,7 +9467,7 @@ function updateNavigationButtons() {
         }
 
         // 最後一筆時，下一隻按鈕反灰
-        if (currentTestCaseIndex === filteredTestCases.length - 1) {
+        if (navigationIndex === navigationList.length - 1) {
             nextBtn.disabled = true;
             nextBtn.classList.add('disabled');
         } else {
@@ -9416,8 +9481,10 @@ function updateNavigationButtons() {
 
 // 顯示上一隻測試案例
 function showPrevTestCase() {
-    if (currentTestCaseIndex > 0) {
-        const prevTestCase = filteredTestCases[currentTestCaseIndex - 1];
+    const navigationList = getNavigationTestCases();
+    const navigationIndex = resolveNavigationIndex(navigationList);
+    if (navigationIndex > 0) {
+        const prevTestCase = navigationList[navigationIndex - 1];
         showTestCaseModal(prevTestCase);
     }
     // 工具列顯示狀態可能改變整體高度，需重新計算列表高度
@@ -9635,8 +9702,10 @@ function isUnassignedSectionName(name) {
 
 // 顯示下一隻測試案例
 function showNextTestCase() {
-    if (currentTestCaseIndex < filteredTestCases.length - 1) {
-        const nextTestCase = filteredTestCases[currentTestCaseIndex + 1];
+    const navigationList = getNavigationTestCases();
+    const navigationIndex = resolveNavigationIndex(navigationList);
+    if (navigationIndex !== -1 && navigationIndex < navigationList.length - 1) {
+        const nextTestCase = navigationList[navigationIndex + 1];
         showTestCaseModal(nextTestCase);
     }
     // 工具列顯示狀態可能改變整體高度，需重新計算列表高度
