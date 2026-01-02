@@ -10,6 +10,8 @@ jira:
 lark:
   app_id: 'YOUR_LARK_APP_ID'
   app_secret: 'YOUR_LARK_APP_SECRET'
+openrouter:
+  api_key: 'YOUR_OPENROUTER_API_KEY'
 auth:
   enable_auth: true
   jwt_secret_key: '${JWT_SECRET_KEY}'  # 必須由環境變數提供

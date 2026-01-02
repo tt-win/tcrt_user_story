@@ -26,7 +26,8 @@ from app.services.jira_client import JiraClient
 from sqlalchemy import select
 
 # 設定
-TEXT_EMBEDDING_URL = "http://127.0.0.1:1234/v1/embeddings"
+OPENROUTER_EMBEDDING_URL = "https://openrouter.ai/api/v1/embeddings"
+OPENROUTER_API_KEY = settings.openrouter.api_key
 QDRANT_URL = "http://localhost:6333"
 VECTOR_SIZE = 1024
 COLLECTION_NAME_TC = "test_cases"
@@ -52,17 +53,32 @@ class MockUser:
     username = "mock_admin"
     role = UserRole.SUPER_ADMIN
 
+def get_openrouter_headers() -> Dict[str, str]:
+    return {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": settings.app.get_base_url(),
+        "X-Title": "TCRT ETL"
+    }
+
 async def get_embeddings(texts: List[str]) -> List[List[float]]:
     """呼叫 Text Embedding API"""
     if not texts:
+        return []
+    if not OPENROUTER_API_KEY:
+        print("    [Error] OPENROUTER_API_KEY is not set.")
         return []
     
     try:
         payload = {
             "input": texts,
-            "model": "text-embedding-bge-m3"
+            "model": "baai/bge-m3"
         }
-        response = requests.post(TEXT_EMBEDDING_URL, json=payload)
+        response = requests.post(
+            OPENROUTER_EMBEDDING_URL,
+            json=payload,
+            headers=get_openrouter_headers()
+        )
         response.raise_for_status()
         data = response.json()
         

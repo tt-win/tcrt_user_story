@@ -11661,64 +11661,68 @@ function performSearchReplace() {
         const result = bulkEditSearchResults[resultId];
         if (!result) return;
 
-        const key = `${result.recordId}_${result.column}`;
-        if (!groupedResults.has(key)) {
-            groupedResults.set(key, []);
+        if (!groupedResults.has(result.recordId)) {
+            groupedResults.set(result.recordId, new Map());
         }
-        groupedResults.get(key).push(result);
+        const columnMap = groupedResults.get(result.recordId);
+        if (!columnMap.has(result.column)) {
+            columnMap.set(result.column, []);
+        }
+        columnMap.get(result.column).push(result);
     });
 
     // 對每個單元格進行替換
-    groupedResults.forEach((cellResults, key) => {
-        const [recordId, column] = key.split('_');
-        let currentValue = getCellValue(recordId, column);
+    groupedResults.forEach((columnMap, recordId) => {
+        columnMap.forEach((cellResults, column) => {
+            let currentValue = getCellValue(recordId, column);
 
-        // 將搜尋結果按匹配位置從後往前排序，避免替換後位置錯位
-        cellResults.sort((a, b) => b.matchIndex - a.matchIndex);
+            // 將搜尋結果按匹配位置從後往前排序，避免替換後位置錯位
+            cellResults.sort((a, b) => b.matchIndex - a.matchIndex);
 
-        // 逐個替換
-        cellResults.forEach(result => {
-            const beforeValue = currentValue;
-            // 找出當前值中匹配的位置並替換
-            const matchIndex = currentValue.indexOf(searchText);
-            if (matchIndex !== -1) {
-                currentValue = currentValue.substring(0, matchIndex) + replaceText + currentValue.substring(matchIndex + searchText.length);
-                replaceCount++;
+            // 逐個替換
+            cellResults.forEach(result => {
+                const beforeValue = currentValue;
+                // 找出當前值中匹配的位置並替換
+                const matchIndex = currentValue.indexOf(searchText);
+                if (matchIndex !== -1) {
+                    currentValue = currentValue.substring(0, matchIndex) + replaceText + currentValue.substring(matchIndex + searchText.length);
+                    replaceCount++;
+                }
+            });
+
+            // 如果有改變，保存新值
+            const originalValue = getCellValue(recordId, column);
+            if (currentValue !== originalValue) {
+                addToCurrentOperation(recordId, column, originalValue, currentValue);
+                setCellValue(recordId, column, currentValue);
+
+                // 更新顯示
+                const cell = document.querySelector(`td[data-record-id="${recordId}"][data-column="${column}"]`);
+                if (cell) {
+                    const cellContent = cell.querySelector('.cell-content');
+                    if (cellContent) {
+                        let displayValue = currentValue;
+                        if (currentValue.length > 50) {
+                            displayValue = currentValue.substring(0, 47) + '...';
+                        }
+                        cellContent.textContent = displayValue;
+                        cellContent.title = currentValue;
+                    }
+
+                    // 同時更新 cell-input，以便編輯時顯示最新的值
+                    const cellInput = cell.querySelector('.cell-input');
+                    if (cellInput) {
+                        cellInput.value = currentValue;
+                    }
+                }
+
+                // 記錄更新過的記錄
+                if (!updatedRecords.has(recordId)) {
+                    updatedRecords.set(recordId, []);
+                }
+                updatedRecords.get(recordId).push(column);
             }
         });
-
-        // 如果有改變，保存新值
-        const originalValue = getCellValue(recordId, column);
-        if (currentValue !== originalValue) {
-            addToCurrentOperation(recordId, column, originalValue, currentValue);
-            setCellValue(recordId, column, currentValue);
-
-            // 更新顯示
-            const cell = document.querySelector(`td[data-record-id="${recordId}"][data-column="${column}"]`);
-            if (cell) {
-                const cellContent = cell.querySelector('.cell-content');
-                if (cellContent) {
-                    let displayValue = currentValue;
-                    if (currentValue.length > 50) {
-                        displayValue = currentValue.substring(0, 47) + '...';
-                    }
-                    cellContent.textContent = displayValue;
-                    cellContent.title = currentValue;
-                }
-
-                // 同時更新 cell-input，以便編輯時顯示最新的值
-                const cellInput = cell.querySelector('.cell-input');
-                if (cellInput) {
-                    cellInput.value = currentValue;
-                }
-            }
-
-            // 記錄更新過的記錄
-            if (!updatedRecords.has(recordId)) {
-                updatedRecords.set(recordId, []);
-            }
-            updatedRecords.get(recordId).push(column);
-        }
     });
 
     // 提交 undo 操作（只有在有改變時才提交）
