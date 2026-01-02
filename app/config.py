@@ -27,6 +27,16 @@ class JiraConfig(BaseModel):
     username: str = ""
     api_token: str = ""
 
+class OpenRouterConfig(BaseModel):
+    api_key: str = ""
+
+    @classmethod
+    def from_env(cls, fallback: 'OpenRouterConfig' = None) -> 'OpenRouterConfig':
+        env_key = os.getenv('OPENROUTER_API_KEY')
+        return cls(
+            api_key=env_key if env_key else (fallback.api_key if fallback else '')
+        )
+
 class AppConfig(BaseModel):
     debug: bool = False
     host: str = "0.0.0.0"
@@ -134,6 +144,7 @@ class Settings(BaseModel):
     app: AppConfig = AppConfig()
     lark: LarkConfig = LarkConfig()
     jira: JiraConfig = JiraConfig()
+    openrouter: OpenRouterConfig = OpenRouterConfig()
     attachments: AttachmentsConfig = AttachmentsConfig()
     auth: AuthConfig = AuthConfig()
     audit: AuditConfig = AuditConfig()
@@ -154,6 +165,7 @@ class Settings(BaseModel):
             app=AppConfig.from_env(base_settings.app),
             lark=LarkConfig.from_env(base_settings.lark),
             jira=base_settings.jira,  # JIRA 保持檔案設定
+            openrouter=OpenRouterConfig.from_env(base_settings.openrouter),
             attachments=AttachmentsConfig.from_env(base_settings.attachments),
             auth=AuthConfig.from_env(base_settings.auth),
             audit=AuditConfig.from_env(base_settings.audit)
@@ -180,6 +192,9 @@ def create_default_config(config_path: str = "config.yaml") -> None:
             "server_url": "",
             "username": "",
             "api_token": ""
+        },
+        "openrouter": {
+            "api_key": ""
         },
         "attachments": {
             "root_dir": ""  # 留空代表使用專案內 attachments 目錄
