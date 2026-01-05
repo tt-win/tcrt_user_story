@@ -15,7 +15,7 @@ aiosqlite==0.19.0
 
 # HTTP Client & APIs
 requests==2.32.5
-aiohttp==3.10.11
+aiohttp==3.13.3
 
 # Configuration & Data Parsing
 PyYAML==6.0.2
