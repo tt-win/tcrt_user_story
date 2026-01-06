@@ -47,9 +47,13 @@ class TestCaseSetService:
         )
         self.db.add(unassigned_section)
         self.db.commit()
-        
-        self.db.refresh(new_set)
-        return new_set
+
+        refreshed_set = (
+            self.db.query(TestCaseSet)
+            .filter(TestCaseSet.id == new_set.id)
+            .first()
+        )
+        return refreshed_set or new_set
 
     def get_by_id(self, set_id: int, team_id: int = None) -> TestCaseSet:
         """根據 ID 取得 Test Case Set"""
