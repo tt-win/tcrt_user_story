@@ -33,26 +33,27 @@ class TestCaseSetService:
             description=description,
             is_default=is_default
         )
-        self.db.add(new_set)
-        self.db.flush()  # 先 flush 以獲取 ID
 
-        # 建立預設的 Unassigned Section
-        unassigned_section = TestCaseSection(
-            test_case_set_id=new_set.id,
-            name="Unassigned",
-            description="未分配的測試案例",
-            level=1,
-            sort_order=0,
-            parent_section_id=None
-        )
-        self.db.add(unassigned_section)
-        self.db.commit()
+        try:
+            self.db.add(new_set)
+            self.db.flush()  # 先 flush 以獲取 ID
 
-        refreshed_set = (
-            self.db.query(TestCaseSet)
-            .filter(TestCaseSet.id == new_set.id)
-            .first()
-        )
+            # 建立預設的 Unassigned Section
+            unassigned_section = TestCaseSection(
+                test_case_set_id=new_set.id,
+                name="Unassigned",
+                description="未分配的測試案例",
+                level=1,
+                sort_order=0,
+                parent_section_id=None
+            )
+            self.db.add(unassigned_section)
+            self.db.commit()
+        except Exception:
+            self.db.rollback()
+            raise
+
+        refreshed_set = self.db.get(TestCaseSet, new_set.id)
         return refreshed_set or new_set
 
     def get_by_id(self, set_id: int, team_id: int = None) -> TestCaseSet:
