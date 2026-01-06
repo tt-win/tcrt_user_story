@@ -1573,6 +1573,112 @@ if (window.marked && typeof window.marked.setOptions === 'function') {
                 </button>
             </div>
             </div> <!-- /d-flex stats + toolbar -->
+
+            <div id="executionFilterPanel" class="execution-filter-panel" role="dialog" aria-modal="false" aria-labelledby="executionFilterTitle">
+                <div class="filter-panel-header">
+                    <div class="d-flex align-items-center gap-2">
+                        <i class="fas fa-filter text-primary"></i>
+                        <h6 class="mb-0" id="executionFilterTitle" data-i18n="common.filter">篩選</h6>
+                    </div>
+                    <div class="d-flex align-items-center gap-2">
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="resetExecutionFiltersBtn" data-i18n="testRun.filterReset">清除篩選</button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="closeExecutionFiltersBtn" data-i18n-title="common.close" title="關閉" aria-label="Close">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="filter-panel-body">
+                    <div>
+                        <label class="form-label mb-2" data-i18n="testRun.testResult">測試結果</label>
+                        <div class="filter-status-options">
+                            <div class="form-check">
+                                <input class="form-check-input execution-status-filter" type="checkbox" id="executionStatusAll" value="ALL" checked>
+                                <label class="form-check-label" for="executionStatusAll" data-i18n="testRun.allStatuses">全部狀態</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input execution-status-filter" type="checkbox" id="executionStatusPassed" value="Passed" checked>
+                                <label class="form-check-label" for="executionStatusPassed" data-i18n="testRun.passed">通過</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input execution-status-filter" type="checkbox" id="executionStatusFailed" value="Failed" checked>
+                                <label class="form-check-label" for="executionStatusFailed" data-i18n="testRun.failed">失敗</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input execution-status-filter" type="checkbox" id="executionStatusRetest" value="Retest" checked>
+                                <label class="form-check-label" for="executionStatusRetest" data-i18n="testRun.retest">重測</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input execution-status-filter" type="checkbox" id="executionStatusNotAvailable" value="Not Available" checked>
+                                <label class="form-check-label" for="executionStatusNotAvailable" data-i18n="testRun.notAvailable">不適用</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input execution-status-filter" type="checkbox" id="executionStatusPending" value="Pending" checked>
+                                <label class="form-check-label" for="executionStatusPending" data-i18n="testRun.pending">待處理</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input execution-status-filter" type="checkbox" id="executionStatusNotRequired" value="Not Required" checked>
+                                <label class="form-check-label" for="executionStatusNotRequired" data-i18n="testRun.notRequired">不需要</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input execution-status-filter" type="checkbox" id="executionStatusSkip" value="Skip" checked>
+                                <label class="form-check-label" for="executionStatusSkip" data-i18n="testRun.skip">跳過</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input execution-status-filter" type="checkbox" id="executionStatusNotExecuted" value="Not Executed" checked>
+                                <label class="form-check-label" for="executionStatusNotExecuted" data-i18n="testRun.notExecuted">未執行</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="filter-search-controls">
+                        <div class="filter-field case-field">
+                            <label class="form-label" data-i18n="testRun.caseNumber">案例編號</label>
+                            <input
+                                type="text"
+                                class="form-control"
+                                id="filterCaseNumberInput"
+                                data-i18n-placeholder="testRun.filterCaseNumberPlaceholder"
+                                placeholder="{{ i18n.t('testRun.filterCaseNumberPlaceholder') if i18n else '輸入案例編號關鍵字' }}"
+                            >
+                        </div>
+                        <div class="filter-field title-field">
+                            <label class="form-label" data-i18n="testRun.caseTitle">標題</label>
+                            <input
+                                type="text"
+                                class="form-control"
+                                id="filterTitleInput"
+                                data-i18n-placeholder="testRun.filterTitlePlaceholder"
+                                placeholder="{{ i18n.t('testRun.filterTitlePlaceholder') if i18n else '輸入標題關鍵字' }}"
+                            >
+                        </div>
+                    </div>
+
+                    <div class="filter-priority-assignee-row">
+                        <div class="filter-field priority-field">
+                            <label class="form-label" data-i18n="testRun.priority">優先級</label>
+                            <select class="form-select" id="filterPrioritySelect">
+                                <option value="ALL" data-i18n="testRun.filterPriorityAll">全部優先級</option>
+                                <option value="High" data-i18n="priority.high">高</option>
+                                <option value="Medium" data-i18n="priority.medium">中</option>
+                                <option value="Low" data-i18n="priority.low">低</option>
+                            </select>
+                        </div>
+                        <div class="filter-field assignee-field">
+                            <label class="form-label" data-i18n="testRun.assignee">執行者</label>
+                            <input
+                                type="text"
+                                class="form-control"
+                                id="filterAssigneeInput"
+                                data-assignee-selector
+                                data-i18n-placeholder="testRun.filterAssigneePlaceholder"
+                                placeholder="{{ i18n.t('testRun.filterAssigneePlaceholder') if i18n else '搜尋並選擇執行者' }}"
+                            >
+                            <div id="filterAssigneeChips" class="filter-assignee-chips"></div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
         </div> <!-- /execution-stats-wrapper -->
     </div> <!-- /test-run-header -->
 
@@ -2860,6 +2966,7 @@ function getFilteredTestRunItems() {
     const priorityFilter = executionFilterState.priority;
     const assigneeFilters = executionFilterState.assignees.map(a => a.lowercase);
     const matchAllStatuses = executionFilterState.statuses.has('ALL');
+    const hasSectionSelections = treSectionFilterIds && treSectionFilterIds.size > 0;
 
     return (testRunItems || []).filter(item => {
         const itemStatus = getExecutionItemStatus(item);
@@ -2867,7 +2974,7 @@ function getFilteredTestRunItems() {
             return false;
         }
 
-        if (treSectionFilterIds) {
+        if (hasSectionSelections) {
             const sid = getItemSectionId(item);
             const key = sid === null || typeof sid === 'undefined' ? 'unassigned' : String(sid);
             if (!treSectionFilterIds.has(key)) return false;
@@ -3690,36 +3797,68 @@ function renderTestRunItems() {
 }
 
 function buildSectionCounts(items, sections) {
-    const directCounts = new Map();
-    let unassignedCount = 0;
+    const keyCounts = new Map();
 
     (items || []).forEach(item => {
         const sid = getItemSectionId(item);
-        if (!sid) {
-            unassignedCount += 1;
-            return;
-        }
-        const key = String(sid);
-        directCounts.set(key, (directCounts.get(key) || 0) + 1);
+        const key = (sid === null || typeof sid === 'undefined') ? 'unassigned' : String(sid);
+        keyCounts.set(key, (keyCounts.get(key) || 0) + 1);
     });
 
     const totals = new Map();
     const countNode = (node) => {
         if (!node || node.id == null) return 0;
+        const filterKeys = collectSectionFilterKeys(node, new Set());
+        let total = 0;
+        filterKeys.forEach(key => {
+            total += keyCounts.get(key) || 0;
+        });
         const sid = String(node.id);
-        let total = directCounts.get(sid) || 0;
-        if (Array.isArray(node.children) && node.children.length) {
-            node.children.forEach(child => {
-                total += countNode(child);
-            });
-        }
         totals.set(sid, total);
+        (node.children || []).forEach(child => countNode(child));
         return total;
     };
 
     (sections || []).forEach(sec => countNode(sec));
 
-    return { sectionIdToCount: totals, unassignedCount };
+    return {
+        sectionIdToCount: totals,
+        unassignedCount: keyCounts.get('unassigned') || 0,
+    };
+}
+
+function collectSectionIds(section, acc = new Set()) {
+    if (!section || section.id == null) return acc;
+    const sid = String(section.id);
+    acc.add(sid);
+    (section.children || []).forEach(child => collectSectionIds(child, acc));
+    return acc;
+}
+
+function collectSectionFilterKeys(section, acc = new Set()) {
+    if (!section) return acc;
+    if (section.id != null) {
+        acc.add(String(section.id));
+    }
+    if (section.name) {
+        acc.add(`name:${section.name}`);
+    }
+    (section.children || []).forEach(child => collectSectionFilterKeys(child, acc));
+    return acc;
+}
+
+function getSectionSelectionState(section) {
+    if (!treSectionFilterIds || treSectionFilterIds.size === 0) {
+        return { checked: false, indeterminate: false };
+    }
+    const subtreeIds = collectSectionIds(section, new Set());
+    let selectedCount = 0;
+    subtreeIds.forEach(id => {
+        if (treSectionFilterIds.has(id)) selectedCount += 1;
+    });
+    if (selectedCount === 0) return { checked: false, indeterminate: false };
+    if (selectedCount === subtreeIds.size) return { checked: true, indeterminate: false };
+    return { checked: false, indeterminate: true };
 }
 
 function renderTreSectionTree() {
@@ -3735,9 +3874,12 @@ function renderTreSectionTree() {
             const indent = level * 16;
             const key = `tre-section-${sid}`;
             const collapsed = sessionStorage.getItem(key) === 'collapsed';
-            const isActive = treSectionFilterId && treSectionFilterId === sid;
             const hasChildren = Array.isArray(sec.children) && sec.children.length > 0;
             const label = getSectionDisplayName(sid, treSections);
+            const selectionState = getSectionSelectionState(sec);
+            const checkedAttr = selectionState.checked ? 'checked' : '';
+            const indeterminateAttr = selectionState.indeterminate ? 'data-indeterminate="true"' : '';
+            const isActive = selectionState.checked || selectionState.indeterminate;
             return `
                 <div class="tre-section-node ${isActive ? 'active' : ''}" data-section-id="${sid}" style="margin-left:${indent}px;">
                     <div class="d-flex align-items-center justify-content-between">
@@ -3746,9 +3888,12 @@ function renderTreSectionTree() {
                                 <button class="tre-section-toggle" data-toggle-id="${sid}" aria-label="toggle">
                                     <i class="fas fa-chevron-${collapsed ? 'right' : 'down'}"></i>
                                 </button>` : `<span style="width:28px;"></span>`}
-                            <button class="btn btn-link btn-sm text-start p-0 tre-section-select" data-section-id="${sid}">
-                                <span class="tre-section-label">${escapeHtml(label || sec.name || `Section #${sid}`)}</span>
-                            </button>
+                            <div class="form-check m-0 d-flex align-items-center gap-2 flex-grow-1">
+                                <input class="form-check-input tre-section-check" type="checkbox" id="treSectionCheck-${sid}" data-section-id="${sid}" ${checkedAttr} ${indeterminateAttr}>
+                                <label class="form-check-label tre-section-label" for="treSectionCheck-${sid}">
+                                    ${escapeHtml(label || sec.name || `Section #${sid}`)}
+                                </label>
+                            </div>
                         </div>
                         <span class="badge bg-light text-muted tre-section-count">${count}</span>
                     </div>
@@ -3761,14 +3906,18 @@ function renderTreSectionTree() {
         }).join('');
     };
 
-        const unassignedHtml = `
-        <div class="tre-section-node ${treSectionFilterId === 'unassigned' ? 'active' : ''}">
+    const isUnassignedActive = treSectionFilterIds && treSectionFilterIds.has('unassigned');
+    const unassignedHtml = `
+        <div class="tre-section-node ${isUnassignedActive ? 'active' : ''}">
             <div class="d-flex align-items-center justify-content-between">
                 <div class="d-flex align-items-center gap-2 flex-grow-1">
                     <span style="width:28px;"></span>
-                    <button class="btn btn-link btn-sm text-start p-0 tre-section-select" data-section-id="unassigned">
-                        <span class="tre-section-label">${window.i18n && window.i18n.isReady() ? (window.i18n.t('testRun.unassigned.label') || window.i18n.t('testRun.unassigned')) : 'Unassigned'}</span>
-                    </button>
+                    <div class="form-check m-0 d-flex align-items-center gap-2 flex-grow-1">
+                        <input class="form-check-input tre-section-check" type="checkbox" id="treSectionCheck-unassigned" data-section-id="unassigned" ${isUnassignedActive ? 'checked' : ''}>
+                        <label class="form-check-label tre-section-label" for="treSectionCheck-unassigned">
+                            ${window.i18n && window.i18n.isReady() ? (window.i18n.t('testRun.unassigned.label') || window.i18n.t('testRun.unassigned')) : 'Unassigned'}
+                        </label>
+                    </div>
                 </div>
                 <span class="badge bg-light text-muted tre-section-count">${unassignedCount}</span>
             </div>
@@ -3780,21 +3929,34 @@ function renderTreSectionTree() {
         container.innerHTML = renderNodes(treSections) + unassignedHtml;
     }
 
-    container.querySelectorAll('.tre-section-select').forEach(btn => {
-        btn.addEventListener('click', () => {
-            const sid = btn.getAttribute('data-section-id');
+    container.querySelectorAll('.tre-section-check').forEach(input => {
+        if (input.dataset.indeterminate === 'true') {
+            input.indeterminate = true;
+        }
+        input.addEventListener('change', () => {
+            const sid = input.getAttribute('data-section-id');
+            if (!treSectionFilterIds) treSectionFilterIds = new Set();
             if (sid === 'unassigned') {
-                treSectionFilterId = 'unassigned';
-                treSectionFilterIds = new Set(['unassigned']);
+                if (input.checked) {
+                    treSectionFilterIds.add('unassigned');
+                } else {
+                    treSectionFilterIds.delete('unassigned');
+                }
             } else {
                 const targetSection = findSectionById(sid, treSections);
-                if (!targetSection) {
-                    treSectionFilterId = null;
-                    treSectionFilterIds = null;
-                } else {
-                    treSectionFilterId = sid;
-                    treSectionFilterIds = new Set(collectSectionIds(targetSection, []));
-                }
+                const targetKeys = targetSection
+                    ? collectSectionFilterKeys(targetSection, new Set())
+                    : new Set([String(sid)]);
+                targetKeys.forEach(id => {
+                    if (input.checked) {
+                        treSectionFilterIds.add(String(id));
+                    } else {
+                        treSectionFilterIds.delete(String(id));
+                    }
+                });
+            }
+            if (treSectionFilterIds.size === 0) {
+                treSectionFilterIds = null;
             }
             renderTreSectionTree();
             renderTestRunItems();
@@ -3814,7 +3976,6 @@ function renderTreSectionTree() {
     const clearBtn = document.getElementById('clearTreSectionFilterBtn');
     if (clearBtn) {
         clearBtn.onclick = () => {
-            treSectionFilterId = null;
             treSectionFilterIds = null;
             renderTreSectionTree();
             renderTestRunItems();

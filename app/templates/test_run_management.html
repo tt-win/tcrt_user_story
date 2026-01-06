@@ -3856,6 +3856,7 @@ async function loadCaseSelectData() {
     } else {
       caseSelectData.testCases = [];
     }
+    sortTestCasesByNumber(caseSelectData.testCases);
     caseSelectData.filteredCases = caseSelectData.testCases;
     availableCases = caseSelectData.testCases; // 兼容既有流程
 
@@ -4115,6 +4116,7 @@ async function loadTeamTestCases(search) {
     }
     
     availableCases = await resp.json();
+    sortTestCasesByNumber(availableCases);
     caseSelectData.testCases = availableCases;
     caseSelectData.filteredCases = availableCases;
     caseSelectData.sections = currentSectionTree || [];
@@ -4169,6 +4171,33 @@ function getCaseSectionId(testCase) {
 
 function getCaseKey(testCase) {
   return testCase.test_case_number || String(testCase.record_id || testCase.id || '');
+}
+
+function parseCaseNumberSegments(str) {
+  try {
+    if (!str) return [];
+    const matches = String(str).match(/\d+/g);
+    return matches ? matches.map(s => parseInt(s, 10)) : [];
+  } catch (_) { return []; }
+}
+
+function compareCaseNumbersByNumericParts(aStr, bStr) {
+  const aSeg = parseCaseNumberSegments(aStr);
+  const bSeg = parseCaseNumberSegments(bStr);
+  const len = Math.min(aSeg.length, bSeg.length);
+  for (let i = 0; i < len; i++) {
+    if (aSeg[i] !== bSeg[i]) return aSeg[i] - bSeg[i];
+  }
+  return aSeg.length - bSeg.length;
+}
+
+function sortTestCasesByNumber(list) {
+  if (!Array.isArray(list)) return;
+  list.sort((a, b) => {
+    const aNum = a?.test_case_number || '';
+    const bNum = b?.test_case_number || '';
+    return compareCaseNumbersByNumericParts(aNum, bNum);
+  });
 }
 
 function renderCaseSelectList() {
