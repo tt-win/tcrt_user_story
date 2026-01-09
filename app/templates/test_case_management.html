@@ -2410,10 +2410,12 @@ function deriveSectionLevelFromPath(path) {
 }
 
 function getDisplaySectionName(sectionGroup) {
-    const raw = (sectionGroup.sectionName || sectionGroup.sectionPath || '').trim();
-    if (!raw) return '(未分類)';
-    const parts = raw.split('/').map(seg => seg.trim()).filter(Boolean);
-    return parts.length ? parts[parts.length - 1] : raw;
+    const name = (sectionGroup.sectionName || '').trim();
+    if (name) return name;
+    const path = (sectionGroup.sectionPath || '').trim();
+    if (!path) return '(未分類)';
+    const parts = path.split('/').map(seg => seg.trim()).filter(Boolean);
+    return parts.length ? parts[parts.length - 1] : path;
 }
 
 function sortSectionIds(sectionIds, grouped) {
