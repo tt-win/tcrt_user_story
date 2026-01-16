@@ -1889,5 +1889,28 @@
     "convertToTestCase": "轉換為 Test Case",
     "convertConfirm": "確定要將此 Ad-hoc Run 的有效項目轉換為團隊 Test Case 嗎？相同編號的案例將會被更新。",
     "convertSuccess": "轉換成功"
+  },
+  "aiAssist": {
+    "button": "AI 改寫",
+    "tooltip": "AI 改寫",
+    "title": "AI 改寫",
+    "fieldPrefix": "針對",
+    "originalLabel": "原內容",
+    "refinedLabel": "改寫內容",
+    "fieldColumn": "欄位",
+    "originalColumn": "原內容",
+    "revisedColumn": "改寫內容",
+    "previewColumn": "Markdown 預覽",
+    "suggestionsLabel": "改善建議",
+    "refine": "開始改寫",
+    "regenerate": "重新建議",
+    "apply": "套用到欄位",
+    "applySelected": "套用選取",
+    "applyAll": "全部套用",
+    "emptyInput": "請先輸入內容",
+    "selectAtLeastOne": "請先選擇要套用的欄位",
+    "loading": "正在生成 AI 建議...",
+    "error": "AI 生成失敗",
+    "noSuggestions": "尚無改善建議"
   }
 }

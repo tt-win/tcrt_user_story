@@ -1795,5 +1795,28 @@
     "convertToTestCase": "Convert to Test Case",
     "convertConfirm": "Convert valid items to Team Test Cases? Existing cases with the same number will be updated.",
     "convertSuccess": "Conversion successful"
+  },
+  "aiAssist": {
+    "button": "AI Rewrite",
+    "tooltip": "AI Rewrite",
+    "title": "AI Rewrite",
+    "fieldPrefix": "For",
+    "originalLabel": "Original Text",
+    "refinedLabel": "Revised Text",
+    "fieldColumn": "Field",
+    "originalColumn": "Original",
+    "revisedColumn": "Revised",
+    "previewColumn": "Markdown Preview",
+    "suggestionsLabel": "Suggestions",
+    "refine": "Refine",
+    "regenerate": "Regenerate",
+    "apply": "Apply to Field",
+    "applySelected": "Apply Selected",
+    "applyAll": "Apply All",
+    "emptyInput": "Please enter content first",
+    "selectAtLeastOne": "Select at least one field to apply",
+    "loading": "Generating AI suggestions...",
+    "error": "AI generation failed",
+    "noSuggestions": "No suggestions available"
   }
 }
