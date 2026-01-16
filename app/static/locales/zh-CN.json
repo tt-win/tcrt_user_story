@@ -1746,5 +1746,28 @@
     "convertToTestCase": "转换为 Test Case",
     "convertConfirm": "确定要将此 Ad-hoc Run 的有效项目转换为团队 Test Case 吗？相同编号的案例将会被更新。",
     "convertSuccess": "转换成功"
+  },
+  "aiAssist": {
+    "button": "AI 改写",
+    "tooltip": "AI 改写",
+    "title": "AI 改写",
+    "fieldPrefix": "针对",
+    "originalLabel": "原内容",
+    "refinedLabel": "改写内容",
+    "fieldColumn": "字段",
+    "originalColumn": "原内容",
+    "revisedColumn": "改写内容",
+    "previewColumn": "Markdown 预览",
+    "suggestionsLabel": "改善建议",
+    "refine": "开始改写",
+    "regenerate": "重新建议",
+    "apply": "应用到字段",
+    "applySelected": "应用选中",
+    "applyAll": "全部应用",
+    "emptyInput": "请先输入内容",
+    "selectAtLeastOne": "请先选择要应用的字段",
+    "loading": "正在生成 AI 建议...",
+    "error": "AI 生成失败",
+    "noSuggestions": "暂无改善建议"
   }
 }

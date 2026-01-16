@@ -278,6 +278,107 @@ body {
     box-shadow: 0 0 0 0.2rem rgba(91, 192, 222, 0.25);
 }
 
+/* AI assist modal: keep disabled buttons outline-only while loading */
+#aiAssistModal .btn-primary:disabled,
+#aiAssistModal .btn-primary.disabled {
+    background: transparent;
+    border-color: var(--tr-primary);
+    color: var(--tr-primary);
+}
+
+#aiAssistModal .btn-secondary:disabled,
+#aiAssistModal .btn-secondary.disabled {
+    background: transparent;
+    border-color: #8e9aaf;
+    color: #8e9aaf;
+}
+
+#aiAssistModal .btn:disabled:hover,
+#aiAssistModal .btn.disabled:hover {
+    transform: none;
+    box-shadow: none;
+}
+
+/* AI assist modal: reserve space for status row to avoid layout shift */
+#aiAssistModal .ai-assist-status {
+    min-height: 1.5rem;
+}
+
+/* AI assist modal: emphasize frame to separate from background */
+#aiAssistModal .modal-content {
+    border: 2px solid var(--tr-primary);
+    box-shadow: 0 18px 40px rgba(15, 23, 42, 0.35);
+}
+
+#aiAssistModal .modal-dialog {
+    max-width: 1400px;
+    width: min(96vw, 1400px);
+}
+
+#aiAssistModal .ai-assist-grid-header {
+    padding-bottom: 0.25rem;
+    border-bottom: 1px solid var(--tr-border-light);
+    margin-bottom: 0.75rem;
+}
+
+#aiAssistModal .ai-assist-col-title {
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--tr-text-muted);
+    font-weight: 600;
+}
+
+#aiAssistModal .ai-assist-grid-row {
+    padding: 0.6rem;
+    border: 1px solid var(--tr-border-light);
+    border-radius: 12px;
+    background: linear-gradient(180deg, rgba(248, 249, 250, 0.85), rgba(255, 255, 255, 0.95));
+}
+
+#aiAssistModal .ai-assist-grid-row + .ai-assist-grid-row {
+    margin-top: 0.75rem;
+}
+
+#aiAssistModal .ai-assist-field-check {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding-top: 0.35rem;
+}
+
+#aiAssistModal .ai-assist-field-check .form-check-label {
+    font-size: 0.85rem;
+    white-space: nowrap;
+}
+
+#aiAssistModal {
+    --ai-assist-panel-height: 220px;
+}
+
+#aiAssistModal .ai-assist-preview {
+    height: var(--ai-assist-panel-height);
+    min-height: var(--ai-assist-panel-height);
+    max-height: var(--ai-assist-panel-height);
+    overflow-y: auto;
+    padding: 0.6rem 0.75rem;
+    border: 1px solid var(--tr-border-light);
+}
+
+#aiAssistModal .ai-assist-original,
+#aiAssistModal .ai-assist-revised {
+    height: var(--ai-assist-panel-height);
+    min-height: var(--ai-assist-panel-height);
+    max-height: var(--ai-assist-panel-height);
+    resize: none;
+}
+
+#aiAssistModal .ai-assist-suggestions-panel {
+    min-height: 160px;
+    max-height: 240px;
+    overflow-y: auto;
+}
+
 /* 基礎卡片樣式 */
 .card {
     border: 1px solid var(--tr-border-light);

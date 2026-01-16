@@ -12,6 +12,7 @@ lark:
   app_secret: 'YOUR_LARK_APP_SECRET'
 openrouter:
   api_key: 'YOUR_OPENROUTER_API_KEY'
+  model: 'openai/gpt-oss-120b:free'
 auth:
   enable_auth: true
   jwt_secret_key: '${JWT_SECRET_KEY}'  # 必須由環境變數提供

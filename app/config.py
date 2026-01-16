@@ -29,12 +29,13 @@ class JiraConfig(BaseModel):
 
 class OpenRouterConfig(BaseModel):
     api_key: str = ""
+    model: str = "openai/gpt-oss-120b:free"
 
     @classmethod
     def from_env(cls, fallback: 'OpenRouterConfig' = None) -> 'OpenRouterConfig':
-        env_key = os.getenv('OPENROUTER_API_KEY')
         return cls(
-            api_key=env_key if env_key else (fallback.api_key if fallback else '')
+            api_key=fallback.api_key if fallback else '',
+            model=fallback.model if fallback else "openai/gpt-oss-120b:free"
         )
 
 class AppConfig(BaseModel):

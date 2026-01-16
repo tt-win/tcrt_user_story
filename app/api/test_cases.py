@@ -27,6 +27,9 @@ from datetime import datetime
 import uuid
 import json
 import logging
+import re
+import requests
+import time
 
 from app.database import get_db, get_sync_db
 from app.auth.dependencies import get_current_user
@@ -112,8 +115,27 @@ class BulkCreateResponse(BaseModel):
     duplicates: List[str] = []
     errors: List[str] = []
 
+class AIAssistRequest(BaseModel):
+    precondition: Optional[str] = None
+    steps: Optional[str] = None
+    expected_result: Optional[str] = None
+    ui_locale: Optional[str] = None
+
+
+class AIAssistResponse(BaseModel):
+    revised_precondition: str
+    revised_steps: str
+    revised_expected_result: str
+    suggestions: List[str] = []
+    detected_language: Optional[str] = None
+
 
 TCG_TABLE_ID_DEFAULT = "tblcK6eF3yQCuwwl"
+OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
+OPENROUTER_MODEL = "openai/gpt-oss-120b:free"
+OPENROUTER_TEMPERATURE = 0.1
+SIMPLIFIED_HINTS = set("后发复台里页标设网现测进选备录级")
+TRADITIONAL_HINTS = set("後發復臺裡頁標設網現測進選備錄級")
 
 
 def normalize_tcg_number(value: Optional[str]) -> Optional[str]:
@@ -174,6 +196,101 @@ def build_tcg_items(numbers: List[str]) -> List[str]:
         items.append(normalized)
 
     return items
+
+
+def normalize_ui_locale(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return None
+    normalized = value.strip().lower()
+    if not normalized:
+        return None
+    if normalized.startswith("zh-tw") or "zh-hant" in normalized or normalized.startswith("zh-hk"):
+        return "zh-TW"
+    if normalized.startswith("zh-cn") or "zh-hans" in normalized or normalized.startswith("zh-sg"):
+        return "zh-CN"
+    if normalized.startswith("zh"):
+        return "zh-CN"
+    if normalized.startswith("en"):
+        return "en"
+    return None
+
+
+def detect_language_from_text(text: str) -> Optional[str]:
+    if not text:
+        return None
+    has_cjk = re.search(r"[\u4e00-\u9fff]", text) is not None
+    if has_cjk:
+        simplified_hits = sum(1 for ch in text if ch in SIMPLIFIED_HINTS)
+        traditional_hits = sum(1 for ch in text if ch in TRADITIONAL_HINTS)
+        if simplified_hits > traditional_hits and simplified_hits > 0:
+            return "zh-CN"
+        if traditional_hits > simplified_hits and traditional_hits > 0:
+            return "zh-TW"
+        return None
+    if re.search(r"[A-Za-z]", text):
+        return "en"
+    return None
+
+
+def build_ai_assist_messages(
+    precondition: str,
+    steps: str,
+    expected_result: str,
+    output_lang: str,
+    suggestions_lang: Optional[str],
+) -> List[Dict[str, str]]:
+    language_label = {
+        "zh-TW": "繁體中文",
+        "zh-CN": "简体中文",
+        "en": "English",
+    }
+    output_label = language_label.get(output_lang, "繁體中文")
+    suggestions_label = language_label.get(suggestions_lang or output_lang, "繁體中文")
+
+    base_rules = [
+        f"改寫內容請使用 {output_label}。",
+        f"改善建議請使用 {suggestions_label}。",
+        "固定用語：TCRT、Test Case Repository Tool；提到時不可替換或改寫。",
+        "使用 QA 測試的專業術語描述內容。",
+        "盡量使用 Markdown 標示（如清單、**粗體**、`程式碼`）凸顯關鍵資訊。",
+        "用最簡單的文字描述，必要時使用符號或箭頭（例如 ->）輔助表達流程或結果。",
+        "僅改善文字流暢度與清晰度，不新增或猜測未提供的細節。",
+        "保留原有事實與順序。",
+        "改寫內容不可加入額外標題或段落標籤。",
+        "一次性評估三個欄位，確保用語與語氣一致。",
+        "若欄位為空，請回傳對應 revised 欄位為空字串。",
+        "輸出必須是嚴格 JSON，格式：{\"revised_precondition\":\"...\",\"revised_steps\":\"...\",\"revised_expected_result\":\"...\",\"suggestions\":[\"...\"]}。",
+        "Steps 欄位需使用動作導向句子，主詞可省略，每一步只做一件事。",
+        "若 Steps 原文為清單，請維持清單格式並確保步驟編號連續。",
+        "Steps 可點擊/選擇的物件文字需使用 Markdown **...** 強調。",
+        "Precondition 與 Expected Result 維持原有段落或清單格式，必要時微調以提升可讀性。",
+    ]
+
+    system_prompt = "你是專業測試案例撰寫助理。\n" + "\n".join(f"- {rule}" for rule in base_rules)
+    user_prompt = (
+        "欄位內容如下，請依規則改寫並回傳 JSON：\n"
+        "[Precondition]\n"
+        f"{precondition}\n\n"
+        "[Steps]\n"
+        f"{steps}\n\n"
+        "[Expected Result]\n"
+        f"{expected_result}"
+    )
+
+    return [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+
+
+def parse_ai_assist_payload(content: str) -> Dict[str, Any]:
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError:
+        match = re.search(r"\{.*\}", content, re.DOTALL)
+        if not match:
+            raise
+        return json.loads(match.group(0))
 
 
 # ============ USM Integration: Get Test Cases by JIRA Tickets ============
@@ -283,6 +400,146 @@ async def get_test_cases_by_jira_tickets(
     except Exception as e:
         logger.error(f"Error fetching test cases by JIRA tickets: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"获取测试案例失败: {str(e)}")
+
+
+@router.post("/ai-assist", response_model=AIAssistResponse)
+async def ai_assist_test_case(
+    team_id: int,
+    payload: AIAssistRequest,
+    current_user: User = Depends(get_current_user),
+):
+    from app.auth.models import UserRole
+    from app.auth.permission_service import permission_service
+
+    if current_user.role != UserRole.SUPER_ADMIN:
+        permission_check = await permission_service.check_team_permission(
+            current_user.id, team_id, PermissionType.WRITE, current_user.role
+        )
+        if not permission_check.has_permission:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="無權限使用 AI 輔助")
+
+    precondition = (payload.precondition or "").strip()
+    steps = (payload.steps or "").strip()
+    expected_result = (payload.expected_result or "").strip()
+    if not any([precondition, steps, expected_result]):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="內容不可為空")
+
+    combined_text = "\n".join(
+        [value for value in [precondition, steps, expected_result] if value]
+    )
+    detected = detect_language_from_text(combined_text)
+    ui_locale = normalize_ui_locale(payload.ui_locale)
+    output_lang = detected or ui_locale or "zh-TW"
+
+    if not settings.openrouter.api_key:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="OpenRouter API Key 未設定")
+
+    suggestions_lang = ui_locale or output_lang or "zh-TW"
+    messages = build_ai_assist_messages(
+        precondition,
+        steps,
+        expected_result,
+        output_lang,
+        suggestions_lang,
+    )
+    model_name = settings.openrouter.model or OPENROUTER_MODEL
+    request_payload = {
+        "model": model_name,
+        "temperature": OPENROUTER_TEMPERATURE,
+        "messages": messages,
+        "max_tokens": 1000,
+    }
+    headers = {
+        "Authorization": f"Bearer {settings.openrouter.api_key}",
+        "Content-Type": "application/json",
+    }
+    base_url = settings.app.get_base_url() if settings and settings.app else None
+    if base_url:
+        headers["HTTP-Referer"] = base_url
+        headers["X-Title"] = "TCRT Test Case AI Assist"
+
+    try:
+        response = None
+        for attempt in range(3):
+            response = requests.post(
+                OPENROUTER_API_URL,
+                headers=headers,
+                json=request_payload,
+                timeout=30,
+            )
+            if response.ok:
+                break
+            if response.status_code == status.HTTP_429_TOO_MANY_REQUESTS and attempt < 2:
+                retry_after = response.headers.get("Retry-After")
+                wait_seconds = 1.5 * (attempt + 1)
+                if retry_after:
+                    try:
+                        wait_seconds = float(retry_after)
+                    except ValueError:
+                        pass
+                time.sleep(wait_seconds)
+                continue
+            break
+        if response is None:
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="AI 服務回應失敗")
+        if not response.ok:
+            error_payload = None
+            try:
+                error_payload = response.json()
+            except json.JSONDecodeError:
+                error_payload = response.text
+            if isinstance(error_payload, dict):
+                detail_text = error_payload.get("error", {}).get("message") or json.dumps(
+                    error_payload, ensure_ascii=False
+                )
+            else:
+                detail_text = str(error_payload)
+            status_code = (
+                status.HTTP_429_TOO_MANY_REQUESTS
+                if response.status_code == status.HTTP_429_TOO_MANY_REQUESTS
+                else status.HTTP_502_BAD_GATEWAY
+            )
+            raise HTTPException(
+                status_code=status_code,
+                detail=f"AI 服務回應失敗 ({response.status_code}): {detail_text}",
+            )
+        data = response.json()
+        content = (
+            data.get("choices", [{}])[0]
+            .get("message", {})
+            .get("content", "")
+        )
+        if not content:
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="AI 回應內容為空")
+        parsed = parse_ai_assist_payload(content)
+        revised_precondition = parsed.get("revised_precondition")
+        revised_steps = parsed.get("revised_steps")
+        revised_expected_result = parsed.get("revised_expected_result")
+        suggestions = parsed.get("suggestions", [])
+        if (
+            not isinstance(revised_precondition, str)
+            or not isinstance(revised_steps, str)
+            or not isinstance(revised_expected_result, str)
+        ):
+            raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="AI 回應格式錯誤")
+        if not isinstance(suggestions, list):
+            suggestions = []
+        cleaned_suggestions = [str(s).strip() for s in suggestions if str(s).strip()]
+        return AIAssistResponse(
+            revised_precondition=revised_precondition.strip(),
+            revised_steps=revised_steps.strip(),
+            revised_expected_result=revised_expected_result.strip(),
+            suggestions=cleaned_suggestions,
+            detected_language=output_lang,
+        )
+    except HTTPException:
+        raise
+    except requests.exceptions.RequestException as exc:
+        logger.error("OpenRouter request failed: %s", exc)
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="AI 服務連線失敗") from exc
+    except Exception as exc:
+        logger.error("AI assist error: %s", exc, exc_info=True)
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="AI 服務處理失敗") from exc
 
 
 @router.get("/", response_model=List[TestCaseResponse])
