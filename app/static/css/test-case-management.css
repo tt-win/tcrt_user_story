@@ -1,0 +1,565 @@
+/* ============================================================
+   TEST CASE MANAGEMENT - CSS STYLES
+   ============================================================
+   目錄:
+   1. 頁面佈局 (Page Layout)
+   2. 側邊欄 (Sidebar)
+   3. 快速編輯 (Quick Edit)
+   4. Markdown 編輯器 (Markdown Editor)
+   5. 附件 (Attachments)
+   6. 搜尋篩選卡片 (Search Filter Card)
+   7. Section 卡片 (Section Cards)
+   8. 測試案例表格 (Test Case Table)
+   9. 大量新增 Modal (Bulk Create Modal)
+   10. 大量編輯 Modal (Bulk Edit Modal)
+   11. TCG 標籤 (TCG Tags)
+   12. 響應式設計 (Responsive)
+   ============================================================ */
+
+/* ------------------------------------------------------------
+   1. 頁面佈局 (Page Layout)
+   ------------------------------------------------------------ */
+/* 限定本頁：鎖住整體頁面，僅內容區塊可滾動 */
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
+/* testCasesPage 直接填滿 header/footer 之間的可視高度 */
+#testCasesPage {
+  position: fixed;
+  top: calc(var(--header-height) + 8px);
+  left: 0;
+  right: 0;
+  bottom: calc(var(--footer-height) + 8px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: row;
+  gap: 0.75rem;
+  padding: 0 0.75rem;
+  box-sizing: border-box;
+}
+
+#testCasesMainCol {
+  overflow: hidden;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+/* searchFilterCard 自动调整高度，不占用过多空间 */
+#testCasesMainCol #searchFilterCard {
+  flex: 0 0 auto;
+  margin-bottom: 0;
+}
+
+/* testCasesCard 填充剩余空间 */
+#testCasesMainCol #testCasesCard {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  margin-bottom: 0;
+}
+
+#testCasesCard .card-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* ------------------------------------------------------------
+   2. 側邊欄 (Sidebar)
+   ------------------------------------------------------------ */
+#sectionListSidebarCol {
+  width: 250px;
+  overflow: hidden;
+  flex: 0 0 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+#sectionListPanel {
+  flex: 1 !important;
+  min-height: 0 !important;
+  height: 100% !important;
+  display: flex;
+  flex-direction: column;
+}
+
+#sectionListContent {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* ------------------------------------------------------------
+   3. 快速編輯 (Quick Edit)
+   ------------------------------------------------------------ */
+.hover-editable {
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.hover-editable:hover {
+    background-color: rgba(0, 123, 255, 0.1);
+}
+
+.hover-edit-btn {
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+    min-width: 28px;
+    min-height: 28px;
+    padding: 2px 4px;
+}
+
+.hover-editable:hover .hover-edit-btn {
+    opacity: 1 !important;
+    pointer-events: auto;
+}
+
+.hover-editable .hover-edit-btn {
+    display: block !important;
+}
+
+.quick-edit-input {
+    border: 1px solid var(--tr-primary) !important;
+    border-radius: 4px !important;
+    padding: 0.25rem 0.5rem !important;
+    font-size: 0.875rem !important;
+    line-height: 1.5 !important;
+    height: auto !important;
+    min-height: 1.5rem !important;
+    margin: 0 !important;
+    box-sizing: border-box !important;
+}
+
+/* ------------------------------------------------------------
+   4. Markdown 編輯器 (Markdown Editor)
+   ------------------------------------------------------------ */
+.markdown-global-toolbar {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+    padding: 0.5rem;
+    background-color: var(--tr-bg-sidebar);
+    border: 1px solid var(--tr-border-light);
+    border-radius: 0.375rem;
+    margin-bottom: 1rem;
+}
+
+.markdown-field-container {
+    margin-top: 0.5rem;
+}
+
+.markdown-field-container textarea {
+    border-radius: 0.375rem;
+}
+
+.markdown-field-container .card {
+    border-radius: 0.375rem;
+    height: 100%;
+}
+
+.markdown-preview {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.6;
+}
+
+.markdown-preview h1,
+.markdown-preview h2,
+.markdown-preview h3 {
+    margin-top: 1rem;
+    margin-bottom: 0.5rem;
+    font-weight: 600;
+}
+
+.markdown-preview h1 { font-size: 1.5rem; }
+.markdown-preview h2 { font-size: 1.25rem; }
+.markdown-preview h3 { font-size: 1.1rem; }
+
+.markdown-preview ul,
+.markdown-preview ol {
+    padding-left: 1.5rem;
+    margin-bottom: 1rem;
+}
+
+.markdown-preview code {
+    background-color: var(--tr-bg-sidebar);
+    padding: 0.125rem 0.25rem;
+    border-radius: 0.25rem;
+    font-size: 0.875em;
+}
+
+.markdown-preview a {
+    color: var(--tr-primary);
+    text-decoration: none;
+}
+
+.markdown-preview a:hover {
+    text-decoration: underline;
+}
+
+/* ------------------------------------------------------------
+   5. 附件 (Attachments)
+   ------------------------------------------------------------ */
+.attachment-item {
+    background-color: var(--tr-bg-sidebar);
+    transition: background-color 0.2s;
+}
+
+.attachment-item:hover {
+    background-color: var(--tr-border-light);
+}
+
+/* ------------------------------------------------------------
+   6. 搜尋篩選卡片 (Search Filter Card)
+   ------------------------------------------------------------ */
+/* 在顯示前先隱藏 modal 內容，避免進場時可見的滾動回頂彈跳感 */
+.modal-preparing .modal-body {
+    visibility: hidden;
+}
+
+/* 禁用任何平滑滾動，確保立即置頂 */
+.scrollable-content {
+    scroll-behavior: auto;
+}
+
+/* 精準收斂搜尋卡片的內邊距，避免上方留白過多 */
+#searchFilterCard .card-body {
+    padding-top: 0.25rem;
+    padding-bottom: 0.5rem;
+}
+
+#searchFilterCard .form-label {
+    margin-bottom: 0.125rem;
+}
+
+/* 同層級其他卡片一併收斂頂部空白 */
+#batchToolbar .card-body,
+#testCasesCard .card-body {
+    padding-top: 0.5rem;
+}
+
+/* 專門收斂 #searchInput 的父層之上緣空白 */
+#searchFilterCard .card-body .row.g-3 {
+    --bs-gutter-y: 0.125rem;
+}
+
+/* ------------------------------------------------------------
+   7. Section 卡片 (Section Cards)
+   ------------------------------------------------------------ */
+/* 讓列表容器可滾動（高度由 flexbox 自動計算）*/
+#testCasesScroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    padding-bottom: calc(var(--footer-height) + 3rem);
+}
+
+#testCasesStack.section-stack {
+    display: block;
+    width: 100%;
+}
+
+.section-stack {
+    display: flex;
+    flex-direction: column;
+}
+
+.section-card-container {
+    width: 100%;
+}
+
+.section-card-row {
+    display: block;
+    width: 100%;
+    padding: 0;
+    margin: 0;
+}
+
+.section-card-row.root-divider:not(:first-child) {
+    padding-top: 1.5rem;
+    border-top: 2px solid #dbe0f0;
+}
+
+.section-card {
+    border: 1px solid #e5e9f3;
+    border-radius: 0.5rem;
+    background: #fff;
+    margin: 0.35rem 0 0.75rem;
+    margin-left: calc(var(--section-indent, 0) * 1.5rem);
+}
+
+.section-card-header {
+    padding: 0.35rem 0.5rem;
+    border-bottom: 1px solid #eef1f6;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: #f7f9fc;
+    font-size: 0.8rem;
+}
+
+.section-card-title {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-weight: 600;
+    color: #1f2a44;
+    font-size: 0.8rem;
+}
+
+.section-card-title i {
+    font-size: 0.75rem;
+}
+
+.section-title {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    flex: 1;
+}
+
+.section-toggle-icon {
+    display: inline-block;
+    width: 0.8em;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.section-card-body {
+    padding: 0.15rem 0.35rem 0.35rem;
+}
+
+/* ------------------------------------------------------------
+   8. 測試案例表格 (Test Case Table)
+   ------------------------------------------------------------ */
+.section-card-body table {
+    margin-bottom: 0;
+    font-size: 0.8rem;
+}
+
+.section-card-body .table thead th {
+    padding: 0.2rem 0.25rem !important;
+    background: transparent !important;
+    border-bottom: 1px solid #eef1f6 !important;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #51607a;
+    line-height: 1.1;
+}
+
+.section-card-body .table tbody tr {
+    border-bottom: 1px solid #f1f4f8;
+}
+
+.section-card-body .table tbody td {
+    padding: 0.25rem 0.25rem !important;
+    vertical-align: middle;
+    font-size: 0.8rem;
+    line-height: 1.2;
+}
+
+.section-card-body .table tbody tr:last-child {
+    border-bottom: none;
+}
+
+.section-card-body .table tbody tr:hover {
+    background-color: inherit !important;
+}
+
+/* 縮小 test case 列表中的按鈕和徽章 */
+.section-card-body .btn-sm {
+    padding: 0.1rem 0.25rem;
+    font-size: 0.7rem;
+    line-height: 1.1;
+}
+
+.section-card-body .btn-sm i {
+    font-size: 0.7rem;
+}
+
+.section-card-body .badge {
+    padding: 0.15rem 0.3rem;
+    font-size: 0.65rem;
+    line-height: 1.1;
+}
+
+.section-card-body .test-case-actions {
+    gap: 0.2rem !important;
+}
+
+.section-card-body .form-check-input {
+    width: 0.85rem;
+    height: 0.85rem;
+    margin-top: 0.1rem;
+}
+
+/* 縮小 TCG 標籤 */
+.section-card-body .tcg-tag {
+    padding: 0.08rem 0.25rem;
+    font-size: 0.65rem;
+    line-height: 1.1;
+    margin: 1px;
+}
+
+.section-card-body .tcg-edit-area {
+    gap: 1px !important;
+    min-height: 20px !important;
+    padding: 1px !important;
+}
+
+/* 縮小日期和其他文字 */
+.section-card-body .small {
+    font-size: 0.7rem;
+    line-height: 1.1;
+}
+
+.section-card-body code {
+    font-size: 0.75rem;
+}
+
+/* 縮小標題顯示 */
+.section-card-body .fw-medium {
+    font-size: 0.8rem;
+    line-height: 1.2;
+}
+
+.section-card-body .text-muted {
+    font-size: 0.7rem;
+    line-height: 1.1;
+}
+
+/* ------------------------------------------------------------
+   9. 大量新增 Modal (Bulk Create Modal)
+   ------------------------------------------------------------ */
+#bulkCreateModal .modal-content { font-size: 0.9rem; }
+#bulkCreateModal .modal-body { height: 65vh; overflow: hidden; }
+#bulkCreateModal .bulk-left-scroll { max-height: 60vh; overflow: auto; padding-right: .25rem; }
+#bulkCreateModal .bulk-preview-scroll { max-height: 60vh; overflow: auto; min-width: 26ch; max-width: 56ch; }
+#bulkCreateModal #bulkPreview code { font-size: 0.875rem; }
+/* 讓結構說明支援換行（以 \n 分行） */
+#bulkCreateModal [data-i18n="testCase.bulk.structureHint"] { white-space: pre-line; }
+
+/* ------------------------------------------------------------
+   10. 大量編輯 Modal (Bulk Edit Modal)
+   ------------------------------------------------------------ */
+#bulkEditModal .modal-dialog { max-width: 90vw; min-width: 1200px; }
+#bulkEditModal .modal-body { height: 75vh; overflow: hidden; padding: 0; }
+#bulkEditModal .bulk-edit-toolbar { padding: 0.75rem; border-bottom: 1px solid var(--tr-border-light); background: var(--tr-bg-sidebar); }
+#bulkEditModal .bulk-edit-grid-container { height: calc(100% - 60px); overflow: auto; position: relative; }
+#bulkEditModal .bulk-edit-grid { border-collapse: collapse; width: 100%; table-layout: fixed; }
+#bulkEditModal .bulk-edit-grid thead { position: sticky; top: 0; z-index: 10; background: #f8f9fa; }
+#bulkEditModal .bulk-edit-grid th { border: 1px solid #dee2e6; padding: 0.5rem; font-weight: 600; text-align: left; background: #e9ecef; }
+#bulkEditModal .bulk-edit-grid td { border: 1px solid #dee2e6; padding: 0; position: relative; background: white; }
+#bulkEditModal .bulk-edit-grid td.selected { background-color: #e7f3ff; box-shadow: inset 0 0 0 2px #0d6efd; }
+#bulkEditModal .bulk-edit-grid td.editing .cell-content { display: none; }
+#bulkEditModal .bulk-edit-grid td.editing .cell-input { display: block !important; }
+#bulkEditModal .bulk-edit-grid td .cell-content { padding: 0.5rem; min-height: 2rem; cursor: cell; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#bulkEditModal .bulk-edit-grid td .cell-content.multiline { white-space: pre-wrap; }
+#bulkEditModal .bulk-edit-grid td .cell-input { display: none; position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 2px solid #0d6efd; padding: 0.5rem; box-sizing: border-box; outline: none; resize: none; z-index: 10; background: white; }
+#bulkEditModal .bulk-edit-grid td .drag-handle { position: absolute; right: -1px; bottom: -1px; width: 8px; height: 8px; background: #0d6efd; cursor: crosshair; z-index: 15; display: none; }
+#bulkEditModal .bulk-edit-grid td .drag-handle::before { content: '+'; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: white; font-size: 10px; font-weight: bold; line-height: 1; }
+#bulkEditModal .bulk-edit-grid td.selected .drag-handle { display: block; }
+#bulkEditModal .bulk-edit-grid td.selecting { background-color: #e0f0ff; }
+#bulkEditModal .bulk-edit-grid { user-select: none; }
+
+/* ------------------------------------------------------------
+   11. TCG 標籤 (TCG Tags)
+   ------------------------------------------------------------ */
+.tcg-tag {
+    display: inline-block;
+    background-color: #e3f2fd;
+    color: #1976d2;
+    padding: 2px 6px;
+    margin: 1px 2px;
+    border-radius: 10px;
+    font-size: 0.7rem;
+    font-weight: 500;
+    border: 1px solid #bbdefb;
+    white-space: nowrap;
+    max-width: 120px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.tcg-tags-container {
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+}
+
+.tcg-tags-container:hover {
+    border-color: #86b7fe;
+    box-shadow: 0 0 0 0.25rem rgba(13, 110, 253, 0.25);
+}
+
+.tcg-option:hover {
+    background-color: #f8f9fa !important;
+}
+
+.tcg-option.active {
+    background-color: #e3f2fd !important;
+}
+
+/* ------------------------------------------------------------
+   12. 響應式設計 (Responsive)
+   ------------------------------------------------------------ */
+@media (max-width: 1500px) {
+    #testCaseModal .modal-dialog {
+        max-width: 90vw !important;
+        width: 90vw !important;
+    }
+}
+
+@media (max-width: 1200px) {
+    #testCaseModal .modal-dialog {
+        max-width: 95vw !important;
+        width: 95vw !important;
+    }
+
+    #testCaseModal .col-md-5 {
+        flex: 0 0 60%;
+        max-width: 60%;
+    }
+
+    #testCaseModal .col-md-3 {
+        flex: 0 0 40%;
+        max-width: 40%;
+    }
+}
+
+@media (max-width: 768px) {
+    #testCaseModal .modal-dialog {
+        max-width: 100vw !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        max-height: 100vh !important;
+        margin: 0 !important;
+        border-radius: 0 !important;
+    }
+
+    #testCaseModal .col-md-2,
+    #testCaseModal .col-md-3,
+    #testCaseModal .col-md-5 {
+        flex: 0 0 100%;
+        max-width: 100%;
+        margin-bottom: 1rem;
+    }
+
+    .tcg-tags-container {
+        max-height: 80px !important;
+    }
+}
