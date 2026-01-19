@@ -907,7 +907,7 @@ input[type="checkbox"]:indeterminate {
                     <input type="hidden" id="configId" name="id">
                     <input type="hidden" id="configSetId" name="set_id">
                     <input type="hidden" id="configTestCaseSetId" name="test_case_set_id">
-                    <div class="mb-3">
+                    <div class="mb-3" id="testCaseSetSelectorGroup">
                         <label for="testCaseSetSelector" class="form-label">
                             <span data-i18n="testRun.sets.selectSet">選擇 Test Case Set</span>
                             <span class="text-danger">*</span>
@@ -919,6 +919,12 @@ input[type="checkbox"]:indeterminate {
                             <i class="fas fa-info-circle me-1"></i>
                             <span data-i18n="testRun.sets.selectSetHint">請先選擇 Test Case Set，僅允許同一 Set 的案例</span>
                         </div>
+                    </div>
+                    <div class="mb-3 d-none" id="testCaseSetReadOnlyGroup">
+                        <label class="form-label">
+                            <span data-i18n="testRun.sets.selectedSet">Test Case Set</span>
+                        </label>
+                        <div class="form-control-plaintext fw-semibold" id="testCaseSetReadOnlyText"></div>
                     </div>
 
                     <div class="mb-3">
@@ -1053,7 +1059,7 @@ input[type="checkbox"]:indeterminate {
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
-        <div class="mb-3">
+        <div class="mb-3" id="caseSelectSetSelectorGroup">
           <label for="caseSelectTestCaseSet" class="form-label">
             <span data-i18n="testRun.sets.selectSet">選擇 Test Case Set</span>
             <span class="text-danger">*</span>
@@ -1063,6 +1069,12 @@ input[type="checkbox"]:indeterminate {
             <i class="fas fa-info-circle me-1"></i>
             <span data-i18n="testRun.sets.selectSetHint">僅可從同一個 Test Case Set 選取案例</span>
           </div>
+        </div>
+        <div class="mb-3 d-none" id="caseSelectSetReadOnlyGroup">
+          <label class="form-label">
+            <span data-i18n="testRun.sets.selectedSet">Test Case Set</span>
+          </label>
+          <div class="form-control-plaintext fw-semibold" id="caseSelectSetReadOnlyText"></div>
         </div>
 
         <div class="mb-3">
@@ -2738,13 +2750,26 @@ function openConfigFormModal(configId = null, options = {}) {
             document.getElementById('configName').value = config.name;
             document.getElementById('configDescription').value = config.description || '';
             document.getElementById('configSetId').value = config.set_id ? String(config.set_id) : '';
-            currentSetIdForCaseSelection = pendingSetIdForNewConfig || null;
-            renderTestCaseSetOptions(currentSetIdForCaseSelection);
+            currentSetIdForCaseSelection = null;
+            document.getElementById('configTestCaseSetId').value = '';
+            updateTestRunSetReadOnlyDisplay(null, 'edit');
+            resolveConfigTestCaseSetId(configId).then(deducedSetId => {
+                currentSetIdForCaseSelection = deducedSetId;
+                if (deducedSetId) {
+                    document.getElementById('configTestCaseSetId').value = String(deducedSetId);
+                }
+                renderTestCaseSetOptions(deducedSetId);
+                updateTestRunSetReadOnlyDisplay(deducedSetId, 'edit');
+            });
             // 嘗試載入詳細配置以填入可選欄位和 TP 票號
             window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${configId}`)
               .then(r => r.ok ? r.json() : null)
               .then(full => {
                 if (full) {
+                  const descriptionInput = document.getElementById('configDescription');
+                  if (descriptionInput && !descriptionInput.value.trim()) {
+                    descriptionInput.value = full.description || '';
+                  }
                   document.getElementById('testEnvironment').value = full.test_environment || '';
                   document.getElementById('buildNumber').value = full.build_number || '';
                   // 載入 TP 票號
@@ -2762,6 +2787,7 @@ function openConfigFormModal(configId = null, options = {}) {
         // 清空 TP 票號
         clearAllTpTickets();
         renderTestCaseSetOptions(pendingSetIdForNewConfig);
+        updateTestRunSetReadOnlyDisplay(pendingSetIdForNewConfig, 'create');
     }
     
     // 初始化 TP 標籤輸入功能
@@ -2776,6 +2802,7 @@ function openConfigFormModal(configId = null, options = {}) {
         clearNotificationSettings();
         pendingSetIdForNewConfig = null;
         document.getElementById('configSetId').value = '';
+        updateTestRunSetReadOnlyDisplay(null, 'create');
 
         // 如果之前 Test Run Set Detail Modal 是打開的，重新顯示它
         if (!suppressSetDetailReopen && wasSetDetailModalOpen && testRunSetDetailModalInstance) {
@@ -3755,6 +3782,46 @@ let currentSectionTree = [];
 let sectionTreeContainer = null;
 let caseSelectData = { sections: [], testCases: [], filteredCases: [], selectedCaseIds: new Set() };
 
+function getTestRunSetDisplayName(setId) {
+  const set = (testCaseSets || []).find(item => String(item.id) === String(setId));
+  if (set && set.name) return set.name;
+  return setId ? `Set #${setId}` : '';
+}
+
+function updateTestRunSetReadOnlyDisplay(setId, mode) {
+  const isEdit = mode === 'edit';
+  const configSelectGroup = document.getElementById('testCaseSetSelectorGroup');
+  const configReadOnlyGroup = document.getElementById('testCaseSetReadOnlyGroup');
+  const configReadOnlyText = document.getElementById('testCaseSetReadOnlyText');
+  const caseSelectGroup = document.getElementById('caseSelectSetSelectorGroup');
+  const caseReadOnlyGroup = document.getElementById('caseSelectSetReadOnlyGroup');
+  const caseReadOnlyText = document.getElementById('caseSelectSetReadOnlyText');
+
+  if (configSelectGroup) configSelectGroup.classList.toggle('d-none', isEdit);
+  if (configReadOnlyGroup) configReadOnlyGroup.classList.toggle('d-none', !isEdit);
+  if (configReadOnlyText) configReadOnlyText.textContent = getTestRunSetDisplayName(setId);
+
+  if (caseSelectGroup) caseSelectGroup.classList.toggle('d-none', isEdit);
+  if (caseReadOnlyGroup) caseReadOnlyGroup.classList.toggle('d-none', !isEdit);
+  if (caseReadOnlyText) caseReadOnlyText.textContent = getTestRunSetDisplayName(setId);
+}
+
+async function resolveConfigTestCaseSetId(configId) {
+  if (!configId || !currentTeamId) return null;
+  try {
+    const resp = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${configId}/items?limit=1`);
+    if (!resp.ok) return null;
+    const items = await resp.json();
+    if (Array.isArray(items) && items.length > 0) {
+      return items[0].test_case_set_id || null;
+    }
+    return null;
+  } catch (error) {
+    console.warn('resolveConfigTestCaseSetId failed:', error);
+    return null;
+  }
+}
+
 function renderSectionTree() {
   renderCaseSelectList();
 }
@@ -3788,15 +3855,18 @@ function renderTestCaseSetOptions(defaultId = null) {
       document.getElementById('configTestCaseSetId').value = val;
       currentSetIdForCaseSelection = val ? parseInt(val, 10) : null;
       if (modalSelect && val) modalSelect.value = val;
+      updateTestRunSetReadOnlyDisplay(currentSetIdForCaseSelection, modalMode === 'edit' ? 'edit' : 'create');
     };
   }
   if (modalSelect) {
     modalSelect.onchange = () => {
+      if (modalMode === 'edit') return;
       currentSetIdForCaseSelection = modalSelect.value ? parseInt(modalSelect.value, 10) : null;
       if (configSelect && modalSelect.value) {
         configSelect.value = modalSelect.value;
         document.getElementById('configTestCaseSetId').value = modalSelect.value;
       }
+      updateTestRunSetReadOnlyDisplay(currentSetIdForCaseSelection, 'create');
       if (caseSelectModalInstance && modalSelect.value) {
         loadTeamTestCases(document.getElementById('caseSearchInput').value || '');
       }
@@ -3922,6 +3992,7 @@ async function openCaseSelectModal(configId) {
     await loadTestCaseSets();
     renderTestCaseSetOptions(currentSetIdForCaseSelection);
   }
+  updateTestRunSetReadOnlyDisplay(currentSetIdForCaseSelection, modalMode === 'edit' ? 'edit' : 'create');
   await loadCaseSelectData();
   // reset
     if (modalMode === 'create') {
@@ -4014,6 +4085,7 @@ async function openCaseSelectModal(configId) {
     }
     reopenSetDetailAfterCaseModal = false;
     isPreselectedFromTestCaseSet = false;
+    updateTestRunSetReadOnlyDisplay(currentSetIdForCaseSelection, 'create');
     // remove this handler after execution
     modalDom.removeEventListener('hidden.bs.modal', onHidden);
   }, { once: true });
