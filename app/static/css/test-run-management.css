@@ -1,0 +1,699 @@
+/* Test Run 卡片樣式 - 增強狀態視覺標示 */
+.test-run-card {
+    transition: all 0.3s ease;
+    border: 1px solid var(--tr-border-light);
+    cursor: pointer;
+    position: relative;
+    border-left-width: 4px;
+}
+
+/* 狀態顏色左邊框標示 */
+.test-run-card.status-draft {
+    border-left-color: #F57C00;
+    background: linear-gradient(135deg, #FFFEF7 0%, #FFF9E1 100%);
+}
+
+.test-run-card.status-active {
+    border-left-color: #1976D2;
+    background: linear-gradient(135deg, #F8FBFF 0%, #E3F2FD 100%);
+    animation: card-glow-active 3s infinite;
+}
+
+.test-run-card.status-completed {
+    border-left-color: #388E3C;
+    background: linear-gradient(135deg, #F9FDF9 0%, #E8F5E8 100%);
+}
+
+.test-run-card.status-archived {
+    border-left-color: #757575;
+    background: linear-gradient(135deg, #FAFAFA 0%, #F5F5F5 100%);
+    opacity: 0.85;
+}
+
+/* 狀態光暈動畫 - Active 狀態 */
+@keyframes card-glow-active {
+    0%, 100% { box-shadow: 0 2px 8px rgba(25,118,210,0.1); }
+    50% { box-shadow: 0 4px 16px rgba(25,118,210,0.2); }
+}
+
+.test-run-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+}
+
+.test-run-card.status-active:hover {
+    box-shadow: 0 8px 25px rgba(25,118,210,0.3);
+}
+
+.test-run-card.status-completed:hover {
+    box-shadow: 0 8px 25px rgba(56,142,60,0.2);
+}
+
+.test-run-card.status-draft:hover {
+    box-shadow: 0 8px 25px rgba(245,124,0,0.2);
+}
+
+.test-run-card:hover .card-title {
+    color: var(--tr-primary-dark) !important;
+}
+
+.test-run-card .card-body {
+    padding: 1.25rem;
+}
+
+/* Prevent card title overflow */
+.test-run-card .card-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    word-break: break-word;
+}
+
+/* Ensure flex items with long content don't overflow */
+.min-width-0 {
+    min-width: 0;
+}
+
+/* 狀態指示角標 */
+.test-run-card::before {
+    content: '';
+    position: absolute;
+    top: -1px;
+    right: -1px;
+    width: 0;
+    height: 0;
+    border-style: solid;
+    border-width: 0 12px 12px 0;
+    opacity: 0.7;
+}
+
+.test-run-card.status-draft::before { border-color: transparent #F57C00 transparent transparent; }
+.test-run-card.status-active::before { border-color: transparent #1976D2 transparent transparent; }
+.test-run-card.status-completed::before { border-color: transparent #388E3C transparent transparent; }
+.test-run-card.status-archived::before { border-color: transparent #757575 transparent transparent; }
+
+/* 新增 Test Run 卡片樣式 */
+.add-test-run-card {
+    transition: all 0.2s ease;
+    border: 2px dashed var(--tr-border-light);
+    cursor: pointer;
+    background-color: var(--tr-bg-light);
+}
+
+.add-test-run-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--tr-shadow-md);
+    border-color: var(--tr-primary);
+    background-color: var(--tr-primary-light);
+}
+
+.add-test-run-card:hover h5,
+.add-test-run-card:hover h6 {
+    color: var(--tr-primary-dark) !important;
+}
+
+.add-test-run-card:hover .fas {
+    color: var(--tr-primary-dark) !important;
+}
+
+/* 進度條樣式 */
+.progress {
+    height: 8px;
+    border-radius: 4px;
+}
+
+.progress-bar {
+    border-radius: 4px;
+}
+
+/* 狀態標籤樣式 - 增強視覺識別 */
+.status-badge {
+    font-size: 0.75rem;
+    padding: 0.25rem 0.6rem;
+    border-radius: 0.5rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    transition: all 0.2s ease;
+}
+
+.status-badge:hover {
+    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    transform: translateY(-1px);
+}
+
+/* 狀態顏色系統 - 更直覺的色彩語意 */
+.status-badge.status-draft { 
+    background: linear-gradient(135deg, #FFF3CD 0%, #FFE69C 100%);
+    color: #856404; 
+    border: 1px solid #F0C419;
+}
+
+.status-badge.status-active { 
+    background: linear-gradient(135deg, #E3F2FD 0%, #BBDEFB 100%);
+    color: #0D47A1; 
+    border: 1px solid #2196F3;
+    animation: pulse-active 2s infinite;
+}
+
+.status-badge.status-completed { 
+    background: linear-gradient(135deg, #E8F5E8 0%, #C8E6C9 100%);
+    color: #2E7D32; 
+    border: 1px solid #4CAF50;
+}
+
+.status-badge.status-archived { 
+    background: linear-gradient(135deg, #F5F5F5 0%, #E0E0E0 100%);
+    color: #616161; 
+    border: 1px solid #9E9E9E;
+    opacity: 0.8;
+}
+
+/* 狀態脈動動畫 - 強調進行中狀態 */
+@keyframes pulse-active {
+    0%, 100% { box-shadow: 0 1px 3px rgba(33,150,243,0.2); }
+    50% { box-shadow: 0 1px 8px rgba(33,150,243,0.4); }
+}
+
+/* 狀態圖示 */
+.status-badge::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 0.25rem;
+}
+
+.status-badge.status-draft::before { background-color: #F57C00; }
+.status-badge.status-active::before { background-color: #1976D2; animation: blink-dot 1.5s infinite; }
+.status-badge.status-completed::before { background-color: #388E3C; }
+.status-badge.status-archived::before { background-color: #757575; }
+
+/* 閃爍點 - 進行中狀態指示器 */
+@keyframes blink-dot {
+    0%, 50% { opacity: 1; }
+    51%, 100% { opacity: 0.3; }
+}
+
+#configDetailModal .modal-dialog,
+#testRunSetDetailModal .modal-dialog,
+#caseSelectModal .modal-dialog {
+    max-width: 1200px;
+    width: 90%;
+}
+/* 自訂狀態下拉選單 - 使用 fixed positioning 解決層級問題 */
+.custom-status-dropdown {
+    position: fixed !important;
+    z-index: 999999 !important;
+    background: white;
+    border: 1px solid #dee2e6;
+    border-radius: 0.375rem;
+    box-shadow: 0 0.5rem 1rem rgba(0,0,0,.15);
+    min-width: 120px;
+    padding: 0.5rem 0;
+    display: none;
+}
+
+.custom-status-dropdown.show {
+    display: block !important;
+}
+
+.custom-status-dropdown-item {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    padding: 0.5rem 1rem;
+    clear: both;
+    font-weight: 400;
+    color: #212529;
+    text-align: inherit;
+    text-decoration: none;
+    white-space: nowrap;
+    background-color: transparent;
+    border: 0;
+    cursor: pointer;
+    transition: all 0.15s ease-in-out;
+    line-height: 1.5;
+}
+
+.custom-status-dropdown-item i {
+    width: 16px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.custom-status-dropdown-item:hover {
+    background-color: #f8f9fa;
+    color: #1e2125;
+}
+
+.custom-status-dropdown-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    z-index: 999998;
+    display: none;
+}
+
+.custom-status-dropdown-overlay.show {
+    display: block;
+}
+
+/* 統計資訊樣式 */
+.stats-item {
+    display: flex;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+
+.stats-item:last-child {
+    margin-bottom: 0;
+}
+
+/* TP 標籤間距調整 */
+.stats-item .tp-tag {
+    margin-left: 0.25rem;
+}
+
+/* T028: 快速搜尋結果樣式 - 現代化設計 */
+.quick-search-tp-item {
+    background-color: var(--tr-bg-card) !important;
+    border-radius: 6px !important;
+    margin: 4px 0 !important;
+    transition: all 0.2s ease-in-out !important;
+    box-shadow: var(--tr-shadow-sm) !important;
+    font-size: 0.875rem !important;
+    border: 1px solid var(--tr-border-light) !important;
+    line-height: 1.5 !important;
+    overflow: visible !important; /* 允許 focus 外框不被截斷 */
+    box-sizing: border-box !important;
+}
+
+/* T028: 圖示對齊樣式 */
+.quick-search-tp-item .fas {
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    line-height: 1 !important;
+    vertical-align: middle !important;
+}
+
+/* 統一圖示樣式 */
+.quick-search-tp-item i.fas {
+    width: 14px !important;
+    text-align: center !important;
+    font-size: 13px !important;
+}
+
+/* 允許結果名稱換行避免被截斷 */
+.quick-search-tp-item .result-title {
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: initial !important;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    line-height: 1.35;
+    word-break: break-word;
+}
+
+.quick-search-tp-item:hover {
+    background: linear-gradient(135deg, var(--tr-primary-light) 0%, #f8fbff 100%) !important;
+    transform: translateY(-1px) !important;
+    box-shadow: 0 3px 12px rgba(74, 144, 226, 0.15) !important;
+    border-color: var(--tr-primary) !important;
+}
+
+.quick-search-tp-item.quick-search-active {
+    background: linear-gradient(135deg, var(--tr-primary-light) 0%, #e8f4fd 100%) !important;
+    border: 1px solid var(--tr-primary) !important;
+    border-left: 3px solid var(--tr-primary) !important;
+    box-shadow: 0 2px 8px rgba(74, 144, 226, 0.2) !important;
+    transform: translateX(2px) !important;
+}
+
+/* 移除預設按鈕 focus 線條，避免中間出現水平線 */
+.quick-search-tp-item:focus,
+.quick-search-tp-item:focus-visible {
+    outline: none !important;
+    box-shadow: var(--tr-shadow-sm) !important;
+}
+
+.stats-icon {
+    width: 1.25rem;
+    text-align: center;
+    margin-right: 0.5rem;
+    opacity: 0.7;
+}
+
+/* JIRA Tickets 標籤容器樣式 */
+.stats-item .tcg-tag {
+    vertical-align: middle;
+}
+
+/* Loading animation */
+.loading-skeleton {
+    background: linear-gradient(90deg, var(--tr-bg-sidebar) 25%, var(--tr-border-light) 50%, var(--tr-bg-sidebar) 75%);
+    background-size: 200% 100%;
+    animation: loading 1.5s infinite;
+}
+
+@keyframes loading {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+}
+
+/* TP 票號標籤樣式 */
+.tp-ticket-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.375rem 0.75rem;
+    background-color: var(--tr-primary-light);
+    color: var(--tr-primary-dark);
+    border: 1px solid var(--tr-primary);
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    text-decoration: none;
+    transition: all 0.2s ease;
+    cursor: pointer;
+}
+
+.tp-ticket-tag:hover {
+    background-color: var(--tr-primary);
+    color: white;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.tp-ticket-tag .remove-btn {
+    margin-left: 0.25rem;
+    padding: 0;
+    border: none;
+    background: none;
+    color: inherit;
+    cursor: pointer;
+    opacity: 0.7;
+    transition: opacity 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+}
+
+.tp-ticket-tag .remove-btn:hover {
+    opacity: 1;
+}
+
+.tp-ticket-tag .remove-btn:focus {
+    outline: none;
+    opacity: 1;
+}
+
+/* 響應式設計 - 小螢幕適配 */
+@media (max-width: 768px) {
+    .tp-ticket-tag {
+        font-size: 0.8rem;
+        padding: 0.25rem 0.5rem;
+    }
+    
+    #tpTicketTags {
+        gap: 0.375rem !important;
+    }
+}
+
+/* 輸入欄位提示樣式 */
+.form-text .fas {
+    opacity: 0.6;
+}
+
+
+/* 通知設定區域樣式 */
+#notificationGroupsSection {
+    transition: all 0.3s ease;
+}
+
+#groupSearchResults {
+    background-color: #ffffff;
+    border-color: #dee2e6;
+    transition: all 0.2s ease;
+}
+
+#groupSearchResults:empty {
+    display: none !important;
+}
+
+.group-search-item {
+    padding: 0.5rem 0.75rem;
+    cursor: pointer;
+    border-bottom: 1px solid #f1f3f4;
+    transition: background-color 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.group-search-item:last-child {
+    border-bottom: none;
+}
+
+.group-search-item:hover {
+    background-color: #f8f9fa;
+}
+
+.group-search-item .group-icon {
+    color: #6c757d;
+    width: 16px;
+    text-align: center;
+}
+
+.group-search-item .group-name {
+    font-weight: 500;
+    color: #212529;
+    flex-grow: 1;
+}
+
+.group-search-item .group-id {
+    font-size: 0.75rem;
+    color: #6c757d;
+    font-family: 'Courier New', monospace;
+}
+
+/* 已選群組標籤樣式 */
+.selected-group-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.375rem 0.75rem;
+    background-color: var(--tr-primary-light);
+    color: var(--tr-primary-dark);
+    border: 1px solid var(--tr-primary);
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    text-decoration: none;
+    transition: all 0.2s ease;
+    cursor: default;
+}
+
+.selected-group-tag:hover {
+    background-color: var(--tr-primary);
+    color: white;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.selected-group-tag .group-remove-btn {
+    margin-left: 0.25rem;
+    padding: 0;
+    border: none;
+    background: none;
+    color: inherit;
+    cursor: pointer;
+    opacity: 0.7;
+    transition: opacity 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+}
+
+.selected-group-tag .group-remove-btn:hover {
+    opacity: 1;
+}
+
+.selected-group-tag .group-remove-btn:focus {
+    outline: none;
+    opacity: 1;
+}
+
+/* 群組設定动画 */
+.notification-groups-entering {
+    opacity: 0;
+    transform: translateY(-10px);
+}
+
+.notification-groups-entered {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.notification-groups-exiting {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.notification-groups-exited {
+    opacity: 0;
+    transform: translateY(-10px);
+}
+
+/* 群組標認欄位呼呼效果 */
+.notifications-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.125rem 0.5rem;
+    background-color: #e3f2fd;
+    color: #1976d2;
+    border: 1px solid #bbdefb;
+    border-radius: 0.375rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+}
+
+.notifications-indicator .fas {
+    animation: bell-ring 2s infinite;
+}
+
+@keyframes bell-ring {
+    0%, 50%, 100% {
+        transform: rotate(0deg);
+    }
+    10% {
+        transform: rotate(10deg);
+    }
+    20% {
+        transform: rotate(-10deg);
+    }
+    30% {
+        transform: rotate(8deg);
+    }
+    40% {
+        transform: rotate(-8deg);
+    }
+}
+
+.test-run-section-divider {
+    border-top: 2px solid var(--tr-border-light);
+    margin: 3rem 0;
+}
+
+/* Test Run Set Detail Modal 排版改善 */
+
+/* 標題 - 限制最多顯示兩行 */
+#testRunSetDetailTitle {
+    max-height: 2.8em;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    word-break: break-word;
+    line-height: 1.4;
+}
+
+/* 確保 modal-header 中的 title 不會被拉長 */
+#testRunSetDetailModal .modal-header h5.modal-title {
+    flex: 1;
+    max-width: calc(100% - 2rem);
+    word-break: break-word;
+}
+
+/* Test Run Set 信息區域 */
+#testRunSetDetailInfoSection {
+    padding-bottom: 1rem;
+}
+
+#testRunSetDetailInfoSection .row {
+    margin-top: 0.75rem;
+}
+
+#testRunSetDetailActions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+}
+
+#testRunSetDetailActions .btn {
+    white-space: nowrap;
+}
+
+
+.testRunDetailRunActions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.testRunDetailRunActions .btn {
+    white-space: nowrap;
+    font-size: 0.8rem;
+}
+
+.testRunDetailRunActions .dropdown {
+    display: flex;
+}
+
+/* Test Case 選擇介面 (對齊 setCaseSelectModal 風格) */
+.set-case-list {
+    font-size: 0.9rem;
+}
+
+.section-group {
+    margin-bottom: 0.5rem;
+}
+
+.section-header {
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.section-header:hover {
+    background-color: #e9ecef !important;
+}
+
+.section-content {
+    background-color: #f9f9f9;
+    transition: all 0.3s ease;
+}
+
+.section-content.d-none {
+    display: none !important;
+}
+
+.case-item {
+    transition: background-color 0.2s;
+}
+
+.case-item:hover {
+    background-color: #f0f8ff;
+}
+
+input[type="checkbox"]:indeterminate {
+    background-color: #0dcaf0;
+    border-color: #0dcaf0;
+}
