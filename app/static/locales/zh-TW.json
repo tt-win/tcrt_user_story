@@ -1362,6 +1362,7 @@
       "heading": "Test Run Set",
       "subtitle": "集中管理多個 Test Run 組合",
       "selectSet": "選擇 Test Case Set",
+      "selectedSet": "Test Case Set",
       "selectSetHint": "僅可從同一個 Test Case Set 選取案例",
       "selectSetPlaceholder": "請選擇 Test Case Set",
       "selectSetFirst": "請先選擇一個 Test Case Set",

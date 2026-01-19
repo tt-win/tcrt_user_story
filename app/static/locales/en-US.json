@@ -1363,6 +1363,7 @@
       "heading": "Test Run Sets",
       "subtitle": "Group multiple test runs and manage them together",
       "selectSet": "Select Test Case Set",
+      "selectedSet": "Test Case Set",
       "selectSetHint": "Only cases from the same Test Case Set can be selected",
       "selectSetPlaceholder": "Please select a Test Case Set",
       "selectSetFirst": "Please select a Test Case Set first",
