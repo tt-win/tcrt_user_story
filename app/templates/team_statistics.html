@@ -117,58 +117,9 @@ endblock %} {% block page_title_text %}<span data-i18n="teamStats.pageTitle"
     <i class="fas fa-arrow-left me-1"></i>
     <span data-i18n="team.management">團隊管理</span>
 </a>
+{% endblock %} {% block head %}
+<link rel="stylesheet" href="/static/css/team-statistics.css">
 {% endblock %} {% block content %}
-<style>
-        /* 專門針對團隊活動區域的樣式 */
-        #team-activity-pane .card {
-            height: calc(100vh - 300px); /* 固定高度為視窗高度扣除頂部區域，避免超出 */
-            min-height: 500px; /* 保持基本高度 */
-        }
-        #team-activity-pane .card-body {
-            height: calc(100% - 45px);  /* 為 card header 預留空間 */
-            display: flex;
-            flex-direction: column;
-            overflow: hidden; /* 防止內容撐開 card */
-        }
-        #team-activity-pane canvas {
-            max-height: none !important; /* 移除 canvas 最大高度限制 */
-            flex: 1; /* 讓 canvas 占據剩餘空間 */
-        }
-        .table-responsive.auto-height {
-            max-height: none !important; /* 移除表格最大高度限制 */
-            flex: 1; /* 讓表格佔據剩餘空間 */
-            overflow-y: auto; /* 啟用內部滾動 */
-        }
-        .team-stats-range-group {
-            margin-bottom: 0 !important;
-            flex-wrap: nowrap;
-        }
-        .team-stats-range-group .form-control {
-            min-width: 140px;
-        }
-        .team-stats-range-menu {
-            min-width: 380px;
-        }
-        .team-filter-menu {
-            min-width: 260px;
-        }
-        .team-filter-options {
-            max-height: 240px;
-            overflow-y: auto;
-            padding-right: 4px;
-        }
-        .team-filter-options .form-check {
-            margin-bottom: 0.35rem;
-        }
-        @media (max-width: 1200px) {
-            .team-stats-range-group .form-control {
-                min-width: 120px;
-            }
-            .team-stats-range-menu {
-                min-width: 340px;
-            }
-        }
-</style>
 <div class="container-fluid py-3">
     <!-- 標籤頁導航 -->
     <ul class="nav nav-tabs mb-3" id="statsTab" role="tablist">

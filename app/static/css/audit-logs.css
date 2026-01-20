@@ -1,0 +1,81 @@
+#auditPage {
+    height: calc(100vh - var(--header-height) - var(--footer-height));
+    display: flex;
+    flex-direction: column;
+}
+
+#auditLayout {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+#auditMain {
+    flex: 1;
+    display: flex;
+    gap: 1rem;
+    overflow: hidden;
+}
+
+#auditFilters {
+    width: 320px;
+    min-width: 280px;
+    max-width: 360px;
+    flex-shrink: 0;
+    overflow-y: auto;
+}
+
+#auditResults {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+#auditResults .card-body {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+#auditTableWrapper {
+    flex: 1;
+    overflow: auto;
+}
+
+#auditTable th {
+    white-space: nowrap;
+}
+
+#auditEmptyState {
+    display: none;
+}
+
+#auditLoadingState {
+    display: none;
+}
+
+#auditLoadMoreIndicator,
+#auditAllLoaded {
+    display: none;
+}
+
+#auditLoadMoreSentinel {
+    width: 100%;
+    height: 1px;
+}
+
+@media (max-width: 992px) {
+    #auditMain {
+        flex-direction: column;
+    }
+
+    #auditFilters {
+        width: 100%;
+        max-width: none;
+        overflow: visible;
+    }
+}

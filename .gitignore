@@ -127,6 +127,9 @@ venv.bak/
 config.yaml
 # backup_script.sh
 
+# Certificates
+*.crt
+
 # IDEs
 .idea/
 .vscode/

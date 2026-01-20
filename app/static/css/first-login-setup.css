@@ -1,0 +1,127 @@
+.app-header,
+.app-footer {
+    display: none !important;
+}
+
+.app-main {
+    height: 100vh !important;
+    padding: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    background: var(--tr-bg-body);
+}
+
+.first-login-container {
+    padding: 1.5rem;
+    width: 100%;
+}
+
+.first-login-card {
+    background: var(--tr-bg-card);
+    border: 1px solid var(--tr-border-light);
+    border-radius: 8px;
+    box-shadow: var(--tr-shadow-md);
+    overflow: hidden;
+    max-width: 460px;
+    width: 100%;
+    margin: 0 auto;
+}
+
+.first-login-header {
+    background: linear-gradient(135deg, var(--tr-warning, #F97316) 0%, #FACC15 100%);
+    color: #1f2937;
+    text-align: center;
+    padding: 2rem;
+}
+
+.first-login-header h4 {
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.first-login-header p {
+    margin: 0;
+    color: rgba(31, 41, 55, 0.85);
+}
+
+.form-label {
+    font-weight: 500;
+    color: var(--tr-text-primary);
+    margin-bottom: 0.5rem;
+    font-size: 0.9rem;
+}
+
+.form-control {
+    border: 1px solid var(--tr-border);
+    border-radius: 6px;
+    font-size: 14px;
+    padding: 0.625rem 0.875rem;
+    transition: all 0.2s ease;
+    background-color: var(--tr-bg-card);
+    color: var(--tr-text-primary);
+}
+
+.form-control:focus {
+    border-color: var(--tr-primary);
+    box-shadow: 0 0 0 0.2rem rgba(var(--tr-primary-rgb), 0.25);
+}
+
+.tips {
+    background: rgba(250, 204, 21, 0.15);
+    border: 1px solid rgba(250, 204, 21, 0.4);
+    border-radius: 6px;
+    padding: 0.75rem 1rem;
+    font-size: 0.85rem;
+    color: #92400e;
+}
+
+.password-requirements {
+    list-style: none;
+    padding: 0;
+    margin: 0.5rem 0 0;
+    font-size: 0.85rem;
+    color: var(--tr-text-secondary);
+}
+
+.password-requirements li {
+    display: flex;
+    align-items: center;
+    margin-bottom: 0.25rem;
+}
+
+.password-requirements li i {
+    margin-right: 0.5rem;
+    width: 16px;
+    font-size: 0.8rem;
+}
+
+.password-requirements li.text-success i {
+    color: var(--tr-success, #10B981);
+}
+
+.password-requirements li.text-danger i {
+    color: var(--tr-danger, #EF4444);
+}
+
+.alert-floating {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 1060;
+    min-width: 300px;
+    animation: slideInRight 0.3s ease-out;
+    border-radius: 6px;
+    box-shadow: var(--tr-shadow-md);
+}
+
+@keyframes slideInRight {
+    from {
+        transform: translateX(100%);
+        opacity: 0;
+    }
+    to {
+        transform: translateX(0);
+        opacity: 1;
+    }
+}

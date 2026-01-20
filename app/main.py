@@ -123,9 +123,19 @@ async def test_case_management(
                 resolved_set_id = test_case.test_case_set_id
 
     # 如果仍然無法取得 set_id，維持原本導向邏輯
-    if resolved_set_id is None:
+    minimal_flag = request.query_params.get("minimal") in ("1", "true") or request.query_params.get("editor") in ("1", "true")
+    allow_without_set = minimal_flag and bool(tc)
+    if resolved_set_id is None and not allow_without_set:
         from fastapi.responses import RedirectResponse
         return RedirectResponse(url="/test-case-sets", status_code=303)
+
+    # 若已解析出 set_id 但 URL 未帶，補回 set_id 以確保前端能正確初始化區段 UI
+    if resolved_set_id is not None and set_id is None and not minimal_flag:
+        from fastapi.responses import RedirectResponse
+        params = dict(request.query_params)
+        params["set_id"] = str(resolved_set_id)
+        url = request.url.replace_query_params(**params)
+        return RedirectResponse(url=str(url), status_code=303)
 
     return templates.TemplateResponse(
         "test_case_management.html",

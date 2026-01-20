@@ -1,0 +1,46 @@
+.team-card {
+    transition: all 0.2s ease;
+    border: 1px solid var(--tr-border-light);
+    position: relative;
+    z-index: 1;
+}
+
+.team-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--tr-shadow-md);
+    border-color: var(--tr-primary);
+}
+
+.team-card.dropdown-open {
+    z-index: 1200;
+}
+
+.alert-sm {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+}
+
+.btn-group .btn {
+    flex: 1;
+}
+
+.form-text {
+    font-size: 0.8rem;
+}
+
+#teamModal .modal-lg {
+    max-width: 800px;
+}
+
+/* Prevent sync action buttons from wrapping and stretching */
+.no-stretch .btn {
+    flex: 0 0 auto;
+    white-space: nowrap;
+}
+
+/* Keep org stats in one line and aligned */
+.org-compact-stats { white-space: nowrap; }
+.org-compact-stats .stat { display: inline-flex; align-items: baseline; }
+
+/* Enlarge status badges in Sync History */
+/* moved to /static/css/style.css */

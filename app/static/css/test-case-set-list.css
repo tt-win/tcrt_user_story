@@ -1,0 +1,80 @@
+.test-case-set-card {
+  transition: all 0.3s ease;
+  border: 1px solid #e9ecef;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.test-case-set-card:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  transform: translateY(-2px);
+}
+
+.test-case-set-card .dropdown-menu {
+  min-width: 150px;
+}
+
+.test-case-set-card .card-header {
+  padding: 1rem;
+}
+
+.test-case-set-card .card-footer {
+  padding: 0.75rem 1rem;
+}
+
+.test-case-set-card .btn-primary {
+  font-weight: 500;
+}
+
+/* Test Case Selection Modal Styles */
+.set-case-list {
+  font-size: 0.9rem;
+}
+
+.section-group {
+  margin-bottom: 0.5rem;
+}
+
+.section-header {
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.section-header:hover {
+  background-color: #e9ecef !important;
+}
+
+.section-header .fw-500 {
+  font-weight: 500;
+}
+
+.section-content {
+  background-color: #f9f9f9;
+  transition: all 0.3s ease;
+}
+
+.section-content.d-none {
+  display: none !important;
+}
+
+.case-item {
+  transition: background-color 0.2s;
+}
+
+.case-item:hover {
+  background-color: #f0f8ff;
+}
+
+.case-number {
+  font-family: monospace;
+}
+
+.case-title {
+  font-weight: 500;
+  margin: 0.25rem 0;
+}
+
+/* Indeterminate checkbox styling */
+input[type="checkbox"]:indeterminate {
+  background-color: #0dcaf0;
+  border-color: #0dcaf0;
+}
