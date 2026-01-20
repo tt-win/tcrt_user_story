@@ -1,0 +1,317 @@
+body {
+    background: var(--tr-bg-body);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 14px;
+    color: var(--tr-text-primary);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.setup-container {
+    padding: 20px;
+    width: 100%;
+}
+
+.setup-card {
+    background: var(--tr-bg-card);
+    border: 1px solid var(--tr-border-light);
+    border-radius: 8px;
+    box-shadow: var(--tr-shadow-md);
+    overflow: hidden;
+    width: 70vw;
+    min-width: 600px;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+.setup-header {
+    background: linear-gradient(135deg, var(--tr-primary) 0%, #5BA0F2 100%);
+    color: white;
+    padding: 2rem;
+    text-align: center;
+}
+
+.setup-header .logo {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+}
+
+.setup-header h1 {
+    margin: 0;
+    font-size: 1.8rem;
+    font-weight: 600;
+}
+
+.setup-header .subtitle {
+    opacity: 0.9;
+    margin-top: 0.5rem;
+    font-size: 1rem;
+}
+
+.setup-body {
+    padding: 1.5rem;
+}
+
+.welcome-section {
+    text-align: center;
+    margin-bottom: 1.5rem;
+}
+
+.welcome-section .icon {
+    font-size: 3rem;
+    color: var(--tr-primary);
+    margin-bottom: 0.75rem;
+}
+
+.welcome-section h2 {
+    color: var(--tr-text-primary);
+    margin-bottom: 0.75rem;
+    font-size: 1.5rem;
+}
+
+.welcome-section p {
+    color: var(--tr-text-secondary);
+    margin-bottom: 0;
+}
+
+.steps-section {
+    margin: 1.5rem 0;
+}
+
+.steps-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 1rem;
+}
+
+.step-item {
+    flex: 1;
+    text-align: center;
+    padding: 1rem 0.75rem;
+    background: var(--tr-bg-light);
+    border-radius: 8px;
+    border-top: 4px solid var(--tr-primary);
+    position: relative;
+}
+
+.step-item:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    top: 20px;
+    right: -0.75rem;
+    width: 1.5rem;
+    height: 2px;
+    background: var(--tr-border-medium);
+    z-index: 1;
+}
+
+.step-number {
+    background: var(--tr-primary);
+    color: white;
+    border-radius: 50%;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    margin: 0 auto 0.75rem auto;
+    font-size: 0.875rem;
+}
+
+.step-content h5 {
+    margin: 0 0 0.5rem 0;
+    color: var(--tr-text-primary);
+    font-size: 0.9rem;
+}
+
+.step-content p {
+    margin: 0;
+    color: var(--tr-text-secondary);
+    font-size: 0.8rem;
+    line-height: 1.3;
+}
+
+.form-section {
+    background: var(--tr-bg-light);
+    border-radius: 8px;
+    padding: 1.25rem;
+    margin: 1.25rem 0;
+}
+
+.form-label {
+    font-weight: 500;
+    color: var(--tr-text-primary);
+    margin-bottom: 0.5rem;
+    font-size: 0.875rem;
+}
+
+.form-control {
+    border: 1px solid var(--tr-border);
+    border-radius: 6px;
+    padding: 0.625rem 0.875rem;
+    font-size: 14px;
+    transition: all 0.2s ease;
+    background-color: var(--tr-bg-card);
+    color: var(--tr-text-primary);
+}
+
+.form-control:focus {
+    border-color: var(--tr-primary);
+    box-shadow: 0 0 0 0.2rem rgba(var(--tr-primary-rgb), 0.25);
+    background-color: var(--tr-bg-card);
+    color: var(--tr-text-primary);
+}
+
+.password-input-group {
+    position: relative;
+}
+
+.password-toggle {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: var(--tr-text-secondary);
+    cursor: pointer;
+    font-size: 1.1rem;
+}
+
+.password-toggle:hover {
+    color: var(--tr-primary);
+}
+
+.requirements-list {
+    font-size: 0.875rem;
+    color: var(--tr-text-secondary);
+    margin-top: 0.5rem;
+}
+
+.alert {
+    border-radius: 6px;
+    border: 1px solid var(--tr-border-light);
+    font-weight: 500;
+    box-shadow: var(--tr-shadow-sm);
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, var(--tr-primary) 0%, #5BA0F2 100%);
+    border: 1px solid var(--tr-primary);
+    border-radius: 6px;
+    padding: 0.75rem 1.5rem;
+    font-weight: 500;
+    font-size: 0.875rem;
+    transition: all 0.2s ease;
+    color: white;
+    box-shadow: var(--tr-shadow-sm);
+}
+
+.btn-primary:hover {
+    background: linear-gradient(135deg, var(--tr-primary-dark) 0%, #4A8FD1 100%);
+    border-color: var(--tr-primary-dark);
+    transform: translateY(-1px);
+    box-shadow: var(--tr-shadow-md);
+    color: white;
+}
+
+.btn-primary:focus,
+.btn-primary:active {
+    background: linear-gradient(135deg, var(--tr-primary-dark) 0%, #4A8FD1 100%);
+    border-color: var(--tr-primary-dark);
+    color: white;
+    box-shadow: 0 0 0 0.2rem rgba(var(--tr-primary-rgb), 0.25);
+}
+
+.btn-primary:disabled {
+    background: var(--tr-text-muted);
+    border-color: var(--tr-text-muted);
+    transform: none;
+    box-shadow: none;
+    color: white;
+}
+
+.security-notes {
+    background: var(--tr-warning-light);
+    border: 1px solid var(--tr-warning);
+    border-radius: 6px;
+    padding: 1rem;
+    margin-top: 1rem;
+}
+
+.security-notes .icon {
+    color: var(--tr-warning);
+    margin-right: 0.5rem;
+}
+
+.security-notes h6 {
+    color: var(--tr-warning-dark);
+    margin-bottom: 0.5rem;
+}
+
+.security-notes ul {
+    margin: 0;
+    padding-left: 1.2rem;
+}
+
+.security-notes li {
+    color: var(--tr-warning-dark);
+    font-size: 0.875rem;
+    margin-bottom: 0.25rem;
+}
+
+@media (max-width: 768px) {
+    .setup-container {
+        padding: 10px;
+    }
+
+    .setup-card {
+        width: 95vw;
+        min-width: 320px;
+    }
+
+    .setup-header {
+        padding: 1.25rem;
+    }
+
+    .setup-body {
+        padding: 1rem;
+    }
+
+    .setup-header h1 {
+        font-size: 1.4rem;
+    }
+
+    .welcome-section .icon {
+        font-size: 2.5rem;
+    }
+
+    .welcome-section h2 {
+        font-size: 1.3rem;
+    }
+
+    .steps-row {
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .step-item:not(:last-child)::after {
+        display: none;
+    }
+
+    .step-item {
+        border-top: none;
+        border-left: 4px solid var(--tr-primary);
+        text-align: left;
+        padding: 0.75rem;
+    }
+
+    .step-number {
+        margin: 0 0.75rem 0 0;
+        float: left;
+    }
+}

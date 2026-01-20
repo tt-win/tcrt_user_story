@@ -1,0 +1,34 @@
+.team-card {
+    transition: all 0.2s ease;
+    border: 1px solid var(--tr-border-light);
+}
+
+.team-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--tr-shadow-md);
+    border-color: var(--tr-primary);
+}
+
+.team-card:hover .card-title {
+    color: var(--tr-primary-dark) !important;
+}
+
+.add-team-card {
+    transition: all 0.2s ease;
+    border: 1px solid var(--tr-border-light);
+}
+
+.add-team-card:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--tr-shadow-md);
+    border-color: var(--tr-primary);
+}
+
+.add-team-card:hover h5,
+.add-team-card:hover h6 {
+    color: var(--tr-primary-dark) !important;
+}
+
+.add-team-card:hover .fas {
+    color: var(--tr-primary-dark) !important;
+}

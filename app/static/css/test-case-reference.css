@@ -1,0 +1,35 @@
+body.popup-minimal .app-header,
+body.popup-minimal .app-footer {
+    display: none !important;
+}
+
+body.popup-minimal {
+    overflow: hidden !important;
+} /* 防止頁面捲動 */
+
+body.popup-minimal .app-main {
+    padding: 0 !important; /* 移除 main 的內邊距 */
+    margin: 0 !important;
+    height: 100vh !important;
+}
+
+body.popup-minimal .container-fluid {
+    padding: 0 !important; /* 移除 container-fluid 的內邊距 */
+    height: 100vh !important;
+}
+
+#referencePageRoot {
+    height: 100vh;
+    overflow: hidden;
+    padding: 0 !important;
+}
+
+.reference-results-container {
+    height: calc(100vh - 160px); /* 調整高度計算 */
+    overflow-y: auto;
+}
+
+/* 隱藏快速搜尋提示 */
+body.popup-minimal #quickSearchHint {
+    display: none !important;
+}

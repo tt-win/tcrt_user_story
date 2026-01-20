@@ -1,0 +1,1280 @@
+// 全域變數
+let currentTeamId = null;
+let testCaseSets = [];
+let allTeams = [];
+let currentEditingSetId = null;
+let pendingDeleteSetId = null;
+let quickSearchTestCases = [];
+let quickSearchTeamId = null;
+let quickSearchLoadPromise = null;
+let quickSearchInitialized = false;
+
+// 國際化
+const i18n = {
+  'testCaseSet': '測試案例集合',
+  'selectOrCreate': '選擇或建立一個測試案例集合來開始管理測試案例',
+  'addSet': '新增集合',
+  'setName': '集合名稱',
+  'setDescription': '描述',
+  'createSet': '建立集合',
+  'updateSet': '更新集合',
+  'deleteSet': '刪除',
+  'edit': '編輯',
+  'enter': '進入',
+  'testCasesCount': '個測試案例',
+  'noTestCases': '沒有測試案例',
+  'selectTeam': '選擇團隊...',
+  'currentTeam': '當前團隊',
+  'search': '搜尋集合',
+  'searchPlaceholder': '輸入集合名稱...',
+  'noTestCaseSets': '沒有測試案例集合',
+  'createFirstSet': '點擊下方卡片建立第一個測試案例集合',
+  'nameRequired': '集合名稱必須全域唯一',
+  'nameAlreadyExists': '集合名稱已存在',
+  'defaultSetCannotDelete': '無法刪除預設 Test Case Set',
+  'deleteConfirm': '確定要刪除此測試案例集合嗎？此操作無法撤銷。',
+  'loadingFailed': '載入資料失敗'
+};
+
+// 初始化
+document.addEventListener('DOMContentLoaded', async function() {
+  console.log('Test Case Sets page loaded');
+  loadLanguage();
+  setupQuickSearch_TestCaseSets();
+
+  // 從 localStorage 獲取當前選擇的團隊 (由 AppUtils.setCurrentTeam 設定)
+  const savedTeam = localStorage.getItem('currentTeam');
+  console.log('Saved team from localStorage:', savedTeam);
+
+  if (savedTeam) {
+    try {
+      const team = JSON.parse(savedTeam);
+      currentTeamId = team.id;
+      console.log('Set currentTeamId to:', currentTeamId, 'Type:', typeof currentTeamId);
+
+      // 檢查 AuthClient 是否準備好
+      console.log('AuthClient available:', !!window.AuthClient);
+      if (window.AuthClient) {
+        console.log('AuthClient token:', window.AuthClient.getToken() ? 'present' : 'missing');
+      }
+
+      await loadTestCaseSets();
+    } catch (error) {
+      console.error('Error parsing team from localStorage:', error);
+      showAlert(window.i18n && window.i18n.isReady() ? window.i18n.t('common.failed') : '讀取團隊資訊失敗', 'danger');
+    }
+  } else {
+    console.warn('No currentTeam found in localStorage');
+    showAlert(window.i18n && window.i18n.isReady() ? window.i18n.t('common.pleaseSelect') : '未選擇團隊', 'warning');
+  }
+});
+
+// 載入語言設定
+function loadLanguage() {
+  const lang = localStorage.getItem('userLanguage') || 'zh-TW';
+  if (window.i18n_dict && window.i18n_dict[lang]) {
+    Object.assign(i18n, window.i18n_dict[lang]);
+    updatePageText();
+  }
+}
+
+// 更新頁面文字
+function updatePageText() {
+  const createBtn = document.getElementById('createSetBtn');
+  if (createBtn) {
+    const btnText = window.i18n && window.i18n.isReady() ? window.i18n.t('testCaseSet.addSet', {}, 'Add Set') : 'Add Set';
+    createBtn.innerHTML = `<i class="fas fa-plus"></i> ${btnText}`;
+  }
+}
+
+// 載入 Test Case Sets
+async function loadTestCaseSets() {
+  if (!currentTeamId) {
+    console.warn('No currentTeamId set, skipping loadTestCaseSets');
+    return;
+  }
+
+  try {
+    if (!window.AuthClient) {
+      throw new Error('AuthClient 尚未初始化');
+    }
+
+    console.log(`Loading test case sets for team ${currentTeamId}`);
+    const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-case-sets`);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('API response not OK:', response.status, errorText);
+      throw new Error(`Failed to load test case sets (${response.status})`);
+    }
+
+    testCaseSets = await response.json();
+    console.log('Loaded test case sets:', testCaseSets);
+    renderTestCaseSets();
+  } catch (error) {
+    console.error('Error loading test case sets:', error);
+    const errorMsg = window.i18n && window.i18n.isReady() ? window.i18n.t('common.loadingFailed', {}, i18n.loadingFailed) : (i18n.loadingFailed || 'Failed to load data');
+    showAlert(errorMsg, 'danger');
+  }
+}
+
+// 獲取翻譯後的按鈕文字
+function getButtonTexts() {
+  if (window.i18n && window.i18n.isReady()) {
+    return {
+      enter: window.i18n.t('common.enter', {}, 'Enter'),
+      edit: window.i18n.t('common.edit', {}, 'Edit'),
+      deleteSet: window.i18n.t('common.delete', {}, 'Delete'),
+      testCasesCount: window.i18n.t('testCase.testCasesCount', {}, 'Test Cases'),
+      addSet: window.i18n.t('testCaseSet.addSet', {}, 'Add Set'),
+      createSetHint: window.i18n.t('testCaseSet.createSetHint', {}, 'Create a new test case set'),
+      createSet: window.i18n.t('testCaseSet.create', {}, 'Create'),
+      updateSet: window.i18n.t('testCaseSet.updateSet', {}, 'Update Set')
+    };
+  }
+  return {
+    enter: 'Enter',
+    edit: 'Edit',
+    deleteSet: 'Delete',
+    testCasesCount: 'Test Cases',
+    addSet: 'Add Set',
+    createSetHint: 'Create a new test case set',
+    createSet: 'Create',
+    updateSet: 'Update Set'
+  };
+}
+
+// 渲染 Test Case Sets 卡片
+function renderTestCaseSets() {
+  const container = document.getElementById('testCaseSetsContainer');
+  const emptyState = document.getElementById('emptyState');
+  const btnTexts = getButtonTexts();
+
+  if (testCaseSets.length === 0) {
+    container.innerHTML = `
+      <div class="col-md-6 col-lg-4 mb-4">
+        ${getAddTestCaseSetCardHtml(btnTexts)}
+      </div>
+    `;
+    emptyState.classList.add('d-none');
+    return;
+  }
+
+  emptyState.classList.add('d-none');
+
+  const cardsHtml = testCaseSets.map(set => `
+    <div class="col-md-6 col-lg-4 mb-4">
+      <div class="card h-100 test-case-set-card" data-set-id="${set.id}">
+        <div class="card-body d-flex flex-column h-100">
+          <div class="d-flex align-items-start mb-3">
+            <div class="flex-shrink-0 me-3">
+              <div class="bg-secondary text-white rounded-circle d-flex align-items-center justify-content-center"
+                   style="width: 48px; height: 48px; font-size: 18px;">
+                <i class="fas fa-${set.is_default ? 'star' : 'folder'}"></i>
+              </div>
+            </div>
+            <div class="flex-grow-1">
+              <h5 class="card-title text-primary mb-1">${escapeHtml(set.name)}</h5>
+              <p class="card-text text-muted small mb-0">
+                ${set.is_default
+                  ? (window.i18n && window.i18n.isReady()
+                    ? window.i18n.t('testCaseSet.defaultSetDescription', {}, 'Team default test case set')
+                    : '團隊預設測試案例集合')
+                  : (set.description ? escapeHtml(set.description) : '<em>無描述</em>')}
+              </p>
+            </div>
+          </div>
+          <div class="mt-2 mb-3">
+            <small class="text-muted">
+              <i class="fas fa-list me-1"></i>
+              <span>${set.test_case_count || 0} ${btnTexts.testCasesCount}</span>
+            </small>
+          </div>
+          <div class="mt-auto pt-2">
+            <div class="d-flex gap-2" style="flex-wrap: wrap;">
+              <button class="btn btn-primary btn-sm flex-grow-1" onclick="navigateToSet(${set.id})">
+                <i class="fas fa-arrow-right me-1"></i>${btnTexts.enter}
+              </button>
+              <button class="btn btn-success btn-sm" onclick="openSetCaseSelectModal(${set.id})">
+                <i class="fas fa-plus"></i> <span class="d-none d-md-inline">Test Run</span>
+              </button>
+              <button class="btn btn-secondary btn-sm" onclick="showEditSetModal(${set.id}, '${escapeHtml(set.name)}', '${escapeHtml(set.description || '')}')">
+                <i class="fas fa-edit"></i> <span class="d-none d-md-inline">${btnTexts.edit}</span>
+              </button>
+              <button class="btn btn-danger btn-sm ${set.is_default ? 'disabled' : ''}" ${set.is_default ? 'disabled' : `onclick="showDeleteConfirm(${set.id}, '${escapeHtml(set.name)}')"`}>
+                <i class="fas fa-trash"></i> <span class="d-none d-md-inline">${btnTexts.deleteSet}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `).join('');
+
+  container.innerHTML = cardsHtml + `
+    <div class="col-md-6 col-lg-4 mb-4">
+      ${getAddTestCaseSetCardHtml(btnTexts)}
+    </div>
+  `;
+}
+
+// 新增 Test Case Set 卡片 HTML
+function getAddTestCaseSetCardHtml(btnTexts = {}) {
+  const addSetText = btnTexts.addSet || 'Add Set';
+  const createHintText = btnTexts.createSetHint || 'Create a new test case set';
+  return `
+    <div class="card h-100 add-test-case-set-card text-center" style="cursor: pointer; border: 2px dashed var(--tr-border-light); background-color: transparent;" onclick="showCreateSetModal()">
+      <div class="card-body d-flex flex-column justify-content-center">
+        <div class="text-primary rounded-circle d-flex align-items-center justify-content-center mx-auto mb-3"
+             style="width: 48px; height: 48px; font-size: 18px; border: 2px dashed var(--tr-primary);">
+          <i class="fas fa-plus"></i>
+        </div>
+        <h6 class="text-primary mb-1">${addSetText}</h6>
+        <small class="text-muted">${createHintText}</small>
+      </div>
+    </div>
+  `;
+}
+
+// 顯示新增 Set Modal
+function showCreateSetModal() {
+  currentEditingSetId = null;
+  const modalLabel = window.i18n && window.i18n.isReady() ? window.i18n.t('testCaseSet.createSet') : '新增測試案例集合';
+  const submitBtnText = window.i18n && window.i18n.isReady() ? window.i18n.t('testCaseSet.create', {}, 'Create') : 'Create';
+  
+  const labelEl = document.getElementById('setModalLabel');
+  if (labelEl) labelEl.textContent = modalLabel;
+  
+  const btnTextEl = document.getElementById('submitBtnText');
+  if (btnTextEl) btnTextEl.textContent = submitBtnText;
+
+  // 更新標籤文字
+  updateModalLabels('create');
+
+  const form = document.getElementById('setForm');
+  if (form) form.reset();
+  
+  const nameError = document.getElementById('setNameError');
+  if (nameError) nameError.classList.add('d-none');
+  
+  const formAlert = document.getElementById('formAlert');
+  if (formAlert) formAlert.classList.add('d-none');
+  
+  const modalEl = document.getElementById('setModal');
+  if (modalEl) {
+      const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+      modal.show();
+  }
+}
+
+// 顯示編輯 Set Modal
+function showEditSetModal(setId, name, description) {
+  currentEditingSetId = setId;
+  const editLabel = window.i18n && window.i18n.isReady() ? window.i18n.t('testCaseSet.editSet', {}, '編輯測試案例集合') : '編輯測試案例集合';
+  const submitBtnText = window.i18n && window.i18n.isReady() ? window.i18n.t('testCaseSet.updateSet', {}, 'Update') : 'Update';
+  
+  const labelEl = document.getElementById('setModalLabel');
+  if (labelEl) labelEl.textContent = editLabel;
+  
+  const btnTextEl = document.getElementById('submitBtnText');
+  if (btnTextEl) btnTextEl.textContent = submitBtnText;
+
+  // 更新標籤文字
+  updateModalLabels('edit');
+
+  const nameInput = document.getElementById('setName');
+  if (nameInput) nameInput.value = name;
+  
+  const descInput = document.getElementById('setDescription');
+  if (descInput) descInput.value = description;
+  
+  const nameError = document.getElementById('setNameError');
+  if (nameError) nameError.classList.add('d-none');
+  
+  const formAlert = document.getElementById('formAlert');
+  if (formAlert) formAlert.classList.add('d-none');
+  
+  const modalEl = document.getElementById('setModal');
+  if (modalEl) {
+      const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+      modal.show();
+  }
+}
+
+// 更新模態框標籤的翻譯
+function updateModalLabels(mode) {
+  if (!window.i18n || !window.i18n.isReady()) {
+    return; // 如果 i18n 還未準備好，跳過翻譯
+  }
+
+  // 翻譯 Set Name 標籤
+  const setNameLabel = document.querySelector('label[for="setName"] span[data-i18n]');
+  if (setNameLabel) {
+    const setNameText = window.i18n.t('testCaseSet.setName', {}, '集合名稱');
+    setNameLabel.textContent = setNameText;
+  }
+
+  // 翻譯 Name unique 幫助文字
+  const nameUniqueHelp = document.querySelector('small[data-i18n="testCaseSet.nameUnique"]');
+  if (nameUniqueHelp) {
+    const uniqueText = window.i18n.t('testCaseSet.nameUnique', {}, '名稱必須全域唯一');
+    nameUniqueHelp.textContent = uniqueText;
+  }
+
+  // 翻譯 Description 標籤
+  const descLabel = document.querySelector('label[for="setDescription"][data-i18n]');
+  if (descLabel) {
+    const descText = window.i18n.t('testCaseSet.setDescription', {}, '集合描述');
+    descLabel.textContent = descText;
+  }
+
+  // 翻譯 Description Placeholder
+  const descTextarea = document.getElementById('setDescription');
+  if (descTextarea) {
+    const placeholderText = window.i18n.t('testCaseSet.setDescriptionPlaceholder', {}, '描述此集合的用途');
+    descTextarea.placeholder = placeholderText;
+  }
+
+  // 翻譯 Cancel 按鈕
+  const cancelBtn = document.getElementById('setModalCloseBtn');
+  if (cancelBtn && cancelBtn.hasAttribute('data-i18n')) {
+    const cancelText = window.i18n.t('common.cancel', {}, '取消');
+    cancelBtn.textContent = cancelText;
+  }
+}
+
+// 提交 Set 表單
+async function submitSetForm() {
+  const name = document.getElementById('setName').value.trim();
+  const description = document.getElementById('setDescription').value.trim();
+  const nameError = document.getElementById('setNameError');
+  const formAlert = document.getElementById('formAlert');
+
+  console.log('Submitting form:', { name, description, currentTeamId, currentEditingSetId });
+
+  nameError.classList.add('d-none');
+  formAlert.classList.add('d-none');
+
+  if (!name) {
+    const nameEmptyMsg = window.i18n && window.i18n.isReady() ? window.i18n.t('testCaseSet.setName') : '集合名稱';
+    nameError.textContent = nameEmptyMsg + '不可空白';
+    nameError.classList.remove('d-none');
+    return;
+  }
+
+  if (!currentTeamId) {
+    const selectTeamMsg = window.i18n && window.i18n.isReady() ? window.i18n.t('common.pleaseSelect') : '請先選擇團隊';
+    formAlert.textContent = selectTeamMsg;
+    formAlert.classList.add('alert-danger');
+    formAlert.classList.remove('d-none');
+    return;
+  }
+
+  try {
+    const submitBtn = document.getElementById('setModalSubmitBtn');
+    submitBtn.disabled = true;
+    const processingMsg = window.i18n && window.i18n.isReady() ? window.i18n.t('common.loading') : '處理中...';
+    submitBtn.innerHTML = `<span class="spinner-border spinner-border-sm me-2"></span>${processingMsg}`;
+
+    const requestBody = JSON.stringify({ name, description });
+    console.log('Request body:', requestBody);
+
+    if (currentEditingSetId) {
+      // 更新
+      console.log(`Updating set ${currentEditingSetId}`);
+      const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-case-sets/${currentEditingSetId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: requestBody
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || 'Failed to update set');
+      }
+    } else {
+      // 新增
+      console.log('Creating new set');
+      const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-case-sets`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: requestBody
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.detail || 'Failed to create set');
+      }
+    }
+
+    // 關閉 Modal 並重新載入
+    const modalEl = document.getElementById('setModal');
+    if (modalEl) {
+        const modal = bootstrap.Modal.getInstance(modalEl);
+        if (modal) modal.hide();
+    }
+    await loadTestCaseSets();
+
+  } catch (error) {
+    console.error('Error submitting form:', error);
+    formAlert.textContent = error.message || 'Error occurred';
+    formAlert.classList.add('alert-danger');
+    formAlert.classList.remove('d-none');
+  } finally {
+    const submitBtn = document.getElementById('setModalSubmitBtn');
+    submitBtn.disabled = false;
+    const btnText = currentEditingSetId
+      ? (window.i18n && window.i18n.isReady() ? window.i18n.t('testCaseSet.updateSet', {}, 'Update') : 'Update')
+      : (window.i18n && window.i18n.isReady() ? window.i18n.t('testCaseSet.create', {}, 'Create') : 'Create');
+    submitBtn.innerHTML = btnText;
+  }
+}
+
+// 顯示刪除確認
+function showDeleteConfirm(setId, setName) {
+  // 檢查是否為預設 Set
+  const set = testCaseSets.find(s => s.id === setId);
+  if (set && set.is_default) {
+    const cantDeleteMsg = window.i18n && window.i18n.isReady() ? window.i18n.t('testCaseSet.defaultSetCannotDelete', {}, i18n.defaultSetCannotDelete) : i18n.defaultSetCannotDelete;
+    showAlert(cantDeleteMsg, 'warning');
+    return;
+  }
+
+  pendingDeleteSetId = setId;
+  const confirmText = document.getElementById('deleteConfirmText');
+  confirmText.textContent = `確定要刪除「${setName}」嗎？此集合中的所有 Test Case 將移至預設集合。此操作無法撤銷。`;
+  const modal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
+  modal.show();
+}
+
+// 確認刪除
+async function confirmDelete() {
+  if (!pendingDeleteSetId) return;
+
+  try {
+    // 刪除 Test Case Set（後端會自動處理 Test Case 重新分配和 Section 刪除）
+    const response = await window.AuthClient.fetch(
+      `/api/teams/${currentTeamId}/test-case-sets/${pendingDeleteSetId}`,
+      {
+        method: 'DELETE'
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: 'Failed to delete set' }));
+      throw new Error(error.detail || 'Failed to delete set');
+    }
+
+    bootstrap.Modal.getInstance(document.getElementById('deleteConfirmModal')).hide();
+    await loadTestCaseSets();
+    const successMsg = window.i18n && window.i18n.isReady() ? window.i18n.t('testCaseSet.deleteSuccess', {}, '集合已刪除，Test Case 已移至預設集合') : '集合已刪除，Test Case 已移至預設集合';
+    showAlert(successMsg, 'success');
+
+  } catch (error) {
+    console.error('Error deleting set:', error);
+    const errorPrefix = window.i18n && window.i18n.isReady() ? window.i18n.t('common.failed', {}, '刪除失敗: ') : '刪除失敗: ';
+    showAlert(errorPrefix + error.message, 'danger');
+  } finally {
+    pendingDeleteSetId = null;
+  }
+}
+
+// 導航到 Test Case Set
+function navigateToSet(setId) {
+  // 保存當前選擇的 Set ID
+  sessionStorage.setItem('selectedTestCaseSetId', setId);
+  // 獲取當前團隊 ID
+  const currentTeam = window.AppUtils && window.AppUtils.getCurrentTeam ?
+                      window.AppUtils.getCurrentTeam() : null;
+  const teamId = currentTeam ? currentTeam.id : '';
+  // 導航到 Test Case Management
+  const url = `/test-case-management?set_id=${setId}${teamId ? `&team_id=${teamId}` : ''}`;
+  window.location.href = url;
+}
+
+/* ============================================================
+   快速搜尋 (Quick Search) - Test Case Sets Page
+   ============================================================ */
+
+function debounce(func, delay) {
+  let timeoutId;
+  return function (...args) {
+    clearTimeout(timeoutId);
+    timeoutId = setTimeout(() => func.apply(this, args), delay);
+  };
+}
+
+function getQuickSearchTeamId() {
+  if (currentTeamId) return currentTeamId;
+  try {
+    const team = window.AppUtils && window.AppUtils.getCurrentTeam ? window.AppUtils.getCurrentTeam() : null;
+    if (team && team.id) return team.id;
+  } catch (_) {}
+  try {
+    const savedTeam = localStorage.getItem('currentTeam');
+    if (savedTeam) {
+      const team = JSON.parse(savedTeam);
+      return team && team.id ? team.id : null;
+    }
+  } catch (_) {}
+  return null;
+}
+
+async function ensureQuickSearchTestCases() {
+  const teamId = getQuickSearchTeamId();
+  if (!teamId) return false;
+  if (quickSearchTeamId === teamId) return true;
+  if (quickSearchLoadPromise) return quickSearchLoadPromise;
+
+  quickSearchLoadPromise = (async () => {
+    try {
+      if (!window.AuthClient) throw new Error('AuthClient 尚未初始化');
+      const resp = await window.AuthClient.fetch(`/api/teams/${teamId}/testcases?load_all=true`);
+      if (!resp.ok) {
+        const errorText = await resp.text();
+        throw new Error(errorText || `Failed to load test cases (${resp.status})`);
+      }
+      const data = await resp.json();
+      quickSearchTestCases = Array.isArray(data) ? data : [];
+      quickSearchTeamId = teamId;
+      return true;
+    } catch (error) {
+      console.error('快速搜尋載入測試案例失敗:', error);
+      return false;
+    } finally {
+      quickSearchLoadPromise = null;
+    }
+  })();
+
+  return quickSearchLoadPromise;
+}
+
+function setupQuickSearch_TestCaseSets() {
+  if (quickSearchInitialized) return;
+  quickSearchInitialized = true;
+
+  if (!document.getElementById('quickSearchSetOverlay')) {
+    const overlay = document.createElement('div');
+    overlay.id = 'quickSearchSetOverlay';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:1060;display:none;background:rgba(0,0,0,0.35)';
+    overlay.innerHTML = `
+      <div class="position-fixed" style="top:34vh; left:50%; transform: translateX(-50%); width:min(720px, 92vw);">
+        <div class="card shadow">
+          <div class="card-body p-2">
+            <input id="quickSearchSetInput" type="text" class="form-control form-control-lg" placeholder="${window.i18n ? window.i18n.t('testCase.searchPlaceholder') : '搜尋測試案例...'}" autocomplete="off" />
+            <div id="quickSearchSetResults" class="list-group list-group-flush" style="max-height:30vh; overflow:auto;"></div>
+          </div>
+        </div>
+      </div>`;
+    document.body.appendChild(overlay);
+
+    try {
+      const input = overlay.querySelector('#quickSearchSetInput');
+      const applyPlaceholder = () => {
+        if (input && window.i18n && window.i18n.isReady()) {
+          input.placeholder = window.i18n.t('testCase.searchPlaceholder');
+        }
+      };
+      applyPlaceholder();
+      document.addEventListener('languageChanged', applyPlaceholder);
+      if (!window.i18n || !window.i18n.isReady || !window.i18n.isReady()) {
+        document.addEventListener('i18nReady', applyPlaceholder);
+      }
+    } catch (_) {}
+
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) closeQuickSearch_TestCaseSets(); });
+  }
+
+  if (!document.getElementById('quickSearchSetHint')) {
+    const hint = document.createElement('div');
+    hint.id = 'quickSearchSetHint';
+    hint.className = 'position-fixed';
+    hint.style.cssText = 'left:12px; bottom:12px; z-index:1040; opacity:0.85; pointer-events:none;';
+    const label = window.i18n && window.i18n.isReady() ? window.i18n.t('hotkeys.quickSearch') : '按 / 開啟快速搜尋';
+    hint.innerHTML = `<span class="badge bg-secondary-subtle text-secondary border" style="--bs-bg-opacity:.65;">${label}</span>`;
+    document.body.appendChild(hint);
+
+    const updateHint = () => {
+      const text = window.i18n ? window.i18n.t('hotkeys.quickSearch') : '按 / 開啟快速搜尋';
+      const badge = document.querySelector('#quickSearchSetHint .badge');
+      if (badge) badge.textContent = text;
+    };
+    document.addEventListener('i18nReady', updateHint);
+    document.addEventListener('languageChanged', updateHint);
+  }
+
+  document.addEventListener('keydown', function(e) {
+    const tag = (e.target && e.target.tagName || '').toLowerCase();
+    const isTyping = ['input','textarea','select'].includes(tag) || (e.target && e.target.isContentEditable);
+    if (!isTyping && e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      openQuickSearch_TestCaseSets();
+    }
+  });
+}
+
+async function openQuickSearch_TestCaseSets() {
+  const overlay = document.getElementById('quickSearchSetOverlay');
+  const input = document.getElementById('quickSearchSetInput');
+  const results = document.getElementById('quickSearchSetResults');
+  if (!overlay || !input || !results) return;
+
+  overlay.style.display = 'block';
+  input.value = '';
+  results.innerHTML = `<div class="list-group-item text-muted">${window.i18n ? window.i18n.t('common.loading') : '載入中...'}</div>`;
+  input.focus();
+
+  const handleKey = (e) => {
+    if (e.key === 'Escape') { closeQuickSearch_TestCaseSets(); return; }
+    if (e.key === 'Enter') {
+      const active = results.querySelector('.active');
+      if (active) { active.click(); }
+    } else if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const items = Array.from(results.querySelectorAll('.list-group-item'));
+      if (items.length === 0) return;
+      let idx = items.findIndex(li => li.classList.contains('active'));
+      if (idx < 0) idx = 0;
+      idx = (e.key === 'ArrowDown') ? Math.min(idx + 1, items.length - 1) : Math.max(idx - 1, 0);
+      items.forEach(li => li.classList.remove('active'));
+      items[idx].classList.add('active');
+      items[idx].scrollIntoView({ block: 'nearest' });
+    }
+  };
+  input.onkeydown = handleKey;
+
+  const loaded = await ensureQuickSearchTestCases();
+  if (!loaded) {
+    results.innerHTML = `<div class="list-group-item text-muted">${window.i18n ? window.i18n.t('common.failed') : '載入失敗'}</div>`;
+    return;
+  }
+
+  const debouncedSearch = debounce(() => quickSearchRender_TestCaseSets(input.value, results), 300);
+  input.oninput = debouncedSearch;
+  quickSearchRender_TestCaseSets('', results);
+}
+
+function closeQuickSearch_TestCaseSets() {
+  const overlay = document.getElementById('quickSearchSetOverlay');
+  if (overlay) overlay.style.display = 'none';
+}
+
+function getSetNameById(setId) {
+  if (!setId) return window.i18n ? window.i18n.t('testCaseSet.unassigned', {}, '未分配') : '未分配';
+  const matched = (testCaseSets || []).find(s => String(s.id) === String(setId));
+  return matched ? matched.name : `Set ${setId}`;
+}
+
+function navigateToTestCaseFromSearch(setId, testCaseNumber) {
+  if (!testCaseNumber) return;
+  const teamId = getQuickSearchTeamId();
+  const params = new URLSearchParams();
+  if (setId) params.set('set_id', setId);
+  if (teamId) params.set('team_id', teamId);
+  params.set('tc', testCaseNumber);
+  window.location.href = `/test-case-management?${params.toString()}`;
+}
+
+function quickSearchRender_TestCaseSets(query, container) {
+  const q = (query || '').trim().toLowerCase();
+  let matches = [];
+  if (q.length > 0) {
+    matches = (quickSearchTestCases || []).filter(tc => {
+      const num = (tc.test_case_number || '').toLowerCase();
+      const title = (tc.title || '').toLowerCase();
+      return num.includes(q) || title.includes(q);
+    }).slice(0, 100);
+  }
+
+  if (matches.length === 0) {
+    container.innerHTML = `<div class="list-group-item text-muted">${window.i18n ? window.i18n.t('errors.noMatchingTestCases') : '沒有找到符合條件的測試案例'}</div>`;
+    return;
+  }
+
+  container.innerHTML = matches.map((tc, idx) => {
+    const tcNumber = tc.test_case_number || tc.record_id || '';
+    const setId = tc.test_case_set_id || '';
+    const setLabel = getSetNameById(setId);
+    return `
+      <button type="button" class="list-group-item list-group-item-action ${idx === 0 ? 'active' : ''}" data-tc-number="${escapeHtml(tcNumber)}" data-set-id="${escapeHtml(String(setId))}">
+        <div class="d-flex justify-content-between align-items-center">
+          <div class="d-flex align-items-center gap-2 overflow-hidden">
+            <code class="small" style="min-width: 120px; color: rgb(194, 54, 120); font-weight: 500;">${escapeHtml(tcNumber)}</code>
+            <span class="text-truncate">${escapeHtml(tc.title || '')}</span>
+          </div>
+          <span class="badge bg-light text-muted border ms-2">${escapeHtml(setLabel)}</span>
+        </div>
+      </button>
+    `;
+  }).join('');
+
+  container.querySelectorAll('.list-group-item').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tcNumber = btn.getAttribute('data-tc-number');
+      const setId = btn.getAttribute('data-set-id');
+      closeQuickSearch_TestCaseSets();
+      navigateToTestCaseFromSearch(setId, tcNumber);
+    });
+  });
+}
+
+// 顯示警告訊息
+function showAlert(message, type = 'info') {
+  const alertHtml = `
+    <div class="alert alert-${type} alert-dismissible fade show" role="alert" style="margin-bottom: 12px;">
+      ${message}
+      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+  `;
+
+  const flashMessagesContainer = document.getElementById('flash-messages');
+  if (!flashMessagesContainer) {
+    console.warn('Flash messages container not found');
+    return;
+  }
+
+  // 建立一個包含訊息的容器
+  const alertDiv = document.createElement('div');
+  alertDiv.innerHTML = alertHtml;
+  const alertElement = alertDiv.firstElementChild;
+
+  flashMessagesContainer.appendChild(alertElement);
+
+  // 自動移除
+  setTimeout(() => {
+    if (alertElement && alertElement.parentElement) {
+      alertElement.remove();
+    }
+  }, 5000);
+}
+
+// HTML 轉義
+function escapeHtml(text) {
+  const map = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;'
+  };
+  return text.replace(/[&<>"']/g, m => map[m]);
+}
+
+// ==================== Test Case Selection for Test Run Creation ====================
+let currentTestCaseSetId = null;
+let setTestCaseData = {
+  sections: [],
+  testCases: [],
+  selectedCases: new Set(),
+  filteredCases: []
+};
+let setSelectModalInstance = null;
+
+/**
+ * 打開從 Test Case Set 卡片建立 Test Run 的選擇畫面
+ */
+async function openSetCaseSelectModal(setId) {
+  currentTestCaseSetId = setId;
+  setTestCaseData.selectedCases.clear();
+
+  const modalEl = document.getElementById('setCaseSelectModal');
+  if (!setSelectModalInstance) {
+    setSelectModalInstance = new bootstrap.Modal(modalEl);
+  }
+
+  setSelectModalInstance.show();
+
+  // 載入該 Set 的 Sections 和 Test Cases
+  await loadSetSectionsAndTestCases(setId);
+  renderSetCaseList();
+}
+
+/**
+ * 載入指定 Test Case Set 的 Sections 和 Test Cases
+ */
+async function loadSetSectionsAndTestCases(setId) {
+  try {
+    // 載入 Sections (樹狀結構)
+    const sectionsResponse = await window.AuthClient.fetch(
+      `/api/test-case-sets/${setId}/sections`,
+      { method: 'GET' }
+    );
+
+    if (!sectionsResponse.ok) {
+      throw new Error('Failed to load sections');
+    }
+
+    setTestCaseData.sections = await sectionsResponse.json();
+
+    // 載入該 Set 內的所有 Test Cases
+    const casesResponse = await window.AuthClient.fetch(
+      `/api/teams/${currentTeamId}/testcases?set_id=${setId}&limit=10000`,
+      { method: 'GET' }
+    );
+
+    if (!casesResponse.ok) {
+      throw new Error('Failed to load test cases');
+    }
+
+    setTestCaseData.testCases = await casesResponse.json();
+    setTestCaseData.filteredCases = setTestCaseData.testCases;
+
+    console.log('Loaded sections structure:', setTestCaseData.sections);
+    console.log('Loaded test cases:', setTestCaseData.testCases);
+    console.log('Full data:', setTestCaseData);
+  } catch (error) {
+    console.error('Error loading sections and test cases:', error);
+    const errorMsg = window.i18n && window.i18n.isReady() ? window.i18n.t('common.loadingFailed') : '載入失敗，請重試';
+    document.getElementById('setCaseListContainer').innerHTML =
+      `<div class="alert alert-danger">${errorMsg}</div>`;
+  }
+}
+
+/**
+ * 檢查是否為 Unassigned Section
+ */
+function isUnassignedSection(section) {
+  if (!section || !section.name) return false;
+  return section.name.trim().toLowerCase() === 'unassigned';
+}
+
+/**
+ * 取得 Section 及其直接子 Section 下的所有 Test Cases（不包括孫層級及以下）
+ */
+function getDirectTestCasesInSection(section) {
+  // 只取該 Section 直接包含的 test cases
+  const directCases = setTestCaseData.testCases.filter(tc => tc.test_case_section_id === section.id);
+  return directCases;
+}
+
+/**
+ * 取得 Section 及其所有子 Section 下的所有 Test Cases
+ */
+function getAllTestCasesInSection(section, allSections) {
+  const allCases = [];
+
+  // 加入該 Section 直接包含的 test cases
+  const directCases = setTestCaseData.testCases.filter(tc => tc.test_case_section_id === section.id);
+  allCases.push(...directCases);
+
+  // 遞迴加入所有子 Section 的 test cases
+  const childSections = section.children || [];
+  childSections.forEach(child => {
+    const childCases = getAllTestCasesInSection(child, allSections);
+    allCases.push(...childCases);
+  });
+
+  return allCases;
+}
+
+/**
+ * 對 Section 進行排序，確保 Unassigned 排在最後
+ */
+function sortSectionsForDisplay(sections) {
+  if (!sections || sections.length === 0) return [];
+
+  const unassignedSections = [];
+  const normalSections = [];
+
+  sections.forEach(section => {
+    if (isUnassignedSection(section)) {
+      unassignedSections.push(section);
+    } else {
+      normalSections.push(section);
+    }
+  });
+
+  // Normal sections + Unassigned sections
+  return [...normalSections, ...unassignedSections];
+}
+
+/**
+ * 渲染 Test Case 列表（含嵌套 Section 結構）
+ */
+function renderSetCaseList() {
+  const container = document.getElementById('setCaseListContainer');
+  const searchValue = document.getElementById('setCaseSearchInput').value.toLowerCase();
+
+  // 應用搜尋
+  let filteredCases = setTestCaseData.testCases.filter(testCase => {
+    const matchesSearch = testCase.test_case_number.toLowerCase().includes(searchValue) ||
+                          testCase.title.toLowerCase().includes(searchValue);
+    return matchesSearch;
+  });
+
+  setTestCaseData.filteredCases = filteredCases;
+
+  // 建立 case 對應 section 的快速查詢 Map（只包含直接 child cases，不包含孫代）
+  const casesBySectionId = {};
+  filteredCases.forEach(tc => {
+    const sectionId = tc.test_case_section_id || null;
+    if (!casesBySectionId[sectionId]) {
+      casesBySectionId[sectionId] = [];
+    }
+    casesBySectionId[sectionId].push(tc);
+  });
+
+  // 遞迴渲染 Section 樹
+  let html = '<div class="set-case-list">';
+
+  function renderSectionTree(sections, level = 0) {
+    if (!sections || sections.length === 0) return '';
+
+    // 對 sections 進行排序，確保 Unassigned 放最後
+    const sortedSections = sortSectionsForDisplay(sections);
+
+    return sortedSections.map(section => {
+      const sectionId = `section-${section.id}`;
+      const isExpanded = sessionStorage.getItem(sectionId) !== 'collapsed';
+
+      // 該 section 直接包含的 test cases（僅搜尋篩選）
+      const sectionCases = casesBySectionId[section.id] || [];
+      
+      // 計算包含子 section 的總 test case 數量
+      function countCasesInSectionTree(sec) {
+        let count = casesBySectionId[sec.id]?.length || 0;
+        if (sec.children && sec.children.length > 0) {
+          count += sec.children.reduce((sum, child) => sum + countCasesInSectionTree(child), 0);
+        }
+        return count;
+      }
+      const totalCaseCount = countCasesInSectionTree(section);
+
+      // 子 Section
+      const childSections = section.children || [];
+      const hasChildSections = childSections.length > 0;
+
+      // 總是顯示 Section 標頭（包含 Unassigned），不再依賴內容判斷
+      const hasDirectCases = sectionCases.length > 0;
+      const hasContent = hasDirectCases || hasChildSections;
+
+      // 強制顯示標頭（包含 Unassigned 即使沒有內容）
+      // if (!hasContent) return '';
+
+      // 取得該 Section 子樹所有 cases（搜尋過濾後）
+      const subtreeCases = [];
+      (function collect(sec){
+        const arr = casesBySectionId[sec.id] || [];
+        subtreeCases.push(...arr);
+        (sec.children || []).forEach(collect);
+      })(section);
+
+      // 檢查子樹 cases 的選擇狀態（含所有子層）
+      const allDirectSelected = subtreeCases.length > 0 &&
+                                subtreeCases.every(tc => setTestCaseData.selectedCases.has(tc.record_id));
+      const someDirectSelected = subtreeCases.length > 0 &&
+                                 subtreeCases.some(tc => setTestCaseData.selectedCases.has(tc.record_id));
+      const indentLevel = level * 20;
+      let sectionHtml = `
+        <div class="section-group" style="margin-left: ${indentLevel}px;">
+          <!-- Section Header -->
+          <div class="section-header d-flex align-items-center py-2 px-2 border-bottom" style="background-color: #e8eef5;">
+            <input type="checkbox"
+                   class="section-checkbox me-2"
+                   data-section-id="${section.id}"
+                   ${allDirectSelected ? 'checked' : ''}
+                   ${someDirectSelected && !allDirectSelected ? 'data-indeterminate="true"' : ''}
+                   onchange="handleSectionCheckboxChange(${section.id}, this.checked)">
+            <button class="btn btn-link btn-sm p-0 me-2"
+                    onclick="toggleSectionExpand(${section.id})"
+                    style="width: 24px; height: 24px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; text-decoration: none;"
+                    onmouseover="this.style.textDecoration='none'"
+                    onmouseout="this.style.textDecoration='none'">
+              <i class="fas fa-chevron-${isExpanded ? 'down' : 'right'}"></i>
+            </button>
+            <span class="fw-500 flex-grow-1">${escapeHtml(section.name)}</span>
+            <small class="text-muted">(${totalCaseCount})</small>
+          </div>
+
+          <!-- Test Cases and Child Sections -->
+          <div class="section-content ${isExpanded ? '' : 'd-none'}" id="content-section-${section.id}">
+            <!-- Direct test cases under this section -->
+            ${sectionCases.map(testCase => `
+              <div class="case-item d-flex align-items-center py-2 px-3" style="background-color: #f8f9fa; border-bottom: 1px solid #e9ecef;">
+                <input type="checkbox"
+                       class="case-checkbox me-3"
+                       data-case-id="${testCase.record_id}"
+                       ${setTestCaseData.selectedCases.has(testCase.record_id) ? 'checked' : ''}
+                       onchange="handleCaseCheckboxChange('${testCase.record_id}', this.checked)">
+                <code class="me-2" style="min-width: 100px; flex-shrink: 0; color: rgb(194, 54, 120); font-size: inherit; font-weight: 500;">${escapeHtml(testCase.test_case_number)}</code>
+                <div class="flex-grow-1 text-truncate">${escapeHtml(testCase.title)}</div>
+                ${testCase.priority ? `<span class="badge bg-secondary ms-2">${escapeHtml(testCase.priority)}</span>` : ''}
+              </div>
+            `).join('')}
+
+            <!-- Child Sections -->
+            ${renderSectionTree(childSections, level + 1)}
+          </div>
+        </div>
+      `;
+
+      return sectionHtml;
+    }).join('');
+  }
+
+  if (!setTestCaseData.sections || setTestCaseData.sections.length === 0) {
+    const noMatchMsg = window.i18n && window.i18n.isReady() ? window.i18n.t('testCase.noTestCases', {}, '沒有符合的測試案例') : '沒有符合的測試案例';
+    html += `<div class="alert alert-info">${noMatchMsg}</div>`;
+  } else {
+    html += renderSectionTree(setTestCaseData.sections);
+  }
+
+  html += '</div>';
+  container.innerHTML = html;
+
+  // 修復 indeterminate 狀態的 checkbox
+  document.querySelectorAll('[data-indeterminate="true"]').forEach(checkbox => {
+    checkbox.indeterminate = true;
+  });
+
+  updateSetCaseSelectionSummary();
+
+  // 綁定搜尋事件
+  setupSetCaseEventListeners();
+}
+
+/**
+ * 處理 Section Checkbox 變更（只選擇該 Section 直接包含的 test cases）
+ */
+function handleSectionCheckboxChange(sectionId, isChecked) {
+  // 找到該 Section 對象
+  function findSection(sections, id) {
+    for (let section of sections) {
+      if (section.id === id) {
+        return section;
+      }
+      if (section.children) {
+        const found = findSection(section.children, id);
+        if (found) return found;
+      }
+    }
+    return null;
+  }
+
+  const section = findSection(setTestCaseData.sections, sectionId);
+  if (!section) return;
+
+  // 獲取搜尋過濾後的 cases
+  const searchValue = document.getElementById('setCaseSearchInput').value.toLowerCase();
+  const filteredCases = setTestCaseData.testCases.filter(testCase => {
+    const matchesSearch = testCase.test_case_number.toLowerCase().includes(searchValue) ||
+                          testCase.title.toLowerCase().includes(searchValue);
+    return matchesSearch;
+  });
+
+  // 收集該 Section 與其所有子 Section 的 id
+  function collectSectionIds(sec, acc = new Set()) {
+    acc.add(sec.id);
+    (sec.children || []).forEach(child => collectSectionIds(child, acc));
+    return acc;
+  }
+  const sectionIds = collectSectionIds(section);
+
+  // 取得該 Section 子樹下且通過搜尋的所有 test cases
+  const subtreeCases = filteredCases.filter(tc => sectionIds.has(tc.test_case_section_id));
+
+  // 選中或取消選中該 Section 子樹下的所有 cases
+  subtreeCases.forEach(testCase => {
+    if (isChecked) {
+      setTestCaseData.selectedCases.add(testCase.record_id);
+    } else {
+      setTestCaseData.selectedCases.delete(testCase.record_id);
+    }
+  });
+
+  renderSetCaseList();
+}
+
+/**
+ * 處理 Test Case Checkbox 變更
+ */
+function handleCaseCheckboxChange(caseId, isChecked) {
+  if (isChecked) {
+    setTestCaseData.selectedCases.add(caseId);
+  } else {
+    setTestCaseData.selectedCases.delete(caseId);
+  }
+
+  renderSetCaseList();
+}
+
+/**
+ * 切換 Section 展開/收合
+ */
+function toggleSectionExpand(sectionId) {
+  const sectionId_key = `section-${sectionId}`;
+  const isCurrentlyExpanded = sessionStorage.getItem(sectionId_key) !== 'collapsed';
+
+  if (isCurrentlyExpanded) {
+    sessionStorage.setItem(sectionId_key, 'collapsed');
+  } else {
+    sessionStorage.removeItem(sectionId_key);
+  }
+
+  renderSetCaseList();
+}
+
+/**
+ * 設置搜尋事件監聽
+ */
+function setupSetCaseEventListeners() {
+  document.getElementById('setCaseSearchInput').addEventListener('input', renderSetCaseList);
+  
+  // 綁定「建立 Test Run」按鈕
+  const confirmBtn = document.getElementById('setCaseConfirmBtn');
+  if (confirmBtn) {
+    confirmBtn.addEventListener('click', confirmSetCaseSelection);
+    console.log('[SetCaseSelect] Confirm button event listener bound');
+  }
+}
+
+/**
+ * 更新選擇摘要
+ */
+function updateSetCaseSelectionSummary() {
+  const count = setTestCaseData.selectedCases.size;
+  const summaryMsg = window.i18n && window.i18n.isReady() ? window.i18n.t('testCaseSet.selectedCount', { count }, `已選 ${count} 個測試案例`) : `已選 ${count} 個測試案例`;
+  document.getElementById('setCaseSelectionSummary').textContent = summaryMsg;
+}
+
+/**
+ * 確認選擇並建立 Test Run
+ */
+async function confirmSetCaseSelection() {
+  console.log('[SetCaseSelect] confirmSetCaseSelection called');
+  
+  if (setTestCaseData.selectedCases.size === 0) {
+    const selectMsg = window.i18n && window.i18n.isReady() ? window.i18n.t('testCaseSet.selectAtLeastOne', {}, '請至少選擇一個測試案例') : '請至少選擇一個測試案例';
+    alert(selectMsg);
+    return;
+  }
+
+  const nameInput = document.getElementById('newTestRunName');
+  let name = nameInput ? nameInput.value.trim() : '';
+  if (!name) {
+      const today = new Date().toISOString().split('T')[0];
+      name = `Test Run - ${today}`;
+  }
+
+  const btn = document.getElementById('setCaseConfirmBtn');
+  const originalBtnContent = btn.innerHTML;
+
+  try {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 建立中...';
+
+    // 1. 建立 Test Run Config
+    const configResponse = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            name: name,
+            description: 'Created from Test Case Set card',
+            status: 'active',
+            team_id: currentTeamId
+        })
+    });
+
+    if (!configResponse.ok) {
+        const errorData = await configResponse.json().catch(() => ({}));
+        throw new Error(errorData.detail || '建立 Test Run 失敗');
+    }
+
+    const configResult = await configResponse.json();
+    const newConfigId = configResult.id;
+
+    // 2. 準備 Test Run Items Payload
+    const selectedCaseIds = Array.from(setTestCaseData.selectedCases);
+    // 根據 record_id 找到對應的 test_case_number
+    const itemsPayload = [];
+    for (const recordId of selectedCaseIds) {
+        const testCase = setTestCaseData.testCases.find(tc => tc.record_id === recordId || String(tc.id) === String(recordId));
+        if (testCase) {
+            itemsPayload.push({
+                test_case_number: testCase.test_case_number
+            });
+        }
+    }
+
+    if (itemsPayload.length === 0) {
+        throw new Error('無法找到選中測試案例的編號');
+    }
+
+    // 3. 批次新增 Test Run Items
+    const itemsResponse = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${newConfigId}/items`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            items: itemsPayload
+        })
+    });
+
+    if (!itemsResponse.ok) {
+        const errorData = await itemsResponse.json().catch(() => ({}));
+        throw new Error(errorData.detail || '新增測試案例失敗');
+    }
+
+    setSelectModalInstance.hide();
+    
+    showTestRunSuccessModal(currentTeamId, newConfigId);
+
+  } catch (error) {
+    console.error('[SetCaseSelect] Error creating test run:', error);
+    const failMsg = window.i18n && window.i18n.isReady() ? window.i18n.t('common.failed') : '建立失敗';
+    alert(`${failMsg}: ${error.message}`);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = originalBtnContent;
+  }
+}
+
+function showTestRunSuccessModal(teamId, configId) {
+    let modalEl = document.getElementById('testRunSuccessModal');
+    if (!modalEl) {
+        const modalHtml = `
+            <div class="modal fade" id="testRunSuccessModal" tabindex="-1">
+                <div class="modal-dialog modal-dialog-centered">
+                    <div class="modal-content">
+                        <div class="modal-header bg-success text-white">
+                            <h5 class="modal-title"><i class="fas fa-check-circle me-2"></i>建立成功</h5>
+                            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body text-center py-4">
+                            <div class="mb-3">
+                                <i class="fas fa-clipboard-check fa-4x text-success"></i>
+                            </div>
+                            <h5 class="mb-2">Test Run 已成功建立！</h5>
+                            <p class="text-muted small mb-0">您要前往 Test Run 執行頁面查看嗎？</p>
+                        </div>
+                        <div class="modal-footer justify-content-center border-top-0 pb-4">
+                            <button type="button" class="btn btn-outline-secondary px-4" data-bs-dismiss="modal">留在本頁</button>
+                            <button type="button" class="btn btn-success px-4" id="goToTestRunExecBtn">
+                                <i class="fas fa-arrow-right me-2"></i>前往查看
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.body.insertAdjacentHTML('beforeend', modalHtml);
+        modalEl = document.getElementById('testRunSuccessModal');
+    }
+    
+    // Update button handler
+    const goBtn = document.getElementById('goToTestRunExecBtn');
+    const newBtn = goBtn.cloneNode(true);
+    goBtn.parentNode.replaceChild(newBtn, goBtn);
+    
+    newBtn.addEventListener('click', () => {
+        window.location.href = `/test-run-execution?config_id=${configId}&team_id=${teamId}`;
+    });
+    
+    const modal = new bootstrap.Modal(modalEl);
+    modal.show();
+}
+
+
