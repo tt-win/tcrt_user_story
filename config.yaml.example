@@ -7,6 +7,7 @@ jira:
   api_token: 'YOUR_JIRA_API_TOKEN'
   server_url: 'https://your-domain.atlassian.net'
   username: 'your-username'
+  ca_cert_path: ''
 lark:
   app_id: 'YOUR_LARK_APP_ID'
   app_secret: 'YOUR_LARK_APP_SECRET'
