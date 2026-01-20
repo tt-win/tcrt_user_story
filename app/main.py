@@ -192,6 +192,20 @@ async def health_check():
 async def startup_event():
     """應用程式啟動事件"""
     try:
+        try:
+            from app.config import settings
+            jira_ca_path = settings.jira.ca_cert_path if getattr(settings, 'jira', None) else ''
+            if jira_ca_path:
+                expanded_path = os.path.expanduser(jira_ca_path)
+                if os.path.isfile(expanded_path):
+                    logging.info("JIRA TLS 憑證已設定: %s", jira_ca_path)
+                else:
+                    logging.warning("JIRA TLS 憑證路徑不存在: %s", jira_ca_path)
+            else:
+                logging.info("JIRA TLS 憑證未設定，使用系統預設 CA")
+        except Exception as e:
+            logging.warning("讀取 JIRA TLS 憑證設定失敗: %s", e)
+
         # 確保報告資料夾存在
         os.makedirs(REPORT_DIR, exist_ok=True)
         os.makedirs(TMP_REPORT_DIR, exist_ok=True)

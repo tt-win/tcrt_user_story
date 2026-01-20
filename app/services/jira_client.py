@@ -20,12 +20,18 @@ class JiraAuthManager:
         self.logger = logging.getLogger(f"{__name__}.JiraAuthManager")
         
         self.verify = True
+        self.tls_summary = "system"
         if self.ca_cert_path:
-            self.verify = build_ca_bundle(self.ca_cert_path) or self.ca_cert_path
-            if self.verify == self.ca_cert_path:
-                self.logger.info("JIRA TLS 驗證使用自訂 CA 憑證")
+            bundle_path = build_ca_bundle(self.ca_cert_path) or self.ca_cert_path
+            self.verify = bundle_path
+            if bundle_path == self.ca_cert_path:
+                self.tls_summary = f"custom_ca={self.ca_cert_path}"
+                self.logger.info("JIRA TLS 驗證使用自訂 CA 憑證: %s", self.ca_cert_path)
             else:
-                self.logger.info("JIRA TLS 驗證使用系統 CA + 自訂 CA 憑證")
+                self.tls_summary = f"system+custom_ca={self.ca_cert_path} (bundle={bundle_path})"
+                self.logger.info("JIRA TLS 驗證使用系統 CA + 自訂 CA 憑證: %s", self.ca_cert_path)
+        else:
+            self.logger.info("JIRA TLS 驗證使用系統 CA 憑證")
         
         # 設定認證
         self.auth = HTTPBasicAuth(self.username, self.api_token)
@@ -78,6 +84,12 @@ class JiraIssueManager:
         url = f"{self.auth_manager.server_url}{endpoint}"
         
         try:
+            self.logger.info(
+                "JIRA API 請求: %s %s (TLS: %s)",
+                method,
+                endpoint,
+                getattr(self.auth_manager, "tls_summary", "system")
+            )
             response = requests.request(
                 method=method,
                 url=url,
