@@ -4,6 +4,7 @@ import json
 from typing import Dict, List, Any, Optional
 from requests.auth import HTTPBasicAuth
 from ..config import settings
+from .tls_utils import build_ca_bundle
 
 
 class JiraAuthManager:
@@ -13,9 +14,18 @@ class JiraAuthManager:
         self.server_url = (server_url or settings.jira.server_url).rstrip('/')
         self.username = username or settings.jira.username
         self.api_token = api_token or settings.jira.api_token
+        self.ca_cert_path = settings.jira.ca_cert_path
         
         # 設定日誌
         self.logger = logging.getLogger(f"{__name__}.JiraAuthManager")
+        
+        self.verify = True
+        if self.ca_cert_path:
+            self.verify = build_ca_bundle(self.ca_cert_path) or self.ca_cert_path
+            if self.verify == self.ca_cert_path:
+                self.logger.info("JIRA TLS 驗證使用自訂 CA 憑證")
+            else:
+                self.logger.info("JIRA TLS 驗證使用系統 CA + 自訂 CA 憑證")
         
         # 設定認證
         self.auth = HTTPBasicAuth(self.username, self.api_token)
@@ -32,7 +42,8 @@ class JiraAuthManager:
                 f"{self.server_url}/rest/api/2/myself",
                 auth=self.auth,
                 headers=self.headers,
-                timeout=self.timeout
+                timeout=self.timeout,
+                verify=self.verify
             )
             
             if response.status_code == 200:
@@ -74,7 +85,8 @@ class JiraIssueManager:
                 headers=self.auth_manager.headers,
                 json=data,
                 params=params,
-                timeout=self.timeout
+                timeout=self.timeout,
+                verify=self.auth_manager.verify
             )
             
             self.logger.debug(f"API 請求: {method} {endpoint} -> {response.status_code}")

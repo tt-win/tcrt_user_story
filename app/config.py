@@ -26,6 +26,7 @@ class JiraConfig(BaseModel):
     server_url: str = ""
     username: str = ""
     api_token: str = ""
+    ca_cert_path: str = ""
 
 class OpenRouterConfig(BaseModel):
     api_key: str = ""
@@ -192,7 +193,8 @@ def create_default_config(config_path: str = "config.yaml") -> None:
         "jira": {
             "server_url": "",
             "username": "",
-            "api_token": ""
+            "api_token": "",
+            "ca_cert_path": ""
         },
         "openrouter": {
             "api_key": ""
