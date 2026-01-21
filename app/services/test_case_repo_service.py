@@ -9,12 +9,14 @@ from __future__ import annotations
 
 import json
 from typing import List, Optional, Dict, Any
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
-from sqlalchemy import or_, and_
+from sqlalchemy import or_, and_, text
 
 from app.models.database_models import TestCaseLocal, TestCaseSection
 from app.models.test_case import TestCaseResponse
 from app.models.lark_types import Priority, TestResultStatus
+from app.database import run_sync
 
 
 def _safe_json_len(text: Optional[str]) -> int:
@@ -106,10 +108,10 @@ def _to_response(
 
 
 class TestCaseRepoService:
-    def __init__(self, db: Session):
+    def __init__(self, db: AsyncSession):
         self.db = db
 
-    def list(
+    async def list(
         self,
         team_id: int,
         search: Optional[str] = None,
@@ -123,89 +125,92 @@ class TestCaseRepoService:
         skip: int = 0,
         limit: int = 1000,
     ) -> List[TestCaseResponse]:
-        q = self.db.query(TestCaseLocal).filter(TestCaseLocal.team_id == team_id)
+        def _list(sync_db: Session) -> List[TestCaseResponse]:
+            q = sync_db.query(TestCaseLocal).filter(TestCaseLocal.team_id == team_id)
 
-        # 過濾特定 Test Case Set 的 test case
-        if test_case_set_id:
-            # 直接過濾 test_case_set_id 欄位
-            q = q.filter(TestCaseLocal.test_case_set_id == test_case_set_id)
+            # 過濾特定 Test Case Set 的 test case
+            if test_case_set_id:
+                # 直接過濾 test_case_set_id 欄位
+                q = q.filter(TestCaseLocal.test_case_set_id == test_case_set_id)
 
-        # 搜尋
-        if search and search.strip():
-            s = f"%{search.strip()}%"
-            q = q.filter(or_(
-                TestCaseLocal.title.ilike(s),
-                TestCaseLocal.test_case_number.ilike(s)
-            ))
-
-        # TCG 過濾（支援多個票號搜尋，以逗號分隔）
-        if tcg_filter and tcg_filter.strip():
-            tickets = [t.strip() for t in tcg_filter.split(',') if t.strip()]
-            if tickets:
-                # 使用 SQLite json_each 進行精確搜尋，避免字串比對誤判
-                # 需確保 tcg_json 是有效 JSON 陣列且非空
-                # 使用 literal params 避免 SQL Injection
-                conditions = []
-                for t in tickets:
-                    conditions.append(
-                        text(f"EXISTS (SELECT 1 FROM json_each(test_cases.tcg_json) WHERE value LIKE '%{t}%')")
-                    )
-                
-                q = q.filter(and_(
-                    TestCaseLocal.tcg_json.is_not(None),
-                    TestCaseLocal.tcg_json != '',
-                    or_(*conditions)
+            # 搜尋
+            if search and search.strip():
+                s = f"%{search.strip()}%"
+                q = q.filter(or_(
+                    TestCaseLocal.title.ilike(s),
+                    TestCaseLocal.test_case_number.ilike(s)
                 ))
 
-        # 優先級
-        if priority_filter:
-            try:
-                pr = Priority(priority_filter)
-                q = q.filter(TestCaseLocal.priority == pr)
-            except Exception:
-                q = q.filter(TestCaseLocal.priority == priority_filter)
+            # TCG 過濾（支援多個票號搜尋，以逗號分隔）
+            if tcg_filter and tcg_filter.strip():
+                tickets = [t.strip() for t in tcg_filter.split(',') if t.strip()]
+                if tickets:
+                    # 使用 SQLite json_each 進行精確搜尋，避免字串比對誤判
+                    # 需確保 tcg_json 是有效 JSON 陣列且非空
+                    # 使用 literal params 避免 SQL Injection
+                    conditions = []
+                    for t in tickets:
+                        conditions.append(
+                            text(f"EXISTS (SELECT 1 FROM json_each(test_cases.tcg_json) WHERE value LIKE '%{t}%')")
+                        )
+                    
+                    q = q.filter(and_(
+                        TestCaseLocal.tcg_json.is_not(None),
+                        TestCaseLocal.tcg_json != '',
+                        or_(*conditions)
+                    ))
 
-        # 測試結果
-        if test_result_filter:
-            try:
-                tr = TestResultStatus(test_result_filter)
-                q = q.filter(TestCaseLocal.test_result == tr)
-            except Exception:
-                q = q.filter(TestCaseLocal.test_result == test_result_filter)
+            # 優先級
+            if priority_filter:
+                try:
+                    pr = Priority(priority_filter)
+                    q = q.filter(TestCaseLocal.priority == pr)
+                except Exception:
+                    q = q.filter(TestCaseLocal.priority == priority_filter)
 
-        # 指派人（在 assignee_json 中 LIKE 名稱或 email）
-        if assignee_filter and assignee_filter.strip():
-            s = f"%{assignee_filter.strip()}%"
-            q = q.filter(TestCaseLocal.assignee_json.ilike(s))
+            # 測試結果
+            if test_result_filter:
+                try:
+                    tr = TestResultStatus(test_result_filter)
+                    q = q.filter(TestCaseLocal.test_result == tr)
+                except Exception:
+                    q = q.filter(TestCaseLocal.test_result == test_result_filter)
 
-        # 排序
-        order_desc = (sort_order or 'desc').lower() == 'desc'
-        sort_field_map = {
-            'title': TestCaseLocal.title,
-            'priority': TestCaseLocal.priority,
-            'test_case_number': TestCaseLocal.test_case_number,
-            'test_result': TestCaseLocal.test_result,
-            'created_at': TestCaseLocal.created_at,
-            'updated_at': TestCaseLocal.updated_at,
-        }
-        col = sort_field_map.get(sort_by, TestCaseLocal.created_at)
-        q = q.order_by(col.desc() if order_desc else col.asc())
+            # 指派人（在 assignee_json 中 LIKE 名稱或 email）
+            if assignee_filter and assignee_filter.strip():
+                s = f"%{assignee_filter.strip()}%"
+                q = q.filter(TestCaseLocal.assignee_json.ilike(s))
 
-        # 分頁並取得結果
-        q = q.offset(skip).limit(limit)
-        rows = q.all()
-        section_lookup = self._build_section_lookup(rows)
+            # 排序
+            order_desc = (sort_order or 'desc').lower() == 'desc'
+            sort_field_map = {
+                'title': TestCaseLocal.title,
+                'priority': TestCaseLocal.priority,
+                'test_case_number': TestCaseLocal.test_case_number,
+                'test_result': TestCaseLocal.test_result,
+                'created_at': TestCaseLocal.created_at,
+                'updated_at': TestCaseLocal.updated_at,
+            }
+            col = sort_field_map.get(sort_by, TestCaseLocal.created_at)
+            q = q.order_by(col.desc() if order_desc else col.asc())
 
-        return [
-            _to_response(
-                r,
-                include_attachments=False,
-                section_meta=section_lookup.get(r.test_case_section_id),
-            )
-            for r in rows
-        ]
+            # 分頁並取得結果
+            q = q.offset(skip).limit(limit)
+            rows = q.all()
+            section_lookup = self._build_section_lookup(sync_db, rows)
 
-    def count(
+            return [
+                _to_response(
+                    r,
+                    include_attachments=False,
+                    section_meta=section_lookup.get(r.test_case_section_id),
+                )
+                for r in rows
+            ]
+
+        return await run_sync(self.db, _list)
+
+    async def count(
         self,
         team_id: int,
         search: Optional[str] = None,
@@ -215,65 +220,71 @@ class TestCaseRepoService:
         assignee_filter: Optional[str] = None,
         test_case_set_id: Optional[int] = None,
     ) -> int:
-        q = self.db.query(TestCaseLocal).filter(TestCaseLocal.team_id == team_id)
+        def _count(sync_db: Session) -> int:
+            q = sync_db.query(TestCaseLocal).filter(TestCaseLocal.team_id == team_id)
 
-        # 過濾特定 Test Case Set 的 test case
-        if test_case_set_id:
-            # 直接過濾 test_case_set_id 欄位
-            q = q.filter(TestCaseLocal.test_case_set_id == test_case_set_id)
+            # 過濾特定 Test Case Set 的 test case
+            if test_case_set_id:
+                # 直接過濾 test_case_set_id 欄位
+                q = q.filter(TestCaseLocal.test_case_set_id == test_case_set_id)
 
-        if search and search.strip():
-            s = f"%{search.strip()}%"
-            q = q.filter(or_(
-                TestCaseLocal.title.ilike(s),
-                TestCaseLocal.test_case_number.ilike(s)
-            ))
-        if tcg_filter and tcg_filter.strip():
-            tickets = [t.strip() for t in tcg_filter.split(',') if t.strip()]
-            if tickets:
-                conditions = []
-                for t in tickets:
-                    conditions.append(
-                        text(f"EXISTS (SELECT 1 FROM json_each(test_cases.tcg_json) WHERE value LIKE '%{t}%')")
-                    )
-                q = q.filter(and_(
-                    TestCaseLocal.tcg_json.is_not(None),
-                    TestCaseLocal.tcg_json != '',
-                    or_(*conditions)
+            if search and search.strip():
+                s = f"%{search.strip()}%"
+                q = q.filter(or_(
+                    TestCaseLocal.title.ilike(s),
+                    TestCaseLocal.test_case_number.ilike(s)
                 ))
-        if priority_filter:
-            try:
-                pr = Priority(priority_filter)
-                q = q.filter(TestCaseLocal.priority == pr)
-            except Exception:
-                q = q.filter(TestCaseLocal.priority == priority_filter)
-        if test_result_filter:
-            try:
-                tr = TestResultStatus(test_result_filter)
-                q = q.filter(TestCaseLocal.test_result == tr)
-            except Exception:
-                q = q.filter(TestCaseLocal.test_result == test_result_filter)
-        if assignee_filter and assignee_filter.strip():
-            s = f"%{assignee_filter.strip()}%"
-            q = q.filter(TestCaseLocal.assignee_json.ilike(s))
+            if tcg_filter and tcg_filter.strip():
+                tickets = [t.strip() for t in tcg_filter.split(',') if t.strip()]
+                if tickets:
+                    conditions = []
+                    for t in tickets:
+                        conditions.append(
+                            text(f"EXISTS (SELECT 1 FROM json_each(test_cases.tcg_json) WHERE value LIKE '%{t}%')")
+                        )
+                    q = q.filter(and_(
+                        TestCaseLocal.tcg_json.is_not(None),
+                        TestCaseLocal.tcg_json != '',
+                        or_(*conditions)
+                    ))
+            if priority_filter:
+                try:
+                    pr = Priority(priority_filter)
+                    q = q.filter(TestCaseLocal.priority == pr)
+                except Exception:
+                    q = q.filter(TestCaseLocal.priority == priority_filter)
+            if test_result_filter:
+                try:
+                    tr = TestResultStatus(test_result_filter)
+                    q = q.filter(TestCaseLocal.test_result == tr)
+                except Exception:
+                    q = q.filter(TestCaseLocal.test_result == test_result_filter)
+            if assignee_filter and assignee_filter.strip():
+                s = f"%{assignee_filter.strip()}%"
+                q = q.filter(TestCaseLocal.assignee_json.ilike(s))
 
-        return q.count()
+            return q.count()
 
-    def get_by_lark_record_id(self, team_id: int, record_id: str, include_attachments: bool = True) -> Optional[TestCaseResponse]:
-        row = self.db.query(TestCaseLocal).filter(
-            TestCaseLocal.team_id == team_id,
-            TestCaseLocal.lark_record_id == record_id
-        ).first()
-        if not row:
-            return None
-        section_meta = self._build_section_lookup([row]).get(row.test_case_section_id)
-        return _to_response(
-            row,
-            include_attachments=include_attachments,
-            section_meta=section_meta,
-        )
+        return await run_sync(self.db, _count)
 
-    def _build_section_lookup(self, rows: List[TestCaseLocal]) -> Dict[int, Dict[str, Any]]:
+    async def get_by_lark_record_id(self, team_id: int, record_id: str, include_attachments: bool = True) -> Optional[TestCaseResponse]:
+        def _get(sync_db: Session) -> Optional[TestCaseResponse]:
+            row = sync_db.query(TestCaseLocal).filter(
+                TestCaseLocal.team_id == team_id,
+                TestCaseLocal.lark_record_id == record_id
+            ).first()
+            if not row:
+                return None
+            section_meta = self._build_section_lookup(sync_db, [row]).get(row.test_case_section_id)
+            return _to_response(
+                row,
+                include_attachments=include_attachments,
+                section_meta=section_meta,
+            )
+
+        return await run_sync(self.db, _get)
+
+    def _build_section_lookup(self, sync_db: Session, rows: List[TestCaseLocal]) -> Dict[int, Dict[str, Any]]:
         """建立 Section 快取，供回傳時附帶區段資訊"""
         lookup: Dict[int, Dict[str, Any]] = {}
         if not rows:
@@ -284,7 +295,7 @@ class TestCaseRepoService:
             return lookup
 
         sections = (
-            self.db.query(TestCaseSection)
+            sync_db.query(TestCaseSection)
             .filter(TestCaseSection.test_case_set_id.in_(set_ids))
             .all()
         )

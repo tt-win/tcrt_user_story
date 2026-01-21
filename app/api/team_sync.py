@@ -11,10 +11,11 @@
 import logging
 from typing import List, Optional
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
-from ..database import get_db, get_sync_db
+from ..database import get_db, run_sync
 from ..models.database_models import Team, LarkDepartment, LarkUser
 from ..services.lark_org_sync_service import get_lark_org_sync_service
 
@@ -51,7 +52,7 @@ class OrganizationStatsResponse(BaseModel):
 @router.get("/{team_id}/sync/status")
 async def get_sync_status(
     team_id: int,
-    db: Session = Depends(get_sync_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     獲取團隊同步狀態
@@ -60,10 +61,12 @@ async def get_sync_status(
         同步狀態信息，包含是否正在同步、最後同步時間等
     """
     try:
-        # 檢查團隊是否存在
-        team = db.query(Team).filter(Team.id == team_id).first()
-        if not team:
-            raise HTTPException(status_code=404, detail="團隊不存在")
+        def _ensure_team(sync_db: Session):
+            team = sync_db.query(Team).filter(Team.id == team_id).first()
+            if not team:
+                raise HTTPException(status_code=404, detail="團隊不存在")
+
+        await run_sync(db, _ensure_team)
         
         # 獲取同步服務
         sync_service = get_lark_org_sync_service()
@@ -91,7 +94,7 @@ async def get_sync_status(
 @router.get("/{team_id}/sync/stats")
 async def get_organization_stats(
     team_id: int,
-    db: Session = Depends(get_sync_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     獲取組織架構統計信息
@@ -100,35 +103,40 @@ async def get_organization_stats(
         部門和用戶數量統計，最後同步時間等
     """
     try:
-        # 檢查團隊是否存在
-        team = db.query(Team).filter(Team.id == team_id).first()
-        if not team:
-            raise HTTPException(status_code=404, detail="團隊不存在")
-        
-        # 從資料庫直接獲取統計
-        total_departments = db.query(LarkDepartment).filter(
-            LarkDepartment.status == 'active'
-        ).count()
-        
-        total_users = db.query(LarkUser).filter(
-            LarkUser.is_activated == True,
-            LarkUser.is_exited == False
-        ).count()
-        
-        # 獲取最後同步時間
-        last_sync_dept = db.query(LarkDepartment.last_sync_at).order_by(
-            LarkDepartment.last_sync_at.desc()
-        ).first()
-        
-        last_sync_user = db.query(LarkUser.last_sync_at).order_by(
-            LarkUser.last_sync_at.desc()
-        ).first()
-        
-        last_sync_time = None
-        if last_sync_dept and last_sync_dept[0]:
-            last_sync_time = last_sync_dept[0].isoformat()
-        elif last_sync_user and last_sync_user[0]:
-            last_sync_time = last_sync_user[0].isoformat()
+        def _load_stats(sync_db: Session):
+            # 檢查團隊是否存在
+            team = sync_db.query(Team).filter(Team.id == team_id).first()
+            if not team:
+                raise HTTPException(status_code=404, detail="團隊不存在")
+
+            # 從資料庫直接獲取統計
+            total_departments = sync_db.query(LarkDepartment).filter(
+                LarkDepartment.status == 'active'
+            ).count()
+
+            total_users = sync_db.query(LarkUser).filter(
+                LarkUser.is_activated == True,
+                LarkUser.is_exited == False
+            ).count()
+
+            # 獲取最後同步時間
+            last_sync_dept = sync_db.query(LarkDepartment.last_sync_at).order_by(
+                LarkDepartment.last_sync_at.desc()
+            ).first()
+
+            last_sync_user = sync_db.query(LarkUser.last_sync_at).order_by(
+                LarkUser.last_sync_at.desc()
+            ).first()
+
+            last_sync_time = None
+            if last_sync_dept and last_sync_dept[0]:
+                last_sync_time = last_sync_dept[0].isoformat()
+            elif last_sync_user and last_sync_user[0]:
+                last_sync_time = last_sync_user[0].isoformat()
+
+            return total_departments, total_users, last_sync_time
+
+        total_departments, total_users, last_sync_time = await run_sync(db, _load_stats)
         
         # 獲取同步狀態
         sync_service = get_lark_org_sync_service()
@@ -164,7 +172,7 @@ async def trigger_sync(
     team_id: int,
     request: SyncTriggerRequest,
     background_tasks: BackgroundTasks,
-    db: Session = Depends(get_sync_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     觸發團隊同步操作
@@ -179,10 +187,12 @@ async def trigger_sync(
         同步操作結果和同步ID
     """
     try:
-        # 檢查團隊是否存在
-        team = db.query(Team).filter(Team.id == team_id).first()
-        if not team:
-            raise HTTPException(status_code=404, detail="團隊不存在")
+        def _ensure_team(sync_db: Session):
+            team = sync_db.query(Team).filter(Team.id == team_id).first()
+            if not team:
+                raise HTTPException(status_code=404, detail="團隊不存在")
+
+        await run_sync(db, _ensure_team)
         
         # 驗證同步類型
         if request.sync_type not in ['full', 'departments', 'users']:
@@ -204,18 +214,19 @@ async def trigger_sync(
             }
         
         # 執行同步（背景任務方式）
-        def run_sync():
+        async def run_sync_task():
             try:
-                result = sync_service.sync_for_team(
-                    team_id=team_id, 
+                result = await sync_service.sync_for_team(
+                    None,
+                    team_id=team_id,
                     sync_type=request.sync_type,
                     trigger_user=request.trigger_user
                 )
                 logger.info(f"背景同步完成: {result}")
             except Exception as e:
                 logger.error(f"背景同步異常: {e}")
-        
-        background_tasks.add_task(run_sync)
+
+        background_tasks.add_task(run_sync_task)
         
         # 立即回傳同步已開始的狀態
         return {
@@ -242,7 +253,7 @@ async def trigger_sync(
 async def get_sync_progress(
     team_id: int,
     sync_id: int,
-    db: Session = Depends(get_sync_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     獲取特定同步操作的進度
@@ -256,10 +267,12 @@ async def get_sync_progress(
         同步進度信息
     """
     try:
-        # 檢查團隊是否存在
-        team = db.query(Team).filter(Team.id == team_id).first()
-        if not team:
-            raise HTTPException(status_code=404, detail="團隊不存在")
+        def _ensure_team(sync_db: Session):
+            team = sync_db.query(Team).filter(Team.id == team_id).first()
+            if not team:
+                raise HTTPException(status_code=404, detail="團隊不存在")
+
+        await run_sync(db, _ensure_team)
         
         # 獲取同步服務
         sync_service = get_lark_org_sync_service()

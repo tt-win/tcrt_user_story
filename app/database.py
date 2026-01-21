@@ -5,9 +5,11 @@
 統一使用異步模式，避免同步/異步混用導致的連接衝突。
 """
 
+import asyncio
 import logging
+import os
 from pathlib import Path
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Callable, TypeVar
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine, async_sessionmaker, AsyncSession
 from sqlalchemy.pool import NullPool
 from sqlalchemy import event, text
@@ -50,6 +52,8 @@ SessionLocal = async_sessionmaker(
 
 # SQLAlchemy Base
 Base = declarative_base()
+
+T = TypeVar("T")
 
 # SQLite 優化參數設定（異步版本）
 @event.listens_for(engine.sync_engine, "connect")
@@ -97,6 +101,11 @@ async def get_db():
         yield session
 
 
+async def run_sync(session: AsyncSession, fn: Callable[..., T], *args, **kwargs) -> T:
+    """在 AsyncSession 中執行同步 ORM 操作（避免 Web runtime 使用同步引擎）"""
+    return await session.run_sync(lambda sync_session: fn(sync_session, *args, **kwargs))
+
+
 # ===================== 資料庫管理函數 =====================
 
 async def cleanup_database() -> None:
@@ -126,12 +135,25 @@ async def execute_raw_sql(sql: str, params: dict = None) -> any:
 
 # ===================== 向後相容性支援 =====================
 
+def _sync_db_allowed_in_runtime() -> bool:
+    return os.getenv("ALLOW_SYNC_DB_RUNTIME") == "1"
+
+
+def _in_async_runtime() -> bool:
+    try:
+        asyncio.get_running_loop()
+        return True
+    except RuntimeError:
+        return False
+
 # 同步引擎（僅供緊急向後相容使用）
 _sync_engine = None
 _SyncSessionLocal = None
 
 def get_sync_engine():
     """取得同步引擎（向後相容）"""
+    if _in_async_runtime() and not _sync_db_allowed_in_runtime():
+        raise RuntimeError("get_sync_engine 在 Web runtime 不可使用，請改用 AsyncSession")
     global _sync_engine, _SyncSessionLocal
     try:
         from sqlalchemy.engine import Engine as _SyncType
@@ -181,6 +203,8 @@ def get_sync_engine():
 
 def get_sync_db():
     """同步版本的會話生成器（向後相容）"""
+    if _in_async_runtime() and not _sync_db_allowed_in_runtime():
+        raise RuntimeError("get_sync_db 在 Web runtime 不可使用，請改用 get_db (AsyncSession)")
     engine = get_sync_engine()
     db = _SyncSessionLocal()
     try:
@@ -190,9 +214,6 @@ def get_sync_db():
 
 
 # ===================== 模組初始化 =====================
-
-# 添加必要的導入
-import asyncio
 
 # 在模組載入時記錄模式
 logger.info("資料庫模組已升級為異步模式（aiosqlite）")

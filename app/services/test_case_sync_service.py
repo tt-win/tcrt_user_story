@@ -24,6 +24,7 @@ import hashlib
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple, Any
 
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 
@@ -31,6 +32,7 @@ from app.models.database_models import TestCaseLocal, SyncStatus
 from app.models.lark_types import Priority, TestResultStatus
 from app.models.test_case import TestCase
 from app.services.lark_client import LarkClient
+from app.database import run_sync
 # TCG 轉換器已移除 - 不再需要依賴 TCG 同步
 # from app.services.tcg_converter import tcg_converter
 
@@ -87,7 +89,7 @@ def _record_to_testcase(record: Dict[str, Any], team_id: Optional[int]) -> TestC
 
 
 class TestCaseSyncService:
-    def __init__(self, team_id: int, db: Session, lark_client: LarkClient, wiki_token: str, table_id: str):
+    def __init__(self, team_id: int, db: AsyncSession, lark_client: LarkClient, wiki_token: str, table_id: str):
         self.team_id = team_id
         self.db = db
         self.lark = lark_client
@@ -101,7 +103,7 @@ class TestCaseSyncService:
     def _get_all_lark_records(self) -> List[Dict[str, Any]]:
         return self.lark.get_all_records(self.table_id)
 
-    def _upsert_local_from_tc(self, lark_record: Dict[str, Any], tc: TestCase, init_mode: bool, stats: TestCaseSyncStats) -> None:
+    def _upsert_local_from_tc(self, sync_db: Session, lark_record: Dict[str, Any], tc: TestCase, init_mode: bool, stats: TestCaseSyncStats) -> None:
         """以 (team_id, test_case_number) 為鍵 upsert 到本地 TestCaseLocal
 
         注意：避免觸發全域 UNIQUE(test_cases.lark_record_id) 的衝突。
@@ -112,7 +114,7 @@ class TestCaseSyncService:
         checksum = _stable_checksum(payload)
 
         # 查找現有本地資料
-        existing: Optional[TestCaseLocal] = self.db.execute(
+        existing: Optional[TestCaseLocal] = sync_db.execute(
             select(TestCaseLocal).where(
                 TestCaseLocal.team_id == self.team_id,
                 TestCaseLocal.test_case_number == tc.test_case_number
@@ -139,7 +141,7 @@ class TestCaseSyncService:
             # 預檢 lark_record_id 是否會造成全域唯一衝突
             desired_lark_id = lark_record.get('record_id') if lark_record else None
             if desired_lark_id:
-                other = self.db.execute(
+                other = sync_db.execute(
                     select(TestCaseLocal.id, TestCaseLocal.team_id).where(
                         TestCaseLocal.lark_record_id == desired_lark_id
                     )
@@ -178,7 +180,7 @@ class TestCaseSyncService:
                 item.created_at = lark_created_at
             if init_mode and lark_updated_at:
                 item.updated_at = lark_updated_at
-            self.db.add(item)
+            sync_db.add(item)
             stats.inserted += 1
             return
 
@@ -216,7 +218,7 @@ class TestCaseSyncService:
         # 預檢更新 lark_record_id 是否會造成全域唯一衝突
         if lark_record and lark_record.get('record_id'):
             desired_lark_id = lark_record.get('record_id')
-            other = self.db.execute(
+            other = sync_db.execute(
                 select(TestCaseLocal.id).where(
                     TestCaseLocal.lark_record_id == desired_lark_id,
                     TestCaseLocal.id != existing.id
@@ -330,7 +332,10 @@ class TestCaseSyncService:
                 mapping[num] = rid
         return mapping
 
-    def compute_diff(self) -> Dict[str, Any]:
+    async def compute_diff(self) -> Dict[str, Any]:
+        return await run_sync(self.db, self._compute_diff_sync)
+
+    def _compute_diff_sync(self, sync_db: Session) -> Dict[str, Any]:
         records = self._get_all_lark_records()
         lark_by_num: Dict[str, Dict[str, Any]] = {}
         lark_tc_by_num: Dict[str, TestCase] = {}
@@ -343,7 +348,7 @@ class TestCaseSyncService:
             lark_by_num[num] = r
             lark_tc_by_num[num] = _record_to_testcase(r, self.team_id)
 
-        locals_list: List[TestCaseLocal] = list(self.db.query(TestCaseLocal).filter(TestCaseLocal.team_id == self.team_id))
+        locals_list: List[TestCaseLocal] = list(sync_db.query(TestCaseLocal).filter(TestCaseLocal.team_id == self.team_id))
         local_by_num: Dict[str, TestCaseLocal] = {str(x.test_case_number): x for x in locals_list if x.test_case_number}
 
         all_nums = set(local_by_num.keys()) | set(lark_by_num.keys())
@@ -423,7 +428,10 @@ class TestCaseSyncService:
 
         return {'success': True, 'summary': summary, 'diffs': diffs}
 
-    def apply_diff(self, decisions: List[Dict[str, Any]]) -> Dict[str, Any]:
+    async def apply_diff(self, decisions: List[Dict[str, Any]]) -> Dict[str, Any]:
+        return await run_sync(self.db, self._apply_diff_sync, decisions)
+
+    def _apply_diff_sync(self, sync_db: Session, decisions: List[Dict[str, Any]]) -> Dict[str, Any]:
         # 準備映射
         records = self._get_all_lark_records()
         lark_by_num: Dict[str, Dict[str, Any]] = {}
@@ -507,7 +515,7 @@ class TestCaseSyncService:
             try:
                 if fields_map:
                     # 欄位級合併
-                    item = self.db.query(TestCaseLocal).filter(
+                    item = sync_db.query(TestCaseLocal).filter(
                         TestCaseLocal.team_id == self.team_id,
                         TestCaseLocal.test_case_number == num
                     ).first()
@@ -520,7 +528,7 @@ class TestCaseSyncService:
                             # 本地不存在，且有採用 Lark → 以 Lark 建立
                             if lark_tc and r:
                                 dummy_stats = TestCaseSyncStats()
-                                self._upsert_local_from_tc(r, lark_tc, init_mode=False, stats=dummy_stats)
+                                self._upsert_local_from_tc(sync_db, r, lark_tc, init_mode=False, stats=dummy_stats)
                                 applied += 1
                                 results.append({'test_case_number': num, 'success': True, 'action': 'created_from_lark_for_fields', 'fields': picks_lark})
                             else:
@@ -580,11 +588,11 @@ class TestCaseSyncService:
                             continue
                         tc = _record_to_testcase(r, self.team_id)
                         dummy_stats = TestCaseSyncStats()
-                        self._upsert_local_from_tc(r, tc, init_mode=False, stats=dummy_stats)
+                        self._upsert_local_from_tc(sync_db, r, tc, init_mode=False, stats=dummy_stats)
                         applied += 1
                         results.append({'test_case_number': num, 'success': True, 'action': 'pulled_from_lark'})
                     else:
-                        item = self.db.query(TestCaseLocal).filter(
+                        item = sync_db.query(TestCaseLocal).filter(
                             TestCaseLocal.team_id == self.team_id,
                             TestCaseLocal.test_case_number == num
                         ).first()
@@ -632,11 +640,14 @@ class TestCaseSyncService:
             except Exception as e:
                 errors.append(str(e))
                 results.append({'test_case_number': num, 'success': False, 'message': str(e)})
-        self.db.commit()
+        sync_db.commit()
         return {'success': len(errors) == 0, 'applied': applied, 'results': results, 'errors': errors}
 
     # ---------------------- 同步模式 ----------------------
-    def init_sync(self) -> Dict[str, Any]:
+    async def init_sync(self) -> Dict[str, Any]:
+        return await run_sync(self.db, self._init_sync_sync)
+
+    def _init_sync_sync(self, sync_db: Session) -> Dict[str, Any]:
         """初始同步：清空本地並從 Lark 匯入，時間以 Lark 為準（僅此模式）"""
         # 取得 Lark 所有記錄
         records = self._get_all_lark_records()
@@ -670,13 +681,13 @@ class TestCaseSyncService:
         # 逐筆轉換並 upsert（實為 insert 或 update），處理完去重後的資料
         for r in deduped.values():
             tc = _record_to_testcase(r, self.team_id)
-            self._upsert_local_from_tc(r, tc, init_mode=True, stats=stats)
+            self._upsert_local_from_tc(sync_db, r, tc, init_mode=True, stats=stats)
 
         # 刪除本地多餘的（不在 deduped 集合內）
         try:
             keep_numbers = set(deduped.keys())
             if keep_numbers:
-                q = self.db.query(TestCaseLocal).filter(TestCaseLocal.team_id == self.team_id)
+                q = sync_db.query(TestCaseLocal).filter(TestCaseLocal.team_id == self.team_id)
                 to_delete = q.filter(~TestCaseLocal.test_case_number.in_(list(keep_numbers)))
                 deleted_count = to_delete.delete(synchronize_session=False)
                 logger.info('[TC-SYNC][init] Pruned %s local records not present in Lark', deleted_count)
@@ -685,12 +696,12 @@ class TestCaseSyncService:
 
         # 提交
         try:
-            self.db.commit()
+            sync_db.commit()
         except Exception as e:
             # 進一步診斷外鍵等錯誤
             try:
                 from sqlalchemy import text as sql_text
-                diag = self.db.execute(sql_text('PRAGMA foreign_key_check')).fetchall()
+                diag = sync_db.execute(sql_text('PRAGMA foreign_key_check')).fetchall()
                 if diag:
                     logger.error('[TC-SYNC][init] PRAGMA foreign_key_check violations: %s', diag)
             except Exception:
@@ -701,7 +712,10 @@ class TestCaseSyncService:
                     stats.inserted, stats.updated, stats.unchanged)
         return {'mode': 'init', **stats.to_dict(), 'total_lark_records': len(records), 'deduped_count': len(deduped)}
 
-    def diff_sync(self) -> Dict[str, Any]:
+    async def diff_sync(self) -> Dict[str, Any]:
+        return await run_sync(self.db, self._diff_sync_sync)
+
+    def _diff_sync_sync(self, sync_db: Session) -> Dict[str, Any]:
         """比較差異並互補：Lark -> 本地，和本地 -> Lark（本函式先實作拉回本地；推送到 Lark 可由另一個流程呼叫）"""
         records = self._get_all_lark_records()
         stats = TestCaseSyncStats()
@@ -720,11 +734,11 @@ class TestCaseSyncService:
         # 1) Lark -> 本地：有就更新、沒有就插入
         for num, rec in lark_by_number.items():
             tc = _record_to_testcase(rec, self.team_id)
-            self._upsert_local_from_tc(rec, tc, init_mode=False, stats=stats)
+            self._upsert_local_from_tc(sync_db, rec, tc, init_mode=False, stats=stats)
 
         # 2) 本地 -> Lark ：本地有但 Lark 沒有 -> 標記 pending（保留給後續上傳程序）
         local_numbers = {n for n in lark_by_number.keys()}
-        q = self.db.query(TestCaseLocal).filter(TestCaseLocal.team_id == self.team_id)
+        q = sync_db.query(TestCaseLocal).filter(TestCaseLocal.team_id == self.team_id)
         for local in q:
             if local.test_case_number not in local_numbers:
                 # 本地存在，Lark 不存在 -> 標記待上傳
@@ -734,19 +748,22 @@ class TestCaseSyncService:
                     local.sync_status = SyncStatus.PENDING
                     stats.updated += 1
 
-        self.db.commit()
+        sync_db.commit()
         logger.info('[TC-SYNC][diff] Completed diff sync | inserted=%s updated=%s unchanged=%s',
                     stats.inserted, stats.updated, stats.unchanged)
         return {'mode': 'diff', **stats.to_dict(), 'total_lark_records': len(records)}
 
-    def full_update(self, prune: bool = False) -> Dict[str, Any]:
+    async def full_update(self, prune: bool = False) -> Dict[str, Any]:
+        return await run_sync(self.db, self._full_update_sync, prune)
+
+    def _full_update_sync(self, sync_db: Session, prune: bool = False) -> Dict[str, Any]:
         """以本地覆蓋 Lark：將本地資料（team）全部上傳到 Lark（create 或 update）。
         若 prune=True，同步完成後會刪除 Lark 上本地不存在的記錄（依 Test Case Number 比對）。
         """
         stats = TestCaseSyncStats()
 
         # 準備本地資料
-        locals_q = self.db.query(TestCaseLocal).filter(TestCaseLocal.team_id == self.team_id)
+        locals_q = sync_db.query(TestCaseLocal).filter(TestCaseLocal.team_id == self.team_id)
         locals_list: List[TestCaseLocal] = list(locals_q)
         logger.info('[TC-SYNC][full] Start full update | team=%s local_count=%s prune=%s',
                     self.team_id, len(locals_list), prune)
@@ -856,7 +873,7 @@ class TestCaseSyncService:
             item.sync_status = SyncStatus.SYNCED
             item.last_sync_at = datetime.utcnow()
 
-        self.db.commit()
+        sync_db.commit()
         logger.info('[TC-SYNC][full] Full update completed | updated=%s errors=%s pruned=%s',
                     stats.updated, len(stats.errors), pruned if prune else 0)
         result = {'mode': 'full-update', **stats.to_dict(), 'created': len(created_ids) if creates else 0, 'updated': stats.updated}

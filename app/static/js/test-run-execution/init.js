@@ -221,6 +221,17 @@ function bindEventListeners() {
         });
     }
 
+    const exportBtn = document.getElementById('exportBtn');
+    if (exportBtn) {
+        exportBtn.addEventListener('click', () => {
+            if (typeof showChartsReportsModal === 'function') {
+                showChartsReportsModal();
+            } else {
+                console.warn('showChartsReportsModal 未載入');
+            }
+        });
+    }
+
     const startBtn = document.getElementById('startBtn');
     if (startBtn) {
         startBtn.addEventListener('click', () => {

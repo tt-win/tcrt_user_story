@@ -6,6 +6,7 @@ Items are created by selecting Test Cases and copying necessary fields.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session, aliased, contains_eager, joinedload
 from sqlalchemy import and_, or_
 from typing import List, Optional, Any, Dict, Union
@@ -17,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 from app.services.lark_client import LarkClient
 from app.config import settings
-from app.database import get_db, get_sync_db
+from app.database import get_db, run_sync
 from app.models.database_models import (
     TestRunItem as TestRunItemDB,
     TestRunConfig as TestRunConfigDB,
@@ -72,7 +73,7 @@ async def upload_test_run_results(
     config_id: int,
     item_id: int,
     files: List[UploadFile] = File(...),
-    db: Session = Depends(get_sync_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     上傳測試執行結果檔案到本地 attachments 目錄，並記錄到本地資料庫。
@@ -90,18 +91,41 @@ async def upload_test_run_results(
     from pathlib import Path
     from datetime import datetime
 
-    # 驗證 Test Run Item 存在
-    test_run_item = db.query(TestRunItemDB).filter(
-        TestRunItemDB.id == item_id,
-        TestRunItemDB.config_id == config_id,
-        TestRunItemDB.team_id == team_id
-    ).first()
+    def _load_item(sync_db: Session) -> Dict[str, Any]:
+        test_run_item = sync_db.query(TestRunItemDB).filter(
+            TestRunItemDB.id == item_id,
+            TestRunItemDB.config_id == config_id,
+            TestRunItemDB.team_id == team_id
+        ).first()
 
-    if not test_run_item:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"找不到測試執行項目 ID {item_id}"
-        )
+        if not test_run_item:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"找不到測試執行項目 ID {item_id}"
+            )
+
+        existing = []
+        if test_run_item.execution_results_json:
+            try:
+                data = json.loads(test_run_item.execution_results_json)
+                if isinstance(data, list):
+                    existing = data
+            except Exception:
+                existing = []
+
+        history = []
+        if test_run_item.upload_history_json:
+            try:
+                history = json.loads(test_run_item.upload_history_json) or []
+            except Exception:
+                history = []
+
+        return {
+            "existing_results": existing,
+            "upload_history": history,
+        }
+
+    item_context = await run_sync(db, _load_item)
 
     try:
         # 使用設定的附件根目錄（未設定則回退到專案 attachments）
@@ -113,14 +137,7 @@ async def upload_test_run_results(
         target_dir.mkdir(parents=True, exist_ok=True)
 
         # 既存的結果 JSON
-        existing = []
-        if test_run_item.execution_results_json:
-            try:
-                data = json.loads(test_run_item.execution_results_json)
-                if isinstance(data, list):
-                    existing = data
-            except Exception:
-                existing = []
+        existing = item_context["existing_results"]
 
         upload_results = []
         ts = datetime.utcnow().strftime("%Y%m%d-%H%M%S-%f")
@@ -149,25 +166,34 @@ async def upload_test_run_results(
             existing.append(item_meta)
             upload_results.append(item_meta)
 
-        # 更新 DB 欄位
-        test_run_item.execution_results_json = json.dumps(existing, ensure_ascii=False)
-        test_run_item.result_files_uploaded = 1 if len(existing) > 0 else 0
-        test_run_item.result_files_count = len(existing)
         # 追加上傳歷史
-        history = []
-        if test_run_item.upload_history_json:
-            try:
-                history = json.loads(test_run_item.upload_history_json) or []
-            except Exception:
-                history = []
+        history = item_context["upload_history"]
         history.append({
             "uploaded": len(upload_results),
             "at": datetime.utcnow().isoformat(),
             "files": upload_results,
         })
-        test_run_item.upload_history_json = json.dumps(history, ensure_ascii=False)
+        upload_history_json = json.dumps(history, ensure_ascii=False)
 
-        db.commit()
+        def _update_item(sync_db: Session) -> None:
+            test_run_item = sync_db.query(TestRunItemDB).filter(
+                TestRunItemDB.id == item_id,
+                TestRunItemDB.config_id == config_id,
+                TestRunItemDB.team_id == team_id
+            ).first()
+            if not test_run_item:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"找不到測試執行項目 ID {item_id}"
+                )
+
+            test_run_item.execution_results_json = json.dumps(existing, ensure_ascii=False)
+            test_run_item.result_files_uploaded = 1 if len(existing) > 0 else 0
+            test_run_item.result_files_count = len(existing)
+            test_run_item.upload_history_json = upload_history_json
+            sync_db.commit()
+
+        await run_sync(db, _update_item)
 
         return {
             "success": True,
@@ -177,8 +203,9 @@ async def upload_test_run_results(
             "base_url": "/attachments",
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
-        db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"上傳結果檔案時發生錯誤: {str(e)}"
@@ -579,7 +606,7 @@ def _add_result_history(db: Session, item: TestRunItemDB,
 async def list_items(
     team_id: int,
     config_id: int,
-    db: Session = Depends(get_sync_db),
+    db: AsyncSession = Depends(get_db),
     # Filters
     search: Optional[str] = Query(None, description="標題/編號模糊搜尋"),
     priority_filter: Optional[str] = Query(None),
@@ -592,55 +619,58 @@ async def list_items(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=10000),
 ):
-    _verify_team_and_config(team_id, config_id, db)
+    def _list(sync_db: Session) -> List[TestRunItemResponse]:
+        _verify_team_and_config(team_id, config_id, sync_db)
 
-    # Tc = aliased(TestCaseLocalDB)  # Removed alias to simplify eager loading chain
-    q = db.query(TestRunItemDB).outerjoin(
-        TestRunItemDB.test_case
-    ).filter(
-        TestRunItemDB.team_id == team_id,
-        TestRunItemDB.config_id == config_id,
-    ).options(
-        contains_eager(TestRunItemDB.test_case)
-        .joinedload(TestCaseLocalDB.test_case_section)
-        .joinedload(TestCaseSection.parent_section)
-    )
-
-    if search:
-        s = f"%{search}%"
-        q = q.filter(
-            or_(
-                TestRunItemDB.test_case_number.like(s),
-                TestCaseLocalDB.title.like(s)
-            )
+        # Tc = aliased(TestCaseLocalDB)  # Removed alias to simplify eager loading chain
+        q = sync_db.query(TestRunItemDB).outerjoin(
+            TestRunItemDB.test_case
+        ).filter(
+            TestRunItemDB.team_id == team_id,
+            TestRunItemDB.config_id == config_id,
+        ).options(
+            contains_eager(TestRunItemDB.test_case)
+            .joinedload(TestCaseLocalDB.test_case_section)
+            .joinedload(TestCaseSection.parent_section)
         )
 
-    if priority_filter:
-        priority_lookup = {p.value.lower(): p for p in Priority}
-        priority_value = priority_lookup.get(priority_filter.lower()) if isinstance(priority_filter, str) else None
-        if priority_value is not None:
-            q = q.filter(TestCaseLocalDB.priority == priority_value)
-    if test_result_filter:
-        q = q.filter(TestRunItemDB.test_result == test_result_filter)
-    if executed_only:
-        q = q.filter(TestRunItemDB.test_result.isnot(None))
+        if search:
+            s = f"%{search}%"
+            q = q.filter(
+                or_(
+                    TestRunItemDB.test_case_number.like(s),
+                    TestCaseLocalDB.title.like(s)
+                )
+            )
 
-    # Sorting
-    sort_map = {
-        'created_at': TestRunItemDB.created_at,
-        'updated_at': TestRunItemDB.updated_at,
-        'priority': TestCaseLocalDB.priority,
-        'test_result': TestRunItemDB.test_result,
-        'title': TestCaseLocalDB.title,
-    }
-    sort_col = sort_map.get(sort_by, TestRunItemDB.created_at)
-    if sort_order.lower() == 'asc':
-        q = q.order_by(sort_col.asc())
-    else:
-        q = q.order_by(sort_col.desc())
+        if priority_filter:
+            priority_lookup = {p.value.lower(): p for p in Priority}
+            priority_value = priority_lookup.get(priority_filter.lower()) if isinstance(priority_filter, str) else None
+            if priority_value is not None:
+                q = q.filter(TestCaseLocalDB.priority == priority_value)
+        if test_result_filter:
+            q = q.filter(TestRunItemDB.test_result == test_result_filter)
+        if executed_only:
+            q = q.filter(TestRunItemDB.test_result.isnot(None))
 
-    items = q.offset(skip).limit(limit).all()
-    return [_db_to_response(i, getattr(i, 'test_case', None), db) for i in items]
+        # Sorting
+        sort_map = {
+            "created_at": TestRunItemDB.created_at,
+            "updated_at": TestRunItemDB.updated_at,
+            "priority": TestCaseLocalDB.priority,
+            "test_result": TestRunItemDB.test_result,
+            "title": TestCaseLocalDB.title,
+        }
+        sort_col = sort_map.get(sort_by, TestRunItemDB.created_at)
+        if sort_order.lower() == "asc":
+            q = q.order_by(sort_col.asc())
+        else:
+            q = q.order_by(sort_col.desc())
+
+        items = q.offset(skip).limit(limit).all()
+        return [_db_to_response(i, getattr(i, "test_case", None), sync_db) for i in items]
+
+    return await run_sync(db, _list)
 
 
 @router.post("/", response_model=BatchCreateResponse, status_code=status.HTTP_201_CREATED)
@@ -648,72 +678,81 @@ async def batch_create_items(
     team_id: int,
     config_id: int,
     payload: BatchCreateRequest,
-    db: Session = Depends(get_sync_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    _verify_team_and_config(team_id, config_id, db)
+    def _create(sync_db: Session) -> Dict[str, Any]:
+        _verify_team_and_config(team_id, config_id, sync_db)
 
-    created = 0
-    skipped = 0
-    errors: List[str] = []
-    created_items = []  # 記錄建立的項目，用於 audit log
+        created = 0
+        skipped = 0
+        errors: List[str] = []
+        created_items = []  # 記錄建立的項目，用於 audit log
 
-    for idx, item in enumerate(payload.items):
-        try:
-            # Handle duplicates via unique constraint (config_id, test_case_number)
-            existing = db.query(TestRunItemDB).filter(
-                TestRunItemDB.team_id == team_id,
-                TestRunItemDB.config_id == config_id,
-                TestRunItemDB.test_case_number == item.test_case_number,
-            ).first()
-            if existing:
-                skipped += 1
+        for idx, item in enumerate(payload.items):
+            try:
+                # Handle duplicates via unique constraint (config_id, test_case_number)
+                existing = sync_db.query(TestRunItemDB).filter(
+                    TestRunItemDB.team_id == team_id,
+                    TestRunItemDB.config_id == config_id,
+                    TestRunItemDB.test_case_number == item.test_case_number,
+                ).first()
+                if existing:
+                    skipped += 1
+                    continue
+
+                test_case = sync_db.query(TestCaseLocalDB).filter(
+                    TestCaseLocalDB.team_id == team_id,
+                    TestCaseLocalDB.test_case_number == item.test_case_number
+                ).first()
+                if not test_case:
+                    errors.append(f"index {idx}: 找不到測試案例 {item.test_case_number}")
+                    continue
+
+                db_item = TestRunItemDB(
+                    team_id=team_id,
+                    config_id=config_id,
+                    test_case_number=item.test_case_number,
+                    assignee_id=item.assignee.id if item.assignee else None,
+                    assignee_name=item.assignee.name if item.assignee else None,
+                    assignee_en_name=item.assignee.en_name if item.assignee else None,
+                    assignee_email=item.assignee.email if item.assignee else None,
+                    assignee_json=_to_json(item.assignee.model_dump()) if item.assignee else None,
+                    test_result=item.test_result,
+                    executed_at=item.executed_at,
+                    execution_duration=item.execution_duration,
+                    attachments_json=_to_json([a.model_dump() for a in (item.attachments or [])]) if item.attachments else None,
+                    execution_results_json=_to_json([a.model_dump() for a in (item.execution_results or [])]) if item.execution_results else None,
+                    user_story_map_json=_to_json(_normalize_linked_records(item.user_story_map)),
+                    tcg_json=_to_json(_normalize_linked_records(item.tcg)),
+                    parent_record_json=_to_json(_normalize_linked_records(item.parent_record)),
+                    raw_fields_json=_to_json(item.raw_fields) if item.raw_fields else None,
+                )
+                sync_db.add(db_item)
+                created += 1
+                # 記錄建立的項目
+                created_items.append({
+                    "test_case_number": item.test_case_number,
+                    "title": test_case.title if test_case else None,
+                })
+            except Exception as e:
+                errors.append(f"index {idx}: {e}")
                 continue
 
-            test_case = db.query(TestCaseLocalDB).filter(
-                TestCaseLocalDB.team_id == team_id,
-                TestCaseLocalDB.test_case_number == item.test_case_number
-            ).first()
-            if not test_case:
-                errors.append(f"index {idx}: 找不到測試案例 {item.test_case_number}")
-                continue
+        sync_db.commit()
+        return {
+            "created": created,
+            "skipped": skipped,
+            "errors": errors,
+            "created_items": created_items,
+        }
 
-            db_item = TestRunItemDB(
-                team_id=team_id,
-                config_id=config_id,
-                test_case_number=item.test_case_number,
-                assignee_id=item.assignee.id if item.assignee else None,
-                assignee_name=item.assignee.name if item.assignee else None,
-                assignee_en_name=item.assignee.en_name if item.assignee else None,
-                assignee_email=item.assignee.email if item.assignee else None,
-                assignee_json=_to_json(item.assignee.model_dump()) if item.assignee else None,
-                test_result=item.test_result,
-                executed_at=item.executed_at,
-                execution_duration=item.execution_duration,
-                attachments_json=_to_json([a.model_dump() for a in (item.attachments or [])]) if item.attachments else None,
-                execution_results_json=_to_json([a.model_dump() for a in (item.execution_results or [])]) if item.execution_results else None,
-                user_story_map_json=_to_json(_normalize_linked_records(item.user_story_map)),
-                tcg_json=_to_json(_normalize_linked_records(item.tcg)),
-                parent_record_json=_to_json(_normalize_linked_records(item.parent_record)),
-                raw_fields_json=_to_json(item.raw_fields) if item.raw_fields else None,
-            )
-            db.add(db_item)
-            created += 1
-            # 記錄建立的項目
-            created_items.append({
-                "test_case_number": item.test_case_number,
-                "title": test_case.title if test_case else None,
-            })
-        except Exception as e:
-            errors.append(f"index {idx}: {e}")
-            continue
-
-    db.commit()
+    result = await run_sync(db, _create)
 
     # 記錄批次建立 audit log
-    if created > 0:
-        test_case_numbers = [item["test_case_number"] for item in created_items]
-        action_brief = f"{current_user.username} batch created {created} Test Run Items"
+    if result["created"] > 0:
+        test_case_numbers = [item["test_case_number"] for item in result["created_items"]]
+        action_brief = f"{current_user.username} batch created {result['created']} Test Run Items"
         if test_case_numbers[:3]:
             action_brief += f": {', '.join(test_case_numbers[:3])}"
             if len(test_case_numbers) > 3:
@@ -723,23 +762,23 @@ async def batch_create_items(
             action_type=ActionType.CREATE,
             current_user=current_user,
             team_id=team_id,
-            resource_id=f"batch_{created}_items",
+            resource_id=f"batch_{result['created']}_items",
             action_brief=action_brief,
             details={
                 "operation": "batch_create_items",
                 "config_id": config_id,
-                "created_count": created,
-                "skipped_count": skipped,
+                "created_count": result["created"],
+                "skipped_count": result["skipped"],
                 "total_count": len(payload.items),
-                "created_items": created_items,
+                "created_items": result["created_items"],
             },
         )
 
     return BatchCreateResponse(
-        success=len(errors) == 0,
-        created_count=created,
-        skipped_duplicates=skipped,
-        errors=errors,
+        success=len(result["errors"]) == 0,
+        created_count=result["created"],
+        skipped_duplicates=result["skipped"],
+        errors=result["errors"],
     )
 
 
@@ -749,85 +788,89 @@ async def update_item(
     config_id: int,
     item_id: int,
     payload: TestRunItemUpdate,
-    db: Session = Depends(get_sync_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    _verify_team_and_config(team_id, config_id, db)
-    item = db.query(TestRunItemDB).filter(
-        TestRunItemDB.id == item_id,
-        TestRunItemDB.team_id == team_id,
-        TestRunItemDB.config_id == config_id,
-    ).first()
-    if not item:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到項目")
-
     data = payload.model_dump(exclude_unset=True)
-    # 移除快照類欄位（僅保留兼容性輸入）
-    for legacy_field in ['title', 'priority', 'precondition', 'steps', 'expected_result']:
-        data.pop(legacy_field, None)
-    prev_result = item.test_result
-    prev_executed_at = item.executed_at
-    # Simple field updates
-    for key in ['execution_duration']:
-        if key in data:
-            setattr(item, key, data[key])
 
-    if 'test_result' in data and data['test_result'] is not None:
-        item.test_result = data['test_result']
-    if 'executed_at' in data:
-        item.executed_at = data['executed_at']
+    def _update(sync_db: Session) -> TestRunItemResponse:
+        _verify_team_and_config(team_id, config_id, sync_db)
+        item = sync_db.query(TestRunItemDB).filter(
+            TestRunItemDB.id == item_id,
+            TestRunItemDB.team_id == team_id,
+            TestRunItemDB.config_id == config_id,
+        ).first()
+        if not item:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到項目")
 
-    # Assignee (object form)
-    if 'assignee' in data:
-        assignee = data['assignee']
-        if assignee is None:
-            item.assignee_id = item.assignee_name = item.assignee_en_name = item.assignee_email = item.assignee_json = None
-        else:
-            item.assignee_id = assignee.get('id')
-            item.assignee_name = assignee.get('name')
-            item.assignee_en_name = assignee.get('en_name')
-            item.assignee_email = assignee.get('email')
-            item.assignee_json = _to_json(assignee)
+        # 移除快照類欄位（僅保留兼容性輸入）
+        for legacy_field in ["title", "priority", "precondition", "steps", "expected_result"]:
+            data.pop(legacy_field, None)
+        prev_result = item.test_result
+        prev_executed_at = item.executed_at
+        # Simple field updates
+        for key in ["execution_duration"]:
+            if key in data:
+                setattr(item, key, data[key])
 
-    # Assignee (simple name form)
-    if 'assignee_name' in data:
-        name = (data.get('assignee_name') or '').strip()
-        if name:
-            item.assignee_name = name
-            item.assignee_id = None
-            item.assignee_en_name = None
-            item.assignee_email = None
-            item.assignee_json = None
-        else:
-            item.assignee_id = None
-            item.assignee_name = None
-            item.assignee_en_name = None
-            item.assignee_email = None
-            item.assignee_json = None
+        if "test_result" in data and data["test_result"] is not None:
+            item.test_result = data["test_result"]
+        if "executed_at" in data:
+            item.executed_at = data["executed_at"]
 
-    # Attachments
-    if 'attachments' in data:
-        attachments = data['attachments'] or []
-        item.attachments_json = _to_json(attachments)
-    if 'execution_results' in data:
-        execution_results = data['execution_results'] or []
-        item.execution_results_json = _to_json(execution_results)
+        # Assignee (object form)
+        if "assignee" in data:
+            assignee = data["assignee"]
+            if assignee is None:
+                item.assignee_id = item.assignee_name = item.assignee_en_name = item.assignee_email = item.assignee_json = None
+            else:
+                item.assignee_id = assignee.get("id")
+                item.assignee_name = assignee.get("name")
+                item.assignee_en_name = assignee.get("en_name")
+                item.assignee_email = assignee.get("email")
+                item.assignee_json = _to_json(assignee)
 
-    # 記錄歷程（若有變更）
-    _add_result_history(
-        db, item,
-        prev_result, prev_executed_at,
-        item.test_result, item.executed_at,
-        source=data.get('change_source') or 'single',
-        reason=data.get('change_reason'),
-        changed_by_id=str(current_user.id) if current_user else None,
-        changed_by_name=current_user.full_name or current_user.username if current_user else None
-    )
+        # Assignee (simple name form)
+        if "assignee_name" in data:
+            name = (data.get("assignee_name") or "").strip()
+            if name:
+                item.assignee_name = name
+                item.assignee_id = None
+                item.assignee_en_name = None
+                item.assignee_email = None
+                item.assignee_json = None
+            else:
+                item.assignee_id = None
+                item.assignee_name = None
+                item.assignee_en_name = None
+                item.assignee_email = None
+                item.assignee_json = None
 
-    item.updated_at = datetime.utcnow()
-    db.commit()
-    db.refresh(item)
-    return _db_to_response(item, item.test_case, db)
+        # Attachments
+        if "attachments" in data:
+            attachments = data["attachments"] or []
+            item.attachments_json = _to_json(attachments)
+        if "execution_results" in data:
+            execution_results = data["execution_results"] or []
+            item.execution_results_json = _to_json(execution_results)
+
+        # 記錄歷程（若有變更）
+        _add_result_history(
+            sync_db, item,
+            prev_result, prev_executed_at,
+            item.test_result, item.executed_at,
+            source=data.get("change_source") or "single",
+            reason=data.get("change_reason"),
+            changed_by_id=str(current_user.id) if current_user else None,
+            changed_by_name=current_user.full_name or current_user.username if current_user else None
+        )
+
+        item.updated_at = datetime.utcnow()
+        sync_db.commit()
+        sync_db.refresh(item)
+        return _db_to_response(item, item.test_case, sync_db)
+
+    return await run_sync(db, _update)
 
 
 @router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -835,20 +878,23 @@ async def delete_item(
     team_id: int,
     config_id: int,
     item_id: int,
-    db: Session = Depends(get_sync_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """刪除測試執行項目及相關附件"""
     from ..services.test_result_cleanup_service import TestResultCleanupService
     
-    _verify_team_and_config(team_id, config_id, db)
-    item = db.query(TestRunItemDB).filter(
-        TestRunItemDB.id == item_id,
-        TestRunItemDB.team_id == team_id,
-        TestRunItemDB.config_id == config_id,
-    ).first()
-    if not item:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到項目")
-    
+    def _verify_item(sync_db: Session) -> None:
+        _verify_team_and_config(team_id, config_id, sync_db)
+        item = sync_db.query(TestRunItemDB).filter(
+            TestRunItemDB.id == item_id,
+            TestRunItemDB.team_id == team_id,
+            TestRunItemDB.config_id == config_id,
+        ).first()
+        if not item:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到項目")
+
+    await run_sync(db, _verify_item)
+
     try:
         # 1. 先清理測試結果檔案
         cleanup_service = TestResultCleanupService()
@@ -860,18 +906,27 @@ async def delete_item(
             logger.info(f"Test Run Item {item_id} 已清理 {cleaned_files_count} 個測試結果檔案")
         
         # 2. 保險刪除對應歷程（避免 DB 未啟用 FK 級聯時殘留）
-        db.query(ResultHistoryDB).filter(
-            ResultHistoryDB.team_id == team_id,
-            ResultHistoryDB.config_id == config_id,
-            ResultHistoryDB.item_id == item_id,
-        ).delete(synchronize_session=False)
-        
-        # 3. 刪除 Test Run Item
-        db.delete(item)
-        db.commit()
+        def _delete(sync_db: Session) -> None:
+            # 2. 保險刪除對應歷程（避免 DB 未啟用 FK 級聯時殘留）
+            sync_db.query(ResultHistoryDB).filter(
+                ResultHistoryDB.team_id == team_id,
+                ResultHistoryDB.config_id == config_id,
+                ResultHistoryDB.item_id == item_id,
+            ).delete(synchronize_session=False)
+
+            # 3. 刪除 Test Run Item
+            item = sync_db.query(TestRunItemDB).filter(
+                TestRunItemDB.id == item_id,
+                TestRunItemDB.team_id == team_id,
+                TestRunItemDB.config_id == config_id,
+            ).first()
+            if item:
+                sync_db.delete(item)
+            sync_db.commit()
+
+        await run_sync(db, _delete)
         
     except Exception as e:
-        db.rollback()
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
@@ -880,115 +935,125 @@ async def batch_update_results(
     team_id: int,
     config_id: int,
     payload: BatchUpdateResultRequest,
-    db: Session = Depends(get_sync_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    _verify_team_and_config(team_id, config_id, db)
-    success = 0
-    errors: List[str] = []
-    success_items = []  # 記錄成功更新的項目，用於 audit log
-    source = payload.change_source or 'batch'
-    for upd in payload.updates:
-        try:
-            item_id = upd.get('id')
-            comment_raw = upd.get('comment') if 'comment' in upd else None
-            comment_text = comment_raw.strip() if isinstance(comment_raw, str) else None
-            has_basic_update = any(key in upd for key in ['test_result', 'assignee_name', 'executed_at'])
-            has_comment_update = bool(comment_text)
-            # 檢查是否至少有一個要更新的欄位
-            if not item_id or (not has_basic_update and not has_comment_update):
-                errors.append("缺少 id 或更新欄位")
-                continue
+    source = payload.change_source or "batch"
 
-            item = db.query(TestRunItemDB).filter(
-                TestRunItemDB.id == item_id,
-                TestRunItemDB.team_id == team_id,
-                TestRunItemDB.config_id == config_id,
-            ).first()
-            if not item:
-                errors.append(f"項目 {item_id} 不存在")
-                continue
+    def _batch(sync_db: Session) -> Dict[str, Any]:
+        _verify_team_and_config(team_id, config_id, sync_db)
+        success = 0
+        errors: List[str] = []
+        success_items = []  # 記錄成功更新的項目，用於 audit log
 
-            prev_result = item.test_result
-            prev_executed_at = item.executed_at
+        for upd in payload.updates:
+            try:
+                item_id = upd.get("id")
+                comment_raw = upd.get("comment") if "comment" in upd else None
+                comment_text = comment_raw.strip() if isinstance(comment_raw, str) else None
+                has_basic_update = any(key in upd for key in ["test_result", "assignee_name", "executed_at"])
+                has_comment_update = bool(comment_text)
+                # 檢查是否至少有一個要更新的欄位
+                if not item_id or (not has_basic_update and not has_comment_update):
+                    errors.append("缺少 id 或更新欄位")
+                    continue
 
-            # 更新測試結果
-            if 'test_result' in upd and upd['test_result'] is not None:
-                item.test_result = upd['test_result']
+                item = sync_db.query(TestRunItemDB).filter(
+                    TestRunItemDB.id == item_id,
+                    TestRunItemDB.team_id == team_id,
+                    TestRunItemDB.config_id == config_id,
+                ).first()
+                if not item:
+                    errors.append(f"項目 {item_id} 不存在")
+                    continue
 
-            # 更新執行時間
-            if 'executed_at' in upd:
-                executed_at_value = upd.get('executed_at')
-                if executed_at_value:
-                    # 處理 ISO 字串格式的 datetime
-                    if isinstance(executed_at_value, str):
-                        try:
-                            if executed_at_value.endswith('Z'):
-                                executed_at_value = executed_at_value[:-1] + '+00:00'
-                            item.executed_at = datetime.fromisoformat(executed_at_value.replace('Z', '+00:00'))
-                        except Exception:
-                            item.executed_at = datetime.utcnow()
+                prev_result = item.test_result
+                prev_executed_at = item.executed_at
+
+                # 更新測試結果
+                if "test_result" in upd and upd["test_result"] is not None:
+                    item.test_result = upd["test_result"]
+
+                # 更新執行時間
+                if "executed_at" in upd:
+                    executed_at_value = upd.get("executed_at")
+                    if executed_at_value:
+                        # 處理 ISO 字串格式的 datetime
+                        if isinstance(executed_at_value, str):
+                            try:
+                                if executed_at_value.endswith("Z"):
+                                    executed_at_value = executed_at_value[:-1] + "+00:00"
+                                item.executed_at = datetime.fromisoformat(executed_at_value.replace("Z", "+00:00"))
+                            except Exception:
+                                item.executed_at = datetime.utcnow()
+                        else:
+                            item.executed_at = executed_at_value
                     else:
-                        item.executed_at = executed_at_value
-                else:
-                    item.executed_at = datetime.utcnow()
+                        item.executed_at = datetime.utcnow()
 
-            # 更新執行者
-            if 'assignee_name' in upd:
-                assignee_name = upd.get('assignee_name')
-                if assignee_name:
-                    item.assignee_name = assignee_name
-                    item.assignee_id = None
-                    item.assignee_en_name = None
-                    item.assignee_email = None
-                    item.assignee_json = None
-                else:
-                    item.assignee_id = None
-                    item.assignee_name = None
-                    item.assignee_en_name = None
-                    item.assignee_email = None
-                    item.assignee_json = None
+                # 更新執行者
+                if "assignee_name" in upd:
+                    assignee_name = upd.get("assignee_name")
+                    if assignee_name:
+                        item.assignee_name = assignee_name
+                        item.assignee_id = None
+                        item.assignee_en_name = None
+                        item.assignee_email = None
+                        item.assignee_json = None
+                    else:
+                        item.assignee_id = None
+                        item.assignee_name = None
+                        item.assignee_en_name = None
+                        item.assignee_email = None
+                        item.assignee_json = None
 
-            # 記錄歷程（僅在有變更時會落盤）
-            _add_result_history(
-                db, item,
-                prev_result, prev_executed_at,
-                item.test_result, item.executed_at,
-                source=source,
-                reason=upd.get('change_reason'),
-                changed_by_id=str(current_user.id) if current_user else None,
-                changed_by_name=current_user.full_name or current_user.username if current_user else None
-            )
-
-            # 記錄註釋（comment）歷程
-            if has_comment_update:
+                # 記錄歷程（僅在有變更時會落盤）
                 _add_result_history(
-                    db, item,
+                    sync_db, item,
+                    prev_result, prev_executed_at,
                     item.test_result, item.executed_at,
-                    item.test_result, item.executed_at,
-                    source='comment',
-                    reason=comment_text,
+                    source=source,
+                    reason=upd.get("change_reason"),
                     changed_by_id=str(current_user.id) if current_user else None,
                     changed_by_name=current_user.full_name or current_user.username if current_user else None
                 )
 
-            item.updated_at = datetime.utcnow()
-            success += 1
-            # 記錄成功更新的項目
-            success_items.append({
-                "item_id": item_id,
-                "test_case_number": item.test_case_number,
-                "test_result": item.test_result,
-            })
-        except Exception as e:
-            errors.append(f"項目 {upd.get('id')} 更新失敗: {str(e)}")
-            continue
-    db.commit()
+                # 記錄註釋（comment）歷程
+                if has_comment_update:
+                    _add_result_history(
+                        sync_db, item,
+                        item.test_result, item.executed_at,
+                        item.test_result, item.executed_at,
+                        source="comment",
+                        reason=comment_text,
+                        changed_by_id=str(current_user.id) if current_user else None,
+                        changed_by_name=current_user.full_name or current_user.username if current_user else None
+                    )
+
+                item.updated_at = datetime.utcnow()
+                success += 1
+                # 記錄成功更新的項目
+                success_items.append({
+                    "item_id": item_id,
+                    "test_case_number": item.test_case_number,
+                    "test_result": item.test_result,
+                })
+            except Exception as e:
+                errors.append(f"項目 {upd.get('id')} 更新失敗: {str(e)}")
+                continue
+        sync_db.commit()
+        return {
+            "success": success,
+            "errors": errors,
+            "success_items": success_items,
+        }
+
+    result = await run_sync(db, _batch)
 
     # 記錄批次更新 audit log
-    if success > 0:
-        test_case_numbers = [item["test_case_number"] for item in success_items]
-        action_brief = f"{current_user.username} batch updated results for {success} Test Run Items"
+    if result["success"] > 0:
+        test_case_numbers = [item["test_case_number"] for item in result["success_items"]]
+        action_brief = f"{current_user.username} batch updated results for {result['success']} Test Run Items"
         if test_case_numbers[:3]:
             action_brief += f": {', '.join(test_case_numbers[:3])}"
             if len(test_case_numbers) > 3:
@@ -998,23 +1063,23 @@ async def batch_update_results(
             action_type=ActionType.UPDATE,
             current_user=current_user,
             team_id=team_id,
-            resource_id=f"batch_{success}_items",
+            resource_id=f"batch_{result['success']}_items",
             action_brief=action_brief,
             details={
                 "operation": "batch_update_results",
                 "config_id": config_id,
-                "success_count": success,
+                "success_count": result["success"],
                 "total_count": len(payload.updates),
-                "updated_items": success_items,
+                "updated_items": result["success_items"],
             },
         )
 
     return {
-        "success": len(errors) == 0,
+        "success": len(result["errors"]) == 0,
         "processed_count": len(payload.updates),
-        "success_count": success,
-        "error_count": len(errors),
-        "error_messages": errors,
+        "success_count": result["success"],
+        "error_count": len(result["errors"]),
+        "error_messages": result["errors"],
     }
 
 
@@ -1023,128 +1088,133 @@ async def get_result_history(
     team_id: int,
     config_id: int,
     item_id: int,
-    db: Session = Depends(get_sync_db),
+    db: AsyncSession = Depends(get_db),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200)
 ):
-    _verify_team_and_config(team_id, config_id, db)
-    item = db.query(TestRunItemDB).filter(
-        TestRunItemDB.id == item_id,
-        TestRunItemDB.team_id == team_id,
-        TestRunItemDB.config_id == config_id,
-    ).first()
-    if not item:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到項目")
+    def _get_history(sync_db: Session) -> List[ResultHistoryItem]:
+        _verify_team_and_config(team_id, config_id, sync_db)
+        item = sync_db.query(TestRunItemDB).filter(
+            TestRunItemDB.id == item_id,
+            TestRunItemDB.team_id == team_id,
+            TestRunItemDB.config_id == config_id,
+        ).first()
+        if not item:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到項目")
 
-    q = db.query(ResultHistoryDB).filter(
-        ResultHistoryDB.team_id == team_id,
-        ResultHistoryDB.config_id == config_id,
-        ResultHistoryDB.item_id == item_id,
-    ).order_by(ResultHistoryDB.changed_at.desc())
-    records = q.offset(skip).limit(limit).all()
-    def _map(r: ResultHistoryDB) -> ResultHistoryItem:
-        return ResultHistoryItem(
-            id=r.id,
-            item_id=r.item_id,
-            prev_result=r.prev_result.value if hasattr(r.prev_result, 'value') else r.prev_result,
-            new_result=r.new_result.value if hasattr(r.new_result, 'value') else r.new_result,
-            prev_executed_at=r.prev_executed_at,
-            new_executed_at=r.new_executed_at,
-            changed_by_id=r.changed_by_id,
-            changed_by_name=r.changed_by_name,
-            change_source=r.change_source,
-            change_reason=r.change_reason,
-            changed_at=r.changed_at,
-        )
-    return [_map(r) for r in records]
+        q = sync_db.query(ResultHistoryDB).filter(
+            ResultHistoryDB.team_id == team_id,
+            ResultHistoryDB.config_id == config_id,
+            ResultHistoryDB.item_id == item_id,
+        ).order_by(ResultHistoryDB.changed_at.desc())
+        records = q.offset(skip).limit(limit).all()
+        def _map(r: ResultHistoryDB) -> ResultHistoryItem:
+            return ResultHistoryItem(
+                id=r.id,
+                item_id=r.item_id,
+                prev_result=r.prev_result.value if hasattr(r.prev_result, "value") else r.prev_result,
+                new_result=r.new_result.value if hasattr(r.new_result, "value") else r.new_result,
+                prev_executed_at=r.prev_executed_at,
+                new_executed_at=r.new_executed_at,
+                changed_by_id=r.changed_by_id,
+                changed_by_name=r.changed_by_name,
+                change_source=r.change_source,
+                change_reason=r.change_reason,
+                changed_at=r.changed_at,
+            )
+        return [_map(r) for r in records]
+
+    return await run_sync(db, _get_history)
 
 
 @router.get("/statistics", response_model=Dict[str, Any])
 async def get_items_statistics(
     team_id: int,
     config_id: int,
-    db: Session = Depends(get_sync_db)
+    db: AsyncSession = Depends(get_db)
 ):
-    _verify_team_and_config(team_id, config_id, db)
-    q = db.query(TestRunItemDB).filter(
-        TestRunItemDB.team_id == team_id,
-        TestRunItemDB.config_id == config_id,
-    )
-    total = q.count()
-    # Executed exclude Pending, but include Not Required/Skip (implicit since it is not None)
-    executed = q.filter(and_(TestRunItemDB.test_result.isnot(None), TestRunItemDB.test_result != TestResultStatus.PENDING)).count()
-    passed = q.filter(TestRunItemDB.test_result == TestResultStatus.PASSED).count()
-    failed = q.filter(TestRunItemDB.test_result == TestResultStatus.FAILED).count()
-    retest = q.filter(TestRunItemDB.test_result == TestResultStatus.RETEST).count()
-    na = q.filter(TestRunItemDB.test_result == TestResultStatus.NOT_AVAILABLE).count()
-    pending = q.filter(TestRunItemDB.test_result == TestResultStatus.PENDING).count()
-    not_required = q.filter(TestRunItemDB.test_result == TestResultStatus.NOT_REQUIRED).count()
-    skip = q.filter(TestRunItemDB.test_result == TestResultStatus.SKIP).count()
+    def _stats(sync_db: Session) -> Dict[str, Any]:
+        _verify_team_and_config(team_id, config_id, sync_db)
+        q = sync_db.query(TestRunItemDB).filter(
+            TestRunItemDB.team_id == team_id,
+            TestRunItemDB.config_id == config_id,
+        )
+        total = q.count()
+        # Executed exclude Pending, but include Not Required/Skip (implicit since it is not None)
+        executed = q.filter(and_(TestRunItemDB.test_result.isnot(None), TestRunItemDB.test_result != TestResultStatus.PENDING)).count()
+        passed = q.filter(TestRunItemDB.test_result == TestResultStatus.PASSED).count()
+        failed = q.filter(TestRunItemDB.test_result == TestResultStatus.FAILED).count()
+        retest = q.filter(TestRunItemDB.test_result == TestResultStatus.RETEST).count()
+        na = q.filter(TestRunItemDB.test_result == TestResultStatus.NOT_AVAILABLE).count()
+        pending = q.filter(TestRunItemDB.test_result == TestResultStatus.PENDING).count()
+        not_required = q.filter(TestRunItemDB.test_result == TestResultStatus.NOT_REQUIRED).count()
+        skip = q.filter(TestRunItemDB.test_result == TestResultStatus.SKIP).count()
 
-    # 添加詳細的資料狀態診斷日誌
-    logger.warning(f"PASS_RATE_DATA_DEBUG: team_id={team_id}, config_id={config_id}")
-    logger.warning(f"PASS_RATE_DATA_DEBUG: total items: {total}")
-    logger.warning(f"PASS_RATE_DATA_DEBUG: executed items: {executed}")
-    logger.warning(f"PASS_RATE_DATA_DEBUG: passed items: {passed}")
-    logger.warning(f"PASS_RATE_DATA_DEBUG: failed items: {failed}")
-    logger.warning(f"PASS_RATE_DATA_DEBUG: retest items: {retest}")
-    logger.warning(f"PASS_RATE_DATA_DEBUG: not_available items: {na}")
-    logger.warning(f"PASS_RATE_DATA_DEBUG: pending items: {pending}")
-    logger.warning(f"PASS_RATE_DATA_DEBUG: not_required items: {not_required}")
-    logger.warning(f"PASS_RATE_DATA_DEBUG: skip items: {skip}")
+        # 添加詳細的資料狀態診斷日誌
+        logger.warning(f"PASS_RATE_DATA_DEBUG: team_id={team_id}, config_id={config_id}")
+        logger.warning(f"PASS_RATE_DATA_DEBUG: total items: {total}")
+        logger.warning(f"PASS_RATE_DATA_DEBUG: executed items: {executed}")
+        logger.warning(f"PASS_RATE_DATA_DEBUG: passed items: {passed}")
+        logger.warning(f"PASS_RATE_DATA_DEBUG: failed items: {failed}")
+        logger.warning(f"PASS_RATE_DATA_DEBUG: retest items: {retest}")
+        logger.warning(f"PASS_RATE_DATA_DEBUG: not_available items: {na}")
+        logger.warning(f"PASS_RATE_DATA_DEBUG: pending items: {pending}")
+        logger.warning(f"PASS_RATE_DATA_DEBUG: not_required items: {not_required}")
+        logger.warning(f"PASS_RATE_DATA_DEBUG: skip items: {skip}")
 
-    # 檢查是否有任何項目有 test_result 欄位
-    sample_items = q.limit(5).all()
-    logger.warning(f"PASS_RATE_SAMPLE_DEBUG: sample items count: {len(sample_items)}")
-    for i, item in enumerate(sample_items):
-        logger.warning(f"PASS_RATE_SAMPLE_DEBUG: item {i+1}: test_result={item.test_result}, executed_at={item.executed_at}")
+        # 檢查是否有任何項目有 test_result 欄位
+        sample_items = q.limit(5).all()
+        logger.warning(f"PASS_RATE_SAMPLE_DEBUG: sample items count: {len(sample_items)}")
+        for i, item in enumerate(sample_items):
+            logger.warning(f"PASS_RATE_SAMPLE_DEBUG: item {i+1}: test_result={item.test_result}, executed_at={item.executed_at}")
 
-    execution_rate = (executed / total * 100) if total > 0 else 0.0
-    pass_rate = (passed / executed * 100) if executed > 0 else 0.0
-    total_pass_rate = (passed / total * 100) if total > 0 else 0.0
+        execution_rate = (executed / total * 100) if total > 0 else 0.0
+        pass_rate = (passed / executed * 100) if executed > 0 else 0.0
+        total_pass_rate = (passed / total * 100) if total > 0 else 0.0
 
-    # 添加診斷日誌來驗證 pass rate 計算問題
-    logger.warning(f"PASS_RATE_DEBUG: team_id={team_id}, config_id={config_id}")
-    logger.warning(f"PASS_RATE_DEBUG: total={total}, executed={executed}, passed={passed}")
-    logger.warning(f"PASS_RATE_DEBUG: pass_rate={pass_rate}, total_pass_rate={total_pass_rate}")
-    logger.warning(f"PASS_RATE_DEBUG: executed > 0: {executed > 0}, passed/executed ratio: {passed/executed if executed > 0 else 'N/A'}")
+        # 添加診斷日誌來驗證 pass rate 計算問題
+        logger.warning(f"PASS_RATE_DEBUG: team_id={team_id}, config_id={config_id}")
+        logger.warning(f"PASS_RATE_DEBUG: total={total}, executed={executed}, passed={passed}")
+        logger.warning(f"PASS_RATE_DEBUG: pass_rate={pass_rate}, total_pass_rate={total_pass_rate}")
+        logger.warning(f"PASS_RATE_DEBUG: executed > 0: {executed > 0}, passed/executed ratio: {passed/executed if executed > 0 else 'N/A'}")
 
-    # 計算 Bug Tickets 統計
-    bug_tickets_count = 0
-    unique_bug_tickets = set()
-    
-    # 查詢所有有 bug_tickets_json 的項目
-    items_with_bugs = q.filter(TestRunItemDB.bug_tickets_json.isnot(None)).all()
-    
-    for item in items_with_bugs:
-        if item.bug_tickets_json:
-            try:
-                tickets_data = json.loads(item.bug_tickets_json)
-                if isinstance(tickets_data, list):
-                    for ticket in tickets_data:
-                        if isinstance(ticket, dict) and 'ticket_number' in ticket:
-                            unique_bug_tickets.add(ticket['ticket_number'].upper())
-            except Exception:
-                pass  # 忽略解析錯誤的項目
-    
-    bug_tickets_count = len(unique_bug_tickets)
+        # 計算 Bug Tickets 統計
+        unique_bug_tickets = set()
 
-    return {
-        "total_runs": total,
-        "executed_runs": executed,
-        "passed_runs": passed,
-        "failed_runs": failed,
-        "retest_runs": retest,
-        "not_available_runs": na,
-        "pending_runs": pending,
-        "not_required_runs": not_required,
-        "skip_runs": skip,
-        "unique_bug_tickets_count": bug_tickets_count,
-        # 無條件捨去為整數
-        "execution_rate": int(execution_rate // 1),
-        "pass_rate": int(pass_rate // 1),
-        "total_pass_rate": int(total_pass_rate // 1),
-    }
+        # 查詢所有有 bug_tickets_json 的項目
+        items_with_bugs = q.filter(TestRunItemDB.bug_tickets_json.isnot(None)).all()
+
+        for item in items_with_bugs:
+            if item.bug_tickets_json:
+                try:
+                    tickets_data = json.loads(item.bug_tickets_json)
+                    if isinstance(tickets_data, list):
+                        for ticket in tickets_data:
+                            if isinstance(ticket, dict) and "ticket_number" in ticket:
+                                unique_bug_tickets.add(ticket["ticket_number"].upper())
+                except Exception:
+                    pass  # 忽略解析錯誤的項目
+
+        bug_tickets_count = len(unique_bug_tickets)
+
+        return {
+            "total_runs": total,
+            "executed_runs": executed,
+            "passed_runs": passed,
+            "failed_runs": failed,
+            "retest_runs": retest,
+            "not_available_runs": na,
+            "pending_runs": pending,
+            "not_required_runs": not_required,
+            "skip_runs": skip,
+            "unique_bug_tickets_count": bug_tickets_count,
+            # 無條件捨去為整數
+            "execution_rate": int(execution_rate // 1),
+            "pass_rate": int(pass_rate // 1),
+            "total_pass_rate": int(total_pass_rate // 1),
+        }
+
+    return await run_sync(db, _stats)
 
 
 # -------------------- Bug Tickets Management --------------------
@@ -1153,55 +1223,60 @@ async def get_items_statistics(
 async def get_bug_tickets_summary(
     team_id: int,
     config_id: int,
-    db: Session = Depends(get_sync_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """取得該 Test Run 的 Bug Tickets 摘要資訊"""
     from ..config import settings
     from ..services.jira_client import JiraClient
     
-    _verify_team_and_config(team_id, config_id, db)
-    
-    # 查詢所有有 bug_tickets_json 的項目
-    items = db.query(TestRunItemDB).options(joinedload(TestRunItemDB.test_case)).filter(
-        TestRunItemDB.team_id == team_id,
-        TestRunItemDB.config_id == config_id,
-        TestRunItemDB.bug_tickets_json.isnot(None)
-    ).all()
-    
-    bug_tickets_data = {}  # ticket_number -> {'ticket_info': {...}, 'test_cases': [...]}
-    
-    for item in items:
-        if item.bug_tickets_json:
-            try:
-                tickets_data = json.loads(item.bug_tickets_json)
-                if isinstance(tickets_data, list):
-                    for ticket in tickets_data:
-                        if isinstance(ticket, dict) and 'ticket_number' in ticket:
-                            ticket_number = ticket['ticket_number'].upper()
-                            
-                            # 初始化 ticket 資料
-                            if ticket_number not in bug_tickets_data:
-                                bug_tickets_data[ticket_number] = {
-                                    'ticket_info': {
-                                        'ticket_number': ticket_number,
-                                        'status': {'name': 'Unknown', 'id': ''},
-                                        'summary': '',
-                                        'url': f"{settings.jira.server_url}/browse/{ticket_number}" if settings.jira.server_url else ''
-                                    },
-                                    'test_cases': []
-                                }
-                            
-                            # 添加測試案例
-                            case = getattr(item, 'test_case', None)
-                            case_title = getattr(case, 'title', None)
-                            bug_tickets_data[ticket_number]['test_cases'].append({
-                                'item_id': item.id,
-                                'test_case_number': item.test_case_number,
-                                'title': case_title or '',
-                                'test_result': item.test_result
-                            })
-            except Exception:
-                pass  # 忽略解析錯誤的項目
+    def _collect(sync_db: Session) -> Dict[str, Any]:
+        _verify_team_and_config(team_id, config_id, sync_db)
+
+        # 查詢所有有 bug_tickets_json 的項目
+        items = sync_db.query(TestRunItemDB).options(joinedload(TestRunItemDB.test_case)).filter(
+            TestRunItemDB.team_id == team_id,
+            TestRunItemDB.config_id == config_id,
+            TestRunItemDB.bug_tickets_json.isnot(None)
+        ).all()
+
+        bug_tickets_data = {}  # ticket_number -> {'ticket_info': {...}, 'test_cases': [...]}
+
+        for item in items:
+            if item.bug_tickets_json:
+                try:
+                    tickets_data = json.loads(item.bug_tickets_json)
+                    if isinstance(tickets_data, list):
+                        for ticket in tickets_data:
+                            if isinstance(ticket, dict) and "ticket_number" in ticket:
+                                ticket_number = ticket["ticket_number"].upper()
+
+                                # 初始化 ticket 資料
+                                if ticket_number not in bug_tickets_data:
+                                    bug_tickets_data[ticket_number] = {
+                                        "ticket_info": {
+                                            "ticket_number": ticket_number,
+                                            "status": {"name": "Unknown", "id": ""},
+                                            "summary": "",
+                                            "url": f"{settings.jira.server_url}/browse/{ticket_number}" if settings.jira.server_url else ""
+                                        },
+                                        "test_cases": []
+                                    }
+
+                                # 添加測試案例
+                                case = getattr(item, "test_case", None)
+                                case_title = getattr(case, "title", None)
+                                bug_tickets_data[ticket_number]["test_cases"].append({
+                                    "item_id": item.id,
+                                    "test_case_number": item.test_case_number,
+                                    "title": case_title or "",
+                                    "test_result": item.test_result
+                                })
+                except Exception:
+                    pass  # 忽略解析錯誤的項目
+
+        return bug_tickets_data
+
+    bug_tickets_data = await run_sync(db, _collect)
     
     # 嘗試從 JIRA API 取得實際的票券資訊
     try:
@@ -1243,34 +1318,37 @@ async def get_bug_tickets(
     team_id: int,
     config_id: int,
     item_id: int,
-    db: Session = Depends(get_sync_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """取得測試項目的 Bug Tickets 清單"""
-    _verify_team_and_config(team_id, config_id, db)
-    item = db.query(TestRunItemDB).filter(
-        TestRunItemDB.id == item_id,
-        TestRunItemDB.team_id == team_id,
-        TestRunItemDB.config_id == config_id,
-    ).first()
-    if not item:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到項目")
-    
-    # 解析 bug_tickets_json
-    bug_tickets = []
-    if item.bug_tickets_json:
-        try:
-            tickets_data = json.loads(item.bug_tickets_json)
-            if isinstance(tickets_data, list):
-                for ticket in tickets_data:
-                    if isinstance(ticket, dict) and 'ticket_number' in ticket:
-                        bug_tickets.append(BugTicketResponse(
-                            ticket_number=ticket['ticket_number'],
-                            created_at=datetime.fromisoformat(ticket.get('created_at', datetime.utcnow().isoformat()))
-                        ))
-        except Exception:
-            pass  # 如果解析失敗，返回空列表
-    
-    return bug_tickets
+    def _get(sync_db: Session) -> List[BugTicketResponse]:
+        _verify_team_and_config(team_id, config_id, sync_db)
+        item = sync_db.query(TestRunItemDB).filter(
+            TestRunItemDB.id == item_id,
+            TestRunItemDB.team_id == team_id,
+            TestRunItemDB.config_id == config_id,
+        ).first()
+        if not item:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到項目")
+
+        # 解析 bug_tickets_json
+        bug_tickets = []
+        if item.bug_tickets_json:
+            try:
+                tickets_data = json.loads(item.bug_tickets_json)
+                if isinstance(tickets_data, list):
+                    for ticket in tickets_data:
+                        if isinstance(ticket, dict) and "ticket_number" in ticket:
+                            bug_tickets.append(BugTicketResponse(
+                                ticket_number=ticket["ticket_number"],
+                                created_at=datetime.fromisoformat(ticket.get("created_at", datetime.utcnow().isoformat()))
+                            ))
+            except Exception:
+                pass  # 如果解析失敗，返回空列表
+
+        return bug_tickets
+
+    return await run_sync(db, _get)
 
 
 @router.post("/{item_id}/bug-tickets", response_model=BugTicketResponse, status_code=status.HTTP_201_CREATED)
@@ -1279,54 +1357,57 @@ async def add_bug_ticket(
     config_id: int,
     item_id: int,
     payload: BugTicketRequest,
-    db: Session = Depends(get_sync_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """新增 Bug Ticket 到測試項目"""
-    _verify_team_and_config(team_id, config_id, db)
-    item = db.query(TestRunItemDB).filter(
-        TestRunItemDB.id == item_id,
-        TestRunItemDB.team_id == team_id,
-        TestRunItemDB.config_id == config_id,
-    ).first()
-    if not item:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到項目")
-    
-    # 解析現有的 bug_tickets_json
-    existing_tickets = []
-    if item.bug_tickets_json:
-        try:
-            tickets_data = json.loads(item.bug_tickets_json)
-            if isinstance(tickets_data, list):
-                existing_tickets = tickets_data
-        except Exception:
-            existing_tickets = []
-    
-    # 檢查是否已存在相同的 ticket number
-    ticket_number = payload.ticket_number.strip().upper()
-    for ticket in existing_tickets:
-        if isinstance(ticket, dict) and ticket.get('ticket_number', '').upper() == ticket_number:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Bug ticket {ticket_number} 已存在"
-            )
-    
-    # 新增 ticket
-    new_ticket = {
-        'ticket_number': ticket_number,
-        'created_at': datetime.utcnow().isoformat()
-    }
-    existing_tickets.append(new_ticket)
-    
-    # 更新資料庫
-    item.bug_tickets_json = json.dumps(existing_tickets, ensure_ascii=False)
-    item.updated_at = datetime.utcnow()
-    db.commit()
-    db.refresh(item)
-    
-    return BugTicketResponse(
-        ticket_number=new_ticket['ticket_number'],
-        created_at=datetime.fromisoformat(new_ticket['created_at'])
-    )
+    def _add(sync_db: Session) -> BugTicketResponse:
+        _verify_team_and_config(team_id, config_id, sync_db)
+        item = sync_db.query(TestRunItemDB).filter(
+            TestRunItemDB.id == item_id,
+            TestRunItemDB.team_id == team_id,
+            TestRunItemDB.config_id == config_id,
+        ).first()
+        if not item:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到項目")
+
+        # 解析現有的 bug_tickets_json
+        existing_tickets = []
+        if item.bug_tickets_json:
+            try:
+                tickets_data = json.loads(item.bug_tickets_json)
+                if isinstance(tickets_data, list):
+                    existing_tickets = tickets_data
+            except Exception:
+                existing_tickets = []
+
+        # 檢查是否已存在相同的 ticket number
+        ticket_number = payload.ticket_number.strip().upper()
+        for ticket in existing_tickets:
+            if isinstance(ticket, dict) and ticket.get("ticket_number", "").upper() == ticket_number:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Bug ticket {ticket_number} 已存在"
+                )
+
+        # 新增 ticket
+        new_ticket = {
+            "ticket_number": ticket_number,
+            "created_at": datetime.utcnow().isoformat()
+        }
+        existing_tickets.append(new_ticket)
+
+        # 更新資料庫
+        item.bug_tickets_json = json.dumps(existing_tickets, ensure_ascii=False)
+        item.updated_at = datetime.utcnow()
+        sync_db.commit()
+        sync_db.refresh(item)
+
+        return BugTicketResponse(
+            ticket_number=new_ticket["ticket_number"],
+            created_at=datetime.fromisoformat(new_ticket["created_at"])
+        )
+
+    return await run_sync(db, _add)
 
 
 @router.delete("/{item_id}/bug-tickets/{ticket_number:path}", status_code=status.HTTP_204_NO_CONTENT)
@@ -1335,56 +1416,67 @@ async def delete_bug_ticket(
     config_id: int,
     item_id: int,
     ticket_number: str,
-    db: Session = Depends(get_sync_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """刪除測試項目的指定 Bug Ticket"""
-    _verify_team_and_config(team_id, config_id, db)
-    item = db.query(TestRunItemDB).filter(
-        TestRunItemDB.id == item_id,
-        TestRunItemDB.team_id == team_id,
-        TestRunItemDB.config_id == config_id,
-    ).first()
-    if not item:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到項目")
-    
-    # 解析現有的 bug_tickets_json
-    existing_tickets = []
-    if item.bug_tickets_json:
-        try:
-            tickets_data = json.loads(item.bug_tickets_json)
-            if isinstance(tickets_data, list):
-                existing_tickets = tickets_data
-        except Exception:
-            existing_tickets = []
-    
-    # 尋找並移除指定的 ticket（使用精確匹配，不轉換大小寫）
-    original_count = len(existing_tickets)
-    ticket_number_to_delete = ticket_number.strip()
+    def _delete(sync_db: Session) -> None:
+        _verify_team_and_config(team_id, config_id, sync_db)
+        item = sync_db.query(TestRunItemDB).filter(
+            TestRunItemDB.id == item_id,
+            TestRunItemDB.team_id == team_id,
+            TestRunItemDB.config_id == config_id,
+        ).first()
+        if not item:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到項目")
 
-    # 先嘗試精確匹配
-    existing_tickets_filtered = [ticket for ticket in existing_tickets
-                      if not (isinstance(ticket, dict) and
-                             ticket.get('ticket_number', '') == ticket_number_to_delete)]
+        # 解析現有的 bug_tickets_json
+        existing_tickets = []
+        if item.bug_tickets_json:
+            try:
+                tickets_data = json.loads(item.bug_tickets_json)
+                if isinstance(tickets_data, list):
+                    existing_tickets = tickets_data
+            except Exception:
+                existing_tickets = []
 
-    # 如果精確匹配沒找到，嘗試不區分大小寫匹配
-    if len(existing_tickets_filtered) == original_count:
-        ticket_number_upper = ticket_number_to_delete.upper()
-        existing_tickets_filtered = [ticket for ticket in existing_tickets
-                          if not (isinstance(ticket, dict) and
-                                 ticket.get('ticket_number', '').upper() == ticket_number_upper)]
+        # 尋找並移除指定的 ticket（使用精確匹配，不轉換大小寫）
+        original_count = len(existing_tickets)
+        ticket_number_to_delete = ticket_number.strip()
 
-    existing_tickets = existing_tickets_filtered
+        # 先嘗試精確匹配
+        existing_tickets_filtered = [
+            ticket for ticket in existing_tickets
+            if not (
+                isinstance(ticket, dict)
+                and ticket.get("ticket_number", "") == ticket_number_to_delete
+            )
+        ]
 
-    if len(existing_tickets) == original_count:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Bug ticket {ticket_number} 不存在"
-        )
-    
-    # 更新資料庫
-    item.bug_tickets_json = json.dumps(existing_tickets, ensure_ascii=False) if existing_tickets else None
-    item.updated_at = datetime.utcnow()
-    db.commit()
+        # 如果精確匹配沒找到，嘗試不區分大小寫匹配
+        if len(existing_tickets_filtered) == original_count:
+            ticket_number_upper = ticket_number_to_delete.upper()
+            existing_tickets_filtered = [
+                ticket for ticket in existing_tickets
+                if not (
+                    isinstance(ticket, dict)
+                    and ticket.get("ticket_number", "").upper() == ticket_number_upper
+                )
+            ]
+
+        existing_tickets = existing_tickets_filtered
+
+        if len(existing_tickets) == original_count:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Bug ticket {ticket_number} 不存在"
+            )
+
+        # 更新資料庫
+        item.bug_tickets_json = json.dumps(existing_tickets, ensure_ascii=False) if existing_tickets else None
+        item.updated_at = datetime.utcnow()
+        sync_db.commit()
+
+    await run_sync(db, _delete)
 
 
 # -------------------- Test Results Management --------------------
@@ -1394,31 +1486,30 @@ async def get_test_run_results(
     team_id: int,
     config_id: int,
     item_id: int,
-    db: Session = Depends(get_sync_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     獲取 Test Run Item 的測試結果檔案（本地）
     - 來源：test_run_items.execution_results_json
     - URL：/attachments/{relative_path}
     """
-    _verify_team_and_config(team_id, config_id, db)
-    
-    # 驗證 Test Run Item 存在
-    item = db.query(TestRunItemDB).filter(
-        TestRunItemDB.team_id == team_id,
-        TestRunItemDB.config_id == config_id,
-        TestRunItemDB.id == item_id
-    ).first()
-    
-    if not item:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Test Run Item 不存在"
-        )
-    
-    try:
+    def _get(sync_db: Session) -> Dict[str, Any]:
+        _verify_team_and_config(team_id, config_id, sync_db)
+
+        # 驗證 Test Run Item 存在
+        item = sync_db.query(TestRunItemDB).filter(
+            TestRunItemDB.team_id == team_id,
+            TestRunItemDB.config_id == config_id,
+            TestRunItemDB.id == item_id
+        ).first()
+
+        if not item:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Test Run Item 不存在"
+            )
+
         # 從本地 execution_results_json 讀取
-        import json
         files = []
         try:
             if item.execution_results_json:
@@ -1427,31 +1518,35 @@ async def get_test_run_results(
                     files = data
         except Exception:
             files = []
-        
+
         base_url = "/attachments"
         result_files = []
         total_size = 0
         for f in files:
-            name = f.get('name') or f.get('stored_name') or 'file'
-            size = int(f.get('size') or 0)
+            name = f.get("name") or f.get("stored_name") or "file"
+            size = int(f.get("size") or 0)
             total_size += size
-            rel = f.get('relative_path') or ''
-            content_type = f.get('type') or 'application/octet-stream'
+            rel = f.get("relative_path") or ""
+            content_type = f.get("type") or "application/octet-stream"
             result_files.append({
-                "file_token": f.get('stored_name') or name,
+                "file_token": f.get("stored_name") or name,
                 "name": name,
                 "size": size,
                 "url": f"{base_url}/{rel}" if rel else None,
-                "uploaded_at": f.get('uploaded_at'),
+                "uploaded_at": f.get("uploaded_at"),
                 "content_type": content_type,
             })
-        
+
         return {
             "test_results_files": result_files,
             "files_count": len(result_files),
             "total_size": total_size
         }
-        
+
+    try:
+        return await run_sync(db, _get)
+    except HTTPException:
+        raise
     except Exception as e:
         logging.error(f"獲取測試結果檔案失敗: {e}")
         raise HTTPException(
@@ -1466,39 +1561,43 @@ async def delete_test_result_file(
     config_id: int,
     item_id: int,
     file_token: str,
-    db: Session = Depends(get_sync_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     刪除單一測試結果檔案（本地）
     - 從 test_run_items.execution_results_json 移除
     - 刪除磁碟檔案（attachments/test-runs/{team}/{config}/{item}/{stored_name}）
     """
-    _verify_team_and_config(team_id, config_id, db)
+    def _load(sync_db: Session) -> List[Dict[str, Any]]:
+        _verify_team_and_config(team_id, config_id, sync_db)
 
-    # 驗證 Test Run Item 存在
-    item = db.query(TestRunItemDB).filter(
-        TestRunItemDB.team_id == team_id,
-        TestRunItemDB.config_id == config_id,
-        TestRunItemDB.id == item_id
-    ).first()
+        # 驗證 Test Run Item 存在
+        item = sync_db.query(TestRunItemDB).filter(
+            TestRunItemDB.team_id == team_id,
+            TestRunItemDB.config_id == config_id,
+            TestRunItemDB.id == item_id
+        ).first()
 
-    if not item:
-        raise HTTPException(status_code=404, detail="Test Run Item 不存在")
+        if not item:
+            raise HTTPException(status_code=404, detail="Test Run Item 不存在")
+
+        # 讀取現有 execution_results_json
+        files = []
+        try:
+            if item.execution_results_json:
+                data = json.loads(item.execution_results_json)
+                if isinstance(data, list):
+                    files = data
+        except Exception:
+            files = []
+        return files
 
     import json
     import urllib.parse
     import unicodedata
     from pathlib import Path
 
-    # 讀取現有 execution_results_json
-    files = []
-    try:
-        if item.execution_results_json:
-            data = json.loads(item.execution_results_json)
-            if isinstance(data, list):
-                files = data
-    except Exception:
-        files = []
+    files = await run_sync(db, _load)
 
     # 準備比較（處理 URL decode 與 Unicode 正規化、尾綴比對）
     candidates = set()
@@ -1558,12 +1657,22 @@ async def delete_test_result_file(
 
     # 從 JSON 移除並更新計數
     deleted = files.pop(idx)
-    item.execution_results_json = json.dumps(files, ensure_ascii=False) if files else None
-    item.result_files_count = len(files)
-    item.result_files_uploaded = 1 if len(files) > 0 else 0
-    item.updated_at = datetime.utcnow()
+    def _update(sync_db: Session) -> None:
+        item = sync_db.query(TestRunItemDB).filter(
+            TestRunItemDB.team_id == team_id,
+            TestRunItemDB.config_id == config_id,
+            TestRunItemDB.id == item_id
+        ).first()
+        if not item:
+            raise HTTPException(status_code=404, detail="Test Run Item 不存在")
 
-    db.commit()
+        item.execution_results_json = json.dumps(files, ensure_ascii=False) if files else None
+        item.result_files_count = len(files)
+        item.result_files_uploaded = 1 if len(files) > 0 else 0
+        item.updated_at = datetime.utcnow()
+        sync_db.commit()
+
+    await run_sync(db, _update)
 
     return {
         "success": True,
@@ -1580,33 +1689,36 @@ async def get_comment(
     team_id: int,
     config_id: int,
     item_id: int,
-    db: Session = Depends(get_sync_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """取得測試項目的最新 comment"""
-    _verify_team_and_config(team_id, config_id, db)
-    item = db.query(TestRunItemDB).filter(
-        TestRunItemDB.id == item_id,
-        TestRunItemDB.team_id == team_id,
-        TestRunItemDB.config_id == config_id,
-    ).first()
-    if not item:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到項目")
+    def _get(sync_db: Session) -> Dict[str, Any]:
+        _verify_team_and_config(team_id, config_id, sync_db)
+        item = sync_db.query(TestRunItemDB).filter(
+            TestRunItemDB.id == item_id,
+            TestRunItemDB.team_id == team_id,
+            TestRunItemDB.config_id == config_id,
+        ).first()
+        if not item:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到項目")
 
-    # 從歷史記錄中取得最新的 comment
-    latest_comment_record = db.query(ResultHistoryDB).filter(
-        ResultHistoryDB.team_id == team_id,
-        ResultHistoryDB.config_id == config_id,
-        ResultHistoryDB.item_id == item_id,
-        ResultHistoryDB.change_source == 'comment'
-    ).order_by(ResultHistoryDB.changed_at.desc()).first()
+        # 從歷史記錄中取得最新的 comment
+        latest_comment_record = sync_db.query(ResultHistoryDB).filter(
+            ResultHistoryDB.team_id == team_id,
+            ResultHistoryDB.config_id == config_id,
+            ResultHistoryDB.item_id == item_id,
+            ResultHistoryDB.change_source == "comment"
+        ).order_by(ResultHistoryDB.changed_at.desc()).first()
 
-    comment = latest_comment_record.change_reason if latest_comment_record else None
+        comment = latest_comment_record.change_reason if latest_comment_record else None
 
-    return {
-        "comment": comment,
-        "updated_at": latest_comment_record.changed_at.isoformat() if latest_comment_record else None,
-        "updated_by": latest_comment_record.changed_by_name if latest_comment_record else None
-    }
+        return {
+            "comment": comment,
+            "updated_at": latest_comment_record.changed_at.isoformat() if latest_comment_record else None,
+            "updated_by": latest_comment_record.changed_by_name if latest_comment_record else None
+        }
+
+    return await run_sync(db, _get)
 
 
 @router.put("/{item_id}/comment", response_model=Dict[str, Any])
@@ -1615,46 +1727,49 @@ async def update_comment(
     config_id: int,
     item_id: int,
     payload: CommentRequest,
-    db: Session = Depends(get_sync_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
     """更新測試項目的 comment"""
-    _verify_team_and_config(team_id, config_id, db)
-    item = db.query(TestRunItemDB).filter(
-        TestRunItemDB.id == item_id,
-        TestRunItemDB.team_id == team_id,
-        TestRunItemDB.config_id == config_id,
-    ).first()
-    if not item:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到項目")
+    def _update(sync_db: Session) -> Dict[str, Any]:
+        _verify_team_and_config(team_id, config_id, sync_db)
+        item = sync_db.query(TestRunItemDB).filter(
+            TestRunItemDB.id == item_id,
+            TestRunItemDB.team_id == team_id,
+            TestRunItemDB.config_id == config_id,
+        ).first()
+        if not item:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到項目")
 
-    # 清理輸入的 comment
-    comment = payload.comment.strip() if payload.comment else ""
+        # 清理輸入的 comment
+        comment = payload.comment.strip() if payload.comment else ""
 
-    # 建立新的歷史記錄（即使 comment 是空的也要記錄，因為這是用戶的明確操作）
-    rec = ResultHistoryDB(
-        team_id=item.team_id,
-        config_id=item.config_id,
-        item_id=item.id,
-        prev_result=item.test_result,
-        new_result=item.test_result,  # comment 更新不改變測試結果
-        prev_executed_at=item.executed_at,
-        new_executed_at=item.executed_at,  # comment 更新不改變執行時間
-        changed_by_id=str(current_user.id) if current_user else None,
-        changed_by_name=current_user.full_name or current_user.username if current_user else 'web',
-        change_source='comment',
-        change_reason=comment,
-        changed_at=datetime.utcnow()
-    )
-    db.add(rec)
+        # 建立新的歷史記錄（即使 comment 是空的也要記錄，因為這是用戶的明確操作）
+        rec = ResultHistoryDB(
+            team_id=item.team_id,
+            config_id=item.config_id,
+            item_id=item.id,
+            prev_result=item.test_result,
+            new_result=item.test_result,  # comment 更新不改變測試結果
+            prev_executed_at=item.executed_at,
+            new_executed_at=item.executed_at,  # comment 更新不改變執行時間
+            changed_by_id=str(current_user.id) if current_user else None,
+            changed_by_name=current_user.full_name or current_user.username if current_user else "web",
+            change_source="comment",
+            change_reason=comment,
+            changed_at=datetime.utcnow()
+        )
+        sync_db.add(rec)
 
-    # 更新項目時間戳
-    item.updated_at = datetime.utcnow()
-    db.commit()
+        # 更新項目時間戳
+        item.updated_at = datetime.utcnow()
+        sync_db.commit()
 
-    return {
-        "success": True,
-        "comment": comment,
-        "updated_at": rec.changed_at.isoformat(),
-        "message": "Comment 已更新"
-    }
+        return {
+            "success": True,
+            "comment": comment,
+            "updated_at": rec.changed_at.isoformat(),
+            "message": "Comment 已更新"
+        }
+
+    return await run_sync(db, _update)

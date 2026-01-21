@@ -9,14 +9,14 @@ Lark 用戶收集服務
 import json
 import logging
 import requests
-import threading
 from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime, timedelta
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func
 
-from app.database import get_sync_engine
+from app.database import run_sync
 from app.models.database_models import LarkUser, LarkDepartment
 from app.services.lark_client import LarkAuthManager
 
@@ -31,11 +31,6 @@ class LarkUserService:
         # API 配置
         self.base_url = "https://open.larksuite.com/open-apis"
         self.timeout = 30
-        
-        # 數據庫會話（使用同步引擎，避免與 AsyncEngine 混用）
-        sync_engine = get_sync_engine()
-        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=sync_engine)
-        self.db_session = SessionLocal()
         
         # 收集統計
         self.stats = {
@@ -182,60 +177,63 @@ class LarkUserService:
             self.logger.error(f"處理用戶數據異常: {e}")
             return None
     
-    def save_user(self, user_data: Dict[str, Any]) -> bool:
+    async def save_user(self, db: AsyncSession, user_data: Dict[str, Any]) -> bool:
         """保存用戶數據到數據庫"""
-        try:
-            user_id = user_data['user_id']
-            
-            # 檢查用戶是否已存在
-            existing_user = self.db_session.query(LarkUser).filter(
-                LarkUser.user_id == user_id
-            ).first()
-            
-            now = datetime.utcnow()
-            
-            if existing_user:
-                # 更新現有用戶
-                for key, value in user_data.items():
-                    if key != 'user_id':  # 不更新主鍵
-                        setattr(existing_user, key, value)
-                
-                existing_user.updated_at = now
-                existing_user.last_sync_at = now
-                
-                # 更新部門歸屬（合併部門列表）
-                existing_depts = json.loads(existing_user.department_ids_json or '[]')
-                new_depts = json.loads(user_data.get('department_ids_json', '[]'))
-                merged_depts = list(set(existing_depts + new_depts))
-                existing_user.department_ids_json = json.dumps(merged_depts, ensure_ascii=False)
-                
-                self.stats['users_updated'] += 1
-                self.logger.debug(f"更新用戶: {user_id} ({user_data.get('name', 'Unknown')})")
-            else:
-                # 創建新用戶
-                new_user = LarkUser(**user_data)
-                new_user.created_at = now
-                new_user.updated_at = now
-                
-                self.db_session.add(new_user)
-                self.stats['users_created'] += 1
-                self.logger.debug(f"創建新用戶: {user_id} ({user_data.get('name', 'Unknown')})")
-            
-            self.db_session.commit()
-            return True
-            
-        except IntegrityError as e:
-            self.db_session.rollback()
-            self.logger.error(f"保存用戶時數據庫完整性錯誤: {e}")
-            self.stats['errors'] += 1
-            return False
-        except Exception as e:
-            self.db_session.rollback()
-            self.logger.error(f"保存用戶異常: {e}")
-            self.stats['errors'] += 1
-            return False
+        def _save(sync_db: Session) -> bool:
+            try:
+                user_id = user_data['user_id']
+
+                # 檢查用戶是否已存在
+                existing_user = sync_db.query(LarkUser).filter(
+                    LarkUser.user_id == user_id
+                ).first()
+
+                now = datetime.utcnow()
+
+                if existing_user:
+                    # 更新現有用戶
+                    for key, value in user_data.items():
+                        if key != 'user_id':  # 不更新主鍵
+                            setattr(existing_user, key, value)
+
+                    existing_user.updated_at = now
+                    existing_user.last_sync_at = now
+
+                    # 更新部門歸屬（合併部門列表）
+                    existing_depts = json.loads(existing_user.department_ids_json or '[]')
+                    new_depts = json.loads(user_data.get('department_ids_json', '[]'))
+                    merged_depts = list(set(existing_depts + new_depts))
+                    existing_user.department_ids_json = json.dumps(merged_depts, ensure_ascii=False)
+
+                    self.stats['users_updated'] += 1
+                    self.logger.debug(f"更新用戶: {user_id} ({user_data.get('name', 'Unknown')})")
+                else:
+                    # 創建新用戶
+                    new_user = LarkUser(**user_data)
+                    new_user.created_at = now
+                    new_user.updated_at = now
+
+                    sync_db.add(new_user)
+                    self.stats['users_created'] += 1
+                    self.logger.debug(f"創建新用戶: {user_id} ({user_data.get('name', 'Unknown')})")
+
+                sync_db.commit()
+                return True
+
+            except IntegrityError as e:
+                sync_db.rollback()
+                self.logger.error(f"保存用戶時數據庫完整性錯誤: {e}")
+                self.stats['errors'] += 1
+                return False
+            except Exception as e:
+                sync_db.rollback()
+                self.logger.error(f"保存用戶異常: {e}")
+                self.stats['errors'] += 1
+                return False
+
+        return await run_sync(db, _save)
     
-    def collect_users_from_department(self, department_id: str) -> bool:
+    async def collect_users_from_department(self, db: AsyncSession, department_id: str) -> bool:
         """從指定部門收集用戶數據"""
         self.logger.info(f"開始收集部門 {department_id} 的用戶")
         
@@ -251,7 +249,7 @@ class LarkUserService:
                 
                 processed_data = self.process_user_data(user_data, department_id)
                 if processed_data:
-                    if self.save_user(processed_data):
+                    if await self.save_user(db, processed_data):
                         success_count += 1
                     else:
                         self.logger.warning(f"保存用戶失敗: {user_data.get('user_id')}")
@@ -266,7 +264,7 @@ class LarkUserService:
             self.stats['errors'] += 1
             return False
     
-    def sync_all_users(self) -> Dict[str, Any]:
+    async def sync_all_users(self, db: AsyncSession) -> Dict[str, Any]:
         """同步所有用戶數據（從已同步的部門中收集）"""
         self.logger.info("開始 Lark 用戶同步...")
         self.stats['start_time'] = datetime.utcnow()
@@ -280,9 +278,15 @@ class LarkUserService:
         
         try:
             # 獲取所有活躍部門
-            departments = self.db_session.query(LarkDepartment).filter(
-                LarkDepartment.status == 'active'
-            ).all()
+            def _load_departments(sync_db: Session) -> List[str]:
+                return [
+                    dept.department_id
+                    for dept in sync_db.query(LarkDepartment).filter(
+                        LarkDepartment.status == 'active'
+                    ).all()
+                ]
+
+            departments = await run_sync(db, _load_departments)
             
             if not departments:
                 return {
@@ -294,18 +298,18 @@ class LarkUserService:
             self.logger.info(f"找到 {len(departments)} 個活躍部門，開始收集用戶...")
             
             success_count = 0
-            for department in departments:
-                if self.collect_users_from_department(department.department_id):
+            for department_id in departments:
+                if await self.collect_users_from_department(db, department_id):
                     success_count += 1
                     self.stats['departments_processed'] += 1
                 else:
-                    self.logger.error(f"部門 {department.department_id} 用戶收集失敗")
+                    self.logger.error(f"部門 {department_id} 用戶收集失敗")
             
             self.stats['end_time'] = datetime.utcnow()
             duration = (self.stats['end_time'] - self.stats['start_time']).total_seconds()
             
             # 更新部門用戶統計
-            self.update_department_user_counts()
+            await self.update_department_user_counts(db)
             
             result = {
                 'success': success_count > 0,
@@ -333,165 +337,172 @@ class LarkUserService:
                 'message': f"用戶同步失敗: {str(e)}"
             }
     
-    def update_department_user_counts(self):
+    async def update_department_user_counts(self, db: AsyncSession):
         """更新各部門的用戶統計數量"""
-        try:
-            # 更新各部門的直屬用戶數量
-            departments = self.db_session.query(LarkDepartment).all()
-            
-            for department in departments:
-                # 計算直屬用戶數
-                direct_count = self.db_session.query(func.count(LarkUser.user_id)).filter(
-                    LarkUser.primary_department_id == department.department_id,
+        def _update(sync_db: Session) -> None:
+            try:
+                # 更新各部門的直屬用戶數量
+                departments = sync_db.query(LarkDepartment).all()
+
+                for department in departments:
+                    # 計算直屬用戶數
+                    direct_count = sync_db.query(func.count(LarkUser.user_id)).filter(
+                        LarkUser.primary_department_id == department.department_id,
+                        LarkUser.is_activated == True,
+                        LarkUser.is_exited == False
+                    ).scalar()
+
+                    department.direct_user_count = direct_count
+                    department.updated_at = datetime.utcnow()
+
+                sync_db.commit()
+                self.logger.info("部門用戶統計更新完成")
+
+            except Exception as e:
+                sync_db.rollback()
+                self.logger.error(f"更新部門用戶統計失敗: {e}")
+
+        await run_sync(db, _update)
+    
+    async def get_user_stats(self, db: AsyncSession) -> Dict[str, Any]:
+        """獲取用戶統計信息"""
+        def _stats(sync_db: Session) -> Dict[str, Any]:
+            try:
+                total_users = sync_db.query(LarkUser).count()
+                active_users = sync_db.query(LarkUser).filter(
                     LarkUser.is_activated == True,
                     LarkUser.is_exited == False
-                ).scalar()
-                
-                department.direct_user_count = direct_count
-                department.updated_at = datetime.utcnow()
-            
-            self.db_session.commit()
-            self.logger.info("部門用戶統計更新完成")
-            
-        except Exception as e:
-            self.db_session.rollback()
-            self.logger.error(f"更新部門用戶統計失敗: {e}")
-    
-    def get_user_stats(self) -> Dict[str, Any]:
-        """獲取用戶統計信息"""
-        try:
-            total_users = self.db_session.query(LarkUser).count()
-            active_users = self.db_session.query(LarkUser).filter(
-                LarkUser.is_activated == True,
-                LarkUser.is_exited == False
-            ).count()
-            
-            # 員工類型分布
-            employee_type_stats = {}
-            types = self.db_session.query(LarkUser.employee_type, func.count(LarkUser.user_id)).group_by(
-                LarkUser.employee_type
-            ).all()
-            for emp_type, count in types:
-                employee_type_stats[f'type_{emp_type}'] = count
-            
-            # 部門分布（前10個最大部門）
-            dept_stats = self.db_session.query(
-                LarkUser.primary_department_id, 
-                func.count(LarkUser.user_id).label('user_count')
-            ).group_by(
-                LarkUser.primary_department_id
-            ).order_by(
-                func.count(LarkUser.user_id).desc()
-            ).limit(10).all()
-            
-            top_departments = {dept_id: count for dept_id, count in dept_stats}
-            
-            # 最近同步時間
-            last_sync = self.db_session.query(LarkUser.last_sync_at).order_by(
-                LarkUser.last_sync_at.desc()
-            ).first()
-            
-            return {
-                'total_users': total_users,
-                'active_users': active_users,
-                'employee_type_distribution': employee_type_stats,
-                'top_departments': top_departments,
-                'last_sync_at': last_sync[0].isoformat() if last_sync and last_sync[0] else None
-            }
-            
-        except Exception as e:
-            self.logger.error(f"獲取用戶統計信息失敗: {e}")
-            return {'error': str(e)}
-    
-    def search_users(self, query: str, limit: int = 50) -> List[Dict[str, Any]]:
-        """搜索用戶（本地數據庫搜索）"""
-        try:
-            query = query.lower().strip()
-            if not query:
-                return []
-            
-            # 構建搜索條件
-            users = self.db_session.query(LarkUser).filter(
-                (LarkUser.name.ilike(f'%{query}%')) |
-                (LarkUser.en_name.ilike(f'%{query}%')) |
-                (LarkUser.enterprise_email.ilike(f'%{query}%')),
-                LarkUser.is_activated == True,
-                LarkUser.is_exited == False
-            ).limit(limit).all()
-            
-            result = []
-            for user in users:
-                result.append({
-                    'id': user.user_id,
-                    'name': user.name,
-                    'display_name': user.name or user.en_name,
-                    'email': user.enterprise_email,
-                    'avatar': user.avatar_240,
-                    'department_id': user.primary_department_id,
-                    'job_title': user.job_title,
-                    'employee_type': user.employee_type
-                })
-            
-            return result
-            
-        except Exception as e:
-            self.logger.error(f"搜索用戶失敗: {e}")
-            return []
+                ).count()
 
-    def get_top_users(self, limit: int = 50) -> List[Dict[str, Any]]:
+                # 員工類型分布
+                employee_type_stats = {}
+                types = sync_db.query(LarkUser.employee_type, func.count(LarkUser.user_id)).group_by(
+                    LarkUser.employee_type
+                ).all()
+                for emp_type, count in types:
+                    employee_type_stats[f'type_{emp_type}'] = count
+
+                # 部門分布（前10個最大部門）
+                dept_stats = sync_db.query(
+                    LarkUser.primary_department_id,
+                    func.count(LarkUser.user_id).label('user_count')
+                ).group_by(
+                    LarkUser.primary_department_id
+                ).order_by(
+                    func.count(LarkUser.user_id).desc()
+                ).limit(10).all()
+
+                top_departments = {dept_id: count for dept_id, count in dept_stats}
+
+                # 最近同步時間
+                last_sync = sync_db.query(LarkUser.last_sync_at).order_by(
+                    LarkUser.last_sync_at.desc()
+                ).first()
+
+                return {
+                    'total_users': total_users,
+                    'active_users': active_users,
+                    'employee_type_distribution': employee_type_stats,
+                    'top_departments': top_departments,
+                    'last_sync_at': last_sync[0].isoformat() if last_sync and last_sync[0] else None
+                }
+
+            except Exception as e:
+                self.logger.error(f"獲取用戶統計信息失敗: {e}")
+                return {'error': str(e)}
+
+        return await run_sync(db, _stats)
+    
+    async def search_users(self, db: AsyncSession, query: str, limit: int = 50) -> List[Dict[str, Any]]:
+        """搜索用戶（本地數據庫搜索）"""
+        def _search(sync_db: Session) -> List[Dict[str, Any]]:
+            try:
+                query_val = query.lower().strip()
+                if not query_val:
+                    return []
+
+                # 構建搜索條件
+                users = sync_db.query(LarkUser).filter(
+                    (LarkUser.name.ilike(f'%{query_val}%')) |
+                    (LarkUser.en_name.ilike(f'%{query_val}%')) |
+                    (LarkUser.enterprise_email.ilike(f'%{query_val}%')),
+                    LarkUser.is_activated == True,
+                    LarkUser.is_exited == False
+                ).limit(limit).all()
+
+                result = []
+                for user in users:
+                    result.append({
+                        'id': user.user_id,
+                        'name': user.name,
+                        'display_name': user.name or user.en_name,
+                        'email': user.enterprise_email,
+                        'avatar': user.avatar_240,
+                        'department_id': user.primary_department_id,
+                        'job_title': user.job_title,
+                        'employee_type': user.employee_type
+                    })
+
+                return result
+
+            except Exception as e:
+                self.logger.error(f"搜索用戶失敗: {e}")
+                return []
+
+        return await run_sync(db, _search)
+
+    async def get_top_users(self, db: AsyncSession, limit: int = 50) -> List[Dict[str, Any]]:
         """返回前端可用的前 N 名活躍用戶（無搜尋詞時的預設清單）。
 
         以本地同步的 LarkUser 為資料來源，僅返回啟用且未離職的用戶，
         依名稱排序，取前 N 筆，並轉為前端聯絡人格式。
         """
-        try:
-            users = self.db_session.query(LarkUser).filter(
-                LarkUser.is_activated == True,
-                LarkUser.is_exited == False
-            ).order_by(LarkUser.name.asc()).limit(limit).all()
+        def _get_top(sync_db: Session) -> List[Dict[str, Any]]:
+            try:
+                users = sync_db.query(LarkUser).filter(
+                    LarkUser.is_activated == True,
+                    LarkUser.is_exited == False
+                ).order_by(LarkUser.name.asc()).limit(limit).all()
 
-            result: List[Dict[str, Any]] = []
-            for user in users:
-                result.append({
-                    'id': user.user_id,
-                    'name': user.name,
-                    'display_name': user.name or user.en_name,
-                    'email': user.enterprise_email,
-                    'avatar': user.avatar_240,
-                    'department_id': user.primary_department_id,
-                    'job_title': user.job_title,
-                    'employee_type': user.employee_type
-                })
+                result: List[Dict[str, Any]] = []
+                for user in users:
+                    result.append({
+                        'id': user.user_id,
+                        'name': user.name,
+                        'display_name': user.name or user.en_name,
+                        'email': user.enterprise_email,
+                        'avatar': user.avatar_240,
+                        'department_id': user.primary_department_id,
+                        'job_title': user.job_title,
+                        'employee_type': user.employee_type
+                    })
 
-            return result
-        except Exception as e:
-            self.logger.error(f"獲取預設用戶清單失敗: {e}")
-            return []
+                return result
+            except Exception as e:
+                self.logger.error(f"獲取預設用戶清單失敗: {e}")
+                return []
+
+        return await run_sync(db, _get_top)
     
-    def cleanup_inactive_users(self, days_threshold: int = 30) -> int:
+    async def cleanup_inactive_users(self, db: AsyncSession, days_threshold: int = 30) -> int:
         """清理超過指定天數未同步的用戶"""
-        try:
-            threshold_date = datetime.utcnow() - timedelta(days=days_threshold)
-            
-            # 標記為非活躍而不是刪除
-            updated_count = self.db_session.query(LarkUser).filter(
-                LarkUser.last_sync_at < threshold_date,
-                LarkUser.is_activated == True
-            ).update({'is_activated': False})
-            
-            self.db_session.commit()
-            self.logger.info(f"標記了 {updated_count} 個用戶為非活躍狀態")
-            return updated_count
-            
-        except Exception as e:
-            self.db_session.rollback()
-            self.logger.error(f"清理非活躍用戶失敗: {e}")
-            return 0
-    
-    def __del__(self):
-        """析構函數，確保數據庫連接關閉"""
-        try:
-            if hasattr(self, 'db_session'):
-                self.db_session.close()
-        except:
-            pass
+        def _cleanup(sync_db: Session) -> int:
+            try:
+                threshold_date = datetime.utcnow() - timedelta(days=days_threshold)
+
+                # 標記為非活躍而不是刪除
+                updated_count = sync_db.query(LarkUser).filter(
+                    LarkUser.last_sync_at < threshold_date,
+                    LarkUser.is_activated == True
+                ).update({'is_activated': False})
+
+                sync_db.commit()
+                self.logger.info(f"標記了 {updated_count} 個用戶為非活躍狀態")
+                return updated_count
+
+            except Exception as e:
+                sync_db.rollback()
+                self.logger.error(f"清理非活躍用戶失敗: {e}")
+                return 0
+
+        return await run_sync(db, _cleanup)

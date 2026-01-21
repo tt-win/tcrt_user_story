@@ -5,6 +5,7 @@
 """
 
 import time
+import asyncio
 import threading
 import logging
 from typing import Dict, Any
@@ -158,11 +159,11 @@ class TaskScheduler:
             sync_service = get_lark_org_sync_service()
             
             # 執行完整同步
-            result = sync_service.sync_full_organization()
+            result = asyncio.run(sync_service.sync_full_organization())
             
             if result.get('success', False):
                 # 同步成功後清理舊數據（30天前的）
-                cleanup_result = sync_service.cleanup_old_data(days_threshold=30)
+                cleanup_result = asyncio.run(sync_service.cleanup_old_data(days_threshold=30))
                 
                 return {
                     'success': True,

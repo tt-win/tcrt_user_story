@@ -9,13 +9,13 @@ Lark 部門遍歷服務
 import json
 import logging
 import requests
-import threading
 from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime, timedelta
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
-from app.database import get_sync_engine
+from app.database import run_sync
 from app.models.database_models import LarkDepartment
 from app.services.lark_client import LarkAuthManager
 
@@ -30,11 +30,6 @@ class LarkDepartmentService:
         # API 配置
         self.base_url = "https://open.larksuite.com/open-apis"
         self.timeout = 30
-        
-        # 數據庫會話（使用同步引擎，避免與 AsyncEngine 混用）
-        sync_engine = get_sync_engine()
-        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=sync_engine)
-        self.db_session = SessionLocal()
         
         # 遍歷統計
         self.stats = {
@@ -91,79 +86,93 @@ class LarkDepartmentService:
             self.stats['errors'] += 1
             return None
     
-    def save_department(self, department_id: str, parent_id: Optional[str], level: int, 
-                       children_data: List[Dict], path: str) -> bool:
+    async def save_department(
+        self,
+        db: AsyncSession,
+        department_id: str,
+        parent_id: Optional[str],
+        level: int,
+        children_data: List[Dict],
+        path: str,
+    ) -> bool:
         """保存部門信息到數據庫"""
-        try:
-            # 檢查部門是否已存在
-            existing_dept = self.db_session.query(LarkDepartment).filter(
-                LarkDepartment.department_id == department_id
-            ).first()
-            
-            now = datetime.utcnow()
-            
-            if existing_dept:
-                # 更新現有部門
-                existing_dept.parent_department_id = parent_id
-                existing_dept.level = level
-                existing_dept.path = path
-                existing_dept.updated_at = now
-                existing_dept.last_sync_at = now
-                
-                # 不在部門遍歷時更新 direct_user_count，改由用戶同步後重算
-                
-                self.stats['departments_updated'] += 1
-                self.logger.debug(f"更新部門: {department_id}")
-            else:
-                # 創建新部門
-                new_dept = LarkDepartment(
-                    department_id=department_id,
-                    parent_department_id=parent_id,
-                    level=level,
-                    path=path,
-                    direct_user_count=0,
-                    status='active',
-                    created_at=now,
-                    updated_at=now,
-                    last_sync_at=now
-                )
-                
-                # 如果有子部門數據，存儲為 JSON
-                if children_data:
-                    # 提取並存儲領導信息和群聊員工類型
-                    leaders_data = []
-                    group_chat_types = []
-                    
-                    for child in children_data:
-                        if child.get('leaders'):
-                            leaders_data.extend(child['leaders'])
-                        if child.get('group_chat_employee_types'):
-                            group_chat_types.extend(child['group_chat_employee_types'])
-                    
-                    if leaders_data:
-                        new_dept.leaders_json = json.dumps(leaders_data, ensure_ascii=False)
-                    if group_chat_types:
-                        new_dept.group_chat_employee_types_json = json.dumps(group_chat_types, ensure_ascii=False)
-                
-                self.db_session.add(new_dept)
-                self.stats['departments_created'] += 1
-                self.logger.debug(f"創建新部門: {department_id}")
-            
-            self.db_session.commit()
-            return True
-            
-        except IntegrityError as e:
-            self.db_session.rollback()
-            self.logger.error(f"保存部門時數據庫完整性錯誤: {e}")
-            self.stats['errors'] += 1
-            return False
-        except Exception as e:
-            self.db_session.rollback()
-            self.logger.error(f"保存部門異常: {e}")
-            self.stats['errors'] += 1
-            return False
+        def _save(sync_db: Session) -> bool:
+            try:
+                # 檢查部門是否已存在
+                existing_dept = sync_db.query(LarkDepartment).filter(
+                    LarkDepartment.department_id == department_id
+                ).first()
+
+                now = datetime.utcnow()
+
+                if existing_dept:
+                    # 更新現有部門
+                    existing_dept.parent_department_id = parent_id
+                    existing_dept.level = level
+                    existing_dept.path = path
+                    existing_dept.updated_at = now
+                    existing_dept.last_sync_at = now
+
+                    # 不在部門遍歷時更新 direct_user_count，改由用戶同步後重算
+
+                    self.stats['departments_updated'] += 1
+                    self.logger.debug(f"更新部門: {department_id}")
+                else:
+                    # 創建新部門
+                    new_dept = LarkDepartment(
+                        department_id=department_id,
+                        parent_department_id=parent_id,
+                        level=level,
+                        path=path,
+                        direct_user_count=0,
+                        status='active',
+                        created_at=now,
+                        updated_at=now,
+                        last_sync_at=now
+                    )
+
+                    # 如果有子部門數據，存儲為 JSON
+                    if children_data:
+                        # 提取並存儲領導信息和群聊員工類型
+                        leaders_data = []
+                        group_chat_types = []
+
+                        for child in children_data:
+                            if child.get('leaders'):
+                                leaders_data.extend(child['leaders'])
+                            if child.get('group_chat_employee_types'):
+                                group_chat_types.extend(child['group_chat_employee_types'])
+
+                        if leaders_data:
+                            new_dept.leaders_json = json.dumps(leaders_data, ensure_ascii=False)
+                        if group_chat_types:
+                            new_dept.group_chat_employee_types_json = json.dumps(group_chat_types, ensure_ascii=False)
+
+                    sync_db.add(new_dept)
+                    self.stats['departments_created'] += 1
+                    self.logger.debug(f"創建新部門: {department_id}")
+
+                sync_db.commit()
+                return True
+
+            except IntegrityError as e:
+                sync_db.rollback()
+                self.logger.error(f"保存部門時數據庫完整性錯誤: {e}")
+                self.stats['errors'] += 1
+                return False
+            except Exception as e:
+                sync_db.rollback()
+                self.logger.error(f"保存部門異常: {e}")
+                self.stats['errors'] += 1
+                return False
+
+        return await run_sync(db, _save)
     
-    def traverse_department_recursive(self, department_id: str, parent_id: Optional[str] = None, 
+    async def traverse_department_recursive(
+        self,
+        db: AsyncSession,
+        department_id: str,
+        parent_id: Optional[str] = None,
                                     level: int = 0, path: str = "") -> bool:
         """遞歸遍歷部門層次結構"""
         
@@ -191,7 +200,7 @@ class LarkDepartmentService:
         current_path = f"{path}/{department_id}" if path else f"/{department_id}"
         
         # 保存當前部門信息
-        if not self.save_department(department_id, parent_id, level, children_data, current_path):
+        if not await self.save_department(db, department_id, parent_id, level, children_data, current_path):
             self.logger.error(f"保存部門 {department_id} 失敗")
             return False
         
@@ -201,7 +210,7 @@ class LarkDepartmentService:
             child_id = child_dept.get('open_department_id')
             if child_id:
                 try:
-                    if self.traverse_department_recursive(child_id, department_id, level + 1, current_path):
+                    if await self.traverse_department_recursive(db, child_id, department_id, level + 1, current_path):
                         success_count += 1
                     else:
                         self.logger.warning(f"遍歷子部門 {child_id} 失敗")
@@ -212,7 +221,7 @@ class LarkDepartmentService:
         self.logger.info(f"部門 {department_id} 遍歷完成，成功處理 {success_count}/{len(children_data)} 個子部門")
         return True
     
-    def sync_all_departments(self, root_departments: List[str]) -> Dict[str, Any]:
+    async def sync_all_departments(self, db: AsyncSession, root_departments: List[str]) -> Dict[str, Any]:
         """同步所有部門數據"""
         self.logger.info("開始 Lark 部門同步...")
         self.stats['start_time'] = datetime.utcnow()
@@ -228,7 +237,7 @@ class LarkDepartmentService:
             for root_dept_id in root_departments:
                 self.logger.info(f"開始遍歷根部門: {root_dept_id}")
                 
-                if self.traverse_department_recursive(root_dept_id):
+                if await self.traverse_department_recursive(db, root_dept_id):
                     success_roots += 1
                     self.logger.info(f"根部門 {root_dept_id} 遍歷成功")
                 else:
@@ -261,69 +270,61 @@ class LarkDepartmentService:
                 'stats': self.stats.copy(),
                 'message': f"部門同步失敗: {str(e)}"
             }
-        finally:
-            # 確保數據庫連接正確關閉
-            try:
-                self.db_session.close()
-            except:
-                pass
     
-    def get_department_stats(self) -> Dict[str, Any]:
+    async def get_department_stats(self, db: AsyncSession) -> Dict[str, Any]:
         """獲取部門統計信息"""
-        try:
-            total_depts = self.db_session.query(LarkDepartment).count()
-            active_depts = self.db_session.query(LarkDepartment).filter(
-                LarkDepartment.status == 'active'
-            ).count()
-            
-            # 層級分布
-            level_stats = {}
-            for level in range(0, self.max_level + 1):
-                count = self.db_session.query(LarkDepartment).filter(
-                    LarkDepartment.level == level
+        def _get_stats(sync_db: Session) -> Dict[str, Any]:
+            try:
+                total_depts = sync_db.query(LarkDepartment).count()
+                active_depts = sync_db.query(LarkDepartment).filter(
+                    LarkDepartment.status == 'active'
                 ).count()
-                if count > 0:
-                    level_stats[f'level_{level}'] = count
-            
-            # 最近同步時間
-            last_sync = self.db_session.query(LarkDepartment.last_sync_at).order_by(
-                LarkDepartment.last_sync_at.desc()
-            ).first()
-            
-            return {
-                'total_departments': total_depts,
-                'active_departments': active_depts,
-                'level_distribution': level_stats,
-                'last_sync_at': last_sync[0].isoformat() if last_sync and last_sync[0] else None
-            }
-            
-        except Exception as e:
-            self.logger.error(f"獲取部門統計信息失敗: {e}")
-            return {'error': str(e)}
+
+                # 層級分布
+                level_stats = {}
+                for level in range(0, self.max_level + 1):
+                    count = sync_db.query(LarkDepartment).filter(
+                        LarkDepartment.level == level
+                    ).count()
+                    if count > 0:
+                        level_stats[f'level_{level}'] = count
+
+                # 最近同步時間
+                last_sync = sync_db.query(LarkDepartment.last_sync_at).order_by(
+                    LarkDepartment.last_sync_at.desc()
+                ).first()
+
+                return {
+                    'total_departments': total_depts,
+                    'active_departments': active_depts,
+                    'level_distribution': level_stats,
+                    'last_sync_at': last_sync[0].isoformat() if last_sync and last_sync[0] else None
+                }
+
+            except Exception as e:
+                self.logger.error(f"獲取部門統計信息失敗: {e}")
+                return {'error': str(e)}
+
+        return await run_sync(db, _get_stats)
     
-    def cleanup_inactive_departments(self, days_threshold: int = 30) -> int:
+    async def cleanup_inactive_departments(self, db: AsyncSession, days_threshold: int = 30) -> int:
         """清理超過指定天數未同步的部門"""
-        try:
-            threshold_date = datetime.utcnow() - timedelta(days=days_threshold)
-            
-            deleted_count = self.db_session.query(LarkDepartment).filter(
-                LarkDepartment.last_sync_at < threshold_date,
-                LarkDepartment.status == 'active'
-            ).update({'status': 'inactive'})
-            
-            self.db_session.commit()
-            self.logger.info(f"標記了 {deleted_count} 個部門為非活躍狀態")
-            return deleted_count
-            
-        except Exception as e:
-            self.db_session.rollback()
-            self.logger.error(f"清理非活躍部門失敗: {e}")
-            return 0
-    
-    def __del__(self):
-        """析構函數，確保數據庫連接關閉"""
-        try:
-            if hasattr(self, 'db_session'):
-                self.db_session.close()
-        except:
-            pass
+        def _cleanup(sync_db: Session) -> int:
+            try:
+                threshold_date = datetime.utcnow() - timedelta(days=days_threshold)
+
+                deleted_count = sync_db.query(LarkDepartment).filter(
+                    LarkDepartment.last_sync_at < threshold_date,
+                    LarkDepartment.status == 'active'
+                ).update({'status': 'inactive'})
+
+                sync_db.commit()
+                self.logger.info(f"標記了 {deleted_count} 個部門為非活躍狀態")
+                return deleted_count
+
+            except Exception as e:
+                sync_db.rollback()
+                self.logger.error(f"清理非活躍部門失敗: {e}")
+                return 0
+
+        return await run_sync(db, _cleanup)

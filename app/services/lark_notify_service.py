@@ -7,12 +7,13 @@ Lark 通知發送服務
 import requests
 import logging
 import json
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 from datetime import datetime
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.database import get_sync_engine
+from app.database import SessionLocal, run_sync
 from app.models.database_models import TestRunConfig as TestRunConfigDB, TestRunItem as TestRunItemDB
 from app.services.lark_group_service import get_lark_group_service
 
@@ -96,7 +97,7 @@ class LarkNotifyService:
         url = f"https://open.larksuite.com/open-apis/im/v1/messages?receive_id_type=chat_id"
         headers = {
             "Authorization": f"Bearer {token}",
-            "Content-Type": "application/json"
+            "Content-Type": "application/json; charset=utf-8"
         }
 
         # 構建 JSON payload，content 作為字典對象
@@ -110,7 +111,12 @@ class LarkNotifyService:
         payload_json = json.dumps(payload_data, ensure_ascii=False)
 
         try:
-            response = requests.post(url, headers=headers, data=payload_json, timeout=15)
+            response = requests.post(
+                url,
+                headers=headers,
+                data=payload_json.encode("utf-8"),
+                timeout=15
+            )
             response.raise_for_status()
 
             result = response.json()
@@ -351,7 +357,12 @@ class LarkNotifyService:
 
         return rich_text
     
-    def compute_end_stats(self, team_id: int, config_id: int, db: Session = None) -> Dict:
+    async def compute_end_stats(
+        self,
+        team_id: int,
+        config_id: int,
+        db: Optional[AsyncSession] = None
+    ) -> Dict:
         """
         計算結束執行所需的統計資訊
 
@@ -363,65 +374,63 @@ class LarkNotifyService:
         Returns:
             統計資訊：{"pass_rate": float, "fail_rate": float, "bug_count": int}
         """
-        close_db = False
-        if db is None:
-            engine = get_sync_engine()
-            SyncSession = sessionmaker(bind=engine)
-            db = SyncSession()
-            close_db = True
+        async def _compute(session: AsyncSession) -> Dict:
+            def _load(sync_db: Session) -> Dict:
+                # 查詢配置
+                config = sync_db.query(TestRunConfigDB).filter(
+                    TestRunConfigDB.id == config_id,
+                    TestRunConfigDB.team_id == team_id
+                ).first()
 
-        try:
-            # 查詢配置
-            config = db.query(TestRunConfigDB).filter(
-                TestRunConfigDB.id == config_id,
-                TestRunConfigDB.team_id == team_id
-            ).first()
+                if not config:
+                    logger.error(f"找不到 Test Run Config: team_id={team_id}, config_id={config_id}")
+                    return {"pass_rate": 0.0, "fail_rate": 0.0, "bug_count": 0}
 
-            if not config:
-                logger.error(f"找不到 Test Run Config: team_id={team_id}, config_id={config_id}")
-                return {"pass_rate": 0.0, "fail_rate": 0.0, "bug_count": 0}
+                # 計算通過率和失敗率
+                executed_cases = config.executed_cases or 0
+                passed_cases = config.passed_cases or 0
+                failed_cases = config.failed_cases or 0
 
-            # 計算通過率和失敗率
-            executed_cases = config.executed_cases or 0
-            passed_cases = config.passed_cases or 0
-            failed_cases = config.failed_cases or 0
+                if executed_cases > 0:
+                    pass_rate = (passed_cases / executed_cases) * 100
+                    fail_rate = (failed_cases / executed_cases) * 100
+                else:
+                    pass_rate = 0.0
+                    fail_rate = 0.0
 
-            if executed_cases > 0:
-                pass_rate = (passed_cases / executed_cases) * 100
-                fail_rate = (failed_cases / executed_cases) * 100
-            else:
-                pass_rate = 0.0
-                fail_rate = 0.0
+                # 計算 bug 數量（從所有 TestRunItem 的 bug_tickets_json 彙整去重）
+                items = sync_db.query(TestRunItemDB).filter(
+                    TestRunItemDB.config_id == config_id,
+                    TestRunItemDB.team_id == team_id
+                ).all()
 
-            # 計算 bug 數量（從所有 TestRunItem 的 bug_tickets_json 彙整去重）
-            items = db.query(TestRunItemDB).filter(
-                TestRunItemDB.config_id == config_id,
-                TestRunItemDB.team_id == team_id
-            ).all()
+                all_bugs = set()
+                for item in items:
+                    if item.bug_tickets_json:
+                        try:
+                            bug_tickets = json.loads(item.bug_tickets_json)
+                            if isinstance(bug_tickets, list):
+                                all_bugs.update(bug_tickets)
+                        except (json.JSONDecodeError, TypeError):
+                            continue
 
-            all_bugs = set()
-            for item in items:
-                if item.bug_tickets_json:
-                    try:
-                        bug_tickets = json.loads(item.bug_tickets_json)
-                        if isinstance(bug_tickets, list):
-                            all_bugs.update(bug_tickets)
-                    except (json.JSONDecodeError, TypeError):
-                        continue
+                bug_count = len(all_bugs)
 
-            bug_count = len(all_bugs)
+                return {
+                    "pass_rate": pass_rate,
+                    "fail_rate": fail_rate,
+                    "bug_count": bug_count
+                }
 
-            return {
-                "pass_rate": pass_rate,
-                "fail_rate": fail_rate,
-                "bug_count": bug_count
-            }
+            return await run_sync(session, _load)
 
-        finally:
-            if close_db:
-                db.close()
+        if db is not None:
+            return await _compute(db)
+
+        async with SessionLocal() as session:
+            return await _compute(session)
     
-    def send_execution_started(self, config_id: int, team_id: int) -> None:
+    async def send_execution_started(self, config_id: int, team_id: int) -> None:
         """
         發送「開始執行」通知（背景任務入口）
 
@@ -429,57 +438,64 @@ class LarkNotifyService:
             config_id: Test Run 配置 ID
             team_id: 團隊 ID
         """
-        engine = get_sync_engine()
-        SyncSession = sessionmaker(bind=engine)
-        db = SyncSession()
-        try:
-            # 查詢配置
-            config = db.query(TestRunConfigDB).filter(
-                TestRunConfigDB.id == config_id,
-                TestRunConfigDB.team_id == team_id
-            ).first()
+        async with SessionLocal() as session:
+            try:
+                stats = await self.compute_end_stats(team_id, config_id, session)
 
-            if not config:
-                logger.error(f"找不到 Test Run Config: team_id={team_id}, config_id={config_id}")
-                return
+                def _load(sync_db: Session) -> Optional[Dict[str, Any]]:
+                    # 查詢配置
+                    config = sync_db.query(TestRunConfigDB).filter(
+                        TestRunConfigDB.id == config_id,
+                        TestRunConfigDB.team_id == team_id
+                    ).first()
 
-            # 檢查是否啟用通知
-            if not config.notifications_enabled:
-                logger.debug(f"Config {config_id} 未啟用通知")
-                return
+                    if not config:
+                        logger.error(f"找不到 Test Run Config: team_id={team_id}, config_id={config_id}")
+                        return None
 
-            # 解析群組 IDs
-            chat_ids = []
-            if config.notify_chat_ids_json:
-                try:
-                    chat_ids = json.loads(config.notify_chat_ids_json)
-                    if not isinstance(chat_ids, list):
-                        chat_ids = []
-                except (json.JSONDecodeError, TypeError):
-                    logger.error(f"無法解析 notify_chat_ids_json: {config.notify_chat_ids_json}")
+                    # 檢查是否啟用通知
+                    if not config.notifications_enabled:
+                        logger.debug(f"Config {config_id} 未啟用通知")
+                        return {"skip": True}
+
+                    # 解析群組 IDs
+                    chat_ids = []
+                    if config.notify_chat_ids_json:
+                        try:
+                            chat_ids = json.loads(config.notify_chat_ids_json)
+                            if not isinstance(chat_ids, list):
+                                chat_ids = []
+                        except (json.JSONDecodeError, TypeError):
+                            logger.error(f"無法解析 notify_chat_ids_json: {config.notify_chat_ids_json}")
+                            return None
+
+                    if not chat_ids:
+                        logger.debug(f"Config {config_id} 沒有設定通知群組")
+                        return {"skip": True}
+
+                    message = self.build_start_message(config, self.settings.app.get_base_url())
+                    return {
+                        "config_name": config.name,
+                        "chat_ids": chat_ids,
+                        "message": message
+                    }
+
+                payload = await run_sync(session, _load)
+                if not payload or payload.get("skip"):
                     return
 
-            if not chat_ids:
-                logger.debug(f"Config {config_id} 沒有設定通知群組")
-                return
+                # 發送通知
+                logger.info(f"發送開始執行通知: {payload['config_name']} (config_id={config_id})")
+                results = self.send_message_to_chats(payload["chat_ids"], payload["message"])
 
-            # 組裝訊息
-            message = self.build_start_message(config, self.settings.app.get_base_url())
+                # 記錄結果
+                success_count = sum(1 for result in results.values() if result["ok"])
+                logger.info(f"通知發送完成: 成功 {success_count}/{len(payload['chat_ids'])} 個群組")
 
-            # 發送通知
-            logger.info(f"發送開始執行通知: {config.name} (config_id={config_id})")
-            results = self.send_message_to_chats(chat_ids, message)
-
-            # 記錄結果
-            success_count = sum(1 for result in results.values() if result["ok"])
-            logger.info(f"通知發送完成: 成功 {success_count}/{len(chat_ids)} 個群組")
-
-        except Exception as e:
-            logger.error(f"發送開始執行通知時發生錯誤: {str(e)}")
-        finally:
-            db.close()
+            except Exception as e:
+                logger.error(f"發送開始執行通知時發生錯誤: {str(e)}")
     
-    def send_execution_ended(self, config_id: int, team_id: int) -> None:
+    async def send_execution_ended(self, config_id: int, team_id: int) -> None:
         """
         發送「結束執行」通知（背景任務入口）
 
@@ -487,58 +503,62 @@ class LarkNotifyService:
             config_id: Test Run 配置 ID
             team_id: 團隊 ID
         """
-        engine = get_sync_engine()
-        SyncSession = sessionmaker(bind=engine)
-        db = SyncSession()
-        try:
-            # 查詢配置
-            config = db.query(TestRunConfigDB).filter(
-                TestRunConfigDB.id == config_id,
-                TestRunConfigDB.team_id == team_id
-            ).first()
+        async with SessionLocal() as session:
+            try:
+                stats = await self.compute_end_stats(team_id, config_id, session)
 
-            if not config:
-                logger.error(f"找不到 Test Run Config: team_id={team_id}, config_id={config_id}")
-                return
+                def _load(sync_db: Session) -> Optional[Dict[str, Any]]:
+                    # 查詢配置
+                    config = sync_db.query(TestRunConfigDB).filter(
+                        TestRunConfigDB.id == config_id,
+                        TestRunConfigDB.team_id == team_id
+                    ).first()
 
-            # 檢查是否啟用通知
-            if not config.notifications_enabled:
-                logger.debug(f"Config {config_id} 未啟用通知")
-                return
+                    if not config:
+                        logger.error(f"找不到 Test Run Config: team_id={team_id}, config_id={config_id}")
+                        return None
 
-            # 解析群組 IDs
-            chat_ids = []
-            if config.notify_chat_ids_json:
-                try:
-                    chat_ids = json.loads(config.notify_chat_ids_json)
-                    if not isinstance(chat_ids, list):
-                        chat_ids = []
-                except (json.JSONDecodeError, TypeError):
-                    logger.error(f"無法解析 notify_chat_ids_json: {config.notify_chat_ids_json}")
+                    # 檢查是否啟用通知
+                    if not config.notifications_enabled:
+                        logger.debug(f"Config {config_id} 未啟用通知")
+                        return {"skip": True}
+
+                    # 解析群組 IDs
+                    chat_ids = []
+                    if config.notify_chat_ids_json:
+                        try:
+                            chat_ids = json.loads(config.notify_chat_ids_json)
+                            if not isinstance(chat_ids, list):
+                                chat_ids = []
+                        except (json.JSONDecodeError, TypeError):
+                            logger.error(f"無法解析 notify_chat_ids_json: {config.notify_chat_ids_json}")
+                            return None
+
+                    if not chat_ids:
+                        logger.debug(f"Config {config_id} 沒有設定通知群組")
+                        return {"skip": True}
+
+                    message = self.build_end_message(config, stats, self.settings.app.get_base_url())
+                    return {
+                        "config_name": config.name,
+                        "chat_ids": chat_ids,
+                        "message": message,
+                    }
+
+                payload = await run_sync(session, _load)
+                if not payload or payload.get("skip"):
                     return
 
-            if not chat_ids:
-                logger.debug(f"Config {config_id} 沒有設定通知群組")
-                return
+                # 發送通知
+                logger.info(f"發送結束執行通知: {payload['config_name']} (config_id={config_id})")
+                results = self.send_message_to_chats(payload["chat_ids"], payload["message"])
 
-            # 計算統計資訊
-            stats = self.compute_end_stats(team_id, config_id, db)
+                # 記錄結果
+                success_count = sum(1 for result in results.values() if result["ok"])
+                logger.info(f"通知發送完成: 成功 {success_count}/{len(payload['chat_ids'])} 個群組")
 
-            # 組裝訊息
-            message = self.build_end_message(config, stats, self.settings.app.get_base_url())
-
-            # 發送通知
-            logger.info(f"發送結束執行通知: {config.name} (config_id={config_id})")
-            results = self.send_message_to_chats(chat_ids, message)
-
-            # 記錄結果
-            success_count = sum(1 for result in results.values() if result["ok"])
-            logger.info(f"通知發送完成: 成功 {success_count}/{len(chat_ids)} 個群組")
-
-        except Exception as e:
-            logger.error(f"發送結束執行通知時發生錯誤: {str(e)}")
-        finally:
-            db.close()
+            except Exception as e:
+                logger.error(f"發送結束執行通知時發生錯誤: {str(e)}")
 
 
 # 全域服務實例

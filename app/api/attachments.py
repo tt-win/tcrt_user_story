@@ -6,6 +6,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from typing import Optional
 import io
@@ -14,7 +15,7 @@ import requests
 import urllib.parse
 import logging
 
-from app.database import get_db, get_sync_db
+from app.database import get_db, run_sync
 from app.models.database_models import Team as TeamDB, TestRunConfig as TestRunConfigDB
 from app.services.lark_client import LarkClient
 from app.config import settings
@@ -25,9 +26,12 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/attachments", tags=["attachments"])
 
 
-def get_lark_client_for_team(team_id: int, db: Session) -> tuple[LarkClient, TeamDB]:
+async def get_lark_client_for_team(team_id: int, db: AsyncSession) -> tuple[LarkClient, TeamDB]:
     """取得團隊的 Lark Client"""
-    team = db.query(TeamDB).filter(TeamDB.id == team_id).first()
+    def _get_team(sync_db: Session):
+        return sync_db.query(TeamDB).filter(TeamDB.id == team_id).first()
+
+    team = await run_sync(db, _get_team)
     if not team:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -56,7 +60,7 @@ async def upload_testcase_attachment(
     file: UploadFile = File(...),
     field_name: str = Form("Attachment"),
     append: bool = Form(True),
-    db: Session = Depends(get_sync_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     上傳檔案到測試案例的附件欄位
@@ -68,7 +72,7 @@ async def upload_testcase_attachment(
         field_name: 附件欄位名稱（預設: "Attachment"）
         append: 是否追加到現有附件（預設: True）
     """
-    lark_client, team = get_lark_client_for_team(team_id, db)
+    lark_client, team = await get_lark_client_for_team(team_id, db)
     
     try:
         # 讀取檔案內容
@@ -129,7 +133,7 @@ async def upload_testrun_attachment(
     file: UploadFile = File(...),
     field_name: str = Form("Execution Result"),
     append: bool = Form(True),
-    db: Session = Depends(get_sync_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     上傳檔案到測試執行記錄（使用本地檔案系統）
@@ -152,24 +156,6 @@ async def upload_testrun_attachment(
     from pathlib import Path
     from datetime import datetime
 
-    # 驗證團隊和配置存在
-    team = db.query(TeamDB).filter(TeamDB.id == team_id).first()
-    if not team:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"找不到團隊 ID {team_id}"
-        )
-
-    config = db.query(TestRunConfigDB).filter(
-        TestRunConfigDB.id == config_id,
-        TestRunConfigDB.team_id == team_id
-    ).first()
-    if not config:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"找不到測試執行配置 ID {config_id}"
-        )
-
     # record_id 實際對應 TestRunItem 的 ID
     try:
         item_id = int(record_id)
@@ -179,18 +165,37 @@ async def upload_testrun_attachment(
             detail="無效的記錄 ID 格式"
         )
 
-    # 驗證 Test Run Item 存在
-    test_run_item = db.query(TestRunItemDB).filter(
-        TestRunItemDB.id == item_id,
-        TestRunItemDB.config_id == config_id,
-        TestRunItemDB.team_id == team_id
-    ).first()
+    def _validate(sync_db: Session):
+        team = sync_db.query(TeamDB).filter(TeamDB.id == team_id).first()
+        if not team:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"找不到團隊 ID {team_id}"
+            )
 
-    if not test_run_item:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"找不到測試執行項目 ID {item_id}"
-        )
+        config = sync_db.query(TestRunConfigDB).filter(
+            TestRunConfigDB.id == config_id,
+            TestRunConfigDB.team_id == team_id
+        ).first()
+        if not config:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"找不到測試執行配置 ID {config_id}"
+            )
+
+        test_run_item = sync_db.query(TestRunItemDB).filter(
+            TestRunItemDB.id == item_id,
+            TestRunItemDB.config_id == config_id,
+            TestRunItemDB.team_id == team_id
+        ).first()
+
+        if not test_run_item:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"找不到測試執行項目 ID {item_id}"
+            )
+
+    await run_sync(db, _validate)
 
     try:
         # 讀取檔案內容
@@ -216,16 +221,6 @@ async def upload_testrun_attachment(
         target_dir = base_dir / "test-runs" / str(team_id) / str(config_id) / str(item_id)
         target_dir.mkdir(parents=True, exist_ok=True)
 
-        # 解析現有的執行結果檔案
-        existing = []
-        if test_run_item.execution_results_json:
-            try:
-                data = json.loads(test_run_item.execution_results_json)
-                if isinstance(data, list):
-                    existing = data
-            except Exception:
-                existing = []
-
         # 生成唯一檔名
         ts = datetime.utcnow().strftime("%Y%m%d-%H%M%S-%f")
         safe_re = re.compile(r"[^A-Za-z0-9_.\-]+")
@@ -249,34 +244,60 @@ async def upload_testrun_attachment(
             "uploaded_at": datetime.utcnow().isoformat(),
         }
 
-        # 根據 append 參數決定是否追加
-        if append:
-            existing.append(item_meta)
-        else:
-            existing = [item_meta]
+        def _update_item(sync_db: Session):
+            test_run_item = sync_db.query(TestRunItemDB).filter(
+                TestRunItemDB.id == item_id,
+                TestRunItemDB.config_id == config_id,
+                TestRunItemDB.team_id == team_id
+            ).first()
 
-        # 更新資料庫記錄
-        test_run_item.execution_results_json = json.dumps(existing, ensure_ascii=False)
-        test_run_item.result_files_uploaded = 1 if len(existing) > 0 else 0
-        test_run_item.result_files_count = len(existing)
+            if not test_run_item:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"找不到測試執行項目 ID {item_id}"
+                )
 
-        # 更新上傳歷史
-        history = []
-        if test_run_item.upload_history_json:
-            try:
-                history = json.loads(test_run_item.upload_history_json) or []
-            except Exception:
-                history = []
+            # 解析現有的執行結果檔案
+            existing = []
+            if test_run_item.execution_results_json:
+                try:
+                    data = json.loads(test_run_item.execution_results_json)
+                    if isinstance(data, list):
+                        existing = data
+                except Exception:
+                    existing = []
 
-        history.append({
-            "uploaded": 1,
-            "at": datetime.utcnow().isoformat(),
-            "files": [item_meta],
-        })
-        test_run_item.upload_history_json = json.dumps(history, ensure_ascii=False)
-        test_run_item.updated_at = datetime.utcnow()
+            # 根據 append 參數決定是否追加
+            if append:
+                existing.append(item_meta)
+            else:
+                existing = [item_meta]
 
-        db.commit()
+            # 更新資料庫記錄
+            test_run_item.execution_results_json = json.dumps(existing, ensure_ascii=False)
+            test_run_item.result_files_uploaded = 1 if len(existing) > 0 else 0
+            test_run_item.result_files_count = len(existing)
+
+            # 更新上傳歷史
+            history = []
+            if test_run_item.upload_history_json:
+                try:
+                    history = json.loads(test_run_item.upload_history_json) or []
+                except Exception:
+                    history = []
+
+            history.append({
+                "uploaded": 1,
+                "at": datetime.utcnow().isoformat(),
+                "files": [item_meta],
+            })
+            test_run_item.upload_history_json = json.dumps(history, ensure_ascii=False)
+            test_run_item.updated_at = datetime.utcnow()
+
+            sync_db.commit()
+            return len(existing)
+
+        total_files = await run_sync(db, _update_item)
 
         return {
             "success": True,
@@ -286,14 +307,14 @@ async def upload_testrun_attachment(
             "append_mode": append,
             "field_name": field_name,
             "file_token": stored_name,
-            "total_files": len(existing),
+            "total_files": total_files,
             "base_url": "/attachments"
         }
 
     except HTTPException:
         raise
     except Exception as e:
-        db.rollback()
+        await run_sync(db, lambda sync_db: sync_db.rollback())
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"檔案上傳過程發生錯誤: {str(e)}"
@@ -306,7 +327,7 @@ async def upload_testrun_screenshot(
     config_id: int,
     record_id: str,
     file: UploadFile = File(...),
-    db: Session = Depends(get_sync_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     上傳測試執行結果截圖（使用本地檔案系統）
@@ -337,14 +358,14 @@ async def upload_testrun_screenshot(
 async def upload_file_get_token(
     team_id: int,
     file: UploadFile = File(...),
-    db: Session = Depends(get_sync_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     只上傳檔案到 Lark Drive，返回 file_token
     
     這個 API 可用於先上傳檔案，稍後再附加到記錄
     """
-    lark_client, team = get_lark_client_for_team(team_id, db)
+    lark_client, team = await get_lark_client_for_team(team_id, db)
     
     try:
         # 讀取檔案內容
@@ -400,12 +421,12 @@ async def attach_file_token_to_testcase(
     file_token: str = Form(...),
     field_name: str = Form("Attachment"),
     append: bool = Form(True),
-    db: Session = Depends(get_sync_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     將已上傳的檔案（file_token）附加到測試案例記錄
     """
-    lark_client, team = get_lark_client_for_team(team_id, db)
+    lark_client, team = await get_lark_client_for_team(team_id, db)
     
     try:
         # 取得現有附件（如果是追加模式）
@@ -464,7 +485,7 @@ async def remove_testcase_attachment(
     record_id: str,
     file_token: str,
     field_name: str = "Attachment",
-    db: Session = Depends(get_sync_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     從測試案例記錄中移除指定的附件
@@ -475,7 +496,7 @@ async def remove_testcase_attachment(
         file_token: 要移除的附件 file_token
         field_name: 附件欄位名稱（預設: "Attachment"）
     """
-    lark_client, team = get_lark_client_for_team(team_id, db)
+    lark_client, team = await get_lark_client_for_team(team_id, db)
     
     try:
         # 取得現有記錄
@@ -556,7 +577,7 @@ async def download_attachment_proxy(
     config_id: int = None,
     item_id: int = None,
     file_index: int = None,
-    db: Session = Depends(get_sync_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     附件下載代理 API
@@ -577,15 +598,19 @@ async def download_attachment_proxy(
         try:
             from app.models.database_models import TestRunItem as TestRunItemDB
 
-            item = db.query(TestRunItemDB).filter(
-                TestRunItemDB.team_id == team_id,
-                TestRunItemDB.config_id == config_id,
-                TestRunItemDB.id == item_id
-            ).first()
+            def _fetch_item(sync_db: Session):
+                item = sync_db.query(TestRunItemDB).filter(
+                    TestRunItemDB.team_id == team_id,
+                    TestRunItemDB.config_id == config_id,
+                    TestRunItemDB.id == item_id
+                ).first()
+                return item.execution_results_json if item else None
 
-            if item:
+            execution_results_json = await run_sync(db, _fetch_item)
+
+            if execution_results_json is not None:
                 try:
-                    execution_results = json.loads(item.execution_results_json or '[]')
+                    execution_results = json.loads(execution_results_json or '[]')
                     if 0 <= file_index < len(execution_results):
                         file_meta = execution_results[file_index]
                         # 優先使用 absolute_path，否則嘗試重建路徑
@@ -681,7 +706,7 @@ async def download_attachment_proxy(
         pass
 
     # 優先級 4：代理 Lark 下載
-    lark_client, team = get_lark_client_for_team(team_id, db)
+    lark_client, team = await get_lark_client_for_team(team_id, db)
     
     try:
         # 決定下載 URL

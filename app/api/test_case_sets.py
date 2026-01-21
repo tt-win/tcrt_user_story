@@ -3,11 +3,12 @@
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Path
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from typing import List, Optional
 import logging
 
-from ..database import get_sync_db
+from ..database import get_db, run_sync
 from ..auth.dependencies import get_current_user
 from ..auth.models import User
 from ..models.database_models import TestCaseSet as TestCaseSetDB, Team as TeamDB
@@ -61,11 +62,14 @@ async def log_set_action(
 
 async def verify_team_write_permission(
     team_id: int = Path(...),
-    db: Session = Depends(get_sync_db),
+    db: AsyncSession = Depends(get_db),
 ) -> TeamDB:
     """驗證團隊存在"""
     try:
-        team = db.query(TeamDB).filter(TeamDB.id == team_id).first()
+        def _get_team(sync_db: Session):
+            return sync_db.query(TeamDB).filter(TeamDB.id == team_id).first()
+
+        team = await run_sync(db, _get_team)
         if not team:
             logger.warning(f"Team {team_id} not found")
             raise HTTPException(
@@ -89,16 +93,17 @@ async def create_test_case_set(
     request: TestCaseSetCreate,
     current_user: User = Depends(get_current_user),
     team: TeamDB = Depends(verify_team_write_permission),
-    db: Session = Depends(get_sync_db),
+    db: AsyncSession = Depends(get_db),
 ) -> TestCaseSet:
     """建立新的 Test Case Set"""
     try:
         service = TestCaseSetService(db)
-        new_set = service.create(
+        new_set = await service.create(
             team_id=team_id,
             name=request.name,
             description=request.description,
         )
+        test_case_count = await service.get_test_case_count(new_set.id)
 
         await log_set_action(
             ActionType.CREATE,
@@ -111,7 +116,7 @@ async def create_test_case_set(
 
         # 計算並添加 test_case_count
         result = TestCaseSet.from_orm(new_set)
-        result.test_case_count = service.get_test_case_count(new_set.id)
+        result.test_case_count = test_case_count
         return result
 
     except ValueError as e:
@@ -132,18 +137,18 @@ async def list_test_case_sets(
     team_id: int,
     current_user: User = Depends(get_current_user),
     team: TeamDB = Depends(verify_team_write_permission),
-    db: Session = Depends(get_sync_db),
+    db: AsyncSession = Depends(get_db),
 ) -> List[TestCaseSet]:
     """列出指定團隊的所有 Test Case Sets"""
     try:
         service = TestCaseSetService(db)
-        sets = service.list_by_team(team_id)
+        sets = await service.list_by_team(team_id)
 
         # 為每個 Set 計算 test_case_count
         result = []
         for s in sets:
             set_dict = TestCaseSet.from_orm(s).model_dump()
-            set_dict['test_case_count'] = service.get_test_case_count(s.id)
+            set_dict['test_case_count'] = await service.get_test_case_count(s.id)
             result.append(TestCaseSet(**set_dict))
 
         return result
@@ -161,14 +166,16 @@ async def get_test_case_set(
     team_id: int,
     set_id: int,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_sync_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """取得單個 Test Case Set 及其 Sections"""
     try:
         logger.info(f"Getting test case set {set_id} for team {team_id}")
 
-        # 驗證團隊存在
-        team = db.query(TeamDB).filter(TeamDB.id == team_id).first()
+        def _get_team(sync_db: Session):
+            return sync_db.query(TeamDB).filter(TeamDB.id == team_id).first()
+
+        team = await run_sync(db, _get_team)
         if not team:
             logger.warning(f"Team {team_id} not found")
             raise HTTPException(
@@ -177,7 +184,7 @@ async def get_test_case_set(
             )
 
         service = TestCaseSetService(db)
-        set_data = service.get_set_with_sections(set_id, team_id)
+        set_data = await service.get_set_with_sections(set_id, team_id)
 
         if not set_data:
             logger.warning(f"Test Case Set {set_id} not found")
@@ -190,10 +197,14 @@ async def get_test_case_set(
 
         # 查詢每個 section 的 test case 數量
         from ..models.database_models import TestCaseLocal
+
+        def _load_test_cases(sync_db: Session):
+            return sync_db.query(TestCaseLocal).filter(
+                TestCaseLocal.test_case_set_id == set_id
+            ).all()
+
         section_test_case_counts = {}
-        all_test_cases = db.query(TestCaseLocal).filter(
-            TestCaseLocal.test_case_set_id == set_id
-        ).all()
+        all_test_cases = await run_sync(db, _load_test_cases)
 
         for tc in all_test_cases:
             section_id = tc.test_case_section_id
@@ -271,17 +282,18 @@ async def update_test_case_set(
     request: TestCaseSetUpdate,
     current_user: User = Depends(get_current_user),
     team: TeamDB = Depends(verify_team_write_permission),
-    db: Session = Depends(get_sync_db),
+    db: AsyncSession = Depends(get_db),
 ) -> TestCaseSet:
     """更新 Test Case Set"""
     try:
         service = TestCaseSetService(db)
-        updated_set = service.update(
+        updated_set = await service.update(
             set_id=set_id,
             team_id=team_id,
             name=request.name,
             description=request.description,
         )
+        test_case_count = await service.get_test_case_count(set_id)
 
         await log_set_action(
             ActionType.UPDATE,
@@ -294,7 +306,7 @@ async def update_test_case_set(
 
         # 計算並添加 test_case_count
         result = TestCaseSet.from_orm(updated_set)
-        result.test_case_count = service.get_test_case_count(set_id)
+        result.test_case_count = test_case_count
         return result
 
     except ValueError as e:
@@ -316,12 +328,12 @@ async def delete_test_case_set(
     set_id: int,
     current_user: User = Depends(get_current_user),
     team: TeamDB = Depends(verify_team_write_permission),
-    db: Session = Depends(get_sync_db),
+    db: AsyncSession = Depends(get_db),
 ) -> None:
     """刪除 Test Case Set"""
     try:
         service = TestCaseSetService(db)
-        service.delete(set_id, team_id)
+        await service.delete(set_id, team_id)
 
         await log_set_action(
             ActionType.DELETE,
@@ -349,12 +361,12 @@ async def validate_test_case_set_name(
     name: str = Query(..., description="Test Case Set 名稱"),
     exclude_set_id: Optional[int] = Query(None, description="要排除的 Set ID"),
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_sync_db),
+    db: AsyncSession = Depends(get_db),
 ) -> TestCaseSetNameValidationResponse:
     """驗證 Test Case Set 名稱全域唯一性"""
     try:
         service = TestCaseSetService(db)
-        is_valid = service.validate_name_unique(name, exclude_set_id)
+        is_valid = await service.validate_name_unique(name, exclude_set_id)
 
         return TestCaseSetNameValidationResponse(
             is_valid=is_valid,

@@ -18,11 +18,14 @@ import os
 import json
 from pathlib import Path
 
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session, joinedload
+
+from app.database import run_sync
 
 
 class HTMLReportService:
-    def __init__(self, db_session: Session, base_dir: Optional[str] = None):
+    def __init__(self, db_session: AsyncSession, base_dir: Optional[str] = None):
         self.db_session = db_session
         # Resolve base dir
         self.base_dir = Path(base_dir) if base_dir else Path.cwd()
@@ -31,8 +34,8 @@ class HTMLReportService:
         os.makedirs(self.tmp_root, exist_ok=True)
 
     # ---------------- Public API ----------------
-    def generate_test_run_report(self, team_id: int, config_id: int) -> Dict[str, Any]:
-        data = self._collect_report_data(team_id, config_id)
+    async def generate_test_run_report(self, team_id: int, config_id: int) -> Dict[str, Any]:
+        data = await self._collect_report_data(team_id, config_id)
         report_id = f"team-{team_id}-config-{config_id}"
         html = self._render_html(data)
 
@@ -50,8 +53,8 @@ class HTMLReportService:
             "overwritten": True,
         }
 
-    def generate_test_run_set_report(self, team_id: int, set_id: int) -> Dict[str, Any]:
-        data = self._collect_set_report_data(team_id, set_id)
+    async def generate_test_run_set_report(self, team_id: int, set_id: int) -> Dict[str, Any]:
+        data = await self._collect_set_report_data(team_id, set_id)
         report_id = f"team-{team_id}-set-{set_id}"
         html = self._render_set_html(data)
 
@@ -69,12 +72,15 @@ class HTMLReportService:
         }
 
     # ---------------- Data Collection ----------------
-    def _collect_report_data(self, team_id: int, config_id: int) -> Dict[str, Any]:
+    async def _collect_report_data(self, team_id: int, config_id: int) -> Dict[str, Any]:
+        return await run_sync(self.db_session, self._collect_report_data_sync, team_id, config_id)
+
+    def _collect_report_data_sync(self, sync_db: Session, team_id: int, config_id: int) -> Dict[str, Any]:
         from ..models.database_models import TestRunConfig as TestRunConfigDB, TestRunItem as TestRunItemDB
         from ..models.lark_types import Priority, TestResultStatus
 
         # Config
-        config = self.db_session.query(TestRunConfigDB).filter(
+        config = sync_db.query(TestRunConfigDB).filter(
             TestRunConfigDB.id == config_id,
             TestRunConfigDB.team_id == team_id,
         ).first()
@@ -82,7 +88,7 @@ class HTMLReportService:
             raise ValueError(f"找不到 Test Run 配置 (team_id={team_id}, config_id={config_id})")
 
         # Items
-        items = self.db_session.query(TestRunItemDB).options(
+        items = sync_db.query(TestRunItemDB).options(
             joinedload(TestRunItemDB.test_case),
             joinedload(TestRunItemDB.histories)
         ).filter(
@@ -239,7 +245,10 @@ class HTMLReportService:
             "bug_tickets": bug_tickets,
         }
 
-    def _collect_set_report_data(self, team_id: int, set_id: int) -> Dict[str, Any]:
+    async def _collect_set_report_data(self, team_id: int, set_id: int) -> Dict[str, Any]:
+        return await run_sync(self.db_session, self._collect_set_report_data_sync, team_id, set_id)
+
+    def _collect_set_report_data_sync(self, sync_db: Session, team_id: int, set_id: int) -> Dict[str, Any]:
         from ..models.database_models import (
             TestRunSet as TestRunSetDB,
             TestRunSetMembership as TestRunSetMembershipDB,
@@ -250,7 +259,7 @@ class HTMLReportService:
 
         # 預先載入 memberships 與 config 以避免 N+1
         set_db: Optional[TestRunSetDB] = (
-            self.db_session.query(TestRunSetDB)
+            sync_db.query(TestRunSetDB)
             .outerjoin(
                 TestRunSetMembershipDB,
                 TestRunSetMembershipDB.set_id == TestRunSetDB.id,

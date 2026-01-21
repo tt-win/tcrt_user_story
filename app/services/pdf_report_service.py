@@ -34,17 +34,19 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfbase.cidfonts import UnicodeCIDFont
 import os
+from app.database import run_sync
 
 
 class PDFReportService:
     """ReportLab-based PDF report generation service"""
     
-    def __init__(self, db_session: Session):
+    def __init__(self, db_session: AsyncSession):
         self.db_session = db_session
         self.styles = getSampleStyleSheet()
         self._setup_custom_styles()
@@ -135,7 +137,7 @@ class PDFReportService:
             self.chinese_font = 'Helvetica'
             return 'Helvetica'
     
-    def generate_test_run_report(self, team_id: int, config_id: int) -> bytes:
+    async def generate_test_run_report(self, team_id: int, config_id: int) -> bytes:
         """
         Generate PDF report for a specific test run
         
@@ -157,7 +159,7 @@ class PDFReportService:
         )
         
         # 收集報告數據
-        report_data = self._collect_report_data(team_id, config_id)
+        report_data = await self._collect_report_data(team_id, config_id)
         
         # 建立報告內容
         story = []
@@ -184,14 +186,17 @@ class PDFReportService:
         buffer.seek(0)
         return buffer.read()
     
-    def _collect_report_data(self, team_id: int, config_id: int) -> Dict[str, Any]:
+    async def _collect_report_data(self, team_id: int, config_id: int) -> Dict[str, Any]:
+        return await run_sync(self.db_session, self._collect_report_data_sync, team_id, config_id)
+
+    def _collect_report_data_sync(self, sync_db: Session, team_id: int, config_id: int) -> Dict[str, Any]:
         """Collect all necessary data for the report"""
         from ..models.database_models import TestRunConfig as TestRunConfigDB, TestRunItem as TestRunItemDB
         from ..models.lark_types import Priority, TestResultStatus
         import json
         
         # 獲取 Test Run 配置資訊
-        config = self.db_session.query(TestRunConfigDB).filter(
+        config = sync_db.query(TestRunConfigDB).filter(
             TestRunConfigDB.id == config_id,
             TestRunConfigDB.team_id == team_id
         ).first()
@@ -200,7 +205,7 @@ class PDFReportService:
             raise ValueError(f"找不到 Test Run 配置 (team_id={team_id}, config_id={config_id})")
         
         # 獲取所有測試項目
-        items_query = self.db_session.query(TestRunItemDB).options(joinedload(TestRunItemDB.test_case)).filter(
+        items_query = sync_db.query(TestRunItemDB).options(joinedload(TestRunItemDB.test_case)).filter(
             TestRunItemDB.team_id == team_id,
             TestRunItemDB.config_id == config_id
         )

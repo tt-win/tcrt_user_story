@@ -6,13 +6,14 @@
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Request
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 import io
 import logging
 
-from app.database import get_db, get_sync_db
+from app.database import get_db, run_sync
 from app.auth.dependencies import get_current_user
 from app.auth.models import PermissionType
 from app.models.database_models import User
@@ -63,28 +64,32 @@ async def log_test_run_action(
         logger.warning("寫入測試執行審計記錄失敗: %s", exc, exc_info=True)
 
 
-def get_lark_client_for_test_run(
-    team_id: int, config_id: int, db: Session
+async def get_lark_client_for_test_run(
+    team_id: int, config_id: int, db: AsyncSession
 ) -> tuple[LarkClient, TeamDB, TestRunConfigDB]:
     """取得測試執行配置的 Lark Client"""
-    # 取得團隊
-    team = db.query(TeamDB).filter(TeamDB.id == team_id).first()
-    if not team:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=f"找不到團隊 ID {team_id}"
-        )
+    def _load(sync_db: Session) -> tuple[TeamDB, TestRunConfigDB]:
+        # 取得團隊
+        team = sync_db.query(TeamDB).filter(TeamDB.id == team_id).first()
+        if not team:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=f"找不到團隊 ID {team_id}"
+            )
 
-    # 取得測試執行配置
-    config = (
-        db.query(TestRunConfigDB)
-        .filter(TestRunConfigDB.id == config_id, TestRunConfigDB.team_id == team_id)
-        .first()
-    )
-    if not config:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"找不到測試執行配置 ID {config_id}",
+        # 取得測試執行配置
+        config = (
+            sync_db.query(TestRunConfigDB)
+            .filter(TestRunConfigDB.id == config_id, TestRunConfigDB.team_id == team_id)
+            .first()
         )
+        if not config:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"找不到測試執行配置 ID {config_id}",
+            )
+        return team, config
+
+    team, config = await run_sync(db, _load)
 
     # 建立 Lark Client
     lark_client = LarkClient(
@@ -207,7 +212,7 @@ def sort_test_runs(
 async def get_test_runs(
     team_id: int,
     config_id: int,
-    db: Session = Depends(get_sync_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
     # 搜尋參數
     search: Optional[str] = Query(None, description="標題模糊搜尋"),
@@ -239,7 +244,7 @@ async def get_test_runs(
                 detail="無權限存取此團隊的測試執行記錄",
             )
 
-    lark_client, team, config = get_lark_client_for_test_run(team_id, config_id, db)
+    lark_client, team, config = await get_lark_client_for_test_run(team_id, config_id, db)
 
     try:
         # 從 Lark 取得所有記錄
@@ -334,7 +339,7 @@ async def get_test_runs(
 async def get_test_runs_count(
     team_id: int,
     config_id: int,
-    db: Session = Depends(get_sync_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
     # 搜尋參數（與 get_test_runs 相同）
     search: Optional[str] = Query(None, description="標題模糊搜尋"),
@@ -360,7 +365,7 @@ async def get_test_runs_count(
                 detail="無權限存取此團隊的測試執行記錄數量",
             )
 
-    lark_client, team, config = get_lark_client_for_test_run(team_id, config_id, db)
+    lark_client, team, config = await get_lark_client_for_test_run(team_id, config_id, db)
 
     try:
         # 從 Lark 取得所有記錄
@@ -392,7 +397,7 @@ async def get_test_run(
     team_id: int,
     config_id: int,
     record_id: str,
-    db: Session = Depends(get_sync_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """取得特定測試執行記錄（需要對該團隊的讀取權限）"""
@@ -410,7 +415,7 @@ async def get_test_run(
                 detail="無權限存取此團隊的測試執行記錄",
             )
 
-    lark_client, team, config = get_lark_client_for_test_run(team_id, config_id, db)
+    lark_client, team, config = await get_lark_client_for_test_run(team_id, config_id, db)
 
     try:
         # 從 Lark 取得所有記錄，然後找到指定的記錄
@@ -448,7 +453,7 @@ async def create_test_run(
     team_id: int,
     config_id: int,
     test_run: TestRunCreate,
-    db: Session = Depends(get_sync_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """建立新的測試執行記錄（需要對該團隊的寫入權限）"""
@@ -466,7 +471,7 @@ async def create_test_run(
                 detail="無權限在此團隊建立測試執行記錄",
             )
 
-    lark_client, team, config = get_lark_client_for_test_run(team_id, config_id, db)
+    lark_client, team, config = await get_lark_client_for_test_run(team_id, config_id, db)
 
     try:
         # 建立 TestRun 模型實例
@@ -556,7 +561,7 @@ async def update_test_run(
     config_id: int,
     record_id: str,
     test_run_update: TestRunUpdate,
-    db: Session = Depends(get_sync_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """更新測試執行記錄（需要對該團隊的寫入權限）"""
@@ -574,7 +579,7 @@ async def update_test_run(
                 detail="無權限修改此團隊的測試執行記錄",
             )
 
-    lark_client, team, config = get_lark_client_for_test_run(team_id, config_id, db)
+    lark_client, team, config = await get_lark_client_for_test_run(team_id, config_id, db)
 
     try:
         # 先取得現有記錄
@@ -695,7 +700,7 @@ async def delete_test_run(
     team_id: int,
     config_id: int,
     record_id: str,
-    db: Session = Depends(get_sync_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """刪除測試執行記錄（需要對該團隊的刪除權限）"""
@@ -713,7 +718,7 @@ async def delete_test_run(
                 detail="無權限刪除此團隊的測試執行記錄",
             )
 
-    lark_client, team, config = get_lark_client_for_test_run(team_id, config_id, db)
+    lark_client, team, config = await get_lark_client_for_test_run(team_id, config_id, db)
 
     try:
         # 先驗證記錄是否存在
@@ -741,17 +746,20 @@ async def delete_test_run(
 
             if test_case_number:
                 # 查找對應的本地 TestRunItem 以取得上傳的檔案 token 清單
-                test_run_item = (
-                    db.query(TestRunItemDB)
-                    .filter(
-                        TestRunItemDB.team_id == team_id,
-                        TestRunItemDB.config_id == config_id,
-                        TestRunItemDB.test_case_number == test_case_number,
-                        TestRunItemDB.result_files_uploaded == 1,
-                        TestRunItemDB.upload_history_json.isnot(None),
+                def _load_item(sync_db: Session):
+                    return (
+                        sync_db.query(TestRunItemDB)
+                        .filter(
+                            TestRunItemDB.team_id == team_id,
+                            TestRunItemDB.config_id == config_id,
+                            TestRunItemDB.test_case_number == test_case_number,
+                            TestRunItemDB.result_files_uploaded == 1,
+                            TestRunItemDB.upload_history_json.isnot(None),
+                        )
+                        .first()
                     )
-                    .first()
-                )
+
+                test_run_item = await run_sync(db, _load_item)
 
                 if test_run_item and test_run_item.upload_history_json:
                     upload_history = _json.loads(test_run_item.upload_history_json)
@@ -804,11 +812,23 @@ async def delete_test_run(
                             )
 
                             # 同步更新本地 TestRunItem 的狀態（清空檔案上傳紀錄）
-                            test_run_item.result_files_uploaded = 0
-                            test_run_item.result_files_count = 0
-                            test_run_item.upload_history_json = None
-                            db.add(test_run_item)
-                            db.commit()
+                            def _clear_item(sync_db: Session) -> None:
+                                item = (
+                                    sync_db.query(TestRunItemDB)
+                                    .filter(
+                                        TestRunItemDB.team_id == team_id,
+                                        TestRunItemDB.config_id == config_id,
+                                        TestRunItemDB.test_case_number == test_case_number,
+                                    )
+                                    .first()
+                                )
+                                if item:
+                                    item.result_files_uploaded = 0
+                                    item.result_files_count = 0
+                                    item.upload_history_json = None
+                                    sync_db.commit()
+
+                            await run_sync(db, _clear_item)
         except Exception as cleanup_err:
             # 清理失敗不應阻止主要刪除流程，記錄警告即可
             import logging as _logging
@@ -856,10 +876,10 @@ async def delete_test_run(
 
 @router.get("/{config_id}/statistics", response_model=TestRunStatistics)
 async def get_test_run_statistics(
-    team_id: int, config_id: int, db: Session = Depends(get_sync_db)
+    team_id: int, config_id: int, db: AsyncSession = Depends(get_db)
 ):
     """取得測試執行統計資訊"""
-    lark_client, team, config = get_lark_client_for_test_run(team_id, config_id, db)
+    lark_client, team, config = await get_lark_client_for_test_run(team_id, config_id, db)
 
     try:
         # 從 Lark 取得所有記錄
@@ -918,11 +938,11 @@ async def batch_update_test_results(
     team_id: int,
     config_id: int,
     updates: List[dict],
-    db: Session = Depends(get_sync_db),
+    db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     """批次更新測試執行結果"""
-    lark_client, team, config = get_lark_client_for_test_run(team_id, config_id, db)
+    lark_client, team, config = await get_lark_client_for_test_run(team_id, config_id, db)
 
     try:
         success_count = 0
@@ -997,33 +1017,35 @@ async def batch_update_test_results(
 
 @router.post("/{config_id}/generate-html")
 async def generate_html_report(
-    team_id: int, config_id: int, request: Request, db: Session = Depends(get_sync_db)
+    team_id: int, config_id: int, request: Request, db: AsyncSession = Depends(get_db)
 ):
     """生成 Test Run HTML 報告（靜態檔），並回傳可存取的連結"""
     try:
-        # 驗證團隊和配置存在（不需要 Lark API 驗證）
-        team = db.query(TeamDB).filter(TeamDB.id == team_id).first()
-        if not team:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail=f"找不到團隊 ID {team_id}"
-            )
-
-        config = (
-            db.query(TestRunConfigDB)
-            .filter(TestRunConfigDB.id == config_id, TestRunConfigDB.team_id == team_id)
-            .first()
-        )
-        if not config:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"找不到測試執行配置 ID {config_id}",
-            )
-
-        # 生成 HTML
         from ..services.html_report_service import HTMLReportService
 
+        def _verify(sync_db: Session) -> None:
+            # 驗證團隊和配置存在（不需要 Lark API 驗證）
+            team = sync_db.query(TeamDB).filter(TeamDB.id == team_id).first()
+            if not team:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND, detail=f"找不到團隊 ID {team_id}"
+                )
+
+            config = (
+                sync_db.query(TestRunConfigDB)
+                .filter(TestRunConfigDB.id == config_id, TestRunConfigDB.team_id == team_id)
+                .first()
+            )
+            if not config:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"找不到測試執行配置 ID {config_id}",
+                )
+
+        await run_sync(db, _verify)
+
         service = HTMLReportService(db_session=db)
-        result = service.generate_test_run_report(team_id=team_id, config_id=config_id)
+        result = await service.generate_test_run_report(team_id=team_id, config_id=config_id)
 
         # 將相對路徑轉為完整網址
         base = str(request.base_url).rstrip("/")
@@ -1047,32 +1069,32 @@ async def generate_html_report(
 
 @router.get("/{config_id}/report", response_model=dict)
 async def get_html_report_status(
-    team_id: int, config_id: int, request: Request, db: Session = Depends(get_sync_db)
+    team_id: int, config_id: int, request: Request, db: AsyncSession = Depends(get_db)
 ):
     """查詢 HTML 報告是否已存在，存在則回傳完整連結"""
     # 驗證團隊與配置存在
-    team = db.query(TeamDB).filter(TeamDB.id == team_id).first()
-    if not team:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=f"找不到團隊 ID {team_id}"
+    def _verify(sync_db: Session) -> None:
+        team = sync_db.query(TeamDB).filter(TeamDB.id == team_id).first()
+        if not team:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail=f"找不到團隊 ID {team_id}"
+            )
+        config = (
+            sync_db.query(TestRunConfigDB)
+            .filter(TestRunConfigDB.id == config_id, TestRunConfigDB.team_id == team_id)
+            .first()
         )
-    config = (
-        db.query(TestRunConfigDB)
-        .filter(TestRunConfigDB.id == config_id, TestRunConfigDB.team_id == team_id)
-        .first()
-    )
-    if not config:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"找不到測試執行配置 ID {config_id}",
-        )
+        if not config:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"找不到測試執行配置 ID {config_id}",
+            )
 
-    # 檢查檔案存在
-    from pathlib import Path
+    await run_sync(db, _verify)
 
-    report_path = (
-        Path.cwd() / "generated_report" / f"team-{team_id}-config-{config_id}.html"
-    )
+    from ..services.html_report_service import HTMLReportService
+
+    report_path = HTMLReportService(db_session=db).report_root / f"team-{team_id}-config-{config_id}.html"
     if report_path.exists():
         base = str(request.base_url).rstrip("/")
         url = f"{base}/reports/team-{team_id}-config-{config_id}.html"

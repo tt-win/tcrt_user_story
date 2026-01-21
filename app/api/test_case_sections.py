@@ -3,11 +3,12 @@
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any, Optional
 import logging
 
-from ..database import get_sync_db
+from ..database import get_db, run_sync
 from ..auth.dependencies import get_current_user
 from ..auth.models import PermissionType, User
 from ..models.database_models import TestCaseSet as TestCaseSetDB, Team as TeamDB
@@ -61,10 +62,13 @@ async def log_section_action(
 async def verify_test_case_set_access(
     set_id: int,
     current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_sync_db),
+    db: AsyncSession = Depends(get_db),
 ) -> TestCaseSetDB:
     """驗證使用者對 Test Case Set 的訪問權限"""
-    test_set = db.query(TestCaseSetDB).filter(TestCaseSetDB.id == set_id).first()
+    def _get_set(sync_db: Session):
+        return sync_db.query(TestCaseSetDB).filter(TestCaseSetDB.id == set_id).first()
+
+    test_set = await run_sync(db, _get_set)
     if not test_set:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -82,12 +86,12 @@ async def create_section(
     request: TestCaseSectionCreate,
     current_user: User = Depends(get_current_user),
     test_set: TestCaseSetDB = Depends(verify_test_case_set_access),
-    db: Session = Depends(get_sync_db),
+    db: AsyncSession = Depends(get_db),
 ) -> TestCaseSection:
     """建立新的 Test Case Section"""
     try:
         service = TestCaseSectionService(db)
-        new_section = service.create(
+        new_section = await service.create(
             test_case_set_id=set_id,
             name=request.name,
             description=request.description,
@@ -123,13 +127,12 @@ async def get_sections_tree(
     set_id: int,
     current_user: User = Depends(get_current_user),
     test_set: TestCaseSetDB = Depends(verify_test_case_set_access),
-    db: Session = Depends(get_sync_db),
+    db: AsyncSession = Depends(get_db),
 ) -> List[Dict[str, Any]]:
     """取得 Test Case Set 的 Sections 樹狀結構"""
     try:
         service = TestCaseSectionService(db)
-        tree = service.get_tree_structure(set_id)
-        return tree
+        return await service.get_tree_structure(set_id)
 
     except Exception as e:
         logger.error(f"查詢 Test Case Sections 失敗: {e}", exc_info=True)
@@ -145,12 +148,12 @@ async def get_section(
     section_id: int,
     current_user: User = Depends(get_current_user),
     test_set: TestCaseSetDB = Depends(verify_test_case_set_access),
-    db: Session = Depends(get_sync_db),
+    db: AsyncSession = Depends(get_db),
 ) -> TestCaseSection:
     """取得單個 Test Case Section"""
     try:
         service = TestCaseSectionService(db)
-        section = service.get_by_id(section_id)
+        section = await service.get_by_id(section_id)
 
         if not section or section.test_case_set_id != set_id:
             raise HTTPException(
@@ -177,12 +180,12 @@ async def update_section(
     request: TestCaseSectionUpdate,
     current_user: User = Depends(get_current_user),
     test_set: TestCaseSetDB = Depends(verify_test_case_set_access),
-    db: Session = Depends(get_sync_db),
+    db: AsyncSession = Depends(get_db),
 ) -> TestCaseSection:
     """更新 Test Case Section"""
     try:
         service = TestCaseSectionService(db)
-        section = service.get_by_id(section_id)
+        section = await service.get_by_id(section_id)
 
         if not section or section.test_case_set_id != set_id:
             raise HTTPException(
@@ -190,7 +193,7 @@ async def update_section(
                 detail=f"Test Case Section {section_id} not found",
             )
 
-        updated_section = service.update(
+        updated_section = await service.update(
             section_id=section_id,
             name=request.name,
             description=request.description,
@@ -228,12 +231,12 @@ async def delete_section(
     section_id: int,
     current_user: User = Depends(get_current_user),
     test_set: TestCaseSetDB = Depends(verify_test_case_set_access),
-    db: Session = Depends(get_sync_db),
+    db: AsyncSession = Depends(get_db),
 ) -> None:
     """刪除 Test Case Section"""
     try:
         service = TestCaseSectionService(db)
-        section = service.get_by_id(section_id)
+        section = await service.get_by_id(section_id)
 
         if not section or section.test_case_set_id != set_id:
             raise HTTPException(
@@ -241,7 +244,7 @@ async def delete_section(
                 detail=f"Test Case Section {section_id} not found",
             )
 
-        service.delete(section_id)
+        await service.delete(section_id)
 
         await log_section_action(
             ActionType.DELETE,
@@ -272,12 +275,12 @@ async def reorder_sections(
     request: TestCaseSectionReorderRequest,
     current_user: User = Depends(get_current_user),
     test_set: TestCaseSetDB = Depends(verify_test_case_set_access),
-    db: Session = Depends(get_sync_db),
+    db: AsyncSession = Depends(get_db),
 ) -> None:
     """重新排序 Sections"""
     try:
         service = TestCaseSectionService(db)
-        service.reorder(set_id, request.sections)
+        await service.reorder(set_id, request.sections)
 
         await log_section_action(
             ActionType.UPDATE,
@@ -308,12 +311,12 @@ async def move_section(
     new_parent_id: Optional[int] = Query(None),
     current_user: User = Depends(get_current_user),
     test_set: TestCaseSetDB = Depends(verify_test_case_set_access),
-    db: Session = Depends(get_sync_db),
+    db: AsyncSession = Depends(get_db),
 ) -> TestCaseSection:
     """移動 Section 到新的父 Section"""
     try:
         service = TestCaseSectionService(db)
-        section = service.get_by_id(section_id)
+        section = await service.get_by_id(section_id)
 
         if not section or section.test_case_set_id != set_id:
             raise HTTPException(
@@ -321,7 +324,7 @@ async def move_section(
                 detail=f"Test Case Section {section_id} not found",
             )
 
-        updated_section = service.move(section_id, new_parent_id)
+        updated_section = await service.move(section_id, new_parent_id)
 
         await log_section_action(
             ActionType.UPDATE,

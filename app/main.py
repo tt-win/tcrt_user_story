@@ -6,6 +6,7 @@ from pathlib import Path
 import logging
 import os
 from typing import Optional
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 app = FastAPI(
@@ -23,7 +24,7 @@ except Exception as _e:
     logging.warning(f"GZipMiddleware 啟用失敗（不影響服務）：{_e}")
 
 from app.middlewares import AuditMiddleware
-from app.database import get_sync_db
+from app.database import get_db, run_sync
 from app.models.database_models import TestCaseLocal
 
 app.add_middleware(AuditMiddleware)
@@ -104,7 +105,7 @@ async def test_case_management(
     set_id: Optional[int] = Query(None),
     tc: Optional[str] = Query(None, description="Test case number for direct access"),
     team_id: Optional[int] = Query(None, description="Team ID for resolving test case set"),
-    db: Session = Depends(get_sync_db),
+    db: AsyncSession = Depends(get_db),
 ):
     """Test Case Management 頁面 - 需要先選擇 Set"""
     resolved_set_id = set_id
@@ -113,12 +114,15 @@ async def test_case_management(
     if resolved_set_id is None and tc and team_id:
         normalized_tc = tc.strip()
         if normalized_tc:
-            test_case = (
-                db.query(TestCaseLocal)
-                .filter(TestCaseLocal.team_id == team_id)
-                .filter(TestCaseLocal.test_case_number == normalized_tc)
-                .first()
-            )
+            def _resolve_set(sync_db: Session):
+                return (
+                    sync_db.query(TestCaseLocal)
+                    .filter(TestCaseLocal.team_id == team_id)
+                    .filter(TestCaseLocal.test_case_number == normalized_tc)
+                    .first()
+                )
+
+            test_case = await run_sync(db, _resolve_set)
             if test_case:
                 resolved_set_id = test_case.test_case_set_id
 
