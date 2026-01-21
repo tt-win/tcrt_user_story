@@ -186,6 +186,12 @@ body {
     color: var(--tr-primary);
 }
 
+.password-toggle:focus,
+.password-toggle:active {
+    color: var(--tr-primary-dark);
+    outline: none;
+}
+
 .requirements-list {
     font-size: 0.875rem;
     color: var(--tr-text-secondary);
@@ -200,39 +206,13 @@ body {
 }
 
 .btn-primary {
-    background: linear-gradient(135deg, var(--tr-primary) 0%, #5BA0F2 100%);
-    border: 1px solid var(--tr-primary);
-    border-radius: 6px;
     padding: 0.75rem 1.5rem;
-    font-weight: 500;
     font-size: 0.875rem;
-    transition: all 0.2s ease;
-    color: white;
     box-shadow: var(--tr-shadow-sm);
 }
 
 .btn-primary:hover {
-    background: linear-gradient(135deg, var(--tr-primary-dark) 0%, #4A8FD1 100%);
-    border-color: var(--tr-primary-dark);
-    transform: translateY(-1px);
     box-shadow: var(--tr-shadow-md);
-    color: white;
-}
-
-.btn-primary:focus,
-.btn-primary:active {
-    background: linear-gradient(135deg, var(--tr-primary-dark) 0%, #4A8FD1 100%);
-    border-color: var(--tr-primary-dark);
-    color: white;
-    box-shadow: 0 0 0 0.2rem rgba(var(--tr-primary-rgb), 0.25);
-}
-
-.btn-primary:disabled {
-    background: var(--tr-text-muted);
-    border-color: var(--tr-text-muted);
-    transform: none;
-    box-shadow: none;
-    color: white;
 }
 
 .security-notes {

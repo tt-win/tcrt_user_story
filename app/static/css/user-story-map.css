@@ -106,23 +106,27 @@
         cursor: pointer;
     }
 
-    .node-collapse-btn {
+.node-collapse-btn {
         position: absolute;
         top: 6px;
         right: 6px;
         border: none;
         background: transparent;
-        color: #6c757d;
+    color: #6c757d;
         padding: 0;
         line-height: 1;
         cursor: pointer;
-    }
+}
 
-    .node-collapse-btn:hover,
-    .node-collapse-btn:focus {
-        color: #0d6efd;
-        outline: none;
-    }
+.node-collapse-btn:hover,
+.node-collapse-btn:focus {
+    color: var(--tr-primary);
+    outline: none;
+}
+
+.node-collapse-btn:active {
+    color: var(--tr-primary-dark);
+}
 
     .node-collapse-btn i {
         pointer-events: none;
@@ -335,29 +339,34 @@
         z-index: 9999;
     }
 
-    .usm-map-btn {
-        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
-        border-radius: 6px;
-        background: rgba(255, 255, 255, 0.95); /* White background */
-        backdrop-filter: blur(4px);
-        border: 1px solid rgba(0,0,0,0.1);
-        color: #6c757d; /* Gray icon */
-        margin-top: 4px; /* Add space between buttons */
-    }
+.usm-map-btn {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.95); /* White background */
+    backdrop-filter: blur(4px);
+    border: 1px solid rgba(0,0,0,0.1);
+    color: var(--tr-text-secondary); /* Gray icon */
+    margin-top: 4px; /* Add space between buttons */
+}
 
-    .usm-map-btn:hover {
-        background: rgba(108, 117, 125, 0.95); /* Gray background */
-        color: white; /* White icon */
-        transform: translateY(-1px);
-        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
-    }
+.usm-map-btn:hover {
+    background: rgba(108, 117, 125, 0.95); /* Gray background */
+    color: #ffffff; /* White icon */
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+}
 
-    .usm-map-btn:focus {
-        background: rgba(108, 117, 125, 0.95); /* Gray background */
-        color: white; /* White icon */
-        outline: none;
-        box-shadow: 0 0 0 3px rgba(108, 117, 125, 0.5);
-    }
+.usm-map-btn:focus {
+    background: rgba(108, 117, 125, 0.95); /* Gray background */
+    color: #ffffff; /* White icon */
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(108, 117, 125, 0.5);
+}
+
+.usm-map-btn:active {
+    background: rgba(73, 80, 87, 0.95);
+    color: #ffffff;
+}
         font-size: 12px;
         pointer-events: auto;
     }
