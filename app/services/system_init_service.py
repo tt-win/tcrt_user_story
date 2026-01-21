@@ -6,104 +6,106 @@
 from typing import Optional, Dict, Any
 from datetime import datetime
 
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
-from app.database import get_sync_db
 from app.models.database_models import User as UserORM
 from app.auth.models import UserRole, UserCreate
 from app.services.user_service import UserService
+from app.database import run_sync
 
 
 class SystemInitService:
     """系統初始化服務"""
     
-    def __init__(self, db: Session = None):
+    def __init__(self, db: AsyncSession = None):
         self.db = db
         self.user_service = UserService()
     
-    def check_system_initialized(self) -> bool:
+    async def check_system_initialized(self) -> bool:
         """
         檢查系統是否已初始化（有至少一個 super_admin）
         
         Returns:
             bool: True 如果已初始化，False 需要初始化
         """
-        try:
-            if not self.db:
-                # 如果沒有傳入 db session，創建一個
-                from app.database import get_sync_db
-                db_gen = get_sync_db()
-                self.db = next(db_gen)
-            
-            # 檢查是否有 super_admin 使用者
-            super_admin_count = (
-                self.db.query(UserORM)
-                .filter(UserORM.role == UserRole.SUPER_ADMIN.value)
-                .filter(UserORM.is_active == True)
-                .count()
-            )
-            
-            return super_admin_count > 0
-            
-        except Exception as e:
-            print(f"檢查系統初始化狀態時發生錯誤: {e}")
-            # 出現錯誤時假設需要初始化
-            return False
+        def _check(sync_db: Session) -> bool:
+            try:
+                if not self.db:
+                    raise RuntimeError("SystemInitService 需要傳入 db session")
+
+                # 檢查是否有 super_admin 使用者
+                super_admin_count = (
+                    sync_db.query(UserORM)
+                    .filter(UserORM.role == UserRole.SUPER_ADMIN.value)
+                    .filter(UserORM.is_active == True)
+                    .count()
+                )
+
+                return super_admin_count > 0
+
+            except Exception as e:
+                print(f"檢查系統初始化狀態時發生錯誤: {e}")
+                # 出現錯誤時假設需要初始化
+                return False
+
+        return await run_sync(self.db, _check)
     
-    def get_system_stats(self) -> Dict[str, Any]:
+    async def get_system_stats(self) -> Dict[str, Any]:
         """
         取得系統統計資訊
         
         Returns:
             Dict[str, Any]: 系統統計資訊
         """
-        try:
-            if not self.db:
-                from app.database import get_sync_db
-                db_gen = get_sync_db()
-                self.db = next(db_gen)
-            
-            stats = {}
-            
-            # 使用者統計
-            total_users = self.db.query(UserORM).count()
-            active_users = self.db.query(UserORM).filter(UserORM.is_active == True).count()
-            
-            # 角色統計
-            role_stats = {}
-            for role in UserRole:
-                count = (
-                    self.db.query(UserORM)
-                    .filter(UserORM.role == role.value)
-                    .filter(UserORM.is_active == True)
-                    .count()
-                )
-                role_stats[role.value] = count
-            
-            # 檢查資料表是否存在
-            tables_exist = self._check_required_tables()
-            
-            stats.update({
-                'total_users': total_users,
-                'active_users': active_users,
-                'role_distribution': role_stats,
-                'tables_exist': tables_exist,
-                'is_initialized': self.check_system_initialized(),
-                'checked_at': datetime.now().isoformat()
-            })
-            
-            return stats
-            
-        except Exception as e:
-            print(f"取得系統統計時發生錯誤: {e}")
-            return {
-                'error': str(e),
-                'is_initialized': False,
-                'checked_at': datetime.now().isoformat()
-            }
+        def _get_stats(sync_db: Session) -> Dict[str, Any]:
+            try:
+                if not self.db:
+                    raise RuntimeError("SystemInitService 需要傳入 db session")
+
+                stats = {}
+
+                # 使用者統計
+                total_users = sync_db.query(UserORM).count()
+                active_users = sync_db.query(UserORM).filter(UserORM.is_active == True).count()
+
+                # 角色統計
+                role_stats = {}
+                for role in UserRole:
+                    count = (
+                        sync_db.query(UserORM)
+                        .filter(UserORM.role == role.value)
+                        .filter(UserORM.is_active == True)
+                        .count()
+                    )
+                    role_stats[role.value] = count
+
+                # 檢查資料表是否存在
+                tables_exist = self._check_required_tables_sync(sync_db)
+
+                stats.update({
+                    'total_users': total_users,
+                    'active_users': active_users,
+                    'role_distribution': role_stats,
+                    'tables_exist': tables_exist,
+                    'is_initialized': self._check_system_initialized_sync(sync_db),
+                    'checked_at': datetime.now().isoformat()
+                })
+
+                return stats
+
+            except Exception as e:
+                print(f"取得系統統計時發生錯誤: {e}")
+                return {
+                    'error': str(e),
+                    'is_initialized': False,
+                    'checked_at': datetime.now().isoformat()
+                }
+
+        return await run_sync(self.db, _get_stats)
     
-    def _check_required_tables(self) -> Dict[str, bool]:
+    def _check_required_tables_sync(self, sync_db: Session) -> Dict[str, bool]:
         """檢查必要資料表是否存在"""
         required_tables = [
             'users', 'teams', 'team_permissions',
@@ -116,7 +118,7 @@ class SystemInitService:
         try:
             for table_name in required_tables:
                 try:
-                    result = self.db.execute(
+                    result = sync_db.execute(
                         text(f"SELECT 1 FROM {table_name} LIMIT 1")
                     )
                     table_status[table_name] = True
@@ -129,7 +131,7 @@ class SystemInitService:
             print(f"檢查資料表時發生錯誤: {e}")
             return {table: False for table in required_tables}
     
-    def initialize_system(self, admin_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def initialize_system(self, admin_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         初始化系統，建立第一個 Super Admin
         
@@ -142,72 +144,82 @@ class SystemInitService:
         Returns:
             Dict[str, Any]: 初始化結果
         """
-        try:
-            # 驗證系統是否需要初始化
-            if self.check_system_initialized():
+        def _init(sync_db: Session) -> Dict[str, Any]:
+            try:
+                # 驗證系統是否需要初始化
+                if self._check_system_initialized_sync(sync_db):
+                    return {
+                        'success': False,
+                        'error': '系統已經初始化，不能重複執行初始化程序'
+                    }
+
+                # 驗證輸入資料
+                validation_error = self._validate_admin_data_sync(sync_db, admin_data)
+                if validation_error:
+                    return {
+                        'success': False,
+                        'error': validation_error
+                    }
+
+                if not self.db:
+                    raise RuntimeError("SystemInitService 需要傳入 db session")
+
+                # 建立 Super Admin 使用者
+                user_create = UserCreate(
+                    username=admin_data['username'],
+                    password=admin_data['password'],
+                    role=UserRole.SUPER_ADMIN,
+                    primary_team_id=None,
+                    is_active=True
+                )
+
+                # 使用使用者服務建立使用者
+                new_user = self.user_service.create_user(user_create, db=sync_db)
+
+                if new_user:
+                    # 設定 last_login_at 以跳過首次登入流程
+                    new_user.last_login_at = datetime.utcnow()
+                    sync_db.add(new_user)
+                    sync_db.commit()
+                    sync_db.refresh(new_user)
+
+                    return {
+                        'success': True,
+                        'message': f'系統初始化完成！Super Admin "{new_user.username}" 已建立。',
+                        'user_id': new_user.id,
+                        'username': new_user.username,
+                        'role': new_user.role.value, # 確保回傳字串
+                        'created_at': new_user.created_at.isoformat()
+                    }
+                else:
+                    sync_db.rollback()
+                    return {
+                        'success': False,
+                        'error': '建立 Super Admin 時發生未知錯誤'
+                    }
+
+            except Exception as e:
+                sync_db.rollback()
+                error_msg = f'系統初始化失敗: {str(e)}'
+                print(error_msg)
                 return {
                     'success': False,
-                    'error': '系統已經初始化，不能重複執行初始化程序'
+                    'error': error_msg
                 }
-            
-            # 驗證輸入資料
-            validation_error = self._validate_admin_data(admin_data)
-            if validation_error:
-                return {
-                    'success': False,
-                    'error': validation_error
-                }
-            
-            if not self.db:
-                from app.database import get_sync_db
-                db_gen = get_sync_db()
-                self.db = next(db_gen)
-            
-            # 建立 Super Admin 使用者
-            user_create = UserCreate(
-                username=admin_data['username'],
-                password=admin_data['password'],
-                role=UserRole.SUPER_ADMIN,
-                primary_team_id=None,
-                is_active=True
-            )
-            
-            # 使用使用者服務建立使用者
-            new_user = self.user_service.create_user(user_create, db=self.db)
-            
-            if new_user:
-                # 設定 last_login_at 以跳過首次登入流程
-                new_user.last_login_at = datetime.utcnow()
-                self.db.add(new_user)
-                self.db.commit()
-                self.db.refresh(new_user)
-                
-                return {
-                    'success': True,
-                    'message': f'系統初始化完成！Super Admin "{new_user.username}" 已建立。',
-                    'user_id': new_user.id,
-                    'username': new_user.username,
-                    'role': new_user.role.value, # 確保回傳字串
-                    'created_at': new_user.created_at.isoformat()
-                }
-            else:
-                self.db.rollback()
-                return {
-                    'success': False,
-                    'error': '建立 Super Admin 時發生未知錯誤'
-                }
-                
-        except Exception as e:
-            if self.db:
-                self.db.rollback()
-            error_msg = f'系統初始化失敗: {str(e)}'
-            print(error_msg)
-            return {
-                'success': False,
-                'error': error_msg
-            }
+
+        return await run_sync(self.db, _init)
     
-    def _validate_admin_data(self, admin_data: Dict[str, Any]) -> Optional[str]:
+    def _check_system_initialized_sync(self, sync_db: Session) -> bool:
+        """同步檢查系統是否已初始化"""
+        super_admin_count = (
+            sync_db.query(UserORM)
+            .filter(UserORM.role == UserRole.SUPER_ADMIN.value)
+            .filter(UserORM.is_active == True)
+            .count()
+        )
+        return super_admin_count > 0
+
+    def _validate_admin_data_sync(self, sync_db: Session, admin_data: Dict[str, Any]) -> Optional[str]:
         """驗證管理員資料"""
         required_fields = ['username', 'password', 'confirm_password']
         
@@ -230,19 +242,17 @@ class SystemInitService:
         # 檢查使用者名稱是否已存在
         try:
             if not self.db:
-                from app.database import get_sync_db
-                db_gen = get_sync_db()
-                self.db = next(db_gen)
-                
+                raise RuntimeError("SystemInitService 需要傳入 db session")
+
             existing_user = (
-                self.db.query(UserORM)
+                sync_db.query(UserORM)
                 .filter(UserORM.username == username)
                 .first()
             )
-            
+
             if existing_user:
                 return f'使用者名稱 "{username}" 已存在'
-                
+
         except Exception as e:
             return f'驗證使用者名稱時發生錯誤: {str(e)}'
         

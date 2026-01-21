@@ -4,10 +4,12 @@ TCG API 路由
 提供 TCG 搜尋和選擇功能
 """
 
-from fastapi import APIRouter, Query, HTTPException, status
+from fastapi import APIRouter, Query, HTTPException, status, Depends
 from typing import List, Optional
 from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.database import get_db
 from app.services.tcg_converter import tcg_converter
 
 router = APIRouter(prefix="/tcg", tags=["tcg"])
@@ -31,15 +33,16 @@ class TCGSearchResponse(BaseModel):
 async def search_tcg(
     keyword: Optional[str] = Query(None, description="搜尋關鍵字"),
     limit: int = Query(20, ge=1, le=100000, description="回傳筆數"),
-    offset: int = Query(0, ge=0, description="偏移量")
+    offset: int = Query(0, ge=0, description="偏移量"),
+    db: AsyncSession = Depends(get_db),
 ):
     """搜尋 TCG 單號（從本地 SQLite 查詢，極快速度）"""
     try:
         # 直接從本地 SQLite 查詢，速度極快
-        results = tcg_converter.search_tcg_numbers(keyword or "", limit + offset)
+        results = await tcg_converter.search_tcg_numbers(db, keyword or "", limit + offset)
         
         # 計算總數（搜尋全部結果）
-        total_results = tcg_converter.search_tcg_numbers(keyword or "", 999999)
+        total_results = await tcg_converter.search_tcg_numbers(db, keyword or "", 999999)
         total_count = len(total_results)
         
         # 應用 offset
@@ -66,11 +69,12 @@ async def search_tcg(
 
 @router.get("/popular", response_model=TCGSearchResponse)
 async def get_popular_tcg(
-    limit: int = Query(20, ge=1, le=100, description="回傳筆數")
+    limit: int = Query(20, ge=1, le=100, description="回傳筆數"),
+    db: AsyncSession = Depends(get_db),
 ):
     """取得熱門的 TCG 單號"""
     try:
-        results = tcg_converter.get_popular_tcg_numbers(limit)
+        results = await tcg_converter.get_popular_tcg_numbers(db, limit)
         
         tcg_options = [
             TCGOption(**result) for result in results

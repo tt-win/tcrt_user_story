@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from typing import List, Sequence, Union
 
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
+from sqlalchemy import select
 
 from app.models.database_models import (
     TestRunConfig as TestRunConfigDB,
@@ -34,17 +36,17 @@ def _normalize_status_row(row: Union[TestRunStatus, tuple]) -> TestRunStatus | N
         return None
 
 
-def load_member_statuses(db: Session, set_id: int) -> List[TestRunStatus]:
+async def load_member_statuses(db: AsyncSession, set_id: int) -> List[TestRunStatus]:
     """從資料庫查詢指定 Test Run Set 成員的狀態清單。"""
-    rows = (
-        db.query(TestRunConfigDB.status)
+    result = await db.execute(
+        select(TestRunConfigDB.status)
         .join(
             TestRunSetMembershipDB,
             TestRunSetMembershipDB.config_id == TestRunConfigDB.id,
         )
         .filter(TestRunSetMembershipDB.set_id == set_id)
-        .all()
     )
+    rows = result.all()
     statuses: List[TestRunStatus] = []
     for row in rows:
         normalized = _normalize_status_row(row)
@@ -84,14 +86,14 @@ def compute_set_status(
     return TestRunSetStatus.ACTIVE
 
 
-def recalculate_set_status(db: Session, set_db: TestRunSetDB) -> TestRunSetStatus:
+async def recalculate_set_status(db: AsyncSession, set_db: TestRunSetDB) -> TestRunSetStatus:
     """
     重新計算並同步 Test Run Set 狀態。
 
     會先 flush 以確保最新變更可供查詢，再更新狀態欄位。
     """
-    db.flush()
-    member_statuses = load_member_statuses(db, set_db.id)
+    await db.flush()
+    member_statuses = await load_member_statuses(db, set_db.id)
     new_status = compute_set_status(set_db.status, member_statuses)
     if set_db.status != new_status:
         set_db.status = new_status

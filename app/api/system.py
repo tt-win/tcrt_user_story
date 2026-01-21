@@ -6,10 +6,10 @@
 from typing import Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import JSONResponse
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel, Field
 
-from app.database import get_sync_db
+from app.database import get_db
 from app.services.system_init_service import SystemInitService
 from app.auth.models import UserRole
 
@@ -49,7 +49,7 @@ class SystemInitResponse(BaseModel):
 # ===================== API 端點 =====================
 
 @router.get("/status", response_model=Dict[str, Any])
-def get_system_status(db: Session = Depends(get_sync_db)):
+async def get_system_status(db: AsyncSession = Depends(get_db)):
     """
     取得系統狀態
     
@@ -57,7 +57,7 @@ def get_system_status(db: Session = Depends(get_sync_db)):
     """
     try:
         init_service = SystemInitService(db)
-        stats = init_service.get_system_stats()
+        stats = await init_service.get_system_stats()
         
         return JSONResponse(
             status_code=status.HTTP_200_OK,
@@ -75,7 +75,7 @@ def get_system_status(db: Session = Depends(get_sync_db)):
 
 
 @router.get("/initialization-check")
-def check_initialization_needed(db: Session = Depends(get_sync_db)):
+async def check_initialization_needed(db: AsyncSession = Depends(get_db)):
     """
     檢查系統是否需要初始化
     
@@ -84,7 +84,9 @@ def check_initialization_needed(db: Session = Depends(get_sync_db)):
     """
     try:
         init_service = SystemInitService(db)
-        is_initialized = init_service.check_system_initialized()
+        is_initialized = await init_service.check_system_initialized()
+        stats = await init_service.get_system_stats()
+        checked_at = stats.get("checked_at")
         
         return JSONResponse(
             status_code=status.HTTP_200_OK,
@@ -92,7 +94,7 @@ def check_initialization_needed(db: Session = Depends(get_sync_db)):
                 "is_initialized": is_initialized,
                 "needs_setup": not is_initialized,
                 "setup_url": "/setup" if not is_initialized else None,
-                "checked_at": init_service.get_system_stats().get("checked_at")
+                "checked_at": checked_at
             }
         )
         
@@ -109,7 +111,7 @@ def check_initialization_needed(db: Session = Depends(get_sync_db)):
 
 
 @router.get("/initialization-guide")
-def get_initialization_guide():
+async def get_initialization_guide():
     """
     取得系統初始化指引
     
@@ -135,9 +137,9 @@ def get_initialization_guide():
 
 
 @router.post("/initialize", response_model=Dict[str, Any])
-def initialize_system(
+async def initialize_system(
     request: SystemInitRequest,
-    db: Session = Depends(get_sync_db)
+    db: AsyncSession = Depends(get_db)
 ):
     """
     初始化系統
@@ -153,9 +155,18 @@ def initialize_system(
     """
     try:
         init_service = SystemInitService(db)
-        
-        # 檢查系統是否已初始化
-        if init_service.check_system_initialized():
+        if await init_service.check_system_initialized():
+            init_state = {"already_initialized": True, "result": None}
+        else:
+            admin_data = {
+                "username": request.username,
+                "password": request.password,
+                "confirm_password": request.confirm_password
+            }
+            result = await init_service.initialize_system(admin_data)
+            init_state = {"already_initialized": False, "result": result}
+
+        if init_state["already_initialized"]:
             return JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 content={
@@ -163,16 +174,8 @@ def initialize_system(
                     "error": "系統已經初始化，不能重複執行初始化程序"
                 }
             )
-        
-        # 轉換請求資料
-        admin_data = {
-            "username": request.username,
-            "password": request.password,
-            "confirm_password": request.confirm_password
-        }
-        
-        # 執行初始化
-        result = init_service.initialize_system(admin_data)
+
+        result = init_state["result"]
         
         if result.get("success"):
             return JSONResponse(
@@ -197,7 +200,7 @@ def initialize_system(
 
 
 @router.get("/health")
-def system_health_check(db: Session = Depends(get_sync_db)):
+async def system_health_check(db: AsyncSession = Depends(get_db)):
     """
     系統健康檢查
     
@@ -205,10 +208,9 @@ def system_health_check(db: Session = Depends(get_sync_db)):
     """
     try:
         init_service = SystemInitService(db)
-        
-        # 檢查資料庫連線
+
         try:
-            stats = init_service.get_system_stats()
+            stats = await init_service.get_system_stats()
             db_healthy = True
         except Exception as db_error:
             db_healthy = False
@@ -250,8 +252,8 @@ def system_health_check(db: Session = Depends(get_sync_db)):
 # ===================== 管理員專用端點 =====================
 
 @router.get("/admin/reset-initialization-check")
-def admin_reset_initialization_check(
-    db: Session = Depends(get_sync_db),
+async def admin_reset_initialization_check(
+    db: AsyncSession = Depends(get_db),
     # current_user: User = Depends(require_super_admin)  # 需要 Super Admin 權限
 ):
     """
@@ -261,9 +263,7 @@ def admin_reset_initialization_check(
     """
     try:
         init_service = SystemInitService(db)
-        
-        # 取得目前系統狀態
-        current_stats = init_service.get_system_stats()
+        current_stats = await init_service.get_system_stats()
         
         return JSONResponse(
             status_code=status.HTTP_200_OK,
@@ -285,7 +285,7 @@ def admin_reset_initialization_check(
 
 # ===================== 工具函數 =====================
 
-def is_system_initialized(db: Session) -> bool:
+async def is_system_initialized(db: AsyncSession) -> bool:
     """
     檢查系統是否已初始化的工具函數
     
@@ -293,6 +293,6 @@ def is_system_initialized(db: Session) -> bool:
     """
     try:
         init_service = SystemInitService(db)
-        return init_service.check_system_initialized()
+        return await init_service.check_system_initialized()
     except Exception:
         return False

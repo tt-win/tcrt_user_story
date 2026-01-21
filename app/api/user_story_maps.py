@@ -35,7 +35,7 @@ from app.auth.dependencies import get_current_user
 from app.auth.models import PermissionType
 from app.auth.permission_service import permission_service
 from app.models.database_models import User, Team
-from app.database import get_db, get_sync_db
+from app.database import get_db, run_sync
 from app.audit import audit_service, ActionType, ResourceType, AuditSeverity
 from sqlalchemy import insert
 
@@ -1953,7 +1953,7 @@ async def import_usm_text(
     request: USMTextImportRequest,
     current_user: User = Depends(get_current_user),
     usm_db: AsyncSession = Depends(get_usm_db),
-    main_db: Session = Depends(get_sync_db),
+    main_db: AsyncSession = Depends(get_db),
 ):
     """
     從 USM 文字格式匯入節點
@@ -1985,9 +1985,12 @@ async def import_usm_text(
             )
         
         # 權限檢查：僅確認 Team 存在，允許匯入
-        team = main_db.execute(
-            select(Team).where(Team.id == usm_map.team_id)
-        ).scalar_one_or_none()
+        def _load_team(sync_db: Session):
+            return sync_db.execute(
+                select(Team).where(Team.id == usm_map.team_id)
+            ).scalar_one_or_none()
+
+        team = await run_sync(main_db, _load_team)
         if not team:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -2145,7 +2148,7 @@ async def export_usm_text(
     map_id: int,
     current_user: User = Depends(get_current_user),
     usm_db: AsyncSession = Depends(get_usm_db),
-    main_db: Session = Depends(get_sync_db),
+    main_db: AsyncSession = Depends(get_db),
 ):
     """
     匯出 User Story Map 為文字格式
@@ -2173,9 +2176,12 @@ async def export_usm_text(
             )
         
         # 權限檢查（簡化：僅確認 team 存在）
-        team = main_db.execute(
-            select(Team).where(Team.id == usm_map.team_id)
-        ).scalar_one_or_none()
+        def _load_team(sync_db: Session):
+            return sync_db.execute(
+                select(Team).where(Team.id == usm_map.team_id)
+            ).scalar_one_or_none()
+
+        team = await run_sync(main_db, _load_team)
         if not team:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -2184,11 +2190,14 @@ async def export_usm_text(
         
         nodes_db = []
         try:
-            nodes_db = main_db.execute(
-                select(UserStoryMapNodeDB)
-                .where(UserStoryMapNodeDB.map_id == map_id)
-                .order_by(UserStoryMapNodeDB.level, UserStoryMapNodeDB.position_x)
-            ).scalars().all()
+            def _load_nodes(sync_db: Session):
+                return sync_db.execute(
+                    select(UserStoryMapNodeDB)
+                    .where(UserStoryMapNodeDB.map_id == map_id)
+                    .order_by(UserStoryMapNodeDB.level, UserStoryMapNodeDB.position_x)
+                ).scalars().all()
+
+            nodes_db = await run_sync(main_db, _load_nodes)
         except SQLAlchemyError:
             nodes_db = []
         

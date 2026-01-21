@@ -7,11 +7,13 @@
 import json
 import logging
 from typing import List, Optional, Any
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from app.models.database_models import TestRunItem as TestRunItemDB, Team as TeamDB
 from app.services.lark_client import LarkClient
 from app.config import settings
 from app.models.test_case import TestCase
+from app.database import run_sync
 
 
 class TestResultCleanupService:
@@ -24,7 +26,7 @@ class TestResultCleanupService:
         self, 
         team_id: int, 
         config_id: int, 
-        db: Session
+        db: AsyncSession
     ) -> int:
         """
         清理 Test Run Config 相關的所有測試結果檔案
@@ -39,18 +41,24 @@ class TestResultCleanupService:
         """
         try:
             # 1. 獲取團隊配置
-            team_config = db.query(TeamDB).filter(TeamDB.id == team_id).first()
+            team_config = await run_sync(
+                db,
+                lambda sync_db: sync_db.query(TeamDB).filter(TeamDB.id == team_id).first()
+            )
             if not team_config:
                 self.logger.warning(f"找不到團隊配置 {team_id}")
                 return 0
             
             # 2. 獲取所有相關的 Test Run Items
-            test_run_items = db.query(TestRunItemDB).filter(
-                TestRunItemDB.team_id == team_id,
-                TestRunItemDB.config_id == config_id,
-                TestRunItemDB.result_files_uploaded == 1,
-                TestRunItemDB.upload_history_json.isnot(None)
-            ).all()
+            test_run_items = await run_sync(
+                db,
+                lambda sync_db: sync_db.query(TestRunItemDB).filter(
+                    TestRunItemDB.team_id == team_id,
+                    TestRunItemDB.config_id == config_id,
+                    TestRunItemDB.result_files_uploaded == 1,
+                    TestRunItemDB.upload_history_json.isnot(None)
+                ).all()
+            )
             
             total_cleaned_files = 0
             
@@ -71,7 +79,7 @@ class TestResultCleanupService:
         team_id: int, 
         config_id: int,
         item_id: int,
-        db: Session
+        db: AsyncSession
     ) -> int:
         """
         清理單個 Test Run Item 的測試結果檔案
@@ -87,19 +95,25 @@ class TestResultCleanupService:
         """
         try:
             # 1. 獲取團隊配置
-            team_config = db.query(TeamDB).filter(TeamDB.id == team_id).first()
+            team_config = await run_sync(
+                db,
+                lambda sync_db: sync_db.query(TeamDB).filter(TeamDB.id == team_id).first()
+            )
             if not team_config:
                 self.logger.warning(f"找不到團隊配置 {team_id}")
                 return 0
             
             # 2. 獲取特定的 Test Run Item
-            test_run_item = db.query(TestRunItemDB).filter(
-                TestRunItemDB.id == item_id,
-                TestRunItemDB.team_id == team_id,
-                TestRunItemDB.config_id == config_id,
-                TestRunItemDB.result_files_uploaded == 1,
-                TestRunItemDB.upload_history_json.isnot(None)
-            ).first()
+            test_run_item = await run_sync(
+                db,
+                lambda sync_db: sync_db.query(TestRunItemDB).filter(
+                    TestRunItemDB.id == item_id,
+                    TestRunItemDB.team_id == team_id,
+                    TestRunItemDB.config_id == config_id,
+                    TestRunItemDB.result_files_uploaded == 1,
+                    TestRunItemDB.upload_history_json.isnot(None)
+                ).first()
+            )
             
             if not test_run_item:
                 self.logger.info(f"Test Run Item {item_id} 沒有需要清理的附件")

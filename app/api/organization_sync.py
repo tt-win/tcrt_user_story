@@ -47,7 +47,7 @@ async def get_organization_stats():
     """
     try:
         sync_service = get_lark_org_sync_service()
-        stats = sync_service.get_organization_stats()
+        stats = await sync_service.get_organization_stats()
         
         return {
             "success": True,
@@ -94,14 +94,14 @@ async def trigger_organization_sync(
             raise HTTPException(status_code=400, detail="無效的同步類型，支援: full, departments, users")
         
         # 執行背景同步
-        def run_background_sync():
+        async def run_background_sync():
             try:
                 if sync_type == "departments":
-                    result = sync_service.sync_departments_only()
+                    result = await sync_service.sync_departments_only()
                 elif sync_type == "users":
-                    result = sync_service.sync_users_only()
+                    result = await sync_service.sync_users_only()
                 elif sync_type == "full":
-                    result = sync_service.sync_full_organization()
+                    result = await sync_service.sync_full_organization()
                 
                 logger.info(f"背景組織同步完成: {result}")
             except Exception as e:
@@ -162,14 +162,14 @@ async def trigger_organization_sync_background(
             }
         
         # 執行背景同步
-        def run_background_sync():
+        async def run_background_sync():
             try:
                 if sync_type == "departments":
-                    result = sync_service.sync_departments_only()
+                    result = await sync_service.sync_departments_only()
                 elif sync_type == "users":
-                    result = sync_service.sync_users_only()
+                    result = await sync_service.sync_users_only()
                 elif sync_type == "full":
-                    result = sync_service.sync_full_organization()
+                    result = await sync_service.sync_full_organization()
                 else:
                     logger.error(f"無效的同步類型: {sync_type}")
                     return
@@ -214,7 +214,7 @@ async def cleanup_organization_data(
     """
     try:
         sync_service = get_lark_org_sync_service()
-        cleanup_result = sync_service.cleanup_old_data(days_threshold)
+        cleanup_result = await sync_service.cleanup_old_data(days_threshold=days_threshold)
         
         if 'error' in cleanup_result:
             raise HTTPException(status_code=500, detail=cleanup_result['error'])
