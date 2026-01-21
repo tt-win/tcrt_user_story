@@ -43,12 +43,20 @@
     height: 28px;
     border: none;
     background: transparent;
-    color: #5f6368;
+    color: var(--tr-text-secondary);
     border-radius: 4px;
 }
 
 .sheet-add-btn:hover {
-    background: #e3e6ea;
+    background: var(--tr-bg-light);
+    color: var(--tr-primary);
+}
+
+.sheet-add-btn:focus,
+.sheet-add-btn:active {
+    background: var(--tr-bg-light);
+    color: var(--tr-primary-dark);
+    outline: none;
 }
 
 .sheet-tabs-container {
