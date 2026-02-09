@@ -230,6 +230,7 @@ COLUMN_CHECKS: Dict[str, List[ColumnSpec]] = {
         # TP 票相關
         ColumnSpec("related_tp_tickets_json", "TEXT", nullable=True, default=None),
         ColumnSpec("tp_tickets_search", "TEXT", nullable=True, default=None),
+        ColumnSpec("test_case_set_ids_json", "TEXT", nullable=True, default=None),
         # 通知相關（對應 ORM：notifications_enabled, notify_chat_ids_json, notify_chat_names_snapshot, notify_chats_search）
         ColumnSpec("notifications_enabled", "INTEGER", nullable=False, default=0),  # Boolean -> INTEGER(0/1)
         ColumnSpec("notify_chat_ids_json", "TEXT", nullable=True, default=None),

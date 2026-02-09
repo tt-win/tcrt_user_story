@@ -30,14 +30,17 @@ function openConfigFormModal(configId = null, options = {}) {
     const form = document.getElementById('testRunConfigForm');
     form.reset();
     document.getElementById('configId').value = '';
-    // 優先使用顯式傳入的 setId；若有從 Test Case Set 預選流程也帶入
-    if (!options.setId && window._testCaseSetIdSource) {
-        options.setId = window._testCaseSetIdSource;
-    }
+    // options.setId 僅代表 Test Run Set ID（分組），不可混用 Test Case Set ID
+    const preselectedCaseSetId = (!configId && window._testCaseSetIdSource)
+        ? Number(window._testCaseSetIdSource)
+        : null;
     pendingSetIdForNewConfig = options.setId ?? null;
     document.getElementById('configSetId').value = pendingSetIdForNewConfig ? String(pendingSetIdForNewConfig) : '';
-    renderTestCaseSetOptions(pendingSetIdForNewConfig);
-    currentSetIdForCaseSelection = pendingSetIdForNewConfig ?? null;
+    currentScopeSetIdsForCaseSelection = Number.isFinite(preselectedCaseSetId) && preselectedCaseSetId > 0
+        ? [preselectedCaseSetId]
+        : [];
+    currentSetIdForCaseSelection = currentScopeSetIdsForCaseSelection[0] || null;
+    renderTestCaseSetOptions(currentScopeSetIdsForCaseSelection);
 
     const titleEl = document.getElementById('configFormModalTitle');
     const saveBtnTextEl = document.getElementById('saveConfigBtnText');
@@ -52,22 +55,27 @@ function openConfigFormModal(configId = null, options = {}) {
             document.getElementById('configName').value = config.name;
             document.getElementById('configDescription').value = config.description || '';
             document.getElementById('configSetId').value = config.set_id ? String(config.set_id) : '';
+            currentScopeSetIdsForCaseSelection = [];
             currentSetIdForCaseSelection = null;
             document.getElementById('configTestCaseSetId').value = '';
-            updateTestRunSetReadOnlyDisplay(null, 'edit');
-            resolveConfigTestCaseSetId(configId).then(deducedSetId => {
-                currentSetIdForCaseSelection = deducedSetId;
-                if (deducedSetId) {
-                    document.getElementById('configTestCaseSetId').value = String(deducedSetId);
-                }
-                renderTestCaseSetOptions(deducedSetId);
-                updateTestRunSetReadOnlyDisplay(deducedSetId, 'edit');
+            updateTestRunSetReadOnlyDisplay([], 'edit');
+            resolveConfigTestCaseSetIds(configId).then(deducedSetIds => {
+                currentScopeSetIdsForCaseSelection = deducedSetIds;
+                currentSetIdForCaseSelection = currentScopeSetIdsForCaseSelection[0] || null;
+                document.getElementById('configTestCaseSetId').value = currentScopeSetIdsForCaseSelection.join(',');
+                renderTestCaseSetOptions(currentScopeSetIdsForCaseSelection);
+                updateTestRunSetReadOnlyDisplay(currentScopeSetIdsForCaseSelection, 'edit');
             });
             // 嘗試載入詳細配置以填入可選欄位和 TP 票號
             window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${configId}`)
               .then(r => r.ok ? r.json() : null)
               .then(full => {
                 if (full) {
+                  currentScopeSetIdsForCaseSelection = normalizeSetIds(full.test_case_set_ids || currentScopeSetIdsForCaseSelection);
+                  currentSetIdForCaseSelection = currentScopeSetIdsForCaseSelection[0] || null;
+                  document.getElementById('configTestCaseSetId').value = currentScopeSetIdsForCaseSelection.join(',');
+                  renderTestCaseSetOptions(currentScopeSetIdsForCaseSelection);
+                  updateTestRunSetReadOnlyDisplay(currentScopeSetIdsForCaseSelection, 'edit');
                   const descriptionInput = document.getElementById('configDescription');
                   if (descriptionInput && !descriptionInput.value.trim()) {
                     descriptionInput.value = full.description || '';
@@ -88,8 +96,8 @@ function openConfigFormModal(configId = null, options = {}) {
         saveBtnTextEl.setAttribute('data-i18n', 'common.create');
         // 清空 TP 票號
         clearAllTpTickets();
-        renderTestCaseSetOptions(pendingSetIdForNewConfig);
-        updateTestRunSetReadOnlyDisplay(pendingSetIdForNewConfig, 'create');
+        renderTestCaseSetOptions(currentScopeSetIdsForCaseSelection);
+        updateTestRunSetReadOnlyDisplay(currentScopeSetIdsForCaseSelection, 'create');
     }
     
     // 初始化 TP 標籤輸入功能
@@ -104,7 +112,9 @@ function openConfigFormModal(configId = null, options = {}) {
         clearNotificationSettings();
         pendingSetIdForNewConfig = null;
         document.getElementById('configSetId').value = '';
-        updateTestRunSetReadOnlyDisplay(null, 'create');
+        currentScopeSetIdsForCaseSelection = [];
+        currentSetIdForCaseSelection = null;
+        updateTestRunSetReadOnlyDisplay([], 'create');
 
         // 如果之前 Test Run Set Detail Modal 是打開的，重新顯示它
         if (!suppressSetDetailReopen && wasSetDetailModalOpen && testRunSetDetailModalInstance) {
@@ -147,6 +157,15 @@ async function handleSaveConfig() {
         return;
     }
 
+    const selectedSetIds = getSelectedConfigSetIds();
+    if (!selectedSetIds.length) {
+        const msg = window.i18n
+            ? (window.i18n.t('testRun.sets.selectSetFirst') || '請先選擇至少一個 Test Case Set')
+            : '請先選擇至少一個 Test Case Set';
+        AppUtils.showWarning(msg);
+        return;
+    }
+
     const configData = { name: document.getElementById('configName').value };
     const descVal = (document.getElementById('configDescription').value || '').trim();
     const envVal = (document.getElementById('testEnvironment').value || '').trim();
@@ -164,22 +183,15 @@ async function handleSaveConfig() {
         configData.notify_chat_ids = notificationSettings.chatIds;
         configData.notify_chat_names_snapshot = notificationSettings.chatNames;
     }
+    configData.test_case_set_ids = selectedSetIds;
+    document.getElementById('configTestCaseSetId').value = selectedSetIds.join(',');
 
-  if (!isEdit) {
-    const testCaseSetId = document.getElementById('configTestCaseSetId').value;
-    if (!testCaseSetId) {
-      const msg = window.i18n ? (window.i18n.t('testRun.sets.selectSetFirst') || '請先選擇一個 Test Case Set 再建立 Test Run') : '請先選擇一個 Test Case Set 再建立 Test Run';
-      AppUtils.showWarning(msg);
-      return;
-    }
-    currentSetIdForCaseSelection = parseInt(testCaseSetId, 10);
-    window._lastTestCaseSetIdForRun = currentSetIdForCaseSelection;
-    renderTestCaseSetOptions(currentSetIdForCaseSelection);
-    // 保留原有 Test Run Set 功能（若有選擇）
-    const setIdValue = document.getElementById('configSetId').value;
-    if (setIdValue) {
-      configData.set_id = parseInt(setIdValue, 10);
-    }
+    if (!isEdit) {
+        // 保留原有 Test Run Set 功能（若有選擇）
+        const setIdValue = document.getElementById('configSetId').value;
+        if (setIdValue) {
+            configData.set_id = parseInt(setIdValue, 10);
+        }
     }
 
     const url = isEdit
@@ -208,14 +220,22 @@ async function handleSaveConfig() {
         }
         configFormModalInstance.hide();
         if (isEdit) {
-            const msg = window.i18n ? window.i18n.t('testRun.updateSuccess') : '更新成功';
+            let msg = window.i18n ? window.i18n.t('testRun.updateSuccess') : '更新成功';
+            const removedCount = Number(data?.cleanup_summary?.removed_item_count || 0);
+            if (removedCount > 0) {
+                const impactedRunCount = Array.isArray(data?.cleanup_summary?.impacted_test_runs)
+                    ? data.cleanup_summary.impacted_test_runs.length
+                    : 0;
+                msg += `；移除 ${removedCount} 筆不在範圍內的 Test Run 項目（影響 ${impactedRunCount} 個 Test Run）`;
+            }
             AppUtils.showSuccess(msg);
             await loadTestRunConfigs();
         } else {
             const msg = window.i18n ? window.i18n.t('testRun.createConfigSuccessSelectCases') : '建立成功，請選擇要加入的 Test Case';
             AppUtils.showSuccess(msg);
-            currentSetIdForCaseSelection = window._lastTestCaseSetIdForRun || parseInt(document.getElementById('configTestCaseSetId').value || '0', 10) || null;
-            renderTestCaseSetOptions(currentSetIdForCaseSelection);
+            currentScopeSetIdsForCaseSelection = normalizeSetIds(selectedSetIds);
+            currentSetIdForCaseSelection = currentScopeSetIdsForCaseSelection[0] || null;
+            renderTestCaseSetOptions(currentScopeSetIdsForCaseSelection);
             // 進入 Test Case 選擇流程（直接開啟，取消時自動回滾）
             pendingCreate = true;
             createdItemsInSession = false;

@@ -65,6 +65,7 @@ async function loadTestRunConfigs() {
           // 保存預選信息到 window，稍後在建立配置後使用
           window._preselectedCaseIdsFromSet = preselectedCaseIds;
           window._testCaseSetIdSource = parseInt(setId);
+          currentScopeSetIdsForCaseSelection = [parseInt(setId)];
           currentSetIdForCaseSelection = parseInt(setId);
           // 打開 Test Run Set 建立表單（正規流程的第一步）
           openConfigFormModal();

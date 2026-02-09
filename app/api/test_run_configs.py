@@ -30,6 +30,7 @@ from app.models.database_models import (
 from app.models.lark_types import TestResultStatus
 from app.models.test_run_config import TestRunStatus
 from app.services.lark_notify_service import get_lark_notify_service
+from app.services.test_run_scope_service import TestRunScopeService
 from app.services.test_run_set_status import recalculate_set_status
 from datetime import datetime
 from pydantic import BaseModel, Field
@@ -169,7 +170,7 @@ def sync_notify_chats_to_db(config_db: TestRunConfigDB, chat_ids: Optional[List[
     config_db.notify_chats_search = search_string
 
 
-def convert_db_to_model(config_db: TestRunConfigDB) -> TestRunConfig:
+def convert_db_to_model(config_db: TestRunConfigDB, db: Optional[Session] = None) -> TestRunConfig:
     """將資料庫 TestRunConfig 模型轉換為 API 模型"""
     # 反序列化 TP 票號
     related_tp_tickets = deserialize_tp_tickets(config_db.related_tp_tickets_json)
@@ -187,6 +188,15 @@ def convert_db_to_model(config_db: TestRunConfigDB) -> TestRunConfig:
         if config_db.set_membership.test_run_set:
             set_name = config_db.set_membership.test_run_set.name
 
+    test_case_set_ids = TestRunScopeService.parse_scope_ids_json(config_db.test_case_set_ids_json)
+    if not test_case_set_ids and db is not None:
+        test_case_set_ids = TestRunScopeService.get_config_scope_ids(
+            db,
+            config_db,
+            allow_fallback=True,
+            persist_fallback=False,
+        )
+
     return TestRunConfig(
         id=config_db.id,
         team_id=config_db.team_id,
@@ -194,6 +204,7 @@ def convert_db_to_model(config_db: TestRunConfigDB) -> TestRunConfig:
         description=config_db.description,
         set_id=set_id,
         set_name=set_name,
+        test_case_set_ids=test_case_set_ids,
         test_version=config_db.test_version,
         test_environment=config_db.test_environment,
         build_number=config_db.build_number,
@@ -235,6 +246,7 @@ def convert_model_to_db(config: TestRunConfigCreate) -> TestRunConfigDB:
         build_number=config.build_number,
         related_tp_tickets_json=tp_json,
         tp_tickets_search=tp_search,
+        test_case_set_ids_json=TestRunScopeService.dump_scope_ids_json(config.test_case_set_ids),
         # 通知設定
         notifications_enabled=config.notifications_enabled or False,
         notify_chat_ids_json=ids_json,
@@ -246,14 +258,15 @@ def convert_model_to_db(config: TestRunConfigCreate) -> TestRunConfigDB:
     )
 
 
-def build_config_summary(config_db: TestRunConfigDB) -> TestRunConfigSummary:
+def build_config_summary(config_db: TestRunConfigDB, db: Optional[Session] = None) -> TestRunConfigSummary:
     """建立 TestRunConfig 摘要模型"""
-    config = convert_db_to_model(config_db)
+    config = convert_db_to_model(config_db, db)
     return TestRunConfigSummary(
         id=config.id,
         name=config.name,
         set_id=config.set_id,
         set_name=config.set_name,
+        test_case_set_ids=config.test_case_set_ids,
         test_environment=config.test_environment,
         build_number=config.build_number,
         test_version=config.test_version,
@@ -444,7 +457,7 @@ async def get_test_run_configs(
         # 轉換為摘要格式（execution_rate/pass_rate 由模型方法計算）
         summaries = []
         for config_db in configs_db:
-            summaries.append(build_config_summary(config_db))
+            summaries.append(build_config_summary(config_db, sync_db))
 
         return summaries
 
@@ -463,6 +476,21 @@ async def create_test_run_config(
 
         # 確保 team_id 一致
         config.team_id = team_id
+        requested_scope = (
+            config.test_case_set_ids
+            if config.test_case_set_ids is not None
+            else ([config.test_case_set_id] if config.test_case_set_id is not None else None)
+        )
+        try:
+            validated_scope_ids = TestRunScopeService.validate_scope_ids(
+                sync_db,
+                team_id=team_id,
+                scope_ids=requested_scope,
+                allow_empty=False,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+        config.test_case_set_ids = validated_scope_ids
 
         # 建立資料庫模型
         config_db = convert_model_to_db(config)
@@ -481,7 +509,7 @@ async def create_test_run_config(
         sync_db.refresh(config_db)
         sync_db.expire(config_db, ['set_membership'])
 
-        return convert_db_to_model(config_db), parent_set_id
+        return convert_db_to_model(config_db, sync_db), parent_set_id
 
     result, parent_set_id = await run_sync(db, _create)
     if parent_set_id is not None:
@@ -489,7 +517,7 @@ async def create_test_run_config(
         if parent_set and parent_set.team_id == team_id:
             await recalculate_set_status(db, parent_set)
             await db.commit()
-    return result
+    return TestRunConfigResponse(**result.model_dump(), cleanup_summary=None)
 
 
 @router.get("/{config_id}", response_model=TestRunConfigResponse)
@@ -513,7 +541,7 @@ async def get_test_run_config(
                 detail=f"找不到測試執行配置 ID {config_id}"
             )
 
-        return convert_db_to_model(config_db)
+        return convert_db_to_model(config_db, sync_db)
 
     return await run_sync(db, _get)
 
@@ -547,6 +575,57 @@ async def update_test_run_config(
         # 更新欄位
         update_data = config_update.dict(exclude_unset=True)
 
+        cleanup_summary = None
+        requested_scope = None
+        scope_update_requested = False
+        if "test_case_set_ids" in update_data:
+            requested_scope = update_data.pop("test_case_set_ids")
+            scope_update_requested = True
+        elif "test_case_set_id" in update_data:
+            single_scope_id = update_data.pop("test_case_set_id")
+            requested_scope = [single_scope_id] if single_scope_id is not None else []
+            scope_update_requested = True
+
+        if scope_update_requested:
+            old_scope = TestRunScopeService.get_config_scope_ids(
+                sync_db,
+                config_db,
+                allow_fallback=True,
+                persist_fallback=False,
+            )
+            try:
+                next_scope = TestRunScopeService.validate_scope_ids(
+                    sync_db,
+                    team_id=team_id,
+                    scope_ids=requested_scope,
+                    allow_empty=False,
+                )
+            except ValueError as exc:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc))
+
+            TestRunScopeService.set_config_scope_ids(config_db, next_scope)
+            removed_set_ids = [sid for sid in old_scope if sid not in next_scope]
+            if removed_set_ids:
+                cleanup_summary = TestRunScopeService.cleanup_scope_reduction(
+                    sync_db,
+                    team_id=team_id,
+                    config_id=config_id,
+                    removed_set_ids=removed_set_ids,
+                )
+                logger.info(
+                    "Test Run Config %s scope reduced: removed_set_ids=%s removed_items=%s",
+                    config_id,
+                    removed_set_ids,
+                    cleanup_summary.get("removed_item_count", 0),
+                )
+            else:
+                cleanup_summary = {
+                    "removed_item_count": 0,
+                    "impacted_test_runs": [],
+                    "trigger": "reduce_test_case_set_scope",
+                    "affected_test_case_set_ids": [],
+                }
+
         # 特殊處理 TP 票號欄位
         if 'related_tp_tickets' in update_data:
             tp_tickets = update_data.pop('related_tp_tickets')
@@ -572,12 +651,13 @@ async def update_test_run_config(
         sync_db.refresh(config_db)
 
         return {
-            "config": convert_db_to_model(config_db),
+            "config": convert_db_to_model(config_db, sync_db),
             "old_status": old_status,
             "new_status": config_db.status,
             "notifications_enabled": config_db.notifications_enabled,
             "notify_chat_ids_json": config_db.notify_chat_ids_json,
             "parent_set_id": parent_set_id,
+            "cleanup_summary": cleanup_summary,
         }
 
     update_result = await run_sync(db, _update)
@@ -619,7 +699,10 @@ async def update_test_run_config(
             except (json.JSONDecodeError, TypeError) as e:
                 logger.warning(f"Test Run Config {config_id} 的 notify_chat_ids_json 解析失敗: {e}")
 
-    return update_result["config"]
+    return TestRunConfigResponse(
+        **update_result["config"].model_dump(),
+        cleanup_summary=update_result.get("cleanup_summary"),
+    )
 
 
 @router.delete("/{config_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -785,7 +868,7 @@ async def change_test_run_status(
         sync_db.commit()
         sync_db.refresh(config_db)
 
-        return convert_db_to_model(config_db), parent_set_id
+        return convert_db_to_model(config_db, sync_db), parent_set_id
 
     result, parent_set_id = await run_sync(db, _change)
     if parent_set_id is not None:
@@ -858,6 +941,7 @@ async def restart_test_run(
             build_number=config_db.build_number,
             related_tp_tickets_json=config_db.related_tp_tickets_json,
             tp_tickets_search=config_db.tp_tickets_search,
+            test_case_set_ids_json=config_db.test_case_set_ids_json,
             # 複製通知設定
             notifications_enabled=config_db.notifications_enabled,
             notify_chat_ids_json=config_db.notify_chat_ids_json,
@@ -1010,7 +1094,7 @@ async def search_configs_by_tp_tickets(
         # 轉換為摘要格式
         summaries = []
         for config_db in configs_db:
-            config = convert_db_to_model(config_db)
+            config = convert_db_to_model(config_db, sync_db)
 
             # 過濾匹配的 TP 票號 (highlight matching tickets)
             matching_tickets = _filter_matching_tp_tickets(config.related_tp_tickets, search_query)

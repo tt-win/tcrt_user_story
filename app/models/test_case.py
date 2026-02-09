@@ -13,6 +13,7 @@ from .lark_types import (
     Priority, TestResultStatus,
     parse_lark_user, parse_lark_attachments, parse_lark_records
 )
+from .test_run_scope import CleanupSummary
 
 
 class SimpleAttachment(BaseModel):
@@ -408,6 +409,9 @@ class TestCaseResponse(TestCase):
     section_level: Optional[int] = Field(
         None, description="所屬 Test Case Section 層級"
     )
+    cleanup_summary: Optional[CleanupSummary] = Field(
+        None, description="因 Test Case Set 調整觸發的 Test Run 項目清理摘要"
+    )
 
 
 class TestCaseBatchOperation(BaseModel):
@@ -424,6 +428,9 @@ class TestCaseBatchResponse(BaseModel):
     success_count: int = Field(..., description="成功的記錄數")
     error_count: int = Field(..., description="失敗的記錄數")
     error_messages: List[str] = Field([], description="錯誤訊息列表")
+    cleanup_summary: Optional[CleanupSummary] = Field(
+        None, description="批次操作造成的 Test Run 項目清理摘要"
+    )
 
 
 # 欄位映射類別

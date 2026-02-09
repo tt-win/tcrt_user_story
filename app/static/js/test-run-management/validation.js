@@ -26,6 +26,18 @@ function validateTestRunConfigForm() {
             type: 'maxLength'
         });
     }
+
+    // 1.5 Test Case Set 範圍驗證（多選至少一個）
+    const selectedSetIds = (typeof getSelectedConfigSetIds === 'function')
+        ? getSelectedConfigSetIds()
+        : [];
+    if (!selectedSetIds.length) {
+        errors.push({
+            field: 'testCaseSetSelector',
+            message: '請至少選擇一個 Test Case Set',
+            type: 'required'
+        });
+    }
     
     // 2. TP 票號綜合驗證
     const tpTickets = getCurrentTpTickets();
@@ -178,7 +190,7 @@ function showFormValidationError(validationResult) {
 // 清除所有表單錯誤樣式
 function clearAllFormErrors() {
     // 清除一般欄位錯誤
-    const errorFields = ['configName', 'configDescription', 'testEnvironment', 'buildNumber'];
+    const errorFields = ['configName', 'configDescription', 'testEnvironment', 'buildNumber', 'testCaseSetSelector'];
     errorFields.forEach(fieldId => {
         const fieldElement = document.getElementById(fieldId);
         const errorElement = document.getElementById(`${fieldId}Error`);

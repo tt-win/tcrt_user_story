@@ -11,6 +11,8 @@ from enum import Enum
 import re
 import json
 
+from .test_run_scope import CleanupSummary
+
 
 class TestRunStatus(str, Enum):
     """測試執行狀態"""
@@ -18,6 +20,27 @@ class TestRunStatus(str, Enum):
     COMPLETED = "completed"    # 已完成
     DRAFT = "draft"           # 草稿
     ARCHIVED = "archived"     # 已歸檔
+
+
+def _normalize_test_case_set_ids(values: Optional[List[int]]) -> Optional[List[int]]:
+    if values is None:
+        return None
+    if not isinstance(values, list):
+        raise ValueError('test_case_set_ids must be a list')
+    normalized: List[int] = []
+    seen = set()
+    for raw in values:
+        try:
+            set_id = int(raw)
+        except (TypeError, ValueError):
+            raise ValueError(f'Invalid test_case_set_id: {raw}')
+        if set_id <= 0:
+            raise ValueError(f'Invalid test_case_set_id: {raw}')
+        if set_id in seen:
+            continue
+        seen.add(set_id)
+        normalized.append(set_id)
+    return normalized
 
 
 class TestRunConfig(BaseModel):
@@ -28,6 +51,7 @@ class TestRunConfig(BaseModel):
     description: Optional[str] = Field(None, description="測試執行描述")
     set_id: Optional[int] = Field(None, description="所屬 Test Run Set ID")
     set_name: Optional[str] = Field(None, description="所屬 Test Run Set 名稱")
+    test_case_set_ids: List[int] = Field(default_factory=list, description="允許的 Test Case Set IDs")
     
     # 測試執行元資料
     test_version: Optional[str] = Field(None, description="測試版本")
@@ -52,6 +76,12 @@ class TestRunConfig(BaseModel):
     notifications_enabled: bool = Field(False, description="是否啟用通知")
     notify_chat_ids: Optional[List[str]] = Field(None, description="通知群組 Chat IDs")
     notify_chat_names_snapshot: Optional[List[str]] = Field(None, description="群組名稱快照（UI 顯示用）")
+
+    @validator('test_case_set_ids', pre=True, always=True)
+    def validate_test_case_set_ids(cls, v, values):
+        if v is None and values.get('test_case_set_id') is not None:
+            v = [values.get('test_case_set_id')]
+        return _normalize_test_case_set_ids(v)
     
     # 系統欄位
     created_at: Optional[datetime] = Field(None, description="建立時間")
@@ -65,6 +95,11 @@ class TestRunConfig(BaseModel):
         if not v or len(v.strip()) < 2:
             raise ValueError('Name must be at least 2 characters long')
         return v.strip()
+
+    @validator('test_case_set_ids', pre=True, always=True)
+    def validate_test_case_set_ids(cls, v):
+        normalized = _normalize_test_case_set_ids(v)
+        return normalized or []
     
     @validator('related_tp_tickets')
     def validate_tp_tickets(cls, v):
@@ -174,6 +209,8 @@ class TestRunConfigCreate(BaseModel):
     name: str = Field(..., description="測試執行名稱", max_length=100)
     description: Optional[str] = Field(None, description="測試執行描述")
     set_id: Optional[int] = Field(None, description="建立時指定的 Test Run Set ID")
+    test_case_set_id: Optional[int] = Field(None, description="相容欄位：單一 Test Case Set ID（已棄用）")
+    test_case_set_ids: Optional[List[int]] = Field(None, description="允許的 Test Case Set IDs")
     test_version: Optional[str] = Field(None, description="測試版本")
     test_environment: Optional[str] = Field(None, description="測試環境")
     build_number: Optional[str] = Field(None, description="建置編號")
@@ -265,6 +302,8 @@ class TestRunConfigUpdate(BaseModel):
     """更新測試執行配置的資料模型"""
     name: Optional[str] = Field(None, description="測試執行名稱", max_length=100)
     description: Optional[str] = Field(None, description="測試執行描述")
+    test_case_set_id: Optional[int] = Field(None, description="相容欄位：單一 Test Case Set ID（已棄用）")
+    test_case_set_ids: Optional[List[int]] = Field(None, description="允許的 Test Case Set IDs")
     test_version: Optional[str] = Field(None, description="測試版本")
     test_environment: Optional[str] = Field(None, description="測試環境")
     build_number: Optional[str] = Field(None, description="建置編號")
@@ -280,6 +319,12 @@ class TestRunConfigUpdate(BaseModel):
     notifications_enabled: Optional[bool] = Field(None, description="是否啟用通知")
     notify_chat_ids: Optional[List[str]] = Field(None, description="通知群組 Chat IDs")
     notify_chat_names_snapshot: Optional[List[str]] = Field(None, description="群組名稱快照（UI 顯示用）")
+
+    @validator('test_case_set_ids', pre=True, always=True)
+    def validate_test_case_set_ids(cls, v, values):
+        if v is None and values.get('test_case_set_id') is not None:
+            v = [values.get('test_case_set_id')]
+        return _normalize_test_case_set_ids(v)
     
     @validator('notify_chat_ids')
     def validate_notify_chat_ids(cls, v):
@@ -359,7 +404,7 @@ class TestRunConfigResponse(TestRunConfig):
     繼承自 TestRunConfig，自動包含所有欄位包括 related_tp_tickets
     此模型用於 API 回應，提供完整的配置資訊
     """
-    pass
+    cleanup_summary: Optional[CleanupSummary] = Field(None, description="因範圍調整觸發的清理摘要")
 
 
 class TestRunConfigSummary(BaseModel):
@@ -368,6 +413,7 @@ class TestRunConfigSummary(BaseModel):
     name: str = Field(..., description="測試執行名稱")
     set_id: Optional[int] = Field(None, description="所屬 Test Run Set ID")
     set_name: Optional[str] = Field(None, description="所屬 Test Run Set 名稱")
+    test_case_set_ids: List[int] = Field(default_factory=list, description="允許的 Test Case Set IDs")
     test_environment: Optional[str] = Field(None, description="測試環境")
     build_number: Optional[str] = Field(None, description="建置編號")
     test_version: Optional[str] = Field(None, description="測試版本")

@@ -1,48 +1,63 @@
 # Web Framework
-fastapi==0.116.1
-uvicorn==0.35.0
-python-multipart==0.0.12
-jinja2==3.1.4
+fastapi==0.128.5
+uvicorn==0.40.0
+python-multipart==0.0.22
+jinja2==3.1.6
 
 # Data Validation & Models
-pydantic==2.11.7
-pydantic-settings==2.7.0
-python-dotenv==1.0.1
+pydantic==2.12.5
+pydantic-settings==2.12.0
+python-dotenv==1.2.1
+email-validator==2.3.0
 
 # Database
-SQLAlchemy==2.0.43
-aiosqlite==0.19.0
+SQLAlchemy==2.0.46
+aiosqlite==0.22.1
+greenlet==3.3.1
 
 # HTTP Client & APIs
 requests==2.32.5
-aiohttp==3.10.11
+aiohttp==3.13.3
 
 # Configuration & Data Parsing
-PyYAML==6.0.2
+PyYAML==6.0.3
 
 # Authentication & Security
-PyJWT==2.8.0
+PyJWT==2.11.0
 passlib==1.7.4
-bcrypt==3.2.2
-cryptography==43.0.3
+bcrypt==4.0.1
+cryptography==46.0.4
 
 # Access Control
-casbin==1.36.3
+casbin==1.43.0
 
 # PDF Generation
-reportlab==4.2.5
-matplotlib==3.9.2
+reportlab==4.4.9
+matplotlib==3.10.8
+
+# AI / RAG / CLI
+qdrant-client==1.16.2
+prompt-toolkit==3.0.52
+rich==14.3.2
+textual==7.5.0
+pyperclip==1.11.0
+psutil==7.2.2
 
 # Testing
-pytest==8.3.4
-pytest-asyncio==0.24.0
+pytest==9.0.2
+pytest-asyncio==1.3.0
 httpx==0.28.1
 
 # Notes:
 # - python-dotenv is required by app/config.py (load_dotenv())
+# - email-validator is required by pydantic EmailStr models
 # - JS assets are pulled via CDN by default; see scripts/install_dependencies.sh for local JS setup
 # - cryptography is required for password encryption/decryption (RSA)
+# - bcrypt is pinned to 4.0.1 for passlib compatibility in current auth flow
+# - greenlet is required by SQLAlchemy async bridge (used in audit DB initialization)
 # - aiohttp is required for async HTTP requests in lark_client
 # - casbin is required for role-based access control (RBAC)
+# - qdrant-client/prompt-toolkit/rich/textual/pyperclip are used by AI and CLI tooling under ai/
+# - psutil is used by admin runtime metrics endpoints
 # - pytest and pytest-asyncio are required for running test suites
 # - httpx is required for async HTTP testing and API client testing

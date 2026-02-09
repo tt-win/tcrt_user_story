@@ -113,6 +113,7 @@ class TestRunConfig(Base):
                                    comment="相關 JIRA Tickets 票號 JSON 陣列")
     tp_tickets_search = Column(String(1000), nullable=True, index=True,
                              comment="JIRA Ticket 搜尋索引欄位")
+    test_case_set_ids_json = Column(Text, nullable=True, comment="Test Case Set 範圍（JSON 陣列）")
     
     # 通知設定
     notifications_enabled = Column(Boolean, default=False, nullable=False,
