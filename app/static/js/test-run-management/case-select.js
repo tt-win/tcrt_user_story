@@ -13,11 +13,40 @@ let modalMode = 'create'; // 'create' | 'edit'
 let existingItemIdByCaseNumber = new Map(); // for edit mode: case_number -> item_id
 let currentCaseFilter = 'all'; // 'all' | 'selected' | 'unselected'
 let isPreselectedFromTestCaseSet = false; // 標記是否從 Test Case Set 預選的流程
-let currentSetIdForCaseSelection = null; // 限定同一 Test Case Set，避免跨 Set
+let currentScopeSetIdsForCaseSelection = []; // Test Run 允許的 Test Case Set 範圍
+let currentSetIdForCaseSelection = null; // Case Select 視窗目前的 Set 篩選（可為空）
 let currentSectionFilterId = null; // 依 Section 過濾
 let currentSectionTree = [];
 let sectionTreeContainer = null;
 let caseSelectData = { sections: [], testCases: [], filteredCases: [], selectedCaseIds: new Set() };
+
+function normalizeSetIds(values) {
+  const normalized = [];
+  const seen = new Set();
+  (Array.isArray(values) ? values : []).forEach(raw => {
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed <= 0 || seen.has(parsed)) return;
+    seen.add(parsed);
+    normalized.push(parsed);
+  });
+  return normalized;
+}
+
+function getSelectedConfigSetIds() {
+  const configSelect = document.getElementById('testCaseSetSelector');
+  if (!configSelect) return [];
+  const selected = Array.from(configSelect.selectedOptions || []).map(opt => Number(opt.value));
+  return normalizeSetIds(selected);
+}
+
+function setSelectedConfigSetIds(setIds) {
+  const configSelect = document.getElementById('testCaseSetSelector');
+  if (!configSelect) return;
+  const setIdSet = new Set(normalizeSetIds(setIds));
+  Array.from(configSelect.options || []).forEach(option => {
+    option.selected = setIdSet.has(Number(option.value));
+  });
+}
 
 function getTestRunSetDisplayName(setId) {
   const set = (testCaseSets || []).find(item => String(item.id) === String(setId));
@@ -25,8 +54,14 @@ function getTestRunSetDisplayName(setId) {
   return setId ? `Set #${setId}` : '';
 }
 
-function updateTestRunSetReadOnlyDisplay(setId, mode) {
-  const isEdit = mode === 'edit';
+function getTestRunSetDisplayNames(setIds) {
+  const normalized = normalizeSetIds(setIds);
+  if (!normalized.length) return '';
+  return normalized.map(id => getTestRunSetDisplayName(id)).join('、');
+}
+
+function updateTestRunSetReadOnlyDisplay(setIds, mode) {
+  const selectedLabel = getTestRunSetDisplayNames(setIds);
   const configSelectGroup = document.getElementById('testCaseSetSelectorGroup');
   const configReadOnlyGroup = document.getElementById('testCaseSetReadOnlyGroup');
   const configReadOnlyText = document.getElementById('testCaseSetReadOnlyText');
@@ -34,28 +69,35 @@ function updateTestRunSetReadOnlyDisplay(setId, mode) {
   const caseReadOnlyGroup = document.getElementById('caseSelectSetReadOnlyGroup');
   const caseReadOnlyText = document.getElementById('caseSelectSetReadOnlyText');
 
-  if (configSelectGroup) configSelectGroup.classList.toggle('d-none', isEdit);
-  if (configReadOnlyGroup) configReadOnlyGroup.classList.toggle('d-none', !isEdit);
-  if (configReadOnlyText) configReadOnlyText.textContent = getTestRunSetDisplayName(setId);
+  // 多 Set 模式下，建立與編輯都允許調整範圍，read-only 區塊僅保留相容性（預設不顯示）
+  if (configSelectGroup) configSelectGroup.classList.remove('d-none');
+  if (configReadOnlyGroup) configReadOnlyGroup.classList.add('d-none');
+  if (configReadOnlyText) configReadOnlyText.textContent = selectedLabel;
 
-  if (caseSelectGroup) caseSelectGroup.classList.toggle('d-none', isEdit);
-  if (caseReadOnlyGroup) caseReadOnlyGroup.classList.toggle('d-none', !isEdit);
-  if (caseReadOnlyText) caseReadOnlyText.textContent = getTestRunSetDisplayName(setId);
+  if (caseSelectGroup) caseSelectGroup.classList.remove('d-none');
+  if (caseReadOnlyGroup) caseReadOnlyGroup.classList.add('d-none');
+  if (caseReadOnlyText) caseReadOnlyText.textContent = selectedLabel;
 }
 
-async function resolveConfigTestCaseSetId(configId) {
-  if (!configId || !currentTeamId) return null;
+async function resolveConfigTestCaseSetIds(configId) {
+  if (!configId || !currentTeamId) return [];
   try {
-    const resp = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${configId}/items?limit=1`);
-    if (!resp.ok) return null;
-    const items = await resp.json();
-    if (Array.isArray(items) && items.length > 0) {
-      return items[0].test_case_set_id || null;
+    const configResp = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${configId}`);
+    if (configResp.ok) {
+      const config = await configResp.json();
+      const configScope = normalizeSetIds(config?.test_case_set_ids || []);
+      if (configScope.length) {
+        return configScope;
+      }
     }
-    return null;
+    const resp = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${configId}/items?limit=10000`);
+    if (!resp.ok) return [];
+    const items = await resp.json();
+    if (!Array.isArray(items) || items.length === 0) return [];
+    return normalizeSetIds(items.map(item => item?.test_case_set_id));
   } catch (error) {
-    console.warn('resolveConfigTestCaseSetId failed:', error);
-    return null;
+    console.warn('resolveConfigTestCaseSetIds failed:', error);
+    return [];
   }
 }
 
@@ -63,52 +105,144 @@ function renderSectionTree() {
   renderCaseSelectList();
 }
 
-function renderTestCaseSetOptions(defaultId = null) {
+function getCasesInCurrentSetFilter() {
+  if (!Array.isArray(caseSelectData.testCases)) return [];
+  if (!currentSetIdForCaseSelection) return [];
+  return caseSelectData.testCases.filter(tc => Number(tc.test_case_set_id) === Number(currentSetIdForCaseSelection));
+}
+
+function updateCurrentSetSelectAllState() {
+  const checkbox = document.getElementById('selectAllCurrentSetCheckbox');
+  const hintEl = document.getElementById('selectAllCurrentSetHint');
+  if (!checkbox) return;
+
+  const chooseHint = (window.i18n && window.i18n.isReady())
+    ? window.i18n.t('testRun.caseSelect.selectAllCurrentSetChooseHint', {}, '請先選擇單一 Test Case Set')
+    : '請先選擇單一 Test Case Set';
+
+  if (!currentSetIdForCaseSelection) {
+    checkbox.checked = false;
+    checkbox.indeterminate = false;
+    checkbox.disabled = true;
+    if (hintEl) hintEl.textContent = chooseHint;
+    return;
+  }
+
+  const scopedCases = getCasesInCurrentSetFilter();
+  const selectedCount = scopedCases.reduce((count, testCase) => {
+    return count + (selectedCaseMap.has(getCaseKey(testCase)) ? 1 : 0);
+  }, 0);
+
+  checkbox.disabled = scopedCases.length === 0;
+  checkbox.checked = scopedCases.length > 0 && selectedCount === scopedCases.length;
+  checkbox.indeterminate = selectedCount > 0 && selectedCount < scopedCases.length;
+
+  if (hintEl) {
+    const setName = getTestRunSetDisplayName(currentSetIdForCaseSelection) || `Set #${currentSetIdForCaseSelection}`;
+    const readyHint = (window.i18n && window.i18n.isReady())
+      ? window.i18n.t(
+          'testRun.caseSelect.selectAllCurrentSetHint',
+          { set_name: setName, selected: selectedCount, total: scopedCases.length },
+          `${setName}：已選 ${selectedCount}/${scopedCases.length}`
+        )
+      : `${setName}：已選 ${selectedCount}/${scopedCases.length}`;
+    hintEl.textContent = readyHint;
+  }
+}
+
+function bindSelectAllCurrentSetCheckbox() {
+  const checkbox = document.getElementById('selectAllCurrentSetCheckbox');
+  if (!checkbox) return;
+
+  checkbox.onchange = () => {
+    if (!currentSetIdForCaseSelection) return;
+    const scopedCases = getCasesInCurrentSetFilter();
+    if (!scopedCases.length) return;
+
+    scopedCases.forEach(testCase => {
+      const key = getCaseKey(testCase);
+      if (checkbox.checked) {
+        selectedCaseMap.set(key, testCase);
+      } else {
+        selectedCaseMap.delete(key);
+      }
+    });
+
+    updateSelectedCount();
+    renderCaseSelectList();
+  };
+
+  updateCurrentSetSelectAllState();
+}
+
+function renderTestCaseSetOptions(scopeIdsOverride = null) {
   const configSelect = document.getElementById('testCaseSetSelector');
   const modalSelect = document.getElementById('caseSelectTestCaseSet');
   const sets = Array.isArray(testCaseSets) ? testCaseSets : [];
-  const placeholder = (window.i18n && window.i18n.isReady())
-    ? (window.i18n.t('testRun.sets.selectSetPlaceholder') || '請選擇 Test Case Set')
-    : '請選擇 Test Case Set';
 
-  const buildOptions = (target, hiddenInput, selectedId) => {
-    if (!target) return;
-    let options = `<option value="" disabled ${selectedId ? '' : 'selected'}>${escapeHtml(placeholder)}</option>`;
+  const selectedScopeIds = normalizeSetIds(
+    Array.isArray(scopeIdsOverride)
+      ? scopeIdsOverride
+      : (scopeIdsOverride ? [scopeIdsOverride] : currentScopeSetIdsForCaseSelection)
+  );
+  currentScopeSetIdsForCaseSelection = selectedScopeIds;
+
+  if (configSelect) {
+    configSelect.innerHTML = sets
+      .map(set => {
+        const selected = selectedScopeIds.includes(Number(set.id)) ? 'selected' : '';
+        return `<option value="${escapeHtml(String(set.id))}" ${selected}>${escapeHtml(set.name || `Set #${set.id}`)}</option>`;
+      })
+      .join('');
+    configSelect.multiple = true;
+    const hidden = document.getElementById('configTestCaseSetId');
+    if (hidden) hidden.value = selectedScopeIds.join(',');
+  }
+
+  if (modalSelect) {
+    const allSetsLabel = (window.i18n && window.i18n.isReady())
+      ? (window.i18n.t('testRun.sets.allSelectedSets', {}, '全部已選 Set'))
+      : '全部已選 Set';
+
+    const scopeSet = new Set(selectedScopeIds.map(id => String(id)));
+    const options = [`<option value="">${escapeHtml(allSetsLabel)}</option>`];
     sets.forEach(set => {
-      const selected = selectedId && String(selectedId) === String(set.id) ? 'selected' : '';
-      options += `<option value="${escapeHtml(String(set.id))}" ${selected}>${escapeHtml(set.name || `Set #${set.id}`)}</option>`;
+      if (!scopeSet.has(String(set.id))) return;
+      const selected = currentSetIdForCaseSelection && String(currentSetIdForCaseSelection) === String(set.id)
+        ? 'selected'
+        : '';
+      options.push(`<option value="${escapeHtml(String(set.id))}" ${selected}>${escapeHtml(set.name || `Set #${set.id}`)}</option>`);
     });
-    target.innerHTML = options;
-    if (selectedId) target.value = String(selectedId);
-    if (hiddenInput) hiddenInput.value = target.value || '';
-  };
-
-  buildOptions(configSelect, document.getElementById('configTestCaseSetId'), defaultId);
-  buildOptions(modalSelect, null, currentSetIdForCaseSelection || defaultId);
+    modalSelect.innerHTML = options.join('');
+    if (currentSetIdForCaseSelection && !scopeSet.has(String(currentSetIdForCaseSelection))) {
+      currentSetIdForCaseSelection = null;
+      modalSelect.value = '';
+    }
+  }
 
   if (configSelect) {
     configSelect.onchange = () => {
-      const val = configSelect.value || '';
-      document.getElementById('configTestCaseSetId').value = val;
-      currentSetIdForCaseSelection = val ? parseInt(val, 10) : null;
-      if (modalSelect && val) modalSelect.value = val;
-      updateTestRunSetReadOnlyDisplay(currentSetIdForCaseSelection, modalMode === 'edit' ? 'edit' : 'create');
+      currentScopeSetIdsForCaseSelection = getSelectedConfigSetIds();
+      const hidden = document.getElementById('configTestCaseSetId');
+      if (hidden) hidden.value = currentScopeSetIdsForCaseSelection.join(',');
+      if (currentScopeSetIdsForCaseSelection.length === 1) {
+        currentSetIdForCaseSelection = currentScopeSetIdsForCaseSelection[0];
+      } else if (!currentScopeSetIdsForCaseSelection.includes(currentSetIdForCaseSelection)) {
+        currentSetIdForCaseSelection = null;
+      }
+      renderTestCaseSetOptions(currentScopeSetIdsForCaseSelection);
+      updateTestRunSetReadOnlyDisplay(currentScopeSetIdsForCaseSelection, modalMode === 'edit' ? 'edit' : 'create');
     };
   }
   if (modalSelect) {
     modalSelect.onchange = () => {
-      if (modalMode === 'edit') return;
       currentSetIdForCaseSelection = modalSelect.value ? parseInt(modalSelect.value, 10) : null;
-      if (configSelect && modalSelect.value) {
-        configSelect.value = modalSelect.value;
-        document.getElementById('configTestCaseSetId').value = modalSelect.value;
-      }
-      updateTestRunSetReadOnlyDisplay(currentSetIdForCaseSelection, 'create');
-      if (caseSelectModalInstance && modalSelect.value) {
-        loadTeamTestCases(document.getElementById('caseSearchInput').value || '');
-      }
+      updateTestRunSetReadOnlyDisplay(currentScopeSetIdsForCaseSelection, modalMode === 'edit' ? 'edit' : 'create');
+      renderCaseSelectList();
     };
   }
+
+  bindSelectAllCurrentSetCheckbox();
 }
 
 async function loadTestCaseSets() {
@@ -127,18 +261,23 @@ async function loadTestCaseSets() {
 }
 
 async function loadSectionTreeForCurrentSet() {
-  if (!currentSetIdForCaseSelection) {
+  const scopeIds = normalizeSetIds(currentScopeSetIdsForCaseSelection);
+  if (!scopeIds.length) {
     currentSectionTree = [];
     renderSectionTree();
     return;
   }
   try {
-    const resp = await window.AuthClient.fetch(`/api/test-case-sets/${currentSetIdForCaseSelection}/sections`);
-    if (resp.ok) {
-      currentSectionTree = await resp.json();
-    } else {
-      currentSectionTree = [];
+    const responses = await Promise.all(
+      scopeIds.map(setId => window.AuthClient.fetch(`/api/test-case-sets/${setId}/sections`))
+    );
+    const sectionTrees = [];
+    for (const resp of responses) {
+      if (!resp.ok) continue;
+      const sections = await resp.json();
+      if (Array.isArray(sections)) sectionTrees.push(...sections);
     }
+    currentSectionTree = sectionTrees;
   } catch (e) {
     console.warn('loadSectionTreeForCurrentSet failed', e);
     currentSectionTree = [];
@@ -147,22 +286,38 @@ async function loadSectionTreeForCurrentSet() {
 }
 
 async function loadCaseSelectData() {
-  if (!currentSetIdForCaseSelection) return;
+  const scopeIds = normalizeSetIds(currentScopeSetIdsForCaseSelection);
+  if (!scopeIds.length) return;
   try {
-    const sectionsResp = await window.AuthClient.fetch(`/api/test-case-sets/${currentSetIdForCaseSelection}/sections`);
-    if (sectionsResp.ok) {
-      caseSelectData.sections = await sectionsResp.json();
-      currentSectionTree = caseSelectData.sections;
-    } else {
-      caseSelectData.sections = [];
-      currentSectionTree = [];
+    const sectionResponses = await Promise.all(
+      scopeIds.map(setId => window.AuthClient.fetch(`/api/test-case-sets/${setId}/sections`))
+    );
+    const mergedSections = [];
+    for (const sectionsResp of sectionResponses) {
+      if (!sectionsResp.ok) continue;
+      const sections = await sectionsResp.json();
+      if (Array.isArray(sections)) mergedSections.push(...sections);
     }
-    const casesResp = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/testcases?set_id=${currentSetIdForCaseSelection}&limit=10000`);
-    if (casesResp.ok) {
-      caseSelectData.testCases = await casesResp.json();
-    } else {
-      caseSelectData.testCases = [];
+    caseSelectData.sections = mergedSections;
+    currentSectionTree = mergedSections;
+
+    const casesResponses = await Promise.all(
+      scopeIds.map(setId => window.AuthClient.fetch(`/api/teams/${currentTeamId}/testcases?set_id=${setId}&limit=10000`))
+    );
+    const mergedCases = [];
+    for (const casesResp of casesResponses) {
+      if (!casesResp.ok) continue;
+      const cases = await casesResp.json();
+      if (Array.isArray(cases)) mergedCases.push(...cases);
     }
+
+    const caseMap = new Map();
+    mergedCases.forEach(item => {
+      const key = item?.test_case_number || String(item?.record_id || item?.id || '');
+      if (!key) return;
+      if (!caseMap.has(key)) caseMap.set(key, item);
+    });
+    caseSelectData.testCases = Array.from(caseMap.values());
     sortTestCasesByNumber(caseSelectData.testCases);
     caseSelectData.filteredCases = caseSelectData.testCases;
     availableCases = caseSelectData.testCases; // 兼容既有流程
@@ -206,20 +361,26 @@ async function openCaseSelectModal(configId) {
     return;
   }
 
-  if (!currentSetIdForCaseSelection) {
-    const formSetVal = document.getElementById('configTestCaseSetId')?.value;
-    if (formSetVal) currentSetIdForCaseSelection = parseInt(formSetVal, 10);
-  }
-  if (!currentSetIdForCaseSelection) {
-    const cfg = testRunConfigs.find(c => c.id === configId);
-    if (cfg && cfg.set_id) {
-      currentSetIdForCaseSelection = cfg.set_id;
+  if (!currentScopeSetIdsForCaseSelection.length) {
+    const formSetIds = getSelectedConfigSetIds();
+    if (formSetIds.length) {
+      currentScopeSetIdsForCaseSelection = formSetIds;
     }
   }
-  if (!currentSetIdForCaseSelection) {
-    const warn = window.i18n ? (window.i18n.t('testRun.sets.selectSetFirst') || '請先選擇一個 Test Case Set') : '請先選擇一個 Test Case Set';
+  if (!currentScopeSetIdsForCaseSelection.length) {
+    const cfg = testRunConfigs.find(c => c.id === configId);
+    const cfgScope = normalizeSetIds(cfg?.test_case_set_ids || []);
+    if (cfgScope.length) {
+      currentScopeSetIdsForCaseSelection = cfgScope;
+    }
+  }
+  if (!currentScopeSetIdsForCaseSelection.length) {
+    const warn = window.i18n ? (window.i18n.t('testRun.sets.selectSetFirst') || '請先選擇至少一個 Test Case Set') : '請先選擇至少一個 Test Case Set';
     AppUtils.showWarning(warn);
     return;
+  }
+  if (!currentScopeSetIdsForCaseSelection.includes(currentSetIdForCaseSelection)) {
+    currentSetIdForCaseSelection = currentScopeSetIdsForCaseSelection[0] || null;
   }
 
   currentSelectingConfigId = configId;
@@ -227,9 +388,9 @@ async function openCaseSelectModal(configId) {
   if (!caseSelectModalInstance) caseSelectModalInstance = new bootstrap.Modal(modalEl);
   if (!testCaseSets.length && currentTeamId) {
     await loadTestCaseSets();
-    renderTestCaseSetOptions(currentSetIdForCaseSelection);
   }
-  updateTestRunSetReadOnlyDisplay(currentSetIdForCaseSelection, modalMode === 'edit' ? 'edit' : 'create');
+  renderTestCaseSetOptions(currentScopeSetIdsForCaseSelection);
+  updateTestRunSetReadOnlyDisplay(currentScopeSetIdsForCaseSelection, modalMode === 'edit' ? 'edit' : 'create');
   await loadCaseSelectData();
   // reset
     if (modalMode === 'create') {
@@ -322,13 +483,14 @@ async function openCaseSelectModal(configId) {
     }
     reopenSetDetailAfterCaseModal = false;
     isPreselectedFromTestCaseSet = false;
-    updateTestRunSetReadOnlyDisplay(currentSetIdForCaseSelection, 'create');
+    updateTestRunSetReadOnlyDisplay(currentScopeSetIdsForCaseSelection, 'create');
     // remove this handler after execution
     modalDom.removeEventListener('hidden.bs.modal', onHidden);
   }, { once: true });
   // load first page (資料已載入，僅渲染)
   renderCaseSelectList();
   if (window.i18n && window.i18n.isReady()) window.i18n.retranslate(document.getElementById('caseSelectModal'));
+  updateCurrentSetSelectAllState();
   // bind search/clear once per open
   bindCaseSearchBarEvents();
 }
@@ -378,21 +540,18 @@ async function editTestCases(configId) {
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const items = await resp.json();
 
-    // 嘗試從現有項目中推斷 Test Case Set ID
-    let deducedSetId = null;
-    if (items && items.length > 0) {
-        deducedSetId = items[0].test_case_set_id;
-    }
+    const deducedScope = normalizeSetIds((items || []).map(it => it?.test_case_set_id));
+    const configScope = normalizeSetIds(config?.test_case_set_ids || []);
+    currentScopeSetIdsForCaseSelection = configScope.length ? configScope : deducedScope;
+    currentSetIdForCaseSelection = currentScopeSetIdsForCaseSelection[0] || null;
 
-    // 設定 currentSetIdForCaseSelection
-    // 優先順序: 從項目推斷 > Config 的 set_id
-    currentSetIdForCaseSelection = deducedSetId || (config?.set_id ?? null);
-
-    if (!currentSetIdForCaseSelection) {
-        const warn = window.i18n ? (window.i18n.t('testRun.sets.selectSetFirst') || '請先選擇一個 Test Case Set') : '請先選擇一個 Test Case Set';
+    if (!currentScopeSetIdsForCaseSelection.length) {
+        const warn = window.i18n ? (window.i18n.t('testRun.sets.selectSetFirst') || '請先選擇至少一個 Test Case Set') : '請先選擇至少一個 Test Case Set';
         AppUtils.showWarning(warn);
         return;
     }
+
+    renderTestCaseSetOptions(currentScopeSetIdsForCaseSelection);
 
     selectedCaseMap.clear();
     existingItemIdByCaseNumber.clear();
@@ -408,49 +567,16 @@ async function editTestCases(configId) {
 
 async function loadTeamTestCases(search) {
   try {
-    if (!currentSetIdForCaseSelection) {
-      const warn = window.i18n ? (window.i18n.t('testRun.sets.selectSetFirst') || '請先選擇一個 Test Case Set') : '請先選擇一個 Test Case Set';
+    if (!currentScopeSetIdsForCaseSelection.length) {
+      const warn = window.i18n ? (window.i18n.t('testRun.sets.selectSetFirst') || '請先選擇至少一個 Test Case Set') : '請先選擇至少一個 Test Case Set';
       AppUtils.showWarning(warn);
       return;
     }
-    await loadSectionTreeForCurrentSet();
-    const url = new URL(`/api/teams/${currentTeamId}/testcases/`, window.location.origin);
-    url.searchParams.set('set_id', String(currentSetIdForCaseSelection));
-    if (search) url.searchParams.set('search', search);
-    url.searchParams.set('limit', '10000');
-    const resp = await window.AuthClient.fetch(url);
-    if (!resp.ok) {
-      const errorText = await resp.text();
-      throw new Error(`HTTP ${resp.status}: ${errorText}`);
+    const searchInput = document.getElementById('caseSearchInput');
+    if (searchInput && typeof search === 'string') {
+      searchInput.value = search;
     }
-    
-    availableCases = await resp.json();
-    sortTestCasesByNumber(availableCases);
-    caseSelectData.testCases = availableCases;
-    caseSelectData.filteredCases = availableCases;
-    caseSelectData.sections = currentSectionTree || [];
-    
-    // 若為編輯模式：用完整資料覆蓋已選取的項目（確保存檔可帶出完整欄位）
-    if (modalMode === 'edit') {
-      for (const c of availableCases) {
-        if (selectedCaseMap.has(c.test_case_number)) {
-          selectedCaseMap.set(c.test_case_number, c);
-        }
-      }
-    } else if (window._preselectedCaseIds && window._preselectedCaseIds.size > 0) {
-      // 如果有從 Test Case Set 卡片預選的 Test Cases，自動選中它們
-      for (const c of availableCases) {
-        const caseId = c.record_id || c.id;
-        if (window._preselectedCaseIds.has(caseId)) {
-          selectedCaseMap.set(c.test_case_number, c);
-        }
-      }
-      // 清除 sessionStorage 中的預選 ID
-      sessionStorage.removeItem('testRunSelectedCaseIds');
-      sessionStorage.removeItem('testRunSetId');
-      window._preselectedCaseIds = null;
-      isPreselectedFromTestCaseSet = false;
-    }
+    await loadCaseSelectData();
     renderCaseSelectList();
   } catch (e) {
     console.error('Load test cases error:', e);
@@ -515,6 +641,8 @@ function renderCaseSelectList() {
   const searchVal = (document.getElementById('caseSearchInput')?.value || '').toLowerCase();
 
   caseSelectData.filteredCases = caseSelectData.testCases.filter(tc => {
+    const inSetScope = !currentSetIdForCaseSelection || Number(tc.test_case_set_id) === Number(currentSetIdForCaseSelection);
+    if (!inSetScope) return false;
     const num = (tc.test_case_number || '').toLowerCase();
     const title = (tc.title || '').toLowerCase();
     return num.includes(searchVal) || title.includes(searchVal);
@@ -528,7 +656,18 @@ function renderCaseSelectList() {
   });
 
   const hasUnassigned = (casesBySectionId['unassigned'] || []).length > 0;
-  let sectionsToRender = sortCaseSectionsForDisplay(caseSelectData.sections || []);
+  const filterSectionsByData = (sections) => {
+    if (!Array.isArray(sections) || sections.length === 0) return [];
+    return sections.reduce((acc, sec) => {
+      const childFiltered = filterSectionsByData(sec.children || []);
+      const hasOwnCases = (casesBySectionId[sec.id] || []).length > 0;
+      if (hasOwnCases || childFiltered.length > 0) {
+        acc.push({ ...sec, children: childFiltered });
+      }
+      return acc;
+    }, []);
+  };
+  let sectionsToRender = sortCaseSectionsForDisplay(filterSectionsByData(caseSelectData.sections || []));
   if (hasUnassigned) {
     sectionsToRender = [...sectionsToRender, { id: 'unassigned', name: 'Unassigned', children: [] }];
   }
@@ -638,6 +777,7 @@ function renderCaseSelectList() {
   });
 
   updateCaseSelectionSummary();
+  updateCurrentSetSelectAllState();
   if (window.i18n && window.i18n.isReady()) window.i18n.retranslate(container);
 }
 
@@ -699,6 +839,7 @@ function handleCaseCheckboxChange(caseNum, isChecked) {
   }
   updateSelectedCount();
   updateCaseSelectionSummary();
+  updateCurrentSetSelectAllState();
 }
 
 function toggleSectionExpand(sectionId) {
@@ -737,15 +878,20 @@ function updateCaseSelectionSummary() {
   const total = caseSelectData.testCases.length;
   const filtered = caseSelectData.filteredCases.length;
   const searchVal = (document.getElementById('caseSearchInput')?.value || '').trim();
+  const setFilterLabel = currentSetIdForCaseSelection ? getTestRunSetDisplayName(currentSetIdForCaseSelection) : '';
   const summaryText = (window.i18n && window.i18n.isReady())
     ? window.i18n.t('testCaseSet.selectedCount', { count }, `已選 ${count} 個測試案例`)
     : `已選 ${count} 個測試案例`;
   if (summaryEl) summaryEl.textContent = summaryText;
   if (infoEl) {
     if (searchVal) {
-      infoEl.textContent = `搜尋 "${searchVal}" ，共 ${filtered} 筆`;
+      infoEl.textContent = `搜尋 "${searchVal}" ，共 ${filtered} 筆${setFilterLabel ? `（${setFilterLabel}）` : ''}`;
     } else {
-      infoEl.textContent = `共 ${total} 筆`;
+      if (setFilterLabel) {
+        infoEl.textContent = `共 ${filtered} 筆（目前篩選：${setFilterLabel}，全部 ${total} 筆）`;
+      } else {
+        infoEl.textContent = `共 ${filtered} 筆`;
+      }
     }
   }
 }

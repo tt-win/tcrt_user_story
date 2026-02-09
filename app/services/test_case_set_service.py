@@ -12,6 +12,7 @@ from ..models.test_case_set import (
     TestCaseSetCreate, TestCaseSetUpdate, TestCaseSet as TestCaseSetModel
 )
 from ..database import run_sync
+from ..services.test_run_scope_service import TestRunScopeService
 
 logger = logging.getLogger(__name__)
 
@@ -139,9 +140,9 @@ class TestCaseSetService:
 
         return await run_sync(self.db, _update)
 
-    async def delete(self, set_id: int, team_id: int) -> bool:
+    async def delete(self, set_id: int, team_id: int) -> dict:
         """刪除 Test Case Set，並將其中的 Test Case 移至預設 Set 的 Unassigned Section"""
-        def _delete(sync_db: Session) -> bool:
+        def _delete(sync_db: Session) -> dict:
             test_set = sync_db.query(TestCaseSet).filter(
                 TestCaseSet.id == set_id,
                 TestCaseSet.team_id == team_id
@@ -172,7 +173,22 @@ class TestCaseSetService:
             if not unassigned_section:
                 raise ValueError("找不到預設 Set 的 Unassigned Section")
 
+            cleanup_summary = TestRunScopeService.cleanup_set_deletion(
+                sync_db,
+                team_id=team_id,
+                set_id=set_id,
+            )
+            scope_updates = TestRunScopeService.remove_set_from_all_scopes(
+                sync_db,
+                team_id=team_id,
+                set_id=set_id,
+            )
+
             # 將所有 Test Case 移至預設 Set 的 Unassigned Section
+            moved_test_case_count = sync_db.query(TestCaseLocal).filter(
+                TestCaseLocal.test_case_set_id == set_id
+            ).count()
+
             sync_db.query(TestCaseLocal).filter(
                 TestCaseLocal.test_case_set_id == set_id
             ).update({
@@ -191,7 +207,13 @@ class TestCaseSetService:
             # 刪除 Test Case Set
             sync_db.delete(test_set)
             sync_db.commit()
-            return True
+            return {
+                "cleanup_summary": cleanup_summary,
+                "moved_test_case_count": moved_test_case_count,
+                "default_set_id": default_set.id,
+                "default_section_id": unassigned_section.id,
+                "updated_scope_config_count": len(scope_updates),
+            }
 
         return await run_sync(self.db, _delete)
 

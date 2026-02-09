@@ -32,6 +32,7 @@ from app.models.lark_types import Priority, TestResultStatus
 from pydantic import BaseModel, Field
 from app.auth.dependencies import get_current_user
 from app.audit import audit_service, ActionType, ResourceType, AuditSeverity
+from app.services.test_run_scope_service import TestRunScopeService
 
 
 router = APIRouter(prefix="/teams/{team_id}/test-run-configs/{config_id}/items", tags=["test-run-items"])
@@ -682,7 +683,15 @@ async def batch_create_items(
     current_user: User = Depends(get_current_user),
 ):
     def _create(sync_db: Session) -> Dict[str, Any]:
-        _verify_team_and_config(team_id, config_id, sync_db)
+        config_db = _verify_team_and_config(team_id, config_id, sync_db)
+        config_scope_ids = TestRunScopeService.get_config_scope_ids(
+            sync_db,
+            config_db,
+            allow_fallback=True,
+            persist_fallback=False,
+        )
+        allowed_scope_ids = set(config_scope_ids)
+        auto_scope_ids: List[int] = []
 
         created = 0
         skipped = 0
@@ -708,6 +717,16 @@ async def batch_create_items(
                 if not test_case:
                     errors.append(f"index {idx}: 找不到測試案例 {item.test_case_number}")
                     continue
+
+                case_set_id = getattr(test_case, "test_case_set_id", None)
+                if allowed_scope_ids:
+                    if case_set_id not in allowed_scope_ids:
+                        errors.append(
+                            f"index {idx}: 測試案例 {item.test_case_number} 不在此 Test Run 允許的 Test Case Set 範圍內"
+                        )
+                        continue
+                elif case_set_id is not None:
+                    auto_scope_ids.append(case_set_id)
 
                 db_item = TestRunItemDB(
                     team_id=team_id,
@@ -738,6 +757,11 @@ async def batch_create_items(
             except Exception as e:
                 errors.append(f"index {idx}: {e}")
                 continue
+
+        if not allowed_scope_ids and auto_scope_ids:
+            inferred_scope = TestRunScopeService.normalize_scope_ids(auto_scope_ids)
+            TestRunScopeService.set_config_scope_ids(config_db, inferred_scope)
+            allowed_scope_ids = set(inferred_scope)
 
         sync_db.commit()
         return {

@@ -1362,6 +1362,18 @@ function updateLocalTestCasesAfterBatchModify(selectedIds, updateData) {
                 // 新的 section 也需要更新計數
                 affectedSectionIds.add(updateData.section.id);
             }
+
+            // 更新 Test Set（移動後 section 由後端重設為 Unassigned）
+            if (updateData.test_set_id !== undefined) {
+                if (testCase.test_case_section_id) {
+                    affectedSectionIds.add(testCase.test_case_section_id);
+                }
+                testCase.test_case_set_id = updateData.test_set_id;
+                testCase.test_case_section_id = null;
+                testCase.section_name = null;
+                testCase.section_path = null;
+                testCase.section_level = null;
+            }
         }
     });
 
@@ -1389,6 +1401,14 @@ function updateLocalTestCasesAfterBatchModify(selectedIds, updateData) {
                 testCase.section_name = updateData.section.name;
                 testCase.section_path = updateData.section.path;
                 testCase.section_level = updateData.section.level;
+            }
+
+            if (updateData.test_set_id !== undefined) {
+                testCase.test_case_set_id = updateData.test_set_id;
+                testCase.test_case_section_id = null;
+                testCase.section_name = null;
+                testCase.section_path = null;
+                testCase.section_level = null;
             }
         }
     });
@@ -1471,6 +1491,56 @@ async function populateBatchTestSetSelect(teamId) {
         AppUtils.showError(msg);
         select.disabled = true;
     }
+}
+
+function buildMoveImpactWarningMessage(preview) {
+    const impactedCount = Number(preview?.impacted_item_count || 0);
+    const impactedRuns = Array.isArray(preview?.impacted_test_runs) ? preview.impacted_test_runs : [];
+    if (!impactedCount || impactedRuns.length === 0) {
+        return '';
+    }
+
+    const title = window.i18n
+        ? window.i18n.t(
+            'testCase.moveSetImpactWarning',
+            { impacted_count: impactedCount },
+            `此操作會影響 ${impactedCount} 筆 Test Run 項目。`
+        )
+        : `此操作會影響 ${impactedCount} 筆 Test Run 項目。`;
+    const confirmHint = window.i18n
+        ? window.i18n.t('testCase.moveSetImpactConfirmHint', {}, '是否確認繼續移動？')
+        : '是否確認繼續移動？';
+
+    const topRuns = impactedRuns.slice(0, 10).map((run, idx) => {
+        const runName = run.config_name || `Test Run #${run.config_id}`;
+        const removedCount = Number(run.removed_item_count || 0);
+        return `${idx + 1}. ${runName}（${removedCount}）`;
+    });
+    if (impactedRuns.length > 10) {
+        topRuns.push(`...還有 ${impactedRuns.length - 10} 個 Test Run`);
+    }
+
+    return `${title}\n\n${topRuns.join('\n')}\n\n${confirmHint}`;
+}
+
+async function fetchMoveImpactPreview(teamId, recordIds, targetSetId) {
+    const previewResp = await window.AuthClient.fetch(`/api/teams/${teamId}/testcases/impact-preview/move-test-set`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            record_ids: recordIds,
+            target_test_set_id: targetSetId,
+        }),
+    });
+
+    if (!previewResp.ok) {
+        const errorData = await previewResp.json().catch(() => ({}));
+        const detail = errorData?.detail || '無法取得影響預覽';
+        throw new Error(detail);
+    }
+    return await previewResp.json();
 }
 
 async function performTestCaseBatchModify() {
@@ -1576,6 +1646,18 @@ async function performTestCaseBatchModify() {
             return;
         }
 
+        let batchCleanupSummary = null;
+        if (modifyTestSet && testSetIdForBatch !== null) {
+            const preview = await fetchMoveImpactPreview(currentTeam.id, selectedIds, testSetIdForBatch);
+            const warningMessage = buildMoveImpactWarningMessage(preview);
+            if (warningMessage) {
+                const confirmed = await AppUtils.showConfirm(warningMessage);
+                if (!confirmed) {
+                    return;
+                }
+            }
+        }
+
         // 顯示載入狀態
         const confirmBtn = document.getElementById('confirmTestCaseBatchModifyBtn');
         const originalBtnText = confirmBtn.innerHTML;
@@ -1664,6 +1746,8 @@ async function performTestCaseBatchModify() {
             if (!result.success) {
                 success = false;
                 errorMessages.push(...(result.error_messages || ['Test Set 更新失敗']));
+            } else if (result.cleanup_summary) {
+                batchCleanupSummary = result.cleanup_summary;
             }
         }
 
@@ -1682,9 +1766,16 @@ async function performTestCaseBatchModify() {
             // 清除選擇
             deselectAll();
 
-            const successMsg = window.i18n ?
+            let successMsg = window.i18n ?
                 window.i18n.t('messages.batchModifySuccess', { count: selectedIds.length }) :
                 `成功修改 ${selectedIds.length} 個測試案例`;
+            const removedItemCount = Number(batchCleanupSummary?.removed_item_count || 0);
+            if (removedItemCount > 0) {
+                const impactedRunCount = Array.isArray(batchCleanupSummary?.impacted_test_runs)
+                    ? batchCleanupSummary.impacted_test_runs.length
+                    : 0;
+                successMsg += `；影響 ${impactedRunCount} 個 Test Run，移除 ${removedItemCount} 筆項目`;
+            }
             AppUtils.showSuccess(successMsg);
 
             // 背景重新同步資料（強制刷新快取）

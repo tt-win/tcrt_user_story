@@ -43,6 +43,7 @@ from app.models.test_case import (
     TestCaseBatchOperation,
     TestCaseBatchResponse,
 )
+from app.models.test_run_scope import ImpactPreviewResponse
 from app.models.database_models import (
     Team as TeamDB,
     TestCaseLocal as TestCaseLocalDB,
@@ -51,6 +52,7 @@ from app.models.database_models import (
     SyncStatus,
 )
 from app.services.test_case_repo_service import TestCaseRepoService
+from app.services.test_run_scope_service import TestRunScopeService
 from app.services.test_case_sync_service import TestCaseSyncService
 from app.services.lark_client import LarkClient
 from app.config import settings
@@ -126,6 +128,11 @@ class AIAssistResponse(BaseModel):
     revised_expected_result: str
     suggestions: List[str] = []
     detected_language: Optional[str] = None
+
+
+class MoveTestCaseSetImpactPreviewRequest(BaseModel):
+    record_ids: List[str]
+    target_test_set_id: int
 
 
 TCG_TABLE_ID_DEFAULT = "tblcK6eF3yQCuwwl"
@@ -289,6 +296,43 @@ def parse_ai_assist_payload(content: str) -> Dict[str, Any]:
         if not match:
             raise
         return json.loads(match.group(0))
+
+
+def resolve_test_case_record(sync_db: Session, team_id: int, rid: str) -> Optional[TestCaseLocalDB]:
+    try:
+        rid_int = int(rid)
+        item = (
+            sync_db.query(TestCaseLocalDB)
+            .filter(
+                TestCaseLocalDB.id == rid_int,
+                TestCaseLocalDB.team_id == team_id,
+            )
+            .first()
+        )
+        if item:
+            return item
+    except (TypeError, ValueError):
+        pass
+
+    item = (
+        sync_db.query(TestCaseLocalDB)
+        .filter(
+            TestCaseLocalDB.team_id == team_id,
+            TestCaseLocalDB.lark_record_id == rid,
+        )
+        .first()
+    )
+    if item:
+        return item
+
+    return (
+        sync_db.query(TestCaseLocalDB)
+        .filter(
+            TestCaseLocalDB.team_id == team_id,
+            TestCaseLocalDB.test_case_number == rid,
+        )
+        .first()
+    )
 
 
 # ============ USM Integration: Get Test Cases by JIRA Tickets ============
@@ -1190,6 +1234,65 @@ async def create_test_case(
         )
 
 
+@router.post("/impact-preview/move-test-set", response_model=ImpactPreviewResponse)
+async def preview_move_test_cases_impact(
+    team_id: int,
+    payload: MoveTestCaseSetImpactPreviewRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """預覽批次移動 Test Case 到另一個 Test Set 對 Test Run 的影響"""
+    from app.auth.models import UserRole
+    from app.auth.permission_service import permission_service
+
+    if current_user.role != UserRole.SUPER_ADMIN:
+        permission_check = await permission_service.check_team_permission(
+            current_user.id, team_id, PermissionType.WRITE, current_user.role
+        )
+        if not permission_check.has_permission:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="無權限修改此團隊的測試案例",
+            )
+
+    def _preview(sync_db: Session):
+        target_set = (
+            sync_db.query(TestCaseSetDB)
+            .filter(
+                TestCaseSetDB.id == payload.target_test_set_id,
+                TestCaseSetDB.team_id == team_id,
+            )
+            .first()
+        )
+        if not target_set:
+            raise HTTPException(status_code=404, detail="指定的 Test Set 不存在")
+
+        case_numbers: List[str] = []
+        missing_ids: List[str] = []
+        for rid in payload.record_ids:
+            resolved = resolve_test_case_record(sync_db, team_id, rid)
+            if not resolved:
+                missing_ids.append(str(rid))
+                continue
+            if resolved.test_case_number:
+                case_numbers.append(str(resolved.test_case_number))
+
+        if missing_ids:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"找不到以下測試案例: {', '.join(missing_ids)}",
+            )
+
+        return TestRunScopeService.preview_case_move(
+            sync_db,
+            team_id=team_id,
+            case_numbers=case_numbers,
+            target_set_id=payload.target_test_set_id,
+        )
+
+    return await run_sync(db, _preview)
+
+
 @router.put("/{record_id}", response_model=TestCaseResponse)
 async def update_test_case(
     team_id: int,
@@ -1253,6 +1356,8 @@ async def update_test_case(
 
             changed = False
             changed_fields: List[str] = []
+            cleanup_summary = None
+            moved_target_set_id: Optional[int] = None
 
             if case_update.test_case_number is not None:
                 item.test_case_number = case_update.test_case_number
@@ -1377,6 +1482,7 @@ async def update_test_case(
 
                 if target_set and target_set.id != item.test_case_set_id:
                     item.test_case_set_id = target_set.id
+                    moved_target_set_id = target_set.id
                     changed = True
                     changed_fields.append("test_case_set_id")
                 if target_section_id != item.test_case_section_id:
@@ -1472,6 +1578,15 @@ async def update_test_case(
             if changed:
                 item.updated_at = datetime.utcnow()
                 item.sync_status = SyncStatus.PENDING
+
+            if moved_target_set_id and item.test_case_number:
+                cleanup_summary = TestRunScopeService.cleanup_case_move(
+                    sync_db,
+                    team_id=team_id,
+                    case_numbers=[item.test_case_number],
+                    target_set_id=moved_target_set_id,
+                )
+
             sync_db.commit()
 
             # 解析 TCG JSON 以便返回
@@ -1517,6 +1632,7 @@ async def update_test_case(
                 section_name=None,
                 section_path=None,
                 section_level=None,
+                cleanup_summary=cleanup_summary,
             )
 
             audit_context = {
@@ -1525,6 +1641,7 @@ async def update_test_case(
                 "title": item.title,
                 "changed_fields": changed_fields,
                 "changed": changed,
+                "cleanup_summary": cleanup_summary,
             }
 
             return response, audit_context
@@ -1545,6 +1662,7 @@ async def update_test_case(
                     "record_id": audit_context.get("record_id"),
                     "test_case_number": audit_context.get("test_case_number"),
                     "changed_fields": audit_context.get("changed_fields"),
+                    "cleanup_summary": audit_context.get("cleanup_summary"),
                 },
             )
 
@@ -2770,6 +2888,7 @@ async def batch_operation_test_cases(
         errors: list[str] = []
         success_items = []
         log_context = None
+        cleanup_summary = None
 
         try:
             if operation.operation == "delete":
@@ -3075,6 +3194,28 @@ async def batch_operation_test_cases(
                         })
                     except Exception as e:
                         errors.append(f"{rid}: {e}")
+
+                if success_count > 0:
+                    moved_case_numbers = [
+                        str(item["test_case_number"])
+                        for item in success_items
+                        if item.get("test_case_number")
+                    ]
+                    if moved_case_numbers:
+                        cleanup_summary = TestRunScopeService.cleanup_case_move(
+                            sync_db,
+                            team_id=team_id,
+                            case_numbers=moved_case_numbers,
+                            target_set_id=target_test_set_id,
+                        )
+                    else:
+                        cleanup_summary = {
+                            "removed_item_count": 0,
+                            "impacted_test_runs": [],
+                            "trigger": "move_test_case_set",
+                            "target_test_case_set_id": target_test_set_id,
+                        }
+
                 sync_db.commit()
 
                 if success_count > 0:
@@ -3097,6 +3238,7 @@ async def batch_operation_test_cases(
                             "success_count": success_count,
                             "total_count": len(operation.record_ids),
                             "updated_items": success_items,
+                            "cleanup_summary": cleanup_summary,
                         },
                     }
             else:
@@ -3110,6 +3252,7 @@ async def batch_operation_test_cases(
                 success_count=success_count,
                 error_count=len(errors),
                 error_messages=errors,
+                cleanup_summary=cleanup_summary,
             ), log_context
 
         except HTTPException:

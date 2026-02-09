@@ -4,6 +4,18 @@ const TEST_CASE_CACHE_PREFIX = 'tr_exec_tc_cache_v1';
 const TEST_CASE_CACHE_TTL_MS = 60 * 60 * 1000; // 1 小時
 const TEST_CASE_UPDATE_EVENT_KEY = 'testCaseUpdatedEvent';
 
+function normalizeExecutionSetIds(values) {
+    const normalized = [];
+    const seen = new Set();
+    (Array.isArray(values) ? values : []).forEach(raw => {
+        const parsed = Number(raw);
+        if (!Number.isFinite(parsed) || parsed <= 0 || seen.has(parsed)) return;
+        seen.add(parsed);
+        normalized.push(parsed);
+    });
+    return normalized;
+}
+
 async function loadTestRunConfig() {
     try {
         const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${currentConfigId}`);
@@ -83,19 +95,26 @@ async function loadTestRunItemsWithoutLoading() {
 }
 
 async function loadTreSections() {
-    if (!testRunConfig || !testRunConfig.set_id) {
+    const scopeSetIds = normalizeExecutionSetIds(testRunConfig?.test_case_set_ids || []);
+    if (!scopeSetIds.length) {
         treSections = [];
         sectionIndexById = new Map();
         renderTreSectionTree();
         return;
     }
     try {
-        const resp = await window.AuthClient.fetch(`/api/test-case-sets/${testRunConfig.set_id}/sections`);
-        if (resp.ok) {
-            treSections = await resp.json();
-        } else {
-            treSections = [];
+        const responses = await Promise.all(
+            scopeSetIds.map(setId => window.AuthClient.fetch(`/api/test-case-sets/${setId}/sections`))
+        );
+        const mergedSections = [];
+        for (const resp of responses) {
+            if (!resp.ok) continue;
+            const sections = await resp.json();
+            if (Array.isArray(sections)) {
+                mergedSections.push(...sections);
+            }
         }
+        treSections = mergedSections;
     } catch (e) {
         console.warn('loadTreSections failed', e);
         treSections = [];

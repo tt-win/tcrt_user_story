@@ -83,6 +83,11 @@
       </div>
       <div class="modal-body">
         <p id="deleteConfirmText" data-i18n="testCaseSet.deleteConfirmMessage">確定要刪除此測試案例集合嗎？此操作無法撤銷。</p>
+        <div id="deleteImpactWarning" class="alert alert-warning d-none mb-0">
+          <div class="fw-semibold mb-2" id="deleteImpactTitle"></div>
+          <ul id="deleteImpactRunList" class="mb-2 ps-3"></ul>
+          <small class="text-muted d-block" id="deleteImpactHint"></small>
+        </div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">取消</button>

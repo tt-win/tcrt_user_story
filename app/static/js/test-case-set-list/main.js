@@ -4,6 +4,7 @@ let testCaseSets = [];
 let allTeams = [];
 let currentEditingSetId = null;
 let pendingDeleteSetId = null;
+let pendingDeleteImpactPreview = null;
 let quickSearchTestCases = [];
 let quickSearchTeamId = null;
 let quickSearchLoadPromise = null;
@@ -33,6 +34,9 @@ const i18n = {
   'nameAlreadyExists': '集合名稱已存在',
   'defaultSetCannotDelete': '無法刪除預設 Test Case Set',
   'deleteConfirm': '確定要刪除此測試案例集合嗎？此操作無法撤銷。',
+  'deleteImpactTitle': '此操作會影響以下 Test Run：',
+  'deleteImpactHint': '刪除後會自動將不在範圍內的 Test Run 項目移除。',
+  'deleteImpactFetchFailed': '無法取得影響預覽，請稍後再試。',
   'loadingFailed': '載入資料失敗'
 };
 
@@ -435,7 +439,50 @@ async function submitSetForm() {
 }
 
 // 顯示刪除確認
-function showDeleteConfirm(setId, setName) {
+function renderDeleteImpactPreview(preview) {
+  const warningBox = document.getElementById('deleteImpactWarning');
+  const titleEl = document.getElementById('deleteImpactTitle');
+  const listEl = document.getElementById('deleteImpactRunList');
+  const hintEl = document.getElementById('deleteImpactHint');
+  if (!warningBox || !titleEl || !listEl || !hintEl) return;
+
+  listEl.innerHTML = '';
+  warningBox.classList.add('d-none');
+
+  const impactedRuns = Array.isArray(preview?.impacted_test_runs)
+    ? preview.impacted_test_runs
+    : [];
+  const impactedCount = Number(preview?.impacted_item_count || 0);
+  if (!impactedCount || impactedRuns.length === 0) {
+    return;
+  }
+
+  const titleText = window.i18n && window.i18n.isReady()
+    ? window.i18n.t('testCaseSet.deleteImpactTitle', {}, i18n.deleteImpactTitle)
+    : i18n.deleteImpactTitle;
+  const hintText = window.i18n && window.i18n.isReady()
+    ? window.i18n.t('testCaseSet.deleteImpactHint', {}, i18n.deleteImpactHint)
+    : i18n.deleteImpactHint;
+
+  titleEl.textContent = titleText;
+  const topRuns = impactedRuns.slice(0, 10);
+  listEl.innerHTML = topRuns.map(run => {
+    const runName = run.config_name || `Test Run #${run.config_id}`;
+    const removedCount = Number(run.removed_item_count || 0);
+    return `<li>${escapeHtml(runName)}（${removedCount}）</li>`;
+  }).join('');
+
+  if (impactedRuns.length > 10) {
+    const more = impactedRuns.length - 10;
+    listEl.innerHTML += `<li>...還有 ${more} 個 Test Run</li>`;
+  }
+
+  hintEl.textContent = `${hintText}（預估移除 ${impactedCount} 筆）`;
+  warningBox.classList.remove('d-none');
+}
+
+// 顯示刪除確認
+async function showDeleteConfirm(setId, setName) {
   // 檢查是否為預設 Set
   const set = testCaseSets.find(s => s.id === setId);
   if (set && set.is_default) {
@@ -445,8 +492,31 @@ function showDeleteConfirm(setId, setName) {
   }
 
   pendingDeleteSetId = setId;
+  pendingDeleteImpactPreview = null;
   const confirmText = document.getElementById('deleteConfirmText');
   confirmText.textContent = `確定要刪除「${setName}」嗎？此集合中的所有 Test Case 將移至預設集合。此操作無法撤銷。`;
+  renderDeleteImpactPreview(null);
+
+  try {
+    const previewResp = await window.AuthClient.fetch(
+      `/api/teams/${currentTeamId}/test-case-sets/${setId}/impact-preview`
+    );
+    if (!previewResp.ok) {
+      const error = await previewResp.json().catch(() => ({}));
+      throw new Error(error.detail || 'Failed to load impact preview');
+    }
+    pendingDeleteImpactPreview = await previewResp.json();
+    renderDeleteImpactPreview(pendingDeleteImpactPreview);
+  } catch (error) {
+    console.error('Error loading delete impact preview:', error);
+    const previewErrorMsg = window.i18n && window.i18n.isReady()
+      ? window.i18n.t('testCaseSet.deleteImpactFetchFailed', {}, i18n.deleteImpactFetchFailed)
+      : i18n.deleteImpactFetchFailed;
+    showAlert(previewErrorMsg, 'danger');
+    pendingDeleteSetId = null;
+    return;
+  }
+
   const modal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
   modal.show();
 }
@@ -469,9 +539,19 @@ async function confirmDelete() {
       throw new Error(error.detail || 'Failed to delete set');
     }
 
+    const result = await response.json().catch(() => ({}));
+    const cleanupSummary = result?.cleanup_summary || null;
+    const removedItemCount = Number(cleanupSummary?.removed_item_count || 0);
+    const impactedRunCount = Array.isArray(cleanupSummary?.impacted_test_runs)
+      ? cleanupSummary.impacted_test_runs.length
+      : 0;
+
     bootstrap.Modal.getInstance(document.getElementById('deleteConfirmModal')).hide();
     await loadTestCaseSets();
-    const successMsg = window.i18n && window.i18n.isReady() ? window.i18n.t('testCaseSet.deleteSuccess', {}, '集合已刪除，Test Case 已移至預設集合') : '集合已刪除，Test Case 已移至預設集合';
+    let successMsg = window.i18n && window.i18n.isReady() ? window.i18n.t('testCaseSet.deleteSuccess', {}, '集合已刪除，Test Case 已移至預設集合') : '集合已刪除，Test Case 已移至預設集合';
+    if (removedItemCount > 0) {
+      successMsg += `；影響 ${impactedRunCount} 個 Test Run，移除 ${removedItemCount} 筆 Test Run 項目`;
+    }
     showAlert(successMsg, 'success');
 
   } catch (error) {
@@ -480,6 +560,8 @@ async function confirmDelete() {
     showAlert(errorPrefix + error.message, 'danger');
   } finally {
     pendingDeleteSetId = null;
+    pendingDeleteImpactPreview = null;
+    renderDeleteImpactPreview(null);
   }
 }
 
@@ -1276,5 +1358,4 @@ function showTestRunSuccessModal(teamId, configId) {
     const modal = new bootstrap.Modal(modalEl);
     modal.show();
 }
-
 

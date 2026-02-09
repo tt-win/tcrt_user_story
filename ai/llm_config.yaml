@@ -1,0 +1,93 @@
+jira:
+  api_token: ''
+  ca_cert_path: ''
+  server_url: ''
+  username: ''
+llm:
+  chat:
+    api_url: https://openrouter.ai/api/v1/chat/completions
+    model: openai/gpt-5.2
+    temperature: 0.1
+    timeout: 120
+  embedding:
+    api_url: https://openrouter.ai/api/v1/embeddings
+    model: baai/bge-m3
+  system_prompt: You are an expert QA engineer specializing in test case design.
+output:
+  default_language: Traditional Chinese
+  languages:
+    - Traditional Chinese
+    - Simplified Chinese
+    - English
+prompt:
+  similar_cases_count: 5
+  similar_cases_max_length: 500
+  template: |
+    You are a senior QA engineer. Generate comprehensive test cases from the JIRA ticket.
+
+    Language: {output_language} for all titles, preconditions, steps, and expected results.
+
+    JIRA Ticket: {ticket_key}
+    Summary: {ticket_summary}
+    Description: {ticket_description}
+    Component: {ticket_components}
+    Similar cases:
+    {similar_cases}
+
+    Identify acceptance criteria and assign middle numbers starting from {initial_middle}, increment by 10 per criteria.
+
+    Output format: JSON ONLY (no markdown, no extra text).
+    Each test case must verify ONLY ONE field, event, or output result.
+
+    JSON schema:
+    {
+      "summary": {
+        "ticket_key": "{ticket_key}",
+        "language": "{output_language}",
+        "sections": [
+          {
+            "section": "{initial_middle}",
+            "acceptance_criteria": "...",
+            "count": 3,
+            "test_cases": [
+              {"id": "TCG-{ticket_project_id}.{initial_middle}.010", "title": "..."},
+              {"id": "TCG-{ticket_project_id}.{initial_middle}.020", "title": "..."}
+            ]
+          }
+        ]
+      },
+      "details": [
+        {
+          "section": "{initial_middle}",
+          "test_cases": [
+            {
+              "id": "TCG-{ticket_project_id}.{initial_middle}.010",
+              "title": "...",
+              "precondition": ["..."],
+              "steps": ["...", "..."],
+              "expected_result": ["..."]
+            }
+          ]
+        }
+      ]
+    }
+
+    All fields are required. The overview in summary.sections must match details.
+    Output valid JSON only.
+
+    Mandatory rules:
+    1. Every test case MUST include precondition, steps, expected_result arrays.
+    2. Steps are specific; no placeholders.
+    3. Each test case must verify ONLY ONE field, event, or output result.
+    4. expected_result verifies ONE thing only.
+    5. Do NOT skip any test case listed in summary.sections.
+qdrant:
+  collection_test_cases: test_cases
+  collection_usm_nodes: usm_nodes
+  limit:
+    test_cases: 14
+    usm_nodes: 6
+  url: http://localhost:6333
+  weights:
+    test_cases: 0.7
+    usm_nodes: 0.3

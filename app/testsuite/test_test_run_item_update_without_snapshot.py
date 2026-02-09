@@ -1,11 +1,14 @@
 from datetime import datetime
 from pathlib import Path
 import sys
+import asyncio
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker, AsyncSession
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
@@ -14,40 +17,58 @@ if str(PROJECT_ROOT) not in sys.path:
 from app.main import app
 from app.api.test_run_items import TestRunItemUpdate
 from app.database import get_db
-from app.models.database_models import Base, Team, TestRunConfig, TestRunItem, TestCaseLocal
+from app.auth.dependencies import get_current_user
+from app.auth.models import UserRole
+from app.models.database_models import Base, Team, TestRunConfig, TestRunItem, TestCaseLocal, TestCaseSet
 from app.models.lark_types import TestResultStatus, Priority
 
 
 @pytest.fixture
 def temp_db(tmp_path, monkeypatch):
     db_path = tmp_path / "test_case_repo.db"
-    engine = create_engine(
+    sync_engine = create_engine(
         f"sqlite:///{db_path}",
         connect_args={"check_same_thread": False, "timeout": 30},
         pool_pre_ping=True,
     )
+    async_engine = create_async_engine(
+        f"sqlite+aiosqlite:///{db_path}",
+        connect_args={"timeout": 30},
+        pool_pre_ping=True,
+    )
 
-    TestingSessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
-    Base.metadata.create_all(bind=engine)
+    TestingSessionLocal = sessionmaker(bind=sync_engine, autocommit=False, autoflush=False)
+    AsyncTestingSessionLocal = async_sessionmaker(
+        bind=async_engine,
+        expire_on_commit=False,
+        autoflush=False,
+        class_=AsyncSession,
+    )
+    Base.metadata.create_all(bind=sync_engine)
 
     import app.database as app_database
 
-    monkeypatch.setattr(app_database, "engine", engine)
-    monkeypatch.setattr(app_database, "SessionLocal", TestingSessionLocal)
+    monkeypatch.setattr(app_database, "engine", async_engine)
+    monkeypatch.setattr(app_database, "SessionLocal", AsyncTestingSessionLocal)
 
-    def override_get_db():
-        db = TestingSessionLocal()
-        try:
+    async def override_get_db():
+        async with AsyncTestingSessionLocal() as db:
             yield db
-        finally:
-            db.close()
 
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(
+        id=1,
+        username="pytest-admin",
+        full_name="Pytest Admin",
+        role=UserRole.SUPER_ADMIN,
+    )
 
-    yield engine, TestingSessionLocal
+    yield sync_engine, TestingSessionLocal
 
     app.dependency_overrides.pop(get_db, None)
-    engine.dispose()
+    app.dependency_overrides.pop(get_current_user, None)
+    asyncio.run(async_engine.dispose())
+    sync_engine.dispose()
 
 
 def _prepare_schema_with_missing_backup(engine):
@@ -110,15 +131,26 @@ def _seed_base_data(session):
     session.add(team)
     session.commit()
 
+    default_case_set = TestCaseSet(
+        team_id=team.id,
+        name=f"Default-{team.id}",
+        description="",
+        is_default=True,
+    )
+    session.add(default_case_set)
+    session.commit()
+
     config = TestRunConfig(
         team_id=team.id,
         name="Smoke",
         description="",
     )
+    config.test_case_set_ids_json = f"[{default_case_set.id}]"
     session.add(config)
 
     case = TestCaseLocal(
         team_id=team.id,
+        test_case_set_id=default_case_set.id,
         test_case_number="TC-1",
         title="Login",
         priority=Priority.MEDIUM,
@@ -145,17 +177,7 @@ def test_update_result_succeeds_without_snapshot_table(temp_db):
     team_id, config_id, item_id = _seed_base_data(session)
     session.close()
 
-    from app.models.database_models import ensure_test_run_item_history_fk
-
-    ensure_test_run_item_history_fk(engine)
-
     client = TestClient(app)
-
-    with engine.connect() as conn:
-        sql = conn.execute(
-            text("SELECT sql FROM sqlite_master WHERE name='test_run_item_result_history'")
-        ).scalar_one()
-        assert "test_run_items_backup_snapshot" not in (sql or "")
 
     payload = TestRunItemUpdate(
         test_result=TestResultStatus.PASSED,

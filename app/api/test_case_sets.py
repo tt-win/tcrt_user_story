@@ -19,7 +19,9 @@ from ..models.test_case_set import (
     TestCaseSetWithSections,
     TestCaseSetNameValidationResponse,
 )
+from ..models.test_run_scope import ImpactPreviewResponse
 from ..services.test_case_set_service import TestCaseSetService
+from ..services.test_run_scope_service import TestRunScopeService
 from ..audit import audit_service, ActionType, ResourceType, AuditSeverity
 
 logger = logging.getLogger(__name__)
@@ -322,18 +324,47 @@ async def update_test_case_set(
         )
 
 
-@router.delete("/{team_id}/test-case-sets/{set_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.get("/{team_id}/test-case-sets/{set_id}/impact-preview", response_model=ImpactPreviewResponse)
+async def preview_delete_test_case_set_impact(
+    team_id: int,
+    set_id: int,
+    current_user: User = Depends(get_current_user),
+    team: TeamDB = Depends(verify_team_write_permission),
+    db: AsyncSession = Depends(get_db),
+) -> ImpactPreviewResponse:
+    """預覽刪除 Test Case Set 對 Test Run 的影響"""
+    def _preview(sync_db: Session):
+        test_set = sync_db.query(TestCaseSetDB).filter(
+            TestCaseSetDB.id == set_id,
+            TestCaseSetDB.team_id == team_id,
+        ).first()
+        if not test_set:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Test Case Set {set_id} not found",
+            )
+        if test_set.is_default:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="無法刪除預設 Test Case Set",
+            )
+        return TestRunScopeService.preview_set_deletion(sync_db, team_id=team_id, set_id=set_id)
+
+    return await run_sync(db, _preview)
+
+
+@router.delete("/{team_id}/test-case-sets/{set_id}", response_model=dict)
 async def delete_test_case_set(
     team_id: int,
     set_id: int,
     current_user: User = Depends(get_current_user),
     team: TeamDB = Depends(verify_team_write_permission),
     db: AsyncSession = Depends(get_db),
-) -> None:
+) -> dict:
     """刪除 Test Case Set"""
     try:
         service = TestCaseSetService(db)
-        await service.delete(set_id, team_id)
+        delete_result = await service.delete(set_id, team_id)
 
         await log_set_action(
             ActionType.DELETE,
@@ -341,7 +372,17 @@ async def delete_test_case_set(
             team_id,
             set_id,
             f"刪除 Test Case Set: {set_id}",
+            {
+                "cleanup_summary": delete_result.get("cleanup_summary"),
+                "moved_test_case_count": delete_result.get("moved_test_case_count", 0),
+                "default_set_id": delete_result.get("default_set_id"),
+                "updated_scope_config_count": delete_result.get("updated_scope_config_count", 0),
+            },
         )
+        return {
+            "success": True,
+            **delete_result,
+        }
 
     except ValueError as e:
         raise HTTPException(
