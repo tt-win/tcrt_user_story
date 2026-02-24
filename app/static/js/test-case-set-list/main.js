@@ -45,6 +45,7 @@ document.addEventListener('DOMContentLoaded', async function() {
   console.log('Test Case Sets page loaded');
   loadLanguage();
   setupQuickSearch_TestCaseSets();
+  bindAiHelperEntrypoint();
 
   // 從 localStorage 獲取當前選擇的團隊 (由 AppUtils.setCurrentTeam 設定)
   const savedTeam = localStorage.getItem('currentTeam');
@@ -72,6 +73,15 @@ document.addEventListener('DOMContentLoaded', async function() {
     showAlert(window.i18n && window.i18n.isReady() ? window.i18n.t('common.pleaseSelect') : '未選擇團隊', 'warning');
   }
 });
+
+function bindAiHelperEntrypoint() {
+  const helperBtn = document.getElementById('openAiHelperFromSetListBtn');
+  if (!helperBtn || helperBtn.dataset.bound === '1') {
+    return;
+  }
+  helperBtn.dataset.bound = '1';
+  helperBtn.addEventListener('click', navigateToAiHelperFromSetList);
+}
 
 // 載入語言設定
 function loadLanguage() {
@@ -576,6 +586,33 @@ function navigateToSet(setId) {
   // 導航到 Test Case Management
   const url = `/test-case-management?set_id=${setId}${teamId ? `&team_id=${teamId}` : ''}`;
   window.location.href = url;
+}
+
+async function navigateToAiHelperFromSetList() {
+  const teamId = getQuickSearchTeamId() || currentTeamId;
+  if (!teamId) {
+    const message = window.i18n && window.i18n.isReady()
+      ? window.i18n.t('errors.pleaseSelectTeam', {}, '請先選擇團隊')
+      : '請先選擇團隊';
+    showAlert(message, 'warning');
+    return;
+  }
+
+  // 進入 helper 模式時，不應延用舊的 set context
+  try {
+    sessionStorage.removeItem('selectedTestCaseSetId');
+    sessionStorage.removeItem('selectedTestCaseSetName');
+  } catch (_) {}
+
+  if (!window.AiTestCaseHelper || typeof window.AiTestCaseHelper.openModal !== 'function') {
+    const message = window.i18n && window.i18n.isReady()
+      ? window.i18n.t('common.loadingFailed', {}, 'AI Helper 尚未初始化，請重新整理頁面')
+      : 'AI Helper 尚未初始化，請重新整理頁面';
+    showAlert(message, 'danger');
+    return;
+  }
+
+  await window.AiTestCaseHelper.openModal({ teamId });
 }
 
 /* ============================================================
@@ -1358,4 +1395,3 @@ function showTestRunSuccessModal(teamId, configId) {
     const modal = new bootstrap.Modal(modalEl);
     modal.show();
 }
-

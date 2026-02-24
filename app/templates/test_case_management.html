@@ -6,6 +6,15 @@
 <!-- Markdown 編輯器相關資源 -->
 <script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js"></script>
 <link rel="stylesheet" href="/static/css/test-case-management.css">
+<script>
+window.__TCM_HELPER_MODE__ = {{ 'true' if helper_mode else 'false' }};
+if (window.__TCM_HELPER_MODE__) {
+    try {
+        sessionStorage.removeItem('selectedTestCaseSetId');
+        sessionStorage.removeItem('selectedTestCaseSetName');
+    } catch (_) {}
+}
+</script>
 {% endblock %}
 
 {% block page_title_text %}
@@ -591,6 +600,8 @@
     </div>
 </div>
 
+{% include '_partials/ai_test_case_helper_modal.html' %}
+
 <!-- 批次修改模態框 -->
 <div class="modal fade" id="testCaseBatchModifyModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
@@ -1089,6 +1100,7 @@ TC-1003,API 健康檢查,\"服務已啟動\",\"發送 GET /health\",\"回傳 200
 <script src="/static/js/test-case-management/utils.js"></script>
 <script src="/static/js/test-case-management/ai-assist.js"></script>
 <script src="/static/js/test-case-management/markdown.js"></script>
+<script src="/static/js/test-case-management/ai-helper.js?v=20260212b"></script>
 <script src="/static/js/test-case-management/attachments.js"></script>
 <script src="/static/js/test-case-management/tcg-tooltip.js"></script>
 <script src="/static/js/test-case-management/reference-test-case.js"></script>
@@ -1099,7 +1111,7 @@ TC-1003,API 健康檢查,\"服務已啟動\",\"發送 GET /health\",\"回傳 200
 <script src="/static/js/i18n-test-case-set.js"></script>
 
 <!-- Test Case Set 整合模組 -->
-<script src="/static/js/test-case-set-integration.js"></script>
+<script src="/static/js/test-case-set-integration.js?v=20260210b"></script>
 
 <!-- Test Case Section List 側邊欄模組 -->
 <script src="/static/js/test-case-section-list.js"></script>
@@ -1115,5 +1127,4 @@ TC-1003,API 健康檢查,\"服務已啟動\",\"發送 GET /health\",\"回傳 200
 <script src="/static/js/test-case-cross-set-ops.js"></script>
 
 <!-- 初始化 Test Case Section List -->
-<script src="/static/js/test-case-management/section-list-init.js"></script>
 {% endblock %}

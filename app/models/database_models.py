@@ -476,6 +476,82 @@ class TestCaseLocal(Base):
     )
 
 
+class AITestCaseHelperSession(Base):
+    """JIRA Ticket -> Test Case Helper 工作階段。"""
+
+    __tablename__ = "ai_tc_helper_sessions"
+    __table_args__ = (
+        Index("ix_ai_tc_helper_sessions_team_status", "team_id", "status"),
+        Index("ix_ai_tc_helper_sessions_team_updated", "team_id", "updated_at"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    team_id = Column(Integer, ForeignKey("teams.id"), nullable=False, index=True)
+    created_by_user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    target_test_case_set_id = Column(
+        Integer,
+        ForeignKey("test_case_sets.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    ticket_key = Column(String(64), nullable=True, index=True)
+    review_locale = Column(String(16), nullable=False, default="zh-TW")
+    output_locale = Column(String(16), nullable=False, default="zh-TW")
+    initial_middle = Column(String(3), nullable=False, default="010")
+    current_phase = Column(String(32), nullable=False, default="init", index=True)
+    phase_status = Column(String(32), nullable=False, default="idle", index=True)
+    status = Column(String(32), nullable=False, default="active", index=True)
+    last_error = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )
+
+    drafts = relationship(
+        "AITestCaseHelperDraft",
+        back_populates="session",
+        cascade="all, delete-orphan",
+    )
+    test_case_set = relationship("TestCaseSet")
+    team = relationship("Team")
+    created_by_user = relationship("User")
+
+
+class AITestCaseHelperDraft(Base):
+    """JIRA Ticket -> Test Case Helper 階段草稿。"""
+
+    __tablename__ = "ai_tc_helper_drafts"
+    __table_args__ = (
+        UniqueConstraint(
+            "session_id", "phase", name="uq_ai_tc_helper_draft_session_phase"
+        ),
+        Index("ix_ai_tc_helper_drafts_session_phase", "session_id", "phase"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    session_id = Column(
+        Integer,
+        ForeignKey("ai_tc_helper_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    phase = Column(String(32), nullable=False, index=True)
+    version = Column(Integer, nullable=False, default=1)
+    markdown = Column(Text, nullable=True)
+    payload_json = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(
+        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
+    )
+
+    session = relationship("AITestCaseHelperSession", back_populates="drafts")
+
+
 # Backward-compatible computed columns for TestRunItem snapshots
 TestRunItem.title = column_property(
     select(TestCaseLocal.title)

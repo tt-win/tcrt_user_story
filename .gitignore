@@ -152,6 +152,9 @@ i18n_test.html
 # Generated reports (static HTML); do not track
 /generated_report/
 
+# Local AI helper debug runner artifacts
+.tmp/helper-debug-runs/
+
 # Design and documentation files
 *.md
 !README.md

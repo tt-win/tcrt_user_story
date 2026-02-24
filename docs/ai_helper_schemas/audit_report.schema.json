@@ -1,0 +1,163 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "audit_report.schema.json",
+  "type": "object",
+  "required": [
+    "audit_version",
+    "ticket_id",
+    "section_id",
+    "summary",
+    "findings",
+    "patches"
+  ],
+  "properties": {
+    "audit_version": {
+      "type": "string",
+      "enum": [
+        "1.0"
+      ]
+    },
+    "ticket_id": {
+      "type": "string"
+    },
+    "section_id": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "object",
+      "required": [
+        "status",
+        "failed_rules_count"
+      ],
+      "properties": {
+        "status": {
+          "type": "string",
+          "enum": [
+            "pass",
+            "fail"
+          ]
+        },
+        "failed_rules_count": {
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "additionalProperties": false
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "finding_id",
+          "severity",
+          "kind",
+          "location",
+          "message",
+          "suggested_fix"
+        ],
+        "properties": {
+          "finding_id": {
+            "type": "string",
+            "pattern": "^F-[0-9]+$"
+          },
+          "severity": {
+            "type": "string",
+            "enum": [
+              "blocker",
+              "major",
+              "minor"
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "missing_trace",
+              "missing_precondition",
+              "missing_steps",
+              "missing_expected",
+              "lazy_reference",
+              "non_observable_expected",
+              "insufficient_data",
+              "inconsistent_format",
+              "overreach_no_source",
+              "coverage_gap"
+            ]
+          },
+          "location": {
+            "type": "object",
+            "required": [
+              "testcase_id"
+            ],
+            "properties": {
+              "testcase_id": {
+                "type": "string"
+              },
+              "step_no": {
+                "type": "integer"
+              },
+              "field": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
+          "message": {
+            "type": "string"
+          },
+          "suggested_fix": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "patches": {
+      "description": "machine-readable patch 指令；只改缺的欄位",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "patch_id",
+          "target",
+          "op",
+          "path",
+          "value"
+        ],
+        "properties": {
+          "patch_id": {
+            "type": "string",
+            "pattern": "^P-[0-9]+$"
+          },
+          "target": {
+            "type": "object",
+            "required": [
+              "testcase_id"
+            ],
+            "properties": {
+              "testcase_id": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          },
+          "op": {
+            "type": "string",
+            "enum": [
+              "add",
+              "replace",
+              "remove"
+            ]
+          },
+          "path": {
+            "type": "string",
+            "description": "JSON Pointer (RFC6901)"
+          },
+          "value": {}
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}
