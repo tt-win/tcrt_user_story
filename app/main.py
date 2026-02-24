@@ -109,6 +109,7 @@ async def test_case_management(
 ):
     """Test Case Management 頁面 - 需要先選擇 Set"""
     resolved_set_id = set_id
+    helper_flag = request.query_params.get("helper") in ("1", "true")
 
     # 允許透過 test case 編號直接解析所屬的 Test Case Set，避免彈窗被重導
     if resolved_set_id is None and tc and team_id:
@@ -128,13 +129,13 @@ async def test_case_management(
 
     # 如果仍然無法取得 set_id，維持原本導向邏輯
     minimal_flag = request.query_params.get("minimal") in ("1", "true") or request.query_params.get("editor") in ("1", "true")
-    allow_without_set = minimal_flag and bool(tc)
+    allow_without_set = (minimal_flag and bool(tc)) or helper_flag
     if resolved_set_id is None and not allow_without_set:
         from fastapi.responses import RedirectResponse
         return RedirectResponse(url="/test-case-sets", status_code=303)
 
     # 若已解析出 set_id 但 URL 未帶，補回 set_id 以確保前端能正確初始化區段 UI
-    if resolved_set_id is not None and set_id is None and not minimal_flag:
+    if resolved_set_id is not None and set_id is None and not minimal_flag and not helper_flag:
         from fastapi.responses import RedirectResponse
         params = dict(request.query_params)
         params["set_id"] = str(resolved_set_id)
@@ -143,7 +144,7 @@ async def test_case_management(
 
     return templates.TemplateResponse(
         "test_case_management.html",
-        {"request": request, "set_id": resolved_set_id},
+        {"request": request, "set_id": resolved_set_id, "helper_mode": helper_flag},
     )
 
 @app.get("/test-run-management", response_class=HTMLResponse)
@@ -242,6 +243,17 @@ async def startup_event():
         from app.services.scheduler import task_scheduler
         task_scheduler.start()
         logging.info("定時任務調度器已啟動")
+
+        # 初始化 Qdrant Async Client（若連線失敗不阻止服務啟動，後續請求會自動重試）
+        try:
+            from app.services.qdrant_client import get_qdrant_client
+            qdrant_client = get_qdrant_client()
+            if await qdrant_client.health_check():
+                logging.info("Qdrant client 初始化與健康檢查成功")
+            else:
+                logging.warning("Qdrant client 健康檢查失敗，將於實際請求時重試")
+        except Exception as qdrant_err:
+            logging.warning("Qdrant client 初始化失敗（不阻止啟動）: %s", qdrant_err)
     except Exception as e:
         logging.error(f"啟動服務失敗: {e}")
 
@@ -255,6 +267,12 @@ async def shutdown_event():
         logging.info("定時任務調度器已停止")
     except Exception as e:
         logging.error(f"停止定時任務調度器失敗: {e}")
+
+    try:
+        from app.services.qdrant_client import close_qdrant_client
+        await close_qdrant_client()
+    except Exception as e:
+        logging.error(f"關閉 Qdrant client 失敗: {e}")
 
     try:
         await audit_service.force_flush()
