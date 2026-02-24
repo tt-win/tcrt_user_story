@@ -1,0 +1,344 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "coverage_plan.schema.json",
+  "type": "object",
+  "required": [
+    "coverage_version",
+    "ticket_id",
+    "sections",
+    "traceability"
+  ],
+  "properties": {
+    "coverage_version": {
+      "type": "string",
+      "enum": [
+        "1.0"
+      ]
+    },
+    "ticket_id": {
+      "type": "string"
+    },
+    "sections": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/section"
+      }
+    },
+    "traceability": {
+      "type": "object",
+      "required": [
+        "rule_to_items",
+        "flow_to_items"
+      ],
+      "properties": {
+        "rule_to_items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "rule_id",
+              "verification_item_ids"
+            ],
+            "properties": {
+              "rule_id": {
+                "type": "string",
+                "pattern": "^RULE-[0-9]+$"
+              },
+              "verification_item_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^VI-[0-9]+$"
+                },
+                "minItems": 1
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "flow_to_items": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "flow_id",
+              "verification_item_ids"
+            ],
+            "properties": {
+              "flow_id": {
+                "type": "string",
+                "pattern": "^FLOW-[0-9]+$"
+              },
+              "verification_item_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "pattern": "^VI-[0-9]+$"
+                },
+                "minItems": 1
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "source_ref": {
+      "$ref": "requirement_ir.schema.json#/$defs/source_ref"
+    },
+    "section": {
+      "type": "object",
+      "required": [
+        "section_id",
+        "title",
+        "purpose",
+        "in_scope",
+        "relevant_ir_ids",
+        "verification_items"
+      ],
+      "properties": {
+        "section_id": {
+          "type": "string",
+          "pattern": "^SEC-[0-9]+$"
+        },
+        "title": {
+          "type": "string"
+        },
+        "purpose": {
+          "type": "string"
+        },
+        "in_scope": {
+          "type": "object",
+          "required": [
+            "flows",
+            "rules",
+            "entities"
+          ],
+          "properties": {
+            "flows": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^FLOW-[0-9]+$"
+              }
+            },
+            "rules": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^RULE-[0-9]+$"
+              }
+            },
+            "entities": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^ENT-[0-9]+$"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "relevant_ir_ids": {
+          "description": "方便截取 IR excerpt，避免把整包 IR 餵給低階模型",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "verification_items": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/verification_item"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "verification_item": {
+      "type": "object",
+      "required": [
+        "verification_item_id",
+        "intent",
+        "setup_hints",
+        "action_hints",
+        "data",
+        "expected_observable",
+        "variants",
+        "priority",
+        "trace",
+        "source_refs"
+      ],
+      "properties": {
+        "verification_item_id": {
+          "type": "string",
+          "pattern": "^VI-[0-9]+$"
+        },
+        "intent": {
+          "type": "string"
+        },
+        "setup_hints": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "action_hints": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "data": {
+          "description": "測試資料提示：欄位、型態、範例值/placeholder、資料狀態",
+          "type": "object",
+          "required": [
+            "inputs",
+            "state"
+          ],
+          "properties": {
+            "inputs": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "required": [
+                  "name",
+                  "type",
+                  "example"
+                ],
+                "properties": {
+                  "name": {
+                    "type": "string"
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "string",
+                      "number",
+                      "boolean",
+                      "date",
+                      "datetime",
+                      "enum",
+                      "object",
+                      "array",
+                      "unknown"
+                    ]
+                  },
+                  "example": {
+                    "type": "string"
+                  },
+                  "notes": {
+                    "type": "string"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "state": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "expected_observable": {
+          "description": "必須是可觀測的結果（UI欄位/排序/API欄位/DB/log/errorcode等）",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "variants": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "kind",
+              "notes"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "positive",
+                  "negative",
+                  "boundary",
+                  "exception",
+                  "security",
+                  "performance"
+                ]
+              },
+              "notes": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "priority": {
+          "type": "string",
+          "enum": [
+            "p0",
+            "p1",
+            "p2",
+            "p3"
+          ]
+        },
+        "trace": {
+          "type": "object",
+          "required": [
+            "rule_ids",
+            "flow_ids",
+            "entity_ids"
+          ],
+          "properties": {
+            "rule_ids": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^RULE-[0-9]+$"
+              }
+            },
+            "flow_ids": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^FLOW-[0-9]+$"
+              }
+            },
+            "entity_ids": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^ENT-[0-9]+$"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/source_ref"
+          },
+          "minItems": 1
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

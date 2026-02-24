@@ -530,8 +530,17 @@ function mapFieldToAttr(field) {
 }
 
 function renderTestCaseRow(testCase) {
+    const caseNumber = String(testCase.test_case_number || testCase.record_id || '');
+    const safeCaseNumber = caseNumber.replace(/"/g, '&quot;');
+    const highlightedCases = window.__tcHelperCreatedNumbers instanceof Set
+        ? window.__tcHelperCreatedNumbers
+        : null;
+    const rowClass = highlightedCases && caseNumber && highlightedCases.has(caseNumber)
+        ? ' class="tc-helper-created-row"'
+        : '';
+
     return `
-        <tr>
+        <tr${rowClass} data-test-case-number="${safeCaseNumber}">
             <td class="align-middle text-center">
                 <input type="checkbox" class="form-check-input test-case-checkbox"
                        value="${testCase.record_id}" ${selectedTestCases.has(testCase.record_id) ? 'checked' : ''}>
@@ -1260,6 +1269,7 @@ async function applyTestCaseManagementPermissions() {
         if (!isViewer) {
             const editingKeys = [
                 'addTestCaseBtn',
+                'aiTestCaseHelperBtn',
                 'bulkModeDropdownGroup',
                 'saveTestCaseBtn',
                 'saveAndAddNextBtn',
@@ -1282,6 +1292,10 @@ async function applyTestCaseManagementPermissions() {
 
         // Header 區按鈕控制
         setElementVisibility('addTestCaseBtn', permissions.addTestCaseBtn);
+        if (permissions.aiTestCaseHelperBtn === undefined) {
+            permissions.aiTestCaseHelperBtn = permissions.addTestCaseBtn;
+        }
+        setElementVisibility('aiTestCaseHelperBtn', permissions.aiTestCaseHelperBtn);
         setElementVisibility('bulkModeDropdownGroup', permissions.bulkModeDropdownGroup);
 
         // Modal 按鈕控制

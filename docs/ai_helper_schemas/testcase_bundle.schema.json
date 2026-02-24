@@ -1,0 +1,272 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "testcase_bundle.schema.json",
+  "type": "object",
+  "required": [
+    "bundle_version",
+    "ticket_id",
+    "section_id",
+    "retrieved_refs",
+    "testcases"
+  ],
+  "properties": {
+    "bundle_version": {
+      "type": "string",
+      "enum": [
+        "1.0"
+      ]
+    },
+    "ticket_id": {
+      "type": "string"
+    },
+    "section_id": {
+      "type": "string",
+      "pattern": "^SEC-[0-9]+$"
+    },
+    "retrieved_refs": {
+      "description": "qdrant 檢索結果，用於補足線索；必須可追溯",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "ref_id",
+          "collection",
+          "score",
+          "snippet"
+        ],
+        "properties": {
+          "ref_id": {
+            "type": "string"
+          },
+          "collection": {
+            "type": "string",
+            "enum": [
+              "jira_references",
+              "test_cases"
+            ]
+          },
+          "score": {
+            "type": "number"
+          },
+          "snippet": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "testcases": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/testcase"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "source_ref": {
+      "$ref": "requirement_ir.schema.json#/$defs/source_ref"
+    },
+    "testcase": {
+      "type": "object",
+      "required": [
+        "testcase_id",
+        "title",
+        "type",
+        "priority",
+        "tags",
+        "covers",
+        "preconditions",
+        "test_data",
+        "steps",
+        "expected_results",
+        "postconditions",
+        "source_refs",
+        "justification"
+      ],
+      "properties": {
+        "testcase_id": {
+          "type": "string",
+          "pattern": "^TC-[0-9]+$"
+        },
+        "title": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "ui",
+            "api",
+            "integration",
+            "e2e",
+            "unit_like",
+            "db"
+          ]
+        },
+        "priority": {
+          "type": "string",
+          "enum": [
+            "p0",
+            "p1",
+            "p2",
+            "p3"
+          ]
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "covers": {
+          "type": "object",
+          "required": [
+            "verification_item_ids",
+            "rule_ids",
+            "flow_ids"
+          ],
+          "properties": {
+            "verification_item_ids": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^VI-[0-9]+$"
+              },
+              "minItems": 1
+            },
+            "rule_ids": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^RULE-[0-9]+$"
+              }
+            },
+            "flow_ids": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "pattern": "^FLOW-[0-9]+$"
+              }
+            }
+          },
+          "additionalProperties": false
+        },
+        "preconditions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "test_data": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "name",
+              "value_or_generator",
+              "usage"
+            ],
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "value_or_generator": {
+                "type": "string"
+              },
+              "usage": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 3,
+          "items": {
+            "type": "object",
+            "required": [
+              "step_no",
+              "action",
+              "expected"
+            ],
+            "properties": {
+              "step_no": {
+                "type": "integer",
+                "minimum": 1
+              },
+              "action": {
+                "type": "string"
+              },
+              "expected": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "expected_results": {
+          "description": "整體 expected（與 step expected 不衝突；用於補充整體可觀測結果）",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string"
+          }
+        },
+        "postconditions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/source_ref"
+          },
+          "minItems": 1
+        },
+        "justification": {
+          "description": "若引用 retrieved_refs 補洞，需說明補了哪個欄位與原因",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "field",
+              "used_ref_ids",
+              "reason"
+            ],
+            "properties": {
+              "field": {
+                "type": "string",
+                "enum": [
+                  "preconditions",
+                  "test_data",
+                  "steps",
+                  "expected_results",
+                  "notes"
+                ]
+              },
+              "used_ref_ids": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "minItems": 1
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

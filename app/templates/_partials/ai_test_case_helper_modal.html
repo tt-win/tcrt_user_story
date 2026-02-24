@@ -1,0 +1,341 @@
+<!-- AI Agent - Test Case Helper -->
+<div class="modal fade" id="aiTestCaseHelperModal" tabindex="-1" aria-labelledby="aiTestCaseHelperLabel" aria-hidden="true" data-bs-backdrop="static">
+    <div class="modal-dialog modal-xl tc-helper-dialog">
+        <div class="modal-content tc-helper-modal">
+            <div class="modal-header tc-helper-header">
+                <h5 class="modal-title" id="aiTestCaseHelperLabel">
+                    <i class="fas fa-robot me-2"></i><span data-i18n="aiHelper.title">AI Agent - Test Case Helper</span>
+                </h5>
+                <div class="d-flex align-items-center gap-2">
+                    <span class="badge text-bg-light" id="helperSessionBadge" data-i18n="aiHelper.noSession">尚未建立 Session</span>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+            </div>
+            <div class="modal-body tc-helper-body">
+                <div class="tc-helper-stepper-wrap">
+                    <ol class="tc-helper-stepper">
+                        <li class="tc-helper-step is-active" data-helper-step="1">
+                            <span class="tc-helper-step-index">1</span>
+                            <span class="tc-helper-step-label" data-i18n="aiHelper.step.setup">目標設定與 Ticket</span>
+                        </li>
+                        <li class="tc-helper-step" data-helper-step="2">
+                            <span class="tc-helper-step-index">2</span>
+                            <span class="tc-helper-step-label" data-i18n="aiHelper.step.pretestcase">Pre Test Case</span>
+                        </li>
+                        <li class="tc-helper-step" data-helper-step="3">
+                            <span class="tc-helper-step-index">3</span>
+                            <span class="tc-helper-step-label" data-i18n="aiHelper.step.final">最終審核與建立</span>
+                        </li>
+                    </ol>
+                </div>
+
+                <div class="d-flex align-items-center gap-2 text-muted small mb-2 d-none" id="helperLoadingRow">
+                    <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                    <span id="helperLoadingText" data-i18n="aiHelper.loading">AI 助手處理中...</span>
+                </div>
+
+                <div class="tc-helper-panels">
+                    <section class="tc-helper-panel is-active" data-helper-panel="1">
+                        <div class="row g-3">
+                            <div class="col-lg-8">
+                                <div class="card h-100">
+                                    <div class="card-body">
+                                        <h6 class="mb-3" data-i18n="aiHelper.targetSetTitle">目標 Test Case Set</h6>
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="radio" name="helperSetMode" id="helperSetModeExisting" value="existing" checked>
+                                            <label class="form-check-label" for="helperSetModeExisting" data-i18n="aiHelper.setModeExisting">選擇既有 Set</label>
+                                        </div>
+                                        <div class="mt-2 mb-3">
+                                            <select class="form-select" id="helperExistingSetSelect"></select>
+                                        </div>
+
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="radio" name="helperSetMode" id="helperSetModeCreate" value="create">
+                                            <label class="form-check-label" for="helperSetModeCreate" data-i18n="aiHelper.setModeCreate">建立新 Set</label>
+                                        </div>
+                                        <div class="row g-2 mt-1" id="helperCreateSetFields" style="display: none;">
+                                            <div class="col-md-6">
+                                                <input type="text" class="form-control" id="helperNewSetName" data-i18n-placeholder="aiHelper.newSetNamePlaceholder" placeholder="新 Set 名稱">
+                                            </div>
+                                            <div class="col-md-6">
+                                                <input type="text" class="form-control" id="helperNewSetDescription" data-i18n-placeholder="aiHelper.newSetDescriptionPlaceholder" placeholder="描述（選填）">
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-lg-4">
+                                <div class="card h-100">
+                                    <div class="card-body">
+                                        <h6 class="mb-3" data-i18n="aiHelper.languageTitle">語言與編號設定</h6>
+                                        <label for="helperOutputLocale" class="form-label" data-i18n="aiHelper.outputLocale">產出語系</label>
+                                        <select class="form-select mb-2" id="helperOutputLocale">
+                                            <option value="zh-TW">繁體中文</option>
+                                            <option value="zh-CN">简体中文</option>
+                                            <option value="en">English</option>
+                                        </select>
+                                        <label for="helperInitialMiddle" class="form-label" data-i18n="aiHelper.initialMiddle">起始 middle 編號</label>
+                                        <input type="text" class="form-control mb-2" id="helperInitialMiddle" value="010" maxlength="3">
+                                        <small class="text-muted" data-i18n="aiHelper.initialMiddleHint">middle/tail 皆 10 遞增（010,020,030...）</small>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card mt-3">
+                            <div class="card-body">
+                                <h6 class="mb-2" data-i18n="aiHelper.ticketTitle">TCG Ticket</h6>
+                                <div class="row g-2 align-items-end">
+                                    <div class="col-md-4">
+                                        <label for="helperTicketKey" class="form-label" data-i18n="aiHelper.ticketKey">TCG 單號</label>
+                                        <input type="text" class="form-control" id="helperTicketKey" placeholder="TCG-12345">
+                                    </div>
+                                    <div class="col-md-8">
+                                        <button type="button" class="btn btn-primary" id="helperNormalizeBtn">
+                                            <i class="fas fa-brain me-2"></i><span data-i18n="aiHelper.normalizeAction">讀取 Ticket 並執行 Analysis/Coverage</span>
+                                        </button>
+                                        <button type="button" class="btn btn-outline-secondary ms-2" id="helperRestoreSessionBtn">
+                                            <i class="fas fa-rotate-left me-2"></i><span data-i18n="aiHelper.restoreSession">恢復上次 Session</span>
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="tc-helper-ticket-summary mt-3" id="helperTicketSummary"></div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="tc-helper-panel" data-helper-panel="2">
+                        <div class="card tc-helper-stage-card">
+                            <div class="card-body tc-helper-stage-body">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <h6 class="mb-0" data-i18n="aiHelper.pretestcaseTitle">Pre Test Case 條目（可編輯）</h6>
+                                    <button type="button" class="btn btn-sm btn-outline-primary" id="helperAddPretestcaseRowBtn">
+                                        <i class="fas fa-plus me-1"></i><span data-i18n="common.add">新增</span>
+                                    </button>
+                                </div>
+                                <p class="text-muted small mb-2" data-i18n="aiHelper.pretestcaseHint">請確認條目、分類與需求對應，確認後再產生最終 Test Cases。</p>
+                                <div class="tc-helper-diff mb-2" id="helperPretestcaseDiff"></div>
+                                <div class="tc-helper-split">
+                                    <aside class="tc-helper-split-left">
+                                        <div class="tc-helper-list-panel">
+                                            <h6 class="tc-helper-list-header" data-i18n="aiHelper.sectionListTitle">區段</h6>
+                                            <div id="helperPreSectionList" class="list-group tc-helper-list"></div>
+                                        </div>
+                                        <div class="tc-helper-list-panel mt-2">
+                                            <h6 class="tc-helper-list-header" data-i18n="aiHelper.entryListTitle">條目</h6>
+                                            <div id="helperPreEntryList" class="list-group tc-helper-list"></div>
+                                        </div>
+                                    </aside>
+                                    <section class="tc-helper-split-right">
+                                        <div id="helperPreDetailEmpty" class="tc-helper-empty" data-i18n="aiHelper.preDetailEmpty">請先選擇左側條目</div>
+                                        <div id="helperPreDetailForm" class="d-none">
+                                            <div class="tc-helper-detail-scroll">
+                                                <div class="row g-2 mb-2">
+                                                    <div class="col-md-3">
+                                                        <label for="helperPreCidInput" class="form-label form-label-sm">CID</label>
+                                                        <input type="text" class="form-control form-control-sm" id="helperPreCidInput" readonly>
+                                                    </div>
+                                                    <div class="col-md-5">
+                                                        <label for="helperPreSectionInput" class="form-label form-label-sm" data-i18n="testCase.section">Section</label>
+                                                        <input type="text" class="form-control form-control-sm" id="helperPreSectionInput">
+                                                    </div>
+                                                    <div class="col-md-4">
+                                                        <label for="helperPreCategoryInput" class="form-label form-label-sm" data-i18n="aiHelper.category">類別</label>
+                                                        <select class="form-select form-select-sm" id="helperPreCategoryInput">
+                                                            <option value="happy">happy</option>
+                                                            <option value="negative">negative</option>
+                                                            <option value="boundary">boundary</option>
+                                                            <option value="permission">permission</option>
+                                                            <option value="error">error</option>
+                                                        </select>
+                                                    </div>
+                                                </div>
+                                                <div class="row g-2 mb-2">
+                                                    <div class="col-md-4">
+                                                        <label for="helperPreStateInput" class="form-label form-label-sm" data-i18n="aiHelper.state">狀態</label>
+                                                        <select class="form-select form-select-sm" id="helperPreStateInput">
+                                                            <option value="ok">ok</option>
+                                                            <option value="assume">assume</option>
+                                                            <option value="ask">ask</option>
+                                                        </select>
+                                                    </div>
+                                                    <div class="col-md-8">
+                                                        <label for="helperPreRefInput" class="form-label form-label-sm" data-i18n="aiHelper.ref">需求對應</label>
+                                                        <input type="text" class="form-control form-control-sm" id="helperPreRefInput" placeholder="REQ-001, AC-2">
+                                                    </div>
+                                                </div>
+                                                <div class="mb-2">
+                                                    <label for="helperPreTitleInput" class="form-label form-label-sm" data-i18n="common.title">標題</label>
+                                                    <textarea class="form-control form-control-sm" id="helperPreTitleInput" rows="3"></textarea>
+                                                </div>
+                                                <div class="mb-2">
+                                                    <label for="helperPreNoteInput" class="form-label form-label-sm" data-i18n="aiHelper.note">備註</label>
+                                                    <textarea class="form-control form-control-sm" id="helperPreNoteInput" rows="3"></textarea>
+                                                </div>
+                                                <div class="mb-2">
+                                                    <label class="form-label form-label-sm" data-i18n="aiHelper.reqMappingTitle">需求映射</label>
+                                                    <div id="helperPreReqPreview" class="tc-helper-mini-preview"></div>
+                                                </div>
+                                            </div>
+                                            <div class="d-flex justify-content-end tc-helper-detail-actions">
+                                                <button type="button" class="btn btn-sm btn-outline-danger" id="helperDeletePreEntryBtn">
+                                                    <i class="fas fa-trash me-1"></i><span data-i18n="common.delete">刪除</span>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </section>
+                                </div>
+                                <div class="mt-3">
+                                    <button type="button" class="btn btn-primary" id="helperGenerateBtn">
+                                        <i class="fas fa-gears me-2"></i><span data-i18n="aiHelper.generateAction">產生 Test Cases</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <section class="tc-helper-panel" data-helper-panel="3">
+                        <div class="card tc-helper-stage-card">
+                            <div class="card-body tc-helper-stage-body">
+                                <h6 class="mb-2" data-i18n="aiHelper.finalTitle">最終 Test Case 審核</h6>
+                                <p class="text-muted small mb-2" data-i18n="aiHelper.finalHint">可調整 title / section / priority 與 markdown 欄位，確認後建立到目標 Set。</p>
+                                <div id="helperFinalCasesContainer" class="tc-helper-split">
+                                    <aside class="tc-helper-split-left">
+                                        <div class="tc-helper-list-panel">
+                                            <h6 class="tc-helper-list-header" data-i18n="aiHelper.sectionListTitle">區段</h6>
+                                            <div id="helperFinalSectionList" class="list-group tc-helper-list"></div>
+                                        </div>
+                                        <div class="tc-helper-list-panel mt-2">
+                                            <h6 class="tc-helper-list-header" data-i18n="aiHelper.testcaseListTitle">Test Cases</h6>
+                                            <div id="helperFinalCaseList" class="list-group tc-helper-list"></div>
+                                        </div>
+                                    </aside>
+                                    <section class="tc-helper-split-right">
+                                        <div id="helperFinalDetailEmpty" class="tc-helper-empty" data-i18n="aiHelper.finalDetailEmpty">請先選擇左側 Test Case</div>
+                                        <div id="helperFinalDetailForm" class="d-none">
+                                            <div class="tc-helper-detail-scroll">
+                                                <div class="row g-2 mb-2">
+                                                    <div class="col-md-4">
+                                                        <label for="helperCaseIdInput" class="form-label form-label-sm" data-i18n="testCase.testCaseNumber">Test Case Number</label>
+                                                        <input type="text" class="form-control form-control-sm" id="helperCaseIdInput">
+                                                    </div>
+                                                    <div class="col-md-8">
+                                                        <label for="helperCaseTitleInput" class="form-label form-label-sm" data-i18n="common.title">標題</label>
+                                                        <input type="text" class="form-control form-control-sm" id="helperCaseTitleInput">
+                                                    </div>
+                                                </div>
+                                                <div class="row g-2 mb-3">
+                                                    <div class="col-md-4">
+                                                        <label for="helperCasePriorityInput" class="form-label form-label-sm" data-i18n="testCase.priority">Priority</label>
+                                                        <select class="form-select form-select-sm" id="helperCasePriorityInput">
+                                                            <option value="High">High</option>
+                                                            <option value="Medium">Medium</option>
+                                                            <option value="Low">Low</option>
+                                                        </select>
+                                                    </div>
+                                                    <div class="col-md-8">
+                                                        <label for="helperCaseSectionInput" class="form-label form-label-sm" data-i18n="testCase.section">Section</label>
+                                                        <input type="text" class="form-control form-control-sm" id="helperCaseSectionInput">
+                                                    </div>
+                                                </div>
+
+                                                <div class="mb-3">
+                                                    <label for="helperCasePreInput" class="form-label form-label-sm"><i class="fas fa-list-ul me-1"></i><span data-i18n="testCase.preconditions">Preconditions</span></label>
+                                                    <div class="tc-helper-md-split">
+                                                        <div class="tc-helper-md-edit">
+                                                            <div class="tc-helper-md-toolbar mb-1" data-target="helperCasePreInput">
+                                                                <button type="button" class="btn btn-sm btn-outline-secondary" data-md="**"><i class="fas fa-bold"></i></button>
+                                                                <button type="button" class="btn btn-sm btn-outline-secondary" data-md="*"><i class="fas fa-italic"></i></button>
+                                                                <button type="button" class="btn btn-sm btn-outline-secondary" data-md="- "><i class="fas fa-list-ul"></i></button>
+                                                                <button type="button" class="btn btn-sm btn-outline-secondary" data-md="1. "><i class="fas fa-list-ol"></i></button>
+                                                            </div>
+                                                            <textarea class="form-control form-control-sm tc-helper-md-textarea" id="helperCasePreInput" rows="5"></textarea>
+                                                        </div>
+                                                        <div class="tc-helper-md-preview-pane">
+                                                            <div class="tc-helper-case-preview" id="helperCasePrePreview"></div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div class="mb-3">
+                                                    <label for="helperCaseStepsInput" class="form-label form-label-sm"><i class="fas fa-list-ol me-1"></i><span data-i18n="form.testSteps">測試步驟</span></label>
+                                                    <div class="tc-helper-md-split">
+                                                        <div class="tc-helper-md-edit">
+                                                            <div class="tc-helper-md-toolbar mb-1" data-target="helperCaseStepsInput">
+                                                                <button type="button" class="btn btn-sm btn-outline-secondary" data-md="**"><i class="fas fa-bold"></i></button>
+                                                                <button type="button" class="btn btn-sm btn-outline-secondary" data-md="*"><i class="fas fa-italic"></i></button>
+                                                                <button type="button" class="btn btn-sm btn-outline-secondary" data-md="- "><i class="fas fa-list-ul"></i></button>
+                                                                <button type="button" class="btn btn-sm btn-outline-secondary" data-md="1. "><i class="fas fa-list-ol"></i></button>
+                                                            </div>
+                                                            <textarea class="form-control form-control-sm tc-helper-md-textarea" id="helperCaseStepsInput" rows="6"></textarea>
+                                                        </div>
+                                                        <div class="tc-helper-md-preview-pane">
+                                                            <div class="tc-helper-case-preview" id="helperCaseStepsPreview"></div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+
+                                                <div>
+                                                    <label for="helperCaseExpInput" class="form-label form-label-sm"><i class="fas fa-check-circle me-1"></i><span data-i18n="form.expectedResults">預期結果</span></label>
+                                                    <div class="tc-helper-md-split">
+                                                        <div class="tc-helper-md-edit">
+                                                            <div class="tc-helper-md-toolbar mb-1" data-target="helperCaseExpInput">
+                                                                <button type="button" class="btn btn-sm btn-outline-secondary" data-md="**"><i class="fas fa-bold"></i></button>
+                                                                <button type="button" class="btn btn-sm btn-outline-secondary" data-md="*"><i class="fas fa-italic"></i></button>
+                                                                <button type="button" class="btn btn-sm btn-outline-secondary" data-md="- "><i class="fas fa-list-ul"></i></button>
+                                                                <button type="button" class="btn btn-sm btn-outline-secondary" data-md="1. "><i class="fas fa-list-ol"></i></button>
+                                                            </div>
+                                                            <textarea class="form-control form-control-sm tc-helper-md-textarea" id="helperCaseExpInput" rows="5"></textarea>
+                                                        </div>
+                                                        <div class="tc-helper-md-preview-pane">
+                                                            <div class="tc-helper-case-preview" id="helperCaseExpPreview"></div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </section>
+                                </div>
+                                <div class="mt-3">
+                                    <button type="button" class="btn btn-success" id="helperCommitBtn">
+                                        <i class="fas fa-check-double me-2"></i><span data-i18n="aiHelper.commitAction">確認並建立 Test Cases</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+            </div>
+            <div class="modal-footer tc-helper-footer">
+                <button type="button" class="btn btn-outline-danger me-auto" id="helperStartOverBtn">
+                    <i class="fas fa-rotate me-2"></i><span data-i18n="aiHelper.startOver">重新開始</span>
+                </button>
+                <button type="button" class="btn btn-secondary" id="helperPrevBtn">
+                    <i class="fas fa-arrow-left me-2"></i><span data-i18n="common.previous">上一步</span>
+                </button>
+                <button type="button" class="btn btn-secondary" id="helperNextBtn">
+                    <span data-i18n="common.next">下一步</span><i class="fas fa-arrow-right ms-2"></i>
+                </button>
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" data-i18n="common.close">關閉</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="helperConfirmModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="helperConfirmModalTitle" data-i18n="common.confirm">確認</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-0" id="helperConfirmModalMessage"></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" id="helperConfirmCancelBtn" data-i18n="common.cancel">取消</button>
+                <button type="button" class="btn btn-primary" id="helperConfirmOkBtn" data-i18n="common.confirm">確認</button>
+            </div>
+        </div>
+    </div>
+</div>

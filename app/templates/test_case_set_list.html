@@ -7,13 +7,20 @@
 {% block page_subtitle_text %}<span data-i18n="testCaseSet.pageSubtitle">選擇或建立一個測試案例集合來開始管理測試案例</span>{% endblock %}
 
 {% block page_specific_actions %}
-<a href="/" class="btn btn-secondary btn-sm">
-  <i class="fas fa-home"></i> <span data-i18n="common.home">回到首頁</span>
-</a>
+<div class="d-flex gap-2">
+  <button type="button" class="btn btn-info btn-sm" id="openAiHelperFromSetListBtn">
+    <i class="fas fa-robot me-1"></i><span data-i18n="aiHelper.entryButton">AI Agent - Test Case Helper</span>
+  </button>
+  <a href="/" class="btn btn-secondary btn-sm">
+    <i class="fas fa-home"></i> <span data-i18n="common.home">回到首頁</span>
+  </a>
+</div>
 {% endblock %}
 
 {% block head %}
+<script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js"></script>
 <link rel="stylesheet" href="/static/css/test-case-set-list.css">
+<link rel="stylesheet" href="/static/css/test-case-helper-modal.css">
 {% endblock %}
 
 {% block content %}
@@ -146,9 +153,12 @@
   </div>
 </div>
 
+{% include '_partials/ai_test_case_helper_modal.html' %}
+
 {% endblock %}
 
 {% block scripts %}
 <script src="/static/js/i18n-test-case-set.js"></script>
-<script src="/static/js/test-case-set-list/main.js"></script>
+<script src="/static/js/test-case-management/ai-helper.js?v=20260212b"></script>
+<script src="/static/js/test-case-set-list/main.js?v=20260210d"></script>
 {% endblock %}

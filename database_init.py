@@ -43,6 +43,7 @@ from app.models.database_models import (
     Team, TestRunConfig, TestRunItem, TestRunItemResultHistory,
     TCGRecord, LarkDepartment, LarkUser, SyncHistory,
     TestCaseSet, TestCaseSection,  # Test Case Set/Section 相關表
+    AITestCaseHelperSession, AITestCaseHelperDraft,  # AI Helper 相關表
 )
 from sqlalchemy import create_engine
 
@@ -100,6 +101,8 @@ IMPORTANT_TABLES: List[str] = [
     "adhoc_runs",
     "adhoc_run_sheets",
     "adhoc_run_items",
+    "ai_tc_helper_sessions",
+    "ai_tc_helper_drafts",
     "tcg_records",
     "lark_departments",
     "lark_users",
