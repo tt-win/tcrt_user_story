@@ -1,0 +1,639 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "requirement_ir.schema.json",
+  "type": "object",
+  "required": [
+    "ir_version",
+    "ticket_meta",
+    "chunks_index",
+    "actors",
+    "entities",
+    "flows",
+    "rules",
+    "non_functional",
+    "out_of_scope",
+    "open_questions",
+    "ambiguities",
+    "coverage_map"
+  ],
+  "properties": {
+    "ir_version": {
+      "type": "string",
+      "enum": [
+        "1.0"
+      ]
+    },
+    "ticket_meta": {
+      "type": "object",
+      "required": [
+        "ticket_id",
+        "summary"
+      ],
+      "properties": {
+        "ticket_id": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "components": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "labels": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "platforms": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "chunks_index": {
+      "description": "Stage1 的 chunk 清單索引，供 source_refs 驗證",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "chunk_id",
+          "title",
+          "sentence_count"
+        ],
+        "properties": {
+          "chunk_id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "sentence_count": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "actors": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/actor"
+      }
+    },
+    "entities": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/entity"
+      }
+    },
+    "flows": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/flow"
+      }
+    },
+    "rules": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/rule"
+      }
+    },
+    "non_functional": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/nfr"
+      }
+    },
+    "out_of_scope": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/scoped_item"
+      }
+    },
+    "open_questions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/question_item"
+      }
+    },
+    "ambiguities": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ambiguity_item"
+      }
+    },
+    "coverage_map": {
+      "description": "每句原文要嘛被引用，要嘛被忽略並說理由",
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/coverage_map_item"
+      }
+    }
+  },
+  "$defs": {
+    "source_ref": {
+      "type": "object",
+      "required": [
+        "chunk_id",
+        "sentence_ids"
+      ],
+      "properties": {
+        "chunk_id": {
+          "type": "string"
+        },
+        "sentence_ids": {
+          "type": "array",
+          "items": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "minItems": 1
+        },
+        "quote": {
+          "type": "string",
+          "maxLength": 500
+        }
+      },
+      "additionalProperties": false
+    },
+    "actor": {
+      "type": "object",
+      "required": [
+        "actor_id",
+        "name",
+        "type",
+        "source_refs"
+      ],
+      "properties": {
+        "actor_id": {
+          "type": "string",
+          "pattern": "^ACTOR-[0-9]+$"
+        },
+        "name": {
+          "type": "string"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "user",
+            "admin",
+            "system",
+            "external"
+          ]
+        },
+        "permissions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/source_ref"
+          },
+          "minItems": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "entity": {
+      "type": "object",
+      "required": [
+        "entity_id",
+        "name",
+        "fields",
+        "source_refs"
+      ],
+      "properties": {
+        "entity_id": {
+          "type": "string",
+          "pattern": "^ENT-[0-9]+$"
+        },
+        "name": {
+          "type": "string"
+        },
+        "fields": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "field_id",
+              "name",
+              "source_refs"
+            ],
+            "properties": {
+              "field_id": {
+                "type": "string",
+                "pattern": "^FIELD-[0-9]+$"
+              },
+              "name": {
+                "type": "string"
+              },
+              "data_type": {
+                "type": "string",
+                "enum": [
+                  "string",
+                  "number",
+                  "boolean",
+                  "date",
+                  "datetime",
+                  "enum",
+                  "object",
+                  "array",
+                  "unknown"
+                ]
+              },
+              "constraints": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "source_refs": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/source_ref"
+                },
+                "minItems": 1
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/source_ref"
+          },
+          "minItems": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "flow": {
+      "type": "object",
+      "required": [
+        "flow_id",
+        "name",
+        "actor_ids",
+        "preconditions",
+        "steps",
+        "postconditions",
+        "source_refs"
+      ],
+      "properties": {
+        "flow_id": {
+          "type": "string",
+          "pattern": "^FLOW-[0-9]+$"
+        },
+        "name": {
+          "type": "string"
+        },
+        "actor_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^ACTOR-[0-9]+$"
+          },
+          "minItems": 1
+        },
+        "preconditions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": [
+              "step_id",
+              "action",
+              "expected_outcome",
+              "source_refs"
+            ],
+            "properties": {
+              "step_id": {
+                "type": "string",
+                "pattern": "^STEP-[0-9]+$"
+              },
+              "action": {
+                "type": "string"
+              },
+              "expected_outcome": {
+                "type": "string"
+              },
+              "variants": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "source_refs": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/source_ref"
+                },
+                "minItems": 1
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "postconditions": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/source_ref"
+          },
+          "minItems": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "rule": {
+      "type": "object",
+      "required": [
+        "rule_id",
+        "type",
+        "statement",
+        "scope",
+        "source_refs"
+      ],
+      "properties": {
+        "rule_id": {
+          "type": "string",
+          "pattern": "^RULE-[0-9]+$"
+        },
+        "type": {
+          "type": "string",
+          "enum": [
+            "validation",
+            "authorization",
+            "ui_display",
+            "sorting",
+            "filtering",
+            "calculation",
+            "integration",
+            "error_handling",
+            "data_persistence",
+            "logging",
+            "rate_limit",
+            "other"
+          ]
+        },
+        "statement": {
+          "type": "string"
+        },
+        "scope": {
+          "type": "string",
+          "enum": [
+            "frontend",
+            "backend",
+            "api",
+            "db",
+            "cross"
+          ]
+        },
+        "related_entity_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^ENT-[0-9]+$"
+          }
+        },
+        "related_flow_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^FLOW-[0-9]+$"
+          }
+        },
+        "acceptance_criteria_hint": {
+          "type": "string"
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/source_ref"
+          },
+          "minItems": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "nfr": {
+      "type": "object",
+      "required": [
+        "nfr_id",
+        "category",
+        "statement",
+        "metric",
+        "source_refs"
+      ],
+      "properties": {
+        "nfr_id": {
+          "type": "string",
+          "pattern": "^NFR-[0-9]+$"
+        },
+        "category": {
+          "type": "string",
+          "enum": [
+            "performance",
+            "security",
+            "compatibility",
+            "accessibility",
+            "reliability",
+            "observability",
+            "other"
+          ]
+        },
+        "statement": {
+          "type": "string"
+        },
+        "metric": {
+          "type": "string"
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/source_ref"
+          },
+          "minItems": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "scoped_item": {
+      "type": "object",
+      "required": [
+        "item",
+        "reason",
+        "source_refs"
+      ],
+      "properties": {
+        "item": {
+          "type": "string"
+        },
+        "reason": {
+          "type": "string"
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/source_ref"
+          },
+          "minItems": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "question_item": {
+      "type": "object",
+      "required": [
+        "question",
+        "impact",
+        "source_refs"
+      ],
+      "properties": {
+        "question": {
+          "type": "string"
+        },
+        "impact": {
+          "type": "string",
+          "enum": [
+            "blocks_testing",
+            "reduces_coverage",
+            "minor"
+          ]
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/source_ref"
+          },
+          "minItems": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "ambiguity_item": {
+      "type": "object",
+      "required": [
+        "issue",
+        "candidates",
+        "source_refs"
+      ],
+      "properties": {
+        "issue": {
+          "type": "string"
+        },
+        "candidates": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1
+        },
+        "source_refs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/source_ref"
+          },
+          "minItems": 1
+        }
+      },
+      "additionalProperties": false
+    },
+    "coverage_map_item": {
+      "type": "object",
+      "required": [
+        "chunk_id",
+        "sentence_id",
+        "status"
+      ],
+      "properties": {
+        "chunk_id": {
+          "type": "string"
+        },
+        "sentence_id": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "status": {
+          "type": "string",
+          "enum": [
+            "covered",
+            "ignored"
+          ]
+        },
+        "covered_by": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "ignored_reason": {
+          "type": "string",
+          "enum": [
+            "template",
+            "discussion",
+            "duplicate",
+            "history",
+            "non_requirement",
+            "broken_text",
+            "unknown"
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "covered"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "covered_by"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "status": {
+                "const": "ignored"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "ignored_reason"
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "additionalProperties": false
+}

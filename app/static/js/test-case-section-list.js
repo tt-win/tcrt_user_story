@@ -11,6 +11,7 @@
 
 class TestCaseSectionList {
   constructor() {
+    this.initialized = false;
     this.setId = null;
     this.setName = null; // 當前 Test Case Set 的名稱
     this.sections = [];
@@ -23,6 +24,11 @@ class TestCaseSectionList {
   }
 
   init() {
+    if (this.initialized) {
+      return;
+    }
+    this.initialized = true;
+
     console.log("[SectionList] Initializing TestCaseSectionList");
 
     // 添加自定義樣式
@@ -2314,6 +2320,7 @@ class TestCaseSectionList {
 
 // 建立全域實例
 const testCaseSectionList = new TestCaseSectionList();
+window.testCaseSectionList = testCaseSectionList;
 
 // 在 DOM 準備好後初始化
 if (document.readyState === "loading") {

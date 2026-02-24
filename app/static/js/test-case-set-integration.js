@@ -9,6 +9,7 @@
 
 class TestCaseSetIntegration {
   constructor() {
+    this._initialized = false;
     this.currentSetId = null;
     this.currentTeamId = null;
     this.testCaseSets = [];
@@ -16,14 +17,40 @@ class TestCaseSetIntegration {
   }
 
   init() {
-    // 從 sessionStorage 或 URL 參數讀取 Set ID
-    this.currentSetId = sessionStorage.getItem('selectedTestCaseSetId') ||
-                        this.getUrlParam('set_id');
+    if (this._initialized) {
+      return;
+    }
+    this._initialized = true;
+
+    // helper 模式不應自動帶入既有 set context（避免背景誤切入某個 Set）
+    const helperMode = this.isHelperMode();
+    const setIdFromUrl = this.getUrlParam('set_id');
+
+    if (helperMode) {
+      try {
+        sessionStorage.removeItem('selectedTestCaseSetId');
+        sessionStorage.removeItem('selectedTestCaseSetName');
+      } catch (_) {}
+    }
+
+    // 一般模式：URL 優先，其次 sessionStorage
+    // helper 模式：僅採用 URL 的 set_id（通常為空），忽略 sessionStorage
+    this.currentSetId = helperMode
+      ? setIdFromUrl
+      : (setIdFromUrl || sessionStorage.getItem('selectedTestCaseSetId'));
     this.currentTeamId = this.getTeamIdFromPage();
 
     if (this.currentSetId && this.currentTeamId) {
       this.loadCurrentSet();
     }
+  }
+
+  isHelperMode() {
+    if (typeof window !== 'undefined' && window.__TCM_HELPER_MODE__ === true) {
+      return true;
+    }
+    const helper = (this.getUrlParam('helper') || '').toLowerCase();
+    return helper === '1' || helper === 'true';
   }
 
   /**

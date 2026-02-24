@@ -1,11 +1,194 @@
 import yaml
 import os
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
 # 載入 .env 檔案（如果存在）
 load_dotenv()
+
+JIRA_HELPER_REQUIREMENT_IR_PROMPT_TEMPLATE = """你是需求結構化引擎。請使用 {review_language}，把 Jira ticket 轉成 machine-readable requirement IR。
+
+TCG: {ticket_key}
+Summary: {ticket_summary}
+Description:
+{ticket_description}
+Components: {ticket_components}
+
+你必須只輸出「單一 JSON 物件」，不可有 Markdown/code fence/說明文字。
+不可杜撰需求，只能抽取、重組、標準化。若資訊不足可留空字串或空陣列，不可腦補。
+必須完整保留 ticket 的需求訊息（包含 AC、規則、例外、表格欄位語義、多語內容）。
+若原文有表格/欄位定義，必須逐欄展開到 reference_columns，不可用範圍字串取代。
+若輸出長度接近上限，優先精簡句子長度，不可刪除條目；不可輸出截斷 JSON。
+
+Schema:
+{
+  "ticket":{"key":"TCG-123","summary":"...","components":["Auth"]},
+  "scenarios":[
+    {"rid":"REQ-001","g":"功能群組","t":"需求標題","ac":["可驗證條件"],"rules":["業務規則"],"data_points":["欄位/條件"],"expected":["預期"],"trace":{"source":"description","snippet":"..."}}
+  ],
+  "reference_columns":[
+    {"rid":"REF-001","column":"欄位名稱","new_column":false,"sortable":true,"fixed_lr":"left","format_rules":["規則"],"cross_page_param":"param","edit_note":"註記","expected":["此欄位可觀察結果"],"trace":{"source":"reference_table","row":"1"}}
+  ],
+  "notes":["補充說明"]
+}"""
+
+JIRA_HELPER_ANALYSIS_PROMPT_TEMPLATE = """你是資深 QA 分析師。請使用 {review_language}，根據 requirement IR 產生「可直接餵給低推理模型」的 analysis 條目。
+
+TCG: {ticket_key}
+Requirement IR JSON:
+{requirement_ir_json}
+
+只輸出單一 JSON 物件，不可有 Markdown/code fence/說明文字。
+規則：
+- 先按功能分 section（g），每個 section 內提供 it。
+- 每個 item 都是「可執行的驗證條目」，不可只寫 REF 代號或模糊描述。
+- item.id 必須為可追蹤格式（例如 010.001），供 coverage 的 ref 使用。
+- 若同一驗證條目同時驗 4 個欄位（如名字/生日/電話/地址排序），可放同一 item，但 item.chk 必須明列 4 個欄位與驗證動作；item.exp 必須明列對應預期。
+- item.t 需具體可操作；item.det 只放邊界/限制補充。
+- 每個 item 必須帶 rid；rid 中 REF 禁止區間寫法（例如 REF-001~REF-018）。
+- 若 requirement_ir.reference_columns 有 N 個欄位，analysis 需至少覆蓋 N 個欄位語義（可一對一或在同條 item 逐欄列明）。
+- 若內容長，優先精簡措辭，不可省略條目，不可輸出截斷 JSON。
+
+Schema:
+{
+  "sec":[
+    {"g":"功能名稱","it":[{"id":"010.001","t":"驗證排序欄位顯示與排序行為","det":["限制條件"],"chk":["姓名欄位可排序","生日欄位可排序","電話欄位可排序","地址欄位可排序"],"exp":["姓名依升冪排列","生日依升冪排列","電話依升冪排列","地址依升冪排列"],"rid":["REQ-001","REF-001"]}]}
+  ],
+  "it":[{"id":"010.001","t":"...","det":["..."],"chk":["..."],"exp":["..."],"rid":["REQ-001"]}]
+}"""
+
+JIRA_HELPER_COVERAGE_PROMPT_TEMPLATE = """你是 QA 測試設計師。請使用 {review_language}，根據 Requirement IR + Analysis 產生 pre-testcase seeds。
+
+Requirement IR JSON:
+{requirement_ir_json}
+Analysis JSON:
+{expanded_requirements_json}
+
+只輸出單一 JSON 物件，不可有 Markdown/code fence/說明文字。
+輸出必須可直接被 JSON.parse 成功。
+規則：
+- 每個 seed 對應 1 個未來 test case（1 seed = 1 expected result）。
+- seed.ref 必須且只能有 1 個 analysis item.id。
+- coverage 類別僅允許：happy、negative、boundary。
+- 每個 seed 必須提供足夠線索給低推理模型：t、chk、exp、pre_hint、step_hint。
+- seed.t 不可只寫「參考 REF-xxx」；必須描述可執行檢核。
+- 若 seed 涵蓋多欄位，chk/exp 必須逐欄列明。
+- rid 若含 REF，僅允許單一 REF token，禁止 REF 區間。
+- 僅當條目明確是邊界語義（上限/下限/極值/分頁跨頁/固定欄位/捲動/極窄寬度）時，cat 才是 boundary。
+- 一般功能流程（含一般排序/一般欄位檢核）預設為 happy。
+- 輸出 sec（分組）與 seed（展平）兩種視圖。
+- 完整性契約：
+  1) Analysis 每個 item.id 至少出現在一個 seed.ref
+  2) Analysis 每個 section.g 必須出現在 coverage.sec[].g
+  3) trace 需回報 analysis_item_count、covered_item_count、missing_ids、missing_sections
+- 若內容太長，優先縮短文字，不可刪條目，不可輸出截斷 JSON。
+
+Schema:
+{
+  "sec":[{"g":"功能名稱","seed":[{"g":"功能名稱","t":"驗證欄位排序","cat":"happy","st":"ok","ref":["010.001"],"rid":["REQ-001","REF-001"],"chk":["姓名可排序","生日可排序"],"exp":["姓名升冪","生日升冪"],"pre_hint":["已有多筆資料"],"step_hint":["點擊欄位標題觸發排序"]}]}],
+  "seed":[{"g":"功能名稱","t":"...","cat":"happy","st":"ok","ref":["010.001"],"rid":["REQ-001"],"chk":["..."],"exp":["..."],"pre_hint":["..."],"step_hint":["..."]}],
+  "trace":{"analysis_item_count":0,"covered_item_count":0,"missing_ids":[],"missing_sections":[]}
+}"""
+
+JIRA_HELPER_COVERAGE_BACKFILL_PROMPT_TEMPLATE = """你是 QA 覆蓋補全器。請使用 {review_language}，只補 missing_ids/missing_sections，不可改寫既有 coverage。
+
+Requirement IR JSON:
+{requirement_ir_json}
+Analysis JSON:
+{expanded_requirements_json}
+Current Coverage JSON:
+{current_coverage_json}
+Missing analysis ids:
+{missing_ids_json}
+Missing sections:
+{missing_sections_json}
+
+只輸出單一 JSON 物件，不可有 Markdown/code fence/說明文字。
+規則：
+- 只新增 seed，不可覆寫既有 seed。
+- 每個新增 seed.ref 必須且只能有 1 個 item.id。
+- 每個新增 seed 仍需提供 t/chk/exp/pre_hint/step_hint 線索。
+- rid 若含 REF，僅允許單一 REF token，禁止區間。
+- 依條目語義決定 cat：錯誤/無效/拒絕 => negative；僅明確邊界語義（上限下限/極值/分頁跨頁/固定欄位/捲動/極窄寬度）=> boundary。
+- 若僅為一般排序或一般欄位檢核，cat 應為 happy。
+- 若字數過長，縮短句子，不可輸出截斷 JSON。
+
+Schema:
+{"seed":[{"g":"功能名稱","t":"...","cat":"happy","st":"ok","ref":["010.001"],"rid":["REQ-001"],"chk":["..."],"exp":["..."],"pre_hint":["..."],"step_hint":["..."]}],"trace":{"resolved_ids":["010.001"],"resolved_sections":["功能名稱"]}}"""
+
+JIRA_HELPER_TESTCASE_PROMPT_TEMPLATE = """你是 QA 工程師。請使用 {output_language}，根據單一 section 的 pre-testcase 條目產生詳細 test cases。
+
+TCG: {ticket_key}
+Section: {section_no} {section_name}
+Stage 1 Entries JSON (single section):
+{coverage_questions_json}
+Retrieved clues (jira_references + test_cases):
+{similar_cases}
+Retry hint:
+{retry_hint}
+
+只輸出單一 JSON 物件，不可有 Markdown/code fence/說明文字。
+規則：
+- 只處理輸入 section 的 en 條目。
+- 每個 en 條目必須且只能產生一筆 testcase（1:1）。
+- testcase.id 必須是 {ticket_key}.{en.cid}。
+- t 必須具體，且能反映 chk/exp 線索，不可空泛。
+- pre、s 必須盡可能詳細，能讓低推理模型也可重現。
+- exp 必須且只能有 1 筆字串，但內容需完整描述該條目最核心預期。
+- st=assume 時，t 需以 [ASSUME] 開頭，並在 pre 或 exp 明示假設。
+- st=ask 時，t 需以 [TBD] 開頭，並在 pre 或 exp 明示待確認。
+- 不可遺漏條目；不可輸出截斷 JSON。
+
+Schema:
+{"tc":[{"id":"{ticket_key}.010.010","t":"...","pre":["詳細前置條件"],"s":["詳細步驟1","詳細步驟2"],"exp":["單一且完整的預期結果"]}]}"""
+
+JIRA_HELPER_TESTCASE_SUPPLEMENT_PROMPT_TEMPLATE = """你是 QA 補全器。請使用 {output_language}，只補上缺漏或不合格的 testcases。
+
+TCG: {ticket_key}
+Section: {section_no} {section_name}
+Missing/Invalid Stage 1 Entries JSON:
+{coverage_questions_json}
+Current testcase JSON:
+{testcase_json}
+Retrieved clues (jira_references + test_cases):
+{similar_cases}
+Retry hint:
+{retry_hint}
+
+只輸出單一 JSON 物件，不可有 Markdown/code fence/說明文字。
+規則：
+- 只輸出需要補全的 testcase；不要重複輸出已正確條目。
+- id 必須使用 {ticket_key}.{en.cid}。
+- pre、s 必須詳細；exp 必須且只能 1 筆且完整。
+- 不可輸出截斷 JSON。
+
+Schema:
+{"tc":[{"id":"{ticket_key}.010.020","t":"...","pre":["..."],"s":["..."],"exp":["..."]}]}"""
+
+JIRA_HELPER_AUDIT_PROMPT_TEMPLATE = """你是 QA 審查員。請使用 {output_language}，審查並補強單一 section 的 testcases。
+
+TCG: {ticket_key}
+Section: {section_no} {section_name}
+Stage 1 Entries JSON (single section):
+{coverage_questions_json}
+Testcases JSON:
+{testcase_json}
+Retrieved clues (jira_references + test_cases):
+{similar_cases}
+Retry hint:
+{retry_hint}
+
+只輸出單一 JSON 物件，不可有 Markdown/code fence/說明文字。
+規則：
+- 保持每筆 id 不變；若缺項可補全內容，但不可變更目標條目集合。
+- 必須逐條對照 en 的 chk/exp 線索補強 pre/s/exp 細節。
+- exp 必須且只能有 1 筆（單一核心預期）。
+- [ASSUME]/[TBD] 規則必須正確。
+- 不可遺漏條目；不可輸出截斷 JSON。
+
+Schema:
+{"tc":[{"id":"{ticket_key}.010.010","t":"...","pre":["..."],"s":["..."],"exp":["..."]}]}"""
 
 class LarkConfig(BaseModel):
     app_id: str = ""
@@ -37,6 +220,156 @@ class OpenRouterConfig(BaseModel):
         return cls(
             api_key=fallback.api_key if fallback else '',
             model=fallback.model if fallback else "openai/gpt-oss-120b:free"
+        )
+
+
+class JiraTestCaseHelperStageModelConfig(BaseModel):
+    model: str = "google/gemini-3-flash-preview"
+    api_url: str = "https://openrouter.ai/api/v1/chat/completions"
+    temperature: float = 0.1
+    timeout: int = 120
+    system_prompt: str = "You are a QA engineer writing detailed test cases."
+
+
+class JiraTestCaseHelperModelsConfig(BaseModel):
+    analysis: JiraTestCaseHelperStageModelConfig = JiraTestCaseHelperStageModelConfig(
+        model="google/gemini-3-flash-preview",
+        system_prompt="You are a senior QA analyst.",
+    )
+    coverage: JiraTestCaseHelperStageModelConfig = JiraTestCaseHelperStageModelConfig(
+        model="openai/gpt-5.2",
+        system_prompt="You are a test design expert. Think step by step.",
+    )
+    testcase: JiraTestCaseHelperStageModelConfig = JiraTestCaseHelperStageModelConfig(
+        model="google/gemini-3-flash-preview",
+        system_prompt="You are a QA engineer writing detailed test cases.",
+    )
+    audit: JiraTestCaseHelperStageModelConfig = JiraTestCaseHelperStageModelConfig(
+        model="google/gemini-3-flash-preview",
+        system_prompt="You are a QA reviewer auditing generated test cases.",
+    )
+
+
+class JiraTestCaseHelperPromptsConfig(BaseModel):
+    requirement_ir: str = JIRA_HELPER_REQUIREMENT_IR_PROMPT_TEMPLATE
+    analysis: str = JIRA_HELPER_ANALYSIS_PROMPT_TEMPLATE
+    coverage: str = JIRA_HELPER_COVERAGE_PROMPT_TEMPLATE
+    coverage_backfill: str = JIRA_HELPER_COVERAGE_BACKFILL_PROMPT_TEMPLATE
+    testcase: str = JIRA_HELPER_TESTCASE_PROMPT_TEMPLATE
+    testcase_supplement: str = JIRA_HELPER_TESTCASE_SUPPLEMENT_PROMPT_TEMPLATE
+    audit: str = JIRA_HELPER_AUDIT_PROMPT_TEMPLATE
+
+
+class JiraTestCaseHelperConfig(BaseModel):
+    similar_cases_count: int = 5
+    similar_cases_max_length: int = 500
+    enable_ir_first: bool = True
+    coverage_backfill_max_rounds: int = 1
+    coverage_backfill_chunk_size: int = 12
+    coverage_force_complete: bool = True
+    testcase_force_complete: bool = True
+    min_steps: int = 3
+    api_min_steps: int = 2
+    min_preconditions: int = 1
+    max_vi_per_section: int = 12
+    max_repair_rounds: int = 3
+    forbidden_patterns: List[str] = [
+        "參考",
+        "REF\\d+",
+        "同上",
+        "略",
+        "TBD",
+        "N/A",
+        "待補",
+        "TODO",
+    ]
+    models: JiraTestCaseHelperModelsConfig = JiraTestCaseHelperModelsConfig()
+    prompts: JiraTestCaseHelperPromptsConfig = JiraTestCaseHelperPromptsConfig()
+
+
+class AIConfig(BaseModel):
+    jira_testcase_helper: JiraTestCaseHelperConfig = JiraTestCaseHelperConfig()
+
+class QdrantWeightsConfig(BaseModel):
+    test_cases: float = 0.7
+    usm_nodes: float = 0.3
+
+
+class QdrantLimitConfig(BaseModel):
+    jira_referances: int = 20
+    test_cases: int = 14
+    usm_nodes: int = 6
+
+
+class QdrantConfig(BaseModel):
+    url: str = "http://localhost:6333"
+    api_key: str = ""
+    timeout: int = 30
+    prefer_grpc: bool = False
+    pool_size: int = 32
+    max_concurrent_requests: int = 32
+    max_retries: int = 3
+    retry_backoff_seconds: float = 0.5
+    retry_backoff_max_seconds: float = 5.0
+    check_compatibility: bool = True
+    collection_jira_referances: str = "jira_references"
+    collection_test_cases: str = "test_cases"
+    collection_usm_nodes: str = "usm_nodes"
+    weights: QdrantWeightsConfig = QdrantWeightsConfig()
+    limit: QdrantLimitConfig = QdrantLimitConfig()
+
+    @classmethod
+    def from_env(cls, fallback: 'QdrantConfig' = None) -> 'QdrantConfig':
+        fallback_jira_collection = (
+            fallback.collection_jira_referances if fallback else 'jira_references'
+        )
+        jira_collection = os.getenv(
+            'QDRANT_COLLECTION_JIRA_REFERENCES',
+            os.getenv('QDRANT_COLLECTION_JIRA_REFERANCES', fallback_jira_collection),
+        )
+        if str(jira_collection or '').strip() == 'jira_referances':
+            jira_collection = 'jira_references'
+
+        return cls(
+            url=os.getenv('QDRANT_URL', fallback.url if fallback else 'http://localhost:6333'),
+            api_key=os.getenv('QDRANT_API_KEY', fallback.api_key if fallback else ''),
+            timeout=int(os.getenv('QDRANT_TIMEOUT', str(fallback.timeout if fallback else 30))),
+            prefer_grpc=os.getenv('QDRANT_PREFER_GRPC', str(fallback.prefer_grpc if fallback else False)).lower() == 'true',
+            pool_size=int(os.getenv('QDRANT_POOL_SIZE', str(fallback.pool_size if fallback else 32))),
+            max_concurrent_requests=int(
+                os.getenv(
+                    'QDRANT_MAX_CONCURRENT_REQUESTS',
+                    str(fallback.max_concurrent_requests if fallback else 32)
+                )
+            ),
+            max_retries=int(os.getenv('QDRANT_MAX_RETRIES', str(fallback.max_retries if fallback else 3))),
+            retry_backoff_seconds=float(
+                os.getenv(
+                    'QDRANT_RETRY_BACKOFF_SECONDS',
+                    str(fallback.retry_backoff_seconds if fallback else 0.5)
+                )
+            ),
+            retry_backoff_max_seconds=float(
+                os.getenv(
+                    'QDRANT_RETRY_BACKOFF_MAX_SECONDS',
+                    str(fallback.retry_backoff_max_seconds if fallback else 5.0)
+                )
+            ),
+            check_compatibility=os.getenv(
+                'QDRANT_CHECK_COMPATIBILITY',
+                str(fallback.check_compatibility if fallback else True)
+            ).lower() == 'true',
+            collection_jira_referances=jira_collection,
+            collection_test_cases=os.getenv(
+                'QDRANT_COLLECTION_TEST_CASES',
+                fallback.collection_test_cases if fallback else 'test_cases'
+            ),
+            collection_usm_nodes=os.getenv(
+                'QDRANT_COLLECTION_USM_NODES',
+                fallback.collection_usm_nodes if fallback else 'usm_nodes'
+            ),
+            weights=fallback.weights if fallback else QdrantWeightsConfig(),
+            limit=fallback.limit if fallback else QdrantLimitConfig(),
         )
 
 class AppConfig(BaseModel):
@@ -147,6 +480,8 @@ class Settings(BaseModel):
     lark: LarkConfig = LarkConfig()
     jira: JiraConfig = JiraConfig()
     openrouter: OpenRouterConfig = OpenRouterConfig()
+    ai: AIConfig = AIConfig()
+    qdrant: QdrantConfig = QdrantConfig()
     attachments: AttachmentsConfig = AttachmentsConfig()
     auth: AuthConfig = AuthConfig()
     audit: AuditConfig = AuditConfig()
@@ -168,6 +503,8 @@ class Settings(BaseModel):
             lark=LarkConfig.from_env(base_settings.lark),
             jira=base_settings.jira,  # JIRA 保持檔案設定
             openrouter=OpenRouterConfig.from_env(base_settings.openrouter),
+            ai=base_settings.ai,
+            qdrant=QdrantConfig.from_env(base_settings.qdrant),
             attachments=AttachmentsConfig.from_env(base_settings.attachments),
             auth=AuthConfig.from_env(base_settings.auth),
             audit=AuditConfig.from_env(base_settings.audit)
@@ -198,6 +535,95 @@ def create_default_config(config_path: str = "config.yaml") -> None:
         },
         "openrouter": {
             "api_key": ""
+        },
+        "ai": {
+                "jira_testcase_helper": {
+                    "similar_cases_count": 5,
+                    "similar_cases_max_length": 500,
+                    "enable_ir_first": True,
+                    "coverage_backfill_max_rounds": 1,
+                    "coverage_backfill_chunk_size": 12,
+                    "coverage_force_complete": True,
+                    "testcase_force_complete": True,
+                    "min_steps": 3,
+                    "api_min_steps": 2,
+                    "min_preconditions": 1,
+                    "max_vi_per_section": 12,
+                    "max_repair_rounds": 3,
+                    "forbidden_patterns": [
+                        "參考",
+                        "REF\\d+",
+                        "同上",
+                        "略",
+                        "TBD",
+                        "N/A",
+                        "待補",
+                        "TODO",
+                    ],
+                    "models": {
+                    "analysis": {
+                        "model": "google/gemini-3-flash-preview",
+                        "api_url": "https://openrouter.ai/api/v1/chat/completions",
+                        "temperature": 0.1,
+                        "timeout": 120,
+                        "system_prompt": "You are a senior QA analyst."
+                    },
+                    "coverage": {
+                        "model": "openai/gpt-5.2",
+                        "api_url": "https://openrouter.ai/api/v1/chat/completions",
+                        "temperature": 0.1,
+                        "timeout": 120,
+                        "system_prompt": "You are a test design expert. Think step by step."
+                    },
+                    "testcase": {
+                        "model": "google/gemini-3-flash-preview",
+                        "api_url": "https://openrouter.ai/api/v1/chat/completions",
+                        "temperature": 0.1,
+                        "timeout": 120,
+                        "system_prompt": "You are a QA engineer writing detailed test cases."
+                    },
+                    "audit": {
+                        "model": "google/gemini-3-flash-preview",
+                        "api_url": "https://openrouter.ai/api/v1/chat/completions",
+                        "temperature": 0.1,
+                        "timeout": 120,
+                        "system_prompt": "You are a QA reviewer auditing generated test cases."
+                    }
+                },
+                "prompts": {
+                    "requirement_ir": JIRA_HELPER_REQUIREMENT_IR_PROMPT_TEMPLATE,
+                    "analysis": JIRA_HELPER_ANALYSIS_PROMPT_TEMPLATE,
+                    "coverage": JIRA_HELPER_COVERAGE_PROMPT_TEMPLATE,
+                    "coverage_backfill": JIRA_HELPER_COVERAGE_BACKFILL_PROMPT_TEMPLATE,
+                    "testcase": JIRA_HELPER_TESTCASE_PROMPT_TEMPLATE,
+                    "testcase_supplement": JIRA_HELPER_TESTCASE_SUPPLEMENT_PROMPT_TEMPLATE,
+                    "audit": JIRA_HELPER_AUDIT_PROMPT_TEMPLATE
+                }
+            }
+        },
+        "qdrant": {
+            "url": "http://localhost:6333",
+            "api_key": "",
+            "timeout": 30,
+            "prefer_grpc": False,
+            "pool_size": 32,
+            "max_concurrent_requests": 32,
+            "max_retries": 3,
+            "retry_backoff_seconds": 0.5,
+            "retry_backoff_max_seconds": 5.0,
+            "check_compatibility": True,
+            "collection_jira_referances": "jira_references",
+            "collection_test_cases": "test_cases",
+            "collection_usm_nodes": "usm_nodes",
+            "weights": {
+                "test_cases": 0.7,
+                "usm_nodes": 0.3
+            },
+            "limit": {
+                "jira_referances": 20,
+                "test_cases": 14,
+                "usm_nodes": 6
+            }
         },
         "attachments": {
             "root_dir": ""  # 留空代表使用專案內 attachments 目錄
