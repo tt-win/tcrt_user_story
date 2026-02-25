@@ -38,10 +38,17 @@ class _MockOpenRouterResponse:
 
 def test_ai_assist_endpoint_remains_callable_with_existing_payload(monkeypatch):
     monkeypatch.setattr(test_cases_api.settings.openrouter, "api_key", "test-openrouter-key", raising=False)
+    monkeypatch.setattr(
+        test_cases_api.settings.ai.ai_assist,
+        "model",
+        "openai/gpt-oss-120b:free",
+        raising=False,
+    )
 
     def _fake_post(url, headers=None, json=None, timeout=30):
         assert url == test_cases_api.OPENROUTER_API_URL
         assert isinstance(json, dict)
+        assert json.get("model") == "openai/gpt-oss-120b:free"
         assert json.get("messages")
         return _MockOpenRouterResponse()
 

@@ -1,0 +1,4 @@
+interface:
+  display_name: "TCRT UI 風格建構"
+  short_description: "沿用 TCRT 現有色票、版型與元件規範建立一致 UI"
+  default_prompt: "Use $tcrt-ui-style to build a new TCRT page that matches existing layout, components, and i18n conventions."

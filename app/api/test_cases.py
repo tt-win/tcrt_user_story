@@ -137,7 +137,7 @@ class MoveTestCaseSetImpactPreviewRequest(BaseModel):
 
 TCG_TABLE_ID_DEFAULT = "tblcK6eF3yQCuwwl"
 OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions"
-OPENROUTER_MODEL = "openai/gpt-oss-120b:free"
+AI_ASSIST_DEFAULT_MODEL = "openai/gpt-oss-120b:free"
 OPENROUTER_TEMPERATURE = 0.1
 SIMPLIFIED_HINTS = set("后发复台里页标设网现测进选备录级")
 TRADITIONAL_HINTS = set("後發復臺裡頁標設網現測進選備錄級")
@@ -487,7 +487,11 @@ async def ai_assist_test_case(
         output_lang,
         suggestions_lang,
     )
-    model_name = settings.openrouter.model or OPENROUTER_MODEL
+    model_name = (
+        settings.ai.ai_assist.model
+        if getattr(settings.ai, "ai_assist", None)
+        else AI_ASSIST_DEFAULT_MODEL
+    ) or AI_ASSIST_DEFAULT_MODEL
     request_payload = {
         "model": model_name,
         "temperature": OPENROUTER_TEMPERATURE,

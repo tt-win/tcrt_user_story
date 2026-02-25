@@ -745,15 +745,16 @@ class JiraTestCaseHelperService:
         self,
         stage: Literal["analysis", "coverage", "testcase", "audit"],
     ) -> str:
+        stage_for_lookup = "analysis" if stage == "coverage" else stage
         resolver = getattr(self.llm_service, "resolve_stage_model_id", None)
         if callable(resolver):
             try:
-                resolved = str(resolver(stage) or "").strip()
+                resolved = str(resolver(stage_for_lookup) or "").strip()
                 if resolved:
                     return resolved
             except Exception:
                 pass
-        stage_cfg = getattr(self.settings.ai.jira_testcase_helper.models, stage, None)
+        stage_cfg = getattr(self.settings.ai.jira_testcase_helper.models, stage_for_lookup, None)
         configured = str(getattr(stage_cfg, "model", "") or "").strip()
         if configured:
             return configured

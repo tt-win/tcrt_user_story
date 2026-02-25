@@ -1,7 +1,13 @@
 import asyncio
 import logging
+from pathlib import Path
+import sys
 
 import pytest
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
 
 import app.services.jira_testcase_helper_llm_service as llm_module
 from app.services.jira_testcase_helper_llm_service import JiraTestCaseHelperLLMService
@@ -63,3 +69,15 @@ def test_extract_error_detail_from_openrouter_error_json():
     assert detail["error_type"] == "rate_limit_exceeded"
     assert detail["error_code"] == "429"
     assert detail["error_param"] == "model"
+
+
+def test_resolve_stage_model_id_uses_analysis_config_for_coverage(monkeypatch):
+    service = JiraTestCaseHelperLLMService()
+    monkeypatch.setattr(
+        service._settings.ai.jira_testcase_helper.models.analysis,
+        "model",
+        "custom/analysis-model",
+        raising=False,
+    )
+
+    assert service.resolve_stage_model_id("coverage") == "custom/analysis-model"
