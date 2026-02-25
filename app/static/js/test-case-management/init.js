@@ -36,8 +36,14 @@ async function initTestCaseManagement() {
         hideLoadingProgress();
         // 初始化篩選狀態
         updateFilterStatus();
-        // 還原持久化過濾條件到 UI 與記憶體（實際套用延至列表載入完成時）
-        try { restoreTcmFiltersToUI(); } catch (_) {}
+        // Query string 篩選優先於 localStorage；若有 query params 則套用並觸發篩選
+        let restoredFromQS = false;
+        try { restoredFromQS = restoreFiltersFromQueryString(); } catch (_) {}
+        if (restoredFromQS) {
+            try { applyFilters(); } catch (_) {}
+        } else {
+            try { restoreTcmFiltersToUI(); } catch (_) {}
+        }
     }
     // 工具列顯示狀態可能改變整體高度，需重新計算列表高度
     adjustTestCasesScrollHeight();
@@ -370,6 +376,12 @@ function bindEvents() {
     // 搜尋與篩選
     document.getElementById('applyFiltersBtn').addEventListener('click', applyFilters);
     document.getElementById('clearFiltersBtn').addEventListener('click', clearFilters);
+
+    // 分享篩選連結
+    const genLinkBtn = document.getElementById('generateFilterLinkBtn');
+    if (genLinkBtn) genLinkBtn.addEventListener('click', generateShareFilterLink);
+    const copyLinkBtn = document.getElementById('copyShareFilterLinkBtn');
+    if (copyLinkBtn) copyLinkBtn.addEventListener('click', copyShareFilterLink);
 
     // 搜尋欄位 Enter 鍵支援
     document.getElementById('testCaseNumberSearch').addEventListener('keydown', function(e) {

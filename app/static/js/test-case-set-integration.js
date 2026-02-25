@@ -55,8 +55,14 @@ class TestCaseSetIntegration {
 
   /**
    * 從頁面讀取當前 Team ID
+   * 優先順序：URL 參數（共享連結） > 全域變數 > localStorage
    */
   getTeamIdFromPage() {
+    // 共享連結：URL 的 team_id 優先，確保不同 team 時能正確導向
+    const teamParam = this.getUrlParam('team_id') || this.getUrlParam('teamId') || this.getUrlParam('team');
+    if (teamParam) {
+      return teamParam;
+    }
     // 嘗試從全域變數讀取
     if (typeof teamId !== 'undefined') {
       return teamId;

@@ -967,7 +967,13 @@ async function ensureTeamContext() {
         return null;
     }
 
-    const existing = AppUtils.getCurrentTeam ? AppUtils.getCurrentTeam() : null;
+    // 共享連結：URL 的 team_id 優先，確保不同 team 時能正確導向
+    const urlTeamId = getTeamIdForCache(false);
+    let existing = AppUtils.getCurrentTeam ? AppUtils.getCurrentTeam() : null;
+    if (urlTeamId && existing && existing.id && String(existing.id) !== String(urlTeamId)) {
+        // URL 指定了不同的 team，以 URL 為準，強制重新解析
+        existing = null;
+    }
     if (existing && existing.id) {
         try { sessionStorage.setItem('lastTeamId', String(existing.id)); } catch (_) {}
         return existing;

@@ -901,7 +901,13 @@
     "title": "测试案例集合",
     "editTitle": "编辑测试案例集合",
     "setDescription": "集合描述",
-    "setDescriptionPlaceholder": "描述此集合的用途"
+    "setDescriptionPlaceholder": "描述此集合的用途",
+    "shareFilter": {
+      "generateLink": "生成链接",
+      "generateLinkTooltip": "生成当前筛选条件的分享链接",
+      "modalTitle": "分享筛选链接",
+      "noFilters": "当前没有筛选条件，链接将显示所有测试案例"
+    }
   },
   "section": {
     "unassigned": "Unassigned",
