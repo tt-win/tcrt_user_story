@@ -97,7 +97,12 @@ async def audit_logs(request: Request):
 @app.get("/test-case-sets", response_class=HTMLResponse)
 async def test_case_set_list(request: Request):
     """Test Case Set 選擇頁面"""
-    return templates.TemplateResponse("test_case_set_list.html", {"request": request})
+    from app.config import settings
+    ai_helper_enabled = settings.ai.jira_testcase_helper.enable
+    return templates.TemplateResponse(
+        "test_case_set_list.html",
+        {"request": request, "ai_helper_enabled": ai_helper_enabled},
+    )
 
 @app.get("/test-case-management", response_class=HTMLResponse)
 async def test_case_management(

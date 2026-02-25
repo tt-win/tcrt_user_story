@@ -17,6 +17,7 @@ ai:
   ai_assist:
     model: 'openai/gpt-oss-120b:free'
   jira_testcase_helper:
+    enable: true  # 設為 false 可隱藏 Test Case Set 管理畫面的 AI Agent - Test Case Helper 按鈕
     similar_cases_count: 5
     similar_cases_max_length: 500
     enable_ir_first: true
