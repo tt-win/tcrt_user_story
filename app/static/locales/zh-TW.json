@@ -933,7 +933,13 @@
     "title": "測試案例集合",
     "editTitle": "編輯測試案例集合",
     "setDescription": "集合描述",
-    "setDescriptionPlaceholder": "描述此集合的用途"
+    "setDescriptionPlaceholder": "描述此集合的用途",
+    "shareFilter": {
+      "generateLink": "產生連結",
+      "generateLinkTooltip": "產生目前篩選條件的分享連結",
+      "modalTitle": "分享篩選連結",
+      "noFilters": "目前沒有篩選條件，連結將顯示所有測試案例"
+    }
   },
   "section": {
     "unassigned": "Unassigned",

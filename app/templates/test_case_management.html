@@ -127,6 +127,9 @@ if (window.__TCM_HELPER_MODE__) {
                         <button type="button" class="btn btn-success me-2" id="applyFiltersBtn">
                             <i class="fas fa-filter me-2"></i><span data-i18n="common.apply">套用篩選</span>
                         </button>
+                        <button type="button" class="btn btn-outline-primary me-2" id="generateFilterLinkBtn" title="" data-i18n-title="testCaseSet.shareFilter.generateLinkTooltip">
+                            <i class="fas fa-link me-1"></i><span data-i18n="testCaseSet.shareFilter.generateLink">產生連結</span>
+                        </button>
                         <button type="button" class="btn btn-secondary" id="clearFiltersBtn">
                             <i class="fas fa-times me-2"></i><span data-i18n="common.clear">清除</span>
                         </button>
@@ -1106,6 +1109,29 @@ TC-1003,API 健康檢查,\"服務已啟動\",\"發送 GET /health\",\"回傳 200
 
 <!-- Test Case Set 和 Section 多語系翻譯 -->
 <script src="/static/js/i18n-test-case-set.js"></script>
+
+<!-- Share Filter Link Modal -->
+<div class="modal fade" id="shareFilterLinkModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" data-i18n="testCaseSet.shareFilter.modalTitle">分享篩選連結</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="input-group">
+                    <input type="text" class="form-control" id="shareFilterLinkInput" readonly>
+                    <button type="button" class="btn btn-primary" id="copyShareFilterLinkBtn">
+                        <i class="fas fa-copy me-1"></i><span data-i18n="common.copyLink">複製連結</span>
+                    </button>
+                </div>
+                <div id="shareFilterLinkFeedback" class="text-success mt-2" style="display:none;">
+                    <i class="fas fa-check me-1"></i><span data-i18n="common.copied">已複製</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 
 <!-- Test Case Set 整合模組 -->
 <script src="/static/js/test-case-set-integration.js?v=20260210b"></script>

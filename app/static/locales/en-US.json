@@ -958,7 +958,13 @@
     "title": "Test Case Set",
     "editTitle": "Edit Test Case Set",
     "setDescription": "Set Description",
-    "setDescriptionPlaceholder": "Describe the purpose of this set"
+    "setDescriptionPlaceholder": "Describe the purpose of this set",
+    "shareFilter": {
+      "generateLink": "Generate Link",
+      "generateLinkTooltip": "Generate a shareable link with current filter state",
+      "modalTitle": "Share Filter Link",
+      "noFilters": "No filters applied. The link will show all test cases"
+    }
   },
   "testRun": {
     "currentExecution": "Currently Executing: ",

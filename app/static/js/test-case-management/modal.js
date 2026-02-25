@@ -1024,6 +1024,130 @@ function clearFilters() {
     updateFilterStatus();
 }
 
+/**
+ * Serialize current filter values to URLSearchParams (only non-empty).
+ * Param names: f_num, f_kw, f_tcg, f_pri
+ */
+function serializeFiltersToParams() {
+    const params = new URLSearchParams();
+    const num = (document.getElementById('testCaseNumberSearch')?.value || '').trim();
+    const kw  = (document.getElementById('searchInput')?.value || '').trim();
+    const tcg = (document.getElementById('tcgFilter')?.value || '').trim();
+    const pri = (document.getElementById('priorityFilter')?.value || '').trim();
+    if (num) params.set('f_num', num);
+    if (kw)  params.set('f_kw', kw);
+    if (tcg) params.set('f_tcg', tcg);
+    if (pri) params.set('f_pri', pri);
+    return params;
+}
+
+/**
+ * Build full shareable URL with current page path + set context + filter params.
+ * 確保 team_id 與 set_id 一定包含在連結中，使接收者能正確導向目標 team/set。
+ */
+function buildShareFilterURL() {
+    const base = new URL(window.location.href);
+    const filterParams = serializeFiltersToParams();
+    const merged = new URLSearchParams(base.search);
+
+    // 確保 team_id 與 set_id 存在（從 URL 或當前 context 補齊）
+    let teamId = merged.get('team_id') || merged.get('teamId') || merged.get('team');
+    let setId = merged.get('set_id') || merged.get('setId');
+    if (!teamId && typeof getTeamIdForCache === 'function') {
+        teamId = getTeamIdForCache(false);
+    }
+    if (!teamId && typeof AppUtils !== 'undefined' && AppUtils.getCurrentTeam) {
+        const t = AppUtils.getCurrentTeam();
+        if (t && t.id) teamId = String(t.id);
+    }
+    if (!setId && typeof currentSetId !== 'undefined' && currentSetId) {
+        setId = String(currentSetId);
+    }
+    if (!setId && typeof testCaseSetIntegration !== 'undefined' && testCaseSetIntegration?.currentSetId) {
+        setId = String(testCaseSetIntegration.currentSetId);
+    }
+    if (teamId) merged.set('team_id', teamId);
+    if (setId) merged.set('set_id', setId);
+
+    // Remove old filter params first
+    ['f_num', 'f_kw', 'f_tcg', 'f_pri'].forEach(k => merged.delete(k));
+    // Merge new filter params
+    for (const [k, v] of filterParams) {
+        merged.set(k, v);
+    }
+    base.search = merged.toString();
+    return base.toString();
+}
+
+/**
+ * Read filter params from URL and restore to UI elements + memory.
+ * Returns true if any filter was restored.
+ */
+function restoreFiltersFromQueryString() {
+    const params = new URLSearchParams(window.location.search);
+    const num = params.get('f_num') || '';
+    const kw  = params.get('f_kw') || '';
+    const tcg = params.get('f_tcg') || '';
+    const pri = params.get('f_pri') || '';
+    if (!num && !kw && !tcg && !pri) return false;
+
+    const elNum = document.getElementById('testCaseNumberSearch');
+    const elSearch = document.getElementById('searchInput');
+    const elTCG = document.getElementById('tcgFilter');
+    const elPri = document.getElementById('priorityFilter');
+    if (elNum) elNum.value = num;
+    if (elSearch) elSearch.value = kw;
+    if (elTCG) elTCG.value = tcg;
+    if (elPri) elPri.value = pri;
+
+    tcmCurrentFilters.testCaseNumberSearch = num;
+    tcmCurrentFilters.searchInput = kw;
+    tcmCurrentFilters.tcgFilter = tcg;
+    tcmCurrentFilters.priorityFilter = pri;
+    return true;
+}
+
+/**
+ * Handler for "Generate Link" button.
+ */
+function generateShareFilterLink() {
+    const url = buildShareFilterURL();
+    const input = document.getElementById('shareFilterLinkInput');
+    if (input) input.value = url;
+
+    const feedback = document.getElementById('shareFilterLinkFeedback');
+    if (feedback) feedback.style.display = 'none';
+
+    const modal = new bootstrap.Modal(document.getElementById('shareFilterLinkModal'));
+    modal.show();
+
+    if (window.i18n) window.i18n.translateDOM(document.getElementById('shareFilterLinkModal'));
+}
+
+/**
+ * Copy share link to clipboard.
+ */
+function copyShareFilterLink() {
+    const input = document.getElementById('shareFilterLinkInput');
+    if (!input) return;
+    const url = input.value;
+    const feedback = document.getElementById('shareFilterLinkFeedback');
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(() => {
+            if (feedback) feedback.style.display = 'block';
+        }).catch(() => {
+            input.select();
+            document.execCommand('copy');
+            if (feedback) feedback.style.display = 'block';
+        });
+    } else {
+        input.select();
+        document.execCommand('copy');
+        if (feedback) feedback.style.display = 'block';
+    }
+}
+
 function updateFilterStatus() {
     const applyBtn = document.getElementById('applyFiltersBtn');
     const clearBtn = document.getElementById('clearFiltersBtn');

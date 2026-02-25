@@ -262,7 +262,9 @@ class LoginManager {
 
                 this.showAlert('Login successful! Redirecting...', 'success');
                 setTimeout(() => {
-                    window.location.href = '/';
+                    const urlParams = new URLSearchParams(window.location.search);
+                    const redirectTo = urlParams.get('redirect') || '/';
+                    window.location.href = redirectTo;
                 }, 600);
 
             } else {
