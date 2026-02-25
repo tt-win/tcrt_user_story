@@ -277,6 +277,10 @@ async def analyze_helper_session(
             team_id=team_id,
             session_id=session_id,
             request=request,
+            override_actor={
+                "user_id": current_user.id,
+                "username": current_user.username,
+            },
         )
         if request.retry:
             await _log_helper_action(

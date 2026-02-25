@@ -183,6 +183,100 @@ class JiraTestCaseHelperLLMService:
         )
         return any(signal in message for signal in unsupported_signals)
 
+    @staticmethod
+    def _truncate_for_log(value: Any, *, limit: int = 800) -> str:
+        text = str(value or "").strip()
+        if not text:
+            return ""
+        if len(text) <= limit:
+            return text
+        omitted = len(text) - limit
+        return f"{text[:limit]}...(truncated {omitted} chars)"
+
+    @classmethod
+    def _extract_error_detail(cls, text_body: str) -> Dict[str, str]:
+        detail = cls._truncate_for_log(text_body)
+        error_type = ""
+        error_code = ""
+        error_param = ""
+        try:
+            error_payload = json.loads(text_body)
+        except json.JSONDecodeError:
+            return {
+                "detail": detail,
+                "error_type": error_type,
+                "error_code": error_code,
+                "error_param": error_param,
+            }
+
+        if not isinstance(error_payload, dict):
+            return {
+                "detail": detail,
+                "error_type": error_type,
+                "error_code": error_code,
+                "error_param": error_param,
+            }
+
+        error_obj = error_payload.get("error")
+        if isinstance(error_obj, dict):
+            detail = cls._truncate_for_log(
+                error_obj.get("message")
+                or error_obj.get("detail")
+                or error_payload.get("message")
+                or detail
+            )
+            error_type = cls._truncate_for_log(error_obj.get("type"))
+            error_code = cls._truncate_for_log(error_obj.get("code"))
+            error_param = cls._truncate_for_log(error_obj.get("param"))
+        else:
+            detail = cls._truncate_for_log(
+                error_payload.get("message")
+                or error_payload.get("detail")
+                or detail
+            )
+            error_type = cls._truncate_for_log(error_payload.get("type"))
+            error_code = cls._truncate_for_log(error_payload.get("code"))
+            error_param = cls._truncate_for_log(error_payload.get("param"))
+        return {
+            "detail": detail,
+            "error_type": error_type,
+            "error_code": error_code,
+            "error_param": error_param,
+        }
+
+    @classmethod
+    def _format_exception_for_log(cls, exc: Exception) -> str:
+        message = cls._truncate_for_log(str(exc))
+        cause = cls._truncate_for_log(str(getattr(exc, "__cause__", "") or ""))
+        context = cls._truncate_for_log(str(getattr(exc, "__context__", "") or ""))
+        parts = [f"type={exc.__class__.__name__}"]
+        if message:
+            parts.append(f"message={message}")
+        else:
+            parts.append(f"repr={cls._truncate_for_log(repr(exc))}")
+        if cause:
+            parts.append(f"cause={cause}")
+        if context:
+            parts.append(f"context={context}")
+        return " ".join(parts)
+
+    @classmethod
+    def _build_request_context(
+        cls,
+        *,
+        url: str,
+        payload: Dict[str, Any],
+    ) -> str:
+        messages = payload.get("messages")
+        message_count = len(messages) if isinstance(messages, list) else 0
+        return (
+            f"url={cls._truncate_for_log(url, limit=240)} "
+            f"model={cls._truncate_for_log(payload.get('model'), limit=120) or '-'} "
+            f"response_format={bool(payload.get('response_format'))} "
+            f"max_tokens={payload.get('max_tokens', 'unset(default)')} "
+            f"messages={message_count}"
+        )
+
     async def _post_json_with_retry(
         self,
         *,
@@ -193,11 +287,15 @@ class JiraTestCaseHelperLLMService:
         retries: int = 3,
     ) -> Dict[str, Any]:
         last_error: Optional[Exception] = None
-        timeout = aiohttp.ClientTimeout(total=max(1, timeout_seconds))
+        request_context = self._build_request_context(
+            url=url,
+            payload=payload,
+        )
 
         for attempt in range(1, max(1, retries) + 1):
             try:
-                async with aiohttp.ClientSession(timeout=timeout) as session:
+                # timeout 由使用者要求停用，避免模型長回應被中斷。
+                async with aiohttp.ClientSession() as session:
                     async with session.post(url, headers=headers, json=payload) as response:
                         text_body = await response.text()
                         if response.status == 429 and attempt < retries:
@@ -212,19 +310,21 @@ class JiraTestCaseHelperLLMService:
                             continue
 
                         if response.status >= 400:
-                            detail = text_body
-                            try:
-                                error_payload = json.loads(text_body)
-                                if isinstance(error_payload, dict):
-                                    detail = (
-                                        error_payload.get("error", {}).get("message")
-                                        or error_payload.get("message")
-                                        or text_body
-                                    )
-                            except json.JSONDecodeError:
-                                pass
+                            error_detail = self._extract_error_detail(text_body)
+                            request_id = self._truncate_for_log(
+                                response.headers.get("x-request-id")
+                                or response.headers.get("request-id")
+                                or response.headers.get("openai-request-id")
+                                or response.headers.get("cf-ray")
+                            ) or "-"
                             raise RuntimeError(
-                                f"OpenRouter API 失敗 ({response.status}): {detail}"
+                                "OpenRouter API 失敗 "
+                                f"status={response.status} request_id={request_id} "
+                                f"error_type={error_detail.get('error_type') or '-'} "
+                                f"error_code={error_detail.get('error_code') or '-'} "
+                                f"error_param={error_detail.get('error_param') or '-'} "
+                                f"detail={error_detail.get('detail') or '-'} "
+                                f"context=({request_context})"
                             )
 
                         try:
@@ -237,16 +337,20 @@ class JiraTestCaseHelperLLMService:
                     break
                 wait_seconds = min(2 ** (attempt - 1), 4)
                 logger.warning(
-                    "OpenRouter 呼叫失敗（第 %s/%s 次）: %s，%.1fs 後重試",
+                    "OpenRouter 呼叫失敗（第 %s/%s 次）: %s | %s，%.1fs 後重試",
                     attempt,
                     retries,
-                    exc,
+                    self._format_exception_for_log(exc),
+                    request_context,
                     wait_seconds,
                 )
                 await asyncio.sleep(wait_seconds)
 
         if last_error is not None:
-            raise last_error
+            raise RuntimeError(
+                f"OpenRouter 呼叫失敗（已重試 {max(1, retries)} 次）: "
+                f"{self._format_exception_for_log(last_error)} | {request_context}"
+            ) from last_error
         raise RuntimeError("OpenRouter 呼叫失敗")
 
     @staticmethod

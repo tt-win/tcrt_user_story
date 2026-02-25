@@ -130,6 +130,10 @@ class HelperAnalyzeRequest(BaseModel):
     )
     user_notes: Optional[str] = Field(None, description="分析補充註記")
     retry: bool = Field(False, description="是否重試分析流程")
+    override_incomplete_requirement: bool = Field(
+        False,
+        description="當 requirement 格式不完整時，是否確認仍要繼續流程",
+    )
 
 
 class HelperGenerateRequest(BaseModel):
@@ -209,4 +213,3 @@ class HelperStageResultResponse(BaseModel):
     payload: Dict[str, Any] = Field(default_factory=dict)
     markdown: Optional[str] = None
     usage: Dict[str, Any] = Field(default_factory=dict)
-

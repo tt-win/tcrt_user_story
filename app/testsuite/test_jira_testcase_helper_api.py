@@ -41,7 +41,7 @@ class FakeHelperLLM:
                     response_id="requirement-ir-1",
                 )
             return SimpleNamespace(
-                content='{"sec":[{"g":"Auth","it":[{"id":"010.001","t":"登入成功","det":["帳密正確"],"rid":["REQ-001"]}]}]}',
+                content='{"analysis":{"sec":[{"g":"Auth","it":[{"id":"010.001","t":"登入成功","det":["帳密正確"],"rid":["REQ-001"]},{"id":"010.002","t":"OTP 驗證","det":["OTP 有效"],"rid":["REQ-001"]}]}],"it":[{"id":"010.001","t":"登入成功","det":["帳密正確"],"rid":["REQ-001"]},{"id":"010.002","t":"OTP 驗證","det":["OTP 有效"],"rid":["REQ-001"]}]},"coverage":{"seed":[{"g":"Auth","t":"登入成功流程","ax":"happy","cat":"happy","st":"ok","ref":["010.001"],"rid":["REQ-001"]},{"g":"Auth","t":"OTP 邊界值驗證","ax":"edge","cat":"boundary","st":"ok","ref":["010.002"],"rid":["REQ-001"]},{"g":"Auth","t":"OTP 過期錯誤","ax":"error","cat":"negative","st":"ok","ref":["010.002"],"rid":["REQ-001"]},{"g":"Auth","t":"權限不足不得操作 OTP 設定","ax":"permission","cat":"negative","st":"assume","a":"需求未明確定義角色矩陣","ref":["010.001"],"rid":["REQ-001"]}]}}',
                 usage={"prompt_tokens": 8, "completion_tokens": 12, "total_tokens": 20},
                 cost=0.0,
                 cost_note="",
@@ -256,7 +256,16 @@ def test_helper_api_session_lifecycle_and_phase_transitions(helper_api_db):
     generated_payload = generate_resp.json()
     assert generated_payload["session"]["current_phase"] == "testcase"
     assert generated_payload["session"]["phase_status"] == "waiting_confirm"
-    assert len(generated_payload["payload"]["tc"]) == 1
+    expected_case_count = len(
+        (
+            analyze_payload.get("payload", {})
+            .get("pretestcase", {})
+            .get("en", [])
+            or []
+        )
+    )
+    assert expected_case_count > 0
+    assert len(generated_payload["payload"]["tc"]) == expected_case_count
 
     commit_resp = client.post(
         f"/api/teams/{team_id}/test-case-helper/sessions/{session_id}/commit",
@@ -264,7 +273,7 @@ def test_helper_api_session_lifecycle_and_phase_transitions(helper_api_db):
     )
     assert commit_resp.status_code == 200
     commit_payload = commit_resp.json()
-    assert commit_payload["created_count"] == 1
+    assert commit_payload["created_count"] == expected_case_count
 
     session_after_commit = client.get(
         f"/api/teams/{team_id}/test-case-helper/sessions/{session_id}"
@@ -328,3 +337,62 @@ def test_helper_api_commit_validation_and_section_fallback(helper_api_db):
     )
     assert fallback_commit.status_code == 200
     assert fallback_commit.json()["section_fallback_count"] == 1
+
+
+def test_helper_api_analyze_warning_gate_and_override_flow(helper_api_db):
+    team_id = helper_api_db["team_id"]
+    set_id = helper_api_db["set_id"]
+    client = TestClient(app)
+
+    start_resp = client.post(
+        f"/api/teams/{team_id}/test-case-helper/sessions",
+        json={
+            "test_case_set_id": set_id,
+            "output_locale": "zh-TW",
+            "review_locale": "zh-TW",
+            "initial_middle": "010",
+        },
+    )
+    assert start_resp.status_code == 201
+    session_id = start_resp.json()["id"]
+
+    ticket_resp = client.post(
+        f"/api/teams/{team_id}/test-case-helper/sessions/{session_id}/ticket",
+        json={"ticket_key": "TCG-130078"},
+    )
+    assert ticket_resp.status_code == 200
+
+    incomplete_requirement = (
+        "h1. Menu\\n"
+        " * 活動紅利 > 活動公告管理\\n\\n"
+        "h1. Criteria\\n"
+        " * 關閉活動內容時公告內文仍需顯示\\n"
+    )
+
+    warning_resp = client.post(
+        f"/api/teams/{team_id}/test-case-helper/sessions/{session_id}/analyze",
+        json={
+            "retry": False,
+            "requirement_markdown": incomplete_requirement,
+        },
+    )
+    assert warning_resp.status_code == 200, warning_resp.text
+    warning_payload = warning_resp.json()
+    assert warning_payload["stage"] == "requirement_validation_warning"
+    assert warning_payload["payload"]["requires_override"] is True
+    assert warning_payload["payload"]["warning"]["quality_level"] in {"medium", "low"}
+    assert warning_payload["session"]["current_phase"] == "requirement"
+
+    proceed_resp = client.post(
+        f"/api/teams/{team_id}/test-case-helper/sessions/{session_id}/analyze",
+        json={
+            "retry": False,
+            "requirement_markdown": incomplete_requirement,
+            "override_incomplete_requirement": True,
+        },
+    )
+    assert proceed_resp.status_code == 200, proceed_resp.text
+    proceed_payload = proceed_resp.json()
+    assert proceed_payload["stage"] == "analysis_coverage"
+    assert proceed_payload["session"]["current_phase"] == "pretestcase"
+    assert len(proceed_payload["payload"]["pretestcase"]["en"]) >= 1

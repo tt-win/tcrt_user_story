@@ -44,17 +44,21 @@ MACHINE_PROMPT_TEMPLATES: Dict[HelperPromptStage, str] = {
     ),
     "analysis": (
         "你是 Analysis+Coverage 合併轉換器。使用 {review_language}。\n"
-        "一次輸出 analysis 與 coverage，禁止任何格式化輸出。\n"
+        "本階段是單一 prompt，必須直接完成可用於 pre-testcase 的 analysis+coverage。\n"
         "每個 analysis item 必須可直接被 testcase 生成使用，禁止空泛描述。\n"
         "禁止使用「參考 REF-xxx」當作唯一內容；必須展開成可驗證條目。\n"
         "若需求含表格欄位（reference columns），必須逐欄位拆解成明確檢核與預期，不得合併省略。\n"
         "coverage 的 seed 必須完整覆蓋 analysis item，且每個 seed.ref 僅對應一個 item.id。\n"
+        "coverage 必須明確考慮四個面向：happy path、edge test cases、error handling、permission。\n"
+        "seed.ax 僅可為 happy|edge|error|permission。\n"
+        "seed.cat 必須遵守映射：happy->happy，edge->boundary，error/permission->negative。\n"
+        "若某面向不適用，仍需輸出對應 seed，並設定 st=assume 且在 a 提供原因。\n"
         "seed 必須含 t/chk/exp/pre_hint/step_hint，供低推理模型產生詳細 testcase。\n\n"
         "TCG={ticket_key}\n"
         "REQUIREMENT_IR_JSON={requirement_ir_json}\n\n"
         "輸出限制：只輸出單一 JSON 物件，不可有任何其他文字。\n"
         "輸出 schema:\n"
-        '{"analysis":{"sec":[{"g":"","it":[{"id":"010.001","t":"","det":[],"chk":[],"exp":[],"rid":[],"source_refs":[{"chunk_id":"","sentence_ids":[0],"quote":""}]}]}],"it":[{"id":"010.001","t":"","det":[],"chk":[],"exp":[],"rid":[],"source_refs":[{"chunk_id":"","sentence_ids":[0],"quote":""}]}]},"coverage":{"sec":[{"g":"","seed":[{"g":"","t":"","cat":"happy","st":"ok","ref":["010.001"],"rid":[],"chk":[],"exp":[],"pre_hint":[],"step_hint":[],"source_refs":[{"chunk_id":"","sentence_ids":[0],"quote":""}]}]}],"seed":[{"g":"","t":"","cat":"happy","st":"ok","ref":["010.001"],"rid":[],"chk":[],"exp":[],"pre_hint":[],"step_hint":[],"source_refs":[{"chunk_id":"","sentence_ids":[0],"quote":""}]}]}}'
+        '{"analysis":{"sec":[{"g":"","it":[{"id":"010.001","t":"","det":[],"chk":[],"exp":[],"rid":[],"source_refs":[{"chunk_id":"","sentence_ids":[0],"quote":""}]}]}],"it":[{"id":"010.001","t":"","det":[],"chk":[],"exp":[],"rid":[],"source_refs":[{"chunk_id":"","sentence_ids":[0],"quote":""}]}]},"coverage":{"sec":[{"g":"","seed":[{"g":"","t":"","ax":"happy","cat":"happy","st":"ok","a":"","ref":["010.001"],"rid":[],"chk":[],"exp":[],"pre_hint":[],"step_hint":[],"source_refs":[{"chunk_id":"","sentence_ids":[0],"quote":""}]}]}],"seed":[{"g":"","t":"","ax":"happy","cat":"happy","st":"ok","a":"","ref":["010.001"],"rid":[],"chk":[],"exp":[],"pre_hint":[],"step_hint":[],"source_refs":[{"chunk_id":"","sentence_ids":[0],"quote":""}]}],"trace":{"analysis_item_count":0,"covered_item_count":0,"missing_ids":[],"missing_sections":[],"aspect_review":{"happy":"covered","edge":"covered","error":"covered","permission":"assume"}}}}'
     ),
     "coverage": (
         "你是 Coverage 轉換器。使用 {review_language}。\n"
@@ -92,8 +96,11 @@ MACHINE_PROMPT_TEMPLATES: Dict[HelperPromptStage, str] = {
         "不要做任何格式排版，僅產生可執行 testcase JSON。\n"
         "每個 en 條目對應 1 個 testcase，禁止遺漏。\n"
         "必須依 en.cat 產生情境：happy=正向，negative=負向/錯誤處理，boundary=邊界條件。\n"
-        "pre 與 s 必須具體且可執行，expected 必須可觀測。\n"
-        "禁止出現 REF/同上/略/TBD/N/A。\n\n"
+        "pre 必須至少 2 條，且要包含測試資料與角色/權限或入口條件。\n"
+        "s 必須至少 3 步，且每一步都要是可操作、可重現的動作與檢查。\n"
+        "exp 必須且只能 1 條，且要有可觀測結果（畫面元素/回傳欄位/狀態碼/訊息）。\n"
+        "禁止在 pre/s/exp 使用 REF/同上/略/TBD/N/A 這類占位詞。\n"
+        "若資訊不足，使用完整中文敘述「待確認事項」，不可用縮寫占位詞。\n\n"
         "TCG={ticket_key}\n"
         "SECTION={section_no} {section_name}\n"
         "STAGE1_JSON={coverage_questions_json}\n"
@@ -107,8 +114,9 @@ MACHINE_PROMPT_TEMPLATES: Dict[HelperPromptStage, str] = {
         "你是 Testcase 補全器。使用 {output_language}。\n"
         "只補缺漏或不合格 testcase。\n"
         "必須遵守 en.cat 對應的情境類型（happy/negative/boundary）。\n"
-        "補全後 pre/s/exp 必須完整可執行、可觀測。\n"
-        "禁止出現 REF/同上/略/TBD/N/A。\n\n"
+        "補全後 pre 必須至少 2 條，s 至少 3 步，exp 必須且只能 1 條且可觀測。\n"
+        "禁止在 pre/s/exp 使用 REF/同上/略/TBD/N/A 這類占位詞。\n"
+        "若資訊不足，使用完整中文敘述「待確認事項」，不可用縮寫占位詞。\n\n"
         "TCG={ticket_key}\n"
         "SECTION={section_no} {section_name}\n"
         "MISSING_STAGE1_JSON={coverage_questions_json}\n"
@@ -125,7 +133,9 @@ MACHINE_PROMPT_TEMPLATES: Dict[HelperPromptStage, str] = {
         "保留 testcase id，不可變更目標集合。\n"
         "必須檢查每個 testcase 是否符合 en.cat 的情境類型（happy/negative/boundary）。\n"
         "若有缺陷，直接在同筆 testcase 補全，不可輸出省略語句。\n"
-        "禁止出現 REF/同上/略/TBD/N/A。\n\n"
+        "pre 必須至少 2 條，s 至少 3 步，exp 必須且只能 1 條且可觀測。\n"
+        "禁止在 pre/s/exp 使用 REF/同上/略/TBD/N/A 這類占位詞。\n"
+        "若資訊不足，使用完整中文敘述「待確認事項」，不可用縮寫占位詞。\n\n"
         "TCG={ticket_key}\n"
         "SECTION={section_no} {section_name}\n"
         "STAGE1_JSON={coverage_questions_json}\n"
@@ -194,7 +204,17 @@ class JiraTestCaseHelperPromptService:
         stage: HelperPromptStage,
         replacements: Optional[Dict[str, str]] = None,
     ) -> str:
-        template = MACHINE_PROMPT_TEMPLATES.get(stage) or self.get_stage_prompt_template(stage)
+        template = self.get_stage_prompt_template(stage)
+        if stage == "analysis" and not self._analysis_prompt_supports_merged_coverage(
+            template
+        ):
+            # 舊版 config 只輸出 analysis，這裡強制切回合併契約，避免觸發二次 coverage 生成。
+            template = MACHINE_PROMPT_TEMPLATES["analysis"]
+        if stage in {"testcase", "testcase_supplement", "audit"} and not self._testcase_prompt_supports_quality_contract(
+            template
+        ):
+            # 舊版 config 若未宣告完整 testcase 品質契約，強制切回 machine 契約模板。
+            template = MACHINE_PROMPT_TEMPLATES[stage]
         defaults = {
             "review_language": "繁體中文",
             "output_language": "繁體中文",
@@ -223,6 +243,51 @@ class JiraTestCaseHelperPromptService:
         for key, value in defaults.items():
             rendered = rendered.replace("{" + key + "}", value)
         return rendered
+
+    @staticmethod
+    def _analysis_prompt_supports_merged_coverage(template: str) -> bool:
+        text = str(template or "")
+        merged_markers = (
+            '"coverage"',
+            "一次輸出 analysis 與 coverage",
+            "analysis 與 coverage",
+            "Analysis+Coverage",
+        )
+        aspect_markers = (
+            "happy path",
+            "edge test cases",
+            "error handling",
+            "permission",
+            "happy、edge、error、permission",
+            "四個面向",
+            "seed.ax",
+        )
+        return any(marker in text for marker in merged_markers) and any(
+            marker in text for marker in aspect_markers
+        )
+
+    @staticmethod
+    def _testcase_prompt_supports_quality_contract(template: str) -> bool:
+        text = str(template or "")
+        return all(
+            any(marker in text for marker in group)
+            for group in (
+                ("pre 至少 2 條", "pre 必須至少 2 條"),
+                ("s 至少 3 步", "s 必須至少 3 步"),
+                ("exp 必須且只能",),
+                ("REF/同上/略/TBD/N/A",),
+            )
+        )
+
+    def get_contract_versions(self) -> Dict[str, str]:
+        return {
+            "prompt_contract_version": str(
+                getattr(self._config, "prompt_contract_version", "helper-prompt.v2")
+            ),
+            "payload_contract_version": str(
+                getattr(self._config, "payload_contract_version", "helper-draft.v2")
+            ),
+        }
 
 
 _jira_testcase_helper_prompt_service: Optional[JiraTestCaseHelperPromptService] = None

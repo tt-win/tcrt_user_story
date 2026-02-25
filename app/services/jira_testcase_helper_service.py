@@ -54,6 +54,13 @@ from app.services.jira_testcase_helper_prompt_service import (
     get_jira_testcase_helper_prompt_service,
 )
 from app.services.qdrant_client import get_qdrant_client
+from app.services.test_case_helper import (
+    DraftPayloadAdapter,
+    PretestcasePresenter,
+    RequirementCompletenessValidator,
+    RequirementIRBuilder,
+    StructuredRequirementParser,
+)
 from app.services.test_case_set_service import TestCaseSetService
 
 logger = logging.getLogger(__name__)
@@ -62,6 +69,7 @@ logger = logging.getLogger(__name__)
 TCG_TICKET_PATTERN = re.compile(r"^[A-Z]+-\d+$")
 TRUTHY_TEXT = {"y", "yes", "true", "1", "v", "✓", "✔"}
 VALID_SEED_CATEGORIES = {"happy", "negative", "boundary"}
+VALID_SEED_ASPECTS = {"happy", "edge", "error", "permission"}
 NEGATIVE_CATEGORY_HINTS = (
     "錯誤",
     "失敗",
@@ -105,6 +113,19 @@ BOUNDARY_CATEGORY_HINTS = (
     "edge",
     "scroll",
     "pagination",
+)
+PERMISSION_CATEGORY_HINTS = (
+    "權限",
+    "角色",
+    "未授權",
+    "禁止",
+    "permission",
+    "role",
+    "forbidden",
+    "unauthorized",
+    "denied",
+    "acl",
+    "rbac",
 )
 DEFAULT_FORBIDDEN_PATTERNS = (
     r"參考",
@@ -242,6 +263,11 @@ class JiraTestCaseHelperService:
         self.settings = get_settings()
         self.llm_service = llm_service or get_jira_testcase_helper_llm_service()
         self.prompt_service = prompt_service or get_jira_testcase_helper_prompt_service()
+        self.payload_adapter = DraftPayloadAdapter()
+        self.requirement_parser = StructuredRequirementParser()
+        self.requirement_validator = RequirementCompletenessValidator()
+        self.requirement_ir_builder = RequirementIRBuilder()
+        self.pretestcase_presenter = PretestcasePresenter()
 
     # ---------- Session and draft base ----------
     def _check_phase_transition(self, current_phase: str, next_phase: str) -> None:
@@ -268,13 +294,14 @@ class JiraTestCaseHelperService:
         session.last_error = last_error
         session.updated_at = _now()
 
-    @staticmethod
-    def _to_draft_response(draft: AITestCaseHelperDraft) -> HelperDraftResponse:
+    def _to_draft_response(self, draft: AITestCaseHelperDraft) -> HelperDraftResponse:
+        raw_payload = _safe_json_loads(draft.payload_json, None)
+        normalized_payload = self.payload_adapter.unwrap(raw_payload)
         return HelperDraftResponse(
             phase=draft.phase,
             version=draft.version,
             markdown=draft.markdown,
-            payload=_safe_json_loads(draft.payload_json, None),
+            payload=normalized_payload,
             updated_at=draft.updated_at,
         )
 
@@ -362,6 +389,8 @@ class JiraTestCaseHelperService:
         phase: str,
         markdown: Optional[str] = None,
         payload: Any = None,
+        quality: Optional[Dict[str, Any]] = None,
+        trace: Optional[Dict[str, Any]] = None,
         increment_version: bool = True,
     ) -> AITestCaseHelperDraft:
         draft = self._get_or_create_draft_sync(
@@ -370,7 +399,13 @@ class JiraTestCaseHelperService:
         if increment_version:
             draft.version += 1
         draft.markdown = markdown
-        draft.payload_json = _safe_json_dumps(payload)
+        draft_payload = self.payload_adapter.wrap(
+            phase=phase,
+            data=payload,
+            quality=quality,
+            trace=trace,
+        )
+        draft.payload_json = _safe_json_dumps(draft_payload)
         draft.updated_at = _now()
         sync_db.flush()
         return draft
@@ -907,6 +942,52 @@ class JiraTestCaseHelperService:
             "regenerate_applied": regenerate_applied,
             "repair_applied": repair_applied,
         }
+
+    @staticmethod
+    def _merge_stage_call_metrics(
+        base_call: Dict[str, Any],
+        extra_call: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        merged = dict(base_call or {})
+        base_usage = dict(merged.get("usage") or {})
+        extra_usage = dict(extra_call.get("usage") or {})
+        merged["usage"] = {
+            "prompt_tokens": int(base_usage.get("prompt_tokens", 0))
+            + int(extra_usage.get("prompt_tokens", 0)),
+            "completion_tokens": int(base_usage.get("completion_tokens", 0))
+            + int(extra_usage.get("completion_tokens", 0)),
+            "total_tokens": int(base_usage.get("total_tokens", 0))
+            + int(extra_usage.get("total_tokens", 0)),
+        }
+        merged["cost"] = float(merged.get("cost") or 0.0) + float(
+            extra_call.get("cost") or 0.0
+        )
+        merged["cost_note"] = (
+            "（含未知費用）"
+            if merged.get("cost_note") or extra_call.get("cost_note")
+            else ""
+        )
+        merged["response_id"] = extra_call.get("response_id") or merged.get("response_id")
+        merged["regenerate_applied"] = bool(merged.get("regenerate_applied")) or bool(
+            extra_call.get("regenerate_applied")
+        )
+        merged["repair_applied"] = bool(merged.get("repair_applied")) or bool(
+            extra_call.get("repair_applied")
+        )
+        return merged
+
+    @staticmethod
+    def _extract_coverage_payload(raw_payload: Any) -> Dict[str, Any]:
+        if isinstance(raw_payload, dict) and isinstance(raw_payload.get("coverage"), dict):
+            return raw_payload.get("coverage") or {}
+        if not isinstance(raw_payload, dict):
+            return {}
+        has_seed = isinstance(raw_payload.get("seed"), list)
+        has_sec = isinstance(raw_payload.get("sec"), list)
+        has_trace = isinstance(raw_payload.get("trace"), dict)
+        if has_seed or has_sec or has_trace:
+            return raw_payload
+        return {}
 
     @staticmethod
     def _to_text_list(raw_value: Any) -> List[str]:
@@ -2148,6 +2229,7 @@ class JiraTestCaseHelperService:
         ticket_payload: Dict[str, Any],
         requirement_markdown: str,
         similar_cases: str,
+        structured_requirement: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         helper_cfg = self.settings.ai.jira_testcase_helper
         review_language = _locale_label(session_data.review_locale.value)
@@ -2217,6 +2299,10 @@ class JiraTestCaseHelperService:
             components=ticket_payload.get("components") or [],
             requirement_markdown=requirement_markdown,
             source_chunks=source_packets.get("chunks") or [],
+        )
+        requirement_ir = self.requirement_ir_builder.merge_with_structured_requirement(
+            requirement_ir=requirement_ir,
+            structured_requirement=structured_requirement,
         )
         return {
             "requirement_ir": requirement_ir,
@@ -2521,6 +2607,59 @@ class JiraTestCaseHelperService:
         return "happy"
 
     @staticmethod
+    def _normalize_seed_aspect(raw_value: Any) -> str:
+        normalized = str(raw_value or "").strip().lower()
+        if normalized in VALID_SEED_ASPECTS:
+            return normalized
+        if normalized in {"positive", "normal", "success", "happy_path", "happy-path"}:
+            return "happy"
+        if normalized in {"boundary", "limit", "edge_case", "edge-case"}:
+            return "edge"
+        if normalized in {"negative", "fail", "failed", "invalid", "exception"}:
+            return "error"
+        if normalized in {"auth", "authorization", "forbidden", "unauthorized", "acl", "rbac"}:
+            return "permission"
+        return ""
+
+    @staticmethod
+    def _category_from_aspect(aspect: str) -> str:
+        normalized = str(aspect or "").strip().lower()
+        if normalized == "happy":
+            return "happy"
+        if normalized == "edge":
+            return "boundary"
+        if normalized in {"error", "permission"}:
+            return "negative"
+        return ""
+
+    @staticmethod
+    def _aspect_from_category(cat: str, texts: Optional[Sequence[str]] = None) -> str:
+        normalized = str(cat or "").strip().lower()
+        evidence = " ".join([str(text).strip().lower() for text in (texts or []) if str(text).strip()])
+        if normalized == "happy":
+            return "happy"
+        if normalized == "boundary":
+            return "edge"
+        if normalized == "negative":
+            if any(keyword in evidence for keyword in PERMISSION_CATEGORY_HINTS):
+                return "permission"
+            return "error"
+        return ""
+
+    @staticmethod
+    def _infer_seed_aspect(texts: Sequence[str]) -> str:
+        merged = " ".join([str(text).strip().lower() for text in texts if str(text).strip()])
+        if not merged:
+            return "happy"
+        if any(keyword in merged for keyword in PERMISSION_CATEGORY_HINTS):
+            return "permission"
+        if any(keyword in merged for keyword in NEGATIVE_CATEGORY_HINTS):
+            return "error"
+        if any(keyword in merged for keyword in BOUNDARY_CATEGORY_HINTS):
+            return "edge"
+        return "happy"
+
+    @staticmethod
     def _category_signal_scores(texts: Sequence[str]) -> Tuple[int, int]:
         merged = " ".join([str(text).strip().lower() for text in texts if str(text).strip()])
         if not merged:
@@ -2571,13 +2710,24 @@ class JiraTestCaseHelperService:
             refs = [str(value).strip() for value in (seed.get("ref") or []) if str(value).strip()]
             analysis_item = analysis_item_map.get(refs[0]) if len(refs) == 1 else None
             evidence_texts = self._collect_seed_evidence_texts(seed=seed, analysis_item=analysis_item)
+            explicit_aspect = (
+                self._normalize_seed_aspect(seed.get("ax"))
+                if bool(seed.get("_ax_explicit"))
+                else ""
+            )
+            if explicit_aspect:
+                mapped_cat = self._category_from_aspect(explicit_aspect)
+                if mapped_cat:
+                    seed["cat"] = mapped_cat
+                seed["ax"] = explicit_aspect
+                continue
             inferred = self._infer_seed_category(evidence_texts)
             current = self._normalize_seed_category(seed.get("cat"))
-            # 修正分類偏斜：允許把誤標 boundary 降回 happy，避免 pre-testcase 幾乎全是 boundary。
+            # 只允許 happy 升級成更具體分類，避免把模型已給出的負向/邊界覆寫成 happy。
             if current == "happy" and inferred != "happy":
                 seed["cat"] = inferred
-            elif current == "boundary" and inferred in {"happy", "negative"}:
-                seed["cat"] = inferred
+            seed_aspect = self._aspect_from_category(str(seed.get("cat") or ""), evidence_texts)
+            seed["ax"] = seed_aspect or self._infer_seed_aspect(evidence_texts)
         return seeds
 
     @staticmethod
@@ -2960,17 +3110,29 @@ class JiraTestCaseHelperService:
         step_hint_values = self._unique_preserve(
             self._to_text_list(seed.get("step_hint") or seed.get("steps"))
         )
-        cat = self._normalize_seed_category(seed.get("cat"))
-        inferred_cat = self._infer_seed_category(
-            [title] + chk_values + exp_values + pre_hint_values + step_hint_values
-        )
+        evidence_texts = [title] + chk_values + exp_values + pre_hint_values + step_hint_values
+        aspect = self._normalize_seed_aspect(seed.get("ax") or seed.get("aspect"))
+        aspect_explicit = bool(aspect)
+        if not aspect:
+            raw_cat = self._normalize_seed_category(seed.get("cat"))
+            aspect = self._aspect_from_category(raw_cat, evidence_texts)
+        if not aspect:
+            aspect = self._infer_seed_aspect(evidence_texts)
+        mapped_cat = self._category_from_aspect(aspect)
+        cat = mapped_cat or self._normalize_seed_category(seed.get("cat"))
+        inferred_cat = self._infer_seed_category(evidence_texts)
         if cat == "happy" and inferred_cat != "happy":
             cat = inferred_cat
+            if cat == "boundary":
+                aspect = "edge"
+            elif cat == "negative" and aspect == "happy":
+                aspect = "error"
         st = str(seed.get("st") or "ok").strip().lower() or "ok"
 
         normalized: Dict[str, Any] = {
             "g": group,
             "t": title,
+            "ax": aspect,
             "cat": cat,
             "st": st,
             "ref": refs,
@@ -2979,6 +3141,7 @@ class JiraTestCaseHelperService:
             "exp": exp_values,
             "pre_hint": pre_hint_values,
             "step_hint": step_hint_values,
+            "_ax_explicit": aspect_explicit,
         }
         sid = str(seed.get("sid") or "").strip()
         if sid:
@@ -3052,6 +3215,9 @@ class JiraTestCaseHelperService:
             refs = [str(v).strip() for v in (seed.get("ref") or []) if str(v).strip()]
             if len(refs) != 1:
                 continue
+            canonical_group = str(item_group_map.get(refs[0]) or "").strip()
+            if canonical_group:
+                seed["g"] = canonical_group
             analysis_item = analysis_item_map.get(refs[0])
             if not analysis_item:
                 continue
@@ -3112,6 +3278,7 @@ class JiraTestCaseHelperService:
         )
 
         for index, seed in enumerate(normalized_seeds, start=1):
+            seed.pop("_ax_explicit", None)
             seed["idx"] = index
 
         sections: List[Dict[str, Any]] = []
@@ -3184,6 +3351,44 @@ class JiraTestCaseHelperService:
             "missing_ids": missing_ids,
             "missing_sections": missing_sections,
             "is_complete": not missing_ids and not missing_sections,
+        }
+
+    def validate_coverage_aspects(
+        self,
+        *,
+        coverage_payload: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        required_aspects = sorted(VALID_SEED_ASPECTS)
+        covered_aspects: Set[str] = set()
+        aspect_counts: Dict[str, int] = {aspect: 0 for aspect in required_aspects}
+        for seed in coverage_payload.get("seed", []) or []:
+            if not isinstance(seed, dict):
+                continue
+            evidence_texts = [
+                str(seed.get("t") or "").strip(),
+                *[str(v).strip() for v in (seed.get("chk") or []) if str(v).strip()],
+                *[str(v).strip() for v in (seed.get("exp") or []) if str(v).strip()],
+                *[str(v).strip() for v in (seed.get("pre_hint") or []) if str(v).strip()],
+                *[str(v).strip() for v in (seed.get("step_hint") or []) if str(v).strip()],
+            ]
+            aspect = self._normalize_seed_aspect(seed.get("ax") or seed.get("aspect"))
+            if not aspect:
+                cat = self._normalize_seed_category(seed.get("cat"))
+                aspect = self._aspect_from_category(cat, evidence_texts)
+            if not aspect:
+                aspect = self._infer_seed_aspect(evidence_texts)
+            if not aspect:
+                continue
+            covered_aspects.add(aspect)
+            if aspect in aspect_counts:
+                aspect_counts[aspect] += 1
+        missing_aspects = [aspect for aspect in required_aspects if aspect not in covered_aspects]
+        return {
+            "required_aspects": required_aspects,
+            "covered_aspects": sorted(covered_aspects),
+            "missing_aspects": missing_aspects,
+            "aspect_counts": aspect_counts,
+            "is_complete": not missing_aspects,
         }
 
     @staticmethod
@@ -3746,6 +3951,7 @@ class JiraTestCaseHelperService:
         return (
             str(seed.get("g") or "").strip(),
             str(seed.get("t") or "").strip(),
+            str(seed.get("ax") or "").strip().lower(),
             str(seed.get("cat") or "").strip().lower(),
             str(seed.get("st") or "ok").strip().lower(),
             refs,
@@ -4074,7 +4280,7 @@ class JiraTestCaseHelperService:
                 "idx": idx,
                 "g": str(raw.get("g") or "").strip() or "未分類",
                 "t": str(raw.get("t") or "").strip(),
-                "cat": str(raw.get("cat") or "happy").strip().lower() or "happy",
+                "cat": self._normalize_seed_category(raw.get("cat")),
                 "st": str(raw.get("st") or "ok").strip().lower() or "ok",
                 "ref": refs,
                 "rid": rid,
@@ -4083,7 +4289,10 @@ class JiraTestCaseHelperService:
                 "exp": self._to_text_list(raw.get("exp")),
                 "pre_hint": self._to_text_list(raw.get("pre_hint")),
                 "step_hint": self._to_text_list(raw.get("step_hint")),
+                "requirement_key": str(raw.get("requirement_key") or "").strip(),
             }
+            if isinstance(raw.get("requirement_context"), dict):
+                entry["requirement_context"] = raw.get("requirement_context")
             raw_sid = str(raw.get("raw_sid") or "").strip()
             if raw_sid:
                 entry["raw_sid"] = raw_sid
@@ -4259,6 +4468,7 @@ class JiraTestCaseHelperService:
                 "idx": seed.get("idx"),
                 "g": str(seed.get("g") or "").strip() or "未分類",
                 "t": str(seed.get("t") or "").strip(),
+                "ax": str(seed.get("ax") or seed.get("aspect") or "").strip().lower(),
                 "cat": str(seed.get("cat") or "").strip().lower(),
                 "st": str(seed.get("st") or "ok").strip().lower(),
                 "ref": refs,
@@ -4271,6 +4481,7 @@ class JiraTestCaseHelperService:
                 "trace": {
                     "analysis_refs": refs,
                     "rid": seed_rid,
+                    "aspect": str(seed.get("ax") or seed.get("aspect") or "").strip().lower(),
                 },
             }
             if seed.get("sid"):
@@ -4504,6 +4715,7 @@ class JiraTestCaseHelperService:
         team_id: int,
         session_id: int,
         request: HelperAnalyzeRequest,
+        override_actor: Optional[Dict[str, Any]] = None,
     ) -> HelperStageResultResponse:
         session_data = await self.get_session(team_id=team_id, session_id=session_id)
         ticket_draft = next(
@@ -4517,16 +4729,6 @@ class JiraTestCaseHelperService:
         helper_cfg = self.settings.ai.jira_testcase_helper
         enable_ir_first = bool(helper_cfg.enable_ir_first)
         merged_analysis_coverage = True
-        coverage_force_complete = bool(
-            getattr(helper_cfg, "coverage_force_complete", True)
-        )
-        coverage_backfill_max_rounds = max(
-            0, int(getattr(helper_cfg, "coverage_backfill_max_rounds", 1) or 0)
-        )
-        coverage_backfill_chunk_size = max(
-            1,
-            int(getattr(helper_cfg, "coverage_backfill_chunk_size", 12) or 12),
-        )
         ticket_payload = ticket_draft.payload if ticket_draft and ticket_draft.payload else {}
         ticket_key = session_data.ticket_key or str(ticket_payload.get("ticket_key") or "")
         if not ticket_key:
@@ -4545,6 +4747,109 @@ class JiraTestCaseHelperService:
         requirement_markdown = (requirement_markdown or "").strip()
         if not requirement_markdown:
             raise ValueError("需求內容為空，請先確認 JIRA 描述或補上需求內容")
+
+        structured_requirement = self.requirement_parser.parse(requirement_markdown)
+        requirement_validation = self.requirement_validator.validate(structured_requirement)
+        contract_versions = self.prompt_service.get_contract_versions()
+        override_trace: Dict[str, Any] = {}
+        enforce_requirement_gate = request.requirement_markdown is not None
+
+        if (
+            enforce_requirement_gate
+            and not requirement_validation.get("is_complete")
+            and not request.override_incomplete_requirement
+        ):
+            logger.info(
+                "[AI-HELPER][requirement-validation] ticket=%s status=warning missing_sections=%s missing_fields=%s quality_level=%s override=%s",
+                ticket_key,
+                requirement_validation.get("missing_sections", []),
+                requirement_validation.get("missing_fields", []),
+                requirement_validation.get("quality_level", "low"),
+                False,
+            )
+            warning_payload = {
+                "structured_requirement": structured_requirement,
+                "requirement_validation": requirement_validation,
+                "contract_versions": contract_versions,
+                "requires_override": True,
+                "warning": {
+                    "code": "INCOMPLETE_REQUIREMENT",
+                    "message": "Requirement 格式不完整，請先修正或確認仍要繼續。",
+                    "missing_sections": requirement_validation.get("missing_sections", []),
+                    "missing_fields": requirement_validation.get("missing_fields", []),
+                    "quality_level": requirement_validation.get("quality_level", "low"),
+                },
+            }
+
+            def _persist_warning(sync_db: Session) -> HelperSessionResponse:
+                session, _ = self._get_session_and_drafts_sync(
+                    sync_db,
+                    team_id=team_id,
+                    session_id=session_id,
+                )
+                self._upsert_draft_sync(
+                    sync_db,
+                    session_id=session.id,
+                    phase="requirement",
+                    markdown=requirement_markdown,
+                    payload={
+                        "review_locale": session.review_locale,
+                        "structured_requirement": structured_requirement,
+                        "requirement_validation": requirement_validation,
+                        "contract_versions": contract_versions,
+                    },
+                    increment_version=request.requirement_markdown is not None,
+                )
+                self._set_session_phase(
+                    session,
+                    phase=HelperPhase.REQUIREMENT,
+                    phase_status=HelperPhaseStatus.WAITING_CONFIRM,
+                    status=HelperSessionStatus.ACTIVE,
+                    last_error=None,
+                    enforce_transition=False,
+                )
+                sync_db.commit()
+                _, drafts = self._get_session_and_drafts_sync(
+                    sync_db,
+                    team_id=team_id,
+                    session_id=session_id,
+                )
+                return self._to_session_response(session, drafts)
+
+            warned_session = await run_sync(self.db, _persist_warning)
+            return HelperStageResultResponse(
+                session=warned_session,
+                stage="requirement_validation_warning",
+                payload=warning_payload,
+                markdown=requirement_markdown,
+                usage={},
+            )
+
+        if (
+            enforce_requirement_gate
+            and not requirement_validation.get("is_complete")
+            and request.override_incomplete_requirement
+        ):
+            logger.info(
+                "[AI-HELPER][requirement-validation] ticket=%s status=warning override=%s quality_level=%s missing_sections=%s missing_fields=%s actor=%s",
+                ticket_key,
+                True,
+                requirement_validation.get("quality_level", "low"),
+                requirement_validation.get("missing_sections", []),
+                requirement_validation.get("missing_fields", []),
+                str((override_actor or {}).get("username") or ""),
+            )
+            override_trace = {
+                "override": True,
+                "timestamp": _now().isoformat() + "Z",
+                "actor": {
+                    "user_id": str((override_actor or {}).get("user_id") or ""),
+                    "username": str((override_actor or {}).get("username") or ""),
+                },
+                "missing_sections": requirement_validation.get("missing_sections", []),
+                "missing_fields": requirement_validation.get("missing_fields", []),
+                "quality_level": requirement_validation.get("quality_level", "low"),
+            }
 
         similar_cases = ""
         ticket_summary = str(ticket_payload.get("summary") or "")
@@ -4574,6 +4879,7 @@ class JiraTestCaseHelperService:
                 ticket_payload=ticket_payload,
                 requirement_markdown=requirement_markdown,
                 similar_cases=similar_cases,
+                structured_requirement=structured_requirement,
             )
             requirement_ir_payload = requirement_ir_result.get("requirement_ir") or {}
             requirement_ir_json = json.dumps(
@@ -4592,109 +4898,48 @@ class JiraTestCaseHelperService:
             )
             analysis_fallback_applied = False
             analysis_fallback_reason = ""
-            merged_coverage_from_analysis = False
-            try:
-                analysis_call = await self._call_json_stage_with_retry(
-                    stage="analysis",
-                    prompt=analysis_prompt,
-                    review_language=review_language,
-                    stage_name="Analysis",
-                    schema_example='{"analysis":{"sec":[{"g":"功能名稱","it":[{"id":"010.001","t":"...","det":["..."],"chk":["..."],"exp":["..."],"rid":["REQ-001"],"source_refs":[{"chunk_id":"desc","sentence_ids":[0]}]}]}],"it":[{"id":"010.001","t":"...","det":["..."],"chk":["..."],"exp":["..."],"rid":["REQ-001"],"source_refs":[{"chunk_id":"desc","sentence_ids":[0]}]}]},"coverage":{"seed":[{"g":"功能名稱","t":"...","cat":"happy","st":"ok","ref":["010.001"],"rid":["REQ-001"],"chk":["..."],"exp":["..."],"pre_hint":["..."],"step_hint":["..."],"source_refs":[{"chunk_id":"desc","sentence_ids":[0]}]}]}}',
-                )
-                analysis_result_payload = analysis_call.get("payload_raw") or {}
-                analysis_payload_raw = (
-                    analysis_result_payload.get("analysis")
-                    if isinstance(analysis_result_payload, dict)
-                    and isinstance(analysis_result_payload.get("analysis"), dict)
-                    else analysis_result_payload
-                )
-                coverage_payload_raw_from_analysis = (
-                    analysis_result_payload.get("coverage")
-                    if isinstance(analysis_result_payload, dict)
-                    and isinstance(analysis_result_payload.get("coverage"), dict)
-                    else {}
-                )
-                analysis_payload = self._normalize_analysis_payload(analysis_payload_raw)
-            except Exception as analysis_exc:
-                analysis_fallback_applied = True
-                analysis_fallback_reason = str(analysis_exc)
-                logger.warning(
-                    "Analysis 生成失敗，改採 deterministic fallback: %s",
-                    analysis_exc,
-                )
-                analysis_payload = self._build_deterministic_analysis_from_ir(
-                    requirement_ir=requirement_ir_payload,
-                )
-                analysis_call = {
-                    "usage": {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0},
-                    "cost": 0.0,
-                    "cost_note": "",
-                    "response_id": None,
-                    "repair_applied": False,
-                    "regenerate_applied": False,
-                }
-                coverage_payload_raw_from_analysis = {}
-            if enable_ir_first:
-                analysis_payload = self._augment_analysis_with_ir(
-                    analysis_payload=analysis_payload,
-                    requirement_ir=requirement_ir_payload,
-                )
-
-            analysis_json = json.dumps(
-                analysis_payload, ensure_ascii=False, separators=(",", ":")
+            analysis_call = await self._call_json_stage_with_retry(
+                stage="analysis",
+                prompt=analysis_prompt,
+                review_language=review_language,
+                stage_name="Analysis",
+                schema_example='{"analysis":{"sec":[{"g":"功能名稱","it":[{"id":"010.001","t":"...","det":["..."],"chk":["..."],"exp":["..."],"rid":["REQ-001"],"source_refs":[{"chunk_id":"desc","sentence_ids":[0]}]}]}],"it":[{"id":"010.001","t":"...","det":["..."],"chk":["..."],"exp":["..."],"rid":["REQ-001"],"source_refs":[{"chunk_id":"desc","sentence_ids":[0]}]}]},"coverage":{"sec":[{"g":"功能名稱","seed":[{"g":"功能名稱","t":"...","ax":"happy","cat":"happy","st":"ok","a":"","ref":["010.001"],"rid":["REQ-001"],"chk":["..."],"exp":["..."],"pre_hint":["..."],"step_hint":["..."],"source_refs":[{"chunk_id":"desc","sentence_ids":[0]}]}]}],"seed":[{"g":"功能名稱","t":"...","ax":"happy","cat":"happy","st":"ok","a":"","ref":["010.001"],"rid":["REQ-001"],"chk":["..."],"exp":["..."],"pre_hint":["..."],"step_hint":["..."],"source_refs":[{"chunk_id":"desc","sentence_ids":[0]}]}],"trace":{"analysis_item_count":1,"covered_item_count":1,"missing_ids":[],"missing_sections":[],"aspect_review":{"happy":"covered","edge":"covered","error":"covered","permission":"assume"}}}}',
             )
+            analysis_result_payload = analysis_call.get("payload_raw") or {}
+            if not isinstance(analysis_result_payload, dict):
+                raise ValueError("Analysis 合併輸出格式錯誤：payload 必須為 JSON 物件")
+
+            analysis_payload_raw = analysis_result_payload.get("analysis")
+            coverage_payload_raw_from_analysis = analysis_result_payload.get("coverage")
+            if not isinstance(analysis_payload_raw, dict):
+                raise ValueError("Analysis 合併輸出缺少 analysis 物件")
+            if not isinstance(coverage_payload_raw_from_analysis, dict):
+                raise ValueError("Analysis 合併輸出缺少 coverage 物件")
+
+            analysis_payload = self._normalize_analysis_payload(analysis_payload_raw)
+            if enable_ir_first and not (analysis_payload.get("it") or []):
+                raise ValueError("Analysis 合併輸出無有效 analysis item")
+
             coverage_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
             coverage_cost = 0.0
             coverage_cost_note = ""
-            coverage_response_id: Optional[str] = None
-            coverage_regenerate_applied = False
-            coverage_repair_applied = False
+            coverage_response_id: Optional[str] = analysis_call.get("response_id")
+            coverage_regenerate_applied = bool(analysis_call.get("regenerate_applied"))
+            coverage_repair_applied = bool(analysis_call.get("repair_applied"))
             coverage_fallback_applied = False
             coverage_fallback_reason = ""
             coverage_payload: Dict[str, Any] = {"sec": [], "seed": [], "trace": {}}
-            if isinstance(coverage_payload_raw_from_analysis, dict) and coverage_payload_raw_from_analysis:
-                coverage_payload = self._normalize_coverage_payload(
-                    coverage_payload_raw_from_analysis,
-                    analysis_payload,
-                    requirement_ir=requirement_ir_payload,
-                )
-                merged_coverage_from_analysis = True
-            else:
-                coverage_prompt = self.prompt_service.render_machine_stage_prompt(
-                    "coverage",
-                    {
-                        "review_language": review_language,
-                        "requirement_ir_json": requirement_ir_json,
-                        "expanded_requirements_json": analysis_json,
-                    },
-                )
-                try:
-                    coverage_call = await self._call_coverage_with_retry(
-                        prompt=coverage_prompt,
-                        review_language=review_language,
-                        stage_name="Coverage",
-                        schema_example='{"seed":[{"g":"功能名稱","t":"...","cat":"happy","st":"ok","ref":["010.001"],"rid":["REQ-001"],"chk":["..."],"exp":["..."],"pre_hint":["..."],"step_hint":["..."],"source_refs":[{"chunk_id":"desc","sentence_ids":[0]}]}]}',
-                    )
-                    coverage_payload = self._normalize_coverage_payload(
-                        coverage_call["payload_raw"],
-                        analysis_payload,
-                        requirement_ir=requirement_ir_payload,
-                    )
-                    coverage_usage = coverage_call["usage"] or coverage_usage
-                    coverage_cost = float(coverage_call.get("cost") or 0.0)
-                    coverage_cost_note = coverage_call.get("cost_note") or ""
-                    coverage_response_id = coverage_call.get("response_id")
-                    coverage_regenerate_applied = bool(
-                        coverage_call.get("regenerate_applied")
-                    )
-                    coverage_repair_applied = bool(coverage_call.get("repair_applied"))
-                except Exception as coverage_exc:
-                    coverage_fallback_applied = True
-                    coverage_fallback_reason = str(coverage_exc)
-                    logger.warning(
-                        "Coverage 生成失敗，改採 deterministic fallback: %s",
-                        coverage_exc,
-                    )
+            coverage_payload = self._normalize_coverage_payload(
+                coverage_payload_raw_from_analysis,
+                analysis_payload,
+                requirement_ir=requirement_ir_payload,
+            )
+            merged_coverage_from_analysis = bool(coverage_payload.get("seed"))
+            if not merged_coverage_from_analysis:
+                raise ValueError("Analysis 合併輸出無有效 coverage.seed")
+
+            analysis_coverage_retry_attempted = False
+            analysis_coverage_retry_succeeded = False
             backfill_rounds = 0
             backfill_batch_count = 0
             deterministic_backfill_applied = False
@@ -4703,149 +4948,7 @@ class JiraTestCaseHelperService:
                 analysis_payload=analysis_payload,
                 coverage_payload=coverage_payload,
             )
-
-            while (
-                enable_ir_first
-                and not completeness.get("is_complete")
-                and backfill_rounds < coverage_backfill_max_rounds
-                and not coverage_fallback_applied
-            ):
-                backfill_rounds += 1
-                missing_ids_all = [
-                    str(item_id).strip()
-                    for item_id in (completeness.get("missing_ids") or [])
-                    if str(item_id).strip()
-                ]
-                missing_sections_all = [
-                    str(section).strip()
-                    for section in (completeness.get("missing_sections") or [])
-                    if str(section).strip()
-                ]
-                missing_id_chunks: List[List[str]] = []
-                if missing_ids_all:
-                    for idx in range(0, len(missing_ids_all), coverage_backfill_chunk_size):
-                        missing_id_chunks.append(
-                            missing_ids_all[idx : idx + coverage_backfill_chunk_size]
-                        )
-                else:
-                    missing_id_chunks.append([])
-
-                for chunk_index, missing_ids_chunk in enumerate(missing_id_chunks, start=1):
-                    if completeness.get("is_complete"):
-                        break
-                    if not missing_ids_chunk and not missing_sections_all:
-                        break
-                    backfill_batch_count += 1
-                    backfill_prompt = self.prompt_service.render_machine_stage_prompt(
-                        "coverage_backfill",
-                        {
-                            "review_language": review_language,
-                            "requirement_ir_json": requirement_ir_json,
-                            "expanded_requirements_json": analysis_json,
-                            "current_coverage_json": json.dumps(
-                                coverage_payload, ensure_ascii=False, separators=(",", ":")
-                            ),
-                            "missing_ids_json": json.dumps(
-                                missing_ids_chunk,
-                                ensure_ascii=False,
-                                separators=(",", ":"),
-                            ),
-                            "missing_sections_json": json.dumps(
-                                missing_sections_all if chunk_index == 1 else [],
-                                ensure_ascii=False,
-                                separators=(",", ":"),
-                            ),
-                        },
-                    )
-                    backfill_call = await self._call_coverage_with_retry(
-                        prompt=backfill_prompt,
-                        review_language=review_language,
-                        stage_name=(
-                            f"Coverage backfill round {backfill_rounds}"
-                            f" batch {chunk_index}/{len(missing_id_chunks)}"
-                        ),
-                        schema_example='{"seed":[{"g":"功能名稱","t":"...","cat":"happy","st":"ok","ref":["010.001"],"rid":["REQ-001"]}],"trace":{"resolved_ids":["010.001"],"resolved_sections":["功能名稱"]}}',
-                    )
-                    backfill_payload = self._normalize_coverage_payload(
-                        backfill_call["payload_raw"],
-                        analysis_payload,
-                        requirement_ir=requirement_ir_payload,
-                    )
-                    coverage_payload = self._merge_coverage_payload(
-                        base_payload=coverage_payload,
-                        backfill_payload=backfill_payload,
-                        analysis_payload=analysis_payload,
-                        requirement_ir=requirement_ir_payload,
-                    )
-                    coverage_usage = {
-                        "prompt_tokens": coverage_usage["prompt_tokens"]
-                        + backfill_call["usage"].get("prompt_tokens", 0),
-                        "completion_tokens": coverage_usage["completion_tokens"]
-                        + backfill_call["usage"].get("completion_tokens", 0),
-                        "total_tokens": coverage_usage["total_tokens"]
-                        + backfill_call["usage"].get("total_tokens", 0),
-                    }
-                    coverage_cost += float(backfill_call.get("cost") or 0.0)
-                    coverage_response_id = (
-                        backfill_call.get("response_id") or coverage_response_id
-                    )
-                    if backfill_call.get("cost_note"):
-                        coverage_cost_note = "（含未知費用）"
-                    coverage_regenerate_applied = (
-                        coverage_regenerate_applied
-                        or bool(backfill_call.get("regenerate_applied"))
-                    )
-                    coverage_repair_applied = (
-                        coverage_repair_applied
-                        or bool(backfill_call.get("repair_applied"))
-                    )
-                    completeness = self.validate_coverage_completeness(
-                        analysis_payload=analysis_payload,
-                        coverage_payload=coverage_payload,
-                    )
-
             if enable_ir_first and not completeness.get("is_complete"):
-                should_apply_deterministic = bool(coverage_force_complete) or bool(
-                    coverage_fallback_applied
-                ) or coverage_backfill_max_rounds > 0
-                if should_apply_deterministic:
-                    missing_ids = [
-                        str(item_id).strip()
-                        for item_id in (completeness.get("missing_ids") or [])
-                        if str(item_id).strip()
-                    ]
-                    missing_sections = [
-                        str(section).strip()
-                        for section in (completeness.get("missing_sections") or [])
-                        if str(section).strip()
-                    ]
-                    deterministic_backfill_payload = self._build_deterministic_coverage_backfill(
-                        analysis_payload=analysis_payload,
-                        requirement_ir=requirement_ir_payload,
-                        missing_ids=missing_ids,
-                        missing_sections=missing_sections,
-                    )
-                    deterministic_backfill_payload = self._normalize_coverage_payload(
-                        deterministic_backfill_payload,
-                        analysis_payload,
-                        requirement_ir=requirement_ir_payload,
-                    )
-                    deterministic_seeds = deterministic_backfill_payload.get("seed") or []
-                    if deterministic_seeds:
-                        deterministic_backfill_applied = True
-                        deterministic_backfill_seed_count = len(deterministic_seeds)
-                        coverage_payload = self._merge_coverage_payload(
-                            base_payload=coverage_payload,
-                            backfill_payload=deterministic_backfill_payload,
-                            analysis_payload=analysis_payload,
-                            requirement_ir=requirement_ir_payload,
-                        )
-                        completeness = self.validate_coverage_completeness(
-                            analysis_payload=analysis_payload,
-                            coverage_payload=coverage_payload,
-                        )
-
-            if enable_ir_first and not completeness.get("is_complete") and not coverage_force_complete:
                 missing_ids = [
                     str(item_id).strip()
                     for item_id in (completeness.get("missing_ids") or [])
@@ -4861,12 +4964,13 @@ class JiraTestCaseHelperService:
                     f"missing_ids={missing_ids}, missing_sections={missing_sections}"
                 )
 
-            if enable_ir_first and not completeness.get("is_complete"):
-                missing_ids = completeness.get("missing_ids") or []
-                missing_sections = completeness.get("missing_sections") or []
+            aspect_completeness = self.validate_coverage_aspects(
+                coverage_payload=coverage_payload
+            )
+            if not aspect_completeness.get("is_complete"):
                 raise ValueError(
-                    "Coverage 完整性檢查未通過（含 deterministic fallback）: "
-                    f"missing_ids={missing_ids}, missing_sections={missing_sections}"
+                    "Coverage 面向檢查未通過: "
+                    f"missing_aspects={aspect_completeness.get('missing_aspects', [])}"
                 )
 
             coverage_payload["trace"] = {
@@ -4875,28 +4979,34 @@ class JiraTestCaseHelperService:
                 "covered_item_count": completeness.get("covered_item_count", 0),
                 "missing_ids": completeness.get("missing_ids", []),
                 "missing_sections": completeness.get("missing_sections", []),
+                "required_aspects": aspect_completeness.get("required_aspects", []),
+                "covered_aspects": aspect_completeness.get("covered_aspects", []),
+                "missing_aspects": aspect_completeness.get("missing_aspects", []),
+                "aspect_counts": aspect_completeness.get("aspect_counts", {}),
+                "requirement_quality_level": requirement_validation.get("quality_level"),
+                "requirement_missing_sections": requirement_validation.get("missing_sections", []),
+                "requirement_missing_fields": requirement_validation.get("missing_fields", []),
+                "requirement_warning_override": bool(override_trace.get("override")),
                 "backfill_rounds": backfill_rounds,
                 "backfill_batch_count": backfill_batch_count,
-                "coverage_backfill_chunk_size": coverage_backfill_chunk_size,
                 "deterministic_backfill_applied": deterministic_backfill_applied,
                 "deterministic_backfill_seed_count": deterministic_backfill_seed_count,
-                "coverage_force_complete": coverage_force_complete,
                 "coverage_fallback_applied": coverage_fallback_applied,
                 "coverage_fallback_reason": coverage_fallback_reason,
+                "analysis_coverage_retry_attempted": analysis_coverage_retry_attempted,
+                "analysis_coverage_retry_succeeded": analysis_coverage_retry_succeeded,
                 "merged_analysis_coverage": merged_analysis_coverage,
                 "merged_coverage_from_analysis": merged_coverage_from_analysis,
             }
 
             logger.info(
-                "[AI-HELPER][coverage] ticket=%s analysis_items=%s covered=%s missing_ids=%s missing_sections=%s backfill_rounds=%s backfill_batches=%s deterministic_backfill=%s",
+                "[AI-HELPER][coverage] ticket=%s analysis_items=%s covered=%s missing_ids=%s missing_sections=%s missing_aspects=%s",
                 ticket_key,
                 completeness.get("analysis_item_count", 0),
                 completeness.get("covered_item_count", 0),
                 completeness.get("missing_ids", []),
                 completeness.get("missing_sections", []),
-                backfill_rounds,
-                backfill_batch_count,
-                deterministic_backfill_applied,
+                aspect_completeness.get("missing_aspects", []),
             )
 
             coverage_plan = self._build_coverage_plan(
@@ -4911,8 +5021,15 @@ class JiraTestCaseHelperService:
                 initial_middle=session_data.initial_middle,
                 coverage_plan=coverage_plan,
             )
+            stage1_payload = self.pretestcase_presenter.enrich_stage1_payload(
+                stage1_payload=stage1_payload,
+                analysis_payload=analysis_payload,
+                requirement_ir=requirement_ir_payload,
+                structured_requirement=structured_requirement,
+            )
             stage1_payload["lang"] = session_data.review_locale.value
             stage1_payload["coverage_plan"] = coverage_plan
+            stage1_payload["contract_versions"] = contract_versions
             if request.user_notes and request.user_notes.strip():
                 stage1_payload["user_notes"] = request.user_notes.strip()
             stage1_markdown = self._stage1_entries_markdown(stage1_payload)
@@ -4956,6 +5073,19 @@ class JiraTestCaseHelperService:
                     markdown=requirement_markdown,
                     payload={
                         "review_locale": session.review_locale,
+                        "structured_requirement": structured_requirement,
+                        "requirement_validation": requirement_validation,
+                        "override_trace": override_trace,
+                        "contract_versions": contract_versions,
+                    },
+                    quality={
+                        "quality_level": requirement_validation.get("quality_level"),
+                        "is_complete": requirement_validation.get("is_complete", False),
+                    },
+                    trace={
+                        "missing_sections": requirement_validation.get("missing_sections", []),
+                        "missing_fields": requirement_validation.get("missing_fields", []),
+                        "override": bool(override_trace.get("override")),
                     },
                     increment_version=request.requirement_markdown is not None,
                 )
@@ -4981,6 +5111,15 @@ class JiraTestCaseHelperService:
                             "fallback_reason", ""
                         ),
                         "enabled": requirement_ir_result.get("enabled", True),
+                        "structured_requirement": structured_requirement,
+                        "contract_versions": contract_versions,
+                    },
+                    quality={
+                        "quality_level": requirement_validation.get("quality_level"),
+                        "is_complete": requirement_validation.get("is_complete", False),
+                    },
+                    trace={
+                        "override": bool(override_trace.get("override")),
                     },
                     increment_version=True,
                 )
@@ -5005,6 +5144,12 @@ class JiraTestCaseHelperService:
                             for item in (analysis_payload.get("it") or [])
                             if isinstance(item, dict)
                         ],
+                        "structured_requirement": structured_requirement,
+                        "contract_versions": contract_versions,
+                    },
+                    trace={
+                        "override": bool(override_trace.get("override")),
+                        "quality_level": requirement_validation.get("quality_level"),
                     },
                     increment_version=True,
                 )
@@ -5025,12 +5170,19 @@ class JiraTestCaseHelperService:
                         "backfill_batch_count": backfill_batch_count,
                         "deterministic_backfill_applied": deterministic_backfill_applied,
                         "deterministic_backfill_seed_count": deterministic_backfill_seed_count,
-                        "coverage_force_complete": coverage_force_complete,
+                        "coverage_force_complete": False,
                         "coverage_fallback_applied": coverage_fallback_applied,
                         "coverage_fallback_reason": coverage_fallback_reason,
+                        "analysis_coverage_retry_attempted": analysis_coverage_retry_attempted,
+                        "analysis_coverage_retry_succeeded": analysis_coverage_retry_succeeded,
                         "merged_analysis_coverage": merged_analysis_coverage,
                         "merged_coverage_from_analysis": merged_coverage_from_analysis,
                         "completeness": completeness,
+                        "contract_versions": contract_versions,
+                    },
+                    trace={
+                        "requirement_validation": requirement_validation,
+                        "override": bool(override_trace.get("override")),
                     },
                     increment_version=True,
                 )
@@ -5040,6 +5192,15 @@ class JiraTestCaseHelperService:
                     phase="pretestcase",
                     markdown=stage1_markdown,
                     payload=stage1_payload,
+                    quality={
+                        "quality_level": requirement_validation.get("quality_level"),
+                        "is_complete": requirement_validation.get("is_complete", False),
+                    },
+                    trace={
+                        "requirement_warning_override": bool(override_trace.get("override")),
+                        "missing_sections": requirement_validation.get("missing_sections", []),
+                        "missing_fields": requirement_validation.get("missing_fields", []),
+                    },
                     increment_version=True,
                 )
                 self._set_session_phase(
@@ -5063,6 +5224,10 @@ class JiraTestCaseHelperService:
                 session=updated_session,
                 stage="analysis_coverage",
                 payload={
+                    "structured_requirement": structured_requirement,
+                    "requirement_validation": requirement_validation,
+                    "override_trace": override_trace,
+                    "contract_versions": contract_versions,
                     "requirement_ir": requirement_ir_payload,
                     "source_packets": requirement_ir_result.get("source_packets") or {},
                     "analysis": analysis_payload,
@@ -5206,6 +5371,35 @@ class JiraTestCaseHelperService:
                 if pattern.search(text):
                     return True
         return False
+
+    def _sanitize_testcase_phrase(self, value: Any, *, fallback: str) -> str:
+        text = str(value or "").strip()
+        if not text:
+            return str(fallback or "").strip()
+        sanitized = re.sub(r"(?i)\bTBD\b", "待確認", text)
+        sanitized = re.sub(r"(?i)\bN/?A\b", "不適用", sanitized)
+        sanitized = re.sub(r"(?i)\bREF[-_\s]?\d+\b", "需求條目", sanitized)
+        sanitized = sanitized.replace("同上", "請依本條目條件")
+        sanitized = sanitized.replace("略", "請完整描述")
+        sanitized = sanitized.strip()
+        if not sanitized:
+            return str(fallback or "").strip()
+        if self._contains_forbidden_content([sanitized]):
+            return str(fallback or "").strip()
+        return sanitized
+
+    def _sanitize_testcase_phrases(
+        self,
+        values: Sequence[Any],
+        *,
+        fallback: str,
+    ) -> List[str]:
+        sanitized: List[str] = []
+        for value in values:
+            normalized = self._sanitize_testcase_phrase(value, fallback=fallback)
+            if normalized:
+                sanitized.append(normalized)
+        return self._unique_preserve(sanitized)
 
     def _has_observable_expected(self, values: Sequence[str]) -> bool:
         for value in values:
@@ -5527,8 +5721,8 @@ class JiraTestCaseHelperService:
                 merged.append(item)
         return merged
 
-    @staticmethod
     def _build_deterministic_testcase_from_entry(
+        self,
         *,
         ticket_key: str,
         entry: Dict[str, Any],
@@ -5542,26 +5736,22 @@ class JiraTestCaseHelperService:
         elif state == "ask" and not title.startswith("[TBD]"):
             title = f"[TBD] {title}"
 
-        checks = [
-            str(item).strip()
-            for item in (entry.get("chk") or [])
-            if str(item).strip()
-        ]
-        expected_hints = [
-            str(item).strip()
-            for item in (entry.get("exp") or [])
-            if str(item).strip()
-        ]
-        pre_hints = [
-            str(item).strip()
-            for item in (entry.get("pre_hint") or [])
-            if str(item).strip()
-        ]
-        step_hints = [
-            str(item).strip()
-            for item in (entry.get("step_hint") or [])
-            if str(item).strip()
-        ]
+        checks = self._sanitize_testcase_phrases(
+            [item for item in (entry.get("chk") or []) if str(item).strip()],
+            fallback="檢查條目行為是否符合需求",
+        )
+        expected_hints = self._sanitize_testcase_phrases(
+            [item for item in (entry.get("exp") or []) if str(item).strip()],
+            fallback="系統回應與畫面呈現符合需求且結果可觀測",
+        )
+        pre_hints = self._sanitize_testcase_phrases(
+            [item for item in (entry.get("pre_hint") or []) if str(item).strip()],
+            fallback="已建立符合需求的測試資料與角色權限",
+        )
+        step_hints = self._sanitize_testcase_phrases(
+            [item for item in (entry.get("step_hint") or []) if str(item).strip()],
+            fallback="執行對應操作並檢查結果",
+        )
 
         preconditions = pre_hints or [
             "已建立符合需求的測試資料（含正向與邊界資料）",
@@ -5577,6 +5767,21 @@ class JiraTestCaseHelperService:
             steps.append(f"驗證：{check}")
         if len(steps) < 3:
             steps.append("比對實際結果與需求條目描述")
+        steps = self._sanitize_testcase_phrases(
+            steps,
+            fallback="執行對應操作並檢查結果",
+        )
+        if len(steps) < 3:
+            steps.extend(
+                [
+                    "執行對應操作並檢查結果",
+                    "比對實際結果與需求條目描述",
+                ]
+            )
+            steps = self._sanitize_testcase_phrases(
+                steps,
+                fallback="執行對應操作並檢查結果",
+            )
 
         expected_result = (
             "；".join(expected_hints)
@@ -5586,7 +5791,11 @@ class JiraTestCaseHelperService:
         if state == "assume":
             expected_result = f"{expected_result}（ASSUME：{str(entry.get('a') or '待確認假設').strip()}）"
         if state == "ask":
-            expected_result = f"{expected_result}（TBD：{str(entry.get('q') or '待釐清問題').strip()}）"
+            expected_result = f"{expected_result}（待確認：{str(entry.get('q') or '待釐清問題').strip()}）"
+        expected_result = self._sanitize_testcase_phrase(
+            expected_result,
+            fallback="系統回應與畫面呈現符合需求且結果可觀測",
+        )
 
         return {
             "id": case_id,
@@ -5883,10 +6092,52 @@ class JiraTestCaseHelperService:
                     section_entries=section_entries,
                     section_cases=section_generated,
                 )
-                section_generated = self._validate_generated_testcases(
-                    testcases=section_generated,
-                    strict=True,
-                )
+                try:
+                    section_generated = self._validate_generated_testcases(
+                        testcases=section_generated,
+                        strict=True,
+                    )
+                except Exception as section_validation_exc:
+                    if not testcase_force_complete:
+                        raise
+                    testcase_fallback_sections.append(
+                        {
+                            "section": section_name,
+                            "reason": f"validation: {section_validation_exc}",
+                        }
+                    )
+                    logger.warning(
+                        "Section %s Testcase 校驗失敗，改採 deterministic fallback: %s",
+                        section_name,
+                        section_validation_exc,
+                    )
+                    section_generated = [
+                        self._build_deterministic_testcase_from_entry(
+                            ticket_key=ticket_key,
+                            entry=entry,
+                        )
+                        for entry in section_entries
+                    ]
+                    section_generated = self._enforce_section_case_quality(
+                        ticket_key=ticket_key,
+                        section_entries=section_entries,
+                        section_cases=section_generated,
+                    )
+                    try:
+                        section_generated = self._validate_generated_testcases(
+                            testcases=section_generated,
+                            strict=True,
+                        )
+                    except Exception as fallback_validation_exc:
+                        logger.warning(
+                            "Section %s Testcase deterministic fallback 仍未通過嚴格校驗，降級基本校驗: %s",
+                            section_name,
+                            fallback_validation_exc,
+                        )
+                        section_generated = self._validate_generated_testcases(
+                            testcases=section_generated,
+                            strict=False,
+                        )
                 generated_testcases_all.extend(section_generated)
 
                 section_audited = [
@@ -5966,10 +6217,52 @@ class JiraTestCaseHelperService:
                     section_entries=section_entries,
                     section_cases=section_audited,
                 )
-                section_audited = self._validate_generated_testcases(
-                    testcases=section_audited,
-                    strict=True,
-                )
+                try:
+                    section_audited = self._validate_generated_testcases(
+                        testcases=section_audited,
+                        strict=True,
+                    )
+                except Exception as audit_validation_exc:
+                    if not testcase_force_complete:
+                        raise
+                    audit_fallback_sections.append(
+                        {
+                            "section": section_name,
+                            "reason": f"validation: {audit_validation_exc}",
+                        }
+                    )
+                    logger.warning(
+                        "Section %s Audit 校驗失敗，改採 deterministic fallback: %s",
+                        section_name,
+                        audit_validation_exc,
+                    )
+                    section_audited = [
+                        self._build_deterministic_testcase_from_entry(
+                            ticket_key=ticket_key,
+                            entry=entry,
+                        )
+                        for entry in section_entries
+                    ]
+                    section_audited = self._enforce_section_case_quality(
+                        ticket_key=ticket_key,
+                        section_entries=section_entries,
+                        section_cases=section_audited,
+                    )
+                    try:
+                        section_audited = self._validate_generated_testcases(
+                            testcases=section_audited,
+                            strict=True,
+                        )
+                    except Exception as fallback_validation_exc:
+                        logger.warning(
+                            "Section %s Audit deterministic fallback 仍未通過嚴格校驗，降級基本校驗: %s",
+                            section_name,
+                            fallback_validation_exc,
+                        )
+                        section_audited = self._validate_generated_testcases(
+                            testcases=section_audited,
+                            strict=False,
+                        )
                 for testcase in section_audited:
                     testcase["retrieved_refs"] = section_retrieved_refs
                 audited_testcases_all.extend(section_audited)

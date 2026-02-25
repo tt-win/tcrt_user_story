@@ -38,6 +38,14 @@ def test_helper_entrypoint_is_on_set_list_page():
     assert 'id="helperPreSectionList"' in helper_modal_partial_html
     assert 'id="helperPreEntryList"' in helper_modal_partial_html
     assert 'id="helperPreDetailForm"' in helper_modal_partial_html
+    assert 'id="helperPreRequirementSummary"' in helper_modal_partial_html
+    assert 'id="helperPreRequirementContent"' in helper_modal_partial_html
+    assert 'id="helperPreSpecRequirements"' in helper_modal_partial_html
+    assert 'id="helperPreVerificationPoints"' in helper_modal_partial_html
+    assert 'id="helperPreExpectedOutcomes"' in helper_modal_partial_html
+    assert 'id="helperPreTraceMeta"' in helper_modal_partial_html
+    assert '<option value="permission">' not in helper_modal_partial_html
+    assert '<option value="error">' not in helper_modal_partial_html
     assert 'id="helperFinalSectionList"' in helper_modal_partial_html
     assert 'id="helperFinalCaseList"' in helper_modal_partial_html
     assert 'id="helperFinalDetailForm"' in helper_modal_partial_html
@@ -62,6 +70,7 @@ def test_helper_frontend_uses_phase_api_endpoints_and_redirect_highlight():
     assert '/sessions/${helperState.sessionId}/ticket' in script
     assert '/normalize' not in script
     assert '/analyze' in script
+    assert "override_incomplete_requirement" in script
     assert '/generate' in script
     assert '/commit' in script
     assert 'helper_created' in script
@@ -88,6 +97,9 @@ def test_helper_frontend_uses_phase_api_endpoints_and_redirect_highlight():
     assert ".replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>')" in script
     assert "function helperNotify(message, level)" in script
     assert "async function helperConfirm(message, options = {})" in script
+    assert "requires_override" in script
+    assert "proceedAnyway" in script
+    assert "goBackAndFix" in script
     assert "AppUtils[methodName](content);" in script
     assert "window.confirm(" not in script
     assert "alert(" not in script
@@ -128,6 +140,15 @@ def test_helper_i18n_keys_exist_in_all_locales():
         '"finalDetailEmpty"',
         '"reqMappingTitle"',
         '"reqMappingEmpty"',
+        '"requirementSummaryTitle"',
+        '"requirementContentTitle"',
+        '"specRequirementsTitle"',
+        '"verificationPointsTitle"',
+        '"expectedOutcomesTitle"',
+        '"traceMetaTitle"',
+        '"proceedAnyway"',
+        '"goBackAndFix"',
+        '"requirementIncompleteWarningDialogTitle"',
         '"phaseAnalysis"',
         '"phasePretestcase"',
         '"phaseTestcase"',

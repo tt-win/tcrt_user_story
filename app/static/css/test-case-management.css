@@ -804,6 +804,11 @@ body {
     min-height: 42px;
 }
 
+.tc-helper-context-item {
+    line-height: 1.35;
+    margin-bottom: 0.15rem;
+}
+
 .tc-helper-md-textarea {
     min-height: 90px;
     font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
