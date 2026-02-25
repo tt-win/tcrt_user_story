@@ -581,6 +581,18 @@ async def rerun_adhoc_run(
 
 # --- Sheet Endpoints ---
 
+def _load_sheet_with_items(sync_db: Session, run_id: int, sheet_id: int) -> Optional[AdHocRunSheet]:
+    """Load sheet with eager-loaded items for response serialization."""
+    return (
+        sync_db.query(AdHocRunSheet)
+        .options(joinedload(AdHocRunSheet.items))
+        .filter(
+            AdHocRunSheet.id == sheet_id,
+            AdHocRunSheet.adhoc_run_id == run_id,
+        )
+        .first()
+    )
+
 @router.post("/{run_id}/sheets", response_model=AdHocRunSheetResponse)
 async def create_sheet(
     run_id: int,
@@ -596,8 +608,10 @@ async def create_sheet(
         )
         sync_db.add(sheet)
         sync_db.commit()
-        sync_db.refresh(sheet)
-        return sheet
+        loaded_sheet = _load_sheet_with_items(sync_db, run_id, sheet.id)
+        if not loaded_sheet:
+            raise HTTPException(status_code=500, detail="Failed to load created sheet")
+        return loaded_sheet
 
     return await run_sync(db, _create)
 
@@ -622,8 +636,10 @@ async def update_sheet(
         sheet.updated_at = datetime.utcnow()
 
         sync_db.commit()
-        sync_db.refresh(sheet)
-        return sheet
+        loaded_sheet = _load_sheet_with_items(sync_db, run_id, sheet_id)
+        if not loaded_sheet:
+            raise HTTPException(status_code=404, detail="Sheet not found")
+        return loaded_sheet
 
     return await run_sync(db, _update)
 

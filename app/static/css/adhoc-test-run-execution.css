@@ -103,6 +103,25 @@
     white-space: nowrap;
 }
 
+/* Sheet tab action buttons: keep icon-only and borderless */
+.sheet-tab .btn {
+    border: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    line-height: 1;
+}
+
+.sheet-tab .btn:hover,
+.sheet-tab .btn:focus,
+.sheet-tab .btn:active,
+.sheet-tab .btn.disabled,
+.sheet-tab .btn:disabled {
+    border: none !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    outline: none !important;
+}
+
 /* Handsontable look & feel */
 :root {
     --hot-selection: #1a73e8;
