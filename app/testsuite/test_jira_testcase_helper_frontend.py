@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 from fastapi.testclient import TestClient
@@ -182,6 +183,18 @@ def test_helper_i18n_keys_exist_in_all_locales():
         content = file_path.read_text(encoding="utf-8")
         for marker in required_markers:
             assert marker in content, f"{file_path} missing marker: {marker}"
+
+
+def test_common_add_key_exists_in_all_locales():
+    locale_files = [
+        Path("app/static/locales/zh-TW.json"),
+        Path("app/static/locales/zh-CN.json"),
+        Path("app/static/locales/en-US.json"),
+    ]
+
+    for file_path in locale_files:
+        payload = json.loads(file_path.read_text(encoding="utf-8"))
+        assert payload.get("common", {}).get("add"), f"{file_path} missing common.add"
 
 
 def test_helper_markdown_table_style_has_visible_border():

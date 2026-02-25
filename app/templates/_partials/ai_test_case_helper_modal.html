@@ -114,14 +114,14 @@
                                     </button>
                                 </div>
                                 <p class="text-muted small mb-2" data-i18n="aiHelper.pretestcaseHint">請確認條目、分類與需求對應，確認後再產生最終 Test Cases。</p>
-                                <div class="tc-helper-diff mb-2" id="helperPretestcaseDiff"></div>
+                                <div class="tc-helper-diff mb-2 d-none" id="helperPretestcaseDiff"></div>
                                 <div class="tc-helper-split">
                                     <aside class="tc-helper-split-left">
-                                        <div class="tc-helper-list-panel">
+                                        <div class="tc-helper-list-panel tc-helper-list-panel--sections">
                                             <h6 class="tc-helper-list-header" data-i18n="aiHelper.sectionListTitle">區段</h6>
                                             <div id="helperPreSectionList" class="list-group tc-helper-list"></div>
                                         </div>
-                                        <div class="tc-helper-list-panel mt-2">
+                                        <div class="tc-helper-list-panel tc-helper-list-panel--entries">
                                             <h6 class="tc-helper-list-header" data-i18n="aiHelper.entryListTitle">條目</h6>
                                             <div id="helperPreEntryList" class="list-group tc-helper-list"></div>
                                         </div>
@@ -223,11 +223,11 @@
                                 <p class="text-muted small mb-2" data-i18n="aiHelper.finalHint">可調整 title / section / priority 與 markdown 欄位，確認後建立到目標 Set。</p>
                                 <div id="helperFinalCasesContainer" class="tc-helper-split">
                                     <aside class="tc-helper-split-left">
-                                        <div class="tc-helper-list-panel">
+                                        <div class="tc-helper-list-panel tc-helper-list-panel--sections">
                                             <h6 class="tc-helper-list-header" data-i18n="aiHelper.sectionListTitle">區段</h6>
                                             <div id="helperFinalSectionList" class="list-group tc-helper-list"></div>
                                         </div>
-                                        <div class="tc-helper-list-panel mt-2">
+                                        <div class="tc-helper-list-panel tc-helper-list-panel--entries">
                                             <h6 class="tc-helper-list-header" data-i18n="aiHelper.testcaseListTitle">Test Cases</h6>
                                             <div id="helperFinalCaseList" class="list-group tc-helper-list"></div>
                                         </div>

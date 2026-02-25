@@ -1,6 +1,7 @@
 {
   "common": {
     "actions": "操作",
+    "add": "新增",
     "all": "全部",
     "apply": "应用",
     "applyFilter": "应用筛选",

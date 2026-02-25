@@ -1,6 +1,7 @@
 {
   "common": {
     "actions": "操作",
+    "add": "新增",
     "all": "全部",
     "apply": "套用",
     "applyFilter": "套用篩選",
