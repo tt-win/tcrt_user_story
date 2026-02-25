@@ -513,7 +513,15 @@
         `;
     }
 
+    function helperSyncStepperLayout() {
+        const stepper = document.querySelector('#aiTestCaseHelperModal .tc-helper-stepper');
+        if (!stepper) return;
+        const stepCount = stepper.querySelectorAll('.tc-helper-step').length || STEP_COUNT;
+        stepper.style.setProperty('--tc-helper-step-count', String(Math.max(1, stepCount)));
+    }
+
     function helperSetStep(step) {
+        helperSyncStepperLayout();
         const normalizedStep = Math.max(1, Math.min(STEP_COUNT, Number(step) || 1));
         helperState.currentStep = normalizedStep;
 
@@ -1609,18 +1617,41 @@
         return helperDeepClone(helperState.pretestcasePayload);
     }
 
+    function helperSetPretestcaseDiff(container, html, visible) {
+        if (!container) return;
+        if (!visible) {
+            container.innerHTML = '';
+            container.classList.add('d-none');
+            return;
+        }
+        container.classList.remove('d-none');
+        container.innerHTML = html;
+    }
+
     function helperRenderPretestcaseDiff() {
         const container = el('helperPretestcaseDiff');
         if (!container) return;
 
         if (!helperState.pretestcaseOriginalPayload || !Array.isArray(helperState.pretestcaseOriginalPayload.en)) {
-            container.innerHTML = `<span>${helperEscapeHtml(helperT('aiHelper.diffUnavailable', {}, '尚無差異基準'))}</span>`;
+            helperSetPretestcaseDiff(
+                container,
+                `<span class="text-muted">${helperEscapeHtml(helperT('aiHelper.diffUnavailable', {}, '尚無差異基準'))}</span>`,
+                true,
+            );
             return;
         }
 
         const current = helperGetPretestcasePayloadFromTable();
         const currentEntries = Array.isArray(current.en) ? current.en : [];
         const baselineMap = new Map();
+        const fieldLabelMap = {
+            g: helperT('testCase.section', {}, '區段'),
+            t: helperT('common.title', {}, '標題'),
+            cat: helperT('aiHelper.category', {}, '類別'),
+            st: helperT('aiHelper.state', {}, '狀態'),
+            ref: helperT('aiHelper.ref', {}, '需求對應'),
+            note: helperT('aiHelper.note', {}, '備註'),
+        };
 
         helperState.pretestcaseOriginalPayload.en.forEach((entry) => {
             const key = String(entry.cid || '');
@@ -1651,12 +1682,12 @@
             if (noteCurrent !== noteBaseline) fields.push('note');
 
             if (fields.length > 0) {
-                changed.push(`${key}: ${fields.join(', ')}`);
+                changed.push(`${key}: ${fields.map((field) => fieldLabelMap[field] || field).join('、')}`);
             }
         });
 
         if (!changed.length) {
-            container.innerHTML = `<span>${helperEscapeHtml(helperT('aiHelper.diffNone', {}, '與 AI 原始條目一致'))}</span>`;
+            helperSetPretestcaseDiff(container, '', false);
             return;
         }
 
@@ -1666,10 +1697,14 @@
             ? `<li>... ${helperEscapeHtml(helperT('aiHelper.diffMore', { count: changed.length - limit }, '另有 {count} 筆'))}</li>`
             : '';
 
-        container.innerHTML = `
-            <div class="mb-1"><strong>${helperEscapeHtml(helperT('aiHelper.diffChanged', { count: changed.length }, '已調整 {count} 筆條目'))}</strong></div>
-            <ul class="mb-0">${displayItems}${remain}</ul>
-        `;
+        helperSetPretestcaseDiff(
+            container,
+            `
+                <div class="mb-1"><strong>${helperEscapeHtml(helperT('aiHelper.diffChanged', { count: changed.length }, '已調整 {count} 筆條目'))}</strong></div>
+                <ul class="mb-0">${displayItems}${remain}</ul>
+            `,
+            true,
+        );
     }
 
     function helperListToText(lines, withNumbering) {
@@ -2373,6 +2408,7 @@
         modalEl.dataset.bound = '1';
 
         modalEl.addEventListener('shown.bs.modal', () => {
+            helperSyncStepperLayout();
             helperBindToolbar();
             helperBindPretestcaseEvents();
             helperBindFinalCaseEvents();

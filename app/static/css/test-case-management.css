@@ -540,6 +540,11 @@ body {
     filter: invert(1) brightness(1.8);
 }
 
+#aiTestCaseHelperModal {
+    --tc-helper-body-gap: 0.75rem;
+    --tc-helper-list-section-max-height: clamp(120px, 24vh, 220px);
+}
+
 .tc-helper-body {
     background:
         radial-gradient(circle at 90% -10%, rgba(15, 111, 168, 0.12), transparent 40%),
@@ -548,20 +553,24 @@ body {
     display: flex;
     flex-direction: column;
     min-height: 0;
-    overflow: hidden !important;
+    overflow: hidden;
+    padding: var(--tc-helper-body-gap);
+    gap: var(--tc-helper-body-gap);
 }
 
 .tc-helper-stepper-wrap {
     position: sticky;
     top: 0;
     z-index: 20;
-    padding: 0.45rem 0.45rem 0.55rem;
-    margin: -0.45rem -0.45rem 0.9rem;
+    padding: 0.45rem;
+    margin: 0;
     background: #f5f8fd;
-    border-bottom: 1px solid #d8e2f1;
-    box-shadow: 0 2px 0 rgba(209, 222, 241, 0.95), 0 6px 10px rgba(37, 69, 113, 0.08);
-    overflow: hidden;
-    margin-bottom: 0.9rem;
+    background: rgba(245, 248, 253, 0.96);
+    border: 1px solid #d8e2f1;
+    border-radius: 0.6rem;
+    box-shadow: 0 4px 12px rgba(37, 69, 113, 0.08);
+    overflow: visible;
+    flex: 0 0 auto;
 }
 
 .tc-helper-stepper {
@@ -570,6 +579,7 @@ body {
     margin: 0;
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(var(--tc-helper-step-count, 3), minmax(0, 1fr));
     gap: 0.5rem;
 }
 
@@ -710,6 +720,7 @@ body {
     display: flex;
     flex-direction: column;
     overflow: hidden;
+    gap: 0.65rem;
 }
 
 .tc-helper-split-right {
@@ -730,6 +741,21 @@ body {
     background: #fff;
     display: flex;
     flex-direction: column;
+    flex: 1 1 auto;
+}
+
+.tc-helper-list-panel--sections {
+    flex: 0 0 auto;
+}
+
+.tc-helper-list-panel--sections .tc-helper-list {
+    min-height: 100px;
+    max-height: var(--tc-helper-list-section-max-height);
+    flex: 0 0 auto;
+}
+
+.tc-helper-list-panel--entries {
+    flex: 1 1 auto;
 }
 
 .tc-helper-list-header {
@@ -743,8 +769,9 @@ body {
 
 .tc-helper-list {
     overflow-y: auto;
-    min-height: 120px;
-    max-height: min(30vh, 280px);
+    min-height: 0;
+    max-height: none;
+    flex: 1 1 auto;
 }
 
 .tc-helper-list .list-group-item {
@@ -991,6 +1018,10 @@ body {
 
     .tc-helper-list {
         max-height: 190px;
+    }
+
+    .tc-helper-list-panel--sections .tc-helper-list {
+        max-height: 140px;
     }
 
     .tc-helper-split-right {

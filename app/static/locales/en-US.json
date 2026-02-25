@@ -1,6 +1,7 @@
 {
   "common": {
     "actions": "Actions",
+    "add": "Add",
     "all": "All",
     "apply": "Apply",
     "applyFilter": "Apply Filter",
