@@ -8,9 +8,11 @@
 
 {% block page_specific_actions %}
 <div class="d-flex gap-2">
+  {% if ai_helper_enabled %}
   <button type="button" class="btn btn-info btn-sm" id="openAiHelperFromSetListBtn">
     <i class="fas fa-robot me-1"></i><span data-i18n="aiHelper.entryButton">AI Agent - Test Case Helper</span>
   </button>
+  {% endif %}
   <a href="/" class="btn btn-secondary btn-sm">
     <i class="fas fa-home"></i> <span data-i18n="common.home">回到首頁</span>
   </a>

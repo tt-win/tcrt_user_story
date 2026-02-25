@@ -56,6 +56,7 @@ class JiraTestCaseHelperModelsConfig(BaseModel):
 
 
 class JiraTestCaseHelperConfig(BaseModel):
+    enable: bool = True
     prompt_contract_version: str = "helper-prompt.v2"
     payload_contract_version: str = "helper-draft.v2"
     similar_cases_count: int = 5

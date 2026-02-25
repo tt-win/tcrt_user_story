@@ -1,5 +1,9 @@
 from pathlib import Path
 
+from fastapi.testclient import TestClient
+
+from app.main import app
+
 
 def test_helper_entrypoint_is_on_set_list_page():
     management_html = Path("app/templates/test_case_management.html").read_text(
@@ -55,6 +59,25 @@ def test_helper_entrypoint_is_on_set_list_page():
     assert "window.__TCM_HELPER_MODE__" in management_html
     assert '/static/js/test-case-management/ai-helper.js' in management_html
     assert '/static/js/test-case-management/section-list-init.js' not in management_html
+
+
+def test_helper_button_visible_when_config_enable_true():
+    """ai.jira_testcase_helper.enable=true 時，Test Case Set 頁面應顯示 Helper 按鈕"""
+    client = TestClient(app)
+    resp = client.get("/test-case-sets")
+    assert resp.status_code == 200
+    assert 'id="openAiHelperFromSetListBtn"' in resp.text
+
+
+def test_helper_button_hidden_when_config_enable_false(monkeypatch):
+    """ai.jira_testcase_helper.enable=false 時，Test Case Set 頁面不應顯示 Helper 按鈕"""
+    from app.config import settings
+
+    monkeypatch.setattr(settings.ai.jira_testcase_helper, "enable", False)
+    client = TestClient(app)
+    resp = client.get("/test-case-sets")
+    assert resp.status_code == 200
+    assert 'id="openAiHelperFromSetListBtn"' not in resp.text
 
 
 def test_helper_frontend_uses_phase_api_endpoints_and_redirect_highlight():
