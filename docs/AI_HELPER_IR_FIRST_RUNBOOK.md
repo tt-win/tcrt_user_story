@@ -55,19 +55,25 @@
 - 小批次策略：
   - testcase/audit 以 section 分批，降低低推理模型在長上下文下失真機率。
 
-## 4. 重要設定（config.yaml）
+## 4. 重要設定（config.yaml + prompts 目錄）
 
-路徑：`ai.jira_testcase_helper`
+`config.yaml` 僅保留模型與流程設定：
 
-- `models.analysis`：預設 `google/gemini-3-flash-preview`
-- `models.coverage`：預設 `openai/gpt-5.2`
-- `models.testcase`：預設 `google/gemini-3-flash-preview`
-- `models.audit`：預設 `google/gemini-3-flash-preview`
-- `coverage_backfill_max_rounds`：保留相容欄位；在合併模式下固定停用（0）
-- `coverage_backfill_chunk_size`：每回合補全的缺漏批次大小
-- `prompt_contract_version`：prompt 契約版本
-- `payload_contract_version`：draft payload envelope 版本
-- `prompts.*`：所有階段 prompt，含 `requirement_ir/analysis/coverage/coverage_backfill/testcase/testcase_supplement/audit`
+- `ai.ai_assist.model`：AI 改寫（editor assist）模型
+- `ai.jira_testcase_helper.models.analysis`：analysis+coverage 合併階段模型
+- `ai.jira_testcase_helper.models.testcase`：testcase 生成模型
+- `ai.jira_testcase_helper.models.audit`：audit 階段模型
+- `ai.jira_testcase_helper.coverage_backfill_max_rounds`
+- `ai.jira_testcase_helper.coverage_backfill_chunk_size`
+- `ai.jira_testcase_helper.prompt_contract_version`
+- `ai.jira_testcase_helper.payload_contract_version`
+- `openrouter.api_key`：OpenRouter 伺服器端金鑰
+
+Prompt 模板改由檔案管理：
+
+- 目錄：`prompts/jira_testcase_helper/`
+- 檔案：`requirement_ir.md`、`analysis.md`、`coverage.md`、`coverage_backfill.md`、`testcase.md`、`testcase_supplement.md`、`audit.md`
+- 若檔案缺漏或為空，後端會 fallback 到內建 machine template 並記錄 warning
 
 ## 5. Draft 與追蹤資料
 

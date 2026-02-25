@@ -15,6 +15,7 @@ from app.config import get_settings
 HelperStage = Literal["analysis", "coverage", "testcase", "audit"]
 
 logger = logging.getLogger(__name__)
+OPENROUTER_CHAT_COMPLETIONS_URL = "https://openrouter.ai/api/v1/chat/completions"
 LEGACY_STAGE_MODEL_ALIASES: Dict[str, str] = {
     "google/gemini-3-flash": "google/gemini-3-flash-preview",
 }
@@ -41,6 +42,9 @@ class JiraTestCaseHelperLLMService:
         return (self._settings.openrouter.api_key or "").strip()
 
     def _stage_config(self, stage: HelperStage):
+        if stage == "coverage":
+            # analysis+coverage 已合併，coverage 沿用 analysis model 設定。
+            return self._settings.ai.jira_testcase_helper.models.analysis
         return getattr(self._settings.ai.jira_testcase_helper.models, stage)
 
     @staticmethod
@@ -701,9 +705,8 @@ class JiraTestCaseHelperLLMService:
         headers = self._base_headers()
 
         messages: List[Dict[str, str]] = []
-        system_prompt = system_prompt_override or stage_cfg.system_prompt
-        if system_prompt:
-            messages.append({"role": "system", "content": system_prompt})
+        if system_prompt_override:
+            messages.append({"role": "system", "content": str(system_prompt_override)})
         messages.append({"role": "user", "content": prompt})
 
         resolved_model_id = self._resolve_stage_model_id(stage_cfg.model)
@@ -739,10 +742,10 @@ class JiraTestCaseHelperLLMService:
             payload["response_format"] = {"type": "json_object"}
         try:
             data = await self._post_json_with_retry(
-                url=stage_cfg.api_url,
+                url=OPENROUTER_CHAT_COMPLETIONS_URL,
                 headers=headers,
                 payload=payload,
-                timeout_seconds=stage_cfg.timeout,
+                timeout_seconds=60,
                 retries=3,
             )
         except Exception as exc:
@@ -753,10 +756,10 @@ class JiraTestCaseHelperLLMService:
                 )
                 payload.pop("response_format", None)
                 data = await self._post_json_with_retry(
-                    url=stage_cfg.api_url,
+                    url=OPENROUTER_CHAT_COMPLETIONS_URL,
                     headers=headers,
                     payload=payload,
-                    timeout_seconds=stage_cfg.timeout,
+                    timeout_seconds=60,
                     retries=3,
                 )
             else:

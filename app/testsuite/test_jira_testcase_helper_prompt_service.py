@@ -1,3 +1,10 @@
+from pathlib import Path
+import sys
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+if str(PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(PROJECT_ROOT))
+
 from app.config import Settings
 from app.services.jira_testcase_helper_llm_service import JiraTestCaseHelperLLMService
 from app.services.jira_testcase_helper_prompt_service import (
@@ -5,188 +12,123 @@ from app.services.jira_testcase_helper_prompt_service import (
 )
 
 
-def test_helper_model_defaults_from_settings(tmp_path):
-    config_path = tmp_path / "config.yaml"
-    config_path.write_text(
+def _write_config(path: Path, extra_yaml: str = "") -> None:
+    path.write_text(
         "app:\n"
         "  port: 9999\n"
         "openrouter:\n"
-        "  api_key: ''\n",
+        "  api_key: ''\n"
+        + extra_yaml,
         encoding="utf-8",
     )
+
+
+def test_helper_model_defaults_from_settings(tmp_path):
+    config_path = tmp_path / "config.yaml"
+    _write_config(config_path)
 
     loaded = Settings.from_env_and_file(str(config_path))
     helper = loaded.ai.jira_testcase_helper
 
     assert helper.models.analysis.model == "google/gemini-3-flash-preview"
-    assert helper.models.coverage.model == "openai/gpt-5.2"
     assert helper.models.testcase.model == "google/gemini-3-flash-preview"
     assert helper.models.audit.model == "google/gemini-3-flash-preview"
+    assert not hasattr(helper.models, "coverage")
     assert helper.enable_ir_first is True
     assert helper.coverage_backfill_max_rounds == 1
     assert helper.coverage_backfill_chunk_size == 12
-    assert "{requirement_ir_json}" in helper.prompts.analysis
-    assert "{missing_ids_json}" in helper.prompts.coverage_backfill
-    assert "JSON.parse" in helper.prompts.coverage
-    assert "{coverage_questions_json}" in helper.prompts.testcase
-    assert "{testcase_json}" in helper.prompts.audit
 
 
-def test_render_analysis_prompt_with_replacements():
-    service = JiraTestCaseHelperPromptService(Settings().ai.jira_testcase_helper)
-
-    rendered = service.render_stage_prompt(
-        "analysis",
-        {
-            "review_language": "繁體中文",
-            "ticket_key": "TCG-130078",
-            "requirement_ir_json": '{"scenarios":[{"rid":"REQ-001"}]}',
-            "similar_cases": "Similar Case 1: ...",
-        },
-    )
-
-    assert "TCG-130078" in rendered
-    assert "REQ-001" in rendered
-    assert "{ticket_key}" not in rendered
-
-
-def test_render_requirement_ir_prompt_with_replacements():
-    service = JiraTestCaseHelperPromptService(Settings().ai.jira_testcase_helper)
-
-    rendered = service.render_stage_prompt(
-        "requirement_ir",
-        {
-            "review_language": "繁體中文",
-            "ticket_key": "TCG-93178",
-            "ticket_summary": "Reference 欄位規則調整",
-            "ticket_description": "需要保留 fixed/sortable/format 規則",
-            "ticket_components": "Search",
-            "similar_cases": "case-A",
-        },
-    )
-    assert "TCG-93178" in rendered
-    assert "fixed_lr" in rendered
-    assert "{ticket_description}" not in rendered
-
-
-def test_render_audit_prompt_with_testcase_payload():
-    service = JiraTestCaseHelperPromptService(Settings().ai.jira_testcase_helper)
-
-    rendered = service.render_stage_prompt(
-        "audit",
-        {
-            "output_language": "English",
-            "coverage_questions_json": "{\"sec\":[]}",
-            "testcase_json": "{\"tc\":[{\"id\":\"TCG-1.010.010\"}]}",
-            "ticket_key": "TCG-1",
-        },
-    )
-
-    assert "English" in rendered
-    assert "TCG-1.010.010" in rendered
-    assert "{testcase_json}" not in rendered
-
-
-def test_custom_prompt_override_from_config_file(tmp_path):
+def test_stage_model_override_for_available_phases_from_config(tmp_path):
     config_path = tmp_path / "config.yaml"
-    config_path.write_text(
-        "app:\n"
-        "  port: 9999\n"
-        "openrouter:\n"
-        "  api_key: ''\n"
-        "ai:\n"
-        "  jira_testcase_helper:\n"
-        "    models:\n"
-        "      coverage:\n"
-        "        model: openai/gpt-5.2-custom\n"
-        "    prompts:\n"
-        "      analysis: 'custom analysis for {ticket_key}'\n",
-        encoding="utf-8",
-    )
-
-    loaded = Settings.from_env_and_file(str(config_path))
-    helper = loaded.ai.jira_testcase_helper
-
-    assert helper.models.coverage.model == "openai/gpt-5.2-custom"
-
-    service = JiraTestCaseHelperPromptService(helper)
-    rendered = service.render_stage_prompt("analysis", {"ticket_key": "TCG-99"})
-    assert rendered == "custom analysis for TCG-99"
-
-
-def test_stage_model_override_for_all_phases_from_config(tmp_path):
-    config_path = tmp_path / "config.yaml"
-    config_path.write_text(
-        "app:\n"
-        "  port: 9999\n"
-        "openrouter:\n"
-        "  api_key: ''\n"
+    _write_config(
+        config_path,
         "ai:\n"
         "  jira_testcase_helper:\n"
         "    models:\n"
         "      analysis:\n"
         "        model: custom/analysis-model\n"
-        "      coverage:\n"
-        "        model: custom/coverage-model\n"
         "      testcase:\n"
         "        model: custom/testcase-model\n"
         "      audit:\n"
         "        model: custom/audit-model\n",
-        encoding="utf-8",
     )
 
     loaded = Settings.from_env_and_file(str(config_path))
     helper = loaded.ai.jira_testcase_helper
 
     assert helper.models.analysis.model == "custom/analysis-model"
-    assert helper.models.coverage.model == "custom/coverage-model"
     assert helper.models.testcase.model == "custom/testcase-model"
     assert helper.models.audit.model == "custom/audit-model"
 
 
-def test_ir_first_config_and_prompt_keys_can_be_overridden(tmp_path):
+def test_ir_first_flags_can_be_overridden(tmp_path):
     config_path = tmp_path / "config.yaml"
-    config_path.write_text(
-        "app:\n"
-        "  port: 9999\n"
-        "openrouter:\n"
-        "  api_key: ''\n"
+    _write_config(
+        config_path,
         "ai:\n"
-          "  jira_testcase_helper:\n"
-          "    enable_ir_first: false\n"
-          "    coverage_backfill_max_rounds: 2\n"
-          "    coverage_backfill_chunk_size: 8\n"
-          "    prompts:\n"
-          "      requirement_ir: 'ir prompt {ticket_key}'\n"
-          "      coverage_backfill: 'backfill {missing_ids_json}'\n",
-          encoding="utf-8",
-      )
+        "  jira_testcase_helper:\n"
+        "    enable_ir_first: false\n"
+        "    coverage_backfill_max_rounds: 2\n"
+        "    coverage_backfill_chunk_size: 8\n",
+    )
 
     loaded = Settings.from_env_and_file(str(config_path))
     helper = loaded.ai.jira_testcase_helper
     assert helper.enable_ir_first is False
     assert helper.coverage_backfill_max_rounds == 2
     assert helper.coverage_backfill_chunk_size == 8
-    assert helper.prompts.requirement_ir == "ir prompt {ticket_key}"
-    assert helper.prompts.coverage_backfill == "backfill {missing_ids_json}"
 
 
-def test_render_machine_prompt_falls_back_when_analysis_prompt_lacks_merged_contract(tmp_path):
-    config_path = tmp_path / "config.yaml"
-    config_path.write_text(
-        "app:\n"
-        "  port: 9999\n"
-        "openrouter:\n"
-        "  api_key: ''\n"
-        "ai:\n"
-        "  jira_testcase_helper:\n"
-        "    prompts:\n"
-        "      analysis: 'machine-source {ticket_key} {review_language}'\n",
+def test_render_stage_prompt_reads_from_prompt_file(tmp_path):
+    prompt_dir = tmp_path / "prompts"
+    prompt_dir.mkdir(parents=True, exist_ok=True)
+    (prompt_dir / "analysis.md").write_text(
+        "ticket={ticket_key}\nir={requirement_ir_json}",
         encoding="utf-8",
     )
 
-    loaded = Settings.from_env_and_file(str(config_path))
-    service = JiraTestCaseHelperPromptService(loaded.ai.jira_testcase_helper)
+    service = JiraTestCaseHelperPromptService(
+        Settings().ai.jira_testcase_helper,
+        prompt_dir=prompt_dir,
+    )
+    rendered = service.render_stage_prompt(
+        "analysis",
+        {"ticket_key": "TCG-130078", "requirement_ir_json": '{"rid":"REQ-001"}'},
+    )
+    assert rendered == 'ticket=TCG-130078\nir={"rid":"REQ-001"}'
+
+
+def test_missing_prompt_file_falls_back_to_machine_template(tmp_path):
+    prompt_dir = tmp_path / "missing-prompts"
+    prompt_dir.mkdir(parents=True, exist_ok=True)
+
+    service = JiraTestCaseHelperPromptService(
+        Settings().ai.jira_testcase_helper,
+        prompt_dir=prompt_dir,
+    )
+    rendered = service.render_stage_prompt(
+        "testcase",
+        {"ticket_key": "TCG-1", "coverage_questions_json": '{"sec":[]}'},
+    )
+    assert "Testcase 轉換器" in rendered
+    assert "TCG=TCG-1" in rendered
+
+
+def test_render_machine_prompt_falls_back_when_analysis_prompt_lacks_merged_contract(
+    tmp_path,
+):
+    prompt_dir = tmp_path / "prompts"
+    prompt_dir.mkdir(parents=True, exist_ok=True)
+    (prompt_dir / "analysis.md").write_text(
+        "machine-source {ticket_key} {review_language}",
+        encoding="utf-8",
+    )
+
+    service = JiraTestCaseHelperPromptService(
+        Settings().ai.jira_testcase_helper,
+        prompt_dir=prompt_dir,
+    )
     rendered = service.render_machine_stage_prompt(
         "analysis",
         {"ticket_key": "TCG-1", "review_language": "繁體中文"},
@@ -196,22 +138,18 @@ def test_render_machine_prompt_falls_back_when_analysis_prompt_lacks_merged_cont
     assert "REQUIREMENT_IR_JSON" in rendered
 
 
-def test_render_machine_prompt_uses_config_analysis_when_contract_is_merged(tmp_path):
-    config_path = tmp_path / "config.yaml"
-    config_path.write_text(
-        "app:\n"
-        "  port: 9999\n"
-        "openrouter:\n"
-        "  api_key: ''\n"
-        "ai:\n"
-        "  jira_testcase_helper:\n"
-        "    prompts:\n"
-        "      analysis: '一次輸出 analysis 與 coverage，並考慮 happy path/edge test cases/error handling/permission，使用 seed.ax；ticket={ticket_key}'\n",
+def test_render_machine_prompt_uses_file_when_contract_is_merged(tmp_path):
+    prompt_dir = tmp_path / "prompts"
+    prompt_dir.mkdir(parents=True, exist_ok=True)
+    (prompt_dir / "analysis.md").write_text(
+        '一次輸出 analysis 與 coverage，並考慮 happy path/edge test cases/error handling/permission，使用 seed.ax；ticket={ticket_key}{"coverage":true}',
         encoding="utf-8",
     )
 
-    loaded = Settings.from_env_and_file(str(config_path))
-    service = JiraTestCaseHelperPromptService(loaded.ai.jira_testcase_helper)
+    service = JiraTestCaseHelperPromptService(
+        Settings().ai.jira_testcase_helper,
+        prompt_dir=prompt_dir,
+    )
     rendered = service.render_machine_stage_prompt(
         "analysis",
         {"ticket_key": "TCG-9", "review_language": "繁體中文"},
@@ -221,16 +159,17 @@ def test_render_machine_prompt_uses_config_analysis_when_contract_is_merged(tmp_
 
 
 def test_render_machine_testcase_prompt_requires_detailed_pre_step_exp(tmp_path):
-    config_path = tmp_path / "config.yaml"
-    config_path.write_text(
-        "app:\n"
-        "  port: 9999\n"
-        "openrouter:\n"
-        "  api_key: ''\n",
+    prompt_dir = tmp_path / "prompts"
+    prompt_dir.mkdir(parents=True, exist_ok=True)
+    (prompt_dir / "testcase.md").write_text(
+        "簡化 testcase prompt without quality contract",
         encoding="utf-8",
     )
-    loaded = Settings.from_env_and_file(str(config_path))
-    service = JiraTestCaseHelperPromptService(loaded.ai.jira_testcase_helper)
+
+    service = JiraTestCaseHelperPromptService(
+        Settings().ai.jira_testcase_helper,
+        prompt_dir=prompt_dir,
+    )
     rendered = service.render_machine_stage_prompt(
         "testcase",
         {

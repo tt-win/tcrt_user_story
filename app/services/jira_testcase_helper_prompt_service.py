@@ -1,13 +1,16 @@
 """JIRA Ticket -> Test Case Helper prompt service.
 
 此模組負責：
-- 從 `config.yaml`（app.config settings）讀取四階段 prompt 與 model 設定
+- 讀取 helper model 設定
+- 從 `prompts/jira_testcase_helper/*.md` 載入 prompt 模板
+- 模板缺漏時退回內建機械契約模板（fail-safe）
 - 以一致方式替換模板變數
-- 提供後續 helper workflow 直接可用的存取介面
 """
 
 from __future__ import annotations
 
+import logging
+from pathlib import Path
 from typing import Dict, Literal, Optional
 
 from app.config import (
@@ -26,6 +29,20 @@ HelperPromptStage = Literal[
     "testcase_supplement",
     "audit",
 ]
+
+logger = logging.getLogger(__name__)
+DEFAULT_PROMPT_DIR = (
+    Path(__file__).resolve().parents[2] / "prompts" / "jira_testcase_helper"
+)
+PROMPT_FILE_MAP: Dict[HelperPromptStage, str] = {
+    "requirement_ir": "requirement_ir.md",
+    "analysis": "analysis.md",
+    "coverage": "coverage.md",
+    "coverage_backfill": "coverage_backfill.md",
+    "testcase": "testcase.md",
+    "testcase_supplement": "testcase_supplement.md",
+    "audit": "audit.md",
+}
 
 MACHINE_PROMPT_TEMPLATES: Dict[HelperPromptStage, str] = {
     "requirement_ir": (
@@ -152,23 +169,56 @@ MACHINE_PROMPT_TEMPLATES: Dict[HelperPromptStage, str] = {
 class JiraTestCaseHelperPromptService:
     """提供 helper 各階段 prompt/model 設定與模板渲染。"""
 
-    def __init__(self, helper_config: Optional[JiraTestCaseHelperConfig] = None):
+    def __init__(
+        self,
+        helper_config: Optional[JiraTestCaseHelperConfig] = None,
+        prompt_dir: Optional[Path] = None,
+    ):
         settings = get_settings()
         self._config = helper_config or settings.ai.jira_testcase_helper
+        self._prompt_dir = Path(prompt_dir) if prompt_dir else DEFAULT_PROMPT_DIR
 
     def get_stage_model(self, stage: HelperModelStage) -> JiraTestCaseHelperStageModelConfig:
+        if stage == "coverage":
+            # analysis+coverage 已合併；coverage 沿用 analysis model。
+            return self._config.models.analysis
         return getattr(self._config.models, stage)
 
     def get_stage_prompt_template(self, stage: HelperPromptStage) -> str:
-        return getattr(self._config.prompts, stage)
+        path = self._resolve_prompt_path(stage)
+        try:
+            template = path.read_text(encoding="utf-8").strip()
+        except OSError as exc:
+            logger.warning(
+                "讀取 helper prompt 檔失敗，改用 fallback template: stage=%s path=%s error=%s",
+                stage,
+                path,
+                exc,
+            )
+            template = ""
+        if template:
+            return template
+        fallback = MACHINE_PROMPT_TEMPLATES.get(stage, "")
+        if fallback:
+            logger.warning(
+                "helper prompt 檔為空或不存在，改用 fallback template: stage=%s path=%s",
+                stage,
+                path,
+            )
+            return fallback
+        raise ValueError(f"未知 helper prompt stage: {stage}")
 
-    def render_stage_prompt(
-        self,
-        stage: HelperPromptStage,
+    def _resolve_prompt_path(self, stage: HelperPromptStage) -> Path:
+        filename = PROMPT_FILE_MAP.get(stage)
+        if not filename:
+            raise ValueError(f"未知 helper prompt stage: {stage}")
+        return self._prompt_dir / filename
+
+    @staticmethod
+    def _render_template(
+        template: str,
         replacements: Optional[Dict[str, str]] = None,
     ) -> str:
-        template = self.get_stage_prompt_template(stage)
-
         defaults = {
             "review_language": "繁體中文",
             "output_language": "繁體中文",
@@ -192,12 +242,18 @@ class JiraTestCaseHelperPromptService:
         if replacements:
             for key, value in replacements.items():
                 defaults[key] = "" if value is None else str(value)
-
         rendered = template
         for key, value in defaults.items():
             rendered = rendered.replace("{" + key + "}", value)
-
         return rendered
+
+    def render_stage_prompt(
+        self,
+        stage: HelperPromptStage,
+        replacements: Optional[Dict[str, str]] = None,
+    ) -> str:
+        template = self.get_stage_prompt_template(stage)
+        return self._render_template(template, replacements)
 
     def render_machine_stage_prompt(
         self,
@@ -215,34 +271,7 @@ class JiraTestCaseHelperPromptService:
         ):
             # 舊版 config 若未宣告完整 testcase 品質契約，強制切回 machine 契約模板。
             template = MACHINE_PROMPT_TEMPLATES[stage]
-        defaults = {
-            "review_language": "繁體中文",
-            "output_language": "繁體中文",
-            "ticket_key": "",
-            "ticket_summary": "",
-            "ticket_description": "",
-            "ticket_components": "",
-            "similar_cases": "",
-            "requirement_ir_json": "{}",
-            "expanded_requirements_json": "{}",
-            "current_coverage_json": "{}",
-            "missing_ids_json": "[]",
-            "missing_sections_json": "[]",
-            "coverage_questions_json": "{}",
-            "testcase_json": "{}",
-            "section_name": "",
-            "section_no": "",
-            "retry_hint": "",
-            "source_packets_json": "{}",
-        }
-        if replacements:
-            for key, value in replacements.items():
-                defaults[key] = "" if value is None else str(value)
-
-        rendered = template
-        for key, value in defaults.items():
-            rendered = rendered.replace("{" + key + "}", value)
-        return rendered
+        return self._render_template(template, replacements)
 
     @staticmethod
     def _analysis_prompt_supports_merged_coverage(template: str) -> bool:
