@@ -967,9 +967,11 @@
         }
     }
 
-    async function helperRunAnalysis(requirementMarkdown) {
+    async function helperRunAnalysis(requirementMarkdown, options = {}) {
+        const overrideIncompleteRequirement = !!options.overrideIncompleteRequirement;
         const requestBody = {
             retry: helperState.analyzeRuns > 0,
+            override_incomplete_requirement: overrideIncompleteRequirement,
         };
         const normalizedRequirementMarkdown = String(requirementMarkdown || '').trim();
         if (normalizedRequirementMarkdown) {
@@ -984,9 +986,58 @@
                 body: JSON.stringify(requestBody),
             }
         );
-        helperState.analyzeRuns += 1;
 
         helperApplySession(result.session);
+
+        const warningPayload = result && result.payload ? result.payload : null;
+        if (warningPayload && warningPayload.requires_override) {
+            if (overrideIncompleteRequirement) {
+                throw new Error(helperT('aiHelper.requirementWarningRetryFailed', {}, '已確認繼續但仍無法通過 requirement 驗證，請修正需求內容後再試'));
+            }
+
+            const warning = warningPayload.warning || {};
+            const missingSections = Array.isArray(warning.missing_sections) ? warning.missing_sections : [];
+            const missingFields = Array.isArray(warning.missing_fields) ? warning.missing_fields : [];
+            const qualityLevel = String(warning.quality_level || '').trim() || 'low';
+
+            const detailLines = [
+                helperT('aiHelper.requirementIncompleteWarningTitle', {}, 'Requirement 格式不完整'),
+                helperT('aiHelper.requirementIncompleteWarningLevel', { level: qualityLevel }, `品質等級：${qualityLevel}`),
+            ];
+            if (missingSections.length > 0) {
+                detailLines.push(
+                    helperT(
+                        'aiHelper.requirementIncompleteWarningSections',
+                        { sections: missingSections.join(', ') },
+                        `缺漏段落：${missingSections.join(', ')}`
+                    )
+                );
+            }
+            if (missingFields.length > 0) {
+                detailLines.push(
+                    helperT(
+                        'aiHelper.requirementIncompleteWarningFields',
+                        { fields: missingFields.join(', ') },
+                        `缺漏欄位：${missingFields.join(', ')}`
+                    )
+                );
+            }
+
+            const confirmed = await helperConfirm(detailLines.join('\n'), {
+                title: helperT('aiHelper.requirementIncompleteWarningDialogTitle', {}, 'Requirement 不完整'),
+                confirmText: helperT('aiHelper.proceedAnyway', {}, '仍要繼續'),
+                cancelText: helperT('aiHelper.goBackAndFix', {}, '返回修正'),
+                confirmClass: 'btn btn-warning',
+            });
+            if (!confirmed) {
+                helperNotifyWarning(helperT('aiHelper.requirementIncompleteCancelled', {}, '已取消前進，請先補齊 requirement 格式'));
+                return;
+            }
+            await helperRunAnalysis(requirementMarkdown, { overrideIncompleteRequirement: true });
+            return;
+        }
+
+        helperState.analyzeRuns += 1;
 
         const payloadFromResponse = result && result.payload ? result.payload.pretestcase : null;
         const preDraft = helperGetDraft(result.session, 'pretestcase');
@@ -1107,6 +1158,48 @@
         return normalized;
     }
 
+    function helperNormalizeCategory(value) {
+        const normalized = String(value || '').trim().toLowerCase();
+        if (['happy', 'negative', 'boundary'].includes(normalized)) return normalized;
+        if (['positive', 'normal', 'success'].includes(normalized)) return 'happy';
+        if (['error', 'fail', 'failed', 'invalid', 'permission', 'forbidden'].includes(normalized)) return 'negative';
+        if (['edge', 'limit'].includes(normalized)) return 'boundary';
+        return 'happy';
+    }
+
+    function helperNormalizeTextArray(rawValue) {
+        if (Array.isArray(rawValue)) {
+            return rawValue
+                .map((item) => String(item || '').trim())
+                .filter(Boolean);
+        }
+        const normalized = String(rawValue || '').trim();
+        return normalized ? [normalized] : [];
+    }
+
+    function helperNormalizeRequirementContext(rawContext, entry) {
+        const context = rawContext && typeof rawContext === 'object' ? helperDeepClone(rawContext) : {};
+        const summary = String(context.summary || entry.t || '').trim();
+        const requirementKey = String(context.requirement_key || entry.requirement_key || '').trim();
+
+        context.requirement_key = requirementKey;
+        context.source_requirement_keys = helperNormalizeTextArray(context.source_requirement_keys);
+        context.summary = summary;
+        context.content = helperNormalizeTextArray(context.content);
+        if (!context.content.length && summary) {
+            context.content = [summary];
+        }
+        context.spec_requirements = helperNormalizeTextArray(context.spec_requirements);
+        context.verification_points = helperNormalizeTextArray(context.verification_points);
+        context.validation_requirements = helperNormalizeTextArray(
+            context.validation_requirements && context.validation_requirements.length > 0
+                ? context.validation_requirements
+                : context.verification_points
+        );
+        context.expected_outcomes = helperNormalizeTextArray(context.expected_outcomes);
+        return context;
+    }
+
     function helperNormalizePreEntry(entry, index) {
         const next = helperDeepClone(entry || {});
         const fallbackNumber = String((index + 1) * 10).padStart(3, '0');
@@ -1121,14 +1214,36 @@
         next.idx = index + 1;
         next.g = String(next.g || '未分類').trim() || '未分類';
         next.t = String(next.t || '').trim();
-        next.cat = String(next.cat || 'happy').trim() || 'happy';
+        next.cat = helperNormalizeCategory(next.cat);
         next.st = String(next.st || 'ok').trim() || 'ok';
         next.ref = Array.isArray(next.ref)
             ? next.ref.map((item) => String(item || '').trim()).filter(Boolean)
             : [];
-        next.req = Array.isArray(next.req)
-            ? next.req.map((item) => String(item || '').trim()).filter(Boolean)
+        next.rid = Array.isArray(next.rid)
+            ? next.rid.map((item) => String(item || '').trim()).filter(Boolean)
             : [];
+        next.req = Array.isArray(next.req)
+            ? next.req.map((item) => {
+                if (item && typeof item === 'object') {
+                    const rid = String(item.id || '').trim();
+                    const title = String(item.t || '').trim();
+                    if (rid && title) return `${rid} ${title}`;
+                    return rid || title;
+                }
+                return String(item || '').trim();
+            }).filter(Boolean)
+            : [];
+        next.requirement_key = String(next.requirement_key || '').trim();
+        next.requirement_context = helperNormalizeRequirementContext(next.requirement_context, next);
+        if (!next.requirement_key && next.requirement_context.requirement_key) {
+            next.requirement_key = String(next.requirement_context.requirement_key || '').trim();
+        }
+
+        if (!next.trace || typeof next.trace !== 'object') {
+            next.trace = {};
+        }
+        next.trace.ref_tokens = helperNormalizeTextArray(next.ref);
+        next.trace.rid_tokens = helperNormalizeTextArray(next.rid);
 
         if (next.st === 'assume') {
             next.a = String(next.a || '').trim();
@@ -1262,15 +1377,91 @@
         const container = el('helperPreReqPreview');
         if (!container) return;
 
-        const reqItems = entry && Array.isArray(entry.req) ? entry.req : [];
-        if (!reqItems.length) {
+        const sourceKeys = entry
+            && entry.requirement_context
+            && Array.isArray(entry.requirement_context.source_requirement_keys)
+            ? entry.requirement_context.source_requirement_keys
+            : [];
+        const reqItems = sourceKeys.length > 0
+            ? sourceKeys
+            : (entry && Array.isArray(entry.req) ? entry.req : []);
+        if (!reqItems.length && !String((entry || {}).requirement_key || '').trim()) {
             container.innerHTML = `<span class="text-muted">${helperEscapeHtml(helperT('aiHelper.reqMappingEmpty', {}, '無需求映射'))}</span>`;
             return;
         }
 
-        container.innerHTML = reqItems
+        const displayItems = [];
+        const requirementKey = String((entry || {}).requirement_key || '').trim();
+        if (requirementKey) {
+            displayItems.push(requirementKey);
+        }
+        reqItems.forEach((item) => displayItems.push(String(item || '').trim()));
+
+        container.innerHTML = Array.from(new Set(displayItems.filter(Boolean)))
             .map((item) => `<span class="badge text-bg-light me-1 mb-1">${helperEscapeHtml(String(item || ''))}</span>`)
             .join('');
+    }
+
+    function helperRenderPreContextList(containerId, items, emptyI18nKey, emptyFallback) {
+        const container = el(containerId);
+        if (!container) return;
+        const values = helperNormalizeTextArray(items);
+        if (!values.length) {
+            container.innerHTML = `<span class="text-muted">${helperEscapeHtml(helperT(emptyI18nKey, {}, emptyFallback))}</span>`;
+            return;
+        }
+        container.innerHTML = values
+            .map((item) => `<div class="tc-helper-context-item">• ${helperEscapeHtml(item)}</div>`)
+            .join('');
+    }
+
+    function helperRenderRequirementContext(entry) {
+        const context = entry && entry.requirement_context && typeof entry.requirement_context === 'object'
+            ? entry.requirement_context
+            : {};
+        const summaryContainer = el('helperPreRequirementSummary');
+        if (summaryContainer) {
+            const summary = String(context.summary || entry.t || '').trim();
+            if (!summary) {
+                summaryContainer.innerHTML = `<span class="text-muted">${helperEscapeHtml(helperT('aiHelper.requirementSummaryEmpty', {}, '無需求摘要'))}</span>`;
+            } else {
+                summaryContainer.textContent = summary;
+            }
+        }
+
+        helperRenderPreContextList(
+            'helperPreRequirementContent',
+            context.content,
+            'aiHelper.requirementContentEmpty',
+            '無需求內容條目',
+        );
+        helperRenderPreContextList(
+            'helperPreSpecRequirements',
+            context.spec_requirements,
+            'aiHelper.specRequirementsEmpty',
+            '無規格需求條目',
+        );
+        helperRenderPreContextList(
+            'helperPreVerificationPoints',
+            context.verification_points,
+            'aiHelper.verificationPointsEmpty',
+            '無驗證檢核點',
+        );
+        helperRenderPreContextList(
+            'helperPreExpectedOutcomes',
+            context.expected_outcomes,
+            'aiHelper.expectedOutcomesEmpty',
+            '無預期結果條目',
+        );
+        helperRenderPreContextList(
+            'helperPreTraceMeta',
+            [
+                ...helperNormalizeTextArray(((entry || {}).trace || {}).ref_tokens),
+                ...helperNormalizeTextArray(((entry || {}).trace || {}).rid_tokens),
+            ],
+            'aiHelper.traceMetaEmpty',
+            '無 trace 參考',
+        );
     }
 
     function helperRenderPreDetail() {
@@ -1317,6 +1508,7 @@
         }
 
         helperRenderPreReqPreview(selected);
+        helperRenderRequirementContext(selected);
     }
 
     function helperSyncSelectedPreEntryFromDetail() {
@@ -1332,12 +1524,16 @@
 
         selected.g = String((sectionInput || {}).value || '未分類').trim() || '未分類';
         selected.t = String((titleInput || {}).value || '').trim();
-        selected.cat = String((categoryInput || {}).value || 'happy').trim() || 'happy';
+        selected.cat = helperNormalizeCategory((categoryInput || {}).value || selected.cat || 'happy');
         selected.st = String((stateInput || {}).value || 'ok').trim() || 'ok';
-        selected.ref = String((refInput || {}).value || '')
-            .split(',')
-            .map((item) => item.trim())
-            .filter(Boolean);
+        if (refInput) {
+            selected.ref = String(refInput.value || '')
+                .split(',')
+                .map((item) => item.trim())
+                .filter(Boolean);
+        } else if (!Array.isArray(selected.ref)) {
+            selected.ref = [];
+        }
 
         const note = String((noteInput || {}).value || '').trim();
         if (selected.st === 'assume') {
@@ -1350,6 +1546,11 @@
             delete selected.a;
             delete selected.q;
         }
+        selected.requirement_context = helperNormalizeRequirementContext(selected.requirement_context, selected);
+        selected.requirement_context.summary = String(selected.t || selected.requirement_context.summary || '').trim();
+        selected.trace = selected.trace && typeof selected.trace === 'object' ? selected.trace : {};
+        selected.trace.ref_tokens = helperNormalizeTextArray(selected.ref);
+        selected.trace.rid_tokens = helperNormalizeTextArray(selected.rid);
         return true;
     }
 

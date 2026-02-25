@@ -33,6 +33,10 @@ from app.models.test_case_helper import (
 )
 from app.models.lark_types import Priority
 from app.services.jira_testcase_helper_service import JiraTestCaseHelperService
+from app.services.test_case_helper import (
+    RequirementCompletenessValidator,
+    StructuredRequirementParser,
+)
 
 
 class FakeLLMService:
@@ -84,25 +88,96 @@ class FakeLLMService:
             return SimpleNamespace(
                 content=json.dumps(
                     {
-                        "sec": [
-                            {
-                                "g": "Auth",
-                                "it": [
-                                      {
-                                          "id": "010.001",
-                                          "t": "登入成功",
-                                          "det": ["帳號密碼正確"],
-                                          "rid": ["REQ-001"],
-                                      },
-                                      {
-                                          "id": "010.002",
-                                          "t": "OTP 驗證",
-                                          "det": ["OTP 有效且未過期"],
-                                          "rid": ["REQ-001"],
-                                      },
-                                  ],
-                              }
-                          ]
+                        "analysis": {
+                            "sec": [
+                                {
+                                    "g": "Auth",
+                                    "it": [
+                                        {
+                                            "id": "010.001",
+                                            "t": "登入成功",
+                                            "det": ["帳號密碼正確"],
+                                            "rid": ["REQ-001"],
+                                        },
+                                        {
+                                            "id": "010.002",
+                                            "t": "OTP 驗證",
+                                            "det": ["OTP 有效且未過期"],
+                                            "rid": ["REQ-001"],
+                                        },
+                                    ],
+                                }
+                            ]
+                        },
+                        "coverage": {
+                            "seed": [
+                                {
+                                    "g": "Auth",
+                                    "t": "登入成功流程",
+                                    "ax": "happy",
+                                    "cat": "happy",
+                                    "st": "ok",
+                                    "ref": ["010.001"],
+                                    "rid": ["REQ-001"],
+                                    "chk": ["輸入正確帳號密碼後可送出"],
+                                    "exp": ["登入成功並導向首頁"],
+                                    "pre_hint": ["帳號存在且啟用"],
+                                    "step_hint": ["輸入帳密並點擊登入"],
+                                },
+                                {
+                                    "g": "Auth",
+                                    "t": "OTP 邊界值驗證",
+                                    "ax": "edge",
+                                    "cat": "boundary",
+                                    "st": "ok",
+                                    "ref": ["010.002"],
+                                    "rid": ["REQ-001"],
+                                    "chk": ["使用有效時間臨界值 OTP"],
+                                    "exp": ["臨界值 OTP 驗證結果符合規格"],
+                                    "pre_hint": ["已準備臨界值 OTP 資料"],
+                                    "step_hint": ["在到期前後送出 OTP 並比較結果"],
+                                },
+                                {
+                                    "g": "Auth",
+                                    "t": "OTP 過期錯誤",
+                                    "ax": "error",
+                                    "cat": "negative",
+                                    "st": "ok",
+                                    "ref": ["010.002"],
+                                    "rid": ["REQ-001"],
+                                    "chk": ["輸入已過期 OTP"],
+                                    "exp": ["系統回傳 OTP 過期錯誤訊息"],
+                                    "pre_hint": ["OTP 已過期"],
+                                    "step_hint": ["輸入 OTP 並送出"],
+                                },
+                                {
+                                    "g": "Auth",
+                                    "t": "權限不足不得操作 OTP 設定",
+                                    "ax": "permission",
+                                    "cat": "negative",
+                                    "st": "assume",
+                                    "a": "需求未明確定義角色矩陣，先保留 permission 面向待確認",
+                                    "ref": ["010.001"],
+                                    "rid": ["REQ-001"],
+                                    "chk": ["使用低權限帳號操作 OTP 設定"],
+                                    "exp": ["系統拒絕操作並顯示權限不足"],
+                                    "pre_hint": ["使用不具管理權限的帳號登入"],
+                                    "step_hint": ["嘗試進入 OTP 設定頁並執行操作"],
+                                },
+                            ],
+                            "trace": {
+                                "analysis_item_count": 2,
+                                "covered_item_count": 2,
+                                "missing_ids": [],
+                                "missing_sections": [],
+                                "aspect_review": {
+                                    "happy": "covered",
+                                    "edge": "covered",
+                                    "error": "covered",
+                                    "permission": "assume",
+                                },
+                            },
+                        },
                     },
                     ensure_ascii=False,
                 ),
@@ -120,18 +195,53 @@ class FakeLLMService:
                             {
                                 "g": "Auth",
                                 "t": "登入成功流程",
+                                "ax": "happy",
                                 "cat": "happy",
                                 "st": "ok",
                                 "ref": ["010.001"],
+                                "rid": ["REQ-001"],
+                            },
+                            {
+                                "g": "Auth",
+                                "t": "OTP 邊界值驗證",
+                                "ax": "edge",
+                                "cat": "boundary",
+                                "st": "ok",
+                                "ref": ["010.002"],
+                                "rid": ["REQ-001"],
                             },
                             {
                                 "g": "Auth",
                                 "t": "OTP 過期錯誤",
+                                "ax": "error",
                                 "cat": "negative",
                                 "st": "ok",
                                 "ref": ["010.002"],
+                                "rid": ["REQ-001"],
                             },
-                        ]
+                            {
+                                "g": "Auth",
+                                "t": "權限不足不得操作 OTP 設定",
+                                "ax": "permission",
+                                "cat": "negative",
+                                "st": "assume",
+                                "a": "需求未明確定義角色矩陣",
+                                "ref": ["010.001"],
+                                "rid": ["REQ-001"],
+                            },
+                        ],
+                        "trace": {
+                            "analysis_item_count": 2,
+                            "covered_item_count": 2,
+                            "missing_ids": [],
+                            "missing_sections": [],
+                            "aspect_review": {
+                                "happy": "covered",
+                                "edge": "covered",
+                                "error": "covered",
+                                "permission": "assume",
+                            },
+                        },
                     },
                     ensure_ascii=False,
                 ),
@@ -238,27 +348,41 @@ class FakeLLMServiceMalformedAnalysisCoverage(FakeLLMService):
                 content=(
                     "```json\n"
                     "{\n"
-                    '  "sec": [\n'
-                    "    {\n"
-                    '      "g": "Auth",\n'
-                    '      "it": [\n'
-                    "        {\n"
-                    '          "id": "010.001",\n'
-                    '          "t": "登入成功\n'
+                    '  "analysis": {\n'
+                    '    "sec": [\n'
+                    "      {\n"
+                    '        "g": "Auth",\n'
+                    '        "it": [\n'
+                    "          {\n"
+                    '            "id": "010.001",\n'
+                    '            "t": "登入成功\n'
                     '流程",\n'
-                    '          "det": ["帳號密碼正確"]\n'
-                    "        }\n"
-                    "      ]\n"
-                    "    }\n"
-                    "  ],\n"
-                    '  "it": [\n'
-                    "    {\n"
-                    '      "id": "010.001",\n'
-                    '      "t": "登入成功\n'
-                    '流程",\n'
-                    '      "det": ["帳號密碼正確"]\n'
-                    "    }\n"
-                    "  ]\n"
+                    '            "det": ["帳號密碼正確"],\n'
+                    '            "rid": ["REQ-001"]\n'
+                    "          },\n"
+                    "          {\n"
+                    '            "id": "010.002",\n'
+                    '            "t": "OTP 驗證",\n'
+                    '            "det": ["OTP 有效且未過期"],\n'
+                    '            "rid": ["REQ-001"]\n'
+                    "          }\n"
+                    "        ]\n"
+                    "      }\n"
+                    "    ],\n"
+                    '    "it": [\n'
+                    '      {"id":"010.001","t":"登入成功\n流程","det":["帳號密碼正確"],"rid":["REQ-001"]},\n'
+                    '      {"id":"010.002","t":"OTP 驗證","det":["OTP 有效且未過期"],"rid":["REQ-001"]}\n'
+                    "    ]\n"
+                    "  },\n"
+                    '  "coverage": {\n'
+                    '    "seed": [\n'
+                    '      {"g":"Auth","t":"登入成功流程","ax":"happy","cat":"happy","st":"ok","ref":["010.001"],"rid":["REQ-001"]},\n'
+                    '      {"g":"Auth","t":"OTP 邊界值驗證","ax":"edge","cat":"boundary","st":"ok","ref":["010.002"],"rid":["REQ-001"]},\n'
+                    '      {"g":"Auth","t":"OTP 過期錯誤","ax":"error","cat":"negative","st":"ok","ref":["010.002"],"rid":["REQ-001"]},\n'
+                    '      {"g":"Auth","t":"權限不足不得操作 OTP 設定","ax":"permission","cat":"negative","st":"assume","a":"需求未明確定義角色矩陣","ref":["010.001"],"rid":["REQ-001"]}\n'
+                    "    ],\n"
+                    '    "trace":{"analysis_item_count":2,"covered_item_count":2,"missing_ids":[],"missing_sections":[]}\n'
+                    "  }\n"
                     "}\n"
                     "```"
                 ),
@@ -303,66 +427,230 @@ class FakeLLMServiceMalformedAnalysisCoverage(FakeLLMService):
 class FakeLLMServiceCoverageRepair(FakeLLMService):
     def __init__(self):
         super().__init__()
-        self.coverage_calls = 0
+        self.analysis_repair_calls = 0
 
     async def call_stage(self, *, stage, prompt, system_prompt_override=None, max_tokens=4000):
-        if stage == "coverage":
-            self.coverage_calls += 1
-            if self.coverage_calls == 1:
+        prompt_text = str(prompt or "")
+        if (
+            stage == "analysis"
+            and "需求結構化引擎" not in prompt_text
+            and "可編輯 Markdown" not in prompt_text
+        ):
+            self.analysis_repair_calls += 1
+            if self.analysis_repair_calls == 1:
                 return SimpleNamespace(
                     content=(
                         '{\n'
-                        '  "seed": [\n'
-                        "    {\n"
-                        '      "g": "Auth",\n'
-                        '      "t": "登入成功流程,\n'
-                        '      "cat": "happy",\n'
-                        '      "st": "ok",\n'
-                        '      "ref": ["010.001"]\n'
-                        "    }\n"
-                        "  ]\n"
+                        '  "analysis": {\n'
+                        '    "sec": [\n'
+                        "      {\n"
+                        '        "g": "Auth",\n'
+                        '        "it": [\n'
+                        "          {\n"
+                        '            "id": "010.001",\n'
+                        '            "t": "登入成功流程,\n'
+                        '            "det": ["帳號密碼正確"]\n'
+                        "          }\n"
+                        "        ]\n"
+                        "      }\n"
+                        "    ]\n"
+                        "  },\n"
+                        '  "coverage": {"seed":[{"g":"Auth","t":"登入成功流程","cat":"happy","st":"ok","ref":["010.001"]}]}\n'
                         "}\n"
                     ),
                     usage={"prompt_tokens": 22, "completion_tokens": 31, "total_tokens": 53},
                     cost=0.0,
                     cost_note="",
-                    response_id="coverage-broken-1",
+                    response_id="analysis-broken-1",
                 )
-            return SimpleNamespace(
-                content=json.dumps(
-                    {
-                        "sec": [
-                            {
-                                "g": "Auth",
+                return SimpleNamespace(
+                    content=json.dumps(
+                        {
+                            "analysis": {
+                                "sec": [
+                                    {
+                                        "g": "Auth",
+                                        "it": [
+                                            {
+                                                "id": "010.001",
+                                                "t": "登入成功流程",
+                                                "det": ["帳號密碼正確"],
+                                                "rid": ["REQ-001"],
+                                            },
+                                            {
+                                                "id": "010.002",
+                                                "t": "OTP 驗證",
+                                                "det": ["OTP 有效且未過期"],
+                                                "rid": ["REQ-001"],
+                                            },
+                                        ],
+                                    }
+                                ],
+                                "it": [
+                                    {
+                                        "id": "010.001",
+                                        "t": "登入成功流程",
+                                        "det": ["帳號密碼正確"],
+                                        "rid": ["REQ-001"],
+                                    },
+                                    {
+                                        "id": "010.002",
+                                        "t": "OTP 驗證",
+                                        "det": ["OTP 有效且未過期"],
+                                        "rid": ["REQ-001"],
+                                    },
+                                ],
+                            },
+                            "coverage": {
                                 "seed": [
                                     {
                                         "g": "Auth",
                                         "t": "登入成功流程",
+                                        "ax": "happy",
                                         "cat": "happy",
                                         "st": "ok",
                                         "ref": ["010.001"],
+                                        "rid": ["REQ-001"],
+                                    },
+                                    {
+                                        "g": "Auth",
+                                        "t": "OTP 邊界值驗證",
+                                        "ax": "edge",
+                                        "cat": "boundary",
+                                        "st": "ok",
+                                        "ref": ["010.002"],
+                                        "rid": ["REQ-001"],
+                                    },
+                                    {
+                                        "g": "Auth",
+                                        "t": "OTP 過期錯誤",
+                                        "ax": "error",
+                                        "cat": "negative",
+                                        "st": "ok",
+                                        "ref": ["010.002"],
+                                        "rid": ["REQ-001"],
+                                    },
+                                    {
+                                        "g": "Auth",
+                                        "t": "權限不足不得操作 OTP 設定",
+                                        "ax": "permission",
+                                        "cat": "negative",
+                                        "st": "assume",
+                                        "a": "需求未明確定義角色矩陣",
+                                        "ref": ["010.001"],
+                                        "rid": ["REQ-001"],
                                     }
                                 ],
-                            }
-                        ],
-                        "seed": [
-                            {
-                                "g": "Auth",
-                                "t": "登入成功流程",
-                                "cat": "happy",
-                                "st": "ok",
-                                "ref": ["010.001"],
-                            }
-                        ],
+                                "trace": {
+                                    "analysis_item_count": 2,
+                                    "covered_item_count": 2,
+                                    "missing_ids": [],
+                                    "missing_sections": [],
+                                },
+                            },
+                        },
+                        ensure_ascii=False,
+                    ),
+                usage={"prompt_tokens": 16, "completion_tokens": 20, "total_tokens": 36},
+                cost=0.0,
+                cost_note="",
+                response_id="analysis-repair-2",
+            )
+
+        return await super().call_stage(
+            stage=stage,
+            prompt=prompt,
+            system_prompt_override=system_prompt_override,
+            max_tokens=max_tokens,
+        )
+
+
+class FakeLLMServiceMissingMergedCoverageThenRecover(FakeLLMService):
+    async def call_stage(self, *, stage, prompt, system_prompt_override=None, max_tokens=4000):
+        prompt_text = str(prompt or "")
+        if stage == "analysis":
+            if "需求結構化引擎" in prompt_text or "可編輯 Markdown" in prompt_text:
+                return await super().call_stage(
+                    stage=stage,
+                    prompt=prompt,
+                    system_prompt_override=system_prompt_override,
+                    max_tokens=max_tokens,
+                )
+            if (
+                "Coverage 轉換器" in prompt_text
+                or "QA 測試設計師" in prompt_text
+                or "Analysis JSON:" in prompt_text
+                or "ANALYSIS_JSON=" in prompt_text
+            ):
+                return SimpleNamespace(
+                    content=json.dumps(
+                        {
+                            "seed": [
+                                {
+                                    "g": "Auth",
+                                    "t": "登入成功流程",
+                                    "cat": "happy",
+                                    "st": "ok",
+                                    "ref": ["010.001"],
+                                    "rid": ["REQ-001"],
+                                    "chk": ["輸入正確帳密可送出"],
+                                    "exp": ["登入成功"],
+                                    "pre_hint": ["帳號存在且啟用"],
+                                    "step_hint": ["輸入帳密後點擊登入"],
+                                }
+                            ],
+                            "trace": {
+                                "analysis_item_count": 1,
+                                "covered_item_count": 1,
+                                "missing_ids": [],
+                                "missing_sections": [],
+                            },
+                        },
+                        ensure_ascii=False,
+                    ),
+                    usage={"prompt_tokens": 8, "completion_tokens": 12, "total_tokens": 20},
+                    cost=0.0,
+                    cost_note="",
+                    response_id="analysis-coverage-recover",
+                )
+            return SimpleNamespace(
+                content=json.dumps(
+                    {
+                        "analysis": {
+                            "sec": [
+                                {
+                                    "g": "Auth",
+                                    "it": [
+                                        {
+                                            "id": "010.001",
+                                            "t": "登入成功",
+                                            "det": ["帳號密碼正確"],
+                                            "chk": ["輸入正確帳密並送出"],
+                                            "exp": ["登入成功並導向首頁"],
+                                            "rid": ["REQ-001"],
+                                        }
+                                    ],
+                                }
+                            ],
+                            "it": [
+                                {
+                                    "id": "010.001",
+                                    "t": "登入成功",
+                                    "det": ["帳號密碼正確"],
+                                    "chk": ["輸入正確帳密並送出"],
+                                    "exp": ["登入成功並導向首頁"],
+                                    "rid": ["REQ-001"],
+                                }
+                            ],
+                        }
                     },
                     ensure_ascii=False,
                 ),
                 usage={"prompt_tokens": 16, "completion_tokens": 20, "total_tokens": 36},
                 cost=0.0,
                 cost_note="",
-                response_id="coverage-repair-2",
+                response_id="analysis-missing-coverage",
             )
-
         return await super().call_stage(
             stage=stage,
             prompt=prompt,
@@ -413,39 +701,88 @@ class FakeLLMServiceCoverageBackfill(FakeLLMService):
             return SimpleNamespace(
                 content=json.dumps(
                     {
-                        "sec": [
-                            {
-                                "g": "Reference",
-                                "it": [
-                                    {
-                                        "id": "010.001",
-                                        "t": "固定欄位顯示",
-                                        "det": ["列數/關聯帳號/關聯項目/關聯度固定"],
-                                        "rid": ["REQ-001", "REF-001"],
-                                    },
-                                    {
-                                        "id": "010.002",
-                                        "t": "響應式折疊規則",
-                                        "det": ["縮窄時保留固定欄位可見"],
-                                        "rid": ["REQ-002", "REF-002"],
-                                    },
-                                ],
-                            }
-                        ],
-                        "it": [
-                            {
-                                "id": "010.001",
-                                "t": "固定欄位顯示",
-                                "det": ["列數/關聯帳號/關聯項目/關聯度固定"],
-                                "rid": ["REQ-001", "REF-001"],
+                        "analysis": {
+                            "sec": [
+                                {
+                                    "g": "Reference",
+                                    "it": [
+                                        {
+                                            "id": "010.001",
+                                            "t": "固定欄位顯示",
+                                            "det": ["列數/關聯帳號/關聯項目/關聯度固定"],
+                                            "rid": ["REQ-001", "REF-001"],
+                                        },
+                                        {
+                                            "id": "010.002",
+                                            "t": "響應式折疊規則",
+                                            "det": ["縮窄時保留固定欄位可見"],
+                                            "rid": ["REQ-002", "REF-002"],
+                                        },
+                                    ],
+                                }
+                            ],
+                            "it": [
+                                {
+                                    "id": "010.001",
+                                    "t": "固定欄位顯示",
+                                    "det": ["列數/關聯帳號/關聯項目/關聯度固定"],
+                                    "rid": ["REQ-001", "REF-001"],
+                                },
+                                {
+                                    "id": "010.002",
+                                    "t": "響應式折疊規則",
+                                    "det": ["縮窄時保留固定欄位可見"],
+                                    "rid": ["REQ-002", "REF-002"],
+                                },
+                            ],
+                        },
+                        "coverage": {
+                            "seed": [
+                                {
+                                    "g": "Reference",
+                                    "t": "固定欄位水平滾動可見",
+                                    "ax": "happy",
+                                    "cat": "happy",
+                                    "st": "ok",
+                                    "ref": ["010.001"],
+                                    "rid": ["REQ-001", "REF-001"],
+                                },
+                                {
+                                    "g": "Reference",
+                                    "t": "窄螢幕折疊仍保留固定欄位",
+                                    "ax": "edge",
+                                    "cat": "boundary",
+                                    "st": "ok",
+                                    "ref": ["010.002"],
+                                    "rid": ["REQ-002", "REF-002"],
+                                },
+                                {
+                                    "g": "Reference",
+                                    "t": "固定欄位資料錯誤格式處理",
+                                    "ax": "error",
+                                    "cat": "negative",
+                                    "st": "ok",
+                                    "ref": ["010.001"],
+                                    "rid": ["REQ-001", "REF-001"],
+                                },
+                                {
+                                    "g": "Reference",
+                                    "t": "無權限角色不可檢視固定欄位",
+                                    "ax": "permission",
+                                    "cat": "negative",
+                                    "st": "assume",
+                                    "a": "需求未定義角色矩陣",
+                                    "ref": ["010.002"],
+                                    "rid": ["REQ-002", "REF-002"],
+                                },
+                            ],
+                            "trace": {
+                                "analysis_item_count": 2,
+                                "covered_item_count": 2,
+                                "missing_ids": [],
+                                "missing_sections": [],
                             },
-                            {
-                                "id": "010.002",
-                                "t": "響應式折疊規則",
-                                "det": ["縮窄時保留固定欄位可見"],
-                                "rid": ["REQ-002", "REF-002"],
-                            },
-                        ],
+                        },
                     },
                     ensure_ascii=False,
                 ),
@@ -550,43 +887,57 @@ class FakeLLMServiceCoverageNeedsDeterministicFallback(FakeLLMService):
             return SimpleNamespace(
                 content=json.dumps(
                     {
-                        "sec": [
-                            {
-                                "g": "Reference",
-                                "it": [
-                                    {
-                                        "id": "010.001",
-                                        "t": "欄位一檢核",
-                                        "det": ["第一欄位"],
-                                        "rid": ["REQ-001", "REF-001"],
-                                    },
-                                    {
-                                        "id": "010.002",
-                                        "t": "欄位二檢核",
-                                        "det": ["第二欄位"],
-                                        "rid": ["REQ-002", "REF-002"],
-                                    },
-                                    {
-                                        "id": "010.003",
-                                        "t": "欄位三檢核",
-                                        "det": ["第三欄位"],
-                                        "rid": ["REQ-003", "REF-003"],
-                                    },
-                                    {
-                                        "id": "010.004",
-                                        "t": "欄位四檢核",
-                                        "det": ["第四欄位"],
-                                        "rid": ["REQ-004", "REF-004"],
-                                    },
-                                    {
-                                        "id": "010.005",
-                                        "t": "欄位五檢核",
-                                        "det": ["第五欄位"],
-                                        "rid": ["REQ-005", "REF-005"],
-                                    },
-                                ],
-                            }
-                        ]
+                        "analysis": {
+                            "sec": [
+                                {
+                                    "g": "Reference",
+                                    "it": [
+                                        {
+                                            "id": "010.001",
+                                            "t": "欄位一檢核",
+                                            "det": ["第一欄位"],
+                                            "rid": ["REQ-001", "REF-001"],
+                                        },
+                                        {
+                                            "id": "010.002",
+                                            "t": "欄位二檢核",
+                                            "det": ["第二欄位"],
+                                            "rid": ["REQ-002", "REF-002"],
+                                        },
+                                        {
+                                            "id": "010.003",
+                                            "t": "欄位三檢核",
+                                            "det": ["第三欄位"],
+                                            "rid": ["REQ-003", "REF-003"],
+                                        },
+                                        {
+                                            "id": "010.004",
+                                            "t": "欄位四檢核",
+                                            "det": ["第四欄位"],
+                                            "rid": ["REQ-004", "REF-004"],
+                                        },
+                                        {
+                                            "id": "010.005",
+                                            "t": "欄位五檢核",
+                                            "det": ["第五欄位"],
+                                            "rid": ["REQ-005", "REF-005"],
+                                        },
+                                    ],
+                                }
+                            ]
+                        },
+                        "coverage": {
+                            "seed": [
+                                {
+                                    "g": "Reference",
+                                    "t": "欄位一檢核",
+                                    "cat": "happy",
+                                    "st": "ok",
+                                    "ref": ["010.001"],
+                                    "rid": ["REQ-001", "REF-001"],
+                                }
+                            ]
+                        },
                     },
                     ensure_ascii=False,
                 ),
@@ -640,34 +991,18 @@ class FakeLLMServiceCoverageNeedsDeterministicFallback(FakeLLMService):
 class FakeLLMServiceCoverageEmptyResponse(FakeLLMService):
     def __init__(self):
         super().__init__()
-        self.coverage_calls = 0
+        self.merged_analysis_calls = 0
 
     async def call_stage(self, *, stage, prompt, system_prompt_override=None, max_tokens=4000):
-        if stage == "coverage":
-            self.coverage_calls += 1
-            if self.coverage_calls <= 2:
+        prompt_text = str(prompt or "")
+        if (
+            stage == "analysis"
+            and "需求結構化引擎" not in prompt_text
+            and "可編輯 Markdown" not in prompt_text
+        ):
+            self.merged_analysis_calls += 1
+            if self.merged_analysis_calls <= 2:
                 raise RuntimeError("OpenRouter 回傳內容為空")
-            return SimpleNamespace(
-                content=json.dumps(
-                    {
-                        "seed": [
-                            {
-                                "g": "Auth",
-                                "t": "登入成功流程",
-                                "cat": "happy",
-                                "st": "ok",
-                                "ref": ["010.001"],
-                                "rid": ["REQ-001"],
-                            }
-                        ]
-                    },
-                    ensure_ascii=False,
-                ),
-                usage={"prompt_tokens": 9, "completion_tokens": 11, "total_tokens": 20},
-                cost=0.0,
-                cost_note="",
-                response_id="coverage-after-empty",
-            )
         return await super().call_stage(
             stage=stage,
             prompt=prompt,
@@ -678,8 +1013,83 @@ class FakeLLMServiceCoverageEmptyResponse(FakeLLMService):
 
 class FakeLLMServiceCoverageHardFailure(FakeLLMService):
     async def call_stage(self, *, stage, prompt, system_prompt_override=None, max_tokens=4000):
-        if stage == "coverage":
-            raise RuntimeError("coverage llm unavailable")
+        prompt_text = str(prompt or "")
+        if (
+            stage == "analysis"
+            and "需求結構化引擎" not in prompt_text
+            and "可編輯 Markdown" not in prompt_text
+        ):
+            raise RuntimeError("analysis llm unavailable")
+        return await super().call_stage(
+            stage=stage,
+            prompt=prompt,
+            system_prompt_override=system_prompt_override,
+            max_tokens=max_tokens,
+        )
+
+
+class FakeLLMServiceMissingCoverageAspects(FakeLLMService):
+    async def call_stage(self, *, stage, prompt, system_prompt_override=None, max_tokens=4000):
+        prompt_text = str(prompt or "")
+        if (
+            stage == "analysis"
+            and "需求結構化引擎" not in prompt_text
+            and "可編輯 Markdown" not in prompt_text
+        ):
+            return SimpleNamespace(
+                content=json.dumps(
+                    {
+                        "analysis": {
+                            "sec": [
+                                {
+                                    "g": "Auth",
+                                    "it": [
+                                        {
+                                            "id": "010.001",
+                                            "t": "登入成功",
+                                            "det": ["帳號密碼正確"],
+                                            "rid": ["REQ-001"],
+                                        },
+                                        {
+                                            "id": "010.002",
+                                            "t": "OTP 驗證",
+                                            "det": ["OTP 有效且未過期"],
+                                            "rid": ["REQ-001"],
+                                        },
+                                    ],
+                                }
+                            ]
+                        },
+                        "coverage": {
+                            "seed": [
+                                {
+                                    "g": "Auth",
+                                    "t": "登入成功流程",
+                                    "ax": "happy",
+                                    "cat": "happy",
+                                    "st": "ok",
+                                    "ref": ["010.001"],
+                                    "rid": ["REQ-001"],
+                                },
+                                {
+                                    "g": "Auth",
+                                    "t": "OTP 邊界值驗證",
+                                    "ax": "edge",
+                                    "cat": "boundary",
+                                    "st": "ok",
+                                    "ref": ["010.002"],
+                                    "rid": ["REQ-001"],
+                                },
+                            ]
+                        },
+                    },
+                    ensure_ascii=False,
+                ),
+                usage={"prompt_tokens": 16, "completion_tokens": 20, "total_tokens": 36},
+                cost=0.0,
+                cost_note="",
+                response_id="analysis-missing-aspects",
+            )
         return await super().call_stage(
             stage=stage,
             prompt=prompt,
@@ -692,6 +1102,46 @@ class FakeLLMServiceTestcaseAuditFailure(FakeLLMService):
     async def call_stage(self, *, stage, prompt, system_prompt_override=None, max_tokens=4000):
         if stage in {"testcase", "audit"}:
             raise RuntimeError(f"{stage} llm unavailable")
+        return await super().call_stage(
+            stage=stage,
+            prompt=prompt,
+            system_prompt_override=system_prompt_override,
+            max_tokens=max_tokens,
+        )
+
+
+class FakeLLMServiceForbiddenPlaceholders(FakeLLMService):
+    async def call_stage(self, *, stage, prompt, system_prompt_override=None, max_tokens=4000):
+        if stage in {"testcase", "audit"}:
+            return SimpleNamespace(
+                content=json.dumps(
+                    {
+                        "tc": [
+                            {
+                                "id": "TEMP-1",
+                                "t": "登入成功流程",
+                                "pre": ["同上"],
+                                "s": ["TBD"],
+                                "exp": ["N/A"],
+                                "priority": "Medium",
+                            },
+                            {
+                                "id": "TEMP-2",
+                                "t": "OTP 驗證",
+                                "pre": ["參考 REF-001"],
+                                "s": ["依前述步驟處理"],
+                                "exp": ["同上"],
+                                "priority": "Medium",
+                            },
+                        ]
+                    },
+                    ensure_ascii=False,
+                ),
+                usage={"prompt_tokens": 20, "completion_tokens": 20, "total_tokens": 40},
+                cost=0.0,
+                cost_note="",
+                response_id=f"{stage}-forbidden-placeholder",
+            )
         return await super().call_stage(
             stage=stage,
             prompt=prompt,
@@ -852,6 +1302,7 @@ async def test_helper_session_lifecycle_and_phase_transitions(helper_db, monkeyp
             request=HelperAnalyzeRequest(
                 requirement_markdown=normalized.markdown,
                 retry=False,
+                override_incomplete_requirement=True,
             ),
         )
         assert analyzed.session.current_phase.value == "pretestcase"
@@ -875,11 +1326,9 @@ async def test_helper_session_lifecycle_and_phase_transitions(helper_db, monkeyp
         )
         assert generated.session.current_phase.value == "testcase"
         assert generated.session.phase_status.value == "waiting_confirm"
-        assert len(generated.payload["tc"]) == 2
-        assert generated.payload["tc"][0]["id"] == "TCG-130078.010.010"
-        assert generated.payload["tc"][1]["id"] == "TCG-130078.010.020"
+        assert len(generated.payload["tc"]) == len(analyzed.payload["pretestcase"]["en"])
+        assert generated.payload["tc"][0]["id"].startswith("TCG-130078.010.")
         assert generated.payload["tc"][0]["section_path"] == "010 Auth"
-        assert generated.payload["tc"][1]["section_path"] == "010 Auth"
 
 
 @pytest.mark.asyncio
@@ -940,6 +1389,7 @@ async def test_analyze_stage_parses_malformed_llm_json_payload(helper_db, monkey
             request=HelperAnalyzeRequest(
                 requirement_markdown=normalized.markdown,
                 retry=False,
+                override_incomplete_requirement=True,
             ),
         )
 
@@ -1130,6 +1580,7 @@ async def test_analyze_stage_retries_coverage_regenerate_first_then_repair(helpe
             request=HelperAnalyzeRequest(
                 requirement_markdown=normalized.markdown,
                 retry=False,
+                override_incomplete_requirement=True,
             ),
         )
 
@@ -1142,6 +1593,70 @@ async def test_analyze_stage_retries_coverage_regenerate_first_then_repair(helpe
         assert coverage_draft.payload["repair_applied"] is False
         assert analyzed.session.current_phase.value == "pretestcase"
         assert analyzed.session.phase_status.value == "waiting_confirm"
+
+
+@pytest.mark.asyncio
+async def test_analyze_stage_errors_when_merged_output_missing_coverage_payload(
+    helper_db, monkeypatch
+):
+    seeded = _seed_basic_data(helper_db["sync"])
+    import app.services.jira_testcase_helper_service as helper_service_module
+
+    monkeypatch.setattr(
+        helper_service_module.JiraClient,
+        "get_issue",
+        lambda self, key, fields=None: {
+            "key": key,
+            "fields": {
+                "summary": "登入流程優化",
+                "description": "新增 OTP 驗證與錯誤提示",
+                "components": [{"name": "Auth"}],
+            },
+        },
+    )
+
+    async with helper_db["async"]() as async_db:
+        service = JiraTestCaseHelperService(
+            async_db,
+            llm_service=FakeLLMServiceMissingMergedCoverageThenRecover(),
+        )
+        service.settings.ai.jira_testcase_helper.enable_ir_first = True
+
+        async def _empty_similar_cases(_):
+            return ""
+
+        service._query_similar_cases = _empty_similar_cases
+
+        started = await service.start_session(
+            team_id=seeded["team_id"],
+            user_id=seeded["user_id"],
+            request=HelperSessionStartRequest(
+                test_case_set_id=seeded["set_id"],
+                output_locale="zh-TW",
+                review_locale="zh-TW",
+                initial_middle="010",
+            ),
+        )
+
+        await service.fetch_ticket(
+            team_id=seeded["team_id"],
+            session_id=started.id,
+            request=HelperTicketFetchRequest(ticket_key="TCG-130078"),
+        )
+
+        with pytest.raises(ValueError, match="Analysis 合併輸出缺少 coverage 物件"):
+            await service.analyze_and_build_pretestcase(
+                team_id=seeded["team_id"],
+                session_id=started.id,
+                request=HelperAnalyzeRequest(retry=False),
+            )
+
+        session = await service.get_session(
+            team_id=seeded["team_id"],
+            session_id=started.id,
+        )
+        assert session.current_phase.value == "analysis"
+        assert session.phase_status.value == "failed"
 
 
 @pytest.mark.asyncio
@@ -1515,6 +2030,84 @@ def test_normalize_coverage_payload_keeps_all_happy_when_no_negative_or_boundary
     assert categories == ["happy", "happy", "happy"]
 
 
+def test_build_deterministic_testcase_from_entry_sanitizes_forbidden_placeholders():
+    service = JiraTestCaseHelperService(db=None, llm_service=FakeLLMService())
+    entry = {
+        "cid": "010.010",
+        "t": "待確認登入規則",
+        "st": "ask",
+        "q": "角色限制尚未定義",
+        "chk": ["同上"],
+        "exp": ["N/A"],
+        "pre_hint": ["參考 REF-001"],
+        "step_hint": ["TBD"],
+    }
+
+    testcase = service._build_deterministic_testcase_from_entry(
+        ticket_key="TCG-1",
+        entry=entry,
+    )
+
+    assert service._contains_forbidden_content(
+        testcase.get("pre", []) + testcase.get("s", []) + testcase.get("exp", [])
+    ) is False
+
+
+def test_normalize_coverage_payload_aligns_seed_group_with_analysis_ref():
+    service = JiraTestCaseHelperService(db=None, llm_service=FakeLLMService())
+    analysis_payload = {
+        "sec": [
+            {
+                "g": "後台設定（活動公告管理/邀請公告設定）",
+                "it": [
+                    {"id": "010.001", "t": "關閉活動內容模塊", "det": [], "rid": ["REQ-001"]}
+                ],
+            },
+            {
+                "g": "前台展示 - Web (PC)",
+                "it": [
+                    {"id": "010.002", "t": "公告內文置中顯示", "det": [], "rid": ["REQ-002"]}
+                ],
+            },
+        ],
+        "it": [
+            {"id": "010.001", "t": "關閉活動內容模塊", "det": [], "rid": ["REQ-001"]},
+            {"id": "010.002", "t": "公告內文置中顯示", "det": [], "rid": ["REQ-002"]},
+        ],
+    }
+    coverage_payload = {
+        "seed": [
+            {
+                "g": "General",
+                "t": "後台關閉活動內容",
+                "cat": "happy",
+                "st": "ok",
+                "ref": ["010.001"],
+            },
+            {
+                "g": "General",
+                "t": "Web 檢查內文樣式",
+                "cat": "happy",
+                "st": "ok",
+                "ref": ["010.002"],
+            },
+        ]
+    }
+
+    normalized = service._normalize_coverage_payload(coverage_payload, analysis_payload)
+    completeness = service.validate_coverage_completeness(
+        analysis_payload=analysis_payload,
+        coverage_payload=normalized,
+    )
+    group_by_ref = {seed["ref"][0]: seed["g"] for seed in normalized["seed"]}
+
+    assert group_by_ref["010.001"] == "後台設定（活動公告管理/邀請公告設定）"
+    assert group_by_ref["010.002"] == "前台展示 - Web (PC)"
+    assert completeness["missing_ids"] == []
+    assert completeness["missing_sections"] == []
+    assert completeness["is_complete"] is True
+
+
 def test_deterministic_backfill_does_not_force_reference_item_to_boundary():
     service = JiraTestCaseHelperService(db=None, llm_service=FakeLLMService())
     analysis_payload = {
@@ -1623,6 +2216,7 @@ async def test_long_analysis_does_not_block_concurrent_read_latency(helper_db, m
                 request=HelperAnalyzeRequest(
                     requirement_markdown="# Requirement\n\n- Login flow",
                     retry=False,
+                    override_incomplete_requirement=True,
                 ),
             )
         )
@@ -1671,7 +2265,7 @@ def test_requirement_ir_normalization_parses_reference_table_semantics():
 
 
 @pytest.mark.asyncio
-async def test_tcg_93178_regression_backfill_improves_pretestcase_coverage(helper_db, monkeypatch):
+async def test_tcg_93178_merged_analysis_outputs_complete_pretestcase_contract(helper_db, monkeypatch):
     seeded = _seed_basic_data(helper_db["sync"])
     import app.services.jira_testcase_helper_service as helper_service_module
 
@@ -1726,12 +2320,15 @@ async def test_tcg_93178_regression_backfill_improves_pretestcase_coverage(helpe
             request=HelperAnalyzeRequest(retry=False),
         )
         assert analyzed.session.current_phase.value == "pretestcase"
-        assert len(analyzed.payload["pretestcase"]["en"]) == 2
+        assert len(analyzed.payload["pretestcase"]["en"]) >= 4
         coverage_trace = analyzed.payload["coverage"]["trace"]
         assert coverage_trace["missing_ids"] == []
         assert coverage_trace["missing_sections"] == []
-        assert coverage_trace["backfill_rounds"] == 1
-        assert fake_llm.backfill_calls == 1
+        assert coverage_trace["missing_aspects"] == []
+        assert coverage_trace["backfill_rounds"] == 0
+        assert coverage_trace["deterministic_backfill_applied"] is False
+        assert coverage_trace["deterministic_backfill_seed_count"] == 0
+        assert fake_llm.backfill_calls == 0
 
         ir_draft = next(
             (draft for draft in analyzed.session.drafts if draft.phase == "requirement_ir"),
@@ -1745,7 +2342,7 @@ async def test_tcg_93178_regression_backfill_improves_pretestcase_coverage(helpe
 
 
 @pytest.mark.asyncio
-async def test_coverage_uses_deterministic_backfill_when_llm_backfill_still_missing(helper_db, monkeypatch):
+async def test_analyze_stage_fails_when_merged_coverage_is_incomplete(helper_db, monkeypatch):
     seeded = _seed_basic_data(helper_db["sync"])
     import app.services.jira_testcase_helper_service as helper_service_module
 
@@ -1766,8 +2363,6 @@ async def test_coverage_uses_deterministic_backfill_when_llm_backfill_still_miss
     async with helper_db["async"]() as async_db:
         service = JiraTestCaseHelperService(async_db, llm_service=fake_llm)
         service.settings.ai.jira_testcase_helper.enable_ir_first = True
-        service.settings.ai.jira_testcase_helper.coverage_backfill_max_rounds = 1
-        service.settings.ai.jira_testcase_helper.coverage_backfill_chunk_size = 2
 
         async def _empty_similar_cases(_):
             return ""
@@ -1790,23 +2385,19 @@ async def test_coverage_uses_deterministic_backfill_when_llm_backfill_still_miss
             request=HelperTicketFetchRequest(ticket_key="TCG-93178"),
         )
 
-        analyzed = await service.analyze_and_build_pretestcase(
+        with pytest.raises(ValueError, match="Coverage 完整性檢查未通過"):
+            await service.analyze_and_build_pretestcase(
+                team_id=seeded["team_id"],
+                session_id=started.id,
+                request=HelperAnalyzeRequest(retry=False),
+            )
+
+        session = await service.get_session(
             team_id=seeded["team_id"],
             session_id=started.id,
-            request=HelperAnalyzeRequest(retry=False),
         )
-        assert analyzed.session.current_phase.value == "pretestcase"
-        coverage_trace = analyzed.payload["coverage"]["trace"]
-        assert coverage_trace["missing_ids"] == []
-        assert coverage_trace["deterministic_backfill_applied"] is True
-        assert coverage_trace["deterministic_backfill_seed_count"] >= 1
-        assert coverage_trace["backfill_batch_count"] == 2
-        entries = analyzed.payload["pretestcase"]["en"]
-        assert len(entries) == 5
-        categories = [str(entry.get("cat") or "") for entry in entries]
-        assert "happy" in categories
-        assert categories.count("boundary") < len(categories)
-        assert fake_llm.backfill_calls == 2
+        assert session.current_phase.value == "analysis"
+        assert session.phase_status.value == "failed"
 
 
 @pytest.mark.asyncio
@@ -1858,7 +2449,7 @@ async def test_coverage_empty_response_retries_then_succeeds(helper_db, monkeypa
             request=HelperAnalyzeRequest(retry=False),
         )
         assert analyzed.session.current_phase.value == "pretestcase"
-        assert fake_llm.coverage_calls >= 3
+        assert fake_llm.merged_analysis_calls >= 3
         coverage_trace = analyzed.payload["coverage"]["trace"]
         assert coverage_trace["missing_ids"] == []
 
@@ -1884,11 +2475,9 @@ async def test_coverage_gate_blocks_pretestcase_when_backfill_disabled(helper_db
     async with helper_db["async"]() as async_db:
         service = JiraTestCaseHelperService(
             async_db,
-            llm_service=FakeLLMServiceCoverageBackfill(),
+            llm_service=FakeLLMServiceMissingCoverageAspects(),
         )
         service.settings.ai.jira_testcase_helper.enable_ir_first = True
-        service.settings.ai.jira_testcase_helper.coverage_backfill_max_rounds = 0
-        service.settings.ai.jira_testcase_helper.coverage_force_complete = False
 
         async def _empty_similar_cases(_):
             return ""
@@ -1911,7 +2500,7 @@ async def test_coverage_gate_blocks_pretestcase_when_backfill_disabled(helper_db
             request=HelperTicketFetchRequest(ticket_key="TCG-93178"),
         )
 
-        with pytest.raises(ValueError, match="Coverage 完整性檢查未通過"):
+        with pytest.raises(ValueError, match="Coverage 面向檢查未通過"):
             await service.analyze_and_build_pretestcase(
                 team_id=seeded["team_id"],
                 session_id=started.id,
@@ -1927,7 +2516,7 @@ async def test_coverage_gate_blocks_pretestcase_when_backfill_disabled(helper_db
 
 
 @pytest.mark.asyncio
-async def test_coverage_force_complete_uses_deterministic_fallback_when_llm_failed(helper_db, monkeypatch):
+async def test_analyze_stage_fails_when_llm_hard_failure(helper_db, monkeypatch):
     seeded = _seed_basic_data(helper_db["sync"])
     import app.services.jira_testcase_helper_service as helper_service_module
 
@@ -1950,8 +2539,6 @@ async def test_coverage_force_complete_uses_deterministic_fallback_when_llm_fail
             llm_service=FakeLLMServiceCoverageHardFailure(),
         )
         service.settings.ai.jira_testcase_helper.enable_ir_first = True
-        service.settings.ai.jira_testcase_helper.coverage_backfill_max_rounds = 0
-        service.settings.ai.jira_testcase_helper.coverage_force_complete = True
 
         async def _empty_similar_cases(_):
             return ""
@@ -1974,16 +2561,19 @@ async def test_coverage_force_complete_uses_deterministic_fallback_when_llm_fail
             request=HelperTicketFetchRequest(ticket_key="TCG-130078"),
         )
 
-        analyzed = await service.analyze_and_build_pretestcase(
+        with pytest.raises(RuntimeError, match="analysis llm unavailable"):
+            await service.analyze_and_build_pretestcase(
+                team_id=seeded["team_id"],
+                session_id=started.id,
+                request=HelperAnalyzeRequest(retry=False),
+            )
+
+        session = await service.get_session(
             team_id=seeded["team_id"],
             session_id=started.id,
-            request=HelperAnalyzeRequest(retry=False),
         )
-        assert analyzed.session.current_phase.value == "pretestcase"
-        assert len(analyzed.payload["pretestcase"]["en"]) >= 1
-        coverage_trace = analyzed.payload["coverage"]["trace"]
-        assert coverage_trace["missing_ids"] == []
-        assert coverage_trace["coverage_fallback_applied"] is True
+        assert session.current_phase.value == "analysis"
+        assert session.phase_status.value == "failed"
 
 
 @pytest.mark.asyncio
@@ -2054,3 +2644,233 @@ async def test_generate_uses_deterministic_fallback_when_testcase_and_audit_llm_
         assert len(generated.payload["tc"]) == len(analyzed.payload["pretestcase"]["en"])
         assert len(generated.payload["testcase_fallback_sections"]) >= 1
         assert len(generated.payload["audit_fallback_sections"]) >= 1
+
+
+@pytest.mark.asyncio
+async def test_generate_does_not_interrupt_when_testcase_contains_forbidden_placeholders(
+    helper_db,
+    monkeypatch,
+):
+    seeded = _seed_basic_data(helper_db["sync"])
+    import app.services.jira_testcase_helper_service as helper_service_module
+
+    monkeypatch.setattr(
+        helper_service_module.JiraClient,
+        "get_issue",
+        lambda self, key, fields=None: {
+            "key": key,
+            "fields": {
+                "summary": "登入流程優化",
+                "description": "新增 OTP 驗證與錯誤提示",
+                "components": [{"name": "Auth"}],
+            },
+        },
+    )
+
+    async with helper_db["async"]() as async_db:
+        service = JiraTestCaseHelperService(
+            async_db,
+            llm_service=FakeLLMServiceForbiddenPlaceholders(),
+        )
+        service.settings.ai.jira_testcase_helper.testcase_force_complete = True
+
+        async def _empty_similar_cases(_):
+            return ""
+
+        async def _empty_generation_similar_cases(*args, **kwargs):
+            return {"text": "", "retrieved_refs": []}
+
+        service._query_generation_similar_cases = _empty_generation_similar_cases
+        service._query_similar_cases = _empty_similar_cases
+
+        started = await service.start_session(
+            team_id=seeded["team_id"],
+            user_id=seeded["user_id"],
+            request=HelperSessionStartRequest(
+                test_case_set_id=seeded["set_id"],
+                output_locale="zh-TW",
+                review_locale="zh-TW",
+                initial_middle="010",
+            ),
+        )
+        await service.fetch_ticket(
+            team_id=seeded["team_id"],
+            session_id=started.id,
+            request=HelperTicketFetchRequest(ticket_key="TCG-130078"),
+        )
+        analyzed = await service.analyze_and_build_pretestcase(
+            team_id=seeded["team_id"],
+            session_id=started.id,
+            request=HelperAnalyzeRequest(retry=False),
+        )
+
+        generated = await service.generate_testcases(
+            team_id=seeded["team_id"],
+            session_id=started.id,
+            request=HelperGenerateRequest(
+                pretestcase_payload=analyzed.payload["pretestcase"],
+                retry=False,
+            ),
+        )
+
+        assert generated.session.current_phase.value == "testcase"
+        assert generated.session.phase_status.value == "waiting_confirm"
+        assert len(generated.payload["tc"]) == len(analyzed.payload["pretestcase"]["en"])
+        for testcase in generated.payload["tc"]:
+            values = (testcase.get("pre") or []) + (testcase.get("s") or []) + (
+                testcase.get("exp") or []
+            )
+            assert service._contains_forbidden_content(values) is False
+
+
+def test_structured_requirement_parser_extracts_required_sections():
+    parser = StructuredRequirementParser()
+    requirement_text = """
+h1. Menu（功能路徑）
+ * 活動紅利 > 活動公告管理 > 公告列表 > 邀請公告設定
+
+----
+h1. User Story Narrative（使用者故事敘述）
+ * *As a* 後台管理者
+ * *I want* 關閉活動內容模塊時前台仍顯示公告內文
+ * *So that* 玩家仍可閱讀詳細說明
+
+----
+h1. Criteria
+ * *【現況描述】* 關閉模塊後 additionalContents 不回傳
+ * *【邏輯調整】* 新增活動內容開關欄位並回傳公告內文
+
+----
+h1. Technical Specifications（技術規格）
+ * API 需額外提供 Boolean 欄位供前端判斷
+
+----
+h1. Acceptance Criteria（驗收標準）
+h2. Scenario 1: 後台關閉活動內容模塊（Web 端驗證）
+ * *Given* 管理者將活動內容模塊設定為關閉
+ * *When* 玩家透過 Web 端開啟公告
+ * *Then* 活動內容板塊不顯示且公告內文正常
+
+----
+h3. API路徑
+ * http://10.80.1.20:7001/promo-fe/swagger-ui/index.html
+""".strip()
+
+    structured = parser.parse(requirement_text)
+    assert structured["schema_version"] == "structured_requirement.v1"
+    assert len(structured["menu_paths"]) == 1
+    assert structured["user_story_narrative"]["as_a"] == "後台管理者"
+    assert structured["user_story_narrative"]["i_want"].startswith("關閉活動內容模塊")
+    assert structured["user_story_narrative"]["so_that"].startswith("玩家仍可閱讀")
+    assert len(structured["criteria"]["items"]) >= 2
+    assert len(structured["technical_specifications"]["items"]) >= 1
+    assert len(structured["acceptance_criteria"]["scenarios"]) == 1
+    scenario = structured["acceptance_criteria"]["scenarios"][0]
+    assert scenario["given"] and scenario["when"] and scenario["then"]
+    assert scenario["requirement_key"].startswith("ACC-")
+    assert structured["api_paths"][0].startswith("http://10.80.1.20")
+    assert len(structured["requirement_units"]) >= 5
+
+
+def test_requirement_completeness_validator_reports_missing_items():
+    validator = RequirementCompletenessValidator()
+    payload = {
+        "schema_version": "structured_requirement.v1",
+        "menu_paths": [],
+        "user_story_narrative": {"as_a": "", "i_want": "x", "so_that": ""},
+        "criteria": {"items": []},
+        "technical_specifications": {"items": []},
+        "acceptance_criteria": {"scenarios": [{"title": "S1", "given": [], "when": [], "then": []}]},
+        "api_paths": [],
+    }
+
+    result = validator.validate(payload)
+    assert result["is_complete"] is False
+    assert result["quality_level"] == "low"
+    assert "menu_paths" in result["missing_sections"]
+    assert "criteria" in result["missing_sections"]
+    assert "user_story_narrative.as_a" in result["missing_fields"]
+    assert "acceptance_criteria.scenarios[1].given" in result["missing_fields"]
+
+
+@pytest.mark.asyncio
+async def test_analyze_warning_gate_requires_override_then_returns_requirement_rich_pretestcase(
+    helper_db,
+    monkeypatch,
+):
+    seeded = _seed_basic_data(helper_db["sync"])
+    import app.services.jira_testcase_helper_service as helper_service_module
+
+    monkeypatch.setattr(
+        helper_service_module.JiraClient,
+        "get_issue",
+        lambda self, key, fields=None: {
+            "key": key,
+            "fields": {
+                "summary": "登入流程優化",
+                "description": "新增 OTP 驗證與錯誤提示",
+                "components": [{"name": "Auth"}],
+            },
+        },
+    )
+
+    async with helper_db["async"]() as async_db:
+        service = JiraTestCaseHelperService(async_db, llm_service=FakeLLMService())
+
+        started = await service.start_session(
+            team_id=seeded["team_id"],
+            user_id=seeded["user_id"],
+            request=HelperSessionStartRequest(
+                test_case_set_id=seeded["set_id"],
+                output_locale="zh-TW",
+                review_locale="zh-TW",
+                initial_middle="010",
+            ),
+        )
+        await service.fetch_ticket(
+            team_id=seeded["team_id"],
+            session_id=started.id,
+            request=HelperTicketFetchRequest(ticket_key="TCG-130078"),
+        )
+
+        incomplete_requirement = """
+h1. Menu
+ * 活動紅利 > 活動公告管理
+
+h1. Criteria
+ * 關閉活動內容時公告內文仍需顯示
+""".strip()
+
+        warning_result = await service.analyze_and_build_pretestcase(
+            team_id=seeded["team_id"],
+            session_id=started.id,
+            request=HelperAnalyzeRequest(
+                requirement_markdown=incomplete_requirement,
+                retry=False,
+            ),
+        )
+        assert warning_result.stage == "requirement_validation_warning"
+        assert warning_result.payload["requires_override"] is True
+        assert warning_result.payload["warning"]["quality_level"] in {"medium", "low"}
+        assert warning_result.session.current_phase.value == "requirement"
+
+        analyzed = await service.analyze_and_build_pretestcase(
+            team_id=seeded["team_id"],
+            session_id=started.id,
+            request=HelperAnalyzeRequest(
+                requirement_markdown=incomplete_requirement,
+                retry=False,
+                override_incomplete_requirement=True,
+            ),
+            override_actor={"user_id": seeded["user_id"], "username": "helper-admin"},
+        )
+
+        assert analyzed.stage == "analysis_coverage"
+        assert analyzed.session.current_phase.value == "pretestcase"
+        first_entry = analyzed.payload["pretestcase"]["en"][0]
+        assert first_entry["cat"] in {"happy", "negative", "boundary"}
+        assert "requirement_context" in first_entry
+        assert first_entry["requirement_context"]["summary"]
+        assert isinstance(first_entry["requirement_context"]["spec_requirements"], list)
+        assert isinstance(first_entry["requirement_context"]["verification_points"], list)
+        assert isinstance(first_entry["requirement_context"]["expected_outcomes"], list)

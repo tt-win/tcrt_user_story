@@ -171,6 +171,94 @@ def test_ir_first_config_and_prompt_keys_can_be_overridden(tmp_path):
     assert helper.prompts.coverage_backfill == "backfill {missing_ids_json}"
 
 
+def test_render_machine_prompt_falls_back_when_analysis_prompt_lacks_merged_contract(tmp_path):
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        "app:\n"
+        "  port: 9999\n"
+        "openrouter:\n"
+        "  api_key: ''\n"
+        "ai:\n"
+        "  jira_testcase_helper:\n"
+        "    prompts:\n"
+        "      analysis: 'machine-source {ticket_key} {review_language}'\n",
+        encoding="utf-8",
+    )
+
+    loaded = Settings.from_env_and_file(str(config_path))
+    service = JiraTestCaseHelperPromptService(loaded.ai.jira_testcase_helper)
+    rendered = service.render_machine_stage_prompt(
+        "analysis",
+        {"ticket_key": "TCG-1", "review_language": "繁體中文"},
+    )
+    assert "Analysis+Coverage 合併轉換器" in rendered
+    assert "TCG=TCG-1" in rendered
+    assert "REQUIREMENT_IR_JSON" in rendered
+
+
+def test_render_machine_prompt_uses_config_analysis_when_contract_is_merged(tmp_path):
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        "app:\n"
+        "  port: 9999\n"
+        "openrouter:\n"
+        "  api_key: ''\n"
+        "ai:\n"
+        "  jira_testcase_helper:\n"
+        "    prompts:\n"
+        "      analysis: '一次輸出 analysis 與 coverage，並考慮 happy path/edge test cases/error handling/permission，使用 seed.ax；ticket={ticket_key}'\n",
+        encoding="utf-8",
+    )
+
+    loaded = Settings.from_env_and_file(str(config_path))
+    service = JiraTestCaseHelperPromptService(loaded.ai.jira_testcase_helper)
+    rendered = service.render_machine_stage_prompt(
+        "analysis",
+        {"ticket_key": "TCG-9", "review_language": "繁體中文"},
+    )
+    assert "ticket=TCG-9" in rendered
+    assert "seed.ax" in rendered
+
+
+def test_render_machine_testcase_prompt_requires_detailed_pre_step_exp(tmp_path):
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        "app:\n"
+        "  port: 9999\n"
+        "openrouter:\n"
+        "  api_key: ''\n",
+        encoding="utf-8",
+    )
+    loaded = Settings.from_env_and_file(str(config_path))
+    service = JiraTestCaseHelperPromptService(loaded.ai.jira_testcase_helper)
+    rendered = service.render_machine_stage_prompt(
+        "testcase",
+        {
+            "output_language": "繁體中文",
+            "ticket_key": "TCG-130078",
+            "section_name": "Auth",
+            "section_no": "010",
+            "coverage_questions_json": '{"sec":[]}',
+        },
+    )
+
+    assert ("pre 必須至少 2 條" in rendered) or ("pre 至少 2 條" in rendered)
+    assert ("s 必須至少 3 步" in rendered) or ("s 至少 3 步" in rendered)
+    assert "exp 必須且只能" in rendered
+    assert (
+        "禁止在 pre/s/exp 使用 REF/同上/略/TBD/N/A" in rendered
+        or "pre/s/exp 禁止出現 REF/同上/略/TBD/N/A" in rendered
+    )
+
+
+def test_prompt_service_exposes_contract_versions():
+    helper = Settings().ai.jira_testcase_helper
+    service = JiraTestCaseHelperPromptService(helper)
+    versions = service.get_contract_versions()
+    assert versions["prompt_contract_version"] == helper.prompt_contract_version
+    assert versions["payload_contract_version"] == helper.payload_contract_version
+
+
 def test_legacy_stage_model_alias_resolves_to_preview():
     assert (
         JiraTestCaseHelperLLMService._resolve_stage_model_id("google/gemini-3-flash")

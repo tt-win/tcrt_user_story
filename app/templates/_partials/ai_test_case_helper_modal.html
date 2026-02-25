@@ -145,8 +145,6 @@
                                                             <option value="happy">happy</option>
                                                             <option value="negative">negative</option>
                                                             <option value="boundary">boundary</option>
-                                                            <option value="permission">permission</option>
-                                                            <option value="error">error</option>
                                                         </select>
                                                     </div>
                                                 </div>
@@ -159,7 +157,7 @@
                                                             <option value="ask">ask</option>
                                                         </select>
                                                     </div>
-                                                    <div class="col-md-8">
+                                                    <div class="col-md-8 d-none">
                                                         <label for="helperPreRefInput" class="form-label form-label-sm" data-i18n="aiHelper.ref">需求對應</label>
                                                         <input type="text" class="form-control form-control-sm" id="helperPreRefInput" placeholder="REQ-001, AC-2">
                                                     </div>
@@ -173,8 +171,32 @@
                                                     <textarea class="form-control form-control-sm" id="helperPreNoteInput" rows="3"></textarea>
                                                 </div>
                                                 <div class="mb-2">
+                                                    <label class="form-label form-label-sm" data-i18n="aiHelper.requirementSummaryTitle">需求摘要</label>
+                                                    <div id="helperPreRequirementSummary" class="tc-helper-mini-preview"></div>
+                                                </div>
+                                                <div class="mb-2">
+                                                    <label class="form-label form-label-sm" data-i18n="aiHelper.requirementContentTitle">需求內容</label>
+                                                    <div id="helperPreRequirementContent" class="tc-helper-mini-preview"></div>
+                                                </div>
+                                                <div class="mb-2">
+                                                    <label class="form-label form-label-sm" data-i18n="aiHelper.specRequirementsTitle">規格要求</label>
+                                                    <div id="helperPreSpecRequirements" class="tc-helper-mini-preview"></div>
+                                                </div>
+                                                <div class="mb-2">
+                                                    <label class="form-label form-label-sm" data-i18n="aiHelper.verificationPointsTitle">驗證檢核點</label>
+                                                    <div id="helperPreVerificationPoints" class="tc-helper-mini-preview"></div>
+                                                </div>
+                                                <div class="mb-2">
+                                                    <label class="form-label form-label-sm" data-i18n="aiHelper.expectedOutcomesTitle">預期結果</label>
+                                                    <div id="helperPreExpectedOutcomes" class="tc-helper-mini-preview"></div>
+                                                </div>
+                                                <div class="mb-2">
                                                     <label class="form-label form-label-sm" data-i18n="aiHelper.reqMappingTitle">需求映射</label>
                                                     <div id="helperPreReqPreview" class="tc-helper-mini-preview"></div>
+                                                </div>
+                                                <div class="mb-2">
+                                                    <label class="form-label form-label-sm" data-i18n="aiHelper.traceMetaTitle">追溯參考（非主要）</label>
+                                                    <div id="helperPreTraceMeta" class="tc-helper-mini-preview"></div>
                                                 </div>
                                             </div>
                                             <div class="d-flex justify-content-end tc-helper-detail-actions">
