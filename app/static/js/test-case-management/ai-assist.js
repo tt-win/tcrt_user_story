@@ -29,6 +29,10 @@ function getAIAssistUiLocale() {
     return navigator.language || 'en-US';
 }
 
+function hasAIAssistEntryPoint() {
+    return Boolean(document.getElementById('aiAssistUnifiedBtn'));
+}
+
 function setAIAssistLoading(isLoading) {
     const loadingEl = document.getElementById('aiAssistLoading');
     const regenerateBtn = document.getElementById('aiAssistRegenerateBtn');
@@ -175,6 +179,9 @@ function updateAIAssistPreview(meta) {
 }
 
 function openAIAssistModal() {
+    if (!hasAIAssistEntryPoint()) return;
+    if (!initializeAIAssistModal()) return;
+
     const fieldValues = aiAssistFieldConfig.map(meta => {
         const textarea = document.getElementById(meta.fieldId);
         return { meta, value: String(textarea ? textarea.value : '') };
@@ -190,7 +197,6 @@ function openAIAssistModal() {
         return;
     }
 
-    initializeAIAssistModal();
     aiAssistHasResponse = false;
 
     fieldValues.forEach(({ meta, value }) => {
@@ -249,9 +255,10 @@ function applyAIAssistResult(applyAll) {
 }
 
 function initializeAIAssistModal() {
-    if (aiAssistInitialized) return;
+    if (!hasAIAssistEntryPoint()) return false;
+    if (aiAssistInitialized) return true;
     const modalEl = document.getElementById('aiAssistModal');
-    if (!modalEl) return;
+    if (!modalEl) return false;
     aiAssistModalInstance = new bootstrap.Modal(modalEl);
     const regenerateBtn = document.getElementById('aiAssistRegenerateBtn');
     const applySelectedBtn = document.getElementById('aiAssistApplySelectedBtn');
@@ -308,11 +315,14 @@ function initializeAIAssistModal() {
         updateAIAssistActionLabel();
     });
     aiAssistInitialized = true;
+    return true;
 }
 
 function bindAIAssistUnifiedButton() {
     const aiButton = document.getElementById('aiAssistUnifiedBtn');
-    if (!aiButton || aiButton.dataset.bound) return;
+    if (!aiButton || aiButton.dataset.bound) return false;
+    if (!initializeAIAssistModal()) return false;
     aiButton.addEventListener('click', openAIAssistModal);
     aiButton.dataset.bound = 'true';
+    return true;
 }

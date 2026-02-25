@@ -190,7 +190,6 @@ function initializeMarkdownEditor() {
     // 安全地添加幫助按鈕
     addHelpButtonsToToolbars();
     bindAIAssistUnifiedButton();
-    initializeAIAssistModal();
 
     // 附件上傳功能
     const attachmentUpload = document.getElementById('attachmentUpload');
