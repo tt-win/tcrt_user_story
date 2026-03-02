@@ -25,6 +25,12 @@ def test_helper_entrypoint_is_on_set_list_page():
     assert 'id="helperAnalyzeBtn"' not in helper_modal_partial_html
     assert 'id="helperRequirementEditor"' not in helper_modal_partial_html
     assert 'id="helperStartOverBtn"' in helper_modal_partial_html
+    assert 'id="helperSessionManagerBtn"' in helper_modal_partial_html
+    assert 'id="helperSessionManagerModal"' in helper_modal_partial_html
+    assert 'id="helperSessionManagerList"' in helper_modal_partial_html
+    assert 'id="helperSessionManagerResumeBtn"' in helper_modal_partial_html
+    assert 'id="helperSessionManagerDeleteSelectedBtn"' in helper_modal_partial_html
+    assert 'id="helperSessionManagerClearBtn"' in helper_modal_partial_html
     assert 'id="helperConfirmModal"' in helper_modal_partial_html
     assert 'id="helperConfirmOkBtn"' in helper_modal_partial_html
     assert 'id="helperConfirmCancelBtn"' in helper_modal_partial_html
@@ -92,6 +98,10 @@ def test_helper_frontend_uses_phase_api_endpoints_and_redirect_highlight():
 
     assert '/test-case-helper/sessions' in script
     assert '/sessions/${helperState.sessionId}/ticket' in script
+    assert '/test-case-helper/sessions?limit=200&offset=0' in script
+    assert '/sessions/bulk-delete' in script
+    assert '/sessions/clear' in script
+    assert "method: 'DELETE'" in script
     assert '/normalize' not in script
     assert '/analyze' in script
     assert "override_incomplete_requirement" in script
@@ -110,6 +120,17 @@ def test_helper_frontend_uses_phase_api_endpoints_and_redirect_highlight():
     assert "helperFormatSectionLabel(section.sn, name)" in script
     assert "helperSyncSelectedPreEntryFromDetail" in script
     assert "helperSyncSelectedFinalCaseFromDetail" in script
+    assert "helperOpenSessionManager" in script
+    assert "helperInitializeSessionManagerLifecycle" in script
+    assert "helperResumeSessionFromManager" in script
+    assert "reopenHelperOnManagerClose" in script
+    assert "pendingResumeSessionId" in script
+    assert "hidden.bs.modal" in script
+    assert "helperState.modalInstance.show();" in script
+    assert "await helperRestoreSession(pendingResumeSessionId, true);" in script
+    assert "const ticketKey = String(session.ticket_key || '').trim()" in script
+    assert "const sessionLabel = helperGetSessionLabel(session);" in script
+    assert "session.session_label" in script
     assert "data-helper-pre-section" in script
     assert "data-helper-final-section" in script
     assert "helperStartOverBtn" in script
@@ -177,6 +198,12 @@ def test_helper_i18n_keys_exist_in_all_locales():
         '"phasePretestcase"',
         '"phaseTestcase"',
         '"phaseCommit"',
+        '"sessionManager"',
+        '"sessionManagerTitle"',
+        '"sessionManagerResume"',
+        '"sessionManagerDeleteSelected"',
+        '"sessionManagerClearAll"',
+        '"sessionUnknownTime"',
     ]
 
     for file_path in locale_files:
@@ -219,6 +246,9 @@ def test_helper_markdown_table_style_has_visible_border():
         "grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);",
         ".tc-helper-list",
         ".tc-helper-split-right",
+        ".tc-helper-session-manager-layout",
+        ".tc-helper-session-manager-item",
+        ".tc-helper-session-manager-meta",
     ]
 
     for marker in required_css_markers:

@@ -329,9 +329,14 @@
                 </div>
             </div>
             <div class="modal-footer tc-helper-footer">
-                <button type="button" class="btn btn-outline-danger me-auto" id="helperStartOverBtn">
-                    <i class="fas fa-rotate me-2"></i><span data-i18n="aiHelper.startOver">重新開始</span>
-                </button>
+                <div class="d-flex align-items-center gap-2 me-auto">
+                    <button type="button" class="btn btn-outline-danger" id="helperStartOverBtn">
+                        <i class="fas fa-rotate me-2"></i><span data-i18n="aiHelper.startOver">重新開始</span>
+                    </button>
+                    <button type="button" class="btn btn-outline-info" id="helperSessionManagerBtn">
+                        <i class="fas fa-clock-rotate-left me-2"></i><span data-i18n="aiHelper.sessionManager">Session 管理</span>
+                    </button>
+                </div>
                 <button type="button" class="btn btn-secondary" id="helperPrevBtn">
                     <i class="fas fa-arrow-left me-2"></i><span data-i18n="common.previous">上一步</span>
                 </button>
@@ -339,6 +344,97 @@
                     <span data-i18n="common.next">下一步</span><i class="fas fa-arrow-right ms-2"></i>
                 </button>
                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal" data-i18n="common.close">關閉</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="helperSessionManagerModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl tc-helper-dialog tc-helper-session-manager-dialog">
+        <div class="modal-content tc-helper-modal tc-helper-session-manager-modal">
+            <div class="modal-header tc-helper-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-clock-rotate-left me-2"></i><span data-i18n="aiHelper.sessionManagerTitle">Session 管理</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body tc-helper-body">
+                <div class="tc-helper-session-manager-layout">
+                    <aside class="tc-helper-session-manager-left">
+                        <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
+                            <h6 class="mb-0" data-i18n="aiHelper.sessionManagerListTitle">Sessions</h6>
+                            <div class="d-flex align-items-center gap-2">
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="helperSessionManagerSelectAllBtn">
+                                    <span data-i18n="common.selectAll">全選</span>
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="helperSessionManagerRefreshBtn">
+                                    <i class="fas fa-rotate me-1"></i><span data-i18n="common.refresh">重新整理</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="tc-helper-list-panel tc-helper-session-manager-list-panel">
+                            <div id="helperSessionManagerList" class="list-group tc-helper-list"></div>
+                        </div>
+                        <div class="d-flex align-items-center gap-2 mt-2">
+                            <button type="button" class="btn btn-sm btn-outline-danger" id="helperSessionManagerDeleteSelectedBtn">
+                                <i class="fas fa-trash me-1"></i><span data-i18n="aiHelper.sessionManagerDeleteSelected">刪除已選取</span>
+                            </button>
+                            <button type="button" class="btn btn-sm btn-danger" id="helperSessionManagerClearBtn">
+                                <i class="fas fa-broom me-1"></i><span data-i18n="aiHelper.sessionManagerClearAll">一鍵清理</span>
+                            </button>
+                        </div>
+                    </aside>
+                    <section class="tc-helper-session-manager-right">
+                        <div id="helperSessionManagerDetailEmpty" class="tc-helper-empty" data-i18n="aiHelper.sessionManagerDetailEmpty">請先選擇左側 Session</div>
+                        <div id="helperSessionManagerDetail" class="d-none">
+                            <div class="tc-helper-detail-scroll">
+                                <h6 class="mb-2" data-i18n="aiHelper.sessionManagerDetailTitle">Session 詳細資訊</h6>
+                                <div class="tc-helper-session-manager-meta">
+                                    <div class="tc-helper-session-manager-meta-item">
+                                        <span class="text-muted" data-i18n="aiHelper.sessionManagerLabelText">Session 標籤</span>
+                                        <strong id="helperSessionManagerDetailLabel">-</strong>
+                                    </div>
+                                    <div class="tc-helper-session-manager-meta-item">
+                                        <span class="text-muted" data-i18n="aiHelper.ticketKey">TCG 單號</span>
+                                        <strong id="helperSessionManagerDetailTicket">-</strong>
+                                    </div>
+                                    <div class="tc-helper-session-manager-meta-item">
+                                        <span class="text-muted" data-i18n="common.status">狀態</span>
+                                        <strong id="helperSessionManagerDetailStatus">-</strong>
+                                    </div>
+                                    <div class="tc-helper-session-manager-meta-item">
+                                        <span class="text-muted" data-i18n="common.progress">進度</span>
+                                        <strong id="helperSessionManagerDetailPhase">-</strong>
+                                    </div>
+                                    <div class="tc-helper-session-manager-meta-item">
+                                        <span class="text-muted" data-i18n="aiHelper.targetSetTitle">目標 Test Case Set</span>
+                                        <strong id="helperSessionManagerDetailTargetSet">-</strong>
+                                    </div>
+                                    <div class="tc-helper-session-manager-meta-item">
+                                        <span class="text-muted" data-i18n="common.createDate">建立時間</span>
+                                        <strong id="helperSessionManagerDetailCreatedAt">-</strong>
+                                    </div>
+                                    <div class="tc-helper-session-manager-meta-item">
+                                        <span class="text-muted" data-i18n="common.updateDate">更新時間</span>
+                                        <strong id="helperSessionManagerDetailUpdatedAt">-</strong>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="d-flex justify-content-end gap-2 tc-helper-detail-actions">
+                                <button type="button" class="btn btn-sm btn-outline-danger" id="helperSessionManagerDeleteOneBtn">
+                                    <i class="fas fa-trash me-1"></i><span data-i18n="common.delete">刪除</span>
+                                </button>
+                                <button type="button" class="btn btn-sm btn-primary" id="helperSessionManagerResumeBtn">
+                                    <i class="fas fa-play me-1"></i><span data-i18n="aiHelper.sessionManagerResume">回復 Session</span>
+                                </button>
+                            </div>
+                        </div>
+                    </section>
+                </div>
+            </div>
+            <div class="modal-footer tc-helper-footer">
+                <span id="helperSessionManagerSelectionSummary" class="me-auto small text-muted" data-i18n="aiHelper.sessionManagerNoSelection">尚未選取項目</span>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.close">關閉</button>
             </div>
         </div>
     </div>

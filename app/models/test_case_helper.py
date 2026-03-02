@@ -102,6 +102,61 @@ class HelperSessionUpdateRequest(BaseModel):
     last_error: Optional[str] = None
 
 
+class HelperSessionListItemResponse(BaseModel):
+    id: int
+    team_id: int
+    created_by_user_id: int
+    target_test_case_set_id: int
+    ticket_key: Optional[str] = None
+    session_label: str
+    current_phase: HelperPhase
+    phase_status: HelperPhaseStatus
+    status: HelperSessionStatus
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class HelperSessionListResponse(BaseModel):
+    items: List[HelperSessionListItemResponse] = Field(default_factory=list)
+    total: int = 0
+    limit: int = 50
+    offset: int = 0
+    has_more: bool = False
+
+
+class HelperSessionBulkDeleteRequest(BaseModel):
+    session_ids: List[int] = Field(default_factory=list)
+
+    @field_validator("session_ids")
+    @classmethod
+    def _normalize_session_ids(cls, value: List[int]) -> List[int]:
+        normalized: List[int] = []
+        seen = set()
+        for item in value or []:
+            number = int(item)
+            if number <= 0:
+                continue
+            if number in seen:
+                continue
+            normalized.append(number)
+            seen.add(number)
+        if not normalized:
+            raise ValueError("session_ids 不可為空")
+        return normalized
+
+
+class HelperSessionClearRequest(BaseModel):
+    include_active: bool = Field(True, description="是否包含 active session")
+
+
+class HelperSessionDeleteResponse(BaseModel):
+    requested_count: int
+    deleted_count: int
+    deleted_session_ids: List[int] = Field(default_factory=list)
+
+
 class HelperDraftUpsertRequest(BaseModel):
     markdown: Optional[str] = Field(None, description="可編輯 Markdown 內容")
     payload: Optional[Dict[str, Any]] = Field(None, description="結構化 JSON 內容")
@@ -184,6 +239,7 @@ class HelperSessionResponse(BaseModel):
     created_by_user_id: int
     target_test_case_set_id: int
     ticket_key: Optional[str] = None
+    session_label: str
     review_locale: HelperLocale
     output_locale: HelperLocale
     initial_middle: str
