@@ -36,6 +36,9 @@ from app.models.test_case_helper import (
     HelperNormalizeRequest,
     HelperPhase,
     HelperPhaseStatus,
+    HelperSessionDeleteResponse,
+    HelperSessionListItemResponse,
+    HelperSessionListResponse,
     HelperSessionResponse,
     HelperSessionStartRequest,
     HelperSessionStatus,
@@ -305,6 +308,28 @@ class JiraTestCaseHelperService:
             updated_at=draft.updated_at,
         )
 
+    def _format_session_label(self, session: AITestCaseHelperSession) -> str:
+        timestamp = session.updated_at or session.created_at or _now()
+        return timestamp.strftime("%Y-%m-%d %H:%M:%S")
+
+    def _to_session_list_item(
+        self,
+        session: AITestCaseHelperSession,
+    ) -> HelperSessionListItemResponse:
+        return HelperSessionListItemResponse(
+            id=session.id,
+            team_id=session.team_id,
+            created_by_user_id=session.created_by_user_id or 0,
+            target_test_case_set_id=session.target_test_case_set_id,
+            ticket_key=session.ticket_key,
+            session_label=self._format_session_label(session),
+            current_phase=HelperPhase(session.current_phase),
+            phase_status=HelperPhaseStatus(session.phase_status),
+            status=HelperSessionStatus(session.status),
+            created_at=session.created_at,
+            updated_at=session.updated_at,
+        )
+
     def _to_session_response(
         self, session: AITestCaseHelperSession, drafts: List[AITestCaseHelperDraft]
     ) -> HelperSessionResponse:
@@ -314,6 +339,7 @@ class JiraTestCaseHelperService:
             created_by_user_id=session.created_by_user_id or 0,
             target_test_case_set_id=session.target_test_case_set_id,
             ticket_key=session.ticket_key,
+            session_label=self._format_session_label(session),
             review_locale=HelperLocale(session.review_locale),
             output_locale=HelperLocale(session.output_locale),
             initial_middle=session.initial_middle,
@@ -500,6 +526,115 @@ class JiraTestCaseHelperService:
             return self._to_session_response(session, drafts)
 
         return await run_sync(self.db, _get)
+
+    async def list_sessions(
+        self,
+        *,
+        team_id: int,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> HelperSessionListResponse:
+        normalized_limit = max(1, min(int(limit or 50), 200))
+        normalized_offset = max(0, int(offset or 0))
+
+        def _list(sync_db: Session) -> HelperSessionListResponse:
+            base_query = sync_db.query(AITestCaseHelperSession).filter(
+                AITestCaseHelperSession.team_id == team_id
+            )
+            total = int(base_query.count() or 0)
+            sessions = (
+                base_query.order_by(
+                    AITestCaseHelperSession.updated_at.desc(),
+                    AITestCaseHelperSession.id.desc(),
+                )
+                .offset(normalized_offset)
+                .limit(normalized_limit)
+                .all()
+            )
+            items = [self._to_session_list_item(session) for session in sessions]
+            has_more = normalized_offset + len(items) < total
+            return HelperSessionListResponse(
+                items=items,
+                total=total,
+                limit=normalized_limit,
+                offset=normalized_offset,
+                has_more=has_more,
+            )
+
+        return await run_sync(self.db, _list)
+
+    async def delete_session(
+        self,
+        *,
+        team_id: int,
+        session_id: int,
+    ) -> HelperSessionDeleteResponse:
+        result = await self.delete_sessions(team_id=team_id, session_ids=[session_id])
+        if result.deleted_count <= 0:
+            raise ValueError(f"找不到 helper session: {session_id}")
+        return result
+
+    async def delete_sessions(
+        self,
+        *,
+        team_id: int,
+        session_ids: List[int],
+    ) -> HelperSessionDeleteResponse:
+        normalized_ids = []
+        for item in session_ids:
+            number = int(item)
+            if number > 0 and number not in normalized_ids:
+                normalized_ids.append(number)
+        if not normalized_ids:
+            raise ValueError("session_ids 不可為空")
+
+        def _delete(sync_db: Session) -> HelperSessionDeleteResponse:
+            sessions = (
+                sync_db.query(AITestCaseHelperSession)
+                .filter(
+                    AITestCaseHelperSession.team_id == team_id,
+                    AITestCaseHelperSession.id.in_(normalized_ids),
+                )
+                .all()
+            )
+            deleted_ids = sorted({session.id for session in sessions})
+            for session in sessions:
+                sync_db.delete(session)
+            sync_db.commit()
+            return HelperSessionDeleteResponse(
+                requested_count=len(normalized_ids),
+                deleted_count=len(deleted_ids),
+                deleted_session_ids=deleted_ids,
+            )
+
+        return await run_sync(self.db, _delete)
+
+    async def clear_sessions(
+        self,
+        *,
+        team_id: int,
+        include_active: bool = True,
+    ) -> HelperSessionDeleteResponse:
+        def _clear(sync_db: Session) -> HelperSessionDeleteResponse:
+            query = sync_db.query(AITestCaseHelperSession).filter(
+                AITestCaseHelperSession.team_id == team_id
+            )
+            if not include_active:
+                query = query.filter(
+                    AITestCaseHelperSession.status != HelperSessionStatus.ACTIVE.value
+                )
+            sessions = query.all()
+            deleted_ids = sorted({session.id for session in sessions})
+            for session in sessions:
+                sync_db.delete(session)
+            sync_db.commit()
+            return HelperSessionDeleteResponse(
+                requested_count=len(deleted_ids),
+                deleted_count=len(deleted_ids),
+                deleted_session_ids=deleted_ids,
+            )
+
+        return await run_sync(self.db, _clear)
 
     async def update_session(
         self,

@@ -396,3 +396,82 @@ def test_helper_api_analyze_warning_gate_and_override_flow(helper_api_db):
     assert proceed_payload["stage"] == "analysis_coverage"
     assert proceed_payload["session"]["current_phase"] == "pretestcase"
     assert len(proceed_payload["payload"]["pretestcase"]["en"]) >= 1
+
+
+def test_helper_api_session_manager_list_and_delete_operations(helper_api_db):
+    team_id = helper_api_db["team_id"]
+    set_id = helper_api_db["set_id"]
+    client = TestClient(app)
+
+    created_ids = []
+    for ticket_key in ["TCG-130101", "TCG-130102", "TCG-130103"]:
+        start_resp = client.post(
+            f"/api/teams/{team_id}/test-case-helper/sessions",
+            json={
+                "test_case_set_id": set_id,
+                "output_locale": "zh-TW",
+                "review_locale": "zh-TW",
+                "initial_middle": "010",
+            },
+        )
+        assert start_resp.status_code == 201
+        session_id = start_resp.json()["id"]
+        created_ids.append(session_id)
+        ticket_resp = client.post(
+            f"/api/teams/{team_id}/test-case-helper/sessions/{session_id}/ticket",
+            json={"ticket_key": ticket_key},
+        )
+        assert ticket_resp.status_code == 200
+
+    list_resp = client.get(
+        f"/api/teams/{team_id}/test-case-helper/sessions",
+        params={"limit": 2, "offset": 0},
+    )
+    assert list_resp.status_code == 200
+    list_payload = list_resp.json()
+    assert list_payload["total"] >= 3
+    assert list_payload["limit"] == 2
+    assert len(list_payload["items"]) == 2
+    assert list_payload["has_more"] is True
+    for item in list_payload["items"]:
+        assert item["session_label"]
+        assert "ticket_key" in item
+
+    delete_target = created_ids[0]
+    delete_resp = client.delete(
+        f"/api/teams/{team_id}/test-case-helper/sessions/{delete_target}",
+    )
+    assert delete_resp.status_code == 200
+    delete_payload = delete_resp.json()
+    assert delete_payload["deleted_count"] == 1
+    assert delete_target in delete_payload["deleted_session_ids"]
+
+    missing_resp = client.get(
+        f"/api/teams/{team_id}/test-case-helper/sessions/{delete_target}"
+    )
+    assert missing_resp.status_code == 404
+
+    bulk_target_ids = created_ids[1:]
+    bulk_delete_resp = client.post(
+        f"/api/teams/{team_id}/test-case-helper/sessions/bulk-delete",
+        json={"session_ids": bulk_target_ids},
+    )
+    assert bulk_delete_resp.status_code == 200
+    bulk_payload = bulk_delete_resp.json()
+    assert bulk_payload["deleted_count"] == len(bulk_target_ids)
+    for session_id in bulk_target_ids:
+        assert session_id in bulk_payload["deleted_session_ids"]
+
+    clear_resp = client.post(
+        f"/api/teams/{team_id}/test-case-helper/sessions/clear",
+        json={"include_active": True},
+    )
+    assert clear_resp.status_code == 200
+    assert clear_resp.json()["deleted_count"] >= 0
+
+    final_list_resp = client.get(
+        f"/api/teams/{team_id}/test-case-helper/sessions",
+        params={"limit": 10, "offset": 0},
+    )
+    assert final_list_resp.status_code == 200
+    assert final_list_resp.json()["total"] == 0

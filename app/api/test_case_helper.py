@@ -5,7 +5,7 @@ JIRA Ticket -> Test Case Helper API
 import logging
 from typing import Any, Dict
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -17,6 +17,10 @@ from app.database import get_db, run_sync
 from app.models.database_models import Team as TeamDB, User
 from app.models.test_case_helper import (
     HelperAnalyzeRequest,
+    HelperSessionBulkDeleteRequest,
+    HelperSessionClearRequest,
+    HelperSessionDeleteResponse,
+    HelperSessionListResponse,
     HelperCommitRequest,
     HelperDraftResponse,
     HelperDraftUpsertRequest,
@@ -145,6 +149,116 @@ async def start_helper_session(
                 "review_locale": result.review_locale.value,
                 "ticket_key": result.ticket_key,
             },
+        )
+        return result
+    except Exception as exc:  # noqa: BLE001
+        raise _map_exception(exc) from exc
+
+
+@router.get("/sessions", response_model=HelperSessionListResponse)
+async def list_helper_sessions(
+    team_id: int,
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> HelperSessionListResponse:
+    await _verify_team_write_access(team_id=team_id, db=db, current_user=current_user)
+    service = JiraTestCaseHelperService(db)
+    try:
+        return await service.list_sessions(team_id=team_id, limit=limit, offset=offset)
+    except Exception as exc:  # noqa: BLE001
+        raise _map_exception(exc) from exc
+
+
+@router.delete("/sessions/{session_id}", response_model=HelperSessionDeleteResponse)
+async def delete_helper_session(
+    team_id: int,
+    session_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> HelperSessionDeleteResponse:
+    await _verify_team_write_access(team_id=team_id, db=db, current_user=current_user)
+    service = JiraTestCaseHelperService(db)
+    try:
+        result = await service.delete_session(team_id=team_id, session_id=session_id)
+        await _log_helper_action(
+            current_user=current_user,
+            team_id=team_id,
+            resource_id=str(session_id),
+            action_type=ActionType.DELETE,
+            action_brief=f"刪除 Helper Session #{session_id}",
+            details={
+                "session_id": session_id,
+                "deleted_count": result.deleted_count,
+                "deleted_session_ids": result.deleted_session_ids,
+            },
+            severity=AuditSeverity.INFO,
+        )
+        return result
+    except Exception as exc:  # noqa: BLE001
+        raise _map_exception(exc) from exc
+
+
+@router.post("/sessions/bulk-delete", response_model=HelperSessionDeleteResponse)
+async def bulk_delete_helper_sessions(
+    team_id: int,
+    request: HelperSessionBulkDeleteRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> HelperSessionDeleteResponse:
+    await _verify_team_write_access(team_id=team_id, db=db, current_user=current_user)
+    service = JiraTestCaseHelperService(db)
+    try:
+        result = await service.delete_sessions(
+            team_id=team_id,
+            session_ids=request.session_ids,
+        )
+        await _log_helper_action(
+            current_user=current_user,
+            team_id=team_id,
+            resource_id="bulk-delete",
+            action_type=ActionType.DELETE,
+            action_brief=f"批次刪除 Helper Session（{result.deleted_count} 筆）",
+            details={
+                "requested_count": result.requested_count,
+                "requested_session_ids": request.session_ids,
+                "deleted_count": result.deleted_count,
+                "deleted_session_ids": result.deleted_session_ids,
+            },
+            severity=AuditSeverity.INFO,
+        )
+        return result
+    except Exception as exc:  # noqa: BLE001
+        raise _map_exception(exc) from exc
+
+
+@router.post("/sessions/clear", response_model=HelperSessionDeleteResponse)
+async def clear_helper_sessions(
+    team_id: int,
+    request: HelperSessionClearRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> HelperSessionDeleteResponse:
+    await _verify_team_write_access(team_id=team_id, db=db, current_user=current_user)
+    service = JiraTestCaseHelperService(db)
+    try:
+        result = await service.clear_sessions(
+            team_id=team_id,
+            include_active=request.include_active,
+        )
+        await _log_helper_action(
+            current_user=current_user,
+            team_id=team_id,
+            resource_id="clear-sessions",
+            action_type=ActionType.DELETE,
+            action_brief=f"清理 Helper Sessions（{result.deleted_count} 筆）",
+            details={
+                "include_active": request.include_active,
+                "deleted_count": result.deleted_count,
+                "deleted_session_ids": result.deleted_session_ids,
+            },
+            severity=AuditSeverity.INFO,
         )
         return result
     except Exception as exc:  # noqa: BLE001

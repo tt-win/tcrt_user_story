@@ -172,3 +172,5 @@ tools/
 .DS_Store
 未命名35.txt
 refactor/
+.spectra/
+openspec/.vector-search.db

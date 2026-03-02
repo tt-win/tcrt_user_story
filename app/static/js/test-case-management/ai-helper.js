@@ -23,6 +23,12 @@
         targetSetId: null,
         lastErrorNotified: null,
         confirmModalInstance: null,
+        sessionManagerModalInstance: null,
+        sessionManagerItems: [],
+        sessionManagerSelectedId: null,
+        sessionManagerCheckedIds: [],
+        reopenHelperOnManagerClose: false,
+        pendingResumeSessionId: null,
     };
 
     const STEP_COUNT = 3;
@@ -288,6 +294,12 @@
             'helperAddPretestcaseRowBtn',
             'helperRestoreSessionBtn',
             'helperStartOverBtn',
+            'helperSessionManagerBtn',
+            'helperSessionManagerRefreshBtn',
+            'helperSessionManagerResumeBtn',
+            'helperSessionManagerDeleteOneBtn',
+            'helperSessionManagerDeleteSelectedBtn',
+            'helperSessionManagerClearBtn',
         ];
         actionIds.forEach((id) => {
             const node = el(id);
@@ -615,6 +627,16 @@
         }
     }
 
+    function helperGetSessionLabel(session) {
+        if (!session || typeof session !== 'object') {
+            return helperT('aiHelper.noSession', {}, '尚未建立 Session');
+        }
+        const rawLabel = String(session.session_label || '').trim();
+        if (rawLabel) return rawLabel;
+        const fallback = String(session.updated_at || session.created_at || '').trim();
+        return fallback || helperT('aiHelper.sessionUnknownTime', {}, '未知時間');
+    }
+
     function helperUpdateSessionBadge(session) {
         const badge = el('helperSessionBadge');
         if (!badge) return;
@@ -628,7 +650,7 @@
         const suffix = isCompleted
             ? helperT('aiHelper.sessionCompleted', {}, '已完成')
             : helperT('aiHelper.sessionActive', {}, '進行中');
-        badge.textContent = `${helperT('aiHelper.sessionLabel', {}, 'Session')} #${session.id} (${suffix})`;
+        badge.textContent = `${helperT('aiHelper.sessionLabel', {}, 'Session')} ${helperGetSessionLabel(session)} (${suffix})`;
     }
 
     function helperInsertMarkdown(targetId, syntax) {
@@ -972,6 +994,450 @@
             return false;
         } finally {
             helperSetBusy(false);
+        }
+    }
+
+    function helperFormatSessionStatusLabel(session) {
+        const status = String((session || {}).status || '').trim().toLowerCase();
+        if (status === 'completed') return helperT('aiHelper.sessionCompleted', {}, '已完成');
+        if (status === 'failed') return helperT('aiHelper.sessionFailed', {}, '失敗');
+        if (status === 'cancelled') return helperT('aiHelper.sessionCancelled', {}, '已取消');
+        return helperT('aiHelper.sessionActive', {}, '進行中');
+    }
+
+    function helperGetSessionManagerSelected() {
+        const targetId = Number(helperState.sessionManagerSelectedId || 0);
+        if (!targetId) return null;
+        return helperState.sessionManagerItems.find((item) => Number(item.id) === targetId) || null;
+    }
+
+    function helperUpdateSessionManagerSelectionSummary() {
+        const summaryNode = el('helperSessionManagerSelectionSummary');
+        if (!summaryNode) return;
+        const count = helperState.sessionManagerCheckedIds.length;
+        if (count <= 0) {
+            summaryNode.textContent = helperT('aiHelper.sessionManagerNoSelection', {}, '尚未選取項目');
+            return;
+        }
+        summaryNode.textContent = helperT(
+            'aiHelper.sessionManagerSelectedCount',
+            { count },
+            `已選取 ${count} 筆`,
+        );
+    }
+
+    function helperSyncSessionManagerActionState() {
+        const selected = helperGetSessionManagerSelected();
+        const hasItems = helperState.sessionManagerItems.length > 0;
+        const hasChecked = helperState.sessionManagerCheckedIds.length > 0;
+        const resumeBtn = el('helperSessionManagerResumeBtn');
+        const deleteOneBtn = el('helperSessionManagerDeleteOneBtn');
+        const deleteSelectedBtn = el('helperSessionManagerDeleteSelectedBtn');
+        const clearBtn = el('helperSessionManagerClearBtn');
+        const selectAllBtn = el('helperSessionManagerSelectAllBtn');
+
+        if (resumeBtn) resumeBtn.disabled = !selected;
+        if (deleteOneBtn) deleteOneBtn.disabled = !selected;
+        if (deleteSelectedBtn) deleteSelectedBtn.disabled = !hasChecked;
+        if (clearBtn) clearBtn.disabled = !hasItems;
+        if (selectAllBtn) selectAllBtn.disabled = !hasItems;
+    }
+
+    function helperEnsureSessionManagerSelection() {
+        const items = helperState.sessionManagerItems;
+        if (!Array.isArray(items) || items.length === 0) {
+            helperState.sessionManagerSelectedId = null;
+            helperState.sessionManagerCheckedIds = [];
+            return;
+        }
+
+        const idSet = new Set(items.map((item) => Number(item.id || 0)).filter((id) => id > 0));
+        const normalizedChecked = helperState.sessionManagerCheckedIds
+            .map((id) => Number(id))
+            .filter((id) => idSet.has(id));
+        helperState.sessionManagerCheckedIds = Array.from(new Set(normalizedChecked));
+
+        const currentSelected = Number(helperState.sessionManagerSelectedId || 0);
+        if (idSet.has(currentSelected)) {
+            return;
+        }
+
+        const currentSessionId = Number(helperState.sessionId || 0);
+        if (idSet.has(currentSessionId)) {
+            helperState.sessionManagerSelectedId = currentSessionId;
+            return;
+        }
+
+        helperState.sessionManagerSelectedId = Number(items[0].id || 0) || null;
+    }
+
+    function helperRenderSessionManagerList() {
+        const container = el('helperSessionManagerList');
+        if (!container) return;
+
+        const items = helperState.sessionManagerItems;
+        if (!Array.isArray(items) || items.length === 0) {
+            container.innerHTML = `
+                <div class="text-muted small px-2 py-2">
+                    ${helperEscapeHtml(helperT('aiHelper.sessionManagerEmpty', {}, '目前沒有可管理的 Session'))}
+                </div>
+            `;
+            helperUpdateSessionManagerSelectionSummary();
+            helperSyncSessionManagerActionState();
+            return;
+        }
+
+        const checkedSet = new Set(helperState.sessionManagerCheckedIds.map((id) => Number(id)));
+        container.innerHTML = items.map((session) => {
+            const id = Number(session.id || 0);
+            const isActive = Number(helperState.sessionManagerSelectedId || 0) === id;
+            const isChecked = checkedSet.has(id);
+            const ticketKey = String(session.ticket_key || '').trim()
+                || helperT('aiHelper.sessionManagerNoTicket', {}, '未綁定 Ticket');
+            const phase = String(session.current_phase || '').trim() || '-';
+            const statusLabel = helperFormatSessionStatusLabel(session);
+            const sessionLabel = helperGetSessionLabel(session);
+            return `
+                <div class="list-group-item tc-helper-session-manager-item${isActive ? ' active' : ''}" data-helper-manager-session-id="${id}">
+                    <div class="d-flex align-items-start gap-2">
+                        <input type="checkbox" class="form-check-input mt-1" data-helper-manager-check-id="${id}" ${isChecked ? 'checked' : ''}>
+                        <div class="flex-grow-1 min-w-0">
+                            <div class="d-flex align-items-center justify-content-between gap-2">
+                                <span class="tc-helper-session-manager-time text-truncate">${helperEscapeHtml(sessionLabel)}</span>
+                                <span class="badge text-bg-light">${helperEscapeHtml(statusLabel)}</span>
+                            </div>
+                            <div class="fw-semibold text-break">${helperEscapeHtml(ticketKey)}</div>
+                            <div class="small text-muted">${helperEscapeHtml(phase)}</div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+        helperUpdateSessionManagerSelectionSummary();
+        helperSyncSessionManagerActionState();
+    }
+
+    function helperRenderSessionManagerDetail() {
+        const emptyNode = el('helperSessionManagerDetailEmpty');
+        const detailNode = el('helperSessionManagerDetail');
+        const selected = helperGetSessionManagerSelected();
+
+        if (!selected) {
+            if (emptyNode) emptyNode.classList.remove('d-none');
+            if (detailNode) detailNode.classList.add('d-none');
+            helperSyncSessionManagerActionState();
+            return;
+        }
+
+        if (emptyNode) emptyNode.classList.add('d-none');
+        if (detailNode) detailNode.classList.remove('d-none');
+
+        const mapping = {
+            helperSessionManagerDetailLabel: helperGetSessionLabel(selected),
+            helperSessionManagerDetailTicket: String(selected.ticket_key || '').trim()
+                || helperT('aiHelper.sessionManagerNoTicket', {}, '未綁定 Ticket'),
+            helperSessionManagerDetailPhase: String(selected.current_phase || '-'),
+            helperSessionManagerDetailStatus: helperFormatSessionStatusLabel(selected),
+            helperSessionManagerDetailTargetSet: String(selected.target_test_case_set_id || '-'),
+            helperSessionManagerDetailCreatedAt: String(selected.created_at || '-'),
+            helperSessionManagerDetailUpdatedAt: String(selected.updated_at || '-'),
+        };
+
+        Object.entries(mapping).forEach(([id, value]) => {
+            const node = el(id);
+            if (node) node.textContent = value;
+        });
+        helperSyncSessionManagerActionState();
+    }
+
+    async function helperLoadSessionManagerSessions() {
+        const response = await helperApiFetch(
+            `/api/teams/${helperState.teamId}/test-case-helper/sessions?limit=200&offset=0`
+        );
+        helperState.sessionManagerItems = Array.isArray((response || {}).items)
+            ? response.items
+            : [];
+        helperEnsureSessionManagerSelection();
+        helperRenderSessionManagerList();
+        helperRenderSessionManagerDetail();
+    }
+
+    function helperHandleDeletedSessionIds(ids) {
+        const deletedIds = Array.isArray(ids) ? ids.map((id) => Number(id)).filter((id) => id > 0) : [];
+        if (!deletedIds.length) return;
+
+        const deletedSet = new Set(deletedIds);
+        const storedSessionId = helperLoadStoredSessionId(helperState.teamId);
+        if (storedSessionId && deletedSet.has(Number(storedSessionId))) {
+            helperClearStoredSessionId(helperState.teamId);
+        }
+
+        if (helperState.sessionId && deletedSet.has(Number(helperState.sessionId))) {
+            helperResetPanels();
+        }
+    }
+
+    async function helperDeleteOneSessionFromManager() {
+        const selected = helperGetSessionManagerSelected();
+        if (!selected) {
+            helperNotifyWarning(helperT('aiHelper.sessionManagerNoSelection', {}, '尚未選取項目'));
+            return;
+        }
+
+        const ticketDisplay = String(selected.ticket_key || '').trim()
+            || helperT('aiHelper.sessionManagerNoTicket', {}, '未綁定 Ticket');
+        const confirmed = await helperConfirm(
+            helperT(
+                'aiHelper.sessionManagerDeleteOneConfirm',
+                { ticket: ticketDisplay },
+                `確認刪除 Session（${ticketDisplay}）？`,
+            ),
+            { confirmClass: 'btn btn-danger' },
+        );
+        if (!confirmed) return;
+
+        helperSetBusy(true, helperT('aiHelper.sessionManagerLoading', {}, '載入 Session 列表中...'));
+        try {
+            const result = await helperApiFetch(
+                `/api/teams/${helperState.teamId}/test-case-helper/sessions/${selected.id}`,
+                { method: 'DELETE' },
+            );
+            helperHandleDeletedSessionIds(result.deleted_session_ids);
+            await helperLoadSessionManagerSessions();
+            helperSetSuccess(
+                helperT(
+                    'aiHelper.sessionManagerDeleteDone',
+                    { count: Number(result.deleted_count || 0) },
+                    '已刪除 {count} 筆 Session',
+                ),
+            );
+        } catch (error) {
+            helperSetError(error.message || helperT('aiHelper.sessionManagerDeleteFailed', {}, '刪除 Session 失敗'));
+        } finally {
+            helperSetBusy(false);
+        }
+    }
+
+    async function helperDeleteSelectedSessionsFromManager() {
+        const ids = helperState.sessionManagerCheckedIds.map((id) => Number(id)).filter((id) => id > 0);
+        if (!ids.length) {
+            helperNotifyWarning(helperT('aiHelper.sessionManagerNoSelection', {}, '尚未選取項目'));
+            return;
+        }
+
+        const confirmed = await helperConfirm(
+            helperT(
+                'aiHelper.sessionManagerDeleteSelectedConfirm',
+                { count: ids.length },
+                `確認刪除已選取的 {count} 筆 Session？`,
+            ),
+            { confirmClass: 'btn btn-danger' },
+        );
+        if (!confirmed) return;
+
+        helperSetBusy(true, helperT('aiHelper.sessionManagerLoading', {}, '載入 Session 列表中...'));
+        try {
+            const result = await helperApiFetch(
+                `/api/teams/${helperState.teamId}/test-case-helper/sessions/bulk-delete`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ session_ids: ids }),
+                },
+            );
+            helperHandleDeletedSessionIds(result.deleted_session_ids);
+            await helperLoadSessionManagerSessions();
+            helperSetSuccess(
+                helperT(
+                    'aiHelper.sessionManagerDeleteDone',
+                    { count: Number(result.deleted_count || 0) },
+                    '已刪除 {count} 筆 Session',
+                ),
+            );
+        } catch (error) {
+            helperSetError(error.message || helperT('aiHelper.sessionManagerDeleteFailed', {}, '刪除 Session 失敗'));
+        } finally {
+            helperSetBusy(false);
+        }
+    }
+
+    async function helperClearAllSessionsFromManager() {
+        if (!helperState.sessionManagerItems.length) {
+            helperNotifyWarning(helperT('aiHelper.sessionManagerEmpty', {}, '目前沒有可管理的 Session'));
+            return;
+        }
+
+        const confirmed = await helperConfirm(
+            helperT('aiHelper.sessionManagerClearConfirm', {}, '確認一鍵清理全部 Session？'),
+            { confirmClass: 'btn btn-danger' },
+        );
+        if (!confirmed) return;
+
+        helperSetBusy(true, helperT('aiHelper.sessionManagerLoading', {}, '載入 Session 列表中...'));
+        try {
+            const result = await helperApiFetch(
+                `/api/teams/${helperState.teamId}/test-case-helper/sessions/clear`,
+                {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ include_active: true }),
+                },
+            );
+            helperHandleDeletedSessionIds(result.deleted_session_ids);
+            await helperLoadSessionManagerSessions();
+            helperSetSuccess(
+                helperT(
+                    'aiHelper.sessionManagerClearDone',
+                    { count: Number(result.deleted_count || 0) },
+                    '已清理 {count} 筆 Session',
+                ),
+            );
+        } catch (error) {
+            helperSetError(error.message || helperT('aiHelper.sessionManagerClearFailed', {}, '清理 Session 失敗'));
+        } finally {
+            helperSetBusy(false);
+        }
+    }
+
+    function helperToggleSelectAllSessionsFromManager() {
+        if (!helperState.sessionManagerItems.length) return;
+        const allIds = helperState.sessionManagerItems
+            .map((item) => Number(item.id || 0))
+            .filter((id) => id > 0);
+        const checkedSet = new Set(helperState.sessionManagerCheckedIds.map((id) => Number(id)));
+        const isAllSelected = allIds.length > 0 && allIds.every((id) => checkedSet.has(id));
+        helperState.sessionManagerCheckedIds = isAllSelected ? [] : allIds;
+        helperRenderSessionManagerList();
+    }
+
+    async function helperResumeSessionFromManager() {
+        const selected = helperGetSessionManagerSelected();
+        if (!selected) {
+            helperNotifyWarning(helperT('aiHelper.sessionManagerNoSelection', {}, '尚未選取項目'));
+            return;
+        }
+        helperState.pendingResumeSessionId = Number(selected.id);
+        helperState.reopenHelperOnManagerClose = true;
+        if (helperState.sessionManagerModalInstance) {
+            helperState.sessionManagerModalInstance.hide();
+        }
+    }
+
+    async function helperOpenSessionManager() {
+        helperClearMessages();
+        try {
+            helperSetBusy(true, helperT('aiHelper.sessionManagerLoading', {}, '載入 Session 列表中...'));
+            if (!helperState.teamId) {
+                const team = await helperResolveTeam(0);
+                helperState.teamId = Number(team.id);
+            }
+            await helperLoadSessionManagerSessions();
+            helperState.reopenHelperOnManagerClose = true;
+            helperState.pendingResumeSessionId = null;
+            if (!helperState.sessionManagerModalInstance) {
+                const sessionManagerModalEl = el('helperSessionManagerModal');
+                if (sessionManagerModalEl && window.bootstrap && bootstrap.Modal) {
+                    helperState.sessionManagerModalInstance = new bootstrap.Modal(sessionManagerModalEl);
+                }
+            }
+
+            const helperModalEl = el('aiTestCaseHelperModal');
+            if (
+                helperState.modalInstance
+                && helperModalEl
+                && helperModalEl.classList.contains('show')
+            ) {
+                await new Promise((resolve) => {
+                    const onHidden = () => resolve();
+                    helperModalEl.addEventListener('hidden.bs.modal', onHidden, { once: true });
+                    helperState.modalInstance.hide();
+                });
+            }
+            if (helperState.sessionManagerModalInstance) {
+                helperState.sessionManagerModalInstance.show();
+            }
+        } catch (error) {
+            helperSetError(
+                error.message || helperT('aiHelper.sessionManagerLoadFailed', {}, '載入 Session 管理失敗'),
+            );
+        } finally {
+            helperSetBusy(false);
+        }
+    }
+
+    function helperBindSessionManagerEvents() {
+        const list = el('helperSessionManagerList');
+        if (list && list.dataset.bound !== '1') {
+            list.dataset.bound = '1';
+            list.addEventListener('click', (event) => {
+                const target = event.target.closest('[data-helper-manager-session-id]');
+                if (!target) return;
+                const sessionId = Number(target.getAttribute('data-helper-manager-session-id') || 0);
+                if (!sessionId) return;
+                helperState.sessionManagerSelectedId = sessionId;
+                helperRenderSessionManagerList();
+                helperRenderSessionManagerDetail();
+            });
+            list.addEventListener('change', (event) => {
+                const checkbox = event.target.closest('[data-helper-manager-check-id]');
+                if (!checkbox) return;
+                const sessionId = Number(checkbox.getAttribute('data-helper-manager-check-id') || 0);
+                if (!sessionId) return;
+                const checkedSet = new Set(helperState.sessionManagerCheckedIds.map((id) => Number(id)));
+                if (checkbox.checked) {
+                    checkedSet.add(sessionId);
+                } else {
+                    checkedSet.delete(sessionId);
+                }
+                helperState.sessionManagerCheckedIds = Array.from(checkedSet).sort((a, b) => a - b);
+                helperUpdateSessionManagerSelectionSummary();
+                helperSyncSessionManagerActionState();
+            });
+        }
+
+        const refreshBtn = el('helperSessionManagerRefreshBtn');
+        if (refreshBtn && refreshBtn.dataset.bound !== '1') {
+            refreshBtn.dataset.bound = '1';
+            refreshBtn.addEventListener('click', async () => {
+                helperSetBusy(true, helperT('aiHelper.sessionManagerLoading', {}, '載入 Session 列表中...'));
+                try {
+                    await helperLoadSessionManagerSessions();
+                } catch (error) {
+                    helperSetError(error.message || helperT('aiHelper.sessionManagerLoadFailed', {}, '載入 Session 管理失敗'));
+                } finally {
+                    helperSetBusy(false);
+                }
+            });
+        }
+
+        const selectAllBtn = el('helperSessionManagerSelectAllBtn');
+        if (selectAllBtn && selectAllBtn.dataset.bound !== '1') {
+            selectAllBtn.dataset.bound = '1';
+            selectAllBtn.addEventListener('click', helperToggleSelectAllSessionsFromManager);
+        }
+
+        const resumeBtn = el('helperSessionManagerResumeBtn');
+        if (resumeBtn && resumeBtn.dataset.bound !== '1') {
+            resumeBtn.dataset.bound = '1';
+            resumeBtn.addEventListener('click', helperResumeSessionFromManager);
+        }
+
+        const deleteOneBtn = el('helperSessionManagerDeleteOneBtn');
+        if (deleteOneBtn && deleteOneBtn.dataset.bound !== '1') {
+            deleteOneBtn.dataset.bound = '1';
+            deleteOneBtn.addEventListener('click', helperDeleteOneSessionFromManager);
+        }
+
+        const deleteSelectedBtn = el('helperSessionManagerDeleteSelectedBtn');
+        if (deleteSelectedBtn && deleteSelectedBtn.dataset.bound !== '1') {
+            deleteSelectedBtn.dataset.bound = '1';
+            deleteSelectedBtn.addEventListener('click', helperDeleteSelectedSessionsFromManager);
+        }
+
+        const clearBtn = el('helperSessionManagerClearBtn');
+        if (clearBtn && clearBtn.dataset.bound !== '1') {
+            clearBtn.dataset.bound = '1';
+            clearBtn.addEventListener('click', helperClearAllSessionsFromManager);
         }
     }
 
@@ -2318,6 +2784,12 @@
             startOverBtn.addEventListener('click', helperStartOver);
         }
 
+        const sessionManagerBtn = el('helperSessionManagerBtn');
+        if (sessionManagerBtn && sessionManagerBtn.dataset.bound !== '1') {
+            sessionManagerBtn.dataset.bound = '1';
+            sessionManagerBtn.addEventListener('click', helperOpenSessionManager);
+        }
+
         const normalizeBtn = el('helperNormalizeBtn');
         if (normalizeBtn && normalizeBtn.dataset.bound !== '1') {
             normalizeBtn.dataset.bound = '1';
@@ -2424,6 +2896,39 @@
         });
     }
 
+    function helperInitializeSessionManagerLifecycle() {
+        const modalEl = el('helperSessionManagerModal');
+        if (!modalEl || modalEl.dataset.bound === '1') return;
+
+        modalEl.dataset.bound = '1';
+        if (!helperState.sessionManagerModalInstance && window.bootstrap && bootstrap.Modal) {
+            helperState.sessionManagerModalInstance = new bootstrap.Modal(modalEl);
+        }
+
+        modalEl.addEventListener('shown.bs.modal', () => {
+            helperBindSessionManagerEvents();
+            helperRenderSessionManagerList();
+            helperRenderSessionManagerDetail();
+            if (window.i18n && window.i18n.isReady && window.i18n.isReady()) {
+                window.i18n.retranslate(modalEl);
+            }
+        });
+
+        modalEl.addEventListener('hidden.bs.modal', async () => {
+            const shouldReopenHelper = !!helperState.reopenHelperOnManagerClose;
+            const pendingResumeSessionId = Number(helperState.pendingResumeSessionId || 0);
+            helperState.reopenHelperOnManagerClose = false;
+            helperState.pendingResumeSessionId = null;
+            if (!shouldReopenHelper) return;
+            if (helperState.modalInstance) {
+                helperState.modalInstance.show();
+            }
+            if (pendingResumeSessionId > 0) {
+                await helperRestoreSession(pendingResumeSessionId, true);
+            }
+        });
+    }
+
     function helperInitCreatedCaseHighlightFromUrl() {
         const params = new URLSearchParams(window.location.search);
         const raw = params.get('helper_created');
@@ -2480,6 +2985,7 @@
 
         helperBindButtons();
         helperInitializeModalLifecycle();
+        helperInitializeSessionManagerLifecycle();
         helperToggleSetMode();
         helperInitCreatedCaseHighlightFromUrl();
         setTimeout(() => {
