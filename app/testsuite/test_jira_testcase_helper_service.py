@@ -11,6 +11,7 @@ from sqlalchemy.orm import sessionmaker
 from app.auth.models import UserRole
 from app.database import run_sync
 from app.models.database_models import (
+    AITestCaseHelperStageMetric,
     Base,
     Team,
     TestCaseLocal,
@@ -1332,6 +1333,100 @@ async def test_helper_session_lifecycle_and_phase_transitions(helper_db, monkeyp
 
 
 @pytest.mark.asyncio
+async def test_helper_stage_metrics_persist_success_flow(helper_db, monkeypatch):
+    seeded = _seed_basic_data(helper_db["sync"])
+
+    import app.services.jira_testcase_helper_service as helper_service_module
+
+    monkeypatch.setattr(
+        helper_service_module.JiraClient,
+        "get_issue",
+        lambda self, key, fields=None: {
+            "key": key,
+            "fields": {
+                "summary": "登入流程優化",
+                "description": "新增 OTP 驗證與錯誤提示",
+                "components": [{"name": "Auth"}],
+            },
+        },
+    )
+
+    async with helper_db["async"]() as async_db:
+        service = JiraTestCaseHelperService(async_db, llm_service=FakeLLMService())
+
+        async def _empty_similar_cases(_):
+            return ""
+
+        service._query_similar_cases = _empty_similar_cases
+
+        started = await service.start_session(
+            team_id=seeded["team_id"],
+            user_id=seeded["user_id"],
+            request=HelperSessionStartRequest(
+                test_case_set_id=seeded["set_id"],
+                output_locale="zh-TW",
+                review_locale="zh-TW",
+                initial_middle="010",
+            ),
+        )
+        await service.fetch_ticket(
+            team_id=seeded["team_id"],
+            session_id=started.id,
+            request=HelperTicketFetchRequest(ticket_key="TCG-130078"),
+        )
+        normalized = await service.normalize_requirement(
+            team_id=seeded["team_id"],
+            session_id=started.id,
+            request=HelperNormalizeRequest(force=False),
+        )
+        analyzed = await service.analyze_and_build_pretestcase(
+            team_id=seeded["team_id"],
+            session_id=started.id,
+            request=HelperAnalyzeRequest(
+                requirement_markdown=normalized.markdown,
+                retry=False,
+                override_incomplete_requirement=True,
+            ),
+        )
+        generated = await service.generate_testcases(
+            team_id=seeded["team_id"],
+            session_id=started.id,
+            request=HelperGenerateRequest(
+                pretestcase_payload=analyzed.payload["pretestcase"],
+                retry=False,
+            ),
+        )
+        committed = await service.commit_testcases(
+            team_id=seeded["team_id"],
+            session_id=started.id,
+            request=HelperCommitRequest(),
+        )
+        assert committed["created_count"] == len(generated.payload.get("tc") or [])
+
+    with helper_db["sync"]() as session:
+        rows = (
+            session.query(AITestCaseHelperStageMetric)
+            .filter(AITestCaseHelperStageMetric.session_id == started.id)
+            .order_by(AITestCaseHelperStageMetric.id.asc())
+            .all()
+        )
+        phases = [row.phase for row in rows]
+        assert phases == ["analysis", "testcase", "commit"]
+        assert all(row.status == "success" for row in rows)
+
+        analysis_row = rows[0]
+        testcase_row = rows[1]
+        commit_row = rows[2]
+        assert analysis_row.pretestcase_count == len(
+            analyzed.payload.get("pretestcase", {}).get("en", []) or []
+        )
+        assert analysis_row.input_tokens > 0
+        assert testcase_row.testcase_count == len(generated.payload.get("tc") or [])
+        assert testcase_row.output_tokens >= 0
+        assert commit_row.testcase_count == committed["created_count"]
+
+
+@pytest.mark.asyncio
 async def test_analyze_stage_parses_malformed_llm_json_payload(helper_db, monkeypatch):
     seeded = _seed_basic_data(helper_db["sync"])
     import app.services.jira_testcase_helper_service as helper_service_module
@@ -1657,6 +1752,18 @@ async def test_analyze_stage_errors_when_merged_output_missing_coverage_payload(
         )
         assert session.current_phase.value == "analysis"
         assert session.phase_status.value == "failed"
+
+    with helper_db["sync"]() as session:
+        metric = (
+            session.query(AITestCaseHelperStageMetric)
+            .filter(AITestCaseHelperStageMetric.session_id == started.id)
+            .order_by(AITestCaseHelperStageMetric.id.desc())
+            .first()
+        )
+        assert metric is not None
+        assert metric.phase == "analysis"
+        assert metric.status == "failed"
+        assert "analysis llm unavailable" in str(metric.error_message or "")
 
 
 @pytest.mark.asyncio

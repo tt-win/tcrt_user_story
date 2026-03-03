@@ -43,7 +43,7 @@ from app.models.database_models import (
     Team, TestRunConfig, TestRunItem, TestRunItemResultHistory,
     TCGRecord, LarkDepartment, LarkUser, SyncHistory,
     TestCaseSet, TestCaseSection,  # Test Case Set/Section 相關表
-    AITestCaseHelperSession, AITestCaseHelperDraft,  # AI Helper 相關表
+    AITestCaseHelperSession, AITestCaseHelperDraft, AITestCaseHelperStageMetric,  # AI Helper 相關表
 )
 from sqlalchemy import create_engine
 
@@ -103,6 +103,7 @@ IMPORTANT_TABLES: List[str] = [
     "adhoc_run_items",
     "ai_tc_helper_sessions",
     "ai_tc_helper_drafts",
+    "ai_tc_helper_stage_metrics",
     "tcg_records",
     "lark_departments",
     "lark_users",
@@ -270,6 +271,28 @@ COLUMN_CHECKS: Dict[str, List[ColumnSpec]] = {
         ColumnSpec("enterprise_email", "TEXT", nullable=True, default=None),
         ColumnSpec("primary_department_id", "TEXT", nullable=True, default=None),
     ],
+    "ai_tc_helper_stage_metrics": [
+        ColumnSpec("team_id", "INTEGER", nullable=False, default=0),
+        ColumnSpec("user_id", "INTEGER", nullable=True, default=None),
+        ColumnSpec("ticket_key", "VARCHAR(64)", nullable=True, default=None),
+        ColumnSpec("phase", "VARCHAR(32)", nullable=False, default=""),
+        ColumnSpec("status", "VARCHAR(16)", nullable=False, default="success"),
+        ColumnSpec("started_at", "DATETIME", nullable=True, default=None),
+        ColumnSpec("ended_at", "DATETIME", nullable=True, default=None),
+        ColumnSpec("duration_ms", "INTEGER", nullable=False, default=0),
+        ColumnSpec("input_tokens", "INTEGER", nullable=False, default=0),
+        ColumnSpec("output_tokens", "INTEGER", nullable=False, default=0),
+        ColumnSpec("cache_read_tokens", "INTEGER", nullable=False, default=0),
+        ColumnSpec("cache_write_tokens", "INTEGER", nullable=False, default=0),
+        ColumnSpec("input_audio_tokens", "INTEGER", nullable=False, default=0),
+        ColumnSpec("input_audio_cache_tokens", "INTEGER", nullable=False, default=0),
+        ColumnSpec("pretestcase_count", "INTEGER", nullable=False, default=0),
+        ColumnSpec("testcase_count", "INTEGER", nullable=False, default=0),
+        ColumnSpec("model_name", "VARCHAR(255)", nullable=True, default=None),
+        ColumnSpec("usage_json", "TEXT", nullable=True, default=None),
+        ColumnSpec("error_message", "TEXT", nullable=True, default=None),
+        ColumnSpec("created_at", "DATETIME", nullable=True, default=None),
+    ],
 }
 
 AUDIT_COLUMN_CHECKS: Dict[str, List[ColumnSpec]] = {
@@ -307,6 +330,27 @@ INDEX_SPECS: List[Dict[str, Any]] = [
     # Ad-hoc Runs Search Indexes
     {"name": "idx_adhoc_tp_tickets_search", "table": "adhoc_runs", "columns": ["tp_tickets_search"]},
     {"name": "idx_adhoc_notify_chats_search", "table": "adhoc_runs", "columns": ["notify_chats_search"]},
+    # AI Helper stage telemetry
+    {
+        "name": "ix_ai_tc_helper_stage_metrics_team_phase_time",
+        "table": "ai_tc_helper_stage_metrics",
+        "columns": ["team_id", "phase", "started_at"],
+    },
+    {
+        "name": "ix_ai_tc_helper_stage_metrics_team_time",
+        "table": "ai_tc_helper_stage_metrics",
+        "columns": ["team_id", "started_at"],
+    },
+    {
+        "name": "ix_ai_tc_helper_stage_metrics_session_phase",
+        "table": "ai_tc_helper_stage_metrics",
+        "columns": ["session_id", "phase"],
+    },
+    {
+        "name": "ix_ai_tc_helper_stage_metrics_status",
+        "table": "ai_tc_helper_stage_metrics",
+        "columns": ["status"],
+    },
 ]
 
 

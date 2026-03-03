@@ -269,3 +269,63 @@ class HelperStageResultResponse(BaseModel):
     payload: Dict[str, Any] = Field(default_factory=dict)
     markdown: Optional[str] = None
     usage: Dict[str, Any] = Field(default_factory=dict)
+
+
+class HelperStageTelemetryStatus(str, Enum):
+    SUCCESS = "success"
+    FAILED = "failed"
+
+
+class HelperStageTelemetryUsage(BaseModel):
+    input_tokens: int = 0
+    output_tokens: int = 0
+    cache_read_tokens: int = 0
+    cache_write_tokens: int = 0
+    input_audio_tokens: int = 0
+    input_audio_cache_tokens: int = 0
+    total_tokens: int = 0
+
+    @field_validator(
+        "input_tokens",
+        "output_tokens",
+        "cache_read_tokens",
+        "cache_write_tokens",
+        "input_audio_tokens",
+        "input_audio_cache_tokens",
+        "total_tokens",
+        mode="before",
+    )
+    @classmethod
+    def _normalize_non_negative_int(cls, value: Any) -> int:
+        try:
+            number = int(value or 0)
+        except (TypeError, ValueError):
+            return 0
+        return number if number >= 0 else 0
+
+
+class HelperStageTelemetryRecord(BaseModel):
+    session_id: int
+    team_id: int
+    user_id: Optional[int] = None
+    ticket_key: Optional[str] = None
+    phase: str
+    status: HelperStageTelemetryStatus
+    started_at: datetime
+    ended_at: datetime
+    duration_ms: int = 0
+    usage: HelperStageTelemetryUsage = Field(default_factory=HelperStageTelemetryUsage)
+    model_name: Optional[str] = None
+    pretestcase_count: int = 0
+    testcase_count: int = 0
+    usage_json: Dict[str, Any] = Field(default_factory=dict)
+    error_message: Optional[str] = None
+
+    @field_validator("duration_ms", "pretestcase_count", "testcase_count", mode="before")
+    @classmethod
+    def _normalize_counter(cls, value: Any) -> int:
+        try:
+            number = int(value or 0)
+        except (TypeError, ValueError):
+            return 0
+        return number if number >= 0 else 0
