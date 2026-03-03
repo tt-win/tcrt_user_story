@@ -279,6 +279,39 @@ class JiraTestCaseHelperService:
         self._stage_metrics_table_available: Optional[bool] = None
         self._stage_metrics_table_warned_once = False
 
+    @staticmethod
+    def _is_missing_stage_metrics_table_error(exc: Exception) -> bool:
+        message = str(exc or "").lower()
+        if not message:
+            return False
+        if "ai_tc_helper_stage_metrics" not in message:
+            return False
+        return "no such table" in message or "undefined table" in message
+
+    @staticmethod
+    def _is_stage_metrics_schema_mismatch_error(exc: Exception) -> bool:
+        message = str(exc or "").lower()
+        if "ai_tc_helper_stage_metrics" not in message:
+            return False
+        return "has no column named" in message or "unknown column" in message
+
+    def _try_create_stage_metrics_table_sync(self, sync_db: Session) -> bool:
+        try:
+            bind = sync_db.get_bind()
+            if bind is None:
+                return False
+            AITestCaseHelperStageMetric.__table__.create(bind=bind, checkfirst=True)
+            logger.warning(
+                "偵測到 ai_tc_helper_stage_metrics 缺失，已自動建立 telemetry 表。建議補跑 database_init.py --auto-fix 以確保索引/欄位一致。"
+            )
+            return True
+        except Exception as exc:
+            logger.warning(
+                "自動建立 ai_tc_helper_stage_metrics 失敗，telemetry 暫停落庫: %s",
+                exc,
+            )
+            return False
+
     # ---------- Session and draft base ----------
     def _check_phase_transition(self, current_phase: str, next_phase: str) -> None:
         allowed = PHASE_TRANSITIONS.get(current_phase, {next_phase})
@@ -1215,13 +1248,38 @@ class JiraTestCaseHelperService:
                 sync_db.execute(text("SELECT 1 FROM ai_tc_helper_stage_metrics LIMIT 1"))
                 self._stage_metrics_table_available = True
             except Exception as exc:
-                self._stage_metrics_table_available = False
-                if not self._stage_metrics_table_warned_once:
-                    logger.warning(
-                        "偵測到 ai_tc_helper_stage_metrics 尚未就緒，暫停 telemetry 落庫: %s",
-                        exc,
-                    )
-                    self._stage_metrics_table_warned_once = True
+                if self._is_missing_stage_metrics_table_error(exc):
+                    created = self._try_create_stage_metrics_table_sync(sync_db)
+                    if created:
+                        try:
+                            sync_db.execute(
+                                text("SELECT 1 FROM ai_tc_helper_stage_metrics LIMIT 1")
+                            )
+                            self._stage_metrics_table_available = True
+                        except Exception as probe_again_exc:
+                            self._stage_metrics_table_available = False
+                            if not self._stage_metrics_table_warned_once:
+                                logger.warning(
+                                    "ai_tc_helper_stage_metrics 建立後仍無法使用，暫停 telemetry 落庫: %s",
+                                    probe_again_exc,
+                                )
+                                self._stage_metrics_table_warned_once = True
+                    else:
+                        self._stage_metrics_table_available = False
+                        if not self._stage_metrics_table_warned_once:
+                            logger.warning(
+                                "偵測到 ai_tc_helper_stage_metrics 尚未就緒且自動建立失敗，暫停 telemetry 落庫: %s",
+                                exc,
+                            )
+                            self._stage_metrics_table_warned_once = True
+                else:
+                    self._stage_metrics_table_available = False
+                    if not self._stage_metrics_table_warned_once:
+                        logger.warning(
+                            "偵測到 ai_tc_helper_stage_metrics 尚未就緒，暫停 telemetry 落庫。請確認部署有執行 database_init.py --auto-fix。原因: %s",
+                            exc,
+                        )
+                        self._stage_metrics_table_warned_once = True
 
         if not self._stage_metrics_table_available:
             return
@@ -1256,6 +1314,11 @@ class JiraTestCaseHelperService:
                 sync_db.add(metric)
                 sync_db.flush([metric])
         except Exception as exc:
+            if self._is_stage_metrics_schema_mismatch_error(exc):
+                logger.warning(
+                    "helper stage telemetry schema 不一致，請執行 database_init.py --auto-fix 後再試: %s",
+                    exc,
+                )
             logger.warning(
                 "寫入 helper stage telemetry 失敗: session=%s phase=%s error=%s",
                 record.session_id,
