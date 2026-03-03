@@ -11,6 +11,7 @@ import re
 from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional, Sequence, Set, Tuple
 
+from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
@@ -19,6 +20,7 @@ from app.config import get_settings
 from app.database import run_sync
 from app.models.database_models import (
     AITestCaseHelperDraft,
+    AITestCaseHelperStageMetric,
     AITestCaseHelperSession,
     Priority,
     SyncStatus,
@@ -44,6 +46,9 @@ from app.models.test_case_helper import (
     HelperSessionStatus,
     HelperSessionUpdateRequest,
     HelperStageResultResponse,
+    HelperStageTelemetryRecord,
+    HelperStageTelemetryStatus,
+    HelperStageTelemetryUsage,
     HelperTicketFetchRequest,
     HelperTicketSummaryResponse,
 )
@@ -271,6 +276,8 @@ class JiraTestCaseHelperService:
         self.requirement_validator = RequirementCompletenessValidator()
         self.requirement_ir_builder = RequirementIRBuilder()
         self.pretestcase_presenter = PretestcasePresenter()
+        self._stage_metrics_table_available: Optional[bool] = None
+        self._stage_metrics_table_warned_once = False
 
     # ---------- Session and draft base ----------
     def _check_phase_transition(self, current_phase: str, next_phase: str) -> None:
@@ -1111,6 +1118,150 @@ class JiraTestCaseHelperService:
             extra_call.get("repair_applied")
         )
         return merged
+
+    @staticmethod
+    def _to_non_negative_int(value: Any) -> int:
+        try:
+            number = int(value or 0)
+        except (TypeError, ValueError):
+            return 0
+        return number if number >= 0 else 0
+
+    def _normalize_stage_usage(
+        self,
+        usage_payload: Optional[Dict[str, Any]],
+    ) -> HelperStageTelemetryUsage:
+        usage = dict(usage_payload or {})
+
+        def _pick(*keys: str) -> int:
+            for key in keys:
+                if key in usage:
+                    return self._to_non_negative_int(usage.get(key))
+            return 0
+
+        input_tokens = _pick("input_tokens", "prompt_tokens")
+        output_tokens = _pick("output_tokens", "completion_tokens")
+        cache_read_tokens = _pick("cache_read_tokens", "cached_input_tokens")
+        cache_write_tokens = _pick("cache_write_tokens", "cached_write_tokens")
+        input_audio_tokens = _pick("input_audio_tokens", "audio_input_tokens")
+        input_audio_cache_tokens = _pick(
+            "input_audio_cache_tokens",
+            "audio_input_cache_tokens",
+        )
+        total_tokens = _pick("total_tokens")
+        if total_tokens <= 0:
+            total_tokens = (
+                input_tokens
+                + output_tokens
+                + cache_read_tokens
+                + cache_write_tokens
+                + input_audio_tokens
+                + input_audio_cache_tokens
+            )
+
+        return HelperStageTelemetryUsage(
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            cache_read_tokens=cache_read_tokens,
+            cache_write_tokens=cache_write_tokens,
+            input_audio_tokens=input_audio_tokens,
+            input_audio_cache_tokens=input_audio_cache_tokens,
+            total_tokens=total_tokens,
+        )
+
+    def _build_stage_telemetry_record(
+        self,
+        *,
+        session: AITestCaseHelperSession,
+        phase: str,
+        status: HelperStageTelemetryStatus,
+        started_at: datetime,
+        ended_at: datetime,
+        usage_payload: Optional[Dict[str, Any]],
+        model_name: Optional[str] = None,
+        pretestcase_count: int = 0,
+        testcase_count: int = 0,
+        error_message: Optional[str] = None,
+    ) -> HelperStageTelemetryRecord:
+        if ended_at < started_at:
+            ended_at = started_at
+        duration_ms = int((ended_at - started_at).total_seconds() * 1000)
+        normalized_usage = self._normalize_stage_usage(usage_payload)
+        return HelperStageTelemetryRecord(
+            session_id=session.id,
+            team_id=session.team_id,
+            user_id=session.created_by_user_id,
+            ticket_key=session.ticket_key,
+            phase=phase,
+            status=status,
+            started_at=started_at,
+            ended_at=ended_at,
+            duration_ms=max(0, duration_ms),
+            usage=normalized_usage,
+            model_name=(model_name or "").strip() or None,
+            pretestcase_count=pretestcase_count,
+            testcase_count=testcase_count,
+            usage_json=dict(usage_payload or {}),
+            error_message=error_message,
+        )
+
+    def _persist_stage_telemetry_sync(
+        self,
+        sync_db: Session,
+        record: HelperStageTelemetryRecord,
+    ) -> None:
+        if self._stage_metrics_table_available is None:
+            try:
+                sync_db.execute(text("SELECT 1 FROM ai_tc_helper_stage_metrics LIMIT 1"))
+                self._stage_metrics_table_available = True
+            except Exception as exc:
+                self._stage_metrics_table_available = False
+                if not self._stage_metrics_table_warned_once:
+                    logger.warning(
+                        "偵測到 ai_tc_helper_stage_metrics 尚未就緒，暫停 telemetry 落庫: %s",
+                        exc,
+                    )
+                    self._stage_metrics_table_warned_once = True
+
+        if not self._stage_metrics_table_available:
+            return
+
+        try:
+            usage_json_payload = dict(record.usage_json or {})
+            usage_json_payload["normalized_usage"] = record.usage.model_dump()
+            metric = AITestCaseHelperStageMetric(
+                session_id=record.session_id,
+                team_id=record.team_id,
+                user_id=record.user_id,
+                ticket_key=record.ticket_key,
+                phase=record.phase,
+                status=record.status.value,
+                started_at=record.started_at,
+                ended_at=record.ended_at,
+                duration_ms=record.duration_ms,
+                input_tokens=record.usage.input_tokens,
+                output_tokens=record.usage.output_tokens,
+                cache_read_tokens=record.usage.cache_read_tokens,
+                cache_write_tokens=record.usage.cache_write_tokens,
+                input_audio_tokens=record.usage.input_audio_tokens,
+                input_audio_cache_tokens=record.usage.input_audio_cache_tokens,
+                pretestcase_count=record.pretestcase_count,
+                testcase_count=record.testcase_count,
+                model_name=record.model_name,
+                usage_json=_safe_json_dumps(usage_json_payload),
+                error_message=record.error_message,
+                created_at=_now(),
+            )
+            with sync_db.begin_nested():
+                sync_db.add(metric)
+                sync_db.flush([metric])
+        except Exception as exc:
+            logger.warning(
+                "寫入 helper stage telemetry 失敗: session=%s phase=%s error=%s",
+                record.session_id,
+                record.phase,
+                exc,
+            )
 
     @staticmethod
     def _extract_coverage_payload(raw_payload: Any) -> Dict[str, Any]:
@@ -4991,6 +5142,9 @@ class JiraTestCaseHelperService:
         ticket_summary = str(ticket_payload.get("summary") or "")
         ticket_components = ", ".join(ticket_payload.get("components") or []) or "N/A"
         review_language = _locale_label(session_data.review_locale.value)
+        stage_started_at = _now()
+        stage_usage: Dict[str, Any] = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        pretestcase_count = 0
 
         def _mark_running(sync_db: Session) -> None:
             session, _ = self._get_session_and_drafts_sync(
@@ -5183,6 +5337,8 @@ class JiraTestCaseHelperService:
                 + analysis_call.get("usage", {}).get("total_tokens", 0)
                 + coverage_usage.get("total_tokens", 0),
             }
+            stage_usage = dict(total_usage)
+            pretestcase_count = len(stage1_payload.get("en") or [])
             total_cost = (
                 float(requirement_ir_result.get("cost") or 0.0)
                 + float(analysis_call.get("cost") or 0.0)
@@ -5347,6 +5503,17 @@ class JiraTestCaseHelperService:
                     last_error=None,
                     enforce_transition=True,
                 )
+                telemetry_record = self._build_stage_telemetry_record(
+                    session=session,
+                    phase=HelperPhase.ANALYSIS.value,
+                    status=HelperStageTelemetryStatus.SUCCESS,
+                    started_at=stage_started_at,
+                    ended_at=_now(),
+                    usage_payload=stage_usage,
+                    model_name=self._resolve_stage_model_for_log("analysis"),
+                    pretestcase_count=pretestcase_count,
+                )
+                self._persist_stage_telemetry_sync(sync_db, telemetry_record)
                 sync_db.commit()
                 _, drafts = self._get_session_and_drafts_sync(
                     sync_db,
@@ -5397,6 +5564,18 @@ class JiraTestCaseHelperService:
                     last_error=error_message,
                     enforce_transition=False,
                 )
+                telemetry_record = self._build_stage_telemetry_record(
+                    session=session,
+                    phase=HelperPhase.ANALYSIS.value,
+                    status=HelperStageTelemetryStatus.FAILED,
+                    started_at=stage_started_at,
+                    ended_at=_now(),
+                    usage_payload=stage_usage,
+                    model_name=self._resolve_stage_model_for_log("analysis"),
+                    pretestcase_count=pretestcase_count,
+                    error_message=error_message,
+                )
+                self._persist_stage_telemetry_sync(sync_db, telemetry_record)
                 sync_db.commit()
 
             await run_sync(self.db, _persist_failed)
@@ -6017,26 +6196,26 @@ class JiraTestCaseHelperService:
             sync_db.commit()
 
         await run_sync(self.db, _mark_running)
+        stage_started_at = _now()
+        testcase_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        audit_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
+        testcase_cost = 0.0
+        audit_cost = 0.0
+        testcase_cost_note = ""
+        audit_cost_note = ""
+        testcase_response_id: Optional[str] = None
+        audit_response_id: Optional[str] = None
+        testcase_regenerate_applied = False
+        testcase_repair_applied = False
+        audit_regenerate_applied = False
+        audit_repair_applied = False
+
+        generated_testcases_all: List[Dict[str, Any]] = []
+        audited_testcases_all: List[Dict[str, Any]] = []
+        testcase_fallback_sections: List[Dict[str, str]] = []
+        audit_fallback_sections: List[Dict[str, str]] = []
 
         try:
-            testcase_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
-            audit_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
-            testcase_cost = 0.0
-            audit_cost = 0.0
-            testcase_cost_note = ""
-            audit_cost_note = ""
-            testcase_response_id: Optional[str] = None
-            audit_response_id: Optional[str] = None
-            testcase_regenerate_applied = False
-            testcase_repair_applied = False
-            audit_regenerate_applied = False
-            audit_repair_applied = False
-
-            generated_testcases_all: List[Dict[str, Any]] = []
-            audited_testcases_all: List[Dict[str, Any]] = []
-            testcase_fallback_sections: List[Dict[str, str]] = []
-            audit_fallback_sections: List[Dict[str, str]] = []
-
             def _merge_usage(base: Dict[str, int], delta: Dict[str, Any]) -> Dict[str, int]:
                 return {
                     "prompt_tokens": int(base.get("prompt_tokens", 0))
@@ -6486,6 +6665,17 @@ class JiraTestCaseHelperService:
                     last_error=None,
                     enforce_transition=True,
                 )
+                telemetry_record = self._build_stage_telemetry_record(
+                    session=session,
+                    phase=HelperPhase.TESTCASE.value,
+                    status=HelperStageTelemetryStatus.SUCCESS,
+                    started_at=stage_started_at,
+                    ended_at=_now(),
+                    usage_payload=combined_usage,
+                    model_name=self._resolve_stage_model_for_log("testcase"),
+                    testcase_count=len(audited_testcases_all),
+                )
+                self._persist_stage_telemetry_sync(sync_db, telemetry_record)
                 sync_db.commit()
                 _, drafts = self._get_session_and_drafts_sync(
                     sync_db,
@@ -6511,6 +6701,14 @@ class JiraTestCaseHelperService:
             )
         except Exception as exc:
             error_message = str(exc)
+            failed_usage = {
+                "prompt_tokens": testcase_usage.get("prompt_tokens", 0)
+                + audit_usage.get("prompt_tokens", 0),
+                "completion_tokens": testcase_usage.get("completion_tokens", 0)
+                + audit_usage.get("completion_tokens", 0),
+                "total_tokens": testcase_usage.get("total_tokens", 0)
+                + audit_usage.get("total_tokens", 0),
+            }
 
             def _persist_failed(sync_db: Session) -> None:
                 session, _ = self._get_session_and_drafts_sync(
@@ -6526,6 +6724,18 @@ class JiraTestCaseHelperService:
                     last_error=error_message,
                     enforce_transition=False,
                 )
+                telemetry_record = self._build_stage_telemetry_record(
+                    session=session,
+                    phase=HelperPhase.TESTCASE.value,
+                    status=HelperStageTelemetryStatus.FAILED,
+                    started_at=stage_started_at,
+                    ended_at=_now(),
+                    usage_payload=failed_usage,
+                    model_name=self._resolve_stage_model_for_log("testcase"),
+                    testcase_count=len(audited_testcases_all),
+                    error_message=error_message,
+                )
+                self._persist_stage_telemetry_sync(sync_db, telemetry_record)
                 sync_db.commit()
 
             await run_sync(self.db, _persist_failed)
@@ -6681,6 +6891,7 @@ class JiraTestCaseHelperService:
         if not isinstance(final_testcases, list) or not final_testcases:
             raise ValueError("找不到可提交的 test case")
         validated = self._validate_generated_testcases(testcases=final_testcases)
+        stage_started_at = _now()
 
         def _mark_running(sync_db: Session) -> None:
             session, _ = self._get_session_and_drafts_sync(
@@ -6779,6 +6990,17 @@ class JiraTestCaseHelperService:
                     payload={"tc": validated},
                     increment_version=request.testcases is not None,
                 )
+                telemetry_record = self._build_stage_telemetry_record(
+                    session=session,
+                    phase=HelperPhase.COMMIT.value,
+                    status=HelperStageTelemetryStatus.SUCCESS,
+                    started_at=stage_started_at,
+                    ended_at=_now(),
+                    usage_payload={},
+                    model_name=None,
+                    testcase_count=len(created_numbers),
+                )
+                self._persist_stage_telemetry_sync(sync_db, telemetry_record)
                 sync_db.commit()
             except IntegrityError as exc:
                 sync_db.rollback()
@@ -6814,6 +7036,17 @@ class JiraTestCaseHelperService:
                     last_error=error_message,
                     enforce_transition=False,
                 )
+                telemetry_record = self._build_stage_telemetry_record(
+                    session=session,
+                    phase=HelperPhase.COMMIT.value,
+                    status=HelperStageTelemetryStatus.FAILED,
+                    started_at=stage_started_at,
+                    ended_at=_now(),
+                    usage_payload={},
+                    model_name=None,
+                    error_message=error_message,
+                )
+                self._persist_stage_telemetry_sync(sync_db, telemetry_record)
                 sync_db.commit()
 
             await run_sync(self.db, _persist_failed)

@@ -49,6 +49,26 @@
     margin-bottom: 0.35rem;
 }
 
+.helper-ai-progress-table {
+    max-height: 460px;
+    overflow-y: auto;
+}
+
+.helper-ai-cost-table {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.helper-ai-stage-table {
+    max-height: 360px;
+    overflow-y: auto;
+}
+
+.helper-ai-team-table {
+    max-height: 320px;
+    overflow-y: auto;
+}
+
 @media (max-width: 1200px) {
     .team-stats-range-group .form-control {
         min-width: 120px;
@@ -56,5 +76,11 @@
 
     .team-stats-range-menu {
         min-width: 340px;
+    }
+
+    .helper-ai-progress-table,
+    .helper-ai-stage-table,
+    .helper-ai-team-table {
+        max-height: 320px;
     }
 }

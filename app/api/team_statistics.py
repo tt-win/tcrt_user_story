@@ -11,13 +11,24 @@ from datetime import datetime, timezone, timedelta, date
 from typing import List, Dict, Any, Optional
 import logging
 import json
+import math
 from collections import Counter, defaultdict
 from sqlalchemy import text, func, and_, select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import SessionLocal
 from app.auth.dependencies import require_admin
-from app.models.database_models import User, TestCaseLocal, TestRunItem, TestRunConfig, Team, LarkUser, LarkDepartment
+from app.models.database_models import (
+    AITestCaseHelperSession,
+    AITestCaseHelperStageMetric,
+    User,
+    TestCaseLocal,
+    TestRunItem,
+    TestRunConfig,
+    Team,
+    LarkUser,
+    LarkDepartment,
+)
 from app.models.team import TeamStatus
 from app.audit.database import get_audit_session, AuditLogTable
 from app.audit.models import ActionType, ResourceType, AuditSeverity
@@ -27,6 +38,337 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin/team_statistics", tags=["team_statistics"])
 
 MAX_STAT_RANGE_DAYS = 90
+HELPER_AI_PRICING_VERSION = "google-vertex-baseline-v1"
+HELPER_AI_PRICING_THRESHOLD = 200_000
+HELPER_AI_PRICING: Dict[str, Dict[str, Any]] = {
+    "input": {
+        "token_key": "input_tokens",
+        "label": "Input",
+        "lte_200k": 2.0,
+        "gt_200k": 4.0,
+    },
+    "output": {
+        "token_key": "output_tokens",
+        "label": "Output",
+        "lte_200k": 12.0,
+        "gt_200k": 18.0,
+    },
+    "cache_read": {
+        "token_key": "cache_read_tokens",
+        "label": "Cache Read",
+        "lte_200k": 0.20,
+        "gt_200k": 0.40,
+    },
+    "cache_write": {
+        "token_key": "cache_write_tokens",
+        "label": "Cache Write",
+        "fixed": 0.375,
+    },
+    "input_audio": {
+        "token_key": "input_audio_tokens",
+        "label": "Input Audio",
+        "lte_200k": 2.0,
+        "gt_200k": 4.0,
+    },
+    "input_audio_cache": {
+        "token_key": "input_audio_cache_tokens",
+        "label": "Input Audio Cache",
+        "lte_200k": 0.20,
+        "gt_200k": 0.40,
+    },
+}
+
+
+def _to_non_negative_int(value: Any) -> int:
+    try:
+        number = int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+    return number if number >= 0 else 0
+
+
+def _parse_team_ids(raw_team_ids: Optional[str]) -> List[int]:
+    if not raw_team_ids:
+        return []
+    values: List[int] = []
+    seen = set()
+    for part in str(raw_team_ids).split(","):
+        text_value = part.strip()
+        if not text_value:
+            continue
+        try:
+            team_id = int(text_value)
+        except ValueError:
+            continue
+        if team_id <= 0 or team_id in seen:
+            continue
+        values.append(team_id)
+        seen.add(team_id)
+    return values
+
+
+def _to_naive_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def _p95(values: List[int]) -> int:
+    if not values:
+        return 0
+    ordered = sorted(values)
+    index = max(0, math.ceil(len(ordered) * 0.95) - 1)
+    return int(ordered[index])
+
+
+def _aggregate_helper_stage_metrics(
+    rows: List[AITestCaseHelperStageMetric],
+) -> List[Dict[str, Any]]:
+    grouped: Dict[str, Dict[str, Any]] = defaultdict(
+        lambda: {
+            "durations": [],
+            "total_runs": 0,
+            "success_runs": 0,
+            "failed_runs": 0,
+            "pretestcase_count_total": 0,
+            "testcase_count_total": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cache_read_tokens": 0,
+            "cache_write_tokens": 0,
+            "input_audio_tokens": 0,
+            "input_audio_cache_tokens": 0,
+        }
+    )
+    for row in rows:
+        phase = str(row.phase or "").strip() or "unknown"
+        bucket = grouped[phase]
+        duration = _to_non_negative_int(row.duration_ms)
+        bucket["durations"].append(duration)
+        bucket["total_runs"] += 1
+        if str(row.status or "").lower() == "success":
+            bucket["success_runs"] += 1
+        else:
+            bucket["failed_runs"] += 1
+        bucket["pretestcase_count_total"] += _to_non_negative_int(row.pretestcase_count)
+        bucket["testcase_count_total"] += _to_non_negative_int(row.testcase_count)
+        bucket["input_tokens"] += _to_non_negative_int(row.input_tokens)
+        bucket["output_tokens"] += _to_non_negative_int(row.output_tokens)
+        bucket["cache_read_tokens"] += _to_non_negative_int(row.cache_read_tokens)
+        bucket["cache_write_tokens"] += _to_non_negative_int(row.cache_write_tokens)
+        bucket["input_audio_tokens"] += _to_non_negative_int(row.input_audio_tokens)
+        bucket["input_audio_cache_tokens"] += _to_non_negative_int(row.input_audio_cache_tokens)
+
+    phase_order = {"analysis": 1, "testcase": 2, "commit": 3}
+    results: List[Dict[str, Any]] = []
+    for phase, bucket in grouped.items():
+        durations = [int(item) for item in bucket["durations"]]
+        max_duration = max(durations) if durations else 0
+        avg_duration = int(round(sum(durations) / len(durations))) if durations else 0
+        results.append(
+            {
+                "phase": phase,
+                "total_runs": int(bucket["total_runs"]),
+                "success_runs": int(bucket["success_runs"]),
+                "failed_runs": int(bucket["failed_runs"]),
+                "avg_duration_ms": avg_duration,
+                "p95_duration_ms": _p95(durations),
+                "max_duration_ms": int(max_duration),
+                "pretestcase_count_total": int(bucket["pretestcase_count_total"]),
+                "testcase_count_total": int(bucket["testcase_count_total"]),
+                "token_totals": {
+                    "input_tokens": int(bucket["input_tokens"]),
+                    "output_tokens": int(bucket["output_tokens"]),
+                    "cache_read_tokens": int(bucket["cache_read_tokens"]),
+                    "cache_write_tokens": int(bucket["cache_write_tokens"]),
+                    "input_audio_tokens": int(bucket["input_audio_tokens"]),
+                    "input_audio_cache_tokens": int(bucket["input_audio_cache_tokens"]),
+                },
+            }
+        )
+    results.sort(key=lambda item: (phase_order.get(item["phase"], 99), item["phase"]))
+    return results
+
+
+def _aggregate_helper_team_usage(
+    progress_records: List[Dict[str, Any]],
+    telemetry_rows: List[AITestCaseHelperStageMetric],
+) -> List[Dict[str, Any]]:
+    grouped: Dict[int, Dict[str, Any]] = defaultdict(
+        lambda: {
+            "team_id": 0,
+            "team_name": "",
+            "session_count": 0,
+            "active_sessions": 0,
+            "completed_sessions": 0,
+            "failed_sessions": 0,
+            "cancelled_sessions": 0,
+            "telemetry_runs": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "cache_read_tokens": 0,
+            "cache_write_tokens": 0,
+            "input_audio_tokens": 0,
+            "input_audio_cache_tokens": 0,
+            "user_ids": set(),
+            "ticket_keys": set(),
+        }
+    )
+
+    for record in progress_records:
+        team_id_raw = record.get("team_id")
+        try:
+            team_id = int(team_id_raw)
+        except (TypeError, ValueError):
+            continue
+        if team_id <= 0:
+            continue
+
+        bucket = grouped[team_id]
+        bucket["team_id"] = team_id
+        team_name = str(record.get("team_name") or "").strip()
+        if team_name:
+            bucket["team_name"] = team_name
+        bucket["session_count"] += 1
+
+        status = str(record.get("status") or "").strip().lower()
+        if status == "active":
+            bucket["active_sessions"] += 1
+        elif status in {"completed", "success"}:
+            bucket["completed_sessions"] += 1
+        elif status == "failed":
+            bucket["failed_sessions"] += 1
+        elif status == "cancelled":
+            bucket["cancelled_sessions"] += 1
+
+        user_id_raw = record.get("user_id")
+        try:
+            user_id = int(user_id_raw) if user_id_raw is not None else None
+        except (TypeError, ValueError):
+            user_id = None
+        if user_id is not None and user_id > 0:
+            bucket["user_ids"].add(user_id)
+
+        ticket_key = str(record.get("ticket_key") or "").strip().upper()
+        if ticket_key:
+            bucket["ticket_keys"].add(ticket_key)
+
+    for row in telemetry_rows:
+        team_id_raw = row.team_id
+        try:
+            team_id = int(team_id_raw)
+        except (TypeError, ValueError):
+            continue
+        if team_id <= 0:
+            continue
+
+        bucket = grouped[team_id]
+        bucket["team_id"] = team_id
+        if not bucket["team_name"]:
+            bucket["team_name"] = f"Team #{team_id}"
+
+        bucket["telemetry_runs"] += 1
+        bucket["input_tokens"] += _to_non_negative_int(row.input_tokens)
+        bucket["output_tokens"] += _to_non_negative_int(row.output_tokens)
+        bucket["cache_read_tokens"] += _to_non_negative_int(row.cache_read_tokens)
+        bucket["cache_write_tokens"] += _to_non_negative_int(row.cache_write_tokens)
+        bucket["input_audio_tokens"] += _to_non_negative_int(row.input_audio_tokens)
+        bucket["input_audio_cache_tokens"] += _to_non_negative_int(
+            row.input_audio_cache_tokens
+        )
+
+        user_id_raw = row.user_id
+        try:
+            user_id = int(user_id_raw) if user_id_raw is not None else None
+        except (TypeError, ValueError):
+            user_id = None
+        if user_id is not None and user_id > 0:
+            bucket["user_ids"].add(user_id)
+
+        ticket_key = str(row.ticket_key or "").strip().upper()
+        if ticket_key:
+            bucket["ticket_keys"].add(ticket_key)
+
+    results: List[Dict[str, Any]] = []
+    for team_id, bucket in grouped.items():
+        team_name = str(bucket.get("team_name") or "").strip() or f"Team #{team_id}"
+        token_usage = {
+            "input_tokens": int(bucket["input_tokens"]),
+            "output_tokens": int(bucket["output_tokens"]),
+            "cache_read_tokens": int(bucket["cache_read_tokens"]),
+            "cache_write_tokens": int(bucket["cache_write_tokens"]),
+            "input_audio_tokens": int(bucket["input_audio_tokens"]),
+            "input_audio_cache_tokens": int(bucket["input_audio_cache_tokens"]),
+        }
+        total_tokens = sum(token_usage.values())
+        estimated_cost = _estimate_helper_ai_cost(token_usage)
+
+        results.append(
+            {
+                "team_id": team_id,
+                "team_name": team_name,
+                "session_count": int(bucket["session_count"]),
+                "active_sessions": int(bucket["active_sessions"]),
+                "completed_sessions": int(bucket["completed_sessions"]),
+                "failed_sessions": int(bucket["failed_sessions"]),
+                "cancelled_sessions": int(bucket["cancelled_sessions"]),
+                "distinct_users": len(bucket["user_ids"]),
+                "distinct_tickets": len(bucket["ticket_keys"]),
+                "telemetry_runs": int(bucket["telemetry_runs"]),
+                "total_tokens": int(total_tokens),
+                "estimated_cost_usd": float(
+                    estimated_cost.get("total_estimated_cost_usd", 0.0) or 0.0
+                ),
+            }
+        )
+
+    results.sort(
+        key=lambda item: (
+            -int(item["session_count"]),
+            -int(item["total_tokens"]),
+            str(item["team_name"]),
+        )
+    )
+    return results
+
+
+def _estimate_helper_ai_cost(token_usage: Dict[str, int]) -> Dict[str, Any]:
+    breakdown: Dict[str, Dict[str, Any]] = {}
+    total_estimated_cost = 0.0
+
+    for category, rule in HELPER_AI_PRICING.items():
+        token_key = str(rule["token_key"])
+        tokens = _to_non_negative_int(token_usage.get(token_key, 0))
+        if "fixed" in rule:
+            rate = float(rule["fixed"])
+            tier = "fixed"
+        else:
+            if tokens <= HELPER_AI_PRICING_THRESHOLD:
+                rate = float(rule["lte_200k"])
+                tier = "<=200k"
+            else:
+                rate = float(rule["gt_200k"])
+                tier = ">200k"
+        estimated_cost = tokens / 1_000_000 * rate
+        total_estimated_cost += estimated_cost
+        breakdown[category] = {
+            "label": rule["label"],
+            "token_key": token_key,
+            "tokens": tokens,
+            "tier": tier,
+            "rate_per_1m_usd": rate,
+            "estimated_cost_usd": round(estimated_cost, 6),
+        }
+
+    return {
+        "currency": "USD",
+        "unit": "per_1m_tokens",
+        "threshold_tokens": HELPER_AI_PRICING_THRESHOLD,
+        "pricing_profile_version": HELPER_AI_PRICING_VERSION,
+        "breakdown": breakdown,
+        "total_estimated_cost_usd": round(total_estimated_cost, 6),
+        "estimated_at": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 def _resolve_date_range(
@@ -1096,3 +1438,210 @@ async def get_department_stats(
     except Exception as e:
         logger.error(f"獲取部門統計失敗: {e}")
         raise HTTPException(status_code=500, detail={"error": "無法載入部門統計"})
+
+
+@router.get("/helper_ai_analytics", include_in_schema=False)
+async def get_helper_ai_analytics(
+    current_user: User = Depends(require_admin()),
+    days: int = Query(30, ge=1, le=MAX_STAT_RANGE_DAYS, description="統計天數"),
+    start_date: Optional[date] = Query(None, description="開始日期 (YYYY-MM-DD)"),
+    end_date: Optional[date] = Query(None, description="結束日期 (YYYY-MM-DD)"),
+    team_ids: Optional[str] = Query(None, description="團隊 ID，逗號分隔"),
+    user_id: Optional[int] = Query(None, ge=1, description="指定帳號 ID"),
+    ticket_key: Optional[str] = Query(None, description="指定 ticket key"),
+):
+    """
+    QA AI Agent - Test Case Helper 統計
+
+    Returns:
+        - progress_records: 帳號-單號進度
+        - team_usage: 團隊使用彙總
+        - token_usage: token 分類彙總
+        - cost_estimate: 固定 Google Vertex 費率估算
+        - stage_metrics: 階段耗時與產量統計
+    """
+    try:
+        (
+            range_start,
+            range_end,
+            start_dt,
+            end_dt,
+            range_days,
+        ) = _resolve_date_range(days, start_date, end_date)
+        selected_team_ids = _parse_team_ids(team_ids)
+        normalized_ticket_key = str(ticket_key or "").strip().upper()
+        start_dt_naive = _to_naive_utc(start_dt)
+        end_dt_naive = _to_naive_utc(end_dt)
+        telemetry_available = True
+        telemetry_error: Optional[str] = None
+
+        async with SessionLocal() as session:
+            progress_stmt = (
+                select(
+                    AITestCaseHelperSession.id,
+                    AITestCaseHelperSession.team_id,
+                    Team.name,
+                    AITestCaseHelperSession.created_by_user_id,
+                    User.username,
+                    AITestCaseHelperSession.ticket_key,
+                    AITestCaseHelperSession.current_phase,
+                    AITestCaseHelperSession.phase_status,
+                    AITestCaseHelperSession.status,
+                    AITestCaseHelperSession.created_at,
+                    AITestCaseHelperSession.updated_at,
+                )
+                .outerjoin(Team, AITestCaseHelperSession.team_id == Team.id)
+                .outerjoin(User, User.id == AITestCaseHelperSession.created_by_user_id)
+                .where(
+                    AITestCaseHelperSession.updated_at >= start_dt_naive,
+                    AITestCaseHelperSession.updated_at <= end_dt_naive,
+                )
+                .order_by(AITestCaseHelperSession.updated_at.desc())
+            )
+            if selected_team_ids:
+                progress_stmt = progress_stmt.where(
+                    AITestCaseHelperSession.team_id.in_(selected_team_ids)
+                )
+            if user_id is not None:
+                progress_stmt = progress_stmt.where(
+                    AITestCaseHelperSession.created_by_user_id == user_id
+                )
+            if normalized_ticket_key:
+                progress_stmt = progress_stmt.where(
+                    func.upper(AITestCaseHelperSession.ticket_key) == normalized_ticket_key
+                )
+
+            progress_rows = (await session.execute(progress_stmt)).all()
+            progress_records = [
+                {
+                    "session_id": row[0],
+                    "team_id": row[1],
+                    "team_name": row[2] or f"Team #{row[1]}",
+                    "user_id": row[3],
+                    "username": row[4] or f"user-{row[3]}" if row[3] else "-",
+                    "ticket_key": row[5],
+                    "current_phase": row[6],
+                    "phase_status": row[7],
+                    "status": row[8],
+                    "created_at": row[9].isoformat() if row[9] else None,
+                    "updated_at": row[10].isoformat() if row[10] else None,
+                }
+                for row in progress_rows
+            ]
+
+            telemetry_rows: List[AITestCaseHelperStageMetric] = []
+            try:
+                telemetry_stmt = (
+                    select(AITestCaseHelperStageMetric)
+                    .where(
+                        AITestCaseHelperStageMetric.started_at >= start_dt_naive,
+                        AITestCaseHelperStageMetric.started_at <= end_dt_naive,
+                    )
+                    .order_by(AITestCaseHelperStageMetric.started_at.desc())
+                )
+                if selected_team_ids:
+                    telemetry_stmt = telemetry_stmt.where(
+                        AITestCaseHelperStageMetric.team_id.in_(selected_team_ids)
+                    )
+                if user_id is not None:
+                    telemetry_stmt = telemetry_stmt.where(
+                        AITestCaseHelperStageMetric.user_id == user_id
+                    )
+                if normalized_ticket_key:
+                    telemetry_stmt = telemetry_stmt.where(
+                        func.upper(AITestCaseHelperStageMetric.ticket_key)
+                        == normalized_ticket_key
+                    )
+
+                telemetry_rows = (await session.execute(telemetry_stmt)).scalars().all()
+            except Exception as telemetry_exc:
+                telemetry_available = False
+                telemetry_error = str(telemetry_exc)
+                logger.warning(
+                    "QA Helper telemetry 查詢失敗，將以空 telemetry 回應: %s",
+                    telemetry_exc,
+                )
+
+        token_usage = {
+            "input_tokens": sum(_to_non_negative_int(row.input_tokens) for row in telemetry_rows),
+            "output_tokens": sum(_to_non_negative_int(row.output_tokens) for row in telemetry_rows),
+            "cache_read_tokens": sum(
+                _to_non_negative_int(row.cache_read_tokens) for row in telemetry_rows
+            ),
+            "cache_write_tokens": sum(
+                _to_non_negative_int(row.cache_write_tokens) for row in telemetry_rows
+            ),
+            "input_audio_tokens": sum(
+                _to_non_negative_int(row.input_audio_tokens) for row in telemetry_rows
+            ),
+            "input_audio_cache_tokens": sum(
+                _to_non_negative_int(row.input_audio_cache_tokens)
+                for row in telemetry_rows
+            ),
+        }
+        token_usage["total_tokens"] = (
+            token_usage["input_tokens"]
+            + token_usage["output_tokens"]
+            + token_usage["cache_read_tokens"]
+            + token_usage["cache_write_tokens"]
+            + token_usage["input_audio_tokens"]
+            + token_usage["input_audio_cache_tokens"]
+        )
+
+        stage_metrics = _aggregate_helper_stage_metrics(telemetry_rows)
+        team_usage = _aggregate_helper_team_usage(progress_records, telemetry_rows)
+        cost_estimate = _estimate_helper_ai_cost(token_usage)
+        progress_status_counter = Counter(
+            str(item.get("status") or "unknown") for item in progress_records
+        )
+        progress_phase_counter = Counter(
+            str(item.get("current_phase") or "unknown") for item in progress_records
+        )
+        telemetry_session_ids = {
+            int(row.session_id) for row in telemetry_rows if row.session_id is not None
+        }
+        session_count = len(progress_records)
+        telemetry_session_count = len(telemetry_session_ids)
+        coverage_ratio = (
+            telemetry_session_count / session_count if session_count > 0 else 1.0
+        )
+
+        return JSONResponse(
+            {
+                "progress_records": progress_records,
+                "progress_summary": {
+                    "total_sessions": session_count,
+                    "by_status": dict(progress_status_counter),
+                    "by_phase": dict(progress_phase_counter),
+                },
+                "team_usage": team_usage,
+                "token_usage": token_usage,
+                "cost_estimate": cost_estimate,
+                "stage_metrics": stage_metrics,
+                "data_coverage": {
+                    "session_count": session_count,
+                    "telemetry_session_count": telemetry_session_count,
+                    "telemetry_record_count": len(telemetry_rows),
+                    "coverage_ratio": round(coverage_ratio, 4),
+                    "is_partial": telemetry_session_count < session_count,
+                    "telemetry_available": telemetry_available,
+                    "telemetry_error": telemetry_error,
+                },
+                "applied_filters": {
+                    "team_ids": selected_team_ids,
+                    "user_id": user_id,
+                    "ticket_key": normalized_ticket_key or None,
+                },
+                "date_range": {
+                    "start": range_start,
+                    "end": range_end,
+                    "days": range_days,
+                },
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"獲取 QA Helper 統計失敗: {e}")
+        raise HTTPException(status_code=500, detail={"error": "無法載入 QA Helper 統計"})

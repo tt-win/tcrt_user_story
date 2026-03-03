@@ -517,6 +517,11 @@ class AITestCaseHelperSession(Base):
         back_populates="session",
         cascade="all, delete-orphan",
     )
+    stage_metrics = relationship(
+        "AITestCaseHelperStageMetric",
+        back_populates="session",
+        cascade="all, delete-orphan",
+    )
     test_case_set = relationship("TestCaseSet")
     team = relationship("Team")
     created_by_user = relationship("User")
@@ -550,6 +555,57 @@ class AITestCaseHelperDraft(Base):
     )
 
     session = relationship("AITestCaseHelperSession", back_populates="drafts")
+
+
+class AITestCaseHelperStageMetric(Base):
+    """JIRA Ticket -> Test Case Helper 階段 telemetry。"""
+
+    __tablename__ = "ai_tc_helper_stage_metrics"
+    __table_args__ = (
+        Index("ix_ai_tc_helper_stage_metrics_team_phase_time", "team_id", "phase", "started_at"),
+        Index("ix_ai_tc_helper_stage_metrics_team_time", "team_id", "started_at"),
+        Index("ix_ai_tc_helper_stage_metrics_session_phase", "session_id", "phase"),
+        Index("ix_ai_tc_helper_stage_metrics_status", "status"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    session_id = Column(
+        Integer,
+        ForeignKey("ai_tc_helper_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    team_id = Column(Integer, ForeignKey("teams.id"), nullable=False, index=True)
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    ticket_key = Column(String(64), nullable=True, index=True)
+    phase = Column(String(32), nullable=False, index=True)
+    status = Column(String(16), nullable=False)
+    started_at = Column(DateTime, nullable=False, index=True)
+    ended_at = Column(DateTime, nullable=False)
+    duration_ms = Column(Integer, nullable=False, default=0)
+
+    input_tokens = Column(Integer, nullable=False, default=0)
+    output_tokens = Column(Integer, nullable=False, default=0)
+    cache_read_tokens = Column(Integer, nullable=False, default=0)
+    cache_write_tokens = Column(Integer, nullable=False, default=0)
+    input_audio_tokens = Column(Integer, nullable=False, default=0)
+    input_audio_cache_tokens = Column(Integer, nullable=False, default=0)
+
+    pretestcase_count = Column(Integer, nullable=False, default=0)
+    testcase_count = Column(Integer, nullable=False, default=0)
+    model_name = Column(String(255), nullable=True)
+    usage_json = Column(Text, nullable=True)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    session = relationship("AITestCaseHelperSession", back_populates="stage_metrics")
+    team = relationship("Team")
+    user = relationship("User")
 
 
 # Backward-compatible computed columns for TestRunItem snapshots
