@@ -4672,7 +4672,8 @@ class JiraTestCaseHelperService:
             section["sn"] = section_no
             section_entries: List[Dict[str, Any]] = []
             for entry_idx, entry in enumerate(section.get("en", []) or []):
-                test_no = self._make_seq_no(entry_idx, base_start=base_start)
+                # tail 序號固定由 010 開始，不跟隨 initial_middle
+                test_no = self._make_seq_no(entry_idx, base_start=10)
                 cid = f"{section_no}.{test_no}"
                 entry["sn"] = section_no
                 entry["tn"] = test_no
@@ -4721,7 +4722,8 @@ class JiraTestCaseHelperService:
                 for entry_idx, vi in enumerate(section.get("verification_items") or []):
                     if not isinstance(vi, dict):
                         continue
-                    test_no = self._make_seq_no(entry_idx, base_start=base_start)
+                    # tail 序號固定由 010 開始，不跟隨 initial_middle
+                    test_no = self._make_seq_no(entry_idx, base_start=10)
                     cid = f"{section_no}.{test_no}"
                     variants = vi.get("variants") if isinstance(vi.get("variants"), list) else []
                     variant_kind = (
@@ -4859,7 +4861,8 @@ class JiraTestCaseHelperService:
             section["sn"] = section_no
             sec_entries: List[Dict[str, Any]] = []
             for entry_idx, entry in enumerate(section.get("en", []) or []):
-                test_no = self._make_seq_no(entry_idx, base_start=base_start)
+                # tail 序號固定由 010 開始，不跟隨 initial_middle
+                test_no = self._make_seq_no(entry_idx, base_start=10)
                 cid = f"{section_no}.{test_no}"
                 entry["sn"] = section_no
                 entry["tn"] = test_no

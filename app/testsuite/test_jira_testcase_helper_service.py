@@ -1952,6 +1952,65 @@ async def test_generate_reindexes_section_middle_number_from_pretestcase_payload
 
 
 @pytest.mark.asyncio
+async def test_generate_keeps_tail_starting_010_when_initial_middle_is_custom(
+    helper_db, monkeypatch
+):
+    seeded = _seed_basic_data(helper_db["sync"])
+    import app.services.jira_testcase_helper_service as helper_service_module
+
+    monkeypatch.setattr(
+        helper_service_module.JiraClient,
+        "get_issue",
+        lambda self, key, fields=None: {
+            "key": key,
+            "fields": {
+                "summary": "流程改版",
+                "description": "自訂 middle 檢查 tail",
+                "components": [{"name": "Core"}],
+            },
+        },
+    )
+
+    async with helper_db["async"]() as async_db:
+        service = JiraTestCaseHelperService(async_db, llm_service=FakeLLMService())
+
+        started = await service.start_session(
+            team_id=seeded["team_id"],
+            user_id=seeded["user_id"],
+            request=HelperSessionStartRequest(
+                test_case_set_id=seeded["set_id"],
+                output_locale="zh-TW",
+                review_locale="zh-TW",
+                initial_middle="050",
+            ),
+        )
+        await service.fetch_ticket(
+            team_id=seeded["team_id"],
+            session_id=started.id,
+            request=HelperTicketFetchRequest(ticket_key="TCG-130078"),
+        )
+
+        generated = await service.generate_testcases(
+            team_id=seeded["team_id"],
+            session_id=started.id,
+            request=HelperGenerateRequest(
+                pretestcase_payload={
+                    "en": [
+                        {"g": "功能 1", "t": "案例一", "cat": "happy", "st": "ok"},
+                        {"g": "功能 1", "t": "案例二", "cat": "happy", "st": "ok"},
+                    ]
+                },
+                retry=False,
+            ),
+        )
+
+        assert generated.payload["tc"][0]["id"] == "TCG-130078.050.010"
+        assert generated.payload["tc"][1]["id"] == "TCG-130078.050.020"
+        assert generated.payload["tc"][0]["section_path"] == "050 功能 1"
+        assert generated.payload["tc"][1]["section_path"] == "050 功能 1"
+
+
+@pytest.mark.asyncio
 async def test_commit_is_transactional_on_duplicate_number(helper_db):
     seeded = _seed_basic_data(helper_db["sync"])
 
