@@ -1,10 +1,11 @@
 import asyncio
 import json
 import time
+from datetime import datetime
 from types import SimpleNamespace
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
@@ -29,6 +30,7 @@ from app.models.test_case_helper import (
     HelperPhase,
     HelperPhaseStatus,
     HelperSessionStartRequest,
+    HelperStageTelemetryStatus,
     HelperSessionUpdateRequest,
     HelperTicketFetchRequest,
 )
@@ -1424,6 +1426,67 @@ async def test_helper_stage_metrics_persist_success_flow(helper_db, monkeypatch)
         assert testcase_row.testcase_count == len(generated.payload.get("tc") or [])
         assert testcase_row.output_tokens >= 0
         assert commit_row.testcase_count == committed["created_count"]
+
+
+@pytest.mark.asyncio
+async def test_helper_stage_metrics_auto_create_table_when_missing(helper_db):
+    seeded = _seed_basic_data(helper_db["sync"])
+
+    with helper_db["sync"]() as session:
+        session.execute(text("DROP TABLE IF EXISTS ai_tc_helper_stage_metrics"))
+        session.commit()
+
+    async with helper_db["async"]() as async_db:
+        service = JiraTestCaseHelperService(async_db, llm_service=FakeLLMService())
+        started = await service.start_session(
+            team_id=seeded["team_id"],
+            user_id=seeded["user_id"],
+            request=HelperSessionStartRequest(
+                test_case_set_id=seeded["set_id"],
+                output_locale="zh-TW",
+                review_locale="zh-TW",
+                initial_middle="010",
+            ),
+        )
+
+        stage_started_at = datetime.utcnow()
+
+        def _persist_metric(sync_db):
+            helper_session, _ = service._get_session_and_drafts_sync(
+                sync_db,
+                team_id=seeded["team_id"],
+                session_id=started.id,
+            )
+            telemetry_record = service._build_stage_telemetry_record(
+                session=helper_session,
+                phase=HelperPhase.ANALYSIS.value,
+                status=HelperStageTelemetryStatus.SUCCESS,
+                started_at=stage_started_at,
+                ended_at=datetime.utcnow(),
+                usage_payload={
+                    "prompt_tokens": 3,
+                    "completion_tokens": 4,
+                    "total_tokens": 7,
+                },
+                model_name="analysis-model",
+                pretestcase_count=1,
+            )
+            service._persist_stage_telemetry_sync(sync_db, telemetry_record)
+            sync_db.commit()
+
+        await run_sync(async_db, _persist_metric)
+
+    with helper_db["sync"]() as session:
+        rows = (
+            session.query(AITestCaseHelperStageMetric)
+            .filter(AITestCaseHelperStageMetric.session_id == started.id)
+            .all()
+        )
+        assert len(rows) == 1
+        assert rows[0].phase == "analysis"
+        assert rows[0].status == "success"
+        assert rows[0].input_tokens == 3
+        assert rows[0].output_tokens == 4
 
 
 @pytest.mark.asyncio

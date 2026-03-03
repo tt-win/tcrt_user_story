@@ -46,6 +46,13 @@ class SyncStatus(PyEnum):
     PENDING = "pending"         # 本地有變更，待推送到 Lark
     CONFLICT = "conflict"       # 本地與遠端同時修改，需人工處理
 
+
+class MCPMachineCredentialStatus(PyEnum):
+    """MCP 機器憑證狀態"""
+    ACTIVE = "active"
+    REVOKED = "revoked"
+
+
 class Team(Base):
     """團隊表格"""
     __tablename__ = "teams"
@@ -917,6 +924,38 @@ class PasswordResetToken(Base):
         Index('ix_reset_tokens_expires', 'expires_at'),
         {'sqlite_autoincrement': True}
     )
+
+
+class MCPMachineCredential(Base):
+    """MCP 機器對機器存取憑證"""
+    __tablename__ = "mcp_machine_credentials"
+    __table_args__ = (
+        UniqueConstraint("name", name="uq_mcp_machine_credentials_name"),
+        UniqueConstraint("token_hash", name="uq_mcp_machine_credentials_token_hash"),
+        Index("ix_mcp_machine_credentials_status", "status"),
+        Index("ix_mcp_machine_credentials_expires_at", "expires_at"),
+        {"sqlite_autoincrement": True},
+    )
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(100), nullable=False)
+    description = Column(Text, nullable=True)
+    token_hash = Column(String(128), nullable=False)
+    permission = Column(String(32), nullable=False, default="mcp_read")
+    status = Column(
+        Enum(MCPMachineCredentialStatus),
+        nullable=False,
+        default=MCPMachineCredentialStatus.ACTIVE,
+    )
+    allow_all_teams = Column(Boolean, nullable=False, default=False)
+    team_scope_json = Column(Text, nullable=True, comment="允許存取的 team_id 清單（JSON 陣列）")
+    expires_at = Column(DateTime, nullable=True)
+    last_used_at = Column(DateTime, nullable=True)
+    created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    created_by = relationship("User")
 
 
 # 建立資料庫表格的函數

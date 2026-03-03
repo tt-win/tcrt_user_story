@@ -39,7 +39,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.database import get_sync_engine  # 使用同步引擎為 database_init.py
 from app.models.database_models import (
     Base,
-    User, UserTeamPermission, ActiveSession, PasswordResetToken,  # 認證系統相關表
+    User, UserTeamPermission, ActiveSession, PasswordResetToken, MCPMachineCredential,  # 認證系統相關表
     Team, TestRunConfig, TestRunItem, TestRunItemResultHistory,
     TCGRecord, LarkDepartment, LarkUser, SyncHistory,
     TestCaseSet, TestCaseSection,  # Test Case Set/Section 相關表
@@ -89,6 +89,7 @@ IMPORTANT_TABLES: List[str] = [
     "user_team_permissions",
     "active_sessions",
     "password_reset_tokens",
+    "mcp_machine_credentials",
     # 測試系統相關表
     "teams",
     "test_case_sets",
@@ -330,6 +331,9 @@ INDEX_SPECS: List[Dict[str, Any]] = [
     # Ad-hoc Runs Search Indexes
     {"name": "idx_adhoc_tp_tickets_search", "table": "adhoc_runs", "columns": ["tp_tickets_search"]},
     {"name": "idx_adhoc_notify_chats_search", "table": "adhoc_runs", "columns": ["notify_chats_search"]},
+    # MCP machine credential indexes
+    {"name": "ix_mcp_machine_credentials_status", "table": "mcp_machine_credentials", "columns": ["status"]},
+    {"name": "ix_mcp_machine_credentials_expires_at", "table": "mcp_machine_credentials", "columns": ["expires_at"]},
     # AI Helper stage telemetry
     {
         "name": "ix_ai_tc_helper_stage_metrics_team_phase_time",
