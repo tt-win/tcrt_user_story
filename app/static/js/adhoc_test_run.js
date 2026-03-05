@@ -23,6 +23,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     sheetTabs: document.getElementById("sheetTabsContainer"),
     addSheet: document.getElementById("addSheetBtn"),
     addRow: document.getElementById("addRowBtn"),
+    addRowCountModal: document.getElementById("addRowCountModal"),
+    addRowCountForm: document.getElementById("addRowCountForm"),
+    addRowCountInput: document.getElementById("addRowCountInput"),
+    addRowCountError: document.getElementById("addRowCountError"),
     saveStatus: document.getElementById("saveStatus"),
     backBtn: document.getElementById("backToMgmtBtn"),
     gridHost: document.getElementById("adhocGrid"),
@@ -38,8 +42,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   let isPendingSave = false;
   let isRunReadOnly = false;
   let currentSheetItems = [];
+  let addRowCountModalInstance = null;
 
   const PRIORITY = ["High", "Medium", "Low"];
+  const MAX_BATCH_ADD_ROWS = 200;
   const RESULT = [
     "",
     "Passed",
@@ -85,6 +91,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   function setupListeners() {
     dom.addSheet?.addEventListener("click", onAddSheet);
     dom.addRow?.addEventListener("click", onAddRow);
+    dom.addRowCountForm?.addEventListener("submit", onSubmitAddRowCount);
+    dom.addRowCountInput?.addEventListener("input", () => {
+      clearAddRowCountError();
+    });
     
     const rerunBtn = document.getElementById("rerunBtn");
     if (rerunBtn) {
@@ -109,6 +119,107 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (exportHtmlBtn) {
       exportHtmlBtn.addEventListener("click", exportHtmlReport);
     }
+  }
+
+  function getAddRowCountModal() {
+    if (!dom.addRowCountModal || !window.bootstrap?.Modal) return null;
+    if (!addRowCountModalInstance) {
+      addRowCountModalInstance = new bootstrap.Modal(dom.addRowCountModal);
+    }
+    return addRowCountModalInstance;
+  }
+
+  function clearAddRowCountError() {
+    if (!dom.addRowCountInput || !dom.addRowCountError) return;
+    dom.addRowCountInput.classList.remove("is-invalid");
+    dom.addRowCountError.classList.add("d-none");
+    dom.addRowCountError.textContent = "";
+  }
+
+  function showAddRowCountError(message) {
+    if (!dom.addRowCountInput || !dom.addRowCountError) return;
+    dom.addRowCountInput.classList.add("is-invalid");
+    dom.addRowCountError.textContent = message;
+    dom.addRowCountError.classList.remove("d-none");
+  }
+
+  function parseBatchAddRowCount(rawValue) {
+    const count = Number(rawValue);
+    if (!Number.isInteger(count)) {
+      return {
+        ok: false,
+        message: tt(
+          "adhoc.addRowBatch.invalidInteger",
+          "Please enter a whole number.",
+        ),
+      };
+    }
+    if (count < 1 || count > MAX_BATCH_ADD_ROWS) {
+      return {
+        ok: false,
+        message: tt(
+          "adhoc.addRowBatch.invalidRange",
+          "Please enter a value between {min} and {max}.",
+        )
+          .replace("{min}", "1")
+          .replace("{max}", String(MAX_BATCH_ADD_ROWS)),
+      };
+    }
+    return { ok: true, count };
+  }
+
+  function openAddRowCountModal() {
+    const modal = getAddRowCountModal();
+    if (!modal || !dom.addRowCountInput) {
+      insertBatchRows(1);
+      return;
+    }
+    clearAddRowCountError();
+    dom.addRowCountInput.value = "1";
+    modal.show();
+    setTimeout(() => {
+      try {
+        dom.addRowCountInput.focus();
+        dom.addRowCountInput.select();
+      } catch (_) {}
+    }, 0);
+  }
+
+  function insertBatchRows(count) {
+    if (!hot || count < 1) return false;
+    const newRow = convertItemToRow(null);
+    const lastRow = hot.countRows() - 1;
+    const insertAt = lastRow >= 0 ? lastRow : 0;
+    hot.alter("insert_row_below", insertAt, count);
+    for (let i = 0; i < count; i += 1) {
+      setRowDataFromColumns(insertAt + 1 + i, newRow);
+    }
+    setTimeout(() => {
+      try {
+        hot.selectCell(insertAt + 1, 0);
+      } catch (_) {}
+    }, 0);
+    handleChange();
+    return true;
+  }
+
+  function onSubmitAddRowCount(event) {
+    event?.preventDefault();
+    if (isRunReadOnly) {
+      alert(tt("adhoc.readonly", "Read-only (archived)"));
+      return;
+    }
+    if (!hot || !dom.addRowCountInput) return;
+    const parsed = parseBatchAddRowCount(dom.addRowCountInput.value.trim());
+    if (!parsed.ok) {
+      showAddRowCountError(parsed.message);
+      return;
+    }
+    clearAddRowCountError();
+    const inserted = insertBatchRows(parsed.count);
+    if (!inserted) return;
+    const modal = getAddRowCountModal();
+    modal?.hide();
   }
 
   function applyReadOnlyMode(readOnly) {
@@ -599,6 +710,132 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
+  function buildSectionRowData() {
+    return {
+      id: null,
+      test_case_number: "SECTION",
+      title: "--- Section Header ---",
+      priority: "",
+      precondition: "",
+      steps: "",
+      expected_result: "",
+      test_result: "",
+      assignee_name: "",
+      comments: "",
+      bug_list: "",
+      meta_json: JSON.stringify({ backgroundColor: "#f3f4f6" }),
+    };
+  }
+
+  function resolveSelectedVisualRow(selection) {
+    if (Array.isArray(selection) && selection.length > 0) {
+      const first = selection[0];
+      if (Array.isArray(first) && Number.isInteger(first[0])) {
+        return first[0];
+      }
+      if (first && typeof first === "object") {
+        if (first.start && Number.isInteger(first.start.row)) {
+          return first.start.row;
+        }
+        if (first.highlight && Number.isInteger(first.highlight.row)) {
+          return first.highlight.row;
+        }
+        if (Number.isInteger(first.row)) {
+          return first.row;
+        }
+      }
+    }
+    const selected = hot?.getSelectedLast?.();
+    if (Array.isArray(selected) && Number.isInteger(selected[0])) {
+      return selected[0];
+    }
+    const lastRow = hot ? hot.countRows() - 1 : 0;
+    return lastRow >= 0 ? lastRow : 0;
+  }
+
+  function insertSectionRelativeToRow(referenceRow, position) {
+    if (!hot) return false;
+    const rowCount = hot.countRows();
+    const sectionRow = buildSectionRowData();
+
+    if (rowCount <= 0) {
+      hot.alter("insert_row_above", 0, 1);
+      setRowDataFromColumns(0, sectionRow);
+      setTimeout(() => {
+        try {
+          hot.selectCell(0, 1);
+        } catch (_) {}
+      }, 0);
+      updateSectionMerges.call(hot);
+      handleChange();
+      return true;
+    }
+
+    const safeRow = Math.min(
+      Math.max(Number(referenceRow) || 0, 0),
+      rowCount - 1,
+    );
+
+    if (position === "above") {
+      hot.alter("insert_row_above", safeRow, 1);
+      setRowDataFromColumns(safeRow, sectionRow);
+      setTimeout(() => {
+        try {
+          hot.selectCell(safeRow, 1);
+        } catch (_) {}
+      }, 0);
+    } else {
+      hot.alter("insert_row_below", safeRow, 1);
+      const newRow = safeRow + 1;
+      setRowDataFromColumns(newRow, sectionRow);
+      setTimeout(() => {
+        try {
+          hot.selectCell(newRow, 1);
+        } catch (_) {}
+      }, 0);
+    }
+
+    updateSectionMerges.call(hot);
+    handleChange();
+    return true;
+  }
+
+  function onInsertSectionFromContext(selection, position) {
+    if (isRunReadOnly || !hot) return;
+    const row = resolveSelectedVisualRow(selection);
+    insertSectionRelativeToRow(row, position);
+  }
+
+  function buildContextMenuConfig(isReadOnly) {
+    if (isReadOnly) return ["copy"];
+    return {
+      items: {
+        copy: {},
+        cut: {},
+        paste: {},
+        sep0: "---------",
+        row_above: {},
+        row_below: {},
+        insert_section_above: {
+          name: () =>
+            tt("adhoc.insertSectionAbove", "Insert section above"),
+          callback: (_key, selection) =>
+            onInsertSectionFromContext(selection, "above"),
+        },
+        insert_section_below: {
+          name: () =>
+            tt("adhoc.insertSectionBelow", "Insert section below"),
+          callback: (_key, selection) =>
+            onInsertSectionFromContext(selection, "below"),
+        },
+        remove_row: {},
+        sep1: "---------",
+        undo: {},
+        redo: {},
+      },
+    };
+  }
+
   function applyCommonStyles(instance, td, row, col, prop, value) {
     if (typeof row !== "number" || row < 0) return;
     const physicalRow = instance.toPhysicalRow(row);
@@ -704,7 +941,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             stretchH: 'none',
             licenseKey: 'non-commercial-and-evaluation',
             readOnly: isReadOnly,
-            contextMenu: isReadOnly ? ['copy'] : ['copy','cut','paste','---------','row_above','row_below','remove_row','---------','undo','redo'],
+            contextMenu: buildContextMenuConfig(isReadOnly),
             dropdownMenu: ['filter_by_condition','filter_by_value','filter_action_bar'],
             filters: true,
             fillHandle: !isReadOnly,
@@ -1353,14 +1590,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       return;
     }
     if (!hot) return;
-    const newRow = convertItemToRow(null);
-    const lastRow = hot.countRows() - 1;
-    const insertAt = lastRow >= 0 ? lastRow : 0;
-    hot.alter('insert_row_below', insertAt, 1);
-    const r = insertAt + 1;
-    setRowDataFromColumns(r, newRow);
-    setTimeout(() => { try { hot.selectCell(r, 0); } catch (_) {} }, 0);
-    handleChange();
+    openAddRowCountModal();
   }
 
   function onAddSection() {
@@ -1370,26 +1600,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
     if (!hot) return;
     const lastRow = hot.countRows() - 1;
-    const sectionRow = {
-      id: null,
-      test_case_number: "SECTION",
-      title: "--- Section Header ---",
-      priority: "",
-      precondition: "",
-      steps: "",
-      expected_result: "",
-      test_result: "",
-      assignee_name: "",
-      comments: "",
-      bug_list: "",
-      meta_json: JSON.stringify({ backgroundColor: "#f3f4f6" }),
-    };
     const insertAt = lastRow >= 0 ? lastRow : 0;
-    hot.alter('insert_row_below', insertAt, 1);
-    const r = insertAt + 1;
-    setRowDataFromColumns(r, sectionRow);
-    setTimeout(() => { try { hot.selectCell(r, 1); } catch (_) {} }, 0);
-    handleChange();
+    insertSectionRelativeToRow(insertAt, "below");
   }
 
   // updateSectionRowsColor removed
