@@ -1,32 +1,66 @@
 let teams = [];
 let currentEditTeam = null;
 
+function toggleSyncTabVisibility(id, visible, isLi = false) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (isLi) {
+        el.style.display = visible ? '' : 'none';
+        return;
+    }
+    const li = el.closest('li');
+    if (li) {
+        li.style.display = visible ? '' : 'none';
+        return;
+    }
+    el.style.display = visible ? '' : 'none';
+}
+
+function normalizeClientRole(role) {
+    return String(role || '').trim().toLowerCase();
+}
+
+function applyOrganizationUiVisibilityByRoleFallback() {
+    const role = normalizeClientRole(window.currentUser?.role);
+    const isSuperAdmin = role === 'super_admin' || role === 'superadmin';
+    const isAdmin = role === 'admin';
+
+    toggleSyncTabVisibility('tab-personnel-li', isAdmin || isSuperAdmin, true);
+    toggleSyncTabVisibility('tab-org', isSuperAdmin);
+    toggleSyncTabVisibility('tab-test-cases', isSuperAdmin);
+    toggleSyncTabVisibility('tab-mcp-token', isSuperAdmin);
+}
+
 // 依據後端 UI 能力控制組織頁籤可視
 async function applyOrganizationUiVisibility() {
+    // 預設先隱藏需權限頁籤，避免權限配置尚未載入時誤顯示
+    toggleSyncTabVisibility('tab-org', false);
+    toggleSyncTabVisibility('tab-test-cases', false);
+    toggleSyncTabVisibility('tab-mcp-token', false);
+
     try {
-        if (!window.AuthClient) return;
+        if (!window.AuthClient) {
+            applyOrganizationUiVisibilityByRoleFallback();
+            return;
+        }
         const resp = await window.AuthClient.fetch('/api/permissions/ui-config?page=organization');
-        if (!resp.ok) return;
+        if (!resp.ok) {
+            applyOrganizationUiVisibilityByRoleFallback();
+            return;
+        }
         const json = await resp.json();
         const map = json.components || {};
-        const show = (id, isLi=false) => {
-            const el = document.getElementById(id);
-            if (!el) return;
-            if (isLi) { el.style.display = map[id] ? '' : 'none'; }
-            else {
-                // 對於 button，隱藏其父 li
-                const li = el.closest('li');
-                if (li) li.style.display = map[id] ? '' : 'none';
-                else el.style.display = map[id] ? '' : 'none';
-            }
-        };
+        const hasMcpTokenRule = Object.prototype.hasOwnProperty.call(map, 'tab-mcp-token');
+        const mcpTokenVisible = hasMcpTokenRule ? !!map['tab-mcp-token'] : !!map['tab-org'];
         // 人員管理分頁（Admin/SuperAdmin 應允許）
-        show('tab-personnel-li', true);
+        toggleSyncTabVisibility('tab-personnel-li', !!map['tab-personnel-li'], true);
         // 進階分頁（僅 Super Admin）
-        show('tab-org');
-        show('tab-test-cases');
-        show('tab-mcp-token');
-    } catch (_) {}
+        toggleSyncTabVisibility('tab-org', !!map['tab-org']);
+        toggleSyncTabVisibility('tab-test-cases', !!map['tab-test-cases']);
+        toggleSyncTabVisibility('tab-mcp-token', mcpTokenVisible);
+    } catch (_) {
+        applyOrganizationUiVisibilityByRoleFallback();
+    }
 }
 
 // team-management 頁面按鈕（例如同步組織）可視控制
@@ -855,6 +889,9 @@ async function openSyncModal() {
         modal.addEventListener('hidden.bs.modal', saveSyncModalState);
         modal.addEventListener('shown.bs.modal', loadSyncModalState);
     }
+
+    // modal 開啟前重新套用一次分頁可視權限（避免載入時序造成誤顯示）
+    await applyOrganizationUiVisibility();
 
     // 載入模態框數據
     await loadSyncModalData();
