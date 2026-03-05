@@ -36,7 +36,7 @@
     <div class="adhoc-toolbar">
         <div class="d-flex gap-2">
             <button class="btn btn-sm btn-primary" id="addRowBtn">
-                <i class="fas fa-plus me-1"></i> Add Row
+                <i class="fas fa-plus me-1"></i><span data-i18n="adhoc.addRow">Add Row</span>
             </button>
         </div>
         <div class="d-flex align-items-center gap-2">
@@ -56,6 +56,42 @@
         </button>
         <div class="sheet-tabs-container" id="sheetTabsContainer">
             <!-- Tabs will be populated here -->
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="addRowCountModal" tabindex="-1" aria-labelledby="addRowCountModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-sm">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="addRowCountModalLabel">
+                    <i class="fas fa-plus-square me-2"></i><span data-i18n="adhoc.addRowBatch.title">Batch Add Rows</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form id="addRowCountForm" novalidate>
+                <div class="modal-body">
+                    <label class="form-label" for="addRowCountInput" data-i18n="adhoc.addRowBatch.label">How many rows to add?</label>
+                    <input
+                        type="number"
+                        class="form-control"
+                        id="addRowCountInput"
+                        min="1"
+                        max="200"
+                        step="1"
+                        value="1"
+                        inputmode="numeric"
+                        data-i18n-placeholder="adhoc.addRowBatch.placeholder"
+                        placeholder="Enter a number"
+                    >
+                    <div class="form-text" data-i18n="adhoc.addRowBatch.hint">Enter a value between 1 and 200.</div>
+                    <div class="invalid-feedback d-none" id="addRowCountError"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" id="addRowCountCancelBtn" data-bs-dismiss="modal" data-i18n="adhoc.addRowBatch.cancel">Cancel</button>
+                    <button type="submit" class="btn btn-primary" id="addRowCountConfirmBtn" data-i18n="adhoc.addRowBatch.confirm">Add Rows</button>
+                </div>
+            </form>
         </div>
     </div>
 </div>
