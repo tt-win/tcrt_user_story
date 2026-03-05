@@ -806,14 +806,52 @@ document.addEventListener("DOMContentLoaded", async () => {
     insertSectionRelativeToRow(row, position);
   }
 
+  function parseClipboardGrid(text) {
+    const normalized = String(text ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+    const lines = normalized.split("\n");
+    if (lines.length > 0 && lines[lines.length - 1] === "") {
+      lines.pop();
+    }
+    if (!lines.length) return [];
+    return lines.map((line) => line.split("\t"));
+  }
+
+  async function onPasteFromContextMenu(selection) {
+    if (isRunReadOnly || !hot) return;
+    if (!navigator.clipboard?.readText) {
+      alert(tt("adhoc.pasteUnavailable", "Paste unavailable in this browser. Please use Ctrl+V / Cmd+V."));
+      return;
+    }
+    let clipboardText = "";
+    try {
+      clipboardText = await navigator.clipboard.readText();
+    } catch (_) {
+      alert(tt("adhoc.pasteUnavailable", "Paste unavailable in this browser. Please use Ctrl+V / Cmd+V."));
+      return;
+    }
+
+    const grid = parseClipboardGrid(clipboardText);
+    if (!grid.length) return;
+
+    const row = resolveSelectedVisualRow(selection);
+    const selected = hot.getSelectedLast?.();
+    const col = Array.isArray(selected) && Number.isInteger(selected[1]) ? selected[1] : 0;
+    hot.populateFromArray(row, col, grid, undefined, undefined, "contextMenu.paste");
+  }
+
   function buildContextMenuConfig(isReadOnly) {
     if (isReadOnly) return ["copy"];
     return {
       items: {
         copy: {},
         cut: {},
-        paste: {},
-        sep0: "---------",
+        paste: {
+          name: () => tt("common.paste", "Paste"),
+          callback: (_key, selection) => {
+            onPasteFromContextMenu(selection);
+          },
+        },
+        hsep1: "---------",
         row_above: {},
         row_below: {},
         insert_section_above: {
@@ -829,7 +867,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             onInsertSectionFromContext(selection, "below"),
         },
         remove_row: {},
-        sep1: "---------",
+        hsep2: "---------",
         undo: {},
         redo: {},
       },
