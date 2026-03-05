@@ -25,6 +25,7 @@ async function applyOrganizationUiVisibility() {
         // 進階分頁（僅 Super Admin）
         show('tab-org');
         show('tab-test-cases');
+        show('tab-mcp-token');
     } catch (_) {}
 }
 
@@ -87,8 +88,243 @@ function initTeamManagement() {
     const refreshSyncBtn = document.getElementById('refreshSyncDataBtn');
     if (refreshSyncBtn) refreshSyncBtn.addEventListener('click', refreshSyncModalData);
 
+    // MCP Machine Token 分頁
+    initMcpTokenTab();
+
     // 載入團隊列表
     loadTeams();
+}
+
+function initMcpTokenTab() {
+    const form = document.getElementById('mcpTokenForm');
+    if (form) {
+        form.addEventListener('submit', createMcpMachineToken);
+    }
+
+    const allowAllCheckbox = document.getElementById('mcpAllowAllTeams');
+    if (allowAllCheckbox) {
+        allowAllCheckbox.addEventListener('change', syncMcpTokenTeamScopeState);
+    }
+
+    const resetBtn = document.getElementById('mcpResetTokenFormBtn');
+    if (resetBtn) {
+        resetBtn.addEventListener('click', resetMcpTokenForm);
+    }
+
+    const copyBtn = document.getElementById('mcpCopyTokenBtn');
+    if (copyBtn) {
+        copyBtn.addEventListener('click', copyMcpTokenToClipboard);
+    }
+
+    refreshMcpTokenTeamScopeOptions();
+    syncMcpTokenTeamScopeState();
+}
+
+function refreshMcpTokenTeamScopeOptions() {
+    const scopeSelect = document.getElementById('mcpTeamScopeIds');
+    if (!scopeSelect) return;
+
+    const selected = new Set(Array.from(scopeSelect.selectedOptions).map((option) => option.value));
+    const availableTeams = Array.isArray(teams) ? [...teams] : [];
+    availableTeams.sort((a, b) => Number(a.id || 0) - Number(b.id || 0));
+
+    if (availableTeams.length === 0) {
+        const noOptionsText = getI18n('mcpToken.noTeamOptions', '目前沒有可選擇的團隊');
+        scopeSelect.innerHTML = `<option value="" disabled>${escapeHtml(noOptionsText)}</option>`;
+        scopeSelect.disabled = true;
+        return;
+    }
+
+    scopeSelect.innerHTML = availableTeams
+        .map((team) => `<option value="${team.id}">${escapeHtml(team.name || `Team ${team.id}`)} (#${team.id})</option>`)
+        .join('');
+
+    Array.from(scopeSelect.options).forEach((option) => {
+        option.selected = selected.has(option.value);
+    });
+
+    syncMcpTokenTeamScopeState();
+}
+
+function syncMcpTokenTeamScopeState() {
+    const allowAllCheckbox = document.getElementById('mcpAllowAllTeams');
+    const scopeSelect = document.getElementById('mcpTeamScopeIds');
+    const hintEl = document.getElementById('mcpTeamScopeHint');
+    if (!allowAllCheckbox || !scopeSelect) return;
+
+    const hasTeams = Array.isArray(teams) && teams.length > 0;
+    scopeSelect.disabled = allowAllCheckbox.checked || !hasTeams;
+    if (allowAllCheckbox.checked) {
+        Array.from(scopeSelect.options).forEach((option) => {
+            option.selected = false;
+        });
+    }
+
+    if (hintEl) {
+        const key = allowAllCheckbox.checked ? 'mcpToken.teamScopeIgnoredHint' : 'mcpToken.teamScopeHint';
+        const fallback = allowAllCheckbox.checked
+            ? '已啟用所有團隊，team scope 將被忽略。'
+            : '未啟用「所有團隊」時，至少選擇一個團隊。';
+        hintEl.textContent = getI18n(key, fallback);
+    }
+}
+
+function resetMcpTokenForm() {
+    const form = document.getElementById('mcpTokenForm');
+    if (form) form.reset();
+    syncMcpTokenTeamScopeState();
+    hideMcpTokenResult();
+}
+
+function hideMcpTokenResult() {
+    const resultBox = document.getElementById('mcpTokenResult');
+    const tokenValue = document.getElementById('mcpTokenValue');
+    const tokenMeta = document.getElementById('mcpTokenMeta');
+    if (tokenValue) tokenValue.textContent = '';
+    if (tokenMeta) tokenMeta.textContent = '';
+    if (resultBox) resultBox.classList.add('d-none');
+}
+
+function showMcpTokenResult(data) {
+    const resultBox = document.getElementById('mcpTokenResult');
+    const tokenValue = document.getElementById('mcpTokenValue');
+    const tokenMeta = document.getElementById('mcpTokenMeta');
+    if (!resultBox || !tokenValue || !tokenMeta) return;
+
+    tokenValue.textContent = data.raw_token || '';
+    const createdLabel = getI18n('mcpToken.createdAt', '建立時間');
+    const expiresLabel = getI18n('mcpToken.expiresAt', '到期時間');
+    const neverExpires = getI18n('mcpToken.neverExpires', '永不過期');
+    const createdText = formatIsoDatetime(data.created_at);
+    const expiresText = data.expires_at ? formatIsoDatetime(data.expires_at) : neverExpires;
+    tokenMeta.textContent = `${createdLabel}: ${createdText} | ${expiresLabel}: ${expiresText}`;
+
+    resultBox.classList.remove('d-none');
+}
+
+function formatIsoDatetime(rawValue) {
+    if (!rawValue) return '-';
+    const parsed = new Date(rawValue);
+    if (Number.isNaN(parsed.getTime())) return rawValue;
+    return parsed.toLocaleString();
+}
+
+function extractApiErrorMessage(payload) {
+    if (!payload) return '';
+    if (typeof payload === 'string') return payload;
+    if (typeof payload.message === 'string' && payload.message.trim()) return payload.message;
+
+    const detail = payload.detail;
+    if (typeof detail === 'string') return detail;
+    if (detail && typeof detail === 'object') {
+        if (typeof detail.message === 'string' && detail.message.trim()) return detail.message;
+        if (typeof detail.code === 'string' && detail.code.trim()) return detail.code;
+    }
+    return '';
+}
+
+async function createMcpMachineToken(event) {
+    if (event) event.preventDefault();
+
+    const nameInput = document.getElementById('mcpTokenName');
+    const descInput = document.getElementById('mcpTokenDescription');
+    const expiresInput = document.getElementById('mcpTokenExpiresDays');
+    const allowAllCheckbox = document.getElementById('mcpAllowAllTeams');
+    const scopeSelect = document.getElementById('mcpTeamScopeIds');
+    const submitBtn = document.getElementById('mcpCreateTokenBtn');
+    if (!nameInput || !submitBtn || !allowAllCheckbox || !scopeSelect || !expiresInput || !descInput) return;
+
+    const name = (nameInput.value || '').trim();
+    if (!name) {
+        AppUtils.showError(getI18n('mcpToken.requiredName', '請先填寫 token 名稱'));
+        return;
+    }
+
+    const allowAllTeams = !!allowAllCheckbox.checked;
+    const teamScopeIds = Array.from(scopeSelect.selectedOptions)
+        .map((option) => Number(option.value))
+        .filter((value) => Number.isInteger(value) && value > 0);
+
+    if (!allowAllTeams && teamScopeIds.length === 0) {
+        AppUtils.showError(getI18n('mcpToken.scopeRequired', '請至少選擇一個可存取團隊'));
+        return;
+    }
+
+    const expiresText = (expiresInput.value || '').trim();
+    const expiresInDays = expiresText ? Number(expiresText) : null;
+    if (expiresText && (!Number.isInteger(expiresInDays) || expiresInDays <= 0)) {
+        AppUtils.showError(getI18n('mcpToken.invalidExpiresDays', '有效天數需為正整數'));
+        return;
+    }
+
+    const originalHtml = submitBtn.innerHTML;
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = `<i class="fas fa-spinner fa-spin me-2"></i><span>${getI18n('mcpToken.createInProgress', '產生中...')}</span>`;
+
+    try {
+        const response = await window.AuthClient.fetch('/api/organization/mcp/machine-tokens', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+            },
+            body: JSON.stringify({
+                name,
+                description: (descInput.value || '').trim() || null,
+                allow_all_teams: allowAllTeams,
+                team_scope_ids: teamScopeIds,
+                expires_in_days: expiresInDays
+            })
+        });
+
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !payload.success || !payload.data) {
+            const message = extractApiErrorMessage(payload) || `${response.status}`;
+            throw new Error(message);
+        }
+
+        showMcpTokenResult(payload.data);
+        AppUtils.showSuccess(getI18n('mcpToken.createSuccess', 'MCP machine token 已建立'));
+
+        const resetForm = document.getElementById('mcpTokenForm');
+        if (resetForm) resetForm.reset();
+        syncMcpTokenTeamScopeState();
+    } catch (error) {
+        console.error('建立 MCP machine token 失敗:', error);
+        const prefix = getI18n('mcpToken.createFailedPrefix', '建立 token 失敗');
+        AppUtils.showError(`${prefix}：${error.message}`);
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalHtml;
+        if (window.i18n && window.i18n.isReady()) {
+            window.i18n.retranslate(submitBtn);
+        }
+    }
+}
+
+async function copyMcpTokenToClipboard() {
+    const tokenValue = document.getElementById('mcpTokenValue');
+    const value = tokenValue ? (tokenValue.textContent || '').trim() : '';
+    if (!value) return;
+
+    try {
+        if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+            await navigator.clipboard.writeText(value);
+            AppUtils.showSuccess(getI18n('mcpToken.copySuccess', '已複製 token'));
+            return;
+        }
+        throw new Error('Clipboard API unavailable');
+    } catch (_) {
+        if (AppUtils && typeof AppUtils.showCopyModal === 'function') {
+            AppUtils.showCopyModal(value, {
+                title: getI18n('mcpToken.copyModalTitle', '手動複製 Token'),
+                instruction: getI18n('mcpToken.copyModalInstruction', '請使用 Ctrl/Cmd + C 進行複製'),
+                urlLabel: getI18n('mcpToken.rawTokenLabel', 'Raw Token')
+            });
+            return;
+        }
+        AppUtils.showWarning(getI18n('mcpToken.copyFallback', '無法直接複製，請手動複製 token'));
+    }
 }
 
 async function loadTeams() {
@@ -107,6 +343,7 @@ async function loadTeams() {
         
         teams = await response.json();
         renderTeams();
+        refreshMcpTokenTeamScopeOptions();
         
     } catch (error) {
         console.error('Load teams failed:', error);
@@ -117,6 +354,7 @@ async function loadTeams() {
             console.error('AppUtils not available:', error.message);
         }
         showNoTeams();
+        refreshMcpTokenTeamScopeOptions();
     } finally {
         hideLoading();
     }
@@ -169,6 +407,9 @@ async function showNoTeams() {
     // 清空舊的卡片內容，避免殘留
     const container = document.getElementById('teams-container');
     if (container) container.innerHTML = '';
+
+    teams = [];
+    refreshMcpTokenTeamScopeOptions();
 }
 
 function showTeamsList() {
@@ -1263,6 +1504,20 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 if (window.i18n && window.i18n.isReady()) {
                     window.i18n.retranslate(orgPane);
+                }
+            } catch (_) {}
+        });
+    }
+
+    // 當切到 MCP Token 分頁時重新載入團隊選單與翻譯
+    const mcpTokenTabBtn = document.getElementById('tab-mcp-token');
+    const mcpTokenPane = document.getElementById('tab-pane-mcp-token');
+    if (mcpTokenTabBtn && mcpTokenPane) {
+        mcpTokenTabBtn.addEventListener('shown.bs.tab', () => {
+            refreshMcpTokenTeamScopeOptions();
+            try {
+                if (window.i18n && window.i18n.isReady()) {
+                    window.i18n.retranslate(mcpTokenPane);
                 }
             } catch (_) {}
         });

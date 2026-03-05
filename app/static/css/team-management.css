@@ -42,5 +42,24 @@
 .org-compact-stats { white-space: nowrap; }
 .org-compact-stats .stat { display: inline-flex; align-items: baseline; }
 
+.mcp-token-result .mcp-token-code {
+    border: 1px dashed var(--tr-border-light, #d6dce5);
+    border-radius: 0.5rem;
+    background: rgba(15, 23, 42, 0.03);
+    padding: 0.75rem;
+}
+
+.mcp-token-result code {
+    display: block;
+    white-space: normal;
+    word-break: break-all;
+    color: var(--tr-text-primary, #1f2937);
+    font-size: 0.85rem;
+}
+
+#mcpTeamScopeIds {
+    min-height: 10rem;
+}
+
 /* Enlarge status badges in Sync History */
 /* moved to /static/css/style.css */

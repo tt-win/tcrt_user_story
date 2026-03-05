@@ -5,6 +5,8 @@
 - 權限必須為 `mcp_read`
 - 僅可呼叫 `/api/mcp/*` 讀取端點
 
+接口欄位與端點完整規格請參考：[mcp_api_interface.md](/Users/hideman/code/tcrt_user_story/docs/mcp_api_interface.md)。
+
 ## 1. 憑證模型
 
 資料表：`mcp_machine_credentials`
