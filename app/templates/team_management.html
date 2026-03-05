@@ -206,6 +206,9 @@
                     <li class="nav-item" role="presentation">
                         <button class="nav-link" id="tab-test-cases" data-bs-toggle="tab" data-bs-target="#tab-pane-test-cases" type="button" role="tab" aria-controls="tab-pane-test-cases" aria-selected="false" data-testid="tab-test-cases" data-i18n="tcSync.tabTitle">測試案例</button>
                     </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="tab-mcp-token" data-bs-toggle="tab" data-bs-target="#tab-pane-mcp-token" type="button" role="tab" aria-controls="tab-pane-mcp-token" aria-selected="false" data-testid="tab-mcp-token" data-i18n="mcpToken.tabTitle">MCP Token</button>
+                    </li>
                 </ul>
                 <div class="tab-content pt-3" id="syncTabsContent">
                     <!-- 人員管理分頁內容 -->
@@ -442,6 +445,100 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- MCP Machine Token 分頁 -->
+                    <div class="tab-pane fade" id="tab-pane-mcp-token" role="tabpanel" aria-labelledby="tab-mcp-token">
+                        <div class="card mb-3">
+                            <div class="card-header bg-light d-flex align-items-center">
+                                <i class="fas fa-key me-2"></i>
+                                <strong data-i18n="mcpToken.title">MCP Machine Token</strong>
+                            </div>
+                            <div class="card-body">
+                                <p class="text-muted small mb-3" data-i18n="mcpToken.subtitle">建立給 MCP Server 使用的唯讀 machine token（僅顯示一次）。</p>
+                                <form id="mcpTokenForm" class="row g-3" autocomplete="off">
+                                    <div class="col-md-6">
+                                        <label for="mcpTokenName" class="form-label">
+                                            <span data-i18n="mcpToken.nameLabel">Token 名稱</span>
+                                            <span class="text-danger">*</span>
+                                        </label>
+                                        <input
+                                            type="text"
+                                            class="form-control"
+                                            id="mcpTokenName"
+                                            maxlength="100"
+                                            required
+                                            data-i18n-placeholder="mcpToken.namePlaceholder"
+                                            placeholder="例如：mcp-prod-reader"
+                                        >
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="mcpTokenExpiresDays" class="form-label" data-i18n="mcpToken.expiresDaysLabel">有效天數（留空表示不過期）</label>
+                                        <input
+                                            type="number"
+                                            class="form-control"
+                                            id="mcpTokenExpiresDays"
+                                            min="1"
+                                            max="3650"
+                                            data-i18n-placeholder="mcpToken.expiresDaysPlaceholder"
+                                            placeholder="例如：180"
+                                        >
+                                    </div>
+                                    <div class="col-12">
+                                        <label for="mcpTokenDescription" class="form-label" data-i18n="mcpToken.descriptionLabel">描述</label>
+                                        <textarea
+                                            class="form-control"
+                                            id="mcpTokenDescription"
+                                            rows="2"
+                                            maxlength="2000"
+                                            data-i18n-placeholder="mcpToken.descriptionPlaceholder"
+                                            placeholder="用途描述（選填）"
+                                        ></textarea>
+                                    </div>
+                                    <div class="col-12">
+                                        <div class="form-check form-switch">
+                                            <input class="form-check-input" type="checkbox" id="mcpAllowAllTeams">
+                                            <label class="form-check-label" for="mcpAllowAllTeams" data-i18n="mcpToken.allowAllTeamsLabel">允許存取所有團隊</label>
+                                        </div>
+                                    </div>
+                                    <div class="col-12">
+                                        <label for="mcpTeamScopeIds" class="form-label">
+                                            <span data-i18n="mcpToken.teamScopeLabel">可存取團隊</span>
+                                            <span class="text-danger">*</span>
+                                        </label>
+                                        <select class="form-select" id="mcpTeamScopeIds" multiple size="6"></select>
+                                        <div class="form-text" id="mcpTeamScopeHint" data-i18n="mcpToken.teamScopeHint">未啟用「所有團隊」時，至少選擇一個團隊。</div>
+                                    </div>
+                                    <div class="col-12">
+                                        <div id="mcpTokenResult" class="alert alert-warning d-none mcp-token-result mb-0" role="alert">
+                                            <div class="d-flex flex-wrap gap-2 justify-content-between align-items-start">
+                                                <div>
+                                                    <div class="fw-semibold" data-i18n="mcpToken.oneTimeWarning">此 token 僅會顯示一次</div>
+                                                    <div class="small text-muted" data-i18n="mcpToken.oneTimeHint">請立即複製並安全保存；之後無法再次查看明文。</div>
+                                                </div>
+                                                <button type="button" class="btn btn-secondary btn-sm" id="mcpCopyTokenBtn">
+                                                    <i class="fas fa-copy me-1"></i><span data-i18n="mcpToken.copyButton">複製</span>
+                                                </button>
+                                            </div>
+                                            <div class="mcp-token-code mt-2">
+                                                <code id="mcpTokenValue"></code>
+                                            </div>
+                                            <div class="small text-muted mt-2" id="mcpTokenMeta"></div>
+                                        </div>
+                                    </div>
+                                    <div class="col-12">
+                                        <div class="d-flex justify-content-end gap-2 pt-2 border-top">
+                                            <button type="button" class="btn btn-secondary" id="mcpResetTokenFormBtn">
+                                                <i class="fas fa-eraser me-2"></i><span data-i18n="mcpToken.resetButton">清除</span>
+                                            </button>
+                                            <button type="submit" class="btn btn-primary" id="mcpCreateTokenBtn">
+                                                <i class="fas fa-key me-2"></i><span data-i18n="mcpToken.generateButton">產生 Token</span>
+                                            </button>
+                                        </div>
+                                    </div>
+                                </form>
+                            </div>
+                        </div>
+                    </div>
             </div>
         </div>
     </div>
@@ -501,6 +598,23 @@
     <span data-i18n="orgSync.type.users">用戶同步</span>
     <span data-i18n="orgSync.labels.departments">部門</span>
     <span data-i18n="orgSync.labels.users">用戶</span>
+    <span data-i18n="mcpToken.createInProgress">產生中...</span>
+    <span data-i18n="mcpToken.createSuccess">MCP machine token 已建立</span>
+    <span data-i18n="mcpToken.createFailedPrefix">建立 token 失敗</span>
+    <span data-i18n="mcpToken.requiredName">請先填寫 token 名稱</span>
+    <span data-i18n="mcpToken.scopeRequired">請至少選擇一個可存取團隊</span>
+    <span data-i18n="mcpToken.invalidExpiresDays">有效天數需為正整數</span>
+    <span data-i18n="mcpToken.noTeamOptions">目前沒有可選擇的團隊</span>
+    <span data-i18n="mcpToken.teamScopeHint">未啟用「所有團隊」時，至少選擇一個團隊。</span>
+    <span data-i18n="mcpToken.teamScopeIgnoredHint">已啟用所有團隊，team scope 將被忽略。</span>
+    <span data-i18n="mcpToken.copySuccess">已複製 token</span>
+    <span data-i18n="mcpToken.copyFallback">無法直接複製，請手動複製 token</span>
+    <span data-i18n="mcpToken.copyModalTitle">手動複製 Token</span>
+    <span data-i18n="mcpToken.copyModalInstruction">請使用 Ctrl/Cmd + C 進行複製</span>
+    <span data-i18n="mcpToken.rawTokenLabel">Raw Token</span>
+    <span data-i18n="mcpToken.createdAt">建立時間</span>
+    <span data-i18n="mcpToken.expiresAt">到期時間</span>
+    <span data-i18n="mcpToken.neverExpires">永不過期</span>
 </div>
 
 <!-- 人員管理 i18n（僅少量，其他直接透過 data-i18n 使用全域字典） -->

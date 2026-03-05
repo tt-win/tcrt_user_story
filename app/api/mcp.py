@@ -28,13 +28,16 @@ from app.models.database_models import (
 )
 from app.models.lark_types import Priority, TestResultStatus
 from app.models.mcp import (
+    MCPCrossTeamTestCaseItem,
     MCPAdhocRunItem,
     MCPMachinePrincipal,
     MCPPageMeta,
     MCPTeamItem,
+    MCPTestCaseLookupResponse,
     MCPTeamTestCasesResponse,
     MCPTeamTestRunsResponse,
     MCPTeamsResponse,
+    MCPTestCaseDetailResponse,
     MCPTestCaseSetItem,
     MCPTestRunSetItem,
 )
@@ -90,6 +93,117 @@ def _parse_tcg_list(tcg_json: Optional[str]) -> list[str]:
     if isinstance(parsed, str):
         return [parsed]
     return []
+
+
+def _parse_json_list(raw_json: Optional[str]) -> list[Dict[str, Any]]:
+    if not raw_json:
+        return []
+    try:
+        parsed = json.loads(raw_json)
+    except (TypeError, ValueError):
+        return []
+
+    if not isinstance(parsed, list):
+        return []
+
+    normalized: list[Dict[str, Any]] = []
+    for item in parsed:
+        if isinstance(item, dict):
+            normalized.append(item)
+        elif item is not None:
+            normalized.append({"value": item})
+    return normalized
+
+
+def _parse_json_dict(raw_json: Optional[str]) -> Optional[Dict[str, Any]]:
+    if not raw_json:
+        return None
+    try:
+        parsed = json.loads(raw_json)
+    except (TypeError, ValueError):
+        return None
+    if isinstance(parsed, dict):
+        return parsed
+    return None
+
+
+def _build_case_payload(
+    row: TestCaseLocalDB,
+    *,
+    include_content: bool = False,
+    include_extended: bool = False,
+) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {
+        "id": row.id,
+        "record_id": row.lark_record_id or str(row.id),
+        "test_case_number": row.test_case_number,
+        "title": row.title,
+        "priority": _to_text(row.priority),
+        "test_result": _to_text(row.test_result) or None,
+        "assignee": _parse_assignee(row.assignee_json),
+        "tcg": _parse_tcg_list(row.tcg_json),
+        "test_case_set_id": row.test_case_set_id,
+        "test_case_section_id": row.test_case_section_id,
+        "created_at": row.created_at,
+        "updated_at": row.updated_at,
+        "last_sync_at": row.last_sync_at,
+    }
+    if include_content:
+        payload.update(
+            {
+                "precondition": row.precondition,
+                "steps": row.steps,
+                "expected_result": row.expected_result,
+            }
+        )
+    if include_extended:
+        payload.update(
+            {
+                "attachments": _parse_json_list(row.attachments_json),
+                "test_results_files": _parse_json_list(row.test_results_files_json),
+                "user_story_map": _parse_json_list(row.user_story_map_json),
+                "parent_record": _parse_json_list(row.parent_record_json),
+                "raw_fields": _parse_json_dict(row.raw_fields_json),
+            }
+        )
+    return payload
+
+
+def _lookup_match_type(
+    row: TestCaseLocalDB,
+    *,
+    keyword: Optional[str],
+    test_case_number: Optional[str],
+    ticket: Optional[str],
+) -> str:
+    number_value = (row.test_case_number or "").lower()
+    title_value = (row.title or "").lower()
+    tcg_values = [item.lower() for item in _parse_tcg_list(row.tcg_json)]
+
+    if test_case_number:
+        normalized = test_case_number.lower()
+        if number_value == normalized:
+            return "test_case_number_exact"
+        if normalized in number_value:
+            return "test_case_number_partial"
+
+    if ticket:
+        normalized = ticket.lower()
+        if any(normalized in item for item in tcg_values):
+            return "ticket"
+
+    if keyword:
+        normalized = keyword.lower()
+        if number_value == normalized:
+            return "keyword_number_exact"
+        if normalized in number_value:
+            return "keyword_number_partial"
+        if any(normalized in item for item in tcg_values):
+            return "keyword_ticket"
+        if normalized in title_value:
+            return "keyword_title"
+
+    return "matched"
 
 
 def _normalize_priority_filter(raw: Optional[str]) -> Optional[Any]:
@@ -188,22 +302,181 @@ async def list_teams(
     return MCPTeamsResponse(total=len(items), items=items)
 
 
+@router.get("/test-cases/lookup", response_model=MCPTestCaseLookupResponse)
+async def lookup_test_cases(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    principal: MCPMachinePrincipal = Depends(get_current_machine_principal),
+    q: Optional[str] = Query(
+        None, description="關鍵字（可放 test case number / ticket / title）"
+    ),
+    test_case_number: Optional[str] = Query(
+        None, description="Test Case Number（精確或部分匹配）"
+    ),
+    ticket: Optional[str] = Query(
+        None, description="Issue/Ticket/單號（對應 tcg 欄位，支援 TCG/ICR/其他前綴）"
+    ),
+    team_id: Optional[int] = Query(None, description="限制單一 team_id"),
+    team_name: Optional[str] = Query(None, description="Team 名稱模糊搜尋"),
+    include_content: bool = Query(
+        True, description="是否回傳 precondition/steps/expected_result"
+    ),
+    skip: int = Query(0, ge=0, description="分頁 offset"),
+    limit: int = Query(20, ge=1, le=200, description="分頁大小"),
+):
+    keyword = (q or "").strip()
+    number_filter = (test_case_number or "").strip()
+    ticket_filter = (ticket or "").strip()
+    team_name_filter = (team_name or "").strip()
+
+    if not keyword and not number_filter and not ticket_filter:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="至少需要提供 q、test_case_number、ticket 其中之一",
+        )
+
+    if team_id is not None:
+        await _ensure_team_exists(db, team_id)
+
+    if not principal.allow_all_teams and not principal.team_scope_ids:
+        await log_mcp_allow(request, principal, reason="test_case_lookup_no_scope")
+        return MCPTestCaseLookupResponse(
+            filters={
+                "q": q,
+                "test_case_number": test_case_number,
+                "ticket": ticket,
+                "team_id": team_id,
+                "team_name": team_name,
+                "include_content": include_content,
+            },
+            items=[],
+            page=MCPPageMeta(skip=skip, limit=limit, total=0, has_next=False),
+        )
+
+    conditions = []
+    if not principal.allow_all_teams:
+        conditions.append(TestCaseLocalDB.team_id.in_(principal.team_scope_ids))
+
+    if team_id is not None:
+        if not principal.allow_all_teams and team_id not in principal.team_scope_ids:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "code": "TEAM_SCOPE_DENIED",
+                    "message": "無權限存取此 team 的 MCP 資料",
+                },
+            )
+        conditions.append(TestCaseLocalDB.team_id == team_id)
+
+    if team_name_filter:
+        conditions.append(TeamDB.name.ilike(f"%{team_name_filter}%"))
+
+    if number_filter:
+        conditions.append(TestCaseLocalDB.test_case_number.ilike(f"%{number_filter}%"))
+
+    if ticket_filter:
+        conditions.append(TestCaseLocalDB.tcg_json.ilike(f"%{ticket_filter}%"))
+
+    if keyword:
+        pattern = f"%{keyword}%"
+        conditions.append(
+            or_(
+                TestCaseLocalDB.test_case_number.ilike(pattern),
+                TestCaseLocalDB.title.ilike(pattern),
+                TestCaseLocalDB.tcg_json.ilike(pattern),
+            )
+        )
+
+    total = (
+        await db.execute(
+            select(func.count(TestCaseLocalDB.id))
+            .select_from(TestCaseLocalDB)
+            .join(TeamDB, TeamDB.id == TestCaseLocalDB.team_id)
+            .where(*conditions)
+        )
+    ).scalar_one()
+    has_next = bool(total > skip + limit)
+
+    rows = (
+        await db.execute(
+            select(TestCaseLocalDB, TeamDB.name)
+            .join(TeamDB, TeamDB.id == TestCaseLocalDB.team_id)
+            .where(*conditions)
+            .order_by(TestCaseLocalDB.created_at.desc(), TestCaseLocalDB.id.desc())
+            .offset(skip)
+            .limit(limit)
+        )
+    ).all()
+
+    items: list[MCPCrossTeamTestCaseItem] = []
+    for row, resolved_team_name in rows:
+        items.append(
+            MCPCrossTeamTestCaseItem(
+                team_id=row.team_id,
+                team_name=resolved_team_name,
+                match_type=_lookup_match_type(
+                    row,
+                    keyword=keyword or None,
+                    test_case_number=number_filter or None,
+                    ticket=ticket_filter or None,
+                ),
+                test_case=_build_case_payload(row, include_content=include_content),
+            )
+        )
+
+    await log_mcp_allow(
+        request,
+        principal,
+        reason="test_case_lookup_allowed",
+        team_id=team_id,
+    )
+    return MCPTestCaseLookupResponse(
+        filters={
+            "q": q,
+            "test_case_number": test_case_number,
+            "ticket": ticket,
+            "team_id": team_id,
+            "team_name": team_name,
+            "include_content": include_content,
+        },
+        items=items,
+        page=MCPPageMeta(skip=skip, limit=limit, total=int(total), has_next=has_next),
+    )
+
+
 @router.get("/teams/{team_id}/test-cases", response_model=MCPTeamTestCasesResponse)
 async def list_team_test_cases(
     team_id: int,
     db: AsyncSession = Depends(get_db),
     principal: MCPMachinePrincipal = Depends(require_mcp_team_access),
     set_id: Optional[int] = Query(None, description="Test Case Set ID"),
-    search: Optional[str] = Query(None, description="標題/編號模糊搜尋"),
+    search: Optional[str] = Query(
+        None, description="標題/編號模糊搜尋（ticket/單號請用 ticket 或 tcg）"
+    ),
     priority: Optional[str] = Query(None, description="Priority 過濾"),
     test_result: Optional[str] = Query(None, description="Test Result 過濾"),
     assignee: Optional[str] = Query(None, description="Assignee 關鍵字過濾"),
+    tcg: Optional[str] = Query(
+        None, description="Issue/Ticket 關鍵字過濾（對應 tcg 欄位，支援 TCG/ICR/其他前綴）"
+    ),
+    ticket: Optional[str] = Query(
+        None, description="Issue/Ticket/單號關鍵字（同 tcg 欄位）"
+    ),
+    strict_set: bool = Query(
+        False,
+        description="set_id 不存在時是否回傳 404（預設 false，會忽略 set 過濾）",
+    ),
+    include_content: bool = Query(
+        False, description="是否回傳 precondition/steps/expected_result"
+    ),
     skip: int = Query(0, ge=0, description="分頁 offset"),
     limit: int = Query(100, ge=1, le=1000, description="分頁大小"),
 ):
     del principal  # 由 dependency 完成 team scope 驗證
     await _ensure_team_exists(db, team_id)
 
+    set_not_found = False
+    resolved_set_id: Optional[int] = set_id
     if set_id is not None:
         set_exists = await db.execute(
             select(TestCaseSetDB.id).where(
@@ -212,10 +485,13 @@ async def list_team_test_cases(
             )
         )
         if set_exists.scalar_one_or_none() is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"找不到團隊 {team_id} 的 Test Case Set {set_id}",
-            )
+            if strict_set:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"找不到團隊 {team_id} 的 Test Case Set {set_id}",
+                )
+            set_not_found = True
+            resolved_set_id = None
 
     set_count_rows = await db.execute(
         select(TestCaseLocalDB.test_case_set_id, func.count(TestCaseLocalDB.id))
@@ -243,14 +519,15 @@ async def list_team_test_cases(
     ]
 
     conditions = [TestCaseLocalDB.team_id == team_id]
-    if set_id is not None:
-        conditions.append(TestCaseLocalDB.test_case_set_id == set_id)
+    if resolved_set_id is not None:
+        conditions.append(TestCaseLocalDB.test_case_set_id == resolved_set_id)
     if search and search.strip():
         pattern = f"%{search.strip()}%"
         conditions.append(
             or_(
                 TestCaseLocalDB.title.ilike(pattern),
                 TestCaseLocalDB.test_case_number.ilike(pattern),
+                TestCaseLocalDB.tcg_json.ilike(pattern),
             )
         )
 
@@ -264,6 +541,14 @@ async def list_team_test_cases(
 
     if assignee and assignee.strip():
         conditions.append(TestCaseLocalDB.assignee_json.ilike(f"%{assignee.strip()}%"))
+    tcg_filters = [value.strip() for value in (tcg, ticket) if value and value.strip()]
+    if tcg_filters:
+        if len(tcg_filters) == 1:
+            conditions.append(TestCaseLocalDB.tcg_json.ilike(f"%{tcg_filters[0]}%"))
+        else:
+            conditions.append(
+                or_(*[TestCaseLocalDB.tcg_json.ilike(f"%{value}%") for value in tcg_filters])
+            )
 
     total = (
         await db.execute(select(func.count(TestCaseLocalDB.id)).where(*conditions))
@@ -282,36 +567,64 @@ async def list_team_test_cases(
 
     cases: list[Dict[str, Any]] = []
     for row in rows:
-        cases.append(
-            {
-                "id": row.id,
-                "record_id": row.lark_record_id or str(row.id),
-                "test_case_number": row.test_case_number,
-                "title": row.title,
-                "priority": _to_text(row.priority),
-                "test_result": _to_text(row.test_result) or None,
-                "assignee": _parse_assignee(row.assignee_json),
-                "tcg": _parse_tcg_list(row.tcg_json),
-                "test_case_set_id": row.test_case_set_id,
-                "test_case_section_id": row.test_case_section_id,
-                "created_at": row.created_at,
-                "updated_at": row.updated_at,
-                "last_sync_at": row.last_sync_at,
-            }
-        )
+        cases.append(_build_case_payload(row, include_content=include_content))
 
     return MCPTeamTestCasesResponse(
         team_id=team_id,
         filters={
             "set_id": set_id,
+            "resolved_set_id": resolved_set_id,
+            "set_not_found": set_not_found,
             "search": search,
             "priority": priority,
             "test_result": test_result,
             "assignee": assignee,
+            "tcg": tcg,
+            "ticket": ticket,
+            "strict_set": strict_set,
+            "include_content": include_content,
         },
         sets=set_items,
         test_cases=cases,
         page=MCPPageMeta(skip=skip, limit=limit, total=int(total), has_next=has_next),
+    )
+
+
+@router.get(
+    "/teams/{team_id}/test-cases/{test_case_id}",
+    response_model=MCPTestCaseDetailResponse,
+)
+async def get_team_test_case_detail(
+    team_id: int,
+    test_case_id: int,
+    db: AsyncSession = Depends(get_db),
+    principal: MCPMachinePrincipal = Depends(require_mcp_team_access),
+):
+    del principal  # 由 dependency 完成 team scope 驗證
+    await _ensure_team_exists(db, team_id)
+
+    row = (
+        await db.execute(
+            select(TestCaseLocalDB).where(
+                TestCaseLocalDB.team_id == team_id,
+                TestCaseLocalDB.id == test_case_id,
+            )
+        )
+    ).scalar_one_or_none()
+
+    if row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"找不到團隊 {team_id} 的 Test Case {test_case_id}",
+        )
+
+    return MCPTestCaseDetailResponse(
+        team_id=team_id,
+        test_case=_build_case_payload(
+            row,
+            include_content=True,
+            include_extended=True,
+        ),
     )
 
 

@@ -6,13 +6,200 @@
 適用於系統級別的組織數據維護。
 """
 
+import hashlib
+import json
 import logging
-from fastapi import APIRouter, HTTPException, Query, BackgroundTasks
+import secrets
+from datetime import datetime, timedelta
+from typing import List, Optional
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
+from pydantic import BaseModel, Field
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.audit import ActionType, AuditSeverity, ResourceType, audit_service
+from app.auth.dependencies import require_super_admin
+from app.database import get_db
+from app.models.database_models import (
+    MCPMachineCredential,
+    MCPMachineCredentialStatus,
+    Team,
+    User,
+)
 from ..services.lark_org_sync_service import get_lark_org_sync_service
 
 # 創建路由器
 router = APIRouter(prefix="/organization", tags=["organization"])
 logger = logging.getLogger(__name__)
+
+
+class MCPMachineTokenCreateRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100, description="token 名稱（唯一）")
+    description: Optional[str] = Field(None, max_length=2000, description="用途描述")
+    allow_all_teams: bool = Field(False, description="是否允許存取所有團隊")
+    team_scope_ids: List[int] = Field(default_factory=list, description="允許存取的 team_id 清單")
+    expires_in_days: Optional[int] = Field(
+        None,
+        ge=1,
+        le=3650,
+        description="有效天數（空值代表不過期）",
+    )
+
+
+def _normalize_team_scope_ids(raw_ids: List[int]) -> List[int]:
+    normalized: List[int] = []
+    seen = set()
+    for raw in raw_ids or []:
+        try:
+            team_id = int(raw)
+        except (TypeError, ValueError):
+            continue
+        if team_id <= 0 or team_id in seen:
+            continue
+        seen.add(team_id)
+        normalized.append(team_id)
+    return normalized
+
+
+def _resolve_role_value(raw_role: object) -> str:
+    if hasattr(raw_role, "value"):
+        return str(getattr(raw_role, "value"))
+    return str(raw_role or "")
+
+
+@router.post("/mcp/machine-tokens")
+async def create_mcp_machine_token(
+    payload: MCPMachineTokenCreateRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(require_super_admin()),
+):
+    name = (payload.name or "").strip()
+    if not name:
+        raise HTTPException(
+            status_code=400,
+            detail={"code": "MCP_MACHINE_TOKEN_NAME_REQUIRED", "message": "請填寫 token 名稱"},
+        )
+
+    team_scope_ids = _normalize_team_scope_ids(payload.team_scope_ids)
+    if not payload.allow_all_teams and not team_scope_ids:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "code": "MCP_MACHINE_TOKEN_SCOPE_REQUIRED",
+                "message": "未啟用全部團隊時，至少需指定一個 team scope",
+            },
+        )
+
+    if not payload.allow_all_teams and team_scope_ids:
+        existing_rows = await db.execute(select(Team.id).where(Team.id.in_(team_scope_ids)))
+        existing_ids = {int(team_id) for (team_id,) in existing_rows.all()}
+        missing_ids = [team_id for team_id in team_scope_ids if team_id not in existing_ids]
+        if missing_ids:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "code": "MCP_MACHINE_TOKEN_SCOPE_INVALID_TEAM",
+                    "message": f"找不到 team_id: {', '.join(str(tid) for tid in missing_ids)}",
+                },
+            )
+
+    expires_at: Optional[datetime] = None
+    if payload.expires_in_days:
+        expires_at = datetime.utcnow() + timedelta(days=int(payload.expires_in_days))
+
+    raw_token = secrets.token_hex(32)
+    token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+
+    machine_credential = MCPMachineCredential(
+        name=name,
+        description=(payload.description or "").strip() or None,
+        token_hash=token_hash,
+        permission="mcp_read",
+        status=MCPMachineCredentialStatus.ACTIVE,
+        allow_all_teams=bool(payload.allow_all_teams),
+        team_scope_json=None
+        if payload.allow_all_teams
+        else json.dumps(team_scope_ids, ensure_ascii=False),
+        expires_at=expires_at,
+        created_by_user_id=getattr(current_user, "id", None),
+    )
+    db.add(machine_credential)
+
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raw_message = str(getattr(exc, "orig", exc)).lower()
+        if "mcp_machine_credentials.name" in raw_message:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "code": "MCP_MACHINE_TOKEN_NAME_EXISTS",
+                    "message": f"machine token 名稱已存在: {name}",
+                },
+            ) from exc
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "code": "MCP_MACHINE_TOKEN_CREATE_FAILED",
+                "message": "建立 machine token 失敗",
+            },
+        ) from exc
+    except Exception as exc:  # noqa: BLE001
+        await db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail={
+                "code": "MCP_MACHINE_TOKEN_CREATE_FAILED",
+                "message": "建立 machine token 失敗",
+            },
+        ) from exc
+
+    await db.refresh(machine_credential)
+
+    response_payload = {
+        "success": True,
+        "data": {
+            "credential_id": machine_credential.id,
+            "name": machine_credential.name,
+            "permission": machine_credential.permission,
+            "allow_all_teams": bool(machine_credential.allow_all_teams),
+            "team_scope_ids": [] if payload.allow_all_teams else team_scope_ids,
+            "expires_at": machine_credential.expires_at.isoformat() if machine_credential.expires_at else None,
+            "created_at": machine_credential.created_at.isoformat() if machine_credential.created_at else None,
+            "raw_token": raw_token,
+        },
+    }
+
+    try:
+        await audit_service.log_action(
+            user_id=getattr(current_user, "id", 0) or 0,
+            username=getattr(current_user, "username", "unknown"),
+            role=_resolve_role_value(getattr(current_user, "role", "")),
+            action_type=ActionType.CREATE,
+            resource_type=ResourceType.SYSTEM,
+            resource_id=f"mcp_machine_credential:{machine_credential.id}",
+            team_id=0,
+            details={
+                "credential_id": machine_credential.id,
+                "name": machine_credential.name,
+                "permission": machine_credential.permission,
+                "allow_all_teams": bool(machine_credential.allow_all_teams),
+                "team_scope_ids": [] if payload.allow_all_teams else team_scope_ids,
+                "expires_at": machine_credential.expires_at.isoformat() if machine_credential.expires_at else None,
+            },
+            action_brief=f"建立 MCP machine token: {machine_credential.name}",
+            severity=AuditSeverity.INFO,
+            ip_address=request.client.host if request.client else None,
+            user_agent=request.headers.get("user-agent"),
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("MCP machine token 審計紀錄寫入失敗: %s", exc, exc_info=True)
+
+    return response_payload
 
 
 @router.get("/sync/status")

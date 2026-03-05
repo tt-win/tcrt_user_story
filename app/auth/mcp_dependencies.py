@@ -22,6 +22,7 @@ from app.models.mcp import MCPMachinePrincipal
 logger = logging.getLogger(__name__)
 
 MCP_READ_PERMISSION = "mcp_read"
+AUDIT_RESOURCE_ID_MAX_LEN = 100
 _machine_bearer = HTTPBearer(auto_error=False)
 
 
@@ -67,6 +68,18 @@ def _extract_team_id(request: Request) -> int:
         return 0
 
 
+def _build_audit_resource_id(endpoint_path: str, query_text: str) -> str:
+    """建立符合審計欄位長度限制的 resource_id。"""
+    resource_path = endpoint_path if not query_text else f"{endpoint_path}?{query_text}"
+    if len(resource_path) <= AUDIT_RESOURCE_ID_MAX_LEN:
+        return resource_path
+
+    digest = hashlib.sha1(resource_path.encode("utf-8")).hexdigest()[:12]
+    suffix = f"#h={digest}"
+    prefix_len = max(1, AUDIT_RESOURCE_ID_MAX_LEN - len(suffix))
+    return f"{resource_path[:prefix_len]}{suffix}"
+
+
 async def _log_mcp_access(
     request: Request,
     principal: Optional[MCPMachinePrincipal],
@@ -79,7 +92,7 @@ async def _log_mcp_access(
         resolved_team_id = team_id if team_id is not None else _extract_team_id(request)
         endpoint_path = request.url.path
         query_text = request.url.query
-        resource_path = endpoint_path if not query_text else f"{endpoint_path}?{query_text}"
+        resource_path = _build_audit_resource_id(endpoint_path, query_text)
         username = f"mcp:{principal.credential_name}" if principal else "mcp:anonymous"
         user_id = principal.credential_id if principal else 0
         severity = AuditSeverity.INFO if allowed else AuditSeverity.WARNING

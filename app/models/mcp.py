@@ -66,6 +66,48 @@ class MCPTeamTestCasesResponse(BaseModel):
     page: MCPPageMeta
 
 
+class MCPTestCaseDetailItem(BaseModel):
+    id: int
+    record_id: str
+    test_case_number: str
+    title: str
+    priority: str
+    test_result: Optional[str] = None
+    assignee: Optional[str] = None
+    tcg: List[str] = Field(default_factory=list)
+    precondition: Optional[str] = None
+    steps: Optional[str] = None
+    expected_result: Optional[str] = None
+    test_case_set_id: int
+    test_case_section_id: Optional[int] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    last_sync_at: Optional[datetime] = None
+    attachments: List[Dict[str, Any]] = Field(default_factory=list)
+    test_results_files: List[Dict[str, Any]] = Field(default_factory=list)
+    user_story_map: List[Dict[str, Any]] = Field(default_factory=list)
+    parent_record: List[Dict[str, Any]] = Field(default_factory=list)
+    raw_fields: Optional[Dict[str, Any]] = None
+
+
+class MCPTestCaseDetailResponse(BaseModel):
+    team_id: int
+    test_case: MCPTestCaseDetailItem
+
+
+class MCPCrossTeamTestCaseItem(BaseModel):
+    team_id: int
+    team_name: str
+    match_type: str
+    test_case: Dict[str, Any]
+
+
+class MCPTestCaseLookupResponse(BaseModel):
+    filters: Dict[str, Any]
+    items: List[MCPCrossTeamTestCaseItem] = Field(default_factory=list)
+    page: MCPPageMeta
+
+
 class MCPTestRunSetItem(BaseModel):
     id: int
     name: str

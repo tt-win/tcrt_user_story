@@ -131,12 +131,21 @@ def _seed_mcp_data(session):
 
     tc_a1 = TestCaseLocal(
         team_id=team_a.id,
+        lark_record_id="rec-a1",
         test_case_number="TC-A-001",
         title="Login should work",
         priority=Priority.HIGH,
         test_result=TestResultStatus.PASSED,
+        precondition="User is on login page",
+        steps="1. Input account\n2. Click login",
+        expected_result="Redirect to dashboard",
         assignee_json=json.dumps([{"name": "Alice", "email": "alice@example.com"}]),
+        attachments_json=json.dumps([{"name": "spec.pdf"}]),
+        test_results_files_json=json.dumps([{"name": "result.png"}]),
+        user_story_map_json=json.dumps([{"id": "US-1", "title": "Login"}]),
         tcg_json=json.dumps(["TP-1001"]),
+        parent_record_json=json.dumps([{"record_id": "rec-parent"}]),
+        raw_fields_json=json.dumps({"custom_field": "custom-value"}),
         test_case_set_id=set_a.id,
         test_case_section_id=section_a.id,
     )
@@ -147,7 +156,7 @@ def _seed_mcp_data(session):
         priority=Priority.LOW,
         test_result=TestResultStatus.FAILED,
         assignee_json=json.dumps([{"name": "Bob", "email": "bob@example.com"}]),
-        tcg_json=json.dumps(["TP-2002"]),
+        tcg_json=json.dumps(["TP-2002", "ICR-93178.010.010", "TCG-93178.010.010"]),
         test_case_set_id=set_a.id,
         test_case_section_id=section_a.id,
     )
@@ -303,6 +312,7 @@ def _seed_mcp_data(session):
         "team_a_id": team_a.id,
         "team_b_id": team_b.id,
         "set_a_id": set_a.id,
+        "tc_a1_id": tc_a1.id,
         "config_in_set_id": config_in_set.id,
         "config_unassigned_id": config_unassigned.id,
         "config_archived_id": config_archived.id,
@@ -386,6 +396,7 @@ def test_mcp_team_test_cases_filters_and_scope(temp_db):
         assert len(payload["test_cases"]) == 1
         assert payload["test_cases"][0]["test_case_number"] == "TC-A-001"
         assert payload["test_cases"][0]["assignee"] == "Alice"
+        assert "precondition" not in payload["test_cases"][0]
 
         deny_scope = client.get(
             f"/api/mcp/teams/{seeded['team_b_id']}/test-cases",
@@ -393,6 +404,199 @@ def test_mcp_team_test_cases_filters_and_scope(temp_db):
         )
         assert deny_scope.status_code == 403
         assert deny_scope.json()["detail"]["code"] == "TEAM_SCOPE_DENIED"
+
+
+def test_mcp_lookup_test_case_by_number_without_team(temp_db):
+    with temp_db() as session:
+        seeded = _seed_mcp_data(session)
+
+    with TestClient(app) as client:
+        resp = client.get(
+            "/api/mcp/test-cases/lookup",
+            headers=_bearer(seeded["all_token"]),
+            params={"test_case_number": "TC-B-001"},
+        )
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert payload["page"]["total"] == 1
+        assert len(payload["items"]) == 1
+        first = payload["items"][0]
+        assert first["team_id"] == seeded["team_b_id"]
+        assert first["team_name"] == "Team B"
+        assert first["match_type"] == "test_case_number_exact"
+        assert first["test_case"]["test_case_number"] == "TC-B-001"
+        assert "precondition" in first["test_case"]
+
+
+def test_mcp_lookup_by_ticket_across_teams(temp_db):
+    with temp_db() as session:
+        seeded = _seed_mcp_data(session)
+
+    with TestClient(app) as client:
+        resp = client.get(
+            "/api/mcp/test-cases/lookup",
+            headers=_bearer(seeded["all_token"]),
+            params={"ticket": "ICR-93178.010.010"},
+        )
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert payload["page"]["total"] == 1
+        first = payload["items"][0]
+        assert first["team_id"] == seeded["team_a_id"]
+        assert first["match_type"] == "ticket"
+        assert first["test_case"]["test_case_number"] == "TC-A-002"
+        assert "ICR-93178.010.010" in first["test_case"]["tcg"]
+
+
+def test_mcp_lookup_scope_and_required_filters(temp_db):
+    with temp_db() as session:
+        seeded = _seed_mcp_data(session)
+
+    with TestClient(app) as client:
+        missing_filter = client.get(
+            "/api/mcp/test-cases/lookup",
+            headers=_bearer(seeded["all_token"]),
+        )
+        assert missing_filter.status_code == 400
+
+        scoped_hidden = client.get(
+            "/api/mcp/test-cases/lookup",
+            headers=_bearer(seeded["scoped_token"]),
+            params={"test_case_number": "TC-B-001"},
+        )
+        assert scoped_hidden.status_code == 200
+        scoped_payload = scoped_hidden.json()
+        assert scoped_payload["page"]["total"] == 0
+        assert scoped_payload["items"] == []
+
+        scoped_forbidden_team = client.get(
+            "/api/mcp/test-cases/lookup",
+            headers=_bearer(seeded["scoped_token"]),
+            params={"test_case_number": "TC-B-001", "team_id": seeded["team_b_id"]},
+        )
+        assert scoped_forbidden_team.status_code == 403
+        assert scoped_forbidden_team.json()["detail"]["code"] == "TEAM_SCOPE_DENIED"
+
+
+def test_mcp_team_test_cases_tcg_and_include_content(temp_db):
+    with temp_db() as session:
+        seeded = _seed_mcp_data(session)
+
+    with TestClient(app) as client:
+        resp = client.get(
+            f"/api/mcp/teams/{seeded['team_a_id']}/test-cases",
+            headers=_bearer(seeded["all_token"]),
+            params={"tcg": "TP-1001", "include_content": "true", "limit": 10},
+        )
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert payload["filters"]["tcg"] == "TP-1001"
+        assert payload["filters"]["include_content"] is True
+        assert payload["page"]["total"] == 1
+        assert len(payload["test_cases"]) == 1
+        case = payload["test_cases"][0]
+        assert case["test_case_number"] == "TC-A-001"
+        assert case["precondition"] == "User is on login page"
+        assert case["steps"] == "1. Input account\n2. Click login"
+        assert case["expected_result"] == "Redirect to dashboard"
+
+
+def test_mcp_team_test_cases_ticket_alias_filters_tcg_column(temp_db):
+    with temp_db() as session:
+        seeded = _seed_mcp_data(session)
+
+    with TestClient(app) as client:
+        resp = client.get(
+            f"/api/mcp/teams/{seeded['team_a_id']}/test-cases",
+            headers=_bearer(seeded["all_token"]),
+            params={"ticket": "ICR-93178.010.010", "limit": 10},
+        )
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert payload["filters"]["ticket"] == "ICR-93178.010.010"
+        assert payload["page"]["total"] == 1
+        assert payload["test_cases"][0]["test_case_number"] == "TC-A-002"
+
+
+def test_mcp_team_test_cases_invalid_set_soft_fallback(temp_db):
+    with temp_db() as session:
+        seeded = _seed_mcp_data(session)
+
+    with TestClient(app) as client:
+        soft_resp = client.get(
+            f"/api/mcp/teams/{seeded['team_a_id']}/test-cases",
+            headers=_bearer(seeded["all_token"]),
+            params={
+                "set_id": 999999,
+                "search": "TC-A-001",
+                "limit": 10,
+            },
+        )
+        assert soft_resp.status_code == 200
+        soft_payload = soft_resp.json()
+        assert soft_payload["filters"]["set_id"] == 999999
+        assert soft_payload["filters"]["resolved_set_id"] is None
+        assert soft_payload["filters"]["set_not_found"] is True
+        assert soft_payload["filters"]["strict_set"] is False
+        assert soft_payload["page"]["total"] == 1
+        assert soft_payload["test_cases"][0]["test_case_number"] == "TC-A-001"
+
+        strict_resp = client.get(
+            f"/api/mcp/teams/{seeded['team_a_id']}/test-cases",
+            headers=_bearer(seeded["all_token"]),
+            params={
+                "set_id": 999999,
+                "strict_set": "true",
+            },
+        )
+        assert strict_resp.status_code == 404
+        assert strict_resp.json()["detail"] == (
+            f"找不到團隊 {seeded['team_a_id']} 的 Test Case Set 999999"
+        )
+
+
+def test_mcp_team_test_case_detail_and_scope(temp_db):
+    with temp_db() as session:
+        seeded = _seed_mcp_data(session)
+
+    with TestClient(app) as client:
+        detail_resp = client.get(
+            f"/api/mcp/teams/{seeded['team_a_id']}/test-cases/{seeded['tc_a1_id']}",
+            headers=_bearer(seeded["all_token"]),
+        )
+        assert detail_resp.status_code == 200
+        payload = detail_resp.json()
+        assert payload["team_id"] == seeded["team_a_id"]
+        case = payload["test_case"]
+        assert case["id"] == seeded["tc_a1_id"]
+        assert case["record_id"] == "rec-a1"
+        assert case["precondition"] == "User is on login page"
+        assert case["steps"] == "1. Input account\n2. Click login"
+        assert case["expected_result"] == "Redirect to dashboard"
+        assert case["attachments"] == [{"name": "spec.pdf"}]
+        assert case["test_results_files"] == [{"name": "result.png"}]
+        assert case["user_story_map"] == [{"id": "US-1", "title": "Login"}]
+        assert case["parent_record"] == [{"record_id": "rec-parent"}]
+        assert case["raw_fields"] == {"custom_field": "custom-value"}
+
+        deny_scope = client.get(
+            f"/api/mcp/teams/{seeded['team_b_id']}/test-cases/{seeded['tc_a1_id']}",
+            headers=_bearer(seeded["scoped_token"]),
+        )
+        assert deny_scope.status_code == 403
+        assert deny_scope.json()["detail"]["code"] == "TEAM_SCOPE_DENIED"
+
+        not_found_in_team = client.get(
+            f"/api/mcp/teams/{seeded['team_b_id']}/test-cases/{seeded['tc_a1_id']}",
+            headers=_bearer(seeded["all_token"]),
+        )
+        assert not_found_in_team.status_code == 404
+
+        not_found = client.get(
+            f"/api/mcp/teams/{seeded['team_a_id']}/test-cases/999999",
+            headers=_bearer(seeded["all_token"]),
+        )
+        assert not_found.status_code == 404
 
 
 def test_mcp_team_test_runs_unified_filters(temp_db):
