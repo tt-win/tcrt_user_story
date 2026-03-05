@@ -668,6 +668,62 @@ class TestCaseSectionList {
   }
 
   /**
+   * 等待 section 元素在 DOM 中出現
+   * 使用 MutationObserver 監聽 DOM 變化，取代固定延遲
+   * @param {string|number} sectionId - Section ID
+   * @param {number} timeout - 逾時時間（毫秒），預設 5000ms
+   * @returns {Promise<Element|null>} - 返回 section 元素或 null（逾時）
+   */
+  waitForSectionElement(sectionId, timeout = 5000) {
+    return new Promise((resolve) => {
+      console.log('[SectionList] waitForSectionElement called for sectionId:', sectionId);
+      
+      const selector = `[data-section-id="${sectionId}"]`;
+      
+      // 先檢查元素是否已存在
+      const existingElement = document.querySelector(selector);
+      if (existingElement) {
+        console.log('[SectionList] Section element already exists:', sectionId);
+        resolve(existingElement);
+        return;
+      }
+      
+      // 建立 MutationObserver 監聽 DOM 變化
+      const observer = new MutationObserver((mutations, obs) => {
+        const element = document.querySelector(selector);
+        if (element) {
+          console.log('[SectionList] Section element found via MutationObserver:', sectionId);
+          obs.disconnect();
+          clearTimeout(timeoutId);
+          resolve(element);
+        }
+      });
+      
+      // 設定逾時計時器
+      const timeoutId = setTimeout(() => {
+        console.warn('[SectionList] waitForSectionElement timeout after', timeout, 'ms for sectionId:', sectionId);
+        observer.disconnect();
+        resolve(null);
+      }, timeout);
+      
+      // 開始觀察整個 document.body 的子樹變化
+      observer.observe(document.body, {
+        childList: true,
+        subtree: true
+      });
+      
+      // 立即檢查一次（避免在 observer 啟動前元素已出現）
+      const immediateCheck = document.querySelector(selector);
+      if (immediateCheck) {
+        console.log('[SectionList] Section element found on immediate check:', sectionId);
+        observer.disconnect();
+        clearTimeout(timeoutId);
+        resolve(immediateCheck);
+      }
+    });
+  }
+
+  /**
    * 滾動到指定 section 並展開它（包括所有祖先 section）
    */
   scrollToAndExpandSection(sectionId) {
@@ -707,15 +763,16 @@ class TestCaseSectionList {
       }
     };
 
-    // 等待 DOM 更新後再滾動
-    // 增加等待時間以確保 DOM 完全更新
-    setTimeout(() => {
-      ensureSectionRendered();
-      // 尋找 section header（.section-card-header）而不是 body
-      // 這樣可以確保 header 在視口中可見
-      const sectionCard = document.querySelector(`[data-section-id="${sectionId}"]`);
-      console.log('[SectionList] Looking for section card with data-section-id:', sectionId);
-      if (sectionCard) {
+    // 等待 DOM 更新後再滾動，    // 使用 MutationObserver 等待 section 元素渲染完成
+    const sectionSelector = `[data-section-id="${sectionId}"]`;
+    
+    console.log('[SectionList] Waiting for section element to render:', sectionId);
+    
+    this.waitForSectionElement(sectionSelector, 5000)
+      .then(sectionCard => {
+        // 尋找 section header（.section-card-header）而不是 body
+        // 這樣可以確保 header 在視口中可見
+        console.log('[SectionList] Section card found, looking for header');
         const sectionHeader = sectionCard.querySelector('.section-card-header');
         if (sectionHeader) {
           console.log('[SectionList] Found section header, scrolling into view');
@@ -741,10 +798,22 @@ class TestCaseSectionList {
         } else {
           console.warn('[SectionList] Section header not found within section card');
         }
-      } else {
-        console.warn('[SectionList] Section card element not found with data-section-id:', sectionId);
-      }
-    }, 300);
+      })
+      .catch(error => {
+        console.warn('[SectionList] Failed to wait for section element:', error.message);
+        // Fallback: 嘗試使用原有的 setTimeout 方式
+        console.log('[SectionList] Falling back to setTimeout(300)');
+        setTimeout(() => {
+          ensureSectionRendered();
+          const sectionCard = document.querySelector(sectionSelector);
+          if (sectionCard) {
+            const sectionHeader = sectionCard.querySelector('.section-card-header');
+            if (sectionHeader) {
+              sectionHeader.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }
+          }
+        }, 300);
+      });
   }
 
   /**
@@ -1313,6 +1382,71 @@ class TestCaseSectionList {
       console.error("Error deleting section:", error);
       alert("刪除區段失敗: " + error.message);
     }
+  }
+
+  /**
+   * 綁定事件監聽器（使用事件委派模式）
+   */
+  bindEvents() {
+    // 使用事件委派模式：將點擊事件監聽器綁定到 section 列表容器
+    const container = document.getElementById('sectionListContent');
+    if (!container) {
+      console.error('[SectionList] Section list container not found');
+      return;
+    }
+
+    // 移除舊的事件監聽器（如果存在）
+    if (this._clickHandler) {
+      container.removeEventListener('click', this._clickHandler);
+      console.log('[SectionList] Removed old click handler');
+    }
+
+    // 建立新的事件處理器
+    this._clickHandler = (e) => {
+      // 檢查是否點擊的是 chevron toggle 圖標或展開/收合按鈕
+      if (e.target.closest('.section-toggle')) {
+        console.log('[SectionList] Click on section-toggle, ignoring navigation');
+        return;
+      }
+      
+      // 如果正在編輯名稱，不處理導航
+      if (this.editingNodeId) {
+        console.log('[SectionList] Currently editing, skipping navigation');
+        return;
+      }
+
+      // 找到被點擊的 section item
+      const sectionItem = e.target.closest('.section-item');
+      if (!sectionItem) {
+        console.log('[SectionList] Click target is not a section-item');
+        return;
+      }
+
+      const sectionNode = sectionItem.closest('.section-node');
+      if (!sectionNode) {
+        console.warn('[SectionList] Cannot find section-node parent');
+        return;
+      }
+
+      const sectionId = sectionNode.dataset.sectionId;
+      console.log('[SectionList] Click on section-item via delegation, sectionId:', sectionId);
+      this.selectSection(sectionId);
+    };
+
+    // 綁定事件監聽器到容器
+    container.addEventListener('click', this._clickHandler);
+    console.log('[SectionList] Event delegation setup complete');
+
+    // 綁定拖移事件（保留原有邏輯）
+    document.querySelectorAll('.section-node[draggable="true"]').forEach((node) => {
+      node.addEventListener('dragstart', (e) => this.handleDragStart(e));
+      node.addEventListener('dragover', (e) => this.handleDragOver(e));
+      node.addEventListener('drop', (e) => this.handleDrop(e));
+      node.addEventListener('dragend', (e) => this.handleDragEnd(e));
+      node.addEventListener('dragleave', (e) => this.handleDragLeave(e));
+    });
+
+    // 右鍵菜單事件已在 showContextMenu 中處理
   }
 
   /**
