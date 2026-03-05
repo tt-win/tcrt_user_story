@@ -644,7 +644,7 @@ class TestCaseSectionList {
 
     // 高亮當前選擇
     const selected = document.querySelector(
-      `[data-section-id="${sectionId}"] .section-item`,
+      `#sectionListContent .section-node[data-section-id="${sectionId}"] .section-item`,
     );
     if (selected) {
       selected.classList.add("bg-primary", "text-white");
@@ -667,6 +667,10 @@ class TestCaseSectionList {
     this.scrollToAndExpandSection(sectionId);
   }
 
+  getMainSectionCardSelector(sectionId) {
+    return `#testCasesStack .section-card[data-section-id="${sectionId}"]`;
+  }
+
   /**
    * 等待 section 元素在 DOM 中出現
    * 使用 MutationObserver 監聽 DOM 變化，取代固定延遲
@@ -678,7 +682,7 @@ class TestCaseSectionList {
     return new Promise((resolve) => {
       console.log('[SectionList] waitForSectionElement called for sectionId:', sectionId);
       
-      const selector = `[data-section-id="${sectionId}"]`;
+      const selector = this.getMainSectionCardSelector(sectionId);
       
       // 先檢查元素是否已存在
       const existingElement = document.querySelector(selector);
@@ -706,8 +710,9 @@ class TestCaseSectionList {
         resolve(null);
       }, timeout);
       
-      // 開始觀察整個 document.body 的子樹變化
-      observer.observe(document.body, {
+      // 優先觀察 testCasesStack，避免監聽整個 document 帶來噪音
+      const observerTarget = document.getElementById('testCasesStack') || document.body;
+      observer.observe(observerTarget, {
         childList: true,
         subtree: true
       });
@@ -747,12 +752,13 @@ class TestCaseSectionList {
       return;
     }
 
+    const sectionSelector = this.getMainSectionCardSelector(sectionId);
     const ensureSectionRendered = () => {
       if (typeof renderNextBatch !== 'function' || typeof tcmRenderQueue === 'undefined') {
         return;
       }
       let guard = 0;
-      while (!document.querySelector(`[data-section-id="${sectionId}"]`) &&
+      while (!document.querySelector(sectionSelector) &&
              tcmRenderQueue.length > 0 &&
              guard < 50) {
         renderNextBatch();
@@ -764,12 +770,15 @@ class TestCaseSectionList {
     };
 
     // 等待 DOM 更新後再滾動，    // 使用 MutationObserver 等待 section 元素渲染完成
-    const sectionSelector = `[data-section-id="${sectionId}"]`;
+    ensureSectionRendered();
     
     console.log('[SectionList] Waiting for section element to render:', sectionId);
     
-    this.waitForSectionElement(sectionSelector, 5000)
+    this.waitForSectionElement(sectionId, 5000)
       .then(sectionCard => {
+        if (!sectionCard) {
+          throw new Error(`Section card not found after wait: ${sectionId}`);
+        }
         // 尋找 section header（.section-card-header）而不是 body
         // 這樣可以確保 header 在視口中可見
         console.log('[SectionList] Section card found, looking for header');
