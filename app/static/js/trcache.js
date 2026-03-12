@@ -2,8 +2,7 @@
   'use strict';
 
   const DB_NAME = 'tr_cache';
-  const DB_VERSION = 4; // 回到單一storage + 改進key策略
-  const STORE_TCG = 'tcg'; // TCG共用
+  const DB_VERSION = 5; // 移除已停用的 TCG 快取 store
   const STORE_EXEC = 'exec_unified'; // 統一的執行資料store
   const EXEC_LRU_MAX = 100000; // 全域LRU限制
 
@@ -26,13 +25,6 @@
         req.onupgradeneeded = (e) => {
           const db = e.target.result;
 
-          // TCG儲存共用
-          if (!db.objectStoreNames.contains(STORE_TCG)) {
-            const s2 = db.createObjectStore(STORE_TCG, { keyPath: 'key' });
-            s2.createIndex('ts', 'ts');
-            s2.createIndex('lastAccess', 'lastAccess');
-          }
-
           // 統一的執行資料store
           if (!db.objectStoreNames.contains(STORE_EXEC)) {
             const s1 = db.createObjectStore(STORE_EXEC, { keyPath: 'key' });
@@ -41,14 +33,17 @@
             s1.createIndex('teamId', 'teamId'); // 新增teamId索引方便查詢和LRU管理
           }
 
-          // 清理舊的stores
+          // 清理舊的 stores 與已停用的 TCG 快取 store
+          if (db.objectStoreNames.contains('tcg')) {
+            db.deleteObjectStore('tcg');
+          }
           ['exec_tc', 'exec_team_1', 'exec_team_2', 'exec_team_3', 'exec_team_4', 'exec_team_5', 'exec_team_unknown'].forEach(oldStore => {
             if (db.objectStoreNames.contains(oldStore)) {
               db.deleteObjectStore(oldStore);
             }
           });
 
-          if (TRCache.debug) console.debug('[TRCache] DB upgraded to v4 - unified storage with improved key strategy');
+          if (TRCache.debug) console.debug('[TRCache] DB upgraded to v5 - removed obsolete TCG cache store');
         };
         req.onsuccess = () => { if (TRCache.debug) console.debug('[TRCache] DB opened'); resolve(req.result); };
         req.onerror = () => { console.error('[TRCache] DB open error:', req.error); reject(req.error); };
@@ -371,70 +366,6 @@
       }
     },
 
-    async getTCG(ttlMs) {
-      const rec = await this._get(STORE_TCG, 'tcg');
-      if (!rec) return null;
-      const now = Date.now();
-      if (ttlMs && rec.ts && (now - rec.ts) > ttlMs) return null;
-      // update lastAccess asynchronously
-      rec.lastAccess = now;
-      this._put(STORE_TCG, rec).catch(()=>{});
-      try {
-        const blob = rec.data;
-        const bytes = blob instanceof Blob ? new Uint8Array(await blob.arrayBuffer()) : new Uint8Array(blob);
-        const jsonStr = this._gunzip(bytes);
-        return { ts: rec.ts, data: JSON.parse(jsonStr) };
-      } catch (_) { return null; }
-    },
-
-    async setTCG(list) {
-      try {
-        if (!Array.isArray(list) && list !== null && list !== undefined) {
-          if (this.enableErrorLogging) {
-            console.error('[TRCache] setTCG: 無效的列表數據', list);
-          }
-          return false;
-        }
-
-        const jsonStr = JSON.stringify(list || []);
-        if (!jsonStr) {
-          if (this.enableErrorLogging) {
-            console.error('[TRCache] setTCG: JSON序列化失敗', list);
-          }
-          return false;
-        }
-
-        const gz = this._gzip(jsonStr, 5);
-        const rec = {
-          key: 'tcg',
-          ts: Date.now(),
-          lastAccess: Date.now(),
-          data: new Blob([gz], { type: 'application/octet-stream' }),
-          size: gz.length
-        };
-
-        if (TRCache.debug) console.debug('[TRCache] setTCG size', rec.size);
-
-        const success = await this._put(STORE_TCG, rec);
-        if (success) {
-          if (this.debug) {
-            console.log('[TRCache] setTCG成功，大小:', rec.size);
-          }
-          return true;
-        } else {
-          if (this.enableErrorLogging) {
-            console.error('[TRCache] setTCG: _put失敗');
-          }
-          return false;
-        }
-      } catch (error) {
-        if (this.enableErrorLogging) {
-          console.error('[TRCache] setTCG發生未預期錯誤:', error, list);
-        }
-        return false;
-      }
-    },
-
     async selfTest() {
       try {
         const originalDebug = TRCache.debug;
@@ -454,14 +385,6 @@
         const readResult = await TRCache.getExecDetail('selftest', 'DEMO', 60*60*1000);
         console.log('[TRCache] 讀取結果:', readResult);
 
-        // 測試TCG功能
-        const testTcgData = [{id: 1, name: 'test'}, {id: 2, name: '測試'}];
-        const tcgWriteSuccess = await TRCache.setTCG(testTcgData);
-        console.log('[TRCache] TCG寫入結果:', tcgWriteSuccess);
-
-        const tcgRead = await TRCache.getTCG(60*60*1000);
-        console.log('[TRCache] TCG讀取結果:', tcgRead);
-
         // 測試衝突場景：不同的teamId是否獲得不同的key
         const key1 = TRCache._execKey(null, 'TEST');
         const key2 = TRCache._execKey(undefined, 'TEST');
@@ -478,10 +401,10 @@
         TRCache.debug = originalDebug;
         TRCache.enableErrorLogging = originalErrorLogging;
 
-        const success = writeSuccess && readResult && tcgWriteSuccess && tcgRead;
+        const success = writeSuccess && readResult;
         console.log('[TRCache] 自我測試結果:', success ? '成功' : '失敗');
 
-        return { success, execTest: readResult, tcgTest: tcgRead, keys: { key1, key2, key3, key4 } };
+        return { success, execTest: readResult, keys: { key1, key2, key3, key4 } };
       } catch (e) {
         console.error('[TRCache] selfTest error', e);
         return { success: false, error: e.message };
@@ -863,15 +786,6 @@
             TTL: ttl ? (ttl/1000/60).toFixed(1) + '分鐘' : '無限制'
           });
           return originalGetExec.call(this, teamId, testCaseNumber, ttl);
-        };
-
-        const originalSetTCG = TRCache.setTCG;
-        TRCache.setTCG = function(list) {
-          console.log(`%c[Cache Monitor] TCG寫入`, 'color: #FF9800; font-weight: bold', {
-            項目數量: Array.isArray(list) ? list.length : 0,
-            數據大小: JSON.stringify(list || []).length + ' bytes'
-          });
-          return originalSetTCG.call(this, list);
         };
 
         TRCache._monitoringEnabled = true;

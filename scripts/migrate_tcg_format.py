@@ -10,10 +10,14 @@ TCG 單號格式遷移腳本
 """
 
 import json
-import sqlite3
+import argparse
 import logging
-from pathlib import Path
 from typing import Any, Optional, List
+
+from sqlalchemy import inspect, text
+from sqlalchemy.exc import SQLAlchemyError
+
+from app.db_migrations import get_sync_engine_for_target, resolve_main_database_url
 
 # 設定日誌
 logging.basicConfig(
@@ -21,9 +25,6 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
-
-# 數據庫路徑：相對於項目根目錄
-DB_PATH = Path(__file__).parent.parent / "test_case_repo.db"
 
 
 def extract_tcg_numbers_from_old_format(tcg_json_str: str) -> List[str]:
@@ -86,39 +87,28 @@ def extract_tcg_numbers_from_old_format(tcg_json_str: str) -> List[str]:
         return []
 
 
-def migrate_tcg_data():
+def migrate_tcg_data(database_url: Optional[str] = None) -> bool:
     """執行 TCG 資料遷移"""
-
-    if not DB_PATH.exists():
-        logger.error(f"資料庫不存在: {DB_PATH}")
-        return False
-
+    engine = get_sync_engine_for_target(
+        "main",
+        database_url=database_url or resolve_main_database_url(),
+    )
     try:
-        conn = sqlite3.connect(str(DB_PATH))
-        cursor = conn.cursor()
-
-        # 檢查表是否存在
-        cursor.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='test_cases'"
-        )
-        if not cursor.fetchone():
+        if not inspect(engine).has_table("test_cases"):
             logger.error("test_cases 表不存在")
             return False
 
-        # 開始交易
-        conn.execute("BEGIN TRANSACTION")
-
-        try:
+        with engine.begin() as conn:
             # 取得所有有 TCG 的記錄
-            cursor.execute(
-                "SELECT id, test_case_number, tcg_json FROM test_cases WHERE tcg_json IS NOT NULL"
+            records = conn.execute(
+                text("SELECT id, test_case_number, tcg_json FROM test_cases WHERE tcg_json IS NOT NULL")
             )
-            records = cursor.fetchall()
+            rows = records.fetchall()
 
-            logger.info(f"找到 {len(records)} 筆包含 TCG 的記錄")
+            logger.info(f"找到 {len(rows)} 筆包含 TCG 的記錄")
 
             updated_count = 0
-            for record_id, test_case_number, tcg_json_str in records:
+            for record_id, test_case_number, tcg_json_str in rows:
                 # 提取 TCG 單號
                 tcg_numbers = extract_tcg_numbers_from_old_format(tcg_json_str)
 
@@ -128,9 +118,9 @@ def migrate_tcg_data():
                 # 如果內容有變更 (例如髒資料被清洗為 [])，則執行更新
                 # 注意：忽略空白字符差異
                 if new_tcg_json.replace(" ", "") != tcg_json_str.replace(" ", ""):
-                    cursor.execute(
-                        "UPDATE test_cases SET tcg_json = ? WHERE id = ?",
-                        (new_tcg_json, record_id)
+                    conn.execute(
+                        text("UPDATE test_cases SET tcg_json = :tcg_json WHERE id = :record_id"),
+                        {"tcg_json": new_tcg_json, "record_id": record_id},
                     )
 
                     updated_count += 1
@@ -141,27 +131,30 @@ def migrate_tcg_data():
                             f"舊格式 -> 新格式 {tcg_numbers}"
                         )
 
-            # 提交交易
-            conn.commit()
             logger.info(f"成功更新 {updated_count} 筆記錄")
-
             return True
 
-        except Exception as e:
-            conn.rollback()
-            logger.error(f"遷移過程中出錯: {e}")
-            return False
-        finally:
-            conn.close()
-
-    except sqlite3.Error as e:
+    except SQLAlchemyError as e:
         logger.error(f"資料庫操作失敗: {e}")
         return False
+    finally:
+        engine.dispose()
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="TCG 單號格式遷移腳本")
+    parser.add_argument(
+        "--database-url",
+        dest="database_url",
+        help="可選：指定主資料庫 URL；未提供時使用設定檔 / 環境變數解析結果",
+    )
+    return parser.parse_args()
 
 
 if __name__ == "__main__":
+    args = parse_args()
     logger.info("開始 TCG 單號格式遷移...")
-    success = migrate_tcg_data()
+    success = migrate_tcg_data(database_url=args.database_url)
 
     if success:
         logger.info("✓ 遷移成功完成")

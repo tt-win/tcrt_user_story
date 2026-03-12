@@ -84,5 +84,8 @@ audit:
   max_detail_size: 10240
   excluded_fields: ['password', 'token', 'secret', 'key']
   debug_sql: false
+usm:
+  database_url: 'sqlite:///./userstorymap.db'
+  debug_sql: false
 attachments:
   root_dir: ''  # 留空使用專案內 attachments 目錄

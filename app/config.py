@@ -266,6 +266,19 @@ class AuditConfig(BaseModel):
             debug_sql=os.getenv('AUDIT_DEBUG_SQL', str(fallback.debug_sql if fallback else False)).lower() == 'true'
         )
 
+
+class UsmConfig(BaseModel):
+    """User Story Map 資料庫設定"""
+    database_url: str = "sqlite:///./userstorymap.db"
+    debug_sql: bool = False
+
+    @classmethod
+    def from_env(cls, fallback: 'UsmConfig' = None) -> 'UsmConfig':
+        return cls(
+            database_url=os.getenv('USM_DATABASE_URL', fallback.database_url if fallback else 'sqlite:///./userstorymap.db'),
+            debug_sql=os.getenv('USM_DEBUG_SQL', str(fallback.debug_sql if fallback else False)).lower() == 'true'
+        )
+
 class AttachmentsConfig(BaseModel):
     # 若留空，則預設使用專案根目錄下的 attachments 子目錄
     root_dir: str = ""
@@ -287,6 +300,7 @@ class Settings(BaseModel):
     attachments: AttachmentsConfig = AttachmentsConfig()
     auth: AuthConfig = AuthConfig()
     audit: AuditConfig = AuditConfig()
+    usm: UsmConfig = UsmConfig()
     
     @classmethod
     def from_env_and_file(cls, config_path: str = "config.yaml") -> 'Settings':
@@ -309,7 +323,8 @@ class Settings(BaseModel):
             qdrant=QdrantConfig.from_env(base_settings.qdrant),
             attachments=AttachmentsConfig.from_env(base_settings.attachments),
             auth=AuthConfig.from_env(base_settings.auth),
-            audit=AuditConfig.from_env(base_settings.audit)
+            audit=AuditConfig.from_env(base_settings.audit),
+            usm=UsmConfig.from_env(base_settings.usm),
         )
 
 def load_config(config_path: str = "config.yaml") -> Settings:
@@ -423,6 +438,10 @@ def create_default_config(config_path: str = "config.yaml") -> None:
             "cleanup_days": 365,
             "max_detail_size": 10240,
             "excluded_fields": ["password", "token", "secret", "key"],
+            "debug_sql": False
+        },
+        "usm": {
+            "database_url": "sqlite:///./userstorymap.db",
             "debug_sql": False
         }
     }

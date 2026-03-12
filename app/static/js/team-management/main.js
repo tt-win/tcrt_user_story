@@ -27,7 +27,6 @@ function applyOrganizationUiVisibilityByRoleFallback() {
 
     toggleSyncTabVisibility('tab-personnel-li', isAdmin || isSuperAdmin, true);
     toggleSyncTabVisibility('tab-org', isSuperAdmin);
-    toggleSyncTabVisibility('tab-test-cases', isSuperAdmin);
     toggleSyncTabVisibility('tab-mcp-token', isSuperAdmin);
 }
 
@@ -35,7 +34,6 @@ function applyOrganizationUiVisibilityByRoleFallback() {
 async function applyOrganizationUiVisibility() {
     // 預設先隱藏需權限頁籤，避免權限配置尚未載入時誤顯示
     toggleSyncTabVisibility('tab-org', false);
-    toggleSyncTabVisibility('tab-test-cases', false);
     toggleSyncTabVisibility('tab-mcp-token', false);
 
     try {
@@ -56,7 +54,6 @@ async function applyOrganizationUiVisibility() {
         toggleSyncTabVisibility('tab-personnel-li', !!map['tab-personnel-li'], true);
         // 進階分頁（僅 Super Admin）
         toggleSyncTabVisibility('tab-org', !!map['tab-org']);
-        toggleSyncTabVisibility('tab-test-cases', !!map['tab-test-cases']);
         toggleSyncTabVisibility('tab-mcp-token', mcpTokenVisible);
     } catch (_) {
         applyOrganizationUiVisibilityByRoleFallback();
@@ -907,10 +904,7 @@ async function openSyncModal() {
             const tcPane = document.getElementById('tab-pane-test-cases');
             if (tcPane) {
                 console.log('[Modal Translation] Specifically translating test cases pane');
-                const tcLabel = tcPane.querySelector('[data-i18n="tcSync.selectTeam"]');
                 if (tcLabel) {
-                    console.log('[Modal Translation] Found tcSync.selectTeam label:', tcLabel.textContent);
-                    const translatedText = window.i18n.t('tcSync.selectTeam');
                     console.log('[Modal Translation] Translated text:', translatedText);
                     tcLabel.textContent = translatedText;
                 }
@@ -1268,18 +1262,15 @@ function loadSyncModalState() {
 }
 
 // ===== 測試案例同步（UI 綁定） =====
-let tcSyncSelectedTeamId = null;
 
 async function loadTcSyncTeams() {
     try {
         const res = await window.AuthClient.fetch('/api/teams');
         if (!res.ok) return;
         const teams = await res.json();
-        const sel = document.getElementById('tcSyncTeamSelect');
         sel.innerHTML = '';
         const placeholder = document.createElement('option');
         placeholder.value = '';
-        placeholder.textContent = (window.i18n ? window.i18n.t('tcSync.pleaseSelectTeam') : '請先選擇團隊');
         sel.appendChild(placeholder);
         for (const t of teams) {
             const opt = document.createElement('option');
@@ -1288,8 +1279,6 @@ async function loadTcSyncTeams() {
             sel.appendChild(opt);
         }
         sel.addEventListener('change', () => {
-            tcSyncSelectedTeamId = sel.value ? parseInt(sel.value, 10) : null;
-            const disabled = !tcSyncSelectedTeamId;
             document.getElementById('btn-tc-init').disabled = disabled;
             document.getElementById('btn-tc-diff').disabled = disabled;
             document.getElementById('btn-tc-full').disabled = disabled;
@@ -1300,18 +1289,13 @@ async function loadTcSyncTeams() {
 }
 
 async function runTcSync(mode) {
-    const statusEl = document.getElementById('tcSyncStatus');
     if (mode === 'diff') {
-        if (!tcSyncSelectedTeamId) {
-            statusEl.textContent = (window.i18n ? window.i18n.t('tcSync.pleaseSelectTeam') : '請先選擇團隊');
             return;
         }
         await loadTcDiff();
         return;
     }
     // 非 diff 模式：透過 /sync 呼叫對應模式
-    if (!tcSyncSelectedTeamId) {
-        statusEl.textContent = (window.i18n ? window.i18n.t('tcSync.pleaseSelectTeam') : '請先選擇團隊');
         return;
     }
     const btnMap = {
@@ -1322,18 +1306,13 @@ async function runTcSync(mode) {
     const btn = btnMap[mode];
     const original = btn.innerHTML;
     btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>' + (window.i18n ? window.i18n.t('tcSync.actions.running') : '執行中...');
     try {
-        const url = `/api/teams/${tcSyncSelectedTeamId}/testcases/sync?mode=${encodeURIComponent(mode)}`;
         const resp = await window.AuthClient.fetch(url, { method: 'POST' });
         const json = await resp.json();
         if (resp.ok && json.success) {
-            statusEl.textContent = (window.i18n ? window.i18n.t('tcSync.result.success') : '同步完成');
         } else {
-            statusEl.textContent = (window.i18n ? window.i18n.t('tcSync.result.failure') : '同步失敗') + (json.detail ? `：${json.detail}` : '');
         }
     } catch (e) {
-        statusEl.textContent = (window.i18n ? window.i18n.t('tcSync.result.failure') : '同步失敗') + `：${e}`;
     } finally {
         btn.disabled = false;
         btn.innerHTML = original;
@@ -1341,22 +1320,17 @@ async function runTcSync(mode) {
 }
 
 async function loadTcDiff() {
-    const statusEl = document.getElementById('tcSyncStatus');
     const container = document.getElementById('tcDiffContainer');
     container.innerHTML = '';
     try {
-        statusEl.textContent = (window.i18n ? window.i18n.t('tcSync.actions.running') : '執行中...');
-        const url = `/api/teams/${tcSyncSelectedTeamId}/testcases/diff`;
         const resp = await window.AuthClient.fetch(url, { method: 'GET' });
         const json = await resp.json();
         if (!resp.ok || !json.success) {
-            statusEl.textContent = (window.i18n ? window.i18n.t('tcSync.result.failure') : '同步失敗') + (json.detail ? `：${json.detail}` : '');
             return;
         }
         statusEl.textContent = '';
         renderTcDiff(json);
     } catch (e) {
-        statusEl.textContent = (window.i18n ? window.i18n.t('tcSync.result.failure') : '同步失敗') + `：${e}`;
     }
 }
 
@@ -1475,7 +1449,6 @@ async function applyTcDiff() {
         AppUtils.showWarning('請至少選擇一個欄位的採用來源');
         return;
     }
-    const url = `/api/teams/${tcSyncSelectedTeamId}/testcases/diff/apply`;
     const resp = await window.AuthClient.fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1501,7 +1474,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (fullBtn) fullBtn.addEventListener('click', () => runTcSync('full-update'));
 
     // 當切到測試案例分頁時載入團隊清單（只載一次）
-    const tcTabBtn = document.getElementById('tab-test-cases');
     const tcPane = document.getElementById('tab-pane-test-cases');
     if (tcTabBtn && tcPane) {
         tcTabBtn.addEventListener('shown.bs.tab', () => {
@@ -1510,13 +1482,11 @@ document.addEventListener('DOMContentLoaded', () => {
             try {
                 if (window.i18n && window.i18n.isReady()) {
                     console.log('[Tab Switch] Retranslating test cases pane');
-                    const tcLabel = tcPane.querySelector('[data-i18n="tcSync.selectTeam"]');
                     if (tcLabel) {
                         console.log('[Tab Switch] Before translation:', tcLabel.textContent);
                         window.i18n.retranslate(tcPane);
                         console.log('[Tab Switch] After translation:', tcLabel.textContent);
                     } else {
-                        console.warn('[Tab Switch] tcSync.selectTeam label not found');
                         window.i18n.retranslate(tcPane);
                     }
                 } else {

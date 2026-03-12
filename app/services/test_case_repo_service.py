@@ -11,7 +11,7 @@ import json
 from typing import List, Optional, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
-from sqlalchemy import or_, and_, text
+from sqlalchemy import or_, and_
 
 from app.models.database_models import TestCaseLocal, TestCaseSection
 from app.models.test_case import TestCaseResponse
@@ -107,6 +107,21 @@ def _to_response(
     )
 
 
+def _apply_tcg_filter(query, tcg_filter: Optional[str]):
+    tickets = [t.strip() for t in (tcg_filter or "").split(",") if t.strip()]
+    if not tickets:
+        return query
+
+    conditions = [TestCaseLocal.tcg_json.ilike(f"%{ticket}%") for ticket in tickets]
+    return query.filter(
+        and_(
+            TestCaseLocal.tcg_json.is_not(None),
+            TestCaseLocal.tcg_json != "",
+            or_(*conditions),
+        )
+    )
+
+
 class TestCaseRepoService:
     def __init__(self, db: AsyncSession):
         self.db = db
@@ -143,22 +158,7 @@ class TestCaseRepoService:
 
             # TCG 過濾（支援多個票號搜尋，以逗號分隔）
             if tcg_filter and tcg_filter.strip():
-                tickets = [t.strip() for t in tcg_filter.split(',') if t.strip()]
-                if tickets:
-                    # 使用 SQLite json_each 進行精確搜尋，避免字串比對誤判
-                    # 需確保 tcg_json 是有效 JSON 陣列且非空
-                    # 使用 literal params 避免 SQL Injection
-                    conditions = []
-                    for t in tickets:
-                        conditions.append(
-                            text(f"EXISTS (SELECT 1 FROM json_each(test_cases.tcg_json) WHERE value LIKE '%{t}%')")
-                        )
-                    
-                    q = q.filter(and_(
-                        TestCaseLocal.tcg_json.is_not(None),
-                        TestCaseLocal.tcg_json != '',
-                        or_(*conditions)
-                    ))
+                q = _apply_tcg_filter(q, tcg_filter)
 
             # 優先級
             if priority_filter:
@@ -235,18 +235,7 @@ class TestCaseRepoService:
                     TestCaseLocal.test_case_number.ilike(s)
                 ))
             if tcg_filter and tcg_filter.strip():
-                tickets = [t.strip() for t in tcg_filter.split(',') if t.strip()]
-                if tickets:
-                    conditions = []
-                    for t in tickets:
-                        conditions.append(
-                            text(f"EXISTS (SELECT 1 FROM json_each(test_cases.tcg_json) WHERE value LIKE '%{t}%')")
-                        )
-                    q = q.filter(and_(
-                        TestCaseLocal.tcg_json.is_not(None),
-                        TestCaseLocal.tcg_json != '',
-                        or_(*conditions)
-                    ))
+                q = _apply_tcg_filter(q, tcg_filter)
             if priority_filter:
                 try:
                     pr = Priority(priority_filter)

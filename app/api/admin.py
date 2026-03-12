@@ -4,8 +4,8 @@ from datetime import datetime, timezone, timedelta, date
 import os
 import time
 import logging
-import sqlite3
 from sqlalchemy import text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import SessionLocal
 from app.auth.dependencies import require_super_admin
@@ -17,6 +17,17 @@ router = APIRouter(prefix="/admin")
 
 # 伺服器啟動時間（近似）：模組載入時記錄
 _PROCESS_START_TIME = time.time()
+_MISSING_TABLE_PATTERNS = (
+    "no such table",
+    "doesn't exist",
+    "does not exist",
+    "undefined table",
+)
+
+
+def _is_missing_table_error(exc: Exception) -> bool:
+    message = str(exc).lower()
+    return any(pattern in message for pattern in _MISSING_TABLE_PATTERNS)
 
 
 def _get_loadavg():
@@ -123,8 +134,8 @@ async def stats_test_run_actions_daily(
                 "dates": dates,
                 "counts": counts
             }
-    except sqlite3.OperationalError as e:
-        if "no such table" in str(e).lower():
+    except DBAPIError as e:
+        if _is_missing_table_error(e):
             logger.warning("資料庫表格 test_run_items 不存在，返回空統計數據")
             return {"dates": [], "counts": []}
         else:
@@ -168,8 +179,8 @@ async def stats_test_cases_created_daily(
                 "dates": dates,
                 "counts": counts
             }
-    except sqlite3.OperationalError as e:
-        if "no such table" in str(e).lower():
+    except DBAPIError as e:
+        if _is_missing_table_error(e):
             logger.warning("資料庫表格 test_cases 不存在，返回空統計數據")
             return {"dates": [], "counts": []}
         else:

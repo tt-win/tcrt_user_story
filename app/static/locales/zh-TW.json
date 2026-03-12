@@ -922,7 +922,6 @@
     "expectedResultsPlaceholder": "描述預期的測試結果，支援 Markdown 格式",
     "itemsApplyChanges": "個測試案例套用以下變更：",
     "loadFailed": "載入失敗",
-    "loadingTCG": "載入 TCG 單號中...",
     "loadingTestCases": "載入測試案例中...",
     "management": "測試案例管理",
     "markdownHelp": "Markdown 語法說明",

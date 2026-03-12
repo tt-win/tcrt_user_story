@@ -14,6 +14,10 @@ from uuid import uuid4
 # This test file is a template for integration testing
 # To be run with actual application context
 
+pytestmark = pytest.mark.skip(
+    reason="integration test template requires dedicated app/db fixtures"
+)
+
 
 class TestRelatedNodesIntegration:
     """Integration tests for the entire related nodes feature"""
