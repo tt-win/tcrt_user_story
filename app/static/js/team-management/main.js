@@ -899,17 +899,6 @@ async function openSyncModal() {
             console.log('[Modal Translation] Translating entire modal');
             // 強制翻譯所有分頁內容，包括隱藏的
             window.i18n.retranslate(modal);
-            
-            // 特別確保測試案例分頁的翻譯
-            const tcPane = document.getElementById('tab-pane-test-cases');
-            if (tcPane) {
-                console.log('[Modal Translation] Specifically translating test cases pane');
-                if (tcLabel) {
-                    console.log('[Modal Translation] Translated text:', translatedText);
-                    tcLabel.textContent = translatedText;
-                }
-                window.i18n.retranslate(tcPane);
-            }
         } else {
             console.warn('[Modal Translation] i18n not ready');
         }
@@ -1465,44 +1454,6 @@ async function applyTcDiff() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-    // 啟用按鈕事件
-    const initBtn = document.getElementById('btn-tc-init');
-    const diffBtn = document.getElementById('btn-tc-diff');
-    const fullBtn = document.getElementById('btn-tc-full');
-    if (initBtn) initBtn.addEventListener('click', () => runTcSync('init'));
-    if (diffBtn) diffBtn.addEventListener('click', () => runTcSync('diff'));
-    if (fullBtn) fullBtn.addEventListener('click', () => runTcSync('full-update'));
-
-    // 當切到測試案例分頁時載入團隊清單（只載一次）
-    const tcPane = document.getElementById('tab-pane-test-cases');
-    if (tcTabBtn && tcPane) {
-        tcTabBtn.addEventListener('shown.bs.tab', () => {
-            console.log('[Tab Switch] Test cases tab shown');
-            // 立即重新應用翻譯
-            try {
-                if (window.i18n && window.i18n.isReady()) {
-                    console.log('[Tab Switch] Retranslating test cases pane');
-                    if (tcLabel) {
-                        console.log('[Tab Switch] Before translation:', tcLabel.textContent);
-                        window.i18n.retranslate(tcPane);
-                        console.log('[Tab Switch] After translation:', tcLabel.textContent);
-                    } else {
-                        window.i18n.retranslate(tcPane);
-                    }
-                } else {
-                    console.warn('[Tab Switch] i18n not ready');
-                }
-            } catch (e) {
-                console.error('[Tab Switch] Error:', e);
-            }
-            
-            if (!tcPane.dataset.loaded) {
-                loadTcSyncTeams();
-                tcPane.dataset.loaded = '1';
-            }
-        });
-    }
-    
     // 當切到組織分頁時重新應用翻譯
     const orgTabBtn = document.getElementById('tab-org');
     const orgPane = document.getElementById('tab-pane-org');
