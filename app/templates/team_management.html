@@ -203,8 +203,6 @@
                     <li class="nav-item" role="presentation">
                         <button class="nav-link" id="tab-org" data-bs-toggle="tab" data-bs-target="#tab-pane-org" type="button" role="tab" aria-controls="tab-pane-org" aria-selected="false" data-testid="tab-org" data-i18n="orgSync.tabTitle">組織</button>
                     </li>
-                    <li class="nav-item" role="presentation">
-                        <button class="nav-link" id="tab-test-cases" data-bs-toggle="tab" data-bs-target="#tab-pane-test-cases" type="button" role="tab" aria-controls="tab-pane-test-cases" aria-selected="false" data-testid="tab-test-cases" data-i18n="tcSync.tabTitle">測試案例</button>
                     </li>
                     <li class="nav-item" role="presentation">
                         <button class="nav-link" id="tab-mcp-token" data-bs-toggle="tab" data-bs-target="#tab-pane-mcp-token" type="button" role="tab" aria-controls="tab-pane-mcp-token" aria-selected="false" data-testid="tab-mcp-token" data-i18n="mcpToken.tabTitle">MCP Token</button>
@@ -415,32 +413,6 @@
                     <div class="tab-pane fade" id="tab-pane-test-cases" role="tabpanel" aria-labelledby="tab-test-cases">
                         <div class="card mb-3">
                             <div class="card-header bg-light d-flex align-items-center">
-                                <i class="fas fa-vial me-2"></i>
-                                <strong data-i18n="tcSync.title">測試案例同步</strong>
-                            </div>
-                            <div class="card-body">
-                                <div class="row g-3 align-items-end">
-                                    <div class="col-md-6">
-                                        <label for="tcSyncTeamSelect" class="form-label" data-i18n="tcSync.selectTeam">選擇團隊</label>
-                                        <select class="form-select" id="tcSyncTeamSelect"></select>
-                                    </div>
-                                </div>
-<div class="mt-3 text-muted small" id="tcSyncStatus"></div>
-<!-- Diff 結果容器 -->
-<div id="tcDiffContainer" class="mt-3"></div>
-                            </div>
-                        </div>
-                        <!-- 測試案例同步按鈕：分頁底部（與組織分頁相同位置） -->
-                        <div class="d-flex justify-content-end mt-3 pt-2 border-top" data-role="tab-only">
-                            <div class="btn-group no-stretch" role="group" aria-label="tc-sync-modes">
-                                <button class="btn btn-primary" id="btn-tc-init" data-testid="btn-tc-init" disabled>
-                                    <i class="fas fa-download me-1"></i><span data-i18n="tcSync.modes.init">匯入（Lark → 系統）</span>
-                                </button>
-                                <button class="btn btn-secondary" id="btn-tc-diff" data-testid="btn-tc-diff" disabled>
-                                    <i class="fas fa-exchange-alt me-1"></i><span data-i18n="tcSync.modes.diff">Diff（雙向比對）</span>
-                                </button>
-                                <button class="btn btn-success" id="btn-tc-full" data-testid="btn-tc-full" disabled>
-                                    <i class="fas fa-upload me-1"></i><span data-i18n="tcSync.modes.full">上傳（系統 → Lark）</span>
                                 </button>
                             </div>
                         </div>

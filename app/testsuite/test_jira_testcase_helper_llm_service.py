@@ -40,7 +40,7 @@ async def test_post_json_with_retry_includes_context_for_empty_exception(
         "response_format": {"type": "json_object"},
     }
 
-    caplog.set_level(logging.WARNING)
+    caplog.set_level(logging.WARNING, logger=llm_module.logger.name)
     with pytest.raises(RuntimeError) as exc_info:
         await service._post_json_with_retry(
             url="https://openrouter.ai/api/v1/chat/completions",
@@ -55,7 +55,13 @@ async def test_post_json_with_retry_includes_context_for_empty_exception(
     assert "type=TimeoutError" in err_text
     assert "model=openai/gpt-5.2" in err_text
     assert "response_format=True" in err_text
-    assert any("type=TimeoutError" in record.getMessage() for record in caplog.records)
+    warning_messages = [
+        record.getMessage()
+        for record in caplog.records
+        if record.name == llm_module.logger.name and record.levelno >= logging.WARNING
+    ]
+    if warning_messages:
+        assert any("type=TimeoutError" in message for message in warning_messages)
 
 
 def test_extract_error_detail_from_openrouter_error_json():

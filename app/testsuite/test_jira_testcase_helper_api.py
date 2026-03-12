@@ -5,9 +5,6 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.orm import sessionmaker
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
@@ -17,7 +14,12 @@ from app.main import app
 from app.database import get_db
 from app.auth.dependencies import get_current_user
 from app.auth.models import UserRole
-from app.models.database_models import Base, Team, TestCaseSet, User
+from app.models.database_models import Team, TestCaseSet, User
+from app.testsuite.db_test_helpers import (
+    create_managed_test_database,
+    dispose_managed_test_database,
+    install_main_database_overrides,
+)
 
 
 class FakeHelperLLM:
@@ -101,27 +103,9 @@ class FakeQdrantClient:
 
 @pytest.fixture
 def helper_api_db(tmp_path, monkeypatch):
-    db_path = tmp_path / "helper_api.db"
-    sync_engine = create_engine(
-        f"sqlite:///{db_path}",
-        connect_args={"check_same_thread": False, "timeout": 30},
-        pool_pre_ping=True,
-    )
-    async_engine = create_async_engine(
-        f"sqlite+aiosqlite:///{db_path}",
-        connect_args={"timeout": 30},
-        pool_pre_ping=True,
-    )
-
-    TestingSessionLocal = sessionmaker(bind=sync_engine, autocommit=False, autoflush=False)
-    AsyncTestingSessionLocal = async_sessionmaker(
-        bind=async_engine,
-        expire_on_commit=False,
-        autoflush=False,
-        class_=AsyncSession,
-    )
-
-    Base.metadata.create_all(bind=sync_engine)
+    database_bundle = create_managed_test_database(tmp_path / "helper_api.db")
+    TestingSessionLocal = database_bundle["sync_session_factory"]
+    AsyncTestingSessionLocal = database_bundle["async_session_factory"]
 
     with TestingSessionLocal() as session:
         team = Team(
@@ -157,16 +141,13 @@ def helper_api_db(tmp_path, monkeypatch):
         set_id = test_set.id
         user_id = user.id
 
-    import app.database as app_database
-
-    monkeypatch.setattr(app_database, "engine", async_engine)
-    monkeypatch.setattr(app_database, "SessionLocal", AsyncTestingSessionLocal)
-
-    async def override_get_db():
-        async with AsyncTestingSessionLocal() as db:
-            yield db
-
-    app.dependency_overrides[get_db] = override_get_db
+    install_main_database_overrides(
+        monkeypatch=monkeypatch,
+        app=app,
+        get_db_dependency=get_db,
+        async_engine=database_bundle["async_engine"],
+        async_session_factory=AsyncTestingSessionLocal,
+    )
     app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(
         id=user_id,
         username="helper-api-admin",
@@ -206,8 +187,7 @@ def helper_api_db(tmp_path, monkeypatch):
 
     app.dependency_overrides.pop(get_db, None)
     app.dependency_overrides.pop(get_current_user, None)
-    asyncio.run(async_engine.dispose())
-    sync_engine.dispose()
+    dispose_managed_test_database(database_bundle)
 
 
 def test_helper_api_session_lifecycle_and_phase_transitions(helper_api_db):

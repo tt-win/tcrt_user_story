@@ -12,7 +12,12 @@ email-validator==2.3.0
 
 # Database
 SQLAlchemy==2.0.46
+alembic==1.18.4
 aiosqlite==0.22.1
+asyncmy==0.2.11
+PyMySQL==1.1.2
+asyncpg==0.31.0
+psycopg[binary]==3.3.3
 greenlet==3.3.1
 
 # HTTP Client & APIs
@@ -54,7 +59,9 @@ httpx==0.28.1
 # - JS assets are pulled via CDN by default; see scripts/install_dependencies.sh for local JS setup
 # - cryptography is required for password encryption/decryption (RSA)
 # - bcrypt is pinned to 4.0.1 for passlib compatibility in current auth flow
-# - greenlet is required by SQLAlchemy async bridge (used in audit DB initialization)
+# - asyncmy/PyMySQL are the supported MySQL async/sync drivers
+# - asyncpg/psycopg[binary] are the supported PostgreSQL async/sync drivers
+# - greenlet is required by SQLAlchemy async bridge (used in database initialization)
 # - aiohttp is required for async HTTP requests in lark_client
 # - casbin is required for role-based access control (RBAC)
 # - qdrant-client/prompt-toolkit/rich/textual/pyperclip are used by AI and CLI tooling under ai/

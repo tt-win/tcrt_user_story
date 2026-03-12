@@ -1,7 +1,7 @@
 """
 異步資料庫連接模組
 
-將主資料庫升級為異步 aiosqlite，改善 SQLite 並發與鎖定問題。
+將主資料庫升級為統一的異步資料庫存取模式。
 統一使用異步模式，避免同步/異步混用導致的連接衝突。
 """
 
@@ -20,26 +20,46 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
+from .config import get_settings
+from .db_url import normalize_async_database_url, normalize_sync_database_url
+
 logger = logging.getLogger(__name__)
 
 # 使用與現有資料庫相同的路徑
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DB_FILE = PROJECT_ROOT / "test_case_repo.db"
-DATABASE_URL = f"sqlite+aiosqlite:///{DB_FILE}"
-SYNC_DATABASE_URL = f"sqlite:///{DB_FILE}"  # 向後相容
+DEFAULT_DATABASE_URL = f"sqlite:///{DB_FILE}"
+
+def _is_sqlite_engine(target_engine) -> bool:
+    dialect = getattr(getattr(target_engine, "dialect", None), "name", "")
+    return str(dialect).lower() == "sqlite"
+
+
+RAW_DATABASE_URL = os.getenv("DATABASE_URL", get_settings().app.database_url or DEFAULT_DATABASE_URL)
+DATABASE_URL = normalize_async_database_url(RAW_DATABASE_URL)
+SYNC_DATABASE_URL = os.getenv("SYNC_DATABASE_URL", normalize_sync_database_url(RAW_DATABASE_URL))
 
 # ===================== 異步資料庫引擎（主要使用） =====================
 
 # 創建異步引擎
-engine = create_async_engine(
-    DATABASE_URL,
-    poolclass=NullPool,  # SQLite 使用 NullPool
-    echo=False,  # 可設為 True 用於調試
-    future=True,
-    connect_args={
-        "check_same_thread": False,
-    }
-)
+_async_engine_kwargs = {
+    "echo": False,
+    "future": True,
+}
+if DATABASE_URL.startswith("sqlite+aiosqlite://"):
+    _async_engine_kwargs.update(
+        poolclass=NullPool,  # SQLite 使用 NullPool
+        connect_args={
+            "check_same_thread": False,
+        },
+    )
+else:
+    _async_engine_kwargs.update(
+        pool_pre_ping=True,
+        pool_recycle=3600,
+    )
+
+engine = create_async_engine(DATABASE_URL, **_async_engine_kwargs)
 
 # 異步會話工廠
 SessionLocal = async_sessionmaker(
@@ -59,6 +79,8 @@ T = TypeVar("T")
 @event.listens_for(engine.sync_engine, "connect")
 def set_sqlite_pragma(dbapi_conn, connection_record):
     """為異步連接設定 SQLite 優化參數"""
+    if not _is_sqlite_engine(engine.sync_engine):
+        return
     cursor = dbapi_conn.cursor()
     try:
         # 啟用 WAL 模式以改善並發
@@ -177,20 +199,27 @@ def get_sync_engine():
         except Exception:
             pass
 
+        sync_engine_kwargs = {
+            "pool_pre_ping": True,
+            "pool_recycle": 3600,
+        }
+        if SYNC_DATABASE_URL.startswith("sqlite://"):
+            sync_engine_kwargs["connect_args"] = {
+                "check_same_thread": False,
+                "timeout": 30,
+            }
+
         _sync_engine = create_engine(
             SYNC_DATABASE_URL,
-            connect_args={
-                "check_same_thread": False,
-                "timeout": 30
-            },
-            pool_pre_ping=True,
-            pool_recycle=3600
+            **sync_engine_kwargs,
         )
         _SyncSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_sync_engine)
         
         # 同步版本的 PRAGMA 設定
         @event.listens_for(_sync_engine, "connect")
         def set_sync_sqlite_pragma(dbapi_conn, connection_record):
+            if not _is_sqlite_engine(_sync_engine):
+                return
             cursor = dbapi_conn.cursor()
             cursor.execute("PRAGMA journal_mode=WAL")
             cursor.execute("PRAGMA busy_timeout=30000")
@@ -216,4 +245,4 @@ def get_sync_db():
 # ===================== 模組初始化 =====================
 
 # 在模組載入時記錄模式
-logger.info("資料庫模組已升級為異步模式（aiosqlite）")
+logger.info("資料庫模組已啟用異步模式")

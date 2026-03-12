@@ -5,15 +5,12 @@ from datetime import datetime
 from types import SimpleNamespace
 
 import pytest
-from sqlalchemy import create_engine, text
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy import text
 
 from app.auth.models import UserRole
 from app.database import run_sync
 from app.models.database_models import (
     AITestCaseHelperStageMetric,
-    Base,
     Team,
     TestCaseLocal,
     TestCaseSection,
@@ -39,6 +36,10 @@ from app.services.jira_testcase_helper_service import JiraTestCaseHelperService
 from app.services.test_case_helper import (
     RequirementCompletenessValidator,
     StructuredRequirementParser,
+)
+from app.testsuite.db_test_helpers import (
+    create_managed_test_database,
+    dispose_managed_test_database,
 )
 
 
@@ -1171,38 +1172,18 @@ def test_requirement_normalization_prompt_preserves_acceptance_criteria_structur
 
 @pytest.fixture
 def helper_db(tmp_path):
-    db_path = tmp_path / "helper_service_test.db"
-
-    sync_engine = create_engine(
-        f"sqlite:///{db_path}",
-        connect_args={"check_same_thread": False, "timeout": 30},
-        pool_pre_ping=True,
-    )
-    async_engine = create_async_engine(
-        f"sqlite+aiosqlite:///{db_path}",
-        connect_args={"timeout": 30},
-        pool_pre_ping=True,
-    )
-
-    SyncSessionLocal = sessionmaker(bind=sync_engine, autocommit=False, autoflush=False)
-    AsyncSessionLocal = async_sessionmaker(
-        bind=async_engine,
-        expire_on_commit=False,
-        autoflush=False,
-        class_=AsyncSession,
-    )
-
-    Base.metadata.create_all(bind=sync_engine)
+    database_bundle = create_managed_test_database(tmp_path / "helper_service_test.db")
+    SyncSessionLocal = database_bundle["sync_session_factory"]
+    AsyncSessionLocal = database_bundle["async_session_factory"]
 
     yield {
         "sync": SyncSessionLocal,
         "async": AsyncSessionLocal,
-        "async_engine": async_engine,
-        "sync_engine": sync_engine,
+        "async_engine": database_bundle["async_engine"],
+        "sync_engine": database_bundle["sync_engine"],
     }
 
-    asyncio.run(async_engine.dispose())
-    sync_engine.dispose()
+    dispose_managed_test_database(database_bundle)
 
 
 def _seed_basic_data(sync_session_factory):
@@ -1826,7 +1807,7 @@ async def test_analyze_stage_errors_when_merged_output_missing_coverage_payload(
         assert metric is not None
         assert metric.phase == "analysis"
         assert metric.status == "failed"
-        assert "analysis llm unavailable" in str(metric.error_message or "")
+        assert "Analysis 合併輸出缺少 coverage 物件" in str(metric.error_message or "")
 
 
 @pytest.mark.asyncio

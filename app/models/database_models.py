@@ -56,10 +56,6 @@ class MCPMachineCredentialStatus(PyEnum):
 class Team(Base):
     """團隊表格"""
     __tablename__ = "teams"
-    __table_args__ = {
-        # 確保 SQLite 使用 AUTOINCREMENT，避免刪除紀錄後重複使用既有 ID
-        'sqlite_autoincrement': True
-    }
     
     id = Column(Integer, primary_key=True)
     name = Column(String(100), nullable=False)
@@ -98,10 +94,6 @@ class Team(Base):
 class TestRunConfig(Base):
     """測試執行配置表格"""
     __tablename__ = "test_run_configs"
-    __table_args__ = {
-        # 持續遞增 ID，避免後續建立的配置重複既有編號
-        'sqlite_autoincrement': True
-    }
     
     id = Column(Integer, primary_key=True)
     team_id = Column(Integer, ForeignKey("teams.id"), nullable=False)
@@ -118,7 +110,7 @@ class TestRunConfig(Base):
     # TP 開發單票號欄位
     related_tp_tickets_json = Column(Text, nullable=True, 
                                    comment="相關 JIRA Tickets 票號 JSON 陣列")
-    tp_tickets_search = Column(String(1000), nullable=True, index=True,
+    tp_tickets_search = Column(String(512), nullable=True, index=True,
                              comment="JIRA Ticket 搜尋索引欄位")
     test_case_set_ids_json = Column(Text, nullable=True, comment="Test Case Set 範圍（JSON 陣列）")
     
@@ -129,7 +121,7 @@ class TestRunConfig(Base):
                                 comment="選擇的 Lark chat IDs（JSON 陣列）")
     notify_chat_names_snapshot = Column(Text, nullable=True,
                                       comment="群組名稱快照（JSON 陣列）")
-    notify_chats_search = Column(String(1000), nullable=True, index=True,
+    notify_chats_search = Column(String(512), nullable=True, index=True,
                                comment="群組名稱搜尋索引")
     
     # 狀態與時間
@@ -163,9 +155,6 @@ class TestRunSet(Base):
     """測試執行集合表格"""
 
     __tablename__ = "test_run_sets"
-    __table_args__ = {
-        'sqlite_autoincrement': True
-    }
 
     id = Column(Integer, primary_key=True)
     team_id = Column(Integer, ForeignKey("teams.id"), nullable=False, index=True)
@@ -175,8 +164,8 @@ class TestRunSet(Base):
     archived_at = Column(DateTime, nullable=True)
     related_tp_tickets_json = Column(Text, nullable=True,
                                      comment="相關 JIRA Tickets 票號 JSON 陣列")
-    tp_tickets_search = Column(String(1000), nullable=True, index=True,
-                               comment="JIRA Ticket 搜尋索引欄位")
+    tp_tickets_search = Column(String(512), nullable=True, index=True,
+                             comment="JIRA Ticket 搜尋索引欄位")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -208,20 +197,6 @@ class TestRunSetMembership(Base):
 
     test_run_set = relationship("TestRunSet", back_populates="memberships")
     config = relationship("TestRunConfig", back_populates="set_membership")
-
-
-class TCGRecord(Base):
-    """TCG 記錄表格"""
-    __tablename__ = "tcg_records"
-    
-    # 使用 TCG 單號作為主鍵，避免重複
-    tcg_number = Column(String(50), primary_key=True)
-    record_id = Column(String(255), nullable=False, index=True)
-    title = Column(Text, nullable=True)
-    
-    # 系統欄位
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class TestRunItem(Base):
@@ -781,9 +756,6 @@ class SyncHistory(Base):
 class User(Base):
     """使用者表格（認證系統）"""
     __tablename__ = "users"
-    __table_args__ = {
-        'sqlite_autoincrement': True
-    }
     
     id = Column(Integer, primary_key=True)
     username = Column(String(50), unique=True, nullable=False, index=True)
@@ -819,16 +791,12 @@ class User(Base):
     __table_args__ = (
         Index('ix_users_role_active', 'role', 'is_active'),
         Index('ix_users_email_active', 'email', 'is_active'),
-        {'sqlite_autoincrement': True}
     )
 
 
 class UserTeamPermission(Base):
     """使用者團隊權限表格"""
     __tablename__ = "user_team_permissions"
-    __table_args__ = {
-        'sqlite_autoincrement': True
-    }
     
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -850,16 +818,12 @@ class UserTeamPermission(Base):
         Index('ix_user_team_perms_user', 'user_id'),
         Index('ix_user_team_perms_team', 'team_id'),
         Index('ix_user_team_perms_permission', 'permission'),
-        {'sqlite_autoincrement': True}
     )
 
 
 class ActiveSession(Base):
     """活躍会話表格（用於Token管理與撤銷）"""
     __tablename__ = "active_sessions"
-    __table_args__ = {
-        'sqlite_autoincrement': True
-    }
     
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -888,16 +852,12 @@ class ActiveSession(Base):
         Index('ix_sessions_user_active', 'user_id', 'is_revoked'),
         Index('ix_sessions_expires', 'expires_at'),
         Index('ix_sessions_jti_active', 'jti', 'is_revoked'),
-        {'sqlite_autoincrement': True}
     )
 
 
 class PasswordResetToken(Base):
     """密碼重設令牌表格"""
     __tablename__ = "password_reset_tokens"
-    __table_args__ = {
-        'sqlite_autoincrement': True
-    }
     
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -922,7 +882,6 @@ class PasswordResetToken(Base):
     __table_args__ = (
         Index('ix_reset_tokens_user', 'user_id', 'is_used'),
         Index('ix_reset_tokens_expires', 'expires_at'),
-        {'sqlite_autoincrement': True}
     )
 
 
@@ -934,7 +893,6 @@ class MCPMachineCredential(Base):
         UniqueConstraint("token_hash", name="uq_mcp_machine_credentials_token_hash"),
         Index("ix_mcp_machine_credentials_status", "status"),
         Index("ix_mcp_machine_credentials_expires_at", "expires_at"),
-        {"sqlite_autoincrement": True},
     )
 
     id = Column(Integer, primary_key=True)
@@ -966,7 +924,6 @@ logger = logging.getLogger(__name__)
 class AdHocRun(Base):
     """Ad-hoc 測試執行容器（相當於 Test Run Set，但專用於 Ad-hoc 模式）"""
     __tablename__ = "adhoc_runs"
-    __table_args__ = {'sqlite_autoincrement': True}
 
     id = Column(Integer, primary_key=True)
     team_id = Column(Integer, ForeignKey("teams.id"), nullable=False, index=True)
@@ -982,12 +939,12 @@ class AdHocRun(Base):
     build_number = Column(String(100), nullable=True)
     
     related_tp_tickets_json = Column(Text, nullable=True, comment="相關 JIRA Tickets 票號 JSON 陣列")
-    tp_tickets_search = Column(String(1000), nullable=True, index=True, comment="JIRA Ticket 搜尋索引欄位")
+    tp_tickets_search = Column(String(512), nullable=True, index=True, comment="JIRA Ticket 搜尋索引欄位")
     
     notifications_enabled = Column(Boolean, default=False, nullable=False, comment="是否啟用通知")
     notify_chat_ids_json = Column(Text, nullable=True, comment="選擇的 Lark chat IDs（JSON 陣列）")
     notify_chat_names_snapshot = Column(Text, nullable=True, comment="群組名稱快照（JSON 陣列）")
-    notify_chats_search = Column(String(1000), nullable=True, index=True, comment="群組名稱搜尋索引")
+    notify_chats_search = Column(String(512), nullable=True, index=True, comment="群組名稱搜尋索引")
 
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -1000,7 +957,6 @@ class AdHocRun(Base):
 class AdHocRunSheet(Base):
     """Ad-hoc 測試執行的 Sheet（相當於 Excel 的分頁）"""
     __tablename__ = "adhoc_run_sheets"
-    __table_args__ = {'sqlite_autoincrement': True}
 
     id = Column(Integer, primary_key=True)
     adhoc_run_id = Column(Integer, ForeignKey("adhoc_runs.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -1019,7 +975,6 @@ class AdHocRunSheet(Base):
 class AdHocRunItem(Base):
     """Ad-hoc 測試執行項目（相當於 Test Run Item，但不需要關聯 Test Case）"""
     __tablename__ = "adhoc_run_items"
-    __table_args__ = {'sqlite_autoincrement': True}
 
     id = Column(Integer, primary_key=True)
     sheet_id = Column(Integer, ForeignKey("adhoc_run_sheets.id", ondelete="CASCADE"), nullable=False, index=True)

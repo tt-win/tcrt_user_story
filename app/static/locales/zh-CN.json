@@ -890,7 +890,6 @@
     "expectedResultsPlaceholder": "描述预期的测试结果，支持 Markdown 格式",
     "itemsApplyChanges": "个测试案例套用以下变更：",
     "loadFailed": "加载失败",
-    "loadingTCG": "加载 TCG 单号中...",
     "loadingTestCases": "加载测试案例中...",
     "management": "测试案例管理",
     "markdownHelp": "Markdown 语法说明",

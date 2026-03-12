@@ -37,12 +37,11 @@ from datetime import datetime
 # 確保專案根目錄在匯入路徑
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import Session
 
 from app.database import get_sync_engine
+from app.db_migrations import upgrade_main_database
 from app.models.database_models import (
-    Base,
     Team as TeamDB,
     TestCaseLocal as TestCaseLocalDB,
     TestCaseSet as TestCaseSetDB,
@@ -55,42 +54,6 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
-
-
-def create_tables(engine):
-    """建立新的資料表 (如果不存在)"""
-    logger.info("檢查並建立必要的資料表...")
-    Base.metadata.create_all(engine)
-    logger.info("資料表檢查完成")
-
-
-def ensure_schema_compatibility(engine):
-    """確保資料庫結構與模型相容 (補上可能缺失的欄位)"""
-    inspector = inspect(engine)
-    
-    # 檢查 test_cases 表是否存在
-    if not inspector.has_table("test_cases"):
-        return
-
-    columns = {col['name'] for col in inspector.get_columns('test_cases')}
-    
-    with engine.begin() as conn:
-        if 'test_case_set_id' not in columns:
-            logger.info("補上缺失欄位: test_cases.test_case_set_id")
-            conn.execute(text("ALTER TABLE test_cases ADD COLUMN test_case_set_id INTEGER"))
-            
-        if 'test_case_section_id' not in columns:
-            logger.info("補上缺失欄位: test_cases.test_case_section_id")
-            conn.execute(text("ALTER TABLE test_cases ADD COLUMN test_case_section_id INTEGER"))
-            
-        # 順便補上附件欄位，避免其他潛在錯誤
-        if 'has_attachments' not in columns:
-            logger.info("補上缺失欄位: test_cases.has_attachments")
-            conn.execute(text("ALTER TABLE test_cases ADD COLUMN has_attachments INTEGER NOT NULL DEFAULT 0"))
-            
-        if 'attachment_count' not in columns:
-            logger.info("補上缺失欄位: test_cases.attachment_count")
-            conn.execute(text("ALTER TABLE test_cases ADD COLUMN attachment_count INTEGER NOT NULL DEFAULT 0"))
 
 
 def migrate_test_case_sets(engine, dry_run=False, verbose=False):
@@ -267,11 +230,9 @@ def main():
         # 1. 獲取資料庫引擎
         engine = get_sync_engine()
 
-        # 2. 建立必要的表
-        create_tables(engine)
-        
-        # 2.5 確保欄位存在 (針對舊庫升級)
-        ensure_schema_compatibility(engine)
+        # 2. 先確保 schema 已由 Alembic 升到最新
+        logger.info("執行 Alembic migration 以確保 schema 為最新")
+        upgrade_main_database()
 
         # 3. 執行遷移
         stats = migrate_test_case_sets(engine, dry_run=args.dry_run, verbose=args.verbose)

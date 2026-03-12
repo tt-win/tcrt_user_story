@@ -180,11 +180,6 @@ function setupMarkdownHotkeys(textarea) {
 const EXEC_TC_CACHE_PREFIX = 'tr_exec_tc_cache_v1';
 const EXEC_TC_CACHE_TTL_MS = 60 * 60 * 1000; // 1 小時
 
-// TCG 快取設定
-const TCG_CACHE_KEY = 'tcg_cache';
-const TCG_CACHE_TIMESTAMP_KEY = 'tcg_cache_timestamp';
-const TCG_CACHE_EXPIRY = 24 * 60 * 60 * 1000; // 24小時過期
-
 // 測試案例快取設定
 const TEST_CASES_CACHE_KEY = 'test_cases_list_cache_v1';
 const TEST_CASES_CACHE_TTL = 60 * 60 * 1000; // 1小時
@@ -223,10 +218,6 @@ const TEST_CASE_UPDATE_EVENT_KEY = 'testCaseUpdatedEvent';
 // ─────────────────────────────────────────────────────────────
 // 2.1 快取狀態 (Cache State)
 // ─────────────────────────────────────────────────────────────
-
-// TCG 快取
-let tcgCache = null;
-let tcgCacheTimestamp = null;
 
 // 團隊快取（在 Section 5 使用）
 let teamContextPromise = null;

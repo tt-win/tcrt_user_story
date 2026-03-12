@@ -923,7 +923,6 @@
     "expectedResultsPlaceholder": "Describe expected test results, supports Markdown format",
     "itemsApplyChanges": "test cases:",
     "loadFailed": "Load failed",
-    "loadingTCG": "Loading TCG numbers...",
     "loadingTestCases": "Loading test cases...",
     "management": "Test Case Management",
     "markdownHelp": "Markdown Syntax Guide",

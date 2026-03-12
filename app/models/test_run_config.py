@@ -77,12 +77,6 @@ class TestRunConfig(BaseModel):
     notify_chat_ids: Optional[List[str]] = Field(None, description="通知群組 Chat IDs")
     notify_chat_names_snapshot: Optional[List[str]] = Field(None, description="群組名稱快照（UI 顯示用）")
 
-    @validator('test_case_set_ids', pre=True, always=True)
-    def validate_test_case_set_ids(cls, v, values):
-        if v is None and values.get('test_case_set_id') is not None:
-            v = [values.get('test_case_set_id')]
-        return _normalize_test_case_set_ids(v)
-    
     # 系統欄位
     created_at: Optional[datetime] = Field(None, description="建立時間")
     updated_at: Optional[datetime] = Field(None, description="更新時間")

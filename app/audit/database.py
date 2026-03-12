@@ -7,16 +7,16 @@
 
 import logging
 from typing import Optional, AsyncGenerator
-from sqlalchemy import create_engine, text, MetaData, event
+from sqlalchemy import text, event
 from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine, async_sessionmaker, AsyncSession
-from sqlalchemy.pool import QueuePool, NullPool
+from sqlalchemy.pool import NullPool
 from sqlalchemy.exc import SQLAlchemyError
 from contextlib import asynccontextmanager
 
 from ..config import get_settings
+from ..db_url import normalize_async_database_url
 
 logger = logging.getLogger(__name__)
-
 
 class AuditDatabaseManager:
     """審計資料庫管理器"""
@@ -35,11 +35,10 @@ class AuditDatabaseManager:
             
         try:
             # 根據設定決定資料庫類型
-            if self.config.database_url.startswith('postgresql'):
-                await self._initialize_postgresql()
-            else:
+            if self.config.database_url.startswith('sqlite'):
                 await self._initialize_sqlite()
-            await self._ensure_schema()
+            else:
+                await self._initialize_server_database()
             
             self._is_initialized = True
             logger.info("審計資料庫初始化成功")
@@ -48,14 +47,12 @@ class AuditDatabaseManager:
             logger.error(f"審計資料庫初始化失敗: {e}")
             raise
             
-    async def _initialize_postgresql(self) -> None:
-        """初始化 PostgreSQL 連接"""
-        logger.info("初始化 PostgreSQL 審計資料庫連接")
+    async def _initialize_server_database(self) -> None:
+        """初始化非 SQLite 的審計資料庫連接"""
+        logger.info("初始化非 SQLite 審計資料庫連接")
         
-        # PostgreSQL 使用連線池
         self._engine = create_async_engine(
-            self.config.database_url,
-            poolclass=QueuePool,
+            normalize_async_database_url(self.config.database_url),
             pool_size=5,
             max_overflow=10,
             pool_pre_ping=True,
@@ -76,8 +73,7 @@ class AuditDatabaseManager:
         """初始化 SQLite 連接"""
         logger.info("初始化 SQLite 審計資料庫連接")
 
-        # 將 sqlite:// 轉換為 aiosqlite://
-        async_url = self.config.database_url.replace("sqlite://", "sqlite+aiosqlite://")
+        async_url = normalize_async_database_url(self.config.database_url)
 
         # SQLite 使用 NullPool 避免連線池問題，並添加超時參數
         self._engine = create_async_engine(
@@ -103,6 +99,8 @@ class AuditDatabaseManager:
         @event.listens_for(self._engine.sync_engine, "connect")
         def set_audit_sqlite_pragma(dbapi_conn, connection_record):
             """為審計數據庫設定 SQLite 優化參數"""
+            if self._engine is None or self._engine.sync_engine.dialect.name != "sqlite":
+                return
             cursor = dbapi_conn.cursor()
             try:
                 # 啟用 WAL 模式以改善並發
@@ -123,35 +121,6 @@ class AuditDatabaseManager:
             finally:
                 cursor.close()
 
-    async def _ensure_schema(self) -> None:
-        """確保資料表與必要欄位存在"""
-        if not self._engine:
-            return
-
-        async with self._engine.begin() as conn:
-            await conn.run_sync(AuditBase.metadata.create_all)
-
-            def ensure_role_column(sync_conn):
-                dialect = sync_conn.dialect.name
-                if dialect == 'sqlite':
-                    rows = sync_conn.execute(text("PRAGMA table_info(audit_logs)")).fetchall()
-                    column_names = {row[1] for row in rows}
-                    if 'role' not in column_names:
-                        sync_conn.execute(text("ALTER TABLE audit_logs ADD COLUMN role VARCHAR(50) DEFAULT 'user'"))
-                    if 'action_brief' not in column_names:
-                        sync_conn.execute(text("ALTER TABLE audit_logs ADD COLUMN action_brief VARCHAR(500)"))
-                else:
-                    rows = sync_conn.execute(
-                        text("SELECT column_name FROM information_schema.columns WHERE table_name = 'audit_logs' AND table_schema = current_schema()")
-                    ).fetchall()
-                    column_names = {row[0] for row in rows}
-                    if 'role' not in column_names:
-                        sync_conn.execute(text("ALTER TABLE audit_logs ADD COLUMN role VARCHAR(50) DEFAULT 'user'"))
-                    if 'action_brief' not in column_names:
-                        sync_conn.execute(text("ALTER TABLE audit_logs ADD COLUMN action_brief VARCHAR(500)"))
-
-            await conn.run_sync(ensure_role_column)
-        
     async def cleanup(self) -> None:
         """清理資料庫連接"""
         if self._engine:

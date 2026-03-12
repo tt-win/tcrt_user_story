@@ -14,16 +14,6 @@ async function initTestCaseManagement() {
     showLoadingProgress();
 
     try {
-        // 載入 TCG 快取 (如果需要)
-        const hasCachedTCG = await loadTCGCacheFromStorage();
-        if (!hasCachedTCG || shouldUpdateTCGCache()) {
-            await loadTCGCache((progress, message) => {
-                updateTCGCacheProgress(progress, message);
-            });
-        } else {
-            updateTCGCacheProgress(100, `使用快取 (${tcgCache.length} 筆)`);
-        }
-
         // 載入測試案例
         await loadTestCases(false, (progress, message) => {
             updateTestCaseProgress(progress, message);
@@ -82,20 +72,6 @@ function hideLoadingProgress() {
 function updateTestCaseProgress(progress, message = '') {
     const progressBar = document.getElementById('testCaseProgressBar');
     const progressText = document.getElementById('testCaseProgress');
-
-    if (progressBar) {
-        progressBar.style.width = progress + '%';
-    }
-    if (progressText) {
-        progressText.textContent = `${Math.round(progress)}%${message ? ' - ' + message : ''}`;
-    }
-    // 工具列顯示狀態可能改變整體高度，需重新計算列表高度
-    adjustTestCasesScrollHeight();
-}
-
-function updateTCGCacheProgress(progress, message = '') {
-    const progressBar = document.getElementById('tcgCacheProgressBar');
-    const progressText = document.getElementById('tcgCacheProgress');
 
     if (progressBar) {
         progressBar.style.width = progress + '%';
