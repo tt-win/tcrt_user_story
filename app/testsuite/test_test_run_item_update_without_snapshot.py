@@ -56,37 +56,39 @@ def temp_db(tmp_path, monkeypatch):
 
 def _prepare_schema_with_missing_backup(engine):
     with engine.begin() as conn:
-        conn.execute(text("PRAGMA foreign_keys=OFF"))
+        dialect = engine.dialect.name
+        if dialect == "sqlite":
+            conn.execute(text("PRAGMA foreign_keys=OFF"))
+        
         conn.execute(text("DROP TABLE IF EXISTS test_run_item_result_history"))
         conn.execute(text("DROP TABLE IF EXISTS test_run_items_backup_snapshot"))
+        
+        # Use simple standard DDL for cross-database compatibility (ignoring foreign key constraints for this test)
         conn.execute(
             text(
-                "CREATE TABLE test_run_items_backup_snapshot (\n"
-                "    id INTEGER PRIMARY KEY,\n"
-                "    team_id INTEGER NOT NULL,\n"
-                "    config_id INTEGER NOT NULL\n"
+                "CREATE TABLE test_run_items_backup_snapshot ("
+                "    id INTEGER PRIMARY KEY,"
+                "    team_id INTEGER NOT NULL,"
+                "    config_id INTEGER NOT NULL"
                 ")"
             )
         )
         conn.execute(
             text(
-                "CREATE TABLE test_run_item_result_history (\n"
-                "    id INTEGER PRIMARY KEY,\n"
-                "    team_id INTEGER NOT NULL,\n"
-                "    config_id INTEGER NOT NULL,\n"
-                "    item_id INTEGER NOT NULL,\n"
-                "    prev_result VARCHAR,\n"
-                "    new_result VARCHAR,\n"
-                "    prev_executed_at DATETIME,\n"
-                "    new_executed_at DATETIME,\n"
-                "    changed_by_id VARCHAR,\n"
-                "    changed_by_name VARCHAR,\n"
-                "    change_source VARCHAR,\n"
-                "    change_reason TEXT,\n"
-                "    changed_at DATETIME,\n"
-                "    FOREIGN KEY(team_id) REFERENCES teams (id),\n"
-                "    FOREIGN KEY(config_id) REFERENCES test_run_configs (id),\n"
-                "    FOREIGN KEY(item_id) REFERENCES test_run_items_backup_snapshot (id) ON DELETE CASCADE\n"
+                "CREATE TABLE test_run_item_result_history ("
+                "    id INTEGER PRIMARY KEY,"
+                "    team_id INTEGER NOT NULL,"
+                "    config_id INTEGER NOT NULL,"
+                "    item_id INTEGER NOT NULL,"
+                "    prev_result VARCHAR(50),"
+                "    new_result VARCHAR(50),"
+                "    prev_executed_at DATETIME,"
+                "    new_executed_at DATETIME,"
+                "    changed_by_id VARCHAR(50),"
+                "    changed_by_name VARCHAR(255),"
+                "    change_source VARCHAR(50),"
+                "    change_reason TEXT,"
+                "    changed_at DATETIME"
                 ")"
             )
         )
@@ -101,8 +103,9 @@ def _prepare_schema_with_missing_backup(engine):
             )
         )
         conn.execute(text("DROP TABLE test_run_items_backup_snapshot"))
-        conn.execute(text("PRAGMA foreign_keys=ON"))
-
+        
+        if dialect == "sqlite":
+            conn.execute(text("PRAGMA foreign_keys=ON"))
 
 def _seed_base_data(session):
     team = Team(
