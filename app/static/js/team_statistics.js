@@ -31,9 +31,49 @@
 
     bootstrapFallbackChart();
 
+    // 等待 i18n 系統就緒
+    async function waitForI18n(timeoutMs = 5000) {
+        // 如果 i18n 已經準備好了，直接返回
+        if (window.i18n && window.i18n.isReady && window.i18n.isReady()) {
+            return true;
+        }
+        
+        // 否則等待 i18nReady 事件
+        return new Promise((resolve) => {
+            const timeout = setTimeout(() => {
+                console.warn('i18n initialization timeout, proceeding with fallback translations');
+                resolve(false);
+            }, timeoutMs);
+            
+            const onReady = () => {
+                clearTimeout(timeout);
+                resolve(true);
+            };
+            
+            if (document.readyState === 'loading') {
+                document.addEventListener('i18nReady', onReady, { once: true });
+            } else {
+                // DOM 已經載入，可能 i18nReady 已經觸發過了
+                // 再次檢查以確保
+                if (window.i18n && window.i18n.isReady && window.i18n.isReady()) {
+                    clearTimeout(timeout);
+                    resolve(true);
+                } else {
+                    document.addEventListener('i18nReady', onReady, { once: true });
+                }
+            }
+        });
+    }
+
     // 初始化頁面
     document.addEventListener('DOMContentLoaded', async function() {
         try {
+            // 等待 i18n 系統準備就緒（對 Safari特別重要）
+            const i18nReady = await waitForI18n();
+            if (!i18nReady) {
+                console.warn('i18n system not fully ready, translations may use fallback text');
+            }
+            
             authClient = await waitForAuthClient();
 
             if (!authClient || !authClient.isAuthenticated()) {
@@ -154,9 +194,8 @@
     function renderTeamFilterOptions() {
         const container = document.getElementById('team-filter-options');
         if (!container) return;
-        if (container.hasAttribute('data-i18n')) {
-            container.removeAttribute('data-i18n');
-        }
+        
+        // 不再移除 data-i18n 屬性，讓 i18n 系統有機會處理初始的載入提示
 
         if (!Array.isArray(teamFilterTeams) || teamFilterTeams.length === 0) {
             container.innerHTML = `
