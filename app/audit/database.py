@@ -224,7 +224,6 @@ async def audit_health_check() -> bool:
 # 資料庫表格定義
 from sqlalchemy import Column, Integer, String, DateTime, Text, Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.dialects.sqlite import JSON
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.sql import func
 from .models import ActionType, ResourceType, AuditSeverity
