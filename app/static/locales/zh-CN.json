@@ -109,7 +109,7 @@
       "userActivity": "用户行为",
       "auditAnalysis": "审计分析",
       "departmentStats": "部门统计",
-      "helperAi": "QA AI Agent - Test Case Helper"
+      "helperAi": "QA AI Agent - 测试用例助手"
     },
     "overview": {
       "teamCount": "团队总数",
@@ -188,7 +188,7 @@
       "user": "账号",
       "team": "团队",
       "ticket": "单号",
-      "sessions": "Sessions",
+      "sessions": "会话数",
       "usersCount": "账号数",
       "ticketsCount": "单号数",
       "activeSessions": "进行中",
@@ -203,7 +203,7 @@
       "pricingProfile": "价格基准",
       "estimateDisclaimer": "费用为估算值，非实际账单金额。",
       "tokenType": "类型",
-      "tokens": "Tokens",
+      "tokens": "Token 数",
       "rate": "单价",
       "estimatedCost": "估算费用",
       "stageMetricsTitle": "各阶段耗时与产量",
@@ -219,13 +219,13 @@
       "noTeamUsageData": "无团队使用资料",
       "noTokenData": "无 token 使用资料",
       "noStageData": "无阶段统计资料",
-      "coveragePartial": "telemetry 覆盖 {covered}/{total} sessions",
-      "coverageComplete": "telemetry 覆盖完整",
+      "coveragePartial": "Telemetry 覆盖 {covered}/{total} 个会话",
+      "coverageComplete": "Telemetry 覆盖完整",
       "loadFailed": "加载 QA Helper 统计失败",
       "phaseInit": "初始化",
       "phaseRequirement": "需求整理",
       "phaseAnalysis": "分析需求",
-      "phasePretestcase": "Pre Test Case",
+      "phasePretestcase": "前置测试用例",
       "phaseTestcase": "Test Case 产出",
       "phaseCommit": "建立完成",
       "phaseFailed": "失败",
@@ -234,12 +234,12 @@
       "statusFailed": "失败",
       "statusCancelled": "已取消",
       "statusSuccess": "成功",
-      "tokenTypeInput": "Input",
-      "tokenTypeOutput": "Output",
-      "tokenTypeCacheRead": "Cache Read",
-      "tokenTypeCacheWrite": "Cache Write",
-      "tokenTypeInputAudio": "Input Audio",
-      "tokenTypeInputAudioCache": "Input Audio Cache"
+      "tokenTypeInput": "输入",
+      "tokenTypeOutput": "输出",
+      "tokenTypeCacheRead": "缓存读取",
+      "tokenTypeCacheWrite": "缓存写入",
+      "tokenTypeInputAudio": "音频输入",
+      "tokenTypeInputAudioCache": "音频输入缓存"
     }
   },
   "profile": {

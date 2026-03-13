@@ -28,12 +28,186 @@
     let teamFilterPendingIds = new Set();
     let teamFilterInitialized = false;
     const TEAM_FILTER_STORAGE_KEY = 'teamStatsSelectedTeams';
+    const TEAM_STATS_HELPER_TRANSLATION_PATCH = Object.freeze({
+        'zh-TW': {
+            teamStats: {
+                tabs: {
+                    helperAi: 'QA AI Agent - 測試案例助手'
+                },
+                helper: {
+                    progressTitle: '帳號-單號進度',
+                    teamUsageTitle: '團隊使用統計',
+                    user: '帳號',
+                    team: '團隊',
+                    ticket: '單號',
+                    sessions: '工作階段數',
+                    usersCount: '帳號數',
+                    ticketsCount: '單號數',
+                    activeSessions: '進行中',
+                    completedSessions: '已完成',
+                    failedSessions: '失敗',
+                    phase: '階段',
+                    status: '狀態',
+                    updatedAt: '更新時間',
+                    costTitle: 'Token 與估算費用',
+                    totalTokens: '總 Token',
+                    estimatedCostTotal: '預估總費用',
+                    pricingProfile: '價格基準',
+                    estimateDisclaimer: '費用為估算值，非實際帳單金額。',
+                    tokenType: '類型',
+                    tokens: 'Token 數',
+                    rate: '單價',
+                    estimatedCost: '估算費用',
+                    stageMetricsTitle: '各階段耗時與產量',
+                    runs: '執行次數',
+                    successRuns: '成功',
+                    avgDuration: '平均耗時',
+                    p95Duration: 'P95 耗時',
+                    maxDuration: '最長耗時',
+                    pretestcaseCount: 'Pre TC 產量',
+                    testcaseCount: 'TC 產量',
+                    noProgressData: '無進度資料',
+                    noTeamUsageData: '無團隊使用資料',
+                    noTokenData: '無 token 使用資料',
+                    noStageData: '無階段統計資料',
+                    coveragePartial: 'Telemetry 覆蓋 {covered}/{total} 個工作階段',
+                    coverageComplete: 'Telemetry 覆蓋完整',
+                    loadFailed: '載入 QA Helper 統計失敗',
+                    phaseInit: '初始化',
+                    phaseRequirement: '需求整理',
+                    phaseAnalysis: '分析需求',
+                    phasePretestcase: '前置測試案例',
+                    phaseTestcase: 'Test Case 產生',
+                    phaseCommit: '建立完成',
+                    phaseFailed: '失敗',
+                    statusActive: '進行中',
+                    statusCompleted: '已完成',
+                    statusFailed: '失敗',
+                    statusCancelled: '已取消',
+                    statusSuccess: '成功',
+                    tokenTypeInput: '輸入',
+                    tokenTypeOutput: '輸出',
+                    tokenTypeCacheRead: '快取讀取',
+                    tokenTypeCacheWrite: '快取寫入',
+                    tokenTypeInputAudio: '音訊輸入',
+                    tokenTypeInputAudioCache: '音訊輸入快取'
+                }
+            }
+        },
+        'zh-CN': {
+            teamStats: {
+                tabs: {
+                    helperAi: 'QA AI Agent - 测试用例助手'
+                },
+                helper: {
+                    progressTitle: '账号-单号进度',
+                    teamUsageTitle: '团队使用统计',
+                    user: '账号',
+                    team: '团队',
+                    ticket: '单号',
+                    sessions: '会话数',
+                    usersCount: '账号数',
+                    ticketsCount: '单号数',
+                    activeSessions: '进行中',
+                    completedSessions: '已完成',
+                    failedSessions: '失败',
+                    phase: '阶段',
+                    status: '状态',
+                    updatedAt: '更新时间',
+                    costTitle: 'Token 与估算费用',
+                    totalTokens: '总 Token',
+                    estimatedCostTotal: '预估总费用',
+                    pricingProfile: '价格基准',
+                    estimateDisclaimer: '费用为估算值，非实际账单金额。',
+                    tokenType: '类型',
+                    tokens: 'Token 数',
+                    rate: '单价',
+                    estimatedCost: '估算费用',
+                    stageMetricsTitle: '各阶段耗时与产量',
+                    runs: '执行次数',
+                    successRuns: '成功',
+                    avgDuration: '平均耗时',
+                    p95Duration: 'P95 耗时',
+                    maxDuration: '最长耗时',
+                    pretestcaseCount: 'Pre TC 产量',
+                    testcaseCount: 'TC 产量',
+                    noProgressData: '无进度资料',
+                    noTeamUsageData: '无团队使用资料',
+                    noTokenData: '无 token 使用资料',
+                    noStageData: '无阶段统计资料',
+                    coveragePartial: 'Telemetry 覆盖 {covered}/{total} 个会话',
+                    coverageComplete: 'Telemetry 覆盖完整',
+                    loadFailed: '加载 QA Helper 统计失败',
+                    phaseInit: '初始化',
+                    phaseRequirement: '需求整理',
+                    phaseAnalysis: '分析需求',
+                    phasePretestcase: '前置测试用例',
+                    phaseTestcase: 'Test Case 产出',
+                    phaseCommit: '建立完成',
+                    phaseFailed: '失败',
+                    statusActive: '进行中',
+                    statusCompleted: '已完成',
+                    statusFailed: '失败',
+                    statusCancelled: '已取消',
+                    statusSuccess: '成功',
+                    tokenTypeInput: '输入',
+                    tokenTypeOutput: '输出',
+                    tokenTypeCacheRead: '缓存读取',
+                    tokenTypeCacheWrite: '缓存写入',
+                    tokenTypeInputAudio: '音频输入',
+                    tokenTypeInputAudioCache: '音频输入缓存'
+                }
+            }
+        }
+    });
 
     bootstrapFallbackChart();
+
+    // 等待 i18n 系統就緒
+    async function waitForI18n(timeoutMs = 5000) {
+        // 如果 i18n 已經準備好了，直接返回
+        if (window.i18n && window.i18n.isReady && window.i18n.isReady()) {
+            return true;
+        }
+        
+        // 否則等待 i18nReady 事件
+        return new Promise((resolve) => {
+            const timeout = setTimeout(() => {
+                console.warn('i18n initialization timeout, proceeding with fallback translations');
+                resolve(false);
+            }, timeoutMs);
+            
+            const onReady = () => {
+                clearTimeout(timeout);
+                resolve(true);
+            };
+            
+            if (document.readyState === 'loading') {
+                document.addEventListener('i18nReady', onReady, { once: true });
+            } else {
+                // DOM 已經載入，可能 i18nReady 已經觸發過了
+                // 再次檢查以確保
+                if (window.i18n && window.i18n.isReady && window.i18n.isReady()) {
+                    clearTimeout(timeout);
+                    resolve(true);
+                } else {
+                    document.addEventListener('i18nReady', onReady, { once: true });
+                }
+            }
+        });
+    }
 
     // 初始化頁面
     document.addEventListener('DOMContentLoaded', async function() {
         try {
+            // 等待 i18n 系統準備就緒（對 Safari特別重要）
+            const i18nReady = await waitForI18n();
+            if (!i18nReady) {
+                console.warn('i18n system not fully ready, translations may use fallback text');
+            }
+
+            ensureHelperAiTranslationPatch();
+            
             authClient = await waitForAuthClient();
 
             if (!authClient || !authClient.isAuthenticated()) {
@@ -61,6 +235,14 @@
             console.error('初始化團隊統計頁面失敗:', error);
             AppUtils.showError('初始化統計頁面失敗');
         }
+    });
+
+    document.addEventListener('languageChanged', function() {
+        ensureHelperAiTranslationPatch();
+    });
+
+    window.addEventListener('pageshow', function() {
+        ensureHelperAiTranslationPatch();
     });
 
     async function waitForAuthClient(timeoutMs = 5000) {
@@ -97,6 +279,65 @@
             console.warn('翻譯字串取得失敗:', err);
         }
         return fallback;
+    }
+
+    function getCurrentLanguage() {
+        try {
+            if (window.i18n && typeof window.i18n.getCurrentLanguage === 'function') {
+                return window.i18n.getCurrentLanguage();
+            }
+        } catch (_) {}
+
+        try {
+            const htmlLang = document.documentElement.lang;
+            if (htmlLang) {
+                return htmlLang;
+            }
+        } catch (_) {}
+
+        try {
+            return localStorage.getItem('language') || 'zh-TW';
+        } catch (_) {
+            return 'zh-TW';
+        }
+    }
+
+    function mergeTranslationPatch(target, patch) {
+        if (!patch || typeof patch !== 'object') {
+            return target;
+        }
+
+        const nextTarget = target && typeof target === 'object' ? target : {};
+        Object.entries(patch).forEach(([key, value]) => {
+            if (value && typeof value === 'object' && !Array.isArray(value)) {
+                nextTarget[key] = mergeTranslationPatch(nextTarget[key], value);
+                return;
+            }
+            nextTarget[key] = value;
+        });
+        return nextTarget;
+    }
+
+    function ensureHelperAiTranslationPatch() {
+        const language = getCurrentLanguage();
+        const patch = TEAM_STATS_HELPER_TRANSLATION_PATCH[language];
+        if (!patch || !window.i18n || !window.i18n.translations) {
+            return false;
+        }
+
+        const currentTranslations = window.i18n.translations[language] || {};
+        window.i18n.translations[language] = mergeTranslationPatch(currentTranslations, patch);
+
+        try {
+            localStorage.setItem(`i18n_${language}_cache`, JSON.stringify(window.i18n.translations[language]));
+            localStorage.setItem(`i18n_${language}_modified`, new Date().toISOString());
+        } catch (_) {}
+
+        if (window.i18n.isReady && window.i18n.isReady()) {
+            window.i18n.retranslate(document);
+        }
+
+        return true;
     }
 
     async function initTeamFilter() {
@@ -154,9 +395,8 @@
     function renderTeamFilterOptions() {
         const container = document.getElementById('team-filter-options');
         if (!container) return;
-        if (container.hasAttribute('data-i18n')) {
-            container.removeAttribute('data-i18n');
-        }
+        
+        // 不再移除 data-i18n 屬性，讓 i18n 系統有機會處理初始的載入提示
 
         if (!Array.isArray(teamFilterTeams) || teamFilterTeams.length === 0) {
             container.innerHTML = `
@@ -469,7 +709,7 @@
         document.querySelectorAll('button[data-bs-toggle="tab"]').forEach(tab => {
             tab.addEventListener('shown.bs.tab', function(event) {
                 const targetId = event.target.getAttribute('data-bs-target');
-                handleTabSwitch(targetId);
+                handleTabSwitch(targetId, event.target);
             });
         });
     }
@@ -477,9 +717,29 @@
     /**
      * 處理標籤頁切換（首次載入時才獲取數據）
      */
-    function handleTabSwitch(targetId) {
-        // 標籤頁首次顯示時，已載入的數據會自動顯示圖表
-        // 由於我們使用統一載入策略，這裡不需要額外處理
+    function handleTabSwitch(targetId, tabElement = null) {
+        ensureHelperAiTranslationPatch();
+
+        if (!window.i18n || !window.i18n.isReady || !window.i18n.isReady()) {
+            return;
+        }
+
+        // Safari 在 hidden tab 首次顯示時，偶爾會漏掉部分靜態翻譯；
+        // 切換分頁後補做一次局部 retranslate，避免分頁標題與內容露出 key/fallback。
+        window.requestAnimationFrame(() => {
+            if (tabElement instanceof Element) {
+                window.i18n.retranslate(tabElement);
+            }
+
+            if (!targetId) {
+                return;
+            }
+
+            const pane = document.querySelector(targetId);
+            if (pane instanceof Element) {
+                window.i18n.retranslate(pane);
+            }
+        });
     }
 
     /**
