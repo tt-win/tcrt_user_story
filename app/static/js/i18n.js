@@ -23,35 +23,34 @@ class I18nSystem {
         this.init();
     }
 
-    /**
-     * Initialize the i18n system
-     */
-    async init() {
-        try {
-            // Detect and set initial language
-            this.detectLanguage();
-            // Reflect on <html lang>
-            try { document.documentElement.lang = this.currentLanguage; } catch (_) {}
-            
-            // Load translation files
-            await this.loadTranslations();
-            
-            // Apply translations to current page
-            this.translatePage();
-            
-            // Mark as loaded AFTER translation applied
-            this.isLoaded = true;
-            
-            // Dispatch ready event
-            document.dispatchEvent(new CustomEvent('i18nReady', {
-                detail: { language: this.currentLanguage }
-            }));
-
-        } catch (error) {
-            console.error('Failed to initialize i18n:', error);
-            this.isLoaded = false;
-        }
-    }
+     /**
+      * Initialize the i18n system
+      */
+     async init() {
+         try {
+             // Detect and set initial language
+             this.detectLanguage();
+             // Reflect on <html lang>
+             try { document.documentElement.lang = this.currentLanguage; } catch (_) {}
+             
+             // Load translation files
+             await this.loadTranslations();
+             
+             // Mark as loaded BEFORE translation applied
+             this.isLoaded = true;
+             
+             // Apply translations to current page
+             this.translatePage();
+             
+             // Dispatch ready event
+             document.dispatchEvent(new CustomEvent('i18nReady', {
+                 detail: { language: this.currentLanguage }
+             }));
+         } catch (error) {
+             console.error('Failed to initialize i18n:', error);
+             this.isLoaded = false;
+          }
+      }
 
     /**
      * Detect the appropriate language to use
@@ -97,65 +96,62 @@ class I18nSystem {
     /**
      * Load translation files for all supported languages
      */
-    async loadTranslations() {
-        const version = localStorage.getItem('i18n_version') || '1.0.0';
-        // Load translations for each supported language with cache busting
-// Load translations for each supported language with cache busting
-this.loadingLanguages = new Set();
-// Load translations for each supported language with cache busting
-this.loadingLanguages = new Set();
-const cachePromises = this.supportedLanguages.map(async (language) => {
-            if (this.loadingLanguages.has(language)) return;
-            this.loadingLanguages.add(language);
-            // Update cache buster for each load to avoid race
-            this.cacheBuster = Date.now();
-            try {
-                const response = await fetch(`/static/locales/${language}.json?v=${this.cacheBuster}`);
-                if (!response.ok) {
-                    console.warn(`Translation file for ${language} returned status ${response.status}. Attempting fallback.`);
-                    throw new Error(`Failed to load ${language}: ${response.status}`);
-                }
-                // 一律以網路回應覆蓋快取，避免 Last-Modified 缺失造成快取不更新
-                const translations = await response.json();
-                this.translations[language] = translations;
-                localStorage.setItem(`i18n_${language}_cache`, JSON.stringify(translations));
-                localStorage.setItem(`i18n_${language}_modified`, new Date().toISOString());
-                console.log(`Loaded translations for ${language} (network)`);
-            } catch (error) {
-                console.error(`Failed to load translations for ${language}:`, error);
-                // 嘗試使用快取版本作為備用
-                const cached = localStorage.getItem(`i18n_${language}_cache`);
-                if (cached) {
-                    this.translations[language] = JSON.parse(cached);
-                    console.warn(`Using cached translations for ${language} due to load error`);
-                } else {
-                    // If current language fails to load, try fallback
-                    if (language === this.currentLanguage && language !== this.fallbackLanguage) {
-                        console.warn(`Falling back to ${this.fallbackLanguage}`);
-                        this.currentLanguage = this.fallbackLanguage;
-                        // Load fallback translations if not already loaded
-                        if (!this.translations[this.fallbackLanguage]) {
-                            try {
-                                const resp = await fetch(`/static/locales/${this.fallbackLanguage}.json?v=${this.cacheBuster}`);
-                                if (resp.ok) {
-                                    this.translations[this.fallbackLanguage] = await resp.json();
-                                }
-                            } catch (e) {
-                                console.error('Failed to load fallback translations:', e);
-                            }
-                        }
-                    }
-                }
-            }
-        });
-
-        await Promise.all(cachePromises);
-
-        // 確保至少有一種語言被載入
-        if (Object.keys(this.translations).length === 0) {
-            throw new Error('No translation files could be loaded');
-        }
-    }
+     async loadTranslations() {
+         const version = localStorage.getItem('i18n_version') || '1.0.0';
+         // Load translations for each supported language with cache busting
+         this.loadingLanguages = new Set();
+         // Set cache buster once for all language loads to prevent race conditions
+         this.cacheBuster = Date.now();
+         const cachePromises = this.supportedLanguages.map(async (language) => {
+             if (this.loadingLanguages.has(language)) return;
+             this.loadingLanguages.add(language);
+             try {
+                 const response = await fetch(`/static/locales/${language}.json?v=${this.cacheBuster}`);
+                 if (!response.ok) {
+                     console.warn(`Translation file for ${language} returned status ${response.status}. Attempting fallback.`);
+                     throw new Error(`Failed to load ${language}: ${response.status}`);
+                 }
+                 // 一律以網路回應覆蓋快取，避免 Last-Modified 缺失造成快取不更新
+                 const translations = await response.json();
+                 this.translations[language] = translations;
+                 localStorage.setItem(`i18n_${language}_cache`, JSON.stringify(translations));
+                 localStorage.setItem(`i18n_${language}_modified`, new Date().toISOString());
+                 console.log(`Loaded translations for ${language} (network)`);
+             } catch (error) {
+                 console.error(`Failed to load translations for ${language}:`, error);
+                 // 嘗試使用快取版本作為備用
+                 const cached = localStorage.getItem(`i18n_${language}_cache`);
+                 if (cached) {
+                     this.translations[language] = JSON.parse(cached);
+                     console.warn(`Using cached translations for ${language} due to load error`);
+                 } else {
+                     // If current language fails to load, try fallback
+                     if (language === this.currentLanguage && language !== this.fallbackLanguage) {
+                         console.warn(`Falling back to ${this.fallbackLanguage}`);
+                         this.currentLanguage = this.fallbackLanguage;
+                         // Load fallback translations if not already loaded
+                         if (!this.translations[this.fallbackLanguage]) {
+                             try {
+                                 const resp = await fetch(`/static/locales/${this.fallbackLanguage}.json?v=${this.cacheBuster}`);
+                                 if (resp.ok) {
+                                     this.translations[this.fallbackLanguage] = await resp.json();
+                                 }
+                             } catch (e) {
+                                 console.error('Failed to load fallback translations:', e);
+                             }
+                         }
+                     }
+                 }
+             }
+         });
+ 
+         await Promise.all(cachePromises);
+ 
+         // 確保至少有一種語言被載入
+         if (Object.keys(this.translations).length === 0) {
+             throw new Error('No translation files could be loaded');
+         }
+     }
 
     /**
      * Switch to a different language
@@ -686,20 +682,20 @@ if ((window.location.hostname === 'localhost' ||
                 return result;
             };
 
-            console.log('🎯 Translation performance monitoring enabled');
-        }
-    };
+             console.log('🎯 Translation performance monitoring enabled');
+         }
+     };
 
-    // 在控制台顯示可用指令
-    console.log('🌐 i18n Debug Tools Loaded! Available commands:');
-    console.log('  window.i18nDebug.showStatus() - Show system status');
-    console.log('  window.i18nDebug.checkMissingKeys() - Check missing translations');
-    console.log('  window.i18nDebug.fixMissingKeys() - Fix missing translations');
-    console.log('  window.i18nDebug.forceReload() - Force reload translations');
-    console.log('  window.i18nDebug.testKey(key) - Test specific key');
-    console.log('  window.i18nDebug.showAllKeys() - Show all available keys');
-    console.log('  window.i18nDebug.monitorPerformance() - Monitor performance');
-}
+     // 在控制台顯示可用指令
+     console.log('🌐 i18n Debug Tools Loaded! Available commands:');
+     console.log('  window.i18nDebug.showStatus() - Show system status');
+     console.log('  window.i18nDebug.checkMissingKeys() - Check missing translations');
+     console.log('  window.i18nDebug.fixMissingKeys() - Fix missing translations');
+     console.log('  window.i18nDebug.forceReload() - Force reload translations');
+     console.log('  window.i18nDebug.testKey(key) - Test specific key');
+     console.log('  window.i18nDebug.showAllKeys() - Show all available keys');
+     console.log('  window.i18nDebug.monitorPerformance() - Monitor performance');
+ };
 
 // Export for module usage if needed
 if (typeof module !== 'undefined' && module.exports) {
