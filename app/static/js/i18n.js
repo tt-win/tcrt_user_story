@@ -18,6 +18,7 @@ class I18nSystem {
         this.fallbackLanguage = 'en-US';
         this.isLoaded = false;
         this.cacheBuster = String(Date.now());
+        this.translationVersion = '2026-03-13-4';
         
         // Initialize the system
         this.init();
@@ -28,6 +29,8 @@ class I18nSystem {
       */
      async init() {
          try {
+             this.ensureCacheVersion();
+
              // Detect and set initial language
              this.detectLanguage();
              // Reflect on <html lang>
@@ -58,31 +61,16 @@ class I18nSystem {
     detectLanguage() {
         // Check localStorage first
         const storedLanguage = localStorage.getItem('language');
-        if (storedLanguage && this.supportedLanguages.includes(storedLanguage)) {
-            this.currentLanguage = storedLanguage;
+        const resolvedStoredLanguage = this.normalizeSupportedLanguage(storedLanguage);
+        if (resolvedStoredLanguage) {
+            this.currentLanguage = resolvedStoredLanguage;
             return;
         }
 
-        // Check browser language
-        const browserLanguage = navigator.language || navigator.userLanguage;
-        if (browserLanguage) {
-            // Try exact match first
-            if (this.supportedLanguages.includes(browserLanguage)) {
-                this.currentLanguage = browserLanguage;
-                return;
-            }
-            
-            // Try language code without region
-            const languageCode = browserLanguage.split('-')[0];
-            const matchedLanguage = this.supportedLanguages.find(lang => {
-                // Special handling for Chinese variants
-                if (languageCode === 'zh') {
-                    // If browser language is just 'zh', prefer zh-CN for Simplified Chinese
-                    return lang === 'zh-CN';
-                }
-                return lang.startsWith(languageCode);
-            });
-
+        // Check browser language preferences in order.
+        const browserLanguages = this.getBrowserLanguagePreferences();
+        for (const browserLanguage of browserLanguages) {
+            const matchedLanguage = this.normalizeSupportedLanguage(browserLanguage);
             if (matchedLanguage) {
                 this.currentLanguage = matchedLanguage;
                 return;
@@ -93,11 +81,75 @@ class I18nSystem {
         this.currentLanguage = this.fallbackLanguage;
     }
 
+    getBrowserLanguagePreferences() {
+        const candidates = [];
+
+        if (Array.isArray(navigator.languages) && navigator.languages.length > 0) {
+            candidates.push(...navigator.languages);
+        }
+
+        if (navigator.language) {
+            candidates.push(navigator.language);
+        }
+
+        if (navigator.userLanguage) {
+            candidates.push(navigator.userLanguage);
+        }
+
+        return [...new Set(candidates
+            .map(language => String(language || '').trim())
+            .filter(Boolean))];
+    }
+
+    normalizeSupportedLanguage(language) {
+        if (!language) {
+            return null;
+        }
+
+        const normalizedLanguage = String(language).trim();
+        if (!normalizedLanguage) {
+            return null;
+        }
+
+        if (this.supportedLanguages.includes(normalizedLanguage)) {
+            return normalizedLanguage;
+        }
+
+        const lowerLanguage = normalizedLanguage.toLowerCase().replace(/_/g, '-');
+
+        // Safari often reports Chinese locale via script tags such as zh-Hant-TW / zh-Hans-CN.
+        if (
+            lowerLanguage.startsWith('zh-hant') ||
+            lowerLanguage === 'zh-tw' ||
+            lowerLanguage === 'zh-hk' ||
+            lowerLanguage === 'zh-mo'
+        ) {
+            return 'zh-TW';
+        }
+
+        if (
+            lowerLanguage.startsWith('zh-hans') ||
+            lowerLanguage === 'zh-cn' ||
+            lowerLanguage === 'zh-sg'
+        ) {
+            return 'zh-CN';
+        }
+
+        const languageCode = lowerLanguage.split('-')[0];
+        if (languageCode === 'zh') {
+            return 'zh-CN';
+        }
+
+        const matchedLanguage = this.supportedLanguages.find(
+            supportedLanguage => supportedLanguage.toLowerCase().startsWith(`${languageCode}-`)
+        );
+        return matchedLanguage || null;
+    }
+
     /**
      * Load translation files for all supported languages
      */
      async loadTranslations() {
-         const version = localStorage.getItem('i18n_version') || '1.0.0';
          // Load translations for each supported language with cache busting
          this.loadingLanguages = new Set();
          // Set cache buster once for all language loads to prevent race conditions
@@ -106,7 +158,9 @@ class I18nSystem {
              if (this.loadingLanguages.has(language)) return;
              this.loadingLanguages.add(language);
              try {
-                 const response = await fetch(`/static/locales/${language}.json?v=${this.cacheBuster}`);
+                 const response = await fetch(`/static/locales/${language}.json?ver=${encodeURIComponent(this.translationVersion)}&t=${this.cacheBuster}`, {
+                     cache: 'no-store'
+                 });
                  if (!response.ok) {
                      console.warn(`Translation file for ${language} returned status ${response.status}. Attempting fallback.`);
                      throw new Error(`Failed to load ${language}: ${response.status}`);
@@ -132,7 +186,9 @@ class I18nSystem {
                          // Load fallback translations if not already loaded
                          if (!this.translations[this.fallbackLanguage]) {
                              try {
-                                 const resp = await fetch(`/static/locales/${this.fallbackLanguage}.json?v=${this.cacheBuster}`);
+                                 const resp = await fetch(`/static/locales/${this.fallbackLanguage}.json?ver=${encodeURIComponent(this.translationVersion)}&t=${this.cacheBuster}`, {
+                                     cache: 'no-store'
+                                 });
                                  if (resp.ok) {
                                      this.translations[this.fallbackLanguage] = await resp.json();
                                  }
@@ -171,7 +227,9 @@ async switchLanguage(language) {
         if (!this.translations[language]) {
             console.warn(`Translations for ${language} not loaded, attempting to load...`);
             try {
-                const response = await fetch(`/static/locales/${language}.json?v=${this.cacheBuster}`);
+                const response = await fetch(`/static/locales/${language}.json?ver=${encodeURIComponent(this.translationVersion)}&t=${this.cacheBuster}`, {
+                    cache: 'no-store'
+                });
                 if (!response.ok) {
                     throw new Error(`Failed to load ${language}`);
                 }
@@ -295,8 +353,14 @@ async switchLanguage(language) {
         }
 
         // Find all elements with data-i18n attributes
-        const root = container instanceof HTMLElement ? container : document;
-        const elements = root.querySelectorAll('[data-i18n]');
+        const root = container instanceof Element ? container : document;
+        const elements = [];
+
+        if (root instanceof Element && root.hasAttribute('data-i18n')) {
+            elements.push(root);
+        }
+
+        elements.push(...root.querySelectorAll('[data-i18n]'));
         
         elements.forEach(element => {
             this.translateElement(element);
@@ -325,8 +389,8 @@ async switchLanguage(language) {
             }
         }
 
-        // Get fallback text from data-i18n-fallback attribute
-        const fallbackText = element.getAttribute('data-i18n-fallback');
+        // Get fallback text from data-i18n-fallback attribute or original DOM text
+        const fallbackText = this.getTextFallback(element);
 
         // Translate and set the text content
         const translatedText = this.t(key, params, fallbackText);
@@ -337,10 +401,17 @@ async switchLanguage(language) {
      * Translate elements with attribute-specific data-i18n attributes
      */
 translateAttributes(root = document) {
-        const attributeTypes = ['placeholder', 'title', 'alt', 'aria-label', 'value'];
+         const attributeTypes = ['placeholder', 'title', 'alt', 'aria-label', 'value'];
 
 attributeTypes.forEach(attrType => {
-            const elements = (root instanceof HTMLElement ? root : document).querySelectorAll(`[data-i18n-${attrType}]`);
+            const scope = root instanceof Element ? root : document;
+            const elements = [];
+
+            if (scope instanceof Element && scope.hasAttribute(`data-i18n-${attrType}`)) {
+                elements.push(scope);
+            }
+
+            elements.push(...scope.querySelectorAll(`[data-i18n-${attrType}]`));
             
             elements.forEach(element => {
                 const key = element.getAttribute(`data-i18n-${attrType}`);
@@ -357,14 +428,72 @@ attributeTypes.forEach(attrType => {
                     }
                 }
 
-                // Get fallback text
-                const fallbackText = element.getAttribute(`data-i18n-${attrType}-fallback`);
+                // Get fallback text from explicit fallback or current DOM attribute
+                const fallbackText = this.getAttributeFallback(element, attrType);
 
                 // Translate and set the attribute
                 const translatedText = this.t(key, params, fallbackText);
                 element.setAttribute(attrType, translatedText);
             });
         });
+    }
+
+    ensureCacheVersion() {
+        const storedVersion = localStorage.getItem('i18n_version');
+        if (storedVersion === this.translationVersion) {
+            return;
+        }
+
+        this.supportedLanguages.forEach(language => {
+            localStorage.removeItem(`i18n_${language}_cache`);
+            localStorage.removeItem(`i18n_${language}_modified`);
+        });
+        localStorage.setItem('i18n_version', this.translationVersion);
+    }
+
+    getTextFallback(element) {
+        const explicitFallback = element.getAttribute('data-i18n-fallback');
+        if (explicitFallback) {
+            return explicitFallback;
+        }
+
+        const storedOriginal = element.getAttribute('data-i18n-original');
+        if (storedOriginal) {
+            return storedOriginal;
+        }
+
+        const currentText = typeof element.textContent === 'string'
+            ? element.textContent.replace(/\s+/g, ' ').trim()
+            : '';
+
+        if (!currentText) {
+            return null;
+        }
+
+        element.setAttribute('data-i18n-original', currentText);
+        return currentText;
+    }
+
+    getAttributeFallback(element, attrType) {
+        const fallbackAttr = `data-i18n-${attrType}-fallback`;
+        const explicitFallback = element.getAttribute(fallbackAttr);
+        if (explicitFallback) {
+            return explicitFallback;
+        }
+
+        const originalAttr = `data-i18n-${attrType}-original`;
+        const storedOriginal = element.getAttribute(originalAttr);
+        if (storedOriginal) {
+            return storedOriginal;
+        }
+
+        const currentValue = element.getAttribute(attrType);
+        if (!currentValue) {
+            return null;
+        }
+
+        element.setAttribute(originalAttr, currentValue);
+        return currentValue;
     }
 
     /**

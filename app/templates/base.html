@@ -92,15 +92,46 @@
         </div>
     </footer>
 
+    <script>
+    (function() {
+        function captureTextFallbacks() {
+            var elements = document.querySelectorAll('[data-i18n]');
+            for (var i = 0; i < elements.length; i++) {
+                var element = elements[i];
+                if (element.hasAttribute('data-i18n-fallback')) continue;
+                var key = element.getAttribute('data-i18n');
+                var text = (element.textContent || '').replace(/\s+/g, ' ').trim();
+                if (!text || text === key) continue;
+                element.setAttribute('data-i18n-fallback', text);
+            }
+        }
+
+        function captureAttributeFallbacks(attrType) {
+            var attrName = 'data-i18n-' + attrType;
+            var fallbackName = attrName + '-fallback';
+            var elements = document.querySelectorAll('[' + attrName + ']');
+            for (var i = 0; i < elements.length; i++) {
+                var element = elements[i];
+                if (element.hasAttribute(fallbackName)) continue;
+                var value = element.getAttribute(attrType);
+                if (!value) continue;
+                element.setAttribute(fallbackName, value);
+            }
+        }
+
+        captureTextFallbacks();
+        ['placeholder', 'title', 'alt', 'aria-label', 'value'].forEach(captureAttributeFallbacks);
+    })();
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
-    <script src="/static/js/auth.js"></script>
-    <script src="/static/js/base-auth.js"></script>
-    <script src="/static/js/i18n.js"></script>
-    <script src="/static/js/datetime-formatter.js"></script>
-    <script src="/static/js/app.js"></script>
-    <script src="/static/js/trcache.js"></script>
-    <script src="/static/js/version-checker.js"></script>
+    <script src="/static/js/auth.js?v=20260313-3"></script>
+    <script src="/static/js/base-auth.js?v=20260313-3"></script>
+    <script src="/static/js/i18n.js?v=20260313-4"></script>
+    <script src="/static/js/datetime-formatter.js?v=20260313-3"></script>
+    <script src="/static/js/app.js?v=20260313-3"></script>
+    <script src="/static/js/trcache.js?v=20260313-3"></script>
+    <script src="/static/js/version-checker.js?v=20260313-3"></script>
     {% block scripts %}{% endblock %}
 
     <!-- Language Switcher Script -->
