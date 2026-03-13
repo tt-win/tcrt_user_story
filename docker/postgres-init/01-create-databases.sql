@@ -1,0 +1,2 @@
+CREATE DATABASE tcrt_audit;
+CREATE DATABASE tcrt_usm;
