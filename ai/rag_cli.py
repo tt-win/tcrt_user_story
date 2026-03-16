@@ -1,21 +1,22 @@
-import requests
 import json
+import os
+import sys
 import uuid
-from qdrant_client import QdrantClient
-from qdrant_client.http import models
-from typing import List, Dict, Optional
+from typing import Dict, List, Optional
+
+import requests
 from prompt_toolkit import PromptSession
 from prompt_toolkit.key_binding import KeyBindings
+from qdrant_client import QdrantClient
+from qdrant_client.http import models
 from rich.console import Console
-from rich.markdown import Markdown
 from rich.live import Live
-
-import sys
+from rich.markdown import Markdown
 
 # 設定
 LLM_API_URL = "https://openrouter.ai/api/v1/chat/completions"
 LLM_MODEL = "x-ai/grok-4.1-fast:free"  # OpenRouter 模型
-OPENROUTER_API_KEY = "***REMOVED***"
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
 
 TEXT_EMBEDDING_URL = "http://127.0.0.1:1234/v1/embeddings"
 QDRANT_URL = "http://localhost:6333"
@@ -38,6 +39,8 @@ client = QdrantClient(url=QDRANT_URL)
 console = Console()
 
 def get_llm_headers():
+    if not OPENROUTER_API_KEY:
+        raise RuntimeError("缺少 OPENROUTER_API_KEY 環境變數")
     return {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json",

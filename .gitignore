@@ -125,10 +125,16 @@ venv.bak/
 
 # Configuration files with sensitive data
 config.yaml
+config.yaml.backup
 # backup_script.sh
 
 # Certificates
 *.crt
+keys/*.pem
+keys/*.key
+keys/*.p12
+keys/*.pfx
+keys/*.cer
 
 # IDEs
 .idea/
