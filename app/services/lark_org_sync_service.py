@@ -13,17 +13,22 @@ from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
+from app.db_access.main import (
+    MainAccessBoundary,
+    create_main_access_boundary_for_session,
+    get_main_access_boundary,
+)
 from app.services.lark_client import LarkAuthManager
 from app.services.lark_department_service import LarkDepartmentService
 from app.services.lark_user_service import LarkUserService
 from app.models.database_models import SyncHistory
-from app.database import SessionLocal, run_sync
 
 class LarkOrgSyncService:
     """Lark 組織架構同步服務"""
     
     def __init__(self, app_id: str, app_secret: str):
         self.logger = logging.getLogger(__name__)
+        self.main_boundary = get_main_access_boundary()
         
         # 初始化認證管理器
         self.auth_manager = LarkAuthManager(app_id, app_secret)
@@ -47,6 +52,14 @@ class LarkOrgSyncService:
             'current_sync_id': None  # 當前同步記錄ID
         }
 
+    def _resolve_main_boundary(
+        self,
+        db: Optional[AsyncSession] = None,
+    ) -> MainAccessBoundary:
+        if db is not None:
+            return create_main_access_boundary_for_session(db)
+        return self.main_boundary
+
     async def _with_session(
         self,
         db: Optional[AsyncSession],
@@ -54,7 +67,7 @@ class LarkOrgSyncService:
     ) -> Any:
         if db is not None:
             return await fn(db)
-        async with SessionLocal() as session:
+        async with self.main_boundary.session_scope() as session:
             return await fn(session)
     
     async def sync_full_organization(self, db: Optional[AsyncSession] = None) -> Dict[str, Any]:
@@ -306,7 +319,7 @@ class LarkOrgSyncService:
     
     async def _create_sync_history(
         self,
-        db: AsyncSession,
+        db: Optional[AsyncSession],
         team_id: int,
         sync_type: str,
         trigger_type: str = 'manual',
@@ -324,19 +337,18 @@ class LarkOrgSyncService:
                     start_time=datetime.utcnow()
                 )
                 sync_db.add(sync_record)
-                sync_db.commit()
+                sync_db.flush()
                 sync_db.refresh(sync_record)
                 return sync_record.id
             except Exception as e:
                 self.logger.error(f"創建同步歷史記錄失敗: {e}")
-                sync_db.rollback()
                 return None
 
-        return await run_sync(db, _create)
+        return await self._resolve_main_boundary(db).run_sync_write(_create)
     
     async def _update_sync_history(
         self,
-        db: AsyncSession,
+        db: Optional[AsyncSession],
         sync_id: int,
         status: str,
         dept_result: Optional[Dict] = None,
@@ -391,17 +403,21 @@ class LarkOrgSyncService:
                         'user_result': user_result
                     }, ensure_ascii=False, default=str)
 
-                sync_db.commit()
+                sync_db.flush()
                 return True
 
             except Exception as e:
                 self.logger.error(f"更新同步歷史記錄失敗: {e}")
-                sync_db.rollback()
                 return False
 
-        return await run_sync(db, _update)
+        return await self._resolve_main_boundary(db).run_sync_write(_update)
     
-    async def get_sync_history(self, db: AsyncSession, team_id: int, limit: int = 10) -> List[Dict[str, Any]]:
+    async def get_sync_history(
+        self,
+        db: Optional[AsyncSession],
+        team_id: int,
+        limit: int = 10,
+    ) -> List[Dict[str, Any]]:
         """獲取團隊同步歷史記錄"""
         def _get_history(sync_db: Session) -> List[Dict[str, Any]]:
             try:
@@ -438,7 +454,7 @@ class LarkOrgSyncService:
                 self.logger.error(f"獲取同步歷史失敗: {e}")
                 return []
 
-        return await run_sync(db, _get_history)
+        return await self._resolve_main_boundary(db).run_sync_read(_get_history)
     
     async def sync_for_team(
         self,

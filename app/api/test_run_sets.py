@@ -12,7 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session, joinedload
 from typing import Dict, Any
 
-from app.database import get_db, run_sync
+from app.db_access import MainAccessBoundary, get_main_access_boundary
+from app.database import get_db
 from app.auth.dependencies import get_current_user
 from app.models.database_models import User
 from app.audit import audit_service, ActionType, ResourceType, AuditSeverity
@@ -36,14 +37,14 @@ from app.models.test_run_set import (
     TestRunSetUpdate,
 )
 from app.services.test_run_set_status import (
-    recalculate_set_status,
+    recalculate_set_status_sync,
     resolve_status_for_response,
 )
 
 from .test_run_configs import (
     attach_config_to_set,
     build_config_summary,
-    delete_test_run_config_cascade,
+    delete_test_run_config_cascade_sync,
     detach_config_from_set,
     ensure_test_run_set,
     verify_team_exists,
@@ -217,7 +218,7 @@ def _validate_config_ids(
 async def list_test_run_sets(
     team_id: int,
     include_archived: bool = Query(False, description="是否包含已歸檔"),
-    db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     def _list(sync_db: Session):
         verify_team_exists(team_id, sync_db)
@@ -229,14 +230,14 @@ async def list_test_run_sets(
         sets = query.order_by(TestRunSetDB.created_at.desc()).all()
         return [_build_set_summary(s) for s in sets]
 
-    return await run_sync(db, _list)
+    return await main_boundary.run_sync_read(_list)
 
 
 @router.get("/overview", response_model=TestRunSetOverview)
 async def get_test_run_set_overview(
     team_id: int,
     include_archived: bool = Query(False, description="是否包含已歸檔的 Set"),
-    db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """取得 Test Run Set 與未歸組 Test Run 的總覽"""
     def _overview(sync_db: Session):
@@ -254,14 +255,14 @@ async def get_test_run_set_overview(
             unassigned=[build_config_summary(cfg) for cfg in unassigned_configs],
         )
 
-    return await run_sync(db, _overview)
+    return await main_boundary.run_sync_read(_overview)
 
 
 @router.post("/", response_model=TestRunSetDetail, status_code=status.HTTP_201_CREATED)
 async def create_test_run_set(
     team_id: int,
     payload: TestRunSetCreate,
-    db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
     current_user: User = Depends(get_current_user),
 ):
     def _create(sync_db: Session):
@@ -284,36 +285,29 @@ async def create_test_run_set(
         for config_db in configs:
             attach_config_to_set(sync_db, team_id, config_db, new_set.id)
 
-        sync_db.commit()
-        sync_db.refresh(new_set)
+        new_status = recalculate_set_status_sync(sync_db, new_set)
+        sync_db.flush()
+        detail = _build_set_detail(_load_set_or_404(sync_db, team_id, new_set.id))
 
-        return {
-            "audit": {
-                "set_id": new_set.id,
-                "name": new_set.name,
-                "description": new_set.description,
-                "config_count": len(configs),
-            }
+        return detail, {
+            "set_id": new_set.id,
+            "name": new_set.name,
+            "description": new_set.description,
+            "config_count": len(configs),
+            "status": new_status,
         }
 
-    result = await run_sync(db, _create)
-    set_id = result["audit"]["set_id"]
-    created_set = await db.get(TestRunSetDB, set_id)
-    if created_set and created_set.team_id == team_id:
-        await recalculate_set_status(db, created_set)
-        await db.commit()
-
-    detail = await run_sync(db, lambda sync_db: _build_set_detail(_load_set_or_404(sync_db, team_id, set_id)))
+    detail, audit_context = await main_boundary.run_sync_write(_create)
 
     # 記錄審計日誌
-    action_brief = f"{current_user.username} created Test Run Set: {result['audit']['name']}"
+    action_brief = f"{current_user.username} created Test Run Set: {audit_context['name']}"
     await log_test_run_set_action(
         action_type=ActionType.CREATE,
         current_user=current_user,
         team_id=team_id,
-        resource_id=str(result["audit"]["set_id"]),
+        resource_id=str(audit_context["set_id"]),
         action_brief=action_brief,
-        details=result["audit"],
+        details=audit_context,
     )
 
     return detail
@@ -323,14 +317,14 @@ async def create_test_run_set(
 async def get_test_run_set(
     team_id: int,
     set_id: int,
-    db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     def _get(sync_db: Session):
         verify_team_exists(team_id, sync_db)
         test_run_set = _load_set_or_404(sync_db, team_id, set_id)
         return _build_set_detail(test_run_set)
 
-    return await run_sync(db, _get)
+    return await main_boundary.run_sync_read(_get)
 
 
 @router.put("/{set_id}", response_model=TestRunSet)
@@ -338,7 +332,7 @@ async def update_test_run_set(
     team_id: int,
     set_id: int,
     payload: TestRunSetUpdate,
-    db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
     current_user: User = Depends(get_current_user),
 ):
     def _update(sync_db: Session):
@@ -362,50 +356,41 @@ async def update_test_run_set(
         for key, value in update_data.items():
             setattr(test_run_set, key, value)
 
-        sync_db.commit()
-        sync_db.refresh(test_run_set)
+        new_status = recalculate_set_status_sync(sync_db, test_run_set)
+        sync_db.flush()
 
         # 記錄審計日誌
         changes = []
         if "name" in update_data and old_name != test_run_set.name:
             changes.append(f"name: {old_name} -> {test_run_set.name}")
-        if "status" in update_data and old_status != test_run_set.status:
-            changes.append(f"status: {old_status} -> {test_run_set.status}")
+        if "status" in update_data and old_status != new_status:
+            changes.append(f"status: {old_status} -> {new_status}")
         if "description" in update_data:
             changes.append("description updated")
 
-        return {
-            "changes": changes,
-            "set_id": test_run_set.id,
-            "set_name": test_run_set.name,
-            "old_status": old_status,
-            "old_name": old_name,
-        }
-
-    result = await run_sync(db, _update)
-    set_id = result["set_id"]
-    updated_set = await db.get(TestRunSetDB, set_id)
-    if updated_set and updated_set.team_id == team_id:
-        await recalculate_set_status(db, updated_set)
-        await db.commit()
-
-    def _build_response(sync_db: Session):
-        test_run_set = _load_set_or_404(sync_db, team_id, set_id)
-        resolved_status = resolve_status_for_response(test_run_set)
         response = TestRunSet(
             id=test_run_set.id,
             team_id=test_run_set.team_id,
             name=test_run_set.name,
             description=test_run_set.description,
-            status=resolved_status,
+            status=new_status,
             archived_at=test_run_set.archived_at,
             related_tp_tickets=deserialize_tp_tickets(test_run_set.related_tp_tickets_json),
             created_at=test_run_set.created_at,
             updated_at=test_run_set.updated_at,
         )
-        return response, test_run_set.status
 
-    response, new_status = await run_sync(db, _build_response)
+        return response, {
+            "changes": changes,
+            "set_id": test_run_set.id,
+            "set_name": test_run_set.name,
+            "old_status": old_status,
+            "old_name": old_name,
+            "new_status": new_status,
+        }
+
+    response, result = await main_boundary.run_sync_write(_update)
+    new_status = result["new_status"]
 
     changes = result["changes"]
     if "name" in payload.dict(exclude_unset=True) and result["old_name"] != response.name:
@@ -438,7 +423,7 @@ async def add_members_to_set(
     team_id: int,
     set_id: int,
     payload: TestRunSetMembershipCreate,
-    db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     def _add(sync_db: Session):
         verify_team_exists(team_id, sync_db)
@@ -448,18 +433,11 @@ async def add_members_to_set(
         for config_db in configs:
             attach_config_to_set(sync_db, team_id, config_db, test_run_set.id)
 
-        sync_db.commit()
-        sync_db.refresh(test_run_set)
+        recalculate_set_status_sync(sync_db, test_run_set)
+        sync_db.flush()
+        return _build_set_detail(_load_set_or_404(sync_db, team_id, test_run_set.id))
 
-        return test_run_set.id
-
-    set_id = await run_sync(db, _add)
-    updated_set = await db.get(TestRunSetDB, set_id)
-    if updated_set and updated_set.team_id == team_id:
-        await recalculate_set_status(db, updated_set)
-        await db.commit()
-
-    return await run_sync(db, lambda sync_db: _build_set_detail(_load_set_or_404(sync_db, team_id, set_id)))
+    return await main_boundary.run_sync_write(_add)
 
 
 @router.post("/members/{config_id}/move", response_model=TestRunConfigSummary)
@@ -467,7 +445,7 @@ async def move_config_between_sets(
     team_id: int,
     config_id: int,
     payload: TestRunSetMembershipMove,
-    db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     def _move(sync_db: Session):
         verify_team_exists(team_id, sync_db)
@@ -500,25 +478,17 @@ async def move_config_between_sets(
             if previous_set_id and previous_set_id != target_set.id:
                 ensure_test_run_set(sync_db, team_id, previous_set_id)
 
-        sync_db.commit()
-        sync_db.refresh(config_db)
+        for affected_set_id in affected_set_ids:
+            set_db = ensure_test_run_set(sync_db, team_id, affected_set_id)
+            recalculate_set_status_sync(sync_db, set_db)
+
+        sync_db.flush()
         sync_db.expire(config_db, ['set_membership'])
 
-        return {
-            "summary": build_config_summary(config_db),
-            "affected_set_ids": list(affected_set_ids),
-        }
+        return build_config_summary(config_db), list(affected_set_ids)
 
-    result = await run_sync(db, _move)
-    affected_set_ids = result.get("affected_set_ids") or []
-    for set_id in affected_set_ids:
-        set_db = await db.get(TestRunSetDB, set_id)
-        if set_db and set_db.team_id == team_id:
-            await recalculate_set_status(db, set_db)
-    if affected_set_ids:
-        await db.commit()
-
-    return result["summary"]
+    summary, _affected_set_ids = await main_boundary.run_sync_write(_move)
+    return summary
 
 
 @router.delete("/{set_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -526,8 +496,11 @@ async def delete_test_run_set(
     team_id: int,
     set_id: int,
     db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
     current_user: User = Depends(get_current_user),
 ):
+    from ..services.test_result_cleanup_service import TestResultCleanupService
+
     def _prepare(sync_db: Session):
         verify_team_exists(team_id, sync_db)
         test_run_set = _load_set_or_404(sync_db, team_id, set_id)
@@ -550,13 +523,25 @@ async def delete_test_run_set(
         }
 
     try:
-        context = await run_sync(db, _prepare)
+        context = await main_boundary.run_sync_read(_prepare)
 
-        # 2. 再刪除 Configs (傳入 detach=False 以避免重複刪除 membership)
+        cleanup_service = TestResultCleanupService()
         for config_id in context["config_ids"]:
-            await delete_test_run_config_cascade(db, team_id, config_id, detach=False)
+            await cleanup_service.cleanup_test_run_config_files(team_id, config_id, db)
 
-        await run_sync(db, lambda sync_db: sync_db.commit())
+        def _delete(sync_db: Session):
+            verify_team_exists(team_id, sync_db)
+            test_run_set = _load_set_or_404(sync_db, team_id, set_id)
+
+            sync_db.delete(test_run_set)
+            sync_db.flush()
+
+            for config_id in context["config_ids"]:
+                delete_test_run_config_cascade_sync(
+                    sync_db, team_id, config_id, detach=False
+                )
+
+        await main_boundary.run_sync_write(_delete)
 
         # 記錄審計日誌
         action_brief = f"{current_user.username} deleted Test Run Set: {context['set_name']}"
@@ -573,7 +558,6 @@ async def delete_test_run_set(
             },
         )
     except Exception as exc:
-        await run_sync(db, lambda sync_db: sync_db.rollback())
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc))
 
 
@@ -581,7 +565,7 @@ async def delete_test_run_set(
 async def archive_test_run_set(
     team_id: int,
     set_id: int,
-    db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     def _archive(sync_db: Session):
         verify_team_exists(team_id, sync_db)
@@ -589,9 +573,6 @@ async def archive_test_run_set(
 
         test_run_set.status = TestRunSetStatus.ARCHIVED
         test_run_set.archived_at = datetime.utcnow()
-
-        sync_db.commit()
-        sync_db.refresh(test_run_set)
 
         return TestRunSet(
             id=test_run_set.id,
@@ -605,7 +586,7 @@ async def archive_test_run_set(
             updated_at=test_run_set.updated_at,
         )
 
-    return await run_sync(db, _archive)
+    return await main_boundary.run_sync_write(_archive)
 
 
 @router.post("/{set_id}/generate-html")
@@ -614,11 +595,14 @@ async def generate_test_run_set_html_report(
     set_id: int,
     request: Request,
     db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """生成 Test Run Set 的靜態 HTML 報告並回傳可存取連結"""
     try:
-        await run_sync(db, lambda sync_db: verify_team_exists(team_id, sync_db))
-        await run_sync(db, lambda sync_db: _load_set_or_404(sync_db, team_id, set_id))
+        await main_boundary.run_sync_read(lambda sync_db: verify_team_exists(team_id, sync_db))
+        await main_boundary.run_sync_read(
+            lambda sync_db: _load_set_or_404(sync_db, team_id, set_id)
+        )
 
         from ..services.html_report_service import HTMLReportService
 
@@ -648,10 +632,13 @@ async def get_test_run_set_report_status(
     set_id: int,
     request: Request,
     db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """查詢 Test Run Set 的 HTML 報告是否存在，存在則回傳連結"""
-    await run_sync(db, lambda sync_db: verify_team_exists(team_id, sync_db))
-    await run_sync(db, lambda sync_db: _load_set_or_404(sync_db, team_id, set_id))
+    await main_boundary.run_sync_read(lambda sync_db: verify_team_exists(team_id, sync_db))
+    await main_boundary.run_sync_read(
+        lambda sync_db: _load_set_or_404(sync_db, team_id, set_id)
+    )
 
     from ..services.html_report_service import HTMLReportService
 
@@ -670,7 +657,7 @@ async def search_test_run_sets_by_tp_tickets(
     team_id: int,
     q: str = Query(..., min_length=2, max_length=50, description="搜尋查詢字串（TP 票號）"),
     limit: int = Query(20, ge=1, le=100, description="最大返回結果數"),
-    db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """根據 TP 票號搜尋 Test Run Set"""
     def _search(sync_db: Session):
@@ -707,7 +694,7 @@ async def search_test_run_sets_by_tp_tickets(
 
         return summaries
 
-    return await run_sync(db, _search)
+    return await main_boundary.run_sync_read(_search)
 
 
 # ============ USM Integration: Create Test Run with Test Cases ============
@@ -715,7 +702,7 @@ async def search_test_run_sets_by_tp_tickets(
 async def create_test_run_set_from_cases(
     team_id: int,
     payload: dict = Body(...),
-    db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -843,37 +830,30 @@ async def create_test_run_set_from_cases(
             if all_tickets_found:
                 sync_tp_tickets_to_db(new_set, list(all_tickets_found))
 
-            sync_db.commit()
-            sync_db.refresh(new_set)
+            new_status = recalculate_set_status_sync(sync_db, new_set)
+            sync_db.flush()
+            detail = _build_set_detail(_load_set_or_404(sync_db, team_id, new_set.id))
 
-            return {
-                "audit": {
-                    "set_id": new_set.id,
-                    "name": new_set.name,
-                    "config_count": len(configs_created),
-                    "groups": list(ticket_groups.keys()),
-                    "source": "from_test_cases",
-                },
+            return detail, {
+                "set_id": new_set.id,
+                "name": new_set.name,
+                "config_count": len(configs_created),
+                "groups": list(ticket_groups.keys()),
+                "source": "from_test_cases",
+                "status": new_status,
             }
 
-        result = await run_sync(db, _create)
-        set_id = result["audit"]["set_id"]
-        created_set = await db.get(TestRunSetDB, set_id)
-        if created_set and created_set.team_id == team_id:
-            await recalculate_set_status(db, created_set)
-            await db.commit()
-
-        detail = await run_sync(db, lambda sync_db: _build_set_detail(_load_set_or_404(sync_db, team_id, set_id)))
+        detail, audit_context = await main_boundary.run_sync_write(_create)
 
         # 記錄審計日誌
-        action_brief = f"{current_user.username} created Test Run Set from cases: {result['audit']['name']}"
+        action_brief = f"{current_user.username} created Test Run Set from cases: {audit_context['name']}"
         await log_test_run_set_action(
             action_type=ActionType.CREATE,
             current_user=current_user,
             team_id=team_id,
-            resource_id=str(result["audit"]["set_id"]),
+            resource_id=str(audit_context["set_id"]),
             action_brief=action_brief,
-            details=result["audit"],
+            details=audit_context,
         )
 
         return detail
@@ -882,5 +862,4 @@ async def create_test_run_set_from_cases(
         raise
     except Exception as e:
         logger.error(f"Error creating test run set from cases: {str(e)}", exc_info=True)
-        await run_sync(db, lambda sync_db: sync_db.rollback())
         raise HTTPException(status_code=500, detail=f"建立 Test Run Set 失敗: {str(e)}")

@@ -12,9 +12,9 @@ from qdrant_client.http import models
 # 將專案根目錄加入 sys.path
 sys.path.insert(0, os.getcwd())
 
-from app.database import SessionLocal
-from app.models.user_story_map_db import USMAsyncSessionLocal
-from app.models.database_models import User, Team
+from app.db_access.main import get_main_access_boundary
+from app.db_access.usm import get_usm_access_boundary
+from app.models.database_models import Team
 from app.auth.models import UserRole
 from app.api.llm_context import get_test_cases_context, get_usm_context
 from sqlalchemy import select
@@ -186,28 +186,25 @@ async def main():
         print(f"Failed to connect to Qdrant at {QDRANT_URL}: {e}")
         return
 
-    # 2. Setup DB Sessions
-    db = SessionLocal()
-    usm_db = USMAsyncSessionLocal()
+    main_boundary = get_main_access_boundary()
+    usm_boundary = get_usm_access_boundary()
     current_user = MockUser()
 
-    try:
-        # 3. Get Team
-        result = await db.execute(select(Team).limit(1))
-        team = result.scalars().first()
-        if not team:
-            print("No team found.")
-            return
-        
-        print(f"Target Team: {team.name} (ID: {team.id})")
+    async with main_boundary.session_scope() as db:
+        async with usm_boundary.session_scope() as usm_db:
+            # 3. Get Team
+            result = await db.execute(select(Team).limit(1))
+            team = result.scalars().first()
+            if not team:
+                print("No team found.")
+                return
 
-        # 4. Process Data
-        await process_test_cases(db, current_user, qdrant, team.id)
-        await process_usm_nodes(usm_db, db, current_user, qdrant, team.id)
+            print(f"Target Team: {team.name} (ID: {team.id})")
 
-    finally:
-        await db.close()
-        await usm_db.close()
+            # 4. Process Data
+            await process_test_cases(db, current_user, qdrant, team.id)
+            await process_usm_nodes(usm_db, db, current_user, qdrant, team.id)
+
         print("\nDone.")
 
 if __name__ == "__main__":

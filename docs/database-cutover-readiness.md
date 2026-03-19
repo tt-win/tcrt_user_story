@@ -2,6 +2,26 @@
 
 此文件定義從 SQLite 切換到 MySQL / PostgreSQL 前的 rehearsal、rollback 與 re-verification 基準流程。
 
+## 0. 標準 workflow 入口
+
+專案現在提供統一 runner：
+
+```bash
+python3 scripts/run_db_cutover_workflow.py --target sqlite --mode smoke
+python3 scripts/run_db_cutover_workflow.py --target mysql --mode smoke --manage-services
+python3 scripts/run_db_cutover_workflow.py --target postgres --mode smoke --manage-services
+```
+
+每次 run 都會在 `.tmp/db-cutover/<timestamp>-<target>-<mode>/` 留下：
+
+- `summary.json`
+- `summary.md`
+- `logs/preflight.log`
+- `logs/bootstrap.log`
+- `logs/verify.log`
+- `logs/start.log`
+- 若使用 `--manage-services`，另有 `logs/compose-up.log` 與 `logs/compose-down.log`
+
 ## 1. Cutover 前提
 
 在任何 rehearsal 或正式切換前，必須先滿足：
@@ -21,13 +41,31 @@
 6. 執行 `python3 database_init.py --verify-target all`。
 7. 啟動應用並確認 `/health` 可回應。
 
+建議直接使用統一 runner：
+
+```bash
+python3 scripts/run_db_cutover_workflow.py --target sqlite --mode rehearsal
+python3 scripts/run_db_cutover_workflow.py \
+  --target mysql \
+  --mode rehearsal \
+  --manage-services \
+  --baseline-summary .tmp/db-cutover/<sqlite-run>/summary.json
+python3 scripts/run_db_cutover_workflow.py \
+  --target postgres \
+  --mode rehearsal \
+  --manage-services \
+  --baseline-summary .tmp/db-cutover/<sqlite-run>/summary.json
+```
+
 ## 3. 驗證輸出最低要求
 
 rehearsal 完成後，至少應保留：
 
-- `--preflight` 輸出
-- `--verify-target all` 輸出
-- `/health` 驗證結果
+- `summary.json`
+- `summary.md`
+- `--preflight` 或 `logs/preflight.log`
+- `--verify-target all` 或 `logs/verify.log`
+- `/health` 驗證結果與 `logs/start.log`
 - 若有資料搬遷，重要表的 row count 比對結果
 
 建議至少比對：
@@ -36,12 +74,15 @@ rehearsal 完成後，至少應保留：
 - `audit`: `audit_logs`
 - `usm`: `user_story_maps`、`user_story_map_nodes`
 
+若使用統一 runner，row count comparison 會寫在 `summary.json` 的 `comparison` 欄位與 `summary.md` 的 `Comparison` 段落。
+
 ## 4. Rollback 前提
 
 若 rehearsal 或切換驗證失敗，rollback 前請先保留：
 
 - 來源資料庫備份或快照
 - 失敗當下的目標資料庫 preflight / verification 輸出
+- `.tmp/db-cutover/<failed-run>/summary.json`
 - 失敗時間點使用的環境變數與 compose/連線設定
 
 ## 5. Rollback 步驟
@@ -63,6 +104,12 @@ HOST=127.0.0.1 PORT=19997 SERVER_PID_FILE=/tmp/tcrt-reverify.pid UVICORN_RELOAD=
 curl http://127.0.0.1:19997/health
 kill "$(cat /tmp/tcrt-reverify.pid)"
 rm -f /tmp/tcrt-reverify.pid
+```
+
+或直接重新跑：
+
+```bash
+python3 scripts/run_db_cutover_workflow.py --target sqlite --mode smoke
 ```
 
 只有在上述流程恢復正常後，才應重新安排下一次 rehearsal 或正式 cutover。

@@ -13,7 +13,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.database import SessionLocal, run_sync
+from app.db_access.main import (
+    MainAccessBoundary,
+    create_main_access_boundary_for_session,
+    get_main_access_boundary,
+)
 from app.models.database_models import TestRunConfig as TestRunConfigDB, TestRunItem as TestRunItemDB
 from app.services.lark_group_service import get_lark_group_service
 
@@ -22,6 +26,15 @@ logger = logging.getLogger(__name__)
 class LarkNotifyService:
     def __init__(self):
         self.settings = get_settings()
+        self.main_boundary = get_main_access_boundary()
+
+    def _resolve_main_boundary(
+        self,
+        db: Optional[AsyncSession] = None,
+    ) -> MainAccessBoundary:
+        if db is not None:
+            return create_main_access_boundary_for_session(db)
+        return self.main_boundary
     
     def _get_tenant_access_token(self) -> Optional[str]:
         """
@@ -374,61 +387,54 @@ class LarkNotifyService:
         Returns:
             統計資訊：{"pass_rate": float, "fail_rate": float, "bug_count": int}
         """
-        async def _compute(session: AsyncSession) -> Dict:
-            def _load(sync_db: Session) -> Dict:
-                # 查詢配置
-                config = sync_db.query(TestRunConfigDB).filter(
-                    TestRunConfigDB.id == config_id,
-                    TestRunConfigDB.team_id == team_id
-                ).first()
+        def _load(sync_db: Session) -> Dict:
+            # 查詢配置
+            config = sync_db.query(TestRunConfigDB).filter(
+                TestRunConfigDB.id == config_id,
+                TestRunConfigDB.team_id == team_id
+            ).first()
 
-                if not config:
-                    logger.error(f"找不到 Test Run Config: team_id={team_id}, config_id={config_id}")
-                    return {"pass_rate": 0.0, "fail_rate": 0.0, "bug_count": 0}
+            if not config:
+                logger.error(f"找不到 Test Run Config: team_id={team_id}, config_id={config_id}")
+                return {"pass_rate": 0.0, "fail_rate": 0.0, "bug_count": 0}
 
-                # 計算通過率和失敗率
-                executed_cases = config.executed_cases or 0
-                passed_cases = config.passed_cases or 0
-                failed_cases = config.failed_cases or 0
+            # 計算通過率和失敗率
+            executed_cases = config.executed_cases or 0
+            passed_cases = config.passed_cases or 0
+            failed_cases = config.failed_cases or 0
 
-                if executed_cases > 0:
-                    pass_rate = (passed_cases / executed_cases) * 100
-                    fail_rate = (failed_cases / executed_cases) * 100
-                else:
-                    pass_rate = 0.0
-                    fail_rate = 0.0
+            if executed_cases > 0:
+                pass_rate = (passed_cases / executed_cases) * 100
+                fail_rate = (failed_cases / executed_cases) * 100
+            else:
+                pass_rate = 0.0
+                fail_rate = 0.0
 
-                # 計算 bug 數量（從所有 TestRunItem 的 bug_tickets_json 彙整去重）
-                items = sync_db.query(TestRunItemDB).filter(
-                    TestRunItemDB.config_id == config_id,
-                    TestRunItemDB.team_id == team_id
-                ).all()
+            # 計算 bug 數量（從所有 TestRunItem 的 bug_tickets_json 彙整去重）
+            items = sync_db.query(TestRunItemDB).filter(
+                TestRunItemDB.config_id == config_id,
+                TestRunItemDB.team_id == team_id
+            ).all()
 
-                all_bugs = set()
-                for item in items:
-                    if item.bug_tickets_json:
-                        try:
-                            bug_tickets = json.loads(item.bug_tickets_json)
-                            if isinstance(bug_tickets, list):
-                                all_bugs.update(bug_tickets)
-                        except (json.JSONDecodeError, TypeError):
-                            continue
+            all_bugs = set()
+            for item in items:
+                if item.bug_tickets_json:
+                    try:
+                        bug_tickets = json.loads(item.bug_tickets_json)
+                        if isinstance(bug_tickets, list):
+                            all_bugs.update(bug_tickets)
+                    except (json.JSONDecodeError, TypeError):
+                        continue
 
-                bug_count = len(all_bugs)
+            bug_count = len(all_bugs)
 
-                return {
-                    "pass_rate": pass_rate,
-                    "fail_rate": fail_rate,
-                    "bug_count": bug_count
-                }
+            return {
+                "pass_rate": pass_rate,
+                "fail_rate": fail_rate,
+                "bug_count": bug_count
+            }
 
-            return await run_sync(session, _load)
-
-        if db is not None:
-            return await _compute(db)
-
-        async with SessionLocal() as session:
-            return await _compute(session)
+        return await self._resolve_main_boundary(db).run_sync_read(_load)
     
     async def send_execution_started(self, config_id: int, team_id: int) -> None:
         """
@@ -438,7 +444,7 @@ class LarkNotifyService:
             config_id: Test Run 配置 ID
             team_id: 團隊 ID
         """
-        async with SessionLocal() as session:
+        async with self.main_boundary.session_scope() as session:
             try:
                 stats = await self.compute_end_stats(team_id, config_id, session)
 
@@ -480,7 +486,7 @@ class LarkNotifyService:
                         "message": message
                     }
 
-                payload = await run_sync(session, _load)
+                payload = await self._resolve_main_boundary(session).run_sync_read(_load)
                 if not payload or payload.get("skip"):
                     return
 
@@ -503,7 +509,7 @@ class LarkNotifyService:
             config_id: Test Run 配置 ID
             team_id: 團隊 ID
         """
-        async with SessionLocal() as session:
+        async with self.main_boundary.session_scope() as session:
             try:
                 stats = await self.compute_end_stats(team_id, config_id, session)
 
@@ -545,7 +551,7 @@ class LarkNotifyService:
                         "message": message,
                     }
 
-                payload = await run_sync(session, _load)
+                payload = await self._resolve_main_boundary(session).run_sync_read(_load)
                 if not payload or payload.get("skip"):
                     return
 

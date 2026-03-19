@@ -10,9 +10,9 @@ from typing import Callable
 from app.auth.models import UserRole, PermissionType, AuthErrorResponse
 from app.auth.auth_service import auth_service
 from app.auth.permission_service import permission_service
+from app.db_access.main import MainAccessBoundary, get_main_access_boundary
 from app.models.database_models import User
-from app.database import get_async_session
-from sqlalchemy import select
+from app.services.user_service import UserService
 
 
 # HTTP Bearer Token 安全方案
@@ -21,6 +21,7 @@ security = HTTPBearer()
 
 async def get_current_user(
     request: Request,
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
     credentials: HTTPAuthorizationCredentials = Security(security),
 ) -> User:
     """
@@ -45,23 +46,18 @@ async def get_current_user(
         )
 
     # 從資料庫取得完整使用者資訊
-    async with get_async_session() as session:
-        result = await session.execute(
-            select(User).where(User.id == token_data.user_id)
+    user = await UserService.get_user_by_id(token_data.user_id, main_boundary=main_boundary)
+    if not user or not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": "USER_NOT_FOUND_OR_INACTIVE",
+                "message": "使用者不存在或已停用",
+            },
         )
-        user = result.scalar_one_or_none()
 
-        if not user or not user.is_active:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail={
-                    "code": "USER_NOT_FOUND_OR_INACTIVE",
-                    "message": "使用者不存在或已停用",
-                },
-            )
-
-        request.state.current_user = user
-        return user
+    request.state.current_user = user
+    return user
 
 
 class AuthDependencies:

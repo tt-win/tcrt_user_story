@@ -11,13 +11,13 @@ import re
 from datetime import datetime
 from typing import Any, Dict, List, Literal, Optional, Sequence, Set, Tuple
 
-from sqlalchemy import text
+from sqlalchemy import inspect
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
-from app.database import run_sync
+from app.db_access.main import MainAccessBoundary, create_main_access_boundary_for_session
 from app.models.database_models import (
     AITestCaseHelperDraft,
     AITestCaseHelperStageMetric,
@@ -263,11 +263,16 @@ def _locale_label(locale: str) -> str:
 class JiraTestCaseHelperService:
     def __init__(
         self,
-        db: AsyncSession,
+        db: AsyncSession | None,
         llm_service: Optional[JiraTestCaseHelperLLMService] = None,
         prompt_service: Optional[JiraTestCaseHelperPromptService] = None,
+        main_boundary: Optional[MainAccessBoundary] = None,
     ):
         self.db = db
+        self.main_boundary = (
+            main_boundary
+            or (create_main_access_boundary_for_session(db) if db is not None else None)
+        )
         self.settings = get_settings()
         self.llm_service = llm_service or get_jira_testcase_helper_llm_service()
         self.prompt_service = prompt_service or get_jira_testcase_helper_prompt_service()
@@ -278,6 +283,17 @@ class JiraTestCaseHelperService:
         self.pretestcase_presenter = PretestcasePresenter()
         self._stage_metrics_table_available: Optional[bool] = None
         self._stage_metrics_table_warned_once = False
+
+    def _require_main_boundary(self) -> MainAccessBoundary:
+        if self.main_boundary is None:
+            raise RuntimeError("JiraTestCaseHelperService requires a managed main boundary")
+        return self.main_boundary
+
+    async def _run_main_read(self, operation):
+        return await self._require_main_boundary().run_sync_read(operation)
+
+    async def _run_main_write(self, operation):
+        return await self._require_main_boundary().run_sync_write(operation)
 
     @staticmethod
     def _is_missing_stage_metrics_table_error(exc: Exception) -> bool:
@@ -510,7 +526,7 @@ class JiraTestCaseHelperService:
     ) -> HelperSessionResponse:
         target_set_id = request.test_case_set_id
         if request.create_set_name:
-            set_service = TestCaseSetService(self.db)
+            set_service = TestCaseSetService(self.db, main_boundary=self.main_boundary)
             created_set = await set_service.create(
                 team_id=team_id,
                 name=request.create_set_name,
@@ -551,10 +567,9 @@ class JiraTestCaseHelperService:
             sync_db.add(session)
             sync_db.flush()
             drafts = self._build_default_drafts_sync(sync_db, session.id)
-            sync_db.commit()
             return self._to_session_response(session, drafts)
 
-        return await run_sync(self.db, _create)
+        return await self._run_main_write(_create)
 
     async def get_session(self, *, team_id: int, session_id: int) -> HelperSessionResponse:
         def _get(sync_db: Session) -> HelperSessionResponse:
@@ -565,7 +580,7 @@ class JiraTestCaseHelperService:
             )
             return self._to_session_response(session, drafts)
 
-        return await run_sync(self.db, _get)
+        return await self._run_main_read(_get)
 
     async def list_sessions(
         self,
@@ -601,7 +616,7 @@ class JiraTestCaseHelperService:
                 has_more=has_more,
             )
 
-        return await run_sync(self.db, _list)
+        return await self._run_main_read(_list)
 
     async def delete_session(
         self,
@@ -640,14 +655,13 @@ class JiraTestCaseHelperService:
             deleted_ids = sorted({session.id for session in sessions})
             for session in sessions:
                 sync_db.delete(session)
-            sync_db.commit()
             return HelperSessionDeleteResponse(
                 requested_count=len(normalized_ids),
                 deleted_count=len(deleted_ids),
                 deleted_session_ids=deleted_ids,
             )
 
-        return await run_sync(self.db, _delete)
+        return await self._run_main_write(_delete)
 
     async def clear_sessions(
         self,
@@ -667,14 +681,13 @@ class JiraTestCaseHelperService:
             deleted_ids = sorted({session.id for session in sessions})
             for session in sessions:
                 sync_db.delete(session)
-            sync_db.commit()
             return HelperSessionDeleteResponse(
                 requested_count=len(deleted_ids),
                 deleted_count=len(deleted_ids),
                 deleted_session_ids=deleted_ids,
             )
 
-        return await run_sync(self.db, _clear)
+        return await self._run_main_write(_clear)
 
     async def update_session(
         self,
@@ -710,7 +723,7 @@ class JiraTestCaseHelperService:
                     session.last_error = request.last_error
                 session.updated_at = _now()
 
-            sync_db.commit()
+            sync_db.flush()
             _, drafts = self._get_session_and_drafts_sync(
                 sync_db,
                 team_id=team_id,
@@ -718,7 +731,7 @@ class JiraTestCaseHelperService:
             )
             return self._to_session_response(session, drafts)
 
-        return await run_sync(self.db, _update)
+        return await self._run_main_write(_update)
 
     async def upsert_draft(
         self,
@@ -746,10 +759,9 @@ class JiraTestCaseHelperService:
                 payload=request.payload,
                 increment_version=request.increment_version,
             )
-            sync_db.commit()
             return self._to_draft_response(draft)
 
-        return await run_sync(self.db, _upsert)
+        return await self._run_main_write(_upsert)
 
     # ---------- JIRA stage ----------
     async def fetch_ticket(
@@ -818,9 +830,8 @@ class JiraTestCaseHelperService:
                 payload=payload,
                 increment_version=True,
             )
-            sync_db.commit()
 
-        await run_sync(self.db, _persist)
+        await self._run_main_write(_persist)
         return HelperTicketSummaryResponse(**payload)
 
     # ---------- LLM: requirement normalization ----------
@@ -1245,41 +1256,40 @@ class JiraTestCaseHelperService:
     ) -> None:
         if self._stage_metrics_table_available is None:
             try:
-                sync_db.execute(text("SELECT 1 FROM ai_tc_helper_stage_metrics LIMIT 1"))
-                self._stage_metrics_table_available = True
-            except Exception as exc:
-                if self._is_missing_stage_metrics_table_error(exc):
+                table_exists = inspect(sync_db.get_bind()).has_table(
+                    "ai_tc_helper_stage_metrics"
+                )
+                if table_exists:
+                    self._stage_metrics_table_available = True
+                else:
                     created = self._try_create_stage_metrics_table_sync(sync_db)
                     if created:
-                        try:
-                            sync_db.execute(
-                                text("SELECT 1 FROM ai_tc_helper_stage_metrics LIMIT 1")
+                        self._stage_metrics_table_available = inspect(
+                            sync_db.get_bind()
+                        ).has_table("ai_tc_helper_stage_metrics")
+                        if (
+                            not self._stage_metrics_table_available
+                            and not self._stage_metrics_table_warned_once
+                        ):
+                            logger.warning(
+                                "ai_tc_helper_stage_metrics 建立後仍無法使用，暫停 telemetry 落庫。"
                             )
-                            self._stage_metrics_table_available = True
-                        except Exception as probe_again_exc:
-                            self._stage_metrics_table_available = False
-                            if not self._stage_metrics_table_warned_once:
-                                logger.warning(
-                                    "ai_tc_helper_stage_metrics 建立後仍無法使用，暫停 telemetry 落庫: %s",
-                                    probe_again_exc,
-                                )
-                                self._stage_metrics_table_warned_once = True
+                            self._stage_metrics_table_warned_once = True
                     else:
                         self._stage_metrics_table_available = False
                         if not self._stage_metrics_table_warned_once:
                             logger.warning(
-                                "偵測到 ai_tc_helper_stage_metrics 尚未就緒且自動建立失敗，暫停 telemetry 落庫: %s",
-                                exc,
+                                "偵測到 ai_tc_helper_stage_metrics 尚未就緒且自動建立失敗，暫停 telemetry 落庫。"
                             )
                             self._stage_metrics_table_warned_once = True
-                else:
-                    self._stage_metrics_table_available = False
-                    if not self._stage_metrics_table_warned_once:
-                        logger.warning(
-                            "偵測到 ai_tc_helper_stage_metrics 尚未就緒，暫停 telemetry 落庫。請確認部署有執行 database_init.py --auto-fix。原因: %s",
-                            exc,
-                        )
-                        self._stage_metrics_table_warned_once = True
+            except Exception as exc:
+                self._stage_metrics_table_available = False
+                if not self._stage_metrics_table_warned_once:
+                    logger.warning(
+                        "偵測 ai_tc_helper_stage_metrics 狀態失敗，暫停 telemetry 落庫: %s",
+                        exc,
+                    )
+                    self._stage_metrics_table_warned_once = True
 
         if not self._stage_metrics_table_available:
             return
@@ -2738,7 +2748,7 @@ class JiraTestCaseHelperService:
                 payload=usage_payload,
                 increment_version=True,
             )
-            sync_db.commit()
+            sync_db.flush()
             _, drafts = self._get_session_and_drafts_sync(
                 sync_db,
                 team_id=team_id,
@@ -2746,7 +2756,7 @@ class JiraTestCaseHelperService:
             )
             return self._to_session_response(session, drafts)
 
-        updated_session = await run_sync(self.db, _persist)
+        updated_session = await self._run_main_write(_persist)
         return HelperStageResultResponse(
             session=updated_session,
             stage="requirement",
@@ -5161,7 +5171,7 @@ class JiraTestCaseHelperService:
                     last_error=None,
                     enforce_transition=False,
                 )
-                sync_db.commit()
+                sync_db.flush()
                 _, drafts = self._get_session_and_drafts_sync(
                     sync_db,
                     team_id=team_id,
@@ -5169,7 +5179,7 @@ class JiraTestCaseHelperService:
                 )
                 return self._to_session_response(session, drafts)
 
-            warned_session = await run_sync(self.db, _persist_warning)
+            warned_session = await self._run_main_write(_persist_warning)
             return HelperStageResultResponse(
                 session=warned_session,
                 stage="requirement_validation_warning",
@@ -5225,9 +5235,8 @@ class JiraTestCaseHelperService:
                 status=HelperSessionStatus.ACTIVE,
                 enforce_transition=False,
             )
-            sync_db.commit()
 
-        await run_sync(self.db, _mark_running)
+        await self._run_main_write(_mark_running)
 
         try:
             requirement_ir_result = await self.build_requirement_ir(
@@ -5580,7 +5589,7 @@ class JiraTestCaseHelperService:
                     pretestcase_count=pretestcase_count,
                 )
                 self._persist_stage_telemetry_sync(sync_db, telemetry_record)
-                sync_db.commit()
+                sync_db.flush()
                 _, drafts = self._get_session_and_drafts_sync(
                     sync_db,
                     team_id=team_id,
@@ -5588,7 +5597,7 @@ class JiraTestCaseHelperService:
                 )
                 return self._to_session_response(session, drafts)
 
-            updated_session = await run_sync(self.db, _persist_success)
+            updated_session = await self._run_main_write(_persist_success)
             return HelperStageResultResponse(
                 session=updated_session,
                 stage="analysis_coverage",
@@ -5642,9 +5651,9 @@ class JiraTestCaseHelperService:
                     error_message=error_message,
                 )
                 self._persist_stage_telemetry_sync(sync_db, telemetry_record)
-                sync_db.commit()
+                sync_db.flush()
 
-            await run_sync(self.db, _persist_failed)
+            await self._run_main_write(_persist_failed)
             raise
 
     # ---------- Stage 2: testcase and audit ----------
@@ -6259,9 +6268,8 @@ class JiraTestCaseHelperService:
                 status=HelperSessionStatus.ACTIVE,
                 enforce_transition=False,
             )
-            sync_db.commit()
 
-        await run_sync(self.db, _mark_running)
+        await self._run_main_write(_mark_running)
         stage_started_at = _now()
         testcase_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         audit_usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
@@ -6742,7 +6750,7 @@ class JiraTestCaseHelperService:
                     testcase_count=len(audited_testcases_all),
                 )
                 self._persist_stage_telemetry_sync(sync_db, telemetry_record)
-                sync_db.commit()
+                sync_db.flush()
                 _, drafts = self._get_session_and_drafts_sync(
                     sync_db,
                     team_id=team_id,
@@ -6750,7 +6758,7 @@ class JiraTestCaseHelperService:
                 )
                 return self._to_session_response(session, drafts)
 
-            updated_session = await run_sync(self.db, _persist_success)
+            updated_session = await self._run_main_write(_persist_success)
             return HelperStageResultResponse(
                 session=updated_session,
                 stage="testcase_audit",
@@ -6802,9 +6810,9 @@ class JiraTestCaseHelperService:
                     error_message=error_message,
                 )
                 self._persist_stage_telemetry_sync(sync_db, telemetry_record)
-                sync_db.commit()
+                sync_db.flush()
 
-            await run_sync(self.db, _persist_failed)
+            await self._run_main_write(_persist_failed)
             raise
 
     # ---------- Commit ----------
@@ -6972,9 +6980,8 @@ class JiraTestCaseHelperService:
                 status=HelperSessionStatus.ACTIVE,
                 enforce_transition=False,
             )
-            sync_db.commit()
 
-        await run_sync(self.db, _mark_running)
+        await self._run_main_write(_mark_running)
 
         def _commit(sync_db: Session) -> Dict[str, Any]:
             session, _ = self._get_session_and_drafts_sync(
@@ -7067,13 +7074,9 @@ class JiraTestCaseHelperService:
                     testcase_count=len(created_numbers),
                 )
                 self._persist_stage_telemetry_sync(sync_db, telemetry_record)
-                sync_db.commit()
+                sync_db.flush()
             except IntegrityError as exc:
-                sync_db.rollback()
                 raise ValueError(f"提交失敗，可能有重複 Test Case 編號: {exc}") from exc
-            except Exception:
-                sync_db.rollback()
-                raise
 
             return {
                 "created_count": len(created_numbers),
@@ -7083,7 +7086,7 @@ class JiraTestCaseHelperService:
             }
 
         try:
-            result = await run_sync(self.db, _commit)
+            result = await self._run_main_write(_commit)
             return result
         except Exception as exc:
             error_message = str(exc)
@@ -7113,7 +7116,7 @@ class JiraTestCaseHelperService:
                     error_message=error_message,
                 )
                 self._persist_stage_telemetry_sync(sync_db, telemetry_record)
-                sync_db.commit()
+                sync_db.flush()
 
-            await run_sync(self.db, _persist_failed)
+            await self._run_main_write(_persist_failed)
             raise

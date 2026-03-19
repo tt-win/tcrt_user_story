@@ -15,7 +15,12 @@ import requests
 import urllib.parse
 import logging
 
-from app.database import get_db, run_sync
+from app.database import get_db
+from app.db_access.main import (
+    MainAccessBoundary,
+    create_main_access_boundary_for_session,
+    get_main_access_boundary,
+)
 from app.models.database_models import Team as TeamDB, TestRunConfig as TestRunConfigDB
 from app.services.lark_client import LarkClient
 from app.config import settings
@@ -26,12 +31,21 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/attachments", tags=["attachments"])
 
 
-async def get_lark_client_for_team(team_id: int, db: AsyncSession) -> tuple[LarkClient, TeamDB]:
+async def get_lark_client_for_team(
+    team_id: int,
+    db: Optional[AsyncSession] = None,
+    main_boundary: Optional[MainAccessBoundary] = None,
+) -> tuple[LarkClient, TeamDB]:
     """取得團隊的 Lark Client"""
+    if main_boundary is None:
+        if db is None:
+            raise ValueError("Either db or main_boundary must be provided")
+        main_boundary = create_main_access_boundary_for_session(db)
+
     def _get_team(sync_db: Session):
         return sync_db.query(TeamDB).filter(TeamDB.id == team_id).first()
 
-    team = await run_sync(db, _get_team)
+    team = await main_boundary.run_sync_read(_get_team)
     if not team:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -72,7 +86,7 @@ async def upload_testcase_attachment(
         field_name: 附件欄位名稱（預設: "Attachment"）
         append: 是否追加到現有附件（預設: True）
     """
-    lark_client, team = await get_lark_client_for_team(team_id, db)
+    lark_client, team = await get_lark_client_for_team(team_id, db=db)
     
     try:
         # 讀取檔案內容
@@ -133,7 +147,7 @@ async def upload_testrun_attachment(
     file: UploadFile = File(...),
     field_name: str = Form("Execution Result"),
     append: bool = Form(True),
-    db: AsyncSession = Depends(get_db)
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """
     上傳檔案到測試執行記錄（使用本地檔案系統）
@@ -195,7 +209,7 @@ async def upload_testrun_attachment(
                 detail=f"找不到測試執行項目 ID {item_id}"
             )
 
-    await run_sync(db, _validate)
+    await main_boundary.run_sync_read(_validate)
 
     try:
         # 讀取檔案內容
@@ -294,10 +308,9 @@ async def upload_testrun_attachment(
             test_run_item.upload_history_json = json.dumps(history, ensure_ascii=False)
             test_run_item.updated_at = datetime.utcnow()
 
-            sync_db.commit()
             return len(existing)
 
-        total_files = await run_sync(db, _update_item)
+        total_files = await main_boundary.run_sync_write(_update_item)
 
         return {
             "success": True,
@@ -314,7 +327,6 @@ async def upload_testrun_attachment(
     except HTTPException:
         raise
     except Exception as e:
-        await run_sync(db, lambda sync_db: sync_db.rollback())
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"檔案上傳過程發生錯誤: {str(e)}"
@@ -327,7 +339,7 @@ async def upload_testrun_screenshot(
     config_id: int,
     record_id: str,
     file: UploadFile = File(...),
-    db: AsyncSession = Depends(get_db)
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """
     上傳測試執行結果截圖（使用本地檔案系統）
@@ -350,7 +362,7 @@ async def upload_testrun_screenshot(
         file=file,
         field_name="Execution Result",
         append=True,
-        db=db
+        main_boundary=main_boundary,
     )
 
 
@@ -365,7 +377,7 @@ async def upload_file_get_token(
     
     這個 API 可用於先上傳檔案，稍後再附加到記錄
     """
-    lark_client, team = await get_lark_client_for_team(team_id, db)
+    lark_client, team = await get_lark_client_for_team(team_id, db=db)
     
     try:
         # 讀取檔案內容
@@ -426,7 +438,7 @@ async def attach_file_token_to_testcase(
     """
     將已上傳的檔案（file_token）附加到測試案例記錄
     """
-    lark_client, team = await get_lark_client_for_team(team_id, db)
+    lark_client, team = await get_lark_client_for_team(team_id, db=db)
     
     try:
         # 取得現有附件（如果是追加模式）
@@ -496,7 +508,7 @@ async def remove_testcase_attachment(
         file_token: 要移除的附件 file_token
         field_name: 附件欄位名稱（預設: "Attachment"）
     """
-    lark_client, team = await get_lark_client_for_team(team_id, db)
+    lark_client, team = await get_lark_client_for_team(team_id, db=db)
     
     try:
         # 取得現有記錄
@@ -577,7 +589,8 @@ async def download_attachment_proxy(
     config_id: int = None,
     item_id: int = None,
     file_index: int = None,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """
     附件下載代理 API
@@ -606,7 +619,7 @@ async def download_attachment_proxy(
                 ).first()
                 return item.execution_results_json if item else None
 
-            execution_results_json = await run_sync(db, _fetch_item)
+            execution_results_json = await main_boundary.run_sync_read(_fetch_item)
 
             if execution_results_json is not None:
                 try:
@@ -706,7 +719,7 @@ async def download_attachment_proxy(
         pass
 
     # 優先級 4：代理 Lark 下載
-    lark_client, team = await get_lark_client_for_team(team_id, db)
+    lark_client, team = await get_lark_client_for_team(team_id, db=db)
     
     try:
         # 決定下載 URL

@@ -31,7 +31,8 @@ import re
 import requests
 import time
 
-from app.database import get_db, run_sync
+from app.database import get_db
+from app.db_access.main import MainAccessBoundary, get_main_access_boundary
 from app.auth.dependencies import get_current_user
 from app.auth.models import PermissionType
 from app.models.database_models import User
@@ -339,7 +340,7 @@ def resolve_test_case_record(sync_db: Session, team_id: int, rid: str) -> Option
 async def get_test_cases_by_jira_tickets(
     team_id: int,
     tickets: str = Query(...),
-    db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
     current_user: User = Depends(get_current_user),
 ):
     """
@@ -369,7 +370,7 @@ async def get_test_cases_by_jira_tickets(
         if not ticket_list:
             return []
 
-        test_cases = await run_sync(db, _load_cases)
+        test_cases = await main_boundary.run_sync_read(_load_cases)
         
         logger.info(f"Searching for tickets {ticket_list} in {len(test_cases)} test cases for team {team_id}")
         
@@ -739,6 +740,7 @@ async def get_test_case(
     team_id: int,
     record_id: str,
     db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
     current_user: User = Depends(get_current_user),
 ):
     """取得特定測試案例（需要對該團隊的讀取權限）。預設會載入附件清單。
@@ -778,7 +780,7 @@ async def get_test_case(
                         .first()
                     )
 
-                item = await run_sync(db, _get_local)
+                item = await main_boundary.run_sync_read(_get_local)
             except Exception:
                 item = None
             if not item:
@@ -872,7 +874,7 @@ async def get_test_case(
 async def create_test_case(
     team_id: int,
     case: TestCaseCreate,
-    db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
     current_user: User = Depends(get_current_user),
 ):
     """建立新的測試案例（需要對該團隊的寫入權限）
@@ -1050,8 +1052,6 @@ async def create_test_case(
                     except Exception:
                         pass
 
-            sync_db.commit()
-
             section_name = target_section.name if target_section else None
             section_level = target_section.level if target_section else None
             section_path = target_section.name if target_section else None
@@ -1096,7 +1096,7 @@ async def create_test_case(
 
             return response, audit_context
 
-        response, audit_context = await run_sync(db, _create)
+        response, audit_context = await main_boundary.run_sync_write(_create)
 
         action_brief = f"{current_user.username} created Test Case: {audit_context['test_case_number']}"
         if audit_context.get("title"):
@@ -1114,7 +1114,6 @@ async def create_test_case(
     except HTTPException:
         raise
     except Exception as e:
-        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"建立測試案例失敗: {str(e)}",
@@ -1125,7 +1124,7 @@ async def create_test_case(
 async def preview_move_test_cases_impact(
     team_id: int,
     payload: MoveTestCaseSetImpactPreviewRequest,
-    db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
     current_user: User = Depends(get_current_user),
 ):
     """預覽批次移動 Test Case 到另一個 Test Set 對 Test Run 的影響"""
@@ -1177,7 +1176,7 @@ async def preview_move_test_cases_impact(
             target_set_id=payload.target_test_set_id,
         )
 
-    return await run_sync(db, _preview)
+    return await main_boundary.run_sync_read(_preview)
 
 
 @router.put("/{record_id}", response_model=TestCaseResponse)
@@ -1185,7 +1184,7 @@ async def update_test_case(
     team_id: int,
     record_id: str,
     case_update: TestCaseUpdate,
-    db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
     current_user: User = Depends(get_current_user),
 ):
     """更新測試案例（需要對該團隊的寫入權限）。
@@ -1474,8 +1473,6 @@ async def update_test_case(
                     target_set_id=moved_target_set_id,
                 )
 
-            sync_db.commit()
-
             # 解析 TCG JSON 以便返回
             tcg_list = []
             if item.tcg_json:
@@ -1533,7 +1530,7 @@ async def update_test_case(
 
             return response, audit_context
 
-        response, audit_context = await run_sync(db, _update)
+        response, audit_context = await main_boundary.run_sync_write(_update)
 
         if audit_context.get("changed"):
             action_brief = f"{current_user.username} updated Test Case: {audit_context.get('test_case_number') or record_id}"
@@ -1557,7 +1554,6 @@ async def update_test_case(
     except HTTPException:
         raise
     except Exception as e:
-        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"更新測試案例失敗: {str(e)}",
@@ -1632,7 +1628,7 @@ async def upload_test_case_attachments_by_id(
     team_id: int,
     test_case_id: int,
     files: List[UploadFile] = File(...),
-    db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """上傳測試案例附件（本地 id 版）"""
     import re, json
@@ -1643,7 +1639,7 @@ async def upload_test_case_attachments_by_id(
     def _get_item(sync_db: Session):
         return sync_db.query(TestCaseLocalDB).filter(TestCaseLocalDB.id == test_case_id).first()
 
-    item = await run_sync(db, _get_item)
+    item = await main_boundary.run_sync_read(_get_item)
     if not item:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -1711,9 +1707,10 @@ async def upload_test_case_attachments_by_id(
                 detail=f"找不到測試案例 id={item_id}",
             )
         item_db.attachments_json = attachments_json
-        sync_db.commit()
 
-    await run_sync(db, lambda sync_db: _save_attachments(sync_db, test_case_id, item.attachments_json))
+    await main_boundary.run_sync_write(
+        lambda sync_db: _save_attachments(sync_db, test_case_id, item.attachments_json)
+    )
 
     return {
         "success": True,
@@ -1725,7 +1722,9 @@ async def upload_test_case_attachments_by_id(
 
 @router.get("/{test_case_id:int}/attachments", response_model=dict)
 async def list_test_case_attachments(
-    team_id: int, test_case_id: int, db: AsyncSession = Depends(get_db)
+    team_id: int,
+    test_case_id: int,
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """列出某測試案例的附件（以本地 id）。"""
     import json
@@ -1734,7 +1733,7 @@ async def list_test_case_attachments(
     def _get_item(sync_db: Session):
         return sync_db.query(TestCaseLocalDB).filter(TestCaseLocalDB.id == test_case_id).first()
 
-    item = await run_sync(db, _get_item)
+    item = await main_boundary.run_sync_read(_get_item)
     if not item:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -1762,15 +1761,23 @@ async def list_test_case_attachments(
 
 @router.delete("/{test_case_id:int}/attachments/{target}", response_model=dict)
 async def delete_test_case_attachment(
-    team_id: int, test_case_id: int, target: str, db: AsyncSession = Depends(get_db)
+    team_id: int,
+    test_case_id: int,
+    target: str,
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """刪除單一附件（以本地整數 id）。"""
-    return await _delete_attachment_common(team_id, target, db, id_value=test_case_id)
+    return await _delete_attachment_common(
+        team_id, target, main_boundary, id_value=test_case_id
+    )
 
 
 @router.delete("/{record_key}/attachments/{target}", response_model=dict)
 async def delete_test_case_attachment_by_key(
-    team_id: int, record_key: str, target: str, db: AsyncSession = Depends(get_db)
+    team_id: int,
+    record_key: str,
+    target: str,
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """刪除單一附件（接受 lark_record_id 或本地整數 id）。"""
     # 嘗試轉成 int，否則視為 lark_record_id
@@ -1781,7 +1788,7 @@ async def delete_test_case_attachment_by_key(
     except Exception:
         lark_id = record_key
     return await _delete_attachment_common(
-        team_id, target, db, id_value=id_value, lark_record_id=lark_id
+        team_id, target, main_boundary, id_value=id_value, lark_record_id=lark_id
     )
 
 
@@ -1789,18 +1796,21 @@ async def delete_test_case_attachment_by_key(
     "/by-number/{test_case_number}/attachments/{target}", response_model=dict
 )
 async def delete_test_case_attachment_by_number(
-    team_id: int, test_case_number: str, target: str, db: AsyncSession = Depends(get_db)
+    team_id: int,
+    test_case_number: str,
+    target: str,
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """刪除單一附件（以測試案例編號）。"""
     return await _delete_attachment_common(
-        team_id, target, db, test_case_number=test_case_number
+        team_id, target, main_boundary, test_case_number=test_case_number
     )
 
 
 async def _delete_attachment_common(
     team_id: int,
     target: str,
-    db: AsyncSession,
+    main_boundary: MainAccessBoundary,
     id_value: int | None = None,
     lark_record_id: str | None = None,
     test_case_number: str | None = None,
@@ -1924,7 +1934,6 @@ async def _delete_attachment_common(
         # 移除 JSON 條目
         deleted_entry = files.pop(idx)
         item.attachments_json = json.dumps(files, ensure_ascii=False)
-        sync_db.commit()
 
         return {
             "success": True,
@@ -1932,7 +1941,7 @@ async def _delete_attachment_common(
             "remaining": len(files),
         }
 
-    return await run_sync(db, _delete)
+    return await main_boundary.run_sync_write(_delete)
 
 
 # 維持兼容：test_case_number 版（若前端尚未切換可用這個）
@@ -1943,7 +1952,7 @@ async def upload_test_case_attachments(
     team_id: int,
     test_case_number: str,
     files: List[UploadFile] = File(...),
-    db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """上傳測試案例附件（只寫本地檔案與 DB）
     規則：一律以 test_case_number 作為唯一識別鍵。
@@ -1966,7 +1975,7 @@ async def upload_test_case_attachments(
             .first()
         )
 
-    item = await run_sync(db, _get_item)
+    item = await main_boundary.run_sync_read(_get_item)
     if not item:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -2035,9 +2044,10 @@ async def upload_test_case_attachments(
                 detail=f"找不到測試案例 {test_case_number}（team={team_id}）",
             )
         item_db.attachments_json = attachments_json
-        sync_db.commit()
 
-    await run_sync(db, lambda sync_db: _save(sync_db, item.attachments_json))
+    await main_boundary.run_sync_write(
+        lambda sync_db: _save(sync_db, item.attachments_json)
+    )
 
     return {
         "success": True,
@@ -2051,7 +2061,7 @@ async def upload_test_case_attachments(
 async def delete_test_case(
     team_id: int,
     record_id: str,
-    db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
     current_user: User = Depends(get_current_user),
 ):
     """刪除測試案例（本地 DB）。
@@ -2151,7 +2161,6 @@ async def delete_test_case(
                 pass
 
             sync_db.delete(item)
-            sync_db.commit()
 
             return {
                 "record_id": recorded_id,
@@ -2159,7 +2168,7 @@ async def delete_test_case(
                 "title": recorded_title,
             }
 
-        audit_context = await run_sync(db, _delete)
+        audit_context = await main_boundary.run_sync_write(_delete)
 
         # 記錄刪除操作到 audit log
         action_brief = f"{current_user.username} deleted Test Case: {audit_context.get('test_case_number') or record_id}"
@@ -2176,7 +2185,6 @@ async def delete_test_case(
     except HTTPException:
         raise
     except Exception as e:
-        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"刪除測試案例失敗: {str(e)}",
@@ -2186,7 +2194,9 @@ async def delete_test_case(
 # 依測試案例編號取得單筆（含附件）
 @router.get("/by-number/{test_case_number}", response_model=TestCaseResponse)
 async def get_test_case_by_number(
-    team_id: int, test_case_number: str, db: AsyncSession = Depends(get_db)
+    team_id: int,
+    test_case_number: str,
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     try:
         def _get(sync_db: Session):
@@ -2273,7 +2283,7 @@ async def get_test_case_by_number(
                 raw_fields={},
             )
 
-        return await run_sync(db, _get)
+        return await main_boundary.run_sync_read(_get)
     except HTTPException:
         raise
     except Exception as e:
@@ -2285,7 +2295,7 @@ async def get_test_case_by_number(
 async def bulk_create_test_cases(
     team_id: int,
     request: BulkCreateRequest,
-    db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
     current_user: User = Depends(get_current_user),
 ):
     """批次建立測試案例（只寫本地 DB）
@@ -2426,8 +2436,6 @@ async def bulk_create_test_cases(
                     "title": title,
                     "priority": priority_value,
                 })
-            sync_db.commit()
-
             audit_context = None
             if created_count > 0:
                 audit_context = {
@@ -2442,7 +2450,7 @@ async def bulk_create_test_cases(
                 success=True, created_count=created_count, duplicates=[], errors=[]
             ), audit_context
 
-        response, audit_context = await run_sync(db, _bulk_create)
+        response, audit_context = await main_boundary.run_sync_write(_bulk_create)
 
         if audit_context and audit_context.get("created_count"):
             test_case_numbers = [item["test_case_number"] for item in audit_context["created_items"]]
@@ -2470,7 +2478,6 @@ async def bulk_create_test_cases(
 
         return response
     except Exception as e:
-        await db.rollback()
         return BulkCreateResponse(success=False, created_count=0, errors=[str(e)])
 
 
@@ -2496,7 +2503,7 @@ class BulkCloneResponse(BaseModel):
 async def bulk_clone_test_cases(
     team_id: int,
     request: BulkCloneRequest,
-    db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
     current_user: User = Depends(get_current_user),
 ):
     """批次複製測試案例（只寫本地 DB）
@@ -2593,12 +2600,9 @@ async def bulk_clone_test_cases(
                     errors.append(f"來源 {it.source_record_id} 複製失敗: {str(e)}")
 
             if created == 0 and errors:
-                sync_db.rollback()
                 return BulkCloneResponse(
                     success=False, created_count=0, duplicates=[], errors=errors
                 ), None
-
-            sync_db.commit()
 
             audit_context = None
             if created > 0:
@@ -2611,7 +2615,7 @@ async def bulk_clone_test_cases(
                 success=True, created_count=created, duplicates=[], errors=errors
             ), audit_context
 
-        response, audit_context = await run_sync(db, _bulk_clone)
+        response, audit_context = await main_boundary.run_sync_write(_bulk_clone)
 
         if audit_context and audit_context.get("created_count"):
             test_case_numbers = [item["test_case_number"] for item in audit_context["cloned_items"]]
@@ -2636,7 +2640,6 @@ async def bulk_clone_test_cases(
 
         return response
     except Exception as e:
-        await db.rollback()
         return BulkCloneResponse(
             success=False, created_count=0, duplicates=[], errors=[str(e)]
         )
@@ -2646,7 +2649,7 @@ async def bulk_clone_test_cases(
 async def batch_operation_test_cases(
     team_id: int,
     operation: TestCaseBatchOperation,
-    db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
     current_user: User = Depends(get_current_user),
 ):
     """批次操作本地測試案例（不呼叫 Lark）。
@@ -2697,8 +2700,7 @@ async def batch_operation_test_cases(
         log_context = None
         cleanup_summary = None
 
-        try:
-            if operation.operation == "delete":
+        if operation.operation == "delete":
                 for rid in operation.record_ids:
                     processed += 1
                     item = resolve_one(rid)
@@ -2740,7 +2742,6 @@ async def batch_operation_test_cases(
                     sync_db.delete(item)
                     success_count += 1
                     success_items.append(item_info)
-                sync_db.commit()
 
                 if success_count > 0:
                     test_case_numbers = [item["test_case_number"] for item in success_items if item.get("test_case_number")]
@@ -2761,7 +2762,7 @@ async def batch_operation_test_cases(
                         },
                     }
 
-            elif operation.operation == "update_priority":
+        elif operation.operation == "update_priority":
                 pr = (
                     (operation.update_data or {}).get("priority")
                     if operation.update_data
@@ -2792,7 +2793,6 @@ async def batch_operation_test_cases(
                         })
                     except Exception as e:
                         errors.append(f"{rid}: {e}")
-                sync_db.commit()
 
                 if success_count > 0:
                     test_case_numbers = [item["test_case_number"] for item in success_items if item.get("test_case_number")]
@@ -2814,7 +2814,7 @@ async def batch_operation_test_cases(
                         },
                     }
 
-            elif operation.operation == "update_tcg":
+        elif operation.operation == "update_tcg":
                 payload = operation.update_data or {}
                 tcg_value = payload.get("tcg")
 
@@ -2858,7 +2858,6 @@ async def batch_operation_test_cases(
                         })
                     except Exception as e:
                         errors.append(f"{rid}: {e}")
-                sync_db.commit()
 
                 if success_count > 0:
                     test_case_numbers = [item["test_case_number"] for item in success_items if item.get("test_case_number")]
@@ -2881,7 +2880,7 @@ async def batch_operation_test_cases(
                         },
                     }
 
-            elif operation.operation == "update_section":
+        elif operation.operation == "update_section":
                 payload = operation.update_data or {}
                 section_id_value = payload.get("section_id")
                 if section_id_value is None:
@@ -2923,7 +2922,6 @@ async def batch_operation_test_cases(
                         })
                     except Exception as e:
                         errors.append(f"{rid}: {e}")
-                sync_db.commit()
 
                 if success_count > 0:
                     test_case_numbers = [item["test_case_number"] for item in success_items if item.get("test_case_number")]
@@ -2946,7 +2944,7 @@ async def batch_operation_test_cases(
                         },
                     }
 
-            elif operation.operation == "update_test_set":
+        elif operation.operation == "update_test_set":
                 payload = operation.update_data or {}
                 test_set_id_value = payload.get("test_set_id")
                 if test_set_id_value is None:
@@ -3023,8 +3021,6 @@ async def batch_operation_test_cases(
                             "target_test_case_set_id": target_test_set_id,
                         }
 
-                sync_db.commit()
-
                 if success_count > 0:
                     test_case_numbers = [item["test_case_number"] for item in success_items if item.get("test_case_number")]
                     action_brief = f"{current_user.username} batch moved {success_count} Test Cases to set {target_test_set.name} (Unassigned)"
@@ -3048,33 +3044,33 @@ async def batch_operation_test_cases(
                             "cleanup_summary": cleanup_summary,
                         },
                     }
-            else:
-                raise HTTPException(
-                    status_code=400, detail=f"不支援的批次操作: {operation.operation}"
-                )
+        else:
+            raise HTTPException(
+                status_code=400, detail=f"不支援的批次操作: {operation.operation}"
+            )
 
-            return TestCaseBatchResponse(
-                success=len(errors) == 0,
-                processed_count=processed,
-                success_count=success_count,
-                error_count=len(errors),
-                error_messages=errors,
-                cleanup_summary=cleanup_summary,
-            ), log_context
+        return TestCaseBatchResponse(
+            success=len(errors) == 0,
+            processed_count=processed,
+            success_count=success_count,
+            error_count=len(errors),
+            error_messages=errors,
+            cleanup_summary=cleanup_summary,
+        ), log_context
 
-        except HTTPException:
-            raise
-        except Exception as e:
-            sync_db.rollback()
-            return TestCaseBatchResponse(
-                success=False,
-                processed_count=processed,
-                success_count=success_count,
-                error_count=len(errors) + 1,
-                error_messages=errors + [str(e)],
-            ), None
+    try:
+        response, log_context = await main_boundary.run_sync_write(_batch)
+    except HTTPException:
+        raise
+    except Exception as e:
+        return TestCaseBatchResponse(
+            success=False,
+            processed_count=0,
+            success_count=0,
+            error_count=1,
+            error_messages=[str(e)],
+        )
 
-    response, log_context = await run_sync(db, _batch)
     if log_context:
         await log_test_case_action(
             action_type=log_context["action_type"],

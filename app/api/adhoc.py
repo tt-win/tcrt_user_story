@@ -6,7 +6,8 @@ from datetime import datetime
 import logging
 import traceback
 
-from app.database import get_db, run_sync
+from app.database import get_db
+from app.db_access.main import MainAccessBoundary, get_main_access_boundary
 from app.auth.dependencies import get_current_user
 from app.models.database_models import User, AdHocRun, AdHocRunSheet, AdHocRunItem, TestCaseLocal, TestCaseSet, TestCaseSection
 from sqlalchemy import or_
@@ -27,7 +28,7 @@ router = APIRouter(prefix="/adhoc-runs", tags=["adhoc-runs"])
 async def convert_adhoc_to_testcases(
     run_id: int,
     payload: Dict[str, Any] = Body(None),
-    db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
     current_user: User = Depends(get_current_user)
 ):
     """
@@ -176,7 +177,6 @@ async def convert_adhoc_to_testcases(
                     sync_db.add(new_tc)
                     count_created += 1
 
-            sync_db.commit()
             return {
                 "run_id": run.id,
                 "run_name": run.name,
@@ -185,14 +185,11 @@ async def convert_adhoc_to_testcases(
                 "updated": count_updated,
             }
         except HTTPException:
-            sync_db.rollback()
             raise
         except Exception:
-            sync_db.rollback()
             raise
-
     try:
-        result = await run_sync(db, _convert)
+        result = await main_boundary.run_sync_write(_convert)
     except HTTPException:
         raise
     except Exception as e:
@@ -224,65 +221,61 @@ async def convert_adhoc_to_testcases(
 @router.post("/", response_model=AdHocRunResponse, status_code=status.HTTP_201_CREATED)
 async def create_adhoc_run(
     payload: AdHocRunCreate,
-    db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
     current_user: User = Depends(get_current_user)
 ):
     def _create(sync_db: Session) -> AdHocRun:
-        try:
-            new_run = AdHocRun(
-                team_id=payload.team_id,
-                name=payload.name,
-                description=payload.description,
-                status=TestRunStatus.ACTIVE, # Default to Active now
-                jira_ticket=payload.jira_ticket,
-                # Enhanced Basic Settings
-                test_version=payload.test_version,
-                test_environment=payload.test_environment,
-                build_number=payload.build_number,
-                related_tp_tickets_json=payload.related_tp_tickets_json,
-                notifications_enabled=payload.notifications_enabled,
-                notify_chat_ids_json=payload.notify_chat_ids_json,
-                notify_chat_names_snapshot=payload.notify_chat_names_snapshot
+        new_run = AdHocRun(
+            team_id=payload.team_id,
+            name=payload.name,
+            description=payload.description,
+            status=TestRunStatus.ACTIVE, # Default to Active now
+            jira_ticket=payload.jira_ticket,
+            # Enhanced Basic Settings
+            test_version=payload.test_version,
+            test_environment=payload.test_environment,
+            build_number=payload.build_number,
+            related_tp_tickets_json=payload.related_tp_tickets_json,
+            notifications_enabled=payload.notifications_enabled,
+            notify_chat_ids_json=payload.notify_chat_ids_json,
+            notify_chat_names_snapshot=payload.notify_chat_names_snapshot
+        )
+        sync_db.add(new_run)
+        sync_db.flush()
+
+        # Create default sheet
+        default_sheet = AdHocRunSheet(
+            adhoc_run_id=new_run.id,
+            name="Sheet1",
+            sort_order=0
+        )
+        sync_db.add(default_sheet)
+        sync_db.flush() # Get sheet ID
+
+        # Create initial 5 empty rows
+        for i in range(5):
+            new_item = AdHocRunItem(
+                sheet_id=default_sheet.id,
+                row_index=i,
+                test_case_number=None,
+                title=None,
+                priority=Priority.MEDIUM,
+                precondition=None,
+                steps=None,
+                expected_result=None
             )
-            sync_db.add(new_run)
-            sync_db.flush()
+            sync_db.add(new_item)
 
-            # Create default sheet
-            default_sheet = AdHocRunSheet(
-                adhoc_run_id=new_run.id,
-                name="Sheet1",
-                sort_order=0
-            )
-            sync_db.add(default_sheet)
-            sync_db.flush() # Get sheet ID
+        sync_db.flush()
 
-            # Create initial 5 empty rows
-            for i in range(5):
-                new_item = AdHocRunItem(
-                    sheet_id=default_sheet.id,
-                    row_index=i,
-                    test_case_number=None,
-                    title=None,
-                    priority=Priority.MEDIUM,
-                    precondition=None,
-                    steps=None,
-                    expected_result=None
-                )
-                sync_db.add(new_item)
-
-            sync_db.commit()
-
-            # Query back with relationships to ensure Pydantic model validation works
-            result = sync_db.query(AdHocRun).options(
-                joinedload(AdHocRun.sheets).joinedload(AdHocRunSheet.items)
-            ).filter(AdHocRun.id == new_run.id).first()
-            return result
-        except Exception:
-            sync_db.rollback()
-            raise
+        # Query back with relationships to ensure Pydantic model validation works
+        result = sync_db.query(AdHocRun).options(
+            joinedload(AdHocRun.sheets).joinedload(AdHocRunSheet.items)
+        ).filter(AdHocRun.id == new_run.id).first()
+        return result
 
     try:
-        result = await run_sync(db, _create)
+        result = await main_boundary.run_sync_write(_create)
     except Exception as e:
         logger.error(f"Create Ad-hoc Run failed: {e}")
         logger.error(traceback.format_exc())
@@ -307,7 +300,7 @@ async def create_adhoc_run(
 @router.get("/{run_id}")
 async def get_adhoc_run(
     run_id: int,
-    db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
     current_user: User = Depends(get_current_user)
 ):
     def _get(sync_db: Session) -> Dict[str, Any]:
@@ -377,7 +370,7 @@ async def get_adhoc_run(
         return result
 
     try:
-        return await run_sync(db, _get)
+        return await main_boundary.run_sync_read(_get)
     except HTTPException:
         raise
     except Exception as e:
@@ -389,7 +382,7 @@ async def get_adhoc_run(
 async def update_adhoc_run(
     run_id: int,
     payload: AdHocRunUpdate,
-    db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
     current_user: User = Depends(get_current_user)
 ):
     update_data = payload.model_dump(exclude_unset=True)
@@ -405,11 +398,11 @@ async def update_adhoc_run(
 
         run.updated_at = datetime.utcnow()
 
-        sync_db.commit()
+        sync_db.flush()
         sync_db.refresh(run)
         return run
 
-    run = await run_sync(db, _update)
+    run = await main_boundary.run_sync_write(_update)
 
     # Audit Log
     await audit_service.log_action(
@@ -430,7 +423,7 @@ async def update_adhoc_run(
 @router.delete("/{run_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_adhoc_run(
     run_id: int,
-    db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
     current_user: User = Depends(get_current_user)
 ):
     def _delete(sync_db: Session) -> Dict[str, str]:
@@ -443,14 +436,13 @@ async def delete_adhoc_run(
         run_id_str = str(run.id)
 
         sync_db.delete(run)
-        sync_db.commit()
         return {
             "run_name": run_name,
             "team_id": team_id,
             "run_id": run_id_str,
         }
 
-    result = await run_sync(db, _delete)
+    result = await main_boundary.run_sync_write(_delete)
 
     # Audit Log
     await audit_service.log_action(
@@ -468,7 +460,7 @@ async def delete_adhoc_run(
 @router.post("/{run_id}/rerun", response_model=AdHocRunResponse, status_code=status.HTTP_201_CREATED)
 async def rerun_adhoc_run(
     run_id: int,
-    db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
     current_user: User = Depends(get_current_user)
 ):
     """
@@ -476,85 +468,78 @@ async def rerun_adhoc_run(
     Used for re-running a completed Ad-hoc run.
     """
     def _rerun(sync_db: Session) -> tuple[AdHocRun, Dict[str, Any]]:
-        try:
-            original_run = sync_db.query(AdHocRun).filter(AdHocRun.id == run_id).first()
-            if not original_run:
-                raise HTTPException(status_code=404, detail="Original Ad-hoc run not found")
+        original_run = sync_db.query(AdHocRun).filter(AdHocRun.id == run_id).first()
+        if not original_run:
+            raise HTTPException(status_code=404, detail="Original Ad-hoc run not found")
 
-            # 1. Clone Run
-            new_run = AdHocRun(
-                team_id=original_run.team_id,
-                name=f"Rerun - {original_run.name}"[:120], # Ensure length limit
-                description=original_run.description,
-                status=TestRunStatus.ACTIVE, # Default to Active
-                jira_ticket=original_run.jira_ticket,
-                test_version=original_run.test_version,
-                test_environment=original_run.test_environment,
-                build_number=original_run.build_number,
-                related_tp_tickets_json=original_run.related_tp_tickets_json,
-                notifications_enabled=original_run.notifications_enabled,
-                notify_chat_ids_json=original_run.notify_chat_ids_json,
-                notify_chat_names_snapshot=original_run.notify_chat_names_snapshot,
+        # 1. Clone Run
+        new_run = AdHocRun(
+            team_id=original_run.team_id,
+            name=f"Rerun - {original_run.name}"[:120], # Ensure length limit
+            description=original_run.description,
+            status=TestRunStatus.ACTIVE, # Default to Active
+            jira_ticket=original_run.jira_ticket,
+            test_version=original_run.test_version,
+            test_environment=original_run.test_environment,
+            build_number=original_run.build_number,
+            related_tp_tickets_json=original_run.related_tp_tickets_json,
+            notifications_enabled=original_run.notifications_enabled,
+            notify_chat_ids_json=original_run.notify_chat_ids_json,
+            notify_chat_names_snapshot=original_run.notify_chat_names_snapshot,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
+        )
+        sync_db.add(new_run)
+        sync_db.flush() # Get new_run.id
+
+        # 2. Clone Sheets and Items
+        for original_sheet in original_run.sheets:
+            new_sheet = AdHocRunSheet(
+                adhoc_run_id=new_run.id,
+                name=original_sheet.name,
+                sort_order=original_sheet.sort_order,
                 created_at=datetime.utcnow(),
                 updated_at=datetime.utcnow()
             )
-            sync_db.add(new_run)
-            sync_db.flush() # Get new_run.id
+            sync_db.add(new_sheet)
+            sync_db.flush() # Get new_sheet.id
 
-            # 2. Clone Sheets and Items
-            for original_sheet in original_run.sheets:
-                new_sheet = AdHocRunSheet(
-                    adhoc_run_id=new_run.id,
-                    name=original_sheet.name,
-                    sort_order=original_sheet.sort_order,
+            for item in original_sheet.items:
+                new_item = AdHocRunItem(
+                    sheet_id=new_sheet.id,
+                    row_index=item.row_index,
+                    test_case_number=item.test_case_number,
+                    title=item.title,
+                    priority=item.priority,
+                    precondition=item.precondition,
+                    steps=item.steps,
+                    expected_result=item.expected_result,
+                    # Reset execution-related fields
+                    comments=None,
+                    bug_list=None,
+                    test_result=None,
+                    assignee_name=item.assignee_name, # Keep assignee? Usually yes for rerun
+                    executed_at=None,
+                    attachments_json=item.attachments_json, # Keep reference attachments
+                    execution_results_json=None, # Clear proof of execution
                     created_at=datetime.utcnow(),
                     updated_at=datetime.utcnow()
                 )
-                sync_db.add(new_sheet)
-                sync_db.flush() # Get new_sheet.id
+                sync_db.add(new_item)
 
-                for item in original_sheet.items:
-                    new_item = AdHocRunItem(
-                        sheet_id=new_sheet.id,
-                        row_index=item.row_index,
-                        test_case_number=item.test_case_number,
-                        title=item.title,
-                        priority=item.priority,
-                        precondition=item.precondition,
-                        steps=item.steps,
-                        expected_result=item.expected_result,
-                        # Reset execution-related fields
-                        comments=None,
-                        bug_list=None,
-                        test_result=None,
-                        assignee_name=item.assignee_name, # Keep assignee? Usually yes for rerun
-                        executed_at=None,
-                        attachments_json=item.attachments_json, # Keep reference attachments
-                        execution_results_json=None, # Clear proof of execution
-                        created_at=datetime.utcnow(),
-                        updated_at=datetime.utcnow()
-                    )
-                    sync_db.add(new_item)
+        sync_db.flush()
 
-            sync_db.commit()
-
-            result = sync_db.query(AdHocRun).options(
-                joinedload(AdHocRun.sheets).joinedload(AdHocRunSheet.items)
-            ).filter(AdHocRun.id == new_run.id).first()
-            return result, {
-                "run_id": new_run.id,
-                "run_name": new_run.name,
-                "team_id": new_run.team_id,
-            }
-        except HTTPException:
-            sync_db.rollback()
-            raise
-        except Exception:
-            sync_db.rollback()
-            raise
+        result = sync_db.query(AdHocRun).options(
+            joinedload(AdHocRun.sheets).joinedload(AdHocRunSheet.items)
+        ).filter(AdHocRun.id == new_run.id).first()
+        return result, {
+            "run_id": new_run.id,
+            "run_name": new_run.name,
+            "team_id": new_run.team_id,
+        }
 
     try:
-        result, audit_ctx = await run_sync(db, _rerun)
+        result, audit_ctx = await main_boundary.run_sync_write(_rerun)
     except HTTPException:
         raise
     except Exception as e:
@@ -597,7 +582,7 @@ def _load_sheet_with_items(sync_db: Session, run_id: int, sheet_id: int) -> Opti
 async def create_sheet(
     run_id: int,
     payload: AdHocRunSheetCreate,
-    db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
     current_user: User = Depends(get_current_user)
 ):
     def _create(sync_db: Session) -> AdHocRunSheet:
@@ -607,20 +592,20 @@ async def create_sheet(
             sort_order=payload.sort_order
         )
         sync_db.add(sheet)
-        sync_db.commit()
+        sync_db.flush()
         loaded_sheet = _load_sheet_with_items(sync_db, run_id, sheet.id)
         if not loaded_sheet:
             raise HTTPException(status_code=500, detail="Failed to load created sheet")
         return loaded_sheet
 
-    return await run_sync(db, _create)
+    return await main_boundary.run_sync_write(_create)
 
 @router.put("/{run_id}/sheets/{sheet_id}", response_model=AdHocRunSheetResponse)
 async def update_sheet(
     run_id: int,
     sheet_id: int,
     payload: AdHocRunSheetUpdate,
-    db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
     current_user: User = Depends(get_current_user)
 ):
     def _update(sync_db: Session) -> AdHocRunSheet:
@@ -635,19 +620,19 @@ async def update_sheet(
         sheet.sort_order = payload.sort_order
         sheet.updated_at = datetime.utcnow()
 
-        sync_db.commit()
+        sync_db.flush()
         loaded_sheet = _load_sheet_with_items(sync_db, run_id, sheet_id)
         if not loaded_sheet:
             raise HTTPException(status_code=404, detail="Sheet not found")
         return loaded_sheet
 
-    return await run_sync(db, _update)
+    return await main_boundary.run_sync_write(_update)
 
 @router.delete("/{run_id}/sheets/{sheet_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_sheet(
     run_id: int,
     sheet_id: int,
-    db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
     current_user: User = Depends(get_current_user)
 ):
     def _delete(sync_db: Session) -> None:
@@ -659,9 +644,8 @@ async def delete_sheet(
             raise HTTPException(status_code=404, detail="Sheet not found")
 
         sync_db.delete(sheet)
-        sync_db.commit()
 
-    await run_sync(db, _delete)
+    await main_boundary.run_sync_write(_delete)
 
 # --- Item Endpoints (Batch is preferred for spreadsheet) ---
 
@@ -670,7 +654,7 @@ async def batch_update_items(
     run_id: int,
     sheet_id: int,
     payload: List[Dict[str, Any]], # List of changes (id, or new item data)
-    db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
     current_user: User = Depends(get_current_user)
 ):
     """
@@ -728,13 +712,13 @@ async def batch_update_items(
                 sync_db.flush() # to get ID
                 response_data.append(new_item)
 
-        sync_db.commit()
+        sync_db.flush()
 
         run = sync_db.query(AdHocRun).filter(AdHocRun.id == run_id).first()
         team_id = run.team_id if run else None
         return response_data, team_id
 
-    response_data, team_id = await run_sync(db, _batch)
+    response_data, team_id = await main_boundary.run_sync_write(_batch)
 
     # Audit Log (Fetch run for team_id if needed, or optimize)
     try:
@@ -768,7 +752,7 @@ async def batch_update_items(
 @router.get("/team/{team_id}", response_model=List[AdHocRunResponse])
 async def list_team_adhoc_runs(
     team_id: int,
-    db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
     current_user: User = Depends(get_current_user)
 ):
     def _list(sync_db: Session) -> List[AdHocRun]:
@@ -790,4 +774,4 @@ async def list_team_adhoc_runs(
             r.executed_cases = executed
         return runs
 
-    return await run_sync(db, _list)
+    return await main_boundary.run_sync_read(_list)

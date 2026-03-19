@@ -8,15 +8,17 @@ Test Case Repository 服務層（本地資料庫）
 from __future__ import annotations
 
 import json
-from typing import List, Optional, Dict, Any
+from typing import Callable, List, Optional, Dict, Any, TypeVar
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from sqlalchemy import or_, and_
 
+from app.db_access.main import MainAccessBoundary, create_main_access_boundary_for_session
 from app.models.database_models import TestCaseLocal, TestCaseSection
 from app.models.test_case import TestCaseResponse
 from app.models.lark_types import Priority, TestResultStatus
-from app.database import run_sync
+
+T = TypeVar("T")
 
 
 def _safe_json_len(text: Optional[str]) -> int:
@@ -123,8 +125,24 @@ def _apply_tcg_filter(query, tcg_filter: Optional[str]):
 
 
 class TestCaseRepoService:
-    def __init__(self, db: AsyncSession):
+    def __init__(
+        self,
+        db: AsyncSession | None,
+        main_boundary: MainAccessBoundary | None = None,
+    ):
         self.db = db
+        self.main_boundary = (
+            main_boundary
+            or (create_main_access_boundary_for_session(db) if db is not None else None)
+        )
+
+    def _require_main_boundary(self) -> MainAccessBoundary:
+        if self.main_boundary is None:
+            raise RuntimeError("TestCaseRepoService requires a managed main boundary")
+        return self.main_boundary
+
+    async def _run_read(self, operation: Callable[[Session], T]) -> T:
+        return await self._require_main_boundary().run_sync_read(operation)
 
     async def list(
         self,
@@ -208,7 +226,7 @@ class TestCaseRepoService:
                 for r in rows
             ]
 
-        return await run_sync(self.db, _list)
+        return await self._run_read(_list)
 
     async def count(
         self,
@@ -254,7 +272,7 @@ class TestCaseRepoService:
 
             return q.count()
 
-        return await run_sync(self.db, _count)
+        return await self._run_read(_count)
 
     async def get_by_lark_record_id(self, team_id: int, record_id: str, include_attachments: bool = True) -> Optional[TestCaseResponse]:
         def _get(sync_db: Session) -> Optional[TestCaseResponse]:
@@ -271,7 +289,7 @@ class TestCaseRepoService:
                 section_meta=section_meta,
             )
 
-        return await run_sync(self.db, _get)
+        return await self._run_read(_get)
 
     def _build_section_lookup(self, sync_db: Session, rows: List[TestCaseLocal]) -> Dict[int, Dict[str, Any]]:
         """建立 Section 快取，供回傳時附帶區段資訊"""

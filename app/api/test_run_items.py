@@ -16,9 +16,10 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+from app.db_access import MainAccessBoundary, get_main_access_boundary
 from app.services.lark_client import LarkClient
 from app.config import settings
-from app.database import get_db, run_sync
+from app.database import get_db
 from app.models.database_models import (
     TestRunItem as TestRunItemDB,
     TestRunConfig as TestRunConfigDB,
@@ -74,7 +75,7 @@ async def upload_test_run_results(
     config_id: int,
     item_id: int,
     files: List[UploadFile] = File(...),
-    db: AsyncSession = Depends(get_db)
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary)
 ):
     """
     上傳測試執行結果檔案到本地 attachments 目錄，並記錄到本地資料庫。
@@ -126,7 +127,7 @@ async def upload_test_run_results(
             "upload_history": history,
         }
 
-    item_context = await run_sync(db, _load_item)
+    item_context = await main_boundary.run_sync_read(_load_item)
 
     try:
         # 使用設定的附件根目錄（未設定則回退到專案 attachments）
@@ -192,9 +193,8 @@ async def upload_test_run_results(
             test_run_item.result_files_uploaded = 1 if len(existing) > 0 else 0
             test_run_item.result_files_count = len(existing)
             test_run_item.upload_history_json = upload_history_json
-            sync_db.commit()
 
-        await run_sync(db, _update_item)
+        await main_boundary.run_sync_write(_update_item)
 
         return {
             "success": True,
@@ -607,7 +607,7 @@ def _add_result_history(db: Session, item: TestRunItemDB,
 async def list_items(
     team_id: int,
     config_id: int,
-    db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
     # Filters
     search: Optional[str] = Query(None, description="標題/編號模糊搜尋"),
     priority_filter: Optional[str] = Query(None),
@@ -671,7 +671,7 @@ async def list_items(
         items = q.offset(skip).limit(limit).all()
         return [_db_to_response(i, getattr(i, "test_case", None), sync_db) for i in items]
 
-    return await run_sync(db, _list)
+    return await main_boundary.run_sync_read(_list)
 
 
 @router.post("/", response_model=BatchCreateResponse, status_code=status.HTTP_201_CREATED)
@@ -679,7 +679,7 @@ async def batch_create_items(
     team_id: int,
     config_id: int,
     payload: BatchCreateRequest,
-    db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
     current_user: User = Depends(get_current_user),
 ):
     def _create(sync_db: Session) -> Dict[str, Any]:
@@ -763,7 +763,6 @@ async def batch_create_items(
             TestRunScopeService.set_config_scope_ids(config_db, inferred_scope)
             allowed_scope_ids = set(inferred_scope)
 
-        sync_db.commit()
         return {
             "created": created,
             "skipped": skipped,
@@ -771,7 +770,7 @@ async def batch_create_items(
             "created_items": created_items,
         }
 
-    result = await run_sync(db, _create)
+    result = await main_boundary.run_sync_write(_create)
 
     # 記錄批次建立 audit log
     if result["created"] > 0:
@@ -812,7 +811,7 @@ async def update_item(
     config_id: int,
     item_id: int,
     payload: TestRunItemUpdate,
-    db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
     current_user: User = Depends(get_current_user)
 ):
     data = payload.model_dump(exclude_unset=True)
@@ -890,11 +889,11 @@ async def update_item(
         )
 
         item.updated_at = datetime.utcnow()
-        sync_db.commit()
+        sync_db.flush()
         sync_db.refresh(item)
         return _db_to_response(item, item.test_case, sync_db)
 
-    return await run_sync(db, _update)
+    return await main_boundary.run_sync_write(_update)
 
 
 @router.delete("/{item_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -902,7 +901,8 @@ async def delete_item(
     team_id: int,
     config_id: int,
     item_id: int,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """刪除測試執行項目及相關附件"""
     from ..services.test_result_cleanup_service import TestResultCleanupService
@@ -917,7 +917,7 @@ async def delete_item(
         if not item:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="找不到項目")
 
-    await run_sync(db, _verify_item)
+    await main_boundary.run_sync_read(_verify_item)
 
     try:
         # 1. 先清理測試結果檔案
@@ -946,9 +946,8 @@ async def delete_item(
             ).first()
             if item:
                 sync_db.delete(item)
-            sync_db.commit()
 
-        await run_sync(db, _delete)
+        await main_boundary.run_sync_write(_delete)
         
     except Exception as e:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
@@ -959,7 +958,7 @@ async def batch_update_results(
     team_id: int,
     config_id: int,
     payload: BatchUpdateResultRequest,
-    db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
     current_user: User = Depends(get_current_user)
 ):
     source = payload.change_source or "batch"
@@ -1065,14 +1064,13 @@ async def batch_update_results(
             except Exception as e:
                 errors.append(f"項目 {upd.get('id')} 更新失敗: {str(e)}")
                 continue
-        sync_db.commit()
         return {
             "success": success,
             "errors": errors,
             "success_items": success_items,
         }
 
-    result = await run_sync(db, _batch)
+    result = await main_boundary.run_sync_write(_batch)
 
     # 記錄批次更新 audit log
     if result["success"] > 0:
@@ -1112,7 +1110,7 @@ async def get_result_history(
     team_id: int,
     config_id: int,
     item_id: int,
-    db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200)
 ):
@@ -1148,14 +1146,14 @@ async def get_result_history(
             )
         return [_map(r) for r in records]
 
-    return await run_sync(db, _get_history)
+    return await main_boundary.run_sync_read(_get_history)
 
 
 @router.get("/statistics", response_model=Dict[str, Any])
 async def get_items_statistics(
     team_id: int,
     config_id: int,
-    db: AsyncSession = Depends(get_db)
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     def _stats(sync_db: Session) -> Dict[str, Any]:
         _verify_team_and_config(team_id, config_id, sync_db)
@@ -1238,7 +1236,7 @@ async def get_items_statistics(
             "total_pass_rate": int(total_pass_rate // 1),
         }
 
-    return await run_sync(db, _stats)
+    return await main_boundary.run_sync_read(_stats)
 
 
 # -------------------- Bug Tickets Management --------------------
@@ -1247,7 +1245,7 @@ async def get_items_statistics(
 async def get_bug_tickets_summary(
     team_id: int,
     config_id: int,
-    db: AsyncSession = Depends(get_db)
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """取得該 Test Run 的 Bug Tickets 摘要資訊"""
     from ..config import settings
@@ -1300,7 +1298,7 @@ async def get_bug_tickets_summary(
 
         return bug_tickets_data
 
-    bug_tickets_data = await run_sync(db, _collect)
+    bug_tickets_data = await main_boundary.run_sync_read(_collect)
     
     # 嘗試從 JIRA API 取得實際的票券資訊
     try:
@@ -1342,7 +1340,7 @@ async def get_bug_tickets(
     team_id: int,
     config_id: int,
     item_id: int,
-    db: AsyncSession = Depends(get_db)
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """取得測試項目的 Bug Tickets 清單"""
     def _get(sync_db: Session) -> List[BugTicketResponse]:
@@ -1372,7 +1370,7 @@ async def get_bug_tickets(
 
         return bug_tickets
 
-    return await run_sync(db, _get)
+    return await main_boundary.run_sync_read(_get)
 
 
 @router.post("/{item_id}/bug-tickets", response_model=BugTicketResponse, status_code=status.HTTP_201_CREATED)
@@ -1381,7 +1379,7 @@ async def add_bug_ticket(
     config_id: int,
     item_id: int,
     payload: BugTicketRequest,
-    db: AsyncSession = Depends(get_db)
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary)
 ):
     """新增 Bug Ticket 到測試項目"""
     def _add(sync_db: Session) -> BugTicketResponse:
@@ -1423,7 +1421,7 @@ async def add_bug_ticket(
         # 更新資料庫
         item.bug_tickets_json = json.dumps(existing_tickets, ensure_ascii=False)
         item.updated_at = datetime.utcnow()
-        sync_db.commit()
+        sync_db.flush()
         sync_db.refresh(item)
 
         return BugTicketResponse(
@@ -1431,7 +1429,7 @@ async def add_bug_ticket(
             created_at=datetime.fromisoformat(new_ticket["created_at"])
         )
 
-    return await run_sync(db, _add)
+    return await main_boundary.run_sync_write(_add)
 
 
 @router.delete("/{item_id}/bug-tickets/{ticket_number:path}", status_code=status.HTTP_204_NO_CONTENT)
@@ -1440,7 +1438,7 @@ async def delete_bug_ticket(
     config_id: int,
     item_id: int,
     ticket_number: str,
-    db: AsyncSession = Depends(get_db)
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary)
 ):
     """刪除測試項目的指定 Bug Ticket"""
     def _delete(sync_db: Session) -> None:
@@ -1498,9 +1496,8 @@ async def delete_bug_ticket(
         # 更新資料庫
         item.bug_tickets_json = json.dumps(existing_tickets, ensure_ascii=False) if existing_tickets else None
         item.updated_at = datetime.utcnow()
-        sync_db.commit()
 
-    await run_sync(db, _delete)
+    await main_boundary.run_sync_write(_delete)
 
 
 # -------------------- Test Results Management --------------------
@@ -1510,7 +1507,7 @@ async def get_test_run_results(
     team_id: int,
     config_id: int,
     item_id: int,
-    db: AsyncSession = Depends(get_db)
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """
     獲取 Test Run Item 的測試結果檔案（本地）
@@ -1568,7 +1565,7 @@ async def get_test_run_results(
         }
 
     try:
-        return await run_sync(db, _get)
+        return await main_boundary.run_sync_read(_get)
     except HTTPException:
         raise
     except Exception as e:
@@ -1585,7 +1582,7 @@ async def delete_test_result_file(
     config_id: int,
     item_id: int,
     file_token: str,
-    db: AsyncSession = Depends(get_db)
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary)
 ):
     """
     刪除單一測試結果檔案（本地）
@@ -1621,7 +1618,7 @@ async def delete_test_result_file(
     import unicodedata
     from pathlib import Path
 
-    files = await run_sync(db, _load)
+    files = await main_boundary.run_sync_read(_load)
 
     # 準備比較（處理 URL decode 與 Unicode 正規化、尾綴比對）
     candidates = set()
@@ -1694,9 +1691,8 @@ async def delete_test_result_file(
         item.result_files_count = len(files)
         item.result_files_uploaded = 1 if len(files) > 0 else 0
         item.updated_at = datetime.utcnow()
-        sync_db.commit()
 
-    await run_sync(db, _update)
+    await main_boundary.run_sync_write(_update)
 
     return {
         "success": True,
@@ -1713,7 +1709,7 @@ async def get_comment(
     team_id: int,
     config_id: int,
     item_id: int,
-    db: AsyncSession = Depends(get_db)
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """取得測試項目的最新 comment"""
     def _get(sync_db: Session) -> Dict[str, Any]:
@@ -1742,7 +1738,7 @@ async def get_comment(
             "updated_by": latest_comment_record.changed_by_name if latest_comment_record else None
         }
 
-    return await run_sync(db, _get)
+    return await main_boundary.run_sync_read(_get)
 
 
 @router.put("/{item_id}/comment", response_model=Dict[str, Any])
@@ -1751,7 +1747,7 @@ async def update_comment(
     config_id: int,
     item_id: int,
     payload: CommentRequest,
-    db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
     current_user: User = Depends(get_current_user)
 ):
     """更新測試項目的 comment"""
@@ -1787,7 +1783,6 @@ async def update_comment(
 
         # 更新項目時間戳
         item.updated_at = datetime.utcnow()
-        sync_db.commit()
 
         return {
             "success": True,
@@ -1796,4 +1791,4 @@ async def update_comment(
             "message": "Comment 已更新"
         }
 
-    return await run_sync(db, _update)
+    return await main_boundary.run_sync_write(_update)

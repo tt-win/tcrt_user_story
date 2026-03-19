@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import ActionType, AuditSeverity, ResourceType, audit_service
 from app.database import get_db
+from app.db_access.main import create_main_access_boundary_for_session
 from app.models.database_models import MCPMachineCredential, MCPMachineCredentialStatus
 from app.models.mcp import MCPMachinePrincipal
 
@@ -175,29 +176,31 @@ async def get_current_machine_principal(
         )
 
     token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest()
-    result = await db.execute(
-        select(MCPMachineCredential).where(MCPMachineCredential.token_hash == token_hash)
-    )
-    credential = result.scalar_one_or_none()
+    main_boundary = create_main_access_boundary_for_session(db)
 
-    if not credential:
-        await _log_mcp_access(
-            request,
-            None,
-            allowed=False,
-            reason="invalid_machine_token",
+    async def _load_principal(session: AsyncSession) -> MCPMachinePrincipal:
+        result = await session.execute(
+            select(MCPMachineCredential).where(MCPMachineCredential.token_hash == token_hash)
         )
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"code": "INVALID_MACHINE_TOKEN", "message": "machine token 無效"},
-        )
+        credential = result.scalar_one_or_none()
 
-    credential_status = (
-        credential.status.value
-        if hasattr(credential.status, "value")
-        else str(credential.status or "")
-    )
-    if credential_status != MCPMachineCredentialStatus.ACTIVE.value:
+        if not credential:
+            await _log_mcp_access(
+                request,
+                None,
+                allowed=False,
+                reason="invalid_machine_token",
+            )
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"code": "INVALID_MACHINE_TOKEN", "message": "machine token 無效"},
+            )
+
+        credential_status = (
+            credential.status.value
+            if hasattr(credential.status, "value")
+            else str(credential.status or "")
+        )
         principal = MCPMachinePrincipal(
             credential_id=credential.id,
             credential_name=credential.name,
@@ -205,68 +208,59 @@ async def get_current_machine_principal(
             allow_all_teams=bool(credential.allow_all_teams),
             team_scope_ids=_parse_team_scope_ids(credential.team_scope_json),
         )
-        await _log_mcp_access(
-            request,
-            principal,
-            allowed=False,
-            reason="machine_token_revoked",
-        )
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"code": "MACHINE_TOKEN_REVOKED", "message": "machine token 已停用"},
-        )
 
-    now = datetime.utcnow()
-    if credential.expires_at and credential.expires_at <= now:
-        principal = MCPMachinePrincipal(
-            credential_id=credential.id,
-            credential_name=credential.name,
-            permission=credential.permission or "",
-            allow_all_teams=bool(credential.allow_all_teams),
-            team_scope_ids=_parse_team_scope_ids(credential.team_scope_json),
-        )
-        await _log_mcp_access(
-            request,
-            principal,
-            allowed=False,
-            reason="machine_token_expired",
-        )
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail={"code": "MACHINE_TOKEN_EXPIRED", "message": "machine token 已過期"},
-        )
+        if credential_status != MCPMachineCredentialStatus.ACTIVE.value:
+            await _log_mcp_access(
+                request,
+                principal,
+                allowed=False,
+                reason="machine_token_revoked",
+            )
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"code": "MACHINE_TOKEN_REVOKED", "message": "machine token 已停用"},
+            )
 
-    permission_value = (credential.permission or "").strip().lower()
-    team_scope_ids = _parse_team_scope_ids(credential.team_scope_json)
-    principal = MCPMachinePrincipal(
-        credential_id=credential.id,
-        credential_name=credential.name,
-        permission=credential.permission or "",
-        allow_all_teams=bool(credential.allow_all_teams),
-        team_scope_ids=team_scope_ids,
-    )
+        now = datetime.utcnow()
+        if credential.expires_at and credential.expires_at <= now:
+            await _log_mcp_access(
+                request,
+                principal,
+                allowed=False,
+                reason="machine_token_expired",
+            )
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"code": "MACHINE_TOKEN_EXPIRED", "message": "machine token 已過期"},
+            )
 
-    if permission_value != MCP_READ_PERMISSION:
-        await _log_mcp_access(
-            request,
-            principal,
-            allowed=False,
-            reason="missing_mcp_read_permission",
-        )
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "code": "INSUFFICIENT_MACHINE_PERMISSION",
-                "message": "machine token 缺少 mcp_read 權限",
-            },
-        )
+        permission_value = (credential.permission or "").strip().lower()
+        if permission_value != MCP_READ_PERMISSION:
+            await _log_mcp_access(
+                request,
+                principal,
+                allowed=False,
+                reason="missing_mcp_read_permission",
+            )
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={
+                    "code": "INSUFFICIENT_MACHINE_PERMISSION",
+                    "message": "machine token 缺少 mcp_read 權限",
+                },
+            )
 
-    credential.last_used_at = now
+        credential.last_used_at = now
+        await session.flush()
+        return principal
+
     try:
-        await db.commit()
+        principal = await main_boundary.run_write(_load_principal)
+    except HTTPException:
+        raise
     except Exception as exc:  # noqa: BLE001
-        await db.rollback()
         logger.warning("更新 machine token last_used_at 失敗: %s", exc, exc_info=True)
+        raise
 
     request.state.mcp_machine_principal = principal
     return principal

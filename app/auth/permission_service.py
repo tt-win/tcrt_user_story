@@ -17,11 +17,12 @@ from functools import lru_cache
 import casbin
 import yaml
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_async_session
 from app.models.database_models import User, Team
 from app.auth.models import UserRole, PermissionType, PermissionCheck
 from app.config import get_settings
+from app.db_access.main import MainAccessBoundary, get_main_access_boundary
 
 logger = logging.getLogger(__name__)
 
@@ -115,9 +116,10 @@ class PermissionService:
     # 內建預設策略版本（當讀檔失敗時使用）
     FALLBACK_VERSION = "fallback"
 
-    def __init__(self):
+    def __init__(self, main_boundary: MainAccessBoundary | None = None):
         self.settings = get_settings()
         self.cache = PermissionCache(ttl_seconds=300)  # 5 分鐘快取
+        self.main_boundary = main_boundary or get_main_access_boundary()
 
         # 設定檔路徑（Casbin + constraints + ui mapping）
         base_dir = os.path.join("config", "permissions")
@@ -134,6 +136,9 @@ class PermissionService:
 
         # 初始化載入
         self._load_all(initial=True)
+
+    async def _run_read(self, operation):
+        return await self.main_boundary.run_read(operation)
     
     def _normalize_role(self, role: str) -> str:
         # 與 Casbin policy.csv 與 constraints.yaml 對齊：使用小寫（例如 SUPER_ADMIN -> super_admin）
@@ -386,23 +391,22 @@ class PermissionService:
         
         # 從資料庫查詢
         try:
-            async with get_async_session() as session:
+            async def _load_role(session: AsyncSession) -> Optional[UserRole]:
                 result = await session.execute(
                     select(User.role).where(User.id == user_id, User.is_active == True)
                 )
                 user_role_str = result.scalar_one_or_none()
-                
-                if not user_role_str:
-                    logger.warning(f"找不到活躍使用者: user_id={user_id}")
-                    return False
-                
-                user_role = UserRole(user_role_str)
-                
-                # 快取結果
-                await self.cache.set(user_id, user_role)
-                
-                return self._compare_roles(user_role, required_role)
-                
+
+                return UserRole(user_role_str) if user_role_str else None
+
+            user_role = await self._run_read(_load_role)
+            if not user_role:
+                logger.warning(f"找不到活躍使用者: user_id={user_id}")
+                return False
+
+            # 快取結果
+            await self.cache.set(user_id, user_role)
+            return self._compare_roles(user_role, required_role)
         except Exception as e:
             logger.error(f"檢查使用者角色失敗: user_id={user_id}, error={e}")
             return False
@@ -547,9 +551,11 @@ class PermissionService:
             if not user_role:
                 return []
 
-            async with get_async_session() as session:
+            async def _load_team_ids(session: AsyncSession) -> List[int]:
                 result = await session.execute(select(Team.id))
                 return [team_id for team_id, in result.fetchall()]
+
+            return await self._run_read(_load_team_ids)
 
         except Exception as e:
             logger.error(f"取得使用者可存取團隊失敗: user_id={user_id}, error={e}")
@@ -596,12 +602,14 @@ class PermissionService:
     async def _get_user_role(self, user_id: int) -> Optional[UserRole]:
         """取得使用者角色"""
         try:
-            async with get_async_session() as session:
+            async def _load_role(session: AsyncSession) -> Optional[UserRole]:
                 result = await session.execute(
                     select(User.role).where(User.id == user_id, User.is_active == True)
                 )
                 role_str = result.scalar_one_or_none()
                 return UserRole(role_str) if role_str else None
+
+            return await self._run_read(_load_role)
         except Exception as e:
             logger.error(f"取得使用者角色失敗: user_id={user_id}, error={e}")
             return None
@@ -723,11 +731,13 @@ class PermissionService:
             if target_user_id:
                 # 取得目標使用者資訊
                 try:
-                    async with get_async_session() as session:
+                    async def _load_target_user(session: AsyncSession) -> Optional[User]:
                         result = await session.execute(
                             select(User).where(User.id == target_user_id)
                         )
-                        target_user = result.scalar_one_or_none()
+                        return result.scalar_one_or_none()
+
+                    target_user = await self._run_read(_load_target_user)
                 except Exception as e:
                     logger.error(f"取得目標使用者失敗: target_user_id={target_user_id}, error={e}")
             

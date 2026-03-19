@@ -13,9 +13,9 @@ from qdrant_client.http import models
 # 將專案根目錄加入 sys.path
 sys.path.insert(0, os.getcwd())
 
-from app.database import SessionLocal
-from app.models.user_story_map_db import USMAsyncSessionLocal
-from app.models.database_models import User, Team
+from app.db_access.main import get_main_access_boundary
+from app.db_access.usm import get_usm_access_boundary
+from app.models.database_models import Team
 from app.auth.models import UserRole
 from app.api.llm_context import get_test_cases_context, get_usm_context
 from sqlalchemy import select
@@ -173,29 +173,26 @@ async def main():
         print(f"Failed to connect to Qdrant at {QDRANT_URL}: {e}")
         return
 
-    # 2. Setup DB Sessions
-    db = SessionLocal()
-    usm_db = USMAsyncSessionLocal()
+    main_boundary = get_main_access_boundary()
+    usm_boundary = get_usm_access_boundary()
     current_user = MockUser()
 
-    try:
-        # 3. Get Target Teams
-        result = await db.execute(select(Team).where(Team.id.in_(TARGET_TEAM_IDS)))
-        teams = result.scalars().all()
-        
-        if not teams:
-            print(f"No target teams found with IDs: {TARGET_TEAM_IDS}")
-            return
-        
-        print(f"Found {len(teams)} teams to retry. Starting processing...")
+    async with main_boundary.session_scope() as db:
+        async with usm_boundary.session_scope() as usm_db:
+            # 3. Get Target Teams
+            result = await db.execute(select(Team).where(Team.id.in_(TARGET_TEAM_IDS)))
+            teams = result.scalars().all()
 
-        # 4. Process Each Team
-        for team in teams:
-            await process_team(team, db, usm_db, current_user, qdrant)
+            if not teams:
+                print(f"No target teams found with IDs: {TARGET_TEAM_IDS}")
+                return
 
-    finally:
-        await db.close()
-        await usm_db.close()
+            print(f"Found {len(teams)} teams to retry. Starting processing...")
+
+            # 4. Process Each Team
+            for team in teams:
+                await process_team(team, db, usm_db, current_user, qdrant)
+
         print("\nRetry tasks completed.")
 
 if __name__ == "__main__":

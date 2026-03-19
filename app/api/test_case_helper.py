@@ -13,7 +13,8 @@ from app.auth.dependencies import get_current_user
 from app.auth.models import PermissionType, UserRole
 from app.auth.permission_service import permission_service
 from app.audit import audit_service, ActionType, ResourceType, AuditSeverity
-from app.database import get_db, run_sync
+from app.database import get_db
+from app.db_access.main import create_main_access_boundary_for_session
 from app.models.database_models import Team as TeamDB, User
 from app.models.test_case_helper import (
     HelperAnalyzeRequest,
@@ -98,7 +99,8 @@ async def _verify_team_write_access(
     def _check_team(sync_db: Session):
         return sync_db.query(TeamDB).filter(TeamDB.id == team_id).first()
 
-    team = await run_sync(db, _check_team)
+    main_boundary = create_main_access_boundary_for_session(db)
+    team = await main_boundary.run_sync_read(_check_team)
     if not team:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

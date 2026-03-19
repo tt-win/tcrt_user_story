@@ -2,7 +2,24 @@
 
 此文件提供本專案在本機對 MySQL 執行三套資料庫 `main`、`audit`、`usm` 的 smoke / rehearsal 標準流程。
 
-## 1. 啟動 MySQL
+## 1. 一鍵 smoke workflow
+
+```bash
+python3 scripts/run_db_cutover_workflow.py --target mysql --mode smoke --manage-services
+```
+
+此流程會自動：
+
+- 啟動 `docker-compose.mysql.yml`
+- 執行 guardrails
+- 執行 preflight / bootstrap / verify
+- 啟動應用程式並檢查 `GET /health`
+- 將輸出寫到 `.tmp/db-cutover/<timestamp>-mysql-smoke/`
+- 預設在結束時關閉 MySQL 容器
+
+若要保留容器環境供後續手動檢查，可加入 `--keep-services`。
+
+## 2. 啟動 MySQL（手動模式）
 
 ```bash
 docker compose -f docker-compose.mysql.yml up -d
@@ -19,13 +36,13 @@ docker compose -f docker-compose.mysql.yml up -d
 - user: `tcrt`
 - password: `tcrt`
 
-## 2. 安裝必要 driver
+## 3. 安裝必要 driver
 
 ```bash
 pip install asyncmy PyMySQL
 ```
 
-## 3. 設定三套資料庫 URL
+## 4. 設定三套資料庫 URL
 
 ```bash
 export DATABASE_URL='mysql+asyncmy://tcrt:tcrt@127.0.0.1:33060/tcrt_main'
@@ -34,7 +51,7 @@ export AUDIT_DATABASE_URL='mysql+asyncmy://tcrt:tcrt@127.0.0.1:33060/tcrt_audit'
 export USM_DATABASE_URL='mysql+asyncmy://tcrt:tcrt@127.0.0.1:33060/tcrt_usm'
 ```
 
-## 4. 執行 preflight
+## 5. 執行 preflight
 
 ```bash
 python3 database_init.py --preflight
@@ -51,7 +68,7 @@ python3 database_init.py --preflight
 - `--validate-legacy-<target>-db`
 - `--adopt-legacy-<target>-db`
 
-## 5. 執行 bootstrap 與驗證摘要
+## 6. 執行 bootstrap 與驗證摘要
 
 ```bash
 python3 database_init.py
@@ -64,7 +81,7 @@ python3 database_init.py --verify-target all
 - `head_revision` 與 `current_revision` 一致
 - `required_tables` 全部為 `OK`
 
-## 6. 啟動應用程式並檢查健康狀態
+## 7. 啟動應用程式並檢查健康狀態
 
 ```bash
 HOST=127.0.0.1 PORT=19999 SERVER_PID_FILE=/tmp/tcrt-mysql-smoke.pid UVICORN_RELOAD=0 ./start.sh
@@ -73,13 +90,33 @@ kill "$(cat /tmp/tcrt-mysql-smoke.pid)"
 rm -f /tmp/tcrt-mysql-smoke.pid
 ```
 
-## 7. 清理環境
+## 8. 執行 rehearsal 並比對 SQLite baseline
+
+先跑一次 SQLite baseline：
+
+```bash
+python3 scripts/run_db_cutover_workflow.py --target sqlite --mode rehearsal
+```
+
+再將最新的 SQLite `summary.json` 帶進 MySQL rehearsal：
+
+```bash
+python3 scripts/run_db_cutover_workflow.py \
+  --target mysql \
+  --mode rehearsal \
+  --manage-services \
+  --baseline-summary .tmp/db-cutover/<sqlite-run>/summary.json
+```
+
+Rehearsal 會在 `summary.json` 與 `summary.md` 中輸出 row count / revision comparison。
+
+## 9. 清理環境
 
 ```bash
 docker compose -f docker-compose.mysql.yml down -v
 unset DATABASE_URL SYNC_DATABASE_URL AUDIT_DATABASE_URL USM_DATABASE_URL
 ```
 
-## 8. Rollback / Re-Verification
+## 10. Rollback / Re-Verification
 
 若 rehearsal 或 smoke 失敗，請依 [database-cutover-readiness.md](database-cutover-readiness.md) 的 rollback 與 re-verification 流程處理，不要直接覆寫來源資料庫。

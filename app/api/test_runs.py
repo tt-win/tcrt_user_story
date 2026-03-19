@@ -13,7 +13,12 @@ from datetime import datetime
 import io
 import logging
 
-from app.database import get_db, run_sync
+from app.database import get_db
+from app.db_access.main import (
+    MainAccessBoundary,
+    create_main_access_boundary_for_session,
+    get_main_access_boundary,
+)
 from app.auth.dependencies import get_current_user
 from app.auth.models import PermissionType
 from app.models.database_models import User
@@ -65,9 +70,17 @@ async def log_test_run_action(
 
 
 async def get_lark_client_for_test_run(
-    team_id: int, config_id: int, db: AsyncSession
+    team_id: int,
+    config_id: int,
+    db: Optional[AsyncSession] = None,
+    main_boundary: Optional[MainAccessBoundary] = None,
 ) -> tuple[LarkClient, TeamDB, TestRunConfigDB]:
     """取得測試執行配置的 Lark Client"""
+    if main_boundary is None:
+        if db is None:
+            raise ValueError("Either db or main_boundary must be provided")
+        main_boundary = create_main_access_boundary_for_session(db)
+
     def _load(sync_db: Session) -> tuple[TeamDB, TestRunConfigDB]:
         # 取得團隊
         team = sync_db.query(TeamDB).filter(TeamDB.id == team_id).first()
@@ -89,7 +102,7 @@ async def get_lark_client_for_test_run(
             )
         return team, config
 
-    team, config = await run_sync(db, _load)
+    team, config = await main_boundary.run_sync_read(_load)
 
     # 建立 Lark Client
     lark_client = LarkClient(
@@ -244,7 +257,9 @@ async def get_test_runs(
                 detail="無權限存取此團隊的測試執行記錄",
             )
 
-    lark_client, team, config = await get_lark_client_for_test_run(team_id, config_id, db)
+    lark_client, team, config = await get_lark_client_for_test_run(
+        team_id, config_id, main_boundary=main_boundary
+    )
 
     try:
         # 從 Lark 取得所有記錄
@@ -701,6 +716,7 @@ async def delete_test_run(
     config_id: int,
     record_id: str,
     db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
     current_user: User = Depends(get_current_user),
 ):
     """刪除測試執行記錄（需要對該團隊的刪除權限）"""
@@ -759,7 +775,7 @@ async def delete_test_run(
                         .first()
                     )
 
-                test_run_item = await run_sync(db, _load_item)
+                test_run_item = await main_boundary.run_sync_read(_load_item)
 
                 if test_run_item and test_run_item.upload_history_json:
                     upload_history = _json.loads(test_run_item.upload_history_json)
@@ -826,9 +842,8 @@ async def delete_test_run(
                                     item.result_files_uploaded = 0
                                     item.result_files_count = 0
                                     item.upload_history_json = None
-                                    sync_db.commit()
 
-                            await run_sync(db, _clear_item)
+                            await main_boundary.run_sync_write(_clear_item)
         except Exception as cleanup_err:
             # 清理失敗不應阻止主要刪除流程，記錄警告即可
             import logging as _logging
@@ -1017,7 +1032,11 @@ async def batch_update_test_results(
 
 @router.post("/{config_id}/generate-html")
 async def generate_html_report(
-    team_id: int, config_id: int, request: Request, db: AsyncSession = Depends(get_db)
+    team_id: int,
+    config_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """生成 Test Run HTML 報告（靜態檔），並回傳可存取的連結"""
     try:
@@ -1042,7 +1061,7 @@ async def generate_html_report(
                     detail=f"找不到測試執行配置 ID {config_id}",
                 )
 
-        await run_sync(db, _verify)
+        await main_boundary.run_sync_read(_verify)
 
         service = HTMLReportService(db_session=db)
         result = await service.generate_test_run_report(team_id=team_id, config_id=config_id)
@@ -1069,7 +1088,11 @@ async def generate_html_report(
 
 @router.get("/{config_id}/report", response_model=dict)
 async def get_html_report_status(
-    team_id: int, config_id: int, request: Request, db: AsyncSession = Depends(get_db)
+    team_id: int,
+    config_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """查詢 HTML 報告是否已存在，存在則回傳完整連結"""
     # 驗證團隊與配置存在
@@ -1090,7 +1113,7 @@ async def get_html_report_status(
                 detail=f"找不到測試執行配置 ID {config_id}",
             )
 
-    await run_sync(db, _verify)
+    await main_boundary.run_sync_read(_verify)
 
     from ..services.html_report_service import HTMLReportService
 

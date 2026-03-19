@@ -1,0 +1,104 @@
+version: 1
+managed_targets:
+  main:
+    boundary_module: app/db_access/main.py
+    session_provider: app.database.get_async_session
+    sync_bridge: app.database.run_sync
+  audit:
+    boundary_module: app/db_access/audit.py
+    session_provider: app.audit.database.get_audit_session
+  usm:
+    boundary_module: app/db_access/usm.py
+    session_provider: app.models.user_story_map_db.USMAsyncSessionLocal
+
+allowed_exceptions:
+  runtime_infrastructure:
+    - app/database.py
+    - app/audit/database.py
+    - app/models/user_story_map_db.py
+    - app/db_access/
+  migration_bootstrap:
+    - app/db_migrations.py
+    - database_init.py
+    - alembic/
+    - migrations/
+  test_support:
+    - app/testsuite/
+
+pending_hotspots:
+  main:
+    - path: app/api/test_cases.py
+      issues:
+        - sync_commit_in_run_sync_closure
+        - batch_mutation_logic_in_route
+    - path: app/api/test_run_items.py
+      issues:
+        - sync_commit_in_run_sync_closure
+        - route_level_mutation_ownership
+    - path: app/api/test_run_sets.py
+      issues:
+        - sync_commit_in_run_sync_closure
+        - post_write_status_recalculation_in_route
+    - path: app/api/test_run_configs.py
+      issues:
+        - sync_commit_in_run_sync_closure
+        - route_level_commit_and_rollback
+    - path: app/api/adhoc.py
+      issues:
+        - sync_commit_in_run_sync_closure
+        - raw_sql_and_transaction_mixing
+    - path: app/services/jira_testcase_helper_service.py
+      issues:
+        - long_running_sync_write_paths
+        - raw_sql_helper_tables
+    - path: app/services/test_case_set_service.py
+      issues:
+        - service_owns_commit
+    - path: app/services/user_service.py
+      issues:
+        - service_opens_and_commits_session
+  audit:
+    - path: app/api/team_statistics.py
+      issues:
+        - direct_session_factory_usage
+        - reporting_sql_mixed_with_audit_reads
+    - path: app/api/admin.py
+      issues:
+        - direct_session_factory_usage
+        - dialect_sensitive_diagnostics
+    - path: app/auth/session_service.py
+      issues:
+        - service_opens_and_commits_session
+  usm:
+    - path: app/api/user_story_maps.py
+      issues:
+        - direct_usm_session_usage
+        - route_level_commit
+  mixed:
+    - path: app/api/user_story_maps.py
+      targets:
+        - main
+        - usm
+      issues:
+        - mixed_database_coordination_in_handler
+        - run_sync_on_main_for_usm_flow
+    - path: app/api/team_statistics.py
+      targets:
+        - main
+        - audit
+      issues:
+        - mixed_reporting_queries_in_handler
+  tooling:
+    - path: scripts/etl_to_qdrant.py
+      issues:
+        - direct_session_factory_usage
+    - path: ai/etl_all_teams.py
+      issues:
+        - direct_session_factory_usage
+    - path: ai/etl_retry_teams.py
+      issues:
+        - direct_session_factory_usage
+    - path: ai/test_llm_context.py
+      issues:
+        - direct_session_factory_usage
+
