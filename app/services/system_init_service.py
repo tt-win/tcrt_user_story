@@ -8,7 +8,7 @@ from datetime import datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
-from sqlalchemy import text
+from sqlalchemy import inspect
 
 from app.models.database_models import User as UserORM
 from app.auth.models import UserRole, UserCreate
@@ -116,12 +116,10 @@ class SystemInitService:
         table_status = {}
         
         try:
+            inspector = inspect(sync_db.get_bind())
             for table_name in required_tables:
                 try:
-                    result = sync_db.execute(
-                        text(f"SELECT 1 FROM {table_name} LIMIT 1")
-                    )
-                    table_status[table_name] = True
+                    table_status[table_name] = bool(inspector.has_table(table_name))
                 except Exception:
                     table_status[table_name] = False
                     

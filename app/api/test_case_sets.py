@@ -8,7 +8,8 @@ from sqlalchemy.orm import Session
 from typing import List, Optional
 import logging
 
-from ..database import get_db, run_sync
+from ..database import get_db
+from ..db_access.main import create_main_access_boundary_for_session
 from ..auth.dependencies import get_current_user
 from ..auth.models import User
 from ..models.database_models import TestCaseSet as TestCaseSetDB, Team as TeamDB
@@ -68,10 +69,12 @@ async def verify_team_write_permission(
 ) -> TeamDB:
     """驗證團隊存在"""
     try:
+        main_boundary = create_main_access_boundary_for_session(db)
+
         def _get_team(sync_db: Session):
             return sync_db.query(TeamDB).filter(TeamDB.id == team_id).first()
 
-        team = await run_sync(db, _get_team)
+        team = await main_boundary.run_sync_read(_get_team)
         if not team:
             logger.warning(f"Team {team_id} not found")
             raise HTTPException(
@@ -173,11 +176,12 @@ async def get_test_case_set(
     """取得單個 Test Case Set 及其 Sections"""
     try:
         logger.info(f"Getting test case set {set_id} for team {team_id}")
+        main_boundary = create_main_access_boundary_for_session(db)
 
         def _get_team(sync_db: Session):
             return sync_db.query(TeamDB).filter(TeamDB.id == team_id).first()
 
-        team = await run_sync(db, _get_team)
+        team = await main_boundary.run_sync_read(_get_team)
         if not team:
             logger.warning(f"Team {team_id} not found")
             raise HTTPException(
@@ -206,7 +210,7 @@ async def get_test_case_set(
             ).all()
 
         section_test_case_counts = {}
-        all_test_cases = await run_sync(db, _load_test_cases)
+        all_test_cases = await main_boundary.run_sync_read(_load_test_cases)
 
         for tc in all_test_cases:
             section_id = tc.test_case_section_id
@@ -333,6 +337,8 @@ async def preview_delete_test_case_set_impact(
     db: AsyncSession = Depends(get_db),
 ) -> ImpactPreviewResponse:
     """預覽刪除 Test Case Set 對 Test Run 的影響"""
+    main_boundary = create_main_access_boundary_for_session(db)
+
     def _preview(sync_db: Session):
         test_set = sync_db.query(TestCaseSetDB).filter(
             TestCaseSetDB.id == set_id,
@@ -350,7 +356,7 @@ async def preview_delete_test_case_set_impact(
             )
         return TestRunScopeService.preview_set_deletion(sync_db, team_id=team_id, set_id=set_id)
 
-    return await run_sync(db, _preview)
+    return await main_boundary.run_sync_read(_preview)
 
 
 @router.delete("/{team_id}/test-case-sets/{set_id}", response_model=dict)

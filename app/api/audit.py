@@ -12,11 +12,12 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from fastapi import APIRouter, Depends, Query, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import audit_service, AuditLogQuery, ActionType, ResourceType, AuditSeverity
 from app.auth.dependencies import require_role
 from app.auth.models import UserRole
-from app.database import get_async_session
+from app.db_access.main import MainAccessBoundary, get_main_access_boundary
 from app.models.database_models import Team, User
 
 router = APIRouter(prefix="/audit", tags=["audit"])
@@ -37,19 +38,27 @@ def _parse_iso_datetime(value: Optional[str]) -> Optional[datetime]:
         raise HTTPException(status_code=400, detail={"code": "INVALID_DATETIME", "message": f"無法解析時間: {value}"}) from exc
 
 
-async def _fetch_team_names(team_ids: Iterable[int]) -> Dict[int, str]:
+async def _fetch_team_names(
+    team_ids: Iterable[int],
+    *,
+    main_boundary: MainAccessBoundary,
+) -> Dict[int, str]:
     unique_ids = {tid for tid in team_ids if tid}
     if not unique_ids:
         return {}
-    async with get_async_session() as session:
+
+    async def _load(session: AsyncSession) -> Dict[int, str]:
         result = await session.execute(select(Team.id, Team.name).where(Team.id.in_(unique_ids)))
         return {row[0]: row[1] for row in result.all()}
+
+    return await main_boundary.run_read(_load)
 
 
 @router.get("/logs")
 async def list_audit_logs(
     *,
     current_user: User = Depends(require_role(UserRole.ADMIN)),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
     username: Optional[str] = Query(None, description="使用者名稱（模糊搜尋）"),
     role: Optional[str] = Query(None, description="角色"),
     resource_type: Optional[ResourceType] = Query(None, description="資源類型"),
@@ -75,7 +84,10 @@ async def list_audit_logs(
     )
 
     response = await audit_service.query_logs(query, current_user)
-    team_map = await _fetch_team_names(item.team_id for item in response.items)
+    team_map = await _fetch_team_names(
+        (item.team_id for item in response.items),
+        main_boundary=main_boundary,
+    )
 
     return {
         "items": [
@@ -106,6 +118,7 @@ async def list_audit_logs(
 async def export_audit_logs(
     *,
     current_user: User = Depends(require_role(UserRole.ADMIN)),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
     username: Optional[str] = Query(None),
     role: Optional[str] = Query(None),
     resource_type: Optional[ResourceType] = Query(None),
@@ -130,7 +143,10 @@ async def export_audit_logs(
     )
 
     logs = await audit_service.fetch_logs_for_export(query, current_user)
-    team_map = await _fetch_team_names(log.team_id for log in logs)
+    team_map = await _fetch_team_names(
+        (log.team_id for log in logs),
+        main_boundary=main_boundary,
+    )
 
     tzinfo = timezone.utc
     if timezone_name:

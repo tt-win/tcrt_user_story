@@ -13,7 +13,8 @@ from fastapi import APIRouter, HTTPException, Query, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
-from ..database import get_db, run_sync
+from ..database import get_db
+from ..db_access.main import create_main_access_boundary_for_session
 from ..models.database_models import Team
 from ..services.lark_org_sync_service import get_lark_org_sync_service
 
@@ -22,6 +23,17 @@ router = APIRouter(prefix="/teams", tags=["contacts"])
 
 # 日誌記錄器
 logger = logging.getLogger(__name__)
+
+
+async def _ensure_team_exists(team_id: int, db: AsyncSession) -> None:
+    main_boundary = create_main_access_boundary_for_session(db)
+
+    def _ensure_team(sync_db: Session):
+        team = sync_db.query(Team).filter(Team.id == team_id).first()
+        if not team:
+            raise HTTPException(status_code=404, detail="團隊不存在")
+
+    await main_boundary.run_sync_read(_ensure_team)
 
 
 @router.get("/{team_id}/contacts")
@@ -48,12 +60,7 @@ async def get_team_contacts(
         聯絡人列表，包含用戶資訊和搜尋結果
     """
     try:
-        def _ensure_team(sync_db: Session):
-            team = sync_db.query(Team).filter(Team.id == team_id).first()
-            if not team:
-                raise HTTPException(status_code=404, detail="團隊不存在")
-
-        await run_sync(db, _ensure_team)
+        await _ensure_team_exists(team_id, db)
         
         # 獲取組織同步服務
         sync_service = get_lark_org_sync_service()
@@ -130,12 +137,7 @@ async def get_contact_by_id(
         聯絡人詳細資訊
     """
     try:
-        def _ensure_team(sync_db: Session):
-            team = sync_db.query(Team).filter(Team.id == team_id).first()
-            if not team:
-                raise HTTPException(status_code=404, detail="團隊不存在")
-
-        await run_sync(db, _ensure_team)
+        await _ensure_team_exists(team_id, db)
         
         # 獲取組織同步服務
         sync_service = get_lark_org_sync_service()
@@ -188,12 +190,7 @@ async def refresh_contacts_cache(
         同步操作結果
     """
     try:
-        def _ensure_team(sync_db: Session):
-            team = sync_db.query(Team).filter(Team.id == team_id).first()
-            if not team:
-                raise HTTPException(status_code=404, detail="團隊不存在")
-
-        await run_sync(db, _ensure_team)
+        await _ensure_team_exists(team_id, db)
         
         # 獲取組織同步服務
         sync_service = get_lark_org_sync_service()
@@ -266,12 +263,7 @@ async def get_search_suggestions(
         搜尋建議列表，包含精簡的用戶資訊
     """
     try:
-        def _ensure_team(sync_db: Session):
-            team = sync_db.query(Team).filter(Team.id == team_id).first()
-            if not team:
-                raise HTTPException(status_code=404, detail="團隊不存在")
-
-        await run_sync(db, _ensure_team)
+        await _ensure_team_exists(team_id, db)
         
         # 獲取組織同步服務
         sync_service = get_lark_org_sync_service()
@@ -331,12 +323,7 @@ async def get_contacts_stats(
         聯絡人和組織架構統計信息
     """
     try:
-        def _ensure_team(sync_db: Session):
-            team = sync_db.query(Team).filter(Team.id == team_id).first()
-            if not team:
-                raise HTTPException(status_code=404, detail="團隊不存在")
-
-        await run_sync(db, _ensure_team)
+        await _ensure_team_exists(team_id, db)
         
         # 獲取組織同步服務
         sync_service = get_lark_org_sync_service()
@@ -376,12 +363,7 @@ async def trigger_sync(
         同步操作結果
     """
     try:
-        def _ensure_team(sync_db: Session):
-            team = sync_db.query(Team).filter(Team.id == team_id).first()
-            if not team:
-                raise HTTPException(status_code=404, detail="團隊不存在")
-
-        await run_sync(db, _ensure_team)
+        await _ensure_team_exists(team_id, db)
         
         # 獲取組織同步服務
         sync_service = get_lark_org_sync_service()

@@ -3,25 +3,46 @@
 """
 
 import logging
+from typing import Callable, TypeVar
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 
+from ..db_access.main import MainAccessBoundary, create_main_access_boundary_for_session
 from ..models.database_models import TestCaseSet, TestCaseSection, TestCaseLocal
 from ..models.test_case_set import (
     TestCaseSetCreate, TestCaseSetUpdate, TestCaseSet as TestCaseSetModel
 )
-from ..database import run_sync
 from ..services.test_run_scope_service import TestRunScopeService
 
 logger = logging.getLogger(__name__)
+T = TypeVar("T")
 
 
 class TestCaseSetService:
     """Test Case Set 業務邏輯"""
 
-    def __init__(self, db: AsyncSession):
+    def __init__(
+        self,
+        db: AsyncSession | None,
+        main_boundary: MainAccessBoundary | None = None,
+    ):
         self.db = db
+        self.main_boundary = (
+            main_boundary
+            or (create_main_access_boundary_for_session(db) if db is not None else None)
+        )
+
+    def _require_main_boundary(self) -> MainAccessBoundary:
+        if self.main_boundary is None:
+            raise RuntimeError("TestCaseSetService requires a managed main boundary")
+        return self.main_boundary
+
+    async def _run_read(self, operation: Callable[[Session], T]) -> T:
+        return await self._require_main_boundary().run_sync_read(operation)
+
+    async def _run_write(self, operation: Callable[[Session], T]) -> T:
+        return await self._require_main_boundary().run_sync_write(operation)
 
     async def create(self, team_id: int, name: str, description: str = None, is_default: bool = False) -> TestCaseSet:
         """建立新的 Test Case Set"""
@@ -38,29 +59,24 @@ class TestCaseSetService:
                 is_default=is_default
             )
 
-            try:
-                sync_db.add(new_set)
-                sync_db.flush()  # 先 flush 以獲取 ID
+            sync_db.add(new_set)
+            sync_db.flush()  # 先 flush 以獲取 ID
 
-                # 建立預設的 Unassigned Section
-                unassigned_section = TestCaseSection(
-                    test_case_set_id=new_set.id,
-                    name="Unassigned",
-                    description="未分配的測試案例",
-                    level=1,
-                    sort_order=0,
-                    parent_section_id=None
-                )
-                sync_db.add(unassigned_section)
-                sync_db.commit()
-            except Exception:
-                sync_db.rollback()
-                raise
+            # 建立預設的 Unassigned Section
+            unassigned_section = TestCaseSection(
+                test_case_set_id=new_set.id,
+                name="Unassigned",
+                description="未分配的測試案例",
+                level=1,
+                sort_order=0,
+                parent_section_id=None
+            )
+            sync_db.add(unassigned_section)
 
             refreshed_set = sync_db.get(TestCaseSet, new_set.id)
             return refreshed_set or new_set
 
-        return await run_sync(self.db, _create)
+        return await self._run_write(_create)
 
     async def get_by_id(self, set_id: int, team_id: int = None) -> TestCaseSet:
         """根據 ID 取得 Test Case Set"""
@@ -70,7 +86,7 @@ class TestCaseSetService:
                 query = query.filter(TestCaseSet.team_id == team_id)
             return query.first()
 
-        return await run_sync(self.db, _get)
+        return await self._run_read(_get)
 
     async def list_by_team(self, team_id: int) -> list[TestCaseSet]:
         """列出指定團隊的所有 Test Case Sets (默認 Set 始終在前)"""
@@ -82,7 +98,7 @@ class TestCaseSetService:
                 TestCaseSet.name.asc()  # 其他 Set 按名稱排序
             ).all()
 
-        return await run_sync(self.db, _list)
+        return await self._run_read(_list)
 
     async def get_or_create_default(self, team_id: int) -> TestCaseSet:
         """取得或建立團隊的預設 Test Case Set"""
@@ -109,11 +125,9 @@ class TestCaseSetService:
                     parent_section_id=None
                 )
                 sync_db.add(unassigned_section)
-                sync_db.commit()
-
             return default_set
 
-        return await run_sync(self.db, _get_or_create)
+        return await self._run_write(_get_or_create)
 
     async def update(self, set_id: int, team_id: int, name: str = None, description: str = None) -> TestCaseSet:
         """更新 Test Case Set"""
@@ -135,10 +149,9 @@ class TestCaseSetService:
             if description is not None:
                 test_set.description = description
 
-            sync_db.commit()
             return test_set
 
-        return await run_sync(self.db, _update)
+        return await self._run_write(_update)
 
     async def delete(self, set_id: int, team_id: int) -> dict:
         """刪除 Test Case Set，並將其中的 Test Case 移至預設 Set 的 Unassigned Section"""
@@ -206,7 +219,6 @@ class TestCaseSetService:
 
             # 刪除 Test Case Set
             sync_db.delete(test_set)
-            sync_db.commit()
             return {
                 "cleanup_summary": cleanup_summary,
                 "moved_test_case_count": moved_test_case_count,
@@ -215,7 +227,7 @@ class TestCaseSetService:
                 "updated_scope_config_count": len(scope_updates),
             }
 
-        return await run_sync(self.db, _delete)
+        return await self._run_write(_delete)
 
     async def validate_name_unique(self, name: str, exclude_set_id: int = None) -> bool:
         """驗證 Test Case Set 名稱全域唯一性"""
@@ -225,7 +237,7 @@ class TestCaseSetService:
                 query = query.filter(TestCaseSet.id != exclude_set_id)
             return query.first() is None
 
-        return await run_sync(self.db, _validate)
+        return await self._run_read(_validate)
 
     async def get_test_case_count(self, set_id: int) -> int:
         """取得 Set 中的 Test Case 數量"""
@@ -234,7 +246,7 @@ class TestCaseSetService:
                 TestCaseLocal.test_case_set_id == set_id
             ).count()
 
-        return await run_sync(self.db, _count)
+        return await self._run_read(_count)
 
     async def get_set_with_sections(self, set_id: int, team_id: int = None) -> dict:
         """取得 Test Case Set 及其所有 Sections"""
@@ -282,4 +294,4 @@ class TestCaseSetService:
                 'test_case_count': test_case_count
             }
 
-        return await run_sync(self.db, _get)
+        return await self._run_read(_get)

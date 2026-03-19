@@ -4,11 +4,12 @@
 提供使用者的 CRUD 操作，需要適當的管理員權限
 """
 
+from __future__ import annotations
+
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from pydantic import BaseModel, EmailStr, Field, validator
-from typing import Optional, List, Union, Any
+from typing import Optional, List
 from pydantic.main import BaseModel as PydanticBaseModel
-from pydantic_core import PydanticUndefined
 import logging
 from datetime import datetime
 
@@ -17,9 +18,9 @@ from app.auth.models import UserRole, UserCreate
 from app.auth.password_service import PasswordService
 from app.services.user_service import UserService
 from app.models.database_models import User, LarkUser
-from app.database import get_async_session
+from app.db_access.main import MainAccessBoundary, get_main_access_boundary
+from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, and_, or_, func
-import logging
 
 from app.utils.logging import log_lark_display_decision
 from app.audit import audit_service, ActionType, ResourceType, AuditSeverity
@@ -56,6 +57,71 @@ async def log_user_action(
         )
     except Exception as exc:  # noqa: BLE001
         logger.warning("寫入使用者審計記錄失敗: %s", exc, exc_info=True)
+
+
+async def _load_lark_profile(
+    main_boundary: MainAccessBoundary,
+    lark_user_id: Optional[str],
+) -> tuple[Optional[str], Optional[str]]:
+    if not lark_user_id:
+        return None, None
+
+    async def _load(session: AsyncSession) -> tuple[Optional[str], Optional[str]]:
+        lark_user = await session.get(LarkUser, lark_user_id)
+        if not lark_user:
+            return None, None
+        return lark_user.avatar_240, lark_user.name
+
+    return await main_boundary.run_read(_load)
+
+
+def _serialize_user_response(
+    user: User,
+    *,
+    avatar_url: Optional[str] = None,
+    lark_name: Optional[str] = None,
+) -> UserResponse:
+    resolved_lark_name = lark_name or (
+        user.lark_user.name if getattr(user, "lark_user", None) else None
+    )
+    return UserResponse(
+        id=user.id,
+        username=user.username,
+        email=user.email,
+        full_name=user.full_name,
+        lark_name=resolved_lark_name,
+        role=user.role.value,
+        is_active=user.is_active,
+        lark_user_id=getattr(user, "lark_user_id", None),
+        avatar_url=avatar_url,
+        created_at=user.created_at,
+        updated_at=user.updated_at,
+        last_login_at=user.last_login_at,
+    )
+
+
+def _serialize_user_self_out(
+    user: User,
+    *,
+    teams: Optional[List[str]] = None,
+    avatar_url: Optional[str] = None,
+    lark_name: Optional[str] = None,
+) -> UserSelfOut:
+    role_value = str(user.role.value) if isinstance(user.role, UserRole) else str(user.role)
+    return UserSelfOut(
+        id=user.id,
+        username=user.username,
+        email=user.email,
+        full_name=user.full_name,
+        role=role_value.lower(),
+        is_active=user.is_active,
+        created_at=user.created_at,
+        updated_at=user.updated_at,
+        last_login_at=user.last_login_at,
+        avatar_url=avatar_url,
+        lark_name=lark_name,
+        teams=teams or [],
+    )
 
 
 class UserCreateRequest(BaseModel):
@@ -173,7 +239,8 @@ async def list_users(
     search: Optional[str] = Query(None, description="搜尋關鍵字 (使用者名稱、email、姓名)"),
     role: Optional[UserRole] = Query(None, description="角色篩選"),
     is_active: Optional[bool] = Query(None, description="狀態篩選"),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """
     列出使用者清單
@@ -188,67 +255,53 @@ async def list_users(
         )
 
     try:
-        async with get_async_session() as session:
-            # 建立基礎查詢
+        async def _list(session: AsyncSession) -> dict:
             query = select(User, LarkUser.avatar_240, LarkUser.name).outerjoin(
                 LarkUser, User.lark_user_id == LarkUser.user_id
             )
 
-            # 搜尋條件
             if search:
-                search_filter = or_(
-                    User.username.ilike(f"%{search}%"),
-                    User.email.ilike(f"%{search}%"),
-                    User.full_name.ilike(f"%{search}%")
+                query = query.where(
+                    or_(
+                        User.username.ilike(f"%{search}%"),
+                        User.email.ilike(f"%{search}%"),
+                        User.full_name.ilike(f"%{search}%"),
+                    )
                 )
-                query = query.where(search_filter)
 
-            # 角色篩選
             if role:
                 query = query.where(User.role == role)
 
-            # 狀態篩選
             if is_active is not None:
                 query = query.where(User.is_active == is_active)
 
-            # 總數查詢
             total_query = select(func.count()).select_from(query.subquery())
             total_result = await session.execute(total_query)
-            total = total_result.scalar()
+            total = total_result.scalar() or 0
 
-            # 分頁查詢
             offset = (page - 1) * per_page
-            query = query.offset(offset).limit(per_page).order_by(User.created_at.desc())
-
-            result = await session.execute(query)
-            # result now contains (User, avatar_url, lark_name) tuples
+            paged_query = query.offset(offset).limit(per_page).order_by(User.created_at.desc())
+            result = await session.execute(paged_query)
             rows = result.all()
+            return {
+                "total": total,
+                "users": [
+                    _serialize_user_response(
+                        user,
+                        avatar_url=avatar_url,
+                        lark_name=lark_name,
+                    )
+                    for user, avatar_url, lark_name in rows
+                ],
+            }
 
-            user_responses = [
-                UserResponse(
-                    id=user.id,
-                    username=user.username,
-                    email=user.email,
-                    full_name=user.full_name,
-                    lark_name=lark_name or (user.lark_user.name if getattr(user, 'lark_user', None) else None),  # type: ignore[attr-defined]
-                    role=user.role.value,
-                    is_active=user.is_active,
-                    lark_user_id=getattr(user, 'lark_user_id', None),
-                    avatar_url=avatar_url,
-                    created_at=user.created_at,
-                    updated_at=user.updated_at,
-                    last_login_at=user.last_login_at
-                )
-                for user, avatar_url, lark_name in rows
-            ]
-
-            return UserListResponse(
-                users=user_responses,
-                total=total,
-                page=page,
-                per_page=per_page
-            )
-
+        payload = await main_boundary.run_read(_list)
+        return UserListResponse(
+            users=payload["users"],
+            total=payload["total"],
+            page=page,
+            per_page=per_page,
+        )
     except Exception as e:
         logger.error(f"列出使用者失敗: {e}")
         raise HTTPException(
@@ -260,7 +313,8 @@ async def list_users(
 @router.post("/", response_model=UserResponse)
 async def create_user(
     request: UserCreateRequest,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """
     建立新使用者
@@ -304,18 +358,11 @@ async def create_user(
         )
         
         # 使用統一的 UserService 建立使用者
-        new_user = await UserService.create_user_async(user_create)
-
-        # 嘗試獲取 Lark 頭像
-        avatar_url = None
-        if new_user.lark_user_id:
-            try:
-                async with get_async_session() as session:
-                    lark_user = await session.get(LarkUser, new_user.lark_user_id)
-                    if lark_user:
-                        avatar_url = lark_user.avatar_240
-            except Exception as e:
-                logger.warning(f"獲取 Lark 頭像失敗: {e}")
+        new_user = await UserService.create_user_async(
+            user_create,
+            main_boundary=main_boundary,
+        )
+        avatar_url, _ = await _load_lark_profile(main_boundary, new_user.lark_user_id)
 
         logger.info(f"管理員 {current_user.username} 建立了新使用者 {new_user.username}")
 
@@ -332,19 +379,7 @@ async def create_user(
             },
         )
 
-        return UserResponse(
-            id=new_user.id,
-            username=new_user.username,
-            email=new_user.email,
-            full_name=new_user.full_name,
-            role=new_user.role.value,
-            is_active=new_user.is_active,
-            lark_user_id=getattr(new_user, 'lark_user_id', None),
-            avatar_url=avatar_url,
-            created_at=new_user.created_at,
-            updated_at=new_user.updated_at,
-            last_login_at=new_user.last_login_at
-        )
+        return _serialize_user_response(new_user, avatar_url=avatar_url)
 
     except ValueError as e:
         # UserService 抛出的 ValueError 轉為 HTTP 400 錯誤
@@ -364,7 +399,8 @@ async def create_user(
 
 @router.get("/me", response_model=UserSelfOut)
 async def get_current_user_profile(
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """
     取得目前使用者的資料
@@ -372,38 +408,17 @@ async def get_current_user_profile(
     任何已登入的使用者都可以查看自己的資料。
     """
     try:
-        # TODO: 取得使用者所屬的團隊名稱
-        # 這裡需要根據實際的數據庫結構來實作
         teams = []
-        
-        role_value = str(current_user.role.value) if isinstance(current_user.role, UserRole) else str(current_user.role)
+        avatar_url, lark_name = await _load_lark_profile(
+            main_boundary,
+            current_user.lark_user_id,
+        )
 
-        # 嘗試獲取 Lark 頭像
-        avatar_url = None
-        lark_name = None
-        if current_user.lark_user_id:
-            try:
-                async with get_async_session() as session:
-                    lark_user = await session.get(LarkUser, current_user.lark_user_id)
-                    if lark_user:
-                        avatar_url = lark_user.avatar_240
-                        lark_name = lark_user.name
-            except Exception as e:
-                logger.warning(f"獲取 Lark 資訊失敗: {e}")
-
-        return UserSelfOut(
-            id=current_user.id,
-            username=current_user.username,
-            email=current_user.email,
-            full_name=current_user.full_name,
-            role=role_value.lower(),
-            is_active=current_user.is_active,
-            created_at=current_user.created_at,
-            updated_at=current_user.updated_at,
-            last_login_at=current_user.last_login_at,
+        return _serialize_user_self_out(
+            current_user,
+            teams=teams,
             avatar_url=avatar_url,
             lark_name=lark_name,
-            teams=teams
         )
         
     except Exception as e:
@@ -417,7 +432,8 @@ async def get_current_user_profile(
 @router.put("/me", response_model=UserSelfOut)
 async def update_current_user_profile(
     request: UserSelfUpdate,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """
     更新目前使用者的資料
@@ -425,16 +441,14 @@ async def update_current_user_profile(
     使用者只能更新自己的基本資料，不能修改角色或狀態。
     """
     try:
-        async with get_async_session() as session:
-            # 取得最新的使用者資料
+        async def _update(session: AsyncSession) -> dict:
             user = await session.get(User, current_user.id)
             if not user:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
-                    detail="使用者不存在"
+                    detail="使用者不存在",
                 )
 
-            # 檢查 email 是否重複（如果要更新且不為空）
             if request.email and request.email != user.email:
                 existing_email = await session.execute(
                     select(User).where(and_(User.email == str(request.email), User.id != user.id))
@@ -442,30 +456,23 @@ async def update_current_user_profile(
                 if existing_email.scalar():
                     raise HTTPException(
                         status_code=status.HTTP_409_CONFLICT,
-                        detail="電子信箱已被使用"
+                        detail="電子信箱已被使用",
                     )
 
-            # 更新欄位
             updated = False
             if request.full_name is not None and request.full_name != user.full_name:
                 user.full_name = request.full_name.strip() if request.full_name else None
                 updated = True
-                
+
             if request.email is not None and str(request.email) != user.email:
                 user.email = str(request.email) if request.email else None
                 updated = True
 
             if updated:
                 user.updated_at = datetime.utcnow()
-                await session.commit()
+                await session.flush()
                 await session.refresh(user)
 
-            logger.info(f"使用者 {user.username} 更新了個人資料")
-
-            # TODO: 取得使用者所屬的團隊名稱
-            teams = []
-
-            # 嘗試獲取 Lark 頭像
             avatar_url = None
             lark_name = None
             if user.lark_user_id:
@@ -474,21 +481,18 @@ async def update_current_user_profile(
                     avatar_url = lark_user.avatar_240
                     lark_name = lark_user.name
 
-            return UserSelfOut(
-                id=user.id,
-                username=user.username,
-                email=user.email,
-                full_name=user.full_name,
-                role=user.role.value,
-                is_active=user.is_active,
-                created_at=user.created_at,
-                updated_at=user.updated_at,
-                last_login_at=user.last_login_at,
-                avatar_url=avatar_url,
-                lark_name=lark_name,
-                teams=teams
-            )
+            return {"user": user, "avatar_url": avatar_url, "lark_name": lark_name}
 
+        payload = await main_boundary.run_write(_update)
+        user = payload["user"]
+        logger.info("使用者 %s 更新了個人資料", user.username)
+
+        return _serialize_user_self_out(
+            user,
+            teams=[],
+            avatar_url=payload["avatar_url"],
+            lark_name=payload["lark_name"],
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -502,7 +506,8 @@ async def update_current_user_profile(
 @router.put("/me/password")
 async def change_current_user_password(
     request: PasswordChangeRequest,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """
     修改目前使用者的密碼
@@ -548,24 +553,22 @@ async def change_current_user_password(
                 detail="新密碼不能與舊密碼相同"
             )
 
-        async with get_async_session() as session:
-            # 取得最新的使用者資料
+        async def _change_password(session: AsyncSession) -> str:
             user = await session.get(User, current_user.id)
             if not user:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
-                    detail="使用者不存在"
+                    detail="使用者不存在",
                 )
 
-            # 更新密碼（使用解密後的明文密碼）
             user.hashed_password = PasswordService.hash_password(new_password)
             user.updated_at = datetime.utcnow()
+            await session.flush()
+            return user.username
 
-            await session.commit()
-
-            logger.info(f"使用者 {user.username} 修改了密碼")
-
-            return {"message": "密碼修改成功"}
+        username = await main_boundary.run_write(_change_password)
+        logger.info("使用者 %s 修改了密碼", username)
+        return {"message": "密碼修改成功"}
 
     except HTTPException:
         raise
@@ -580,7 +583,8 @@ async def change_current_user_password(
 @router.get("/{user_id}", response_model=UserResponse)
 async def get_user(
     user_id: int,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """
     取得特定使用者資訊
@@ -596,36 +600,23 @@ async def get_user(
         )
 
     try:
-        async with get_async_session() as session:
+        async def _get(session: AsyncSession) -> UserResponse:
             user = await session.get(User, user_id)
-
             if not user:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
-                    detail="使用者不存在"
+                    detail="使用者不存在",
                 )
 
-            # 嘗試獲取 Lark 頭像
             avatar_url = None
             if user.lark_user_id:
                 lark_user = await session.get(LarkUser, user.lark_user_id)
                 if lark_user:
                     avatar_url = lark_user.avatar_240
 
-            return UserResponse(
-                id=user.id,
-                username=user.username,
-                email=user.email,
-                full_name=user.full_name,
-                role=user.role.value,
-                is_active=user.is_active,
-                lark_user_id=getattr(user, 'lark_user_id', None),
-                avatar_url=avatar_url,
-                created_at=user.created_at,
-                updated_at=user.updated_at,
-                last_login_at=user.last_login_at
-            )
+            return _serialize_user_response(user, avatar_url=avatar_url)
 
+        return await main_boundary.run_read(_get)
     except HTTPException:
         raise
     except Exception as e:
@@ -640,7 +631,8 @@ async def get_user(
 async def update_user(
     user_id: int,
     request: UserUpdateRequest,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """
     更新使用者資訊
@@ -674,51 +666,47 @@ async def update_user(
             )
 
     try:
-        async with get_async_session() as session:
+        async def _update(session: AsyncSession) -> dict:
             user = await session.get(User, user_id)
-
             if not user:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
-                    detail="使用者不存在"
+                    detail="使用者不存在",
                 )
 
-            # Admin 不得修改 admin/super_admin 帳號
             if current_user.role == UserRole.ADMIN and user.role in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Admin 不得修改 admin/super_admin 帳號"
+                    detail="Admin 不得修改 admin/super_admin 帳號",
                 )
 
-            # Super Admin 不可將任一帳號設為 super_admin；且不可將唯一 super_admin 降級/停用
             if request.role is not None:
                 if current_user.role == UserRole.SUPER_ADMIN and request.role == UserRole.SUPER_ADMIN:
                     raise HTTPException(
                         status_code=status.HTTP_403_FORBIDDEN,
-                        detail="不可指派超級管理員角色"
+                        detail="不可指派超級管理員角色",
                     )
                 if current_user.role == UserRole.ADMIN:
-                    # Admin 僅能在 user/viewer 間調整
                     if user.role not in [UserRole.USER, UserRole.VIEWER] or request.role not in [UserRole.USER, UserRole.VIEWER]:
                         raise HTTPException(
                             status_code=status.HTTP_403_FORBIDDEN,
-                            detail="Admin 僅能在 user/viewer 之間調整角色"
+                            detail="Admin 僅能在 user/viewer 之間調整角色",
                         )
 
-            # 唯一超管保護：若要將 super_admin 降級或停用
             if user.role == UserRole.SUPER_ADMIN:
-                demote = (request.role is not None and request.role != UserRole.SUPER_ADMIN)
-                deactivate = (request.is_active is not None and request.is_active is False)
+                demote = request.role is not None and request.role != UserRole.SUPER_ADMIN
+                deactivate = request.is_active is not None and request.is_active is False
                 if demote or deactivate:
-                    count_result = await session.execute(select(func.count()).where(User.role == UserRole.SUPER_ADMIN))
+                    count_result = await session.execute(
+                        select(func.count()).where(User.role == UserRole.SUPER_ADMIN)
+                    )
                     sa_count = count_result.scalar() or 0
                     if sa_count <= 1:
                         raise HTTPException(
                             status_code=status.HTTP_400_BAD_REQUEST,
-                            detail="不可移除唯一的超級管理員"
+                            detail="不可移除唯一的超級管理員",
                         )
 
-            # 檢查 email 是否重複（如果要更新且不為空）
             if request.email and request.email != user.email:
                 existing_email = await session.execute(
                     select(User).where(and_(User.email == request.email, User.id != user_id))
@@ -726,75 +714,64 @@ async def update_user(
                 if existing_email.scalar():
                     raise HTTPException(
                         status_code=status.HTTP_400_BAD_REQUEST,
-                        detail="電子信箱已被使用"
+                        detail="電子信箱已被使用",
                     )
 
-            # 更新欄位 - 只有當字段被設置時才更新
-            # 對於可為 null 的字段，當設置為 null 時也應更新
-            # 對於必需字段，只有當明確提供非 null 值時才更新
             changed_fields: List[str] = []
-            if request.field_is_set('email'):
+            if request.field_is_set("email"):
                 user.email = request.email
                 changed_fields.append("email")
-            if request.field_is_set('full_name'):
+            if request.field_is_set("full_name"):
                 user.full_name = request.full_name
                 changed_fields.append("full_name")
-            if request.field_is_set('role') and request.role is not None:
+            if request.field_is_set("role") and request.role is not None:
                 user.role = request.role
                 changed_fields.append("role")
-            if request.field_is_set('is_active') and request.is_active is not None:
+            if request.field_is_set("is_active") and request.is_active is not None:
                 user.is_active = request.is_active
                 changed_fields.append("is_active")
-            if request.field_is_set('password') and request.password is not None:
+            if request.field_is_set("password") and request.password is not None:
                 user.hashed_password = PasswordService.hash_password(request.password)
                 changed_fields.append("password")
-            if request.field_is_set('lark_user_id'):
-                # lark_user_id 可以為 null，所以總是更新（即使值為 None）
+            if request.field_is_set("lark_user_id"):
                 user.lark_user_id = request.lark_user_id
                 changed_fields.append("lark_user_id")
 
             user.updated_at = datetime.utcnow()
-
-            await session.commit()
+            await session.flush()
             await session.refresh(user)
 
-            logger.info(f"管理員 {current_user.username} 更新了使用者 {user.username}")
-
-            if changed_fields:
-                action_brief = f"{current_user.username} updated user {user.username}"
-                await log_user_action(
-                    action_type=ActionType.UPDATE,
-                    current_user=current_user,
-                    target_user=user,
-                    action_brief=action_brief,
-                    details={
-                        "user_id": user.id,
-                        "changed_fields": changed_fields,
-                        "role": user.role.value,
-                    },
-                )
-
-            # 嘗試獲取 Lark 頭像
             avatar_url = None
             if user.lark_user_id:
                 lark_user = await session.get(LarkUser, user.lark_user_id)
                 if lark_user:
                     avatar_url = lark_user.avatar_240
 
-            return UserResponse(
-                id=user.id,
-                username=user.username,
-                email=user.email,
-                full_name=user.full_name,
-                role=user.role.value,
-                is_active=user.is_active,
-                lark_user_id=getattr(user, 'lark_user_id', None),
-                avatar_url=avatar_url,
-                created_at=user.created_at,
-                updated_at=user.updated_at,
-                last_login_at=user.last_login_at
+            return {
+                "user": user,
+                "changed_fields": changed_fields,
+                "avatar_url": avatar_url,
+            }
+
+        payload = await main_boundary.run_write(_update)
+        user = payload["user"]
+        logger.info("管理員 %s 更新了使用者 %s", current_user.username, user.username)
+
+        if payload["changed_fields"]:
+            action_brief = f"{current_user.username} updated user {user.username}"
+            await log_user_action(
+                action_type=ActionType.UPDATE,
+                current_user=current_user,
+                target_user=user,
+                action_brief=action_brief,
+                details={
+                    "user_id": user.id,
+                    "changed_fields": payload["changed_fields"],
+                    "role": user.role.value,
+                },
             )
 
+        return _serialize_user_response(user, avatar_url=payload["avatar_url"])
     except HTTPException:
         raise
     except Exception as e:
@@ -808,7 +785,8 @@ async def update_user(
 @router.delete("/{user_id}")
 async def delete_user(
     user_id: int,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """
     刪除使用者 (永久刪除)
@@ -832,53 +810,47 @@ async def delete_user(
         )
 
     try:
-        async with get_async_session() as session:
+        async def _delete(session: AsyncSession) -> User:
             user = await session.get(User, user_id)
-
             if not user:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
-                    detail="使用者不存在"
+                    detail="使用者不存在",
                 )
 
-            # 禁止刪除超級管理員
             if user.role == UserRole.SUPER_ADMIN:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="不可刪除超級管理員"
+                    detail="不可刪除超級管理員",
                 )
 
-            # ADMIN 只能刪除 USER 和 VIEWER
-            if current_user.role == UserRole.ADMIN:
-                if user.role not in [UserRole.USER, UserRole.VIEWER]:
-                    raise HTTPException(
-                        status_code=status.HTTP_403_FORBIDDEN,
-                        detail="管理員只能刪除 USER 和 VIEWER 角色"
-                    )
+            if current_user.role == UserRole.ADMIN and user.role not in [UserRole.USER, UserRole.VIEWER]:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="管理員只能刪除 USER 和 VIEWER 角色",
+                )
 
-            deleted_username = user.username
-
-            # 永久刪除使用者資料
             await session.delete(user)
-            await session.commit()
+            await session.flush()
+            return user
 
-            logger.info(f"管理員 {current_user.username} 永久刪除了使用者 {deleted_username}")
+        deleted_user = await main_boundary.run_write(_delete)
+        logger.info("管理員 %s 永久刪除了使用者 %s", current_user.username, deleted_user.username)
 
-            action_brief = f"{current_user.username} deleted user {deleted_username}"
-            await log_user_action(
-                action_type=ActionType.DELETE,
-                current_user=current_user,
-                target_user=user,
-                action_brief=action_brief,
-                details={
-                    "user_id": user.id,
-                    "username": deleted_username,
-                    "role": user.role.value,
-                },
-            )
+        action_brief = f"{current_user.username} deleted user {deleted_user.username}"
+        await log_user_action(
+            action_type=ActionType.DELETE,
+            current_user=current_user,
+            target_user=deleted_user,
+            action_brief=action_brief,
+            details={
+                "user_id": deleted_user.id,
+                "username": deleted_user.username,
+                "role": deleted_user.role.value,
+            },
+        )
 
-            return {"message": f"使用者 {deleted_username} 已被刪除"}
-
+        return {"message": f"使用者 {deleted_user.username} 已被刪除"}
     except HTTPException:
         raise
     except Exception as e:
@@ -894,7 +866,8 @@ async def reset_user_password(
     user_id: int,
     generate_new: bool = Query(False, description="是否自動生成新密碼"),
     new_password: Optional[str] = Query(None, description="新密碼（如果不自動生成）"),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """
     重設使用者密碼
@@ -915,41 +888,36 @@ async def reset_user_password(
         )
 
     try:
-        async with get_async_session() as session:
+        async def _reset(session: AsyncSession) -> dict:
             user = await session.get(User, user_id)
-
             if not user:
                 raise HTTPException(
                     status_code=status.HTTP_404_NOT_FOUND,
-                    detail="使用者不存在"
+                    detail="使用者不存在",
                 )
 
-            # Admin 不得重設 super_admin 密碼
             if current_user.role == UserRole.ADMIN and user.role == UserRole.SUPER_ADMIN:
                 raise HTTPException(
                     status_code=status.HTTP_403_FORBIDDEN,
-                    detail="Admin 不得操作超級管理員"
+                    detail="Admin 不得操作超級管理員",
                 )
 
-            # 生成或使用提供的密碼
             password = new_password
             if generate_new or not password:
                 password = PasswordService.generate_temp_password()
 
-            # 更新密碼並清空 last_login_at，強制使用者首次登入時設定新密碼
             user.hashed_password = PasswordService.hash_password(password)
-            user.last_login_at = None  # 清空以觸發首次登入流程
+            user.last_login_at = None
             user.updated_at = datetime.utcnow()
+            await session.flush()
+            return {"username": user.username, "password": password}
 
-            await session.commit()
-
-            logger.info(f"管理員 {current_user.username} 重設了使用者 {user.username} 的密碼")
-
-            return PasswordResetResponse(
-                message=f"使用者 {user.username} 的密碼已重設",
-                new_password=password if generate_new else None
-            )
-
+        payload = await main_boundary.run_write(_reset)
+        logger.info("管理員 %s 重設了使用者 %s 的密碼", current_user.username, payload["username"])
+        return PasswordResetResponse(
+            message=f"使用者 {payload['username']} 的密碼已重設",
+            new_password=payload["password"] if generate_new else None,
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -963,7 +931,8 @@ async def reset_user_password(
 @router.get("/{user_id}/lark-status", response_model=dict)
 async def get_user_lark_status(
     user_id: int,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """
     取得使用者的 Lark 整合狀態
@@ -980,7 +949,10 @@ async def get_user_lark_status(
 
     try:
         # 使用 UserService 檢查 Lark 整合狀態
-        status = await UserService.check_lark_integration_status(user_id)
+        status = await UserService.check_lark_integration_status(
+            user_id,
+            main_boundary=main_boundary,
+        )
         
         # 記錄顯示決策
         log_lark_display_decision(

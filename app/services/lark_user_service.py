@@ -16,7 +16,11 @@ from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy import func
 
-from app.database import run_sync
+from app.db_access.main import (
+    MainAccessBoundary,
+    create_main_access_boundary_for_session,
+    get_main_access_boundary,
+)
 from app.models.database_models import LarkUser, LarkDepartment
 from app.services.lark_client import LarkAuthManager
 
@@ -27,6 +31,7 @@ class LarkUserService:
     def __init__(self, auth_manager: LarkAuthManager):
         self.auth_manager = auth_manager
         self.logger = logging.getLogger(__name__)
+        self.main_boundary = get_main_access_boundary()
         
         # API 配置
         self.base_url = "https://open.larksuite.com/open-apis"
@@ -48,6 +53,9 @@ class LarkUserService:
         # 用戶去重集合
         self.processed_users = set()  # user_id 集合
         self.user_dept_mapping = {}   # user_id -> [dept_ids] 映射
+
+    def _resolve_main_boundary(self, db: AsyncSession) -> MainAccessBoundary:
+        return create_main_access_boundary_for_session(db)
         
     def get_users_by_department(self, department_id: str, page_size: int = 50) -> Optional[List[Dict]]:
         """獲取指定部門的直屬用戶列表"""
@@ -217,21 +225,19 @@ class LarkUserService:
                     self.stats['users_created'] += 1
                     self.logger.debug(f"創建新用戶: {user_id} ({user_data.get('name', 'Unknown')})")
 
-                sync_db.commit()
+                sync_db.flush()
                 return True
 
             except IntegrityError as e:
-                sync_db.rollback()
                 self.logger.error(f"保存用戶時數據庫完整性錯誤: {e}")
                 self.stats['errors'] += 1
                 return False
             except Exception as e:
-                sync_db.rollback()
                 self.logger.error(f"保存用戶異常: {e}")
                 self.stats['errors'] += 1
                 return False
 
-        return await run_sync(db, _save)
+        return await self._resolve_main_boundary(db).run_sync_write(_save)
     
     async def collect_users_from_department(self, db: AsyncSession, department_id: str) -> bool:
         """從指定部門收集用戶數據"""
@@ -286,7 +292,7 @@ class LarkUserService:
                     ).all()
                 ]
 
-            departments = await run_sync(db, _load_departments)
+            departments = await self._resolve_main_boundary(db).run_sync_read(_load_departments)
             
             if not departments:
                 return {
@@ -355,14 +361,13 @@ class LarkUserService:
                     department.direct_user_count = direct_count
                     department.updated_at = datetime.utcnow()
 
-                sync_db.commit()
+                sync_db.flush()
                 self.logger.info("部門用戶統計更新完成")
 
             except Exception as e:
-                sync_db.rollback()
                 self.logger.error(f"更新部門用戶統計失敗: {e}")
 
-        await run_sync(db, _update)
+        await self._resolve_main_boundary(db).run_sync_write(_update)
     
     async def get_user_stats(self, db: AsyncSession) -> Dict[str, Any]:
         """獲取用戶統計信息"""
@@ -411,7 +416,7 @@ class LarkUserService:
                 self.logger.error(f"獲取用戶統計信息失敗: {e}")
                 return {'error': str(e)}
 
-        return await run_sync(db, _stats)
+        return await self._resolve_main_boundary(db).run_sync_read(_stats)
     
     async def search_users(self, db: AsyncSession, query: str, limit: int = 50) -> List[Dict[str, Any]]:
         """搜索用戶（本地數據庫搜索）"""
@@ -449,7 +454,7 @@ class LarkUserService:
                 self.logger.error(f"搜索用戶失敗: {e}")
                 return []
 
-        return await run_sync(db, _search)
+        return await self._resolve_main_boundary(db).run_sync_read(_search)
 
     async def get_top_users(self, db: AsyncSession, limit: int = 50) -> List[Dict[str, Any]]:
         """返回前端可用的前 N 名活躍用戶（無搜尋詞時的預設清單）。
@@ -482,7 +487,7 @@ class LarkUserService:
                 self.logger.error(f"獲取預設用戶清單失敗: {e}")
                 return []
 
-        return await run_sync(db, _get_top)
+        return await self._resolve_main_boundary(db).run_sync_read(_get_top)
     
     async def cleanup_inactive_users(self, db: AsyncSession, days_threshold: int = 30) -> int:
         """清理超過指定天數未同步的用戶"""
@@ -496,13 +501,12 @@ class LarkUserService:
                     LarkUser.is_activated == True
                 ).update({'is_activated': False})
 
-                sync_db.commit()
+                sync_db.flush()
                 self.logger.info(f"標記了 {updated_count} 個用戶為非活躍狀態")
                 return updated_count
 
             except Exception as e:
-                sync_db.rollback()
                 self.logger.error(f"清理非活躍用戶失敗: {e}")
                 return 0
 
-        return await run_sync(db, _cleanup)
+        return await self._resolve_main_boundary(db).run_sync_write(_cleanup)

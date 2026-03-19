@@ -3,22 +3,42 @@
 """
 
 import logging
-from typing import Optional, Union
+from typing import Callable, Optional, TypeVar, Union
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, func
 
+from ..db_access.main import MainAccessBoundary, create_main_access_boundary_for_session
 from ..models.database_models import TestCaseSection, TestCaseLocal, TestCaseSet
-from ..database import run_sync
 
 logger = logging.getLogger(__name__)
+T = TypeVar("T")
 
 
 class TestCaseSectionService:
     """Test Case Section 業務邏輯"""
 
-    def __init__(self, db: AsyncSession):
+    def __init__(
+        self,
+        db: AsyncSession | None,
+        main_boundary: MainAccessBoundary | None = None,
+    ):
         self.db = db
+        self.main_boundary = (
+            main_boundary
+            or (create_main_access_boundary_for_session(db) if db is not None else None)
+        )
+
+    def _require_main_boundary(self) -> MainAccessBoundary:
+        if self.main_boundary is None:
+            raise RuntimeError("TestCaseSectionService requires a managed main boundary")
+        return self.main_boundary
+
+    async def _run_read(self, operation: Callable[[Session], T]) -> T:
+        return await self._require_main_boundary().run_sync_read(operation)
+
+    async def _run_write(self, operation: Callable[[Session], T]) -> T:
+        return await self._require_main_boundary().run_sync_write(operation)
 
     async def create(self, test_case_set_id: int, name: str, description: str = None,
                parent_section_id: int = None) -> TestCaseSection:
@@ -71,11 +91,10 @@ class TestCaseSectionService:
             )
 
             sync_db.add(new_section)
-            sync_db.commit()
 
             return new_section
 
-        return await run_sync(self.db, _create)
+        return await self._run_write(_create)
 
     async def get_by_id(self, section_id: int) -> TestCaseSection:
         """根據 ID 取得 Section"""
@@ -84,7 +103,7 @@ class TestCaseSectionService:
                 TestCaseSection.id == section_id
             ).first()
 
-        return await run_sync(self.db, _get)
+        return await self._run_read(_get)
 
     async def get_by_set(self, test_case_set_id: int) -> list[TestCaseSection]:
         """取得 Set 下所有 Sections，按 sort_order 和 id 排序"""
@@ -99,7 +118,7 @@ class TestCaseSectionService:
                 .all()
             )
 
-        return await run_sync(self.db, _get)
+        return await self._run_read(_get)
 
     async def get_tree_structure(self, test_case_set_id: int) -> list:
         """取得 Section 樹狀結構"""
@@ -160,7 +179,7 @@ class TestCaseSectionService:
 
             return root_sections
 
-        return await run_sync(self.db, _get_tree)
+        return await self._run_read(_get_tree)
 
     async def update(self, section_id: int, name: str = None, description: str = None) -> TestCaseSection:
         """更新 Section"""
@@ -192,10 +211,9 @@ class TestCaseSectionService:
             if description is not None:
                 section.description = description
 
-            sync_db.commit()
             return section
 
-        return await run_sync(self.db, _update)
+        return await self._run_write(_update)
 
     async def delete(self, section_id: int) -> bool:
         """刪除 Section 及其所有子 Sections 和 Test Cases"""
@@ -227,11 +245,10 @@ class TestCaseSectionService:
 
             # 刪除 Sections (級聯刪除)
             sync_db.delete(section)
-            sync_db.commit()
 
             return True
 
-        return await run_sync(self.db, _delete)
+        return await self._run_write(_delete)
 
     async def reorder(self, test_case_set_id: int, orders: list[dict]) -> bool:
         """重新排序 Sections
@@ -267,10 +284,9 @@ class TestCaseSectionService:
                         section.level = 1
                         self._update_child_levels_sync(sync_db, section.id)
 
-            sync_db.commit()
             return True
 
-        return await run_sync(self.db, _reorder)
+        return await self._run_write(_reorder)
 
     async def move(self, section_id: int, new_parent_id: int = None) -> TestCaseSection:
         """移動 Section 到新的父 Section"""
@@ -298,10 +314,9 @@ class TestCaseSectionService:
                 section.level = 1
                 self._update_child_levels_sync(sync_db, section.id)
 
-            sync_db.commit()
             return section
 
-        return await run_sync(self.db, _move)
+        return await self._run_write(_move)
 
     # ==================== 私有方法 ====================
 

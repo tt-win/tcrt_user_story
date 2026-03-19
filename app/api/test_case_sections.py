@@ -8,7 +8,8 @@ from sqlalchemy.orm import Session
 from typing import List, Dict, Any, Optional
 import logging
 
-from ..database import get_db, run_sync
+from ..database import get_db
+from ..db_access.main import create_main_access_boundary_for_session
 from ..auth.dependencies import get_current_user
 from ..auth.models import PermissionType, User
 from ..models.database_models import TestCaseSet as TestCaseSetDB, Team as TeamDB
@@ -65,10 +66,12 @@ async def verify_test_case_set_access(
     db: AsyncSession = Depends(get_db),
 ) -> TestCaseSetDB:
     """驗證使用者對 Test Case Set 的訪問權限"""
+    main_boundary = create_main_access_boundary_for_session(db)
+
     def _get_set(sync_db: Session):
         return sync_db.query(TestCaseSetDB).filter(TestCaseSetDB.id == set_id).first()
 
-    test_set = await run_sync(db, _get_set)
+    test_set = await main_boundary.run_sync_read(_get_set)
     if not test_set:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

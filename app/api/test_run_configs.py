@@ -14,7 +14,8 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-from app.database import get_db, run_sync
+from app.db_access import MainAccessBoundary, get_main_access_boundary
+from app.database import get_db
 from app.models.test_run_config import (
     TestRunConfig, TestRunConfigCreate, TestRunConfigUpdate, TestRunConfigResponse,
     TestRunConfigSummary
@@ -31,7 +32,7 @@ from app.models.lark_types import TestResultStatus
 from app.models.test_run_config import TestRunStatus
 from app.services.lark_notify_service import get_lark_notify_service
 from app.services.test_run_scope_service import TestRunScopeService
-from app.services.test_run_set_status import recalculate_set_status
+from app.services.test_run_set_status import recalculate_set_status_sync
 from datetime import datetime
 from pydantic import BaseModel, Field
 
@@ -350,98 +351,63 @@ def detach_config_from_set(
     ).delete(synchronize_session=False)
 
 
-async def delete_test_run_config_cascade(
-    db: AsyncSession,
+def delete_test_run_config_cascade_sync(
+    sync_db: Session,
     team_id: int,
     config_id: int,
     detach: bool = True
-) -> None:
-    """刪除 Test Run Config 與相關紀錄與檔案"""
-    from ..services.test_result_cleanup_service import TestResultCleanupService
-
-    def _prepare_delete(sync_db: Session):
-        config_db = sync_db.query(TestRunConfigDB).filter(
-            TestRunConfigDB.id == config_id,
-            TestRunConfigDB.team_id == team_id,
-        ).first()
-        if not config_db:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"找不到測試執行配置 ID {config_id}"
-            )
-
-        # 先記錄所屬的 Test Run Set
-        membership = (
-            sync_db.query(TestRunSetMembershipDB)
-            .filter(TestRunSetMembershipDB.config_id == config_db.id)
-            .first()
+) -> dict:
+    """同步刪除 Test Run Config 與其相依資料列。"""
+    config_db = sync_db.query(TestRunConfigDB).filter(
+        TestRunConfigDB.id == config_id,
+        TestRunConfigDB.team_id == team_id,
+    ).first()
+    if not config_db:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"找不到測試執行配置 ID {config_id}"
         )
-        affected_set_id = membership.set_id if membership else None
 
-        if detach:
-            # 先清除 set membership
-            detach_config_from_set(sync_db, config_db.id)
-
-            if affected_set_id is not None:
-                affected_set = (
-                    sync_db.query(TestRunSetDB)
-                    .filter(
-                        TestRunSetDB.id == affected_set_id,
-                        TestRunSetDB.team_id == team_id,
-                    )
-                    .first()
-                )
-
-        return {"config_id": config_db.id, "affected_set_id": affected_set_id}
-
-    context = await run_sync(db, _prepare_delete)
-    affected_set_id = context.get("affected_set_id")
-
-    if affected_set_id is not None:
-        affected_set = await db.get(TestRunSetDB, affected_set_id)
-        if affected_set and affected_set.team_id == team_id:
-            await recalculate_set_status(db, affected_set)
-            await db.commit()
-
-    # 清理檔案與資料
-    cleanup_service = TestResultCleanupService()
-    cleaned_files_count = await cleanup_service.cleanup_test_run_config_files(
-        team_id, context["config_id"], db
+    membership = (
+        sync_db.query(TestRunSetMembershipDB)
+        .filter(TestRunSetMembershipDB.config_id == config_db.id)
+        .first()
     )
+    affected_set_id = membership.set_id if membership else None
 
-    if cleaned_files_count > 0:
-        logger.info(
-            "Test Run Config %s 已清理 %s 個測試結果檔案",
-            context["config_id"],
-            cleaned_files_count
-        )
+    if detach:
+        detach_config_from_set(sync_db, config_db.id)
+        if affected_set_id is not None:
+            affected_set = (
+                sync_db.query(TestRunSetDB)
+                .filter(
+                    TestRunSetDB.id == affected_set_id,
+                    TestRunSetDB.team_id == team_id,
+                )
+                .first()
+            )
+            if affected_set is not None:
+                recalculate_set_status_sync(sync_db, affected_set)
 
-    def _delete_records(sync_db: Session):
-        sync_db.query(ResultHistoryDB).filter(
-            ResultHistoryDB.config_id == config_id,
-            ResultHistoryDB.team_id == team_id
-        ).delete(synchronize_session=False)
+    sync_db.query(ResultHistoryDB).filter(
+        ResultHistoryDB.config_id == config_id,
+        ResultHistoryDB.team_id == team_id
+    ).delete(synchronize_session=False)
 
-        sync_db.query(TestRunItemDB).filter(
-            TestRunItemDB.config_id == config_id,
-            TestRunItemDB.team_id == team_id
-        ).delete(synchronize_session=False)
+    sync_db.query(TestRunItemDB).filter(
+        TestRunItemDB.config_id == config_id,
+        TestRunItemDB.team_id == team_id
+    ).delete(synchronize_session=False)
 
-        config_db = sync_db.query(TestRunConfigDB).filter(
-            TestRunConfigDB.id == config_id,
-            TestRunConfigDB.team_id == team_id,
-        ).first()
-        if config_db:
-            sync_db.delete(config_db)
-
-    await run_sync(db, _delete_records)
+    sync_db.delete(config_db)
+    return {"config_id": config_id, "affected_set_id": affected_set_id}
 
 
 @router.get("/", response_model=List[TestRunConfigSummary])
 async def get_test_run_configs(
     team_id: int,
     status_filter: Optional[str] = Query(None, description="狀態過濾"),
-    db: AsyncSession = Depends(get_db)
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """取得團隊的所有測試執行配置"""
     def _list_configs(sync_db: Session):
@@ -461,14 +427,14 @@ async def get_test_run_configs(
 
         return summaries
 
-    return await run_sync(db, _list_configs)
+    return await main_boundary.run_sync_read(_list_configs)
 
 
 @router.post("/", response_model=TestRunConfigResponse, status_code=status.HTTP_201_CREATED)
 async def create_test_run_config(
     team_id: int,
     config: TestRunConfigCreate,
-    db: AsyncSession = Depends(get_db)
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary)
 ):
     """建立新的測試執行配置"""
     def _create(sync_db: Session):
@@ -505,18 +471,15 @@ async def create_test_run_config(
             parent_set = ensure_test_run_set(sync_db, team_id, config.set_id)
             parent_set_id = parent_set.id if parent_set else None
 
-        sync_db.commit()
-        sync_db.refresh(config_db)
+        if parent_set_id is not None:
+            recalculate_set_status_sync(sync_db, parent_set)
+
+        sync_db.flush()
         sync_db.expire(config_db, ['set_membership'])
 
-        return convert_db_to_model(config_db, sync_db), parent_set_id
+        return convert_db_to_model(config_db, sync_db)
 
-    result, parent_set_id = await run_sync(db, _create)
-    if parent_set_id is not None:
-        parent_set = await db.get(TestRunSetDB, parent_set_id)
-        if parent_set and parent_set.team_id == team_id:
-            await recalculate_set_status(db, parent_set)
-            await db.commit()
+    result = await main_boundary.run_sync_write(_create)
     return TestRunConfigResponse(**result.model_dump(), cleanup_summary=None)
 
 
@@ -524,7 +487,7 @@ async def create_test_run_config(
 async def get_test_run_config(
     team_id: int,
     config_id: int,
-    db: AsyncSession = Depends(get_db)
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """取得特定的測試執行配置"""
     def _get(sync_db: Session):
@@ -543,7 +506,7 @@ async def get_test_run_config(
 
         return convert_db_to_model(config_db, sync_db)
 
-    return await run_sync(db, _get)
+    return await main_boundary.run_sync_read(_get)
 
 
 @router.put("/{config_id}", response_model=TestRunConfigResponse)
@@ -552,7 +515,7 @@ async def update_test_run_config(
     config_id: int,
     config_update: TestRunConfigUpdate,
     background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_db)
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary)
 ):
     """更新測試執行配置"""
     def _update(sync_db: Session):
@@ -646,9 +609,10 @@ async def update_test_run_config(
             parent_set = ensure_test_run_set(sync_db, team_id, config_db.set_membership.set_id)
             parent_set_id = parent_set.id if parent_set else None
 
-        # 提交更新
-        sync_db.commit()
-        sync_db.refresh(config_db)
+        if parent_set_id is not None:
+            recalculate_set_status_sync(sync_db, parent_set)
+
+        sync_db.flush()
 
         return {
             "config": convert_db_to_model(config_db, sync_db),
@@ -656,17 +620,10 @@ async def update_test_run_config(
             "new_status": config_db.status,
             "notifications_enabled": config_db.notifications_enabled,
             "notify_chat_ids_json": config_db.notify_chat_ids_json,
-            "parent_set_id": parent_set_id,
             "cleanup_summary": cleanup_summary,
         }
 
-    update_result = await run_sync(db, _update)
-    parent_set_id = update_result.get("parent_set_id")
-    if parent_set_id is not None:
-        parent_set = await db.get(TestRunSetDB, parent_set_id)
-        if parent_set and parent_set.team_id == team_id:
-            await recalculate_set_status(db, parent_set)
-            await db.commit()
+    update_result = await main_boundary.run_sync_write(_update)
 
     # 狀態變更通知觸發
     old_status = update_result["old_status"]
@@ -709,19 +666,31 @@ async def update_test_run_config(
 async def delete_test_run_config(
     team_id: int,
     config_id: int,
-    db: AsyncSession = Depends(get_db)
+    db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """刪除測試執行配置及相關附件"""
-    def _verify(sync_db: Session):
-        verify_team_exists(team_id, sync_db)
+    from ..services.test_result_cleanup_service import TestResultCleanupService
 
-    await run_sync(db, _verify)
+    cleanup_service = TestResultCleanupService()
 
     try:
-        await delete_test_run_config_cascade(db, team_id, config_id)
-        await run_sync(db, lambda sync_db: sync_db.commit())
+        cleaned_files_count = await cleanup_service.cleanup_test_run_config_files(
+            team_id, config_id, db
+        )
+        if cleaned_files_count > 0:
+            logger.info(
+                "Test Run Config %s 已清理 %s 個測試結果檔案",
+                config_id,
+                cleaned_files_count,
+            )
+
+        await main_boundary.run_sync_write(
+            lambda sync_db: delete_test_run_config_cascade_sync(
+                sync_db, team_id, config_id
+            )
+        )
     except Exception as e:
-        await run_sync(db, lambda sync_db: sync_db.rollback())
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
@@ -729,7 +698,7 @@ async def delete_test_run_config(
 async def validate_test_run_config(
     team_id: int,
     config_id: int,
-    db: AsyncSession = Depends(get_db)
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """重構後：僅確認配置存在與基本欄位有效。"""
     def _validate(sync_db: Session):
@@ -742,14 +711,14 @@ async def validate_test_run_config(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"找不到測試執行配置 ID {config_id}")
         return {"valid": True, "message": "配置有效（本地模式）"}
 
-    return await run_sync(db, _validate)
+    return await main_boundary.run_sync_read(_validate)
 
 
 @router.get("/{config_id}/sync", response_model=dict)
 async def sync_test_run_config(
     team_id: int,
     config_id: int,
-    db: AsyncSession = Depends(get_db)
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary)
 ):
     """重構後：從本地 TestRunItem 統計並回寫到 TestRunConfig。"""
     def _sync(sync_db: Session):
@@ -773,7 +742,6 @@ async def sync_test_run_config(
         config_db.passed_cases = passed_cases
         config_db.failed_cases = failed_cases
         config_db.last_sync_at = datetime.utcnow()
-        sync_db.commit()
 
         return {
             "success": True,
@@ -788,7 +756,7 @@ async def sync_test_run_config(
             }
         }
 
-    return await run_sync(db, _sync)
+    return await main_boundary.run_sync_write(_sync)
 
 
 class RestartRequest(BaseModel):
@@ -805,7 +773,7 @@ async def change_test_run_status(
     team_id: int,
     config_id: int,
     status_request: StatusChangeRequest,
-    db: AsyncSession = Depends(get_db)
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary)
 ):
     """更改測試執行狀態"""
     def _change(sync_db: Session):
@@ -865,17 +833,14 @@ async def change_test_run_status(
             parent_set = ensure_test_run_set(sync_db, team_id, config_db.set_membership.set_id)
             parent_set_id = parent_set.id if parent_set else None
 
-        sync_db.commit()
-        sync_db.refresh(config_db)
+        if parent_set_id is not None:
+            recalculate_set_status_sync(sync_db, parent_set)
 
-        return convert_db_to_model(config_db, sync_db), parent_set_id
+        sync_db.flush()
 
-    result, parent_set_id = await run_sync(db, _change)
-    if parent_set_id is not None:
-        parent_set = await db.get(TestRunSetDB, parent_set_id)
-        if parent_set and parent_set.team_id == team_id:
-            await recalculate_set_status(db, parent_set)
-            await db.commit()
+        return convert_db_to_model(config_db, sync_db)
+
+    result = await main_boundary.run_sync_write(_change)
 
     return result
 
@@ -886,7 +851,7 @@ async def restart_test_run(
     config_id: int,
     payload: RestartRequest,
     background_tasks: BackgroundTasks,
-    db: AsyncSession = Depends(get_db)
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary)
 ):
     """重新執行 Test Run：建立一個新的 Test Run（複製設定），
     並依模式挑選要帶入的新測試案例項目。
@@ -956,8 +921,7 @@ async def restart_test_run(
             last_sync_at=None,
         )
         sync_db.add(new_config)
-        sync_db.commit()
-        sync_db.refresh(new_config)
+        sync_db.flush()
 
         created = 0
         now = datetime.utcnow()
@@ -997,8 +961,6 @@ async def restart_test_run(
         new_config.failed_cases = 0
         new_config.last_sync_at = now
 
-        sync_db.commit()
-
         return {
             "mode": mode,
             "new_config_id": new_config.id,
@@ -1007,7 +969,7 @@ async def restart_test_run(
             "notify_chat_ids_json": new_config.notify_chat_ids_json,
         }
 
-    result = await run_sync(db, _restart)
+    result = await main_boundary.run_sync_write(_restart)
 
     # 發送開始執行通知（新配置直接進入 ACTIVE 狀態）
     if result["notifications_enabled"] and result["notify_chat_ids_json"]:
@@ -1052,7 +1014,7 @@ async def search_configs_by_tp_tickets(
     q: str = Query(..., min_length=2, max_length=50, description="搜尋查詢字串（TP 票號）"),
     team_id: int = Query(..., description="團隊 ID"),
     limit: int = Query(20, ge=1, le=100, description="最大返回結果數"),
-    db: AsyncSession = Depends(get_db)
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """
     根據 TP 票號搜尋 Test Run Configs
@@ -1124,7 +1086,7 @@ async def search_configs_by_tp_tickets(
         return summaries
 
     try:
-        return await run_sync(db, _search)
+        return await main_boundary.run_sync_read(_search)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -1183,7 +1145,7 @@ def _filter_matching_tp_tickets(tp_tickets: List[str], search_query: str) -> Lis
 @search_router.get("/tp/stats")
 async def get_tp_search_statistics(
     team_id: int = Query(..., description="團隊 ID"),
-    db: AsyncSession = Depends(get_db)
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """
     取得 TP 票號搜尋相關統計資訊
@@ -1239,7 +1201,7 @@ async def get_tp_search_statistics(
         }
 
     try:
-        return await run_sync(db, _stats)
+        return await main_boundary.run_sync_read(_stats)
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

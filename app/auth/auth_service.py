@@ -4,19 +4,21 @@ JWT Token 認證服務
 提供 JWT Token 的生成、驗證、刷新、撤銷等功能。
 """
 
+from __future__ import annotations
+
 import jwt
 import uuid
 import logging
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
-from app.auth.models import TokenData, UserRole, UserCreate
+from app.auth.models import TokenData, UserRole
 from app.auth.session_service import session_service, is_token_revoked, create_session_record
 from app.auth.password_service import PasswordService
-from app.database import get_async_session
+from app.db_access.main import MainAccessBoundary, get_main_access_boundary
 from app.models.database_models import User
-from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -24,11 +26,12 @@ logger = logging.getLogger(__name__)
 class AuthService:
     """JWT 認證服務"""
 
-    def __init__(self):
+    def __init__(self, main_boundary: MainAccessBoundary | None = None):
         self.settings = get_settings()
         self.secret_key = self.settings.auth.jwt_secret_key
         self.algorithm = "HS256"
         self.expire_days = self.settings.auth.jwt_expire_days
+        self.main_boundary = main_boundary or get_main_access_boundary()
 
     async def create_access_token(
         self,
@@ -205,7 +208,7 @@ class AuthService:
         Returns:
             使用者物件（如果驗證成功）或 None
         """
-        async with get_async_session() as session:
+        async def _authenticate(session: AsyncSession) -> Optional[User]:
             # 嘗試用使用者名稱查詢
             result = await session.execute(
                 select(User).where(User.username == username_or_email)
@@ -277,13 +280,15 @@ class AuthService:
 
             # 更新最後登入時間
             user.last_login_at = datetime.utcnow()
-            await session.commit()
+            await session.flush()
             await session.refresh(user)
 
             # 將首次登入資訊附加到物件，供呼叫端使用
             setattr(user, 'was_first_login', first_login)
 
             return user
+
+        return await self.main_boundary.run_write(_authenticate)
 
     def decode_token_without_verification(self, token: str) -> Optional[Dict[str, Any]]:
         """

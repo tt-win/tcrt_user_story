@@ -160,6 +160,7 @@ i18n_test.html
 
 # Local AI helper debug runner artifacts
 .tmp/helper-debug-runs/
+.tmp/db-cutover/
 
 # Design and documentation files
 *.md

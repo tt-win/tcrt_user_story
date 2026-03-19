@@ -1,15 +1,16 @@
 from fastapi import APIRouter, Query, HTTPException, Depends
 from fastapi.responses import JSONResponse
 from datetime import datetime, timezone, timedelta, date
+from typing import Any
 import os
 import time
 import logging
-from sqlalchemy import text
+from sqlalchemy import func, select
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.database import SessionLocal
 from app.auth.dependencies import require_super_admin
-from app.models.database_models import User
+from app.db_access.main import MainAccessBoundary, get_main_access_boundary
+from app.models.database_models import TestCaseLocal, TestRunItem, User
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +87,35 @@ def _get_cpu_percent():
         return None
 
 
+async def _load_daily_counts(
+    *,
+    main_boundary: MainAccessBoundary,
+    model: type[TestRunItem] | type[TestCaseLocal],
+    days: int,
+) -> dict[str, list[Any]]:
+    since_date = (datetime.now(timezone.utc) - timedelta(days=days)).date().isoformat()
+    day_expr = func.date(model.created_at)
+
+    async def _query(session: AsyncSession) -> list[tuple[Any, int]]:
+        result = await session.execute(
+            select(day_expr.label("day"), func.count(model.id).label("cnt"))
+            .where(day_expr >= since_date)
+            .group_by(day_expr)
+            .order_by(day_expr.asc())
+        )
+        return result.all()
+
+    rows = await main_boundary.run_read(_query)
+    return {
+        "dates": [
+            value if isinstance(value, str) else value.isoformat()
+            for value, _ in rows
+            if value is not None
+        ],
+        "counts": [int(count) for value, count in rows if value is not None],
+    }
+
+
 @router.get("/system_metrics", include_in_schema=False)
 async def system_metrics():
     now = datetime.now(timezone.utc)
@@ -104,7 +134,8 @@ async def system_metrics():
 @router.get("/stats/test_run_actions_daily", include_in_schema=False)
 async def stats_test_run_actions_daily(
     current_user: User = Depends(require_super_admin()),
-    days: int = Query(30, ge=1, le=90)
+    days: int = Query(30, ge=1, le=90),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """
     統計過去 N 天（預設 30 天）Test Run 的建立數（依 test_run_items.created_at 日期彙總）。
@@ -112,28 +143,11 @@ async def stats_test_run_actions_daily(
     Returns: { "dates": [...], "counts": [...] }
     """
     try:
-        since_dt = datetime.now(timezone.utc) - timedelta(days=days)
-        since_date_str = since_dt.date().isoformat()
-
-        async with SessionLocal() as session:
-            q = text(
-                """
-                SELECT date(created_at) AS day,
-                       COUNT(*) AS cnt
-                FROM test_run_items
-                WHERE date(created_at) >= :since_date
-                GROUP BY day
-                ORDER BY day ASC
-                """
-            )
-            result = await session.execute(q, {"since_date": since_date_str})
-            rows = result.all()
-            dates = [r[0] for r in rows]
-            counts = [int(r[1]) for r in rows]
-            return {
-                "dates": dates,
-                "counts": counts
-            }
+        return await _load_daily_counts(
+            main_boundary=main_boundary,
+            model=TestRunItem,
+            days=days,
+        )
     except DBAPIError as e:
         if _is_missing_table_error(e):
             logger.warning("資料庫表格 test_run_items 不存在，返回空統計數據")
@@ -149,7 +163,8 @@ async def stats_test_run_actions_daily(
 @router.get("/stats/test_cases_created_daily", include_in_schema=False)
 async def stats_test_cases_created_daily(
     current_user: User = Depends(require_super_admin()),
-    days: int = Query(30, ge=1, le=90)
+    days: int = Query(30, ge=1, le=90),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """
     統計過去 N 天 Test Case 的建立數（依 test_cases.created_at 日期彙總）。
@@ -157,28 +172,11 @@ async def stats_test_cases_created_daily(
     Returns: { "dates": [...], "counts": [...] }
     """
     try:
-        since_dt = datetime.now(timezone.utc) - timedelta(days=days)
-        since_date_str = since_dt.date().isoformat()
-
-        async with SessionLocal() as session:
-            q = text(
-                """
-                SELECT date(created_at) AS day,
-                       COUNT(*) AS cnt
-                FROM test_cases
-                WHERE date(created_at) >= :since_date
-                GROUP BY day
-                ORDER BY day ASC
-                """
-            )
-            result = await session.execute(q, {"since_date": since_date_str})
-            rows = result.all()
-            dates = [r[0] for r in rows]
-            counts = [int(r[1]) for r in rows]
-            return {
-                "dates": dates,
-                "counts": counts
-            }
+        return await _load_daily_counts(
+            main_boundary=main_boundary,
+            model=TestCaseLocal,
+            days=days,
+        )
     except DBAPIError as e:
         if _is_missing_table_error(e):
             logger.warning("資料庫表格 test_cases 不存在，返回空統計數據")

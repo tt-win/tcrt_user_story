@@ -15,7 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 
-from ..database import get_db, run_sync
+from ..database import get_db
+from ..db_access.main import create_main_access_boundary_for_session
 from ..models.database_models import Team, LarkDepartment, LarkUser
 from ..services.lark_org_sync_service import get_lark_org_sync_service
 
@@ -24,6 +25,17 @@ router = APIRouter(prefix="/teams", tags=["team-sync"])
 
 # 日誌記錄器
 logger = logging.getLogger(__name__)
+
+
+async def _ensure_team_exists(team_id: int, db: AsyncSession) -> None:
+    main_boundary = create_main_access_boundary_for_session(db)
+
+    def _ensure_team(sync_db: Session):
+        team = sync_db.query(Team).filter(Team.id == team_id).first()
+        if not team:
+            raise HTTPException(status_code=404, detail="團隊不存在")
+
+    await main_boundary.run_sync_read(_ensure_team)
 
 
 class SyncTriggerRequest(BaseModel):
@@ -61,12 +73,7 @@ async def get_sync_status(
         同步狀態信息，包含是否正在同步、最後同步時間等
     """
     try:
-        def _ensure_team(sync_db: Session):
-            team = sync_db.query(Team).filter(Team.id == team_id).first()
-            if not team:
-                raise HTTPException(status_code=404, detail="團隊不存在")
-
-        await run_sync(db, _ensure_team)
+        await _ensure_team_exists(team_id, db)
         
         # 獲取同步服務
         sync_service = get_lark_org_sync_service()
@@ -103,6 +110,8 @@ async def get_organization_stats(
         部門和用戶數量統計，最後同步時間等
     """
     try:
+        main_boundary = create_main_access_boundary_for_session(db)
+
         def _load_stats(sync_db: Session):
             # 檢查團隊是否存在
             team = sync_db.query(Team).filter(Team.id == team_id).first()
@@ -136,7 +145,9 @@ async def get_organization_stats(
 
             return total_departments, total_users, last_sync_time
 
-        total_departments, total_users, last_sync_time = await run_sync(db, _load_stats)
+        total_departments, total_users, last_sync_time = await main_boundary.run_sync_read(
+            _load_stats
+        )
         
         # 獲取同步狀態
         sync_service = get_lark_org_sync_service()
@@ -187,12 +198,7 @@ async def trigger_sync(
         同步操作結果和同步ID
     """
     try:
-        def _ensure_team(sync_db: Session):
-            team = sync_db.query(Team).filter(Team.id == team_id).first()
-            if not team:
-                raise HTTPException(status_code=404, detail="團隊不存在")
-
-        await run_sync(db, _ensure_team)
+        await _ensure_team_exists(team_id, db)
         
         # 驗證同步類型
         if request.sync_type not in ['full', 'departments', 'users']:
@@ -267,12 +273,7 @@ async def get_sync_progress(
         同步進度信息
     """
     try:
-        def _ensure_team(sync_db: Session):
-            team = sync_db.query(Team).filter(Team.id == team_id).first()
-            if not team:
-                raise HTTPException(status_code=404, detail="團隊不存在")
-
-        await run_sync(db, _ensure_team)
+        await _ensure_team_exists(team_id, db)
         
         # 獲取同步服務
         sync_service = get_lark_org_sync_service()

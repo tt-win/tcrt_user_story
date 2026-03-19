@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
+import importlib
 from pathlib import Path
 from typing import Any
 
@@ -75,6 +77,41 @@ def install_main_database_overrides(
 
     app.dependency_overrides[get_db_dependency] = override_get_db
     return override_get_db
+
+
+def install_audit_database_overrides(
+    *,
+    monkeypatch,
+    async_session_factory,
+):
+    import app.audit.database as audit_database
+    import app.db_access.audit as audit_db_access
+    audit_service_module = importlib.import_module("app.audit.audit_service")
+
+    @asynccontextmanager
+    async def override_get_audit_session():
+        async with async_session_factory() as db:
+            yield db
+
+    monkeypatch.setattr(audit_database, "get_audit_session", override_get_audit_session)
+    monkeypatch.setattr(audit_service_module, "get_audit_session", override_get_audit_session)
+    monkeypatch.setattr(audit_db_access, "get_audit_session", override_get_audit_session)
+    return override_get_audit_session
+
+
+def install_usm_database_overrides(
+    *,
+    monkeypatch,
+    async_engine,
+    async_session_factory,
+):
+    import app.db_access.usm as usm_access
+    import app.models.user_story_map_db as usm_database
+
+    monkeypatch.setattr(usm_database, "usm_engine", async_engine)
+    monkeypatch.setattr(usm_database, "USMAsyncSessionLocal", async_session_factory)
+    monkeypatch.setattr(usm_access, "USMAsyncSessionLocal", async_session_factory)
+    return async_session_factory
 
 
 def dispose_managed_test_database(database_bundle: dict[str, Any]) -> None:

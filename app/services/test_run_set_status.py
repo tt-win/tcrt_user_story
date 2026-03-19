@@ -55,6 +55,25 @@ async def load_member_statuses(db: AsyncSession, set_id: int) -> List[TestRunSta
     return statuses
 
 
+def load_member_statuses_sync(db: Session, set_id: int) -> List[TestRunStatus]:
+    """從同步 Session 查詢指定 Test Run Set 成員的狀態清單。"""
+    result = db.execute(
+        select(TestRunConfigDB.status)
+        .join(
+            TestRunSetMembershipDB,
+            TestRunSetMembershipDB.config_id == TestRunConfigDB.id,
+        )
+        .filter(TestRunSetMembershipDB.set_id == set_id)
+    )
+    rows = result.all()
+    statuses: List[TestRunStatus] = []
+    for row in rows:
+        normalized = _normalize_status_row(row)
+        if normalized:
+            statuses.append(normalized)
+    return statuses
+
+
 def collect_member_statuses(set_db: TestRunSetDB) -> List[TestRunStatus]:
     """從已載入的 membership 關聯收集成員狀態。"""
     statuses: List[TestRunStatus] = []
@@ -94,6 +113,20 @@ async def recalculate_set_status(db: AsyncSession, set_db: TestRunSetDB) -> Test
     """
     await db.flush()
     member_statuses = await load_member_statuses(db, set_db.id)
+    new_status = compute_set_status(set_db.status, member_statuses)
+    if set_db.status != new_status:
+        set_db.status = new_status
+    return new_status
+
+
+def recalculate_set_status_sync(db: Session, set_db: TestRunSetDB) -> TestRunSetStatus:
+    """
+    重新計算並同步 Test Run Set 狀態（同步版本）。
+
+    用於受管 boundary 的單一交易內，避免 route 在寫入後額外補 commit。
+    """
+    db.flush()
+    member_statuses = load_member_statuses_sync(db, set_db.id)
     new_status = compute_set_status(set_db.status, member_statuses)
     if set_db.status != new_status:
         set_db.status = new_status

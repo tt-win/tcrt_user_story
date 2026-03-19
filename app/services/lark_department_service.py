@@ -15,7 +15,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import IntegrityError
 
-from app.database import run_sync
+from app.db_access.main import (
+    MainAccessBoundary,
+    create_main_access_boundary_for_session,
+    get_main_access_boundary,
+)
 from app.models.database_models import LarkDepartment
 from app.services.lark_client import LarkAuthManager
 
@@ -26,6 +30,7 @@ class LarkDepartmentService:
     def __init__(self, auth_manager: LarkAuthManager):
         self.auth_manager = auth_manager
         self.logger = logging.getLogger(__name__)
+        self.main_boundary = get_main_access_boundary()
         
         # API 配置
         self.base_url = "https://open.larksuite.com/open-apis"
@@ -45,6 +50,9 @@ class LarkDepartmentService:
         # 遍歷狀態
         self.visited_departments = set()  # 避免重複遍歷
         self.max_level = 10  # 最大遍歷層級
+
+    def _resolve_main_boundary(self, db: AsyncSession) -> MainAccessBoundary:
+        return create_main_access_boundary_for_session(db)
         
     def get_department_children(self, department_id: str) -> Optional[List[Dict]]:
         """獲取部門的子部門列表"""
@@ -152,21 +160,19 @@ class LarkDepartmentService:
                     self.stats['departments_created'] += 1
                     self.logger.debug(f"創建新部門: {department_id}")
 
-                sync_db.commit()
+                sync_db.flush()
                 return True
 
             except IntegrityError as e:
-                sync_db.rollback()
                 self.logger.error(f"保存部門時數據庫完整性錯誤: {e}")
                 self.stats['errors'] += 1
                 return False
             except Exception as e:
-                sync_db.rollback()
                 self.logger.error(f"保存部門異常: {e}")
                 self.stats['errors'] += 1
                 return False
 
-        return await run_sync(db, _save)
+        return await self._resolve_main_boundary(db).run_sync_write(_save)
     
     async def traverse_department_recursive(
         self,
@@ -305,7 +311,7 @@ class LarkDepartmentService:
                 self.logger.error(f"獲取部門統計信息失敗: {e}")
                 return {'error': str(e)}
 
-        return await run_sync(db, _get_stats)
+        return await self._resolve_main_boundary(db).run_sync_read(_get_stats)
     
     async def cleanup_inactive_departments(self, db: AsyncSession, days_threshold: int = 30) -> int:
         """清理超過指定天數未同步的部門"""
@@ -318,13 +324,12 @@ class LarkDepartmentService:
                     LarkDepartment.status == 'active'
                 ).update({'status': 'inactive'})
 
-                sync_db.commit()
+                sync_db.flush()
                 self.logger.info(f"標記了 {deleted_count} 個部門為非活躍狀態")
                 return deleted_count
 
             except Exception as e:
-                sync_db.rollback()
                 self.logger.error(f"清理非活躍部門失敗: {e}")
                 return 0
 
-        return await run_sync(db, _cleanup)
+        return await self._resolve_main_boundary(db).run_sync_write(_cleanup)

@@ -11,15 +11,17 @@ from typing import Optional, Dict, Any
 from datetime import datetime
 import logging
 
-from sqlalchemy import select, text
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.auth_service import auth_service
 from app.auth.permission_service import permission_service
 from app.auth.dependencies import get_current_user
 from app.auth.password_service import PasswordService
-from app.database import get_async_session
-from app.models.database_models import User, LarkUser
+from app.models.database_models import User
 from app.audit import audit_service, ActionType, ResourceType, AuditSeverity
+from app.db_access.main import MainAccessBoundary, get_main_access_boundary
+from app.services.user_service import UserService
 
 logger = logging.getLogger(__name__)
 security = HTTPBearer(auto_error=False)
@@ -121,8 +123,64 @@ class ChallengeResponse(BaseModel):
     supports_encryption: bool = False  # 是否支援加密登入
 
 
+async def _load_user_by_identifier(
+    identifier: str,
+    *,
+    main_boundary: MainAccessBoundary,
+) -> Optional[User]:
+    async def _load(session: AsyncSession) -> Optional[User]:
+        result = await session.execute(
+            select(User).where((User.username == identifier) | (User.email == identifier))
+        )
+        return result.scalar_one_or_none()
+
+    return await main_boundary.run_read(_load)
+
+
+async def _complete_first_login_setup(
+    username: str,
+    new_password: str,
+    *,
+    main_boundary: MainAccessBoundary,
+) -> User:
+    async def _setup(session: AsyncSession) -> User:
+        result = await session.execute(select(User).where(User.username == username))
+        user = result.scalar_one_or_none()
+
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="帳號不存在",
+            )
+
+        if not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="帳號已被停用，請聯繫系統管理員",
+            )
+
+        if user.last_login_at is not None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="此帳號已完成初始化，請直接登入",
+            )
+
+        user.hashed_password = PasswordService.hash_password(new_password)
+        user.last_login_at = datetime.utcnow()
+        user.updated_at = datetime.utcnow()
+        user.is_verified = True
+        await session.flush()
+        await session.refresh(user)
+        return user
+
+    return await main_boundary.run_write(_setup)
+
+
 @router.post("/challenge", response_model=ChallengeResponse)
-async def get_challenge(request: ChallengeRequest):
+async def get_challenge(
+    request: ChallengeRequest,
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
+):
     """
     取得登入 Challenge
 
@@ -150,25 +208,19 @@ async def get_challenge(request: ChallengeRequest):
     iterations = None
 
     try:
-        async with get_async_session() as session:
-            result = await session.execute(
-                select(User).where(
-                    (User.username == identifier) | (User.email == identifier)
-                )
-            )
-            user = result.scalar_one_or_none()
+        user = await _load_user_by_identifier(identifier, main_boundary=main_boundary)
 
-            if user and user.hashed_password:
-                # 檢查是否為 PBKDF2 格式
-                if PasswordService.is_pbkdf2_format(user.hashed_password):
-                    params = PasswordService.extract_pbkdf2_params(user.hashed_password)
-                    if params:
-                        supports_encryption = True
-                        salt = params['salt']
-                        iterations = params['iterations']
-                        logger.info(f"使用者 {identifier} 支援加密登入")
-                else:
-                    logger.info(f"使用者 {identifier} 使用舊格式密碼，不支援加密登入")
+        if user and user.hashed_password:
+            # 檢查是否為 PBKDF2 格式
+            if PasswordService.is_pbkdf2_format(user.hashed_password):
+                params = PasswordService.extract_pbkdf2_params(user.hashed_password)
+                if params:
+                    supports_encryption = True
+                    salt = params['salt']
+                    iterations = params['iterations']
+                    logger.info(f"使用者 {identifier} 支援加密登入")
+            else:
+                logger.info(f"使用者 {identifier} 使用舊格式密碼，不支援加密登入")
 
     except Exception as e:
         logger.error(f"查詢使用者密碼格式失敗: {e}")
@@ -185,7 +237,10 @@ async def get_challenge(request: ChallengeRequest):
 
 
 @router.post("/pre-login", response_model=PreLoginResponse)
-async def pre_login(request: PreLoginRequest):
+async def pre_login(
+    request: PreLoginRequest,
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
+):
     """登入前檢查，確認帳號狀態"""
     identifier = (request.username_or_email or '').strip()
 
@@ -196,32 +251,18 @@ async def pre_login(request: PreLoginRequest):
         )
 
     try:
-        async with get_async_session() as session:
-            query = text(
-                """
-                SELECT id, username, full_name, is_active,
-                       NULLIF(last_login_at, '') AS last_login_at
-                FROM users
-                WHERE username = :identifier OR email = :identifier
-                LIMIT 1
-                """
-            )
-            result = await session.execute(query, {"identifier": identifier})
-            row = result.mappings().first()
+        user = await _load_user_by_identifier(identifier, main_boundary=main_boundary)
 
-        if not row:
+        if not user:
             return PreLoginResponse(
                 user_exists=False,
                 message="找不到對應的帳號"
             )
 
-        is_active = bool(row.get('is_active'))
-        username = row.get('username')
-        full_name = row.get('full_name') or ''
-        last_login_value = row.get('last_login_at')
-        if isinstance(last_login_value, str):
-            last_login_value = last_login_value.strip() or None
-        first_login = not last_login_value
+        is_active = bool(user.is_active)
+        username = user.username
+        full_name = user.full_name or ''
+        first_login = user.last_login_at is None
 
         if not is_active:
             return PreLoginResponse(
@@ -421,7 +462,11 @@ async def logout(
 
 
 @router.post("/first-login/setup", response_model=LoginResponse)
-async def first_login_setup(request: FirstLoginSetupRequest, http_request: Request):
+async def first_login_setup(
+    request: FirstLoginSetupRequest,
+    http_request: Request,
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
+):
     """首次登入時設定新密碼"""
     username = (request.username or '').strip()
     if not username:
@@ -442,70 +487,11 @@ async def first_login_setup(request: FirstLoginSetupRequest, http_request: Reque
             detail="新密碼長度至少需 8 個字元"
         )
 
-    async with get_async_session() as session:
-        result = await session.execute(
-            text(
-                """
-                SELECT id, username, email, full_name, role, is_active,
-                       NULLIF(last_login_at, '') AS last_login_at
-                FROM users
-                WHERE username = :username
-                LIMIT 1
-                """
-            ),
-            {"username": username}
-        )
-        row = result.mappings().first()
-
-        if not row:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="帳號不存在"
-            )
-
-        if not row.get('is_active'):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="帳號已被停用，請聯繫系統管理員"
-            )
-
-        last_login_raw = row.get('last_login_at')
-        if isinstance(last_login_raw, str):
-            last_login_raw = last_login_raw.strip() or None
-
-        if last_login_raw is not None:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="此帳號已完成初始化，請直接登入"
-            )
-
-        hashed_password = PasswordService.hash_password(request.new_password)
-        now = datetime.utcnow()
-
-        await session.execute(
-            text(
-                """
-                UPDATE users
-                SET hashed_password = :hashed_password,
-                    last_login_at = :last_login_at,
-                    updated_at = :updated_at,
-                    is_verified = 1
-                WHERE id = :user_id
-                """
-            ),
-            {
-                "hashed_password": hashed_password,
-                "last_login_at": now.isoformat(sep=' '),
-                "updated_at": now.isoformat(sep=' '),
-                "user_id": row['id']
-            }
-        )
-        await session.commit()
-
-        result = await session.execute(
-            select(User).where(User.id == row['id'])
-        )
-        user = result.scalar_one()
+    user = await _complete_first_login_setup(
+        username,
+        request.new_password,
+        main_boundary=main_boundary,
+    )
 
     # 建立 Token 供後續使用
     ip_address = get_client_ip(http_request)
@@ -633,19 +619,7 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
         accessible_teams = await permission_service.get_user_accessible_teams(current_user.id)
 
         # 檢查 Lark 整合狀態
-        from app.services.user_service import UserService
         lark_status = await UserService.check_lark_integration_status(current_user.id)
- 
-        # 嘗試獲取 Lark 頭像
-        avatar_url = None
-        if current_user.lark_user_id:
-            try:
-                async with get_async_session() as session:
-                    lark_user = await session.get(LarkUser, current_user.lark_user_id)
-                    if lark_user:
-                        avatar_url = lark_user.avatar_240
-            except Exception as e:
-                logger.warning(f"獲取 Lark 頭像失敗: {e}")
 
         return UserInfoResponse(
             user_id=current_user.id,
@@ -657,7 +631,7 @@ async def get_current_user_info(current_user: User = Depends(get_current_user)):
             permissions=permissions,
             accessible_teams=accessible_teams,
             lark_name=lark_status.get("name"),
-            avatar_url=avatar_url
+            avatar_url=lark_status.get("avatar")
         )
         
     except Exception as e:

@@ -8,8 +8,9 @@ from fastapi import APIRouter, HTTPException, status, Depends, Query
 from pydantic import BaseModel
 from typing import Optional, List
 from sqlalchemy import select, or_, func
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import get_async_session
+from app.db_access.main import MainAccessBoundary, get_main_access_boundary
 from app.models.database_models import LarkUser
 from app.auth.dependencies import get_current_user
 from app.auth.models import UserRole
@@ -46,13 +47,14 @@ async def list_lark_users(
     per_page: int = Query(20, ge=1, le=100),
     active_only: bool = Query(True, description="僅顯示啟用且未離職/未凍結/未離開的用戶"),
     current_user=Depends(get_current_user),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     # 僅 ADMIN/SUPER_ADMIN 可使用
     if current_user.role not in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="需要管理員權限")
 
     try:
-        async with get_async_session() as session:
+        async def _list(session: AsyncSession) -> LarkUserListResponse:
             query = select(LarkUser)
 
             # Active 過濾
@@ -100,6 +102,8 @@ async def list_lark_users(
 
             return LarkUserListResponse(users=users, total=total, page=page, per_page=per_page)
 
+        return await main_boundary.run_read(_list)
+
     except HTTPException:
         raise
     except Exception as e:
@@ -110,40 +114,53 @@ async def list_lark_users(
 
 
 @router.get("/{lark_user_id}", response_model=LarkUserBasic)
-async def get_lark_user_basic(lark_user_id: str):
+async def get_lark_user_basic(
+    lark_user_id: str,
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
+):
     try:
-        async with get_async_session() as session:
+        async def _load_user(session: AsyncSession) -> Optional[LarkUser]:
             result = await session.execute(select(LarkUser).where(LarkUser.user_id == lark_user_id))
-            user = result.scalar_one_or_none()
-            if not user:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail="找不到對應的 Lark 使用者"
-                )
-            
-            # 如果資料庫 avatar_240 為空，嘗試即時從 Lark API 獲取
-            avatar = user.avatar_240
-            if not avatar or not avatar.strip():
-                from app.services.lark_client import LarkClient
-                from app.config import settings
-                
-                client = LarkClient(settings.lark.app_id, settings.lark.app_secret)
-                lark_user_data = client.user_manager.get_user_by_id(lark_user_id)
-                if lark_user_data:
-                    avatar_info = lark_user_data.get('avatar', {})
-                    avatar = avatar_info.get('avatar_240') or avatar_info.get('avatar_640') or avatar_info.get('avatar_origin')
-                    if avatar:
-                        # 更新資料庫
-                        user.avatar_240 = avatar
-                        user.last_sync_at = datetime.utcnow()
-                        await session.commit()
-                        print(f"API response: Updated avatar_240 for {lark_user_id}: {avatar}")
-                    else:
-                        print(f"API response: No avatar found in Lark API for {lark_user_id}")
+            return result.scalar_one_or_none()
+
+        user = await main_boundary.run_read(_load_user)
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="找不到對應的 Lark 使用者"
+            )
+
+        # 如果資料庫 avatar_240 為空，嘗試即時從 Lark API 獲取
+        avatar = user.avatar_240
+        if not avatar or not avatar.strip():
+            from app.services.lark_client import LarkClient
+            from app.config import settings
+
+            client = LarkClient(settings.lark.app_id, settings.lark.app_secret)
+            lark_user_data = client.user_manager.get_user_by_id(lark_user_id)
+            if lark_user_data:
+                avatar_info = lark_user_data.get('avatar', {})
+                avatar = avatar_info.get('avatar_240') or avatar_info.get('avatar_640') or avatar_info.get('avatar_origin')
+                if avatar:
+                    async def _update_avatar(session: AsyncSession) -> None:
+                        result = await session.execute(
+                            select(LarkUser).where(LarkUser.user_id == lark_user_id)
+                        )
+                        persisted_user = result.scalar_one_or_none()
+                        if not persisted_user:
+                            return
+                        persisted_user.avatar_240 = avatar
+                        persisted_user.last_sync_at = datetime.utcnow()
+                        await session.flush()
+
+                    await main_boundary.run_write(_update_avatar)
+                    print(f"API response: Updated avatar_240 for {lark_user_id}: {avatar}")
                 else:
-                    print(f"API response: No user data from Lark API for {lark_user_id}")
-            
-            return LarkUserBasic(id=user.user_id, name=user.name, avatar=avatar)
+                    print(f"API response: No avatar found in Lark API for {lark_user_id}")
+            else:
+                print(f"API response: No user data from Lark API for {lark_user_id}")
+
+        return LarkUserBasic(id=user.user_id, name=user.name, avatar=avatar)
     except HTTPException:
         raise
     except Exception as e:

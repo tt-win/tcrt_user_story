@@ -17,11 +17,10 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, R
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit import ActionType, AuditSeverity, ResourceType, audit_service
 from app.auth.dependencies import require_super_admin
-from app.database import get_db
+from app.db_access.main import MainAccessBoundary, get_main_access_boundary
 from app.models.database_models import (
     MCPMachineCredential,
     MCPMachineCredentialStatus,
@@ -73,7 +72,7 @@ def _resolve_role_value(raw_role: object) -> str:
 async def create_mcp_machine_token(
     payload: MCPMachineTokenCreateRequest,
     request: Request,
-    db: AsyncSession = Depends(get_db),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
     current_user: User = Depends(require_super_admin()),
 ):
     name = (payload.name or "").strip()
@@ -94,8 +93,13 @@ async def create_mcp_machine_token(
         )
 
     if not payload.allow_all_teams and team_scope_ids:
-        existing_rows = await db.execute(select(Team.id).where(Team.id.in_(team_scope_ids)))
-        existing_ids = {int(team_id) for (team_id,) in existing_rows.all()}
+        async def _load_existing_team_ids(session):
+            existing_rows = await session.execute(
+                select(Team.id).where(Team.id.in_(team_scope_ids))
+            )
+            return {int(team_id) for (team_id,) in existing_rows.all()}
+
+        existing_ids = await main_boundary.run_read(_load_existing_team_ids)
         missing_ids = [team_id for team_id in team_scope_ids if team_id not in existing_ids]
         if missing_ids:
             raise HTTPException(
@@ -113,25 +117,35 @@ async def create_mcp_machine_token(
     raw_token = secrets.token_hex(32)
     token_hash = hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
 
-    machine_credential = MCPMachineCredential(
-        name=name,
-        description=(payload.description or "").strip() or None,
-        token_hash=token_hash,
-        permission="mcp_read",
-        status=MCPMachineCredentialStatus.ACTIVE,
-        allow_all_teams=bool(payload.allow_all_teams),
-        team_scope_json=None
-        if payload.allow_all_teams
-        else json.dumps(team_scope_ids, ensure_ascii=False),
-        expires_at=expires_at,
-        created_by_user_id=getattr(current_user, "id", None),
-    )
-    db.add(machine_credential)
+    async def _create_machine_credential(session):
+        machine_credential = MCPMachineCredential(
+            name=name,
+            description=(payload.description or "").strip() or None,
+            token_hash=token_hash,
+            permission="mcp_read",
+            status=MCPMachineCredentialStatus.ACTIVE,
+            allow_all_teams=bool(payload.allow_all_teams),
+            team_scope_json=None
+            if payload.allow_all_teams
+            else json.dumps(team_scope_ids, ensure_ascii=False),
+            expires_at=expires_at,
+            created_by_user_id=getattr(current_user, "id", None),
+        )
+        session.add(machine_credential)
+        await session.flush()
+        await session.refresh(machine_credential)
+        return {
+            "credential_id": machine_credential.id,
+            "name": machine_credential.name,
+            "permission": machine_credential.permission,
+            "allow_all_teams": bool(machine_credential.allow_all_teams),
+            "expires_at": machine_credential.expires_at,
+            "created_at": machine_credential.created_at,
+        }
 
     try:
-        await db.commit()
+        machine_credential_payload = await main_boundary.run_write(_create_machine_credential)
     except IntegrityError as exc:
-        await db.rollback()
         raw_message = str(getattr(exc, "orig", exc)).lower()
         if "mcp_machine_credentials.name" in raw_message:
             raise HTTPException(
@@ -149,7 +163,6 @@ async def create_mcp_machine_token(
             },
         ) from exc
     except Exception as exc:  # noqa: BLE001
-        await db.rollback()
         raise HTTPException(
             status_code=500,
             detail={
@@ -158,18 +171,20 @@ async def create_mcp_machine_token(
             },
         ) from exc
 
-    await db.refresh(machine_credential)
-
     response_payload = {
         "success": True,
         "data": {
-            "credential_id": machine_credential.id,
-            "name": machine_credential.name,
-            "permission": machine_credential.permission,
-            "allow_all_teams": bool(machine_credential.allow_all_teams),
+            "credential_id": machine_credential_payload["credential_id"],
+            "name": machine_credential_payload["name"],
+            "permission": machine_credential_payload["permission"],
+            "allow_all_teams": machine_credential_payload["allow_all_teams"],
             "team_scope_ids": [] if payload.allow_all_teams else team_scope_ids,
-            "expires_at": machine_credential.expires_at.isoformat() if machine_credential.expires_at else None,
-            "created_at": machine_credential.created_at.isoformat() if machine_credential.created_at else None,
+            "expires_at": machine_credential_payload["expires_at"].isoformat()
+            if machine_credential_payload["expires_at"]
+            else None,
+            "created_at": machine_credential_payload["created_at"].isoformat()
+            if machine_credential_payload["created_at"]
+            else None,
             "raw_token": raw_token,
         },
     }
@@ -181,17 +196,19 @@ async def create_mcp_machine_token(
             role=_resolve_role_value(getattr(current_user, "role", "")),
             action_type=ActionType.CREATE,
             resource_type=ResourceType.SYSTEM,
-            resource_id=f"mcp_machine_credential:{machine_credential.id}",
+            resource_id=f"mcp_machine_credential:{machine_credential_payload['credential_id']}",
             team_id=0,
             details={
-                "credential_id": machine_credential.id,
-                "name": machine_credential.name,
-                "permission": machine_credential.permission,
-                "allow_all_teams": bool(machine_credential.allow_all_teams),
+                "credential_id": machine_credential_payload["credential_id"],
+                "name": machine_credential_payload["name"],
+                "permission": machine_credential_payload["permission"],
+                "allow_all_teams": machine_credential_payload["allow_all_teams"],
                 "team_scope_ids": [] if payload.allow_all_teams else team_scope_ids,
-                "expires_at": machine_credential.expires_at.isoformat() if machine_credential.expires_at else None,
+                "expires_at": machine_credential_payload["expires_at"].isoformat()
+                if machine_credential_payload["expires_at"]
+                else None,
             },
-            action_brief=f"建立 MCP machine token: {machine_credential.name}",
+            action_brief=f"建立 MCP machine token: {machine_credential_payload['name']}",
             severity=AuditSeverity.INFO,
             ip_address=request.client.host if request.client else None,
             user_agent=request.headers.get("user-agent"),

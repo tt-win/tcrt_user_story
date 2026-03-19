@@ -13,24 +13,27 @@ import logging
 import json
 import math
 from collections import Counter, defaultdict
-from sqlalchemy import text, func, and_, select, desc
+from sqlalchemy import case, func, select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.database import SessionLocal
 from app.auth.dependencies import require_admin
+from app.db_access.audit import AuditAccessBoundary, get_audit_access_boundary
+from app.db_access.main import MainAccessBoundary, get_main_access_boundary
 from app.models.database_models import (
     AITestCaseHelperSession,
     AITestCaseHelperStageMetric,
-    User,
-    TestCaseLocal,
-    TestRunItem,
-    TestRunConfig,
-    Team,
     LarkUser,
     LarkDepartment,
+    TestCaseLocal,
+    TestRunConfig,
+    TestRunItem,
+    TestRunItemResultHistory,
+    Team,
+    User,
 )
+from app.models.lark_types import TestResultStatus
 from app.models.team import TeamStatus
-from app.audit.database import get_audit_session, AuditLogTable
+from app.audit.database import AuditLogTable
 from app.audit.models import ActionType, ResourceType, AuditSeverity
 
 logger = logging.getLogger(__name__)
@@ -475,6 +478,36 @@ def _enum_value(value: Any) -> str:
     return str(value)
 
 
+def _enum_storage_key(value: Any) -> str:
+    """保留資料庫 enum 儲存鍵格式，避免 reporting 契約漂移。"""
+    if value is None:
+        return "unknown"
+    if hasattr(value, "name"):
+        return str(value.name)
+    if hasattr(value, "value"):
+        return str(value.value)
+    return str(value)
+
+
+def _day_to_label(value: Any) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    if hasattr(value, "isoformat"):
+        return value.isoformat()
+    return str(value)
+
+
+def _build_date_labels(start_date_obj: date, end_date_obj: date) -> List[str]:
+    date_cursor = start_date_obj
+    labels: List[str] = []
+    while date_cursor <= end_date_obj:
+        labels.append(date_cursor.isoformat())
+        date_cursor += timedelta(days=1)
+    return labels
+
+
 def _get_action_weight(resource_type: Any, details_raw: Any) -> int:
     """
     取得行為的權重（受影響筆數）。
@@ -516,7 +549,9 @@ async def get_overview(
     current_user: User = Depends(require_admin()),
     days: int = Query(30, ge=1, le=MAX_STAT_RANGE_DAYS, description="統計天數"),
     start_date: Optional[date] = Query(None, description="開始日期 (YYYY-MM-DD)"),
-    end_date: Optional[date] = Query(None, description="結束日期 (YYYY-MM-DD)")
+    end_date: Optional[date] = Query(None, description="結束日期 (YYYY-MM-DD)"),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
+    audit_boundary: AuditAccessBoundary = Depends(get_audit_access_boundary),
 ):
     """
     總覽儀表板 - 顯示關鍵指標
@@ -533,32 +568,27 @@ async def get_overview(
     try:
         start_date, end_date, _, _, range_days = _resolve_date_range(days, start_date, end_date)
 
-        async with SessionLocal() as session:
-            # 統計團隊數
+        async def _load_main(session: AsyncSession) -> Dict[str, Any]:
             team_count_result = await session.execute(
                 select(func.count(Team.id)).where(Team.status == TeamStatus.ACTIVE)
             )
             team_count = team_count_result.scalar() or 0
 
-            # 統計活躍使用者數
             user_count_result = await session.execute(
                 select(func.count(User.id)).where(User.is_active == True)
             )
             user_count = user_count_result.scalar() or 0
 
-            # 統計測試案例總數
             test_case_count_result = await session.execute(
                 select(func.count(TestCaseLocal.id))
             )
             test_case_total = test_case_count_result.scalar() or 0
 
-            # 統計測試執行配置總數（Test Run 總數）
             test_run_result = await session.execute(
                 select(func.count(TestRunConfig.id))
             )
             test_run_total = test_run_result.scalar() or 0
 
-            # 統計每個團隊的 Test Case 總數
             team_test_case_result = await session.execute(
                 select(
                     TestCaseLocal.team_id,
@@ -579,7 +609,6 @@ async def get_overview(
                 for row in team_test_case_result.all()
             ]
 
-            # 統計每個團隊的 Test Run 總數
             team_test_run_result = await session.execute(
                 select(
                     TestRunConfig.team_id,
@@ -600,8 +629,16 @@ async def get_overview(
                 for row in team_test_run_result.all()
             ]
 
-        # 從審計日誌取得最近活動
-        async with get_audit_session() as audit_session:
+            return {
+                "team_count": team_count,
+                "user_count": user_count,
+                "test_case_total": test_case_total,
+                "test_run_total": test_run_total,
+                "team_test_cases": team_test_cases,
+                "team_test_runs": team_test_runs,
+            }
+
+        async def _load_recent_activity(audit_session: AsyncSession) -> List[Dict[str, Any]]:
             recent_logs = await audit_session.execute(
                 select(AuditLogTable)
                 .order_by(desc(AuditLogTable.timestamp))
@@ -619,14 +656,13 @@ async def get_overview(
                 }
                 for log in recent_logs.scalars()
             ]
+            return recent_activity
+
+        main_payload = await main_boundary.run_read(_load_main)
+        recent_activity = await audit_boundary.run_read(_load_recent_activity)
 
         return JSONResponse({
-            "team_count": team_count,
-            "user_count": user_count,
-            "test_case_total": test_case_total,
-            "test_run_total": test_run_total,
-            "team_test_cases": team_test_cases,
-            "team_test_runs": team_test_runs,
+            **main_payload,
             "recent_activity": recent_activity,
             "date_range": {
                 "start": start_date,
@@ -645,7 +681,9 @@ async def get_team_activity(
     current_user: User = Depends(require_admin()),
     days: int = Query(30, ge=1, le=MAX_STAT_RANGE_DAYS, description="統計天數"),
     start_date: Optional[date] = Query(None, description="開始日期 (YYYY-MM-DD)"),
-    end_date: Optional[date] = Query(None, description="結束日期 (YYYY-MM-DD)")
+    end_date: Optional[date] = Query(None, description="結束日期 (YYYY-MM-DD)"),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
+    audit_boundary: AuditAccessBoundary = Depends(get_audit_access_boundary),
 ):
     """
     團隊活動分析 - 基於審計日誌
@@ -657,15 +695,13 @@ async def get_team_activity(
     try:
         start_date, end_date, start_dt, end_dt, range_days = _resolve_date_range(days, start_date, end_date)
 
-        # 獲取團隊資訊
-        async with SessionLocal() as session:
+        async def _load_teams(session: AsyncSession) -> Dict[int, str]:
             teams_result = await session.execute(
                 select(Team.id, Team.name).where(Team.status == TeamStatus.ACTIVE)
             )
-            teams_dict = {row[0]: row[1] for row in teams_result}
+            return {row[0]: row[1] for row in teams_result}
 
-        # 從審計日誌統計團隊活動
-        async with get_audit_session() as audit_session:
+        async def _load_activity(audit_session: AsyncSession) -> List[tuple[Any, Any, Any, Any]]:
             activity_result = await audit_session.execute(
                 select(
                     AuditLogTable.team_id,
@@ -679,7 +715,10 @@ async def get_team_activity(
                     AuditLogTable.team_id > 0
                 )
             )
-            activity_rows = activity_result.all()
+            return activity_result.all()
+
+        teams_dict = await main_boundary.run_read(_load_teams)
+        activity_rows = await audit_boundary.run_read(_load_activity)
 
         # 整理數據 - 先為所有團隊初始化 0
         by_team = {}
@@ -737,7 +776,8 @@ async def get_test_case_trends(
     current_user: User = Depends(require_admin()),
     days: int = Query(30, ge=1, le=MAX_STAT_RANGE_DAYS, description="統計天數"),
     start_date: Optional[date] = Query(None, description="開始日期 (YYYY-MM-DD)"),
-    end_date: Optional[date] = Query(None, description="結束日期 (YYYY-MM-DD)")
+    end_date: Optional[date] = Query(None, description="結束日期 (YYYY-MM-DD)"),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """
     測試案例趨勢分析
@@ -752,33 +792,33 @@ async def get_test_case_trends(
         start_date_obj = date.fromisoformat(start_date_str)
         end_date_obj = date.fromisoformat(end_date_str)
 
-        async with SessionLocal() as session:
+        async def _load_trends(session: AsyncSession) -> Dict[str, Any]:
+            created_day = func.date(TestCaseLocal.created_at)
+            updated_day = func.date(TestCaseLocal.updated_at)
             created_rows_result = await session.execute(
-                text(
-                    """
-                    SELECT team_id, date(created_at) AS day, COUNT(*) AS cnt
-                    FROM test_cases
-                    WHERE date(created_at) BETWEEN :start_date AND :end_date
-                    GROUP BY team_id, day
-                    ORDER BY day ASC
-                    """
-                ),
-                {"start_date": start_date_str, "end_date": end_date_str}
+                select(
+                    TestCaseLocal.team_id,
+                    created_day.label("day"),
+                    func.count(TestCaseLocal.id).label("cnt"),
+                )
+                .where(created_day.between(start_date_str, end_date_str))
+                .group_by(TestCaseLocal.team_id, created_day)
+                .order_by(created_day.asc())
             )
 
             updated_rows_result = await session.execute(
-                text(
-                    """
-                    SELECT team_id, date(updated_at) AS day, COUNT(*) AS cnt
-                    FROM test_cases
-                    WHERE updated_at IS NOT NULL
-                      AND updated_at > created_at
-                      AND date(updated_at) BETWEEN :start_date AND :end_date
-                    GROUP BY team_id, day
-                    ORDER BY day ASC
-                    """
-                ),
-                {"start_date": start_date_str, "end_date": end_date_str}
+                select(
+                    TestCaseLocal.team_id,
+                    updated_day.label("day"),
+                    func.count(TestCaseLocal.id).label("cnt"),
+                )
+                .where(
+                    TestCaseLocal.updated_at.is_not(None),
+                    TestCaseLocal.updated_at > TestCaseLocal.created_at,
+                    updated_day.between(start_date_str, end_date_str),
+                )
+                .group_by(TestCaseLocal.team_id, updated_day)
+                .order_by(updated_day.asc())
             )
 
             created_rows = created_rows_result.all()
@@ -798,25 +838,34 @@ async def get_test_case_trends(
                     for row in teams_result.all()
                 }
 
-        date_cursor = start_date_obj
-        labels: List[str] = []
-        while date_cursor <= end_date_obj:
-            labels.append(date_cursor.isoformat())
-            date_cursor += timedelta(days=1)
+            return {
+                "created_rows": created_rows,
+                "updated_rows": updated_rows,
+                "involved_team_ids": involved_team_ids,
+                "team_name_map": team_name_map,
+            }
+
+        trend_data = await main_boundary.run_read(_load_trends)
+        created_rows = trend_data["created_rows"]
+        updated_rows = trend_data["updated_rows"]
+        involved_team_ids = trend_data["involved_team_ids"]
+        team_name_map = trend_data["team_name_map"]
+
+        labels = _build_date_labels(start_date_obj, end_date_obj)
 
         created_map: Dict[int, Dict[str, int]] = defaultdict(dict)
         updated_map: Dict[int, Dict[str, int]] = defaultdict(dict)
 
         for team_id, day_value, count in created_rows:
-            if team_id is None or day_value is None:
+            day_str = _day_to_label(day_value)
+            if team_id is None or day_str is None:
                 continue
-            day_str = day_value if isinstance(day_value, str) else day_value.isoformat()
             created_map[int(team_id)][day_str] = int(count)
 
         for team_id, day_value, count in updated_rows:
-            if team_id is None or day_value is None:
+            day_str = _day_to_label(day_value)
+            if team_id is None or day_str is None:
                 continue
-            day_str = day_value if isinstance(day_value, str) else day_value.isoformat()
             updated_map[int(team_id)][day_str] = int(count)
 
         per_team_daily: List[Dict[str, Any]] = []
@@ -893,7 +942,8 @@ async def get_test_run_metrics(
     current_user: User = Depends(require_admin()),
     days: int = Query(30, ge=1, le=MAX_STAT_RANGE_DAYS, description="統計天數"),
     start_date: Optional[date] = Query(None, description="開始日期 (YYYY-MM-DD)"),
-    end_date: Optional[date] = Query(None, description="結束日期 (YYYY-MM-DD)")
+    end_date: Optional[date] = Query(None, description="結束日期 (YYYY-MM-DD)"),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """
     測試執行指標分析
@@ -911,53 +961,56 @@ async def get_test_run_metrics(
         start_date_obj = date.fromisoformat(start_date_str)
         end_date_obj = date.fromisoformat(end_date_str)
 
-        async with SessionLocal() as session:
-            # 每日執行次數（按團隊分組）
+        async def _load_metrics(session: AsyncSession) -> Dict[str, Any]:
+            daily_exec_day = func.date(TestRunItem.created_at)
+            history_day = func.date(TestRunItemResultHistory.changed_at)
+            pass_count_expr = func.sum(
+                case(
+                    (TestRunItemResultHistory.new_result == TestResultStatus.PASSED, 1),
+                    else_=0,
+                )
+            ).label("pass_count")
+            status_count_expr = func.count(TestRunItemResultHistory.id).label("cnt")
+            team_count_expr = func.count(TestRunItem.id).label("cnt")
+
             daily_team_result = await session.execute(
-                text("""
-                    SELECT team_id, date(created_at) as day, COUNT(*) as cnt
-                    FROM test_run_items
-                    WHERE date(created_at) BETWEEN :start_date AND :end_date
-                    GROUP BY team_id, day
-                    ORDER BY day ASC
-                """),
-                {"start_date": start_date_str, "end_date": end_date_str}
+                select(
+                    TestRunItem.team_id,
+                    daily_exec_day.label("day"),
+                    func.count(TestRunItem.id).label("cnt"),
+                )
+                .where(daily_exec_day.between(start_date_str, end_date_str))
+                .group_by(TestRunItem.team_id, daily_exec_day)
+                .order_by(daily_exec_day.asc())
             )
             daily_team_rows = daily_team_result.all()
 
-            # 通過率趨勢（按團隊分組）
             pass_rate_team_result = await session.execute(
-                text("""
-                    SELECT
-                        trirh.team_id,
-                        date(trirh.changed_at) as day,
-                        SUM(CASE WHEN trirh.new_result = 'PASSED' THEN 1 ELSE 0 END) as pass_count,
-                        COUNT(*) as total_count
-                    FROM test_run_item_result_history trirh
-                    WHERE date(trirh.changed_at) BETWEEN :start_date AND :end_date
-                    GROUP BY trirh.team_id, day
-                    ORDER BY day ASC
-                """),
-                {"start_date": start_date_str, "end_date": end_date_str}
+                select(
+                    TestRunItemResultHistory.team_id,
+                    history_day.label("day"),
+                    pass_count_expr,
+                    func.count(TestRunItemResultHistory.id).label("total_count"),
+                )
+                .where(history_day.between(start_date_str, end_date_str))
+                .group_by(TestRunItemResultHistory.team_id, history_day)
+                .order_by(history_day.asc())
             )
             pass_rate_team_rows = pass_rate_team_result.all()
 
-            # 按狀態分佈（全局）
             status_result = await session.execute(
-                text("""
-                    SELECT new_result, COUNT(*) as cnt
-                    FROM test_run_item_result_history
-                    WHERE date(changed_at) BETWEEN :start_date AND :end_date
-                    GROUP BY new_result
-                """),
-                {"start_date": start_date_str, "end_date": end_date_str}
+                select(
+                    TestRunItemResultHistory.new_result,
+                    status_count_expr,
+                )
+                .where(history_day.between(start_date_str, end_date_str))
+                .group_by(TestRunItemResultHistory.new_result)
             )
             by_status = {
-                row[0] or "unknown": int(row[1])
+                (_enum_storage_key(row[0]) if row[0] is not None else "unknown"): int(row[1])
                 for row in status_result.all()
             }
 
-            # 獲取涉及的團隊資訊
             involved_team_ids = {
                 int(row[0]) for row in daily_team_rows + pass_rate_team_rows if row[0] is not None
             }
@@ -972,17 +1025,19 @@ async def get_test_run_metrics(
                     for row in teams_result.all()
                 }
 
-            # 按團隊統計總數
             team_result = await session.execute(
-                text("""
-                    SELECT tri.team_id, t.name, COUNT(*) as cnt
-                    FROM test_run_items tri
-                    LEFT JOIN teams t ON tri.team_id = t.id
-                    WHERE date(tri.created_at) BETWEEN :start_date AND :end_date AND tri.team_id > 0
-                    GROUP BY tri.team_id, t.name
-                    ORDER BY cnt DESC
-                """),
-                {"start_date": start_date_str, "end_date": end_date_str}
+                select(
+                    TestRunItem.team_id,
+                    Team.name,
+                    team_count_expr,
+                )
+                .outerjoin(Team, TestRunItem.team_id == Team.id)
+                .where(
+                    daily_exec_day.between(start_date_str, end_date_str),
+                    TestRunItem.team_id > 0,
+                )
+                .group_by(TestRunItem.team_id, Team.name)
+                .order_by(team_count_expr.desc())
             )
             by_team = [
                 {
@@ -993,27 +1048,37 @@ async def get_test_run_metrics(
                 for row in team_result.all()
             ]
 
-        # 生成日期標籤
-        date_cursor = start_date_obj
-        labels: List[str] = []
-        while date_cursor <= end_date_obj:
-            labels.append(date_cursor.isoformat())
-            date_cursor += timedelta(days=1)
+            return {
+                "daily_team_rows": daily_team_rows,
+                "pass_rate_team_rows": pass_rate_team_rows,
+                "by_status": by_status,
+                "involved_team_ids": involved_team_ids,
+                "team_name_map": team_name_map,
+                "by_team": by_team,
+            }
 
-        # 整理每日執行數據（按團隊）
+        metric_data = await main_boundary.run_read(_load_metrics)
+        daily_team_rows = metric_data["daily_team_rows"]
+        pass_rate_team_rows = metric_data["pass_rate_team_rows"]
+        by_status = metric_data["by_status"]
+        involved_team_ids = metric_data["involved_team_ids"]
+        team_name_map = metric_data["team_name_map"]
+        by_team = metric_data["by_team"]
+
+        labels = _build_date_labels(start_date_obj, end_date_obj)
+
         daily_exec_map: Dict[int, Dict[str, int]] = defaultdict(dict)
         for team_id, day_value, count in daily_team_rows:
-            if team_id is None or day_value is None:
+            day_str = _day_to_label(day_value)
+            if team_id is None or day_str is None:
                 continue
-            day_str = day_value if isinstance(day_value, str) else day_value.isoformat()
             daily_exec_map[int(team_id)][day_str] = int(count)
 
-        # 整理通過率數據（按團隊）
         pass_rate_map: Dict[int, Dict[str, tuple]] = defaultdict(dict)
         for team_id, day_value, pass_count, total_count in pass_rate_team_rows:
-            if team_id is None or day_value is None:
+            day_str = _day_to_label(day_value)
+            if team_id is None or day_str is None:
                 continue
-            day_str = day_value if isinstance(day_value, str) else day_value.isoformat()
             pass_rate_map[int(team_id)][day_str] = (int(pass_count), int(total_count))
 
         # 構建團隊別每日執行數據
@@ -1130,7 +1195,8 @@ async def get_user_activity(
     current_user: User = Depends(require_admin()),
     days: int = Query(30, ge=1, le=MAX_STAT_RANGE_DAYS, description="統計天數"),
     start_date: Optional[date] = Query(None, description="開始日期 (YYYY-MM-DD)"),
-    end_date: Optional[date] = Query(None, description="結束日期 (YYYY-MM-DD)")
+    end_date: Optional[date] = Query(None, description="結束日期 (YYYY-MM-DD)"),
+    audit_boundary: AuditAccessBoundary = Depends(get_audit_access_boundary),
 ):
     """
     使用者行為分析 - 基於審計日誌
@@ -1143,7 +1209,7 @@ async def get_user_activity(
     try:
         start_date, end_date, start_dt, end_dt, range_days = _resolve_date_range(days, start_date, end_date)
 
-        async with get_audit_session() as audit_session:
+        async def _load_user_activity(audit_session: AsyncSession) -> Dict[str, Any]:
             logs_result = await audit_session.execute(
                 select(
                     AuditLogTable.user_id,
@@ -1185,13 +1251,16 @@ async def get_user_activity(
                     hourly_counter[hour_val] = hourly_counter.get(hour_val, 0) + weight
 
             top_users = sorted(user_counter.values(), key=lambda x: x["action_count"], reverse=True)[:20]
-            by_operation = operation_counter
-            hourly_distribution = hourly_counter
+            return {
+                "top_users": top_users,
+                "by_operation": operation_counter,
+                "hourly_distribution": hourly_counter,
+            }
+
+        user_activity = await audit_boundary.run_read(_load_user_activity)
 
         return JSONResponse({
-            "top_users": top_users,
-            "by_operation": by_operation,
-            "hourly_distribution": hourly_distribution,
+            **user_activity,
             "date_range": {
                 "start": start_date,
                 "end": end_date,
@@ -1209,7 +1278,8 @@ async def get_audit_analysis(
     current_user: User = Depends(require_admin()),
     days: int = Query(30, ge=1, le=MAX_STAT_RANGE_DAYS, description="統計天數"),
     start_date: Optional[date] = Query(None, description="開始日期 (YYYY-MM-DD)"),
-    end_date: Optional[date] = Query(None, description="結束日期 (YYYY-MM-DD)")
+    end_date: Optional[date] = Query(None, description="結束日期 (YYYY-MM-DD)"),
+    audit_boundary: AuditAccessBoundary = Depends(get_audit_access_boundary),
 ):
     """
     審計日誌深度分析
@@ -1223,85 +1293,95 @@ async def get_audit_analysis(
     try:
         start_date, end_date, start_dt, end_dt, range_days = _resolve_date_range(days, start_date, end_date)
 
-        async with get_audit_session() as audit_session:
-            # 按資源類型分佈
+        async def _load_audit_analysis(audit_session: AsyncSession) -> Dict[str, Any]:
+            resource_count_expr = func.count(AuditLogTable.id).label("cnt")
+            severity_count_expr = func.count(AuditLogTable.id).label("cnt")
+            daily_day = func.date(AuditLogTable.timestamp)
             resource_result = await audit_session.execute(
-                text("""
-                    SELECT resource_type, COUNT(*) as cnt
-                    FROM audit_logs
-                    WHERE timestamp >= :start_dt AND timestamp <= :end_dt
-                    GROUP BY resource_type
-                    ORDER BY cnt DESC
-                """),
-                {"start_dt": start_dt, "end_dt": end_dt}
+                select(
+                    AuditLogTable.resource_type,
+                    resource_count_expr,
+                )
+                .where(
+                    AuditLogTable.timestamp >= start_dt,
+                    AuditLogTable.timestamp <= end_dt,
+                )
+                .group_by(AuditLogTable.resource_type)
+                .order_by(resource_count_expr.desc())
             )
             by_resource_type = {
-                row[0]: int(row[1])
+                _enum_storage_key(row[0]): int(row[1])
                 for row in resource_result.all()
             }
 
-            # 按嚴重性分佈
             severity_result = await audit_session.execute(
-                text("""
-                    SELECT severity, COUNT(*) as cnt
-                    FROM audit_logs
-                    WHERE timestamp >= :start_dt AND timestamp <= :end_dt
-                    GROUP BY severity
-                """),
-                {"start_dt": start_dt, "end_dt": end_dt}
+                select(
+                    AuditLogTable.severity,
+                    severity_count_expr,
+                )
+                .where(
+                    AuditLogTable.timestamp >= start_dt,
+                    AuditLogTable.timestamp <= end_dt,
+                )
+                .group_by(AuditLogTable.severity)
             )
             by_severity = {
-                row[0]: int(row[1])
+                _enum_storage_key(row[0]): int(row[1])
                 for row in severity_result.all()
             }
 
-            # 關鍵操作列表
             critical_result = await audit_session.execute(
-                text("""
-                    SELECT id, timestamp, username, action_type, resource_type,
-                           resource_id, action_brief, team_id
-                    FROM audit_logs
-                    WHERE timestamp >= :start_dt AND timestamp <= :end_dt AND severity = 'critical'
-                    ORDER BY timestamp DESC
-                    LIMIT 50
-                """),
-                {"start_dt": start_dt, "end_dt": end_dt}
+                select(AuditLogTable)
+                .where(
+                    AuditLogTable.timestamp >= start_dt,
+                    AuditLogTable.timestamp <= end_dt,
+                    AuditLogTable.severity == AuditSeverity.CRITICAL,
+                )
+                .order_by(AuditLogTable.timestamp.desc())
+                .limit(50)
             )
             critical_actions = [
                 {
-                    "id": row[0],
-                    "timestamp": row[1].isoformat() if row[1] else None,
-                    "username": row[2],
-                    "action_type": row[3],
-                    "resource_type": row[4],
-                    "resource_id": row[5],
-                    "action_brief": row[6],
-                    "team_id": row[7]
+                    "id": log.id,
+                    "timestamp": log.timestamp.isoformat() if log.timestamp else None,
+                    "username": log.username,
+                    "action_type": _enum_storage_key(log.action_type),
+                    "resource_type": _enum_storage_key(log.resource_type),
+                    "resource_id": log.resource_id,
+                    "action_brief": log.action_brief,
+                    "team_id": log.team_id,
                 }
-                for row in critical_result.all()
+                for log in critical_result.scalars()
             ]
 
-            # 每日操作趨勢
             daily_result = await audit_session.execute(
-                text("""
-                    SELECT date(timestamp) as day, COUNT(*) as cnt
-                    FROM audit_logs
-                    WHERE timestamp >= :start_dt AND timestamp <= :end_dt
-                    GROUP BY day
-                    ORDER BY day ASC
-                """),
-                {"start_dt": start_dt, "end_dt": end_dt}
+                select(
+                    daily_day.label("day"),
+                    func.count(AuditLogTable.id).label("cnt"),
+                )
+                .where(
+                    AuditLogTable.timestamp >= start_dt,
+                    AuditLogTable.timestamp <= end_dt,
+                )
+                .group_by(daily_day)
+                .order_by(daily_day.asc())
             )
             daily_trend = [
-                {"date": row[0], "count": int(row[1])}
+                {"date": _day_to_label(row[0]), "count": int(row[1])}
                 for row in daily_result.all()
             ]
 
+            return {
+                "by_resource_type": by_resource_type,
+                "by_severity": by_severity,
+                "critical_actions": critical_actions,
+                "daily_trend": daily_trend,
+            }
+
+        audit_analysis = await audit_boundary.run_read(_load_audit_analysis)
+
         return JSONResponse({
-            "by_resource_type": by_resource_type,
-            "by_severity": by_severity,
-            "critical_actions": critical_actions,
-            "daily_trend": daily_trend,
+            **audit_analysis,
             "date_range": {
                 "start": start_date,
                 "end": end_date,
@@ -1319,7 +1399,9 @@ async def get_department_stats(
     current_user: User = Depends(require_admin()),
     days: int = Query(30, ge=1, le=MAX_STAT_RANGE_DAYS, description="統計天數"),
     start_date: Optional[date] = Query(None, description="開始日期 (YYYY-MM-DD)"),
-    end_date: Optional[date] = Query(None, description="結束日期 (YYYY-MM-DD)")
+    end_date: Optional[date] = Query(None, description="結束日期 (YYYY-MM-DD)"),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
+    audit_boundary: AuditAccessBoundary = Depends(get_audit_access_boundary),
 ):
     """
     部門與人員統計 - 基於 Lark 組織架構
@@ -1332,13 +1414,14 @@ async def get_department_stats(
     try:
         start_date, end_date, start_dt, end_dt, range_days = _resolve_date_range(days, start_date, end_date)
 
-        async with SessionLocal() as session:
+        async def _load_department_meta(session: AsyncSession) -> Dict[str, Any]:
             dept_rows = await session.execute(
-                text("""
-                    SELECT department_id, path, direct_user_count, total_user_count
-                    FROM lark_departments
-                    WHERE status = 'active'
-                """)
+                select(
+                    LarkDepartment.department_id,
+                    LarkDepartment.path,
+                    LarkDepartment.direct_user_count,
+                    LarkDepartment.total_user_count,
+                ).where(LarkDepartment.status == "active")
             )
             dept_map: Dict[str, Dict[str, Any]] = {}
             for department_id, path, direct_count, total_count in dept_rows.all():
@@ -1349,24 +1432,27 @@ async def get_department_stats(
                 }
 
             role_result = await session.execute(
-                text("""
-                    SELECT role, COUNT(*) as cnt
-                    FROM users
-                    WHERE is_active = 1
-                    GROUP BY role
-                """)
+                select(
+                    User.role,
+                    func.count(User.id).label("cnt"),
+                )
+                .where(User.is_active == True)
+                .group_by(User.role)
             )
             user_distribution = {
-                (row[0] or "unknown"): int(row[1])
+                (_enum_storage_key(row[0]) if row[0] is not None else "unknown"): int(row[1])
                 for row in role_result.all()
             }
 
             lark_user_rows = await session.execute(
-                text("""
-                    SELECT primary_department_id, department_ids_json
-                    FROM lark_users
-                    WHERE is_activated = 1 AND is_exited = 0
-                """)
+                select(
+                    LarkUser.primary_department_id,
+                    LarkUser.department_ids_json,
+                )
+                .where(
+                    LarkUser.is_activated == True,
+                    LarkUser.is_exited == False,
+                )
             )
 
             total_counter: Counter = Counter()
@@ -1384,6 +1470,19 @@ async def get_department_stats(
                     for dept_id in parsed:
                         if isinstance(dept_id, str) and dept_id:
                             total_counter[dept_id] += 1
+
+            return {
+                "dept_map": dept_map,
+                "user_distribution": user_distribution,
+                "total_counter": total_counter,
+                "direct_counter": direct_counter,
+            }
+
+        department_meta = await main_boundary.run_read(_load_department_meta)
+        dept_map = department_meta["dept_map"]
+        user_distribution = department_meta["user_distribution"]
+        total_counter = department_meta["total_counter"]
+        direct_counter = department_meta["direct_counter"]
 
         department_entries: List[Dict[str, Any]] = []
         all_dept_ids = set(dept_map.keys()) | set(total_counter.keys()) | set(direct_counter.keys())
@@ -1405,24 +1504,27 @@ async def get_department_stats(
         department_entries.sort(key=lambda item: item["total_user_count"], reverse=True)
         department_list = department_entries[:50]
 
-        # 按部門統計活動（透過審計日誌）
-        # 這裡簡化處理：直接統計前10個最活躍的部門相關用戶
-        async with get_audit_session() as audit_session:
+        async def _load_department_activity(audit_session: AsyncSession) -> List[Dict[str, Any]]:
+            action_count_expr = func.count(AuditLogTable.id).label("action_count")
             dept_activity_result = await audit_session.execute(
-                text("""
-                    SELECT username, COUNT(*) as action_count
-                    FROM audit_logs
-                    WHERE timestamp >= :start_dt AND timestamp <= :end_dt
-                    GROUP BY username
-                    ORDER BY action_count DESC
-                    LIMIT 50
-                """),
-                {"start_dt": start_dt, "end_dt": end_dt}
+                select(
+                    AuditLogTable.username,
+                    action_count_expr,
+                )
+                .where(
+                    AuditLogTable.timestamp >= start_dt,
+                    AuditLogTable.timestamp <= end_dt,
+                )
+                .group_by(AuditLogTable.username)
+                .order_by(action_count_expr.desc())
+                .limit(50)
             )
-            by_department_users = [
+            return [
                 {"username": row[0], "action_count": int(row[1])}
                 for row in dept_activity_result.all()
             ]
+
+        by_department_users = await audit_boundary.run_read(_load_department_activity)
 
         return JSONResponse({
             "department_list": department_list,
@@ -1449,6 +1551,7 @@ async def get_helper_ai_analytics(
     team_ids: Optional[str] = Query(None, description="團隊 ID，逗號分隔"),
     user_id: Optional[int] = Query(None, ge=1, description="指定帳號 ID"),
     ticket_key: Optional[str] = Query(None, description="指定 ticket key"),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """
     QA AI Agent - Test Case Helper 統計
@@ -1472,10 +1575,10 @@ async def get_helper_ai_analytics(
         normalized_ticket_key = str(ticket_key or "").strip().upper()
         start_dt_naive = _to_naive_utc(start_dt)
         end_dt_naive = _to_naive_utc(end_dt)
-        telemetry_available = True
-        telemetry_error: Optional[str] = None
-
-        async with SessionLocal() as session:
+        
+        async def _load_helper_data(session: AsyncSession) -> Dict[str, Any]:
+            telemetry_available = True
+            telemetry_error: Optional[str] = None
             progress_stmt = (
                 select(
                     AITestCaseHelperSession.id,
@@ -1561,6 +1664,19 @@ async def get_helper_ai_analytics(
                     "QA Helper telemetry 查詢失敗，將以空 telemetry 回應: %s",
                     telemetry_exc,
                 )
+
+            return {
+                "progress_records": progress_records,
+                "telemetry_rows": telemetry_rows,
+                "telemetry_available": telemetry_available,
+                "telemetry_error": telemetry_error,
+            }
+
+        helper_data = await main_boundary.run_read(_load_helper_data)
+        progress_records = helper_data["progress_records"]
+        telemetry_rows = helper_data["telemetry_rows"]
+        telemetry_available = bool(helper_data["telemetry_available"])
+        telemetry_error = helper_data["telemetry_error"]
 
         token_usage = {
             "input_tokens": sum(_to_non_negative_int(row.input_tokens) for row in telemetry_rows),

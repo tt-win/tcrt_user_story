@@ -10,8 +10,9 @@ from pydantic import BaseModel
 import logging
 
 from app.auth.dependencies import get_current_user
+from app.db_access import UsmAccessBoundary, get_usm_access_boundary
 from app.models.database_models import User
-from app.models.user_story_map_db import get_usm_db, UserStoryMapDB, UserStoryMapNodeDB
+from app.models.user_story_map_db import UserStoryMapDB, UserStoryMapNodeDB
 from app.services.lark_usm_import_service import LarkUSMImportService
 from app.services.lark_client import LarkClient
 from app.config import settings
@@ -40,7 +41,6 @@ class USMImportResponse(BaseModel):
 async def _save_imported_usm(
     usm_db: AsyncSession,
     usm_data: dict,
-    current_user: User
 ) -> int:
     """
     將轉換後的 USM 數據保存到數據庫
@@ -48,63 +48,55 @@ async def _save_imported_usm(
     Args:
         usm_db: 數據庫會話
         usm_data: 轉換後的 USM 數據
-        current_user: 當前用戶
         
     Returns:
         創建的 map_id
     """
-    try:
-        # 1. 生成節點位置
-        nodes = usm_data["nodes"]
-        _assign_node_positions(nodes)
-        edges = _generate_edges_from_nodes(nodes)
-        
-        # 2. 創建 USM Map
-        new_map = UserStoryMapDB(
-            team_id=usm_data["team_id"],
-            name=usm_data["map_name"],
-            description=f"從 Lark 匯入 - 包含 {len(nodes)} 個節點",
-            nodes=nodes,
-            edges=edges,
+    # 1. 生成節點位置
+    nodes = usm_data["nodes"]
+    _assign_node_positions(nodes)
+    edges = _generate_edges_from_nodes(nodes)
+
+    # 2. 創建 USM Map
+    new_map = UserStoryMapDB(
+        team_id=usm_data["team_id"],
+        name=usm_data["map_name"],
+        description=f"從 Lark 匯入 - 包含 {len(nodes)} 個節點",
+        nodes=nodes,
+        edges=edges,
+    )
+
+    usm_db.add(new_map)
+    await usm_db.flush()
+    await usm_db.refresh(new_map)
+    map_id = new_map.id
+
+    # 3. 為每個節點創建 NodeDB 記錄（用於搜索）
+    for node in nodes:
+        node_db = UserStoryMapNodeDB(
+            map_id=map_id,
+            node_id=node["id"],
+            title=node.get("title", ""),
+            description=node.get("description", ""),
+            node_type=node.get("node_type", "feature_category"),
+            parent_id=node.get("parent_id"),
+            children_ids=node.get("children_ids", []),
+            related_ids=node.get("related_ids", []),
+            comment="",
+            jira_tickets=node.get("jira_tickets", []),
+            team=None,
+            aggregated_tickets=[],
+            position_x=float(node.get("position_x", 0)),
+            position_y=float(node.get("position_y", 0)),
+            level=node.get("level", 0),
+            as_a=node.get("as_a", ""),
+            i_want=node.get("i_want", ""),
+            so_that=node.get("so_that", ""),
         )
-        
-        usm_db.add(new_map)
-        await usm_db.flush()  # 獲取 map_id
-        map_id = new_map.id
-        
-        # 3. 為每個節點創建 NodeDB 記錄（用於搜索）
-        for node in nodes:
-            node_db = UserStoryMapNodeDB(
-                map_id=map_id,
-                node_id=node["id"],
-                title=node.get("title", ""),
-                description=node.get("description", ""),
-                node_type=node.get("node_type", "feature_category"),
-                parent_id=node.get("parent_id"),
-                children_ids=node.get("children_ids", []),
-                related_ids=node.get("related_ids", []),
-                comment="",
-                jira_tickets=node.get("jira_tickets", []),
-                team=None,
-                aggregated_tickets=[],
-                position_x=float(node.get("position_x", 0)),
-                position_y=float(node.get("position_y", 0)),
-                level=node.get("level", 0),
-                as_a=node.get("as_a", ""),
-                i_want=node.get("i_want", ""),
-                so_that=node.get("so_that", ""),
-            )
-            usm_db.add(node_db)
-        
-        # 4. 提交所有更改
-        await usm_db.commit()
-        await usm_db.refresh(new_map)
-        
-        return map_id
-        
-    except Exception as e:
-        await usm_db.rollback()
-        raise Exception(f"保存 USM 到數據庫失敗: {str(e)}")
+        usm_db.add(node_db)
+
+    await usm_db.flush()
+    return map_id
 
 
 def _assign_node_positions(nodes: list, base_x: float = 250.0, base_y: float = 250.0):
@@ -207,7 +199,7 @@ def _generate_edges_from_nodes(nodes: list) -> list:
 async def import_usm_from_lark(
     request: USMImportRequest,
     current_user: User = Depends(get_current_user),
-    usm_db: AsyncSession = Depends(get_usm_db),
+    usm_boundary: UsmAccessBoundary = Depends(get_usm_access_boundary),
 ):
     """
     從 Lark 多維表格匯入 USM
@@ -250,7 +242,10 @@ async def import_usm_from_lark(
             raise HTTPException(status_code=400, detail=error_msg)
 
         # 6. 保存到數據庫
-        map_id = await _save_imported_usm(usm_db, usm_data, current_user)
+        async def _save(usm_db: AsyncSession) -> int:
+            return await _save_imported_usm(usm_db, usm_data)
+
+        map_id = await usm_boundary.run_write(_save)
 
         total_nodes = len(usm_data["nodes"])
 

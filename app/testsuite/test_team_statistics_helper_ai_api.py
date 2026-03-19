@@ -197,8 +197,6 @@ def helper_stats_db(tmp_path, monkeypatch):
         admin_user_id = admin_user.id
         viewer_user_id = viewer_user.id
 
-    import app.api.team_statistics as team_statistics_api
-
     install_main_database_overrides(
         monkeypatch=monkeypatch,
         app=app,
@@ -206,7 +204,6 @@ def helper_stats_db(tmp_path, monkeypatch):
         async_engine=database_bundle["async_engine"],
         async_session_factory=AsyncTestingSessionLocal,
     )
-    monkeypatch.setattr(team_statistics_api, "SessionLocal", AsyncTestingSessionLocal)
     app.dependency_overrides[get_current_user] = lambda: SimpleNamespace(
         id=admin_user_id,
         username="helper-stats-admin",
