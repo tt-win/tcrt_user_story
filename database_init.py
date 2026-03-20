@@ -4,6 +4,7 @@
 
 職責：
 - 透過 Alembic 將主資料庫升級到最新 schema
+- 必要時自動建立缺少的 MySQL / PostgreSQL database
 - 對既有未納管資料庫提供顯式 adoption / validation 流程
 - 輸出主資料庫統計資訊
 - 檢查系統是否已有 super_admin，若沒有則提示走 first-login setup
@@ -35,6 +36,7 @@ from app.db_migrations import (
     adopt_legacy_audit_database,
     collect_target_preflight,
     collect_target_verification_summary,
+    create_database_if_missing,
     LegacyDatabaseAdoptionRequiredError,
     LegacyDatabaseValidationError,
     adopt_legacy_main_database,
@@ -308,6 +310,8 @@ def bootstrap_target(target_name: str, logger: Logger, no_backup: bool) -> Tuple
     engine = get_sync_engine_for_target(target_name)
     try:
         logger.info(f"偵測到{label}：{engine.dialect.name} | URL={engine.url}")
+        if create_database_if_missing(engine.url):
+            logger.info(f"已建立 {label} database：{engine.url.database}")
 
         backup_path = None
         if not no_backup:

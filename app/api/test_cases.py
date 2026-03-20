@@ -928,28 +928,8 @@ async def create_test_case(
                         detail=f"Test Case Set {case.test_case_set_id} 不存在或不屬於此 Team"
                     )
             else:
-                test_case_set = sync_db.query(TestCaseSetDB).filter(
-                    TestCaseSetDB.team_id == team_id,
-                    TestCaseSetDB.is_default == True
-                ).first()
-                if not test_case_set:
-                    test_case_set = TestCaseSetDB(
-                        team_id=team_id,
-                        name=f"Default-{team_id}",
-                        description="團隊預設測試案例集合",
-                        is_default=True
-                    )
-                    sync_db.add(test_case_set)
-                    sync_db.flush()
-                    unassigned_section = TestCaseSectionDB(
-                        test_case_set_id=test_case_set.id,
-                        name="Unassigned",
-                        description="未分配的測試案例",
-                        level=1,
-                        sort_order=0,
-                        parent_section_id=None
-                    )
-                    sync_db.add(unassigned_section)
+                from app.services.test_case_set_service import TestCaseSetService
+                test_case_set = TestCaseSetService.get_or_create_default_sync(sync_db, team_id)
 
             # 取得或建立 Section
             target_section = None
@@ -1303,28 +1283,8 @@ async def update_test_case(
                             .first()
                         )
                     if not target_set:
-                        target_set = sync_db.query(TestCaseSetDB).filter(
-                            TestCaseSetDB.team_id == team_id,
-                            TestCaseSetDB.is_default == True
-                        ).first()
-                        if not target_set:
-                            target_set = TestCaseSetDB(
-                                team_id=team_id,
-                                name=f"Default-{team_id}",
-                                description="團隊預設測試案例集合",
-                                is_default=True
-                            )
-                            sync_db.add(target_set)
-                            sync_db.flush()
-                            unassigned_section = TestCaseSectionDB(
-                                test_case_set_id=target_set.id,
-                                name="Unassigned",
-                                description="未分配的測試案例",
-                                level=1,
-                                sort_order=0,
-                                parent_section_id=None,
-                            )
-                            sync_db.add(unassigned_section)
+                        from app.services.test_case_set_service import TestCaseSetService
+                        target_set = TestCaseSetService.get_or_create_default_sync(sync_db, team_id)
 
                 # 決定目標 Section
                 target_section_id = item.test_case_section_id
@@ -2322,28 +2282,8 @@ async def bulk_create_test_cases(
                         errors=[f"Test Case Set {request.test_case_set_id} 不存在或不屬於此 Team"]
                     ), None
             else:
-                test_case_set = sync_db.query(TestCaseSetDB).filter(
-                    TestCaseSetDB.team_id == team_id,
-                    TestCaseSetDB.is_default == True
-                ).first()
-                if not test_case_set:
-                    test_case_set = TestCaseSetDB(
-                        team_id=team_id,
-                        name=f"Default-{team_id}",
-                        description="團隊預設測試案例集合",
-                        is_default=True
-                    )
-                    sync_db.add(test_case_set)
-                    sync_db.flush()
-                    unassigned_section = TestCaseSectionDB(
-                        test_case_set_id=test_case_set.id,
-                        name="Unassigned",
-                        description="未分配的測試案例",
-                        level=1,
-                        sort_order=0,
-                        parent_section_id=None
-                    )
-                    sync_db.add(unassigned_section)
+                from app.services.test_case_set_service import TestCaseSetService
+                test_case_set = TestCaseSetService.get_or_create_default_sync(sync_db, team_id)
 
             # 取得或創建 Section
             target_section = None

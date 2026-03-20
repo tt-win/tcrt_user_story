@@ -16,6 +16,13 @@ class TestCaseSetIntegration {
     this.init();
   }
 
+  authFetch(url, options = {}) {
+    if (!window.AuthClient || typeof window.AuthClient.fetch !== 'function') {
+      throw new Error('AuthClient unavailable');
+    }
+    return window.AuthClient.fetch(url, options);
+  }
+
   init() {
     if (this._initialized) {
       return;
@@ -84,13 +91,8 @@ class TestCaseSetIntegration {
    */
   async loadCurrentSet() {
     try {
-      const response = await fetch(
-        `/api/test-case-sets/${this.currentSetId}/sections`,
-        {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          }
-        }
+      const response = await this.authFetch(
+        `/api/test-case-sets/${this.currentSetId}/sections`
       );
 
       if (!response.ok) {
@@ -113,45 +115,10 @@ class TestCaseSetIntegration {
   }
 
   /**
-   * 渲染 Set 標題欄
+   * 渲染 Set 標題欄（已停用）
    */
   renderSetHeader() {
-    // 在現有的頁面標題之前插入 Set 選擇欄
-    const header = document.querySelector('.card-header') ||
-                   document.querySelector('h1') ||
-                   document.querySelector('.page-header');
-
-    if (!header) return;
-
-    const setHeaderHtml = `
-      <div id="testCaseSetHeader" class="card mb-3">
-        <div class="card-body d-flex align-items-center justify-content-between">
-          <div>
-            <h6 class="mb-1">
-              <i class="fas fa-folder"></i>
-              當前集合
-            </h6>
-            <p id="currentSetName" class="mb-0 text-primary">
-              <strong>載入中...</strong>
-            </p>
-          </div>
-          <button class="btn btn-outline-primary btn-sm" id="switchSetBtn" onclick="testCaseSetIntegration.showSetSelector()">
-            <i class="fas fa-exchange-alt"></i> 切換集合
-          </button>
-        </div>
-      </div>
-    `;
-
-    // 如果已存在則移除
-    const existing = document.getElementById('testCaseSetHeader');
-    if (existing) {
-      existing.remove();
-    }
-
-    // 在頁面開始插入
-    const container = document.querySelector('.container-fluid') ||
-                      document.body;
-    container.insertAdjacentHTML('afterbegin', setHeaderHtml);
+    // 不再顯示當前集合標題欄
   }
 
   /**
@@ -161,13 +128,8 @@ class TestCaseSetIntegration {
     if (!this.currentTeamId) return;
 
     try {
-      const response = await fetch(
-        `/api/teams/${this.currentTeamId}/test-case-sets`,
-        {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          }
-        }
+      const response = await this.authFetch(
+        `/api/teams/${this.currentTeamId}/test-case-sets`
       );
 
       if (!response.ok) {

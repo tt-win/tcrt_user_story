@@ -106,6 +106,33 @@
   </div>
 </div>
 
+<!-- 設為預設 Modal -->
+<div class="modal fade" id="setDefaultConfirmModal" tabindex="-1" role="dialog" aria-labelledby="setDefaultConfirmTitle" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="setDefaultConfirmTitle" data-i18n="testCaseSet.setDefaultTitle">設為預設 Test Case Set</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p id="setDefaultConfirmText" class="mb-3">確定要將此集合設為預設 Test Case Set 嗎？</p>
+        <div class="alert alert-warning mb-0">
+          <div class="fw-semibold mb-1" data-i18n="testCaseSet.setDefaultHintTitle">注意事項</div>
+          <small class="d-block" id="setDefaultConfirmHint" data-i18n="testCaseSet.setDefaultHint">既有 Test Case 不會被搬移，之後新建立的 ad-hoc run 與新 Test Case 會預設放入這個集合。</small>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">取消</button>
+        <button type="button" class="btn btn-warning" id="confirmSetDefaultBtn" onclick="confirmSetDefault()">
+          <span class="spinner-border spinner-border-sm me-2 d-none" id="confirmSetDefaultSpinner" role="status" aria-hidden="true"></span>
+          <i class="fas fa-star me-1" id="confirmSetDefaultIcon"></i>
+          <span id="confirmSetDefaultBtnText" data-i18n="testCaseSet.setAsDefault">設為預設</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Test Case Selection Modal for Creating Test Run from Set Card -->
 <div class="modal fade" id="setCaseSelectModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
   <div class="modal-dialog modal-xl">
@@ -160,7 +187,7 @@
 {% endblock %}
 
 {% block scripts %}
-<script src="/static/js/i18n-test-case-set.js"></script>
+<script src="/static/js/i18n-test-case-set.js?v=20260319a"></script>
 <script src="/static/js/test-case-management/ai-helper.js?v=20260212b"></script>
-<script src="/static/js/test-case-set-list/main.js?v=20260210d"></script>
+<script src="/static/js/test-case-set-list/main.js?v=20260319a"></script>
 {% endblock %}

@@ -5,6 +5,8 @@ let allTeams = [];
 let currentEditingSetId = null;
 let pendingDeleteSetId = null;
 let pendingDeleteImpactPreview = null;
+let pendingDefaultSetId = null;
+let pendingDefaultSetName = '';
 let quickSearchTestCases = [];
 let quickSearchTeamId = null;
 let quickSearchLoadPromise = null;
@@ -44,8 +46,19 @@ const i18n = {
 document.addEventListener('DOMContentLoaded', async function() {
   console.log('Test Case Sets page loaded');
   loadLanguage();
+  initializeSetDefaultConfirmModal();
   setupQuickSearch_TestCaseSets();
   bindAiHelperEntrypoint();
+
+  // 若 AuthClient 存在，監聽 authReady 以確保有完整的 user info
+  document.addEventListener('authReady', async (e) => {
+    const userInfo = e.detail;
+    console.log('authReady event received in test-case-set-list:', userInfo);
+    // AuthReady 後再次 render，以獲取最新的 userInfo (包含 admin 角色)
+    if (testCaseSets.length > 0) {
+      await renderTestCaseSets();
+    }
+  });
 
   // 從 localStorage 獲取當前選擇的團隊 (由 AppUtils.setCurrentTeam 設定)
   const savedTeam = localStorage.getItem('currentTeam');
@@ -101,6 +114,71 @@ function updatePageText() {
   }
 }
 
+function getLocalizedText(key, values = {}, fallback = '') {
+  return window.i18n && window.i18n.isReady()
+    ? window.i18n.t(key, values, fallback)
+    : fallback;
+}
+
+function initializeSetDefaultConfirmModal() {
+  const modalEl = document.getElementById('setDefaultConfirmModal');
+  if (!modalEl || modalEl.dataset.bound === '1') {
+    return;
+  }
+
+  modalEl.dataset.bound = '1';
+  modalEl.addEventListener('hidden.bs.modal', () => {
+    pendingDefaultSetId = null;
+    pendingDefaultSetName = '';
+    setSetDefaultConfirmLoading(false);
+  });
+
+  document.addEventListener('i18nReady', refreshSetDefaultConfirmModal);
+  document.addEventListener('languageChanged', refreshSetDefaultConfirmModal);
+}
+
+function refreshSetDefaultConfirmModal() {
+  const confirmText = document.getElementById('setDefaultConfirmText');
+  const hintEl = document.getElementById('setDefaultConfirmHint');
+
+  if (confirmText) {
+    confirmText.textContent = getLocalizedText(
+      'testCaseSet.setDefaultConfirm',
+      { name: pendingDefaultSetName || '' },
+      pendingDefaultSetName
+        ? `確定要將「${pendingDefaultSetName}」設為預設 Test Case Set 嗎？`
+        : '確定要將此集合設為預設 Test Case Set 嗎？'
+    );
+  }
+
+  if (hintEl) {
+    hintEl.textContent = getLocalizedText(
+      'testCaseSet.setDefaultHint',
+      {},
+      '既有 Test Case 不會被搬移，之後新建立的 ad-hoc run 與新 Test Case 會預設放入這個集合。'
+    );
+  }
+}
+
+function setSetDefaultConfirmLoading(isLoading) {
+  const confirmBtn = document.getElementById('confirmSetDefaultBtn');
+  const spinner = document.getElementById('confirmSetDefaultSpinner');
+  const icon = document.getElementById('confirmSetDefaultIcon');
+
+  if (confirmBtn) {
+    confirmBtn.disabled = isLoading;
+    confirmBtn.setAttribute('aria-busy', isLoading ? 'true' : 'false');
+  }
+
+  if (spinner) {
+    spinner.classList.toggle('d-none', !isLoading);
+  }
+
+  if (icon) {
+    icon.classList.toggle('d-none', isLoading);
+  }
+}
+
 // 載入 Test Case Sets
 async function loadTestCaseSets() {
   if (!currentTeamId) {
@@ -124,7 +202,7 @@ async function loadTestCaseSets() {
 
     testCaseSets = await response.json();
     console.log('Loaded test case sets:', testCaseSets);
-    renderTestCaseSets();
+    await renderTestCaseSets();
   } catch (error) {
     console.error('Error loading test case sets:', error);
     const errorMsg = window.i18n && window.i18n.isReady() ? window.i18n.t('common.loadingFailed', {}, i18n.loadingFailed) : (i18n.loadingFailed || 'Failed to load data');
@@ -143,7 +221,8 @@ function getButtonTexts() {
       addSet: window.i18n.t('testCaseSet.addSet', {}, 'Add Set'),
       createSetHint: window.i18n.t('testCaseSet.createSetHint', {}, 'Create a new test case set'),
       createSet: window.i18n.t('testCaseSet.create', {}, 'Create'),
-      updateSet: window.i18n.t('testCaseSet.updateSet', {}, 'Update Set')
+      updateSet: window.i18n.t('testCaseSet.updateSet', {}, 'Update Set'),
+      setAsDefault: window.i18n.t('testCaseSet.setAsDefault', {}, 'Set Default')
     };
   }
   return {
@@ -154,15 +233,29 @@ function getButtonTexts() {
     addSet: 'Add Set',
     createSetHint: 'Create a new test case set',
     createSet: 'Create',
-    updateSet: 'Update Set'
+    updateSet: 'Update Set',
+    setAsDefault: 'Set Default'
   };
 }
 
 // 渲染 Test Case Sets 卡片
-function renderTestCaseSets() {
+async function renderTestCaseSets() {
   const container = document.getElementById('testCaseSetsContainer');
   const emptyState = document.getElementById('emptyState');
   const btnTexts = getButtonTexts();
+  // 從 AuthClient 獲取使用者角色
+  let isAdmin = false;
+  try {
+    const userInfo = window.AuthClient && typeof window.AuthClient.getUserInfo === 'function'
+      ? await window.AuthClient.getUserInfo()
+      : (window.currentUser || null);
+    if (userInfo && userInfo.role) {
+      isAdmin = ['admin', 'super_admin'].includes(userInfo.role.toLowerCase());
+    }
+    console.log('[DEBUG] renderTestCaseSets resolved isAdmin:', isAdmin, 'userInfo:', userInfo);
+  } catch (error) {
+    console.warn('Failed to resolve user role:', error);
+  }
 
   if (testCaseSets.length === 0) {
     container.innerHTML = `
@@ -178,23 +271,22 @@ function renderTestCaseSets() {
 
   const cardsHtml = testCaseSets.map(set => `
     <div class="col-md-6 col-lg-4 mb-4">
-      <div class="card h-100 test-case-set-card" data-set-id="${set.id}">
+      <div class="card h-100 test-case-set-card ${set.is_default ? 'border-warning' : ''}" data-set-id="${set.id}">
+        ${set.is_default ? '<div class="card-header bg-warning text-dark py-1 px-3 fs-7 fw-bold" style="font-size: 0.75rem;"><i class="fas fa-star me-1"></i> Default Set</div>' : ''}
         <div class="card-body d-flex flex-column h-100">
           <div class="d-flex align-items-start mb-3">
             <div class="flex-shrink-0 me-3">
-              <div class="bg-secondary text-white rounded-circle d-flex align-items-center justify-content-center"
+              <div class="${set.is_default ? 'bg-warning text-dark' : 'bg-secondary text-white'} rounded-circle d-flex align-items-center justify-content-center"
                    style="width: 48px; height: 48px; font-size: 18px;">
                 <i class="fas fa-${set.is_default ? 'star' : 'folder'}"></i>
               </div>
             </div>
             <div class="flex-grow-1">
-              <h5 class="card-title text-primary mb-1">${escapeHtml(set.name)}</h5>
+              <h5 class="card-title text-primary mb-1">
+                ${escapeHtml(set.name)}
+              </h5>
               <p class="card-text text-muted small mb-0">
-                ${set.is_default
-                  ? (window.i18n && window.i18n.isReady()
-                    ? window.i18n.t('testCaseSet.defaultSetDescription', {}, 'Team default test case set')
-                    : '團隊預設測試案例集合')
-                  : (set.description ? escapeHtml(set.description) : '<em>無描述</em>')}
+                ${set.description ? escapeHtml(set.description) : '<em>無描述</em>'}
               </p>
             </div>
           </div>
@@ -212,12 +304,17 @@ function renderTestCaseSets() {
               <button class="btn btn-success btn-sm" onclick="openSetCaseSelectModal(${set.id})">
                 <i class="fas fa-plus"></i> <span class="d-none d-md-inline">Test Run</span>
               </button>
-              <button class="btn btn-secondary btn-sm" onclick="showEditSetModal(${set.id}, '${escapeHtml(set.name)}', '${escapeHtml(set.description || '')}')">
+              <button class="btn btn-secondary btn-sm" onclick="showEditSetModal(${set.id}, '${escapeHtml(set.name).replace(/'/g, "\\'")}', '${escapeHtml(set.description || '').replace(/'/g, "\\'")}')">
                 <i class="fas fa-edit"></i> <span class="d-none d-md-inline">${btnTexts.edit}</span>
               </button>
-              <button class="btn btn-danger btn-sm ${set.is_default ? 'disabled' : ''}" ${set.is_default ? 'disabled' : `onclick="showDeleteConfirm(${set.id}, '${escapeHtml(set.name)}')"`}>
+              <button class="btn btn-danger btn-sm ${set.is_default ? 'disabled' : ''}" ${set.is_default ? 'disabled' : `onclick="showDeleteConfirm(${set.id}, '${escapeHtml(set.name).replace(/'/g, "\\'")}')"`}>
                 <i class="fas fa-trash"></i> <span class="d-none d-md-inline">${btnTexts.deleteSet}</span>
               </button>
+              ${!set.is_default && isAdmin ? `
+              <button class="btn btn-outline-warning btn-sm" onclick="showSetDefaultConfirm(${set.id}, '${escapeHtml(set.name).replace(/'/g, "\\'")}')">
+                <i class="fas fa-star"></i> <span class="d-none d-md-inline">${btnTexts.setAsDefault}</span>
+              </button>
+              ` : ''}
             </div>
           </div>
         </div>
@@ -230,6 +327,60 @@ function renderTestCaseSets() {
       ${getAddTestCaseSetCardHtml(btnTexts)}
     </div>
   `;
+}
+
+function showSetDefaultConfirm(setId, setName) {
+  pendingDefaultSetId = setId;
+  pendingDefaultSetName = setName;
+  refreshSetDefaultConfirmModal();
+  setSetDefaultConfirmLoading(false);
+
+  const modalEl = document.getElementById('setDefaultConfirmModal');
+  if (modalEl) {
+    const modal = bootstrap.Modal.getInstance(modalEl) || new bootstrap.Modal(modalEl);
+    modal.show();
+  }
+}
+
+async function confirmSetDefault() {
+  if (!pendingDefaultSetId) return;
+
+  setSetDefaultConfirmLoading(true);
+  try {
+    await setDefaultTestCaseSet(pendingDefaultSetId);
+  } finally {
+    setSetDefaultConfirmLoading(false);
+  }
+}
+
+async function setDefaultTestCaseSet(setId) {
+  try {
+    const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-case-sets/${setId}/default`, {
+      method: 'PUT'
+    });
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to set default Test Case Set');
+    }
+
+    const modalEl = document.getElementById('setDefaultConfirmModal');
+    const modal = modalEl ? bootstrap.Modal.getInstance(modalEl) : null;
+    if (modal) {
+      modal.hide();
+    }
+
+    const successMsg = getLocalizedText(
+      'testCaseSet.setDefaultSuccess',
+      { name: pendingDefaultSetName || '' },
+      '已更新預設 Test Case Set。'
+    );
+    showAlert(successMsg, 'success');
+    await loadTestCaseSets();
+  } catch (error) {
+    console.error('Error setting default set:', error);
+    showAlert(error.message, 'danger');
+  }
 }
 
 // 新增 Test Case Set 卡片 HTML

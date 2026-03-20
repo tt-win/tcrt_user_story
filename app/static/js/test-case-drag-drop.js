@@ -15,6 +15,13 @@ class TestCaseDragDrop {
     this.init();
   }
 
+  authFetch(url, options = {}) {
+    if (!window.AuthClient || typeof window.AuthClient.fetch !== 'function') {
+      throw new Error('AuthClient unavailable');
+    }
+    return window.AuthClient.fetch(url, options);
+  }
+
   init() {
     // 監聽 Set 載入和 Section 變更
     window.addEventListener('testCaseSetLoaded', () => {
@@ -232,10 +239,9 @@ class TestCaseDragDrop {
       const testCaseId = this.draggedData.testCaseId;
 
       // 調用 API 移動 Test Case
-      const response = await fetch(`/api/testcases/move-to-section`, {
+      const response = await this.authFetch(`/api/testcases/move-to-section`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({

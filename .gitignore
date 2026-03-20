@@ -182,3 +182,4 @@ refactor/
 .spectra/
 openspec/.vector-search.db
 openspec/.vector-search.db*
+db_cross_migrate.yaml

@@ -72,33 +72,8 @@ async def convert_adhoc_to_testcases(
                 if not target_set:
                     raise HTTPException(status_code=400, detail="Invalid target Test Case Set")
             else:
-                target_set = sync_db.query(TestCaseSet).filter(
-                    TestCaseSet.team_id == run.team_id,
-                    TestCaseSet.is_default == True
-                ).first()
-
-                # 2. Try name match
-                if not target_set:
-                    target_set = sync_db.query(TestCaseSet).filter(
-                        TestCaseSet.team_id == run.team_id,
-                        or_(TestCaseSet.name == "Default Set", TestCaseSet.name == "Default")
-                    ).first()
-
-                # 3. Fallback to any set
-                if not target_set:
-                    target_set = sync_db.query(TestCaseSet).filter(
-                        TestCaseSet.team_id == run.team_id
-                    ).first()
-
-                # 4. Create if none
-                if not target_set:
-                    target_set = TestCaseSet(
-                        team_id=run.team_id,
-                        name="Default Set",
-                        is_default=True
-                    )
-                    sync_db.add(target_set)
-                    sync_db.flush()
+                from app.services.test_case_set_service import TestCaseSetService
+                target_set = TestCaseSetService.get_or_create_default_sync(sync_db, run.team_id)
 
             # Resolve target section
             if requested_section_id:

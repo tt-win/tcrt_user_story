@@ -12,6 +12,7 @@ from alembic.config import Config
 from alembic.migration import MigrationContext
 from alembic.script import ScriptDirectory
 from sqlalchemy import create_engine, inspect, text
+from sqlalchemy.engine import URL, make_url
 from sqlalchemy.schema import MetaData
 from sqlalchemy.sql import sqltypes
 
@@ -26,6 +27,10 @@ from app.models.database_models import Base as MainBase
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_USM_DATABASE_URL = f"sqlite:///{(PROJECT_ROOT / 'userstorymap.db').resolve()}"
+AUTO_CREATE_DATABASE_BACKENDS = {
+    "mysql": "mysql",
+    "postgresql": "postgres",
+}
 
 
 class LegacyDatabaseAdoptionRequiredError(RuntimeError):
@@ -170,6 +175,95 @@ def _build_sync_engine(database_url: str):
 
 def get_sync_engine_for_target(target_name: str = "main", database_url: str | None = None):
     return _build_sync_engine(database_url or resolve_database_url(target_name))
+
+
+def _database_url_string(database_url: str | URL) -> str:
+    if isinstance(database_url, URL):
+        return database_url.render_as_string(hide_password=False)
+    return str(database_url)
+
+
+def _database_backend_name(database_url: str | URL) -> str:
+    return make_url(normalize_sync_database_url(_database_url_string(database_url))).get_backend_name()
+
+
+def can_auto_create_database(database_url: str | URL) -> bool:
+    parsed = make_url(normalize_sync_database_url(_database_url_string(database_url)))
+    return bool(parsed.database) and parsed.get_backend_name() in AUTO_CREATE_DATABASE_BACKENDS
+
+
+def is_missing_database_error(exc: Exception) -> bool:
+    candidates = [exc, getattr(exc, "orig", None)]
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        sqlstate = getattr(candidate, "sqlstate", None) or getattr(candidate, "pgcode", None)
+        if sqlstate == "3D000":
+            return True
+
+        args = getattr(candidate, "args", ())
+        if args and args[0] == 1049:
+            return True
+
+    message = " ".join(str(candidate) for candidate in candidates if candidate).lower()
+    return (
+        "unknown database" in message
+        or ("database" in message and "does not exist" in message)
+    )
+
+
+def _admin_database_url_for_creation(database_url: str | URL) -> tuple[URL, str] | None:
+    parsed = make_url(normalize_sync_database_url(_database_url_string(database_url)))
+    backend_name = parsed.get_backend_name()
+    admin_database = AUTO_CREATE_DATABASE_BACKENDS.get(backend_name)
+    target_database = str(parsed.database or "").strip()
+    if not admin_database or not target_database:
+        return None
+    return parsed.set(database=admin_database), target_database
+
+
+def create_database_if_missing(database_url: str | URL) -> bool:
+    admin_target = _admin_database_url_for_creation(database_url)
+    if admin_target is None:
+        return False
+
+    admin_url, target_database = admin_target
+    admin_engine = create_engine(
+        admin_url,
+        future=True,
+        isolation_level="AUTOCOMMIT",
+        pool_pre_ping=True,
+    )
+    try:
+        backend_name = admin_engine.dialect.name
+        quoted_database = admin_engine.dialect.identifier_preparer.quote(target_database)
+        with admin_engine.connect() as connection:
+            if backend_name == "postgresql":
+                exists = connection.execute(
+                    text("SELECT 1 FROM pg_database WHERE datname = :database_name"),
+                    {"database_name": target_database},
+                ).scalar()
+                if exists:
+                    return False
+                connection.execute(text(f"CREATE DATABASE {quoted_database}"))
+                return True
+
+            if backend_name == "mysql":
+                exists = connection.execute(
+                    text(
+                        "SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA "
+                        "WHERE SCHEMA_NAME = :database_name"
+                    ),
+                    {"database_name": target_database},
+                ).scalar()
+                if exists:
+                    return False
+                connection.execute(text(f"CREATE DATABASE {quoted_database}"))
+                return True
+
+            return False
+    finally:
+        admin_engine.dispose()
 
 
 def _get_baseline_revision(cfg: Config) -> str:
@@ -467,6 +561,16 @@ def collect_target_preflight(
         if database_state == "managed":
             result["current_revision"] = _get_current_revision(resolved_async_url)
     except Exception as exc:
+        if is_missing_database_error(exc) and can_auto_create_database(resolved_async_url):
+            result["database_state"] = "missing"
+            result["status"] = "database_missing"
+            result["ready"] = True
+            result["error"] = str(exc)
+            result["remediation"] = [
+                "可直接執行 `python3 database_init.py`；bootstrap 會先建立缺少的 database 再執行 migration。",
+                "前提是目前帳號對目標 MySQL / PostgreSQL 服務具有 CREATE DATABASE 權限。",
+            ]
+            return result
         result["status"] = "connection_error"
         result["error"] = str(exc)
         result["remediation"] = [

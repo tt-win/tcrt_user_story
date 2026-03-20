@@ -327,6 +327,58 @@ async def update_test_case_set(
             detail="更新 Test Case Set 失敗",
         )
 
+@router.put("/{team_id}/test-case-sets/{set_id}/default", response_model=TestCaseSet)
+async def set_default_test_case_set(
+    team_id: int,
+    set_id: int,
+    current_user: User = Depends(get_current_user),
+    team: TeamDB = Depends(verify_team_write_permission),
+    db: AsyncSession = Depends(get_db),
+) -> TestCaseSet:
+    """設定為預設 Test Case Set (Admin Only)"""
+    from app.auth.models import UserRole
+    if current_user.role not in [UserRole.ADMIN, UserRole.SUPER_ADMIN]:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="僅管理員有權限設定預設 Test Case Set"
+        )
+
+    try:
+        service = TestCaseSetService(db)
+        updated_set = await service.set_default_set(
+            team_id=team_id,
+            new_default_set_id=set_id
+        )
+        if not updated_set:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Test Case Set {set_id} 不存在或不屬於此 Team"
+            )
+
+        test_case_count = await service.get_test_case_count(set_id)
+
+        await log_set_action(
+            ActionType.UPDATE,
+            current_user,
+            team_id,
+            set_id,
+            f"設定為預設 Test Case Set: {updated_set.name}",
+            {"is_default": True},
+        )
+
+        result = TestCaseSet.from_orm(updated_set)
+        result.test_case_count = test_case_count
+        return result
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"設定預設 Test Case Set 失敗: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="設定預設 Test Case Set 失敗",
+        )
+
 
 @router.get("/{team_id}/test-case-sets/{set_id}/impact-preview", response_model=ImpactPreviewResponse)
 async def preview_delete_test_case_set_impact(

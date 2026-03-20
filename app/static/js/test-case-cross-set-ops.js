@@ -16,6 +16,13 @@ class TestCaseCrossSetOps {
     this.init();
   }
 
+  authFetch(url, options = {}) {
+    if (!window.AuthClient || typeof window.AuthClient.fetch !== 'function') {
+      throw new Error('AuthClient unavailable');
+    }
+    return window.AuthClient.fetch(url, options);
+  }
+
   init() {
     // 監聽 Set 載入
     window.addEventListener('testCaseSetLoaded', (e) => {
@@ -35,14 +42,7 @@ class TestCaseCrossSetOps {
 
       if (!teamId) return;
 
-      const response = await fetch(
-        `/api/teams/${teamId}/test-case-sets`,
-        {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          }
-        }
-      );
+      const response = await this.authFetch(`/api/teams/${teamId}/test-case-sets`);
 
       if (response.ok) {
         this.allSets = await response.json();
@@ -211,14 +211,7 @@ class TestCaseCrossSetOps {
 
     try {
       // 載入目標 Set 的 Sections
-      const response = await fetch(
-        `/api/test-case-sets/${setId}/sections`,
-        {
-          headers: {
-            'Authorization': `Bearer ${localStorage.getItem('token')}`
-          }
-        }
-      );
+      const response = await this.authFetch(`/api/test-case-sets/${setId}/sections`);
 
       if (!response.ok) {
         throw new Error('Failed to load sections');
@@ -280,10 +273,9 @@ class TestCaseCrossSetOps {
     }
 
     try {
-      const response = await fetch(`/api/testcases/copy-across-sets`, {
+      const response = await this.authFetch(`/api/testcases/copy-across-sets`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
@@ -335,10 +327,9 @@ class TestCaseCrossSetOps {
     }
 
     try {
-      const response = await fetch(`/api/testcases/move-across-sets`, {
+      const response = await this.authFetch(`/api/testcases/move-across-sets`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({

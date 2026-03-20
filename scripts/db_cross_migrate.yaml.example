@@ -1,0 +1,21 @@
+defaults:
+  chunk_size: 1000
+  reset_target: false
+  create_target_schema: false
+  disable_constraints: false
+  exclude_tables:
+    - alembic_version
+    - migration_history
+
+jobs:
+  - name: main-sqlite-to-mysql
+    source_url: sqlite:///./test_case_repo.db
+    target_url: mysql+pymysql://root:YOUR_MYSQL_PASSWORD@127.0.0.1:3306/tcrt_main
+
+  - name: audit-sqlite-to-mysql
+    source_url: sqlite:///./audit.db
+    target_url: mysql+pymysql://root:YOUR_MYSQL_PASSWORD@127.0.0.1:3306/tcrt_audit
+
+  - name: usm-sqlite-to-mysql
+    source_url: sqlite:///./userstorymap.db
+    target_url: mysql+pymysql://root:YOUR_MYSQL_PASSWORD@127.0.0.1:3306/tcrt_usm

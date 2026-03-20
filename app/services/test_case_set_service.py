@@ -3,10 +3,10 @@
 """
 
 import logging
-from typing import Callable, TypeVar
+from typing import Callable, TypeVar, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, case, or_
 
 from ..db_access.main import MainAccessBoundary, create_main_access_boundary_for_session
 from ..models.database_models import TestCaseSet, TestCaseSection, TestCaseLocal
@@ -17,6 +17,16 @@ from ..services.test_run_scope_service import TestRunScopeService
 
 logger = logging.getLogger(__name__)
 T = TypeVar("T")
+
+
+def _section_order_clauses():
+    """跨資料庫的 section 排序，避免 MySQL 不支援 NULLS FIRST。"""
+    return (
+        case((TestCaseSection.parent_section_id.is_(None), 0), else_=1),
+        TestCaseSection.parent_section_id,
+        TestCaseSection.sort_order,
+        TestCaseSection.id,
+    )
 
 
 class TestCaseSetService:
@@ -100,24 +110,75 @@ class TestCaseSetService:
 
         return await self._run_read(_list)
 
+    @staticmethod
+    def get_or_create_default_sync(sync_db: Session, team_id: int) -> TestCaseSet:
+        """同步取得或建立團隊的預設 Test Case Set，供其他 Service/API 在 transaction 中使用"""
+        from sqlalchemy import and_
+        from app.models.database_models import TestCaseSet as TestCaseSetDB
+        from app.models.database_models import TestCaseSection as TestCaseSectionDB
+        
+        default_set = sync_db.query(TestCaseSetDB).filter(
+            and_(TestCaseSetDB.team_id == team_id, TestCaseSetDB.is_default == True)
+        ).first()
+
+        if not default_set:
+            default_set = TestCaseSetDB(
+                team_id=team_id,
+                name=f"Default-{team_id}",
+                description="團隊預設測試案例集合",
+                is_default=True
+            )
+            sync_db.add(default_set)
+            sync_db.flush()
+            unassigned_section = TestCaseSectionDB(
+                test_case_set_id=default_set.id,
+                name="Unassigned",
+                description="未分配的測試案例",
+                level=1,
+                sort_order=0,
+                parent_section_id=None
+            )
+            sync_db.add(unassigned_section)
+        return default_set
+
     async def get_or_create_default(self, team_id: int) -> TestCaseSet:
         """取得或建立團隊的預設 Test Case Set"""
         def _get_or_create(sync_db: Session) -> TestCaseSet:
-            default_set = sync_db.query(TestCaseSet).filter(
-                and_(TestCaseSet.team_id == team_id, TestCaseSet.is_default == True)
-            ).first()
+            return self.get_or_create_default_sync(sync_db, team_id)
 
-            if not default_set:
-                default_set = TestCaseSet(
-                    team_id=team_id,
-                    name=f"Default-{team_id}",
-                    description="團隊預設測試案例集合",
-                    is_default=True
+        return await self._run_write(_get_or_create)
+
+    async def set_default_set(self, team_id: int, new_default_set_id: int) -> Optional[TestCaseSet]:
+        """設定團隊的預設 Test Case Set"""
+        def _set_default(sync_db: Session) -> Optional[TestCaseSet]:
+            # 確認目標 set 存在且屬於該團隊
+            target_set = sync_db.query(TestCaseSet).filter(
+                and_(TestCaseSet.id == new_default_set_id, TestCaseSet.team_id == team_id)
+            ).first()
+            if not target_set:
+                return None
+            
+            # 將其他 set 取消 default
+            sync_db.query(TestCaseSet).filter(
+                and_(TestCaseSet.team_id == team_id, TestCaseSet.is_default == True, TestCaseSet.id != new_default_set_id)
+            ).update({"is_default": False})
+            
+            # 設為 default
+            target_set.is_default = True
+            
+            # 確保擁有 Unassigned 區塊
+            unassigned_section = sync_db.query(TestCaseSection).filter(
+                and_(
+                    TestCaseSection.test_case_set_id == target_set.id,
+                    TestCaseSection.name == "Unassigned",
+                    TestCaseSection.level == 1,
+                    TestCaseSection.parent_section_id.is_(None)
                 )
-                sync_db.add(default_set)
-                sync_db.flush()
+            ).first()
+            
+            if not unassigned_section:
                 unassigned_section = TestCaseSection(
-                    test_case_set_id=default_set.id,
+                    test_case_set_id=target_set.id,
                     name="Unassigned",
                     description="未分配的測試案例",
                     level=1,
@@ -125,9 +186,10 @@ class TestCaseSetService:
                     parent_section_id=None
                 )
                 sync_db.add(unassigned_section)
-            return default_set
+                
+            return target_set
 
-        return await self._run_write(_get_or_create)
+        return await self._run_write(_set_default)
 
     async def update(self, set_id: int, team_id: int, name: str = None, description: str = None) -> TestCaseSet:
         """更新 Test Case Set"""
@@ -264,11 +326,7 @@ class TestCaseSetService:
             sections = (
                 sync_db.query(TestCaseSection)
                 .filter(TestCaseSection.test_case_set_id == set_id)
-                .order_by(
-                    TestCaseSection.parent_section_id.nullsfirst(),
-                    TestCaseSection.sort_order,
-                    TestCaseSection.id,
-                )
+                .order_by(*_section_order_clauses())
                 .all()
             )
 
