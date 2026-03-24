@@ -52,6 +52,7 @@ from app.db_migrations import (
 from app.auth.models import UserCreate
 from app.services.user_service import UserService
 from app.models.database_models import User
+
 MAIN_REQUIRED_TABLES: List[str] = [
     "users",
     "user_team_permissions",
@@ -76,6 +77,7 @@ MAIN_REQUIRED_TABLES: List[str] = [
     "lark_departments",
     "lark_users",
     "sync_history",
+    "scheduled_services",
 ]
 TARGET_LABELS = {
     "main": "主資料庫",
@@ -193,9 +195,7 @@ def get_database_stats(engine: Engine) -> Dict[str, Any]:
     with engine.connect() as conn:
         for table_name in table_names:
             try:
-                row_count = conn.execute(
-                    text(f"SELECT COUNT(*) FROM {quote_ident(engine, table_name)}")
-                ).scalar()
+                row_count = conn.execute(text(f"SELECT COUNT(*) FROM {quote_ident(engine, table_name)}")).scalar()
                 stats["tables"][table_name] = {
                     "rows": int(row_count or 0),
                     "columns": len(inspector.get_columns(table_name)),
@@ -241,9 +241,7 @@ def print_preflight_summary(summary: Dict[str, Any]) -> None:
     print("drivers:")
     for driver_status in summary["driver_statuses"]:
         flag = "OK" if driver_status["available"] else "MISSING"
-        print(
-            f"  - {driver_status['package']} ({driver_status['import_name']}): {flag}"
-        )
+        print(f"  - {driver_status['package']} ({driver_status['import_name']}): {flag}")
     for remediation in summary.get("remediation", []):
         print(f"remediation: {remediation}")
     if summary.get("error"):
@@ -396,8 +394,7 @@ def _load_super_admin_seed_config() -> Optional[Dict[str, str]]:
         return None
     if not username or not password:
         raise RuntimeError(
-            "若要建立預設 super_admin，必須同時設定 "
-            "BOOTSTRAP_SUPER_ADMIN_USERNAME 與 BOOTSTRAP_SUPER_ADMIN_PASSWORD"
+            "若要建立預設 super_admin，必須同時設定 BOOTSTRAP_SUPER_ADMIN_USERNAME 與 BOOTSTRAP_SUPER_ADMIN_PASSWORD"
         )
 
     return {
@@ -420,16 +417,11 @@ def ensure_super_admin_seed(engine: Engine, logger: Logger) -> Dict[str, Any]:
 
     with Session(engine) as session:
         super_admin_count = (
-            session.query(User)
-            .filter(User.role == UserRole.SUPER_ADMIN.value)
-            .filter(User.is_active == True)
-            .count()
+            session.query(User).filter(User.role == UserRole.SUPER_ADMIN.value).filter(User.is_active == True).count()
         )
 
         if super_admin_count == 0 and seed_config:
-            logger.info(
-                "偵測到 BOOTSTRAP_SUPER_ADMIN_* 環境變數，建立第一個 super_admin"
-            )
+            logger.info("偵測到 BOOTSTRAP_SUPER_ADMIN_* 環境變數，建立第一個 super_admin")
             new_user = UserService.create_user(
                 UserCreate(
                     username=seed_config["username"],
@@ -454,10 +446,7 @@ def ensure_super_admin_seed(engine: Engine, logger: Logger) -> Dict[str, Any]:
     }
 
     if seed_state["needs_first_login_setup"]:
-        logger.warn(
-            "尚未建立任何 super_admin。系統目前採 first-login setup 流程，"
-            "請於啟動後完成 /first-login-setup。"
-        )
+        logger.warn("尚未建立任何 super_admin。系統目前採 first-login setup 流程，請於啟動後完成 /first-login-setup。")
     else:
         logger.info(f"已存在 {seed_state['super_admin_count']} 個啟用中的 super_admin")
 

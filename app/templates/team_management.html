@@ -204,6 +204,9 @@
                         <button class="nav-link" id="tab-org" data-bs-toggle="tab" data-bs-target="#tab-pane-org" type="button" role="tab" aria-controls="tab-pane-org" aria-selected="false" data-testid="tab-org" data-i18n="orgSync.tabTitle">組織</button>
                     </li>
                     <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="tab-service-management" data-bs-toggle="tab" data-bs-target="#tab-pane-service-management" type="button" role="tab" aria-controls="tab-pane-service-management" aria-selected="false" data-testid="tab-service-management" data-i18n="scheduledServices.tabTitle">Service 管理</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
                         <button class="nav-link" id="tab-mcp-token" data-bs-toggle="tab" data-bs-target="#tab-pane-mcp-token" type="button" role="tab" aria-controls="tab-pane-mcp-token" aria-selected="false" data-testid="tab-mcp-token" data-i18n="mcpToken.tabTitle">MCP Token</button>
                     </li>
                 </ul>
@@ -408,6 +411,29 @@
                         </div>
                     </div>
 
+                    <div class="tab-pane fade" id="tab-pane-service-management" role="tabpanel" aria-labelledby="tab-service-management">
+                        <div class="scheduled-services-hero mb-3">
+                            <div>
+                                <div class="scheduled-services-hero__eyebrow" data-i18n="scheduledServices.heroEyebrow">Scheduler Service Registry</div>
+                                <h5 class="scheduled-services-hero__title mb-1" data-i18n="scheduledServices.heroTitle">排程服務管理</h5>
+                                <p class="scheduled-services-hero__desc mb-0" data-i18n="scheduledServices.heroDesc">選擇目前系統可排程的服務，設定每日執行時間，並查看最近執行結果與目前狀態。</p>
+                            </div>
+                            <div class="scheduled-services-hero__meta">
+                                <span class="scheduled-services-hero__summary text-muted small" id="scheduledServicesSummary" data-i18n="scheduledServices.summaryIdle">尚未載入排程服務</span>
+                                <span class="badge rounded-pill text-bg-secondary" id="scheduledSchedulerState" data-i18n="scheduledServices.schedulerUnknown">狀態未知</span>
+                            </div>
+                        </div>
+
+                        <div id="scheduledServicesLoading" class="text-center py-4 d-none">
+                            <div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>
+                            <span class="text-muted" data-i18n="scheduledServices.loading">載入排程服務中...</span>
+                        </div>
+
+                        <div id="scheduledServicesEmpty" class="alert alert-light border text-muted d-none" role="alert" data-i18n="scheduledServices.empty">目前沒有可排程服務</div>
+
+                        <div id="scheduledServicesList" class="scheduled-services-list"></div>
+                    </div>
+
                     <!-- MCP Machine Token 分頁 -->
                     <div class="tab-pane fade" id="tab-pane-mcp-token" role="tabpanel" aria-labelledby="tab-mcp-token">
                         <div class="card mb-3">
@@ -577,6 +603,41 @@
     <span data-i18n="mcpToken.createdAt">建立時間</span>
     <span data-i18n="mcpToken.expiresAt">到期時間</span>
     <span data-i18n="mcpToken.neverExpires">永不過期</span>
+    <span data-i18n="scheduledServices.tabTitle">Service 管理</span>
+    <span data-i18n="scheduledServices.heroEyebrow">Scheduler Service Registry</span>
+    <span data-i18n="scheduledServices.heroTitle">排程服務管理</span>
+    <span data-i18n="scheduledServices.heroDesc">選擇目前系統可排程的服務，設定每日執行時間，並查看最近執行結果與目前狀態。</span>
+    <span data-i18n="scheduledServices.summaryIdle">尚未載入排程服務</span>
+    <span data-i18n="scheduledServices.summaryLoading">正在載入排程服務...</span>
+    <span data-i18n="scheduledServices.summaryReady">可管理 {count} 個排程服務</span>
+    <span data-i18n="scheduledServices.summaryEmpty">目前沒有可排程服務</span>
+    <span data-i18n="scheduledServices.summaryError">無法取得排程服務資料</span>
+    <span data-i18n="scheduledServices.schedulerUnknown">狀態未知</span>
+    <span data-i18n="scheduledServices.schedulerRunning">Scheduler 運行中</span>
+    <span data-i18n="scheduledServices.schedulerStopped">Scheduler 未啟動</span>
+    <span data-i18n="scheduledServices.loading">載入排程服務中...</span>
+    <span data-i18n="scheduledServices.empty">目前沒有可排程服務</span>
+    <span data-i18n="scheduledServices.loadFailed">載入排程服務失敗</span>
+    <span data-i18n="scheduledServices.enabled">已啟用</span>
+    <span data-i18n="scheduledServices.disabled">未啟用</span>
+    <span data-i18n="scheduledServices.running">執行中</span>
+    <span data-i18n="scheduledServices.statusCompleted">最近成功</span>
+    <span data-i18n="scheduledServices.statusFailed">最近失敗</span>
+    <span data-i18n="scheduledServices.statusInterrupted">啟動時回收</span>
+    <span data-i18n="scheduledServices.statusUnknown">尚未執行</span>
+    <span data-i18n="scheduledServices.nextRun">下次執行</span>
+    <span data-i18n="scheduledServices.lastRun">上次執行</span>
+    <span data-i18n="scheduledServices.runTime">每日時間</span>
+    <span data-i18n="scheduledServices.lastMessage">最近訊息</span>
+    <span data-i18n="scheduledServices.noDescription">尚未提供描述</span>
+    <span data-i18n="scheduledServices.noRecentMessage">尚無執行紀錄</span>
+    <span data-i18n="scheduledServices.enableSchedule">啟用每日排程</span>
+    <span data-i18n="scheduledServices.timeLabel">執行時間</span>
+    <span data-i18n="scheduledServices.saveSchedule">儲存排程</span>
+    <span data-i18n="scheduledServices.timeHint">第一版支援每日固定時間排程；多副本部署需額外處理 leader lock。</span>
+    <span data-i18n="scheduledServices.saving">儲存中...</span>
+    <span data-i18n="scheduledServices.saveSuccess">排程設定已更新</span>
+    <span data-i18n="scheduledServices.saveFailed">更新排程設定失敗</span>
 </div>
 
 <!-- 人員管理 i18n（僅少量，其他直接透過 data-i18n 使用全域字典） -->

@@ -27,6 +27,7 @@ function applyOrganizationUiVisibilityByRoleFallback() {
 
     toggleSyncTabVisibility('tab-personnel-li', isAdmin || isSuperAdmin, true);
     toggleSyncTabVisibility('tab-org', isSuperAdmin);
+    toggleSyncTabVisibility('tab-service-management', isSuperAdmin);
     toggleSyncTabVisibility('tab-mcp-token', isSuperAdmin);
 }
 
@@ -34,6 +35,7 @@ function applyOrganizationUiVisibilityByRoleFallback() {
 async function applyOrganizationUiVisibility() {
     // 預設先隱藏需權限頁籤，避免權限配置尚未載入時誤顯示
     toggleSyncTabVisibility('tab-org', false);
+    toggleSyncTabVisibility('tab-service-management', false);
     toggleSyncTabVisibility('tab-mcp-token', false);
 
     try {
@@ -54,6 +56,7 @@ async function applyOrganizationUiVisibility() {
         toggleSyncTabVisibility('tab-personnel-li', !!map['tab-personnel-li'], true);
         // 進階分頁（僅 Super Admin）
         toggleSyncTabVisibility('tab-org', !!map['tab-org']);
+        toggleSyncTabVisibility('tab-service-management', !!map['tab-service-management']);
         toggleSyncTabVisibility('tab-mcp-token', mcpTokenVisible);
     } catch (_) {
         applyOrganizationUiVisibilityByRoleFallback();
@@ -874,6 +877,10 @@ document.addEventListener('languageChanged', updatePageTitle);
 // 模態視窗狀態管理
 let syncModalInstance = null;
 let syncPollingInterval = null;
+let scheduledServicesState = {
+    services: [],
+    loading: false,
+};
 
 // 開啟同步功能框
 async function openSyncModal() {
@@ -913,8 +920,211 @@ async function openSyncModal() {
 async function loadSyncModalData() {
     await Promise.all([
         loadSyncStatus(),
-        loadOrgStats()
+        loadOrgStats(),
+        loadScheduledServices(),
     ]);
+}
+
+async function loadScheduledServices() {
+    const tabBtn = document.getElementById('tab-service-management');
+    if (!tabBtn || tabBtn.style.display === 'none' || tabBtn.offsetParent === null) {
+        return;
+    }
+
+    const loading = document.getElementById('scheduledServicesLoading');
+    const empty = document.getElementById('scheduledServicesEmpty');
+    const list = document.getElementById('scheduledServicesList');
+    const summary = document.getElementById('scheduledServicesSummary');
+    const schedulerState = document.getElementById('scheduledSchedulerState');
+    if (!loading || !empty || !list || !summary || !schedulerState) return;
+
+    scheduledServicesState.loading = true;
+    loading.classList.remove('d-none');
+    empty.classList.add('d-none');
+    list.innerHTML = '';
+    setDynamicI18nText(summary, 'scheduledServices.summaryLoading', '正在載入排程服務...');
+    setDynamicI18nText(schedulerState, 'scheduledServices.schedulerUnknown', '狀態未知');
+    schedulerState.className = 'badge rounded-pill text-bg-secondary';
+
+    try {
+        const response = await window.AuthClient.fetch('/api/organization/scheduled-services');
+        const payload = await response.json();
+        if (!response.ok || !payload.success) {
+            throw new Error(extractApiErrorMessage(payload) || `HTTP ${response.status}`);
+        }
+
+        const services = Array.isArray(payload.data?.services) ? payload.data.services : [];
+        scheduledServicesState.services = services;
+
+        setDynamicI18nText(
+            schedulerState,
+            payload.data?.scheduler_running ? 'scheduledServices.schedulerRunning' : 'scheduledServices.schedulerStopped',
+            payload.data?.scheduler_running ? 'Scheduler 運行中' : 'Scheduler 未啟動'
+        );
+        schedulerState.className = payload.data?.scheduler_running
+            ? 'badge rounded-pill text-bg-success'
+            : 'badge rounded-pill text-bg-secondary';
+
+        if (services.length === 0) {
+            empty.classList.remove('d-none');
+            setDynamicI18nText(empty, 'scheduledServices.empty', '目前沒有可排程服務');
+            setDynamicI18nText(summary, 'scheduledServices.summaryEmpty', '目前沒有可排程服務');
+            return;
+        }
+
+        setDynamicI18nText(summary, 'scheduledServices.summaryReady', '可管理 {count} 個排程服務', { count: services.length });
+        list.innerHTML = services.map(renderScheduledServiceCard).join('');
+    } catch (error) {
+        console.error('載入排程服務失敗:', error);
+        empty.classList.remove('d-none');
+        empty.removeAttribute('data-i18n');
+        empty.removeAttribute('data-i18n-params');
+        empty.innerHTML = `<i class="fas fa-exclamation-circle me-2 text-danger"></i>${escapeHtml(getI18n('scheduledServices.loadFailed', '載入排程服務失敗'))}`;
+        setDynamicI18nText(summary, 'scheduledServices.summaryError', '無法取得排程服務資料');
+        setDynamicI18nText(schedulerState, 'scheduledServices.schedulerUnknown', '狀態未知');
+        schedulerState.className = 'badge rounded-pill text-bg-secondary';
+    } finally {
+        scheduledServicesState.loading = false;
+        loading.classList.add('d-none');
+    }
+}
+
+function renderScheduledServiceCard(service) {
+    const statusClass = getScheduledServiceStatusClass(service.last_run_status, service.is_running);
+    const statusText = getScheduledServiceStatusText(service.last_run_status, service.is_running);
+    const enabledBadge = service.enabled
+        ? `<span class="badge rounded-pill text-bg-primary-subtle text-primary-emphasis">${escapeHtml(getI18n('scheduledServices.enabled', '已啟用'))}</span>`
+        : `<span class="badge rounded-pill text-bg-light text-secondary">${escapeHtml(getI18n('scheduledServices.disabled', '未啟用'))}</span>`;
+    const runningBadge = service.is_running
+        ? `<span class="badge rounded-pill text-bg-warning-subtle text-warning-emphasis">${escapeHtml(getI18n('scheduledServices.running', '執行中'))}</span>`
+        : '';
+
+    return `
+        <section class="scheduled-service-card" data-service-key="${escapeHtml(service.service_key)}">
+            <div class="scheduled-service-card__head">
+                <div>
+                    <div class="scheduled-service-card__eyebrow">${escapeHtml(service.service_key)}</div>
+                    <h6 class="scheduled-service-card__title mb-1">${escapeHtml(service.display_name || service.service_key)}</h6>
+                    <p class="scheduled-service-card__desc mb-0">${escapeHtml(service.description || getI18n('scheduledServices.noDescription', '尚未提供描述'))}</p>
+                </div>
+                <div class="scheduled-service-card__badges">
+                    ${enabledBadge}
+                    ${runningBadge}
+                    <span class="badge rounded-pill ${statusClass}">${escapeHtml(statusText)}</span>
+                </div>
+            </div>
+            <div class="scheduled-service-card__grid">
+                <div class="scheduled-service-card__metric">
+                    <span class="scheduled-service-card__label">${escapeHtml(getI18n('scheduledServices.nextRun', '下次執行'))}</span>
+                    <strong>${escapeHtml(formatIsoDatetime(service.next_run || ''))}</strong>
+                </div>
+                <div class="scheduled-service-card__metric">
+                    <span class="scheduled-service-card__label">${escapeHtml(getI18n('scheduledServices.lastRun', '上次執行'))}</span>
+                    <strong>${escapeHtml(formatIsoDatetime(service.last_run_finished_at || service.last_run || ''))}</strong>
+                </div>
+                <div class="scheduled-service-card__metric">
+                    <span class="scheduled-service-card__label">${escapeHtml(getI18n('scheduledServices.runTime', '每日時間'))}</span>
+                    <strong>${escapeHtml(service.run_at_time || '--:--')}</strong>
+                </div>
+                <div class="scheduled-service-card__metric">
+                    <span class="scheduled-service-card__label">${escapeHtml(getI18n('scheduledServices.lastMessage', '最近訊息'))}</span>
+                    <strong>${escapeHtml(service.last_run_message || service.last_error || getI18n('scheduledServices.noRecentMessage', '尚無執行紀錄'))}</strong>
+                </div>
+            </div>
+            <form class="scheduled-service-card__form" data-service-form="${escapeHtml(service.service_key)}">
+                <label class="form-check form-switch mb-0">
+                    <input class="form-check-input" type="checkbox" name="enabled" ${service.enabled ? 'checked' : ''}>
+                    <span class="form-check-label">${escapeHtml(getI18n('scheduledServices.enableSchedule', '啟用每日排程'))}</span>
+                </label>
+                <div class="scheduled-service-card__timebox">
+                    <label class="form-label mb-1" for="scheduled-time-${escapeHtml(service.service_key)}">${escapeHtml(getI18n('scheduledServices.timeLabel', '執行時間'))}</label>
+                    <input type="time" class="form-control" id="scheduled-time-${escapeHtml(service.service_key)}" name="run_at_time" value="${escapeHtml(service.run_at_time || '02:00')}">
+                </div>
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-clock me-2"></i><span>${escapeHtml(getI18n('scheduledServices.saveSchedule', '儲存排程'))}</span>
+                </button>
+            </form>
+            <div class="scheduled-service-card__hint text-muted small">${escapeHtml(getI18n('scheduledServices.timeHint', '第一版支援每日固定時間排程；多副本部署需額外處理 leader lock。'))}</div>
+        </section>
+    `;
+}
+
+function getScheduledServiceStatusClass(status, isRunning) {
+    if (isRunning) return 'text-bg-warning-subtle text-warning-emphasis';
+    switch (String(status || '').toLowerCase()) {
+        case 'completed':
+            return 'text-bg-success-subtle text-success-emphasis';
+        case 'failed':
+            return 'text-bg-danger-subtle text-danger-emphasis';
+        case 'interrupted':
+            return 'text-bg-secondary';
+        case 'running':
+            return 'text-bg-warning-subtle text-warning-emphasis';
+        default:
+            return 'text-bg-light text-secondary';
+    }
+}
+
+function getScheduledServiceStatusText(status, isRunning) {
+    if (isRunning) return getI18n('scheduledServices.running', '執行中');
+    switch (String(status || '').toLowerCase()) {
+        case 'completed':
+            return getI18n('scheduledServices.statusCompleted', '最近成功');
+        case 'failed':
+            return getI18n('scheduledServices.statusFailed', '最近失敗');
+        case 'interrupted':
+            return getI18n('scheduledServices.statusInterrupted', '啟動時回收');
+        case 'running':
+            return getI18n('scheduledServices.running', '執行中');
+        default:
+            return getI18n('scheduledServices.statusUnknown', '尚未執行');
+    }
+}
+
+async function handleScheduledServiceSubmit(event) {
+    event.preventDefault();
+    const form = event.target;
+    const card = form.closest('[data-service-key]');
+    const serviceKey = card?.dataset?.serviceKey;
+    if (!serviceKey) return;
+
+    const submitBtn = form.querySelector('button[type="submit"]');
+    const originalHtml = submitBtn ? submitBtn.innerHTML : '';
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = `<i class="fas fa-spinner fa-spin me-2"></i>${escapeHtml(getI18n('scheduledServices.saving', '儲存中...'))}`;
+    }
+
+    const enabled = !!form.querySelector('input[name="enabled"]')?.checked;
+    const runAtTime = form.querySelector('input[name="run_at_time"]')?.value || '';
+
+    try {
+        const response = await window.AuthClient.fetch(`/api/organization/scheduled-services/${encodeURIComponent(serviceKey)}`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                enabled,
+                run_at_time: runAtTime,
+            })
+        });
+        const payload = await response.json();
+        if (!response.ok || !payload.success) {
+            throw new Error(extractApiErrorMessage(payload) || `HTTP ${response.status}`);
+        }
+
+        AppUtils.showSuccess(getI18n('scheduledServices.saveSuccess', '排程設定已更新'));
+        await loadScheduledServices();
+    } catch (error) {
+        console.error('更新排程服務失敗:', error);
+        AppUtils.showError(`${getI18n('scheduledServices.saveFailed', '更新排程設定失敗')}: ${error.message}`);
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalHtml;
+        }
+    }
 }
 
 // 重新整理同步功能框數據
@@ -1305,6 +1515,25 @@ document.addEventListener('DOMContentLoaded', () => {
             } catch (_) {}
         });
     }
+
+    const scheduledTabBtn = document.getElementById('tab-service-management');
+    const scheduledPane = document.getElementById('tab-pane-service-management');
+    if (scheduledTabBtn && scheduledPane) {
+        scheduledTabBtn.addEventListener('shown.bs.tab', async () => {
+            await loadScheduledServices();
+            try {
+                if (window.i18n && window.i18n.isReady()) {
+                    window.i18n.retranslate(scheduledPane);
+                }
+            } catch (_) {}
+        });
+
+        scheduledPane.addEventListener('submit', (event) => {
+            const form = event.target.closest('[data-service-form]');
+            if (!form) return;
+            handleScheduledServiceSubmit(event);
+        });
+    }
 });
 
 // ===== 全域組織架構同步功能 =====
@@ -1429,4 +1658,33 @@ function getI18n(key, fallback = '') {
         return el.textContent.trim();
     }
     return fallback || key;
+}
+
+function setDynamicI18nText(element, key, fallback = '', params = null) {
+    if (!element) return;
+
+    if (key) {
+        element.setAttribute('data-i18n', key);
+    } else {
+        element.removeAttribute('data-i18n');
+    }
+
+    if (params && Object.keys(params).length > 0) {
+        element.setAttribute('data-i18n-params', JSON.stringify(params));
+    } else {
+        element.removeAttribute('data-i18n-params');
+    }
+
+    const translated = key ? getI18n(key, fallback) : (fallback || '');
+    element.textContent = applyI18nParams(translated, params);
+}
+
+function applyI18nParams(template, params) {
+    let output = String(template || '');
+    if (!params) return output;
+
+    Object.entries(params).forEach(([key, value]) => {
+        output = output.split(`{${key}}`).join(String(value));
+    });
+    return output;
 }

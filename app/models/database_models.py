@@ -42,49 +42,52 @@ Base = declarative_base()
 
 class SyncStatus(PyEnum):
     """本地與遠端（Lark）同步狀態"""
+
     SYNCED = "synced"
-    PENDING = "pending"         # 本地有變更，待推送到 Lark
-    CONFLICT = "conflict"       # 本地與遠端同時修改，需人工處理
+    PENDING = "pending"  # 本地有變更，待推送到 Lark
+    CONFLICT = "conflict"  # 本地與遠端同時修改，需人工處理
 
 
 class MCPMachineCredentialStatus(PyEnum):
     """MCP 機器憑證狀態"""
+
     ACTIVE = "active"
     REVOKED = "revoked"
 
 
 class Team(Base):
     """團隊表格"""
+
     __tablename__ = "teams"
-    
+
     id = Column(Integer, primary_key=True)
     name = Column(String(100), nullable=False)
     description = Column(Text, nullable=True)
-    
+
     # Lark 相關配置
     wiki_token = Column(String(255), nullable=False)
     test_case_table_id = Column(String(255), nullable=False)
     # 移除 test_run_table_id，改用 TestRunConfig 表格處理
-    
+
     # JIRA 相關配置
     jira_project_key = Column(String(10), nullable=True)
     default_assignee = Column(String(255), nullable=True)
     issue_type = Column(String(50), default="Bug")
-    
+
     # 團隊設定
     enable_notifications = Column(Boolean, default=True, nullable=False)
     auto_create_bugs = Column(Boolean, default=False, nullable=False)
     default_priority = Column(Enum(Priority), default=Priority.MEDIUM)
-    
+
     # 狀態與時間
     status = Column(Enum(TeamStatus), default=TeamStatus.ACTIVE)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
+
     # 統計資訊
     test_case_count = Column(Integer, default=0)
     last_sync_at = Column(DateTime, nullable=True)
-    
+
     # 關聯關係
     test_run_configs = relationship("TestRunConfig", back_populates="team")
     test_run_sets = relationship("TestRunSet", back_populates="team")
@@ -93,53 +96,48 @@ class Team(Base):
 
 class TestRunConfig(Base):
     """測試執行配置表格"""
+
     __tablename__ = "test_run_configs"
-    
+
     id = Column(Integer, primary_key=True)
     team_id = Column(Integer, ForeignKey("teams.id"), nullable=False)
-    
+
     # 基本資訊
     name = Column(String(100), nullable=False)
     description = Column(Text, nullable=True)
-    
+
     # 測試執行元資料
     test_version = Column(String(50), nullable=True)
     test_environment = Column(String(100), nullable=True)
     build_number = Column(String(100), nullable=True)
-    
+
     # TP 開發單票號欄位
-    related_tp_tickets_json = Column(Text, nullable=True, 
-                                   comment="相關 JIRA Tickets 票號 JSON 陣列")
-    tp_tickets_search = Column(String(512), nullable=True, index=True,
-                             comment="JIRA Ticket 搜尋索引欄位")
+    related_tp_tickets_json = Column(Text, nullable=True, comment="相關 JIRA Tickets 票號 JSON 陣列")
+    tp_tickets_search = Column(String(512), nullable=True, index=True, comment="JIRA Ticket 搜尋索引欄位")
     test_case_set_ids_json = Column(Text, nullable=True, comment="Test Case Set 範圍（JSON 陣列）")
-    
+
     # 通知設定
-    notifications_enabled = Column(Boolean, default=False, nullable=False,
-                                 comment="是否啟用通知")
-    notify_chat_ids_json = Column(Text, nullable=True,
-                                comment="選擇的 Lark chat IDs（JSON 陣列）")
-    notify_chat_names_snapshot = Column(Text, nullable=True,
-                                      comment="群組名稱快照（JSON 陣列）")
-    notify_chats_search = Column(String(512), nullable=True, index=True,
-                               comment="群組名稱搜尋索引")
-    
+    notifications_enabled = Column(Boolean, default=False, nullable=False, comment="是否啟用通知")
+    notify_chat_ids_json = Column(Text, nullable=True, comment="選擇的 Lark chat IDs（JSON 陣列）")
+    notify_chat_names_snapshot = Column(Text, nullable=True, comment="群組名稱快照（JSON 陣列）")
+    notify_chats_search = Column(String(512), nullable=True, index=True, comment="群組名稱搜尋索引")
+
     # 狀態與時間
     status = Column(Enum(TestRunStatus), default=TestRunStatus.DRAFT)
     start_date = Column(DateTime, nullable=True)
     end_date = Column(DateTime, nullable=True)
-    
+
     # 統計資訊
     total_test_cases = Column(Integer, default=0)
     executed_cases = Column(Integer, default=0)
     passed_cases = Column(Integer, default=0)
     failed_cases = Column(Integer, default=0)
-    
+
     # 系統欄位
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     last_sync_at = Column(DateTime, nullable=True)
-    
+
     # 關聯關係
     team = relationship("Team", back_populates="test_run_configs")
     # 本地測試執行項目
@@ -162,10 +160,8 @@ class TestRunSet(Base):
     description = Column(Text, nullable=True)
     status = Column(Enum(TestRunSetStatus), default=TestRunSetStatus.ACTIVE, nullable=False)
     archived_at = Column(DateTime, nullable=True)
-    related_tp_tickets_json = Column(Text, nullable=True,
-                                     comment="相關 JIRA Tickets 票號 JSON 陣列")
-    tp_tickets_search = Column(String(512), nullable=True, index=True,
-                             comment="JIRA Ticket 搜尋索引欄位")
+    related_tp_tickets_json = Column(Text, nullable=True, comment="相關 JIRA Tickets 票號 JSON 陣列")
+    tp_tickets_search = Column(String(512), nullable=True, index=True, comment="JIRA Ticket 搜尋索引欄位")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -182,9 +178,9 @@ class TestRunSetMembership(Base):
 
     __tablename__ = "test_run_set_memberships"
     __table_args__ = (
-        UniqueConstraint('config_id', name='uq_test_run_set_membership_config'),
-        Index('ix_test_run_set_memberships_team_config', 'team_id', 'config_id'),
-        Index('ix_test_run_set_memberships_team_set', 'team_id', 'set_id'),
+        UniqueConstraint("config_id", name="uq_test_run_set_membership_config"),
+        Index("ix_test_run_set_memberships_team_config", "team_id", "config_id"),
+        Index("ix_test_run_set_memberships_team_set", "team_id", "set_id"),
     )
 
     id = Column(Integer, primary_key=True)
@@ -201,6 +197,7 @@ class TestRunSetMembership(Base):
 
 class TestRunItem(Base):
     """本地儲存的測試執行項目（來自本產品挑選的 Test Case）"""
+
     __tablename__ = "test_run_items"
 
     id = Column(Integer, primary_key=True)
@@ -231,12 +228,11 @@ class TestRunItem(Base):
     bug_tickets_json = Column(Text, nullable=True)  # Bug Tickets（JSON Array 格式存多個 JIRA ticket 編號）
 
     # 結果檔案追蹤欄位
-    result_files_uploaded = Column(Boolean, default=False, nullable=False, 
-                                 comment="測試結果檔案是否已上傳到對應 Test Case")
-    result_files_count = Column(Integer, default=0, nullable=False,
-                              comment="上傳的結果檔案數量")
-    upload_history_json = Column(Text, nullable=True,
-                               comment="檔案上傳歷史記錄（JSON 格式）")
+    result_files_uploaded = Column(
+        Boolean, default=False, nullable=False, comment="測試結果檔案是否已上傳到對應 Test Case"
+    )
+    result_files_count = Column(Integer, default=0, nullable=False, comment="上傳的結果檔案數量")
+    upload_history_json = Column(Text, nullable=True, comment="檔案上傳歷史記錄（JSON 格式）")
 
     # 系統欄位
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -248,17 +244,17 @@ class TestRunItem(Base):
     histories = relationship("TestRunItemResultHistory", back_populates="item", cascade="all, delete-orphan")
 
     __table_args__ = (
-        UniqueConstraint('config_id', 'test_case_number', name='uq_test_run_item_config_case'),
-        Index('ix_test_run_items_team', 'team_id'),
-        Index('ix_test_run_items_result', 'test_result'),
-        Index('ix_test_run_items_files_uploaded', 'result_files_uploaded'),
+        UniqueConstraint("config_id", "test_case_number", name="uq_test_run_item_config_case"),
+        Index("ix_test_run_items_team", "team_id"),
+        Index("ix_test_run_items_result", "test_result"),
+        Index("ix_test_run_items_files_uploaded", "result_files_uploaded"),
     )
 
     # 只讀關聯：提供即時 Test Case 詳細資料
     test_case = relationship(
         "TestCaseLocal",
         primaryjoin="and_(TestRunItem.test_case_number == foreign(TestCaseLocal.test_case_number), "
-                    "TestRunItem.team_id == foreign(TestCaseLocal.team_id))",
+        "TestRunItem.team_id == foreign(TestCaseLocal.team_id))",
         viewonly=True,
         uselist=False,
     )
@@ -266,6 +262,7 @@ class TestRunItem(Base):
 
 class TestRunItemResultHistory(Base):
     """測試結果歷程表"""
+
     __tablename__ = "test_run_item_result_history"
 
     id = Column(Integer, primary_key=True)
@@ -288,44 +285,43 @@ class TestRunItemResultHistory(Base):
     item = relationship("TestRunItem", back_populates="histories")
 
     __table_args__ = (
-        Index('ix_result_history_team_config', 'team_id', 'config_id'),
-        Index('ix_result_history_item_time', 'item_id', 'changed_at'),
+        Index("ix_result_history_team_config", "team_id", "config_id"),
+        Index("ix_result_history_item_time", "item_id", "changed_at"),
     )
 
 
 class LarkDepartment(Base):
     """Lark 部門信息表"""
+
     __tablename__ = "lark_departments"
-    
+
     # 主鍵使用 Lark 部門 ID
     department_id = Column(String(100), primary_key=True)
     parent_department_id = Column(String(100), nullable=True, index=True)
-    
+
     # 組織層級
     level = Column(Integer, default=0, index=True)
     path = Column(Text, nullable=True)  # 部門路徑，如: /root/dept1/dept2
-    
+
     # Lark 部門屬性（JSON 存儲原始 API 響應）
     leaders_json = Column(Text, nullable=True)  # 部門領導信息
     group_chat_employee_types_json = Column(Text, nullable=True)  # 群聊員工類型
-    
+
     # 統計信息
     direct_user_count = Column(Integer, default=0)  # 直屬用戶數
-    total_user_count = Column(Integer, default=0)   # 總用戶數（包含子部門）
-    
+    total_user_count = Column(Integer, default=0)  # 總用戶數（包含子部門）
+
     # 狀態與時間
-    status = Column(String(20), default='active')
+    status = Column(String(20), default="active")
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     last_sync_at = Column(DateTime, nullable=True)
-    
+
     # 關聯關係
     users = relationship("LarkUser", back_populates="primary_department")
-    
+
     # 索引
-    __table_args__ = (
-        Index('ix_lark_dept_status', 'status'),
-    )
+    __table_args__ = (Index("ix_lark_dept_status", "status"),)
 
 
 class TestCaseSet(Base):
@@ -333,10 +329,11 @@ class TestCaseSet(Base):
 
     用於組織測試案例，每個 Team 可以有多個 Test Case Set。
     """
+
     __tablename__ = "test_case_sets"
     __table_args__ = (
-        UniqueConstraint('name', name='uq_test_case_set_name'),  # 全域名稱唯一
-        Index('ix_test_case_sets_team', 'team_id'),
+        UniqueConstraint("name", name="uq_test_case_set_name"),  # 全域名稱唯一
+        Index("ix_test_case_sets_team", "team_id"),
     )
 
     id = Column(Integer, primary_key=True)
@@ -359,23 +356,23 @@ class TestCaseSection(Base):
     在 Test Case Set 內建立巢狀結構，類似資料夾分類。
     最多 5 層深度。
     """
+
     __tablename__ = "test_case_sections"
     __table_args__ = (
-        UniqueConstraint('test_case_set_id', 'parent_section_id', 'name',
-                        name='uq_section_name_in_parent'),  # 同層級不可重複名稱
-        Index('ix_sections_set_parent', 'test_case_set_id', 'parent_section_id'),
-        Index('ix_sections_set_level', 'test_case_set_id', 'level'),
+        UniqueConstraint(
+            "test_case_set_id", "parent_section_id", "name", name="uq_section_name_in_parent"
+        ),  # 同層級不可重複名稱
+        Index("ix_sections_set_parent", "test_case_set_id", "parent_section_id"),
+        Index("ix_sections_set_level", "test_case_set_id", "level"),
     )
 
     id = Column(Integer, primary_key=True)
-    test_case_set_id = Column(Integer, ForeignKey("test_case_sets.id", ondelete="CASCADE"),
-                             nullable=False, index=True)
+    test_case_set_id = Column(Integer, ForeignKey("test_case_sets.id", ondelete="CASCADE"), nullable=False, index=True)
     name = Column(String(100), nullable=False)
     description = Column(Text, nullable=True)
 
     # 巢狀結構
-    parent_section_id = Column(Integer, ForeignKey("test_case_sections.id", ondelete="CASCADE"),
-                              nullable=True)
+    parent_section_id = Column(Integer, ForeignKey("test_case_sections.id", ondelete="CASCADE"), nullable=True)
     level = Column(Integer, default=1, nullable=False)  # 1-5，表示深度
     sort_order = Column(Integer, default=0, nullable=False)  # 同層級排序
 
@@ -383,11 +380,10 @@ class TestCaseSection(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # 關聯關係
-    test_case_set = relationship("TestCaseSet", back_populates="sections",
-                                foreign_keys=[test_case_set_id])
-    parent_section = relationship("TestCaseSection", remote_side=[id],
-                                 foreign_keys=[parent_section_id],
-                                 backref="child_sections")
+    test_case_set = relationship("TestCaseSet", back_populates="sections", foreign_keys=[test_case_set_id])
+    parent_section = relationship(
+        "TestCaseSection", remote_side=[id], foreign_keys=[parent_section_id], backref="child_sections"
+    )
     test_cases = relationship("TestCaseLocal", back_populates="test_case_section")
 
 
@@ -396,6 +392,7 @@ class TestCaseLocal(Base):
 
     作為所有對 Lark Test Case 表的操作中介層，支援本地 upsert/update、索引查詢與差異同步。
     """
+
     __tablename__ = "test_cases"
 
     # 主鍵與關聯
@@ -450,11 +447,11 @@ class TestCaseLocal(Base):
     test_case_section = relationship("TestCaseSection", back_populates="test_cases")
 
     __table_args__ = (
-        UniqueConstraint('team_id', 'test_case_number', name='uq_test_cases_team_case_number'),
-        Index('ix_test_cases_team_result', 'team_id', 'test_result'),
-        Index('ix_test_cases_team_priority', 'team_id', 'priority'),
-        Index('ix_test_cases_number', 'test_case_number'),
-        Index('ix_test_cases_set_section', 'test_case_set_id', 'test_case_section_id'),
+        UniqueConstraint("team_id", "test_case_number", name="uq_test_cases_team_case_number"),
+        Index("ix_test_cases_team_result", "team_id", "test_result"),
+        Index("ix_test_cases_team_priority", "team_id", "priority"),
+        Index("ix_test_cases_number", "test_case_number"),
+        Index("ix_test_cases_set_section", "test_case_set_id", "test_case_section_id"),
     )
 
 
@@ -490,9 +487,7 @@ class AITestCaseHelperSession(Base):
     status = Column(String(32), nullable=False, default="active", index=True)
     last_error = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
-    )
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     drafts = relationship(
         "AITestCaseHelperDraft",
@@ -514,9 +509,7 @@ class AITestCaseHelperDraft(Base):
 
     __tablename__ = "ai_tc_helper_drafts"
     __table_args__ = (
-        UniqueConstraint(
-            "session_id", "phase", name="uq_ai_tc_helper_draft_session_phase"
-        ),
+        UniqueConstraint("session_id", "phase", name="uq_ai_tc_helper_draft_session_phase"),
         Index("ix_ai_tc_helper_drafts_session_phase", "session_id", "phase"),
     )
 
@@ -532,9 +525,7 @@ class AITestCaseHelperDraft(Base):
     markdown = Column(Text, nullable=True)
     payload_json = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(
-        DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False
-    )
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     session = relationship("AITestCaseHelperSession", back_populates="drafts")
 
@@ -593,50 +584,35 @@ class AITestCaseHelperStageMetric(Base):
 # Backward-compatible computed columns for TestRunItem snapshots
 TestRunItem.title = column_property(
     select(TestCaseLocal.title)
-    .where(
-        TestCaseLocal.team_id == TestRunItem.team_id,
-        TestCaseLocal.test_case_number == TestRunItem.test_case_number
-    )
+    .where(TestCaseLocal.team_id == TestRunItem.team_id, TestCaseLocal.test_case_number == TestRunItem.test_case_number)
     .correlate_except(TestCaseLocal)
     .scalar_subquery()
 )
 
 TestRunItem.priority = column_property(
     select(TestCaseLocal.priority)
-    .where(
-        TestCaseLocal.team_id == TestRunItem.team_id,
-        TestCaseLocal.test_case_number == TestRunItem.test_case_number
-    )
+    .where(TestCaseLocal.team_id == TestRunItem.team_id, TestCaseLocal.test_case_number == TestRunItem.test_case_number)
     .correlate_except(TestCaseLocal)
     .scalar_subquery()
 )
 
 TestRunItem.precondition = column_property(
     select(TestCaseLocal.precondition)
-    .where(
-        TestCaseLocal.team_id == TestRunItem.team_id,
-        TestCaseLocal.test_case_number == TestRunItem.test_case_number
-    )
+    .where(TestCaseLocal.team_id == TestRunItem.team_id, TestCaseLocal.test_case_number == TestRunItem.test_case_number)
     .correlate_except(TestCaseLocal)
     .scalar_subquery()
 )
 
 TestRunItem.steps = column_property(
     select(TestCaseLocal.steps)
-    .where(
-        TestCaseLocal.team_id == TestRunItem.team_id,
-        TestCaseLocal.test_case_number == TestRunItem.test_case_number
-    )
+    .where(TestCaseLocal.team_id == TestRunItem.team_id, TestCaseLocal.test_case_number == TestRunItem.test_case_number)
     .correlate_except(TestCaseLocal)
     .scalar_subquery()
 )
 
 TestRunItem.expected_result = column_property(
     select(TestCaseLocal.expected_result)
-    .where(
-        TestCaseLocal.team_id == TestRunItem.team_id,
-        TestCaseLocal.test_case_number == TestRunItem.test_case_number
-    )
+    .where(TestCaseLocal.team_id == TestRunItem.team_id, TestCaseLocal.test_case_number == TestRunItem.test_case_number)
     .correlate_except(TestCaseLocal)
     .scalar_subquery()
 )
@@ -644,34 +620,35 @@ TestRunItem.expected_result = column_property(
 
 class LarkUser(Base):
     """Lark 用戶信息表"""
+
     __tablename__ = "lark_users"
-    
+
     # 主鍵使用 Lark 用戶 ID
     user_id = Column(String(100), primary_key=True)
     open_id = Column(String(100), nullable=True, unique=True, index=True)
     union_id = Column(String(100), nullable=True, unique=True, index=True)
-    
+
     # 基本信息
     name = Column(String(255), nullable=True, index=True)
     en_name = Column(String(255), nullable=True)
     enterprise_email = Column(String(255), nullable=True, unique=True, index=True)
-    
+
     # 部門歸屬
     primary_department_id = Column(String(100), ForeignKey("lark_departments.department_id"), nullable=True, index=True)
     department_ids_json = Column(Text, nullable=True)  # JSON 存儲所有部門ID列表
-    
+
     # 職位信息
     description = Column(String(500), nullable=True)  # 職位描述
-    job_title = Column(String(255), nullable=True)    # 職稱
-    employee_type = Column(Integer, nullable=True, index=True)    # 員工類型（1=正式，6=實習等）
+    job_title = Column(String(255), nullable=True)  # 職稱
+    employee_type = Column(Integer, nullable=True, index=True)  # 員工類型（1=正式，6=實習等）
     employee_no = Column(String(100), nullable=True)  # 工號
-    
+
     # 聯絡信息
     city = Column(String(100), nullable=True)
     country = Column(String(100), nullable=True)
     work_station = Column(String(255), nullable=True)
     mobile_visible = Column(Boolean, default=True)
-    
+
     # 狀態信息（來自 Lark status 對象）
     is_activated = Column(Boolean, default=True, index=True)
     is_exited = Column(Boolean, default=False, index=True)
@@ -679,47 +656,46 @@ class LarkUser(Base):
     is_resigned = Column(Boolean, default=False)
     is_unjoin = Column(Boolean, default=False)
     is_tenant_manager = Column(Boolean, default=False)
-    
+
     # 頭像信息
-    avatar_240 = Column(String(500), nullable=True)   # 240x240 頭像 URL
-    avatar_640 = Column(String(500), nullable=True)   # 640x640 頭像 URL
-    avatar_origin = Column(String(500), nullable=True) # 原始頭像 URL
-    
+    avatar_240 = Column(String(500), nullable=True)  # 240x240 頭像 URL
+    avatar_640 = Column(String(500), nullable=True)  # 640x640 頭像 URL
+    avatar_origin = Column(String(500), nullable=True)  # 原始頭像 URL
+
     # 時間信息
     join_time = Column(Integer, nullable=True)  # Lark 入職時間戳
-    
+
     # 系統欄位
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     last_sync_at = Column(DateTime, nullable=True)
-    
+
     # 關聯關係
     primary_department = relationship("LarkDepartment", back_populates="users")
-    
+
     # 索引
-    __table_args__ = (
-        Index('ix_lark_user_status', 'is_activated', 'is_exited'),
-    )
+    __table_args__ = (Index("ix_lark_user_status", "is_activated", "is_exited"),)
 
 
 class SyncHistory(Base):
     """同步歷史記錄表"""
+
     __tablename__ = "sync_history"
-    
+
     id = Column(Integer, primary_key=True)
     team_id = Column(Integer, ForeignKey("teams.id"), nullable=False, index=True)
-    
+
     # 同步操作信息
     sync_type = Column(String(20), nullable=False, index=True)  # full, departments, users
     trigger_type = Column(String(20), nullable=False)  # manual, scheduled, api
     trigger_user = Column(String(255), nullable=True)  # 觸發用戶（手動同步時）
-    
+
     # 同步狀態
     status = Column(String(20), nullable=False, index=True)  # started, running, completed, failed
     start_time = Column(DateTime, nullable=False, index=True)
     end_time = Column(DateTime, nullable=True)
     duration_seconds = Column(Float, nullable=True)
-    
+
     # 同步結果統計
     departments_discovered = Column(Integer, default=0)
     departments_created = Column(Integer, default=0)
@@ -729,113 +705,144 @@ class SyncHistory(Base):
     users_updated = Column(Integer, default=0)
     users_duplicated = Column(Integer, default=0)
     api_calls = Column(Integer, default=0)
-    
+
     # 錯誤信息
     error_message = Column(Text, nullable=True)
     error_details_json = Column(Text, nullable=True)  # JSON 存儲詳細錯誤信息
-    
+
     # 同步結果詳情（JSON）
     result_summary_json = Column(Text, nullable=True)  # 完整結果摘要
     department_result_json = Column(Text, nullable=True)  # 部門同步結果
     user_result_json = Column(Text, nullable=True)  # 用戶同步結果
-    
+
     # 系統欄位
     created_at = Column(DateTime, default=datetime.utcnow)
-    
+
     # 關聯關係
     team = relationship("Team")
-    
+
     # 索引
+    __table_args__ = (Index("ix_sync_history_team_time", "team_id", "start_time"),)
+
+
+class ScheduledService(Base):
+    """可排程服務設定與執行狀態"""
+
+    __tablename__ = "scheduled_services"
     __table_args__ = (
-        Index('ix_sync_history_team_time', 'team_id', 'start_time'),
+        UniqueConstraint("service_key", name="uq_scheduled_services_service_key"),
+        Index("ix_scheduled_services_enabled_next_run", "enabled", "next_run_at"),
+        Index("ix_scheduled_services_is_running", "is_running"),
+        Index("ix_scheduled_services_last_run_status", "last_run_status"),
     )
+
+    id = Column(Integer, primary_key=True)
+    service_key = Column(String(100), nullable=False)
+    display_name = Column(String(120), nullable=False)
+    description = Column(Text, nullable=True)
+    schedule_type = Column(String(20), nullable=False, default="daily")
+    run_at_time = Column(String(5), nullable=True, comment="每日執行時間（HH:MM）")
+    enabled = Column(Boolean, nullable=False, default=False)
+    is_running = Column(Boolean, nullable=False, default=False)
+    last_run_status = Column(String(20), nullable=True)
+    last_run_message = Column(Text, nullable=True)
+    last_error = Column(Text, nullable=True)
+    last_run_started_at = Column(DateTime, nullable=True)
+    last_run_finished_at = Column(DateTime, nullable=True)
+    next_run_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
 
 # ===================== 認證系統相關表格 =====================
 
+
 class User(Base):
     """使用者表格（認證系統）"""
+
     __tablename__ = "users"
-    
+
     id = Column(Integer, primary_key=True)
     username = Column(String(50), unique=True, nullable=False, index=True)
     email = Column(String(255), unique=True, nullable=True, index=True)
     hashed_password = Column(String(255), nullable=False)
-    
+
     # Lark 關聯
     lark_user_id = Column(String(100), unique=True, nullable=True, index=True)
-    
+
     # 基本資訊
     full_name = Column(String(255), nullable=True)
     role = Column(Enum(UserRole), nullable=False, default=UserRole.USER, index=True)
-    
+
     # 狀態設定
     is_active = Column(Boolean, default=True, nullable=False, index=True)
     is_verified = Column(Boolean, default=False, nullable=False)
-    
+
     # 時間欄位
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
     last_login_at = Column(DateTime, nullable=True)
-    
+
     # 關聯關係
     team_permissions = relationship(
-        "UserTeamPermission", 
-        back_populates="user", 
+        "UserTeamPermission",
+        back_populates="user",
         cascade="all, delete-orphan",
-        foreign_keys="UserTeamPermission.user_id"
+        foreign_keys="UserTeamPermission.user_id",
     )
     active_sessions = relationship("ActiveSession", back_populates="user", cascade="all, delete-orphan")
-    
+
     # 索引
     __table_args__ = (
-        Index('ix_users_role_active', 'role', 'is_active'),
-        Index('ix_users_email_active', 'email', 'is_active'),
+        Index("ix_users_role_active", "role", "is_active"),
+        Index("ix_users_email_active", "email", "is_active"),
     )
 
 
 class UserTeamPermission(Base):
     """使用者團隊權限表格"""
+
     __tablename__ = "user_team_permissions"
-    
+
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     team_id = Column(Integer, ForeignKey("teams.id", ondelete="CASCADE"), nullable=False, index=True)
     permission = Column(Enum(PermissionType), nullable=False, index=True)
-    
+
     # 時間欄位
     granted_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     granted_by_id = Column(Integer, ForeignKey("users.id"), nullable=True)
-    
+
     # 關聯關係
     user = relationship("User", back_populates="team_permissions", foreign_keys=[user_id])
     team = relationship("Team")
     granted_by = relationship("User", foreign_keys=[granted_by_id])
-    
+
     # 唯一索引：同一使用者在同一團隊只能有一種權限
     __table_args__ = (
-        UniqueConstraint('user_id', 'team_id', name='uq_user_team_permission'),
-        Index('ix_user_team_perms_user', 'user_id'),
-        Index('ix_user_team_perms_team', 'team_id'),
-        Index('ix_user_team_perms_permission', 'permission'),
+        UniqueConstraint("user_id", "team_id", name="uq_user_team_permission"),
+        Index("ix_user_team_perms_user", "user_id"),
+        Index("ix_user_team_perms_team", "team_id"),
+        Index("ix_user_team_perms_permission", "permission"),
     )
 
 
 class ActiveSession(Base):
     """活躍会話表格（用於Token管理與撤銷）"""
+
     __tablename__ = "active_sessions"
-    
+
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    
+
     # JWT Token 資訊
     jti = Column(String(36), unique=True, nullable=False, index=True)  # JWT ID (UUID)
     token_type = Column(String(20), default="access", nullable=False)  # access, refresh
-    
+
     # 会話資訊
     ip_address = Column(String(45), nullable=True)  # 支持 IPv6
     user_agent = Column(String(500), nullable=True)
-    
+
     # 狀態與時間
     is_revoked = Column(Boolean, default=False, nullable=False, index=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
@@ -843,50 +850,52 @@ class ActiveSession(Base):
     last_used_at = Column(DateTime, nullable=True)
     revoked_at = Column(DateTime, nullable=True)
     revoked_reason = Column(String(100), nullable=True)  # logout, admin_revoke, expired, etc.
-    
+
     # 關聯關係
     user = relationship("User", back_populates="active_sessions")
-    
+
     # 索引
     __table_args__ = (
-        Index('ix_sessions_user_active', 'user_id', 'is_revoked'),
-        Index('ix_sessions_expires', 'expires_at'),
-        Index('ix_sessions_jti_active', 'jti', 'is_revoked'),
+        Index("ix_sessions_user_active", "user_id", "is_revoked"),
+        Index("ix_sessions_expires", "expires_at"),
+        Index("ix_sessions_jti_active", "jti", "is_revoked"),
     )
 
 
 class PasswordResetToken(Base):
     """密碼重設令牌表格"""
+
     __tablename__ = "password_reset_tokens"
-    
+
     id = Column(Integer, primary_key=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    
+
     # 令牌資訊
     token = Column(String(64), unique=True, nullable=False, index=True)  # 隨機產生的令牌
-    
+
     # 狀態與時間
     is_used = Column(Boolean, default=False, nullable=False, index=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     expires_at = Column(DateTime, nullable=False, index=True)
     used_at = Column(DateTime, nullable=True)
-    
+
     # 安全資訊
     ip_address = Column(String(45), nullable=True)
     user_agent = Column(String(500), nullable=True)
-    
+
     # 關聯關係
     user = relationship("User")
-    
+
     # 索引
     __table_args__ = (
-        Index('ix_reset_tokens_user', 'user_id', 'is_used'),
-        Index('ix_reset_tokens_expires', 'expires_at'),
+        Index("ix_reset_tokens_user", "user_id", "is_used"),
+        Index("ix_reset_tokens_expires", "expires_at"),
     )
 
 
 class MCPMachineCredential(Base):
     """MCP 機器對機器存取憑證"""
+
     __tablename__ = "mcp_machine_credentials"
     __table_args__ = (
         UniqueConstraint("name", name="uq_mcp_machine_credentials_name"),
@@ -921,26 +930,28 @@ logger = logging.getLogger(__name__)
 
 # --- Ad-hoc Test Run Models ---
 
+
 class AdHocRun(Base):
     """Ad-hoc 測試執行容器（相當於 Test Run Set，但專用於 Ad-hoc 模式）"""
+
     __tablename__ = "adhoc_runs"
 
     id = Column(Integer, primary_key=True)
     team_id = Column(Integer, ForeignKey("teams.id"), nullable=False, index=True)
-    
+
     name = Column(String(120), nullable=False)
     description = Column(Text, nullable=True)
     jira_ticket = Column(String(255), nullable=True)
     status = Column(Enum(TestRunStatus), default=TestRunStatus.ACTIVE, nullable=False)
-    
+
     # Enhanced Basic Settings (matching TestRunConfig)
     test_version = Column(String(50), nullable=True)
     test_environment = Column(String(100), nullable=True)
     build_number = Column(String(100), nullable=True)
-    
+
     related_tp_tickets_json = Column(Text, nullable=True, comment="相關 JIRA Tickets 票號 JSON 陣列")
     tp_tickets_search = Column(String(512), nullable=True, index=True, comment="JIRA Ticket 搜尋索引欄位")
-    
+
     notifications_enabled = Column(Boolean, default=False, nullable=False, comment="是否啟用通知")
     notify_chat_ids_json = Column(Text, nullable=True, comment="選擇的 Lark chat IDs（JSON 陣列）")
     notify_chat_names_snapshot = Column(Text, nullable=True, comment="群組名稱快照（JSON 陣列）")
@@ -956,14 +967,15 @@ class AdHocRun(Base):
 
 class AdHocRunSheet(Base):
     """Ad-hoc 測試執行的 Sheet（相當於 Excel 的分頁）"""
+
     __tablename__ = "adhoc_run_sheets"
 
     id = Column(Integer, primary_key=True)
     adhoc_run_id = Column(Integer, ForeignKey("adhoc_runs.id", ondelete="CASCADE"), nullable=False, index=True)
-    
+
     name = Column(String(100), nullable=False)
     sort_order = Column(Integer, default=0, nullable=False)
-    
+
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -974,16 +986,17 @@ class AdHocRunSheet(Base):
 
 class AdHocRunItem(Base):
     """Ad-hoc 測試執行項目（相當於 Test Run Item，但不需要關聯 Test Case）"""
+
     __tablename__ = "adhoc_run_items"
 
     id = Column(Integer, primary_key=True)
     sheet_id = Column(Integer, ForeignKey("adhoc_run_sheets.id", ondelete="CASCADE"), nullable=False, index=True)
-    
+
     # 排序
     row_index = Column(Integer, nullable=False, index=True)
 
     # 測試內容欄位 (比照 Test Run Item / Test Case)
-    test_case_number = Column(String(100), nullable=True) # 可以手動輸入或留空
+    test_case_number = Column(String(100), nullable=True)  # 可以手動輸入或留空
     title = Column(Text, nullable=True)
     priority = Column(Enum(Priority), default=Priority.MEDIUM)
     precondition = Column(Text, nullable=True)
@@ -997,11 +1010,11 @@ class AdHocRunItem(Base):
     test_result = Column(Enum(TestResultStatus), nullable=True)
     assignee_name = Column(String(255), nullable=True)
     executed_at = Column(DateTime, nullable=True)
-    
+
     # 附件與結果 (JSON)
-    attachments_json = Column(Text, nullable=True) # 一般附件
-    execution_results_json = Column(Text, nullable=True) # 執行結果證明 (截圖等)
-    meta_json = Column(Text, nullable=True) # 其他元數據 (如樣式、顏色等)
+    attachments_json = Column(Text, nullable=True)  # 一般附件
+    execution_results_json = Column(Text, nullable=True)  # 執行結果證明 (截圖等)
+    meta_json = Column(Text, nullable=True)  # 其他元數據 (如樣式、顏色等)
 
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
