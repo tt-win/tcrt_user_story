@@ -89,3 +89,5 @@ usm:
   debug_sql: false
 attachments:
   root_dir: ''  # 留空使用專案內 attachments 目錄
+reports:
+  root_dir: ''  # 留空使用專案內 generated_report 目錄

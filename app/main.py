@@ -12,12 +12,13 @@ from sqlalchemy.orm import Session
 app = FastAPI(
     title="Test Case Repository Web Tool",
     description="A web-based test case management system with Lark integration",
-    version="1.0.0"
+    version="1.0.0",
 )
 
 # 啟用 GZip 壓縮（預設對 >= 1KB 的回應進行壓縮）
 try:
     from starlette.middleware.gzip import GZipMiddleware
+
     # 注意：對於已壓縮格式（如 png/jpg/zip）壓縮收益有限；minimum_size 提高可避免浪費 CPU
     app.add_middleware(GZipMiddleware, minimum_size=1024)
 except Exception as _e:
@@ -35,29 +36,43 @@ logging.basicConfig(level=logging.INFO)
 # 初始化版本服務
 from app.services.version_service import get_version_service
 from app.audit import init_audit_database, cleanup_audit_database, audit_service
+
 version_service = get_version_service()
 logging.info(f"應用啟動，伺服器版本時間戳: {version_service.get_server_timestamp()}")
 
 # 設置靜態文件和模板路徑 - 必須在其他路由之前
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 BASE_DIR = Path.cwd()
 STATIC_DIR = BASE_DIR / "app" / "static"
 TEMPLATES_DIR = BASE_DIR / "app" / "templates"
-REPORT_DIR = BASE_DIR / "generated_report"
+DEFAULT_REPORT_DIR = PROJECT_ROOT / "generated_report"
+DEFAULT_ATTACHMENTS_DIR = PROJECT_ROOT / "attachments"
+
+try:
+    from app.config import settings
+
+    reports_cfg = settings.reports if getattr(settings, "reports", None) else None
+    REPORT_DIR = reports_cfg.resolve_root_dir(PROJECT_ROOT) if reports_cfg else DEFAULT_REPORT_DIR
+
+    attachments_cfg = settings.attachments if getattr(settings, "attachments", None) else None
+    ATTACHMENTS_DIR = (
+        Path(attachments_cfg.root_dir) if attachments_cfg and attachments_cfg.root_dir else DEFAULT_ATTACHMENTS_DIR
+    )
+except Exception:
+    REPORT_DIR = DEFAULT_REPORT_DIR
+    ATTACHMENTS_DIR = DEFAULT_ATTACHMENTS_DIR
+
 TMP_REPORT_DIR = REPORT_DIR / ".tmp"
+REPORT_DIR.mkdir(parents=True, exist_ok=True)
+TMP_REPORT_DIR.mkdir(parents=True, exist_ok=True)
+ATTACHMENTS_DIR.mkdir(parents=True, exist_ok=True)
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
-# 對外提供報告的靜態目錄
+# 對外提供報告的靜態目錄（HTML generated reports）
+# 優先使用 config.yaml 的 reports.root_dir；若未設定則回退至專案內的 generated_report 目錄
 app.mount("/reports", StaticFiles(directory=str(REPORT_DIR), html=True), name="reports")
 # 對外提供附件的靜態目錄（本地上傳檔案）
 # 優先使用 config.yaml 的 attachments.root_dir；若未設定則回退至專案內的 attachments 目錄
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-try:
-    from app.config import settings
-    cfg_root = settings.attachments.root_dir if getattr(settings, 'attachments', None) else ''
-    ATTACHMENTS_DIR = Path(cfg_root) if cfg_root else (PROJECT_ROOT / "attachments")
-except Exception:
-    ATTACHMENTS_DIR = PROJECT_ROOT / "attachments"
-ATTACHMENTS_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/attachments", StaticFiles(directory=str(ATTACHMENTS_DIR), html=False), name="attachments")
 
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -77,32 +92,39 @@ app.include_router(usm_import_router)
 app.include_router(llm_context_router, prefix="/api")
 app.include_router(adhoc_router, prefix="/api")
 
+
 # 前端頁面路由
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
+
 @app.get("/team-management", response_class=HTMLResponse)
 async def team_management(request: Request):
     return templates.TemplateResponse("team_management.html", {"request": request})
+
 
 @app.get("/adhoc-runs/{run_id}/execution", response_class=HTMLResponse)
 async def adhoc_run_execution(request: Request, run_id: int):
     return templates.TemplateResponse("adhoc_test_run_execution.html", {"request": request})
 
+
 @app.get("/audit-logs", response_class=HTMLResponse)
 async def audit_logs(request: Request):
     return templates.TemplateResponse("audit_logs.html", {"request": request})
+
 
 @app.get("/test-case-sets", response_class=HTMLResponse)
 async def test_case_set_list(request: Request):
     """Test Case Set 選擇頁面"""
     from app.config import settings
+
     ai_helper_enabled = settings.ai.jira_testcase_helper.enable
     return templates.TemplateResponse(
         "test_case_set_list.html",
         {"request": request, "ai_helper_enabled": ai_helper_enabled},
     )
+
 
 @app.get("/test-case-management", response_class=HTMLResponse)
 async def test_case_management(
@@ -120,6 +142,7 @@ async def test_case_management(
     if resolved_set_id is None and tc and team_id:
         normalized_tc = tc.strip()
         if normalized_tc:
+
             def _resolve_set(sync_db: Session):
                 return (
                     sync_db.query(TestCaseLocal)
@@ -133,15 +156,20 @@ async def test_case_management(
                 resolved_set_id = test_case.test_case_set_id
 
     # 如果仍然無法取得 set_id，維持原本導向邏輯
-    minimal_flag = request.query_params.get("minimal") in ("1", "true") or request.query_params.get("editor") in ("1", "true")
+    minimal_flag = request.query_params.get("minimal") in ("1", "true") or request.query_params.get("editor") in (
+        "1",
+        "true",
+    )
     allow_without_set = (minimal_flag and bool(tc)) or helper_flag
     if resolved_set_id is None and not allow_without_set:
         from fastapi.responses import RedirectResponse
+
         return RedirectResponse(url="/test-case-sets", status_code=303)
 
     # 若已解析出 set_id 但 URL 未帶，補回 set_id 以確保前端能正確初始化區段 UI
     if resolved_set_id is not None and set_id is None and not minimal_flag and not helper_flag:
         from fastapi.responses import RedirectResponse
+
         params = dict(request.query_params)
         params["set_id"] = str(resolved_set_id)
         url = request.url.replace_query_params(**params)
@@ -152,21 +180,26 @@ async def test_case_management(
         {"request": request, "set_id": resolved_set_id, "helper_mode": helper_flag},
     )
 
+
 @app.get("/test-run-management", response_class=HTMLResponse)
 async def test_run_management(request: Request):
     return templates.TemplateResponse("test_run_management.html", {"request": request})
+
 
 @app.get("/test-run-execution", response_class=HTMLResponse)
 async def test_run_execution(request: Request):
     return templates.TemplateResponse("test_run_execution.html", {"request": request})
 
+
 @app.get("/test-case-reference", response_class=HTMLResponse)
 async def test_case_reference(request: Request):
     return templates.TemplateResponse("test_case_reference.html", {"request": request})
 
+
 @app.get("/login", response_class=HTMLResponse)
 async def login(request: Request):
     return templates.TemplateResponse("login.html", {"request": request})
+
 
 @app.get("/setup", response_class=HTMLResponse)
 async def setup(request: Request):
@@ -185,10 +218,12 @@ async def profile(request: Request):
     """個人資料頁面"""
     return templates.TemplateResponse("profile.html", {"request": request})
 
+
 @app.get("/team-statistics", response_class=HTMLResponse)
 async def team_statistics(request: Request):
     """團隊數據統計頁面"""
     return templates.TemplateResponse("team_statistics.html", {"request": request})
+
 
 @app.get("/user-story-map/{team_id}", response_class=HTMLResponse)
 @app.get("/user-story-map/{team_id}/{map_id}", response_class=HTMLResponse)
@@ -199,14 +234,17 @@ async def user_story_map(request: Request, team_id: int, map_id: int = None):
         context["map_id"] = map_id
     return templates.TemplateResponse("user_story_map.html", context)
 
+
 @app.get("/user-story-map-popup", response_class=HTMLResponse)
 async def user_story_map_popup(request: Request):
     """User Story Map 彈出視圖 - 用於外部節點"""
     return templates.TemplateResponse("user_story_map_popup.html", {"request": request})
 
+
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
+
 
 @app.on_event("startup")
 async def startup_event():
@@ -214,7 +252,8 @@ async def startup_event():
     try:
         try:
             from app.config import settings
-            jira_ca_path = settings.jira.ca_cert_path if getattr(settings, 'jira', None) else ''
+
+            jira_ca_path = settings.jira.ca_cert_path if getattr(settings, "jira", None) else ""
             if jira_ca_path:
                 expanded_path = os.path.expanduser(jira_ca_path)
                 if os.path.isfile(expanded_path):
@@ -236,22 +275,26 @@ async def startup_event():
 
         # 初始化 User Story Map 資料庫
         from app.models.user_story_map_db import init_usm_db
+
         await init_usm_db()
         logging.info("User Story Map 資料庫初始化完成")
 
         # 初始化密碼加密服務
         from app.auth.password_encryption import password_encryption_service
+
         password_encryption_service.initialize()
         logging.info("密碼加密服務初始化完成")
 
         # 啟動定時任務調度器
         from app.services.scheduler import task_scheduler
+
         task_scheduler.start()
         logging.info("定時任務調度器已啟動")
 
         # 初始化 Qdrant Async Client（若連線失敗不阻止服務啟動，後續請求會自動重試）
         try:
             from app.services.qdrant_client import get_qdrant_client
+
             qdrant_client = get_qdrant_client()
             if await qdrant_client.health_check():
                 logging.info("Qdrant client 初始化與健康檢查成功")
@@ -262,12 +305,14 @@ async def startup_event():
     except Exception as e:
         logging.error(f"啟動服務失敗: {e}")
 
+
 @app.on_event("shutdown")
 async def shutdown_event():
     """應用程式關閉事件"""
     try:
         # 停止定時任務調度器
         from app.services.scheduler import task_scheduler
+
         task_scheduler.stop()
         logging.info("定時任務調度器已停止")
     except Exception as e:
@@ -275,6 +320,7 @@ async def shutdown_event():
 
     try:
         from app.services.qdrant_client import close_qdrant_client
+
         await close_qdrant_client()
     except Exception as e:
         logging.error(f"關閉 Qdrant client 失敗: {e}")
@@ -285,6 +331,8 @@ async def shutdown_event():
     except Exception as e:
         logging.error(f"關閉審計資料庫失敗: {e}")
 
+
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=9999)

@@ -48,11 +48,7 @@ async def log_test_run_action(
     details: Optional[Dict[str, Any]] = None,
 ) -> None:
     try:
-        role_value = (
-            current_user.role.value
-            if hasattr(current_user.role, "value")
-            else str(current_user.role)
-        )
+        role_value = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
         await audit_service.log_action(
             user_id=current_user.id,
             username=current_user.username,
@@ -85,9 +81,7 @@ async def get_lark_client_for_test_run(
         # 取得團隊
         team = sync_db.query(TeamDB).filter(TeamDB.id == team_id).first()
         if not team:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail=f"找不到團隊 ID {team_id}"
-            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"找不到團隊 ID {team_id}")
 
         # 取得測試執行配置
         config = (
@@ -105,9 +99,7 @@ async def get_lark_client_for_test_run(
     team, config = await main_boundary.run_sync_read(_load)
 
     # 建立 Lark Client
-    lark_client = LarkClient(
-        app_id=settings.lark.app_id, app_secret=settings.lark.app_secret
-    )
+    lark_client = LarkClient(app_id=settings.lark.app_id, app_secret=settings.lark.app_secret)
 
     if not lark_client.set_wiki_token(team.wiki_token):
         raise HTTPException(
@@ -125,38 +117,24 @@ def filter_test_runs(records: List[dict], **filters) -> List[dict]:
     # 搜尋標題
     if filters.get("search"):
         search_term = filters["search"].lower()
-        filtered_records = [
-            r
-            for r in filtered_records
-            if search_term in r.get("fields", {}).get("Title", "").lower()
-        ]
+        filtered_records = [r for r in filtered_records if search_term in r.get("fields", {}).get("Title", "").lower()]
 
     # 測試案例編號過濾
     if filters.get("test_case_number"):
         case_number = filters["test_case_number"]
         filtered_records = [
-            r
-            for r in filtered_records
-            if case_number in str(r.get("fields", {}).get("Test Case Number", ""))
+            r for r in filtered_records if case_number in str(r.get("fields", {}).get("Test Case Number", ""))
         ]
 
     # 優先級過濾
     if filters.get("priority_filter"):
         priority_filter = filters["priority_filter"]
-        filtered_records = [
-            r
-            for r in filtered_records
-            if r.get("fields", {}).get("Priority") == priority_filter
-        ]
+        filtered_records = [r for r in filtered_records if r.get("fields", {}).get("Priority") == priority_filter]
 
     # 測試結果過濾
     if filters.get("test_result_filter"):
         result_filter = filters["test_result_filter"]
-        filtered_records = [
-            r
-            for r in filtered_records
-            if r.get("fields", {}).get("Test Result") == result_filter
-        ]
+        filtered_records = [r for r in filtered_records if r.get("fields", {}).get("Test Result") == result_filter]
 
     # 執行人過濾
     if filters.get("assignee_filter"):
@@ -172,26 +150,16 @@ def filter_test_runs(records: List[dict], **filters) -> List[dict]:
 
     # 只顯示已執行的項目
     if filters.get("executed_only") is True:
-        filtered_records = [
-            r
-            for r in filtered_records
-            if r.get("fields", {}).get("Test Result") is not None
-        ]
+        filtered_records = [r for r in filtered_records if r.get("fields", {}).get("Test Result") is not None]
 
     # 只顯示有執行結果附件的項目
     if filters.get("has_execution_results") is True:
-        filtered_records = [
-            r
-            for r in filtered_records
-            if r.get("fields", {}).get("Execution Result", [])
-        ]
+        filtered_records = [r for r in filtered_records if r.get("fields", {}).get("Execution Result", [])]
 
     return filtered_records
 
 
-def sort_test_runs(
-    records: List[dict], sort_by: str = "created_at", sort_order: str = "desc"
-) -> List[dict]:
+def sort_test_runs(records: List[dict], sort_by: str = "created_at", sort_order: str = "desc") -> List[dict]:
     """排序測試執行記錄"""
     field_mapping = {
         "title": "Title",
@@ -211,11 +179,7 @@ def sort_test_runs(
         else:
             field_value = record.get("fields", {}).get(lark_field, "")
             if isinstance(field_value, list) and field_value:
-                return (
-                    str(field_value[0].get("text", ""))
-                    if isinstance(field_value[0], dict)
-                    else str(field_value[0])
-                )
+                return str(field_value[0].get("text", "")) if isinstance(field_value[0], dict) else str(field_value[0])
             return str(field_value)
 
     return sorted(records, key=get_sort_value, reverse=reverse)
@@ -257,9 +221,7 @@ async def get_test_runs(
                 detail="無權限存取此團隊的測試執行記錄",
             )
 
-    lark_client, team, config = await get_lark_client_for_test_run(
-        team_id, config_id, main_boundary=main_boundary
-    )
+    lark_client, team, config = await get_lark_client_for_test_run(team_id, config_id, main_boundary=main_boundary)
 
     try:
         # 從 Lark 取得所有記錄
@@ -300,27 +262,11 @@ async def get_test_runs(
                     title=fields.get("Title", ""),
                     priority=fields.get("Priority", "Medium"),
                     test_result=fields.get("Test Result"),
-                    assignee_name=(
-                        fields.get("Assignee", [{}])[0].get("name")
-                        if fields.get("Assignee")
-                        else None
-                    ),
-                    attachment_count=(
-                        len(attachments) if isinstance(attachments, list) else 0
-                    ),
-                    execution_result_count=(
-                        len(execution_results)
-                        if isinstance(execution_results, list)
-                        else 0
-                    ),
-                    total_attachment_count=(
-                        len(attachments) if isinstance(attachments, list) else 0
-                    )
-                    + (
-                        len(execution_results)
-                        if isinstance(execution_results, list)
-                        else 0
-                    ),
+                    assignee_name=(fields.get("Assignee", [{}])[0].get("name") if fields.get("Assignee") else None),
+                    attachment_count=(len(attachments) if isinstance(attachments, list) else 0),
+                    execution_result_count=(len(execution_results) if isinstance(execution_results, list) else 0),
+                    total_attachment_count=(len(attachments) if isinstance(attachments, list) else 0)
+                    + (len(execution_results) if isinstance(execution_results, list) else 0),
                     executed_at=None,  # 可以從記錄中解析時間
                     created_at=(
                         datetime.fromtimestamp(record.get("created_time", 0) / 1000)
@@ -461,9 +407,7 @@ async def get_test_run(
         )
 
 
-@router.post(
-    "/{config_id}/records", response_model=TestRun, status_code=status.HTTP_201_CREATED
-)
+@router.post("/{config_id}/records", response_model=TestRun, status_code=status.HTTP_201_CREATED)
 async def create_test_run(
     team_id: int,
     config_id: int,
@@ -637,9 +581,7 @@ async def update_test_run(
         # 處理執行人員更新
         if test_run_update.assignee_email is not None:
             if test_run_update.assignee_email:  # 非空值
-                user_info = lark_client.get_user_by_email(
-                    test_run_update.assignee_email
-                )
+                user_info = lark_client.get_user_by_email(test_run_update.assignee_email)
                 if user_info:
                     from app.models.lark_types import LarkUser
 
@@ -708,9 +650,7 @@ async def update_test_run(
         )
 
 
-@router.delete(
-    "/{config_id}/records/{record_id}", status_code=status.HTTP_204_NO_CONTENT
-)
+@router.delete("/{config_id}/records/{record_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_test_run(
     team_id: int,
     config_id: int,
@@ -780,43 +720,27 @@ async def delete_test_run(
                 if test_run_item and test_run_item.upload_history_json:
                     upload_history = _json.loads(test_run_item.upload_history_json)
                     file_tokens_to_remove = [
-                        u.get("file_token")
-                        for u in upload_history.get("uploads", [])
-                        if u.get("file_token")
+                        u.get("file_token") for u in upload_history.get("uploads", []) if u.get("file_token")
                     ]
 
                     if file_tokens_to_remove:
                         # 取得 Test Case 記錄，找出當前的測試結果檔案
-                        test_case_records = lark_client.get_all_records(
-                            team.test_case_table_id
-                        )
+                        test_case_records = lark_client.get_all_records(team.test_case_table_id)
                         target_tc = None
                         for r in test_case_records:
                             rf = r.get("fields", {})
-                            if (
-                                rf.get(TestCase.FIELD_IDS["test_case_number"])
-                                == test_case_number
-                            ):
+                            if rf.get(TestCase.FIELD_IDS["test_case_number"]) == test_case_number:
                                 target_tc = r
                                 break
 
                         if target_tc:
                             existing_attachments = (
-                                target_tc.get("fields", {}).get(
-                                    TestCase.FIELD_IDS["test_results_files"], []
-                                )
-                                or []
+                                target_tc.get("fields", {}).get(TestCase.FIELD_IDS["test_results_files"], []) or []
                             )
                             existing_tokens = [
-                                att.get("file_token")
-                                for att in existing_attachments
-                                if att and att.get("file_token")
+                                att.get("file_token") for att in existing_attachments if att and att.get("file_token")
                             ]
-                            remaining_tokens = [
-                                t
-                                for t in existing_tokens
-                                if t not in file_tokens_to_remove
-                            ]
+                            remaining_tokens = [t for t in existing_tokens if t not in file_tokens_to_remove]
 
                             # 更新 Test Case 的測試結果檔案欄位（移除本次 Test Run 上傳的檔案）
                             lark_client.update_record_attachment(
@@ -848,9 +772,7 @@ async def delete_test_run(
             # 清理失敗不應阻止主要刪除流程，記錄警告即可
             import logging as _logging
 
-            _logging.getLogger(__name__).warning(
-                f"刪除 Test Run 前清理測試結果檔案失敗: {cleanup_err}"
-            )
+            _logging.getLogger(__name__).warning(f"刪除 Test Run 前清理測試結果檔案失敗: {cleanup_err}")
 
         # 執行刪除
         success = lark_client.delete_record(config.table_id, record_id)
@@ -890,9 +812,7 @@ async def delete_test_run(
 
 
 @router.get("/{config_id}/statistics", response_model=TestRunStatistics)
-async def get_test_run_statistics(
-    team_id: int, config_id: int, db: AsyncSession = Depends(get_db)
-):
+async def get_test_run_statistics(team_id: int, config_id: int, db: AsyncSession = Depends(get_db)):
     """取得測試執行統計資訊"""
     lark_client, team, config = await get_lark_client_for_test_run(team_id, config_id, db)
 
@@ -975,17 +895,17 @@ async def batch_update_test_results(
             try:
                 # 更新 Lark 記錄
                 lark_fields = {"Test Result": test_result}
-                success = lark_client.update_record(
-                    config.table_id, record_id, lark_fields
-                )
+                success = lark_client.update_record(config.table_id, record_id, lark_fields)
 
                 if success:
                     success_count += 1
                     # 記錄成功更新的項目
-                    success_items.append({
-                        "record_id": record_id,
-                        "test_result": test_result,
-                    })
+                    success_items.append(
+                        {
+                            "record_id": record_id,
+                            "test_result": test_result,
+                        }
+                    )
                 else:
                     error_messages.append(f"記錄 {record_id} 更新失敗")
             except Exception as e:
@@ -1046,9 +966,7 @@ async def generate_html_report(
             # 驗證團隊和配置存在（不需要 Lark API 驗證）
             team = sync_db.query(TeamDB).filter(TeamDB.id == team_id).first()
             if not team:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND, detail=f"找不到團隊 ID {team_id}"
-                )
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"找不到團隊 ID {team_id}")
 
             config = (
                 sync_db.query(TestRunConfigDB)
@@ -1095,13 +1013,12 @@ async def get_html_report_status(
     main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """查詢 HTML 報告是否已存在，存在則回傳完整連結"""
+
     # 驗證團隊與配置存在
     def _verify(sync_db: Session) -> None:
         team = sync_db.query(TeamDB).filter(TeamDB.id == team_id).first()
         if not team:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail=f"找不到團隊 ID {team_id}"
-            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"找不到團隊 ID {team_id}")
         config = (
             sync_db.query(TestRunConfigDB)
             .filter(TestRunConfigDB.id == config_id, TestRunConfigDB.team_id == team_id)
@@ -1117,7 +1034,8 @@ async def get_html_report_status(
 
     from ..services.html_report_service import HTMLReportService
 
-    report_path = HTMLReportService(db_session=db).report_root / f"team-{team_id}-config-{config_id}.html"
+    service = HTMLReportService(db_session=db)
+    report_path = service.report_root / f"team-{team_id}-config-{config_id}.html"
     if report_path.exists():
         base = str(request.base_url).rstrip("/")
         url = f"{base}/reports/team-{team_id}-config-{config_id}.html"

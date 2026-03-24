@@ -1,5 +1,6 @@
 import yaml
 import os
+from pathlib import Path
 from typing import Optional, Dict, Any, List
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -7,20 +8,24 @@ from dotenv import load_dotenv
 # 載入 .env 檔案（如果存在）
 load_dotenv()
 
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
 class LarkConfig(BaseModel):
     app_id: str = ""
     app_secret: str = ""
-    
+
     @classmethod
-    def from_env(cls, fallback: 'LarkConfig' = None) -> 'LarkConfig':
+    def from_env(cls, fallback: "LarkConfig" = None) -> "LarkConfig":
         """從環境變數載入設定，如果環境變數為空則使用 fallback"""
-        env_app_id = os.getenv('LARK_APP_ID')
-        env_app_secret = os.getenv('LARK_APP_SECRET')
-        
+        env_app_id = os.getenv("LARK_APP_ID")
+        env_app_secret = os.getenv("LARK_APP_SECRET")
+
         return cls(
-            app_id=env_app_id if env_app_id else (fallback.app_id if fallback else ''),
-            app_secret=env_app_secret if env_app_secret else (fallback.app_secret if fallback else '')
+            app_id=env_app_id if env_app_id else (fallback.app_id if fallback else ""),
+            app_secret=env_app_secret if env_app_secret else (fallback.app_secret if fallback else ""),
         )
+
 
 class JiraConfig(BaseModel):
     server_url: str = ""
@@ -28,13 +33,14 @@ class JiraConfig(BaseModel):
     api_token: str = ""
     ca_cert_path: str = ""
 
+
 class OpenRouterConfig(BaseModel):
     api_key: str = ""
 
     @classmethod
-    def from_env(cls, fallback: 'OpenRouterConfig' = None) -> 'OpenRouterConfig':
+    def from_env(cls, fallback: "OpenRouterConfig" = None) -> "OpenRouterConfig":
         return cls(
-            api_key=fallback.api_key if fallback else '',
+            api_key=fallback.api_key if fallback else "",
         )
 
 
@@ -92,6 +98,7 @@ class AIConfig(BaseModel):
     ai_assist: AIAssistConfig = AIAssistConfig()
     jira_testcase_helper: JiraTestCaseHelperConfig = JiraTestCaseHelperConfig()
 
+
 class QdrantWeightsConfig(BaseModel):
     test_cases: float = 0.7
     usm_nodes: float = 0.3
@@ -121,58 +128,49 @@ class QdrantConfig(BaseModel):
     limit: QdrantLimitConfig = QdrantLimitConfig()
 
     @classmethod
-    def from_env(cls, fallback: 'QdrantConfig' = None) -> 'QdrantConfig':
-        fallback_jira_collection = (
-            fallback.collection_jira_referances if fallback else 'jira_references'
-        )
+    def from_env(cls, fallback: "QdrantConfig" = None) -> "QdrantConfig":
+        fallback_jira_collection = fallback.collection_jira_referances if fallback else "jira_references"
         jira_collection = os.getenv(
-            'QDRANT_COLLECTION_JIRA_REFERENCES',
-            os.getenv('QDRANT_COLLECTION_JIRA_REFERANCES', fallback_jira_collection),
+            "QDRANT_COLLECTION_JIRA_REFERENCES",
+            os.getenv("QDRANT_COLLECTION_JIRA_REFERANCES", fallback_jira_collection),
         )
-        if str(jira_collection or '').strip() == 'jira_referances':
-            jira_collection = 'jira_references'
+        if str(jira_collection or "").strip() == "jira_referances":
+            jira_collection = "jira_references"
 
         return cls(
-            url=os.getenv('QDRANT_URL', fallback.url if fallback else 'http://localhost:6333'),
-            api_key=os.getenv('QDRANT_API_KEY', fallback.api_key if fallback else ''),
-            timeout=int(os.getenv('QDRANT_TIMEOUT', str(fallback.timeout if fallback else 30))),
-            prefer_grpc=os.getenv('QDRANT_PREFER_GRPC', str(fallback.prefer_grpc if fallback else False)).lower() == 'true',
-            pool_size=int(os.getenv('QDRANT_POOL_SIZE', str(fallback.pool_size if fallback else 32))),
+            url=os.getenv("QDRANT_URL", fallback.url if fallback else "http://localhost:6333"),
+            api_key=os.getenv("QDRANT_API_KEY", fallback.api_key if fallback else ""),
+            timeout=int(os.getenv("QDRANT_TIMEOUT", str(fallback.timeout if fallback else 30))),
+            prefer_grpc=os.getenv("QDRANT_PREFER_GRPC", str(fallback.prefer_grpc if fallback else False)).lower()
+            == "true",
+            pool_size=int(os.getenv("QDRANT_POOL_SIZE", str(fallback.pool_size if fallback else 32))),
             max_concurrent_requests=int(
-                os.getenv(
-                    'QDRANT_MAX_CONCURRENT_REQUESTS',
-                    str(fallback.max_concurrent_requests if fallback else 32)
-                )
+                os.getenv("QDRANT_MAX_CONCURRENT_REQUESTS", str(fallback.max_concurrent_requests if fallback else 32))
             ),
-            max_retries=int(os.getenv('QDRANT_MAX_RETRIES', str(fallback.max_retries if fallback else 3))),
+            max_retries=int(os.getenv("QDRANT_MAX_RETRIES", str(fallback.max_retries if fallback else 3))),
             retry_backoff_seconds=float(
-                os.getenv(
-                    'QDRANT_RETRY_BACKOFF_SECONDS',
-                    str(fallback.retry_backoff_seconds if fallback else 0.5)
-                )
+                os.getenv("QDRANT_RETRY_BACKOFF_SECONDS", str(fallback.retry_backoff_seconds if fallback else 0.5))
             ),
             retry_backoff_max_seconds=float(
                 os.getenv(
-                    'QDRANT_RETRY_BACKOFF_MAX_SECONDS',
-                    str(fallback.retry_backoff_max_seconds if fallback else 5.0)
+                    "QDRANT_RETRY_BACKOFF_MAX_SECONDS", str(fallback.retry_backoff_max_seconds if fallback else 5.0)
                 )
             ),
             check_compatibility=os.getenv(
-                'QDRANT_CHECK_COMPATIBILITY',
-                str(fallback.check_compatibility if fallback else True)
-            ).lower() == 'true',
+                "QDRANT_CHECK_COMPATIBILITY", str(fallback.check_compatibility if fallback else True)
+            ).lower()
+            == "true",
             collection_jira_referances=jira_collection,
             collection_test_cases=os.getenv(
-                'QDRANT_COLLECTION_TEST_CASES',
-                fallback.collection_test_cases if fallback else 'test_cases'
+                "QDRANT_COLLECTION_TEST_CASES", fallback.collection_test_cases if fallback else "test_cases"
             ),
             collection_usm_nodes=os.getenv(
-                'QDRANT_COLLECTION_USM_NODES',
-                fallback.collection_usm_nodes if fallback else 'usm_nodes'
+                "QDRANT_COLLECTION_USM_NODES", fallback.collection_usm_nodes if fallback else "usm_nodes"
             ),
             weights=fallback.weights if fallback else QdrantWeightsConfig(),
             limit=fallback.limit if fallback else QdrantLimitConfig(),
         )
+
 
 class AppConfig(BaseModel):
     debug: bool = False
@@ -191,7 +189,7 @@ class AppConfig(BaseModel):
         3. 自動構建：http://localhost:{port}
         """
         # 1. 檢查環境變數（最高優先級）
-        env_base_url = os.getenv('APP_BASE_URL')
+        env_base_url = os.getenv("APP_BASE_URL")
         if env_base_url:
             return env_base_url
 
@@ -204,19 +202,28 @@ class AppConfig(BaseModel):
         return f"http://localhost:{self.port}"
 
     @classmethod
-    def from_env(cls, fallback: 'AppConfig' = None) -> 'AppConfig':
+    def from_env(cls, fallback: "AppConfig" = None) -> "AppConfig":
         """從環境變數載入設定，如果環境變數為空則使用 fallback"""
         return cls(
-            debug=os.getenv('DEBUG', str(fallback.debug).lower() if fallback else 'false').lower() == 'true',
-            host=os.getenv('HOST', fallback.host if fallback else '0.0.0.0'),
-            port=int(os.getenv('PORT', str(fallback.port) if fallback else '9999')),
-            database_url=os.getenv('DATABASE_URL', fallback.database_url if fallback else 'sqlite:///./test_case_repo.db'),
-            base_url=getattr(fallback, 'base_url', None) if fallback else None,  # 不在這裡硬設定，使用 get_base_url() 方法
-            lark_dry_run=os.getenv('LARK_DRY_RUN', str(getattr(fallback, 'lark_dry_run', False)).lower() if fallback else 'false').lower() == 'true'
+            debug=os.getenv("DEBUG", str(fallback.debug).lower() if fallback else "false").lower() == "true",
+            host=os.getenv("HOST", fallback.host if fallback else "0.0.0.0"),
+            port=int(os.getenv("PORT", str(fallback.port) if fallback else "9999")),
+            database_url=os.getenv(
+                "DATABASE_URL", fallback.database_url if fallback else "sqlite:///./test_case_repo.db"
+            ),
+            base_url=getattr(fallback, "base_url", None)
+            if fallback
+            else None,  # 不在這裡硬設定，使用 get_base_url() 方法
+            lark_dry_run=os.getenv(
+                "LARK_DRY_RUN", str(getattr(fallback, "lark_dry_run", False)).lower() if fallback else "false"
+            ).lower()
+            == "true",
         )
+
 
 class AuthConfig(BaseModel):
     """認證系統設定"""
+
     enable_auth: bool = True
     jwt_secret_key: str = ""
     jwt_expire_days: int = 7
@@ -224,72 +231,97 @@ class AuthConfig(BaseModel):
     session_cleanup_days: int = 30
     # 以角色為唯一權限來源，預設停用團隊權限機制
     use_team_permissions: bool = False
-    
+
     @classmethod
-    def from_env(cls, fallback: 'AuthConfig' = None) -> 'AuthConfig':
+    def from_env(cls, fallback: "AuthConfig" = None) -> "AuthConfig":
         """從環境變數載入認證設定"""
         # JWT_SECRET_KEY 必須來自環境變數
-        jwt_secret = os.getenv('JWT_SECRET_KEY')
+        jwt_secret = os.getenv("JWT_SECRET_KEY")
         if not jwt_secret:
             # 如果沒有環境變數，使用 fallback，但在生產環境會有警告
-            jwt_secret = fallback.jwt_secret_key if fallback else ''
-            
+            jwt_secret = fallback.jwt_secret_key if fallback else ""
+
         return cls(
-            enable_auth=os.getenv('ENABLE_AUTH', str(fallback.enable_auth if fallback else True)).lower() == 'true',
+            enable_auth=os.getenv("ENABLE_AUTH", str(fallback.enable_auth if fallback else True)).lower() == "true",
             jwt_secret_key=jwt_secret,
-            jwt_expire_days=int(os.getenv('JWT_EXPIRE_DAYS', str(fallback.jwt_expire_days if fallback else 7))),
-            password_reset_expire_hours=int(os.getenv('PASSWORD_RESET_EXPIRE_HOURS', str(fallback.password_reset_expire_hours if fallback else 24))),
-            session_cleanup_days=int(os.getenv('SESSION_CLEANUP_DAYS', str(fallback.session_cleanup_days if fallback else 30))),
-            use_team_permissions=False
+            jwt_expire_days=int(os.getenv("JWT_EXPIRE_DAYS", str(fallback.jwt_expire_days if fallback else 7))),
+            password_reset_expire_hours=int(
+                os.getenv("PASSWORD_RESET_EXPIRE_HOURS", str(fallback.password_reset_expire_hours if fallback else 24))
+            ),
+            session_cleanup_days=int(
+                os.getenv("SESSION_CLEANUP_DAYS", str(fallback.session_cleanup_days if fallback else 30))
+            ),
+            use_team_permissions=False,
         )
+
 
 class AuditConfig(BaseModel):
     """審計系統設定"""
+
     enabled: bool = True
     database_url: str = "sqlite:///./audit.db"
     batch_size: int = 100
     cleanup_days: int = 365
     max_detail_size: int = 10240
-    excluded_fields: list = ['password', 'token', 'secret', 'key']
+    excluded_fields: list = ["password", "token", "secret", "key"]
     debug_sql: bool = False
-    
+
     @classmethod
-    def from_env(cls, fallback: 'AuditConfig' = None) -> 'AuditConfig':
+    def from_env(cls, fallback: "AuditConfig" = None) -> "AuditConfig":
         """從環境變數載入審計設定"""
         return cls(
-            enabled=os.getenv('ENABLE_AUDIT', str(fallback.enabled if fallback else True)).lower() == 'true',
-            database_url=os.getenv('AUDIT_DATABASE_URL', fallback.database_url if fallback else 'sqlite:///./audit.db'),
-            batch_size=int(os.getenv('AUDIT_BATCH_SIZE', str(fallback.batch_size if fallback else 100))),
-            cleanup_days=int(os.getenv('AUDIT_CLEANUP_DAYS', str(fallback.cleanup_days if fallback else 365))),
-            max_detail_size=int(os.getenv('AUDIT_MAX_DETAIL_SIZE', str(fallback.max_detail_size if fallback else 10240))),
-            excluded_fields=fallback.excluded_fields if fallback else ['password', 'token', 'secret', 'key'],
-            debug_sql=os.getenv('AUDIT_DEBUG_SQL', str(fallback.debug_sql if fallback else False)).lower() == 'true'
+            enabled=os.getenv("ENABLE_AUDIT", str(fallback.enabled if fallback else True)).lower() == "true",
+            database_url=os.getenv("AUDIT_DATABASE_URL", fallback.database_url if fallback else "sqlite:///./audit.db"),
+            batch_size=int(os.getenv("AUDIT_BATCH_SIZE", str(fallback.batch_size if fallback else 100))),
+            cleanup_days=int(os.getenv("AUDIT_CLEANUP_DAYS", str(fallback.cleanup_days if fallback else 365))),
+            max_detail_size=int(
+                os.getenv("AUDIT_MAX_DETAIL_SIZE", str(fallback.max_detail_size if fallback else 10240))
+            ),
+            excluded_fields=fallback.excluded_fields if fallback else ["password", "token", "secret", "key"],
+            debug_sql=os.getenv("AUDIT_DEBUG_SQL", str(fallback.debug_sql if fallback else False)).lower() == "true",
         )
 
 
 class UsmConfig(BaseModel):
     """User Story Map 資料庫設定"""
+
     database_url: str = "sqlite:///./userstorymap.db"
     debug_sql: bool = False
 
     @classmethod
-    def from_env(cls, fallback: 'UsmConfig' = None) -> 'UsmConfig':
+    def from_env(cls, fallback: "UsmConfig" = None) -> "UsmConfig":
         return cls(
-            database_url=os.getenv('USM_DATABASE_URL', fallback.database_url if fallback else 'sqlite:///./userstorymap.db'),
-            debug_sql=os.getenv('USM_DEBUG_SQL', str(fallback.debug_sql if fallback else False)).lower() == 'true'
+            database_url=os.getenv(
+                "USM_DATABASE_URL", fallback.database_url if fallback else "sqlite:///./userstorymap.db"
+            ),
+            debug_sql=os.getenv("USM_DEBUG_SQL", str(fallback.debug_sql if fallback else False)).lower() == "true",
         )
+
 
 class AttachmentsConfig(BaseModel):
     # 若留空，則預設使用專案根目錄下的 attachments 子目錄
     root_dir: str = ""
 
     @classmethod
-    def from_env(cls, fallback: 'AttachmentsConfig' = None) -> 'AttachmentsConfig':
-        env_root = os.getenv('ATTACHMENTS_ROOT_DIR')
-        return cls(
-            root_dir=env_root if env_root else (fallback.root_dir if fallback else '')
-        )
-    
+    def from_env(cls, fallback: "AttachmentsConfig" = None) -> "AttachmentsConfig":
+        env_root = os.getenv("ATTACHMENTS_ROOT_DIR")
+        return cls(root_dir=env_root if env_root else (fallback.root_dir if fallback else ""))
+
+
+class ReportsConfig(BaseModel):
+    # 若留空，則預設使用專案根目錄下的 generated_report 子目錄
+    root_dir: str = ""
+
+    @classmethod
+    def from_env(cls, fallback: "ReportsConfig" = None) -> "ReportsConfig":
+        env_root = os.getenv("REPORTS_ROOT_DIR")
+        return cls(root_dir=env_root if env_root else (fallback.root_dir if fallback else ""))
+
+    def resolve_root_dir(self, project_root: Optional[Path] = None) -> Path:
+        base_root = project_root or PROJECT_ROOT
+        return Path(self.root_dir) if self.root_dir else (base_root / "generated_report")
+
+
 class Settings(BaseModel):
     app: AppConfig = AppConfig()
     lark: LarkConfig = LarkConfig()
@@ -298,21 +330,22 @@ class Settings(BaseModel):
     ai: AIConfig = AIConfig()
     qdrant: QdrantConfig = QdrantConfig()
     attachments: AttachmentsConfig = AttachmentsConfig()
+    reports: ReportsConfig = ReportsConfig()
     auth: AuthConfig = AuthConfig()
     audit: AuditConfig = AuditConfig()
     usm: UsmConfig = UsmConfig()
-    
+
     @classmethod
-    def from_env_and_file(cls, config_path: str = "config.yaml") -> 'Settings':
+    def from_env_and_file(cls, config_path: str = "config.yaml") -> "Settings":
         """從環境變數和 YAML 檔案載入設定（環境變數優先）"""
         # 先載入檔案設定
         if os.path.exists(config_path):
-            with open(config_path, 'r', encoding='utf-8') as file:
+            with open(config_path, "r", encoding="utf-8") as file:
                 config_data = yaml.safe_load(file) or {}
             base_settings = cls(**config_data)
         else:
             base_settings = cls()
-        
+
         # 環境變數覆蓋檔案設定（僅當環境變數存在時）
         return cls(
             app=AppConfig.from_env(base_settings.app),
@@ -322,37 +355,25 @@ class Settings(BaseModel):
             ai=base_settings.ai,
             qdrant=QdrantConfig.from_env(base_settings.qdrant),
             attachments=AttachmentsConfig.from_env(base_settings.attachments),
+            reports=ReportsConfig.from_env(base_settings.reports),
             auth=AuthConfig.from_env(base_settings.auth),
             audit=AuditConfig.from_env(base_settings.audit),
             usm=UsmConfig.from_env(base_settings.usm),
         )
 
+
 def load_config(config_path: str = "config.yaml") -> Settings:
     """讀取 YAML 設定檔（兼容旧版）"""
     return Settings.from_env_and_file(config_path)
 
+
 def create_default_config(config_path: str = "config.yaml") -> None:
     """建立預設設定檔"""
     default_config = {
-        "app": {
-            "debug": False,
-            "host": "0.0.0.0",
-            "port": 9999,
-            "database_url": "sqlite:///./test_case_repo.db"
-        },
-        "lark": {
-            "app_id": "",
-            "app_secret": ""
-        },
-        "jira": {
-            "server_url": "",
-            "username": "",
-            "api_token": "",
-            "ca_cert_path": ""
-        },
-        "openrouter": {
-            "api_key": ""
-        },
+        "app": {"debug": False, "host": "0.0.0.0", "port": 9999, "database_url": "sqlite:///./test_case_repo.db"},
+        "lark": {"app_id": "", "app_secret": ""},
+        "jira": {"server_url": "", "username": "", "api_token": "", "ca_cert_path": ""},
+        "openrouter": {"api_key": ""},
         "ai": {
             "ai_assist": {
                 "model": "openai/gpt-oss-120b:free",
@@ -410,18 +431,14 @@ def create_default_config(config_path: str = "config.yaml") -> None:
             "collection_jira_referances": "jira_references",
             "collection_test_cases": "test_cases",
             "collection_usm_nodes": "usm_nodes",
-            "weights": {
-                "test_cases": 0.7,
-                "usm_nodes": 0.3
-            },
-            "limit": {
-                "jira_referances": 20,
-                "test_cases": 14,
-                "usm_nodes": 6
-            }
+            "weights": {"test_cases": 0.7, "usm_nodes": 0.3},
+            "limit": {"jira_referances": 20, "test_cases": 14, "usm_nodes": 6},
         },
         "attachments": {
             "root_dir": ""  # 留空代表使用專案內 attachments 目錄
+        },
+        "reports": {
+            "root_dir": ""  # 留空代表使用專案內 generated_report 目錄
         },
         "auth": {
             "enable_auth": True,
@@ -429,7 +446,7 @@ def create_default_config(config_path: str = "config.yaml") -> None:
             "jwt_expire_days": 7,
             "password_reset_expire_hours": 24,
             "session_cleanup_days": 30,
-            "use_team_permissions": False
+            "use_team_permissions": False,
         },
         "audit": {
             "enabled": True,
@@ -438,19 +455,18 @@ def create_default_config(config_path: str = "config.yaml") -> None:
             "cleanup_days": 365,
             "max_detail_size": 10240,
             "excluded_fields": ["password", "token", "secret", "key"],
-            "debug_sql": False
+            "debug_sql": False,
         },
-        "usm": {
-            "database_url": "sqlite:///./userstorymap.db",
-            "debug_sql": False
-        }
+        "usm": {"database_url": "sqlite:///./userstorymap.db", "debug_sql": False},
     }
-    
-    with open(config_path, 'w', encoding='utf-8') as file:
+
+    with open(config_path, "w", encoding="utf-8") as file:
         yaml.dump(default_config, file, default_flow_style=False, allow_unicode=True)
+
 
 # 全域設定實例
 settings = Settings.from_env_and_file()
+
 
 # 方便的 getter 函式
 def get_settings() -> Settings:
