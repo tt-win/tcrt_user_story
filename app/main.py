@@ -288,6 +288,7 @@ async def startup_event():
         # 啟動定時任務調度器
         from app.services.scheduler import task_scheduler
 
+        await task_scheduler.initialize()
         task_scheduler.start()
         logging.info("定時任務調度器已啟動")
 
