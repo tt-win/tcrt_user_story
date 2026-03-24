@@ -28,8 +28,6 @@ dependencies = [
     "bcrypt==4.0.1",
     "cryptography==46.0.4",
     "casbin==1.43.0",
-    "reportlab==4.4.9",
-    "matplotlib==3.10.8",
     "qdrant-client==1.16.2",
     "prompt-toolkit==3.0.52",
     "rich==14.3.2",

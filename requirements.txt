@@ -36,10 +36,6 @@ cryptography==46.0.4
 # Access Control
 casbin==1.43.0
 
-# PDF Generation
-reportlab==4.4.9
-matplotlib==3.10.8
-
 # AI / RAG / CLI
 qdrant-client==1.16.2
 prompt-toolkit==3.0.52

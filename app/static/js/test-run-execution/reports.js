@@ -532,33 +532,6 @@ async function waitForSingleChartRender(chart, index) {
     });
 }
 
-// PDF 下載狀態管理
-function showPDFLoadingState() {
-    const button = document.getElementById('downloadPDFBtn');
-    const icon = document.getElementById('downloadIcon');
-    const text = document.getElementById('downloadText');
-    
-    if (button && icon && text) {
-        button.disabled = true;
-        button.classList.add('disabled');
-        icon.className = 'fas fa-spinner fa-spin me-2';
-        text.textContent = window.i18n ? window.i18n.t('testRun.generatingPDF', {}, '正在生成 PDF...') : '正在生成 PDF...';
-    }
-}
-
-function hidePDFLoadingState() {
-    const button = document.getElementById('downloadPDFBtn');
-    const icon = document.getElementById('downloadIcon');
-    const text = document.getElementById('downloadText');
-    
-    if (button && icon && text) {
-        button.disabled = false;
-        button.classList.remove('disabled');
-        icon.className = 'fas fa-download me-2';
-        text.textContent = window.i18n ? window.i18n.t('testRun.downloadPDF', {}, '下載 PDF 報告') : '下載 PDF 報告';
-    }
-}
-
 // 恢復 Canvas 圖表元素
 function restoreChartsFromImages(conversions) {
     conversions.forEach(({ canvas, img, chart, originalAnimation }, index) => {
@@ -589,67 +562,4 @@ function restoreChartsFromImages(conversions) {
             console.error('恢復圖表時發生錯誤:', error);
         }
     });
-}
-
-async function downloadReportAsPDF() {
-    // 顯示載入狀態
-    showPDFLoadingState();
-    
-    try {
-        // 檢查必要參數
-        if (!currentTeamId || !currentConfigId) {
-            throw new Error('缺少必要參數：team_id 或 config_id');
-        }
-        
-        // 呼叫後端 API 生成 PDF
-        const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-runs/${currentConfigId}/generate-pdf`, {
-            method: 'GET',
-            headers: {
-                'Accept': 'application/pdf'
-            }
-        });
-        
-        if (!response.ok) {
-            if (response.status === 404) {
-                throw new Error('找不到指定的 Test Run 配置');
-            } else if (response.status === 500) {
-                throw new Error('伺服器內部錯誤，請重試或聯繫管理員');
-            } else {
-                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-            }
-        }
-        
-        // 獲取 PDF 內容
-        const pdfBlob = await response.blob();
-        
-        // 創建下載連結並自動下載
-        const url = window.URL.createObjectURL(pdfBlob);
-        const link = document.createElement('a');
-        link.href = url;
-        
-        // 設定檔案名稱（包含時間戳記）
-        const timestamp = new Date().toISOString().slice(0, 19).replace(/[:-]/g, '');
-        link.download = `test-run-report-${currentConfigId}-${timestamp}.pdf`;
-        
-        // 觸發下載
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        
-        // 釋放記憶體
-        window.URL.revokeObjectURL(url);
-        
-    } catch (error) {
-        console.error('PDF 生成錯誤:', error);
-        
-        // 使用 i18n 友好的錯誤提示
-        const errorMessage = window.i18n ? 
-            window.i18n.t('testRun.pdfGenerationFailed', {}, 'PDF 生成失敗，請重試或聯繫管理員') : 
-            'PDF 生成失敗，請重試或聯繫管理員';
-        
-        alert(errorMessage + '\n\n錯誤詳情：' + error.message);
-    } finally {
-        // 恢復載入狀態
-        hidePDFLoadingState();
-    }
 }

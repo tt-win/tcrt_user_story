@@ -1166,7 +1166,6 @@
     "deleteTestRun": "删除测试执行",
     "descriptionPlaceholder": "描述这次测试执行配置的目的和范围",
     "downloadAttachment": "下载附件",
-    "downloadPDF": "下载 PDF 报告",
     "editBasicSettings": "基本设置",
     "editConfig": "編輯配置",
     "editTestCases": "Test Case",
@@ -1212,7 +1211,6 @@
       "completed": "已完成",
       "draft": "草稿"
     },
-    "generatingPDF": "正在生成 PDF...",
     "inProgress": "进行中",
     "incomplete": "未完成",
     "invalidTestCaseNumber": "无效的测试案例编号",
@@ -1263,7 +1261,6 @@
     "passedItems": "通过",
     "passRate": "通过率",
     "passRateLabel": "通过率",
-    "pdfGenerationFailed": "PDF 生成失败，请重试或联系管理员",
     "pending": "待处理",
     "plannedDate": "计划执行日期",
     "planning": "计划中",

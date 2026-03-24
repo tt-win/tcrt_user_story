@@ -1199,7 +1199,6 @@
     "deleteTestRun": "Delete Test Run",
     "descriptionPlaceholder": "Describe the purpose and scope of this test run configuration",
     "downloadAttachment": "Download Attachment",
-    "downloadPDF": "Download PDF Report",
     "editBasicSettings": "Basic Settings",
     "editConfig": "Edit Configuration",
     "editTestCases": "Test Cases",
@@ -1245,7 +1244,6 @@
       "completed": "Completed",
       "draft": "Draft"
     },
-    "generatingPDF": "Generating PDF...",
     "inProgress": "In Progress",
     "incomplete": "Incomplete",
     "invalidTestCaseNumber": "Invalid test case number",
@@ -1296,7 +1294,6 @@
     "passed": "Passed",
     "passedCases": "Passed",
     "passedItems": "Passed",
-    "pdfGenerationFailed": "PDF generation failed, please try again or contact administrator",
     "pending": "Pending",
     "plannedDate": "Planned Execution Date",
     "planning": "Planning",

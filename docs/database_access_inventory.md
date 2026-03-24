@@ -50,7 +50,6 @@
 
 ### Tooling
 
-- `scripts/etl_to_qdrant.py`
 - `ai/etl_all_teams.py`
 - `ai/etl_retry_teams.py`
 - `ai/test_llm_context.py`

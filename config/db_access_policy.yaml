@@ -89,9 +89,6 @@ pending_hotspots:
       issues:
         - mixed_reporting_queries_in_handler
   tooling:
-    - path: scripts/etl_to_qdrant.py
-      issues:
-        - direct_session_factory_usage
     - path: ai/etl_all_teams.py
       issues:
         - direct_session_factory_usage
@@ -101,4 +98,3 @@ pending_hotspots:
     - path: ai/test_llm_context.py
       issues:
         - direct_session_factory_usage
-
