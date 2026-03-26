@@ -51,7 +51,6 @@
 ### Tooling
 
 - `ai/etl_all_teams.py`
-- `ai/etl_retry_teams.py`
 - `ai/test_llm_context.py`
 
 以上工具仍直接使用 `SessionLocal()`，尚未切到 target-aware boundary。

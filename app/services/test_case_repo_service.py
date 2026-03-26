@@ -5,6 +5,7 @@ Test Case Repository 服務層（本地資料庫）
 - 提供以 TestCaseLocal 為主的查詢與轉換功能
 - 維持與現有 TestCaseResponse 相容的輸出格式
 """
+
 from __future__ import annotations
 
 import json
@@ -17,6 +18,7 @@ from app.db_access.main import MainAccessBoundary, create_main_access_boundary_f
 from app.models.database_models import TestCaseLocal, TestCaseSection
 from app.models.test_case import TestCaseResponse
 from app.models.lark_types import Priority, TestResultStatus
+from app.services.attachment_storage import get_attachment_access_url, normalize_attachment_metadata
 
 T = TypeVar("T")
 
@@ -40,22 +42,23 @@ def _to_response(
     if include_attachments:
         try:
             data = json.loads(row.attachments_json) if row.attachments_json else []
-            base_url = "/attachments"
             for it in data if isinstance(data, list) else []:
+                it = normalize_attachment_metadata(it, allow_missing_path=True)
                 file_token = it.get("stored_name") or it.get("name") or ""
                 name = it.get("name") or it.get("stored_name") or "file"
                 size = int(it.get("size") or 0)
                 mime = it.get("type") or "application/octet-stream"
-                rel = it.get("relative_path") or ""
-                url = f"{base_url}/{rel}" if rel else ""
-                attachments.append({
-                    "file_token": file_token,
-                    "name": name,
-                    "size": size,
-                    "type": mime,
-                    "url": url,
-                    "tmp_url": url,
-                })
+                url = get_attachment_access_url(it)
+                attachments.append(
+                    {
+                        "file_token": file_token,
+                        "name": name,
+                        "size": size,
+                        "type": mime,
+                        "url": url,
+                        "tmp_url": url,
+                    }
+                )
         except Exception:
             attachments = []
 
@@ -85,12 +88,12 @@ def _to_response(
         record_id=row.lark_record_id or str(row.id),
         test_case_number=row.test_case_number,
         title=row.title,
-        priority=row.priority.value if hasattr(row.priority, 'value') else (row.priority or ''),
+        priority=row.priority.value if hasattr(row.priority, "value") else (row.priority or ""),
         precondition=row.precondition,
         steps=row.steps,
         expected_result=row.expected_result,
         assignee=None,  # 保持相容但目前不展開
-        test_result=row.test_result.value if hasattr(row.test_result, 'value') else (row.test_result or None),
+        test_result=row.test_result.value if hasattr(row.test_result, "value") else (row.test_result or None),
         attachments=attachments,
         test_results_files=[],
         user_story_map=[],
@@ -131,10 +134,7 @@ class TestCaseRepoService:
         main_boundary: MainAccessBoundary | None = None,
     ):
         self.db = db
-        self.main_boundary = (
-            main_boundary
-            or (create_main_access_boundary_for_session(db) if db is not None else None)
-        )
+        self.main_boundary = main_boundary or (create_main_access_boundary_for_session(db) if db is not None else None)
 
     def _require_main_boundary(self) -> MainAccessBoundary:
         if self.main_boundary is None:
@@ -153,8 +153,8 @@ class TestCaseRepoService:
         test_result_filter: Optional[str] = None,
         assignee_filter: Optional[str] = None,
         test_case_set_id: Optional[int] = None,
-        sort_by: str = 'created_at',
-        sort_order: str = 'desc',
+        sort_by: str = "created_at",
+        sort_order: str = "desc",
         skip: int = 0,
         limit: int = 1000,
     ) -> List[TestCaseResponse]:
@@ -169,10 +169,7 @@ class TestCaseRepoService:
             # 搜尋
             if search and search.strip():
                 s = f"%{search.strip()}%"
-                q = q.filter(or_(
-                    TestCaseLocal.title.ilike(s),
-                    TestCaseLocal.test_case_number.ilike(s)
-                ))
+                q = q.filter(or_(TestCaseLocal.title.ilike(s), TestCaseLocal.test_case_number.ilike(s)))
 
             # TCG 過濾（支援多個票號搜尋，以逗號分隔）
             if tcg_filter and tcg_filter.strip():
@@ -200,14 +197,14 @@ class TestCaseRepoService:
                 q = q.filter(TestCaseLocal.assignee_json.ilike(s))
 
             # 排序
-            order_desc = (sort_order or 'desc').lower() == 'desc'
+            order_desc = (sort_order or "desc").lower() == "desc"
             sort_field_map = {
-                'title': TestCaseLocal.title,
-                'priority': TestCaseLocal.priority,
-                'test_case_number': TestCaseLocal.test_case_number,
-                'test_result': TestCaseLocal.test_result,
-                'created_at': TestCaseLocal.created_at,
-                'updated_at': TestCaseLocal.updated_at,
+                "title": TestCaseLocal.title,
+                "priority": TestCaseLocal.priority,
+                "test_case_number": TestCaseLocal.test_case_number,
+                "test_result": TestCaseLocal.test_result,
+                "created_at": TestCaseLocal.created_at,
+                "updated_at": TestCaseLocal.updated_at,
             }
             col = sort_field_map.get(sort_by, TestCaseLocal.created_at)
             q = q.order_by(col.desc() if order_desc else col.asc())
@@ -248,10 +245,7 @@ class TestCaseRepoService:
 
             if search and search.strip():
                 s = f"%{search.strip()}%"
-                q = q.filter(or_(
-                    TestCaseLocal.title.ilike(s),
-                    TestCaseLocal.test_case_number.ilike(s)
-                ))
+                q = q.filter(or_(TestCaseLocal.title.ilike(s), TestCaseLocal.test_case_number.ilike(s)))
             if tcg_filter and tcg_filter.strip():
                 q = _apply_tcg_filter(q, tcg_filter)
             if priority_filter:
@@ -274,12 +268,15 @@ class TestCaseRepoService:
 
         return await self._run_read(_count)
 
-    async def get_by_lark_record_id(self, team_id: int, record_id: str, include_attachments: bool = True) -> Optional[TestCaseResponse]:
+    async def get_by_lark_record_id(
+        self, team_id: int, record_id: str, include_attachments: bool = True
+    ) -> Optional[TestCaseResponse]:
         def _get(sync_db: Session) -> Optional[TestCaseResponse]:
-            row = sync_db.query(TestCaseLocal).filter(
-                TestCaseLocal.team_id == team_id,
-                TestCaseLocal.lark_record_id == record_id
-            ).first()
+            row = (
+                sync_db.query(TestCaseLocal)
+                .filter(TestCaseLocal.team_id == team_id, TestCaseLocal.lark_record_id == record_id)
+                .first()
+            )
             if not row:
                 return None
             section_meta = self._build_section_lookup(sync_db, [row]).get(row.test_case_section_id)
@@ -301,11 +298,7 @@ class TestCaseRepoService:
         if not set_ids:
             return lookup
 
-        sections = (
-            sync_db.query(TestCaseSection)
-            .filter(TestCaseSection.test_case_set_id.in_(set_ids))
-            .all()
-        )
+        sections = sync_db.query(TestCaseSection).filter(TestCaseSection.test_case_set_id.in_(set_ids)).all()
 
         if not sections:
             return lookup
@@ -331,11 +324,7 @@ class TestCaseRepoService:
             seen.add(section_id)
             parent_id = raw_map[section_id]["parent_section_id"]
             parent_path = build_path(parent_id, seen)
-            path = (
-                f"{parent_path}/{raw_map[section_id]['name']}"
-                if parent_path
-                else raw_map[section_id]["name"]
-            )
+            path = f"{parent_path}/{raw_map[section_id]['name']}" if parent_path else raw_map[section_id]["name"]
             path_cache[section_id] = path
             return path
 

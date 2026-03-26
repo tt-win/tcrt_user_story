@@ -87,7 +87,7 @@ qdrant:
   limit:
     test_cases: 14
     usm_nodes: 6
-  url: http://localhost:6333
+  url: http://localhost:6333  # Docker 請改成對應 service name，例如 http://qdrant:6333
   weights:
     test_cases: 0.7
     usm_nodes: 0.3

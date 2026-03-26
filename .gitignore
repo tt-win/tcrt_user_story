@@ -14,7 +14,9 @@ __pycache__/
 
 # Environments
 .env
+.env.docker
 .venv
+!.env.docker.example
 
 # OS
 .DS_Store
@@ -116,7 +118,9 @@ celerybeat.pid
 
 # Environments
 .env
+.env.docker
 .venv
+!.env.docker.example
 env/
 venv/
 ENV/

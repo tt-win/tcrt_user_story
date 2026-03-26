@@ -1,7 +1,9 @@
 import yaml
 import os
+import logging
 from pathlib import Path
 from typing import Optional, Dict, Any, List
+from urllib.parse import urlparse
 from pydantic import BaseModel
 from dotenv import load_dotenv
 
@@ -9,6 +11,42 @@ from dotenv import load_dotenv
 load_dotenv()
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
+LOGGER = logging.getLogger(__name__)
+
+DEFAULT_QDRANT_URL = "http://localhost:6333"
+DEFAULT_PUBLIC_BASE_URL_TEMPLATE = "http://localhost:{port}"
+LOCALHOST_HOSTNAMES = {"localhost", "127.0.0.1", "::1"}
+
+
+def _first_non_empty_env(*names: str) -> Optional[str]:
+    for name in names:
+        value = os.getenv(name)
+        if value and value.strip():
+            return value.strip()
+    return None
+
+
+def _env_truthy(name: str, default: bool = False) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _is_container_runtime() -> bool:
+    app_env = (_first_non_empty_env("APP_ENV") or "").lower()
+    return _env_truthy("RUNNING_IN_DOCKER") or app_env in {"docker", "container"}
+
+
+def _url_targets_localhost(url: str) -> bool:
+    if not url:
+        return False
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return False
+    hostname = (parsed.hostname or "").lower()
+    return hostname in LOCALHOST_HOSTNAMES
 
 
 class LarkConfig(BaseModel):
@@ -33,6 +71,15 @@ class JiraConfig(BaseModel):
     api_token: str = ""
     ca_cert_path: str = ""
 
+    @classmethod
+    def from_env(cls, fallback: "JiraConfig" = None) -> "JiraConfig":
+        return cls(
+            server_url=os.getenv("JIRA_SERVER_URL", fallback.server_url if fallback else ""),
+            username=os.getenv("JIRA_USERNAME", fallback.username if fallback else ""),
+            api_token=os.getenv("JIRA_API_TOKEN", fallback.api_token if fallback else ""),
+            ca_cert_path=os.getenv("JIRA_CA_CERT_PATH", fallback.ca_cert_path if fallback else ""),
+        )
+
 
 class OpenRouterConfig(BaseModel):
     api_key: str = ""
@@ -40,7 +87,7 @@ class OpenRouterConfig(BaseModel):
     @classmethod
     def from_env(cls, fallback: "OpenRouterConfig" = None) -> "OpenRouterConfig":
         return cls(
-            api_key=fallback.api_key if fallback else "",
+            api_key=os.getenv("OPENROUTER_API_KEY", fallback.api_key if fallback else ""),
         )
 
 
@@ -111,7 +158,7 @@ class QdrantLimitConfig(BaseModel):
 
 
 class QdrantConfig(BaseModel):
-    url: str = "http://localhost:6333"
+    url: str = DEFAULT_QDRANT_URL
     api_key: str = ""
     timeout: int = 30
     prefer_grpc: bool = False
@@ -138,7 +185,7 @@ class QdrantConfig(BaseModel):
             jira_collection = "jira_references"
 
         return cls(
-            url=os.getenv("QDRANT_URL", fallback.url if fallback else "http://localhost:6333"),
+            url=os.getenv("QDRANT_URL", fallback.url if fallback else DEFAULT_QDRANT_URL),
             api_key=os.getenv("QDRANT_API_KEY", fallback.api_key if fallback else ""),
             timeout=int(os.getenv("QDRANT_TIMEOUT", str(fallback.timeout if fallback else 30))),
             prefer_grpc=os.getenv("QDRANT_PREFER_GRPC", str(fallback.prefer_grpc if fallback else False)).lower()
@@ -177,33 +224,37 @@ class AppConfig(BaseModel):
     host: str = "0.0.0.0"
     port: int = 9999
     database_url: str = "sqlite:///./test_case_repo.db"
-    base_url: Optional[str] = None  # 優先使用環境變數設定，否則自動構建
+    public_base_url: Optional[str] = None
+    base_url: Optional[str] = None  # legacy 欄位，保留向後相容
     lark_dry_run: bool = False
 
     def get_base_url(self) -> str:
         """
         根據環境變數或配置動態構建 base_url
         優先級：
-        1. APP_BASE_URL 環境變數
-        2. 配置檔案中的 base_url
-        3. 自動構建：http://localhost:{port}
+        1. PUBLIC_BASE_URL 環境變數
+        2. APP_BASE_URL 環境變數（legacy）
+        3. 配置檔案中的 public_base_url
+        4. 配置檔案中的 base_url（legacy）
+        5. 自動構建：http://localhost:{port}
         """
-        # 1. 檢查環境變數（最高優先級）
-        env_base_url = os.getenv("APP_BASE_URL")
+        env_base_url = _first_non_empty_env("PUBLIC_BASE_URL", "APP_BASE_URL")
         if env_base_url:
             return env_base_url
 
-        # 2. 檢查配置檔案中是否明確設定了 base_url
-        if self.base_url:
-            return self.base_url
+        configured_base_url = self.public_base_url or self.base_url
+        if configured_base_url:
+            return configured_base_url
 
-        # 3. 自動構建（預設為 localhost + port）
-        # 在生產環境下應通過 APP_BASE_URL 環境變數明確設定
-        return f"http://localhost:{self.port}"
+        if _is_container_runtime():
+            LOGGER.warning("偵測到 container runtime，但未設定 PUBLIC_BASE_URL；暫時回退為 localhost。")
+
+        return DEFAULT_PUBLIC_BASE_URL_TEMPLATE.format(port=self.port)
 
     @classmethod
     def from_env(cls, fallback: "AppConfig" = None) -> "AppConfig":
         """從環境變數載入設定，如果環境變數為空則使用 fallback"""
+        resolved_public_base_url = _first_non_empty_env("PUBLIC_BASE_URL", "APP_BASE_URL")
         return cls(
             debug=os.getenv("DEBUG", str(fallback.debug).lower() if fallback else "false").lower() == "true",
             host=os.getenv("HOST", fallback.host if fallback else "0.0.0.0"),
@@ -211,9 +262,10 @@ class AppConfig(BaseModel):
             database_url=os.getenv(
                 "DATABASE_URL", fallback.database_url if fallback else "sqlite:///./test_case_repo.db"
             ),
-            base_url=getattr(fallback, "base_url", None)
-            if fallback
-            else None,  # 不在這裡硬設定，使用 get_base_url() 方法
+            public_base_url=resolved_public_base_url
+            or getattr(fallback, "public_base_url", None)
+            or getattr(fallback, "base_url", None),
+            base_url=getattr(fallback, "base_url", None) if fallback else None,
             lark_dry_run=os.getenv(
                 "LARK_DRY_RUN", str(getattr(fallback, "lark_dry_run", False)).lower() if fallback else "false"
             ).lower()
@@ -307,6 +359,10 @@ class AttachmentsConfig(BaseModel):
         env_root = os.getenv("ATTACHMENTS_ROOT_DIR")
         return cls(root_dir=env_root if env_root else (fallback.root_dir if fallback else ""))
 
+    def resolve_root_dir(self, project_root: Optional[Path] = None) -> Path:
+        base_root = project_root or PROJECT_ROOT
+        return Path(self.root_dir) if self.root_dir else (base_root / "attachments")
+
 
 class ReportsConfig(BaseModel):
     # 若留空，則預設使用專案根目錄下的 generated_report 子目錄
@@ -347,10 +403,10 @@ class Settings(BaseModel):
             base_settings = cls()
 
         # 環境變數覆蓋檔案設定（僅當環境變數存在時）
-        return cls(
+        loaded = cls(
             app=AppConfig.from_env(base_settings.app),
             lark=LarkConfig.from_env(base_settings.lark),
-            jira=base_settings.jira,  # JIRA 保持檔案設定
+            jira=JiraConfig.from_env(base_settings.jira),
             openrouter=OpenRouterConfig.from_env(base_settings.openrouter),
             ai=base_settings.ai,
             qdrant=QdrantConfig.from_env(base_settings.qdrant),
@@ -360,6 +416,34 @@ class Settings(BaseModel):
             audit=AuditConfig.from_env(base_settings.audit),
             usm=UsmConfig.from_env(base_settings.usm),
         )
+        _warn_container_runtime_configuration(loaded)
+        return loaded
+
+
+def _warn_container_runtime_configuration(settings: Settings) -> None:
+    if not _is_container_runtime():
+        return
+
+    runtime_urls = {
+        "DATABASE_URL": settings.app.database_url,
+        "AUDIT_DATABASE_URL": settings.audit.database_url,
+        "USM_DATABASE_URL": settings.usm.database_url,
+        "QDRANT_URL": settings.qdrant.url,
+        "TEXT_EMBEDDING_URL": _first_non_empty_env("TEXT_EMBEDDING_URL") or "",
+    }
+
+    for key, value in runtime_urls.items():
+        if value and _url_targets_localhost(value):
+            LOGGER.warning(
+                "偵測到 container runtime，但 %s 仍指向 localhost/127.0.0.1；容器互連請改用 service name。",
+                key,
+            )
+
+    explicit_public_base_url = (
+        _first_non_empty_env("PUBLIC_BASE_URL", "APP_BASE_URL") or settings.app.public_base_url or settings.app.base_url
+    )
+    if not explicit_public_base_url:
+        LOGGER.warning("偵測到 container runtime，但未設定 PUBLIC_BASE_URL；對外連結與通知網址可能仍會落到 localhost。")
 
 
 def load_config(config_path: str = "config.yaml") -> Settings:
@@ -370,7 +454,13 @@ def load_config(config_path: str = "config.yaml") -> Settings:
 def create_default_config(config_path: str = "config.yaml") -> None:
     """建立預設設定檔"""
     default_config = {
-        "app": {"debug": False, "host": "0.0.0.0", "port": 9999, "database_url": "sqlite:///./test_case_repo.db"},
+        "app": {
+            "debug": False,
+            "host": "0.0.0.0",
+            "port": 9999,
+            "database_url": "sqlite:///./test_case_repo.db",
+            "public_base_url": "",
+        },
         "lark": {"app_id": "", "app_secret": ""},
         "jira": {"server_url": "", "username": "", "api_token": "", "ca_cert_path": ""},
         "openrouter": {"api_key": ""},
@@ -418,7 +508,7 @@ def create_default_config(config_path: str = "config.yaml") -> None:
             },
         },
         "qdrant": {
-            "url": "http://localhost:6333",
+            "url": DEFAULT_QDRANT_URL,
             "api_key": "",
             "timeout": 30,
             "prefer_grpc": False,

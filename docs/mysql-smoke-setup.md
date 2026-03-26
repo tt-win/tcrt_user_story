@@ -2,6 +2,8 @@
 
 此文件提供本專案在本機對 MySQL 執行三套資料庫 `main`、`audit`、`usm` 的 smoke / rehearsal 標準流程。
 
+若你要部署正式的 app Docker 容器，請改看 `docs/docker-app-setup.md`；本文件只處理 MySQL smoke / rehearsal。
+
 ## 1. 一鍵 smoke workflow
 
 ```bash

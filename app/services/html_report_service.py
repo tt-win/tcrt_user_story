@@ -24,6 +24,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from app.config import PROJECT_ROOT, get_settings
 from app.database import run_sync
+from app.services.attachment_storage import get_attachment_access_url
 
 
 def _resolve_report_root(
@@ -193,9 +194,7 @@ class HTMLReportService:
                                     {
                                         "name": result.get("name") or result.get("stored_name") or "file",
                                         "file_token": result.get("file_token") or result.get("stored_name") or "",
-                                        "url": f"/attachments/{result.get('relative_path')}"
-                                        if result.get("relative_path")
-                                        else "",
+                                        "url": get_attachment_access_url(result),
                                         "size": result.get("size") or 0,
                                     }
                                 )

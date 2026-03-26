@@ -1,0 +1,22 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: tcrt-app:local
+    restart: unless-stopped
+    env_file:
+      - .env.docker
+    environment:
+      APP_PUBLISHED_PORT: ${APP_PUBLISHED_PORT:-9999}
+    ports:
+      - "${APP_PUBLISHED_PORT:-9999}:9999"
+    volumes:
+      - /Users/hideman/tcrt_files/attachments:/Users/hideman/tcrt_files/attachments
+      - /Users/hideman/tcrt_files/reports:/Users/hideman/tcrt_files/reports
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9999/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 30s

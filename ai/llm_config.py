@@ -22,6 +22,8 @@ from typing import Dict, Any, Optional, List
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ai.runtime_env import DEFAULT_QDRANT_URL
+
 
 CONFIG_FILE = Path(__file__).parent / "llm_config.yaml"
 _RELOAD_INTERVAL = 2.0  # Check for file changes every 2 seconds
@@ -43,9 +45,7 @@ class ChatConfig:
     api_url: str = "https://openrouter.ai/api/v1/chat/completions"
     temperature: float = 0.1
     timeout: int = 60
-    system_prompt: str = (
-        "You are an expert QA engineer specializing in test case design."
-    )
+    system_prompt: str = "You are an expert QA engineer specializing in test case design."
 
 
 @dataclass
@@ -77,7 +77,7 @@ class LimitConfig:
 class QdrantConfig:
     """Qdrant configuration"""
 
-    url: str = "http://localhost:6333"
+    url: str = DEFAULT_QDRANT_URL
     collection_test_cases: str = "test_cases"
     collection_usm_nodes: str = "usm_nodes"
     weights: WeightsConfig = field(default_factory=WeightsConfig)
@@ -99,9 +99,7 @@ class OutputConfig:
     """Output configuration"""
 
     default_language: str = "Traditional Chinese"
-    languages: List[str] = field(
-        default_factory=lambda: ["Traditional Chinese", "Simplified Chinese", "English"]
-    )
+    languages: List[str] = field(default_factory=lambda: ["Traditional Chinese", "Simplified Chinese", "English"])
 
 
 @dataclass
@@ -155,9 +153,7 @@ class LLMConfig:
             "{initial_middle}": initial_middle,
             "{next_middle_1}": next_middle_1,
             "{next_middle_2}": next_middle_2,
-            "{ticket_project_id}": ticket_project_id or ticket_key.split("-")[-1]
-            if "-" in ticket_key
-            else ticket_key,
+            "{ticket_project_id}": ticket_project_id or ticket_key.split("-")[-1] if "-" in ticket_key else ticket_key,
         }
 
         for placeholder, value in replacements.items():
@@ -217,18 +213,14 @@ class ConfigManager:
         embedding_data = data.get("llm", {}).get("embedding", {})
         embedding = EmbeddingConfig(
             model=embedding_data.get("model", "baai/bge-m3"),
-            api_url=embedding_data.get(
-                "api_url", "https://openrouter.ai/api/v1/embeddings"
-            ),
+            api_url=embedding_data.get("api_url", "https://openrouter.ai/api/v1/embeddings"),
         )
 
         # Parse chat config
         chat_data = data.get("llm", {}).get("chat", {})
         chat = ChatConfig(
             model=chat_data.get("model", "google/gemini-3-flash-preview"),
-            api_url=chat_data.get(
-                "api_url", "https://openrouter.ai/api/v1/chat/completions"
-            ),
+            api_url=chat_data.get("api_url", "https://openrouter.ai/api/v1/chat/completions"),
             temperature=chat_data.get("temperature", 0.1),
             timeout=chat_data.get("timeout", 60),
             system_prompt=chat_data.get(
@@ -250,10 +242,8 @@ class ConfigManager:
         weights_data = qdrant_data.get("weights", {})
         limit_data = qdrant_data.get("limit", {})
         qdrant = QdrantConfig(
-            url=qdrant_data.get("url", "http://localhost:6333"),
-            collection_test_cases=qdrant_data.get(
-                "collection_test_cases", "test_cases"
-            ),
+            url=qdrant_data.get("url", DEFAULT_QDRANT_URL),
+            collection_test_cases=qdrant_data.get("collection_test_cases", "test_cases"),
             collection_usm_nodes=qdrant_data.get("collection_usm_nodes", "usm_nodes"),
             weights=WeightsConfig(
                 test_cases=weights_data.get("test_cases", 0.7),
@@ -278,9 +268,7 @@ class ConfigManager:
         output_data = data.get("output", {})
         output = OutputConfig(
             default_language=output_data.get("default_language", "Traditional Chinese"),
-            languages=output_data.get(
-                "languages", ["Traditional Chinese", "Simplified Chinese", "English"]
-            ),
+            languages=output_data.get("languages", ["Traditional Chinese", "Simplified Chinese", "English"]),
         )
 
         return LLMConfig(

@@ -54,6 +54,13 @@ from app.models.database_models import (
 )
 from app.services.test_case_repo_service import TestCaseRepoService
 from app.services.test_run_scope_service import TestRunScopeService
+from app.services.attachment_storage import (
+    build_attachment_metadata,
+    get_attachments_root_dir,
+    get_attachment_access_url,
+    normalize_attachment_metadata,
+    resolve_attachment_metadata_path,
+)
 from app.services.lark_client import LarkClient
 from app.config import settings
 from app.audit import audit_service, ActionType, ResourceType, AuditSeverity
@@ -72,11 +79,7 @@ async def log_test_case_action(
     details: Optional[Dict[str, Any]] = None,
 ) -> None:
     try:
-        role_value = (
-            current_user.role.value
-            if hasattr(current_user.role, "value")
-            else str(current_user.role)
-        )
+        role_value = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
         await audit_service.log_action(
             user_id=current_user.id,
             username=current_user.username,
@@ -114,6 +117,7 @@ class BulkCreateResponse(BaseModel):
     created_count: int = 0
     duplicates: List[str] = []
     errors: List[str] = []
+
 
 class AIAssistRequest(BaseModel):
     precondition: Optional[str] = None
@@ -181,10 +185,10 @@ def normalize_tcg_number(value: Optional[str]) -> Optional[str]:
 def build_tcg_items(numbers: List[str]) -> List[str]:
     """
     直接返回 TCG 單號列表（簡化版本）
-    
+
     Args:
         numbers: TCG 單號列表
-    
+
     Returns:
         正規化後的 TCG 單號列表
     """
@@ -264,7 +268,7 @@ def build_ai_assist_messages(
         "改寫內容不可加入額外標題或段落標籤。",
         "一次性評估三個欄位，確保用語與語氣一致。",
         "若欄位為空，請回傳對應 revised 欄位為空字串。",
-        "輸出必須是嚴格 JSON，格式：{\"revised_precondition\":\"...\",\"revised_steps\":\"...\",\"revised_expected_result\":\"...\",\"suggestions\":[\"...\"]}。",
+        '輸出必須是嚴格 JSON，格式：{"revised_precondition":"...","revised_steps":"...","revised_expected_result":"...","suggestions":["..."]}。',
         "Steps 欄位需使用動作導向句子，主詞可省略，每一步只做一件事。",
         "若 Steps 原文為清單，請維持清單格式並確保步驟編號連續。",
         "Steps 可點擊/選擇的物件文字需使用 Markdown **...** 強調。",
@@ -345,15 +349,16 @@ async def get_test_cases_by_jira_tickets(
 ):
     """
     按 JIRA tickets 获取相关的测试案例
-    
+
     Parameters:
         team_id: 团队 ID
         tickets: 逗号分隔的 JIRA tickets (如: TEST-123,TEST-456)
-    
+
     Returns:
         List of test cases that contain any of the specified JIRA tickets
     """
     try:
+
         def _load_cases(sync_db: Session):
             # Verify team exists
             team = sync_db.query(TeamDB).filter(TeamDB.id == team_id).first()
@@ -361,30 +366,28 @@ async def get_test_cases_by_jira_tickets(
                 raise HTTPException(status_code=404, detail="团队不存在")
 
             # Query all test cases for the team
-            return sync_db.query(TestCaseLocalDB).filter(
-                TestCaseLocalDB.team_id == team_id
-            ).all()
+            return sync_db.query(TestCaseLocalDB).filter(TestCaseLocalDB.team_id == team_id).all()
 
         # Parse tickets
-        ticket_list = [t.strip().upper() for t in tickets.split(',') if t.strip()]
+        ticket_list = [t.strip().upper() for t in tickets.split(",") if t.strip()]
         if not ticket_list:
             return []
 
         test_cases = await main_boundary.run_sync_read(_load_cases)
-        
+
         logger.info(f"Searching for tickets {ticket_list} in {len(test_cases)} test cases for team {team_id}")
-        
+
         # Filter test cases that have matching JIRA tickets
         matching_cases = []
-        
+
         for tc in test_cases:
             jira_tickets = []
-            
+
             # tcg_json is an array of objects with 'text' field containing the TCG number
             if tc.tcg_json:
                 try:
                     tcg_data = json.loads(tc.tcg_json)
-                    
+
                     # 新格式：直接是字符串列表 ["TCG-12345", "ICR-45683"]
                     if isinstance(tcg_data, list):
                         for item in tcg_data:
@@ -393,7 +396,7 @@ async def get_test_cases_by_jira_tickets(
                     # 舊格式相容性：如果還有舊格式的資料
                     elif isinstance(tcg_data, dict):
                         # 嘗試各種鍵名
-                        for key in ['jira_tickets', 'jira', 'tcg_tickets', 'tcg', 'text', 'tickets', 'text_arr']:
+                        for key in ["jira_tickets", "jira", "tcg_tickets", "tcg", "text", "tickets", "text_arr"]:
                             if key in tcg_data:
                                 val = tcg_data.get(key)
                                 if isinstance(val, list):
@@ -403,15 +406,23 @@ async def get_test_cases_by_jira_tickets(
                                 break
                 except (json.JSONDecodeError, TypeError, AttributeError) as e:
                     logger.error(f"Error parsing tcg_json for {tc.test_case_number}: {e}")
-            
+
             # Also try raw_fields_json if tcg_json didn't have results
             if not jira_tickets and tc.raw_fields_json:
                 try:
                     raw_fields = json.loads(tc.raw_fields_json)
-                    
+
                     if isinstance(raw_fields, dict):
                         # Try common field names
-                        for key in ['jira_tickets', 'jira', 'tcg_tickets', 'tcg', 'jira_ticket', 'tcg_ticket', 'tickets']:
+                        for key in [
+                            "jira_tickets",
+                            "jira",
+                            "tcg_tickets",
+                            "tcg",
+                            "jira_ticket",
+                            "tcg_ticket",
+                            "tickets",
+                        ]:
                             if key in raw_fields:
                                 val = raw_fields.get(key)
                                 if isinstance(val, list):
@@ -421,25 +432,27 @@ async def get_test_cases_by_jira_tickets(
                                 break
                 except (json.JSONDecodeError, TypeError, AttributeError) as e:
                     logger.error(f"Error parsing raw_fields_json for {tc.test_case_number}: {e}")
-            
+
             # Convert to uppercase for comparison
             jira_tickets_upper = [str(t).upper() for t in jira_tickets if t]
-            
+
             # Check if any of the search tickets match
             if any(ticket in jira_tickets_upper for ticket in ticket_list):
                 logger.info(f"Match found for {tc.test_case_number}: {jira_tickets}")
-                matching_cases.append({
-                    "record_id": tc.lark_record_id or tc.id,
-                    "test_case_number": tc.test_case_number,
-                    "title": tc.title,
-                    "priority": tc.priority.value if tc.priority else "MEDIUM",
-                    "description": tc.precondition or "",
-                    "jira_tickets": jira_tickets,
-                })
-        
+                matching_cases.append(
+                    {
+                        "record_id": tc.lark_record_id or tc.id,
+                        "test_case_number": tc.test_case_number,
+                        "title": tc.title,
+                        "priority": tc.priority.value if tc.priority else "MEDIUM",
+                        "description": tc.precondition or "",
+                        "jira_tickets": jira_tickets,
+                    }
+                )
+
         logger.info(f"Found {len(matching_cases)} matching test cases")
         return matching_cases
-    
+
     except HTTPException:
         raise
     except Exception as e:
@@ -469,9 +482,7 @@ async def ai_assist_test_case(
     if not any([precondition, steps, expected_result]):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="內容不可為空")
 
-    combined_text = "\n".join(
-        [value for value in [precondition, steps, expected_result] if value]
-    )
+    combined_text = "\n".join([value for value in [precondition, steps, expected_result] if value])
     detected = detect_language_from_text(combined_text)
     ui_locale = normalize_ui_locale(payload.ui_locale)
     output_lang = detected or ui_locale or "zh-TW"
@@ -488,9 +499,7 @@ async def ai_assist_test_case(
         suggestions_lang,
     )
     model_name = (
-        settings.ai.ai_assist.model
-        if getattr(settings.ai, "ai_assist", None)
-        else AI_ASSIST_DEFAULT_MODEL
+        settings.ai.ai_assist.model if getattr(settings.ai, "ai_assist", None) else AI_ASSIST_DEFAULT_MODEL
     ) or AI_ASSIST_DEFAULT_MODEL
     request_payload = {
         "model": model_name,
@@ -553,11 +562,7 @@ async def ai_assist_test_case(
                 detail=f"AI 服務回應失敗 ({response.status_code}): {detail_text}",
             )
         data = response.json()
-        content = (
-            data.get("choices", [{}])[0]
-            .get("message", {})
-            .get("content", "")
-        )
+        content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
         if not content:
             raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail="AI 回應內容為空")
         parsed = parse_ai_assist_payload(content)
@@ -733,8 +738,6 @@ async def get_test_cases_count(
         )
 
 
-
-
 @router.get("/{record_id}", response_model=TestCaseResponse)
 async def get_test_case(
     team_id: int,
@@ -762,14 +765,13 @@ async def get_test_case(
 
     try:
         service = TestCaseRepoService(db)
-        result = await service.get_by_lark_record_id(
-            team_id, record_id, include_attachments=True
-        )
+        result = await service.get_by_lark_record_id(team_id, record_id, include_attachments=True)
         if not result:
             # 嘗試以本地數字 id 讀取（相容本地新建而無 lark_record_id 的情況）
             item = None
             try:
                 local_id = int(record_id)
+
                 def _get_local(sync_db: Session):
                     return (
                         sync_db.query(TestCaseLocalDB)
@@ -794,17 +796,14 @@ async def get_test_case(
 
             attachments = []
             try:
-                data = (
-                    json.loads(item.attachments_json) if item.attachments_json else []
-                )
-                base_url = "/attachments"
+                data = json.loads(item.attachments_json) if item.attachments_json else []
                 for it in data if isinstance(data, list) else []:
+                    it = normalize_attachment_metadata(it, allow_missing_path=True)
                     token = it.get("stored_name") or it.get("name") or ""
                     name = it.get("name") or it.get("stored_name") or "file"
                     size = int(it.get("size") or 0)
                     mime = it.get("type") or "application/octet-stream"
-                    rel = it.get("relative_path") or ""
-                    url = f"{base_url}/{rel}" if rel else ""
+                    url = get_attachment_access_url(it)
                     attachments.append(
                         {
                             "file_token": token,
@@ -833,19 +832,13 @@ async def get_test_case(
                 record_id=item.lark_record_id or str(item.id),
                 test_case_number=item.test_case_number or "",
                 title=item.title or "",
-                priority=(
-                    item.priority.value
-                    if hasattr(item.priority, "value")
-                    else (item.priority or "")
-                ),
+                priority=(item.priority.value if hasattr(item.priority, "value") else (item.priority or "")),
                 precondition=item.precondition or "",
                 steps=item.steps or "",
                 expected_result=item.expected_result or "",
                 assignee=None,
                 test_result=(
-                    item.test_result.value
-                    if hasattr(item.test_result, "value")
-                    else (item.test_result or None)
+                    item.test_result.value if hasattr(item.test_result, "value") else (item.test_result or None)
                 ),
                 attachments=attachments,
                 test_results_files=[],
@@ -911,46 +904,53 @@ async def create_test_case(
                 .first()
             )
             if exists:
-                raise HTTPException(
-                    status_code=status.HTTP_409_CONFLICT, detail="測試案例編號已存在"
-                )
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="測試案例編號已存在")
 
             # 取得或確定使用的 Test Case Set
             if case.test_case_set_id:
-                test_case_set = sync_db.query(TestCaseSetDB).filter(
-                    TestCaseSetDB.id == case.test_case_set_id,
-                    TestCaseSetDB.team_id == team_id
-                ).first()
+                test_case_set = (
+                    sync_db.query(TestCaseSetDB)
+                    .filter(TestCaseSetDB.id == case.test_case_set_id, TestCaseSetDB.team_id == team_id)
+                    .first()
+                )
 
                 if not test_case_set:
                     raise HTTPException(
                         status_code=status.HTTP_404_NOT_FOUND,
-                        detail=f"Test Case Set {case.test_case_set_id} 不存在或不屬於此 Team"
+                        detail=f"Test Case Set {case.test_case_set_id} 不存在或不屬於此 Team",
                     )
             else:
                 from app.services.test_case_set_service import TestCaseSetService
+
                 test_case_set = TestCaseSetService.get_or_create_default_sync(sync_db, team_id)
 
             # 取得或建立 Section
             target_section = None
 
             if case.test_case_section_id:
-                target_section = sync_db.query(TestCaseSectionDB).filter(
-                    TestCaseSectionDB.id == case.test_case_section_id,
-                    TestCaseSectionDB.test_case_set_id == test_case_set.id
-                ).first()
+                target_section = (
+                    sync_db.query(TestCaseSectionDB)
+                    .filter(
+                        TestCaseSectionDB.id == case.test_case_section_id,
+                        TestCaseSectionDB.test_case_set_id == test_case_set.id,
+                    )
+                    .first()
+                )
 
                 if not target_section:
                     raise HTTPException(
                         status_code=status.HTTP_404_NOT_FOUND,
-                        detail=f"Section {case.test_case_section_id} 不存在或不屬於此 Test Case Set"
+                        detail=f"Section {case.test_case_section_id} 不存在或不屬於此 Test Case Set",
                     )
 
             if not target_section:
-                unassigned_section = sync_db.query(TestCaseSectionDB).filter(
-                    TestCaseSectionDB.test_case_set_id == test_case_set.id,
-                    TestCaseSectionDB.name == "Unassigned"
-                ).first()
+                unassigned_section = (
+                    sync_db.query(TestCaseSectionDB)
+                    .filter(
+                        TestCaseSectionDB.test_case_set_id == test_case_set.id, TestCaseSectionDB.name == "Unassigned"
+                    )
+                    .first()
+                )
 
                 if not unassigned_section:
                     unassigned_section = TestCaseSectionDB(
@@ -959,7 +959,7 @@ async def create_test_case(
                         description="未分配的測試案例",
                         level=1,
                         sort_order=0,
-                        parent_section_id=None
+                        parent_section_id=None,
                     )
                     sync_db.add(unassigned_section)
                     sync_db.flush()
@@ -996,16 +996,10 @@ async def create_test_case(
                 project_root = Path(__file__).resolve().parents[2]
                 from app.config import settings
 
-                root_dir = (
-                    Path(settings.attachments.root_dir)
-                    if settings.attachments.root_dir
-                    else (project_root / "attachments")
-                )
+                root_dir = get_attachments_root_dir(project_root)
                 staging_dir = root_dir / "staging" / case.temp_upload_id
                 if staging_dir.exists() and staging_dir.is_dir():
-                    final_dir = (
-                        root_dir / "test-cases" / str(team_id) / item.test_case_number
-                    )
+                    final_dir = root_dir / "test-cases" / str(team_id) / item.test_case_number
                     final_dir.mkdir(parents=True, exist_ok=True)
 
                     metas = []
@@ -1015,15 +1009,15 @@ async def create_test_case(
                         dest = final_dir / p.name
                         move(str(p), str(dest))
                         metas.append(
-                            {
-                                "name": p.name,
-                                "stored_name": p.name,
-                                "size": dest.stat().st_size,
-                                "type": "application/octet-stream",
-                                "relative_path": str(dest.relative_to(root_dir)),
-                                "absolute_path": str(dest),
-                                "uploaded_at": datetime.utcnow().isoformat(),
-                            }
+                            build_attachment_metadata(
+                                root_dir=root_dir,
+                                stored_path=dest,
+                                original_name=p.name,
+                                stored_name=p.name,
+                                size=dest.stat().st_size,
+                                content_type="application/octet-stream",
+                                uploaded_at=datetime.utcnow().isoformat(),
+                            )
                         )
                     item.attachments_json = json.dumps(metas, ensure_ascii=False)
                     # 清掉空 staging 目錄（非致命）
@@ -1040,19 +1034,13 @@ async def create_test_case(
                 record_id=str(item.id),
                 test_case_number=item.test_case_number,
                 title=item.title,
-                priority=(
-                    item.priority.value
-                    if hasattr(item.priority, "value")
-                    else (item.priority or "")
-                ),
+                priority=(item.priority.value if hasattr(item.priority, "value") else (item.priority or "")),
                 precondition=item.precondition,
                 steps=item.steps,
                 expected_result=item.expected_result,
                 assignee_name=None,
                 test_result=(
-                    item.test_result.value
-                    if hasattr(item.test_result, "value")
-                    else (item.test_result or None)
+                    item.test_result.value if hasattr(item.test_result, "value") else (item.test_result or None)
                 ),
                 attachment_count=0,
                 execution_result_count=0,
@@ -1194,9 +1182,7 @@ async def update_test_case(
             # 優先：本地數字 id
             try:
                 rid_int = int(record_id)
-                item = (
-                    sync_db.query(TestCaseLocalDB).filter(TestCaseLocalDB.id == rid_int).first()
-                )
+                item = sync_db.query(TestCaseLocalDB).filter(TestCaseLocalDB.id == rid_int).first()
                 if item and item.team_id != team_id:
                     raise HTTPException(
                         status_code=status.HTTP_409_CONFLICT,
@@ -1284,6 +1270,7 @@ async def update_test_case(
                         )
                     if not target_set:
                         from app.services.test_case_set_service import TestCaseSetService
+
                         target_set = TestCaseSetService.get_or_create_default_sync(sync_db, team_id)
 
                 # 決定目標 Section
@@ -1345,10 +1332,7 @@ async def update_test_case(
                         s = case_update.tcg.strip()
                         if s:
                             # 解析多個單號（使用逗號、空白或換行分隔）
-                            parts = [
-                                p.strip()
-                                for p in s.replace("\n", ",").replace(" ", ",").split(",")
-                            ]
+                            parts = [p.strip() for p in s.replace("\n", ",").replace(" ", ",").split(",")]
                             tcg_numbers = [p for p in parts if p]
                     elif isinstance(case_update.tcg, list):
                         # 直接使用列表中的字符串
@@ -1372,19 +1356,10 @@ async def update_test_case(
                 project_root = Path(__file__).resolve().parents[2]
                 from app.config import settings
 
-                root_dir = (
-                    Path(settings.attachments.root_dir)
-                    if settings.attachments.root_dir
-                    else (project_root / "attachments")
-                )
+                root_dir = get_attachments_root_dir(project_root)
                 staging_dir = root_dir / "staging" / case_update.temp_upload_id
                 if staging_dir.exists() and staging_dir.is_dir():
-                    final_dir = (
-                        root_dir
-                        / "test-cases"
-                        / str(team_id)
-                        / (item.test_case_number or str(item.id))
-                    )
+                    final_dir = root_dir / "test-cases" / str(team_id) / (item.test_case_number or str(item.id))
                     final_dir.mkdir(parents=True, exist_ok=True)
 
                     existing = []
@@ -1402,15 +1377,15 @@ async def update_test_case(
                         dest = final_dir / p.name
                         move(str(p), str(dest))
                         existing.append(
-                            {
-                                "name": p.name,
-                                "stored_name": p.name,
-                                "size": dest.stat().st_size,
-                                "type": "application/octet-stream",
-                                "relative_path": str(dest.relative_to(root_dir)),
-                                "absolute_path": str(dest),
-                                "uploaded_at": datetime.utcnow().isoformat(),
-                            }
+                            build_attachment_metadata(
+                                root_dir=root_dir,
+                                stored_path=dest,
+                                original_name=p.name,
+                                stored_name=p.name,
+                                size=dest.stat().st_size,
+                                content_type="application/octet-stream",
+                                uploaded_at=datetime.utcnow().isoformat(),
+                            )
                         )
                     item.attachments_json = json.dumps(existing, ensure_ascii=False)
                     if "attachments" not in changed_fields:
@@ -1449,19 +1424,13 @@ async def update_test_case(
                 record_id=str(item.id),
                 test_case_number=item.test_case_number or "",
                 title=item.title or "",
-                priority=(
-                    item.priority.value
-                    if hasattr(item.priority, "value")
-                    else (item.priority or "")
-                ),
+                priority=(item.priority.value if hasattr(item.priority, "value") else (item.priority or "")),
                 precondition=item.precondition or "",
                 steps=item.steps or "",
                 expected_result=item.expected_result or "",
                 assignee_name=None,
                 test_result=(
-                    item.test_result.value
-                    if hasattr(item.test_result, "value")
-                    else (item.test_result or None)
+                    item.test_result.value if hasattr(item.test_result, "value") else (item.test_result or None)
                 ),
                 tcg=tcg_list,
                 attachment_count=0,
@@ -1493,7 +1462,9 @@ async def update_test_case(
         response, audit_context = await main_boundary.run_sync_write(_update)
 
         if audit_context.get("changed"):
-            action_brief = f"{current_user.username} updated Test Case: {audit_context.get('test_case_number') or record_id}"
+            action_brief = (
+                f"{current_user.username} updated Test Case: {audit_context.get('test_case_number') or record_id}"
+            )
             if audit_context.get("title"):
                 action_brief += f" ({audit_context['title']})"
             await log_test_case_action(
@@ -1540,13 +1511,7 @@ async def upload_test_case_attachments_staging(
     sid = temp_upload_id or uuid.uuid4().hex
 
     project_root = Path(__file__).resolve().parents[2]
-    from app.config import settings
-
-    root_dir = (
-        Path(settings.attachments.root_dir)
-        if settings.attachments.root_dir
-        else (project_root / "attachments")
-    )
+    root_dir = get_attachments_root_dir(project_root)
     staging_dir = root_dir / "staging" / sid
     staging_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1563,15 +1528,15 @@ async def upload_test_case_attachments_staging(
         with open(path, "wb") as out:
             out.write(content)
         uploaded.append(
-            {
-                "name": orig,
-                "stored_name": stored,
-                "size": len(content),
-                "type": f.content_type or "application/octet-stream",
-                "relative_path": str(path.relative_to(root_dir)),
-                "absolute_path": str(path),
-                "uploaded_at": datetime.utcnow().isoformat(),
-            }
+            build_attachment_metadata(
+                root_dir=root_dir,
+                stored_path=path,
+                original_name=orig,
+                stored_name=stored,
+                size=len(content),
+                content_type=f.content_type or "application/octet-stream",
+                uploaded_at=datetime.utcnow().isoformat(),
+            )
         )
 
     return {
@@ -1614,13 +1579,7 @@ async def upload_test_case_attachments_by_id(
 
     # 固定專案根
     project_root = Path(__file__).resolve().parents[2]
-    from app.config import settings
-
-    root_dir = (
-        Path(settings.attachments.root_dir)
-        if settings.attachments.root_dir
-        else (project_root / "attachments")
-    )
+    root_dir = get_attachments_root_dir(project_root)
     base_dir = root_dir / "test-cases" / str(team_id) / item.test_case_number
     base_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1646,19 +1605,20 @@ async def upload_test_case_attachments_by_id(
         content = await f.read()
         with open(stored_path, "wb") as out:
             out.write(content)
-        meta = {
-            "name": orig_name,
-            "stored_name": stored_name,
-            "size": len(content),
-            "type": f.content_type or "application/octet-stream",
-            "relative_path": str(stored_path.relative_to(root_dir)),
-            "absolute_path": str(stored_path),
-            "uploaded_at": datetime.utcnow().isoformat(),
-        }
+        meta = build_attachment_metadata(
+            root_dir=root_dir,
+            stored_path=stored_path,
+            original_name=orig_name,
+            stored_name=stored_name,
+            size=len(content),
+            content_type=f.content_type or "application/octet-stream",
+            uploaded_at=datetime.utcnow().isoformat(),
+        )
         existing.append(meta)
         uploaded.append(meta)
 
     item.attachments_json = json.dumps(existing, ensure_ascii=False)
+
     def _save_attachments(sync_db: Session, item_id: int, attachments_json: str) -> None:
         item_db = sync_db.query(TestCaseLocalDB).filter(TestCaseLocalDB.id == item_id).first()
         if not item_db:
@@ -1668,9 +1628,7 @@ async def upload_test_case_attachments_by_id(
             )
         item_db.attachments_json = attachments_json
 
-    await main_boundary.run_sync_write(
-        lambda sync_db: _save_attachments(sync_db, test_case_id, item.attachments_json)
-    )
+    await main_boundary.run_sync_write(lambda sync_db: _save_attachments(sync_db, test_case_id, item.attachments_json))
 
     return {
         "success": True,
@@ -1727,9 +1685,7 @@ async def delete_test_case_attachment(
     main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """刪除單一附件（以本地整數 id）。"""
-    return await _delete_attachment_common(
-        team_id, target, main_boundary, id_value=test_case_id
-    )
+    return await _delete_attachment_common(team_id, target, main_boundary, id_value=test_case_id)
 
 
 @router.delete("/{record_key}/attachments/{target}", response_model=dict)
@@ -1747,14 +1703,10 @@ async def delete_test_case_attachment_by_key(
         id_value = int(record_key)
     except Exception:
         lark_id = record_key
-    return await _delete_attachment_common(
-        team_id, target, main_boundary, id_value=id_value, lark_record_id=lark_id
-    )
+    return await _delete_attachment_common(team_id, target, main_boundary, id_value=id_value, lark_record_id=lark_id)
 
 
-@router.delete(
-    "/by-number/{test_case_number}/attachments/{target}", response_model=dict
-)
+@router.delete("/by-number/{test_case_number}/attachments/{target}", response_model=dict)
 async def delete_test_case_attachment_by_number(
     team_id: int,
     test_case_number: str,
@@ -1762,9 +1714,7 @@ async def delete_test_case_attachment_by_number(
     main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     """刪除單一附件（以測試案例編號）。"""
-    return await _delete_attachment_common(
-        team_id, target, main_boundary, test_case_number=test_case_number
-    )
+    return await _delete_attachment_common(team_id, target, main_boundary, test_case_number=test_case_number)
 
 
 async def _delete_attachment_common(
@@ -1799,14 +1749,8 @@ async def _delete_attachment_common(
             item = None
 
         if not item:
-            key = (
-                id_value
-                if id_value is not None
-                else (lark_record_id or test_case_number or "")
-            )
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail=f"找不到測試案例 {key}"
-            )
+            key = id_value if id_value is not None else (lark_record_id or test_case_number or "")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"找不到測試案例 {key}")
         if item.team_id != team_id:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -1817,7 +1761,13 @@ async def _delete_attachment_common(
         files = []
         try:
             if item.attachments_json:
-                files = json.loads(item.attachments_json) or []
+                raw_files = json.loads(item.attachments_json) or []
+                if isinstance(raw_files, list):
+                    files = [
+                        normalize_attachment_metadata(f, allow_missing_path=True)
+                        for f in raw_files
+                        if isinstance(f, dict)
+                    ]
         except Exception:
             files = []
 
@@ -1863,26 +1813,21 @@ async def _delete_attachment_common(
                 break
 
         if idx is None:
-            key = (
-                id_value
-                if id_value is not None
-                else (lark_record_id or test_case_number or "")
-            )
+            key = id_value if id_value is not None else (lark_record_id or test_case_number or "")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"找不到附件 {target}（case={key}）",
             )
 
         # 刪除檔案
-        project_root = Path(__file__).resolve().parents[2]
-        from app.config import settings
-
-        root_dir = (
-            Path(settings.attachments.root_dir)
-            if settings.attachments.root_dir
-            else (project_root / "attachments")
-        )
-        disk_path = files[idx].get("absolute_path")
+        root_dir = get_attachments_root_dir()
+        disk_path = None
+        try:
+            disk_path = resolve_attachment_metadata_path(
+                files[idx], project_root=Path(__file__).resolve().parents[2], allow_legacy_absolute=True
+            )
+        except Exception:
+            disk_path = None
         try:
             if disk_path:
                 p = Path(disk_path)
@@ -1946,11 +1891,7 @@ async def upload_test_case_attachments(
     project_root = Path(__file__).resolve().parents[2]
     from app.config import settings
 
-    root_dir = (
-        Path(settings.attachments.root_dir)
-        if settings.attachments.root_dir
-        else (project_root / "attachments")
-    )
+    root_dir = Path(settings.attachments.root_dir) if settings.attachments.root_dir else (project_root / "attachments")
     base_dir = root_dir / "test-cases" / str(team_id) / item.test_case_number
     base_dir.mkdir(parents=True, exist_ok=True)
 
@@ -1976,19 +1917,20 @@ async def upload_test_case_attachments(
         content = await f.read()
         with open(stored_path, "wb") as out:
             out.write(content)
-        meta = {
-            "name": orig_name,
-            "stored_name": stored_name,
-            "size": len(content),
-            "type": f.content_type or "application/octet-stream",
-            "relative_path": str(stored_path.relative_to(root_dir)),
-            "absolute_path": str(stored_path),
-            "uploaded_at": datetime.utcnow().isoformat(),
-        }
+        meta = build_attachment_metadata(
+            root_dir=root_dir,
+            stored_path=stored_path,
+            original_name=orig_name,
+            stored_name=stored_name,
+            size=len(content),
+            content_type=f.content_type or "application/octet-stream",
+            uploaded_at=datetime.utcnow().isoformat(),
+        )
         existing.append(meta)
         uploaded.append(meta)
 
     item.attachments_json = json.dumps(existing, ensure_ascii=False)
+
     def _save(sync_db: Session, attachments_json: str) -> None:
         item_db = (
             sync_db.query(TestCaseLocalDB)
@@ -2005,9 +1947,7 @@ async def upload_test_case_attachments(
             )
         item_db.attachments_json = attachments_json
 
-    await main_boundary.run_sync_write(
-        lambda sync_db: _save(sync_db, item.attachments_json)
-    )
+    await main_boundary.run_sync_write(lambda sync_db: _save(sync_db, item.attachments_json))
 
     return {
         "success": True,
@@ -2044,14 +1984,13 @@ async def delete_test_case(
             )
 
     try:
+
         def _delete(sync_db: Session):
             item = None
             # 1) 嘗試以本地整數 id
             try:
                 rid_int = int(record_id)
-                item = (
-                    sync_db.query(TestCaseLocalDB).filter(TestCaseLocalDB.id == rid_int).first()
-                )
+                item = sync_db.query(TestCaseLocalDB).filter(TestCaseLocalDB.id == rid_int).first()
                 if item and item.team_id != team_id:
                     raise HTTPException(
                         status_code=status.HTTP_409_CONFLICT,
@@ -2093,26 +2032,21 @@ async def delete_test_case(
             # 先嘗試刪除附件檔案（非致命）
             try:
                 project_root = Path(__file__).resolve().parents[2]
-                from app.config import settings
-
-                root_dir = (
-                    Path(settings.attachments.root_dir)
-                    if settings.attachments.root_dir
-                    else (project_root / "attachments")
-                )
+                root_dir = get_attachments_root_dir(project_root)
                 if item.attachments_json:
                     data = json.loads(item.attachments_json)
                     if isinstance(data, list):
                         for f in data:
-                            ap = f.get("absolute_path")
-                            if ap:
-                                p = Path(ap)
-                                if root_dir in p.parents and p.exists():
-                                    p.unlink()
+                            try:
+                                p = resolve_attachment_metadata_path(
+                                    f, project_root=project_root, allow_legacy_absolute=True
+                                )
+                            except Exception:
+                                p = None
+                            if p and root_dir in p.parents and p.exists():
+                                p.unlink()
                 # 刪除整個目錄（attachments/test-cases/{team_id}/{test_case_number}）
-                base_dir = (
-                    root_dir / "test-cases" / str(team_id) / (item.test_case_number or "")
-                )
+                base_dir = root_dir / "test-cases" / str(team_id) / (item.test_case_number or "")
                 if base_dir.exists() and base_dir.is_dir():
                     import shutil
 
@@ -2131,14 +2065,17 @@ async def delete_test_case(
         audit_context = await main_boundary.run_sync_write(_delete)
 
         # 記錄刪除操作到 audit log
-        action_brief = f"{current_user.username} deleted Test Case: {audit_context.get('test_case_number') or record_id}"
+        action_brief = (
+            f"{current_user.username} deleted Test Case: {audit_context.get('test_case_number') or record_id}"
+        )
         if audit_context.get("title"):
             action_brief += f" ({audit_context['title']})"
         await log_test_case_action(
             action_type=ActionType.DELETE,
             current_user=current_user,
             team_id=team_id,
-            resource_id=audit_context.get("test_case_number") or (str(audit_context.get("record_id")) if audit_context.get("record_id") is not None else record_id),
+            resource_id=audit_context.get("test_case_number")
+            or (str(audit_context.get("record_id")) if audit_context.get("record_id") is not None else record_id),
             action_brief=action_brief,
             details=audit_context,
         )
@@ -2159,6 +2096,7 @@ async def get_test_case_by_number(
     main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ):
     try:
+
         def _get(sync_db: Session):
             item = (
                 sync_db.query(TestCaseLocalDB)
@@ -2179,14 +2117,13 @@ async def get_test_case_by_number(
             attachments = []
             try:
                 data = json.loads(item.attachments_json) if item.attachments_json else []
-                base_url = "/attachments"
                 for it in data if isinstance(data, list) else []:
+                    it = normalize_attachment_metadata(it, allow_missing_path=True)
                     token = it.get("stored_name") or it.get("name") or ""
                     name = it.get("name") or it.get("stored_name") or "file"
                     size = int(it.get("size") or 0)
                     mime = it.get("type") or "application/octet-stream"
-                    rel = it.get("relative_path") or ""
-                    url = f"{base_url}/{rel}" if rel else ""
+                    url = get_attachment_access_url(it)
                     attachments.append(
                         {
                             "file_token": token,
@@ -2215,19 +2152,13 @@ async def get_test_case_by_number(
                 record_id=item.lark_record_id or str(item.id),
                 test_case_number=item.test_case_number or "",
                 title=item.title or "",
-                priority=(
-                    item.priority.value
-                    if hasattr(item.priority, "value")
-                    else (item.priority or "")
-                ),
+                priority=(item.priority.value if hasattr(item.priority, "value") else (item.priority or "")),
                 precondition=item.precondition or "",
                 steps=item.steps or "",
                 expected_result=item.expected_result or "",
                 assignee=None,
                 test_result=(
-                    item.test_result.value
-                    if hasattr(item.test_result, "value")
-                    else (item.test_result or None)
+                    item.test_result.value if hasattr(item.test_result, "value") else (item.test_result or None)
                 ),
                 attachments=attachments,
                 test_results_files=[],
@@ -2263,48 +2194,58 @@ async def bulk_create_test_cases(
     如果沒有提供 test_case_set_id，將使用該 Team 的預設 Test Case Set
     """
     try:
+
         def _bulk_create(sync_db: Session):
             if not request.items:
-                return BulkCreateResponse(
-                    success=False, created_count=0, errors=["空的建立清單"]
-                ), None
+                return BulkCreateResponse(success=False, created_count=0, errors=["空的建立清單"]), None
 
             # 取得或創建該 Team 的 Test Case Set
             if request.test_case_set_id:
-                test_case_set = sync_db.query(TestCaseSetDB).filter(
-                    TestCaseSetDB.id == request.test_case_set_id,
-                    TestCaseSetDB.team_id == team_id
-                ).first()
+                test_case_set = (
+                    sync_db.query(TestCaseSetDB)
+                    .filter(TestCaseSetDB.id == request.test_case_set_id, TestCaseSetDB.team_id == team_id)
+                    .first()
+                )
 
                 if not test_case_set:
                     return BulkCreateResponse(
-                        success=False, created_count=0,
-                        errors=[f"Test Case Set {request.test_case_set_id} 不存在或不屬於此 Team"]
+                        success=False,
+                        created_count=0,
+                        errors=[f"Test Case Set {request.test_case_set_id} 不存在或不屬於此 Team"],
                     ), None
             else:
                 from app.services.test_case_set_service import TestCaseSetService
+
                 test_case_set = TestCaseSetService.get_or_create_default_sync(sync_db, team_id)
 
             # 取得或創建 Section
             target_section = None
 
             if request.test_case_section_id:
-                target_section = sync_db.query(TestCaseSectionDB).filter(
-                    TestCaseSectionDB.id == request.test_case_section_id,
-                    TestCaseSectionDB.test_case_set_id == test_case_set.id
-                ).first()
+                target_section = (
+                    sync_db.query(TestCaseSectionDB)
+                    .filter(
+                        TestCaseSectionDB.id == request.test_case_section_id,
+                        TestCaseSectionDB.test_case_set_id == test_case_set.id,
+                    )
+                    .first()
+                )
 
                 if not target_section:
                     return BulkCreateResponse(
-                        success=False, created_count=0,
-                        errors=[f"Section {request.test_case_section_id} 不存在或不屬於此 Test Case Set"]
+                        success=False,
+                        created_count=0,
+                        errors=[f"Section {request.test_case_section_id} 不存在或不屬於此 Test Case Set"],
                     ), None
 
             if not target_section:
-                unassigned_section = sync_db.query(TestCaseSectionDB).filter(
-                    TestCaseSectionDB.test_case_set_id == test_case_set.id,
-                    TestCaseSectionDB.name == "Unassigned"
-                ).first()
+                unassigned_section = (
+                    sync_db.query(TestCaseSectionDB)
+                    .filter(
+                        TestCaseSectionDB.test_case_set_id == test_case_set.id, TestCaseSectionDB.name == "Unassigned"
+                    )
+                    .first()
+                )
 
                 if not unassigned_section:
                     unassigned_section = TestCaseSectionDB(
@@ -2313,7 +2254,7 @@ async def bulk_create_test_cases(
                         description="未分配的測試案例",
                         level=1,
                         sort_order=0,
-                        parent_section_id=None
+                        parent_section_id=None,
                     )
                     sync_db.add(unassigned_section)
                     sync_db.flush()
@@ -2326,23 +2267,15 @@ async def bulk_create_test_cases(
                 .filter(TestCaseLocalDB.team_id == team_id)
                 .all()
             )
-            duplicates = [
-                item.test_case_number
-                for item in request.items
-                if item.test_case_number in existing_numbers
-            ]
+            duplicates = [item.test_case_number for item in request.items if item.test_case_number in existing_numbers]
             if duplicates:
-                return BulkCreateResponse(
-                    success=False, created_count=0, duplicates=duplicates
-                ), None
+                return BulkCreateResponse(success=False, created_count=0, duplicates=duplicates), None
 
             created_count = 0
             created_items = []
             priority_map = {"high": "High", "medium": "Medium", "low": "Low"}
             for it in request.items:
-                title = (
-                    it.title.strip() if it.title else f"{it.test_case_number} 的測試案例"
-                )
+                title = it.title.strip() if it.title else f"{it.test_case_number} 的測試案例"
                 priority_key = (it.priority or "Medium").strip().lower()
                 priority_value = priority_map.get(priority_key, "Medium")
                 item = TestCaseLocalDB(
@@ -2353,9 +2286,7 @@ async def bulk_create_test_cases(
                     priority=priority_value,
                     precondition=it.precondition.strip() if it.precondition else None,
                     steps=it.steps.strip() if it.steps else None,
-                    expected_result=(
-                        it.expected_result.strip() if it.expected_result else None
-                    ),
+                    expected_result=(it.expected_result.strip() if it.expected_result else None),
                     test_result=None,
                     sync_status=SyncStatus.PENDING,
                     local_version=1,
@@ -2371,11 +2302,13 @@ async def bulk_create_test_cases(
 
                 sync_db.add(item)
                 created_count += 1
-                created_items.append({
-                    "test_case_number": it.test_case_number,
-                    "title": title,
-                    "priority": priority_value,
-                })
+                created_items.append(
+                    {
+                        "test_case_number": it.test_case_number,
+                        "title": title,
+                        "priority": priority_value,
+                    }
+                )
             audit_context = None
             if created_count > 0:
                 audit_context = {
@@ -2452,11 +2385,10 @@ async def bulk_clone_test_cases(
     - 新的 Test Case Number 與 Title 由請求提供（Title 缺省時沿用來源）
     """
     try:
+
         def _bulk_clone(sync_db: Session):
             if not request.items:
-                return BulkCloneResponse(
-                    success=False, created_count=0, errors=["空的建立清單"]
-                ), None
+                return BulkCloneResponse(success=False, created_count=0, errors=["空的建立清單"]), None
 
             existing_numbers = set(
                 n[0]
@@ -2467,9 +2399,7 @@ async def bulk_clone_test_cases(
             req_numbers = [it.test_case_number for it in request.items]
             duplicates = [num for num in req_numbers if num in existing_numbers]
             if duplicates:
-                return BulkCloneResponse(
-                    success=False, created_count=0, duplicates=duplicates, errors=[]
-                ), None
+                return BulkCloneResponse(success=False, created_count=0, duplicates=duplicates, errors=[]), None
 
             source_ids = [it.source_record_id for it in request.items]
             source_id_ints: List[int] = []
@@ -2484,10 +2414,7 @@ async def bulk_clone_test_cases(
                 filters.append(TestCaseLocalDB.id.in_(source_id_ints))
 
             src_rows = (
-                sync_db.query(TestCaseLocalDB)
-                .filter(TestCaseLocalDB.team_id == team_id)
-                .filter(or_(*filters))
-                .all()
+                sync_db.query(TestCaseLocalDB).filter(TestCaseLocalDB.team_id == team_id).filter(or_(*filters)).all()
             )
             src_map = {}
             for row in src_rows:
@@ -2508,11 +2435,7 @@ async def bulk_clone_test_cases(
                     continue
 
                 try:
-                    new_title = (
-                        it.title.strip()
-                        if (it.title is not None and it.title.strip())
-                        else src.title
-                    )
+                    new_title = it.title.strip() if (it.title is not None and it.title.strip()) else src.title
                     item = TestCaseLocalDB(
                         team_id=team_id,
                         lark_record_id=None,
@@ -2530,19 +2453,19 @@ async def bulk_clone_test_cases(
                     )
                     sync_db.add(item)
                     created += 1
-                    created_items.append({
-                        "test_case_number": it.test_case_number,
-                        "title": new_title,
-                        "source_record_id": it.source_record_id,
-                        "source_test_case_number": src.test_case_number,
-                    })
+                    created_items.append(
+                        {
+                            "test_case_number": it.test_case_number,
+                            "title": new_title,
+                            "source_record_id": it.source_record_id,
+                            "source_test_case_number": src.test_case_number,
+                        }
+                    )
                 except Exception as e:
                     errors.append(f"來源 {it.source_record_id} 複製失敗: {str(e)}")
 
             if created == 0 and errors:
-                return BulkCloneResponse(
-                    success=False, created_count=0, duplicates=[], errors=errors
-                ), None
+                return BulkCloneResponse(success=False, created_count=0, duplicates=[], errors=errors), None
 
             audit_context = None
             if created > 0:
@@ -2551,9 +2474,7 @@ async def bulk_clone_test_cases(
                     "cloned_items": created_items,
                 }
 
-            return BulkCloneResponse(
-                success=True, created_count=created, duplicates=[], errors=errors
-            ), audit_context
+            return BulkCloneResponse(success=True, created_count=created, duplicates=[], errors=errors), audit_context
 
         response, audit_context = await main_boundary.run_sync_write(_bulk_clone)
 
@@ -2580,9 +2501,7 @@ async def bulk_clone_test_cases(
 
         return response
     except Exception as e:
-        return BulkCloneResponse(
-            success=False, created_count=0, duplicates=[], errors=[str(e)]
-        )
+        return BulkCloneResponse(success=False, created_count=0, duplicates=[], errors=[str(e)])
 
 
 @router.post("/batch", response_model=TestCaseBatchResponse)
@@ -2606,9 +2525,7 @@ async def batch_operation_test_cases(
         def resolve_one(rid: str) -> Optional[TestCaseLocalDB]:
             try:
                 rid_int = int(rid)
-                item = (
-                    sync_db.query(TestCaseLocalDB).filter(TestCaseLocalDB.id == rid_int).first()
-                )
+                item = sync_db.query(TestCaseLocalDB).filter(TestCaseLocalDB.id == rid_int).first()
                 if item and item.team_id == team_id:
                     return item
             except ValueError:
@@ -2641,294 +2558,283 @@ async def batch_operation_test_cases(
         cleanup_summary = None
 
         if operation.operation == "delete":
-                for rid in operation.record_ids:
-                    processed += 1
-                    item = resolve_one(rid)
-                    if not item:
-                        errors.append(f"找不到測試案例 {rid}")
-                        continue
-                    item_info = {
-                        "id": item.id,
-                        "test_case_number": item.test_case_number,
-                        "title": item.title,
-                    }
-                    try:
-                        if item.attachments_json:
-                            data = json.loads(item.attachments_json)
-                            if isinstance(data, list):
-                                project_root = Path(__file__).resolve().parents[2]
-                                for f in data:
-                                    ap = f.get("absolute_path")
-                                    if ap:
-                                        p = Path(ap)
-                                        if (
-                                            project_root / "attachments"
-                                        ) in p.parents and p.exists():
-                                            p.unlink()
-                        project_root = Path(__file__).resolve().parents[2]
-                        base_dir = (
-                            project_root
-                            / "attachments"
-                            / "test-cases"
-                            / str(team_id)
-                            / (item.test_case_number or "")
-                        )
-                        if base_dir.exists():
-                            import shutil
+            for rid in operation.record_ids:
+                processed += 1
+                item = resolve_one(rid)
+                if not item:
+                    errors.append(f"找不到測試案例 {rid}")
+                    continue
+                item_info = {
+                    "id": item.id,
+                    "test_case_number": item.test_case_number,
+                    "title": item.title,
+                }
+                try:
+                    project_root = Path(__file__).resolve().parents[2]
+                    root_dir = get_attachments_root_dir(project_root)
+                    if item.attachments_json:
+                        data = json.loads(item.attachments_json)
+                        if isinstance(data, list):
+                            for f in data:
+                                try:
+                                    p = resolve_attachment_metadata_path(
+                                        f, project_root=project_root, allow_legacy_absolute=True
+                                    )
+                                except Exception:
+                                    p = None
+                                if p and root_dir in p.parents and p.exists():
+                                    p.unlink()
+                    base_dir = root_dir / "test-cases" / str(team_id) / (item.test_case_number or "")
+                    if base_dir.exists():
+                        import shutil
 
-                            shutil.rmtree(base_dir, ignore_errors=True)
-                    except Exception:
-                        pass
-                    sync_db.delete(item)
-                    success_count += 1
-                    success_items.append(item_info)
+                        shutil.rmtree(base_dir, ignore_errors=True)
+                except Exception:
+                    pass
+                sync_db.delete(item)
+                success_count += 1
+                success_items.append(item_info)
 
-                if success_count > 0:
-                    test_case_numbers = [item["test_case_number"] for item in success_items if item.get("test_case_number")]
-                    action_brief = f"{current_user.username} batch deleted {success_count} Test Cases"
-                    if test_case_numbers[:3]:
-                        action_brief += f": {', '.join(test_case_numbers[:3])}"
-                        if len(test_case_numbers) > 3:
-                            action_brief += f" and {len(test_case_numbers) - 3} more"
-                    log_context = {
-                        "action_type": ActionType.DELETE,
-                        "resource_id": f"batch_{success_count}_items",
-                        "action_brief": action_brief,
-                        "details": {
-                            "operation": "batch_delete",
-                            "success_count": success_count,
-                            "total_count": len(operation.record_ids),
-                            "deleted_items": success_items,
-                        },
-                    }
+            if success_count > 0:
+                test_case_numbers = [item["test_case_number"] for item in success_items if item.get("test_case_number")]
+                action_brief = f"{current_user.username} batch deleted {success_count} Test Cases"
+                if test_case_numbers[:3]:
+                    action_brief += f": {', '.join(test_case_numbers[:3])}"
+                    if len(test_case_numbers) > 3:
+                        action_brief += f" and {len(test_case_numbers) - 3} more"
+                log_context = {
+                    "action_type": ActionType.DELETE,
+                    "resource_id": f"batch_{success_count}_items",
+                    "action_brief": action_brief,
+                    "details": {
+                        "operation": "batch_delete",
+                        "success_count": success_count,
+                        "total_count": len(operation.record_ids),
+                        "deleted_items": success_items,
+                    },
+                }
 
         elif operation.operation == "update_priority":
-                pr = (
-                    (operation.update_data or {}).get("priority")
-                    if operation.update_data
-                    else None
-                )
-                if not pr:
-                    raise HTTPException(
-                        status_code=400, detail="批次更新優先級需要提供 priority"
-                    )
-                for rid in operation.record_ids:
-                    processed += 1
-                    item = resolve_one(rid)
-                    if not item:
-                        errors.append(f"找不到測試案例 {rid}")
-                        continue
-                    try:
-                        old_priority = item.priority
-                        item.priority = pr
-                        item.updated_at = datetime.utcnow()
-                        item.sync_status = SyncStatus.PENDING
-                        success_count += 1
-                        success_items.append({
+            pr = (operation.update_data or {}).get("priority") if operation.update_data else None
+            if not pr:
+                raise HTTPException(status_code=400, detail="批次更新優先級需要提供 priority")
+            for rid in operation.record_ids:
+                processed += 1
+                item = resolve_one(rid)
+                if not item:
+                    errors.append(f"找不到測試案例 {rid}")
+                    continue
+                try:
+                    old_priority = item.priority
+                    item.priority = pr
+                    item.updated_at = datetime.utcnow()
+                    item.sync_status = SyncStatus.PENDING
+                    success_count += 1
+                    success_items.append(
+                        {
                             "id": item.id,
                             "test_case_number": item.test_case_number,
                             "title": item.title,
                             "old_priority": old_priority,
                             "new_priority": pr,
-                        })
-                    except Exception as e:
-                        errors.append(f"{rid}: {e}")
+                        }
+                    )
+                except Exception as e:
+                    errors.append(f"{rid}: {e}")
 
-                if success_count > 0:
-                    test_case_numbers = [item["test_case_number"] for item in success_items if item.get("test_case_number")]
-                    action_brief = f"{current_user.username} batch updated priority to {pr} for {success_count} Test Cases"
-                    if test_case_numbers[:3]:
-                        action_brief += f": {', '.join(test_case_numbers[:3])}"
-                        if len(test_case_numbers) > 3:
-                            action_brief += f" and {len(test_case_numbers) - 3} more"
-                    log_context = {
-                        "action_type": ActionType.UPDATE,
-                        "resource_id": f"batch_{success_count}_items",
-                        "action_brief": action_brief,
-                        "details": {
-                            "operation": "batch_update_priority",
-                            "new_priority": pr,
-                            "success_count": success_count,
-                            "total_count": len(operation.record_ids),
-                            "updated_items": success_items,
-                        },
-                    }
+            if success_count > 0:
+                test_case_numbers = [item["test_case_number"] for item in success_items if item.get("test_case_number")]
+                action_brief = f"{current_user.username} batch updated priority to {pr} for {success_count} Test Cases"
+                if test_case_numbers[:3]:
+                    action_brief += f": {', '.join(test_case_numbers[:3])}"
+                    if len(test_case_numbers) > 3:
+                        action_brief += f" and {len(test_case_numbers) - 3} more"
+                log_context = {
+                    "action_type": ActionType.UPDATE,
+                    "resource_id": f"batch_{success_count}_items",
+                    "action_brief": action_brief,
+                    "details": {
+                        "operation": "batch_update_priority",
+                        "new_priority": pr,
+                        "success_count": success_count,
+                        "total_count": len(operation.record_ids),
+                        "updated_items": success_items,
+                    },
+                }
 
         elif operation.operation == "update_tcg":
-                payload = operation.update_data or {}
-                tcg_value = payload.get("tcg")
+            payload = operation.update_data or {}
+            tcg_value = payload.get("tcg")
 
-                def normalize_tcgs():
-                    nums: list[str] = []
-                    if isinstance(tcg_value, str):
-                        s = tcg_value.strip()
-                        if not s:
-                            return []
-                        parts = [
-                            p.strip()
-                            for p in s.replace("\n", ",").replace(" ", ",").split(",")
-                        ]
-                        nums = [p for p in parts if p]
-                    elif isinstance(tcg_value, list):
-                        nums = [str(x).strip() for x in tcg_value if str(x).strip()]
-                    else:
+            def normalize_tcgs():
+                nums: list[str] = []
+                if isinstance(tcg_value, str):
+                    s = tcg_value.strip()
+                    if not s:
                         return []
-                    normalized = [normalize_tcg_number(n) for n in nums]
-                    return [n for n in normalized if n]
+                    parts = [p.strip() for p in s.replace("\n", ",").replace(" ", ",").split(",")]
+                    nums = [p for p in parts if p]
+                elif isinstance(tcg_value, list):
+                    nums = [str(x).strip() for x in tcg_value if str(x).strip()]
+                else:
+                    return []
+                normalized = [normalize_tcg_number(n) for n in nums]
+                return [n for n in normalized if n]
 
-                tcg_numbers_list = normalize_tcgs()
+            tcg_numbers_list = normalize_tcgs()
 
-                for rid in operation.record_ids:
-                    processed += 1
-                    item = resolve_one(rid)
-                    if not item:
-                        errors.append(f"找不到測試案例 {rid}")
-                        continue
-                    try:
-                        new_tcg_json = json.dumps(tcg_numbers_list, ensure_ascii=False)
-                        item.tcg_json = new_tcg_json
-                        item.updated_at = datetime.utcnow()
-                        item.sync_status = SyncStatus.PENDING
-                        success_count += 1
-                        success_items.append({
+            for rid in operation.record_ids:
+                processed += 1
+                item = resolve_one(rid)
+                if not item:
+                    errors.append(f"找不到測試案例 {rid}")
+                    continue
+                try:
+                    new_tcg_json = json.dumps(tcg_numbers_list, ensure_ascii=False)
+                    item.tcg_json = new_tcg_json
+                    item.updated_at = datetime.utcnow()
+                    item.sync_status = SyncStatus.PENDING
+                    success_count += 1
+                    success_items.append(
+                        {
                             "id": item.id,
                             "test_case_number": item.test_case_number,
                             "title": item.title,
                             "tcg_numbers": tcg_numbers_list,
-                        })
-                    except Exception as e:
-                        errors.append(f"{rid}: {e}")
+                        }
+                    )
+                except Exception as e:
+                    errors.append(f"{rid}: {e}")
 
-                if success_count > 0:
-                    test_case_numbers = [item["test_case_number"] for item in success_items if item.get("test_case_number")]
-                    tcg_display_str = ", ".join(tcg_numbers_list[:3]) if tcg_numbers_list else "empty"
-                    action_brief = f"{current_user.username} batch updated TCG for {success_count} Test Cases"
-                    if tcg_display_str:
-                        action_brief += f" to TCG: {tcg_display_str}"
-                    if len(tcg_numbers_list) > 3:
-                        action_brief += f" and {len(tcg_numbers_list) - 3} more"
-                    log_context = {
-                        "action_type": ActionType.UPDATE,
-                        "resource_id": f"batch_{success_count}_items",
-                        "action_brief": action_brief,
-                        "details": {
-                            "operation": "batch_update_tcg",
-                            "tcg_numbers": tcg_numbers_list,
-                            "success_count": success_count,
-                            "total_count": len(operation.record_ids),
-                            "updated_items": success_items,
-                        },
-                    }
+            if success_count > 0:
+                test_case_numbers = [item["test_case_number"] for item in success_items if item.get("test_case_number")]
+                tcg_display_str = ", ".join(tcg_numbers_list[:3]) if tcg_numbers_list else "empty"
+                action_brief = f"{current_user.username} batch updated TCG for {success_count} Test Cases"
+                if tcg_display_str:
+                    action_brief += f" to TCG: {tcg_display_str}"
+                if len(tcg_numbers_list) > 3:
+                    action_brief += f" and {len(tcg_numbers_list) - 3} more"
+                log_context = {
+                    "action_type": ActionType.UPDATE,
+                    "resource_id": f"batch_{success_count}_items",
+                    "action_brief": action_brief,
+                    "details": {
+                        "operation": "batch_update_tcg",
+                        "tcg_numbers": tcg_numbers_list,
+                        "success_count": success_count,
+                        "total_count": len(operation.record_ids),
+                        "updated_items": success_items,
+                    },
+                }
 
         elif operation.operation == "update_section":
-                payload = operation.update_data or {}
-                section_id_value = payload.get("section_id")
-                if section_id_value is None:
-                    raise HTTPException(status_code=400, detail="批次更新區段需要提供 section_id")
+            payload = operation.update_data or {}
+            section_id_value = payload.get("section_id")
+            if section_id_value is None:
+                raise HTTPException(status_code=400, detail="批次更新區段需要提供 section_id")
+            try:
+                target_section_id = int(section_id_value)
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail="無效的 section_id")
+
+            target_section = sync_db.query(TestCaseSectionDB).filter(TestCaseSectionDB.id == target_section_id).first()
+            if not target_section:
+                raise HTTPException(status_code=404, detail="指定的區段不存在")
+
+            for rid in operation.record_ids:
+                processed += 1
+                item = resolve_one(rid)
+                if not item:
+                    errors.append(f"找不到測試案例 {rid}")
+                    continue
+                if item.test_case_set_id != target_section.test_case_set_id:
+                    errors.append(f"{rid}: 區段不屬於相同的 Test Case Set")
+                    continue
                 try:
-                    target_section_id = int(section_id_value)
-                except (TypeError, ValueError):
-                    raise HTTPException(status_code=400, detail="無效的 section_id")
-
-                target_section = (
-                    sync_db.query(TestCaseSectionDB)
-                    .filter(TestCaseSectionDB.id == target_section_id)
-                    .first()
-                )
-                if not target_section:
-                    raise HTTPException(status_code=404, detail="指定的區段不存在")
-
-                for rid in operation.record_ids:
-                    processed += 1
-                    item = resolve_one(rid)
-                    if not item:
-                        errors.append(f"找不到測試案例 {rid}")
-                        continue
-                    if item.test_case_set_id != target_section.test_case_set_id:
-                        errors.append(f"{rid}: 區段不屬於相同的 Test Case Set")
-                        continue
-                    try:
-                        old_section_id = item.test_case_section_id
-                        item.test_case_section_id = target_section.id
-                        item.updated_at = datetime.utcnow()
-                        item.sync_status = SyncStatus.PENDING
-                        success_count += 1
-                        success_items.append({
+                    old_section_id = item.test_case_section_id
+                    item.test_case_section_id = target_section.id
+                    item.updated_at = datetime.utcnow()
+                    item.sync_status = SyncStatus.PENDING
+                    success_count += 1
+                    success_items.append(
+                        {
                             "id": item.id,
                             "test_case_number": item.test_case_number,
                             "title": item.title,
                             "old_section_id": old_section_id,
                             "new_section_id": target_section.id,
-                        })
-                    except Exception as e:
-                        errors.append(f"{rid}: {e}")
+                        }
+                    )
+                except Exception as e:
+                    errors.append(f"{rid}: {e}")
 
-                if success_count > 0:
-                    test_case_numbers = [item["test_case_number"] for item in success_items if item.get("test_case_number")]
-                    action_brief = f"{current_user.username} batch reassigned {success_count} Test Cases to section {target_section.name}"
-                    if test_case_numbers[:3]:
-                        action_brief += f": {', '.join(test_case_numbers[:3])}"
-                        if len(test_case_numbers) > 3:
-                            action_brief += f" and {len(test_case_numbers) - 3} more"
-                    log_context = {
-                        "action_type": ActionType.UPDATE,
-                        "resource_id": f"batch_{success_count}_items",
-                        "action_brief": action_brief,
-                        "details": {
-                            "operation": "batch_update_section",
-                            "target_section_id": target_section.id,
-                            "target_section_name": target_section.name,
-                            "success_count": success_count,
-                            "total_count": len(operation.record_ids),
-                            "updated_items": success_items,
-                        },
-                    }
+            if success_count > 0:
+                test_case_numbers = [item["test_case_number"] for item in success_items if item.get("test_case_number")]
+                action_brief = f"{current_user.username} batch reassigned {success_count} Test Cases to section {target_section.name}"
+                if test_case_numbers[:3]:
+                    action_brief += f": {', '.join(test_case_numbers[:3])}"
+                    if len(test_case_numbers) > 3:
+                        action_brief += f" and {len(test_case_numbers) - 3} more"
+                log_context = {
+                    "action_type": ActionType.UPDATE,
+                    "resource_id": f"batch_{success_count}_items",
+                    "action_brief": action_brief,
+                    "details": {
+                        "operation": "batch_update_section",
+                        "target_section_id": target_section.id,
+                        "target_section_name": target_section.name,
+                        "success_count": success_count,
+                        "total_count": len(operation.record_ids),
+                        "updated_items": success_items,
+                    },
+                }
 
         elif operation.operation == "update_test_set":
-                payload = operation.update_data or {}
-                test_set_id_value = payload.get("test_set_id")
-                if test_set_id_value is None:
-                    raise HTTPException(status_code=400, detail="批次更新 Test Set 需要提供 test_set_id")
+            payload = operation.update_data or {}
+            test_set_id_value = payload.get("test_set_id")
+            if test_set_id_value is None:
+                raise HTTPException(status_code=400, detail="批次更新 Test Set 需要提供 test_set_id")
+            try:
+                target_test_set_id = int(test_set_id_value)
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail="無效的 test_set_id")
+
+            target_test_set = (
+                sync_db.query(TestCaseSetDB)
+                .filter(TestCaseSetDB.id == target_test_set_id, TestCaseSetDB.team_id == team_id)
+                .first()
+            )
+            if not target_test_set:
+                raise HTTPException(status_code=404, detail="指定的 Test Set 不存在")
+
+            unassigned_section = (
+                sync_db.query(TestCaseSectionDB)
+                .filter(
+                    TestCaseSectionDB.test_case_set_id == target_test_set_id,
+                    TestCaseSectionDB.name == "Unassigned",
+                )
+                .first()
+            )
+            if not unassigned_section:
+                raise HTTPException(status_code=404, detail="目標 Test Set 沒有 Unassigned 區段")
+
+            for rid in operation.record_ids:
+                processed += 1
+                item = resolve_one(rid)
+                if not item:
+                    errors.append(f"找不到測試案例 {rid}")
+                    continue
                 try:
-                    target_test_set_id = int(test_set_id_value)
-                except (TypeError, ValueError):
-                    raise HTTPException(status_code=400, detail="無效的 test_set_id")
+                    old_set_id = item.test_case_set_id
+                    old_section_id = item.test_case_section_id
 
-                target_test_set = (
-                    sync_db.query(TestCaseSetDB)
-                    .filter(TestCaseSetDB.id == target_test_set_id, TestCaseSetDB.team_id == team_id)
-                    .first()
-                )
-                if not target_test_set:
-                    raise HTTPException(status_code=404, detail="指定的 Test Set 不存在")
-
-                unassigned_section = (
-                    sync_db.query(TestCaseSectionDB)
-                    .filter(
-                        TestCaseSectionDB.test_case_set_id == target_test_set_id,
-                        TestCaseSectionDB.name == "Unassigned",
-                    )
-                    .first()
-                )
-                if not unassigned_section:
-                    raise HTTPException(status_code=404, detail="目標 Test Set 沒有 Unassigned 區段")
-
-                for rid in operation.record_ids:
-                    processed += 1
-                    item = resolve_one(rid)
-                    if not item:
-                        errors.append(f"找不到測試案例 {rid}")
-                        continue
-                    try:
-                        old_set_id = item.test_case_set_id
-                        old_section_id = item.test_case_section_id
-
-                        item.test_case_set_id = target_test_set_id
-                        item.test_case_section_id = unassigned_section.id
-                        item.updated_at = datetime.utcnow()
-                        item.sync_status = SyncStatus.PENDING
-                        success_count += 1
-                        success_items.append({
+                    item.test_case_set_id = target_test_set_id
+                    item.test_case_section_id = unassigned_section.id
+                    item.updated_at = datetime.utcnow()
+                    item.sync_status = SyncStatus.PENDING
+                    success_count += 1
+                    success_items.append(
+                        {
                             "id": item.id,
                             "test_case_number": item.test_case_number,
                             "title": item.title,
@@ -2936,58 +2842,55 @@ async def batch_operation_test_cases(
                             "new_set_id": target_test_set_id,
                             "old_section_id": old_section_id,
                             "new_section_id": unassigned_section.id,
-                        })
-                    except Exception as e:
-                        errors.append(f"{rid}: {e}")
-
-                if success_count > 0:
-                    moved_case_numbers = [
-                        str(item["test_case_number"])
-                        for item in success_items
-                        if item.get("test_case_number")
-                    ]
-                    if moved_case_numbers:
-                        cleanup_summary = TestRunScopeService.cleanup_case_move(
-                            sync_db,
-                            team_id=team_id,
-                            case_numbers=moved_case_numbers,
-                            target_set_id=target_test_set_id,
-                        )
-                    else:
-                        cleanup_summary = {
-                            "removed_item_count": 0,
-                            "impacted_test_runs": [],
-                            "trigger": "move_test_case_set",
-                            "target_test_case_set_id": target_test_set_id,
                         }
+                    )
+                except Exception as e:
+                    errors.append(f"{rid}: {e}")
 
-                if success_count > 0:
-                    test_case_numbers = [item["test_case_number"] for item in success_items if item.get("test_case_number")]
-                    action_brief = f"{current_user.username} batch moved {success_count} Test Cases to set {target_test_set.name} (Unassigned)"
-                    if test_case_numbers[:3]:
-                        action_brief += f": {', '.join(test_case_numbers[:3])}"
-                        if len(test_case_numbers) > 3:
-                            action_brief += f" and {len(test_case_numbers) - 3} more"
-                    log_context = {
-                        "action_type": ActionType.UPDATE,
-                        "resource_id": f"batch_{success_count}_items",
-                        "action_brief": action_brief,
-                        "details": {
-                            "operation": "batch_update_test_set",
-                            "target_test_set_id": target_test_set_id,
-                            "target_test_set_name": target_test_set.name,
-                            "target_section_id": unassigned_section.id,
-                            "target_section_name": unassigned_section.name,
-                            "success_count": success_count,
-                            "total_count": len(operation.record_ids),
-                            "updated_items": success_items,
-                            "cleanup_summary": cleanup_summary,
-                        },
+            if success_count > 0:
+                moved_case_numbers = [
+                    str(item["test_case_number"]) for item in success_items if item.get("test_case_number")
+                ]
+                if moved_case_numbers:
+                    cleanup_summary = TestRunScopeService.cleanup_case_move(
+                        sync_db,
+                        team_id=team_id,
+                        case_numbers=moved_case_numbers,
+                        target_set_id=target_test_set_id,
+                    )
+                else:
+                    cleanup_summary = {
+                        "removed_item_count": 0,
+                        "impacted_test_runs": [],
+                        "trigger": "move_test_case_set",
+                        "target_test_case_set_id": target_test_set_id,
                     }
+
+            if success_count > 0:
+                test_case_numbers = [item["test_case_number"] for item in success_items if item.get("test_case_number")]
+                action_brief = f"{current_user.username} batch moved {success_count} Test Cases to set {target_test_set.name} (Unassigned)"
+                if test_case_numbers[:3]:
+                    action_brief += f": {', '.join(test_case_numbers[:3])}"
+                    if len(test_case_numbers) > 3:
+                        action_brief += f" and {len(test_case_numbers) - 3} more"
+                log_context = {
+                    "action_type": ActionType.UPDATE,
+                    "resource_id": f"batch_{success_count}_items",
+                    "action_brief": action_brief,
+                    "details": {
+                        "operation": "batch_update_test_set",
+                        "target_test_set_id": target_test_set_id,
+                        "target_test_set_name": target_test_set.name,
+                        "target_section_id": unassigned_section.id,
+                        "target_section_name": unassigned_section.name,
+                        "success_count": success_count,
+                        "total_count": len(operation.record_ids),
+                        "updated_items": success_items,
+                        "cleanup_summary": cleanup_summary,
+                    },
+                }
         else:
-            raise HTTPException(
-                status_code=400, detail=f"不支援的批次操作: {operation.operation}"
-            )
+            raise HTTPException(status_code=400, detail=f"不支援的批次操作: {operation.operation}")
 
         return TestCaseBatchResponse(
             success=len(errors) == 0,

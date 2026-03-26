@@ -69,10 +69,7 @@ def test_settings_qdrant_defaults_without_qdrant_block(tmp_path, monkeypatch):
 
     config_path = tmp_path / "config.yaml"
     config_path.write_text(
-        "app:\n"
-        "  port: 9999\n"
-        "openrouter:\n"
-        "  api_key: ''\n",
+        "app:\n  port: 9999\nopenrouter:\n  api_key: ''\n",
         encoding="utf-8",
     )
 
@@ -92,15 +89,83 @@ def test_settings_qdrant_legacy_collection_env_is_normalized(tmp_path, monkeypat
 
     config_path = tmp_path / "config.yaml"
     config_path.write_text(
-        "app:\n"
-        "  port: 9999\n"
-        "openrouter:\n"
-        "  api_key: ''\n",
+        "app:\n  port: 9999\nopenrouter:\n  api_key: ''\n",
         encoding="utf-8",
     )
 
     loaded = Settings.from_env_and_file(str(config_path))
     assert loaded.qdrant.collection_jira_referances == "jira_references"
+
+
+def test_settings_prefers_public_base_url_env_over_legacy_app_base_url(tmp_path, monkeypatch):
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://tcrt.example.com")
+    monkeypatch.setenv("APP_BASE_URL", "https://legacy.example.com")
+
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        "app:\n  port: 9999\n  public_base_url: https://config.example.com\n",
+        encoding="utf-8",
+    )
+
+    loaded = Settings.from_env_and_file(str(config_path))
+    assert loaded.app.public_base_url == "https://tcrt.example.com"
+    assert loaded.app.get_base_url() == "https://tcrt.example.com"
+
+
+def test_settings_falls_back_to_configured_public_base_url(tmp_path, monkeypatch):
+    monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)
+    monkeypatch.delenv("APP_BASE_URL", raising=False)
+
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        "app:\n  port: 9999\n  public_base_url: https://config.example.com\n",
+        encoding="utf-8",
+    )
+
+    loaded = Settings.from_env_and_file(str(config_path))
+    assert loaded.app.get_base_url() == "https://config.example.com"
+
+
+def test_settings_warns_when_container_runtime_uses_localhost_services(tmp_path, monkeypatch, caplog):
+    monkeypatch.setenv("APP_ENV", "docker")
+    monkeypatch.setenv("QDRANT_URL", "http://localhost:6333")
+    monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)
+    monkeypatch.delenv("APP_BASE_URL", raising=False)
+
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        "app:\n  port: 9999\n",
+        encoding="utf-8",
+    )
+
+    with caplog.at_level("WARNING"):
+        Settings.from_env_and_file(str(config_path))
+
+    assert "QDRANT_URL" in caplog.text
+    assert "PUBLIC_BASE_URL" in caplog.text
+
+
+def test_settings_reads_jira_values_from_env(tmp_path, monkeypatch):
+    monkeypatch.setenv("JIRA_SERVER_URL", "https://jira.example.com")
+    monkeypatch.setenv("JIRA_USERNAME", "qa.user")
+    monkeypatch.setenv("JIRA_API_TOKEN", "secret-token")
+    monkeypatch.setenv("JIRA_CA_CERT_PATH", "/etc/certs/jira.crt")
+
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        "jira:\n"
+        "  server_url: https://old.example.com\n"
+        "  username: old-user\n"
+        "  api_token: old-token\n"
+        "  ca_cert_path: old.crt\n",
+        encoding="utf-8",
+    )
+
+    loaded = Settings.from_env_and_file(str(config_path))
+    assert loaded.jira.server_url == "https://jira.example.com"
+    assert loaded.jira.username == "qa.user"
+    assert loaded.jira.api_token == "secret-token"
+    assert loaded.jira.ca_cert_path == "/etc/certs/jira.crt"
 
 
 @pytest.mark.asyncio

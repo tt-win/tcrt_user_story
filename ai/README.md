@@ -18,11 +18,7 @@
 3.  **Vector Database (Qdrant)**:
     *   儲存 Test Case 與 USM Node 的向量與 Metadata。
     *   提供向量相似度搜尋與 Metadata 過濾。
-4.  **RAG Client (`ai/rag_cli.py`)**:
-    *   使用者互動介面 (CLI)。
-    *   負責意圖識別、混合搜尋、結構化擴展與 Prompt 組裝。
-    *   呼叫 LLM 生成回答。
-5.  **LLM & Embedding Services**:
+4.  **LLM & Embedding Services**:
     *   **LLM**: OpenRouter (預設模型: `google/gemini-2.0-flash-001`)。
     *   **Embedding**: 本地服務 (預設模型: `text-embedding-bge-m3`, 維度: 1024)。
 
@@ -41,22 +37,11 @@
 3.  **載入 (Load)**:
     *   分批 (Batch Size: 50) 寫入 Qdrant 的 `test_cases` 與 `usm_nodes` Collections。
 
-### 2.2 檢索與生成 (RAG)
+### 2.2 向量資料使用情境
 
-1.  **使用者提問**: 使用者在 CLI 輸入問題。
-2.  **查詢改寫 (Rewrite)**: LLM 根據對話歷史 (History) 改寫問題，補全指代不明的詞彙。
-3.  **意圖識別**:
-    *   **Team Intent**: 偵測是否包含團隊關鍵字 (如 `ARD`, `GED`) -> 產生 Qdrant Filter。
-    *   **Resource Intent**: 偵測是問「測試案例」還是「需求」 -> 決定搜尋哪個 Collection。
-4.  **混合搜尋 (Hybrid Search)**:
-    *   Qdrant 根據向量相似度 + Metadata Filter 進行檢索。
-5.  **結構化擴展 (Structural Expansion)**:
-    *   若搜到 USM Node，自動撈取其子節點 (Children) 內容。
-    *   若搜到 USM Node，自動根據 `jira_tickets` 撈取關聯的 Test Cases。
-6.  **生成回答**:
-    *   將原始檢索結果 + 擴展資料組裝成 Context。
-    *   LLM 根據 Context 與 System Prompt 生成 Markdown 格式回答。
-    *   CLI 使用 `rich` 函式庫渲染 Markdown。
+1.  **資料檢索**: 由 ETL 同步後，供後續 AI/檢索流程使用。
+2.  **語意搜尋**: Qdrant 根據向量相似度與 Metadata 進行檢索。
+3.  **生成回答**: 由上層服務將檢索結果組裝成 Prompt，交由 LLM 生成回答。
 
 ---
 
@@ -67,10 +52,8 @@
 | 檔案名稱 | 用途 | 關鍵函式/類別 |
 | :--- | :--- | :--- |
 | **`etl_all_teams.py`** | **核心 ETL 腳本**。處理所有團隊的資料同步。 | `process_team`, `process_items_in_batches` |
-| **`rag_cli.py`** | **RAG 互動介面**。包含完整的檢索與問答邏輯。 | `rewrite_query`, `expand_search_results`, `query_llm` |
 | `clear_qdrant.py` | 清空 Qdrant 中的所有 Collections。 | `clear_collections` |
 | `inspect_qdrant.py` | 檢驗 Qdrant 中的資料筆數與範例內容。 | `inspect_collection` |
-| `etl_retry_teams.py` | (備用) 僅針對特定團隊重試 ETL，用於處理 Timeout。 | `TARGET_TEAM_IDS` |
 | `test_llm_context.py`| (測試用) 測試 Backend Context API 是否正常回傳。 | `get_test_cases_context` |
 
 ---
@@ -79,10 +62,11 @@
 
 ### 必要的環境變數/常數
 
-在 `ai/rag_cli.py` 與 `ai/etl_all_teams.py` 中可調整以下設定：
+在 `ai/etl_all_teams.py` 與相關設定檔中可調整以下設定：
 
-*   `QDRANT_URL`: Qdrant 服務位址 (預設 `http://localhost:6333`)
-*   `TEXT_EMBEDDING_URL`: Embedding 服務位址 (預設 `http://127.0.0.1:1234/v1/embeddings`)
+*   `QDRANT_URL`: Qdrant 服務位址 (預設 `http://localhost:6333`；Docker 請改成 service name，例如 `http://qdrant:6333`)
+*   `TEXT_EMBEDDING_URL`: Embedding 服務位址 (預設 `http://127.0.0.1:1234/v1/embeddings`；Docker 請改成 service name，例如 `http://embedding:1234/v1/embeddings`)
+*   `PUBLIC_BASE_URL`: 對外可達的應用網址（例如通知連結、OpenRouter Referer）；Docker / 反向代理部署請明確設定
 *   `LLM_API_URL`: LLM Chat Completion 端點
 *   `OPENROUTER_API_KEY`: OpenRouter API Key
 *   `VECTOR_SIZE`: **1024** (對應 `text-embedding-bge-m3`)
@@ -93,8 +77,7 @@
 
 *   `qdrant-client`
 *   `requests`
-*   `prompt_toolkit` (CLI 互動)
-*   `rich` (CLI 排版)
+*   `rich`
 
 ---
 
@@ -113,16 +96,8 @@
 2.  修改 `ai/etl_all_teams.py`:
     *   更新 `VECTOR_SIZE` (例如改回 768)。
     *   更新 `get_embeddings` 中的 `model` 名稱。
-3.  修改 `ai/rag_cli.py`:
-    *   更新 `get_embedding` 中的 `model` 名稱。
-4.  執行 `python ai/clear_qdrant.py` (因為維度變更必須重建 Collection)。
-5.  執行 `python ai/etl_all_teams.py`。
-
-### 如何調整檢索準確度？
-
-1.  **調整 `TOP_K`**: 在 `rag_cli.py` 中增加或減少檢索筆數。
-2.  **調整 `SCORE_THRESHOLD`**: 設定相似度門檻，過濾低相關性的結果。
-3.  **優化 Intent Detection**: 在 `detect_team_intent` 或 `detect_resource_intent` 中增加關鍵字或改用 LLM 進行意圖判斷。
+3.  執行 `python ai/clear_qdrant.py` (因為維度變更必須重建 Collection)。
+4.  執行 `python ai/etl_all_teams.py`。
 
 ---
 
