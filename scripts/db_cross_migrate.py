@@ -643,12 +643,100 @@ def _filter_test_run_item_result_history_payload(
     }
 
 
+def _dedup_users_payload_case_insensitive(
+    payload: list[dict[str, Any]],
+    context_cache: dict[str, Any],
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    """Deduplicate users by case-insensitive username, keeping the most complete record.
+
+    SQLite allows 'nikki' and 'Nikki' as separate rows, but MySQL's unique index
+    is case-insensitive by default, causing duplicate key errors.
+
+    Completeness score: lark_user_id present (+3), is_verified (+2), last_login_at (+1),
+    more recent updated_at as tiebreaker.
+
+    Dropped user IDs are stored in context_cache["dropped_user_ids"] so downstream
+    tables referencing users.id can filter out orphan rows.
+    """
+
+    def _completeness(row: dict[str, Any]) -> tuple:
+        score = 0
+        if row.get("lark_user_id"):
+            score += 3
+        if row.get("is_verified"):
+            score += 2
+        if row.get("last_login_at"):
+            score += 1
+        updated = row.get("updated_at") or row.get("created_at")
+        return (score, updated or "")
+
+    seen: dict[str, dict[str, Any]] = {}  # username_lower → best row
+    losers: dict[str, dict[str, Any]] = {}  # username_lower → dropped row
+    duplicates_dropped = 0
+    for row in payload:
+        username_lower = (row.get("username") or "").strip().lower()
+        if not username_lower:
+            continue
+        if username_lower in seen:
+            existing = seen[username_lower]
+            if _completeness(row) > _completeness(existing):
+                losers[username_lower] = existing
+                seen[username_lower] = row
+            else:
+                losers[username_lower] = row
+            duplicates_dropped += 1
+        else:
+            seen[username_lower] = row
+
+    dropped_ids: set[int] = set()
+    for loser_row in losers.values():
+        uid = loser_row.get("id")
+        if uid is not None:
+            dropped_ids.add(int(uid))
+
+    context_cache["dropped_user_ids"] = dropped_ids
+
+    deduped = list(seen.values())
+    return deduped, {"case_insensitive_username_dedup": duplicates_dropped}
+
+
+def _filter_orphan_user_refs(
+    payload: list[dict[str, Any]],
+    context_cache: dict[str, Any],
+) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    """Filter out rows whose user_id was dropped during users dedup."""
+    dropped_ids: set[int] = context_cache.get("dropped_user_ids") or set()
+    if not dropped_ids:
+        return payload, {}
+    filtered = []
+    skipped = 0
+    for row in payload:
+        uid = row.get("user_id")
+        if uid is not None and int(uid) in dropped_ids:
+            skipped += 1
+            continue
+        filtered.append(row)
+    return filtered, {"skipped_dropped_user_refs": skipped}
+
+
+# Tables that have a user_id FK referencing users.id
+_TABLES_WITH_USER_FK = frozenset({
+    "active_sessions",
+    "user_team_permissions",
+    "ai_tc_helper_sessions",
+})
+
+
 def repair_payload_for_target(
     table_name: str,
     payload: list[dict[str, Any]],
     target_connection: Connection,
     context_cache: dict[str, Any],
 ) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    if table_name == "users":
+        return _dedup_users_payload_case_insensitive(payload, context_cache)
+    if table_name in _TABLES_WITH_USER_FK:
+        return _filter_orphan_user_refs(payload, context_cache)
     if table_name == "test_cases":
         return _repair_test_cases_payload(payload, target_connection, context_cache)
     if table_name == "test_run_item_result_history":
@@ -668,13 +756,14 @@ def copy_table_data(
     *,
     chunk_size: int,
     logger: Logger | None = None,
+    shared_context: dict[str, Any] | None = None,
 ) -> int:
     transferable_columns = [column.name for column in target_table.columns if column.name in source_table.c]
     if not transferable_columns:
         return 0
 
     repair_totals: dict[str, int] = {}
-    context_cache: dict[str, Any] = {}
+    context_cache: dict[str, Any] = shared_context if shared_context is not None else {}
 
     def _apply_repairs(payload: list[dict[str, Any]]) -> list[dict[str, Any]]:
         repaired_payload, repair_counts = repair_payload_for_target(
@@ -820,6 +909,7 @@ def run_job(job: TransferJob, logger: Logger) -> dict[str, Any]:
                     logger.info(f"job={job.name} 清空目標資料")
                     reset_target_data(target_connection, target_metadata, ordered_tables)
 
+                shared_context: dict[str, Any] = {}
                 for table_name in ordered_tables:
                     source_table = source_metadata.tables[table_name]
                     target_table = target_metadata.tables[table_name]
@@ -844,6 +934,7 @@ def run_job(job: TransferJob, logger: Logger) -> dict[str, Any]:
                         target_table,
                         chunk_size=job.chunk_size,
                         logger=logger,
+                        shared_context=shared_context,
                     )
                     logger.info(f"job={job.name} 搬移 {table_name}: {copied_rows} rows")
                     summary["tables"].append(
