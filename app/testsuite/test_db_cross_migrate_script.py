@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
-from sqlalchemy import Column, MetaData, Table, Text, create_engine, inspect, text
+from sqlalchemy import Column, Integer, JSON, MetaData, Table, Text, create_engine, inspect, text
 
 
 def _load_script_module():
@@ -354,6 +355,84 @@ def test_mysql_text_type_for_size_and_widen_plan() -> None:
             "nullable": True,
         }
     ]
+
+
+def test_copy_table_data_serializes_json_values_when_target_is_text(tmp_path: Path) -> None:
+    module = _load_script_module()
+    source_path = tmp_path / "source-json.db"
+    target_path = tmp_path / "target-json.db"
+    source_engine = create_engine(_sqlite_url(source_path), future=True)
+    target_engine = create_engine(_sqlite_url(target_path), future=True)
+
+    try:
+        source_metadata = MetaData()
+        Table(
+            "user_story_maps",
+            source_metadata,
+            Column("id", Integer, primary_key=True),
+            Column("nodes", JSON, nullable=True),
+            Column("edges", JSON, nullable=True),
+        )
+        source_metadata.create_all(source_engine)
+
+        target_metadata = MetaData()
+        Table(
+            "user_story_maps",
+            target_metadata,
+            Column("id", Integer, primary_key=True),
+            Column("nodes", Text, nullable=True),
+            Column("edges", Text, nullable=True),
+        )
+        target_metadata.create_all(target_engine)
+
+        with source_engine.begin() as connection:
+            connection.execute(
+                source_metadata.tables["user_story_maps"].insert(),
+                [
+                    {
+                        "id": 1,
+                        "nodes": [{"id": "node-1", "title": "Login"}],
+                        "edges": [{"source": "node-1", "target": "node-2"}],
+                    }
+                ],
+            )
+
+        reflected_source, _ = module.reflect_selected_metadata(
+            source_engine,
+            include_tables=["user_story_maps"],
+            exclude_tables=[],
+        )
+        reflected_target, _ = module.reflect_selected_metadata(
+            target_engine,
+            include_tables=["user_story_maps"],
+            exclude_tables=[],
+        )
+
+        with source_engine.connect() as source_connection, target_engine.begin() as target_connection:
+            copied = module.copy_table_data(
+                source_connection,
+                target_connection,
+                reflected_source.tables["user_story_maps"],
+                reflected_target.tables["user_story_maps"],
+                chunk_size=10,
+            )
+
+        assert copied == 1
+        with target_engine.connect() as connection:
+            rows = connection.execute(
+                text("SELECT id, nodes, edges FROM user_story_maps ORDER BY id")
+            ).fetchall()
+
+        assert rows == [
+            (
+                1,
+                json.dumps([{"id": "node-1", "title": "Login"}], ensure_ascii=False),
+                json.dumps([{"source": "node-1", "target": "node-2"}], ensure_ascii=False),
+            )
+        ]
+    finally:
+        source_engine.dispose()
+        target_engine.dispose()
 
 
 def test_copy_table_data_repairs_missing_test_case_set_with_default_section(tmp_path: Path) -> None:

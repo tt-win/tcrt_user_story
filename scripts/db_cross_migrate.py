@@ -22,7 +22,8 @@ from typing import Any, Iterator
 import yaml
 from sqlalchemy import MetaData, create_engine, inspect, select
 from sqlalchemy.engine import Connection, Engine
-from sqlalchemy.sql.sqltypes import Text
+from sqlalchemy.sql.sqltypes import JSON as SQLAlchemyJSON
+from sqlalchemy.sql.sqltypes import String, Text
 
 
 DEFAULT_EXCLUDE_TABLES = ["alembic_version", "migration_history"]
@@ -345,6 +346,14 @@ def _mysql_text_type_for_size(required_bytes: int) -> str:
     )
 
 
+def _dump_json_parameter_value(value: Any) -> str:
+    if isinstance(value, tuple):
+        value = list(value)
+    elif isinstance(value, set):
+        value = list(value)
+    return json.dumps(value, ensure_ascii=False, default=str)
+
+
 def _measure_source_text_sizes(
     source_connection: Connection,
     source_table,
@@ -367,7 +376,7 @@ def _measure_source_text_sizes(
             elif isinstance(value, str):
                 byte_length = len(value.encode("utf-8"))
             else:
-                byte_length = len(json.dumps(value, ensure_ascii=False).encode("utf-8"))
+                byte_length = len(_dump_json_parameter_value(value).encode("utf-8"))
             if byte_length > max_lengths[column_name]:
                 max_lengths[column_name] = byte_length
 
@@ -748,6 +757,19 @@ def repair_payload_for_target(
     return payload, {}
 
 
+def _coerce_value_for_target(source_column, target_column, value: Any) -> Any:
+    if value is None:
+        return None
+    if isinstance(target_column.type, SQLAlchemyJSON):
+        return value
+    if isinstance(target_column.type, String) and (
+        isinstance(source_column.type, SQLAlchemyJSON)
+        or isinstance(value, (dict, list, tuple, set))
+    ):
+        return _dump_json_parameter_value(value)
+    return value
+
+
 def copy_table_data(
     source_connection: Connection,
     target_connection: Connection,
@@ -761,6 +783,10 @@ def copy_table_data(
     transferable_columns = [column.name for column in target_table.columns if column.name in source_table.c]
     if not transferable_columns:
         return 0
+    transferable_column_specs = [
+        (column_name, source_table.c[column_name], target_table.c[column_name])
+        for column_name in transferable_columns
+    ]
 
     repair_totals: dict[str, int] = {}
     context_cache: dict[str, Any] = shared_context if shared_context is not None else {}
@@ -776,6 +802,23 @@ def copy_table_data(
             repair_totals[key] = repair_totals.get(key, 0) + int(value or 0)
         return repaired_payload
 
+    def _build_payload(rows: list[Any]) -> list[dict[str, Any]]:
+        raw_payload = [
+            {
+                column_name: row._mapping[column_name]
+                for column_name, _source_column, _target_column in transferable_column_specs
+            }
+            for row in rows
+        ]
+        repaired_payload = _apply_repairs(raw_payload)
+        return [
+            {
+                column_name: _coerce_value_for_target(source_column, target_column, row.get(column_name))
+                for column_name, source_column, target_column in transferable_column_specs
+            }
+            for row in repaired_payload
+        ]
+
     self_reference_specs = _self_referential_fk_specs(source_table, target_table)
     if self_reference_specs:
         primary_key_names = tuple(column.name for column in source_table.primary_key.columns)
@@ -784,10 +827,7 @@ def copy_table_data(
         copied_rows = 0
         for offset in range(0, len(ordered_rows), chunk_size):
             batch = ordered_rows[offset : offset + chunk_size]
-            payload = _apply_repairs([
-                {column_name: row._mapping[column_name] for column_name in transferable_columns}
-                for row in batch
-            ])
+            payload = _build_payload(batch)
             if payload:
                 target_connection.execute(target_table.insert(), payload)
                 copied_rows += len(payload)
@@ -804,10 +844,9 @@ def copy_table_data(
         rows = result.fetchmany(chunk_size)
         if not rows:
             break
-        payload = _apply_repairs([
-            {column_name: row._mapping[column_name] for column_name in transferable_columns}
-            for row in rows
-        ])
+        payload = _build_payload(rows)
+        if not payload:
+            continue
         target_connection.execute(target_table.insert(), payload)
         copied_rows += len(payload)
     if logger and repair_totals:
