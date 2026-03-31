@@ -8,7 +8,6 @@ from sqlalchemy import (
     Column,
     Integer,
     String,
-    Text,
     DateTime,
     ForeignKey,
     Float,
@@ -24,6 +23,7 @@ from datetime import datetime
 import logging
 
 from app.config import get_settings
+from app.db_types import MediumText as Text
 from app.db_url import normalize_async_database_url
 
 Base = declarative_base()

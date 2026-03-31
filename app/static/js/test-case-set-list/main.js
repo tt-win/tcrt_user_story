@@ -88,7 +88,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 });
 
 function bindAiHelperEntrypoint() {
-  const helperBtn = document.getElementById('openAiHelperFromSetListBtn');
+  const helperBtn = document.getElementById('openQaAiHelperFromSetListBtn');
   if (!helperBtn || helperBtn.dataset.bound === '1') {
     return;
   }
@@ -754,16 +754,7 @@ async function navigateToAiHelperFromSetList() {
     sessionStorage.removeItem('selectedTestCaseSetId');
     sessionStorage.removeItem('selectedTestCaseSetName');
   } catch (_) {}
-
-  if (!window.AiTestCaseHelper || typeof window.AiTestCaseHelper.openModal !== 'function') {
-    const message = window.i18n && window.i18n.isReady()
-      ? window.i18n.t('common.loadingFailed', {}, 'AI Helper 尚未初始化，請重新整理頁面')
-      : 'AI Helper 尚未初始化，請重新整理頁面';
-    showAlert(message, 'danger');
-    return;
-  }
-
-  await window.AiTestCaseHelper.openModal({ teamId });
+  window.location.href = `/qa-ai-helper?team_id=${encodeURIComponent(teamId)}`;
 }
 
 /* ============================================================

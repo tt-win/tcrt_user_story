@@ -3,18 +3,7 @@
 {% block title %}測試案例管理 - Test Case Repository Web Tool{% endblock %}
 
 {% block head %}
-<!-- Markdown 編輯器相關資源 -->
-<script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js"></script>
 <link rel="stylesheet" href="/static/css/test-case-management.css">
-<script>
-window.__TCM_HELPER_MODE__ = {{ 'true' if helper_mode else 'false' }};
-if (window.__TCM_HELPER_MODE__) {
-    try {
-        sessionStorage.removeItem('selectedTestCaseSetId');
-        sessionStorage.removeItem('selectedTestCaseSetName');
-    } catch (_) {}
-}
-</script>
 {% endblock %}
 
 {% block page_title_text %}
@@ -46,6 +35,11 @@ if (window.__TCM_HELPER_MODE__) {
     <button type="button" class="btn btn-secondary" id="refreshBtn">
         <i class="fas fa-sync-alt me-2"></i><span data-i18n="common.refresh">重新整理</span>
     </button>
+    {% if qa_ai_helper_enabled %}
+    <a href="/qa-ai-helper{% if set_id %}?set_id={{ set_id }}{% endif %}" class="btn btn-info" id="openQaAiHelperPageBtn">
+        <i class="fas fa-robot me-2"></i><span data-i18n="qaAiHelper.entryButton">新版 QA AI Helper</span>
+    </a>
+    {% endif %}
     <div class="btn-group" role="group" id="jumpToSetGroup" style="display: none;">
         <button type="button" class="btn btn-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
             <i class="fas fa-arrow-right me-2"></i><span data-i18n="common.jumpTo">跳至</span>
@@ -590,8 +584,6 @@ if (window.__TCM_HELPER_MODE__) {
     </div>
 </div>
 
-{% include '_partials/ai_test_case_helper_modal.html' %}
-
 <!-- 批次修改模態框 -->
 <div class="modal fade" id="testCaseBatchModifyModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
@@ -1090,7 +1082,6 @@ TC-1003,API 健康檢查,\"服務已啟動\",\"發送 GET /health\",\"回傳 200
 <script src="/static/js/test-case-management/utils.js"></script>
 <script src="/static/js/test-case-management/ai-assist.js"></script>
 <script src="/static/js/test-case-management/markdown.js"></script>
-<script src="/static/js/test-case-management/ai-helper.js?v=20260212b"></script>
 <script src="/static/js/test-case-management/attachments.js"></script>
 <script src="/static/js/test-case-management/tcg-tooltip.js"></script>
 <script src="/static/js/test-case-management/reference-test-case.js"></script>

@@ -1,0 +1,114 @@
+{
+  "generation_items": [
+    {
+      "item_key": "TCG-1.010.010",
+      "seed_id": "TCG-1.010.010",
+      "section_id": "TCG-1.010",
+      "scenario_title": "Open detail",
+      "row_key": "TCG-1.010.rg-001.row-001",
+      "row_group_key": "rg-001",
+      "coverage_category": "happy",
+      "assertion_refs": [
+        "as-001"
+      ],
+      "required_assertions": [
+        {
+          "assertion_id": "as-001",
+          "text": "detail opens"
+        }
+      ],
+      "hard_fact_refs": [
+        "hf-001"
+      ],
+      "missing_required_facts": [],
+      "applicability": "applicable",
+      "override_reason": null,
+      "title_hint": "Open detail",
+      "precondition_hints": [
+        "login"
+      ],
+      "step_hints": [
+        "click detail",
+        "observe page",
+        "verify title"
+      ],
+      "expected_hints": [
+        "detail opens"
+      ]
+    },
+    {
+      "item_key": "TCG-1.010.020",
+      "seed_id": "TCG-1.010.020",
+      "section_id": "TCG-1.010",
+      "scenario_title": "Open detail",
+      "row_key": "TCG-1.010.baseline.boundary",
+      "row_group_key": "baseline",
+      "coverage_category": "boundary",
+      "assertion_refs": [
+        "as-002"
+      ],
+      "required_assertions": [
+        {
+          "assertion_id": "as-002",
+          "text": "title matches"
+        }
+      ],
+      "hard_fact_refs": [],
+      "missing_required_facts": [
+        "title-format"
+      ],
+      "applicability": "applicable",
+      "override_reason": null,
+      "title_hint": "Boundary title",
+      "precondition_hints": [],
+      "step_hints": [
+        "open detail"
+      ],
+      "expected_hints": []
+    }
+  ],
+  "model_outputs": [
+    {
+      "item_index": 0,
+      "title": "Open detail testcase",
+      "priority": "High",
+      "preconditions": [
+        "已登入"
+      ],
+      "steps": [
+        "進入列表",
+        "點擊 detail",
+        "確認新分頁"
+      ],
+      "expected_results": [
+        "成功開啟 detail 頁面"
+      ]
+    }
+  ],
+  "selected_references": [
+    {
+      "reference_id": "ref-001",
+      "title": "history case"
+    }
+  ],
+  "coverage_index": {
+    "as-001": [
+      "TCG-1.010.010"
+    ],
+    "as-002": [
+      "TCG-1.010.020"
+    ]
+  },
+  "expected": {
+    "merged_item_key": "TCG-1.010.010",
+    "reference_ids_used": [
+      "ref-001"
+    ],
+    "validation_error_codes": [
+      "preconditions_too_short",
+      "steps_too_short",
+      "expected_results_empty",
+      "missing_required_facts"
+    ]
+  }
+}

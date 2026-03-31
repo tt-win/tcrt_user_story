@@ -5,6 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from sqlalchemy.engine import make_url
+from sqlalchemy.sql import sqltypes
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
@@ -196,3 +197,57 @@ def test_bootstrap_target_creates_database_before_upgrade(monkeypatch) -> None:
         "create:postgresql+psycopg://tcrt:tcrt@127.0.0.1:5432/tcrt_main",
         "upgrade",
     ]
+
+
+def test_verify_mysql_mediumtext_defaults_detects_plain_text_columns(monkeypatch) -> None:
+    class _Inspector:
+        def get_table_names(self):
+            return ["demo", "alembic_version"]
+
+        def get_columns(self, table_name):
+            if table_name == "demo":
+                return [
+                    {"name": "payload_json", "type": sqltypes.Text(), "nullable": True},
+                    {"name": "title", "type": sqltypes.String(length=100), "nullable": True},
+                ]
+            return []
+
+    engine = SimpleNamespace(dialect=SimpleNamespace(name="mysql"))
+    monkeypatch.setattr(database_init, "inspect", lambda _engine: _Inspector())
+
+    ok, violations = database_init.verify_mysql_mediumtext_defaults(
+        engine,
+        database_init.Logger(quiet=True),
+        "主資料庫",
+    )
+
+    assert ok is False
+    assert violations == ["demo.payload_json=TEXT"]
+
+
+def test_verify_mysql_mediumtext_defaults_accepts_mediumtext_columns(monkeypatch) -> None:
+    class _MediumText(sqltypes.Text):
+        pass
+
+    _MediumText.__name__ = "MEDIUMTEXT"
+
+    class _Inspector:
+        def get_table_names(self):
+            return ["demo"]
+
+        def get_columns(self, table_name):
+            return [
+                {"name": "payload_json", "type": _MediumText(), "nullable": True},
+            ]
+
+    engine = SimpleNamespace(dialect=SimpleNamespace(name="mysql"))
+    monkeypatch.setattr(database_init, "inspect", lambda _engine: _Inspector())
+
+    ok, violations = database_init.verify_mysql_mediumtext_defaults(
+        engine,
+        database_init.Logger(quiet=True),
+        "主資料庫",
+    )
+
+    assert ok is True
+    assert violations == []

@@ -1,0 +1,227 @@
+.qa-ai-helper-page {
+  --qa-helper-border: var(--tr-border-color, #d7dfeb);
+  --qa-helper-surface: #f7f9fc;
+  --qa-helper-surface-strong: #eef3fa;
+}
+
+.qa-helper-card {
+  border-color: var(--qa-helper-border);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+}
+
+.qa-helper-phase-shell .card-body {
+  padding: 1rem 1.25rem;
+}
+
+.qa-helper-phase-rail {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.qa-helper-phase-step {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  border: 1px solid var(--qa-helper-border);
+  border-radius: 0.85rem;
+  background: #fff;
+  padding: 0.8rem 0.95rem;
+  color: #334155;
+  font-weight: 700;
+  text-align: left;
+  transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+}
+
+.qa-helper-phase-step:hover:not(:disabled) {
+  border-color: var(--btn-primary-border, #2463eb);
+  transform: translateY(-1px);
+}
+
+.qa-helper-phase-step.is-active {
+  border-color: var(--btn-primary-border, #2463eb);
+  background: #eaf2ff;
+  color: #0f172a;
+}
+
+.qa-helper-phase-step:disabled {
+  background: var(--qa-helper-surface);
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+
+.qa-helper-phase-step-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.85rem;
+  height: 1.85rem;
+  border-radius: 999px;
+  background: var(--qa-helper-surface-strong);
+  color: #1e293b;
+  font-size: 0.82rem;
+}
+
+.qa-helper-phase-step.is-active .qa-helper-phase-step-index {
+  background: var(--btn-primary-border, #2463eb);
+  color: #fff;
+}
+
+.qa-helper-phase-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-top: 1px solid var(--qa-helper-border);
+  padding-top: 0.9rem;
+}
+
+.qa-helper-phase-description {
+  color: #475569;
+  font-size: 0.92rem;
+}
+
+.qa-helper-phase-panel {
+  display: none;
+}
+
+.qa-helper-phase-panel.is-active {
+  display: block;
+}
+
+.qa-helper-card .card-header {
+  background: linear-gradient(180deg, #ffffff 0%, var(--qa-helper-surface) 100%);
+  border-bottom-color: var(--qa-helper-border);
+}
+
+.qa-helper-summary,
+.qa-helper-plan-summary,
+.qa-helper-trace-box,
+.qa-helper-side-card {
+  border: 1px solid var(--qa-helper-border);
+  border-radius: 0.75rem;
+  background: var(--qa-helper-surface);
+  padding: 0.875rem 1rem;
+}
+
+.qa-helper-side-card h6 {
+  font-family: "Noto Sans Condensed", "Noto Sans", sans-serif;
+  letter-spacing: 0.01em;
+}
+
+.qa-helper-textarea,
+.qa-helper-textarea-lg,
+.qa-helper-textarea-sm {
+  font-family: "Noto Sans", "Noto Sans CJK TC", sans-serif;
+  resize: vertical;
+}
+
+.qa-helper-textarea {
+  min-height: 9rem;
+}
+
+.qa-helper-textarea-lg {
+  min-height: 14rem;
+}
+
+.qa-helper-textarea-sm {
+  min-height: 6rem;
+}
+
+.qa-helper-table-wrap {
+  border: 1px solid var(--qa-helper-border);
+  border-radius: 0.75rem;
+  overflow: hidden;
+}
+
+.qa-helper-table-wrap table {
+  margin-bottom: 0;
+}
+
+.qa-helper-table-wrap thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--qa-helper-surface-strong);
+}
+
+.qa-helper-plan-table {
+  max-height: 32rem;
+  overflow: auto;
+}
+
+.qa-helper-draft-list {
+  max-height: 32rem;
+  overflow: auto;
+  border: 1px solid var(--qa-helper-border);
+  border-radius: 0.75rem;
+}
+
+.qa-helper-draft-list .list-group-item {
+  border-left: 0;
+  border-right: 0;
+}
+
+.qa-helper-draft-list .list-group-item:first-child {
+  border-top: 0;
+}
+
+.qa-helper-draft-list .list-group-item.active {
+  background: #e8f0fb;
+  border-color: var(--qa-helper-border);
+  color: #0f172a;
+}
+
+.qa-helper-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.55rem;
+  border-radius: 999px;
+  background: #edf2f7;
+  color: #334155;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.qa-helper-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+  font-size: 0.85rem;
+}
+
+.qa-helper-kv {
+  display: grid;
+  grid-template-columns: 10rem minmax(0, 1fr);
+  gap: 0.5rem 1rem;
+}
+
+.qa-helper-kv dt {
+  color: #475569;
+  font-weight: 600;
+}
+
+.qa-helper-kv dd {
+  margin: 0;
+  color: #0f172a;
+}
+
+.qa-helper-empty {
+  color: #64748b;
+  font-style: italic;
+}
+
+@media (max-width: 991.98px) {
+  .qa-helper-phase-rail {
+    grid-template-columns: 1fr;
+  }
+
+  .qa-helper-phase-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .qa-helper-kv {
+    grid-template-columns: 1fr;
+  }
+}

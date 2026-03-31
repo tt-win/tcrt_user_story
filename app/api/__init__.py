@@ -26,6 +26,7 @@ from .team_statistics import router as team_statistics_router
 from .test_case_sets import router as test_case_sets_router
 from .test_case_sections import router as test_case_sections_router
 from .test_case_helper import router as test_case_helper_router
+from .qa_ai_helper import router as qa_ai_helper_router
 from .mcp import router as mcp_router
 
 # 創建主 API 路由器
@@ -56,6 +57,7 @@ api_router.include_router(team_statistics_router)
 api_router.include_router(test_case_sets_router)  # Test Case Set 路由
 api_router.include_router(test_case_sections_router)  # Test Case Section 路由
 api_router.include_router(test_case_helper_router)  # Test Case Helper 路由
+api_router.include_router(qa_ai_helper_router)  # 新版 QA AI Helper 路由
 api_router.include_router(mcp_router)  # MCP Read 路由
 
 # 可以在此添加其他 API 路由

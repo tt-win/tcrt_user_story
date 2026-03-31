@@ -137,6 +137,31 @@ class JiraTestCaseHelperConfig(BaseModel):
     models: JiraTestCaseHelperModelsConfig = JiraTestCaseHelperModelsConfig()
 
 
+class QAAIHelperStageModelConfig(BaseModel):
+    model: str = "google/gemini-3-flash-preview"
+    temperature: float = 0.1
+
+
+class QAAIHelperModelsConfig(BaseModel):
+    testcase: QAAIHelperStageModelConfig = QAAIHelperStageModelConfig(
+        model="google/gemini-3-flash-preview",
+    )
+    repair: Optional[QAAIHelperStageModelConfig] = None
+
+
+class QAAIHelperConfig(BaseModel):
+    enable: bool = True
+    prompt_contract_version: str = "qa-ai-helper.prompt.v1"
+    payload_contract_version: str = "qa-ai-helper.payload.v1"
+    min_steps: int = 3
+    min_preconditions: int = 1
+    max_repair_rounds: int = 1
+    generation_budget_row_limit: int = 120
+    generation_budget_prompt_tokens: int = 12000
+    generation_budget_output_tokens: int = 12000
+    models: QAAIHelperModelsConfig = QAAIHelperModelsConfig()
+
+
 class AIAssistConfig(BaseModel):
     model: str = "openai/gpt-oss-120b:free"
 
@@ -144,6 +169,7 @@ class AIAssistConfig(BaseModel):
 class AIConfig(BaseModel):
     ai_assist: AIAssistConfig = AIAssistConfig()
     jira_testcase_helper: JiraTestCaseHelperConfig = JiraTestCaseHelperConfig()
+    qa_ai_helper: QAAIHelperConfig = QAAIHelperConfig()
 
 
 class QdrantWeightsConfig(BaseModel):
@@ -469,6 +495,7 @@ def create_default_config(config_path: str = "config.yaml") -> None:
                 "model": "openai/gpt-oss-120b:free",
             },
             "jira_testcase_helper": {
+                "enable": False,
                 "similar_cases_count": 5,
                 "similar_cases_max_length": 500,
                 "enable_ir_first": True,
@@ -504,6 +531,24 @@ def create_default_config(config_path: str = "config.yaml") -> None:
                         "model": "google/gemini-3-flash-preview",
                         "temperature": 0.1,
                     },
+                },
+            },
+            "qa_ai_helper": {
+                "enable": True,
+                "prompt_contract_version": "qa-ai-helper.prompt.v1",
+                "payload_contract_version": "qa-ai-helper.payload.v1",
+                "min_steps": 3,
+                "min_preconditions": 1,
+                "max_repair_rounds": 1,
+                "generation_budget_row_limit": 120,
+                "generation_budget_prompt_tokens": 12000,
+                "generation_budget_output_tokens": 12000,
+                "models": {
+                    "testcase": {
+                        "model": "google/gemini-3-flash-preview",
+                        "temperature": 0.1,
+                    },
+                    "repair": None,
                 },
             },
         },

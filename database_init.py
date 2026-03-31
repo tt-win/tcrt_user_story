@@ -28,6 +28,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from sqlalchemy import inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
+from sqlalchemy.sql import sqltypes
 
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -74,6 +75,14 @@ MAIN_REQUIRED_TABLES: List[str] = [
     "ai_tc_helper_sessions",
     "ai_tc_helper_drafts",
     "ai_tc_helper_stage_metrics",
+    "qa_ai_helper_sessions",
+    "qa_ai_helper_canonical_revisions",
+    "qa_ai_helper_planned_revisions",
+    "qa_ai_helper_requirement_deltas",
+    "qa_ai_helper_draft_sets",
+    "qa_ai_helper_drafts",
+    "qa_ai_helper_validation_runs",
+    "qa_ai_helper_telemetry_events",
     "lark_departments",
     "lark_users",
     "sync_history",
@@ -180,6 +189,36 @@ def verify_required_tables(
         logger.error(f"{label} 缺少重要表：{missing}")
         return False, missing
     logger.debug(f"{label} 所有重要表皆存在")
+    return True, []
+
+
+def verify_mysql_mediumtext_defaults(
+    engine: Engine,
+    logger: Logger,
+    label: str,
+) -> Tuple[bool, List[str]]:
+    if str(engine.dialect.name or "").lower() != "mysql":
+        return True, []
+
+    inspector = inspect(engine)
+    violations: List[str] = []
+    for table_name in inspector.get_table_names():
+        if table_name == "alembic_version":
+            continue
+        for column in inspector.get_columns(table_name):
+            column_type = column.get("type")
+            type_name = getattr(column_type.__class__, "__name__", "").upper()
+            if not isinstance(column_type, sqltypes.Text):
+                continue
+            if type_name in {"MEDIUMTEXT", "LONGTEXT"}:
+                continue
+            violations.append(f"{table_name}.{column['name']}={type_name or 'TEXT'}")
+
+    if violations:
+        logger.error(f"{label} 存在未升級為 MEDIUMTEXT 的文字欄位：{violations}")
+        return False, violations
+
+    logger.debug(f"{label} MySQL 文字欄位皆為 MEDIUMTEXT/LONGTEXT")
     return True, []
 
 
@@ -326,6 +365,13 @@ def bootstrap_target(target_name: str, logger: Logger, no_backup: bool) -> Tuple
         )
         if not ok:
             raise RuntimeError(f"{label} migration 完成後仍缺少重要表")
+        mysql_text_ok, _text_violations = verify_mysql_mediumtext_defaults(
+            engine,
+            logger,
+            label,
+        )
+        if not mysql_text_ok:
+            raise RuntimeError(f"{label} migration 完成後仍存在未升級的 TEXT 欄位")
 
         logger.info(f"✅ {label} bootstrap 完成")
         print_verification_summary(
@@ -593,6 +639,14 @@ def main(argv: Optional[List[str]] = None) -> int:
                     )
                     if not ok:
                         logger.error(f"{TARGET_LABELS[target_name]} bootstrap 檢查未通過")
+                        return 2
+                    mysql_text_ok, _text_violations = verify_mysql_mediumtext_defaults(
+                        engine,
+                        logger,
+                        TARGET_LABELS[target_name],
+                    )
+                    if not mysql_text_ok:
+                        logger.error(f"{TARGET_LABELS[target_name]} 仍存在未升級的 TEXT 欄位")
                         return 2
                     if target_name == "main":
                         ensure_super_admin_seed(engine, logger)

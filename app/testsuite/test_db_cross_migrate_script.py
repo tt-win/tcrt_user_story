@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 
 from sqlalchemy import Column, Integer, JSON, MetaData, Table, Text, create_engine, inspect, text
+from sqlalchemy.dialects import mysql
 
 
 def _load_script_module():
@@ -356,6 +357,38 @@ def test_mysql_text_type_for_size_and_widen_plan() -> None:
         }
     ]
 
+    already_wide_table = Table(
+        "qa_ai_helper_sessions",
+        metadata,
+        Column("source_payload_json", mysql.MEDIUMTEXT(), nullable=True),
+    )
+    no_widen_plans = module._plan_mysql_text_widenings(
+        already_wide_table,
+        {
+            "source_payload_json": 131335,
+        },
+    )
+
+    assert no_widen_plans == []
+
+
+def test_apply_mysql_mediumtext_defaults_promotes_text_columns_only() -> None:
+    module = _load_script_module()
+    metadata = MetaData()
+    table = Table(
+        "demo",
+        metadata,
+        Column("payload_json", Text, nullable=True),
+        Column("title", Text, nullable=True),
+        Column("code", Integer, nullable=False),
+    )
+
+    module.apply_mysql_mediumtext_defaults(metadata)
+
+    assert table.c["payload_json"].type.__class__.__name__.upper() == "MEDIUMTEXT"
+    assert table.c["title"].type.__class__.__name__.upper() == "MEDIUMTEXT"
+    assert table.c["code"].type.__class__.__name__.upper() == "INTEGER"
+
 
 def test_copy_table_data_serializes_json_values_when_target_is_text(tmp_path: Path) -> None:
     module = _load_script_module()
@@ -588,6 +621,229 @@ def test_copy_table_data_skips_orphan_test_run_item_history(tmp_path: Path) -> N
                 text("SELECT id, item_id, change_source FROM test_run_item_result_history ORDER BY id")
             ).fetchall()
         assert rows == [(1, 10, "valid")]
+    finally:
+        source_engine.dispose()
+        target_engine.dispose()
+
+
+def test_run_job_copies_qa_ai_helper_tables_with_reflection_compatible_types(tmp_path: Path) -> None:
+    module = _load_script_module()
+    source_path = tmp_path / "source-qa-helper.db"
+    target_path = tmp_path / "target-qa-helper.db"
+    source_engine = create_engine(_sqlite_url(source_path), future=True)
+    target_engine = create_engine(_sqlite_url(target_path), future=True)
+
+    ddl_statements = [
+        (
+            "qa_ai_helper_sessions",
+            "CREATE TABLE qa_ai_helper_sessions ("
+            "id INTEGER PRIMARY KEY, "
+            "team_id INTEGER NOT NULL, "
+            "target_test_case_set_id INTEGER NOT NULL, "
+            "ticket_key TEXT, "
+            "include_comments INTEGER NOT NULL, "
+            "output_locale TEXT NOT NULL, "
+            "current_phase TEXT NOT NULL, "
+            "status TEXT NOT NULL"
+            ")",
+        ),
+        (
+            "qa_ai_helper_canonical_revisions",
+            "CREATE TABLE qa_ai_helper_canonical_revisions ("
+            "id INTEGER PRIMARY KEY, "
+            "session_id INTEGER NOT NULL, "
+            "revision_number INTEGER NOT NULL, "
+            "status TEXT NOT NULL, "
+            "content_json TEXT, "
+            "canonical_language TEXT NOT NULL, "
+            "counter_settings_json TEXT, "
+            "FOREIGN KEY(session_id) REFERENCES qa_ai_helper_sessions(id)"
+            ")",
+        ),
+        (
+            "qa_ai_helper_planned_revisions",
+            "CREATE TABLE qa_ai_helper_planned_revisions ("
+            "id INTEGER PRIMARY KEY, "
+            "session_id INTEGER NOT NULL, "
+            "canonical_revision_id INTEGER NOT NULL, "
+            "revision_number INTEGER NOT NULL, "
+            "status TEXT NOT NULL, "
+            "matrix_json TEXT, "
+            "seed_map_json TEXT, "
+            "applicability_overrides_json TEXT, "
+            "selected_references_json TEXT, "
+            "counter_settings_json TEXT, "
+            "impact_summary_json TEXT, "
+            "FOREIGN KEY(session_id) REFERENCES qa_ai_helper_sessions(id), "
+            "FOREIGN KEY(canonical_revision_id) REFERENCES qa_ai_helper_canonical_revisions(id)"
+            ")",
+        ),
+        (
+            "qa_ai_helper_requirement_deltas",
+            "CREATE TABLE qa_ai_helper_requirement_deltas ("
+            "id INTEGER PRIMARY KEY, "
+            "session_id INTEGER NOT NULL, "
+            "source_canonical_revision_id INTEGER, "
+            "source_planned_revision_id INTEGER, "
+            "delta_type TEXT NOT NULL, "
+            "target_scope TEXT NOT NULL, "
+            "proposed_content_json TEXT, "
+            "reason TEXT NOT NULL, "
+            "created_from_phase TEXT NOT NULL, "
+            "FOREIGN KEY(session_id) REFERENCES qa_ai_helper_sessions(id)"
+            ")",
+        ),
+        (
+            "qa_ai_helper_draft_sets",
+            "CREATE TABLE qa_ai_helper_draft_sets ("
+            "id INTEGER PRIMARY KEY, "
+            "session_id INTEGER NOT NULL, "
+            "planned_revision_id INTEGER NOT NULL, "
+            "status TEXT NOT NULL, "
+            "generation_mode TEXT NOT NULL, "
+            "model_name TEXT, "
+            "summary_json TEXT, "
+            "FOREIGN KEY(session_id) REFERENCES qa_ai_helper_sessions(id), "
+            "FOREIGN KEY(planned_revision_id) REFERENCES qa_ai_helper_planned_revisions(id)"
+            ")",
+        ),
+        (
+            "qa_ai_helper_drafts",
+            "CREATE TABLE qa_ai_helper_drafts ("
+            "id INTEGER PRIMARY KEY, "
+            "draft_set_id INTEGER NOT NULL, "
+            "item_key TEXT NOT NULL, "
+            "seed_id TEXT, "
+            "testcase_id TEXT, "
+            "body_json TEXT, "
+            "trace_json TEXT, "
+            "version INTEGER NOT NULL, "
+            "FOREIGN KEY(draft_set_id) REFERENCES qa_ai_helper_draft_sets(id)"
+            ")",
+        ),
+        (
+            "qa_ai_helper_validation_runs",
+            "CREATE TABLE qa_ai_helper_validation_runs ("
+            "id INTEGER PRIMARY KEY, "
+            "session_id INTEGER NOT NULL, "
+            "planned_revision_id INTEGER NOT NULL, "
+            "draft_set_id INTEGER NOT NULL, "
+            "run_type TEXT NOT NULL, "
+            "status TEXT NOT NULL, "
+            "summary_json TEXT, "
+            "errors_json TEXT, "
+            "FOREIGN KEY(session_id) REFERENCES qa_ai_helper_sessions(id), "
+            "FOREIGN KEY(planned_revision_id) REFERENCES qa_ai_helper_planned_revisions(id), "
+            "FOREIGN KEY(draft_set_id) REFERENCES qa_ai_helper_draft_sets(id)"
+            ")",
+        ),
+        (
+            "qa_ai_helper_telemetry_events",
+            "CREATE TABLE qa_ai_helper_telemetry_events ("
+            "id INTEGER PRIMARY KEY, "
+            "session_id INTEGER NOT NULL, "
+            "planned_revision_id INTEGER, "
+            "draft_set_id INTEGER, "
+            "team_id INTEGER NOT NULL, "
+            "stage TEXT NOT NULL, "
+            "event_name TEXT NOT NULL, "
+            "status TEXT NOT NULL, "
+            "payload_json TEXT, "
+            "FOREIGN KEY(session_id) REFERENCES qa_ai_helper_sessions(id)"
+            ")",
+        ),
+    ]
+
+    try:
+        for engine in (source_engine, target_engine):
+            with engine.begin() as connection:
+                connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+                for _, ddl in ddl_statements:
+                    connection.execute(text(ddl))
+
+        with source_engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO qa_ai_helper_sessions "
+                    "(id, team_id, target_test_case_set_id, ticket_key, include_comments, output_locale, current_phase, status) "
+                    "VALUES (1, 7, 70, 'TCG-130078', 0, 'zh-TW', 'planned', 'active')"
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO qa_ai_helper_canonical_revisions "
+                    "(id, session_id, revision_number, status, content_json, canonical_language, counter_settings_json) "
+                    "VALUES (11, 1, 1, 'confirmed', '{\"criteria\":\"ok\"}', 'en', '{\"middle\":\"010\",\"tail\":\"010\"}')"
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO qa_ai_helper_planned_revisions "
+                    "(id, session_id, canonical_revision_id, revision_number, status, matrix_json, seed_map_json, applicability_overrides_json, selected_references_json, counter_settings_json, impact_summary_json) "
+                    "VALUES (21, 1, 11, 1, 'locked', '{\"sections\":[]}', '{\"as-1\":[\"TCG-130078.010.010\"]}', '{}', '{\"section_references\":{}}', '{\"middle\":\"010\",\"tail\":\"010\"}', '{\"replanning_mode\":\"full\"}')"
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO qa_ai_helper_requirement_deltas "
+                    "(id, session_id, source_canonical_revision_id, source_planned_revision_id, delta_type, target_scope, proposed_content_json, reason, created_from_phase) "
+                    "VALUES (31, 1, 11, 21, 'modify', 'Acceptance Criteria', '{\"text\":\"updated\"}', 'sync', 'planned')"
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO qa_ai_helper_draft_sets "
+                    "(id, session_id, planned_revision_id, status, generation_mode, model_name, summary_json) "
+                    "VALUES (41, 1, 21, 'active', 'section-scoped', 'fallback:testcase', :summary_json)"
+                ),
+                {"summary_json": "{\"ok\":true}"},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO qa_ai_helper_drafts "
+                    "(id, draft_set_id, item_key, seed_id, testcase_id, body_json, trace_json, version) "
+                    "VALUES (51, 41, 'TCG-130078.010.010', 'TCG-130078.010.010', 'TCG-130078.010.010', '{\"title\":\"Draft\"}', '{\"section_id\":\"TCG-130078.010\"}', 1)"
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO qa_ai_helper_validation_runs "
+                    "(id, session_id, planned_revision_id, draft_set_id, run_type, status, summary_json, errors_json) "
+                    "VALUES (61, 1, 21, 41, 'generation', 'succeeded', :summary_json, '[]')"
+                ),
+                {"summary_json": "{\"ok\":true}"},
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO qa_ai_helper_telemetry_events "
+                    "(id, session_id, planned_revision_id, draft_set_id, team_id, stage, event_name, status, payload_json) "
+                    "VALUES (71, 1, 21, 41, 7, 'testcase', 'generate', 'succeeded', :payload_json)"
+                ),
+                {"payload_json": "{\"batch_size\":1}"},
+            )
+
+        job = module.TransferJob(
+            name="qa-helper",
+            source_url=_sqlite_url(source_path),
+            target_url=_sqlite_url(target_path),
+            include_tables=[table_name for table_name, _ in ddl_statements],
+        )
+        summary = module.run_job(job, module.Logger(quiet=True))
+
+        assert summary["status"] == "completed"
+        with target_engine.connect() as connection:
+            counts = {
+                table_name: connection.execute(
+                    text(f"SELECT COUNT(*) FROM {table_name}")
+                ).scalar_one()
+                for table_name, _ in ddl_statements
+            }
+            draft_body = connection.execute(
+                text("SELECT body_json FROM qa_ai_helper_drafts WHERE id = 51")
+            ).scalar_one()
+
+        assert all(count == 1 for count in counts.values())
+        assert draft_body == '{"title":"Draft"}'
     finally:
         source_engine.dispose()
         target_engine.dispose()

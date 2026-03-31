@@ -18,7 +18,7 @@ ai:
   ai_assist:
     model: 'openai/gpt-oss-120b:free'
   jira_testcase_helper:
-    enable: true  # 設為 false 可隱藏 Test Case Set 管理畫面的 AI Agent - Test Case Helper 按鈕
+    enable: false  # 舊版 helper 已隱藏；保留設定僅供回退時使用
     similar_cases_count: 5
     similar_cases_max_length: 500
     enable_ir_first: true
@@ -50,6 +50,21 @@ ai:
       audit:
         model: 'google/gemini-3-flash-preview'
         temperature: 0.1
+  qa_ai_helper:
+    enable: true
+    prompt_contract_version: 'qa-ai-helper.prompt.v1'
+    payload_contract_version: 'qa-ai-helper.payload.v1'
+    min_steps: 3
+    min_preconditions: 1
+    max_repair_rounds: 1
+    generation_budget_row_limit: 120
+    generation_budget_prompt_tokens: 12000
+    generation_budget_output_tokens: 12000
+    models:
+      testcase:
+        model: 'google/gemini-3-flash-preview'
+        temperature: 0.1
+      repair: null
 qdrant:
   url: 'http://localhost:6333'
   api_key: ''

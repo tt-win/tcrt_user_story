@@ -1,0 +1,54 @@
+{
+  "ticket_key": "TCG-130078",
+  "canonical_revision_id": 11,
+  "canonical_language": "en",
+  "counter_settings": {
+    "middle": "010",
+    "tail": "010"
+  },
+  "content": {
+    "userStoryNarrative": "As a QA user\nI want to generate test cases\nSo that I can review coverage",
+    "criteria": "- Detail page opens in a new tab\n- Display current status",
+    "technicalSpecifications": "- API path: /detail/view\n- Date format: yyyy-MM-dd",
+    "acceptanceCriteria": "Scenario 1: Open detail page\nGiven the user is on the list page\nWhen the user clicks the detail name\nThen the detail page opens in a new tab\nAnd the tab title matches the entity name\n\nScenario 2: Display current status\nGiven the user is on the detail page\nWhen the page is loaded\nThen the current status is displayed\nAnd the updated date uses yyyy-MM-dd",
+    "assumptions": [],
+    "unknowns": []
+  },
+  "expected": {
+    "section_ids": [
+      "TCG-130078.010",
+      "TCG-130078.020"
+    ],
+    "scenario_titles": [
+      "Open detail page",
+      "Display current status"
+    ],
+    "generation_item_count": 4,
+    "coverage_keys": [
+      "as-002",
+      "as-003",
+      "as-005",
+      "as-009",
+      "as-011"
+    ],
+    "first_row_group_key": "rg-001",
+    "first_generation_budget": {
+      "planned_row_count": 2,
+      "estimated_output_tokens": 320
+    },
+    "first_payload": {
+      "section_id": "TCG-130078.010",
+      "selected_reference_id": "ref-1",
+      "generation_item_count": 2,
+      "item_keys": [
+        "TCG-130078.010.010",
+        "TCG-130078.010.020"
+      ],
+      "complexity": {
+        "score": 3,
+        "batch_mode": "section-batch",
+        "hard_trigger": false
+      }
+    }
+  }
+}

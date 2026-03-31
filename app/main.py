@@ -119,7 +119,7 @@ async def test_case_set_list(request: Request):
     """Test Case Set 選擇頁面"""
     from app.config import settings
 
-    ai_helper_enabled = settings.ai.jira_testcase_helper.enable
+    ai_helper_enabled = settings.ai.qa_ai_helper.enable
     return templates.TemplateResponse(
         "test_case_set_list.html",
         {"request": request, "ai_helper_enabled": ai_helper_enabled},
@@ -137,6 +137,7 @@ async def test_case_management(
     """Test Case Management 頁面 - 需要先選擇 Set"""
     resolved_set_id = set_id
     helper_flag = request.query_params.get("helper") in ("1", "true")
+    qa_ai_helper_enabled = settings.ai.qa_ai_helper.enable
 
     # 允許透過 test case 編號直接解析所屬的 Test Case Set，避免彈窗被重導
     if resolved_set_id is None and tc and team_id:
@@ -177,7 +178,37 @@ async def test_case_management(
 
     return templates.TemplateResponse(
         "test_case_management.html",
-        {"request": request, "set_id": resolved_set_id, "helper_mode": helper_flag},
+        {
+            "request": request,
+            "set_id": resolved_set_id,
+            "helper_mode": helper_flag,
+            "qa_ai_helper_enabled": qa_ai_helper_enabled,
+        },
+    )
+
+
+@app.get("/qa-ai-helper", response_class=HTMLResponse)
+async def qa_ai_helper_page(
+    request: Request,
+    team_id: Optional[int] = Query(None),
+    set_id: Optional[int] = Query(None),
+    session_id: Optional[int] = Query(None),
+    ticket_key: Optional[str] = Query(None),
+):
+    if not settings.ai.qa_ai_helper.enable:
+        from fastapi.responses import RedirectResponse
+
+        return RedirectResponse(url="/test-case-sets", status_code=303)
+
+    return templates.TemplateResponse(
+        "qa_ai_helper.html",
+        {
+            "request": request,
+            "team_id": team_id,
+            "set_id": set_id,
+            "session_id": session_id,
+            "ticket_key": ticket_key,
+        },
     )
 
 

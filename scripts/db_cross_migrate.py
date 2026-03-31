@@ -21,6 +21,7 @@ from typing import Any, Iterator
 
 import yaml
 from sqlalchemy import MetaData, create_engine, inspect, select
+from sqlalchemy.dialects import mysql
 from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.sql.sqltypes import JSON as SQLAlchemyJSON
 from sqlalchemy.sql.sqltypes import String, Text
@@ -235,6 +236,17 @@ def reflect_selected_metadata(
     metadata = MetaData()
     metadata.reflect(bind=engine, only=selected)
     return metadata, selected
+
+
+def apply_mysql_mediumtext_defaults(metadata: MetaData) -> None:
+    for table in metadata.tables.values():
+        for column in table.columns:
+            if not isinstance(column.type, Text):
+                continue
+            type_name = column.type.__class__.__name__.upper()
+            if type_name in {"MEDIUMTEXT", "LONGTEXT"}:
+                continue
+            column.type = mysql.MEDIUMTEXT()
 
 
 def resolve_table_order(
@@ -908,6 +920,8 @@ def run_job(job: TransferJob, logger: Logger) -> dict[str, Any]:
 
         if job.create_target_schema:
             logger.info(f"job={job.name} 先建立目標缺少的 schema")
+            if target_engine.dialect.name == "mysql":
+                apply_mysql_mediumtext_defaults(source_metadata)
             source_metadata.create_all(target_engine)
 
         target_metadata, _ = reflect_selected_metadata(

@@ -3,258 +3,162 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from app.config import settings
 from app.main import app
 
 
-def test_helper_entrypoint_is_on_set_list_page():
+def test_rewritten_helper_entrypoints_replace_legacy_modal_in_templates():
     management_html = Path("app/templates/test_case_management.html").read_text(
         encoding="utf-8"
     )
     set_list_html = Path("app/templates/test_case_set_list.html").read_text(
         encoding="utf-8"
     )
-    helper_modal_partial_html = Path(
-        "app/templates/_partials/ai_test_case_helper_modal.html"
-    ).read_text(encoding="utf-8")
+    helper_page_html = Path("app/templates/qa_ai_helper.html").read_text(
+        encoding="utf-8"
+    )
 
-    assert 'id="openAiHelperFromSetListBtn"' in set_list_html
-    assert 'data-i18n="aiHelper.entryButton"' in set_list_html
-    assert "_partials/ai_test_case_helper_modal.html" in set_list_html
-    assert 'id="aiTestCaseHelperModal"' in helper_modal_partial_html
-    assert 'data-i18n="aiHelper.step.requirement"' not in helper_modal_partial_html
-    assert 'id="helperAnalyzeBtn"' not in helper_modal_partial_html
-    assert 'id="helperRequirementEditor"' not in helper_modal_partial_html
-    assert 'id="helperStartOverBtn"' in helper_modal_partial_html
-    assert 'id="helperSessionManagerBtn"' in helper_modal_partial_html
-    assert 'id="helperSessionManagerModal"' in helper_modal_partial_html
-    assert 'id="helperSessionManagerList"' in helper_modal_partial_html
-    assert 'id="helperSessionManagerResumeBtn"' in helper_modal_partial_html
-    assert 'id="helperSessionManagerDeleteSelectedBtn"' in helper_modal_partial_html
-    assert 'id="helperSessionManagerClearBtn"' in helper_modal_partial_html
-    assert 'id="helperConfirmModal"' in helper_modal_partial_html
-    assert 'id="helperConfirmOkBtn"' in helper_modal_partial_html
-    assert 'id="helperConfirmCancelBtn"' in helper_modal_partial_html
-    assert 'id="helperErrorBox"' not in helper_modal_partial_html
-    assert 'id="helperSuccessBox"' not in helper_modal_partial_html
-    footer_index = helper_modal_partial_html.find('<div class="modal-footer tc-helper-footer">')
-    start_over_index = helper_modal_partial_html.find('id="helperStartOverBtn"')
-    assert footer_index >= 0 and start_over_index > footer_index
-    assert 'data-i18n="aiHelper.phaseRequirement"' not in helper_modal_partial_html
-    assert 'data-i18n="aiHelper.phaseAnalysis"' not in helper_modal_partial_html
-    assert 'data-i18n="aiHelper.phasePretestcase"' not in helper_modal_partial_html
-    assert 'data-i18n="aiHelper.phaseTestcase"' not in helper_modal_partial_html
-    assert 'data-i18n="aiHelper.phaseCommit"' not in helper_modal_partial_html
-    assert 'data-helper-step="3"' in helper_modal_partial_html
-    assert 'data-helper-step="4"' not in helper_modal_partial_html
-    assert 'id="helperPreSectionList"' in helper_modal_partial_html
-    assert 'id="helperPreEntryList"' in helper_modal_partial_html
-    assert 'id="helperPreDetailForm"' in helper_modal_partial_html
-    assert 'id="helperPreRequirementSummary"' in helper_modal_partial_html
-    assert 'id="helperPreRequirementContent"' in helper_modal_partial_html
-    assert 'id="helperPreSpecRequirements"' in helper_modal_partial_html
-    assert 'id="helperPreVerificationPoints"' in helper_modal_partial_html
-    assert 'id="helperPreExpectedOutcomes"' in helper_modal_partial_html
-    assert 'id="helperPreTraceMeta"' in helper_modal_partial_html
-    assert '<option value="permission">' not in helper_modal_partial_html
-    assert '<option value="error">' not in helper_modal_partial_html
-    assert 'id="helperFinalSectionList"' in helper_modal_partial_html
-    assert 'id="helperFinalCaseList"' in helper_modal_partial_html
-    assert 'id="helperFinalDetailForm"' in helper_modal_partial_html
-    assert '/static/js/test-case-management/ai-helper.js' in set_list_html
-    assert 'id="aiTestCaseHelperBtn"' not in management_html
-    assert "_partials/ai_test_case_helper_modal.html" in management_html
-    assert "window.__TCM_HELPER_MODE__" in management_html
-    assert '/static/js/test-case-management/ai-helper.js' in management_html
-    assert '/static/js/test-case-management/section-list-init.js' not in management_html
+    assert 'id="openQaAiHelperFromSetListBtn"' in set_list_html
+    assert 'data-i18n="qaAiHelper.entryButton"' in set_list_html
+    assert "_partials/ai_test_case_helper_modal.html" not in set_list_html
+    assert "/static/js/test-case-management/ai-helper.js" not in set_list_html
+
+    assert 'id="openQaAiHelperPageBtn"' in management_html
+    assert 'href="/qa-ai-helper{% if set_id %}?set_id={{ set_id }}{% endif %}"' in management_html
+    assert "_partials/ai_test_case_helper_modal.html" not in management_html
+    assert "/static/js/test-case-management/ai-helper.js" not in management_html
+    assert "window.__TCM_HELPER_MODE__" not in management_html
+
+    assert 'id="qaAiHelperPage"' in helper_page_html
+    assert "/static/css/qa-ai-helper.css" in helper_page_html
+    assert "/static/js/qa-ai-helper/main.js" in helper_page_html
+    assert 'id="qaHelperPhaseRail"' in helper_page_html
+    assert 'data-phase-target="fetch"' in helper_page_html
+    assert 'data-phase-target="canonical"' in helper_page_html
+    assert 'data-phase-target="plan"' in helper_page_html
+    assert 'data-phase-target="draft"' in helper_page_html
+    assert 'data-phase-panel="fetch"' in helper_page_html
+    assert 'data-phase-panel="canonical"' in helper_page_html
+    assert 'data-phase-panel="plan"' in helper_page_html
+    assert 'data-phase-panel="draft"' in helper_page_html
+    assert 'id="qaHelperPlanTable"' in helper_page_html
+    assert 'id="qaHelperDraftList"' in helper_page_html
 
 
-def test_helper_button_visible_when_config_enable_true():
-    """ai.jira_testcase_helper.enable=true 時，Test Case Set 頁面應顯示 Helper 按鈕"""
+def test_rewritten_helper_button_visible_when_config_enable_true():
     client = TestClient(app)
-    resp = client.get("/test-case-sets")
-    assert resp.status_code == 200
-    assert 'id="openAiHelperFromSetListBtn"' in resp.text
+    original = settings.ai.qa_ai_helper.enable
+    settings.ai.qa_ai_helper.enable = True
+    try:
+        resp = client.get("/test-case-sets")
+        assert resp.status_code == 200
+        assert 'id="openQaAiHelperFromSetListBtn"' in resp.text
+    finally:
+        settings.ai.qa_ai_helper.enable = original
 
 
-def test_helper_button_hidden_when_config_enable_false(monkeypatch):
-    """ai.jira_testcase_helper.enable=false 時，Test Case Set 頁面不應顯示 Helper 按鈕"""
-    from app.config import settings
-
-    monkeypatch.setattr(settings.ai.jira_testcase_helper, "enable", False)
+def test_rewritten_helper_button_hidden_when_config_enable_false():
     client = TestClient(app)
-    resp = client.get("/test-case-sets")
-    assert resp.status_code == 200
-    assert 'id="openAiHelperFromSetListBtn"' not in resp.text
+    original = settings.ai.qa_ai_helper.enable
+    settings.ai.qa_ai_helper.enable = False
+    try:
+        resp = client.get("/test-case-sets")
+        assert resp.status_code == 200
+        assert 'id="openQaAiHelperFromSetListBtn"' not in resp.text
+
+        hidden_route = client.get("/qa-ai-helper", follow_redirects=False)
+        assert hidden_route.status_code == 303
+        assert hidden_route.headers["location"] == "/test-case-sets"
+    finally:
+        settings.ai.qa_ai_helper.enable = original
 
 
-def test_helper_frontend_uses_phase_api_endpoints_and_redirect_highlight():
-    script = Path("app/static/js/test-case-management/ai-helper.js").read_text(encoding="utf-8")
+def test_rewritten_helper_frontend_redirects_to_dedicated_page():
     set_list_script = Path("app/static/js/test-case-set-list/main.js").read_text(
         encoding="utf-8"
     )
-    set_integration_script = Path("app/static/js/test-case-set-integration.js").read_text(
+    helper_script = Path("app/static/js/qa-ai-helper/main.js").read_text(
         encoding="utf-8"
     )
 
-    assert '/test-case-helper/sessions' in script
-    assert '/sessions/${helperState.sessionId}/ticket' in script
-    assert '/test-case-helper/sessions?limit=200&offset=0' in script
-    assert '/sessions/bulk-delete' in script
-    assert '/sessions/clear' in script
-    assert "method: 'DELETE'" in script
-    assert '/normalize' not in script
-    assert '/analyze' in script
-    assert "override_incomplete_requirement" in script
-    assert '/generate' in script
-    assert '/commit' in script
-    assert 'helper_created' in script
-    assert "params.get('helper')" in script
-    assert "helperLoadTeamFromLocalStorage" in script
-    assert "helperResolveTeam(requestedTeamId)" in script
-    assert "helperSetStep(2);" in script
-    assert "helperSetStep(3);" in script
-    assert "const STEP_COUNT = 3;" in script
-    assert "function helperRenderPreSectionList()" in script
-    assert "function helperRenderFinalSectionList()" in script
-    assert "function helperFormatSectionLabel(" in script
-    assert "helperFormatSectionLabel(section.sn, name)" in script
-    assert "helperSyncSelectedPreEntryFromDetail" in script
-    assert "helperSyncSelectedFinalCaseFromDetail" in script
-    assert "helperOpenSessionManager" in script
-    assert "helperInitializeSessionManagerLifecycle" in script
-    assert "helperResumeSessionFromManager" in script
-    assert "reopenHelperOnManagerClose" in script
-    assert "pendingResumeSessionId" in script
-    assert "hidden.bs.modal" in script
-    assert "helperState.modalInstance.show();" in script
-    assert "await helperRestoreSession(pendingResumeSessionId, true);" in script
-    assert "const ticketKey = String(session.ticket_key || '').trim()" in script
-    assert "const sessionLabel = helperGetSessionLabel(session);" in script
-    assert "session.session_label" in script
-    assert "data-helper-pre-section" in script
-    assert "data-helper-final-section" in script
-    assert "helperStartOverBtn" in script
-    assert "helperStartOver(" in script
-    assert "helperFallbackMarkdown" in script
-    assert "helperNormalizeEscapedMarkdownForRender" in script
-    assert "replace(/\\\\\\*\\\\\\*([^\\n]+?)\\\\\\*\\\\\\*/g, '**$1**')" in script
-    assert "typeof marked === 'function'" in script
-    assert ".replace(/\\*\\*(.+?)\\*\\*/g, '<strong>$1</strong>')" in script
-    assert "function helperNotify(message, level)" in script
-    assert "async function helperConfirm(message, options = {})" in script
-    assert "requires_override" in script
-    assert "proceedAnyway" in script
-    assert "goBackAndFix" in script
-    assert "AppUtils[methodName](content);" in script
-    assert "window.confirm(" not in script
-    assert "alert(" not in script
-    assert "sessionRestored" in script
-    assert "startOverDone" in script
-    assert "window.AiTestCaseHelper.openModal({ teamId })" in set_list_script
-    assert "openModal({ teamId })" in set_list_script
-    assert "params.set('helper', '1')" not in set_list_script
-    assert "sessionStorage.removeItem('selectedTestCaseSetId')" in set_list_script
-    assert "window.__TCM_HELPER_MODE__" in set_integration_script
-    assert "this.getUrlParam('helper')" in set_integration_script
-    assert "helperMode" in set_integration_script
-
-
-def test_helper_i18n_keys_exist_in_all_locales():
-    locale_files = [
-        Path("app/static/locales/zh-TW.json"),
-        Path("app/static/locales/zh-CN.json"),
-        Path("app/static/locales/en-US.json"),
-    ]
+    assert "openQaAiHelperFromSetListBtn" in set_list_script
+    assert "window.location.href = `/qa-ai-helper?team_id=${encodeURIComponent(teamId)}`;" in set_list_script
+    assert "AiTestCaseHelper.openModal" not in set_list_script
 
     required_markers = [
-        '"aiHelper"',
-        '"entryButton"',
-        '"normalizeAction"',
-        '"generateAction"',
-        '"commitAction"',
-        '"createdHighlightNotice"',
-        '"startOver"',
-        '"startOverConfirm"',
-        '"startOverDone"',
-        '"startOverFailed"',
-        '"loadingReset"',
-        '"sectionListTitle"',
-        '"entryListTitle"',
-        '"testcaseListTitle"',
-        '"preDetailEmpty"',
-        '"finalDetailEmpty"',
-        '"reqMappingTitle"',
-        '"reqMappingEmpty"',
-        '"requirementSummaryTitle"',
-        '"requirementContentTitle"',
-        '"specRequirementsTitle"',
-        '"verificationPointsTitle"',
-        '"expectedOutcomesTitle"',
-        '"traceMetaTitle"',
-        '"proceedAnyway"',
-        '"goBackAndFix"',
-        '"requirementIncompleteWarningDialogTitle"',
-        '"phaseAnalysis"',
-        '"phasePretestcase"',
-        '"phaseTestcase"',
-        '"phaseCommit"',
-        '"sessionManager"',
-        '"sessionManagerTitle"',
-        '"sessionManagerResume"',
-        '"sessionManagerDeleteSelected"',
-        '"sessionManagerClearAll"',
-        '"sessionUnknownTime"',
+        "qaAiHelperPage",
+        "qaHelperCreateSessionBtn",
+        "qaHelperFetchTicketBtn",
+        "qaHelperSaveCanonicalBtn",
+        "qaHelperPlanBtn",
+        "qaHelperApplyOverridesBtn",
+        "qaHelperApplyDeltaBtn",
+        "qaHelperPrevPhaseBtn",
+        "qaHelperNextPhaseBtn",
+        "qaHelperLockBtn",
+        "qaHelperGenerateBtn",
+        "qaHelperSaveDraftBtn",
+        "qaHelperCommitBtn",
+        "qaHelperDiscardDraftBtn",
+        "/qa-ai-helper/sessions",
+        "/planning-overrides",
+        "/requirement-deltas",
+        "/generate",
+        "/discard",
+        "/commit",
+        "activePhaseView",
+        "renderPhaseWorkflow",
     ]
-
-    for file_path in locale_files:
-        content = file_path.read_text(encoding="utf-8")
-        for marker in required_markers:
-            assert marker in content, f"{file_path} missing marker: {marker}"
+    for marker in required_markers:
+        assert marker in helper_script
 
 
-def test_common_add_key_exists_in_all_locales():
+def test_rewritten_helper_i18n_keys_exist_in_all_locales():
     locale_files = [
         Path("app/static/locales/zh-TW.json"),
         Path("app/static/locales/zh-CN.json"),
         Path("app/static/locales/en-US.json"),
+    ]
+
+    required_keys = [
+        "pageTitle",
+        "entryButton",
+        "sessionCardTitle",
+        "canonicalTitle",
+        "planTitle",
+        "draftTitle",
+        "workflowTitle",
+        "phaseFetch",
+        "phaseCanonical",
+        "phasePlan",
+        "phaseDraft",
+        "createSession",
+        "fetchTicket",
+        "planAction",
+        "lockAction",
+        "generateDrafts",
+        "commitDrafts",
     ]
 
     for file_path in locale_files:
         payload = json.loads(file_path.read_text(encoding="utf-8"))
-        assert payload.get("common", {}).get("add"), f"{file_path} missing common.add"
+        qa_helper = payload.get("qaAiHelper", {})
+        for key in required_keys:
+            assert qa_helper.get(key), f"{file_path} missing qaAiHelper.{key}"
 
 
-def test_helper_markdown_table_style_has_visible_border():
-    helper_modal_css = Path("app/static/css/test-case-helper-modal.css").read_text(
-        encoding="utf-8"
-    )
-    management_css = Path("app/static/css/test-case-management.css").read_text(
-        encoding="utf-8"
-    )
-
-    required_css_markers = [
-        "#aiTestCaseHelperModal .tc-helper-preview table",
-        "#aiTestCaseHelperModal .tc-helper-case-preview table",
-        "#aiTestCaseHelperModal .tc-helper-preview th",
-        "#aiTestCaseHelperModal .tc-helper-preview td",
-        "border: 1px solid #c7d5ea",
-        "position: sticky;",
-        "background: #f5f8fd;",
-        "overflow: hidden;",
-        "grid-template-columns: repeat(3, minmax(0, 1fr));",
-        ".tc-helper-split",
-        "grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);",
-        ".tc-helper-list",
-        ".tc-helper-split-right",
-        ".tc-helper-session-manager-layout",
-        ".tc-helper-session-manager-item",
-        ".tc-helper-session-manager-meta",
+def test_rewritten_helper_styles_follow_dedicated_page_structure():
+    css = Path("app/static/css/qa-ai-helper.css").read_text(encoding="utf-8")
+    required_markers = [
+        ".qa-helper-card",
+        ".qa-helper-table-wrap",
+        ".qa-helper-plan-table",
+        ".qa-helper-draft-list",
+        ".qa-helper-phase-rail",
+        ".qa-helper-phase-step",
+        ".qa-helper-phase-toolbar",
+        ".qa-helper-pill",
+        ".qa-helper-kv",
     ]
-
-    for marker in required_css_markers:
-        assert marker in helper_modal_css, (
-            f"app/static/css/test-case-helper-modal.css missing marker: {marker}"
-        )
-        assert marker in management_css, (
-            f"app/static/css/test-case-management.css missing marker: {marker}"
-        )
+    for marker in required_markers:
+        assert marker in css

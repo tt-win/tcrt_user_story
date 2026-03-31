@@ -11,7 +11,6 @@ from sqlalchemy import (
     Column,
     Integer,
     String,
-    Text,
     DateTime,
     ForeignKey,
     Enum,
@@ -36,8 +35,19 @@ from .test_run_set import TestRunSetStatus
 
 # 導入認證相關枚舉
 from ..auth.models import UserRole, PermissionType
+from ..db_types import MediumText as Text, medium_text_type
 
 Base = declarative_base()
+
+
+def qa_ai_helper_large_text_type() -> Text:
+    """QA AI Helper 大型 JSON payload 欄位型別。
+
+    SQLite / PostgreSQL 保持一般 Text；MySQL 提升為 MEDIUMTEXT，
+    避免大型 Jira ticket 或 draft payload 超過 64KB TEXT 限制。
+    """
+
+    return medium_text_type()
 
 
 class SyncStatus(PyEnum):
@@ -577,6 +587,395 @@ class AITestCaseHelperStageMetric(Base):
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
 
     session = relationship("AITestCaseHelperSession", back_populates="stage_metrics")
+    team = relationship("Team")
+    user = relationship("User")
+
+
+class QAAIHelperSession(Base):
+    """Rewritten QA AI Helper session root."""
+
+    __tablename__ = "qa_ai_helper_sessions"
+    __table_args__ = (
+        Index("ix_qa_ai_helper_sessions_team_status", "team_id", "status"),
+        Index("ix_qa_ai_helper_sessions_team_updated", "team_id", "updated_at"),
+        Index("ix_qa_ai_helper_sessions_ticket_key", "ticket_key"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    team_id = Column(Integer, ForeignKey("teams.id"), nullable=False, index=True)
+    created_by_user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    target_test_case_set_id = Column(
+        Integer,
+        ForeignKey("test_case_sets.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    ticket_key = Column(String(64), nullable=True, index=True)
+    include_comments = Column(Boolean, nullable=False, default=False)
+    output_locale = Column(String(16), nullable=False, default="zh-TW")
+    canonical_language = Column(String(16), nullable=True)
+    source_payload_json = Column(qa_ai_helper_large_text_type(), nullable=True)
+    current_phase = Column(String(32), nullable=False, default="intake", index=True)
+    status = Column(String(32), nullable=False, default="active", index=True)
+    active_canonical_revision_id = Column(Integer, nullable=True)
+    active_planned_revision_id = Column(Integer, nullable=True)
+    active_draft_set_id = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    canonical_revisions = relationship(
+        "QAAIHelperCanonicalRevision",
+        back_populates="session",
+        cascade="all, delete-orphan",
+    )
+    planned_revisions = relationship(
+        "QAAIHelperPlannedRevision",
+        back_populates="session",
+        cascade="all, delete-orphan",
+    )
+    requirement_deltas = relationship(
+        "QAAIHelperRequirementDelta",
+        back_populates="session",
+        cascade="all, delete-orphan",
+    )
+    draft_sets = relationship(
+        "QAAIHelperDraftSet",
+        back_populates="session",
+        cascade="all, delete-orphan",
+    )
+    validation_runs = relationship(
+        "QAAIHelperValidationRun",
+        back_populates="session",
+        cascade="all, delete-orphan",
+    )
+    telemetry_events = relationship(
+        "QAAIHelperTelemetryEvent",
+        back_populates="session",
+        cascade="all, delete-orphan",
+    )
+    test_case_set = relationship("TestCaseSet")
+    team = relationship("Team")
+    created_by_user = relationship("User")
+
+
+class QAAIHelperCanonicalRevision(Base):
+    """Versioned canonical requirement source for the rewritten helper."""
+
+    __tablename__ = "qa_ai_helper_canonical_revisions"
+    __table_args__ = (
+        UniqueConstraint("session_id", "revision_number", name="uq_qa_ai_helper_canonical_revision"),
+        Index("ix_qa_ai_helper_canonical_revisions_session_status", "session_id", "status"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    session_id = Column(
+        Integer,
+        ForeignKey("qa_ai_helper_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    revision_number = Column(Integer, nullable=False)
+    status = Column(String(32), nullable=False, default="editable", index=True)
+    content_json = Column(qa_ai_helper_large_text_type(), nullable=False)
+    canonical_language = Column(String(16), nullable=False, default="zh-TW")
+    counter_settings_json = Column(qa_ai_helper_large_text_type(), nullable=False)
+    created_by_user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    session = relationship("QAAIHelperSession", back_populates="canonical_revisions")
+    created_by_user = relationship("User")
+    planned_revisions = relationship(
+        "QAAIHelperPlannedRevision",
+        back_populates="canonical_revision",
+    )
+
+
+class QAAIHelperPlannedRevision(Base):
+    """Versioned deterministic planning output for the rewritten helper."""
+
+    __tablename__ = "qa_ai_helper_planned_revisions"
+    __table_args__ = (
+        UniqueConstraint("session_id", "revision_number", name="uq_qa_ai_helper_planned_revision"),
+        Index("ix_qa_ai_helper_planned_revisions_session_canonical", "session_id", "canonical_revision_id"),
+        Index("ix_qa_ai_helper_planned_revisions_session_status", "session_id", "status"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    session_id = Column(
+        Integer,
+        ForeignKey("qa_ai_helper_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    canonical_revision_id = Column(
+        Integer,
+        ForeignKey("qa_ai_helper_canonical_revisions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    revision_number = Column(Integer, nullable=False)
+    status = Column(String(32), nullable=False, default="editable", index=True)
+    matrix_json = Column(qa_ai_helper_large_text_type(), nullable=False)
+    seed_map_json = Column(qa_ai_helper_large_text_type(), nullable=False)
+    applicability_overrides_json = Column(qa_ai_helper_large_text_type(), nullable=False)
+    selected_references_json = Column(qa_ai_helper_large_text_type(), nullable=False)
+    counter_settings_json = Column(qa_ai_helper_large_text_type(), nullable=False)
+    impact_summary_json = Column(qa_ai_helper_large_text_type(), nullable=True)
+    locked_at = Column(DateTime, nullable=True)
+    locked_by_user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    session = relationship("QAAIHelperSession", back_populates="planned_revisions")
+    canonical_revision = relationship("QAAIHelperCanonicalRevision", back_populates="planned_revisions")
+    locked_by_user = relationship("User")
+    draft_sets = relationship(
+        "QAAIHelperDraftSet",
+        back_populates="planned_revision",
+        cascade="all, delete-orphan",
+    )
+    validation_runs = relationship(
+        "QAAIHelperValidationRun",
+        back_populates="planned_revision",
+        cascade="all, delete-orphan",
+    )
+
+
+class QAAIHelperRequirementDelta(Base):
+    """Requirement delta raised from plan review."""
+
+    __tablename__ = "qa_ai_helper_requirement_deltas"
+    __table_args__ = (
+        Index("ix_qa_ai_helper_requirement_deltas_session_created", "session_id", "created_at"),
+        Index("ix_qa_ai_helper_requirement_deltas_source_plan", "source_planned_revision_id"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    session_id = Column(
+        Integer,
+        ForeignKey("qa_ai_helper_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    source_canonical_revision_id = Column(
+        Integer,
+        ForeignKey("qa_ai_helper_canonical_revisions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    source_planned_revision_id = Column(
+        Integer,
+        ForeignKey("qa_ai_helper_planned_revisions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    delta_type = Column(String(16), nullable=False)
+    target_scope = Column(String(64), nullable=False)
+    target_requirement_key = Column(String(128), nullable=True)
+    target_scenario_key = Column(String(128), nullable=True)
+    proposed_content_json = Column(qa_ai_helper_large_text_type(), nullable=False)
+    reason = Column(Text, nullable=False)
+    created_from_phase = Column(String(32), nullable=False, default="planned")
+    actor_user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    applied_canonical_revision_id = Column(
+        Integer,
+        ForeignKey("qa_ai_helper_canonical_revisions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    applied_at = Column(DateTime, nullable=True)
+
+    session = relationship("QAAIHelperSession", back_populates="requirement_deltas")
+    actor_user = relationship("User", foreign_keys=[actor_user_id])
+
+
+class QAAIHelperDraftSet(Base):
+    """Generated testcase draft set for one locked planned revision."""
+
+    __tablename__ = "qa_ai_helper_draft_sets"
+    __table_args__ = (
+        Index("ix_qa_ai_helper_draft_sets_session_status", "session_id", "status"),
+        Index("ix_qa_ai_helper_draft_sets_plan_status", "planned_revision_id", "status"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    session_id = Column(
+        Integer,
+        ForeignKey("qa_ai_helper_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    planned_revision_id = Column(
+        Integer,
+        ForeignKey("qa_ai_helper_planned_revisions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    status = Column(String(32), nullable=False, default="active", index=True)
+    generation_mode = Column(String(32), nullable=True)
+    model_name = Column(String(255), nullable=True)
+    summary_json = Column(qa_ai_helper_large_text_type(), nullable=True)
+    created_by_user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    committed_at = Column(DateTime, nullable=True)
+
+    session = relationship("QAAIHelperSession", back_populates="draft_sets")
+    planned_revision = relationship("QAAIHelperPlannedRevision", back_populates="draft_sets")
+    created_by_user = relationship("User")
+    drafts = relationship(
+        "QAAIHelperDraft",
+        back_populates="draft_set",
+        cascade="all, delete-orphan",
+    )
+
+
+class QAAIHelperDraft(Base):
+    """One testcase draft item inside a draft set."""
+
+    __tablename__ = "qa_ai_helper_drafts"
+    __table_args__ = (
+        UniqueConstraint("draft_set_id", "item_key", name="uq_qa_ai_helper_draft_set_item_key"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    draft_set_id = Column(
+        Integer,
+        ForeignKey("qa_ai_helper_draft_sets.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    item_key = Column(String(128), nullable=False)
+    seed_id = Column(String(128), nullable=True, index=True)
+    testcase_id = Column(String(64), nullable=True, index=True)
+    body_json = Column(qa_ai_helper_large_text_type(), nullable=False)
+    trace_json = Column(qa_ai_helper_large_text_type(), nullable=False)
+    version = Column(Integer, nullable=False, default=1)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    draft_set = relationship("QAAIHelperDraftSet", back_populates="drafts")
+
+
+class QAAIHelperValidationRun(Base):
+    """Validation / repair run record for generated drafts."""
+
+    __tablename__ = "qa_ai_helper_validation_runs"
+    __table_args__ = (
+        Index("ix_qa_ai_helper_validation_runs_draft_created", "draft_set_id", "created_at"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    session_id = Column(
+        Integer,
+        ForeignKey("qa_ai_helper_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    planned_revision_id = Column(
+        Integer,
+        ForeignKey("qa_ai_helper_planned_revisions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    draft_set_id = Column(
+        Integer,
+        ForeignKey("qa_ai_helper_draft_sets.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+    )
+    run_type = Column(String(32), nullable=False)
+    status = Column(String(32), nullable=False, default="pending", index=True)
+    summary_json = Column(qa_ai_helper_large_text_type(), nullable=True)
+    errors_json = Column(qa_ai_helper_large_text_type(), nullable=True)
+    created_by_user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    session = relationship("QAAIHelperSession", back_populates="validation_runs")
+    planned_revision = relationship("QAAIHelperPlannedRevision", back_populates="validation_runs")
+    created_by_user = relationship("User")
+
+
+class QAAIHelperTelemetryEvent(Base):
+    """Telemetry event for the rewritten helper."""
+
+    __tablename__ = "qa_ai_helper_telemetry_events"
+    __table_args__ = (
+        Index("ix_qa_ai_helper_telemetry_events_team_stage_time", "team_id", "stage", "created_at"),
+        Index("ix_qa_ai_helper_telemetry_events_session_time", "session_id", "created_at"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    session_id = Column(
+        Integer,
+        ForeignKey("qa_ai_helper_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    planned_revision_id = Column(
+        Integer,
+        ForeignKey("qa_ai_helper_planned_revisions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    draft_set_id = Column(
+        Integer,
+        ForeignKey("qa_ai_helper_draft_sets.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    team_id = Column(Integer, ForeignKey("teams.id"), nullable=False, index=True)
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    stage = Column(String(32), nullable=False, index=True)
+    event_name = Column(String(64), nullable=False)
+    status = Column(String(32), nullable=False)
+    model_name = Column(String(255), nullable=True)
+    prompt_tokens = Column(Integer, nullable=False, default=0)
+    completion_tokens = Column(Integer, nullable=False, default=0)
+    total_tokens = Column(Integer, nullable=False, default=0)
+    duration_ms = Column(Integer, nullable=False, default=0)
+    payload_json = Column(qa_ai_helper_large_text_type(), nullable=True)
+    error_message = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    session = relationship("QAAIHelperSession", back_populates="telemetry_events")
     team = relationship("Team")
     user = relationship("User")
 
