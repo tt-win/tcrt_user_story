@@ -22,7 +22,7 @@ greenlet==3.3.1
 
 # HTTP Client & APIs
 requests==2.32.5
-aiohttp==3.13.3
+aiohttp==3.13.4
 
 # Configuration & Data Parsing
 PyYAML==6.0.3
