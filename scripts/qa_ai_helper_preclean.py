@@ -34,8 +34,8 @@ SECTION_ALIASES = {
     "驗收標準": "Acceptance Criteria",
 }
 
-SCENARIO_RE = re.compile(r"^\s*scenario\s+\d+\s*:\s*(.+?)\s*$", re.IGNORECASE)
-GHERKIN_RE = re.compile(r"^\s*(Given|When|Then|And|But)\b[:\s]*(.*)$", re.IGNORECASE)
+SCENARIO_RE = re.compile(r"^\s*scenario\s*(?:\d+\s*)?[：:]\s*(.+?)\s*$", re.IGNORECASE)
+GHERKIN_RE = re.compile(r"^\s*(Given|When|Then|And|But)\b[：:\s]*(.*)$", re.IGNORECASE)
 BULLET_RE = re.compile(r"^(?P<stars>\*+)\s+(?P<text>.+?)\s*$")
 HEADING_RE = re.compile(r"^\s*h(?P<level>[1-6])\.\s*(?P<title>.+?)\s*$", re.IGNORECASE)
 SEPARATOR_RE = re.compile(r"^\s*[-=]{4,}\s*$")
@@ -414,26 +414,31 @@ def parse_user_story(lines: List[str]) -> Dict[str, str]:
     result = {"As a": "", "I want": "", "So that": ""}
     roots = parse_bullet_tree(lines)
 
-    texts: List[str] = []
     for node in roots:
-        texts.append(node.full_text())
+        node_text = clean_inline(node.text)
+        node_lower = node_text.lower()
 
-    for raw in texts:
-        text = clean_inline(raw)
-        if not text:
-            continue
-
-        lower = text.lower()
-        if lower.startswith("as a "):
-            result["As a"] = text[5:].strip().rstrip(",")
-        elif lower.startswith("i want to "):
-            result["I want"] = text[10:].strip().rstrip(",")
-        elif lower.startswith("i want "):
-            result["I want"] = text[7:].strip().rstrip(",")
-        elif lower.startswith("so that "):
-            result["So that"] = text[8:].strip().rstrip(",")
-        elif lower.startswith("so that,"):
-            result["So that"] = text[8:].strip().rstrip(",")
+        if node_lower.startswith("as a "):
+            result["As a"] = node_text[5:].strip().rstrip(",")
+            for cont in node.continuations:
+                cont_clean = clean_inline(cont)
+                cont_lower = cont_clean.lower()
+                if cont_lower.startswith("i want to "):
+                    result["I want"] = cont_clean[10:].strip().rstrip(",")
+                elif cont_lower.startswith("i want "):
+                    result["I want"] = cont_clean[7:].strip().rstrip(",")
+                elif cont_lower.startswith("so that "):
+                    result["So that"] = cont_clean[8:].strip().rstrip(",")
+                elif cont_lower.startswith("so that,"):
+                    result["So that"] = cont_clean[8:].strip().rstrip(",")
+        elif node_lower.startswith("i want to "):
+            result["I want"] = node_text[10:].strip().rstrip(",")
+        elif node_lower.startswith("i want "):
+            result["I want"] = node_text[7:].strip().rstrip(",")
+        elif node_lower.startswith("so that "):
+            result["So that"] = node_text[8:].strip().rstrip(",")
+        elif node_lower.startswith("so that,"):
+            result["So that"] = node_text[8:].strip().rstrip(",")
 
     return result
 
@@ -471,7 +476,7 @@ def parse_acceptance_criteria(lines: List[str]) -> List[Dict[str, Any]]:
             title = clean_inline(heading.group("title"))
             scenario_match = SCENARIO_RE.match(title)
             if scenario_match:
-                current = start_scenario(title)
+                current = start_scenario(scenario_match.group(1).strip())
                 last_keyword = None
             continue
 
@@ -482,7 +487,7 @@ def parse_acceptance_criteria(lines: List[str]) -> List[Dict[str, Any]]:
 
         scenario_match = SCENARIO_RE.match(text)
         if scenario_match:
-            current = start_scenario(text)
+            current = start_scenario(scenario_match.group(1).strip())
             last_keyword = None
             continue
 

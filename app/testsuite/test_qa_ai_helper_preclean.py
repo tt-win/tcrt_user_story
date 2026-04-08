@@ -78,7 +78,7 @@ h3. Scenario 4: 異常處理 - 數據完整性
         in output["Technical Specifications"]["技術規格"]["items"][0]["name"]
     )
     assert len(output["Acceptance Criteria"]) == 4
-    assert output["Acceptance Criteria"][0]["Scenario"]["name"] == "Scenario 1: 資料抓取排程 F5 與 F7 輪流拉取"
+    assert output["Acceptance Criteria"][0]["Scenario"]["name"] == "資料抓取排程 F5 與 F7 輪流拉取"
     assert output["Acceptance Criteria"][0]["Scenario"]["Given"] == ["玩家在 F5 與 F7 環境進行 AG、WM 遊戲產生注單"]
 
 
@@ -125,11 +125,7 @@ def test_validate_preclean_output_rejects_missing_story_fields_and_unnamed_scena
             "I want": "建立新版 helper",
             "So that": "",
         },
-        "Criteria": {
-            "需求項目": {
-                "items": [{"name": "至少有一筆 criteria"}]
-            }
-        },
+        "Criteria": {"需求項目": {"items": [{"name": "至少有一筆 criteria"}]}},
         "Acceptance Criteria": [
             {
                 "Scenario": {
@@ -193,12 +189,8 @@ h1. Acceptance Criteria
 """.strip()
 
     payload = parse_ticket_to_requirement_payload(description, comments=[])
-    scenario_error_codes = {
-        item["code"] for item in payload["validation_result"]["scenario_errors"]
-    }
-    missing_field_codes = {
-        item["code"] for item in payload["validation_result"]["missing_fields"]
-    }
+    scenario_error_codes = {item["code"] for item in payload["validation_result"]["scenario_errors"]}
+    missing_field_codes = {item["code"] for item in payload["validation_result"]["missing_fields"]}
 
     assert payload["validation_result"]["is_valid"] is False
     assert "missing_user_story_as_a" in missing_field_codes
@@ -230,4 +222,4 @@ h3. Scenario 1: 顯示唯讀 markdown
 
     assert payload["validation_result"]["is_valid"] is True
     assert structured["User Story Narrative"]["As a"] == "QA"
-    assert structured["Acceptance Criteria"][0]["Scenario"]["name"] == "Scenario 1: 顯示唯讀 markdown"
+    assert structured["Acceptance Criteria"][0]["Scenario"]["name"] == "顯示唯讀 markdown"
