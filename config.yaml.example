@@ -57,9 +57,10 @@ ai:
     min_steps: 3
     min_preconditions: 1
     max_repair_rounds: 1
-    generation_budget_row_limit: 120
-    generation_budget_prompt_tokens: 12000
-    generation_budget_output_tokens: 12000
+    generation_budget_row_limit: 120  # 0 = 無上限
+    generation_budget_prompt_tokens: 12000  # 0 = 無上限
+    generation_budget_output_tokens: 12000  # 0 = 無上限
+    max_concurrent_llm_calls: 5  # testcase 生成最大併發 LLM 呼叫數
     models:
       # 可直接填 model id，或改成 '${QA_AI_HELPER_MODEL_SEED}'
       # temperature 可改成 '${QA_AI_HELPER_MODEL_SEED_TEMPERATURE}'

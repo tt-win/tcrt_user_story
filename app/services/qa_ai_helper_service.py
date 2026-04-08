@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import time
@@ -521,9 +522,7 @@ class QAAIHelperService:
                 "summary": item.summary,
                 "detail": _json_storage_loads(item.detail_json, {}),
                 "display_order": item.display_order,
-                "check_conditions": [
-                    self._serialize_check_condition(condition) for condition in conditions
-                ],
+                "check_conditions": [self._serialize_check_condition(condition) for condition in conditions],
                 "created_at": item.created_at,
                 "updated_at": item.updated_at,
             }
@@ -709,8 +708,7 @@ class QAAIHelperService:
                 "created_at": seed_set.created_at,
                 "updated_at": seed_set.updated_at,
                 "seed_items": [
-                    self._serialize_seed_item(item, display_order=index)
-                    for index, item in enumerate(items)
+                    self._serialize_seed_item(item, display_order=index) for index, item in enumerate(items)
                 ],
             }
         )
@@ -724,11 +722,7 @@ class QAAIHelperService:
         errors: List[Dict[str, str]] = []
         title = str(body.get("title") or "").strip()
         steps = [str(value).strip() for value in (body.get("steps") or []) if str(value).strip()]
-        expected_results = [
-            str(value).strip()
-            for value in (body.get("expected_results") or [])
-            if str(value).strip()
-        ]
+        expected_results = [str(value).strip() for value in (body.get("expected_results") or []) if str(value).strip()]
         if not draft.seed_reference_key or draft.seed_item_id is None:
             errors.append(
                 {
@@ -840,9 +834,7 @@ class QAAIHelperService:
                 "when": _json_storage_loads(section.when_json, []),
                 "then": _json_storage_loads(section.then_json, []),
                 "display_order": section.display_order,
-                "verification_items": [
-                    self._serialize_verification_item(item) for item in items
-                ],
+                "verification_items": [self._serialize_verification_item(item) for item in items],
                 "created_at": section.created_at,
                 "updated_at": section.updated_at,
             }
@@ -1041,8 +1033,7 @@ class QAAIHelperService:
             return None
         payload = _json_storage_loads(event.payload_json, {})
         draft_results = [
-            QAAIHelperCommitDraftResultResponse.model_validate(item)
-            for item in (payload.get("draft_results") or [])
+            QAAIHelperCommitDraftResultResponse.model_validate(item) for item in (payload.get("draft_results") or [])
         ]
         return QAAIHelperCommitResultResponse.model_validate(
             {
@@ -1053,12 +1044,8 @@ class QAAIHelperService:
                 "failed_count": int(payload.get("failed_count") or 0),
                 "skipped_count": int(payload.get("skipped_count") or 0),
                 "created_test_case_ids": payload.get("created_test_case_ids") or [],
-                "failed_drafts": [
-                    item for item in draft_results if item.status == "failed"
-                ],
-                "skipped_drafts": [
-                    item for item in draft_results if item.status == "skipped"
-                ],
+                "failed_drafts": [item for item in draft_results if item.status == "failed"],
+                "skipped_drafts": [item for item in draft_results if item.status == "skipped"],
                 "draft_results": draft_results,
                 "target_set_link_available": bool(payload.get("target_set_link")),
                 "target_set_link": payload.get("target_set_link"),
@@ -1083,11 +1070,7 @@ class QAAIHelperService:
             canonical_revision.content_json if canonical_revision else None,
             {},
         )
-        canonical_validation = (
-            self.planner.validate_canonical_content(canonical_content)
-            if canonical_content
-            else {}
-        )
+        canonical_validation = self.planner.validate_canonical_content(canonical_content) if canonical_content else {}
         return QAAIHelperWorkspaceResponse(
             session=self._serialize_session(session),
             ticket_snapshot=self._serialize_ticket_snapshot(ticket_snapshot),
@@ -1157,9 +1140,7 @@ class QAAIHelperService:
             else None
         )
         draft_set = (
-            sync_db.query(QAAIHelperDraftSet)
-            .filter(QAAIHelperDraftSet.id == session.active_draft_set_id)
-            .first()
+            sync_db.query(QAAIHelperDraftSet).filter(QAAIHelperDraftSet.id == session.active_draft_set_id).first()
             if session.active_draft_set_id
             else None
         )
@@ -1171,9 +1152,7 @@ class QAAIHelperService:
             else None
         )
         seed_set = (
-            sync_db.query(QAAIHelperSeedSet)
-            .filter(QAAIHelperSeedSet.id == session.active_seed_set_id)
-            .first()
+            sync_db.query(QAAIHelperSeedSet).filter(QAAIHelperSeedSet.id == session.active_seed_set_id).first()
             if session.active_seed_set_id
             else None
         )
@@ -1273,9 +1252,7 @@ class QAAIHelperService:
             status=QAAIHelperRequirementPlanStatus.DRAFT.value,
             section_start_number=section_start_number,
             criteria_reference_json=_json_storage_dumps(structured_requirement.get("Criteria") or {}),
-            technical_reference_json=_json_storage_dumps(
-                structured_requirement.get("Technical Specifications") or {}
-            ),
+            technical_reference_json=_json_storage_dumps(structured_requirement.get("Technical Specifications") or {}),
             autosave_summary_json=_json_storage_dumps(
                 {
                     "mode": "initialize",
@@ -1393,13 +1370,11 @@ class QAAIHelperService:
                         verification_item.summary,
                         raw_condition.get("condition_text"),
                     )
-                    coverage_tag = str(
-                        raw_condition.get("coverage_tag")
+                    coverage_tag = (
+                        str(raw_condition.get("coverage_tag") or QAAIHelperCoverageCategory.HAPPY_PATH.value).strip()
                         or QAAIHelperCoverageCategory.HAPPY_PATH.value
-                    ).strip() or QAAIHelperCoverageCategory.HAPPY_PATH.value
-                    seed_reference_key = (
-                        f"{section.section_id}.V{verification_item.display_order + 1:03d}.S{(condition_index + 1) * 10:03d}"
                     )
+                    seed_reference_key = f"{section.section_id}.V{verification_item.display_order + 1:03d}.S{(condition_index + 1) * 10:03d}"
                     items.append(
                         {
                             "item_index": item_index,
@@ -1450,11 +1425,7 @@ class QAAIHelperService:
     def _default_seed_output(self, generation_item: Dict[str, Any]) -> Dict[str, Any]:
         required_assertions = generation_item.get("required_assertions") or []
         first_assertion = required_assertions[0] if required_assertions else {}
-        assertion_text = (
-            str(first_assertion.get("text") or "").strip()
-            if isinstance(first_assertion, dict)
-            else ""
-        )
+        assertion_text = str(first_assertion.get("text") or "").strip() if isinstance(first_assertion, dict) else ""
         return {
             "item_index": int(generation_item.get("item_index") or 0),
             "seed_reference_key": str(generation_item.get("seed_reference_key") or "").strip(),
@@ -1470,8 +1441,7 @@ class QAAIHelperService:
             "seed_body": assertion_text
             or str(generation_item.get("verification_item_summary") or "").strip()
             or "請依驗證項目執行測試",
-            "coverage_tags": generation_item.get("coverage_tags")
-            or [QAAIHelperCoverageCategory.HAPPY_PATH.value],
+            "coverage_tags": generation_item.get("coverage_tags") or [QAAIHelperCoverageCategory.HAPPY_PATH.value],
         }
 
     def _normalize_seed_output(
@@ -1488,9 +1458,7 @@ class QAAIHelperService:
         normalized["verification_item_ref"] = str(
             output.get("verification_item_ref") or normalized["verification_item_ref"]
         ).strip()
-        normalized["seed_summary"] = str(
-            output.get("seed_summary") or normalized["seed_summary"]
-        ).strip()
+        normalized["seed_summary"] = str(output.get("seed_summary") or normalized["seed_summary"]).strip()
         normalized["seed_body"] = str(output.get("seed_body") or normalized["seed_body"]).strip()
         coverage_tags = output.get("coverage_tags") or normalized["coverage_tags"]
         if not isinstance(coverage_tags, list):
@@ -1575,11 +1543,7 @@ class QAAIHelperService:
         self,
         seed_set: QAAIHelperSeedSet,
     ) -> List[Dict[str, Any]]:
-        included_seed_items = [
-            item
-            for item in (seed_set.seed_items or [])
-            if item.included_for_testcase_generation
-        ]
+        included_seed_items = [item for item in (seed_set.seed_items or []) if item.included_for_testcase_generation]
         ordered_seed_items = sorted(
             included_seed_items,
             key=lambda current: (
@@ -1636,13 +1600,18 @@ class QAAIHelperService:
                     "title_hint": body_title,
                     "intent": body_title,
                     "priority": "Medium",
-                    "precondition_hints": list(getattr(section, "given", []) or _json_storage_loads(getattr(section, "given_json", None), [])),
-                    "step_hints": list(getattr(section, "when", []) or _json_storage_loads(getattr(section, "when_json", None), [])),
+                    "precondition_hints": list(
+                        getattr(section, "given", []) or _json_storage_loads(getattr(section, "given_json", None), [])
+                    ),
+                    "step_hints": list(
+                        getattr(section, "when", []) or _json_storage_loads(getattr(section, "when_json", None), [])
+                    ),
                     "expected_hints": [
                         str(condition.get("text") or "").strip()
                         for condition in check_conditions
                         if str(condition.get("text") or "").strip()
-                    ] or ([seed_body_text] if seed_body_text else []),
+                    ]
+                    or ([seed_body_text] if seed_body_text else []),
                     "required_assertions": check_conditions,
                     "seed_body_text": seed_body_text,
                 }
@@ -1660,28 +1629,18 @@ class QAAIHelperService:
             or "Generated testcase"
         ).strip()
         preconditions = [
-            str(value).strip()
-            for value in (generation_item.get("precondition_hints") or [])
-            if str(value).strip()
+            str(value).strip() for value in (generation_item.get("precondition_hints") or []) if str(value).strip()
         ]
-        steps = [
-            str(value).strip()
-            for value in (generation_item.get("step_hints") or [])
-            if str(value).strip()
-        ]
+        steps = [str(value).strip() for value in (generation_item.get("step_hints") or []) if str(value).strip()]
         expected_results = [
-            str(value).strip()
-            for value in (generation_item.get("expected_hints") or [])
-            if str(value).strip()
+            str(value).strip() for value in (generation_item.get("expected_hints") or []) if str(value).strip()
         ]
         if not preconditions:
             preconditions = ["已準備符合需求的測試資料"]
         if not steps:
             steps = ["執行對應驗證項目操作"]
         if not expected_results:
-            expected_results = [
-                str(generation_item.get("seed_body_text") or title or "系統符合預期結果").strip()
-            ]
+            expected_results = [str(generation_item.get("seed_body_text") or title or "系統符合預期結果").strip()]
         return {
             "item_index": int(generation_item.get("item_index") or 0),
             "seed_reference_key": str(generation_item.get("seed_reference_key") or "").strip(),
@@ -1709,9 +1668,7 @@ class QAAIHelperService:
             values = output.get(field) or normalized[field]
             if not isinstance(values, list):
                 values = [str(values)]
-            normalized[field] = [
-                str(value).strip() for value in values if str(value).strip()
-            ] or normalized[field]
+            normalized[field] = [str(value).strip() for value in values if str(value).strip()] or normalized[field]
         return normalized
 
     def _refresh_testcase_adoption_summary_sync(
@@ -1936,11 +1893,7 @@ class QAAIHelperService:
         team_id: int,
         payload: QAAIHelperNewTestCaseSetPayload,
     ) -> TestCaseSet:
-        existing = (
-            sync_db.query(TestCaseSet)
-            .filter(TestCaseSet.name == payload.name)
-            .first()
-        )
+        existing = sync_db.query(TestCaseSet).filter(TestCaseSet.name == payload.name).first()
         if existing is not None:
             raise ValueError(f"Test Case Set 名稱已存在: {payload.name}")
         new_set = TestCaseSet(
@@ -2034,9 +1987,7 @@ class QAAIHelperService:
                 session_id=session.id,
                 status="validated" if bool(validation_result.get("is_valid")) else "loaded",
                 raw_ticket_markdown=raw_ticket_markdown,
-                structured_requirement_json=_json_storage_dumps(
-                    parser_payload.get("structured_requirement") or {}
-                ),
+                structured_requirement_json=_json_storage_dumps(parser_payload.get("structured_requirement") or {}),
                 validation_summary_json=_json_storage_dumps(validation_result),
                 created_at=_now(),
                 updated_at=_now(),
@@ -2338,8 +2289,7 @@ class QAAIHelperService:
                     if str(item.get("message") or item.get("code") or "").strip()
                 ]
                 raise ValueError(
-                    "需求規劃尚未完成，無法鎖定："
-                    + "；".join(first_messages or ["請補齊驗證項目與檢查條件"])
+                    "需求規劃尚未完成，無法鎖定：" + "；".join(first_messages or ["請補齊驗證項目與檢查條件"])
                 )
 
             requirement_plan.status = QAAIHelperRequirementPlanStatus.LOCKED.value
@@ -2422,6 +2372,7 @@ class QAAIHelperService:
             }
             and not force_regenerate
         ):
+
             def _reuse(sync_db: Session) -> QAAIHelperWorkspaceResponse:
                 session = (
                     sync_db.query(QAAIHelperSession)
@@ -2453,12 +2404,8 @@ class QAAIHelperService:
             "seed",
             {
                 "output_language": output_locale,
-                "section_summary_json": _json_dumps(
-                    self._seed_section_summary(requirement_plan)
-                ),
-                "requirement_plan_json": _json_dumps(
-                    requirement_plan.model_dump(mode="json")
-                ),
+                "section_summary_json": _json_dumps(self._seed_section_summary(requirement_plan)),
+                "requirement_plan_json": _json_dumps(requirement_plan.model_dump(mode="json")),
                 "generation_items_json": _json_dumps(generation_items),
             },
         )
@@ -2526,8 +2473,7 @@ class QAAIHelperService:
                 session_id=session.id,
                 requirement_plan_id=requirement_plan_row.id,
                 status=QAAIHelperSeedSetStatus.DRAFT.value,
-                generation_round=(latest_round[0] if latest_round and latest_round[0] is not None else 0)
-                + 1,
+                generation_round=(latest_round[0] if latest_round and latest_round[0] is not None else 0) + 1,
                 source_type="initial",
                 model_name=llm_result.model_name,
                 generated_seed_count=0,
@@ -2549,14 +2495,10 @@ class QAAIHelperService:
                         check_condition_refs_json=_json_storage_dumps(
                             normalized_output.get("check_condition_ids") or []
                         ),
-                        coverage_tags_json=_json_storage_dumps(
-                            normalized_output.get("coverage_tags") or []
-                        ),
+                        coverage_tags_json=_json_storage_dumps(normalized_output.get("coverage_tags") or []),
                         seed_reference_key=normalized_output["seed_reference_key"],
                         seed_summary=normalized_output["seed_summary"],
-                        seed_body_json=_json_storage_dumps(
-                            {"text": normalized_output["seed_body"]}
-                        ),
+                        seed_body_json=_json_storage_dumps({"text": normalized_output["seed_body"]}),
                         comment_text=None,
                         is_ai_generated=True,
                         user_edited=False,
@@ -2821,12 +2763,8 @@ class QAAIHelperService:
                     continue
                 seed_item.comment_text = dirty_comment["comment_text"]
                 seed_item.seed_summary = normalized_output["seed_summary"]
-                seed_item.seed_body_json = _json_storage_dumps(
-                    {"text": normalized_output["seed_body"]}
-                )
-                seed_item.coverage_tags_json = _json_storage_dumps(
-                    normalized_output.get("coverage_tags") or []
-                )
+                seed_item.seed_body_json = _json_storage_dumps({"text": normalized_output["seed_body"]})
+                seed_item.coverage_tags_json = _json_storage_dumps(normalized_output.get("coverage_tags") or [])
                 seed_item.check_condition_refs_json = _json_storage_dumps(
                     normalized_output.get("check_condition_ids") or []
                 )
@@ -2949,6 +2887,7 @@ class QAAIHelperService:
             }
             and not request.force_regenerate
         ):
+
             def _reuse(sync_db: Session) -> QAAIHelperWorkspaceResponse:
                 session = (
                     sync_db.query(QAAIHelperSession)
@@ -2969,9 +2908,7 @@ class QAAIHelperService:
 
         def _prepare_generation_items(sync_db: Session) -> List[Dict[str, Any]]:
             seed_set = (
-                sync_db.query(QAAIHelperSeedSet)
-                .filter(QAAIHelperSeedSet.id == read_snapshot.seed_set.id)
-                .first()
+                sync_db.query(QAAIHelperSeedSet).filter(QAAIHelperSeedSet.id == read_snapshot.seed_set.id).first()
             )
             if seed_set is None:
                 raise ValueError("找不到 seed set")
@@ -3437,10 +3374,7 @@ class QAAIHelperService:
             if not requested_ids:
                 raise ValueError("至少需勾選一筆 testcase")
 
-            draft_by_id = {
-                int(draft.id): draft
-                for draft in (draft_set.drafts or [])
-            }
+            draft_by_id = {int(draft.id): draft for draft in (draft_set.drafts or [])}
             draft_results: List[Dict[str, Any]] = []
             created_ids: List[str] = []
             created_count = 0
@@ -3529,7 +3463,9 @@ class QAAIHelperService:
                 plan_section = getattr(draft.seed_item, "plan_section", None)
                 section_name = "Generated"
                 if plan_section is not None:
-                    section_name = f"{plan_section.section_id or ''} {plan_section.section_title or ''}".strip() or "Generated"
+                    section_name = (
+                        f"{plan_section.section_id or ''} {plan_section.section_title or ''}".strip() or "Generated"
+                    )
                 commit_section = self._ensure_commit_section_sync(
                     sync_db,
                     set_id=target_set.id,
@@ -3716,9 +3652,7 @@ class QAAIHelperService:
                     status=QAAIHelperCanonicalRevisionStatus.EDITABLE.value,
                     content_json=_json_storage_dumps(suggested),
                     canonical_language=session.canonical_language or "zh-TW",
-                    counter_settings_json=_json_storage_dumps(
-                        {"middle": "010", "tail": "010"}
-                    ),
+                    counter_settings_json=_json_storage_dumps({"middle": "010", "tail": "010"}),
                     created_by_user_id=session.created_by_user_id,
                     created_at=_now(),
                     updated_at=_now(),
@@ -4293,9 +4227,7 @@ class QAAIHelperService:
             planned_revision=planned_revision,
         )
         output_locale = (
-            session.output_locale.value
-            if hasattr(session.output_locale, "value")
-            else str(session.output_locale)
+            session.output_locale.value if hasattr(session.output_locale, "value") else str(session.output_locale)
         )
         sections = plan.get("sections") or []
         selected_section_ids = set(request.section_ids or [])
@@ -4345,9 +4277,9 @@ class QAAIHelperService:
                     max(1, len(batch.get("generation_items", [])) * 160),
                 )
         if (
-            planned_row_count > row_limit
-            or estimated_prompt_tokens > prompt_limit
-            or estimated_output_tokens > output_limit
+            (row_limit > 0 and planned_row_count > row_limit)
+            or (prompt_limit > 0 and estimated_prompt_tokens > prompt_limit)
+            or (output_limit > 0 and estimated_output_tokens > output_limit)
         ) and not request.confirm_exhaustive:
             raise ValueError(
                 f"本次生成超出 budget：rows={planned_row_count}, prompt_tokens={estimated_prompt_tokens}, output_tokens={estimated_output_tokens}"
@@ -4356,12 +4288,13 @@ class QAAIHelperService:
         all_merged_drafts: List[Dict[str, Any]] = []
         telemetry_records: List[Dict[str, Any]] = []
         model_name = None
+
+        # --- 收集 testcase 生成任務 ---
+        llm_tasks: List[Dict[str, Any]] = []
         for section in candidate_sections:
-            section_references = (
-                ((planned_revision.selected_references or {}).get("section_references") or {}).get(
-                    section["section_id"],
-                    [],
-                )
+            section_references = ((planned_revision.selected_references or {}).get("section_references") or {}).get(
+                section["section_id"],
+                [],
             )
             batches = self._iter_generation_batches(
                 section=section,
@@ -4375,52 +4308,81 @@ class QAAIHelperService:
                     section=batch,
                     section_references=section_references,
                 )
-                start_ts = time.perf_counter()
                 prompt = self.prompt_service.render_stage_prompt(
                     "testcase",
                     {
                         "output_language": output_locale,
                         "min_steps": str(self.settings.ai.qa_ai_helper.min_steps),
-                        "min_preconditions": str(
-                            self.settings.ai.qa_ai_helper.min_preconditions
-                        ),
+                        "min_preconditions": str(self.settings.ai.qa_ai_helper.min_preconditions),
                         "section_summary_json": _json_dumps(payload.get("section_summary", {})),
                         "shared_constraints_json": _json_dumps(payload.get("shared_constraints", [])),
                         "selected_references_json": _json_dumps(payload.get("selected_references", [])),
                         "generation_items_json": _json_dumps(payload.get("generation_items", [])),
                     },
                 )
-                llm_result: QAAIHelperLLMResult = await self.llm_service.call_stage(
-                    stage="testcase",
-                    prompt=prompt,
-                    max_tokens=max(1000, len(payload.get("generation_items", [])) * 350),
-                )
-                duration_ms = int((time.perf_counter() - start_ts) * 1000)
-                model_name = llm_result.model_name or model_name
-                telemetry_records.append(
+                max_tokens = max(1000, len(payload.get("generation_items", [])) * 350)
+                llm_tasks.append(
                     {
-                        "stage": "testcase",
-                        "event_name": "generate",
-                        "status": QAAIHelperRunStatus.SUCCEEDED.value,
-                        "model_name": llm_result.model_name,
-                        "usage": llm_result.usage,
-                        "duration_ms": duration_ms,
-                        "payload": {
-                            "section_id": section["section_id"],
-                            "batch_size": len(batch.get("generation_items", [])),
-                        },
+                        "section_id": section["section_id"],
+                        "batch": batch,
+                        "section_references": section_references,
+                        "prompt": prompt,
+                        "max_tokens": max_tokens,
                     }
                 )
-                try:
-                    output_payload = json.loads(llm_result.content or "{}")
-                except json.JSONDecodeError as exc:
-                    raise RuntimeError(f"模型輸出非 JSON: {exc}") from exc
-                merged_batch = post_merge_generation_outputs(
-                    generation_items=batch.get("generation_items", []),
-                    model_outputs=output_payload.get("outputs") or [],
-                    selected_references=section_references,
+
+        # --- 併發送出 LLM 呼叫 ---
+        max_concurrent = max(1, self.settings.ai.qa_ai_helper.max_concurrent_llm_calls)
+        sem = asyncio.Semaphore(max_concurrent)
+
+        async def _call_llm_with_sem(
+            task: Dict[str, Any],
+        ) -> tuple:
+            async with sem:
+                start_ts = time.perf_counter()
+                result = await self.llm_service.call_stage(
+                    stage="testcase",
+                    prompt=task["prompt"],
+                    max_tokens=task["max_tokens"],
                 )
-                all_merged_drafts.extend(merged_batch)
+                duration_ms = int((time.perf_counter() - start_ts) * 1000)
+            return result, duration_ms
+
+        llm_results = await asyncio.gather(
+            *[_call_llm_with_sem(task) for task in llm_tasks],
+            return_exceptions=True,
+        )
+
+        # --- 處理結果 ---
+        for task, result_tuple in zip(llm_tasks, llm_results):
+            if isinstance(result_tuple, Exception):
+                raise result_tuple
+            llm_result, duration_ms = result_tuple
+            model_name = llm_result.model_name or model_name
+            telemetry_records.append(
+                {
+                    "stage": "testcase",
+                    "event_name": "generate",
+                    "status": QAAIHelperRunStatus.SUCCEEDED.value,
+                    "model_name": llm_result.model_name,
+                    "usage": llm_result.usage,
+                    "duration_ms": duration_ms,
+                    "payload": {
+                        "section_id": task["section_id"],
+                        "batch_size": len(task["batch"].get("generation_items", [])),
+                    },
+                }
+            )
+            try:
+                output_payload = json.loads(llm_result.content or "{}")
+            except json.JSONDecodeError as exc:
+                raise RuntimeError(f"模型輸出非 JSON: {exc}") from exc
+            merged_batch = post_merge_generation_outputs(
+                generation_items=task["batch"].get("generation_items", []),
+                model_outputs=output_payload.get("outputs") or [],
+                selected_references=task["section_references"],
+            )
+            all_merged_drafts.extend(merged_batch)
 
         expected_generation_items = [
             item
@@ -4575,9 +4537,7 @@ class QAAIHelperService:
                 )
             session_row.active_draft_set_id = draft_set.id
             session_row.current_phase = (
-                QAAIHelperPhase.VALIDATED.value
-                if validation_summary["ok"]
-                else QAAIHelperPhase.GENERATED.value
+                QAAIHelperPhase.VALIDATED.value if validation_summary["ok"] else QAAIHelperPhase.GENERATED.value
             )
             session_row.updated_at = _now()
             return self._load_workspace_sync(sync_db, team_id=team_id, session_id=session_id)
@@ -4634,9 +4594,7 @@ class QAAIHelperService:
             )
             canonical_revision = (
                 sync_db.query(QAAIHelperCanonicalRevision)
-                .filter(
-                    QAAIHelperCanonicalRevision.id == planned_revision.canonical_revision_id
-                )
+                .filter(QAAIHelperCanonicalRevision.id == planned_revision.canonical_revision_id)
                 .first()
                 if planned_revision is not None
                 else None
@@ -4658,11 +4616,7 @@ class QAAIHelperService:
                 team_extensions=compact_plan.get("team_extensions", []),
             )
             sections = plan.get("sections") or []
-            generation_items = [
-                item
-                for section in sections
-                for item in (section.get("generation_items") or [])
-            ]
+            generation_items = [item for section in sections for item in (section.get("generation_items") or [])]
             merged_drafts = []
             for item in draft_set.drafts:
                 body = _json_storage_loads(item.body_json, {})
@@ -4697,9 +4651,7 @@ class QAAIHelperService:
                 user_id=user_id,
             )
             session.current_phase = (
-                QAAIHelperPhase.VALIDATED.value
-                if validation_summary["ok"]
-                else QAAIHelperPhase.GENERATED.value
+                QAAIHelperPhase.VALIDATED.value if validation_summary["ok"] else QAAIHelperPhase.GENERATED.value
             )
             session.updated_at = _now()
             return self._load_workspace_sync(sync_db, team_id=team_id, session_id=session_id)

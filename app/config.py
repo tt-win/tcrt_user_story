@@ -61,10 +61,7 @@ def _expand_env_placeholders(value: Any, *, path: str = "config") -> Any:
             for key, nested_value in value.items()
         }
     if isinstance(value, list):
-        return [
-            _expand_env_placeholders(item, path=f"{path}[{index}]")
-            for index, item in enumerate(value)
-        ]
+        return [_expand_env_placeholders(item, path=f"{path}[{index}]") for index, item in enumerate(value)]
     if not isinstance(value, str):
         return value
 
@@ -226,6 +223,7 @@ class QAAIHelperConfig(BaseModel):
     generation_budget_row_limit: int = 120
     generation_budget_prompt_tokens: int = 12000
     generation_budget_output_tokens: int = 12000
+    max_concurrent_llm_calls: int = 5
     models: QAAIHelperModelsConfig = QAAIHelperModelsConfig()
 
     @classmethod
@@ -241,6 +239,9 @@ class QAAIHelperConfig(BaseModel):
             generation_budget_row_limit=current.generation_budget_row_limit,
             generation_budget_prompt_tokens=current.generation_budget_prompt_tokens,
             generation_budget_output_tokens=current.generation_budget_output_tokens,
+            max_concurrent_llm_calls=int(
+                os.getenv("QA_AI_HELPER_MAX_CONCURRENT_LLM_CALLS", str(current.max_concurrent_llm_calls))
+            ),
             models=QAAIHelperModelsConfig.from_env(current.models),
         )
 
@@ -636,6 +637,7 @@ def create_default_config(config_path: str = "config.yaml") -> None:
                 "generation_budget_row_limit": 120,
                 "generation_budget_prompt_tokens": 12000,
                 "generation_budget_output_tokens": 12000,
+                "max_concurrent_llm_calls": 5,
                 "models": {
                     "seed": {
                         "model": "google/gemini-3-flash-preview",
