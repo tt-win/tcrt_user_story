@@ -2174,7 +2174,7 @@
     const cardList = el('qaHelperTestcaseCardList');
     if (!card || !rail || !cardList) return;
     const screen = currentScreen();
-    const visible = !!currentTestcaseDraftSet() && screen !== 'commit_result';
+    const visible = !!currentTestcaseDraftSet() && screen === 'testcase_review';
     card.classList.toggle('d-none', !visible);
     if (!visible) return;
     const sections = testcaseSections();
