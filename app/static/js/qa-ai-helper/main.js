@@ -137,6 +137,14 @@
     return null;
   }
 
+  function formatUtcDate(value) {
+    if (!value) return '-';
+    const raw = String(value).trim();
+    const iso = raw.endsWith('Z') || /[+-]\d{2}:\d{2}$/.test(raw) ? raw : raw + 'Z';
+    const d = new Date(iso);
+    return isNaN(d.getTime()) ? raw : d.toLocaleString();
+  }
+
   async function authFetch(url, options) {
     if (window.AuthClient && typeof window.AuthClient.fetch === 'function') {
       return window.AuthClient.fetch(url, options || {});
@@ -520,7 +528,7 @@
                       <span class="badge ${session.status === 'completed' ? 'text-bg-success' : 'text-bg-light'}">${escapeHtml(String(session.status || '-'))}</span>
                     </div>
                     <div class="small text-muted">#${escapeHtml(String(id || '-'))} · ${escapeHtml(sessionScreenText(session))}</div>
-                    <div class="small text-muted">${escapeHtml(session.updated_at ? new Date(session.updated_at).toLocaleString() : '-')}</div>
+                    <div class="small text-muted">${escapeHtml(formatUtcDate(session.updated_at))}</div>
                   </div>
                 </div>
               </button>
@@ -546,8 +554,8 @@
       assign('qaHelperSessionManagerDetailTicket', String(session.ticket_key || '-'));
       assign('qaHelperSessionManagerDetailScreen', sessionScreenText(session));
       assign('qaHelperSessionManagerDetailStatus', String(session.status || '-'));
-      assign('qaHelperSessionManagerDetailCreatedAt', session.created_at ? new Date(session.created_at).toLocaleString() : '-');
-      assign('qaHelperSessionManagerDetailUpdatedAt', session.updated_at ? new Date(session.updated_at).toLocaleString() : '-');
+      assign('qaHelperSessionManagerDetailCreatedAt', formatUtcDate(session.created_at));
+      assign('qaHelperSessionManagerDetailUpdatedAt', formatUtcDate(session.updated_at));
     }
 
     if (deleteSelectedBtn) deleteSelectedBtn.disabled = checkedIds.size <= 0 || state.sessionManagerLoading;
@@ -1124,7 +1132,7 @@
       `;
     }
     if (footerStatus) {
-      const savedAt = autosave.saved_at ? new Date(autosave.saved_at).toLocaleString() : '-';
+      const savedAt = formatUtcDate(autosave.saved_at);
       footerStatus.innerHTML = `
         <div class="small text-muted">
           ${escapeHtml(t('qaAiHelper.planFooterStatus', {
@@ -1138,9 +1146,12 @@
       `;
     }
     if (autosaveStatus) {
+      const savedAtText = autosave.saved_at
+        ? formatUtcDate(autosave.saved_at)
+        : t('qaAiHelper.autosavePending', {}, '尚未儲存');
       autosaveStatus.innerHTML = `
-        <div class="small text-muted">${escapeHtml(t('qaAiHelper.autosaveStatus', { mode: autosave.mode || 'manual' }, `儲存模式：${autosave.mode || 'manual'}`))}</div>
-        <div class="small">${escapeHtml(autosave.saved_at ? new Date(autosave.saved_at).toLocaleString() : t('qaAiHelper.autosavePending', {}, '尚未儲存'))}</div>
+        <div class="small text-muted">${escapeHtml(t('qaAiHelper.lastSavedLabel', {}, '上次儲存'))}</div>
+        <div class="small">${escapeHtml(savedAtText)}</div>
       `;
     }
     if (validationSummary) {
@@ -1150,6 +1161,9 @@
         <div class="small">${escapeHtml(t('qaAiHelper.planValidationSummary', { count: errors.length }, `${errors.length} 個待補項目`))}</div>
       `;
     }
+
+    const sectionStartInput = el('qaHelperSectionStartNumber');
+    if (sectionStartInput) sectionStartInput.disabled = locked;
 
     if (saveButton) saveButton.disabled = locked || state.planSaveInFlight;
     if (lockButton) lockButton.disabled = locked || state.planSaveInFlight;
@@ -1217,7 +1231,21 @@
     }
 
     sectionStartInput.value = String(plan.section_start_number || '010');
+    const rangeHint = el('qaHelperSectionRangeHint');
     const sections = currentPlanSections();
+    if (rangeHint) {
+      if (sections.length > 0) {
+        const first = sections[0];
+        const last = sections[sections.length - 1];
+        const firstId = (first.section_id || '').split('.').pop() || '';
+        const lastId = (last.section_id || '').split('.').pop() || '';
+        rangeHint.textContent = t('qaAiHelper.sectionRangeHint', {
+          count: sections.length, first: firstId, last: lastId,
+        }, `目前 ${sections.length} 個 section（${firstId} ~ ${lastId}）`);
+      } else {
+        rangeHint.textContent = '';
+      }
+    }
     count.textContent = String(sections.length);
     const selectedKey = ensureSelectedPlanSectionKey();
     rail.innerHTML = sections.length
@@ -1434,26 +1462,26 @@
     const proceedTestcaseButton = el('qaHelperProceedToTestcaseReviewBtn');
     const includeButton = el('qaHelperIncludeSectionSeedsBtn');
     const excludeButton = el('qaHelperExcludeSectionSeedsBtn');
+    const includeAllButton = el('qaHelperIncludeAllSeedsBtn');
+    const excludeAllButton = el('qaHelperExcludeAllSeedsBtn');
     const seedSet = currentSeedSet();
     const selectedSection = selectedSeedSection();
     const dirtyComments = hasDirtySeedComments();
 
     if (summary) {
       if (!seedSet) {
-        summary.innerHTML = `<div class="qa-helper-empty">${escapeHtml(t('qaAiHelper.seedSummaryEmpty', {}, '產生種子後，這裡會顯示採用率與模型資訊。'))}</div>`;
+        summary.innerHTML = '';
       } else {
         const generated = Number(seedSet.generated_seed_count || 0);
         const included = Number(seedSet.included_seed_count || 0);
         const excluded = Math.max(generated - included, 0);
+        const savedAt = formatUtcDate(seedSet.updated_at);
         summary.innerHTML = `
-          <div class="fw-semibold mb-2">${escapeHtml(t('qaAiHelper.seedSummaryTitle', {}, 'Seed Summary'))}</div>
-          <div class="qa-helper-summary-list">
-            <div>${escapeHtml(t('qaAiHelper.generatedSeedCount', {}, '產生種子數'))}: <span class="qa-helper-mono">${generated}</span></div>
-            <div>${escapeHtml(t('qaAiHelper.includedSeedCount', {}, '納入數'))}: <span class="qa-helper-mono">${included}</span></div>
-            <div>${escapeHtml(t('qaAiHelper.excludedSeedCount', {}, '排除數'))}: <span class="qa-helper-mono">${excluded}</span></div>
-            <div>${escapeHtml(t('qaAiHelper.seedAdoptionRate', {}, 'Seed Adoption Rate'))}: <span class="qa-helper-mono">${escapeHtml(String(seedSet.adoption_rate || 0))}</span></div>
-            <div>${escapeHtml(t('qaAiHelper.seedModelName', {}, '模型'))}: <span class="qa-helper-mono">${escapeHtml(seedSet.model_name || '-')}</span></div>
-            <div>${escapeHtml(t('qaAiHelper.seedLastUpdatedAt', {}, '最後更新'))}: ${escapeHtml(seedSet.updated_at ? new Date(seedSet.updated_at).toLocaleString() : '-')}</div>
+          <div class="d-flex flex-wrap align-items-center gap-3 small text-muted">
+            <span>${escapeHtml(t('qaAiHelper.generatedSeedCount', {}, '產生種子數'))} <strong class="qa-helper-mono">${generated}</strong></span>
+            <span>${escapeHtml(t('qaAiHelper.includedSeedCount', {}, '納入數'))} <strong class="qa-helper-mono">${included}</strong></span>
+            <span>${escapeHtml(t('qaAiHelper.excludedSeedCount', {}, '排除數'))} <strong class="qa-helper-mono">${excluded}</strong></span>
+            <span class="ms-auto">${escapeHtml(t('qaAiHelper.lastSavedAt', { value: savedAt }, `最後儲存 ${savedAt}`))}</span>
           </div>
         `;
       }
@@ -1503,6 +1531,8 @@
 
     if (includeButton) includeButton.disabled = !seedSet || !selectedSection || state.seedActionInFlight;
     if (excludeButton) excludeButton.disabled = !seedSet || !selectedSection || state.seedActionInFlight;
+    if (includeAllButton) includeAllButton.disabled = !seedSet || state.seedActionInFlight;
+    if (excludeAllButton) excludeAllButton.disabled = !seedSet || state.seedActionInFlight;
   }
 
   function renderSeedReviewWorkspace() {
@@ -1661,6 +1691,29 @@
         throw new Error(await response.text());
       }
       updateWorkspace(await response.json());
+    } finally {
+      state.seedActionInFlight = false;
+      renderSeedReviewSummary();
+    }
+  }
+
+  async function updateAllSeedInclusion(included) {
+    const teamId = ensureTeamId();
+    const seedSet = currentSeedSet();
+    if (!teamId || !state.sessionId || !seedSet) return;
+    const sections = seedSections();
+    if (!sections.length) return;
+    state.seedActionInFlight = true;
+    renderSeedReviewSummary();
+    try {
+      for (const section of sections) {
+        const response = await authFetch(
+          `/api/teams/${teamId}/qa-ai-helper/sessions/${state.sessionId}/seed-sets/${seedSet.id}/sections/${encodeURIComponent(section.section_id)}/inclusion`,
+          { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ included }) }
+        );
+        if (!response.ok) throw new Error(await response.text());
+        updateWorkspace(await response.json());
+      }
     } finally {
       state.seedActionInFlight = false;
       renderSeedReviewSummary();
@@ -1860,6 +1913,29 @@
     }
   }
 
+  async function updateAllTestcaseSelection(selected) {
+    const teamId = ensureTeamId();
+    const draftSet = currentTestcaseDraftSet();
+    if (!teamId || !state.sessionId || !draftSet) return;
+    const sections = testcaseSections();
+    if (!sections.length) return;
+    state.testcaseActionInFlight = true;
+    renderTestcaseReviewSummary();
+    try {
+      for (const section of sections) {
+        const response = await authFetch(
+          `/api/teams/${teamId}/qa-ai-helper/sessions/${state.sessionId}/testcase-draft-sets/${draftSet.id}/sections/${encodeURIComponent(section.section_id)}/selection`,
+          { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ selected: !!selected }) }
+        );
+        if (!response.ok) throw new Error(await response.text());
+        updateWorkspace(await response.json());
+      }
+    } finally {
+      state.testcaseActionInFlight = false;
+      renderTestcaseReviewSummary();
+    }
+  }
+
   async function initializeRequirementPlan() {
     const teamId = ensureTeamId();
     if (!teamId || !state.sessionId) return;
@@ -2053,33 +2129,36 @@
     const actionStatus = el('qaHelperTestcaseActionStatus');
     const selectSectionBtn = el('qaHelperSelectSectionDraftsBtn');
     const clearSectionBtn = el('qaHelperClearSectionDraftsBtn');
+    const selectAllBtn = el('qaHelperSelectAllDraftsBtn');
+    const clearAllBtn = el('qaHelperClearAllDraftsBtn');
     const nextBtn = el('qaHelperSelectTargetSetBtn');
     if (!summary) return;
     const draftSet = currentTestcaseDraftSet();
     if (!draftSet) {
-      summary.innerHTML = `<div class="qa-helper-empty">${escapeHtml(t('qaAiHelper.testcaseSummaryEmpty', {}, '尚未產生 testcase drafts'))}</div>`;
+      summary.innerHTML = '';
       if (actionStatus) actionStatus.textContent = t('qaAiHelper.testcaseDraftPending', {}, '請先從畫面四產生並鎖定 testcase drafts。');
       if (selectSectionBtn) selectSectionBtn.disabled = true;
       if (clearSectionBtn) clearSectionBtn.disabled = true;
+      if (selectAllBtn) selectAllBtn.disabled = true;
+      if (clearAllBtn) clearAllBtn.disabled = true;
       if (nextBtn) nextBtn.disabled = true;
       return;
     }
-    const drafts = testcaseDrafts();
-    const validCount = drafts.filter((draft) => (draft.validation_summary || {}).is_valid).length;
     const selectedCount = Number(draftSet.selected_for_commit_count || 0);
-    const adoptionRate = Number(draftSet.adoption_rate || 0);
+    const savedAt = formatUtcDate(draftSet.updated_at);
     summary.innerHTML = `
-      <div><strong>${escapeHtml(t('qaAiHelper.generatedTestcaseCount', {}, '生成 testcase 數'))}</strong>: ${draftSet.generated_testcase_count || 0}</div>
-      <div><strong>${escapeHtml(t('qaAiHelper.validDraftCount', {}, '可選 draft 數'))}</strong>: ${validCount}</div>
-      <div><strong>${escapeHtml(t('qaAiHelper.selectedForCommitCount', {}, '已勾選提交'))}</strong>: ${selectedCount}</div>
-      <div><strong>${escapeHtml(t('qaAiHelper.testcaseAdoptionRate', {}, 'Testcase Adoption'))}</strong>: ${(adoptionRate * 100).toFixed(0)}%</div>
-      <div><strong>${escapeHtml(t('qaAiHelper.testcaseModelName', {}, '使用模型'))}</strong>: ${escapeHtml(draftSet.model_name || '-')}</div>
-      <div><strong>${escapeHtml(t('qaAiHelper.seedLastUpdatedAt', {}, '最後更新'))}</strong>: ${escapeHtml(draftSet.updated_at || '-')}</div>
+      <div class="d-flex flex-wrap align-items-center gap-3 small text-muted">
+        <span>${escapeHtml(t('qaAiHelper.generatedTestcaseCount', {}, '產生 testcase 數'))} <strong class="qa-helper-mono">${draftSet.generated_testcase_count || 0}</strong></span>
+        <span>${escapeHtml(t('qaAiHelper.selectedForCommitCount', {}, '已勾選提交'))} <strong class="qa-helper-mono">${selectedCount}</strong></span>
+        <span class="ms-auto">${escapeHtml(t('qaAiHelper.lastSavedAt', { value: savedAt }, `最後儲存 ${savedAt}`))}</span>
+      </div>
     `;
     const selectedSection = selectedTestcaseSection();
     const hasSection = !!selectedSection;
     if (selectSectionBtn) selectSectionBtn.disabled = !hasSection || state.testcaseActionInFlight;
     if (clearSectionBtn) clearSectionBtn.disabled = !hasSection || state.testcaseActionInFlight;
+    if (selectAllBtn) selectAllBtn.disabled = state.testcaseActionInFlight;
+    if (clearAllBtn) clearAllBtn.disabled = state.testcaseActionInFlight;
     if (nextBtn) nextBtn.disabled = state.testcaseActionInFlight || selectedCount <= 0;
     if (actionStatus) {
       actionStatus.textContent = selectedCount > 0
@@ -2536,6 +2615,14 @@
       updateUrl();
       setFeedback('success', t('qaAiHelper.sessionDeleted', {}, '已刪除 Session'));
     });
+    bindIfPresent('qaHelperRefDrawerToggleBtn', 'click', () => {
+      const drawer = el('qaHelperRefDrawer');
+      if (drawer) drawer.classList.toggle('is-open');
+    });
+    bindIfPresent('qaHelperRefDrawerCloseBtn', 'click', () => {
+      const drawer = el('qaHelperRefDrawer');
+      if (drawer) drawer.classList.remove('is-open');
+    });
     bindIfPresent('qaHelperSaveRequirementPlanBtn', 'click', () => saveRequirementPlan({ autosave: false }).catch(handleError));
     bindIfPresent('qaHelperLockRequirementPlanBtn', 'click', () => lockRequirementPlan().catch(handleError));
     bindIfPresent('qaHelperUnlockRequirementPlanBtn', 'click', () => unlockRequirementPlan().catch(handleError));
@@ -2547,11 +2634,15 @@
     bindIfPresent('qaHelperUnlockSeedsBtn', 'click', () => unlockSeedSet().catch(handleError));
     bindIfPresent('qaHelperIncludeSectionSeedsBtn', 'click', () => updateSeedSectionInclusion(true).catch(handleError));
     bindIfPresent('qaHelperExcludeSectionSeedsBtn', 'click', () => updateSeedSectionInclusion(false).catch(handleError));
+    bindIfPresent('qaHelperIncludeAllSeedsBtn', 'click', () => updateAllSeedInclusion(true).catch(handleError));
+    bindIfPresent('qaHelperExcludeAllSeedsBtn', 'click', () => updateAllSeedInclusion(false).catch(handleError));
     bindIfPresent('qaHelperStartTestcaseReviewBtn', 'click', () => generateTestcaseDraftSet(true).catch(handleError));
     bindIfPresent('qaHelperRegenerateTestcasesBtn', 'click', () => generateTestcaseDraftSet(true).catch(handleError));
     bindIfPresent('qaHelperProceedToTestcaseReviewBtn', 'click', () => generateTestcaseDraftSet(false).catch(handleError));
     bindIfPresent('qaHelperSelectSectionDraftsBtn', 'click', () => updateTestcaseSectionSelection(true).catch(handleError));
     bindIfPresent('qaHelperClearSectionDraftsBtn', 'click', () => updateTestcaseSectionSelection(false).catch(handleError));
+    bindIfPresent('qaHelperSelectAllDraftsBtn', 'click', () => updateAllTestcaseSelection(true).catch(handleError));
+    bindIfPresent('qaHelperClearAllDraftsBtn', 'click', () => updateAllTestcaseSelection(false).catch(handleError));
     bindIfPresent('qaHelperSelectTargetSetBtn', 'click', () => openSetSelection().catch(handleError));
     bindIfPresent('qaHelperBackToTestcaseReviewBtn', 'click', () => backToTestcaseReview().catch(handleError));
     bindIfPresent('qaHelperCommitSelectedBtn', 'click', () => commitSelectedTestcases().catch(handleError));

@@ -41,7 +41,6 @@
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <div>
                         <div class="fw-semibold" data-i18n="qaAiHelper.screen1Title">載入需求單</div>
-                        <small class="text-muted" data-i18n="qaAiHelper.screen1Hint">輸入 Ticket Number 後才建立 session，並直接載入畫面二的唯讀票單確認資料。</small>
                     </div>
                     <span class="badge text-bg-secondary" id="qaHelperPhaseBadge" data-i18n="qaAiHelper.noSession">尚未建立 Session</span>
                 </div>
@@ -80,7 +79,6 @@
                     <div class="qa-helper-summary mt-3" id="qaHelperWorkspaceSummary"></div>
                 </div>
                 <div class="card-footer qa-helper-action-bar">
-                    <div class="qa-helper-action-bar-meta small text-muted" data-i18n="qaAiHelper.screen1Hint">輸入 Ticket Number 後才建立 session，並直接載入畫面二的唯讀票單確認資料。</div>
                     <div class="d-flex flex-wrap gap-2">
                         <button type="button" class="btn btn-primary btn-sm" id="qaHelperCreateSessionBtn">
                             <i class="fas fa-cloud-arrow-down me-1"></i><span data-i18n="qaAiHelper.loadTicketContent">載入需求單內容</span>
@@ -95,7 +93,6 @@
             <div class="card qa-helper-card qa-helper-step-card d-none" id="qaHelperTicketConfirmationCard">
                 <div class="card-header">
                     <div class="fw-semibold" data-i18n="qaAiHelper.screen2Title">需求單內容確認</div>
-                    <small class="text-muted" data-i18n="qaAiHelper.screen2Hint">Jira 原始票單只讀顯示，並在右側確認 parser gate 是否允許進入畫面三。</small>
                 </div>
                 <div class="card-body">
                     <div class="row g-3 qa-helper-screen2-layout">
@@ -129,9 +126,13 @@
                 <div class="card-header d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2">
                     <div>
                         <div class="fw-semibold" data-i18n="qaAiHelper.screen3Title">需求驗證項目分類與填充</div>
-                        <small class="text-muted" data-i18n="qaAiHelper.screen3Hint">左側切換 AC section，右側編輯驗證項目與檢查條件，下方保留 Criteria 與 Technical Specifications 參考區。</small>
                     </div>
-                    <div class="qa-helper-inline-status" id="qaHelperRequirementPlanHeaderStatus"></div>
+                    <div class="d-flex align-items-center gap-2">
+                        <div class="qa-helper-inline-status" id="qaHelperRequirementPlanHeaderStatus"></div>
+                        <button type="button" class="btn btn-warning btn-sm" id="qaHelperRefDrawerToggleBtn">
+                            <i class="fas fa-book-open me-1"></i><span data-i18n="qaAiHelper.toggleReference">原始需求資料</span>
+                        </button>
+                    </div>
                 </div>
                 <div class="card-body">
                     <div class="row g-3">
@@ -141,7 +142,6 @@
                                     <div class="d-flex justify-content-between align-items-center mb-3">
                                         <div>
                                             <div class="fw-semibold" data-i18n="qaAiHelper.sectionRailTitle">Sections</div>
-                                            <small class="text-muted" data-i18n="qaAiHelper.sectionRailHint">依 AC scenario 分組</small>
                                         </div>
                                         <span class="badge text-bg-light" id="qaHelperSectionRailCount">0</span>
                                     </div>
@@ -153,8 +153,9 @@
                             <div class="qa-helper-side-card mb-3">
                                 <div class="row g-3 align-items-end">
                                     <div class="col-sm-6 col-lg-4">
-                                        <label class="form-label" for="qaHelperSectionStartNumber" data-i18n="qaAiHelper.sectionStartNumber">Section 起始號</label>
+                                        <label class="form-label" for="qaHelperSectionStartNumber" data-i18n="qaAiHelper.sectionStartNumber">Section 起始編號</label>
                                         <input type="text" class="form-control" id="qaHelperSectionStartNumber" value="010" maxlength="3">
+                                        <div class="form-text" id="qaHelperSectionRangeHint"></div>
                                     </div>
                                     <div class="col-sm-6 col-lg-4">
                                         <div class="qa-helper-field-help" id="qaHelperPlanAutosaveStatus"></div>
@@ -164,13 +165,17 @@
                                     </div>
                                 </div>
                             </div>
-                            <div class="qa-helper-editor-shell" id="qaHelperPlanEditor"></div>
-                            <div class="row g-3 mt-1">
-                                <div class="col-12 col-xl-6">
-                                    <div class="qa-helper-reference-card h-100" id="qaHelperCriteriaReference"></div>
-                                </div>
-                                <div class="col-12 col-xl-6">
-                                    <div class="qa-helper-reference-card h-100" id="qaHelperTechnicalReference"></div>
+                            <div class="qa-helper-editor-wrap">
+                                <div class="qa-helper-editor-shell" id="qaHelperPlanEditor"></div>
+                                <div class="qa-helper-ref-drawer" id="qaHelperRefDrawer">
+                                    <div class="qa-helper-ref-drawer-header">
+                                        <span class="fw-semibold small" data-i18n="qaAiHelper.referenceDrawerTitle">原始需求資料</span>
+                                        <button type="button" class="btn-close btn-close-sm" id="qaHelperRefDrawerCloseBtn" aria-label="Close"></button>
+                                    </div>
+                                    <div class="qa-helper-ref-drawer-body">
+                                        <div class="qa-helper-reference-card mb-3" id="qaHelperCriteriaReference"></div>
+                                        <div class="qa-helper-reference-card" id="qaHelperTechnicalReference"></div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -218,31 +223,36 @@
                             <div class="qa-helper-section-rail card border-0 shadow-sm h-100">
                                 <div class="card-body">
                                     <div class="d-flex justify-content-between align-items-center mb-3">
-                                        <div>
-                                            <div class="fw-semibold" data-i18n="qaAiHelper.seedSectionRailTitle">Seed Sections</div>
-                                            <small class="text-muted" data-i18n="qaAiHelper.seedSectionRailHint">依 section 檢視 seed 與納入狀態</small>
+                                        <div class="fw-semibold" data-i18n="qaAiHelper.seedSectionRailTitle">Sections</div>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <div class="btn-group btn-group-sm">
+                                                <button type="button" class="btn btn-outline-primary" id="qaHelperIncludeAllSeedsBtn">
+                                                    <i class="fas fa-check-double me-1"></i><span data-i18n="qaAiHelper.includeAllSeeds">全域納入</span>
+                                                </button>
+                                                <button type="button" class="btn btn-outline-secondary" id="qaHelperExcludeAllSeedsBtn">
+                                                    <i class="fas fa-ban me-1"></i><span data-i18n="qaAiHelper.excludeAllSeeds">全域排除</span>
+                                                </button>
+                                            </div>
+                                            <span class="badge text-bg-light" id="qaHelperSeedSectionRailCount">0</span>
                                         </div>
-                                        <span class="badge text-bg-light" id="qaHelperSeedSectionRailCount">0</span>
                                     </div>
                                     <div class="list-group qa-helper-section-list" id="qaHelperSeedSectionRail"></div>
                                 </div>
                             </div>
                         </div>
-                        <div class="col-12 col-xxl-6">
-                            <div class="qa-helper-seed-list" id="qaHelperSeedCardList"></div>
-                        </div>
-                        <div class="col-12 col-xxl-3">
-                            <div class="qa-helper-side-card mb-3" id="qaHelperSeedReviewSummary"></div>
-                            <div class="qa-helper-side-card">
-                                <div class="d-grid gap-2">
+                        <div class="col-12 col-xxl-9">
+                            <div class="qa-helper-content-toolbar d-flex flex-wrap align-items-center gap-2 mb-3">
+                                <div class="qa-helper-seed-summary-bar flex-grow-1" id="qaHelperSeedReviewSummary"></div>
+                                <div class="d-flex gap-2">
                                     <button type="button" class="btn btn-outline-primary btn-sm" id="qaHelperIncludeSectionSeedsBtn">
-                                        <i class="fas fa-check-double me-1"></i><span data-i18n="qaAiHelper.includeSectionSeeds">本 section 全部納入</span>
+                                        <i class="fas fa-check-double me-1"></i><span data-i18n="qaAiHelper.includeSectionSeeds">全部納入</span>
                                     </button>
                                     <button type="button" class="btn btn-outline-secondary btn-sm" id="qaHelperExcludeSectionSeedsBtn">
-                                        <i class="fas fa-ban me-1"></i><span data-i18n="qaAiHelper.excludeSectionSeeds">本 section 全部排除</span>
+                                        <i class="fas fa-ban me-1"></i><span data-i18n="qaAiHelper.excludeSectionSeeds">全部排除</span>
                                     </button>
                                 </div>
                             </div>
+                            <div class="qa-helper-seed-list" id="qaHelperSeedCardList"></div>
                         </div>
                     </div>
                 </div>
@@ -278,39 +288,42 @@
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <div>
                         <div class="fw-semibold" data-i18n="qaAiHelper.screen5Title">Test Case 確認</div>
-                        <small class="text-muted" data-i18n="qaAiHelper.screen5Hint">只允許編修 testcase body 與勾選提交，不允許新增或刪除 testcase draft。</small>
                     </div>
                 </div>
                 <div class="card-body">
                     <div class="row g-3 align-items-start">
-                        <div class="col-xl-3 col-lg-4">
+                        <div class="col-12 col-xxl-3">
                             <div class="qa-helper-section-rail p-3 h-100">
                                 <div class="d-flex justify-content-between align-items-center mb-2">
-                                    <div>
-                                        <div class="fw-semibold" data-i18n="qaAiHelper.testcaseSectionRailTitle">Section 篩選</div>
-                                        <small class="text-muted" data-i18n="qaAiHelper.testcaseSectionRailHint">依 section 檢視 testcase drafts</small>
+                                    <div class="fw-semibold" data-i18n="qaAiHelper.testcaseSectionRailTitle">Sections</div>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <div class="btn-group btn-group-sm">
+                                            <button type="button" class="btn btn-outline-primary" id="qaHelperSelectAllDraftsBtn">
+                                                <i class="fas fa-check-double me-1"></i><span data-i18n="qaAiHelper.selectAllDrafts">全域全選</span>
+                                            </button>
+                                            <button type="button" class="btn btn-outline-secondary" id="qaHelperClearAllDraftsBtn">
+                                                <i class="fas fa-ban me-1"></i><span data-i18n="qaAiHelper.clearAllDrafts">全域清除</span>
+                                            </button>
+                                        </div>
+                                        <span class="badge text-bg-light" id="qaHelperTestcaseSectionRailCount">0</span>
                                     </div>
-                                    <span class="badge text-bg-light" id="qaHelperTestcaseSectionRailCount">0</span>
                                 </div>
                                 <div class="qa-helper-section-list" id="qaHelperTestcaseSectionRail"></div>
                             </div>
                         </div>
-                        <div class="col-xl-6 col-lg-8">
-                            <div class="qa-helper-seed-list" id="qaHelperTestcaseCardList"></div>
-                        </div>
-                        <div class="col-xl-3">
-                            <div class="qa-helper-side-card">
-                                <div class="fw-semibold mb-2" data-i18n="qaAiHelper.testcaseSummaryTitle">Testcase 摘要</div>
-                                <div class="qa-helper-summary-list" id="qaHelperTestcaseReviewSummary"></div>
-                                <div class="d-grid gap-2 mt-3">
+                        <div class="col-12 col-xxl-9">
+                            <div class="qa-helper-content-toolbar d-flex flex-wrap align-items-center gap-2 mb-3">
+                                <div class="qa-helper-seed-summary-bar flex-grow-1" id="qaHelperTestcaseReviewSummary"></div>
+                                <div class="d-flex gap-2">
                                     <button type="button" class="btn btn-outline-primary btn-sm" id="qaHelperSelectSectionDraftsBtn">
-                                        <i class="fas fa-check-double me-1"></i><span data-i18n="qaAiHelper.selectSectionDrafts">本 section 全選</span>
+                                        <i class="fas fa-check-double me-1"></i><span data-i18n="qaAiHelper.selectSectionDrafts">全選</span>
                                     </button>
                                     <button type="button" class="btn btn-outline-secondary btn-sm" id="qaHelperClearSectionDraftsBtn">
-                                        <i class="fas fa-ban me-1"></i><span data-i18n="qaAiHelper.clearSectionDrafts">本 section 清除選取</span>
+                                        <i class="fas fa-ban me-1"></i><span data-i18n="qaAiHelper.clearSectionDrafts">清除選取</span>
                                     </button>
                                 </div>
                             </div>
+                            <div class="qa-helper-seed-list" id="qaHelperTestcaseCardList"></div>
                         </div>
                     </div>
                 </div>
@@ -389,7 +402,6 @@
                     <div class="qa-helper-side-card" id="qaHelperCommitResultDetails"></div>
                 </div>
                 <div class="card-footer qa-helper-action-bar">
-                    <div class="qa-helper-action-bar-meta small text-muted" data-i18n="qaAiHelper.screen7FooterHint">畫面七不提供 destructive restart；若需再做一輪，請開始新流程。</div>
                     <div class="d-flex gap-2 flex-wrap justify-content-end">
                         <button type="button" class="btn btn-primary btn-sm" id="qaHelperOpenTargetSetBtn">
                             <i class="fas fa-arrow-up-right-from-square me-1"></i><span data-i18n="qaAiHelper.openTargetSet">開啟目標 Test Case Set</span>
