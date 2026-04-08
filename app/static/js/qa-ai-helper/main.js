@@ -2617,14 +2617,39 @@
       updateUrl();
       setFeedback('success', t('qaAiHelper.sessionDeleted', {}, '已刪除 Session'));
     });
+    function positionRefDrawer() {
+      const drawer = el('qaHelperRefDrawer');
+      const wrap = el('qaHelperEditorWrap');
+      if (!drawer || !wrap) return;
+      const wrapRect = wrap.getBoundingClientRect();
+      drawer.style.top = Math.max(wrapRect.top, 0) + 'px';
+      drawer.style.right = (window.innerWidth - wrapRect.right) + 'px';
+    }
+
     bindIfPresent('qaHelperRefDrawerToggleBtn', 'click', () => {
       const drawer = el('qaHelperRefDrawer');
-      if (drawer) drawer.classList.toggle('is-open');
+      if (!drawer) return;
+      drawer.classList.toggle('is-open');
+      if (drawer.classList.contains('is-open')) {
+        positionRefDrawer();
+      }
     });
     bindIfPresent('qaHelperRefDrawerCloseBtn', 'click', () => {
       const drawer = el('qaHelperRefDrawer');
       if (drawer) drawer.classList.remove('is-open');
     });
+    window.addEventListener('scroll', () => {
+      const drawer = el('qaHelperRefDrawer');
+      if (drawer && drawer.classList.contains('is-open')) {
+        positionRefDrawer();
+      }
+    }, { passive: true });
+    window.addEventListener('resize', () => {
+      const drawer = el('qaHelperRefDrawer');
+      if (drawer && drawer.classList.contains('is-open')) {
+        positionRefDrawer();
+      }
+    }, { passive: true });
     bindIfPresent('qaHelperSaveRequirementPlanBtn', 'click', () => saveRequirementPlan({ autosave: false }).catch(handleError));
     bindIfPresent('qaHelperLockRequirementPlanBtn', 'click', () => lockRequirementPlan().catch(handleError));
     bindIfPresent('qaHelperUnlockRequirementPlanBtn', 'click', () => unlockRequirementPlan().catch(handleError));
