@@ -2161,7 +2161,7 @@
     "errorTeamRequired": "Please select a team first",
     "errorTicketRequired": "Please enter a ticket number",
     "errorSetRequired": "Please select a target Test Case Set",
-    "sessionSummaryEmpty": "Revision, lock, and draft status will appear after a session is created.",
+    "sessionSummaryEmpty": "",
     "sessionId": "Session ID",
     "requirementPlan": "Requirement Plan",
     "seedSet": "Seed Set",

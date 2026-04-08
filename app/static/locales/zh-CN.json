@@ -2112,7 +2112,7 @@
     "errorTeamRequired": "请先选择团队",
     "errorTicketRequired": "请先输入 Ticket Number",
     "errorSetRequired": "请先选择目标 Test Case Set",
-    "sessionSummaryEmpty": "建立 Session 后会显示 revision、lock 与 draft 状态。",
+    "sessionSummaryEmpty": "",
     "sessionId": "Session ID",
     "requirementPlan": "Requirement Plan",
     "seedSet": "Seed Set",

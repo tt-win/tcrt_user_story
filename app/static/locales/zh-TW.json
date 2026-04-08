@@ -2255,7 +2255,7 @@
     "errorTeamRequired": "請先選擇團隊",
     "errorTicketRequired": "請先輸入 Ticket Number",
     "errorSetRequired": "請先選擇目標 Test Case Set",
-    "sessionSummaryEmpty": "建立 Session 後會顯示 revision、lock 與 draft 狀態。",
+    "sessionSummaryEmpty": "",
     "sessionId": "Session ID",
     "requirementPlan": "Requirement Plan",
     "seedSet": "Seed Set",

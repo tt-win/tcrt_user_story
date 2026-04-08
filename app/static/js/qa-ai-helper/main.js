@@ -764,7 +764,7 @@
     if (!workspace || !workspace.session) {
       badge.className = 'badge text-bg-secondary';
       badge.textContent = t('qaAiHelper.noSession', {}, '尚未建立 Session');
-      container.innerHTML = `<div class="qa-helper-empty">${escapeHtml(t('qaAiHelper.sessionSummaryEmpty', {}, '建立 Session 後會顯示 revision、lock 與 draft 狀態。'))}</div>`;
+      container.innerHTML = '';
       return;
     }
     const session = workspace.session;
