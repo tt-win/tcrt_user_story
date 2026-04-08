@@ -765,8 +765,10 @@
       badge.className = 'badge text-bg-secondary';
       badge.textContent = t('qaAiHelper.noSession', {}, '尚未建立 Session');
       container.innerHTML = '';
+      container.classList.add('d-none');
       return;
     }
+    container.classList.remove('d-none');
     const session = workspace.session;
     const requirementPlan = workspace.requirement_plan;
     const planned = workspace.planned_revision;
