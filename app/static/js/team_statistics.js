@@ -1,15 +1,14 @@
 /**
  * 團隊數據統計頁面
  *
- * 提供全面的團隊活動與測試數據分析，包含 8 個統計模組：
+ * 提供全面的團隊活動與測試數據分析，包含 7 個統計模組：
  * 1. 總覽 (Overview)
  * 2. 團隊活動 (Team Activity)
  * 3. 測試案例趨勢 (Test Case Trends)
  * 4. 測試執行指標 (Test Run Metrics)
- * 5. QA AI Agent - Test Case Helper
- * 6. 使用者行為 (User Activity)
- * 7. 審計分析 (Audit Analysis)
- * 8. 部門統計 (Department Stats)
+ * 5. 使用者行為 (User Activity)
+ * 6. 審計分析 (Audit Analysis)
+ * 7. 部門統計 (Department Stats)
  */
 
 (function() {
@@ -28,139 +27,6 @@
     let teamFilterPendingIds = new Set();
     let teamFilterInitialized = false;
     const TEAM_FILTER_STORAGE_KEY = 'teamStatsSelectedTeams';
-    const TEAM_STATS_HELPER_TRANSLATION_PATCH = Object.freeze({
-        'zh-TW': {
-            teamStats: {
-                tabs: {
-                    helperAi: 'QA AI Agent - 測試案例助手'
-                },
-                helper: {
-                    progressTitle: '帳號-單號進度',
-                    teamUsageTitle: '團隊使用統計',
-                    user: '帳號',
-                    team: '團隊',
-                    ticket: '單號',
-                    sessions: '工作階段數',
-                    usersCount: '帳號數',
-                    ticketsCount: '單號數',
-                    activeSessions: '進行中',
-                    completedSessions: '已完成',
-                    failedSessions: '失敗',
-                    phase: '階段',
-                    status: '狀態',
-                    updatedAt: '更新時間',
-                    costTitle: 'Token 與估算費用',
-                    totalTokens: '總 Token',
-                    estimatedCostTotal: '預估總費用',
-                    pricingProfile: '價格基準',
-                    estimateDisclaimer: '費用為估算值，非實際帳單金額。',
-                    tokenType: '類型',
-                    tokens: 'Token 數',
-                    rate: '單價',
-                    estimatedCost: '估算費用',
-                    stageMetricsTitle: '各階段耗時與產量',
-                    runs: '執行次數',
-                    successRuns: '成功',
-                    avgDuration: '平均耗時',
-                    p95Duration: 'P95 耗時',
-                    maxDuration: '最長耗時',
-                    pretestcaseCount: 'Pre TC 產量',
-                    testcaseCount: 'TC 產量',
-                    noProgressData: '無進度資料',
-                    noTeamUsageData: '無團隊使用資料',
-                    noTokenData: '無 token 使用資料',
-                    noStageData: '無階段統計資料',
-                    coveragePartial: 'Telemetry 覆蓋 {covered}/{total} 個工作階段',
-                    coverageComplete: 'Telemetry 覆蓋完整',
-                    loadFailed: '載入 QA Helper 統計失敗',
-                    phaseInit: '初始化',
-                    phaseRequirement: '需求整理',
-                    phaseAnalysis: '分析需求',
-                    phasePretestcase: '前置測試案例',
-                    phaseTestcase: 'Test Case 產生',
-                    phaseCommit: '建立完成',
-                    phaseFailed: '失敗',
-                    statusActive: '進行中',
-                    statusCompleted: '已完成',
-                    statusFailed: '失敗',
-                    statusCancelled: '已取消',
-                    statusSuccess: '成功',
-                    tokenTypeInput: '輸入',
-                    tokenTypeOutput: '輸出',
-                    tokenTypeCacheRead: '快取讀取',
-                    tokenTypeCacheWrite: '快取寫入',
-                    tokenTypeInputAudio: '音訊輸入',
-                    tokenTypeInputAudioCache: '音訊輸入快取'
-                }
-            }
-        },
-        'zh-CN': {
-            teamStats: {
-                tabs: {
-                    helperAi: 'QA AI Agent - 测试用例助手'
-                },
-                helper: {
-                    progressTitle: '账号-单号进度',
-                    teamUsageTitle: '团队使用统计',
-                    user: '账号',
-                    team: '团队',
-                    ticket: '单号',
-                    sessions: '会话数',
-                    usersCount: '账号数',
-                    ticketsCount: '单号数',
-                    activeSessions: '进行中',
-                    completedSessions: '已完成',
-                    failedSessions: '失败',
-                    phase: '阶段',
-                    status: '状态',
-                    updatedAt: '更新时间',
-                    costTitle: 'Token 与估算费用',
-                    totalTokens: '总 Token',
-                    estimatedCostTotal: '预估总费用',
-                    pricingProfile: '价格基准',
-                    estimateDisclaimer: '费用为估算值，非实际账单金额。',
-                    tokenType: '类型',
-                    tokens: 'Token 数',
-                    rate: '单价',
-                    estimatedCost: '估算费用',
-                    stageMetricsTitle: '各阶段耗时与产量',
-                    runs: '执行次数',
-                    successRuns: '成功',
-                    avgDuration: '平均耗时',
-                    p95Duration: 'P95 耗时',
-                    maxDuration: '最长耗时',
-                    pretestcaseCount: 'Pre TC 产量',
-                    testcaseCount: 'TC 产量',
-                    noProgressData: '无进度资料',
-                    noTeamUsageData: '无团队使用资料',
-                    noTokenData: '无 token 使用资料',
-                    noStageData: '无阶段统计资料',
-                    coveragePartial: 'Telemetry 覆盖 {covered}/{total} 个会话',
-                    coverageComplete: 'Telemetry 覆盖完整',
-                    loadFailed: '加载 QA Helper 统计失败',
-                    phaseInit: '初始化',
-                    phaseRequirement: '需求整理',
-                    phaseAnalysis: '分析需求',
-                    phasePretestcase: '前置测试用例',
-                    phaseTestcase: 'Test Case 产出',
-                    phaseCommit: '建立完成',
-                    phaseFailed: '失败',
-                    statusActive: '进行中',
-                    statusCompleted: '已完成',
-                    statusFailed: '失败',
-                    statusCancelled: '已取消',
-                    statusSuccess: '成功',
-                    tokenTypeInput: '输入',
-                    tokenTypeOutput: '输出',
-                    tokenTypeCacheRead: '缓存读取',
-                    tokenTypeCacheWrite: '缓存写入',
-                    tokenTypeInputAudio: '音频输入',
-                    tokenTypeInputAudioCache: '音频输入缓存'
-                }
-            }
-        }
-    });
-
     bootstrapFallbackChart();
 
     // 等待 i18n 系統就緒
@@ -206,8 +72,6 @@
                 console.warn('i18n system not fully ready, translations may use fallback text');
             }
 
-            ensureHelperAiTranslationPatch();
-            
             authClient = await waitForAuthClient();
 
             if (!authClient || !authClient.isAuthenticated()) {
@@ -235,14 +99,6 @@
             console.error('初始化團隊統計頁面失敗:', error);
             AppUtils.showError('初始化統計頁面失敗');
         }
-    });
-
-    document.addEventListener('languageChanged', function() {
-        ensureHelperAiTranslationPatch();
-    });
-
-    window.addEventListener('pageshow', function() {
-        ensureHelperAiTranslationPatch();
     });
 
     async function waitForAuthClient(timeoutMs = 5000) {
@@ -279,65 +135,6 @@
             console.warn('翻譯字串取得失敗:', err);
         }
         return fallback;
-    }
-
-    function getCurrentLanguage() {
-        try {
-            if (window.i18n && typeof window.i18n.getCurrentLanguage === 'function') {
-                return window.i18n.getCurrentLanguage();
-            }
-        } catch (_) {}
-
-        try {
-            const htmlLang = document.documentElement.lang;
-            if (htmlLang) {
-                return htmlLang;
-            }
-        } catch (_) {}
-
-        try {
-            return localStorage.getItem('language') || 'zh-TW';
-        } catch (_) {
-            return 'zh-TW';
-        }
-    }
-
-    function mergeTranslationPatch(target, patch) {
-        if (!patch || typeof patch !== 'object') {
-            return target;
-        }
-
-        const nextTarget = target && typeof target === 'object' ? target : {};
-        Object.entries(patch).forEach(([key, value]) => {
-            if (value && typeof value === 'object' && !Array.isArray(value)) {
-                nextTarget[key] = mergeTranslationPatch(nextTarget[key], value);
-                return;
-            }
-            nextTarget[key] = value;
-        });
-        return nextTarget;
-    }
-
-    function ensureHelperAiTranslationPatch() {
-        const language = getCurrentLanguage();
-        const patch = TEAM_STATS_HELPER_TRANSLATION_PATCH[language];
-        if (!patch || !window.i18n || !window.i18n.translations) {
-            return false;
-        }
-
-        const currentTranslations = window.i18n.translations[language] || {};
-        window.i18n.translations[language] = mergeTranslationPatch(currentTranslations, patch);
-
-        try {
-            localStorage.setItem(`i18n_${language}_cache`, JSON.stringify(window.i18n.translations[language]));
-            localStorage.setItem(`i18n_${language}_modified`, new Date().toISOString());
-        } catch (_) {}
-
-        if (window.i18n.isReady && window.i18n.isReady()) {
-            window.i18n.retranslate(document);
-        }
-
-        return true;
     }
 
     async function initTeamFilter() {
@@ -718,8 +515,6 @@
      * 處理標籤頁切換（首次載入時才獲取數據）
      */
     function handleTabSwitch(targetId, tabElement = null) {
-        ensureHelperAiTranslationPatch();
-
         if (!window.i18n || !window.i18n.isReady || !window.i18n.isReady()) {
             return;
         }
@@ -754,7 +549,6 @@
                 loadTeamActivity(),
                 loadTestCaseTrends(),
                 loadTestRunMetrics(),
-                loadHelperAiAnalytics(),
                 loadUserActivity(),
                 loadAuditAnalysis()
                 // loadDepartmentStats()  // 已註解 - Department Stats 功能暫時停用
@@ -984,27 +778,7 @@
     }
 
     /**
-     * 5. 載入 QA AI Agent - Test Case Helper 統計
-     */
-    async function loadHelperAiAnalytics() {
-        try {
-            const data = await fetchStatsJson(
-                buildStatsUrl('helper_ai_analytics', { includeTeamFilter: true })
-            );
-            renderHelperProgressRows(data.progress_records || []);
-            renderHelperTeamUsageRows(data.team_usage || []);
-            renderHelperCostSummary(data.token_usage || {}, data.cost_estimate || {});
-            renderHelperStageMetricsRows(data.stage_metrics || []);
-            renderHelperCoverageHint(data.data_coverage || {});
-        } catch (error) {
-            console.error('載入 QA Helper 統計失敗:', error);
-            renderHelperErrorState(error);
-            throw error;
-        }
-    }
-
-    /**
-     * 6. 載入使用者行為數據
+     * 5. 載入使用者行為數據
      */
     async function loadUserActivity() {
         try {
@@ -1033,7 +807,7 @@
     }
 
     /**
-     * 7. 載入審計分析數據
+     * 6. 載入審計分析數據
      */
     async function loadAuditAnalysis() {
         try {
@@ -1078,7 +852,7 @@
     }
 
     /**
-     * 8. 載入部門統計數據
+     * 7. 載入部門統計數據
      */
     async function loadDepartmentStats() {
         try {
@@ -1130,273 +904,6 @@
             console.error('載入部門統計失敗:', error);
             throw error;
         }
-    }
-
-    function renderHelperProgressRows(records) {
-        const tbody = document.getElementById('helper-ai-progress-tbody');
-        if (!tbody) return;
-        const rows = Array.isArray(records) ? records : [];
-        if (rows.length === 0) {
-            tbody.innerHTML = `
-                <tr>
-                    <td colspan="6" class="text-center text-muted">
-                        ${translate('teamStats.helper.noProgressData', '無進度資料')}
-                    </td>
-                </tr>
-            `;
-            return;
-        }
-
-        tbody.innerHTML = rows.map(item => {
-            const phase = String(item.current_phase || '');
-            const status = String(item.status || '');
-            return `
-                <tr>
-                    <td>${escapeHtml(item.username || '-')}</td>
-                    <td>${escapeHtml(item.team_name || '-')}</td>
-                    <td>${escapeHtml(item.ticket_key || '-')}</td>
-                    <td><span class="badge ${helperPhaseBadgeClass(phase)}">${escapeHtml(helperPhaseLabel(phase))}</span></td>
-                    <td><span class="badge ${helperStatusBadgeClass(status)}">${escapeHtml(helperStatusLabel(status))}</span></td>
-                    <td>${formatDateTime(item.updated_at)}</td>
-                </tr>
-            `;
-        }).join('');
-    }
-
-    function renderHelperTeamUsageRows(records) {
-        const tbody = document.getElementById('helper-ai-team-usage-tbody');
-        if (!tbody) return;
-        const rows = Array.isArray(records) ? records : [];
-        if (rows.length === 0) {
-            tbody.innerHTML = `
-                <tr>
-                    <td colspan="9" class="text-center text-muted">
-                        ${translate('teamStats.helper.noTeamUsageData', '無團隊使用資料')}
-                    </td>
-                </tr>
-            `;
-            return;
-        }
-
-        tbody.innerHTML = rows.map(item => `
-            <tr>
-                <td>${escapeHtml(item.team_name || '-')}</td>
-                <td>${formatNumber(item.session_count)}</td>
-                <td>${formatNumber(item.distinct_users)}</td>
-                <td>${formatNumber(item.distinct_tickets)}</td>
-                <td>${formatNumber(item.active_sessions)}</td>
-                <td>${formatNumber(item.completed_sessions)}</td>
-                <td>${formatNumber(item.failed_sessions)}</td>
-                <td>${formatNumber(item.total_tokens)}</td>
-                <td>${formatUsd(item.estimated_cost_usd)}</td>
-            </tr>
-        `).join('');
-    }
-
-    function renderHelperCostSummary(tokenUsage, costEstimate) {
-        const safeTokenUsage = tokenUsage && typeof tokenUsage === 'object' ? tokenUsage : {};
-        const safeCostEstimate = costEstimate && typeof costEstimate === 'object' ? costEstimate : {};
-        const totalTokens = Number(safeTokenUsage.total_tokens || 0);
-        const totalCost = Number(safeCostEstimate.total_estimated_cost_usd || 0);
-        const pricingVersion = String(safeCostEstimate.pricing_profile_version || '-');
-        const thresholdTokens = Number(safeCostEstimate.threshold_tokens || 0);
-
-        const tokenEl = document.getElementById('helper-ai-token-total');
-        if (tokenEl) tokenEl.textContent = formatNumber(totalTokens);
-        const costEl = document.getElementById('helper-ai-cost-total');
-        if (costEl) costEl.textContent = formatUsd(totalCost);
-        const pricingEl = document.getElementById('helper-ai-pricing-version');
-        if (pricingEl) {
-            const thresholdText = thresholdTokens > 0 ? ` / threshold ${formatNumber(thresholdTokens)}` : '';
-            pricingEl.textContent = `${pricingVersion}${thresholdText}`;
-        }
-
-        const tbody = document.getElementById('helper-ai-cost-breakdown-tbody');
-        if (!tbody) return;
-        const breakdown = safeCostEstimate.breakdown && typeof safeCostEstimate.breakdown === 'object'
-            ? safeCostEstimate.breakdown
-            : {};
-        const order = ['input', 'output', 'cache_read', 'cache_write', 'input_audio', 'input_audio_cache'];
-        const rows = order
-            .map(key => ({ key, item: breakdown[key] }))
-            .filter(entry => entry.item && typeof entry.item === 'object');
-        if (rows.length === 0) {
-            tbody.innerHTML = `
-                <tr>
-                    <td colspan="4" class="text-center text-muted">
-                        ${translate('teamStats.helper.noTokenData', '無 token 使用資料')}
-                    </td>
-                </tr>
-            `;
-            return;
-        }
-
-        tbody.innerHTML = rows.map(({ key, item }) => {
-            const tokens = Number(item.tokens || 0);
-            const rate = Number(item.rate_per_1m_usd || 0);
-            const tier = String(item.tier || '-');
-            const estimatedCost = Number(item.estimated_cost_usd || 0);
-            return `
-                <tr>
-                    <td>${escapeHtml(helperTokenTypeLabel(key))}</td>
-                    <td>${formatNumber(tokens)}</td>
-                    <td>${escapeHtml(`${formatUsd(rate)} / 1M (${tier})`)}</td>
-                    <td>${formatUsd(estimatedCost)}</td>
-                </tr>
-            `;
-        }).join('');
-    }
-
-    function renderHelperStageMetricsRows(stageMetrics) {
-        const tbody = document.getElementById('helper-ai-stage-metrics-tbody');
-        if (!tbody) return;
-        const rows = Array.isArray(stageMetrics) ? stageMetrics : [];
-        if (rows.length === 0) {
-            tbody.innerHTML = `
-                <tr>
-                    <td colspan="9" class="text-center text-muted">
-                        ${translate('teamStats.helper.noStageData', '無階段統計資料')}
-                    </td>
-                </tr>
-            `;
-            return;
-        }
-
-        tbody.innerHTML = rows.map(item => `
-            <tr>
-                <td>${escapeHtml(helperPhaseLabel(item.phase))}</td>
-                <td>${formatNumber(item.total_runs)}</td>
-                <td>${formatNumber(item.success_runs)}</td>
-                <td>${formatNumber(item.failed_runs)}</td>
-                <td>${formatDurationMs(item.avg_duration_ms)}</td>
-                <td>${formatDurationMs(item.p95_duration_ms)}</td>
-                <td>${formatDurationMs(item.max_duration_ms)}</td>
-                <td>${formatNumber(item.pretestcase_count_total)}</td>
-                <td>${formatNumber(item.testcase_count_total)}</td>
-            </tr>
-        `).join('');
-    }
-
-    function renderHelperCoverageHint(dataCoverage) {
-        const el = document.getElementById('helper-ai-coverage-hint');
-        if (!el) return;
-        const coverage = dataCoverage && typeof dataCoverage === 'object' ? dataCoverage : {};
-        const total = Number(coverage.session_count || 0);
-        const covered = Number(coverage.telemetry_session_count || 0);
-        if (total <= 0) {
-            el.textContent = '';
-            return;
-        }
-        if (coverage.is_partial) {
-            el.textContent = translate(
-                'teamStats.helper.coveragePartial',
-                'telemetry 覆蓋 {covered}/{total} sessions',
-                { covered, total }
-            );
-            return;
-        }
-        el.textContent = translate(
-            'teamStats.helper.coverageComplete',
-            'telemetry 覆蓋完整'
-        );
-    }
-
-    function renderHelperErrorState(error) {
-        const message = translate('teamStats.helper.loadFailed', '載入 QA Helper 統計失敗');
-        const progressBody = document.getElementById('helper-ai-progress-tbody');
-        if (progressBody) {
-            progressBody.innerHTML = `
-                <tr><td colspan="6" class="text-center text-danger">${escapeHtml(message)}</td></tr>
-            `;
-        }
-        const teamUsageBody = document.getElementById('helper-ai-team-usage-tbody');
-        if (teamUsageBody) {
-            teamUsageBody.innerHTML = `
-                <tr><td colspan="9" class="text-center text-danger">${escapeHtml(message)}</td></tr>
-            `;
-        }
-        const costBody = document.getElementById('helper-ai-cost-breakdown-tbody');
-        if (costBody) {
-            costBody.innerHTML = `
-                <tr><td colspan="4" class="text-center text-danger">${escapeHtml(message)}</td></tr>
-            `;
-        }
-        const stageBody = document.getElementById('helper-ai-stage-metrics-tbody');
-        if (stageBody) {
-            stageBody.innerHTML = `
-                <tr><td colspan="9" class="text-center text-danger">${escapeHtml(message)}</td></tr>
-            `;
-        }
-        const hint = document.getElementById('helper-ai-coverage-hint');
-        if (hint) {
-            hint.textContent = '';
-        }
-        const tokenEl = document.getElementById('helper-ai-token-total');
-        if (tokenEl) tokenEl.textContent = '--';
-        const costEl = document.getElementById('helper-ai-cost-total');
-        if (costEl) costEl.textContent = '--';
-        const pricingEl = document.getElementById('helper-ai-pricing-version');
-        if (pricingEl) pricingEl.textContent = '--';
-        if (error) {
-            console.debug('QA Helper 統計渲染錯誤:', error);
-        }
-    }
-
-    function helperPhaseLabel(phase) {
-        const key = String(phase || '').toLowerCase();
-        const mapping = {
-            init: translate('teamStats.helper.phaseInit', '初始化'),
-            requirement: translate('teamStats.helper.phaseRequirement', '需求整理'),
-            analysis: translate('teamStats.helper.phaseAnalysis', '分析需求'),
-            pretestcase: translate('teamStats.helper.phasePretestcase', 'Pre Test Case'),
-            testcase: translate('teamStats.helper.phaseTestcase', 'Test Case 產生'),
-            commit: translate('teamStats.helper.phaseCommit', '建立完成'),
-            failed: translate('teamStats.helper.phaseFailed', '失敗'),
-        };
-        return mapping[key] || key || '-';
-    }
-
-    function helperStatusLabel(status) {
-        const key = String(status || '').toLowerCase();
-        const mapping = {
-            active: translate('teamStats.helper.statusActive', '進行中'),
-            completed: translate('teamStats.helper.statusCompleted', '已完成'),
-            failed: translate('teamStats.helper.statusFailed', '失敗'),
-            cancelled: translate('teamStats.helper.statusCancelled', '已取消'),
-            success: translate('teamStats.helper.statusSuccess', '成功'),
-        };
-        return mapping[key] || key || '-';
-    }
-
-    function helperPhaseBadgeClass(phase) {
-        const key = String(phase || '').toLowerCase();
-        if (key === 'analysis') return 'bg-info';
-        if (key === 'testcase') return 'bg-primary';
-        if (key === 'commit') return 'bg-success';
-        if (key === 'failed') return 'bg-danger';
-        return 'bg-secondary';
-    }
-
-    function helperStatusBadgeClass(status) {
-        const key = String(status || '').toLowerCase();
-        if (key === 'completed' || key === 'success') return 'bg-success';
-        if (key === 'active') return 'bg-primary';
-        if (key === 'failed') return 'bg-danger';
-        if (key === 'cancelled') return 'bg-secondary';
-        return 'bg-secondary';
-    }
-
-    function helperTokenTypeLabel(tokenType) {
-        const key = String(tokenType || '');
-        const mapping = {
-            input: translate('teamStats.helper.tokenTypeInput', 'Input'),
-            output: translate('teamStats.helper.tokenTypeOutput', 'Output'),
-            cache_read: translate('teamStats.helper.tokenTypeCacheRead', 'Cache Read'),
-            cache_write: translate('teamStats.helper.tokenTypeCacheWrite', 'Cache Write'),
-            input_audio: translate('teamStats.helper.tokenTypeInputAudio', 'Input Audio'),
-            input_audio_cache: translate('teamStats.helper.tokenTypeInputAudioCache', 'Input Audio Cache'),
-        };
-        return mapping[key] || key || '-';
     }
 
     // ==================== 圖表渲染函數 ====================

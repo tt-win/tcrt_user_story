@@ -1,7 +1,7 @@
 """OpenRouter wrapper for the rewritten QA AI Helper.
 
 設計目標：
-- 只保留 testcase / repair 兩個 stage
+- 支援 seed / seed_refine / testcase stage，並暫時保留 legacy repair alias
 - 若未設定 OpenRouter key，提供 deterministic local fallback
 """
 
@@ -16,7 +16,7 @@ import aiohttp
 
 from app.config import get_settings
 
-QAAIHelperLLMStage = Literal["testcase", "repair"]
+QAAIHelperLLMStage = Literal["seed", "seed_refine", "testcase", "repair"]
 
 logger = logging.getLogger(__name__)
 OPENROUTER_CHAT_COMPLETIONS_URL = "https://openrouter.ai/api/v1/chat/completions"
@@ -41,8 +41,18 @@ class QAAIHelperLLMService:
         return (self._settings.openrouter.api_key or "").strip()
 
     def _stage_config(self, stage: QAAIHelperLLMStage):
+        if stage == "seed":
+            return self._settings.ai.qa_ai_helper.models.seed
+        if stage == "seed_refine":
+            return (
+                self._settings.ai.qa_ai_helper.models.seed_refine
+                or self._settings.ai.qa_ai_helper.models.seed
+            )
         if stage == "repair":
-            return self._settings.ai.qa_ai_helper.models.repair or self._settings.ai.qa_ai_helper.models.testcase
+            return (
+                self._settings.ai.qa_ai_helper.models.repair
+                or self._settings.ai.qa_ai_helper.models.testcase
+            )
         return self._settings.ai.qa_ai_helper.models.testcase
 
     def resolve_stage_model_id(self, stage: QAAIHelperLLMStage) -> str:
@@ -154,7 +164,7 @@ class QAAIHelperLLMService:
     ) -> QAAIHelperLLMResult:
         logger.warning("qa_ai_helper 未設定 OpenRouter key，改用 deterministic fallback: stage=%s", stage)
         try:
-            payload = self._fallback_generate_from_prompt(prompt)
+            payload = self._fallback_generate_from_prompt(prompt, stage)
         except Exception as exc:  # noqa: BLE001
             raise RuntimeError(f"qa_ai_helper fallback 產生失敗: {exc}") from exc
         return QAAIHelperLLMResult(
@@ -180,10 +190,71 @@ class QAAIHelperLLMService:
         except Exception:
             return default
 
-    def _fallback_generate_from_prompt(self, prompt: str) -> Dict[str, Any]:
+    def _fallback_generate_from_prompt(
+        self,
+        prompt: str,
+        stage: QAAIHelperLLMStage,
+    ) -> Dict[str, Any]:
         generation_items = self._extract_json_blob(prompt, "GENERATION_ITEMS", [])
+        seed_items = self._extract_json_blob(prompt, "SEED_ITEMS", [])
+        seed_comments = self._extract_json_blob(prompt, "SEED_COMMENTS", [])
         invalid_outputs = self._extract_json_blob(prompt, "INVALID_OUTPUTS", [])
         items = generation_items if generation_items else invalid_outputs
+        if stage in {"seed", "seed_refine"}:
+            items = generation_items if generation_items else seed_items
+            comments_by_ref = {
+                str(item.get("seed_reference_key") or "").strip(): str(item.get("comment_text") or "").strip()
+                for item in seed_comments
+                if isinstance(item, dict) and str(item.get("seed_reference_key") or "").strip()
+            }
+            outputs: List[Dict[str, Any]] = []
+            for index, item in enumerate(items):
+                item_index = int(item.get("item_index", index))
+                title = str(
+                    item.get("title_hint")
+                    or item.get("seed_summary")
+                    or item.get("intent")
+                    or f"Seed {item_index + 1}"
+                ).strip()
+                required_assertions = item.get("required_assertions", []) or []
+                seed_body = ""
+                if required_assertions:
+                    first_assertion = required_assertions[0]
+                    if isinstance(first_assertion, dict):
+                        seed_body = str(first_assertion.get("text") or "").strip()
+                if not seed_body:
+                    seed_body = str(item.get("seed_body") or title or f"Seed body {item_index + 1}").strip()
+                coverage = item.get("coverage") or item.get("coverage_tags") or ["Happy Path"]
+                if not isinstance(coverage, list):
+                    coverage = [str(coverage)]
+                seed_reference_key = str(
+                    item.get("seed_reference_key")
+                    or item.get("seed_id")
+                    or item.get("item_key")
+                    or f"seed-{item_index + 1}"
+                ).strip()
+                comment_text = comments_by_ref.get(seed_reference_key)
+                if comment_text:
+                    title = f"{title} | {comment_text}".strip()
+                    seed_body = f"{seed_body}\n\n註解：{comment_text}".strip()
+                outputs.append(
+                    {
+                        "item_index": item_index,
+                        "seed_reference_key": seed_reference_key,
+                        "section_id": str(item.get("section_id") or "").strip(),
+                        "verification_item_ref": str(
+                            item.get("verification_item_ref")
+                            or item.get("verification_item_id")
+                            or item.get("item_key")
+                            or ""
+                        ).strip(),
+                        "check_condition_ids": item.get("check_condition_ids") or [],
+                        "seed_summary": title,
+                        "seed_body": seed_body,
+                        "coverage_tags": [str(value).strip() for value in coverage if str(value).strip()] or ["Happy Path"],
+                    }
+                )
+            return {"outputs": outputs}
         outputs: List[Dict[str, Any]] = []
         for index, item in enumerate(items):
             item_index = int(item.get("item_index", index))
@@ -206,6 +277,12 @@ class QAAIHelperLLMService:
             outputs.append(
                 {
                     "item_index": item_index,
+                    "seed_reference_key": str(
+                        item.get("seed_reference_key")
+                        or item.get("seed_id")
+                        or item.get("item_key")
+                        or f"seed-{item_index + 1}"
+                    ).strip(),
                     "title": title,
                     "priority": str(item.get("priority") or "Medium"),
                     "preconditions": preconditions,

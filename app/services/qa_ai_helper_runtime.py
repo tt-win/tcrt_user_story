@@ -64,6 +64,10 @@ def post_merge_generation_outputs(
                 "testcase_id": generation_item.get("seed_id") or generation_item["item_key"],
                 "body": body,
                 "trace": {
+                    "seed_reference_key": source_output.get("seed_reference_key")
+                    or generation_item.get("seed_reference_key")
+                    or generation_item.get("seed_id")
+                    or generation_item.get("item_key"),
                     "section_id": generation_item.get("section_id"),
                     "scenario_title": generation_item.get("scenario_title"),
                     "row_key": generation_item.get("row_key"),

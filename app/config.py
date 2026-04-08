@@ -1,6 +1,7 @@
 import yaml
 import os
 import logging
+import re
 from pathlib import Path
 from typing import Optional, Dict, Any, List
 from urllib.parse import urlparse
@@ -16,6 +17,7 @@ LOGGER = logging.getLogger(__name__)
 DEFAULT_QDRANT_URL = "http://localhost:6333"
 DEFAULT_PUBLIC_BASE_URL_TEMPLATE = "http://localhost:{port}"
 LOCALHOST_HOSTNAMES = {"localhost", "127.0.0.1", "::1"}
+ENV_PLACEHOLDER_RE = re.compile(r"\$\{([A-Z0-9_]+)\}")
 
 
 def _first_non_empty_env(*names: str) -> Optional[str]:
@@ -47,6 +49,33 @@ def _url_targets_localhost(url: str) -> bool:
         return False
     hostname = (parsed.hostname or "").lower()
     return hostname in LOCALHOST_HOSTNAMES
+
+
+def _expand_env_placeholders(value: Any, *, path: str = "config") -> Any:
+    if isinstance(value, dict):
+        return {
+            key: _expand_env_placeholders(
+                nested_value,
+                path=f"{path}.{key}",
+            )
+            for key, nested_value in value.items()
+        }
+    if isinstance(value, list):
+        return [
+            _expand_env_placeholders(item, path=f"{path}[{index}]")
+            for index, item in enumerate(value)
+        ]
+    if not isinstance(value, str):
+        return value
+
+    def _replace(match: re.Match[str]) -> str:
+        env_name = match.group(1)
+        env_value = os.getenv(env_name)
+        if env_value is None:
+            raise ValueError(f"{path} 參考的環境變數 {env_name} 未設定")
+        return env_value
+
+    return ENV_PLACEHOLDER_RE.sub(_replace, value)
 
 
 class LarkConfig(BaseModel):
@@ -141,12 +170,50 @@ class QAAIHelperStageModelConfig(BaseModel):
     model: str = "google/gemini-3-flash-preview"
     temperature: float = 0.1
 
+    @classmethod
+    def from_env(cls, stage_name: str, fallback: "QAAIHelperStageModelConfig" = None) -> "QAAIHelperStageModelConfig":
+        stage_key = stage_name.upper()
+        return cls(
+            model=os.getenv(
+                f"QA_AI_HELPER_MODEL_{stage_key}",
+                fallback.model if fallback else "google/gemini-3-flash-preview",
+            ),
+            temperature=float(
+                os.getenv(
+                    f"QA_AI_HELPER_MODEL_{stage_key}_TEMPERATURE",
+                    str(fallback.temperature if fallback else 0.1),
+                )
+            ),
+        )
+
 
 class QAAIHelperModelsConfig(BaseModel):
+    seed: QAAIHelperStageModelConfig = QAAIHelperStageModelConfig(
+        model="google/gemini-3-flash-preview",
+        temperature=0.1,
+    )
+    seed_refine: Optional[QAAIHelperStageModelConfig] = QAAIHelperStageModelConfig(
+        model="google/gemini-3-flash-preview",
+        temperature=0.0,
+    )
     testcase: QAAIHelperStageModelConfig = QAAIHelperStageModelConfig(
         model="google/gemini-3-flash-preview",
+        temperature=0.0,
     )
     repair: Optional[QAAIHelperStageModelConfig] = None
+
+    @classmethod
+    def from_env(cls, fallback: "QAAIHelperModelsConfig" = None) -> "QAAIHelperModelsConfig":
+        fallback_models = fallback or cls()
+        return cls(
+            seed=QAAIHelperStageModelConfig.from_env("SEED", fallback_models.seed),
+            seed_refine=QAAIHelperStageModelConfig.from_env(
+                "SEED_REFINE",
+                fallback_models.seed_refine or fallback_models.seed,
+            ),
+            testcase=QAAIHelperStageModelConfig.from_env("TESTCASE", fallback_models.testcase),
+            repair=fallback_models.repair,
+        )
 
 
 class QAAIHelperConfig(BaseModel):
@@ -161,6 +228,22 @@ class QAAIHelperConfig(BaseModel):
     generation_budget_output_tokens: int = 12000
     models: QAAIHelperModelsConfig = QAAIHelperModelsConfig()
 
+    @classmethod
+    def from_env(cls, fallback: "QAAIHelperConfig" = None) -> "QAAIHelperConfig":
+        current = fallback or cls()
+        return cls(
+            enable=current.enable,
+            prompt_contract_version=current.prompt_contract_version,
+            payload_contract_version=current.payload_contract_version,
+            min_steps=current.min_steps,
+            min_preconditions=current.min_preconditions,
+            max_repair_rounds=current.max_repair_rounds,
+            generation_budget_row_limit=current.generation_budget_row_limit,
+            generation_budget_prompt_tokens=current.generation_budget_prompt_tokens,
+            generation_budget_output_tokens=current.generation_budget_output_tokens,
+            models=QAAIHelperModelsConfig.from_env(current.models),
+        )
+
 
 class AIAssistConfig(BaseModel):
     model: str = "openai/gpt-oss-120b:free"
@@ -170,6 +253,15 @@ class AIConfig(BaseModel):
     ai_assist: AIAssistConfig = AIAssistConfig()
     jira_testcase_helper: JiraTestCaseHelperConfig = JiraTestCaseHelperConfig()
     qa_ai_helper: QAAIHelperConfig = QAAIHelperConfig()
+
+    @classmethod
+    def from_env(cls, fallback: "AIConfig" = None) -> "AIConfig":
+        current = fallback or cls()
+        return cls(
+            ai_assist=current.ai_assist,
+            jira_testcase_helper=current.jira_testcase_helper,
+            qa_ai_helper=QAAIHelperConfig.from_env(current.qa_ai_helper),
+        )
 
 
 class QdrantWeightsConfig(BaseModel):
@@ -424,6 +516,7 @@ class Settings(BaseModel):
         if os.path.exists(config_path):
             with open(config_path, "r", encoding="utf-8") as file:
                 config_data = yaml.safe_load(file) or {}
+            config_data = _expand_env_placeholders(config_data)
             base_settings = cls(**config_data)
         else:
             base_settings = cls()
@@ -434,7 +527,7 @@ class Settings(BaseModel):
             lark=LarkConfig.from_env(base_settings.lark),
             jira=JiraConfig.from_env(base_settings.jira),
             openrouter=OpenRouterConfig.from_env(base_settings.openrouter),
-            ai=base_settings.ai,
+            ai=AIConfig.from_env(base_settings.ai),
             qdrant=QdrantConfig.from_env(base_settings.qdrant),
             attachments=AttachmentsConfig.from_env(base_settings.attachments),
             reports=ReportsConfig.from_env(base_settings.reports),
@@ -544,11 +637,18 @@ def create_default_config(config_path: str = "config.yaml") -> None:
                 "generation_budget_prompt_tokens": 12000,
                 "generation_budget_output_tokens": 12000,
                 "models": {
-                    "testcase": {
+                    "seed": {
                         "model": "google/gemini-3-flash-preview",
                         "temperature": 0.1,
                     },
-                    "repair": None,
+                    "seed_refine": {
+                        "model": "google/gemini-3-flash-preview",
+                        "temperature": 0.0,
+                    },
+                    "testcase": {
+                        "model": "google/gemini-3-flash-preview",
+                        "temperature": 0.0,
+                    },
                 },
             },
         },

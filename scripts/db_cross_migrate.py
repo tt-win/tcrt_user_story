@@ -13,9 +13,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 from collections import deque
 from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Iterator
 
@@ -34,6 +36,30 @@ MYSQL_TEXT_CAPACITIES = {
     "MEDIUMTEXT": 16777215,
     "LONGTEXT": 4294967295,
 }
+HELPER_RUNTIME_PURGE_ORDER = [
+    "qa_ai_helper_commit_links",
+    "qa_ai_helper_testcase_drafts",
+    "qa_ai_helper_testcase_draft_sets",
+    "qa_ai_helper_seed_items",
+    "qa_ai_helper_seed_sets",
+    "qa_ai_helper_check_conditions",
+    "qa_ai_helper_verification_items",
+    "qa_ai_helper_plan_sections",
+    "qa_ai_helper_requirement_plans",
+    "qa_ai_helper_ticket_snapshots",
+    "qa_ai_helper_telemetry_events",
+    "qa_ai_helper_validation_runs",
+    "qa_ai_helper_drafts",
+    "qa_ai_helper_draft_sets",
+    "qa_ai_helper_requirement_deltas",
+    "qa_ai_helper_planned_revisions",
+    "qa_ai_helper_canonical_revisions",
+    "qa_ai_helper_sessions",
+    "ai_tc_helper_stage_metrics",
+    "ai_tc_helper_drafts",
+    "ai_tc_helper_sessions",
+]
+HELPER_V3_BASELINE = "first_v3_session_after_purge"
 
 
 @dataclass
@@ -214,6 +240,10 @@ def build_engine(database_url: str) -> Engine:
             "timeout": 30,
         }
     return create_engine(database_url, **engine_kwargs)
+
+
+def quote_ident(engine: Engine, name: str) -> str:
+    return engine.dialect.identifier_preparer.quote(name)
 
 
 def reflect_selected_metadata(
@@ -874,6 +904,25 @@ def reset_target_data(target_connection: Connection, target_metadata: MetaData, 
         target_connection.execute(target_metadata.tables[table_name].delete())
 
 
+def create_sqlite_snapshot(engine: Engine, *, label: str = "helper-purge") -> str | None:
+    if engine.dialect.name != "sqlite":
+        return None
+
+    database_path = engine.url.database
+    if not database_path or database_path == ":memory:":
+        return None
+
+    source_path = Path(database_path)
+    if not source_path.exists():
+        return None
+
+    snapshot_path = source_path.with_name(
+        f"{source_path.stem}_{label}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
+    )
+    shutil.copy2(source_path, snapshot_path)
+    return str(snapshot_path)
+
+
 @contextmanager
 def constraint_override(connection: Connection) -> Iterator[None]:
     dialect_name = connection.engine.dialect.name
@@ -902,6 +951,87 @@ def constraint_override(connection: Connection) -> Iterator[None]:
         return
 
     yield
+
+
+def purge_legacy_helper_runtime(
+    target_url: str,
+    logger: Logger | None = None,
+) -> dict[str, Any]:
+    active_logger = logger or Logger(quiet=True)
+    target_engine = build_engine(target_url)
+    created_snapshot = None
+
+    try:
+        created_snapshot = create_sqlite_snapshot(target_engine)
+        inspector = inspect(target_engine)
+        existing_tables = set(inspector.get_table_names())
+        purge_tables = [table for table in HELPER_RUNTIME_PURGE_ORDER if table in existing_tables]
+        summary: dict[str, Any] = {
+            "target_url": target_url,
+            "snapshot_path": created_snapshot,
+            "purged_tables": [],
+            "no_backfill": True,
+            "metrics_rollout_baseline": HELPER_V3_BASELINE,
+        }
+
+        with target_engine.begin() as connection:
+            with constraint_override(connection):
+                for table_name in purge_tables:
+                    quoted_table = quote_ident(target_engine, table_name)
+                    deleted_rows = int(
+                        connection.exec_driver_sql(f"SELECT COUNT(*) FROM {quoted_table}").scalar() or 0
+                    )
+                    connection.exec_driver_sql(f"DELETE FROM {quoted_table}")
+                    summary["purged_tables"].append(
+                        {
+                            "table": table_name,
+                            "deleted_rows": deleted_rows,
+                        }
+                    )
+                    if deleted_rows:
+                        active_logger.info(f"purge {table_name}: {deleted_rows} rows")
+
+        summary["status"] = "completed"
+        summary["remaining_helper_rows"] = verify_legacy_helper_purge(target_url)["remaining_helper_rows"]
+        return summary
+    finally:
+        target_engine.dispose()
+
+
+def verify_legacy_helper_purge(target_url: str) -> dict[str, Any]:
+    target_engine = build_engine(target_url)
+    try:
+        inspector = inspect(target_engine)
+        existing_tables = set(inspector.get_table_names())
+        checked_tables = [table for table in HELPER_RUNTIME_PURGE_ORDER if table in existing_tables]
+        remaining_tables: list[dict[str, Any]] = []
+
+        with target_engine.connect() as connection:
+            for table_name in checked_tables:
+                quoted_table = quote_ident(target_engine, table_name)
+                row_count = int(
+                    connection.exec_driver_sql(f"SELECT COUNT(*) FROM {quoted_table}").scalar() or 0
+                )
+                if row_count:
+                    remaining_tables.append(
+                        {
+                            "table": table_name,
+                            "row_count": row_count,
+                        }
+                    )
+
+        remaining_rows = sum(item["row_count"] for item in remaining_tables)
+        return {
+            "target_url": target_url,
+            "checked_tables": checked_tables,
+            "remaining_tables": remaining_tables,
+            "remaining_helper_rows": remaining_rows,
+            "no_backfill": True,
+            "metrics_rollout_baseline": HELPER_V3_BASELINE,
+            "status": "clean" if remaining_rows == 0 else "pending_purge",
+        }
+    finally:
+        target_engine.dispose()
 
 
 def run_job(job: TransferJob, logger: Logger) -> dict[str, Any]:

@@ -47,6 +47,16 @@ class QAAIHelperSessionStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
+class QAAIHelperSessionScreen(str, Enum):
+    TICKET_CONFIRMATION = "ticket_confirmation"
+    VERIFICATION_PLANNING = "verification_planning"
+    SEED_REVIEW = "seed_review"
+    TESTCASE_REVIEW = "testcase_review"
+    SET_SELECTION = "set_selection"
+    COMMIT_RESULT = "commit_result"
+    FAILED = "failed"
+
+
 class QAAIHelperCanonicalRevisionStatus(str, Enum):
     EDITABLE = "editable"
     CONFIRMED = "confirmed"
@@ -82,6 +92,40 @@ class QAAIHelperRunStatus(str, Enum):
     PENDING = "pending"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
+
+
+class QAAIHelperRequirementPlanStatus(str, Enum):
+    DRAFT = "draft"
+    LOCKED = "locked"
+    SUPERSEDED = "superseded"
+
+
+class QAAIHelperSeedSetStatus(str, Enum):
+    DRAFT = "draft"
+    LOCKED = "locked"
+    SUPERSEDED = "superseded"
+    CONSUMED = "consumed"
+
+
+class QAAIHelperTestcaseDraftSetStatus(str, Enum):
+    DRAFT = "draft"
+    REVIEWING = "reviewing"
+    COMMITTED = "committed"
+    SUPERSEDED = "superseded"
+
+
+class QAAIHelperVerificationCategory(str, Enum):
+    API = "API"
+    UI = "UI"
+    FUNCTIONAL = "功能驗證"
+    OTHER = "其他"
+
+
+class QAAIHelperCoverageCategory(str, Enum):
+    HAPPY_PATH = "Happy Path"
+    ERROR_HANDLING = "Error Handling"
+    EDGE_TEST_CASE = "Edge Test Case"
+    PERMISSION = "Permission"
 
 
 class QAAIHelperCounterSettings(BaseModel):
@@ -171,26 +215,15 @@ class QAAIHelperCanonicalContent(BaseModel):
 
 
 class QAAIHelperSessionCreateRequest(BaseModel):
-    target_test_case_set_id: int = Field(..., description="目標 Test Case Set ID")
-    ticket_key: Optional[str] = Field(None, description="Jira ticket key")
-    include_comments: bool = Field(False, description="是否抓取 Jira comments")
+    ticket_key: str = Field(..., description="Jira ticket key")
     output_locale: QAAIHelperLocale = Field(QAAIHelperLocale.ZH_TW)
-    canonical_language: Optional[QAAIHelperLocale] = Field(
-        None,
-        description="canonical planning language",
-    )
-    counter_settings: QAAIHelperCounterSettings = Field(
-        default_factory=QAAIHelperCounterSettings
-    )
 
     @field_validator("ticket_key")
     @classmethod
-    def _normalize_ticket_key(cls, value: Optional[str]) -> Optional[str]:
-        if value is None:
-            return None
+    def _normalize_ticket_key(cls, value: str) -> str:
         normalized = value.strip().upper()
         if not normalized:
-            return None
+            raise ValueError("ticket_key 不可為空")
         if normalized.isdigit():
             normalized = f"TCG-{normalized}"
         elif normalized.startswith("TCG") and "-" not in normalized:
@@ -262,6 +295,62 @@ class QAAIHelperDraftUpdateRequest(BaseModel):
     body: QAAIHelperDraftBody
 
 
+class QAAIHelperTestcaseGenerateRequest(BaseModel):
+    force_regenerate: bool = False
+
+
+class QAAIHelperTestcaseDraftUpdateRequest(BaseModel):
+    body: QAAIHelperDraftBody
+
+
+class QAAIHelperTestcaseDraftSelectionRequest(BaseModel):
+    selected_for_commit: bool
+
+
+class QAAIHelperTestcaseSectionSelectionRequest(BaseModel):
+    selected: bool
+
+
+class QAAIHelperTestcaseSetSelectionRequest(BaseModel):
+    testcase_draft_set_id: int
+
+
+class QAAIHelperNewTestCaseSetPayload(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    description: Optional[str] = None
+
+    @field_validator("name")
+    @classmethod
+    def _normalize_name(cls, value: str) -> str:
+        normalized = (value or "").strip()
+        if not normalized:
+            raise ValueError("name 不可為空")
+        return normalized
+
+    @field_validator("description")
+    @classmethod
+    def _normalize_description(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+
+class QAAIHelperCommitRequest(BaseModel):
+    testcase_draft_set_id: int
+    selected_draft_ids: List[int] = Field(default_factory=list)
+    target_test_case_set_id: Optional[int] = None
+    new_test_case_set_payload: Optional[QAAIHelperNewTestCaseSetPayload] = None
+
+    @field_validator("selected_draft_ids")
+    @classmethod
+    def _validate_selected_draft_ids(cls, value: List[int]) -> List[int]:
+        normalized = [int(item) for item in value if int(item) > 0]
+        if not normalized:
+            raise ValueError("selected_draft_ids 至少需要一筆")
+        return normalized
+
+
 class QAAIHelperTicketFetchRequest(BaseModel):
     ticket_key: Optional[str] = None
     include_comments: Optional[bool] = None
@@ -287,22 +376,135 @@ class QAAIHelperGenerateRequest(BaseModel):
     force_regenerate: bool = False
 
 
+class QAAIHelperCheckConditionPayload(BaseModel):
+    id: Optional[int] = None
+    condition_text: str = ""
+    coverage_tag: Optional[QAAIHelperCoverageCategory] = None
+
+    @field_validator("condition_text")
+    @classmethod
+    def _normalize_condition_text(cls, value: str) -> str:
+        return (value or "").strip()
+
+
+class QAAIHelperVerificationItemPayload(BaseModel):
+    id: Optional[int] = None
+    category: QAAIHelperVerificationCategory = QAAIHelperVerificationCategory.FUNCTIONAL
+    summary: str = ""
+    detail: Dict[str, Any] = Field(default_factory=dict)
+    check_conditions: List[QAAIHelperCheckConditionPayload] = Field(default_factory=list)
+
+    @field_validator("summary")
+    @classmethod
+    def _normalize_summary(cls, value: str) -> str:
+        return (value or "").strip()
+
+
+class QAAIHelperPlanSectionPayload(BaseModel):
+    id: Optional[int] = None
+    section_key: Optional[str] = None
+    section_id: Optional[str] = None
+    section_title: str = ""
+    given: List[str] = Field(default_factory=list)
+    when: List[str] = Field(default_factory=list)
+    then: List[str] = Field(default_factory=list)
+    verification_items: List[QAAIHelperVerificationItemPayload] = Field(default_factory=list)
+
+    @field_validator("section_title")
+    @classmethod
+    def _normalize_section_title(cls, value: str) -> str:
+        return (value or "").strip()
+
+
+class QAAIHelperRequirementPlanSaveRequest(BaseModel):
+    section_start_number: str = Field("010", description="section 起始號，三位數且 10 遞增")
+    sections: List[QAAIHelperPlanSectionPayload] = Field(default_factory=list)
+    autosave: bool = False
+
+    @field_validator("section_start_number")
+    @classmethod
+    def _validate_section_start_number(cls, value: str) -> str:
+        return _validate_counter_value(value, "section_start_number")
+
+
+class QAAIHelperSeedItemReviewUpdateRequest(BaseModel):
+    included_for_testcase_generation: Optional[bool] = None
+    comment_text: Optional[str] = None
+
+    @field_validator("comment_text")
+    @classmethod
+    def _normalize_comment_text(cls, value: Optional[str]) -> Optional[str]:
+        if value is None:
+            return None
+        normalized = value.strip()
+        return normalized or None
+
+
+class QAAIHelperSeedSectionInclusionRequest(BaseModel):
+    included: bool = True
+
+
+class QAAIHelperSeedRefineItemRequest(BaseModel):
+    seed_item_id: int
+    comment_text: str
+
+    @field_validator("comment_text")
+    @classmethod
+    def _normalize_comment_text(cls, value: str) -> str:
+        normalized = (value or "").strip()
+        if not normalized:
+            raise ValueError("comment_text 不可為空")
+        return normalized
+
+
+class QAAIHelperSeedRefineRequest(BaseModel):
+    items: List[QAAIHelperSeedRefineItemRequest] = Field(default_factory=list)
+
+
 class QAAIHelperSessionResponse(BaseModel):
     id: int
     team_id: int
     created_by_user_id: Optional[int] = None
-    target_test_case_set_id: int
+    target_test_case_set_id: Optional[int] = None
+    selected_target_test_case_set_id: Optional[int] = None
     ticket_key: Optional[str] = None
     include_comments: bool = False
     output_locale: QAAIHelperLocale
     canonical_language: Optional[QAAIHelperLocale] = None
-    current_phase: QAAIHelperPhase
+    current_phase: Optional[QAAIHelperPhase] = None
+    current_screen: Optional[QAAIHelperSessionScreen] = None
     status: QAAIHelperSessionStatus
     active_canonical_revision_id: Optional[int] = None
     active_planned_revision_id: Optional[int] = None
     active_draft_set_id: Optional[int] = None
+    active_ticket_snapshot_id: Optional[int] = None
+    active_requirement_plan_id: Optional[int] = None
+    active_seed_set_id: Optional[int] = None
+    active_testcase_draft_set_id: Optional[int] = None
     created_at: datetime
     updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class QAAIHelperTicketSnapshotResponse(BaseModel):
+    id: int
+    session_id: int
+    status: str
+    raw_ticket_markdown: str
+    structured_requirement: Dict[str, Any] = Field(default_factory=dict)
+    validation_summary: Dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class QAAIHelperScreenGuardResponse(BaseModel):
+    current_screen: Optional[QAAIHelperSessionScreen] = None
+    allowed_next_screens: List[QAAIHelperSessionScreen] = Field(default_factory=list)
+    can_restart: bool = False
+    next_screen_on_restart: str = "ticket_input"
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -374,6 +576,154 @@ class QAAIHelperDraftSetDetailResponse(QAAIHelperDraftSetResponse):
     drafts: List[QAAIHelperDraftItemResponse] = Field(default_factory=list)
 
 
+class QAAIHelperCheckConditionResponse(BaseModel):
+    id: int
+    condition_text: str
+    coverage_tag: QAAIHelperCoverageCategory
+    display_order: int
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class QAAIHelperVerificationItemResponse(BaseModel):
+    id: int
+    category: QAAIHelperVerificationCategory
+    summary: str
+    detail: Dict[str, Any] = Field(default_factory=dict)
+    display_order: int
+    check_conditions: List[QAAIHelperCheckConditionResponse] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class QAAIHelperPlanSectionResponse(BaseModel):
+    id: int
+    section_key: str
+    section_id: str
+    section_title: str
+    given: List[str] = Field(default_factory=list)
+    when: List[str] = Field(default_factory=list)
+    then: List[str] = Field(default_factory=list)
+    display_order: int
+    verification_items: List[QAAIHelperVerificationItemResponse] = Field(default_factory=list)
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class QAAIHelperRequirementPlanResponse(BaseModel):
+    id: int
+    session_id: int
+    ticket_snapshot_id: int
+    revision_number: int
+    status: QAAIHelperRequirementPlanStatus
+    section_start_number: str
+    criteria_reference: Dict[str, Any] = Field(default_factory=dict)
+    technical_reference: Dict[str, Any] = Field(default_factory=dict)
+    autosave_summary: Dict[str, Any] = Field(default_factory=dict)
+    validation_summary: Dict[str, Any] = Field(default_factory=dict)
+    sections: List[QAAIHelperPlanSectionResponse] = Field(default_factory=list)
+    locked_at: Optional[datetime] = None
+    locked_by_user_id: Optional[int] = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class QAAIHelperSeedItemResponse(BaseModel):
+    id: int
+    seed_set_id: int
+    plan_section_id: Optional[int] = None
+    verification_item_id: Optional[int] = None
+    section_key: Optional[str] = None
+    section_id: Optional[str] = None
+    section_title: Optional[str] = None
+    verification_item_summary: Optional[str] = None
+    verification_category: Optional[QAAIHelperVerificationCategory] = None
+    check_condition_refs: List[int] = Field(default_factory=list)
+    coverage_tags: List[str] = Field(default_factory=list)
+    seed_reference_key: str
+    seed_summary: str
+    seed_body: Dict[str, Any] = Field(default_factory=dict)
+    comment_text: Optional[str] = None
+    is_ai_generated: bool = True
+    user_edited: bool = False
+    included_for_testcase_generation: bool = True
+    display_order: int = 0
+    last_refined_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class QAAIHelperSeedSetResponse(BaseModel):
+    id: int
+    session_id: int
+    requirement_plan_id: int
+    status: QAAIHelperSeedSetStatus
+    generation_round: int
+    source_type: str
+    model_name: Optional[str] = None
+    generated_seed_count: int = 0
+    included_seed_count: int = 0
+    adoption_rate: float = 0.0
+    created_by_user_id: Optional[int] = None
+    created_at: datetime
+    updated_at: datetime
+    seed_items: List[QAAIHelperSeedItemResponse] = Field(default_factory=list)
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class QAAIHelperTestcaseDraftItemResponse(BaseModel):
+    id: int
+    testcase_draft_set_id: int
+    seed_item_id: int
+    seed_reference_key: str
+    assigned_testcase_id: Optional[str] = None
+    plan_section_id: Optional[int] = None
+    verification_item_id: Optional[int] = None
+    section_key: Optional[str] = None
+    section_id: Optional[str] = None
+    section_title: Optional[str] = None
+    verification_item_summary: Optional[str] = None
+    verification_category: Optional[QAAIHelperVerificationCategory] = None
+    body: Dict[str, Any] = Field(default_factory=dict)
+    validation_summary: Dict[str, Any] = Field(default_factory=dict)
+    is_ai_generated: bool = True
+    user_edited: bool = False
+    selected_for_commit: bool = False
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class QAAIHelperTestcaseDraftSetResponse(BaseModel):
+    id: int
+    session_id: int
+    seed_set_id: int
+    status: QAAIHelperTestcaseDraftSetStatus
+    model_name: Optional[str] = None
+    generated_testcase_count: int = 0
+    selected_for_commit_count: int = 0
+    adoption_rate: float = 0.0
+    created_by_user_id: Optional[int] = None
+    created_at: datetime
+    updated_at: datetime
+    committed_at: Optional[datetime] = None
+    drafts: List[QAAIHelperTestcaseDraftItemResponse] = Field(default_factory=list)
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class QAAIHelperSessionListItemResponse(BaseModel):
     session: QAAIHelperSessionResponse
     canonical_revision: Optional[QAAIHelperCanonicalRevisionResponse] = None
@@ -390,12 +740,18 @@ class QAAIHelperSessionListResponse(BaseModel):
 
 class QAAIHelperWorkspaceResponse(BaseModel):
     session: QAAIHelperSessionResponse
+    ticket_snapshot: Optional[QAAIHelperTicketSnapshotResponse] = None
+    screen_guard: Optional[QAAIHelperScreenGuardResponse] = None
     source_payload: Dict[str, Any] = Field(default_factory=dict)
     canonical_validation: Dict[str, Any] = Field(default_factory=dict)
+    requirement_plan: Optional[QAAIHelperRequirementPlanResponse] = None
+    seed_set: Optional[QAAIHelperSeedSetResponse] = None
+    testcase_draft_set: Optional[QAAIHelperTestcaseDraftSetResponse] = None
     canonical_revision: Optional[QAAIHelperCanonicalRevisionResponse] = None
     planned_revision: Optional[QAAIHelperPlannedRevisionResponse] = None
     draft_set: Optional[QAAIHelperDraftSetDetailResponse] = None
     latest_validation_run: Optional[Dict[str, Any]] = None
+    commit_result: Optional["QAAIHelperCommitResultResponse"] = None
 
 
 class QAAIHelperDeleteResponse(BaseModel):
@@ -403,7 +759,42 @@ class QAAIHelperDeleteResponse(BaseModel):
     session_id: int
 
 
+class QAAIHelperRestartResponse(BaseModel):
+    reset: bool
+    session_id: int
+    next_screen: str = "ticket_input"
+
+
+class QAAIHelperCommitDraftResultResponse(BaseModel):
+    testcase_draft_id: int
+    seed_item_id: Optional[int] = None
+    seed_reference_key: Optional[str] = None
+    assigned_testcase_id: Optional[str] = None
+    status: str
+    reason: Optional[str] = None
+    test_case_id: Optional[int] = None
+
+
+class QAAIHelperCommitResultResponse(BaseModel):
+    testcase_draft_set_id: int
+    target_test_case_set_id: Optional[int] = None
+    target_test_case_set_name: Optional[str] = None
+    created_count: int = 0
+    failed_count: int = 0
+    skipped_count: int = 0
+    created_test_case_ids: List[str] = Field(default_factory=list)
+    failed_drafts: List[QAAIHelperCommitDraftResultResponse] = Field(default_factory=list)
+    skipped_drafts: List[QAAIHelperCommitDraftResultResponse] = Field(default_factory=list)
+    draft_results: List[QAAIHelperCommitDraftResultResponse] = Field(default_factory=list)
+    target_set_link_available: bool = False
+    target_set_link: Optional[str] = None
+    committed_at: Optional[datetime] = None
+
+
 class QAAIHelperCommitResponse(BaseModel):
     created_count: int
-    updated_count: int
-    committed_draft_set_id: int
+    updated_count: int = 0
+    committed_draft_set_id: Optional[int] = None
+
+
+QAAIHelperWorkspaceResponse.model_rebuild()

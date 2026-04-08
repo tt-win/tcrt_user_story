@@ -61,10 +61,21 @@ ai:
     generation_budget_prompt_tokens: 12000
     generation_budget_output_tokens: 12000
     models:
-      testcase:
+      # 可直接填 model id，或改成 '${QA_AI_HELPER_MODEL_SEED}'
+      # temperature 可改成 '${QA_AI_HELPER_MODEL_SEED_TEMPERATURE}'
+      seed:
         model: 'google/gemini-3-flash-preview'
         temperature: 0.1
-      repair: null
+      # 可直接填 model id，或改成 '${QA_AI_HELPER_MODEL_SEED_REFINE}'
+      # 若保留 null，runtime 會 fallback 到 seed
+      seed_refine:
+        model: 'google/gemini-3-flash-preview'
+        temperature: 0.0
+      # 可直接填 model id，或改成 '${QA_AI_HELPER_MODEL_TESTCASE}'
+      # temperature 可改成 '${QA_AI_HELPER_MODEL_TESTCASE_TEMPERATURE}'
+      testcase:
+        model: 'google/gemini-3-flash-preview'
+        temperature: 0.0
 qdrant:
   url: 'http://localhost:6333'
   api_key: ''

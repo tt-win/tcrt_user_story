@@ -1,5 +1,10 @@
 # AI Agent Test Case Helper IR-first 流程與穩定性手冊
 
+> 已退役：本文件描述的是舊版 `JIRA Ticket -> Test Case Helper` IR-first 流程，僅供 legacy 參考，不再是正式 rollout 或操作依據。
+>
+> 新版正式流程請改看：
+> [QA_AI_HELPER_REWRITE_RUNBOOK.md](/Users/hideman/code/tcrt_user_story/docs/QA_AI_HELPER_REWRITE_RUNBOOK.md)
+
 ## 1. 適用範圍
 
 本文件描述 `JIRA Ticket -> Test Case Helper` 的完整流程（含 IR、Analysis/Coverage、Testcase/Audit）、保證內容完整性的機制，以及常見故障排查。

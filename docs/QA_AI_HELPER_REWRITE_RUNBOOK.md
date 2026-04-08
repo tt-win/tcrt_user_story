@@ -1,14 +1,17 @@
-# QA AI Helper Rewrite Runbook
+# QA AI Helper V3 Runbook
 
 ## 目的
 
-新版 QA AI Helper 採用獨立 UI、獨立資料表與 deterministic planning。這份 runbook 提供：
+這份文件描述新版 QA AI Helper V3 的正式操作與 rollout 邊界。V3 已不再使用 `canonical_revision -> planned_revision -> draft_set` 的舊 phase 流程，而是改成固定七畫面、兩段鎖定、兩段模型分工。
 
-- 新版流程的操作順序
-- canonical / planned / draft revision 的意義
-- lock、regenerate、discard 的使用規則
-- 舊資料與舊 helper 的唯讀相容策略
-- bootstrap / cross-db-migrate / benchmark 檢查方式
+本文件涵蓋：
+
+- 七畫面流程與 guard
+- 畫面二 parser gate 規則
+- 畫面三到畫面五的 lock / unlock 邊界
+- `config.yaml` / `.env` stage model 設定方式
+- TCRT UI 依循方式
+- legacy helper purge 與 no-backfill rollout 策略
 
 ## 入口與開關
 
@@ -16,118 +19,273 @@
   - `/qa-ai-helper`
   - `/test-case-sets`
   - `/test-case-management`
-- 舊版 helper 入口預設隱藏，保留設定僅供回退：
-  - `ai.jira_testcase_helper.enable = false`
-- 新版 helper 預設啟用：
+- 新版 helper 開關：
   - `ai.qa_ai_helper.enable = true`
+- 舊 modal 與舊 helper 統計已退役：
+  - `/test-case-sets`、`/test-case-management` 不再載入舊 modal partial
+  - `/api/admin/team_statistics/helper_ai_analytics` 固定回傳 `410 legacy_helper_statistics_retired`
 
-## Workflow
+## 七畫面流程
 
-1. 建立 session
-2. 抓取 Jira ticket
-   - `include_comments` 預設關閉
-3. 在 Canonical Intake 確認四段 requirement
-   - `User Story Narrative`
-   - `Criteria`
-   - `Technical Specifications`
-   - `Acceptance Criteria`
-4. 產生 deterministic plan
-5. 在 Plan Review 調整：
-   - `applicable`
-   - `not_applicable`
-   - `manual_exempt`
-   - per-section references
-   - requirement delta
-6. 鎖定 planning revision
-7. 產生 testcase drafts
-8. 在 Draft Review 編修 testcase body
-9. commit 到目標 Test Case Set
+### 畫面一：載入需求單
 
-## CRUD 邊界
+- 使用者輸入 `Ticket Number`
+- 只有按下 `載入需求單內容` 才建立 `qa_ai_helper_sessions`
+- 此畫面本身是 sessionless
 
-### Canonical Intake
+### 畫面二：需求單內容確認
 
-允許：
+- 左側以 markdown 唯讀顯示 Jira 原始 ticket
+- 右側顯示 parser gate 結果、錯誤、警告與 CTA
+- 桌面版採 `8 + 4` split layout
+- parser 以 `scripts/qa_ai_helper_preclean.py` 為基底
 
-- 新增 / 刪除 / 修改四段 canonical 內容
-- 新增 / 刪除 / 修改 AC scenarios
-- 修改 `middle` / `tail`
+#### parser gate
 
-不允許：
+必填區塊：
 
-- 刪除四大 required section shell
+- `User Story Narrative`
+- `Criteria`
+- `Acceptance Criteria`
 
-### Plan Review
+warning-only：
 
-允許：
+- `Technical Specifications`
 
-- 修改 matrix applicability
-- 批次套用 `not_applicable` / `manual_exempt`
-- 修改 references
-- 修改 counters
-- 提出 `requirement_delta`
+欄位級檢查：
 
-不允許：
+- `As a`
+- `I want`
+- `So that`
+- `Criteria` 至少一筆有效 item
+- 每個 Acceptance Criteria scenario 都必須有：
+  - 有效名稱
+  - `Given`
+  - `When`
+  - `Then`
 
-- 直接新增 requirement
-- 直接刪除 requirement
-- 直接插入 planner 未推導出的 matrix row
+以下情況會直接阻擋進入畫面三：
 
-### Draft Review
+- 缺少必要區塊
+- `Acceptance Criteria` 不是非空 list
+- `Unnamed Scenario`
+- 缺少 `Given / When / Then`
 
-允許：
+### 畫面三：需求驗證項目分類與填充
 
-- 修改 `title`
-- 修改 `priority`
-- 修改 `preconditions`
-- 修改 `steps`
-- 修改 `expected_results`
+- 依 Acceptance Criteria 建立 section
+- 預設 section 編號：
+  - `ticket_key.010`
+  - `ticket_key.020`
+  - `ticket_key.030`
+- 左側為 section rail
+- 右側為 section editor
+- 下方保留 `Criteria` 與 `Technical Specifications` 唯讀參考區
+- 依 `tcrt-ui-style` 沿用 `base.html`、既有 card/workspace pattern 與 i18n lifecycle
 
-不允許：
+驗證項目分類固定為：
 
-- 新增 testcase object
-- 刪除 testcase object
-- 重新分配 requirement mapping
+- `API`
+- `UI`
+- `功能驗證`
+- `其他`
 
-## Revision 與 Lock 規則
+每筆檢查條件都必須填寫：
 
-- `canonical_revision` 是 requirement 唯一 source of truth
-- `planned_revision` 代表某次 deterministic planning 結果
-- `draft_set` 代表某次 generation / validation 結果
+- 自然語言描述
+- `coverage`
 
-下列變更都會讓 lock 失效：
+coverage 由使用者自行負責填寫：
 
-- canonical content 變更
-- AC scenario 增刪改
-- planning overrides 變更
-- selected references 變更
-- counter settings 變更
+- `Happy Path`
+- `Error Handling`
+- `Edge Test Case`
+- `Permission`
 
-如果同一個 locked revision 已經有 `active draft_set`：
+儲存規則：
 
-- 預設直接重開既有 drafts
-- 若要 fresh generation，必須先 discard draft set，或建立新的 locked revision
+- 每 5 秒 autosave
+- 支援手動 `儲存`
 
-## Requirement Delta
+鎖定規則：
 
-如果在 Plan Review 發現 canonical requirement 遺漏或誤判：
+- 只有 `鎖定需求` 後才能進畫面四
+- `解開鎖定` 後，下游 seed/testcase 立即失效
 
-1. 建立 `requirement_delta`
-2. 系統會產生新的 `canonical_revision`
-3. 舊 `planned_revision` 會標成 `stale`
-4. 舊 `draft_set` 會標成 `outdated`
-5. 系統會重新規劃；若可定位影響範圍，優先做 scoped replanning
+### 畫面四：Test Case 種子確認
 
-## 舊資料唯讀策略
+- 由 high-tier model 根據「已鎖定 requirement plan」生成第一版 seed set
+- 每筆 seed 預設為 `納入`
+- 支援 per-seed `納入 / 排除`
+- 支援 section-level `全部納入 / 全部排除`
+- 不提供手動新增 / 刪除 seed
 
-- 新版 helper **不得共寫**舊 helper tables
-- 若需要讀舊資料，只能使用唯讀 adapter / migration
-- rollout 時只暴露新版入口；若要回退，只切回舊入口，不做新舊共寫
+refinement 規則：
 
-## Database Bootstrap / Cross Migrate
+- 只允許以註解驅動 refinement
+- refinement payload 只送出「新增或修改過的 seed 註解」
+- 不重跑整批 seed
 
-新版 helper 使用下列主庫表：
+鎖定規則：
 
+- 任一註解修改或 include/exclude 變更，都會使 seed set 回到 draft
+- 只有 `鎖定 Seeds` 後，才可進入畫面五
+
+adoption 口徑：
+
+- `seed_adoption_rate = included_seed_count / generated_seed_count`
+
+### 畫面五：Test Case 確認
+
+- 只處理由畫面四「已鎖定且已納入」的 seeds 產生出的 testcase drafts
+- 由 low-tier model 生成 testcase body
+- model 不負責編號，編號由本地 allocator 套用
+
+編號規則：
+
+- 同驗證項目內：`010, 020, 030...`
+- 切換驗證項目時：預設進入 `100, 200, 300...` block
+- 若前一 block overflow，後續項目整體遞延
+
+畫面五僅允許編修：
+
+- `title`
+- `priority`
+- `preconditions`
+- `steps`
+- `expected_results`
+
+不可編修：
+
+- testcase 編號
+- seed/reference
+- source section / verification item
+
+勾選規則：
+
+- `selected_for_commit` 預設不全選
+- invalid draft 不可勾選
+- 支援 section-level 全選 / 清除選取
+- 至少一筆有效且被勾選的 draft 才能進畫面六
+
+若畫面四 seed set 再次變更：
+
+- 既有 `testcase_draft_set` 標記為 `superseded`
+- 必須重新生成 testcase drafts
+
+adoption 口徑：
+
+- `testcase_adoption_rate = selected_for_commit_count / generated_testcase_count`
+
+### 畫面六：Test Case Set 選擇
+
+- 只能選一個 target set
+- 模式互斥：
+  - 使用既有 Test Case Set
+  - 建立新 Test Case Set
+- 新建模式需先通過必要欄位驗證
+
+### 畫面七：新增結果
+
+- 顯示：
+  - target set
+  - created / failed / skipped 數量
+  - per-draft 結果摘要
+- 已建立 `commit_links` 的 draft 可追到實際 testcase
+- 畫面七不提供 destructive `重新開始`，只提供開始新流程或回目標 set
+
+## Stage Model 設定
+
+`qa_ai_helper` 的 stage model 由設定驅動，不可寫死在程式內。
+
+`config.yaml`：
+
+```yaml
+ai:
+  qa_ai_helper:
+    models:
+      seed:
+        model: ${QA_AI_HELPER_MODEL_SEED}
+        temperature: 0.1
+      seed_refine:
+        model: ${QA_AI_HELPER_MODEL_SEED_REFINE}
+        temperature: 0.0
+      testcase:
+        model: ${QA_AI_HELPER_MODEL_TESTCASE}
+        temperature: 0.0
+```
+
+對應環境變數：
+
+- `QA_AI_HELPER_MODEL_SEED`
+- `QA_AI_HELPER_MODEL_SEED_TEMPERATURE`
+- `QA_AI_HELPER_MODEL_SEED_REFINE`
+- `QA_AI_HELPER_MODEL_SEED_REFINE_TEMPERATURE`
+- `QA_AI_HELPER_MODEL_TESTCASE`
+- `QA_AI_HELPER_MODEL_TESTCASE_TEMPERATURE`
+
+規則：
+
+- `seed_refine` 未設定時 fallback 到 `seed`
+- `${ENV_VAR}` 若未被解析，settings load 直接 fail-fast
+- 預設溫度：
+  - `seed = 0.1`
+  - `seed_refine = 0.0`
+  - `testcase = 0.0`
+
+## Persistence 與 Metrics
+
+V3 使用 `qa_ai_helper_*` 命名空間，但只以 V3 語意表做 bootstrap required tables：
+
+- `qa_ai_helper_sessions`
+- `qa_ai_helper_ticket_snapshots`
+- `qa_ai_helper_requirement_plans`
+- `qa_ai_helper_plan_sections`
+- `qa_ai_helper_verification_items`
+- `qa_ai_helper_check_conditions`
+- `qa_ai_helper_seed_sets`
+- `qa_ai_helper_seed_items`
+- `qa_ai_helper_testcase_draft_sets`
+- `qa_ai_helper_testcase_drafts`
+- `qa_ai_helper_telemetry_events`
+- `qa_ai_helper_commit_links`
+
+legacy tables 若仍存在：
+
+- 不再是 bootstrap required tables
+- 不再是統計或 adoption 的讀取來源
+- rollout 後僅視為 legacy compatibility schema
+
+## Legacy Purge 與 Rollout
+
+### 原則
+
+- 不遷移 V1 / V2 session、draft、telemetry、phase 統計
+- 不對 V3 adoption / telemetry 做 backfill
+- V3 metrics 起算點固定為：
+  - `first_v3_session_after_purge`
+
+### 建議步驟
+
+1. 進 maintenance window，停止舊 helper 寫入
+2. 先建立主庫 snapshot
+3. 執行 helper runtime purge
+4. 驗證 purge 結果為 clean
+5. 切換入口，只暴露 V3 UI
+
+### 參考腳本
+
+`scripts/db_cross_migrate.py` 已提供：
+
+- `create_sqlite_snapshot(engine, label="helper-purge")`
+- `purge_legacy_helper_runtime(target_url, logger=None)`
+- `verify_legacy_helper_purge(target_url)`
+
+purge 目標至少包含：
+
+- `ai_tc_helper_sessions`
+- `ai_tc_helper_drafts`
+- `ai_tc_helper_stage_metrics`
 - `qa_ai_helper_sessions`
 - `qa_ai_helper_canonical_revisions`
 - `qa_ai_helper_planned_revisions`
@@ -136,34 +294,27 @@
 - `qa_ai_helper_drafts`
 - `qa_ai_helper_validation_runs`
 - `qa_ai_helper_telemetry_events`
-
-相容性要求：
-
-- `database_init.py` 需將這些表納入 `MAIN_REQUIRED_TABLES`
-- `scripts/db_cross_migrate.py` 需能以一般反射方式搬移，不依賴 helper 專屬 hook
-- 欄位型別以 SQLite / MySQL / PostgreSQL 可攜型別為主，JSON 內容採 TEXT/JSON 可序列化格式
+- `qa_ai_helper_ticket_snapshots`
+- `qa_ai_helper_requirement_plans`
+- `qa_ai_helper_plan_sections`
+- `qa_ai_helper_verification_items`
+- `qa_ai_helper_check_conditions`
+- `qa_ai_helper_seed_sets`
+- `qa_ai_helper_seed_items`
+- `qa_ai_helper_testcase_draft_sets`
+- `qa_ai_helper_testcase_drafts`
+- `qa_ai_helper_commit_links`
 
 ## 驗證指令
 
-### 測試
-
 ```bash
-uv run pytest app/testsuite/test_qa_ai_helper_api.py -q
-uv run pytest app/testsuite/test_qa_ai_helper_planner.py -q
-uv run pytest app/testsuite/test_qa_ai_helper_runtime.py -q
-uv run pytest app/testsuite/test_db_cross_migrate_script.py -q
-uv run pytest app/testsuite/test_database_init.py -q
-uv run pytest app/testsuite/test_jira_testcase_helper_frontend.py -q
-```
-
-### Benchmark
-
-```bash
-uv run python scripts/qa_ai_helper_benchmark.py --iterations 10
-```
-
-### OpenSpec
-
-```bash
-uv run openspec validate rewrite-qa-ai-agent
+PYTHONPATH=/Users/hideman/code/tcrt_user_story pytest app/testsuite/test_qa_ai_helper_preclean.py -q
+PYTHONPATH=/Users/hideman/code/tcrt_user_story pytest app/testsuite/test_qa_ai_helper_api.py -q
+PYTHONPATH=/Users/hideman/code/tcrt_user_story pytest app/testsuite/test_jira_testcase_helper_frontend.py -q
+PYTHONPATH=/Users/hideman/code/tcrt_user_story pytest app/testsuite/test_team_statistics_helper_frontend.py -q
+PYTHONPATH=/Users/hideman/code/tcrt_user_story pytest app/testsuite/test_team_statistics_helper_ai_api.py -q
+PYTHONPATH=/Users/hideman/code/tcrt_user_story pytest app/testsuite/test_db_cross_migrate_script.py -q
+node --check app/static/js/team_statistics.js
+python -m py_compile scripts/db_cross_migrate.py database_init.py app/api/team_statistics.py
+openspec validate rewrite-qa-ai-agent --strict --json
 ```

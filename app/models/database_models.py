@@ -612,7 +612,7 @@ class QAAIHelperSession(Base):
     target_test_case_set_id = Column(
         Integer,
         ForeignKey("test_case_sets.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
         index=True,
     )
     ticket_key = Column(String(64), nullable=True, index=True)
@@ -621,10 +621,16 @@ class QAAIHelperSession(Base):
     canonical_language = Column(String(16), nullable=True)
     source_payload_json = Column(qa_ai_helper_large_text_type(), nullable=True)
     current_phase = Column(String(32), nullable=False, default="intake", index=True)
+    current_screen = Column(String(32), nullable=True, index=True)
     status = Column(String(32), nullable=False, default="active", index=True)
     active_canonical_revision_id = Column(Integer, nullable=True)
     active_planned_revision_id = Column(Integer, nullable=True)
     active_draft_set_id = Column(Integer, nullable=True)
+    active_ticket_snapshot_id = Column(Integer, nullable=True)
+    active_requirement_plan_id = Column(Integer, nullable=True)
+    active_seed_set_id = Column(Integer, nullable=True)
+    active_testcase_draft_set_id = Column(Integer, nullable=True)
+    selected_target_test_case_set_id = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
@@ -648,6 +654,26 @@ class QAAIHelperSession(Base):
         back_populates="session",
         cascade="all, delete-orphan",
     )
+    ticket_snapshots = relationship(
+        "QAAIHelperTicketSnapshot",
+        back_populates="session",
+        cascade="all, delete-orphan",
+    )
+    requirement_plans = relationship(
+        "QAAIHelperRequirementPlan",
+        back_populates="session",
+        cascade="all, delete-orphan",
+    )
+    seed_sets = relationship(
+        "QAAIHelperSeedSet",
+        back_populates="session",
+        cascade="all, delete-orphan",
+    )
+    testcase_draft_sets = relationship(
+        "QAAIHelperTestcaseDraftSet",
+        back_populates="session",
+        cascade="all, delete-orphan",
+    )
     validation_runs = relationship(
         "QAAIHelperValidationRun",
         back_populates="session",
@@ -658,7 +684,12 @@ class QAAIHelperSession(Base):
         back_populates="session",
         cascade="all, delete-orphan",
     )
-    test_case_set = relationship("TestCaseSet")
+    commit_links = relationship(
+        "QAAIHelperCommitLink",
+        back_populates="session",
+        cascade="all, delete-orphan",
+    )
+    test_case_set = relationship("TestCaseSet", foreign_keys=[target_test_case_set_id])
     team = relationship("Team")
     created_by_user = relationship("User")
 
@@ -978,6 +1009,433 @@ class QAAIHelperTelemetryEvent(Base):
     session = relationship("QAAIHelperSession", back_populates="telemetry_events")
     team = relationship("Team")
     user = relationship("User")
+
+
+class QAAIHelperTicketSnapshot(Base):
+    """Screen-2 readonly ticket snapshot for V3 helper."""
+
+    __tablename__ = "qa_ai_helper_ticket_snapshots"
+    __table_args__ = (
+        Index("ix_qa_ai_helper_ticket_snapshots_session_status", "session_id", "status"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    session_id = Column(
+        Integer,
+        ForeignKey("qa_ai_helper_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    status = Column(String(32), nullable=False, default="loaded", index=True)
+    raw_ticket_markdown = Column(qa_ai_helper_large_text_type(), nullable=False)
+    structured_requirement_json = Column(qa_ai_helper_large_text_type(), nullable=False)
+    validation_summary_json = Column(qa_ai_helper_large_text_type(), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    session = relationship("QAAIHelperSession", back_populates="ticket_snapshots")
+    requirement_plans = relationship(
+        "QAAIHelperRequirementPlan",
+        back_populates="ticket_snapshot",
+        cascade="all, delete-orphan",
+    )
+
+
+class QAAIHelperRequirementPlan(Base):
+    """Screen-3 verification workspace snapshot for V3 helper."""
+
+    __tablename__ = "qa_ai_helper_requirement_plans"
+    __table_args__ = (
+        UniqueConstraint("session_id", "revision_number", name="uq_qa_ai_helper_requirement_plan_revision"),
+        Index("ix_qa_ai_helper_requirement_plans_session_status", "session_id", "status"),
+        Index("ix_qa_ai_helper_requirement_plans_ticket_snapshot", "ticket_snapshot_id"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    session_id = Column(
+        Integer,
+        ForeignKey("qa_ai_helper_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    ticket_snapshot_id = Column(
+        Integer,
+        ForeignKey("qa_ai_helper_ticket_snapshots.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    revision_number = Column(Integer, nullable=False, default=1)
+    status = Column(String(32), nullable=False, default="editing", index=True)
+    section_start_number = Column(String(3), nullable=False, default="010")
+    criteria_reference_json = Column(qa_ai_helper_large_text_type(), nullable=False)
+    technical_reference_json = Column(qa_ai_helper_large_text_type(), nullable=True)
+    autosave_summary_json = Column(qa_ai_helper_large_text_type(), nullable=True)
+    locked_at = Column(DateTime, nullable=True)
+    locked_by_user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    session = relationship("QAAIHelperSession", back_populates="requirement_plans")
+    ticket_snapshot = relationship("QAAIHelperTicketSnapshot", back_populates="requirement_plans")
+    locked_by_user = relationship("User")
+    sections = relationship(
+        "QAAIHelperPlanSection",
+        back_populates="requirement_plan",
+        cascade="all, delete-orphan",
+    )
+    seed_sets = relationship(
+        "QAAIHelperSeedSet",
+        back_populates="requirement_plan",
+        cascade="all, delete-orphan",
+    )
+
+
+class QAAIHelperPlanSection(Base):
+    """One section inside a V3 requirement plan."""
+
+    __tablename__ = "qa_ai_helper_plan_sections"
+    __table_args__ = (
+        UniqueConstraint("requirement_plan_id", "section_key", name="uq_qa_ai_helper_plan_section_key"),
+        UniqueConstraint("requirement_plan_id", "section_id", name="uq_qa_ai_helper_plan_section_id"),
+        Index("ix_qa_ai_helper_plan_sections_plan_order", "requirement_plan_id", "display_order"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    requirement_plan_id = Column(
+        Integer,
+        ForeignKey("qa_ai_helper_requirement_plans.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    section_key = Column(String(128), nullable=False)
+    section_id = Column(String(64), nullable=False)
+    section_title = Column(Text, nullable=False)
+    given_json = Column(qa_ai_helper_large_text_type(), nullable=False)
+    when_json = Column(qa_ai_helper_large_text_type(), nullable=False)
+    then_json = Column(qa_ai_helper_large_text_type(), nullable=False)
+    display_order = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    requirement_plan = relationship("QAAIHelperRequirementPlan", back_populates="sections")
+    verification_items = relationship(
+        "QAAIHelperVerificationItem",
+        back_populates="plan_section",
+        cascade="all, delete-orphan",
+    )
+    seed_items = relationship("QAAIHelperSeedItem", back_populates="plan_section")
+
+
+class QAAIHelperVerificationItem(Base):
+    """One verification item entered on screen 3."""
+
+    __tablename__ = "qa_ai_helper_verification_items"
+    __table_args__ = (
+        Index("ix_qa_ai_helper_verification_items_section_order", "plan_section_id", "display_order"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    plan_section_id = Column(
+        Integer,
+        ForeignKey("qa_ai_helper_plan_sections.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    category = Column(String(32), nullable=False, index=True)
+    summary = Column(Text, nullable=False)
+    detail_json = Column(qa_ai_helper_large_text_type(), nullable=True)
+    display_order = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    plan_section = relationship("QAAIHelperPlanSection", back_populates="verification_items")
+    check_conditions = relationship(
+        "QAAIHelperCheckCondition",
+        back_populates="verification_item",
+        cascade="all, delete-orphan",
+    )
+    seed_items = relationship("QAAIHelperSeedItem", back_populates="verification_item")
+
+
+class QAAIHelperCheckCondition(Base):
+    """One check condition under a verification item."""
+
+    __tablename__ = "qa_ai_helper_check_conditions"
+    __table_args__ = (
+        Index("ix_qa_ai_helper_check_conditions_item_order", "verification_item_id", "display_order"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    verification_item_id = Column(
+        Integer,
+        ForeignKey("qa_ai_helper_verification_items.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    condition_text = Column(Text, nullable=False)
+    coverage_tag = Column(String(32), nullable=False, index=True)
+    display_order = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    verification_item = relationship("QAAIHelperVerificationItem", back_populates="check_conditions")
+
+
+class QAAIHelperSeedSet(Base):
+    """Screen-4 seed review root."""
+
+    __tablename__ = "qa_ai_helper_seed_sets"
+    __table_args__ = (
+        Index("ix_qa_ai_helper_seed_sets_session_status", "session_id", "status"),
+        Index("ix_qa_ai_helper_seed_sets_requirement_status", "requirement_plan_id", "status"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    session_id = Column(
+        Integer,
+        ForeignKey("qa_ai_helper_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    requirement_plan_id = Column(
+        Integer,
+        ForeignKey("qa_ai_helper_requirement_plans.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    status = Column(String(32), nullable=False, default="draft", index=True)
+    generation_round = Column(Integer, nullable=False, default=1)
+    source_type = Column(String(32), nullable=False, default="initial")
+    model_name = Column(String(255), nullable=True)
+    generated_seed_count = Column(Integer, nullable=False, default=0)
+    included_seed_count = Column(Integer, nullable=False, default=0)
+    adoption_rate = Column(Float, nullable=False, default=0.0)
+    created_by_user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    session = relationship("QAAIHelperSession", back_populates="seed_sets")
+    requirement_plan = relationship("QAAIHelperRequirementPlan", back_populates="seed_sets")
+    created_by_user = relationship("User")
+    seed_items = relationship(
+        "QAAIHelperSeedItem",
+        back_populates="seed_set",
+        cascade="all, delete-orphan",
+    )
+    testcase_draft_sets = relationship(
+        "QAAIHelperTestcaseDraftSet",
+        back_populates="seed_set",
+        cascade="all, delete-orphan",
+    )
+
+
+class QAAIHelperSeedItem(Base):
+    """One seed item with local review state."""
+
+    __tablename__ = "qa_ai_helper_seed_items"
+    __table_args__ = (
+        UniqueConstraint("seed_set_id", "seed_reference_key", name="uq_qa_ai_helper_seed_item_ref"),
+        Index("ix_qa_ai_helper_seed_items_included", "seed_set_id", "included_for_testcase_generation"),
+        Index("ix_qa_ai_helper_seed_items_verification_item", "verification_item_id"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    seed_set_id = Column(
+        Integer,
+        ForeignKey("qa_ai_helper_seed_sets.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    plan_section_id = Column(
+        Integer,
+        ForeignKey("qa_ai_helper_plan_sections.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    verification_item_id = Column(
+        Integer,
+        ForeignKey("qa_ai_helper_verification_items.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    check_condition_refs_json = Column(qa_ai_helper_large_text_type(), nullable=True)
+    coverage_tags_json = Column(qa_ai_helper_large_text_type(), nullable=False)
+    seed_reference_key = Column(String(128), nullable=False)
+    seed_summary = Column(Text, nullable=False)
+    seed_body_json = Column(qa_ai_helper_large_text_type(), nullable=False)
+    comment_text = Column(Text, nullable=True)
+    is_ai_generated = Column(Boolean, nullable=False, default=True)
+    user_edited = Column(Boolean, nullable=False, default=False)
+    included_for_testcase_generation = Column(Boolean, nullable=False, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    seed_set = relationship("QAAIHelperSeedSet", back_populates="seed_items")
+    plan_section = relationship("QAAIHelperPlanSection", back_populates="seed_items")
+    verification_item = relationship("QAAIHelperVerificationItem", back_populates="seed_items")
+    testcase_drafts = relationship("QAAIHelperTestcaseDraft", back_populates="seed_item")
+    commit_links = relationship("QAAIHelperCommitLink", back_populates="seed_item")
+
+
+class QAAIHelperTestcaseDraftSet(Base):
+    """Screen-5 testcase draft root."""
+
+    __tablename__ = "qa_ai_helper_testcase_draft_sets"
+    __table_args__ = (
+        Index("ix_qa_ai_helper_testcase_draft_sets_session_status", "session_id", "status"),
+        Index("ix_qa_ai_helper_testcase_draft_sets_seed_status", "seed_set_id", "status"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    session_id = Column(
+        Integer,
+        ForeignKey("qa_ai_helper_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    seed_set_id = Column(
+        Integer,
+        ForeignKey("qa_ai_helper_seed_sets.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    status = Column(String(32), nullable=False, default="draft", index=True)
+    model_name = Column(String(255), nullable=True)
+    generated_testcase_count = Column(Integer, nullable=False, default=0)
+    selected_for_commit_count = Column(Integer, nullable=False, default=0)
+    adoption_rate = Column(Float, nullable=False, default=0.0)
+    created_by_user_id = Column(
+        Integer,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    committed_at = Column(DateTime, nullable=True)
+
+    session = relationship("QAAIHelperSession", back_populates="testcase_draft_sets")
+    seed_set = relationship("QAAIHelperSeedSet", back_populates="testcase_draft_sets")
+    created_by_user = relationship("User")
+    drafts = relationship(
+        "QAAIHelperTestcaseDraft",
+        back_populates="testcase_draft_set",
+        cascade="all, delete-orphan",
+    )
+    commit_links = relationship(
+        "QAAIHelperCommitLink",
+        back_populates="testcase_draft_set",
+        cascade="all, delete-orphan",
+    )
+
+
+class QAAIHelperTestcaseDraft(Base):
+    """One testcase draft generated from one seed item."""
+
+    __tablename__ = "qa_ai_helper_testcase_drafts"
+    __table_args__ = (
+        UniqueConstraint(
+            "testcase_draft_set_id",
+            "seed_reference_key",
+            name="uq_qa_ai_helper_testcase_draft_ref",
+        ),
+        Index("ix_qa_ai_helper_testcase_drafts_selected", "testcase_draft_set_id", "selected_for_commit"),
+        Index("ix_qa_ai_helper_testcase_drafts_seed_item", "seed_item_id"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    testcase_draft_set_id = Column(
+        Integer,
+        ForeignKey("qa_ai_helper_testcase_draft_sets.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    seed_item_id = Column(
+        Integer,
+        ForeignKey("qa_ai_helper_seed_items.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    seed_reference_key = Column(String(128), nullable=False)
+    assigned_testcase_id = Column(String(64), nullable=True, index=True)
+    body_json = Column(qa_ai_helper_large_text_type(), nullable=False)
+    is_ai_generated = Column(Boolean, nullable=False, default=True)
+    user_edited = Column(Boolean, nullable=False, default=False)
+    selected_for_commit = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    testcase_draft_set = relationship("QAAIHelperTestcaseDraftSet", back_populates="drafts")
+    seed_item = relationship("QAAIHelperSeedItem", back_populates="testcase_drafts")
+    commit_links = relationship("QAAIHelperCommitLink", back_populates="testcase_draft")
+
+
+class QAAIHelperCommitLink(Base):
+    """Created testcase provenance linking helper draft and final testcase."""
+
+    __tablename__ = "qa_ai_helper_commit_links"
+    __table_args__ = (
+        Index("ix_qa_ai_helper_commit_links_session_committed", "session_id", "committed_at"),
+        Index("ix_qa_ai_helper_commit_links_test_case", "test_case_id"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    session_id = Column(
+        Integer,
+        ForeignKey("qa_ai_helper_sessions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    testcase_draft_set_id = Column(
+        Integer,
+        ForeignKey("qa_ai_helper_testcase_draft_sets.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    testcase_draft_id = Column(
+        Integer,
+        ForeignKey("qa_ai_helper_testcase_drafts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    seed_item_id = Column(
+        Integer,
+        ForeignKey("qa_ai_helper_seed_items.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    test_case_id = Column(
+        Integer,
+        ForeignKey("test_cases.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    test_case_set_id = Column(
+        Integer,
+        ForeignKey("test_case_sets.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    is_ai_generated = Column(Boolean, nullable=False, default=True)
+    selected_for_commit = Column(Boolean, nullable=False, default=True)
+    committed_at = Column(DateTime, nullable=False, default=datetime.utcnow)
+
+    session = relationship("QAAIHelperSession", back_populates="commit_links")
+    testcase_draft_set = relationship("QAAIHelperTestcaseDraftSet", back_populates="commit_links")
+    testcase_draft = relationship("QAAIHelperTestcaseDraft", back_populates="commit_links")
+    seed_item = relationship("QAAIHelperSeedItem", back_populates="commit_links")
+    test_case = relationship("TestCaseLocal")
+    test_case_set = relationship("TestCaseSet")
 
 
 # Backward-compatible computed columns for TestRunItem snapshots

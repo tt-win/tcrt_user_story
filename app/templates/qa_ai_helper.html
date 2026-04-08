@@ -1,13 +1,14 @@
 {% extends "base.html" %}
 
-{% block title %}新版 QA AI Helper - TCRT{% endblock %}
+{% block title %}QA AI Helper - TCRT{% endblock %}
 
 {% block head %}
 <link rel="stylesheet" href="/static/css/qa-ai-helper.css">
+<script src="https://cdn.jsdelivr.net/npm/marked@4.3.0/marked.min.js"></script>
 {% endblock %}
 
 {% block page_title_text %}
-<span data-i18n="qaAiHelper.pageTitle">新版 QA AI Helper</span>
+<span data-i18n="qaAiHelper.pageTitle">QA AI Helper</span>
 {% endblock %}
 
 {% block page_subtitle_text %}
@@ -34,75 +35,40 @@
     data-session-id="{{ session_id or '' }}"
     data-ticket-key="{{ ticket_key or '' }}"
 >
-    <div class="card qa-helper-card qa-helper-phase-shell mb-3">
-        <div class="card-body">
-            <div class="d-flex flex-column gap-3">
-                <div>
-                    <div class="fw-semibold" data-i18n="qaAiHelper.workflowTitle">Phase Workflow</div>
-                    <small class="text-muted" data-i18n="qaAiHelper.workflowHint">依序完成 Fetch、Canonical、Plan、Draft 四個階段，一次只處理當前步驟。</small>
-                </div>
-                <div class="qa-helper-phase-rail" id="qaHelperPhaseRail" role="tablist" aria-label="QA AI Helper phases">
-                    <button type="button" class="qa-helper-phase-step" id="qaHelperPhaseFetchBtn" data-phase-target="fetch">
-                        <span class="qa-helper-phase-step-index">1</span>
-                        <span data-i18n="qaAiHelper.phaseFetch">Fetch</span>
-                    </button>
-                    <button type="button" class="qa-helper-phase-step" id="qaHelperPhaseCanonicalBtn" data-phase-target="canonical">
-                        <span class="qa-helper-phase-step-index">2</span>
-                        <span data-i18n="qaAiHelper.phaseCanonical">Canonical</span>
-                    </button>
-                    <button type="button" class="qa-helper-phase-step" id="qaHelperPhasePlanBtn" data-phase-target="plan">
-                        <span class="qa-helper-phase-step-index">3</span>
-                        <span data-i18n="qaAiHelper.phasePlan">Plan</span>
-                    </button>
-                    <button type="button" class="qa-helper-phase-step" id="qaHelperPhaseDraftBtn" data-phase-target="draft">
-                        <span class="qa-helper-phase-step-index">4</span>
-                        <span data-i18n="qaAiHelper.phaseDraft">Draft</span>
-                    </button>
-                </div>
-                <div class="qa-helper-phase-toolbar">
-                    <div class="qa-helper-phase-description" id="qaHelperPhaseDescription"></div>
-                    <div class="d-flex gap-2">
-                        <button type="button" class="btn btn-secondary btn-sm" id="qaHelperPrevPhaseBtn">
-                            <i class="fas fa-arrow-left me-1"></i><span data-i18n="qaAiHelper.prevPhase">上一步</span>
-                        </button>
-                        <button type="button" class="btn btn-primary btn-sm" id="qaHelperNextPhaseBtn">
-                            <span data-i18n="qaAiHelper.nextPhase">下一步</span><i class="fas fa-arrow-right ms-1"></i>
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
     <div class="row g-3">
         <div class="col-12 col-xl-4 qa-helper-phase-panel" id="qaHelperFetchPanel" data-phase-panel="fetch">
-            <div class="card qa-helper-card">
+            <div class="card qa-helper-card qa-helper-step-card" id="qaHelperLoadTicketCard">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <div>
-                        <div class="fw-semibold" data-i18n="qaAiHelper.sessionCardTitle">Session 與 Ticket</div>
-                        <small class="text-muted" data-i18n="qaAiHelper.sessionCardHint">建立工作階段、抓取 Jira ticket，並選擇目標 Test Case Set。</small>
+                        <div class="fw-semibold" data-i18n="qaAiHelper.screen1Title">載入需求單</div>
+                        <small class="text-muted" data-i18n="qaAiHelper.screen1Hint">輸入 Ticket Number 後才建立 session，並直接載入畫面二的唯讀票單確認資料。</small>
                     </div>
                     <span class="badge text-bg-secondary" id="qaHelperPhaseBadge" data-i18n="qaAiHelper.noSession">尚未建立 Session</span>
                 </div>
                 <div class="card-body">
                     <div class="row g-3">
                         <div class="col-12">
-                            <label class="form-label" for="qaHelperSessionSelect" data-i18n="qaAiHelper.savedSessions">既有 Sessions</label>
-                            <div class="d-flex gap-2">
-                                <select class="form-select form-select-sm" id="qaHelperSessionSelect"></select>
-                                <button type="button" class="btn btn-outline-secondary btn-sm" id="qaHelperRefreshSessionsBtn">
-                                    <i class="fas fa-rotate me-1"></i><span data-i18n="common.refresh">重新整理</span>
-                                </button>
+                            <div class="qa-helper-session-manager-trigger">
+                                <div>
+                                    <div class="fw-semibold" data-i18n="qaAiHelper.savedSessions">既有 Sessions</div>
+                                    <div class="small text-muted" id="qaHelperSessionManagerSummary" data-i18n="qaAiHelper.sessionManagerSummaryEmpty">尚未載入 Session 清單</div>
+                                </div>
+                                <div class="d-flex gap-2 flex-wrap">
+                                    <button type="button" class="btn btn-outline-primary btn-sm" id="qaHelperSessionManagerBtn">
+                                        <i class="fas fa-folder-open me-1"></i><span data-i18n="qaAiHelper.sessionManager">Session 管理</span>
+                                    </button>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" id="qaHelperRefreshSessionsBtn">
+                                        <i class="fas fa-rotate me-1"></i><span data-i18n="common.refresh">重新整理</span>
+                                    </button>
+                                </div>
                             </div>
+                            <select class="form-select form-select-sm d-none" id="qaHelperSessionSelect" aria-hidden="true"></select>
                         </div>
-                        <div class="col-12">
-                            <label class="form-label" for="qaHelperTargetSetSelect" data-i18n="qaAiHelper.targetSet">目標 Test Case Set</label>
-                            <select class="form-select" id="qaHelperTargetSetSelect"></select>
-                        </div>
-                        <div class="col-md-7">
-                            <label class="form-label" for="qaHelperTicketKey" data-i18n="qaAiHelper.ticketKey">Ticket Key</label>
+                        <div class="col-md-8">
+                            <label class="form-label" for="qaHelperTicketKey" data-i18n="qaAiHelper.ticketNumber">Ticket Number</label>
                             <input type="text" class="form-control" id="qaHelperTicketKey" placeholder="TCG-130078">
                         </div>
-                        <div class="col-md-5">
+                        <div class="col-md-4">
                             <label class="form-label" for="qaHelperOutputLocale" data-i18n="qaAiHelper.outputLocale">產出語系</label>
                             <select class="form-select" id="qaHelperOutputLocale">
                                 <option value="zh-TW">繁體中文</option>
@@ -110,318 +76,407 @@
                                 <option value="en">English</option>
                             </select>
                         </div>
-                        <div class="col-md-7">
-                            <label class="form-label" for="qaHelperCanonicalLanguage" data-i18n="qaAiHelper.canonicalLanguage">Canonical Language</label>
-                            <select class="form-select" id="qaHelperCanonicalLanguage">
-                                <option value="zh-TW">繁體中文</option>
-                                <option value="zh-CN">简体中文</option>
-                                <option value="en">English</option>
-                            </select>
-                        </div>
-                        <div class="col-md-5 d-flex align-items-end">
-                            <div class="form-check mb-2">
-                                <input class="form-check-input" type="checkbox" id="qaHelperIncludeComments">
-                                <label class="form-check-label" for="qaHelperIncludeComments" data-i18n="qaAiHelper.includeComments">抓取 comments</label>
-                            </div>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label" for="qaHelperMiddle" data-i18n="qaAiHelper.middleCounter">Middle 起始值</label>
-                            <input type="text" class="form-control" id="qaHelperMiddle" value="010" maxlength="3">
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label" for="qaHelperTail" data-i18n="qaAiHelper.tailCounter">Tail 起始值</label>
-                            <input type="text" class="form-control" id="qaHelperTail" value="010" maxlength="3">
-                        </div>
-                        <div class="col-12 d-flex flex-wrap gap-2">
-                            <button type="button" class="btn btn-primary btn-sm" id="qaHelperCreateSessionBtn">
-                                <i class="fas fa-plus me-1"></i><span data-i18n="qaAiHelper.createSession">建立 Session</span>
-                            </button>
-                            <button type="button" class="btn btn-info btn-sm" id="qaHelperFetchTicketBtn">
-                                <i class="fas fa-cloud-arrow-down me-1"></i><span data-i18n="qaAiHelper.fetchTicket">抓取 Ticket</span>
-                            </button>
-                            <button type="button" class="btn btn-outline-danger btn-sm" id="qaHelperDeleteSessionBtn">
-                                <i class="fas fa-trash me-1"></i><span data-i18n="common.delete">刪除</span>
-                            </button>
-                        </div>
                     </div>
                     <div class="qa-helper-summary mt-3" id="qaHelperWorkspaceSummary"></div>
                 </div>
+                <div class="card-footer qa-helper-action-bar">
+                    <div class="qa-helper-action-bar-meta small text-muted" data-i18n="qaAiHelper.screen1Hint">輸入 Ticket Number 後才建立 session，並直接載入畫面二的唯讀票單確認資料。</div>
+                    <div class="d-flex flex-wrap gap-2">
+                        <button type="button" class="btn btn-primary btn-sm" id="qaHelperCreateSessionBtn">
+                            <i class="fas fa-cloud-arrow-down me-1"></i><span data-i18n="qaAiHelper.loadTicketContent">載入需求單內容</span>
+                        </button>
+                        <button type="button" class="btn btn-secondary btn-sm" data-qa-helper-restart>
+                            <i class="fas fa-rotate-left me-1"></i><span data-i18n="qaAiHelper.restart">重新開始</span>
+                        </button>
+                    </div>
+                </div>
             </div>
 
-            <div class="card qa-helper-card mt-3">
+            <div class="card qa-helper-card qa-helper-step-card d-none" id="qaHelperTicketConfirmationCard">
                 <div class="card-header">
-                    <div class="fw-semibold" data-i18n="qaAiHelper.rawSourceTitle">Raw Source Review</div>
-                    <small class="text-muted" data-i18n="qaAiHelper.rawSourceHint">先看原始來源拆分，再確認 canonical sections。</small>
+                    <div class="fw-semibold" data-i18n="qaAiHelper.screen2Title">需求單內容確認</div>
+                    <small class="text-muted" data-i18n="qaAiHelper.screen2Hint">Jira 原始票單只讀顯示，並在右側確認 parser gate 是否允許進入畫面三。</small>
                 </div>
                 <div class="card-body">
-                    <div class="table-responsive qa-helper-table-wrap">
-                        <table class="table table-hover table-sm align-middle mb-0" id="qaHelperSourceTable">
-                            <thead>
-                                <tr>
-                                    <th data-i18n="qaAiHelper.sourceType">來源類型</th>
-                                    <th data-i18n="qaAiHelper.language">語言</th>
-                                    <th data-i18n="common.title">標題</th>
-                                    <th data-i18n="common.details">詳細</th>
-                                </tr>
-                            </thead>
-                            <tbody></tbody>
-                        </table>
+                    <div class="row g-3 qa-helper-screen2-layout">
+                        <div class="col-12 col-xl-8">
+                            <div class="qa-helper-markdown-card">
+                                <div class="qa-helper-ticket-meta mb-3" id="qaHelperTicketMeta"></div>
+                                <div class="markdown-preview qa-helper-markdown-preview" id="qaHelperTicketMarkdown"></div>
+                            </div>
+                        </div>
+                        <div class="col-12 col-xl-4">
+                            <div class="qa-helper-side-card h-100" id="qaHelperTicketValidationSummary"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer qa-helper-action-bar">
+                    <div class="qa-helper-action-bar-meta small text-muted" data-i18n="qaAiHelper.validationResultHint">至少需通過 User Story Narrative、Criteria、Acceptance Criteria 與 clause 檢查。</div>
+                    <div class="d-flex flex-wrap gap-2">
+                        <button type="button" class="btn btn-primary btn-sm" id="qaHelperProceedVerificationBtn">
+                            <i class="fas fa-list-check me-1"></i><span data-i18n="qaAiHelper.proceedVerificationPlanning">需求驗證項目分類與填充</span>
+                        </button>
+                        <button type="button" class="btn btn-secondary btn-sm" data-qa-helper-restart>
+                            <i class="fas fa-rotate-left me-1"></i><span data-i18n="qaAiHelper.restart">重新開始</span>
+                        </button>
                     </div>
                 </div>
             </div>
         </div>
 
         <div class="col-12 col-xl-8" id="qaHelperPhaseMainCol">
-            <div class="card qa-helper-card qa-helper-phase-panel" data-phase-panel="canonical">
-                <div class="card-header d-flex justify-content-between align-items-center">
+            <div class="card qa-helper-card qa-helper-step-card qa-helper-phase-panel" data-phase-panel="canonical" id="qaHelperRequirementPlanCard">
+                <div class="card-header d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2">
                     <div>
-                        <div class="fw-semibold" data-i18n="qaAiHelper.canonicalTitle">Canonical Intake</div>
-                        <small class="text-muted" data-i18n="qaAiHelper.canonicalHint">這裡才是 requirement source of truth，可反覆編修後再進 planning。</small>
+                        <div class="fw-semibold" data-i18n="qaAiHelper.screen3Title">需求驗證項目分類與填充</div>
+                        <small class="text-muted" data-i18n="qaAiHelper.screen3Hint">左側切換 AC section，右側編輯驗證項目與檢查條件，下方保留 Criteria 與 Technical Specifications 參考區。</small>
                     </div>
-                    <button type="button" class="btn btn-primary btn-sm" id="qaHelperSaveCanonicalBtn">
-                        <i class="fas fa-floppy-disk me-1"></i><span data-i18n="common.save">儲存</span>
-                    </button>
+                    <div class="qa-helper-inline-status" id="qaHelperRequirementPlanHeaderStatus"></div>
                 </div>
                 <div class="card-body">
                     <div class="row g-3">
-                        <div class="col-12">
-                            <label class="form-label" for="qaHelperUserStory" data-i18n="qaAiHelper.userStory">User Story Narrative</label>
-                            <textarea class="form-control qa-helper-textarea" id="qaHelperUserStory"></textarea>
+                        <div class="col-12 col-xxl-3">
+                            <div class="qa-helper-section-rail card border-0 shadow-sm">
+                                <div class="card-body">
+                                    <div class="d-flex justify-content-between align-items-center mb-3">
+                                        <div>
+                                            <div class="fw-semibold" data-i18n="qaAiHelper.sectionRailTitle">Sections</div>
+                                            <small class="text-muted" data-i18n="qaAiHelper.sectionRailHint">依 AC scenario 分組</small>
+                                        </div>
+                                        <span class="badge text-bg-light" id="qaHelperSectionRailCount">0</span>
+                                    </div>
+                                    <div class="list-group qa-helper-section-list" id="qaHelperPlanSectionRail"></div>
+                                </div>
+                            </div>
                         </div>
-                        <div class="col-12">
-                            <label class="form-label" for="qaHelperCriteria" data-i18n="qaAiHelper.criteria">Criteria</label>
-                            <textarea class="form-control qa-helper-textarea" id="qaHelperCriteria"></textarea>
-                        </div>
-                        <div class="col-12">
-                            <label class="form-label" for="qaHelperTechnicalSpecs" data-i18n="qaAiHelper.technicalSpecifications">Technical Specifications</label>
-                            <textarea class="form-control qa-helper-textarea" id="qaHelperTechnicalSpecs"></textarea>
-                        </div>
-                        <div class="col-12">
-                            <label class="form-label" for="qaHelperAcceptanceCriteria" data-i18n="qaAiHelper.acceptanceCriteria">Acceptance Criteria</label>
-                            <textarea class="form-control qa-helper-textarea qa-helper-textarea-lg" id="qaHelperAcceptanceCriteria"></textarea>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label" for="qaHelperAssumptions" data-i18n="qaAiHelper.assumptions">Assumptions</label>
-                            <textarea class="form-control qa-helper-textarea-sm" id="qaHelperAssumptions"></textarea>
-                        </div>
-                        <div class="col-md-6">
-                            <label class="form-label" for="qaHelperUnknowns" data-i18n="qaAiHelper.unknowns">Unknowns</label>
-                            <textarea class="form-control qa-helper-textarea-sm" id="qaHelperUnknowns"></textarea>
+                        <div class="col-12 col-xxl-9">
+                            <div class="qa-helper-side-card mb-3">
+                                <div class="row g-3 align-items-end">
+                                    <div class="col-sm-6 col-lg-4">
+                                        <label class="form-label" for="qaHelperSectionStartNumber" data-i18n="qaAiHelper.sectionStartNumber">Section 起始號</label>
+                                        <input type="text" class="form-control" id="qaHelperSectionStartNumber" value="010" maxlength="3">
+                                    </div>
+                                    <div class="col-sm-6 col-lg-4">
+                                        <div class="qa-helper-field-help" id="qaHelperPlanAutosaveStatus"></div>
+                                    </div>
+                                    <div class="col-lg-4">
+                                        <div class="qa-helper-field-help" id="qaHelperPlanValidationSummary"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="qa-helper-editor-shell" id="qaHelperPlanEditor"></div>
+                            <div class="row g-3 mt-1">
+                                <div class="col-12 col-xl-6">
+                                    <div class="qa-helper-reference-card h-100" id="qaHelperCriteriaReference"></div>
+                                </div>
+                                <div class="col-12 col-xl-6">
+                                    <div class="qa-helper-reference-card h-100" id="qaHelperTechnicalReference"></div>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                    <div class="alert alert-secondary mt-3 mb-0" id="qaHelperCanonicalValidationBox"></div>
+                </div>
+                <div class="card-footer qa-helper-action-bar">
+                    <div class="qa-helper-action-bar-meta" id="qaHelperRequirementPlanFooterStatus"></div>
+                    <div class="d-flex flex-wrap gap-2">
+                        <button type="button" class="btn btn-secondary btn-sm" id="qaHelperBackToTicketConfirmationBtn">
+                            <i class="fas fa-arrow-left me-1"></i><span data-i18n="qaAiHelper.backToTicketConfirmation">返回需求單內容確認</span>
+                        </button>
+                        <button type="button" class="btn btn-success btn-sm" id="qaHelperSaveRequirementPlanBtn">
+                            <i class="fas fa-floppy-disk me-1"></i><span data-i18n="common.save">儲存</span>
+                        </button>
+                        <button type="button" class="btn btn-warning btn-sm" id="qaHelperLockRequirementPlanBtn">
+                            <i class="fas fa-lock me-1"></i><span data-i18n="qaAiHelper.lockRequirementPlan">鎖定需求</span>
+                        </button>
+                        <button type="button" class="btn btn-secondary btn-sm" id="qaHelperUnlockRequirementPlanBtn">
+                            <i class="fas fa-lock-open me-1"></i><span data-i18n="qaAiHelper.unlockRequirementPlan">解開鎖定</span>
+                        </button>
+                        <button type="button" class="btn btn-primary btn-sm" id="qaHelperStartSeedReviewBtn">
+                            <i class="fas fa-wand-magic-sparkles me-1"></i><span data-i18n="qaAiHelper.startSeedGeneration">開始產生 Test Case 種子</span>
+                        </button>
+                        <button type="button" class="btn btn-outline-primary btn-sm d-none" id="qaHelperRegenerateSeedsBtn">
+                            <i class="fas fa-wand-magic-sparkles me-1"></i><span data-i18n="qaAiHelper.regenerateSeeds">重新產生 Test Case 種子</span>
+                        </button>
+                        <button type="button" class="btn btn-primary btn-sm d-none" id="qaHelperProceedToSeedReviewBtn">
+                            <i class="fas fa-arrow-right me-1"></i><span data-i18n="qaAiHelper.proceedToSeedReview">下一步（沿用既有種子）</span>
+                        </button>
+                    </div>
                 </div>
             </div>
 
-            <div class="card qa-helper-card mt-3 qa-helper-phase-panel" data-phase-panel="plan">
-                <div class="card-header d-flex justify-content-between align-items-center">
+            <div class="card qa-helper-card qa-helper-step-card qa-helper-phase-panel" data-phase-panel="plan" id="qaHelperSeedReviewCard">
+                <div class="card-header d-flex flex-column flex-lg-row justify-content-between align-items-lg-center gap-2">
                     <div>
-                        <div class="fw-semibold" data-i18n="qaAiHelper.planTitle">Plan Review</div>
-                        <small class="text-muted" data-i18n="qaAiHelper.planHint">在這一步只允許 applicability override、reference selection 與 requirement delta。</small>
+                        <div class="fw-semibold" data-i18n="qaAiHelper.screen4Title">Test Case 種子確認</div>
+                        <small class="text-muted" data-i18n="qaAiHelper.screen4Hint">檢視 AI 產生的 seed，決定納入或排除，必要時以註解增量更新。</small>
                     </div>
-                    <div class="d-flex gap-2">
-                        <button type="button" class="btn btn-primary btn-sm" id="qaHelperPlanBtn">
-                            <i class="fas fa-diagram-project me-1"></i><span data-i18n="qaAiHelper.planAction">產生 Plan</span>
-                        </button>
-                        <button type="button" class="btn btn-outline-primary btn-sm" id="qaHelperLockBtn">
-                            <i class="fas fa-lock me-1"></i><span data-i18n="qaAiHelper.lockAction">鎖定</span>
-                        </button>
-                        <button type="button" class="btn btn-outline-secondary btn-sm" id="qaHelperUnlockBtn">
-                            <i class="fas fa-unlock me-1"></i><span data-i18n="qaAiHelper.unlockAction">解鎖</span>
-                        </button>
-                    </div>
+                    <div class="qa-helper-inline-status" id="qaHelperSeedReviewHeaderStatus"></div>
                 </div>
                 <div class="card-body">
-                    <div class="row g-3 align-items-end">
-                        <div class="col-md-4">
-                            <label class="form-label" for="qaHelperPlanSectionFilter" data-i18n="qaAiHelper.sectionFilter">Section</label>
-                            <select class="form-select form-select-sm" id="qaHelperPlanSectionFilter"></select>
-                        </div>
-                        <div class="col-md-3">
-                            <label class="form-label" for="qaHelperPlanStatusFilter" data-i18n="qaAiHelper.statusFilter">Applicability</label>
-                            <select class="form-select form-select-sm" id="qaHelperPlanStatusFilter">
-                                <option value="all">All</option>
-                                <option value="applicable">Applicable</option>
-                                <option value="not_applicable">Not Applicable</option>
-                                <option value="manual_exempt">Manual Exempt</option>
-                            </select>
-                        </div>
-                        <div class="col-md-5">
-                            <label class="form-label" for="qaHelperPlanSearch" data-i18n="common.search">搜尋</label>
-                            <input type="text" class="form-control form-control-sm" id="qaHelperPlanSearch">
-                        </div>
-                        <div class="col-md-4">
-                            <label class="form-label" for="qaHelperBulkStatus" data-i18n="qaAiHelper.bulkStatus">批次狀態</label>
-                            <select class="form-select form-select-sm" id="qaHelperBulkStatus">
-                                <option value="applicable">Applicable</option>
-                                <option value="not_applicable">Not Applicable</option>
-                                <option value="manual_exempt">Manual Exempt</option>
-                            </select>
-                        </div>
-                        <div class="col-md-5">
-                            <label class="form-label" for="qaHelperBulkReason" data-i18n="qaAiHelper.bulkReason">原因</label>
-                            <input type="text" class="form-control form-control-sm" id="qaHelperBulkReason">
-                        </div>
-                        <div class="col-md-3 d-grid">
-                            <button type="button" class="btn btn-outline-primary btn-sm" id="qaHelperApplyOverridesBtn">
-                                <i class="fas fa-layer-group me-1"></i><span data-i18n="qaAiHelper.applyOverride">套用 override</span>
-                            </button>
-                        </div>
-                    </div>
-
-                    <div class="alert alert-warning mt-3 mb-0" id="qaHelperImpactPreview"></div>
-
-                    <div class="row g-3 mt-1">
-                        <div class="col-lg-8">
-                            <div class="table-responsive qa-helper-table-wrap qa-helper-plan-table">
-                                <table class="table table-hover table-sm align-middle mb-0" id="qaHelperPlanTable">
-                                    <thead>
-                                        <tr>
-                                            <th><input type="checkbox" id="qaHelperSelectAllRows"></th>
-                                            <th data-i18n="qaAiHelper.section">Section</th>
-                                            <th data-i18n="qaAiHelper.rowGroup">Group</th>
-                                            <th data-i18n="qaAiHelper.rowKey">Row</th>
-                                            <th data-i18n="qaAiHelper.axisValues">Axis</th>
-                                            <th data-i18n="common.status">狀態</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody></tbody>
-                                </table>
+                    <div class="row g-3">
+                        <div class="col-12 col-xxl-3">
+                            <div class="qa-helper-section-rail card border-0 shadow-sm h-100">
+                                <div class="card-body">
+                                    <div class="d-flex justify-content-between align-items-center mb-3">
+                                        <div>
+                                            <div class="fw-semibold" data-i18n="qaAiHelper.seedSectionRailTitle">Seed Sections</div>
+                                            <small class="text-muted" data-i18n="qaAiHelper.seedSectionRailHint">依 section 檢視 seed 與納入狀態</small>
+                                        </div>
+                                        <span class="badge text-bg-light" id="qaHelperSeedSectionRailCount">0</span>
+                                    </div>
+                                    <div class="list-group qa-helper-section-list" id="qaHelperSeedSectionRail"></div>
+                                </div>
                             </div>
                         </div>
-                        <div class="col-lg-4">
+                        <div class="col-12 col-xxl-6">
+                            <div class="qa-helper-seed-list" id="qaHelperSeedCardList"></div>
+                        </div>
+                        <div class="col-12 col-xxl-3">
+                            <div class="qa-helper-side-card mb-3" id="qaHelperSeedReviewSummary"></div>
                             <div class="qa-helper-side-card">
-                                <h6 class="mb-2" data-i18n="qaAiHelper.referencesTitle">Section References</h6>
-                                <label class="form-label" for="qaHelperReferenceSectionSelect" data-i18n="qaAiHelper.referenceSection">Section</label>
-                                <select class="form-select form-select-sm mb-2" id="qaHelperReferenceSectionSelect"></select>
-                                <label class="form-label" for="qaHelperReferencesInput" data-i18n="qaAiHelper.referenceInput">每行一筆 reference</label>
-                                <textarea class="form-control qa-helper-textarea-sm" id="qaHelperReferencesInput"></textarea>
-                                <button type="button" class="btn btn-outline-primary btn-sm mt-2 w-100" id="qaHelperSaveReferencesBtn">
-                                    <i class="fas fa-link me-1"></i><span data-i18n="qaAiHelper.saveReferences">儲存 references</span>
-                                </button>
-                            </div>
-
-                            <div class="qa-helper-side-card mt-3">
-                                <h6 class="mb-2" data-i18n="qaAiHelper.requirementDeltaTitle">Requirement Delta</h6>
-                                <div class="row g-2">
-                                    <div class="col-6">
-                                        <label class="form-label" for="qaHelperDeltaType" data-i18n="qaAiHelper.deltaType">變更類型</label>
-                                        <select class="form-select form-select-sm" id="qaHelperDeltaType">
-                                            <option value="add">add</option>
-                                            <option value="modify">modify</option>
-                                            <option value="delete">delete</option>
-                                        </select>
-                                    </div>
-                                    <div class="col-6">
-                                        <label class="form-label" for="qaHelperDeltaScope" data-i18n="qaAiHelper.deltaScope">Scope</label>
-                                        <select class="form-select form-select-sm" id="qaHelperDeltaScope">
-                                            <option value="User Story Narrative">User Story Narrative</option>
-                                            <option value="Criteria">Criteria</option>
-                                            <option value="Technical Specifications">Technical Specifications</option>
-                                            <option value="Acceptance Criteria">Acceptance Criteria</option>
-                                        </select>
-                                    </div>
-                                    <div class="col-12">
-                                        <label class="form-label" for="qaHelperDeltaScenarioKey" data-i18n="qaAiHelper.deltaScenarioKey">Scenario Key</label>
-                                        <input type="text" class="form-control form-control-sm" id="qaHelperDeltaScenarioKey">
-                                    </div>
-                                    <div class="col-12">
-                                        <label class="form-label" for="qaHelperDeltaRequirementKey" data-i18n="qaAiHelper.deltaRequirementKey">Requirement Key</label>
-                                        <input type="text" class="form-control form-control-sm" id="qaHelperDeltaRequirementKey">
-                                    </div>
-                                    <div class="col-12">
-                                        <label class="form-label" for="qaHelperDeltaTitle" data-i18n="common.title">標題</label>
-                                        <input type="text" class="form-control form-control-sm" id="qaHelperDeltaTitle">
-                                    </div>
-                                    <div class="col-12">
-                                        <label class="form-label" for="qaHelperDeltaContent" data-i18n="qaAiHelper.deltaContent">內容</label>
-                                        <textarea class="form-control qa-helper-textarea-sm" id="qaHelperDeltaContent"></textarea>
-                                    </div>
-                                    <div class="col-12">
-                                        <label class="form-label" for="qaHelperDeltaOriginalText" data-i18n="qaAiHelper.deltaOriginalText">Original Text</label>
-                                        <textarea class="form-control qa-helper-textarea-sm" id="qaHelperDeltaOriginalText"></textarea>
-                                    </div>
-                                    <div class="col-12">
-                                        <label class="form-label" for="qaHelperDeltaReason" data-i18n="qaAiHelper.deltaReason">原因</label>
-                                        <input type="text" class="form-control form-control-sm" id="qaHelperDeltaReason">
-                                    </div>
-                                    <div class="col-12 d-grid">
-                                        <button type="button" class="btn btn-outline-danger btn-sm" id="qaHelperApplyDeltaBtn">
-                                            <i class="fas fa-code-branch me-1"></i><span data-i18n="qaAiHelper.applyDelta">套用 requirement delta</span>
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="qa-helper-plan-summary mt-3" id="qaHelperPlanSummary"></div>
-                </div>
-            </div>
-
-            <div class="card qa-helper-card mt-3 qa-helper-phase-panel" data-phase-panel="draft">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <div>
-                        <div class="fw-semibold" data-i18n="qaAiHelper.draftTitle">Draft Review</div>
-                        <small class="text-muted" data-i18n="qaAiHelper.draftHint">只允許編修 testcase body，不允許新增或刪除 testcase object。</small>
-                    </div>
-                    <div class="d-flex gap-2">
-                        <button type="button" class="btn btn-primary btn-sm" id="qaHelperGenerateBtn">
-                            <i class="fas fa-wand-magic-sparkles me-1"></i><span data-i18n="qaAiHelper.generateDrafts">產生 Drafts</span>
-                        </button>
-                        <button type="button" class="btn btn-outline-danger btn-sm" id="qaHelperDiscardDraftBtn">
-                            <i class="fas fa-trash me-1"></i><span data-i18n="qaAiHelper.discardDrafts">Discard</span>
-                        </button>
-                        <button type="button" class="btn btn-success btn-sm" id="qaHelperCommitBtn">
-                            <i class="fas fa-check me-1"></i><span data-i18n="qaAiHelper.commitDrafts">Commit</span>
-                        </button>
-                    </div>
-                </div>
-                <div class="card-body">
-                    <div class="alert alert-secondary mb-3" id="qaHelperDraftSummary"></div>
-                    <div class="row g-3">
-                        <div class="col-lg-4">
-                            <div class="list-group qa-helper-draft-list" id="qaHelperDraftList"></div>
-                        </div>
-                        <div class="col-lg-8">
-                            <div class="row g-3">
-                                <div class="col-md-8">
-                                    <label class="form-label" for="qaHelperDraftTitle" data-i18n="common.title">標題</label>
-                                    <input type="text" class="form-control" id="qaHelperDraftTitle">
-                                </div>
-                                <div class="col-md-4">
-                                    <label class="form-label" for="qaHelperDraftPriority" data-i18n="testCase.priority">優先級</label>
-                                    <select class="form-select" id="qaHelperDraftPriority">
-                                        <option value="High">High</option>
-                                        <option value="Medium">Medium</option>
-                                        <option value="Low">Low</option>
-                                    </select>
-                                </div>
-                                <div class="col-12">
-                                    <label class="form-label" for="qaHelperDraftPreconditions" data-i18n="qaAiHelper.preconditions">Preconditions</label>
-                                    <textarea class="form-control qa-helper-textarea-sm" id="qaHelperDraftPreconditions"></textarea>
-                                </div>
-                                <div class="col-12">
-                                    <label class="form-label" for="qaHelperDraftSteps" data-i18n="qaAiHelper.steps">Steps</label>
-                                    <textarea class="form-control qa-helper-textarea" id="qaHelperDraftSteps"></textarea>
-                                </div>
-                                <div class="col-12">
-                                    <label class="form-label" for="qaHelperDraftExpected" data-i18n="qaAiHelper.expectedResults">Expected Results</label>
-                                    <textarea class="form-control qa-helper-textarea-sm" id="qaHelperDraftExpected"></textarea>
-                                </div>
-                                <div class="col-12 d-flex justify-content-end">
-                                    <button type="button" class="btn btn-primary btn-sm" id="qaHelperSaveDraftBtn">
-                                        <i class="fas fa-floppy-disk me-1"></i><span data-i18n="qaAiHelper.saveDraft">儲存 Draft</span>
+                                <div class="d-grid gap-2">
+                                    <button type="button" class="btn btn-outline-primary btn-sm" id="qaHelperIncludeSectionSeedsBtn">
+                                        <i class="fas fa-check-double me-1"></i><span data-i18n="qaAiHelper.includeSectionSeeds">本 section 全部納入</span>
+                                    </button>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" id="qaHelperExcludeSectionSeedsBtn">
+                                        <i class="fas fa-ban me-1"></i><span data-i18n="qaAiHelper.excludeSectionSeeds">本 section 全部排除</span>
                                     </button>
                                 </div>
                             </div>
-                            <div class="qa-helper-trace-box mt-3" id="qaHelperDraftTrace"></div>
                         </div>
+                    </div>
+                </div>
+                <div class="card-footer qa-helper-action-bar">
+                    <div class="qa-helper-action-bar-meta" id="qaHelperSeedReviewFooterStatus"></div>
+                    <div class="d-flex flex-wrap gap-2">
+                        <button type="button" class="btn btn-secondary btn-sm" id="qaHelperBackToRequirementPlanBtn">
+                            <i class="fas fa-arrow-left me-1"></i><span data-i18n="qaAiHelper.backToRequirementPlan">返回需求驗證項目</span>
+                        </button>
+                        <button type="button" class="btn btn-primary btn-sm" id="qaHelperRefineSeedsBtn">
+                            <i class="fas fa-comment-dots me-1"></i><span data-i18n="qaAiHelper.refineSeeds">依註解更新種子</span>
+                        </button>
+                        <button type="button" class="btn btn-warning btn-sm" id="qaHelperLockSeedsBtn">
+                            <i class="fas fa-lock me-1"></i><span data-i18n="qaAiHelper.lockSeeds">鎖定 Seeds</span>
+                        </button>
+                        <button type="button" class="btn btn-secondary btn-sm" id="qaHelperUnlockSeedsBtn">
+                            <i class="fas fa-lock-open me-1"></i><span data-i18n="qaAiHelper.unlockSeeds">解開 Seed 鎖定</span>
+                        </button>
+                        <button type="button" class="btn btn-success btn-sm" id="qaHelperStartTestcaseReviewBtn">
+                            <i class="fas fa-list-check me-1"></i><span data-i18n="qaAiHelper.startTestcaseGeneration">產生 Test Case</span>
+                        </button>
+                        <button type="button" class="btn btn-outline-success btn-sm d-none" id="qaHelperRegenerateTestcasesBtn">
+                            <i class="fas fa-list-check me-1"></i><span data-i18n="qaAiHelper.regenerateTestcases">重新產生 Test Case</span>
+                        </button>
+                        <button type="button" class="btn btn-success btn-sm d-none" id="qaHelperProceedToTestcaseReviewBtn">
+                            <i class="fas fa-arrow-right me-1"></i><span data-i18n="qaAiHelper.proceedToTestcaseReview">下一步（沿用既有 Test Case）</span>
+                        </button>
                     </div>
                 </div>
             </div>
 
-            <div class="alert alert-info mt-3 d-none" id="qaHelperFeedbackBox"></div>
+            <div class="card qa-helper-card qa-helper-step-card qa-helper-phase-panel d-none" data-phase-panel="draft" id="qaHelperTestcaseReviewCard">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="fw-semibold" data-i18n="qaAiHelper.screen5Title">Test Case 確認</div>
+                        <small class="text-muted" data-i18n="qaAiHelper.screen5Hint">只允許編修 testcase body 與勾選提交，不允許新增或刪除 testcase draft。</small>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3 align-items-start">
+                        <div class="col-xl-3 col-lg-4">
+                            <div class="qa-helper-section-rail p-3 h-100">
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <div>
+                                        <div class="fw-semibold" data-i18n="qaAiHelper.testcaseSectionRailTitle">Section 篩選</div>
+                                        <small class="text-muted" data-i18n="qaAiHelper.testcaseSectionRailHint">依 section 檢視 testcase drafts</small>
+                                    </div>
+                                    <span class="badge text-bg-light" id="qaHelperTestcaseSectionRailCount">0</span>
+                                </div>
+                                <div class="qa-helper-section-list" id="qaHelperTestcaseSectionRail"></div>
+                            </div>
+                        </div>
+                        <div class="col-xl-6 col-lg-8">
+                            <div class="qa-helper-seed-list" id="qaHelperTestcaseCardList"></div>
+                        </div>
+                        <div class="col-xl-3">
+                            <div class="qa-helper-side-card">
+                                <div class="fw-semibold mb-2" data-i18n="qaAiHelper.testcaseSummaryTitle">Testcase 摘要</div>
+                                <div class="qa-helper-summary-list" id="qaHelperTestcaseReviewSummary"></div>
+                                <div class="d-grid gap-2 mt-3">
+                                    <button type="button" class="btn btn-outline-primary btn-sm" id="qaHelperSelectSectionDraftsBtn">
+                                        <i class="fas fa-check-double me-1"></i><span data-i18n="qaAiHelper.selectSectionDrafts">本 section 全選</span>
+                                    </button>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" id="qaHelperClearSectionDraftsBtn">
+                                        <i class="fas fa-ban me-1"></i><span data-i18n="qaAiHelper.clearSectionDrafts">本 section 清除選取</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer qa-helper-action-bar">
+                    <div class="qa-helper-action-bar-meta small text-muted" id="qaHelperTestcaseActionStatus" data-i18n="qaAiHelper.testcaseDraftPending">請至少勾選一筆通過驗證的 testcase 後，才能進入下一步。</div>
+                    <div class="d-flex gap-2 flex-wrap justify-content-end">
+                        <button type="button" class="btn btn-secondary btn-sm" id="qaHelperBackToSeedReviewBtn">
+                            <i class="fas fa-arrow-left me-1"></i><span data-i18n="qaAiHelper.backToSeedReview">返回種子確認</span>
+                        </button>
+                        <button type="button" class="btn btn-primary btn-sm" id="qaHelperSelectTargetSetBtn">
+                            <i class="fas fa-arrow-right me-1"></i><span data-i18n="qaAiHelper.selectTargetSet">選擇目標 Test Case Set</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card qa-helper-card qa-helper-step-card qa-helper-phase-panel d-none" data-phase-panel="draft" id="qaHelperSetSelectionCard">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="fw-semibold" data-i18n="qaAiHelper.screen6Title">Test Case Set 選擇</div>
+                        <small class="text-muted" data-i18n="qaAiHelper.screen6Hint">選擇既有 Test Case Set，或建立新的 Test Case Set 後提交勾選 testcase。</small>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-xl-6">
+                            <div class="qa-helper-side-card h-100">
+                                <div class="form-check mb-3">
+                                    <input class="form-check-input" type="radio" name="qaHelperTargetSetMode" id="qaHelperExistingSetMode" value="existing" checked>
+                                    <label class="form-check-label fw-semibold" for="qaHelperExistingSetMode" data-i18n="qaAiHelper.useExistingTargetSet">使用既有 Test Case Set</label>
+                                </div>
+                                <div class="qa-helper-target-set-list" id="qaHelperExistingSetList"></div>
+                            </div>
+                        </div>
+                        <div class="col-xl-6">
+                            <div class="qa-helper-side-card h-100">
+                                <div class="form-check mb-3">
+                                    <input class="form-check-input" type="radio" name="qaHelperTargetSetMode" id="qaHelperNewSetMode" value="new">
+                                    <label class="form-check-label fw-semibold" for="qaHelperNewSetMode" data-i18n="qaAiHelper.createNewTargetSet">建立新的 Test Case Set</label>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label" for="qaHelperNewTargetSetName" data-i18n="qaAiHelper.newTargetSetName">Set 名稱</label>
+                                    <input type="text" class="form-control" id="qaHelperNewTargetSetName" maxlength="100">
+                                </div>
+                                <div class="mb-0">
+                                    <label class="form-label" for="qaHelperNewTargetSetDescription" data-i18n="qaAiHelper.newTargetSetDescription">描述</label>
+                                    <textarea class="form-control qa-helper-textarea-sm" id="qaHelperNewTargetSetDescription"></textarea>
+                                </div>
+                                <div class="qa-helper-field-help mt-3" id="qaHelperNewSetValidation"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-footer qa-helper-action-bar">
+                    <div class="qa-helper-action-bar-meta small text-muted" data-i18n="qaAiHelper.screen6FooterHint">同一時間只能選擇一個目標 set；新建模式至少需要填寫名稱。</div>
+                    <div class="d-flex gap-2 flex-wrap justify-content-end">
+                        <button type="button" class="btn btn-secondary btn-sm" id="qaHelperBackToTestcaseReviewBtn">
+                            <i class="fas fa-arrow-left me-1"></i><span data-i18n="qaAiHelper.backToTestcaseReview">返回 Test Case 確認</span>
+                        </button>
+                        <button type="button" class="btn btn-primary btn-sm" id="qaHelperCommitSelectedBtn">
+                            <i class="fas fa-upload me-1"></i><span data-i18n="qaAiHelper.commitSelectedTestcases">確認新增</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card qa-helper-card qa-helper-step-card qa-helper-phase-panel d-none" data-phase-panel="draft" id="qaHelperCommitResultCard">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <div>
+                        <div class="fw-semibold" data-i18n="qaAiHelper.screen7Title">新增結果</div>
+                        <small class="text-muted" data-i18n="qaAiHelper.screen7Hint">確認 created / failed / skipped 摘要，並開啟目標 Test Case Set。</small>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="qa-helper-side-card mb-3" id="qaHelperCommitResultSummary"></div>
+                    <div class="qa-helper-side-card" id="qaHelperCommitResultDetails"></div>
+                </div>
+                <div class="card-footer qa-helper-action-bar">
+                    <div class="qa-helper-action-bar-meta small text-muted" data-i18n="qaAiHelper.screen7FooterHint">畫面七不提供 destructive restart；若需再做一輪，請開始新流程。</div>
+                    <div class="d-flex gap-2 flex-wrap justify-content-end">
+                        <button type="button" class="btn btn-primary btn-sm" id="qaHelperOpenTargetSetBtn">
+                            <i class="fas fa-arrow-up-right-from-square me-1"></i><span data-i18n="qaAiHelper.openTargetSet">開啟目標 Test Case Set</span>
+                        </button>
+                        <a href="/qa-ai-helper{% if team_id %}?team_id={{ team_id }}{% endif %}" class="btn btn-secondary btn-sm">
+                            <i class="fas fa-plus me-1"></i><span data-i18n="qaAiHelper.startNewFlow">開始新流程</span>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="qaHelperSessionManagerModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div>
+                    <h5 class="modal-title" data-i18n="qaAiHelper.sessionManager">Session 管理</h5>
+                    <small class="text-muted" data-i18n="qaAiHelper.sessionManagerHint">檢視既有 Session，挑選恢復、刪除單筆或批次清除。</small>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-3">
+                    <div class="col-lg-5">
+                        <div class="qa-helper-side-card h-100">
+                            <div class="d-flex justify-content-between align-items-center gap-2 mb-3 flex-wrap">
+                                <div>
+                                    <div class="fw-semibold" data-i18n="qaAiHelper.savedSessions">既有 Sessions</div>
+                                    <small class="text-muted" id="qaHelperSessionManagerSelectionSummary" data-i18n="qaAiHelper.sessionManagerNoSelection">尚未選取項目</small>
+                                </div>
+                                <div class="d-flex gap-2 flex-wrap">
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" id="qaHelperSessionManagerSelectAllBtn">
+                                        <i class="fas fa-check-double me-1"></i><span data-i18n="qaAiHelper.sessionManagerSelectAll">全選</span>
+                                    </button>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" id="qaHelperSessionManagerRefreshBtn">
+                                        <i class="fas fa-rotate me-1"></i><span data-i18n="common.refresh">重新整理</span>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="list-group qa-helper-session-manager-list" id="qaHelperSessionManagerList"></div>
+                        </div>
+                    </div>
+                    <div class="col-lg-7">
+                        <div class="qa-helper-side-card h-100">
+                            <div id="qaHelperSessionManagerDetailEmpty" class="qa-helper-empty" data-i18n="qaAiHelper.sessionManagerDetailEmpty">請先選擇左側 Session</div>
+                            <div id="qaHelperSessionManagerDetail" class="d-none">
+                                <dl class="qa-helper-kv qa-helper-kv-compact mb-3">
+                                    <dt data-i18n="qaAiHelper.sessionId">Session ID</dt>
+                                    <dd class="qa-helper-mono" id="qaHelperSessionManagerDetailId">-</dd>
+                                    <dt data-i18n="qaAiHelper.ticketNumber">Ticket Number</dt>
+                                    <dd id="qaHelperSessionManagerDetailTicket">-</dd>
+                                    <dt data-i18n="qaAiHelper.screenLabel">目前步驟</dt>
+                                    <dd id="qaHelperSessionManagerDetailScreen">-</dd>
+                                    <dt data-i18n="common.status">狀態</dt>
+                                    <dd id="qaHelperSessionManagerDetailStatus">-</dd>
+                                    <dt data-i18n="common.createdAt">建立時間</dt>
+                                    <dd id="qaHelperSessionManagerDetailCreatedAt">-</dd>
+                                    <dt data-i18n="common.updatedAt">更新時間</dt>
+                                    <dd id="qaHelperSessionManagerDetailUpdatedAt">-</dd>
+                                </dl>
+                                <div class="d-flex gap-2 flex-wrap justify-content-end">
+                                    <button type="button" class="btn btn-outline-danger btn-sm" id="qaHelperSessionManagerDeleteOneBtn">
+                                        <i class="fas fa-trash me-1"></i><span data-i18n="common.delete">刪除</span>
+                                    </button>
+                                    <button type="button" class="btn btn-primary btn-sm" id="qaHelperSessionManagerResumeBtn">
+                                        <i class="fas fa-arrow-right me-1"></i><span data-i18n="qaAiHelper.resumeSession">恢復 Session</span>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-danger btn-sm" id="qaHelperSessionManagerDeleteSelectedBtn">
+                    <i class="fas fa-trash-can me-1"></i><span data-i18n="qaAiHelper.sessionManagerDeleteSelected">刪除勾選</span>
+                </button>
+                <button type="button" class="btn btn-danger btn-sm" id="qaHelperSessionManagerClearBtn">
+                    <i class="fas fa-broom me-1"></i><span data-i18n="qaAiHelper.sessionManagerClearAll">清空全部 Sessions</span>
+                </button>
+                <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">
+                    <span data-i18n="common.close">關閉</span>
+                </button>
+            </div>
         </div>
     </div>
 </div>

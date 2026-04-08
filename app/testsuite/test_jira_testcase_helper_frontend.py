@@ -20,11 +20,16 @@ def test_rewritten_helper_entrypoints_replace_legacy_modal_in_templates():
 
     assert 'id="openQaAiHelperFromSetListBtn"' in set_list_html
     assert 'data-i18n="qaAiHelper.entryButton"' in set_list_html
+    assert "新版 QA AI Helper" not in set_list_html
     assert "_partials/ai_test_case_helper_modal.html" not in set_list_html
     assert "/static/js/test-case-management/ai-helper.js" not in set_list_html
 
     assert 'id="openQaAiHelperPageBtn"' in management_html
-    assert 'href="/qa-ai-helper{% if set_id %}?set_id={{ set_id }}{% endif %}"' in management_html
+    assert "新版 QA AI Helper" not in management_html
+    assert (
+        'href="/qa-ai-helper{% if set_id %}?set_id={{ set_id }}{% endif %}"'
+        in management_html
+    )
     assert "_partials/ai_test_case_helper_modal.html" not in management_html
     assert "/static/js/test-case-management/ai-helper.js" not in management_html
     assert "window.__TCM_HELPER_MODE__" not in management_html
@@ -32,17 +37,26 @@ def test_rewritten_helper_entrypoints_replace_legacy_modal_in_templates():
     assert 'id="qaAiHelperPage"' in helper_page_html
     assert "/static/css/qa-ai-helper.css" in helper_page_html
     assert "/static/js/qa-ai-helper/main.js" in helper_page_html
-    assert 'id="qaHelperPhaseRail"' in helper_page_html
-    assert 'data-phase-target="fetch"' in helper_page_html
-    assert 'data-phase-target="canonical"' in helper_page_html
-    assert 'data-phase-target="plan"' in helper_page_html
-    assert 'data-phase-target="draft"' in helper_page_html
-    assert 'data-phase-panel="fetch"' in helper_page_html
-    assert 'data-phase-panel="canonical"' in helper_page_html
-    assert 'data-phase-panel="plan"' in helper_page_html
-    assert 'data-phase-panel="draft"' in helper_page_html
-    assert 'id="qaHelperPlanTable"' in helper_page_html
-    assert 'id="qaHelperDraftList"' in helper_page_html
+    assert "QA AI Helper - TCRT" in helper_page_html
+    assert 'id="qaHelperLoadTicketCard"' in helper_page_html
+    assert 'id="qaHelperTicketConfirmationCard"' in helper_page_html
+    assert 'id="qaHelperRequirementPlanCard"' in helper_page_html
+    assert 'id="qaHelperSeedReviewCard"' in helper_page_html
+    assert 'id="qaHelperTestcaseReviewCard"' in helper_page_html
+    assert 'id="qaHelperSetSelectionCard"' in helper_page_html
+    assert 'id="qaHelperCommitResultCard"' in helper_page_html
+    assert 'id="qaHelperSessionManagerBtn"' in helper_page_html
+    assert 'id="qaHelperSessionManagerModal"' in helper_page_html
+    assert 'id="qaHelperSessionManagerList"' in helper_page_html
+    assert 'id="qaHelperBackToTicketConfirmationBtn"' in helper_page_html
+    assert 'id="qaHelperBackToRequirementPlanBtn"' in helper_page_html
+    assert 'id="qaHelperBackToSeedReviewBtn"' in helper_page_html
+    assert "qa-helper-step-card" in helper_page_html
+    assert 'id="qaHelperPhaseRail"' not in helper_page_html
+    assert 'id="qaHelperPlanTable"' not in helper_page_html
+    assert 'id="qaHelperDraftList"' not in helper_page_html
+    assert 'id="qaHelperCanonicalLanguage"' not in helper_page_html
+    assert 'data-phase-target="fetch"' not in helper_page_html
 
 
 def test_rewritten_helper_button_visible_when_config_enable_true():
@@ -73,7 +87,7 @@ def test_rewritten_helper_button_hidden_when_config_enable_false():
         settings.ai.qa_ai_helper.enable = original
 
 
-def test_rewritten_helper_frontend_redirects_to_dedicated_page():
+def test_rewritten_helper_frontend_redirects_to_v3_page_and_workflow_markers():
     set_list_script = Path("app/static/js/test-case-set-list/main.js").read_text(
         encoding="utf-8"
     )
@@ -82,35 +96,47 @@ def test_rewritten_helper_frontend_redirects_to_dedicated_page():
     )
 
     assert "openQaAiHelperFromSetListBtn" in set_list_script
-    assert "window.location.href = `/qa-ai-helper?team_id=${encodeURIComponent(teamId)}`;" in set_list_script
+    assert (
+        "window.location.href = `/qa-ai-helper?team_id=${encodeURIComponent(teamId)}`;"
+        in set_list_script
+    )
     assert "AiTestCaseHelper.openModal" not in set_list_script
 
     required_markers = [
         "qaAiHelperPage",
         "qaHelperCreateSessionBtn",
-        "qaHelperFetchTicketBtn",
-        "qaHelperSaveCanonicalBtn",
-        "qaHelperPlanBtn",
-        "qaHelperApplyOverridesBtn",
-        "qaHelperApplyDeltaBtn",
-        "qaHelperPrevPhaseBtn",
-        "qaHelperNextPhaseBtn",
-        "qaHelperLockBtn",
-        "qaHelperGenerateBtn",
-        "qaHelperSaveDraftBtn",
-        "qaHelperCommitBtn",
-        "qaHelperDiscardDraftBtn",
+        "qaHelperProceedVerificationBtn",
+        "qaHelperSaveRequirementPlanBtn",
+        "qaHelperLockRequirementPlanBtn",
+        "qaHelperStartSeedReviewBtn",
+        "qaHelperRefineSeedsBtn",
+        "qaHelperLockSeedsBtn",
+        "qaHelperStartTestcaseReviewBtn",
+        "qaHelperSelectTargetSetBtn",
+        "qaHelperCommitSelectedBtn",
+        "qaHelperSessionManagerBtn",
+        "qaHelperSessionManagerResumeBtn",
+        "qaHelperSessionManagerDeleteSelectedBtn",
+        "qaHelperSessionManagerClearBtn",
+        "qaHelperBackToTicketConfirmationBtn",
+        "qaHelperBackToRequirementPlanBtn",
+        "qaHelperBackToSeedReviewBtn",
         "/qa-ai-helper/sessions",
-        "/planning-overrides",
-        "/requirement-deltas",
-        "/generate",
-        "/discard",
+        "/seed-sets",
+        "/testcase-draft-sets",
+        "/set-selection",
         "/commit",
-        "activePhaseView",
-        "renderPhaseWorkflow",
+        "window.bootstrap.Modal",
+        "combineVerificationTargetAndCondition",
+        "normalizeRequirementPlanForEditor",
+        "qa-helper-goal-entry-top",
+        "qa-helper-goal-entry-meta-top",
+        "qa-helper-goal-entry-body-tight",
     ]
     for marker in required_markers:
         assert marker in helper_script
+    assert "data-plan-add-condition-index" not in helper_script
+    assert "data-plan-remove-condition-item" not in helper_script
 
 
 def test_rewritten_helper_i18n_keys_exist_in_all_locales():
@@ -123,21 +149,24 @@ def test_rewritten_helper_i18n_keys_exist_in_all_locales():
     required_keys = [
         "pageTitle",
         "entryButton",
-        "sessionCardTitle",
-        "canonicalTitle",
-        "planTitle",
-        "draftTitle",
-        "workflowTitle",
-        "phaseFetch",
-        "phaseCanonical",
-        "phasePlan",
-        "phaseDraft",
-        "createSession",
-        "fetchTicket",
-        "planAction",
-        "lockAction",
-        "generateDrafts",
-        "commitDrafts",
+        "screen1Title",
+        "screen2Title",
+        "screen3Title",
+        "screen4Title",
+        "screen5Title",
+        "screen6Title",
+        "screen7Title",
+        "loadTicketContent",
+        "lockRequirementPlan",
+        "startSeedGeneration",
+        "lockSeeds",
+        "startTestcaseGeneration",
+        "commitSelectedTestcases",
+        "sessionManager",
+        "sessionManagerSummaryEmpty",
+        "backToTicketConfirmation",
+        "backToRequirementPlan",
+        "backToSeedReview",
     ]
 
     for file_path in locale_files:
@@ -145,20 +174,26 @@ def test_rewritten_helper_i18n_keys_exist_in_all_locales():
         qa_helper = payload.get("qaAiHelper", {})
         for key in required_keys:
             assert qa_helper.get(key), f"{file_path} missing qaAiHelper.{key}"
+        assert qa_helper.get("pageTitle") == "QA AI Helper"
+        assert qa_helper.get("entryButton") == "QA AI Helper"
 
 
-def test_rewritten_helper_styles_follow_dedicated_page_structure():
+def test_rewritten_helper_styles_follow_v3_workspace_structure():
     css = Path("app/static/css/qa-ai-helper.css").read_text(encoding="utf-8")
     required_markers = [
-        ".qa-helper-card",
-        ".qa-helper-table-wrap",
-        ".qa-helper-plan-table",
-        ".qa-helper-draft-list",
-        ".qa-helper-phase-rail",
-        ".qa-helper-phase-step",
-        ".qa-helper-phase-toolbar",
-        ".qa-helper-pill",
-        ".qa-helper-kv",
+        ".qa-helper-step-card",
+        ".qa-helper-markdown-card",
+        ".qa-helper-section-rail",
+        ".qa-helper-editor-shell",
+        ".qa-helper-seed-list",
+        ".qa-helper-action-bar",
+        ".qa-helper-reference-card",
+        ".qa-helper-item-section-head",
+        ".qa-helper-item-section-action",
+        ".qa-helper-session-manager-trigger",
+        ".qa-helper-session-manager-list",
+        ".qa-helper-session-manager-item",
     ]
     for marker in required_markers:
         assert marker in css
+    assert ".qa-helper-step-card > .card-body" in css

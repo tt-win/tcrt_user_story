@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -11,6 +12,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import database_init
 from app import db_migrations
+
+
+def _load_main_migration_module(file_name: str, module_name: str):
+    migration_path = Path(__file__).resolve().parents[2] / "alembic" / "versions" / file_name
+    spec = importlib.util.spec_from_file_location(module_name, migration_path)
+    module = importlib.util.module_from_spec(spec)
+    assert spec and spec.loader
+    sys.modules[module_name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 class _FakeResult:
@@ -47,9 +58,7 @@ class _FakeEngine:
         quote_char = '"' if dialect_name == "postgresql" else "`"
         self.dialect = SimpleNamespace(
             name=dialect_name,
-            identifier_preparer=SimpleNamespace(
-                quote=lambda value: f"{quote_char}{value}{quote_char}"
-            ),
+            identifier_preparer=SimpleNamespace(quote=lambda value: f"{quote_char}{value}{quote_char}"),
         )
         self._connection = connection
         self.disposed = False
@@ -72,9 +81,7 @@ def test_create_database_if_missing_for_postgres(monkeypatch) -> None:
 
     monkeypatch.setattr(db_migrations, "create_engine", fake_create_engine)
 
-    created = db_migrations.create_database_if_missing(
-        "postgresql+asyncpg://tcrt:tcrt@127.0.0.1:5432/tcrt_main"
-    )
+    created = db_migrations.create_database_if_missing("postgresql+asyncpg://tcrt:tcrt@127.0.0.1:5432/tcrt_main")
 
     assert created is True
     assert captured["url"].render_as_string(hide_password=False) == (
@@ -105,18 +112,13 @@ def test_create_database_if_missing_for_mysql(monkeypatch) -> None:
 
     monkeypatch.setattr(db_migrations, "create_engine", fake_create_engine)
 
-    created = db_migrations.create_database_if_missing(
-        "mysql+asyncmy://tcrt:tcrt@127.0.0.1:3306/tcrt_main"
-    )
+    created = db_migrations.create_database_if_missing("mysql+asyncmy://tcrt:tcrt@127.0.0.1:3306/tcrt_main")
 
     assert created is True
-    assert captured["url"].render_as_string(hide_password=False) == (
-        "mysql+pymysql://tcrt:tcrt@127.0.0.1:3306/mysql"
-    )
+    assert captured["url"].render_as_string(hide_password=False) == ("mysql+pymysql://tcrt:tcrt@127.0.0.1:3306/mysql")
     assert connection.statements == [
         (
-            "SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA "
-            "WHERE SCHEMA_NAME = :database_name",
+            "SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = :database_name",
             {"database_name": "tcrt_main"},
         ),
         ("CREATE DATABASE `tcrt_main`", None),
@@ -158,10 +160,7 @@ def test_bootstrap_target_creates_database_before_upgrade(monkeypatch) -> None:
     monkeypatch.setattr(
         database_init,
         "create_database_if_missing",
-        lambda url: call_order.append(
-            f"create:{url.render_as_string(hide_password=False)}"
-        )
-        or True,
+        lambda url: call_order.append(f"create:{url.render_as_string(hide_password=False)}") or True,
     )
     monkeypatch.setitem(
         database_init.TARGET_UPGRADERS,
@@ -251,3 +250,52 @@ def test_verify_mysql_mediumtext_defaults_accepts_mediumtext_columns(monkeypatch
 
     assert ok is True
     assert violations == []
+
+
+def test_qa_ai_helper_v3_text_followup_migration_alters_all_mysql_columns(monkeypatch) -> None:
+    module = _load_main_migration_module(
+        "b2a4f6c8d0e1_widen_qa_ai_helper_v3_text_columns_to_mediumtext.py",
+        "alembic_b2a4f6c8d0e1",
+    )
+    alter_calls: list[tuple[str, str, dict[str, object]]] = []
+
+    monkeypatch.setattr(
+        module,
+        "op",
+        SimpleNamespace(
+            get_bind=lambda: SimpleNamespace(dialect=SimpleNamespace(name="mysql")),
+            alter_column=lambda table_name, column_name, **kwargs: alter_calls.append(
+                (table_name, column_name, kwargs)
+            ),
+        ),
+    )
+
+    module.upgrade()
+
+    assert [
+        (table_name, column_name, kwargs["existing_nullable"]) for table_name, column_name, kwargs in alter_calls
+    ] == list(module.QA_AI_HELPER_V3_TEXT_COLUMNS)
+    assert all(isinstance(kwargs["existing_type"], sqltypes.Text) for _, _, kwargs in alter_calls)
+    assert all(kwargs["type_"].__class__.__name__.upper() == "MEDIUMTEXT" for _, _, kwargs in alter_calls)
+
+
+def test_qa_ai_helper_v3_text_followup_migration_skips_non_mysql(monkeypatch) -> None:
+    module = _load_main_migration_module(
+        "b2a4f6c8d0e1_widen_qa_ai_helper_v3_text_columns_to_mediumtext.py",
+        "alembic_b2a4f6c8d0e1_non_mysql",
+    )
+    alter_calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+
+    monkeypatch.setattr(
+        module,
+        "op",
+        SimpleNamespace(
+            get_bind=lambda: SimpleNamespace(dialect=SimpleNamespace(name="sqlite")),
+            alter_column=lambda *args, **kwargs: alter_calls.append((args, kwargs)),
+        ),
+    )
+
+    module.upgrade()
+    module.downgrade()
+
+    assert alter_calls == []

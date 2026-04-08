@@ -847,3 +847,352 @@ def test_run_job_copies_qa_ai_helper_tables_with_reflection_compatible_types(tmp
     finally:
         source_engine.dispose()
         target_engine.dispose()
+
+
+def test_run_job_copies_qa_ai_helper_v3_tables_with_reflection_compatible_types(
+    tmp_path: Path,
+) -> None:
+    module = _load_script_module()
+    source_path = tmp_path / "source-qa-helper-v3.db"
+    target_path = tmp_path / "target-qa-helper-v3.db"
+    source_engine = create_engine(_sqlite_url(source_path), future=True)
+    target_engine = create_engine(_sqlite_url(target_path), future=True)
+
+    ddl_statements = [
+        (
+            "qa_ai_helper_sessions",
+            "CREATE TABLE qa_ai_helper_sessions ("
+            "id INTEGER PRIMARY KEY, "
+            "team_id INTEGER NOT NULL, "
+            "ticket_key TEXT, "
+            "current_screen TEXT, "
+            "status TEXT NOT NULL"
+            ")",
+        ),
+        (
+            "qa_ai_helper_ticket_snapshots",
+            "CREATE TABLE qa_ai_helper_ticket_snapshots ("
+            "id INTEGER PRIMARY KEY, "
+            "session_id INTEGER NOT NULL, "
+            "status TEXT NOT NULL, "
+            "raw_ticket_markdown TEXT NOT NULL, "
+            "structured_requirement_json TEXT NOT NULL, "
+            "validation_summary_json TEXT NOT NULL, "
+            "FOREIGN KEY(session_id) REFERENCES qa_ai_helper_sessions(id)"
+            ")",
+        ),
+        (
+            "qa_ai_helper_requirement_plans",
+            "CREATE TABLE qa_ai_helper_requirement_plans ("
+            "id INTEGER PRIMARY KEY, "
+            "session_id INTEGER NOT NULL, "
+            "ticket_snapshot_id INTEGER NOT NULL, "
+            "revision_number INTEGER NOT NULL, "
+            "status TEXT NOT NULL, "
+            "section_start_number TEXT NOT NULL, "
+            "criteria_reference_json TEXT NOT NULL, "
+            "technical_reference_json TEXT, "
+            "autosave_summary_json TEXT, "
+            "FOREIGN KEY(session_id) REFERENCES qa_ai_helper_sessions(id), "
+            "FOREIGN KEY(ticket_snapshot_id) REFERENCES qa_ai_helper_ticket_snapshots(id)"
+            ")",
+        ),
+        (
+            "qa_ai_helper_seed_sets",
+            "CREATE TABLE qa_ai_helper_seed_sets ("
+            "id INTEGER PRIMARY KEY, "
+            "session_id INTEGER NOT NULL, "
+            "requirement_plan_id INTEGER NOT NULL, "
+            "status TEXT NOT NULL, "
+            "generation_round INTEGER NOT NULL, "
+            "source_type TEXT NOT NULL, "
+            "model_name TEXT, "
+            "generated_seed_count INTEGER NOT NULL, "
+            "included_seed_count INTEGER NOT NULL, "
+            "adoption_rate REAL NOT NULL, "
+            "FOREIGN KEY(session_id) REFERENCES qa_ai_helper_sessions(id), "
+            "FOREIGN KEY(requirement_plan_id) REFERENCES qa_ai_helper_requirement_plans(id)"
+            ")",
+        ),
+        (
+            "qa_ai_helper_seed_items",
+            "CREATE TABLE qa_ai_helper_seed_items ("
+            "id INTEGER PRIMARY KEY, "
+            "seed_set_id INTEGER NOT NULL, "
+            "seed_reference_key TEXT NOT NULL, "
+            "coverage_tags_json TEXT NOT NULL, "
+            "seed_summary TEXT NOT NULL, "
+            "seed_body_json TEXT NOT NULL, "
+            "included_for_testcase_generation INTEGER NOT NULL, "
+            "FOREIGN KEY(seed_set_id) REFERENCES qa_ai_helper_seed_sets(id)"
+            ")",
+        ),
+        (
+            "qa_ai_helper_testcase_draft_sets",
+            "CREATE TABLE qa_ai_helper_testcase_draft_sets ("
+            "id INTEGER PRIMARY KEY, "
+            "session_id INTEGER NOT NULL, "
+            "seed_set_id INTEGER NOT NULL, "
+            "status TEXT NOT NULL, "
+            "model_name TEXT, "
+            "generated_testcase_count INTEGER NOT NULL, "
+            "selected_for_commit_count INTEGER NOT NULL, "
+            "adoption_rate REAL NOT NULL, "
+            "FOREIGN KEY(session_id) REFERENCES qa_ai_helper_sessions(id), "
+            "FOREIGN KEY(seed_set_id) REFERENCES qa_ai_helper_seed_sets(id)"
+            ")",
+        ),
+        (
+            "qa_ai_helper_testcase_drafts",
+            "CREATE TABLE qa_ai_helper_testcase_drafts ("
+            "id INTEGER PRIMARY KEY, "
+            "testcase_draft_set_id INTEGER NOT NULL, "
+            "seed_item_id INTEGER NOT NULL, "
+            "seed_reference_key TEXT NOT NULL, "
+            "assigned_testcase_id TEXT, "
+            "body_json TEXT NOT NULL, "
+            "selected_for_commit INTEGER NOT NULL, "
+            "FOREIGN KEY(testcase_draft_set_id) REFERENCES qa_ai_helper_testcase_draft_sets(id), "
+            "FOREIGN KEY(seed_item_id) REFERENCES qa_ai_helper_seed_items(id)"
+            ")",
+        ),
+    ]
+
+    try:
+        for engine in (source_engine, target_engine):
+            with engine.begin() as connection:
+                connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+                for _, ddl in ddl_statements:
+                    connection.execute(text(ddl))
+
+        with source_engine.begin() as connection:
+            connection.execute(
+                text(
+                    "INSERT INTO qa_ai_helper_sessions "
+                    "(id, team_id, ticket_key, current_screen, status) "
+                    "VALUES (1, 7, 'TCG-140001', 'seed_review', 'active')"
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO qa_ai_helper_ticket_snapshots "
+                    "(id, session_id, status, raw_ticket_markdown, structured_requirement_json, validation_summary_json) "
+                    "VALUES (11, 1, 'validated', :markdown, :structured_requirement_json, :validation_summary_json)"
+                ),
+                {
+                    "markdown": "# Ticket",
+                    "structured_requirement_json": '{"Acceptance Criteria":[]}',
+                    "validation_summary_json": '{"is_valid":true}',
+                },
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO qa_ai_helper_requirement_plans "
+                    "(id, session_id, ticket_snapshot_id, revision_number, status, section_start_number, criteria_reference_json, technical_reference_json, autosave_summary_json) "
+                    "VALUES (21, 1, 11, 1, 'locked', '010', '{}', '{}', '{\"status\":\"saved\"}')"
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO qa_ai_helper_seed_sets "
+                    "(id, session_id, requirement_plan_id, status, generation_round, source_type, model_name, generated_seed_count, included_seed_count, adoption_rate) "
+                    "VALUES (31, 1, 21, 'locked', 1, 'initial', 'seed-model', 1, 1, 1.0)"
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO qa_ai_helper_seed_items "
+                    "(id, seed_set_id, seed_reference_key, coverage_tags_json, seed_summary, seed_body_json, included_for_testcase_generation) "
+                    "VALUES (41, 31, 'seed-1', '[\"Happy Path\"]', 'summary', '{\"body\":\"seed\"}', 1)"
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO qa_ai_helper_testcase_draft_sets "
+                    "(id, session_id, seed_set_id, status, model_name, generated_testcase_count, selected_for_commit_count, adoption_rate) "
+                    "VALUES (51, 1, 31, 'reviewing', 'testcase-model', 1, 1, 1.0)"
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO qa_ai_helper_testcase_drafts "
+                    "(id, testcase_draft_set_id, seed_item_id, seed_reference_key, assigned_testcase_id, body_json, selected_for_commit) "
+                    "VALUES (61, 51, 41, 'seed-1', 'TCG-140001.010.010', '{\"title\":\"Draft\"}', 1)"
+                )
+            )
+
+        job = module.TransferJob(
+            name="qa-helper-v3",
+            source_url=_sqlite_url(source_path),
+            target_url=_sqlite_url(target_path),
+            include_tables=[table_name for table_name, _ in ddl_statements],
+        )
+        summary = module.run_job(job, module.Logger(quiet=True))
+
+        assert summary["status"] == "completed"
+        with target_engine.connect() as connection:
+            counts = {
+                table_name: connection.execute(text(f"SELECT COUNT(*) FROM {table_name}")).scalar_one()
+                for table_name, _ in ddl_statements
+            }
+            draft_body = connection.execute(
+                text("SELECT body_json FROM qa_ai_helper_testcase_drafts WHERE id = 61")
+            ).scalar_one()
+
+        assert all(count == 1 for count in counts.values())
+        assert draft_body == '{"title":"Draft"}'
+    finally:
+        source_engine.dispose()
+        target_engine.dispose()
+
+
+def test_purge_legacy_helper_runtime_clears_rows_and_creates_sqlite_snapshot(
+    tmp_path: Path,
+) -> None:
+    module = _load_script_module()
+    target_path = tmp_path / "target-helper-purge.db"
+    target_engine = create_engine(_sqlite_url(target_path), future=True)
+
+    try:
+        with target_engine.begin() as connection:
+            connection.exec_driver_sql("PRAGMA foreign_keys=ON")
+            connection.execute(
+                text(
+                    "CREATE TABLE qa_ai_helper_sessions ("
+                    "id INTEGER PRIMARY KEY, "
+                    "ticket_key TEXT"
+                    ")"
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE TABLE qa_ai_helper_ticket_snapshots ("
+                    "id INTEGER PRIMARY KEY, "
+                    "session_id INTEGER NOT NULL, "
+                    "status TEXT NOT NULL, "
+                    "FOREIGN KEY(session_id) REFERENCES qa_ai_helper_sessions(id)"
+                    ")"
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE TABLE qa_ai_helper_requirement_plans ("
+                    "id INTEGER PRIMARY KEY, "
+                    "session_id INTEGER NOT NULL, "
+                    "ticket_snapshot_id INTEGER NOT NULL, "
+                    "status TEXT NOT NULL, "
+                    "FOREIGN KEY(session_id) REFERENCES qa_ai_helper_sessions(id), "
+                    "FOREIGN KEY(ticket_snapshot_id) REFERENCES qa_ai_helper_ticket_snapshots(id)"
+                    ")"
+                )
+            )
+            connection.execute(
+                text(
+                    "CREATE TABLE ai_tc_helper_sessions ("
+                    "id INTEGER PRIMARY KEY, "
+                    "ticket_key TEXT"
+                    ")"
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO qa_ai_helper_sessions (id, ticket_key) VALUES (1, 'TCG-10001')"
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO qa_ai_helper_ticket_snapshots (id, session_id, status) "
+                    "VALUES (11, 1, 'active')"
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO qa_ai_helper_requirement_plans "
+                    "(id, session_id, ticket_snapshot_id, status) VALUES (21, 1, 11, 'draft')"
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO ai_tc_helper_sessions (id, ticket_key) VALUES (91, 'TCG-90001')"
+                )
+            )
+
+        summary = module.purge_legacy_helper_runtime(
+            _sqlite_url(target_path),
+            logger=module.Logger(quiet=True),
+        )
+
+        assert summary["status"] == "completed"
+        assert summary["snapshot_path"]
+        assert Path(summary["snapshot_path"]).exists()
+        assert summary["no_backfill"] is True
+        assert summary["metrics_rollout_baseline"] == "first_v3_session_after_purge"
+        deleted_by_table = {
+            item["table"]: item["deleted_rows"] for item in summary["purged_tables"]
+        }
+        assert deleted_by_table["qa_ai_helper_requirement_plans"] == 1
+        assert deleted_by_table["qa_ai_helper_ticket_snapshots"] == 1
+        assert deleted_by_table["qa_ai_helper_sessions"] == 1
+        assert deleted_by_table["ai_tc_helper_sessions"] == 1
+        assert summary["remaining_helper_rows"] == 0
+
+        with target_engine.connect() as connection:
+            assert (
+                connection.execute(text("SELECT COUNT(*) FROM qa_ai_helper_sessions")).scalar()
+                == 0
+            )
+            assert (
+                connection.execute(text("SELECT COUNT(*) FROM qa_ai_helper_requirement_plans")).scalar()
+                == 0
+            )
+            assert (
+                connection.execute(text("SELECT COUNT(*) FROM ai_tc_helper_sessions")).scalar()
+                == 0
+            )
+    finally:
+        target_engine.dispose()
+
+
+def test_verify_legacy_helper_purge_reports_pending_and_clean_states(tmp_path: Path) -> None:
+    module = _load_script_module()
+    target_path = tmp_path / "target-helper-verify.db"
+    target_engine = create_engine(_sqlite_url(target_path), future=True)
+
+    try:
+        with target_engine.begin() as connection:
+            connection.execute(
+                text(
+                    "CREATE TABLE qa_ai_helper_sessions ("
+                    "id INTEGER PRIMARY KEY, "
+                    "ticket_key TEXT"
+                    ")"
+                )
+            )
+            connection.execute(
+                text(
+                    "INSERT INTO qa_ai_helper_sessions (id, ticket_key) VALUES (1, 'TCG-11001')"
+                )
+            )
+
+        before = module.verify_legacy_helper_purge(_sqlite_url(target_path))
+        assert before["status"] == "pending_purge"
+        assert before["remaining_helper_rows"] == 1
+        assert before["remaining_tables"] == [
+            {"table": "qa_ai_helper_sessions", "row_count": 1}
+        ]
+        assert before["no_backfill"] is True
+        assert before["metrics_rollout_baseline"] == "first_v3_session_after_purge"
+
+        module.purge_legacy_helper_runtime(
+            _sqlite_url(target_path),
+            logger=module.Logger(quiet=True),
+        )
+
+        after = module.verify_legacy_helper_purge(_sqlite_url(target_path))
+        assert after["status"] == "clean"
+        assert after["remaining_helper_rows"] == 0
+        assert after["remaining_tables"] == []
+        assert after["no_backfill"] is True
+        assert after["metrics_rollout_baseline"] == "first_v3_session_after_purge"
+    finally:
+        target_engine.dispose()
