@@ -410,8 +410,19 @@
   min-height: 18rem;
 }
 
+.qa-helper-ref-drawer-anchor {
+  position: sticky;
+  top: 0;
+  float: right;
+  width: 0;
+  height: 0;
+  z-index: 10;
+}
+
 .qa-helper-ref-drawer {
-  position: fixed;
+  position: absolute;
+  top: 0;
+  right: 0;
   width: 44%;
   max-width: 28rem;
   height: fit-content;
