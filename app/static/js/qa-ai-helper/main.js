@@ -1298,7 +1298,7 @@
             </div>
           </div>
           <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
+            <div class="qa-helper-verification-header d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
               <div class="fw-semibold">${escapeHtml(t('qaAiHelper.verificationItemsTitle', {}, '驗證目標及檢查條件'))}</div>
               <button type="button" class="btn btn-outline-primary btn-sm" id="qaHelperAddVerificationItemBtn" ${locked ? 'disabled' : ''}>
                 <i class="fas fa-plus me-1"></i>${escapeHtml(t('qaAiHelper.addVerificationItem', {}, '新增驗證目標及檢查條件'))}
@@ -2791,6 +2791,8 @@
         section.verification_items.push(createEmptyVerificationItem());
         markRequirementPlanDirty();
         renderRequirementPlanWorkspace();
+        const entries = document.querySelectorAll('#qaHelperPlanEditor .qa-helper-goal-entry');
+        if (entries.length) entries[entries.length - 1].scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         return;
       }
       const removeItemButton = event.target.closest('[data-plan-remove-item-index]');
