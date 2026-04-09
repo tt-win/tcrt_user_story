@@ -122,6 +122,7 @@ def clean_inline(text: str) -> str:
     value = value.replace("}}}", "")
     value = value.replace("{{", "")
     value = value.replace("}}", "")
+    value = value.replace("{}", "")
     value = re.sub(r"(?<!\*)\*([^*\n]+)\*(?!\*)", r"\1", value)
     value = re.sub(r"_(.+?)_", r"\1", value)
     value = re.sub(r"`(.+?)`", r"\1", value)

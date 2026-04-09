@@ -835,7 +835,9 @@
 
   function jiraInline(text) {
     return text
+      .replace(/\{\*\}(.*?)\{\*\}/g, '**$1**')                                    // {*}bold{*}
       .replace(/(?<![*\w])\*([^\s*](?:[^*]*[^\s*])?)\*(?![*\w])/g, '**$1**')   // bold
+      .replace(/\{_\}(.*?)\{_\}/g, '*$1*')                                        // {_}italic{_}
       .replace(/(?<![_\w])_([^\s_](?:[^_]*[^\s_])?)_(?![_\w])/g, '*$1*')        // italic
       .replace(/\{\{(.+?)\}\}/g, '`$1`')                                         // monospace
       .replace(/\[([^|\]]+)\|([^\]]+)\]/g, '[$1]($2)')                           // links

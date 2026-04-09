@@ -44,6 +44,9 @@ from app.db_migrations import (
     adopt_legacy_usm_database,
     get_sync_engine_for_target,
     upgrade_audit_database,
+    upgrade_legacy_audit_database,
+    upgrade_legacy_main_database,
+    upgrade_legacy_usm_database,
     upgrade_main_database,
     upgrade_usm_database,
     validate_legacy_audit_database,
@@ -120,6 +123,11 @@ TARGET_UPGRADERS = {
     "usm": upgrade_usm_database,
 }
 MIGRATION_ORDER = ("main", "audit", "usm")
+TARGET_LEGACY_UPGRADERS = {
+    "main": upgrade_legacy_main_database,
+    "audit": upgrade_legacy_audit_database,
+    "usm": upgrade_legacy_usm_database,
+}
 
 
 class Logger:
@@ -331,6 +339,43 @@ def adopt_legacy_target(target_name: str, logger: Logger, no_backup: bool) -> in
         logger.info(f"已將既有{label}納入 Alembic 管理，baseline={baseline_revision}")
         if target_name == "main":
             ensure_super_admin_seed(engine, logger)
+        print_verification_summary(
+            collect_target_verification_summary(
+                target_name,
+                required_tables=TARGET_REQUIRED_TABLES[target_name],
+                critical_tables=TARGET_CRITICAL_TABLES[target_name],
+            )
+        )
+        return 0
+    finally:
+        engine.dispose()
+
+
+def upgrade_legacy_target(target_name: str, logger: Logger, no_backup: bool) -> int:
+    label = TARGET_LABELS[target_name]
+    engine = get_sync_engine_for_target(target_name)
+    try:
+        if not no_backup:
+            backup_sqlite_if_needed(engine, logger, label)
+
+        detected_rev, final_rev = TARGET_LEGACY_UPGRADERS[target_name]()
+        logger.info(
+            f"已將既有{label}從偵測到的版本 {detected_rev} 升級至 {final_rev}"
+        )
+
+        ok, missing = verify_required_tables(
+            engine,
+            logger,
+            TARGET_REQUIRED_TABLES[target_name],
+            label,
+        )
+        if not ok:
+            logger.error(f"{label} 升級完成但仍缺少表：{missing}")
+            return 7
+
+        if target_name == "main":
+            ensure_super_admin_seed(engine, logger)
+
         print_verification_summary(
             collect_target_verification_summary(
                 target_name,
@@ -573,6 +618,21 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         action="store_true",
         help="驗證既有未納管 USM 資料庫後，明確寫入 Alembic baseline version",
     )
+    parser.add_argument(
+        "--upgrade-legacy-main-db",
+        action="store_true",
+        help="自動偵測既有未納管主庫的 schema 版本，stamp 對應 revision 後升級至 head",
+    )
+    parser.add_argument(
+        "--upgrade-legacy-audit-db",
+        action="store_true",
+        help="自動偵測既有未納管 audit 資料庫的 schema 版本，stamp 對應 revision 後升級至 head",
+    )
+    parser.add_argument(
+        "--upgrade-legacy-usm-db",
+        action="store_true",
+        help="自動偵測既有未納管 USM 資料庫的 schema 版本，stamp 對應 revision 後升級至 head",
+    )
     group = parser.add_mutually_exclusive_group()
     group.add_argument("--verbose", action="store_true", help="輸出更多詳細資訊")
     group.add_argument("--quiet", action="store_true", help="僅輸出必要資訊與錯誤")
@@ -623,6 +683,15 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         if args.adopt_legacy_usm_db:
             return adopt_legacy_target("usm", logger, args.no_backup)
+
+        if args.upgrade_legacy_main_db:
+            return upgrade_legacy_target("main", logger, args.no_backup)
+
+        if args.upgrade_legacy_audit_db:
+            return upgrade_legacy_target("audit", logger, args.no_backup)
+
+        if args.upgrade_legacy_usm_db:
+            return upgrade_legacy_target("usm", logger, args.no_backup)
 
         if args.auto_fix:
             logger.info("--auto-fix 已退役；schema 變更現在由 Alembic 管理")

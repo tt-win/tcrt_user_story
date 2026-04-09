@@ -135,6 +135,105 @@ TARGETS = {
     ),
 }
 
+# ---------------------------------------------------------------------------
+# Legacy revision detection: table-based signatures
+# ---------------------------------------------------------------------------
+# Ordered from HEAD to BASE. First match wins.
+# Column-only migrations (no table changes) are merged with their immediate
+# table-creating predecessor — stamping the predecessor is safe because the
+# column migrations are idempotent / noop on SQLite.
+MAIN_REVISION_TABLE_SIGNATURES: list[tuple[str, frozenset[str], frozenset[str]]] = [
+    # rev 9+10: v3 semantic tables exist (stamp 9 so widen-10 re-runs safely)
+    (
+        "9c7d1e2f4a80",
+        frozenset({
+            "qa_ai_helper_ticket_snapshots",
+            "qa_ai_helper_requirement_plans",
+            "qa_ai_helper_plan_sections",
+        }),
+        frozenset(),
+    ),
+    # rev 6+7+8: telemetry tables exist, no v3 tables
+    (
+        "31b9a7c4d2ef",
+        frozenset({
+            "qa_ai_helper_telemetry_events",
+            "qa_ai_helper_draft_sets",
+        }),
+        frozenset({"qa_ai_helper_ticket_snapshots"}),
+    ),
+    # rev 5: draft/validation tables exist, no telemetry
+    (
+        "2c4b7f3d5e61",
+        frozenset({
+            "qa_ai_helper_draft_sets",
+            "qa_ai_helper_drafts",
+            "qa_ai_helper_validation_runs",
+        }),
+        frozenset({"qa_ai_helper_telemetry_events"}),
+    ),
+    # rev 4: core QA AI tables exist, no drafts
+    (
+        "1f4c8d7a9b3e",
+        frozenset({
+            "qa_ai_helper_sessions",
+            "qa_ai_helper_canonical_revisions",
+        }),
+        frozenset({"qa_ai_helper_draft_sets"}),
+    ),
+    # rev 3: scheduled_services exists, no QA AI tables
+    (
+        "6d8f3a1b9c20",
+        frozenset({"scheduled_services"}),
+        frozenset({"qa_ai_helper_sessions"}),
+    ),
+    # rev 2: tcg_records dropped, no scheduled_services
+    (
+        "2c2d0f7f4d8b",
+        frozenset({"teams"}),
+        frozenset({"tcg_records", "scheduled_services"}),
+    ),
+    # rev 1 (baseline): tcg_records still exists
+    (
+        "7a26d2522198",
+        frozenset({"tcg_records", "teams"}),
+        frozenset({"scheduled_services"}),
+    ),
+]
+
+
+def _detect_legacy_revision(
+    database_url: str,
+    cfg: Config,
+    *,
+    target_name: str = "main",
+) -> str:
+    """Inspect the legacy DB's table set and return the revision it most closely matches."""
+    engine = _build_sync_engine(database_url)
+    try:
+        existing_tables = frozenset(
+            name.lower() for name in inspect(engine).get_table_names()
+        )
+    finally:
+        engine.dispose()
+
+    if target_name != "main":
+        # Audit / USM have trivial chains; stamp baseline, let column-widen re-run.
+        return _get_baseline_revision(cfg)
+
+    for revision_id, must_have, must_not_have in MAIN_REVISION_TABLE_SIGNATURES:
+        if must_have <= existing_tables and not (must_not_have & existing_tables):
+            return revision_id
+
+    # Fallback: if at least the base tables exist, stamp baseline.
+    if {"teams", "users", "test_cases"} <= existing_tables:
+        return _get_baseline_revision(cfg)
+
+    raise LegacyDatabaseValidationError(
+        f"無法自動偵測 legacy 資料庫的 schema 版本。"
+        f"現有表格：{sorted(existing_tables)}"
+    )
+
 
 def get_migration_target(target_name: str = "main") -> MigrationTarget:
     try:
@@ -501,6 +600,53 @@ def adopt_legacy_database(
     return baseline_revision
 
 
+def upgrade_legacy_database(
+    database_url: str | None = None,
+    *,
+    target_name: str = "main",
+) -> tuple[str, str]:
+    """Detect the current revision of a legacy unmanaged DB, stamp it,
+    then upgrade to head.
+
+    Returns ``(detected_revision, head_revision)``.
+    """
+    target = get_migration_target(target_name)
+    cfg = build_alembic_config(database_url=database_url, target_name=target_name)
+    resolved_url = cfg.get_main_option("sqlalchemy.url")
+    state = _get_database_state(resolved_url)
+
+    if state == "empty":
+        raise LegacyDatabaseValidationError(
+            f"目前{target.display_name}是空的，不需要 upgrade-legacy；直接執行 migration 即可。"
+        )
+    if state == "managed":
+        raise LegacyDatabaseValidationError(
+            f"目前{target.display_name}已納入 Alembic 管理，不需要 upgrade-legacy。"
+            f"請直接執行 `python3 database_init.py` 進行升級。"
+        )
+
+    detected_revision = _detect_legacy_revision(resolved_url, cfg, target_name=target_name)
+
+    command.ensure_version(cfg)
+    command.stamp(cfg, detected_revision)
+    command.upgrade(cfg, "head")
+
+    head_revision = _get_head_revision(cfg)
+    return detected_revision, head_revision
+
+
+def upgrade_legacy_main_database(database_url: str | None = None) -> tuple[str, str]:
+    return upgrade_legacy_database(database_url, target_name="main")
+
+
+def upgrade_legacy_audit_database(database_url: str | None = None) -> tuple[str, str]:
+    return upgrade_legacy_database(database_url, target_name="audit")
+
+
+def upgrade_legacy_usm_database(database_url: str | None = None) -> tuple[str, str]:
+    return upgrade_legacy_database(database_url, target_name="usm")
+
+
 def upgrade_database(
     revision: str = "head",
     database_url: str | None = None,
@@ -582,7 +728,8 @@ def collect_target_preflight(
         result["status"] = "legacy_unmanaged"
         result["remediation"] = [
             f"先執行 `python3 database_init.py {target.validate_flag}` 驗證現有 schema。",
-            f"驗證通過後執行 `python3 database_init.py {target.adopt_flag}` 寫入 baseline revision。",
+            f"若 schema 與 baseline 完全一致，執行 `python3 database_init.py {target.adopt_flag}` 寫入 baseline revision。",
+            f"若 schema 處於中間狀態（部分 migration 已套用），執行 `python3 database_init.py --upgrade-legacy-{target.key}-db` 自動偵測版本並升級至 head。",
         ]
         return result
 

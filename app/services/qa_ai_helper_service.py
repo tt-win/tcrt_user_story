@@ -266,8 +266,12 @@ def _join_lines(lines: Sequence[str], *, numbered: bool = False) -> str:
 
 def _jira_wiki_inline_to_md(text: str) -> str:
     """Convert Jira wiki inline formatting to Markdown within a single line."""
+    # Confluence brace-wrapped bold: {*}text{*} → **text**
+    text = re.sub(r"\{\*\}(.*?)\{\*\}", r"**\1**", text)
     # Bold: *text* → **text**
     text = re.sub(r"(?<![*\w])\*([^\s*](?:[^*]*[^\s*])?)\*(?![*\w])", r"**\1**", text)
+    # Confluence brace-wrapped italic: {_}text{_} → *text*
+    text = re.sub(r"\{_\}(.*?)\{_\}", r"*\1*", text)
     # Italic: _text_ → *text*
     text = re.sub(r"(?<![_\w])_([^\s_](?:[^_]*[^\s_])?)_(?![_\w])", r"*\1*", text)
     # Strikethrough: -text- → ~~text~~
