@@ -465,132 +465,6 @@ class TestCaseLocal(Base):
     )
 
 
-class AITestCaseHelperSession(Base):
-    """JIRA Ticket -> Test Case Helper 工作階段。"""
-
-    __tablename__ = "ai_tc_helper_sessions"
-    __table_args__ = (
-        Index("ix_ai_tc_helper_sessions_team_status", "team_id", "status"),
-        Index("ix_ai_tc_helper_sessions_team_updated", "team_id", "updated_at"),
-    )
-
-    id = Column(Integer, primary_key=True)
-    team_id = Column(Integer, ForeignKey("teams.id"), nullable=False, index=True)
-    created_by_user_id = Column(
-        Integer,
-        ForeignKey("users.id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
-    )
-    target_test_case_set_id = Column(
-        Integer,
-        ForeignKey("test_case_sets.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    ticket_key = Column(String(64), nullable=True, index=True)
-    review_locale = Column(String(16), nullable=False, default="zh-TW")
-    output_locale = Column(String(16), nullable=False, default="zh-TW")
-    initial_middle = Column(String(3), nullable=False, default="010")
-    current_phase = Column(String(32), nullable=False, default="init", index=True)
-    phase_status = Column(String(32), nullable=False, default="idle", index=True)
-    status = Column(String(32), nullable=False, default="active", index=True)
-    last_error = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
-
-    drafts = relationship(
-        "AITestCaseHelperDraft",
-        back_populates="session",
-        cascade="all, delete-orphan",
-    )
-    stage_metrics = relationship(
-        "AITestCaseHelperStageMetric",
-        back_populates="session",
-        cascade="all, delete-orphan",
-    )
-    test_case_set = relationship("TestCaseSet")
-    team = relationship("Team")
-    created_by_user = relationship("User")
-
-
-class AITestCaseHelperDraft(Base):
-    """JIRA Ticket -> Test Case Helper 階段草稿。"""
-
-    __tablename__ = "ai_tc_helper_drafts"
-    __table_args__ = (
-        UniqueConstraint("session_id", "phase", name="uq_ai_tc_helper_draft_session_phase"),
-        Index("ix_ai_tc_helper_drafts_session_phase", "session_id", "phase"),
-    )
-
-    id = Column(Integer, primary_key=True)
-    session_id = Column(
-        Integer,
-        ForeignKey("ai_tc_helper_sessions.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    phase = Column(String(32), nullable=False, index=True)
-    version = Column(Integer, nullable=False, default=1)
-    markdown = Column(Text, nullable=True)
-    payload_json = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
-
-    session = relationship("AITestCaseHelperSession", back_populates="drafts")
-
-
-class AITestCaseHelperStageMetric(Base):
-    """JIRA Ticket -> Test Case Helper 階段 telemetry。"""
-
-    __tablename__ = "ai_tc_helper_stage_metrics"
-    __table_args__ = (
-        Index("ix_ai_tc_helper_stage_metrics_team_phase_time", "team_id", "phase", "started_at"),
-        Index("ix_ai_tc_helper_stage_metrics_team_time", "team_id", "started_at"),
-        Index("ix_ai_tc_helper_stage_metrics_session_phase", "session_id", "phase"),
-        Index("ix_ai_tc_helper_stage_metrics_status", "status"),
-    )
-
-    id = Column(Integer, primary_key=True)
-    session_id = Column(
-        Integer,
-        ForeignKey("ai_tc_helper_sessions.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
-    team_id = Column(Integer, ForeignKey("teams.id"), nullable=False, index=True)
-    user_id = Column(
-        Integer,
-        ForeignKey("users.id", ondelete="SET NULL"),
-        nullable=True,
-        index=True,
-    )
-    ticket_key = Column(String(64), nullable=True, index=True)
-    phase = Column(String(32), nullable=False, index=True)
-    status = Column(String(16), nullable=False)
-    started_at = Column(DateTime, nullable=False, index=True)
-    ended_at = Column(DateTime, nullable=False)
-    duration_ms = Column(Integer, nullable=False, default=0)
-
-    input_tokens = Column(Integer, nullable=False, default=0)
-    output_tokens = Column(Integer, nullable=False, default=0)
-    cache_read_tokens = Column(Integer, nullable=False, default=0)
-    cache_write_tokens = Column(Integer, nullable=False, default=0)
-    input_audio_tokens = Column(Integer, nullable=False, default=0)
-    input_audio_cache_tokens = Column(Integer, nullable=False, default=0)
-
-    pretestcase_count = Column(Integer, nullable=False, default=0)
-    testcase_count = Column(Integer, nullable=False, default=0)
-    model_name = Column(String(255), nullable=True)
-    usage_json = Column(Text, nullable=True)
-    error_message = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-
-    session = relationship("AITestCaseHelperSession", back_populates="stage_metrics")
-    team = relationship("Team")
-    user = relationship("User")
-
-
 class QAAIHelperSession(Base):
     """Rewritten QA AI Helper session root."""
 
@@ -758,7 +632,6 @@ class QAAIHelperPlannedRevision(Base):
     revision_number = Column(Integer, nullable=False)
     status = Column(String(32), nullable=False, default="editable", index=True)
     matrix_json = Column(qa_ai_helper_large_text_type(), nullable=False)
-    seed_map_json = Column(qa_ai_helper_large_text_type(), nullable=False)
     applicability_overrides_json = Column(qa_ai_helper_large_text_type(), nullable=False)
     selected_references_json = Column(qa_ai_helper_large_text_type(), nullable=False)
     counter_settings_json = Column(qa_ai_helper_large_text_type(), nullable=False)
@@ -892,9 +765,7 @@ class QAAIHelperDraft(Base):
     """One testcase draft item inside a draft set."""
 
     __tablename__ = "qa_ai_helper_drafts"
-    __table_args__ = (
-        UniqueConstraint("draft_set_id", "item_key", name="uq_qa_ai_helper_draft_set_item_key"),
-    )
+    __table_args__ = (UniqueConstraint("draft_set_id", "item_key", name="uq_qa_ai_helper_draft_set_item_key"),)
 
     id = Column(Integer, primary_key=True)
     draft_set_id = Column(
@@ -904,7 +775,6 @@ class QAAIHelperDraft(Base):
         index=True,
     )
     item_key = Column(String(128), nullable=False)
-    seed_id = Column(String(128), nullable=True, index=True)
     testcase_id = Column(String(64), nullable=True, index=True)
     body_json = Column(qa_ai_helper_large_text_type(), nullable=False)
     trace_json = Column(qa_ai_helper_large_text_type(), nullable=False)
@@ -919,9 +789,7 @@ class QAAIHelperValidationRun(Base):
     """Validation / repair run record for generated drafts."""
 
     __tablename__ = "qa_ai_helper_validation_runs"
-    __table_args__ = (
-        Index("ix_qa_ai_helper_validation_runs_draft_created", "draft_set_id", "created_at"),
-    )
+    __table_args__ = (Index("ix_qa_ai_helper_validation_runs_draft_created", "draft_set_id", "created_at"),)
 
     id = Column(Integer, primary_key=True)
     session_id = Column(
@@ -1015,9 +883,7 @@ class QAAIHelperTicketSnapshot(Base):
     """Screen-2 readonly ticket snapshot for V3 helper."""
 
     __tablename__ = "qa_ai_helper_ticket_snapshots"
-    __table_args__ = (
-        Index("ix_qa_ai_helper_ticket_snapshots_session_status", "session_id", "status"),
-    )
+    __table_args__ = (Index("ix_qa_ai_helper_ticket_snapshots_session_status", "session_id", "status"),)
 
     id = Column(Integer, primary_key=True)
     session_id = Column(
@@ -1135,9 +1001,7 @@ class QAAIHelperVerificationItem(Base):
     """One verification item entered on screen 3."""
 
     __tablename__ = "qa_ai_helper_verification_items"
-    __table_args__ = (
-        Index("ix_qa_ai_helper_verification_items_section_order", "plan_section_id", "display_order"),
-    )
+    __table_args__ = (Index("ix_qa_ai_helper_verification_items_section_order", "plan_section_id", "display_order"),)
 
     id = Column(Integer, primary_key=True)
     plan_section_id = Column(
@@ -1166,9 +1030,7 @@ class QAAIHelperCheckCondition(Base):
     """One check condition under a verification item."""
 
     __tablename__ = "qa_ai_helper_check_conditions"
-    __table_args__ = (
-        Index("ix_qa_ai_helper_check_conditions_item_order", "verification_item_id", "display_order"),
-    )
+    __table_args__ = (Index("ix_qa_ai_helper_check_conditions_item_order", "verification_item_id", "display_order"),)
 
     id = Column(Integer, primary_key=True)
     verification_item_id = Column(

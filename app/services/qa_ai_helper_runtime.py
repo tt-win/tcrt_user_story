@@ -2,31 +2,23 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any, Dict, List, Sequence
 
 from app.models.qa_ai_helper import QAAIHelperDraftBody
-
-
-def _json_dumps(value: Any) -> str:
-    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+from app.services.qa_ai_helper_common import json_compact_dumps
+from app.services.qa_ai_helper_title_utils import (
+    build_testcase_title_summary,
+    is_direct_testcase_title_copy,
+)
 
 
 def _normalize_body(payload: Dict[str, Any]) -> Dict[str, Any]:
     model = QAAIHelperDraftBody(
         title=str(payload.get("title") or "").strip(),
         priority=str(payload.get("priority") or "Medium").strip() or "Medium",
-        preconditions=[
-            str(item).strip()
-            for item in (payload.get("preconditions") or [])
-            if str(item).strip()
-        ],
+        preconditions=[str(item).strip() for item in (payload.get("preconditions") or []) if str(item).strip()],
         steps=[str(item).strip() for item in (payload.get("steps") or []) if str(item).strip()],
-        expected_results=[
-            str(item).strip()
-            for item in (payload.get("expected_results") or [])
-            if str(item).strip()
-        ],
+        expected_results=[str(item).strip() for item in (payload.get("expected_results") or []) if str(item).strip()],
     )
     return model.model_dump()
 
@@ -37,24 +29,48 @@ def post_merge_generation_outputs(
     model_outputs: Sequence[Dict[str, Any]],
     selected_references: Sequence[Dict[str, Any]] | None = None,
 ) -> List[Dict[str, Any]]:
-    output_by_index = {
-        int(item.get("item_index", -1)): item for item in model_outputs if item is not None
-    }
+    output_by_index = {int(item.get("item_index", -1)): item for item in model_outputs if item is not None}
     references = list(selected_references or [])
     merged: List[Dict[str, Any]] = []
     for expected_index, generation_item in enumerate(generation_items):
         source_output = output_by_index.get(expected_index) or {}
+        preconditions = source_output.get("preconditions") or generation_item.get("precondition_hints") or []
+        steps = source_output.get("steps") or generation_item.get("step_hints") or []
+        expected_results = source_output.get("expected_results") or generation_item.get("expected_hints") or []
+        raw_title = str(source_output.get("title") or "").strip()
+        title = raw_title
+        if not title or is_direct_testcase_title_copy(
+            title,
+            [
+                generation_item.get("title_hint"),
+                generation_item.get("verification_item_summary"),
+                generation_item.get("intent"),
+            ],
+        ):
+            title = build_testcase_title_summary(
+                steps=steps,
+                expected_results=expected_results,
+                step_hints=generation_item.get("step_hints") or [],
+                expected_hints=generation_item.get("expected_hints") or [],
+                seed_body_text=generation_item.get("seed_body_text"),
+                scenario_title=generation_item.get("scenario_title"),
+                section_title=generation_item.get("section_title"),
+                title_hint=generation_item.get("title_hint"),
+                verification_item_summary=generation_item.get("verification_item_summary"),
+                fallback_title=generation_item.get("seed_id") or generation_item["item_key"],
+                disallowed_titles=[
+                    generation_item.get("title_hint"),
+                    generation_item.get("verification_item_summary"),
+                    generation_item.get("intent"),
+                ],
+            )
         body = _normalize_body(
             {
-                "title": source_output.get("title") or generation_item.get("title_hint"),
+                "title": title,
                 "priority": source_output.get("priority") or generation_item.get("priority") or "Medium",
-                "preconditions": source_output.get("preconditions")
-                or generation_item.get("precondition_hints")
-                or [],
-                "steps": source_output.get("steps") or generation_item.get("step_hints") or [],
-                "expected_results": source_output.get("expected_results")
-                or generation_item.get("expected_hints")
-                or [],
+                "preconditions": preconditions,
+                "steps": steps,
+                "expected_results": expected_results,
             }
         )
         merged.append(
@@ -192,11 +208,7 @@ def build_repair_prompt_payload(
     validation_errors: Sequence[Dict[str, Any]],
 ) -> Dict[str, Any]:
     invalid_outputs: List[Dict[str, Any]] = []
-    invalid_keys = {
-        str(error.get("item_key") or "")
-        for error in validation_errors
-        if str(error.get("item_key") or "")
-    }
+    invalid_keys = {str(error.get("item_key") or "") for error in validation_errors if str(error.get("item_key") or "")}
     for draft in merged_drafts:
         if draft.get("item_key") in invalid_keys:
             invalid_outputs.append(
@@ -207,6 +219,6 @@ def build_repair_prompt_payload(
                 }
             )
     return {
-        "invalid_outputs_json": _json_dumps(invalid_outputs),
-        "validator_errors_json": _json_dumps(list(validation_errors)),
+        "invalid_outputs_json": json_compact_dumps(invalid_outputs),
+        "validator_errors_json": json_compact_dumps(list(validation_errors)),
     }

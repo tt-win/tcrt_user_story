@@ -1991,7 +1991,7 @@
   },
   "qaAiHelper": {
     "pageTitle": "QA AI Helper",
-    "pageSubtitle": "Lock requirements with deterministic planning first; let the LLM handle testcase wording only.",
+    "pageSubtitle": "Turn a ticket into verified coverage, reviewable seeds, and test cases ready to add to a Test Case Set.",
     "screen1Title": "Load Requirement Ticket",
     "screen1Hint": "A session is created only after submitting the ticket number, then screen 2 loads the read-only ticket confirmation data.",
     "screen2Title": "Requirement Ticket Confirmation",

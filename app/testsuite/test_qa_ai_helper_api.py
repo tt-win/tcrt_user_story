@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 import sys
 from types import SimpleNamespace
@@ -28,10 +29,14 @@ from app.models.database_models import (
     TestCaseLocal,
     User,
 )
-from app.services.qa_ai_helper_service import (
-    _DB_JSON_ZLIB_PREFIX,
-    _json_storage_dumps,
-    _json_storage_loads,
+from app.services.qa_ai_helper_common import (
+    DB_JSON_ZLIB_PREFIX,
+    json_storage_dumps,
+    json_storage_loads,
+)
+from app.services.qa_ai_helper_llm_service import (
+    QAAIHelperLLMResult,
+    QAAIHelperLLMService,
 )
 from app.testsuite.db_test_helpers import (
     create_managed_test_database,
@@ -43,11 +48,11 @@ from app.testsuite.db_test_helpers import (
 def test_json_storage_helpers_compress_large_payload_round_trip() -> None:
     payload = {"description": "Audience detail\n" * 10000}
 
-    encoded = _json_storage_dumps(payload)
+    encoded = json_storage_dumps(payload)
 
     assert encoded is not None
-    assert encoded.startswith(_DB_JSON_ZLIB_PREFIX)
-    assert _json_storage_loads(encoded, {}) == payload
+    assert encoded.startswith(DB_JSON_ZLIB_PREFIX)
+    assert json_storage_loads(encoded, {}) == payload
 
 
 @pytest.fixture
@@ -203,9 +208,7 @@ def _prepare_locked_seed_set(client: TestClient, team_id: int) -> tuple[int, dic
     generated = client.post(f"/api/teams/{team_id}/qa-ai-helper/sessions/{session_id}/seed-sets")
     assert generated.status_code == 200, generated.text
     seed_set = generated.json()["seed_set"]
-    locked = client.post(
-        f"/api/teams/{team_id}/qa-ai-helper/sessions/{session_id}/seed-sets/{seed_set['id']}/lock"
-    )
+    locked = client.post(f"/api/teams/{team_id}/qa-ai-helper/sessions/{session_id}/seed-sets/{seed_set['id']}/lock")
     assert locked.status_code == 200, locked.text
     return session_id, locked.json()
 
@@ -246,6 +249,9 @@ def test_ticket_submit_creates_v3_session_and_ticket_snapshot(qa_ai_helper_db):
     assert payload["ticket_snapshot"]["validation_summary"]["is_valid"] is True
     assert "verification_planning" in payload["screen_guard"]["allowed_next_screens"]
     assert payload["screen_guard"]["can_restart"] is True
+    assert payload["llm_usage"]["total"]["total_tokens"] == 0
+    assert payload["llm_usage"]["by_stage"] == {}
+    assert payload["llm_usage"]["latest"] is None
 
     session_id = payload["session"]["id"]
     workspace = client.get(f"/api/teams/{team_id}/qa-ai-helper/sessions/{session_id}")
@@ -286,16 +292,9 @@ def test_restart_deletes_unfinished_session_and_snapshot(qa_ai_helper_db):
     }
 
     with qa_ai_helper_db["sync_session_factory"]() as sync_db:
+        assert sync_db.query(QAAIHelperSession).filter(QAAIHelperSession.id == session_id).first() is None
         assert (
-            sync_db.query(QAAIHelperSession)
-            .filter(QAAIHelperSession.id == session_id)
-            .first()
-            is None
-        )
-        assert (
-            sync_db.query(QAAIHelperTicketSnapshot)
-            .filter(QAAIHelperTicketSnapshot.id == ticket_snapshot_id)
-            .first()
+            sync_db.query(QAAIHelperTicketSnapshot).filter(QAAIHelperTicketSnapshot.id == ticket_snapshot_id).first()
             is None
         )
 
@@ -307,11 +306,7 @@ def test_completed_session_cannot_be_restarted(qa_ai_helper_db):
     session_id = payload["session"]["id"]
 
     with qa_ai_helper_db["sync_session_factory"]() as sync_db:
-        session = (
-            sync_db.query(QAAIHelperSession)
-            .filter(QAAIHelperSession.id == session_id)
-            .first()
-        )
+        session = sync_db.query(QAAIHelperSession).filter(QAAIHelperSession.id == session_id).first()
         session.status = "completed"
         session.current_screen = "commit_result"
         sync_db.commit()
@@ -600,9 +595,7 @@ def test_unlock_requirement_plan_supersedes_downstream_seed_and_testcase_sets(qa
                     {
                         "category": "API",
                         "summary": "呼叫 audience detail API",
-                        "detail": {
-                            "api_url": "/api/audiences/{id}"
-                        },
+                        "detail": {"api_url": "/api/audiences/{id}"},
                         "check_conditions": [
                             {
                                 "condition_text": "回傳 audience 詳情資料",
@@ -660,7 +653,10 @@ def test_unlock_requirement_plan_supersedes_downstream_seed_and_testcase_sets(qa
         session = sync_db.query(QAAIHelperSession).filter(QAAIHelperSession.id == session_id).first()
         assert session.active_seed_set_id is None
         assert session.active_testcase_draft_set_id is None
-        assert sync_db.query(QAAIHelperSeedSet).filter(QAAIHelperSeedSet.session_id == session_id).first().status == "superseded"
+        assert (
+            sync_db.query(QAAIHelperSeedSet).filter(QAAIHelperSeedSet.session_id == session_id).first().status
+            == "superseded"
+        )
         assert (
             sync_db.query(QAAIHelperTestcaseDraftSet)
             .filter(QAAIHelperTestcaseDraftSet.session_id == session_id)
@@ -778,6 +774,114 @@ def test_generate_seed_set_splits_legacy_multi_condition_item_into_multiple_seed
     assert seed_set["seed_items"][1]["coverage_tags"] == ["Permission"]
 
 
+def test_generate_seed_set_uses_up_to_five_workers_with_full_requirement_context(
+    qa_ai_helper_db,
+    monkeypatch,
+):
+    client = TestClient(app)
+    team_id = qa_ai_helper_db["team_id"]
+    payload = _create_session(client, team_id)
+    session_id = payload["session"]["id"]
+
+    initialized = client.post(f"/api/teams/{team_id}/qa-ai-helper/sessions/{session_id}/requirement-plan")
+    assert initialized.status_code == 200, initialized.text
+    section = initialized.json()["requirement_plan"]["sections"][0]
+
+    conditions = [
+        {"condition_text": "成功開啟詳情頁並顯示狀態", "coverage_tag": "Happy Path"},
+        {"condition_text": "無權限時不可進入詳情頁", "coverage_tag": "Permission"},
+        {"condition_text": "找不到 audience 時顯示錯誤訊息", "coverage_tag": "Error Handling"},
+        {"condition_text": "更新時間格式為 yyyy-MM-dd", "coverage_tag": "Edge Test Case"},
+        {"condition_text": "名稱與狀態資料一致", "coverage_tag": "Happy Path"},
+        {"condition_text": "新分頁標題與 audience 名稱一致", "coverage_tag": "Happy Path"},
+    ]
+    save_payload = {
+        "section_start_number": "010",
+        "autosave": False,
+        "sections": [
+            {
+                "id": section["id"],
+                "section_key": section["section_key"],
+                "section_title": section["section_title"],
+                "given": section["given"],
+                "when": section["when"],
+                "then": section["then"],
+                "verification_items": [
+                    {
+                        "category": "功能驗證",
+                        "summary": "點擊 audience name 開啟詳情頁",
+                        "check_conditions": conditions,
+                    }
+                ],
+            }
+        ],
+    }
+    saved = client.put(
+        f"/api/teams/{team_id}/qa-ai-helper/sessions/{session_id}/requirement-plan",
+        json=save_payload,
+    )
+    assert saved.status_code == 200, saved.text
+
+    locked = client.post(f"/api/teams/{team_id}/qa-ai-helper/sessions/{session_id}/requirement-plan/lock")
+    assert locked.status_code == 200, locked.text
+
+    captured_seed_prompts: list[str] = []
+
+    async def _fake_call_stage(self, *, stage: str, prompt: str, max_tokens: int = 4000):
+        assert stage == "seed"
+        captured_seed_prompts.append(prompt)
+        generation_items = QAAIHelperLLMService._extract_json_blob(prompt, "GENERATION_ITEMS", [])
+        outputs = []
+        for item in generation_items:
+            outputs.append(
+                {
+                    "item_index": item["item_index"],
+                    "seed_reference_key": item["seed_reference_key"],
+                    "section_id": item["section_id"],
+                    "verification_item_ref": item["verification_item_ref"],
+                    "check_condition_ids": item["check_condition_ids"],
+                    "seed_summary": item["title_hint"],
+                    "seed_body": item["title_hint"],
+                    "coverage_tags": item["coverage_tags"],
+                }
+            )
+        usage = {
+            "prompt_tokens": len(generation_items) * 10,
+            "completion_tokens": len(generation_items) * 3,
+            "total_tokens": len(generation_items) * 13,
+        }
+        return QAAIHelperLLMResult(
+            content=json.dumps({"outputs": outputs}, ensure_ascii=False),
+            usage=usage,
+            cost=0.0,
+            cost_note="test",
+            model_name="fake/seed-worker",
+            response_id=None,
+        )
+
+    monkeypatch.setattr(QAAIHelperLLMService, "call_stage", _fake_call_stage)
+
+    generated = client.post(f"/api/teams/{team_id}/qa-ai-helper/sessions/{session_id}/seed-sets")
+    assert generated.status_code == 200, generated.text
+    seed_set = generated.json()["seed_set"]
+
+    assert seed_set["generated_seed_count"] == 6
+    assert 1 < len(captured_seed_prompts) <= 5
+    assert generated.json()["llm_usage"]["by_stage"]["seed"]["prompt_tokens"] == 60
+    assert generated.json()["llm_usage"]["by_stage"]["seed"]["completion_tokens"] == 18
+    assert generated.json()["llm_usage"]["by_stage"]["seed"]["total_tokens"] == 78
+    assert generated.json()["llm_usage"]["total"]["total_tokens"] == 78
+    assert generated.json()["llm_usage"]["latest"]["stage"] == "seed"
+
+    for prompt in captured_seed_prompts:
+        generation_items = QAAIHelperLLMService._extract_json_blob(prompt, "GENERATION_ITEMS", [])
+        requirement_plan = QAAIHelperLLMService._extract_json_blob(prompt, "REQUIREMENT_PLAN", {})
+        assert 1 <= len(generation_items) < 6
+        assert len(requirement_plan["sections"][0]["verification_items"][0]["check_conditions"]) == 6
+        assert "成功開啟詳情頁並顯示狀態" in prompt
+        assert "新分頁標題與 audience 名稱一致" in prompt
+
+
 def test_seed_review_supports_include_toggle_and_section_bulk_inclusion(qa_ai_helper_db):
     client = TestClient(app)
     team_id = qa_ai_helper_db["team_id"]
@@ -834,9 +938,13 @@ def test_seed_refine_only_updates_items_with_dirty_comments(qa_ai_helper_db):
     refined_payload = refined.json()
     refined_item = refined_payload["seed_set"]["seed_items"][0]
     assert refined_payload["seed_set"]["status"] == "draft"
+    assert "seed_refine" in refined_payload["llm_usage"]["by_stage"]
     assert refined_item["comment_text"] == "請補充權限驗證的限制與角色差異"
     assert refined_item["user_edited"] is True
-    assert "請補充權限驗證的限制與角色差異" in refined_item["seed_summary"] or "請補充權限驗證的限制與角色差異" in refined_item["seed_body"]["text"]
+    assert (
+        "請補充權限驗證的限制與角色差異" in refined_item["seed_summary"]
+        or "請補充權限驗證的限制與角色差異" in refined_item["seed_body"]["text"]
+    )
 
 
 def test_seed_lock_and_unlock_gate_testcase_generation(qa_ai_helper_db):
@@ -910,6 +1018,24 @@ def test_generate_testcase_draft_set_assigns_deterministic_numbers(qa_ai_helper_
     assert draft_set["selected_for_commit_count"] == 0
     assert draft_set["drafts"][0]["assigned_testcase_id"] == f"{seed_set['seed_items'][0]['section_id']}.010"
     assert draft_set["drafts"][0]["seed_reference_key"] == seed_set["seed_items"][0]["seed_reference_key"]
+    assert "testcase" in payload["llm_usage"]["by_stage"]
+
+    with qa_ai_helper_db["sync_session_factory"]() as sync_db:
+        telemetry = (
+            sync_db.query(QAAIHelperTelemetryEvent)
+            .filter(
+                QAAIHelperTelemetryEvent.session_id == session_id,
+                QAAIHelperTelemetryEvent.stage == "testcase",
+                QAAIHelperTelemetryEvent.event_name == "generate",
+            )
+            .order_by(QAAIHelperTelemetryEvent.id.desc())
+            .first()
+        )
+        assert telemetry is not None
+        assert telemetry.draft_set_id is None
+        assert json_storage_loads(telemetry.payload_json, {}).get("testcase_draft_set_id") == draft_set["id"]
+    assert draft_set["drafts"][0]["body"]["title"] == "成功開啟詳情頁並顯示狀態"
+    assert draft_set["drafts"][0]["body"]["title"] != "使用者點擊 audience name 後應成功開啟詳情頁並顯示狀態"
 
 
 def test_testcase_draft_invalid_body_cannot_be_selected_until_fixed(qa_ai_helper_db):
@@ -983,16 +1109,18 @@ def test_testcase_section_selection_selects_only_valid_drafts(qa_ai_helper_db):
     seed_set = generated.json()["seed_set"]
 
     with qa_ai_helper_db["sync_session_factory"]() as sync_db:
-        first_seed = sync_db.query(QAAIHelperSeedItem).filter(QAAIHelperSeedItem.id == seed_set["seed_items"][0]["id"]).first()
+        first_seed = (
+            sync_db.query(QAAIHelperSeedItem).filter(QAAIHelperSeedItem.id == seed_set["seed_items"][0]["id"]).first()
+        )
         extra_seed = QAAIHelperSeedItem(
             seed_set_id=first_seed.seed_set_id,
             plan_section_id=first_seed.plan_section_id,
             verification_item_id=first_seed.verification_item_id,
-            check_condition_refs_json=_json_storage_dumps([]),
-            coverage_tags_json=_json_storage_dumps(["Happy Path"]),
+            check_condition_refs_json=json_storage_dumps([]),
+            coverage_tags_json=json_storage_dumps(["Happy Path"]),
             seed_reference_key=f"{first_seed.plan_section.section_id}.V001.S020",
             seed_summary="第二筆 testcase seed",
-            seed_body_json=_json_storage_dumps({"text": "第二筆 testcase seed body"}),
+            seed_body_json=json_storage_dumps({"text": "第二筆 testcase seed body"}),
             included_for_testcase_generation=True,
             is_ai_generated=True,
             user_edited=False,
@@ -1045,6 +1173,55 @@ def test_testcase_section_selection_selects_only_valid_drafts(qa_ai_helper_db):
     assert bulk_selected.json()["testcase_draft_set"]["selected_for_commit_count"] == 1
 
 
+def test_testcase_ids_remain_sequential_across_verification_items(qa_ai_helper_db):
+    client = TestClient(app)
+    team_id = qa_ai_helper_db["team_id"]
+    session_id, _locked_payload = _prepare_locked_requirement_plan(client, team_id)
+
+    generated = client.post(f"/api/teams/{team_id}/qa-ai-helper/sessions/{session_id}/seed-sets")
+    seed_set = generated.json()["seed_set"]
+
+    with qa_ai_helper_db["sync_session_factory"]() as sync_db:
+        first_seed = (
+            sync_db.query(QAAIHelperSeedItem).filter(QAAIHelperSeedItem.id == seed_set["seed_items"][0]["id"]).first()
+        )
+        second_verification_seed = QAAIHelperSeedItem(
+            seed_set_id=first_seed.seed_set_id,
+            plan_section_id=first_seed.plan_section_id,
+            verification_item_id=(first_seed.verification_item_id or 0) + 999,
+            check_condition_refs_json=json_storage_dumps([]),
+            coverage_tags_json=json_storage_dumps(["Happy Path"]),
+            seed_reference_key=f"{first_seed.plan_section.section_id}.V002.S010",
+            seed_summary="不同檢驗項目的 testcase seed",
+            seed_body_json=json_storage_dumps({"text": "不同檢驗項目的 testcase seed body"}),
+            included_for_testcase_generation=True,
+            is_ai_generated=True,
+            user_edited=False,
+        )
+        sync_db.add(second_verification_seed)
+        seed_set_row = sync_db.query(QAAIHelperSeedSet).filter(QAAIHelperSeedSet.id == first_seed.seed_set_id).first()
+        seed_set_row.generated_seed_count = 2
+        seed_set_row.included_seed_count = 2
+        seed_set_row.adoption_rate = 1.0
+        sync_db.commit()
+
+    locked_seed = client.post(
+        f"/api/teams/{team_id}/qa-ai-helper/sessions/{session_id}/seed-sets/{seed_set['id']}/lock"
+    )
+    assert locked_seed.status_code == 200, locked_seed.text
+
+    testcase_generated = client.post(
+        f"/api/teams/{team_id}/qa-ai-helper/sessions/{session_id}/testcase-draft-sets",
+        json={"force_regenerate": False},
+    )
+    assert testcase_generated.status_code == 200, testcase_generated.text
+    draft_set = testcase_generated.json()["testcase_draft_set"]
+    assert [draft["assigned_testcase_id"] for draft in draft_set["drafts"]] == [
+        "TCG-130078.010.010",
+        "TCG-130078.010.020",
+    ]
+
+
 def test_seed_change_supersedes_existing_testcase_draft_set(qa_ai_helper_db):
     client = TestClient(app)
     team_id = qa_ai_helper_db["team_id"]
@@ -1066,9 +1243,7 @@ def test_seed_change_supersedes_existing_testcase_draft_set(qa_ai_helper_db):
 
     with qa_ai_helper_db["sync_session_factory"]() as sync_db:
         draft_set = (
-            sync_db.query(QAAIHelperTestcaseDraftSet)
-            .filter(QAAIHelperTestcaseDraftSet.id == draft_set_id)
-            .first()
+            sync_db.query(QAAIHelperTestcaseDraftSet).filter(QAAIHelperTestcaseDraftSet.id == draft_set_id).first()
         )
         assert draft_set.status == "superseded"
         session = sync_db.query(QAAIHelperSession).filter(QAAIHelperSession.id == session_id).first()
@@ -1139,11 +1314,7 @@ def test_commit_selected_testcases_to_existing_set_creates_links_and_result_summ
         )
         assert case is not None
         assert case.test_case_set_id == target_set["id"]
-        commit_link = (
-            sync_db.query(QAAIHelperCommitLink)
-            .filter(QAAIHelperCommitLink.test_case_id == case.id)
-            .first()
-        )
+        commit_link = sync_db.query(QAAIHelperCommitLink).filter(QAAIHelperCommitLink.test_case_id == case.id).first()
         assert commit_link is not None
         assert commit_link.testcase_draft_id == draft["id"]
         telemetry = (

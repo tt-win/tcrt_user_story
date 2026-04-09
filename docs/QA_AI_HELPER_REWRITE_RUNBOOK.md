@@ -115,6 +115,7 @@ coverage 由使用者自行負責填寫：
 ### 畫面四：Test Case 種子確認
 
 - 由 high-tier model 根據「已鎖定 requirement plan」生成第一版 seed set
+- seed 生成改為最多 5 個 worker 併發執行，每個 worker 都會攜帶完整 requirement plan 與 section summary 參考資料
 - 每筆 seed 預設為 `納入`
 - 支援 per-seed `納入 / 排除`
 - 支援 section-level `全部納入 / 全部排除`
@@ -143,9 +144,8 @@ adoption 口徑：
 
 編號規則：
 
-- 同驗證項目內：`010, 020, 030...`
-- 切換驗證項目時：預設進入 `100, 200, 300...` block
-- 若前一 block overflow，後續項目整體遞延
+- 同一 section 內依固定流水號配置：`010, 020, 030...`
+- 不再依 verification item 切換 `100, 200, 300...` block
 
 畫面五僅允許編修：
 

@@ -12,7 +12,7 @@
 {% endblock %}
 
 {% block page_subtitle_text %}
-<span data-i18n="qaAiHelper.pageSubtitle">以 deterministic planning 鎖定需求，再由 LLM 僅負責 testcase wording。</span>
+<span data-i18n="qaAiHelper.pageSubtitle">從需求單整理驗證重點與測試種子，逐步產生可提交到 Test Case Set 的 Test Cases。</span>
 {% endblock %}
 
 {% block page_specific_actions %}
@@ -171,7 +171,6 @@
                                 <div class="qa-helper-ref-drawer" id="qaHelperRefDrawer">
                                     <div class="qa-helper-ref-drawer-header">
                                         <span class="fw-semibold small" data-i18n="qaAiHelper.referenceDrawerTitle">原始需求資料</span>
-                                        <button type="button" class="btn-close btn-close-sm" id="qaHelperRefDrawerCloseBtn" aria-label="Close"></button>
                                     </div>
                                     <div class="qa-helper-ref-drawer-body">
                                         <div class="qa-helper-reference-card mb-3" id="qaHelperCriteriaReference"></div>

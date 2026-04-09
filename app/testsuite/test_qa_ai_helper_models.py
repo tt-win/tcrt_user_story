@@ -103,7 +103,6 @@ def test_qa_ai_helper_large_json_columns_compile_to_mediumtext_on_mysql() -> Non
         "qa_ai_helper_canonical_revisions": ["content_json", "counter_settings_json"],
         "qa_ai_helper_planned_revisions": [
             "matrix_json",
-            "seed_map_json",
             "applicability_overrides_json",
             "selected_references_json",
             "counter_settings_json",
@@ -170,7 +169,6 @@ def test_create_default_config_enables_rewritten_helper(tmp_path: Path) -> None:
     payload = yaml.safe_load(config_path.read_text(encoding="utf-8"))
     models = payload["ai"]["qa_ai_helper"]["models"]
 
-    assert payload["ai"]["jira_testcase_helper"]["enable"] is False
     assert payload["ai"]["qa_ai_helper"]["enable"] is True
     assert models["seed"]["model"] == "google/gemini-3-flash-preview"
     assert models["seed"]["temperature"] == 0.1

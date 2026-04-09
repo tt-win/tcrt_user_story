@@ -117,52 +117,6 @@ class OpenRouterConfig(BaseModel):
         )
 
 
-class JiraTestCaseHelperStageModelConfig(BaseModel):
-    model: str = "google/gemini-3-flash-preview"
-    temperature: float = 0.1
-
-
-class JiraTestCaseHelperModelsConfig(BaseModel):
-    analysis: JiraTestCaseHelperStageModelConfig = JiraTestCaseHelperStageModelConfig(
-        model="google/gemini-3-flash-preview",
-    )
-    testcase: JiraTestCaseHelperStageModelConfig = JiraTestCaseHelperStageModelConfig(
-        model="google/gemini-3-flash-preview",
-    )
-    audit: JiraTestCaseHelperStageModelConfig = JiraTestCaseHelperStageModelConfig(
-        model="google/gemini-3-flash-preview",
-    )
-
-
-class JiraTestCaseHelperConfig(BaseModel):
-    enable: bool = True
-    prompt_contract_version: str = "helper-prompt.v2"
-    payload_contract_version: str = "helper-draft.v2"
-    similar_cases_count: int = 5
-    similar_cases_max_length: int = 500
-    enable_ir_first: bool = True
-    coverage_backfill_max_rounds: int = 1
-    coverage_backfill_chunk_size: int = 12
-    coverage_force_complete: bool = True
-    testcase_force_complete: bool = True
-    min_steps: int = 3
-    api_min_steps: int = 2
-    min_preconditions: int = 1
-    max_vi_per_section: int = 12
-    max_repair_rounds: int = 3
-    forbidden_patterns: List[str] = [
-        "參考",
-        "REF\\d+",
-        "同上",
-        "略",
-        "TBD",
-        "N/A",
-        "待補",
-        "TODO",
-    ]
-    models: JiraTestCaseHelperModelsConfig = JiraTestCaseHelperModelsConfig()
-
-
 class QAAIHelperStageModelConfig(BaseModel):
     model: str = "google/gemini-3-flash-preview"
     temperature: float = 0.1
@@ -246,21 +200,13 @@ class QAAIHelperConfig(BaseModel):
         )
 
 
-class AIAssistConfig(BaseModel):
-    model: str = "openai/gpt-oss-120b:free"
-
-
 class AIConfig(BaseModel):
-    ai_assist: AIAssistConfig = AIAssistConfig()
-    jira_testcase_helper: JiraTestCaseHelperConfig = JiraTestCaseHelperConfig()
     qa_ai_helper: QAAIHelperConfig = QAAIHelperConfig()
 
     @classmethod
     def from_env(cls, fallback: "AIConfig" = None) -> "AIConfig":
         current = fallback or cls()
         return cls(
-            ai_assist=current.ai_assist,
-            jira_testcase_helper=current.jira_testcase_helper,
             qa_ai_helper=QAAIHelperConfig.from_env(current.qa_ai_helper),
         )
 
@@ -585,48 +531,6 @@ def create_default_config(config_path: str = "config.yaml") -> None:
         "jira": {"server_url": "", "username": "", "api_token": "", "ca_cert_path": ""},
         "openrouter": {"api_key": ""},
         "ai": {
-            "ai_assist": {
-                "model": "openai/gpt-oss-120b:free",
-            },
-            "jira_testcase_helper": {
-                "enable": False,
-                "similar_cases_count": 5,
-                "similar_cases_max_length": 500,
-                "enable_ir_first": True,
-                "coverage_backfill_max_rounds": 1,
-                "coverage_backfill_chunk_size": 12,
-                "coverage_force_complete": True,
-                "testcase_force_complete": True,
-                "min_steps": 3,
-                "api_min_steps": 2,
-                "min_preconditions": 1,
-                "max_vi_per_section": 12,
-                "max_repair_rounds": 3,
-                "forbidden_patterns": [
-                    "參考",
-                    "REF\\d+",
-                    "同上",
-                    "略",
-                    "TBD",
-                    "N/A",
-                    "待補",
-                    "TODO",
-                ],
-                "models": {
-                    "analysis": {
-                        "model": "google/gemini-3-flash-preview",
-                        "temperature": 0.1,
-                    },
-                    "testcase": {
-                        "model": "google/gemini-3-flash-preview",
-                        "temperature": 0.1,
-                    },
-                    "audit": {
-                        "model": "google/gemini-3-flash-preview",
-                        "temperature": 0.1,
-                    },
-                },
-            },
             "qa_ai_helper": {
                 "enable": True,
                 "prompt_contract_version": "qa-ai-helper.prompt.v1",

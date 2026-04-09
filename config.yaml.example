@@ -15,41 +15,6 @@ lark:
 openrouter:
   api_key: 'YOUR_OPENROUTER_API_KEY'
 ai:
-  ai_assist:
-    model: 'openai/gpt-oss-120b:free'
-  jira_testcase_helper:
-    enable: false  # 舊版 helper 已隱藏；保留設定僅供回退時使用
-    similar_cases_count: 5
-    similar_cases_max_length: 500
-    enable_ir_first: true
-    coverage_backfill_max_rounds: 1
-    coverage_backfill_chunk_size: 12
-    coverage_force_complete: true
-    testcase_force_complete: true
-    min_steps: 3
-    api_min_steps: 2
-    min_preconditions: 1
-    max_vi_per_section: 12
-    max_repair_rounds: 3
-    forbidden_patterns:
-      - '參考'
-      - 'REF\d+'
-      - '同上'
-      - '略'
-      - 'TBD'
-      - 'N/A'
-      - '待補'
-      - 'TODO'
-    models:
-      analysis:
-        model: 'google/gemini-3-flash-preview'
-        temperature: 0.1
-      testcase:
-        model: 'google/gemini-3-flash-preview'
-        temperature: 0.1
-      audit:
-        model: 'google/gemini-3-flash-preview'
-        temperature: 0.1
   qa_ai_helper:
     enable: true
     prompt_contract_version: 'qa-ai-helper.prompt.v1'
@@ -60,7 +25,7 @@ ai:
     generation_budget_row_limit: 120  # 0 = 無上限
     generation_budget_prompt_tokens: 12000  # 0 = 無上限
     generation_budget_output_tokens: 12000  # 0 = 無上限
-    max_concurrent_llm_calls: 5  # testcase 生成最大併發 LLM 呼叫數
+    max_concurrent_llm_calls: 5  # seed / testcase 生成最大併發 LLM worker 數
     models:
       # 可直接填 model id，或改成 '${QA_AI_HELPER_MODEL_SEED}'
       # temperature 可改成 '${QA_AI_HELPER_MODEL_SEED_TEMPERATURE}'

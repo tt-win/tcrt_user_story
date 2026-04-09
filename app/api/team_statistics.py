@@ -20,8 +20,6 @@ from app.auth.dependencies import require_admin
 from app.db_access.audit import AuditAccessBoundary, get_audit_access_boundary
 from app.db_access.main import MainAccessBoundary, get_main_access_boundary
 from app.models.database_models import (
-    AITestCaseHelperSession,
-    AITestCaseHelperStageMetric,
     LarkUser,
     LarkDepartment,
     TestCaseLocal,
@@ -41,45 +39,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin/team_statistics", tags=["team_statistics"])
 
 MAX_STAT_RANGE_DAYS = 90
-HELPER_AI_PRICING_VERSION = "google-vertex-baseline-v1"
-HELPER_AI_PRICING_THRESHOLD = 200_000
-HELPER_AI_PRICING: Dict[str, Dict[str, Any]] = {
-    "input": {
-        "token_key": "input_tokens",
-        "label": "Input",
-        "lte_200k": 2.0,
-        "gt_200k": 4.0,
-    },
-    "output": {
-        "token_key": "output_tokens",
-        "label": "Output",
-        "lte_200k": 12.0,
-        "gt_200k": 18.0,
-    },
-    "cache_read": {
-        "token_key": "cache_read_tokens",
-        "label": "Cache Read",
-        "lte_200k": 0.20,
-        "gt_200k": 0.40,
-    },
-    "cache_write": {
-        "token_key": "cache_write_tokens",
-        "label": "Cache Write",
-        "fixed": 0.375,
-    },
-    "input_audio": {
-        "token_key": "input_audio_tokens",
-        "label": "Input Audio",
-        "lte_200k": 2.0,
-        "gt_200k": 4.0,
-    },
-    "input_audio_cache": {
-        "token_key": "input_audio_cache_tokens",
-        "label": "Input Audio Cache",
-        "lte_200k": 0.20,
-        "gt_200k": 0.40,
-    },
-}
 
 
 def _to_non_negative_int(value: Any) -> int:
@@ -124,260 +83,17 @@ def _p95(values: List[int]) -> int:
     return int(ordered[index])
 
 
-def _aggregate_helper_stage_metrics(
-    rows: List[AITestCaseHelperStageMetric],
-) -> List[Dict[str, Any]]:
-    grouped: Dict[str, Dict[str, Any]] = defaultdict(
-        lambda: {
-            "durations": [],
-            "total_runs": 0,
-            "success_runs": 0,
-            "failed_runs": 0,
-            "pretestcase_count_total": 0,
-            "testcase_count_total": 0,
-            "input_tokens": 0,
-            "output_tokens": 0,
-            "cache_read_tokens": 0,
-            "cache_write_tokens": 0,
-            "input_audio_tokens": 0,
-            "input_audio_cache_tokens": 0,
-        }
-    )
-    for row in rows:
-        phase = str(row.phase or "").strip() or "unknown"
-        bucket = grouped[phase]
-        duration = _to_non_negative_int(row.duration_ms)
-        bucket["durations"].append(duration)
-        bucket["total_runs"] += 1
-        if str(row.status or "").lower() == "success":
-            bucket["success_runs"] += 1
-        else:
-            bucket["failed_runs"] += 1
-        bucket["pretestcase_count_total"] += _to_non_negative_int(row.pretestcase_count)
-        bucket["testcase_count_total"] += _to_non_negative_int(row.testcase_count)
-        bucket["input_tokens"] += _to_non_negative_int(row.input_tokens)
-        bucket["output_tokens"] += _to_non_negative_int(row.output_tokens)
-        bucket["cache_read_tokens"] += _to_non_negative_int(row.cache_read_tokens)
-        bucket["cache_write_tokens"] += _to_non_negative_int(row.cache_write_tokens)
-        bucket["input_audio_tokens"] += _to_non_negative_int(row.input_audio_tokens)
-        bucket["input_audio_cache_tokens"] += _to_non_negative_int(row.input_audio_cache_tokens)
-
-    phase_order = {"analysis": 1, "testcase": 2, "commit": 3}
-    results: List[Dict[str, Any]] = []
-    for phase, bucket in grouped.items():
-        durations = [int(item) for item in bucket["durations"]]
-        max_duration = max(durations) if durations else 0
-        avg_duration = int(round(sum(durations) / len(durations))) if durations else 0
-        results.append(
-            {
-                "phase": phase,
-                "total_runs": int(bucket["total_runs"]),
-                "success_runs": int(bucket["success_runs"]),
-                "failed_runs": int(bucket["failed_runs"]),
-                "avg_duration_ms": avg_duration,
-                "p95_duration_ms": _p95(durations),
-                "max_duration_ms": int(max_duration),
-                "pretestcase_count_total": int(bucket["pretestcase_count_total"]),
-                "testcase_count_total": int(bucket["testcase_count_total"]),
-                "token_totals": {
-                    "input_tokens": int(bucket["input_tokens"]),
-                    "output_tokens": int(bucket["output_tokens"]),
-                    "cache_read_tokens": int(bucket["cache_read_tokens"]),
-                    "cache_write_tokens": int(bucket["cache_write_tokens"]),
-                    "input_audio_tokens": int(bucket["input_audio_tokens"]),
-                    "input_audio_cache_tokens": int(bucket["input_audio_cache_tokens"]),
-                },
-            }
-        )
-    results.sort(key=lambda item: (phase_order.get(item["phase"], 99), item["phase"]))
-    return results
 
 
-def _aggregate_helper_team_usage(
-    progress_records: List[Dict[str, Any]],
-    telemetry_rows: List[AITestCaseHelperStageMetric],
-) -> List[Dict[str, Any]]:
-    grouped: Dict[int, Dict[str, Any]] = defaultdict(
-        lambda: {
-            "team_id": 0,
-            "team_name": "",
-            "session_count": 0,
-            "active_sessions": 0,
-            "completed_sessions": 0,
-            "failed_sessions": 0,
-            "cancelled_sessions": 0,
-            "telemetry_runs": 0,
-            "input_tokens": 0,
-            "output_tokens": 0,
-            "cache_read_tokens": 0,
-            "cache_write_tokens": 0,
-            "input_audio_tokens": 0,
-            "input_audio_cache_tokens": 0,
-            "user_ids": set(),
-            "ticket_keys": set(),
-        }
-    )
-
-    for record in progress_records:
-        team_id_raw = record.get("team_id")
-        try:
-            team_id = int(team_id_raw)
-        except (TypeError, ValueError):
-            continue
-        if team_id <= 0:
-            continue
-
-        bucket = grouped[team_id]
-        bucket["team_id"] = team_id
-        team_name = str(record.get("team_name") or "").strip()
-        if team_name:
-            bucket["team_name"] = team_name
-        bucket["session_count"] += 1
-
-        status = str(record.get("status") or "").strip().lower()
-        if status == "active":
-            bucket["active_sessions"] += 1
-        elif status in {"completed", "success"}:
-            bucket["completed_sessions"] += 1
-        elif status == "failed":
-            bucket["failed_sessions"] += 1
-        elif status == "cancelled":
-            bucket["cancelled_sessions"] += 1
-
-        user_id_raw = record.get("user_id")
-        try:
-            user_id = int(user_id_raw) if user_id_raw is not None else None
-        except (TypeError, ValueError):
-            user_id = None
-        if user_id is not None and user_id > 0:
-            bucket["user_ids"].add(user_id)
-
-        ticket_key = str(record.get("ticket_key") or "").strip().upper()
-        if ticket_key:
-            bucket["ticket_keys"].add(ticket_key)
-
-    for row in telemetry_rows:
-        team_id_raw = row.team_id
-        try:
-            team_id = int(team_id_raw)
-        except (TypeError, ValueError):
-            continue
-        if team_id <= 0:
-            continue
-
-        bucket = grouped[team_id]
-        bucket["team_id"] = team_id
-        if not bucket["team_name"]:
-            bucket["team_name"] = f"Team #{team_id}"
-
-        bucket["telemetry_runs"] += 1
-        bucket["input_tokens"] += _to_non_negative_int(row.input_tokens)
-        bucket["output_tokens"] += _to_non_negative_int(row.output_tokens)
-        bucket["cache_read_tokens"] += _to_non_negative_int(row.cache_read_tokens)
-        bucket["cache_write_tokens"] += _to_non_negative_int(row.cache_write_tokens)
-        bucket["input_audio_tokens"] += _to_non_negative_int(row.input_audio_tokens)
-        bucket["input_audio_cache_tokens"] += _to_non_negative_int(
-            row.input_audio_cache_tokens
-        )
-
-        user_id_raw = row.user_id
-        try:
-            user_id = int(user_id_raw) if user_id_raw is not None else None
-        except (TypeError, ValueError):
-            user_id = None
-        if user_id is not None and user_id > 0:
-            bucket["user_ids"].add(user_id)
-
-        ticket_key = str(row.ticket_key or "").strip().upper()
-        if ticket_key:
-            bucket["ticket_keys"].add(ticket_key)
-
-    results: List[Dict[str, Any]] = []
-    for team_id, bucket in grouped.items():
-        team_name = str(bucket.get("team_name") or "").strip() or f"Team #{team_id}"
-        token_usage = {
-            "input_tokens": int(bucket["input_tokens"]),
-            "output_tokens": int(bucket["output_tokens"]),
-            "cache_read_tokens": int(bucket["cache_read_tokens"]),
-            "cache_write_tokens": int(bucket["cache_write_tokens"]),
-            "input_audio_tokens": int(bucket["input_audio_tokens"]),
-            "input_audio_cache_tokens": int(bucket["input_audio_cache_tokens"]),
-        }
-        total_tokens = sum(token_usage.values())
-        estimated_cost = _estimate_helper_ai_cost(token_usage)
-
-        results.append(
-            {
-                "team_id": team_id,
-                "team_name": team_name,
-                "session_count": int(bucket["session_count"]),
-                "active_sessions": int(bucket["active_sessions"]),
-                "completed_sessions": int(bucket["completed_sessions"]),
-                "failed_sessions": int(bucket["failed_sessions"]),
-                "cancelled_sessions": int(bucket["cancelled_sessions"]),
-                "distinct_users": len(bucket["user_ids"]),
-                "distinct_tickets": len(bucket["ticket_keys"]),
-                "telemetry_runs": int(bucket["telemetry_runs"]),
-                "total_tokens": int(total_tokens),
-                "estimated_cost_usd": float(
-                    estimated_cost.get("total_estimated_cost_usd", 0.0) or 0.0
-                ),
-            }
-        )
-
-    results.sort(
-        key=lambda item: (
-            -int(item["session_count"]),
-            -int(item["total_tokens"]),
-            str(item["team_name"]),
-        )
-    )
-    return results
 
 
-def _estimate_helper_ai_cost(token_usage: Dict[str, int]) -> Dict[str, Any]:
-    breakdown: Dict[str, Dict[str, Any]] = {}
-    total_estimated_cost = 0.0
 
-    for category, rule in HELPER_AI_PRICING.items():
-        token_key = str(rule["token_key"])
-        tokens = _to_non_negative_int(token_usage.get(token_key, 0))
-        if "fixed" in rule:
-            rate = float(rule["fixed"])
-            tier = "fixed"
-        else:
-            if tokens <= HELPER_AI_PRICING_THRESHOLD:
-                rate = float(rule["lte_200k"])
-                tier = "<=200k"
-            else:
-                rate = float(rule["gt_200k"])
-                tier = ">200k"
-        estimated_cost = tokens / 1_000_000 * rate
-        total_estimated_cost += estimated_cost
-        breakdown[category] = {
-            "label": rule["label"],
-            "token_key": token_key,
-            "tokens": tokens,
-            "tier": tier,
-            "rate_per_1m_usd": rate,
-            "estimated_cost_usd": round(estimated_cost, 6),
-        }
 
-    return {
-        "currency": "USD",
-        "unit": "per_1m_tokens",
-        "threshold_tokens": HELPER_AI_PRICING_THRESHOLD,
-        "pricing_profile_version": HELPER_AI_PRICING_VERSION,
-        "breakdown": breakdown,
-        "total_estimated_cost_usd": round(total_estimated_cost, 6),
-        "estimated_at": datetime.now(timezone.utc).isoformat(),
-    }
+
 
 
 def _resolve_date_range(
-    days: int,
-    start_date: Optional[date],
-    end_date: Optional[date]
+    days: int, start_date: Optional[date], end_date: Optional[date]
 ) -> tuple[str, str, datetime, datetime, int]:
     """解析日期範圍，支援 days 或自訂日期區間。"""
     if start_date or end_date:
@@ -389,10 +105,7 @@ def _resolve_date_range(
         if total_days < 1:
             raise HTTPException(status_code=400, detail={"error": "日期區間至少需要 1 天"})
         if total_days > MAX_STAT_RANGE_DAYS:
-            raise HTTPException(
-                status_code=400,
-                detail={"error": f"日期區間不可超過 {MAX_STAT_RANGE_DAYS} 天"}
-            )
+            raise HTTPException(status_code=400, detail={"error": f"日期區間不可超過 {MAX_STAT_RANGE_DAYS} 天"})
         start_dt = datetime.combine(start_date, datetime.min.time(), tzinfo=timezone.utc)
         end_dt = datetime.combine(end_date, datetime.max.time(), tzinfo=timezone.utc)
         return start_date.isoformat(), end_date.isoformat(), start_dt, end_dt, total_days
@@ -411,7 +124,7 @@ def _extract_assignee_names(payload: Any) -> List[str]:
             payload = json.loads(payload)
         except json.JSONDecodeError:
             # 以逗號分隔的字串簡單拆解
-            for part in payload.split(','):
+            for part in payload.split(","):
                 part = part.strip()
                 if part:
                     names.append(part)
@@ -443,15 +156,15 @@ def _format_department_name(dept_id: Optional[str], path: Optional[str]) -> str:
         return "未命名部門"
 
     if path:
-        parts = [segment for segment in path.split('/') if segment and segment != '0']
+        parts = [segment for segment in path.split("/") if segment and segment != "0"]
         if parts:
             readable_parts = [
-                part if not part.startswith('od-') or len(part) <= 8 else f"{part[:3]}…{part[-4:]}"
+                part if not part.startswith("od-") or len(part) <= 8 else f"{part[:3]}…{part[-4:]}"
                 for part in parts[-3:]
             ]
             return " / ".join(readable_parts)
 
-    if dept_id.startswith('od-') and len(dept_id) > 8:
+    if dept_id.startswith("od-") and len(dept_id) > 8:
         return f"{dept_id[:3]}…{dept_id[-4:]}"
 
     return dept_id
@@ -528,7 +241,15 @@ def _get_action_weight(resource_type: Any, details_raw: Any) -> int:
         return weight
 
     candidate_counts: List[int] = []
-    for key in ("created_count", "updated_count", "success_count", "nodes_count", "count", "items_count", "total_count"):
+    for key in (
+        "created_count",
+        "updated_count",
+        "success_count",
+        "nodes_count",
+        "count",
+        "items_count",
+        "total_count",
+    ):
         val = details.get(key)
         if isinstance(val, int):
             candidate_counts.append(val)
@@ -574,59 +295,36 @@ async def get_overview(
             )
             team_count = team_count_result.scalar() or 0
 
-            user_count_result = await session.execute(
-                select(func.count(User.id)).where(User.is_active == True)
-            )
+            user_count_result = await session.execute(select(func.count(User.id)).where(User.is_active == True))
             user_count = user_count_result.scalar() or 0
 
-            test_case_count_result = await session.execute(
-                select(func.count(TestCaseLocal.id))
-            )
+            test_case_count_result = await session.execute(select(func.count(TestCaseLocal.id)))
             test_case_total = test_case_count_result.scalar() or 0
 
-            test_run_result = await session.execute(
-                select(func.count(TestRunConfig.id))
-            )
+            test_run_result = await session.execute(select(func.count(TestRunConfig.id)))
             test_run_total = test_run_result.scalar() or 0
 
             team_test_case_result = await session.execute(
-                select(
-                    TestCaseLocal.team_id,
-                    Team.name,
-                    func.count(TestCaseLocal.id).label('test_case_count')
-                )
+                select(TestCaseLocal.team_id, Team.name, func.count(TestCaseLocal.id).label("test_case_count"))
                 .join(Team, TestCaseLocal.team_id == Team.id)
                 .where(Team.status == TeamStatus.ACTIVE)
                 .group_by(TestCaseLocal.team_id, Team.name)
-                .order_by(desc('test_case_count'))
+                .order_by(desc("test_case_count"))
             )
             team_test_cases = [
-                {
-                    "team_id": row[0],
-                    "team_name": row[1],
-                    "test_case_count": row[2]
-                }
+                {"team_id": row[0], "team_name": row[1], "test_case_count": row[2]}
                 for row in team_test_case_result.all()
             ]
 
             team_test_run_result = await session.execute(
-                select(
-                    TestRunConfig.team_id,
-                    Team.name,
-                    func.count(TestRunConfig.id).label('test_run_count')
-                )
+                select(TestRunConfig.team_id, Team.name, func.count(TestRunConfig.id).label("test_run_count"))
                 .join(Team, TestRunConfig.team_id == Team.id)
                 .where(Team.status == TeamStatus.ACTIVE)
                 .group_by(TestRunConfig.team_id, Team.name)
-                .order_by(desc('test_run_count'))
+                .order_by(desc("test_run_count"))
             )
             team_test_runs = [
-                {
-                    "team_id": row[0],
-                    "team_name": row[1],
-                    "test_run_count": row[2]
-                }
-                for row in team_test_run_result.all()
+                {"team_id": row[0], "team_name": row[1], "test_run_count": row[2]} for row in team_test_run_result.all()
             ]
 
             return {
@@ -640,9 +338,7 @@ async def get_overview(
 
         async def _load_recent_activity(audit_session: AsyncSession) -> List[Dict[str, Any]]:
             recent_logs = await audit_session.execute(
-                select(AuditLogTable)
-                .order_by(desc(AuditLogTable.timestamp))
-                .limit(10)
+                select(AuditLogTable).order_by(desc(AuditLogTable.timestamp)).limit(10)
             )
             recent_activity = [
                 {
@@ -652,7 +348,7 @@ async def get_overview(
                     "action_type": log.action_type.value if log.action_type else None,
                     "resource_type": log.resource_type.value if log.resource_type else None,
                     "action_brief": log.action_brief,
-                    "severity": log.severity.value if log.severity else "info"
+                    "severity": log.severity.value if log.severity else "info",
                 }
                 for log in recent_logs.scalars()
             ]
@@ -661,15 +357,13 @@ async def get_overview(
         main_payload = await main_boundary.run_read(_load_main)
         recent_activity = await audit_boundary.run_read(_load_recent_activity)
 
-        return JSONResponse({
-            **main_payload,
-            "recent_activity": recent_activity,
-            "date_range": {
-                "start": start_date,
-                "end": end_date,
-                "days": range_days
+        return JSONResponse(
+            {
+                **main_payload,
+                "recent_activity": recent_activity,
+                "date_range": {"start": start_date, "end": end_date, "days": range_days},
             }
-        })
+        )
 
     except Exception as e:
         logger.error(f"獲取總覽統計失敗: {e}")
@@ -696,23 +390,15 @@ async def get_team_activity(
         start_date, end_date, start_dt, end_dt, range_days = _resolve_date_range(days, start_date, end_date)
 
         async def _load_teams(session: AsyncSession) -> Dict[int, str]:
-            teams_result = await session.execute(
-                select(Team.id, Team.name).where(Team.status == TeamStatus.ACTIVE)
-            )
+            teams_result = await session.execute(select(Team.id, Team.name).where(Team.status == TeamStatus.ACTIVE))
             return {row[0]: row[1] for row in teams_result}
 
         async def _load_activity(audit_session: AsyncSession) -> List[tuple[Any, Any, Any, Any]]:
             activity_result = await audit_session.execute(
                 select(
-                    AuditLogTable.team_id,
-                    AuditLogTable.action_type,
-                    AuditLogTable.resource_type,
-                    AuditLogTable.details
-                )
-                .where(
-                    AuditLogTable.timestamp >= start_dt,
-                    AuditLogTable.timestamp <= end_dt,
-                    AuditLogTable.team_id > 0
+                    AuditLogTable.team_id, AuditLogTable.action_type, AuditLogTable.resource_type, AuditLogTable.details
+                ).where(
+                    AuditLogTable.timestamp >= start_dt, AuditLogTable.timestamp <= end_dt, AuditLogTable.team_id > 0
                 )
             )
             return activity_result.all()
@@ -723,12 +409,7 @@ async def get_team_activity(
         # 整理數據 - 先為所有團隊初始化 0
         by_team = {}
         for team_id, team_name in teams_dict.items():
-            by_team[team_id] = {
-                "team_id": team_id,
-                "team_name": team_name,
-                "total": 0,
-                "by_action": {}
-            }
+            by_team[team_id] = {"team_id": team_id, "team_name": team_name, "total": 0, "by_action": {}}
 
         # 填入審計日誌數據
         for team_id, action_type, resource_type, details in activity_rows:
@@ -741,30 +422,24 @@ async def get_team_activity(
                     "team_id": team_id,
                     "team_name": teams_dict.get(team_id, f"Team {team_id}"),
                     "total": 0,
-                    "by_action": {}
+                    "by_action": {},
                 }
             by_team[team_id]["total"] += weight
             action_key = _enum_value(action_type)
             by_team[team_id]["by_action"][action_key] = by_team[team_id]["by_action"].get(action_key, 0) + weight
 
         # 排序取得最活躍團隊
-        all_teams_activity = sorted(
-            by_team.values(),
-            key=lambda x: x["total"],
-            reverse=True
-        )
+        all_teams_activity = sorted(by_team.values(), key=lambda x: x["total"], reverse=True)
         top_active_teams = all_teams_activity[:10]
 
-        return JSONResponse({
-            "by_team": by_team,
-            "top_active_teams": top_active_teams,
-            "all_teams_activity": all_teams_activity,
-            "date_range": {
-                "start": start_date,
-                "end": end_date,
-                "days": range_days
+        return JSONResponse(
+            {
+                "by_team": by_team,
+                "top_active_teams": top_active_teams,
+                "all_teams_activity": all_teams_activity,
+                "date_range": {"start": start_date, "end": end_date, "days": range_days},
             }
-        })
+        )
 
     except Exception as e:
         logger.error(f"獲取團隊活動統計失敗: {e}")
@@ -824,19 +499,12 @@ async def get_test_case_trends(
             created_rows = created_rows_result.all()
             updated_rows = updated_rows_result.all()
 
-            involved_team_ids = {
-                int(row[0]) for row in created_rows + updated_rows if row[0] is not None
-            }
+            involved_team_ids = {int(row[0]) for row in created_rows + updated_rows if row[0] is not None}
 
             team_name_map: Dict[int, str] = {}
             if involved_team_ids:
-                teams_result = await session.execute(
-                    select(Team.id, Team.name).where(Team.id.in_(involved_team_ids))
-                )
-                team_name_map = {
-                    int(row[0]): (row[1] or f"未命名團隊 #{row[0]}")
-                    for row in teams_result.all()
-                }
+                teams_result = await session.execute(select(Team.id, Team.name).where(Team.id.in_(involved_team_ids)))
+                team_name_map = {int(row[0]): (row[1] or f"未命名團隊 #{row[0]}") for row in teams_result.all()}
 
             return {
                 "created_rows": created_rows,
@@ -883,22 +551,20 @@ async def get_test_case_trends(
                 updated_count = updated_map.get(team_id, {}).get(label, 0)
                 total_created += created_count
                 total_updated += updated_count
-                daily_entries.append({
-                    "date": label,
-                    "created": created_count,
-                    "updated": updated_count
-                })
+                daily_entries.append({"date": label, "created": created_count, "updated": updated_count})
 
             if total_created == 0 and total_updated == 0:
                 continue
 
-            per_team_daily.append({
-                "team_id": team_id,
-                "team_name": team_name,
-                "daily": daily_entries,
-                "total_created": total_created,
-                "total_updated": total_updated
-            })
+            per_team_daily.append(
+                {
+                    "team_id": team_id,
+                    "team_name": team_name,
+                    "daily": daily_entries,
+                    "total_created": total_created,
+                    "total_updated": total_updated,
+                }
+            )
 
         per_team_daily.sort(key=lambda item: (item["total_created"], item["total_updated"]), reverse=True)
 
@@ -921,13 +587,9 @@ async def get_test_case_trends(
                 "daily_created": overall_daily_created,
                 "daily_updated": overall_daily_updated,
                 "total_created": total_created_sum,
-                "total_updated": total_updated_sum
+                "total_updated": total_updated_sum,
             },
-            "date_range": {
-                "start": start_date_str,
-                "end": end_date_str,
-                "days": range_days
-            }
+            "date_range": {"start": start_date_str, "end": end_date_str, "days": range_days},
         }
 
         return JSONResponse(response_payload)
@@ -1011,19 +673,12 @@ async def get_test_run_metrics(
                 for row in status_result.all()
             }
 
-            involved_team_ids = {
-                int(row[0]) for row in daily_team_rows + pass_rate_team_rows if row[0] is not None
-            }
+            involved_team_ids = {int(row[0]) for row in daily_team_rows + pass_rate_team_rows if row[0] is not None}
 
             team_name_map: Dict[int, str] = {}
             if involved_team_ids:
-                teams_result = await session.execute(
-                    select(Team.id, Team.name).where(Team.id.in_(involved_team_ids))
-                )
-                team_name_map = {
-                    int(row[0]): (row[1] or f"未命名團隊 #{row[0]}")
-                    for row in teams_result.all()
-                }
+                teams_result = await session.execute(select(Team.id, Team.name).where(Team.id.in_(involved_team_ids)))
+                team_name_map = {int(row[0]): (row[1] or f"未命名團隊 #{row[0]}") for row in teams_result.all()}
 
             team_result = await session.execute(
                 select(
@@ -1040,11 +695,7 @@ async def get_test_run_metrics(
                 .order_by(team_count_expr.desc())
             )
             by_team = [
-                {
-                    "team_id": row[0],
-                    "team_name": row[1] or f"Team {row[0]}",
-                    "count": int(row[2])
-                }
+                {"team_id": row[0], "team_name": row[1] or f"Team {row[0]}", "count": int(row[2])}
                 for row in team_result.all()
             ]
 
@@ -1093,20 +744,19 @@ async def get_test_run_metrics(
             for label in labels:
                 exec_count = daily_exec_map.get(team_id, {}).get(label, 0)
                 total_executions += exec_count
-                daily_entries.append({
-                    "date": label,
-                    "count": exec_count
-                })
+                daily_entries.append({"date": label, "count": exec_count})
 
             if total_executions == 0:
                 continue
 
-            per_team_daily.append({
-                "team_id": team_id,
-                "team_name": team_name,
-                "daily": daily_entries,
-                "total_executions": total_executions
-            })
+            per_team_daily.append(
+                {
+                    "team_id": team_id,
+                    "team_name": team_name,
+                    "daily": daily_entries,
+                    "total_executions": total_executions,
+                }
+            )
 
         per_team_daily.sort(key=lambda item: item["total_executions"], reverse=True)
 
@@ -1125,24 +775,23 @@ async def get_test_run_metrics(
                 pass_rate = round((pass_count / count * 100) if count > 0 else 0, 2)
                 total_pass += pass_count
                 total_count += count
-                daily_entries.append({
-                    "date": label,
-                    "pass_rate": pass_rate,
-                    "pass_count": pass_count,
-                    "total_count": count
-                })
+                daily_entries.append(
+                    {"date": label, "pass_rate": pass_rate, "pass_count": pass_count, "total_count": count}
+                )
 
             if total_count == 0:
                 continue
 
-            per_team_pass_rate.append({
-                "team_id": team_id,
-                "team_name": team_name,
-                "daily": daily_entries,
-                "total_pass": total_pass,
-                "total_count": total_count,
-                "overall_pass_rate": round((total_pass / total_count * 100) if total_count > 0 else 0, 2)
-            })
+            per_team_pass_rate.append(
+                {
+                    "team_id": team_id,
+                    "team_name": team_name,
+                    "daily": daily_entries,
+                    "total_pass": total_pass,
+                    "total_count": total_count,
+                    "overall_pass_rate": round((total_pass / total_count * 100) if total_count > 0 else 0, 2),
+                }
+            )
 
         per_team_pass_rate.sort(key=lambda item: item["overall_pass_rate"], reverse=True)
 
@@ -1159,12 +808,9 @@ async def get_test_run_metrics(
             pass_sum = sum(team_entry["daily"][idx]["pass_count"] for team_entry in per_team_pass_rate)
             total_sum = sum(team_entry["daily"][idx]["total_count"] for team_entry in per_team_pass_rate)
             pass_rate = round((pass_sum / total_sum * 100) if total_sum > 0 else 0, 2)
-            overall_pass_rate_trend.append({
-                "date": label,
-                "pass_rate": pass_rate,
-                "pass_count": pass_sum,
-                "total_count": total_sum
-            })
+            overall_pass_rate_trend.append(
+                {"date": label, "pass_rate": pass_rate, "pass_count": pass_sum, "total_count": total_sum}
+            )
 
         response_payload = {
             "dates": labels,
@@ -1172,15 +818,8 @@ async def get_test_run_metrics(
             "per_team_pass_rate": per_team_pass_rate,
             "by_status": by_status,
             "by_team": by_team,
-            "overall": {
-                "daily_executions": overall_daily_executions,
-                "pass_rate_trend": overall_pass_rate_trend
-            },
-            "date_range": {
-                "start": start_date_str,
-                "end": end_date_str,
-                "days": range_days
-            }
+            "overall": {"daily_executions": overall_daily_executions, "pass_rate_trend": overall_pass_rate_trend},
+            "date_range": {"start": start_date_str, "end": end_date_str, "days": range_days},
         }
 
         return JSONResponse(response_payload)
@@ -1218,11 +857,8 @@ async def get_user_activity(
                     AuditLogTable.action_type,
                     AuditLogTable.resource_type,
                     AuditLogTable.details,
-                    AuditLogTable.timestamp
-                ).where(
-                    AuditLogTable.timestamp >= start_dt,
-                    AuditLogTable.timestamp <= end_dt
-                )
+                    AuditLogTable.timestamp,
+                ).where(AuditLogTable.timestamp >= start_dt, AuditLogTable.timestamp <= end_dt)
             )
             user_counter: Dict[int, Dict[str, Any]] = {}
             operation_counter: Dict[str, int] = {}
@@ -1237,12 +873,9 @@ async def get_user_activity(
                 hour_val = row.timestamp.hour if row.timestamp else None
                 action_key = _enum_value(row.action_type)
 
-                entry = user_counter.setdefault(uid, {
-                    "user_id": uid,
-                    "username": row.username,
-                    "role": row.role,
-                    "action_count": 0
-                })
+                entry = user_counter.setdefault(
+                    uid, {"user_id": uid, "username": row.username, "role": row.role, "action_count": 0}
+                )
                 entry["action_count"] += weight
 
                 operation_counter[action_key] = operation_counter.get(action_key, 0) + weight
@@ -1259,14 +892,7 @@ async def get_user_activity(
 
         user_activity = await audit_boundary.run_read(_load_user_activity)
 
-        return JSONResponse({
-            **user_activity,
-            "date_range": {
-                "start": start_date,
-                "end": end_date,
-                "days": range_days
-            }
-        })
+        return JSONResponse({**user_activity, "date_range": {"start": start_date, "end": end_date, "days": range_days}})
 
     except Exception as e:
         logger.error(f"獲取使用者活動統計失敗: {e}")
@@ -1309,10 +935,7 @@ async def get_audit_analysis(
                 .group_by(AuditLogTable.resource_type)
                 .order_by(resource_count_expr.desc())
             )
-            by_resource_type = {
-                _enum_storage_key(row[0]): int(row[1])
-                for row in resource_result.all()
-            }
+            by_resource_type = {_enum_storage_key(row[0]): int(row[1]) for row in resource_result.all()}
 
             severity_result = await audit_session.execute(
                 select(
@@ -1325,10 +948,7 @@ async def get_audit_analysis(
                 )
                 .group_by(AuditLogTable.severity)
             )
-            by_severity = {
-                _enum_storage_key(row[0]): int(row[1])
-                for row in severity_result.all()
-            }
+            by_severity = {_enum_storage_key(row[0]): int(row[1]) for row in severity_result.all()}
 
             critical_result = await audit_session.execute(
                 select(AuditLogTable)
@@ -1366,10 +986,7 @@ async def get_audit_analysis(
                 .group_by(daily_day)
                 .order_by(daily_day.asc())
             )
-            daily_trend = [
-                {"date": _day_to_label(row[0]), "count": int(row[1])}
-                for row in daily_result.all()
-            ]
+            daily_trend = [{"date": _day_to_label(row[0]), "count": int(row[1])} for row in daily_result.all()]
 
             return {
                 "by_resource_type": by_resource_type,
@@ -1380,14 +997,9 @@ async def get_audit_analysis(
 
         audit_analysis = await audit_boundary.run_read(_load_audit_analysis)
 
-        return JSONResponse({
-            **audit_analysis,
-            "date_range": {
-                "start": start_date,
-                "end": end_date,
-                "days": range_days
-            }
-        })
+        return JSONResponse(
+            {**audit_analysis, "date_range": {"start": start_date, "end": end_date, "days": range_days}}
+        )
 
     except Exception as e:
         logger.error(f"獲取審計分析統計失敗: {e}")
@@ -1448,8 +1060,7 @@ async def get_department_stats(
                 select(
                     LarkUser.primary_department_id,
                     LarkUser.department_ids_json,
-                )
-                .where(
+                ).where(
                     LarkUser.is_activated == True,
                     LarkUser.is_exited == False,
                 )
@@ -1493,13 +1104,15 @@ async def get_department_stats(
             direct = direct_counter.get(dept_id, meta.get("direct_user_count", 0))
             display_name = _format_department_name(dept_id, meta.get("path"))
 
-            department_entries.append({
-                "dept_id": dept_id,
-                "dept_name": display_name,
-                "display_name": display_name,
-                "total_user_count": int(total or 0),
-                "direct_user_count": int(direct or 0),
-            })
+            department_entries.append(
+                {
+                    "dept_id": dept_id,
+                    "dept_name": display_name,
+                    "display_name": display_name,
+                    "total_user_count": int(total or 0),
+                    "direct_user_count": int(direct or 0),
+                }
+            )
 
         department_entries.sort(key=lambda item: item["total_user_count"], reverse=True)
         department_list = department_entries[:50]
@@ -1519,44 +1132,22 @@ async def get_department_stats(
                 .order_by(action_count_expr.desc())
                 .limit(50)
             )
-            return [
-                {"username": row[0], "action_count": int(row[1])}
-                for row in dept_activity_result.all()
-            ]
+            return [{"username": row[0], "action_count": int(row[1])} for row in dept_activity_result.all()]
 
         by_department_users = await audit_boundary.run_read(_load_department_activity)
 
-        return JSONResponse({
-            "department_list": department_list,
-            "user_distribution": user_distribution,
-            "by_department_users": by_department_users,
-            "date_range": {
-                "start": start_date,
-                "end": end_date,
-                "days": range_days
+        return JSONResponse(
+            {
+                "department_list": department_list,
+                "user_distribution": user_distribution,
+                "by_department_users": by_department_users,
+                "date_range": {"start": start_date, "end": end_date, "days": range_days},
             }
-        })
+        )
 
     except Exception as e:
         logger.error(f"獲取部門統計失敗: {e}")
         raise HTTPException(status_code=500, detail={"error": "無法載入部門統計"})
 
 
-@router.get("/helper_ai_analytics", include_in_schema=False)
-async def get_helper_ai_analytics(
-    current_user: User = Depends(require_admin()),
-    days: int = Query(30, ge=1, le=MAX_STAT_RANGE_DAYS, description="統計天數"),
-    start_date: Optional[date] = Query(None, description="開始日期 (YYYY-MM-DD)"),
-    end_date: Optional[date] = Query(None, description="結束日期 (YYYY-MM-DD)"),
-    team_ids: Optional[str] = Query(None, description="團隊 ID，逗號分隔"),
-    user_id: Optional[int] = Query(None, ge=1, description="指定帳號 ID"),
-    ticket_key: Optional[str] = Query(None, description="指定 ticket key"),
-    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
-):
-    raise HTTPException(
-        status_code=410,
-        detail={
-            "error": "legacy_helper_statistics_retired",
-            "message": "舊版 QA AI Helper phase 統計已停用；V3 rollout 後不再讀取 legacy session 或 telemetry 資料。",
-        },
-    )
+

@@ -15,6 +15,7 @@ from typing import Any, Dict, List, Literal, Optional
 import aiohttp
 
 from app.config import get_settings
+from app.services.qa_ai_helper_title_utils import build_testcase_title_summary
 
 QAAIHelperLLMStage = Literal["seed", "seed_refine", "testcase", "repair"]
 
@@ -258,7 +259,6 @@ class QAAIHelperLLMService:
         outputs: List[Dict[str, Any]] = []
         for index, item in enumerate(items):
             item_index = int(item.get("item_index", index))
-            title = str(item.get("title_hint") or item.get("intent") or f"Testcase {item_index + 1}").strip()
             preconditions = [str(value).strip() for value in item.get("precondition_hints", []) if str(value).strip()]
             steps = [str(value).strip() for value in item.get("step_hints", []) if str(value).strip()]
             expected_results = [
@@ -274,6 +274,23 @@ class QAAIHelperLLMService:
                     expected_results = [str(required_assertions[0].get("text") or "系統符合需求規則")]
                 else:
                     expected_results = ["系統符合該案例預期結果"]
+            title = build_testcase_title_summary(
+                steps=steps,
+                expected_results=expected_results,
+                step_hints=item.get("step_hints") or [],
+                expected_hints=item.get("expected_hints") or [],
+                seed_body_text=item.get("seed_body_text"),
+                scenario_title=item.get("scenario_title"),
+                section_title=item.get("section_title"),
+                title_hint=item.get("title_hint"),
+                verification_item_summary=item.get("verification_item_summary"),
+                fallback_title=f"Testcase {item_index + 1}",
+                disallowed_titles=[
+                    item.get("title_hint"),
+                    item.get("verification_item_summary"),
+                    item.get("intent"),
+                ],
+            )
             outputs.append(
                 {
                     "item_index": item_index,

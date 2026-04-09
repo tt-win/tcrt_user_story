@@ -15,9 +15,7 @@ QAAIHelperPromptStage = Literal["seed", "seed_refine", "testcase", "repair"]
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_PROMPT_DIR = (
-    Path(__file__).resolve().parents[2] / "prompts" / "jira_testcase_helper"
-)
+DEFAULT_PROMPT_DIR = Path(__file__).resolve().parents[2] / "prompts" / "jira_testcase_helper"
 PROMPT_FILE_MAP: Dict[QAAIHelperPromptStage, str] = {
     "seed": "seed.md",
     "seed_refine": "seed_refine.md",
@@ -52,8 +50,13 @@ FALLBACK_PROMPTS: Dict[QAAIHelperPromptStage, str] = {
         "你只能根據 generation_items 與 required_assertions 產生 testcase body，"
         "不得新增未提供的 requirement、案例或 metadata。\n"
         "每個 item_index 必須輸出且只能輸出一筆 testcase body。\n"
+        "title 必須根據 preconditions、steps 與 expected_results 的內容做精簡摘要，"
+        "不得直接複製 title_hint、verification_item_summary 或使用者輸入的驗證項目說明。\n"
         "preconditions 至少 {min_preconditions} 條，steps 至少 {min_steps} 步，"
         "expected_results 至少 1 條且需為可觀測結果。\n"
+        "若 preconditions、steps 或 expected_results 任一欄位有多於 1 個項目，"
+        "該欄位內每一項內容都必須自行加上阿拉伯數字編號（例如 1. ..., 2. ...）；"
+        "若該欄位只有 1 項，則不要加編號。\n"
         "只輸出 JSON，禁止輸出 Markdown、說明或 code fence。\n\n"
         "SECTION_SUMMARY={section_summary_json}\n"
         "SHARED_CONSTRAINTS={shared_constraints_json}\n"
@@ -66,8 +69,13 @@ FALLBACK_PROMPTS: Dict[QAAIHelperPromptStage, str] = {
         "你是 testcase body 修補器。使用 {output_language}。\n"
         "只能修補 validator 指出的 testcase body 欄位錯誤，不得新增 testcase、"
         "不得調整 item_index、不得更改 requirement scope。\n"
+        "若需要補 title，title 必須根據 testcase 內容做精簡摘要，"
+        "不得直接複製 title_hint、verification_item_summary 或使用者輸入的驗證項目說明。\n"
         "preconditions 至少 {min_preconditions} 條，steps 至少 {min_steps} 步，"
         "expected_results 至少 1 條且需為可觀測結果。\n"
+        "若 preconditions、steps 或 expected_results 任一欄位有多於 1 個項目，"
+        "該欄位內每一項內容都必須自行加上阿拉伯數字編號（例如 1. ..., 2. ...）；"
+        "若該欄位只有 1 項，則不要加編號。\n"
         "只輸出 JSON，禁止輸出其他文字。\n\n"
         "INVALID_OUTPUTS={invalid_outputs_json}\n"
         "VALIDATOR_ERRORS={validator_errors_json}\n\n"

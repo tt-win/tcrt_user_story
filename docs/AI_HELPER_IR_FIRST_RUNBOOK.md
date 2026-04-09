@@ -64,14 +64,7 @@
 
 `config.yaml` 僅保留模型與流程設定：
 
-- `ai.ai_assist.model`：AI 改寫（editor assist）模型
-- `ai.jira_testcase_helper.models.analysis`：analysis+coverage 合併階段模型
-- `ai.jira_testcase_helper.models.testcase`：testcase 生成模型
-- `ai.jira_testcase_helper.models.audit`：audit 階段模型
-- `ai.jira_testcase_helper.coverage_backfill_max_rounds`
-- `ai.jira_testcase_helper.coverage_backfill_chunk_size`
-- `ai.jira_testcase_helper.prompt_contract_version`
-- `ai.jira_testcase_helper.payload_contract_version`
+- `ai.qa_ai_helper.*`：QA AI Helper（V3）相關模型與流程設定
 - `openrouter.api_key`：OpenRouter 伺服器端金鑰
 
 Prompt 模板改由檔案管理：
