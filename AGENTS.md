@@ -56,8 +56,6 @@
   - `pytest app/testsuite/test_test_run_item_update_without_snapshot.py -q`
 - USM parser 測試：
   - `python test_usm_parser.py`
-- AI assist smoke test：
-  - `python scripts/ai_assist_smoke_test.py --help`
 
 ## 6) 變更守則（依現況）
 

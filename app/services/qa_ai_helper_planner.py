@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import itertools
-import json
 import re
 from collections import defaultdict
 from copy import deepcopy
@@ -12,10 +11,9 @@ from hashlib import sha1
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from app.models.qa_ai_helper import QAAIHelperApplicabilityStatus
+from app.services.qa_ai_helper_common import json_compact_dumps
 
-SCENARIO_HEADING_RE = re.compile(
-    r"(?im)^(?:h2\.\s*)?(?:\[[^\]]+\]\s*)?scenario\s+\d+\s*[:：]?\s*(.+?)\s*$"
-)
+SCENARIO_HEADING_RE = re.compile(r"(?im)^(?:h2\.\s*)?(?:\[[^\]]+\]\s*)?scenario\s+\d+\s*[:：]?\s*(.+?)\s*$")
 GIVEN_RE = re.compile(r"(?im)^\s*given\s+(.+?)\s*$")
 WHEN_RE = re.compile(r"(?im)^\s*when\s+(.+?)\s*$")
 THEN_RE = re.compile(r"(?im)^\s*then\s+(.+?)\s*$")
@@ -61,7 +59,18 @@ AXIS_VALUE_KEYWORDS: Dict[str, Tuple[str, ...]] = {
     "entry_source": ("audience list", "package overview", "列表", "概覽", "overview"),
     "creation_type": ("rule-based", "import-based", "rule create", "import create", "規則", "導入"),
     "operation_status": ("running", "paused", "calculating", "成功", "失敗", "已暫停", "正常運行"),
-    "date_picker_mode": ("today", "yesterday", "last 7 days", "last 14 days", "last 30 days", "今天", "昨日", "過去 7 天", "過去 14 天", "過去 30 天"),
+    "date_picker_mode": (
+        "today",
+        "yesterday",
+        "last 7 days",
+        "last 14 days",
+        "last 30 days",
+        "今天",
+        "昨日",
+        "過去 7 天",
+        "過去 14 天",
+        "過去 30 天",
+    ),
     "interaction_type": ("click", "hover", "點擊", "hover"),
     "calculation_frequency": ("daily", "every 6 hours", "6 hours", "每天", "每6小時"),
     "comparison_outcome": ("increase", "decrease", "no change", "增加", "減少", "無變化"),
@@ -69,7 +78,21 @@ AXIS_VALUE_KEYWORDS: Dict[str, Tuple[str, ...]] = {
 
 ROW_CATEGORY_HINTS = {
     "error_handling": ("error", "fail", "invalid", "denied", "unauthorized", "失敗", "錯誤", "拒絕"),
-    "boundary": ("max", "min", "boundary", "limit", "format", "edge", "30", "23:59:59", "06:59:59", "邊界", "上限", "下限", "格式"),
+    "boundary": (
+        "max",
+        "min",
+        "boundary",
+        "limit",
+        "format",
+        "edge",
+        "30",
+        "23:59:59",
+        "06:59:59",
+        "邊界",
+        "上限",
+        "下限",
+        "格式",
+    ),
     "edge": ("mixed", "scroll", "cross", "empty", "different", "異動", "跨", "空", "混合"),
 }
 
@@ -78,19 +101,6 @@ MANUAL_EXEMPT_LABEL = QAAIHelperApplicabilityStatus.MANUAL_EXEMPT.value
 APPLICABLE_LABEL = QAAIHelperApplicabilityStatus.APPLICABLE.value
 MAX_COMBINABLE_AXES_PER_GROUP = 2
 MAX_CARTESIAN_ROWS_PER_GROUP = 12
-
-
-def _json_dumps(value: Any) -> str:
-    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
-
-
-def _json_loads(value: Optional[str], default: Any) -> Any:
-    if not value:
-        return default
-    try:
-        return json.loads(value)
-    except Exception:
-        return default
 
 
 def _slugify(value: str, default: str) -> str:
@@ -429,11 +439,7 @@ def _project_constraints_for_section(
     traits: Sequence[str],
 ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
     section_text = " ".join([section_title, *section_clauses]).lower()
-    section_tokens = {
-        token
-        for token in re.findall(r"[a-z0-9\u4e00-\u9fff]+", section_text)
-        if len(token) >= 2
-    }
+    section_tokens = {token for token in re.findall(r"[a-z0-9\u4e00-\u9fff]+", section_text) if len(token) >= 2}
     relevant_constraints: List[Dict[str, Any]] = []
     relevant_assertions: List[Dict[str, Any]] = []
     for assertion in assertions:
@@ -441,8 +447,7 @@ def _project_constraints_for_section(
         lowered = text.lower()
         tokens = {token for token in re.findall(r"[a-z0-9\u4e00-\u9fff]+", lowered) if len(token) >= 2}
         trait_match = any(
-            any(keyword.lower() in lowered for keyword in TRAIT_KEYWORDS.get(trait, ()))
-            for trait in traits
+            any(keyword.lower() in lowered for keyword in TRAIT_KEYWORDS.get(trait, ())) for trait in traits
         )
         overlap = bool(section_tokens.intersection(tokens))
         if assertion.get("requirement_key", "").startswith("ac.") or overlap or trait_match:
@@ -460,7 +465,9 @@ def _project_constraints_for_section(
     return relevant_constraints, relevant_assertions
 
 
-def _extract_axis_candidates(texts: Sequence[Tuple[str, str]], section_assertions: Sequence[Dict[str, Any]]) -> List[Dict[str, Any]]:
+def _extract_axis_candidates(
+    texts: Sequence[Tuple[str, str]], section_assertions: Sequence[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
     axes: List[Dict[str, Any]] = []
     for source_key, text in texts:
         content = str(text or "").strip()
@@ -478,11 +485,7 @@ def _extract_axis_candidates(texts: Sequence[Tuple[str, str]], section_assertion
         if len(values) < 2:
             lowered = content.lower()
             for candidate_key, keywords in AXIS_VALUE_KEYWORDS.items():
-                matched_values = [
-                    keyword
-                    for keyword in keywords
-                    if keyword.lower() in lowered
-                ]
+                matched_values = [keyword for keyword in keywords if keyword.lower() in lowered]
                 if len(set(matched_values)) >= 2:
                     axis_key = candidate_key
                     label = candidate_key.replace("_", " ")
@@ -493,7 +496,8 @@ def _extract_axis_candidates(texts: Sequence[Tuple[str, str]], section_assertion
         related_assertion_ids = [
             assertion["assertion_id"]
             for assertion in section_assertions
-            if source_key == assertion["source_key"] or any(value.lower() in assertion["text"].lower() for value in values)
+            if source_key == assertion["source_key"]
+            or any(value.lower() in assertion["text"].lower() for value in values)
         ]
         axes.append(
             {
@@ -584,9 +588,7 @@ def _expand_row_group(
     for row_index, combination in enumerate(itertools.product(*axis_values), start=1):
         mapping = {axes[index]["axis_key"]: value for index, value in enumerate(combination)}
         assertion_refs = sorted(
-            set(
-                itertools.chain.from_iterable(axis.get("assertion_refs", []) for axis in axes)
-            )
+            set(itertools.chain.from_iterable(axis.get("assertion_refs", []) for axis in axes))
         ) or [assertion["assertion_id"] for assertion in section_assertions]
         row_key = f"{section_key}.{group['group_key']}.row-{row_index:03d}"
         override = overrides.get(row_key, {})
@@ -610,7 +612,7 @@ def _dedupe_low_value_rows(groups: Sequence[Dict[str, Any]]) -> List[Dict[str, A
         for row in group.get("rows", []):
             signature = tuple(
                 [
-                    _json_dumps(row.get("axis_values", {})),
+                    json_compact_dumps(row.get("axis_values", {})),
                     ",".join(sorted(row.get("assertion_refs", []))),
                     row.get("applicability", APPLICABLE_LABEL),
                 ]
@@ -661,12 +663,9 @@ def _infer_missing_required_facts(
             missing.append("placeholder")
         if DATE_FORMAT_RE.search(text) and "format" not in available_types:
             missing.append("format")
-        if (
-            PATH_RE.search(text)
-            or "path" in lowered
-            or "endpoint" in lowered
-            or "api" in lowered
-        ) and not ({"path", "mapping"} & available_types):
+        if (PATH_RE.search(text) or "path" in lowered or "endpoint" in lowered or "api" in lowered) and not (
+            {"path", "mapping"} & available_types
+        ):
             missing.append("path")
         if (
             FIELD_QUOTE_RE.search(text)
@@ -740,8 +739,7 @@ def _build_generation_items(
             hard_fact_refs = sorted(
                 set(
                     itertools.chain.from_iterable(
-                        fact_refs_by_assertion.get(item["assertion_id"], [])
-                        for item in row_assertions
+                        fact_refs_by_assertion.get(item["assertion_id"], []) for item in row_assertions
                     )
                 )
             )
@@ -750,9 +748,7 @@ def _build_generation_items(
                 hard_fact_refs=hard_fact_refs,
                 hard_facts=hard_facts,
             )
-            axis_text = ", ".join(
-                f"{key}={value}" for key, value in (row.get("axis_values") or {}).items()
-            )
+            axis_text = ", ".join(f"{key}={value}" for key, value in (row.get("axis_values") or {}).items())
             base_text = row_assertions[0]["text"] if row_assertions else section_title
             category = _assertion_category(" ".join([base_text, axis_text]))
             covered_categories.add(category)
@@ -849,13 +845,17 @@ def _build_generation_items(
         if not title_hint:
             continue
         assertion_refs = [assertions[0]["assertion_id"]] if assertions else []
-        required_assertions = [
-            {
-                "assertion_id": assertions[0]["assertion_id"],
-                "text": assertions[0]["text"],
-                "scope": assertions[0]["scope"],
-            }
-        ] if assertions else []
+        required_assertions = (
+            [
+                {
+                    "assertion_id": assertions[0]["assertion_id"],
+                    "text": assertions[0]["text"],
+                    "scope": assertions[0]["scope"],
+                }
+            ]
+            if assertions
+            else []
+        )
         item = {
             "item_key": item_key,
             "item_index": len(items),
@@ -886,7 +886,7 @@ def _build_generation_items(
 
 
 def _estimate_token_size(section_payload: Dict[str, Any]) -> int:
-    return max(1, len(_json_dumps(section_payload)) // 4)
+    return max(1, len(json_compact_dumps(section_payload)) // 4)
 
 
 def _prepare_plan_context(content: Dict[str, Any]) -> Dict[str, Any]:
@@ -1148,9 +1148,7 @@ def _build_sections_from_context(
             tail_start=tail_start,
             source_revision=canonical_revision_id,
             extension_seed_hints=[
-                hint
-                for extension in scoped_extensions
-                for hint in (extension.get("seed_hints") or [])
+                hint for extension in scoped_extensions for hint in (extension.get("seed_hints") or [])
             ],
         )
         sections.append(
@@ -1229,12 +1227,17 @@ class QAAIHelperPlanner:
     ) -> Dict[str, Any]:
         sections = _extract_sections_from_text(description)
         suggestion = {
-            "userStoryNarrative": sections.get("userStoryNarrative") or _extract_user_story_summary(summary, description),
+            "userStoryNarrative": sections.get("userStoryNarrative")
+            or _extract_user_story_summary(summary, description),
             "criteria": sections.get("criteria") or str(description or "").strip(),
             "technicalSpecifications": sections.get("technicalSpecifications") or "unknown",
-            "acceptanceCriteria": sections.get("acceptanceCriteria") or _extract_acceptance_fallback(description) or "unknown",
+            "acceptanceCriteria": sections.get("acceptanceCriteria")
+            or _extract_acceptance_fallback(description)
+            or "unknown",
             "assumptions": [],
-            "unknowns": ["請確認缺漏的 canonical sections"] if "unknown" in {sections.get("technicalSpecifications"), sections.get("acceptanceCriteria")} else [],
+            "unknowns": ["請確認缺漏的 canonical sections"]
+            if "unknown" in {sections.get("technicalSpecifications"), sections.get("acceptanceCriteria")}
+            else [],
             "rawSourceMetadata": {
                 **raw_source_metadata,
                 "canonical_language": canonical_language,
@@ -1322,7 +1325,9 @@ class QAAIHelperPlanner:
                         continue
                     if delta_type == "modify":
                         scenario["title"] = str(proposed_content.get("title") or scenario["title"]).strip()
-                        raw_text = str(proposed_content.get("raw_text") or proposed_content.get("text") or scenario["raw_text"]).strip()
+                        raw_text = str(
+                            proposed_content.get("raw_text") or proposed_content.get("text") or scenario["raw_text"]
+                        ).strip()
                         scenario["raw_text"] = raw_text
                         scenario["given"] = _canonical_clause_match(GIVEN_RE, raw_text)
                         scenario["when"] = _canonical_clause_match(WHEN_RE, raw_text)
@@ -1383,12 +1388,8 @@ class QAAIHelperPlanner:
                 "removed_scenario_keys": [],
             }
 
-        previous_scenarios = _parse_acceptance_scenarios(
-            str(previous_content.get("acceptanceCriteria") or "")
-        )
-        updated_scenarios = _parse_acceptance_scenarios(
-            str(updated_content.get("acceptanceCriteria") or "")
-        )
+        previous_scenarios = _parse_acceptance_scenarios(str(previous_content.get("acceptanceCriteria") or ""))
+        updated_scenarios = _parse_acceptance_scenarios(str(updated_content.get("acceptanceCriteria") or ""))
         previous_keys = [item["scenario_key"] for item in previous_scenarios]
         updated_keys = [item["scenario_key"] for item in updated_scenarios]
 
@@ -1417,9 +1418,7 @@ class QAAIHelperPlanner:
             }
 
         impacted_scenario_keys = updated_keys[earliest_diff:]
-        removed_scenario_keys = [
-            key for key in previous_keys[earliest_diff:] if key not in updated_keys
-        ]
+        removed_scenario_keys = [key for key in previous_keys[earliest_diff:] if key not in updated_keys]
         return {
             "mode": "scoped",
             "reason": "scenario_sequence_changed",
@@ -1461,9 +1460,7 @@ class QAAIHelperPlanner:
                 for section in (previous_plan or {}).get("sections", [])
                 if section.get("scenario_key")
             }
-            rebuilt_sections_by_key = {
-                section["scenario_key"]: section for section in rebuilt_sections
-            }
+            rebuilt_sections_by_key = {section["scenario_key"]: section for section in rebuilt_sections}
             sections = []
             for scenario in context["scenarios"]:
                 scenario_key = scenario["scenario_key"]
@@ -1482,11 +1479,7 @@ class QAAIHelperPlanner:
                 team_extensions=team_extensions,
             )
 
-        all_generation_items = [
-            item
-            for section in sections
-            for item in section.get("generation_items", [])
-        ]
+        all_generation_items = [item for section in sections for item in section.get("generation_items", [])]
         coverage_index = _rebuild_coverage_index(sections)
         impact_summary = {
             "sections": len(sections),
@@ -1516,24 +1509,19 @@ class QAAIHelperPlanner:
             "plan_signature": _stable_hash(
                 [
                     str(canonical_revision_id),
-                    _json_dumps(counter_settings),
-                    _json_dumps(overrides),
-                    _json_dumps(selected_references or {}),
-                    _json_dumps(team_extensions or []),
+                    json_compact_dumps(counter_settings),
+                    json_compact_dumps(overrides),
+                    json_compact_dumps(selected_references or {}),
+                    json_compact_dumps(team_extensions or []),
                 ]
             ),
             "derived_at": datetime.utcnow().isoformat(),
         }
 
     def build_persistable_plan(self, plan: Dict[str, Any]) -> Dict[str, Any]:
-        sections = [
-            _compact_section_for_persistence(section)
-            for section in (plan.get("sections") or [])
-        ]
+        sections = [_compact_section_for_persistence(section) for section in (plan.get("sections") or [])]
         generation_item_keys = [
-            item["item_key"]
-            for item in (plan.get("generation_items") or [])
-            if str(item.get("item_key") or "").strip()
+            item["item_key"] for item in (plan.get("generation_items") or []) if str(item.get("item_key") or "").strip()
         ]
         return {
             "canonical_revision_id": plan.get("canonical_revision_id"),
@@ -1548,30 +1536,12 @@ class QAAIHelperPlanner:
             "derived_at": plan.get("derived_at"),
         }
 
-    def hydrate_runtime_section(self, section: Dict[str, Any]) -> Dict[str, Any]:
-        hydrated = deepcopy(section)
-        assertion_lookup = {
-            str(item.get("assertion_id") or "").strip(): item
-            for item in (hydrated.get("assertion_catalog") or hydrated.get("assertions") or [])
-            if str(item.get("assertion_id") or "").strip()
-        }
-        hydrated["projected_constraints"] = _compact_projected_constraints(
-            hydrated.get("projected_constraints") or []
-        )
-        for item in hydrated.get("generation_items", []):
-            if item.get("required_assertions"):
-                continue
-            item["required_assertions"] = [
-                assertion_lookup[assertion_id]
-                for assertion_id in (item.get("assertion_refs") or [])
-                if assertion_id in assertion_lookup
-            ]
-        return hydrated
-
     def rebuild_coverage_index(self, sections: Sequence[Dict[str, Any]]) -> Dict[str, List[str]]:
         return _rebuild_coverage_index(sections)
 
-    def compute_complexity(self, section: Dict[str, Any], history_failures: int = 0, repair_failure_history: bool = False) -> Dict[str, Any]:
+    def compute_complexity(
+        self, section: Dict[str, Any], history_failures: int = 0, repair_failure_history: bool = False
+    ) -> Dict[str, Any]:
         generation_budget = section.get("generation_budget", {})
         seed_count = len(section.get("generation_items", []))
         token_estimate = int(generation_budget.get("estimated_prompt_tokens", 0)) + int(
@@ -1579,9 +1549,7 @@ class QAAIHelperPlanner:
         )
         projected_constraints_count = len(section.get("projected_constraints", []))
         detected_traits_count = len(section.get("detected_traits", []))
-        selected_references_count = len(
-            ((section.get("selected_references") or {}).get("selected_references") or [])
-        )
+        selected_references_count = len(((section.get("selected_references") or {}).get("selected_references") or []))
         score = 0
         if seed_count > 6:
             score += 2

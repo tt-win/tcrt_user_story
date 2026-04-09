@@ -1942,7 +1942,7 @@
   },
   "qaAiHelper": {
     "pageTitle": "QA AI Helper",
-    "pageSubtitle": "前段以 deterministic planning 收敛需求，LLM 只负责 testcase wording。",
+    "pageSubtitle": "从需求单整理验证重点与测试种子，逐步生成可提交到 Test Case Set 的 Test Cases。",
     "screen1Title": "载入需求单",
     "screen1Hint": "输入 Ticket Number 后才建立 session，并直接载入画面二的只读票单确认资料。",
     "screen2Title": "需求单内容确认",

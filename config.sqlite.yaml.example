@@ -14,42 +14,6 @@ lark:
   app_secret: 'YOUR_LARK_APP_SECRET'
 openrouter:
   api_key: 'YOUR_OPENROUTER_API_KEY'
-ai:
-  ai_assist:
-    model: 'openai/gpt-oss-120b:free'
-  jira_testcase_helper:
-    enable: true  # 設為 false 可隱藏 Test Case Set 管理畫面的 AI Agent - Test Case Helper 按鈕
-    similar_cases_count: 5
-    similar_cases_max_length: 500
-    enable_ir_first: true
-    coverage_backfill_max_rounds: 1
-    coverage_backfill_chunk_size: 12
-    coverage_force_complete: true
-    testcase_force_complete: true
-    min_steps: 3
-    api_min_steps: 2
-    min_preconditions: 1
-    max_vi_per_section: 12
-    max_repair_rounds: 3
-    forbidden_patterns:
-      - '參考'
-      - 'REF\d+'
-      - '同上'
-      - '略'
-      - 'TBD'
-      - 'N/A'
-      - '待補'
-      - 'TODO'
-    models:
-      analysis:
-        model: 'google/gemini-3-flash-preview'
-        temperature: 0.1
-      testcase:
-        model: 'google/gemini-3-flash-preview'
-        temperature: 0.1
-      audit:
-        model: 'google/gemini-3-flash-preview'
-        temperature: 0.1
 qdrant:
   url: 'http://localhost:6333'
   api_key: ''

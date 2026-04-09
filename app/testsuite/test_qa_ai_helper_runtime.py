@@ -59,6 +59,35 @@ def test_post_merge_generation_outputs_restores_trace_and_reference_ids() -> Non
     assert merged[0]["trace"]["reference_ids_used"] == ["ref-001"]
 
 
+def test_post_merge_generation_outputs_rewrites_echoed_title_hint_to_content_summary() -> None:
+    merged = post_merge_generation_outputs(
+        generation_items=[
+            {
+                "item_key": "TCG-1.010.010",
+                "seed_id": "TCG-1.010.010",
+                "section_id": "TCG-1.010",
+                "scenario_title": "Open detail",
+                "title_hint": "使用者點擊 audience name 後應成功開啟詳情頁並顯示狀態",
+                "verification_item_summary": "使用者點擊 audience name 後應成功開啟詳情頁並顯示狀態",
+                "step_hints": ["點擊 audience name"],
+                "expected_hints": ["使用者點擊 audience name 後應成功開啟詳情頁並顯示狀態"],
+            }
+        ],
+        model_outputs=[
+            {
+                "item_index": 0,
+                "title": "使用者點擊 audience name 後應成功開啟詳情頁並顯示狀態",
+                "priority": "Medium",
+                "preconditions": ["已登入"],
+                "steps": ["點擊 audience name"],
+                "expected_results": ["使用者點擊 audience name 後應成功開啟詳情頁並顯示狀態"],
+            }
+        ],
+    )
+
+    assert merged[0]["body"]["title"] == "成功開啟詳情頁並顯示狀態"
+
+
 def test_validate_merged_drafts_reports_cardinality_coverage_and_missing_facts() -> None:
     generation_items = [
         {"item_key": "A"},

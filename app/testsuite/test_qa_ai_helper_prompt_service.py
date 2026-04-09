@@ -74,16 +74,49 @@ def test_testcase_prompt_file_supports_seed_reference_contract(tmp_path: Path) -
         },
     )
 
-    assert 'seed_reference_key' in rendered
+    assert "seed_reference_key" in rendered
     assert "min_steps=3" in rendered
+
+
+def test_default_testcase_fallback_requires_numbering_for_multi_item_fields(tmp_path: Path) -> None:
+    service = QAAIHelperPromptService(
+        Settings().ai.qa_ai_helper,
+        prompt_dir=tmp_path / "missing-prompts",
+    )
+
+    rendered = service.render_stage_prompt("testcase")
+
+    assert "多於 1 個項目" in rendered
+    assert "1. ..., 2. ..." in rendered
+    assert "只有 1 項，則不要加編號" in rendered
+    assert "不得直接複製 title_hint" in rendered
+
+
+def test_default_repair_fallback_requires_numbering_for_multi_item_fields(tmp_path: Path) -> None:
+    service = QAAIHelperPromptService(
+        Settings().ai.qa_ai_helper,
+        prompt_dir=tmp_path / "missing-prompts",
+    )
+
+    rendered = service.render_stage_prompt("repair")
+
+    assert "多於 1 個項目" in rendered
+    assert "1. ..., 2. ..." in rendered
+    assert "只有 1 項，則不要加編號" in rendered
 
 
 def test_llm_fallback_preserves_seed_reference_key_for_testcase_stage() -> None:
     service = QAAIHelperLLMService()
     payload = service._fallback_generate_from_prompt(
-        'GENERATION_ITEMS=[{"item_index":0,"item_key":"item-1","seed_reference_key":"seed-1","title_hint":"案例"}]',
+        (
+            'GENERATION_ITEMS=[{"item_index":0,"item_key":"item-1","seed_reference_key":"seed-1",'
+            '"title_hint":"使用者點擊 audience name 後應成功開啟詳情頁並顯示狀態",'
+            '"step_hints":["點擊 audience name"],'
+            '"expected_hints":["使用者點擊 audience name 後應成功開啟詳情頁並顯示狀態"]}]'
+        ),
         "testcase",
     )
 
     assert payload["outputs"][0]["item_index"] == 0
     assert payload["outputs"][0]["seed_reference_key"] == "seed-1"
+    assert payload["outputs"][0]["title"] == "成功開啟詳情頁並顯示狀態"

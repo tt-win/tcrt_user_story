@@ -2621,12 +2621,29 @@
     });
     function positionRefDrawer() {
       const drawer = el('qaHelperRefDrawer');
-      const wrap = el('qaHelperEditorWrap');
-      if (!drawer || !wrap) return;
-      const rect = wrap.getBoundingClientRect();
+      const toggle = el('qaHelperRefDrawerToggleBtn');
+      if (!drawer || !toggle) return;
+      const rect = toggle.getBoundingClientRect();
+      const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+      const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+      const topOffset = Math.max(rect.bottom + 8, 16);
+      const availableHeight = Math.max(viewportHeight - topOffset - 16, 240);
       const drawerWidth = drawer.offsetWidth || 400;
-      drawer.style.top = Math.max(rect.top, 0) + 'px';
-      drawer.style.left = (rect.right - drawerWidth) + 'px';
+      const maxLeft = Math.max(viewportWidth - drawerWidth - 16, 16);
+      const leftOffset = Math.min(Math.max(rect.right - drawerWidth, 16), maxLeft);
+      drawer.style.top = topOffset + 'px';
+      drawer.style.left = leftOffset + 'px';
+      drawer.style.height = availableHeight + 'px';
+      drawer.style.maxHeight = availableHeight + 'px';
+    }
+
+    function syncRefDrawerToggleState() {
+      const drawer = el('qaHelperRefDrawer');
+      const toggle = el('qaHelperRefDrawerToggleBtn');
+      if (!drawer || !toggle) return;
+      const isOpen = drawer.classList.contains('is-open');
+      toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+      toggle.classList.toggle('active', isOpen);
     }
 
     bindIfPresent('qaHelperRefDrawerToggleBtn', 'click', () => {
@@ -2636,10 +2653,7 @@
       if (drawer.classList.contains('is-open')) {
         requestAnimationFrame(positionRefDrawer);
       }
-    });
-    bindIfPresent('qaHelperRefDrawerCloseBtn', 'click', () => {
-      const drawer = el('qaHelperRefDrawer');
-      if (drawer) drawer.classList.remove('is-open');
+      syncRefDrawerToggleState();
     });
     window.addEventListener('scroll', () => {
       const drawer = el('qaHelperRefDrawer');
@@ -2653,6 +2667,7 @@
         positionRefDrawer();
       }
     }, { passive: true });
+    syncRefDrawerToggleState();
     bindIfPresent('qaHelperSaveRequirementPlanBtn', 'click', () => saveRequirementPlan({ autosave: false }).catch(handleError));
     bindIfPresent('qaHelperLockRequirementPlanBtn', 'click', () => lockRequirementPlan().catch(handleError));
     bindIfPresent('qaHelperUnlockRequirementPlanBtn', 'click', () => unlockRequirementPlan().catch(handleError));

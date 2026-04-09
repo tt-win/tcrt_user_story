@@ -563,7 +563,6 @@ class QAAIHelperDraftSetResponse(BaseModel):
 class QAAIHelperDraftItemResponse(BaseModel):
     id: int
     item_key: str
-    seed_id: Optional[str] = None
     testcase_id: Optional[str] = None
     body: Dict[str, Any]
     trace: Dict[str, Any]
@@ -738,11 +737,51 @@ class QAAIHelperSessionListResponse(BaseModel):
     offset: int = 0
 
 
+class QAAIHelperTokenUsageResponse(BaseModel):
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    total_tokens: int = 0
+
+    @field_validator("prompt_tokens", "completion_tokens", "total_tokens", mode="before")
+    @classmethod
+    def _normalize_non_negative_int(cls, value: Any) -> int:
+        try:
+            number = int(value or 0)
+        except (TypeError, ValueError):
+            return 0
+        return number if number >= 0 else 0
+
+
+class QAAIHelperLLMUsageEventResponse(BaseModel):
+    stage: str
+    event_name: str
+    model_name: Optional[str] = None
+    usage: QAAIHelperTokenUsageResponse = Field(default_factory=QAAIHelperTokenUsageResponse)
+    duration_ms: int = 0
+    created_at: Optional[datetime] = None
+
+    @field_validator("duration_ms", mode="before")
+    @classmethod
+    def _normalize_duration(cls, value: Any) -> int:
+        try:
+            number = int(value or 0)
+        except (TypeError, ValueError):
+            return 0
+        return number if number >= 0 else 0
+
+
+class QAAIHelperLLMUsageSummaryResponse(BaseModel):
+    total: QAAIHelperTokenUsageResponse = Field(default_factory=QAAIHelperTokenUsageResponse)
+    by_stage: Dict[str, QAAIHelperTokenUsageResponse] = Field(default_factory=dict)
+    latest: Optional[QAAIHelperLLMUsageEventResponse] = None
+
+
 class QAAIHelperWorkspaceResponse(BaseModel):
     session: QAAIHelperSessionResponse
     ticket_snapshot: Optional[QAAIHelperTicketSnapshotResponse] = None
     screen_guard: Optional[QAAIHelperScreenGuardResponse] = None
     source_payload: Dict[str, Any] = Field(default_factory=dict)
+    llm_usage: QAAIHelperLLMUsageSummaryResponse = Field(default_factory=QAAIHelperLLMUsageSummaryResponse)
     canonical_validation: Dict[str, Any] = Field(default_factory=dict)
     requirement_plan: Optional[QAAIHelperRequirementPlanResponse] = None
     seed_set: Optional[QAAIHelperSeedSetResponse] = None
