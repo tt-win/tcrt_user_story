@@ -304,7 +304,7 @@ async function renderTestCaseSets() {
               <button class="btn btn-success btn-sm" onclick="openSetCaseSelectModal(${set.id})">
                 <i class="fas fa-plus"></i> <span class="d-none d-md-inline">Test Run</span>
               </button>
-              <button class="btn btn-secondary btn-sm" onclick="showEditSetModal(${set.id}, '${escapeHtml(set.name).replace(/'/g, "\\'")}', '${escapeHtml(set.description || '').replace(/'/g, "\\'")}')">
+              <button class="btn btn-secondary btn-sm" data-edit-set-id="${set.id}" data-edit-set-name="${escapeHtml(set.name)}" data-edit-set-desc="${escapeHtml(set.description || '')}" onclick="showEditSetModal(this.dataset.editSetId, this.dataset.editSetName, this.dataset.editSetDesc)">
                 <i class="fas fa-edit"></i> <span class="d-none d-md-inline">${btnTexts.edit}</span>
               </button>
               <button class="btn btn-danger btn-sm ${set.is_default ? 'disabled' : ''}" ${set.is_default ? 'disabled' : `onclick="showDeleteConfirm(${set.id}, '${escapeHtml(set.name).replace(/'/g, "\\'")}')"`}>

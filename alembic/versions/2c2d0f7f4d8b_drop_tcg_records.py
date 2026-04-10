@@ -19,7 +19,10 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.drop_table("tcg_records")
+    bind = op.get_bind()
+    inspector = sa.inspect(bind)
+    if "tcg_records" in inspector.get_table_names():
+        op.drop_table("tcg_records")
 
 
 def downgrade() -> None:
