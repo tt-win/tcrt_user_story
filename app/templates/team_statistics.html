@@ -205,6 +205,19 @@ endblock %} {% block page_title_text %}<span data-i18n="teamStats.pageTitle"
                 <span data-i18n="teamStats.tabs.auditAnalysis">審計分析</span>
             </button>
         </li>
+        <li class="nav-item" role="presentation">
+            <button
+                class="nav-link"
+                id="qa-ai-helper-tab"
+                data-bs-toggle="tab"
+                data-bs-target="#qa-ai-helper-pane"
+                type="button"
+                role="tab"
+            >
+                <i class="fas fa-robot me-1"></i>
+                <span data-i18n="teamStats.tabs.helperAi">QA AI Agent</span>
+            </button>
+        </li>
         <!-- <li class="nav-item" role="presentation">
             <button
                 class="nav-link"
@@ -906,7 +919,727 @@ endblock %} {% block page_title_text %}<span data-i18n="teamStats.pageTitle"
             </div>
         </div>
 
-        <!-- 部門統計 -->
+        <!-- QA AI Helper 統計 -->
+        <div class="tab-pane fade" id="qa-ai-helper-pane" role="tabpanel">
+            <!-- 載入指示 -->
+            <div id="qa-ai-helper-loading" class="text-center py-4 d-none">
+                <div class="spinner-border text-primary" role="status">
+                    <span class="visually-hidden">Loading...</span>
+                </div>
+            </div>
+
+            <!-- Sub-tabs -->
+            <ul class="nav nav-pills mb-3" id="helperSubTab" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="helper-overview-stab" data-bs-toggle="pill" data-bs-target="#helper-overview-spane" type="button" role="tab">
+                        <i class="fas fa-tachometer-alt me-1"></i>
+                        <span data-i18n="teamStats.helperDash.subOverview">總覽</span>
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="helper-adoption-stab" data-bs-toggle="pill" data-bs-target="#helper-adoption-spane" type="button" role="tab">
+                        <i class="fas fa-check-double me-1"></i>
+                        <span data-i18n="teamStats.helperDash.subAdoption">採用率</span>
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="helper-generation-stab" data-bs-toggle="pill" data-bs-target="#helper-generation-spane" type="button" role="tab">
+                        <i class="fas fa-cogs me-1"></i>
+                        <span data-i18n="teamStats.helperDash.subGeneration">生成量</span>
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="helper-funnel-stab" data-bs-toggle="pill" data-bs-target="#helper-funnel-spane" type="button" role="tab">
+                        <i class="fas fa-filter me-1"></i>
+                        <span data-i18n="teamStats.helperDash.subFunnel">漏斗</span>
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="helper-telemetry-stab" data-bs-toggle="pill" data-bs-target="#helper-telemetry-spane" type="button" role="tab">
+                        <i class="fas fa-microchip me-1"></i>
+                        <span data-i18n="teamStats.helperDash.subTelemetry">LLM 遙測</span>
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="helper-engagement-stab" data-bs-toggle="pill" data-bs-target="#helper-engagement-spane" type="button" role="tab">
+                        <i class="fas fa-user-friends me-1"></i>
+                        <span data-i18n="teamStats.helperDash.subEngagement">使用者參與</span>
+                    </button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="helper-airatio-stab" data-bs-toggle="pill" data-bs-target="#helper-airatio-spane" type="button" role="tab">
+                        <i class="fas fa-robot me-1"></i>
+                        <span data-i18n="teamStats.helperDash.subAiRatio">AI 生成比例</span>
+                    </button>
+                </li>
+            </ul>
+
+            <div class="tab-content" id="helperSubTabContent">
+                <!-- ===== Sub-pane: Overview ===== -->
+                <div class="tab-pane fade show active" id="helper-overview-spane" role="tabpanel">
+                    <!-- KPI 卡片 -->
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-3 col-sm-6">
+                            <div class="card text-center">
+                                <div class="card-body py-2">
+                                    <div class="text-muted small" data-i18n="teamStats.helperDash.kpiSessions">Session 總數</div>
+                                    <h4 class="mb-0" id="helper-kpi-sessions">-</h4>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-sm-6">
+                            <div class="card text-center">
+                                <div class="card-body py-2">
+                                    <div class="text-muted small" data-i18n="teamStats.helperDash.kpiCompletionRate">完成率</div>
+                                    <h4 class="mb-0" id="helper-kpi-completion-rate">-</h4>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-sm-6">
+                            <div class="card text-center">
+                                <div class="card-body py-2">
+                                    <div class="text-muted small" data-i18n="teamStats.helperDash.kpiTcsGenerated">TC 生成數</div>
+                                    <h4 class="mb-0" id="helper-kpi-tcs-generated">-</h4>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-sm-6">
+                            <div class="card text-center">
+                                <div class="card-body py-2">
+                                    <div class="text-muted small" data-i18n="teamStats.helperDash.kpiTcsCommitted">TC 入庫數</div>
+                                    <h4 class="mb-0" id="helper-kpi-tcs-committed">-</h4>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-3 col-sm-6">
+                            <div class="card text-center">
+                                <div class="card-body py-2">
+                                    <div class="text-muted small" data-i18n="teamStats.helperDash.kpiSeedAdoption">Seed 採用率</div>
+                                    <h4 class="mb-0" id="helper-kpi-seed-adoption">-</h4>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-sm-6">
+                            <div class="card text-center">
+                                <div class="card-body py-2">
+                                    <div class="text-muted small" data-i18n="teamStats.helperDash.kpiTcAdoption">TC 採用率</div>
+                                    <h4 class="mb-0" id="helper-kpi-tc-adoption">-</h4>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-sm-6">
+                            <div class="card text-center">
+                                <div class="card-body py-2">
+                                    <div class="text-muted small" data-i18n="teamStats.helperDash.kpiSeedsGenerated">Seed 生成數</div>
+                                    <h4 class="mb-0" id="helper-kpi-seeds-generated">-</h4>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-sm-6">
+                            <div class="card text-center">
+                                <div class="card-body py-2">
+                                    <div class="text-muted small" data-i18n="teamStats.helperDash.kpiFailed">失敗 Session</div>
+                                    <h4 class="mb-0" id="helper-kpi-failed">-</h4>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- 團隊排行榜 -->
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <div class="card">
+                                <div class="card-header">
+                                    <i class="fas fa-trophy me-1"></i>
+                                    <span data-i18n="teamStats.helperDash.teamRankingTitle">團隊綜合排行榜</span>
+                                </div>
+                                <div class="card-body">
+                                    <div class="table-responsive helper-ai-team-table">
+                                        <table class="table table-sm table-hover">
+                                            <thead class="sticky-top bg-white">
+                                                <tr>
+                                                    <th>#</th>
+                                                    <th data-i18n="teamStats.helperDash.colTeam">團隊</th>
+                                                    <th data-i18n="teamStats.helperDash.colSessions">Sessions</th>
+                                                    <th data-i18n="teamStats.helperDash.colCompletionRate">完成率</th>
+                                                    <th data-i18n="teamStats.helperDash.colSeedAdoption">Seed 採用</th>
+                                                    <th data-i18n="teamStats.helperDash.colTcAdoption">TC 採用</th>
+                                                    <th data-i18n="teamStats.helperDash.colCommitted">入庫</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="helper-overview-team-tbody"></tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ===== Sub-pane: Adoption ===== -->
+                <div class="tab-pane fade" id="helper-adoption-spane" role="tabpanel">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-3 col-sm-6">
+                            <div class="card text-center">
+                                <div class="card-body py-2">
+                                    <div class="text-muted small" data-i18n="teamStats.helperDash.kpiSeedAdoption">Seed 採用率</div>
+                                    <h4 class="mb-0" id="helper-adoption-seed-rate">-</h4>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-sm-6">
+                            <div class="card text-center">
+                                <div class="card-body py-2">
+                                    <div class="text-muted small" data-i18n="teamStats.helperDash.kpiTcAdoption">TC 採用率</div>
+                                    <h4 class="mb-0" id="helper-adoption-tc-rate">-</h4>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-sm-6">
+                            <div class="card text-center">
+                                <div class="card-body py-2">
+                                    <div class="text-muted small" data-i18n="teamStats.helperDash.userEditRate">使用者編輯率</div>
+                                    <h4 class="mb-0" id="helper-adoption-edit-rate">-</h4>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-sm-6">
+                            <div class="card text-center">
+                                <div class="card-body py-2">
+                                    <div class="text-muted small" data-i18n="teamStats.helperDash.aiGeneratedRatio">AI 生成佔比</div>
+                                    <h4 class="mb-0" id="helper-adoption-ai-ratio">-</h4>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <i class="fas fa-chart-line me-1"></i>
+                                    <span data-i18n="teamStats.helperDash.adoptionTrend">採用率趨勢</span>
+                                </div>
+                                <div class="card-body"><canvas id="helper-adoption-trend-chart" height="260"></canvas></div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <i class="fas fa-chart-line me-1"></i>
+                                    <span data-i18n="teamStats.helperDash.adoptionByTeamTrend">團隊採用率趨勢 (Top 10)</span>
+                                </div>
+                                <div class="card-body"><canvas id="helper-adoption-team-trend-chart" height="260"></canvas></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <i class="fas fa-list-ol me-1"></i>
+                                    <span data-i18n="teamStats.helperDash.teamAdoptionRanking">團隊採用率排行</span>
+                                </div>
+                                <div class="card-body">
+                                    <div class="table-responsive helper-ai-team-table">
+                                        <table class="table table-sm table-hover">
+                                            <thead class="sticky-top bg-white">
+                                                <tr>
+                                                    <th>#</th>
+                                                    <th data-i18n="teamStats.helperDash.colTeam">團隊</th>
+                                                    <th data-i18n="teamStats.helperDash.colSeedAdoption">Seed 採用</th>
+                                                    <th data-i18n="teamStats.helperDash.colTcAdoption">TC 採用</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="helper-adoption-team-tbody"></tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <i class="fas fa-user me-1"></i>
+                                    <span data-i18n="teamStats.helperDash.userAdoptionRanking">個人採用率排行 (Top 20)</span>
+                                </div>
+                                <div class="card-body">
+                                    <div class="table-responsive helper-ai-team-table">
+                                        <table class="table table-sm table-hover">
+                                            <thead class="sticky-top bg-white">
+                                                <tr>
+                                                    <th>#</th>
+                                                    <th data-i18n="teamStats.helperDash.colUser">使用者</th>
+                                                    <th data-i18n="teamStats.helperDash.colTeam">團隊</th>
+                                                    <th data-i18n="teamStats.helperDash.colSeedAdoption">Seed 採用</th>
+                                                    <th data-i18n="teamStats.helperDash.colTcAdoption">TC 採用</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="helper-adoption-user-tbody"></tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ===== Sub-pane: Generation ===== -->
+                <div class="tab-pane fade" id="helper-generation-spane" role="tabpanel">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-3 col-sm-6">
+                            <div class="card text-center">
+                                <div class="card-body py-2">
+                                    <div class="text-muted small" data-i18n="teamStats.helperDash.totalSeeds">總 Seeds</div>
+                                    <h4 class="mb-0" id="helper-gen-total-seeds">-</h4>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-sm-6">
+                            <div class="card text-center">
+                                <div class="card-body py-2">
+                                    <div class="text-muted small" data-i18n="teamStats.helperDash.totalTcs">總 Test Cases</div>
+                                    <h4 class="mb-0" id="helper-gen-total-tcs">-</h4>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-sm-6">
+                            <div class="card text-center">
+                                <div class="card-body py-2">
+                                    <div class="text-muted small" data-i18n="teamStats.helperDash.totalCommitted">總入庫</div>
+                                    <h4 class="mb-0" id="helper-gen-total-committed">-</h4>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3 col-sm-6">
+                            <div class="card text-center">
+                                <div class="card-body py-2">
+                                    <div class="text-muted small" data-i18n="teamStats.helperDash.avgTcsPerSession">平均 TC/Session</div>
+                                    <h4 class="mb-0" id="helper-gen-avg-per-session">-</h4>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <i class="fas fa-chart-bar me-1"></i>
+                                    <span data-i18n="teamStats.helperDash.generationTrend">生成量趨勢</span>
+                                </div>
+                                <div class="card-body"><canvas id="helper-generation-trend-chart" height="260"></canvas></div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <i class="fas fa-chart-bar me-1"></i>
+                                    <span data-i18n="teamStats.helperDash.generationByTeamTrend">團隊生成趨勢 (Top 10)</span>
+                                </div>
+                                <div class="card-body"><canvas id="helper-generation-team-trend-chart" height="260"></canvas></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <i class="fas fa-list-ol me-1"></i>
+                                    <span data-i18n="teamStats.helperDash.teamGenRanking">團隊產出排行</span>
+                                </div>
+                                <div class="card-body">
+                                    <div class="table-responsive helper-ai-team-table">
+                                        <table class="table table-sm table-hover">
+                                            <thead class="sticky-top bg-white">
+                                                <tr>
+                                                    <th>#</th>
+                                                    <th data-i18n="teamStats.helperDash.colTeam">團隊</th>
+                                                    <th data-i18n="teamStats.helperDash.kpiSeedsGenerated">Seeds</th>
+                                                    <th data-i18n="teamStats.helperDash.kpiTcsGenerated">TCs</th>
+                                                    <th data-i18n="teamStats.helperDash.colCommitted">入庫</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="helper-generation-team-tbody"></tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <i class="fas fa-user me-1"></i>
+                                    <span data-i18n="teamStats.helperDash.userGenRanking">個人產出排行 (Top 20)</span>
+                                </div>
+                                <div class="card-body">
+                                    <div class="table-responsive helper-ai-team-table">
+                                        <table class="table table-sm table-hover">
+                                            <thead class="sticky-top bg-white">
+                                                <tr>
+                                                    <th>#</th>
+                                                    <th data-i18n="teamStats.helperDash.colUser">使用者</th>
+                                                    <th data-i18n="teamStats.helperDash.colTeam">團隊</th>
+                                                    <th data-i18n="teamStats.helperDash.kpiSeedsGenerated">Seeds</th>
+                                                    <th data-i18n="teamStats.helperDash.kpiTcsGenerated">TCs</th>
+                                                    <th data-i18n="teamStats.helperDash.colCommitted">入庫</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="helper-generation-user-tbody"></tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ===== Sub-pane: Funnel ===== -->
+                <div class="tab-pane fade" id="helper-funnel-spane" role="tabpanel">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-8">
+                            <div class="card">
+                                <div class="card-header d-flex align-items-center">
+                                    <i class="fas fa-filter me-1"></i>
+                                    <span data-i18n="teamStats.helperDash.funnelTitle">Session 漏斗轉換</span>
+                                    <i class="fas fa-question-circle ms-2 text-muted" style="cursor:pointer"
+                                       data-bs-toggle="tooltip" data-bs-placement="right" data-bs-html="true"
+                                       title=""
+                                       data-i18n-title="teamStats.helperDash.funnelTips"></i>
+                                </div>
+                                <div class="card-body"><canvas id="helper-funnel-chart" height="300"></canvas></div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card">
+                                <div class="card-header">
+                                    <i class="fas fa-chart-pie me-1"></i>
+                                    <span data-i18n="teamStats.helperDash.statusDistribution">狀態分佈</span>
+                                </div>
+                                <div class="card-body"><canvas id="helper-funnel-status-chart" height="300"></canvas></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-4">
+                            <div class="card text-center">
+                                <div class="card-body py-2">
+                                    <div class="text-muted small" data-i18n="teamStats.helperDash.avgCompletionTime">平均完成時間</div>
+                                    <h4 class="mb-0" id="helper-funnel-avg-time">-</h4>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <div class="card">
+                                <div class="card-header">
+                                    <i class="fas fa-th-list me-1"></i>
+                                    <span data-i18n="teamStats.helperDash.teamFunnelComparison">團隊漏斗對比</span>
+                                </div>
+                                <div class="card-body">
+                                    <div class="table-responsive helper-ai-team-table">
+                                        <table class="table table-sm table-hover">
+                                            <thead class="sticky-top bg-white">
+                                                <tr>
+                                                    <th data-i18n="teamStats.helperDash.colTeam">團隊</th>
+                                                    <th data-i18n="teamStats.helperDash.colSessions">Sessions</th>
+                                                    <th data-i18n="teamStats.helperDash.colCompleted">完成</th>
+                                                    <th data-i18n="teamStats.helperDash.colFailed">失敗</th>
+                                                    <th data-i18n="teamStats.helperDash.colCompletionRate">完成率</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="helper-funnel-team-tbody"></tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ===== Sub-pane: Telemetry ===== -->
+                <div class="tab-pane fade" id="helper-telemetry-spane" role="tabpanel">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-4 col-sm-6">
+                            <div class="card text-center">
+                                <div class="card-body py-2">
+                                    <div class="text-muted small" data-i18n="teamStats.helperDash.totalCalls">LLM 呼叫數</div>
+                                    <h4 class="mb-0" id="helper-tel-total-calls">-</h4>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 col-sm-6">
+                            <div class="card text-center">
+                                <div class="card-body py-2">
+                                    <div class="text-muted small" data-i18n="teamStats.helperDash.promptTokens">Prompt Tokens</div>
+                                    <h4 class="mb-0" id="helper-tel-prompt-tokens">-</h4>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 col-sm-6">
+                            <div class="card text-center">
+                                <div class="card-body py-2">
+                                    <div class="text-muted small" data-i18n="teamStats.helperDash.completionTokens">Completion Tokens</div>
+                                    <h4 class="mb-0" id="helper-tel-completion-tokens">-</h4>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 col-sm-6">
+                            <div class="card text-center">
+                                <div class="card-body py-2">
+                                    <div class="text-muted small" data-i18n="teamStats.helperDash.totalTokens">總 Token</div>
+                                    <h4 class="mb-0" id="helper-tel-total-tokens">-</h4>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 col-sm-6">
+                            <div class="card text-center">
+                                <div class="card-body py-2">
+                                    <div class="text-muted small" data-i18n="teamStats.helperDash.avgDuration">平均延遲</div>
+                                    <h4 class="mb-0" id="helper-tel-avg-duration">-</h4>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4 col-sm-6">
+                            <div class="card text-center">
+                                <div class="card-body py-2">
+                                    <div class="text-muted small" data-i18n="teamStats.helperDash.errorRate">錯誤率</div>
+                                    <h4 class="mb-0" id="helper-tel-error-rate">-</h4>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <i class="fas fa-chart-area me-1"></i>
+                                    <span data-i18n="teamStats.helperDash.tokenTrend">Token 用量趨勢</span>
+                                </div>
+                                <div class="card-body"><canvas id="helper-telemetry-trend-chart" height="260"></canvas></div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <i class="fas fa-chart-area me-1"></i>
+                                    <span data-i18n="teamStats.helperDash.tokenByTeamTrend">團隊 Token 趨勢 (Top 10)</span>
+                                </div>
+                                <div class="card-body"><canvas id="helper-telemetry-team-trend-chart" height="260"></canvas></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <i class="fas fa-list-ol me-1"></i>
+                                    <span data-i18n="teamStats.helperDash.teamTokenRanking">團隊 Token 消耗排行</span>
+                                </div>
+                                <div class="card-body">
+                                    <div class="table-responsive helper-ai-team-table">
+                                        <table class="table table-sm table-hover">
+                                            <thead class="sticky-top bg-white">
+                                                <tr>
+                                                    <th>#</th>
+                                                    <th data-i18n="teamStats.helperDash.colTeam">團隊</th>
+                                                    <th data-i18n="teamStats.helperDash.totalCalls">呼叫數</th>
+                                                    <th data-i18n="teamStats.helperDash.promptTokens">Prompt</th>
+                                                    <th data-i18n="teamStats.helperDash.completionTokens">Completion</th>
+                                                    <th data-i18n="teamStats.helperDash.totalTokens">Token</th>
+                                                    <th data-i18n="teamStats.helperDash.avgDuration">平均延遲</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="helper-telemetry-team-tbody"></tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <i class="fas fa-layer-group me-1"></i>
+                                    <span data-i18n="teamStats.helperDash.byStage">各階段統計</span>
+                                </div>
+                                <div class="card-body">
+                                    <div class="table-responsive helper-ai-stage-table">
+                                        <table class="table table-sm table-hover">
+                                            <thead class="sticky-top bg-white">
+                                                <tr>
+                                                    <th data-i18n="teamStats.helperDash.colStage">階段</th>
+                                                    <th data-i18n="teamStats.helperDash.totalCalls">呼叫數</th>
+                                                    <th data-i18n="teamStats.helperDash.promptTokens">Prompt</th>
+                                                    <th data-i18n="teamStats.helperDash.completionTokens">Completion</th>
+                                                    <th data-i18n="teamStats.helperDash.totalTokens">Token</th>
+                                                    <th data-i18n="teamStats.helperDash.avgDuration">平均延遲</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="helper-telemetry-stage-tbody"></tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ===== Sub-pane: User Engagement ===== -->
+                <div class="tab-pane fade" id="helper-engagement-spane" role="tabpanel">
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-8">
+                            <div class="card">
+                                <div class="card-header">
+                                    <i class="fas fa-chart-line me-1"></i>
+                                    <span data-i18n="teamStats.helperDash.dauTrend">每日活躍使用者 (DAU) 趨勢</span>
+                                </div>
+                                <div class="card-body"><canvas id="helper-engagement-dau-chart" height="260"></canvas></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <i class="fas fa-list-ol me-1"></i>
+                                    <span data-i18n="teamStats.helperDash.teamEngagementRanking">團隊活躍度排行</span>
+                                </div>
+                                <div class="card-body">
+                                    <div class="table-responsive helper-ai-team-table">
+                                        <table class="table table-sm table-hover">
+                                            <thead class="sticky-top bg-white">
+                                                <tr>
+                                                    <th>#</th>
+                                                    <th data-i18n="teamStats.helperDash.colTeam">團隊</th>
+                                                    <th data-i18n="teamStats.helperDash.colActiveUsers">活躍用戶</th>
+                                                    <th data-i18n="teamStats.helperDash.colSessions">Sessions</th>
+                                                    <th data-i18n="teamStats.helperDash.colAvgSessionsPerUser">平均 Session/人</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="helper-engagement-team-tbody"></tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <i class="fas fa-user me-1"></i>
+                                    <span data-i18n="teamStats.helperDash.userEngagementRanking">使用者排行 (Top 20)</span>
+                                </div>
+                                <div class="card-body">
+                                    <div class="table-responsive helper-ai-team-table">
+                                        <table class="table table-sm table-hover">
+                                            <thead class="sticky-top bg-white">
+                                                <tr>
+                                                    <th>#</th>
+                                                    <th data-i18n="teamStats.helperDash.colUser">使用者</th>
+                                                    <th data-i18n="teamStats.helperDash.colTeam">團隊</th>
+                                                    <th data-i18n="teamStats.helperDash.colSessions">Sessions</th>
+                                                    <th data-i18n="teamStats.helperDash.colCompleted">完成</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="helper-engagement-user-tbody"></tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ===== Sub-pane: AI vs Manual Ratio ===== -->
+                <div class="tab-pane fade" id="helper-airatio-spane" role="tabpanel">
+                    <!-- KPI 卡片 -->
+                    <div class="row g-3 mb-3">
+                        <div class="col-md-3">
+                            <div class="card text-center">
+                                <div class="card-body py-2">
+                                    <small class="text-muted" data-i18n="teamStats.helperDash.aiRatioTotal">新建 TC 總數</small>
+                                    <h4 id="helper-airatio-total" class="mb-0">-</h4>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card text-center">
+                                <div class="card-body py-2">
+                                    <small class="text-muted" data-i18n="teamStats.helperDash.aiRatioAi">AI Committed</small>
+                                    <h4 id="helper-airatio-ai" class="mb-0">-</h4>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card text-center">
+                                <div class="card-body py-2">
+                                    <small class="text-muted" data-i18n="teamStats.helperDash.aiRatioManual">手動撰寫</small>
+                                    <h4 id="helper-airatio-manual" class="mb-0">-</h4>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="card text-center">
+                                <div class="card-body py-2">
+                                    <small class="text-muted" data-i18n="teamStats.helperDash.aiRatioPercent">AI 佔比</small>
+                                    <h4 id="helper-airatio-percent" class="mb-0">-</h4>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="row g-3 mb-3">
+                        <!-- Overall 趨勢（堆疊柱狀圖） -->
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <i class="fas fa-chart-bar me-1"></i>
+                                    <span data-i18n="teamStats.helperDash.aiRatioOverallTrend">AI vs 手動趨勢</span>
+                                </div>
+                                <div class="card-body"><canvas id="helper-airatio-overall-chart" height="280"></canvas></div>
+                            </div>
+                        </div>
+                        <!-- Top 10 團隊 AI 比例趨勢線 -->
+                        <div class="col-md-6">
+                            <div class="card">
+                                <div class="card-header">
+                                    <i class="fas fa-chart-line me-1"></i>
+                                    <span data-i18n="teamStats.helperDash.aiRatioTeamTrend">團隊 AI 比例趨勢 (Top 10)</span>
+                                </div>
+                                <div class="card-body"><canvas id="helper-airatio-team-chart" height="280"></canvas></div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- 團隊排行表格 -->
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <div class="card">
+                                <div class="card-header">
+                                    <i class="fas fa-list-ol me-1"></i>
+                                    <span data-i18n="teamStats.helperDash.aiRatioTeamRanking">團隊 AI 生成比例排行</span>
+                                </div>
+                                <div class="card-body">
+                                    <div class="table-responsive" style="max-height:400px;overflow-y:auto">
+                                        <table class="table table-sm table-hover align-middle">
+                                            <thead class="sticky-top bg-white">
+                                                <tr>
+                                                    <th>#</th>
+                                                    <th data-i18n="teamStats.helperDash.colTeam">團隊</th>
+                                                    <th data-i18n="teamStats.helperDash.aiRatioTotal">新建總數</th>
+                                                    <th data-i18n="teamStats.helperDash.aiRatioAi">AI Committed</th>
+                                                    <th data-i18n="teamStats.helperDash.aiRatioManual">手動撰寫</th>
+                                                    <th data-i18n="teamStats.helperDash.aiRatioPercent">AI 佔比</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="helper-airatio-team-tbody"></tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
         <!-- <div class="tab-pane fade" id="department-pane" role="tabpanel">
             <div class="row g-3 mb-3">
                 <div class="col-md-6">
