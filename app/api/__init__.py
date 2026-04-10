@@ -23,6 +23,7 @@ from .version import router as version_router
 from .permissions import router as permissions_router
 from .audit import router as audit_router
 from .team_statistics import router as team_statistics_router
+from .team_statistics_qa_ai_helper import router as team_statistics_qa_ai_helper_router
 from .test_case_sets import router as test_case_sets_router
 from .test_case_sections import router as test_case_sections_router
 from .qa_ai_helper import router as qa_ai_helper_router
@@ -53,6 +54,7 @@ api_router.include_router(version_router)
 api_router.include_router(permissions_router)
 api_router.include_router(audit_router)
 api_router.include_router(team_statistics_router)
+api_router.include_router(team_statistics_qa_ai_helper_router)  # QA AI Helper 統計路由
 api_router.include_router(test_case_sets_router)  # Test Case Set 路由
 api_router.include_router(test_case_sections_router)  # Test Case Section 路由
 api_router.include_router(qa_ai_helper_router)  # 新版 QA AI Helper 路由

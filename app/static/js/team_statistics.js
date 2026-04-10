@@ -95,6 +95,11 @@
             await initTeamFilter();
             initEventListeners();
             await loadAllStatistics();
+
+            // 初始化 Bootstrap Tooltip（含漏斗面板的說明提示）
+            document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(function(el) {
+                new bootstrap.Tooltip(el);
+            });
         } catch (error) {
             console.error('初始化團隊統計頁面失敗:', error);
             AppUtils.showError('初始化統計頁面失敗');
@@ -535,6 +540,11 @@
                 window.i18n.retranslate(pane);
             }
         });
+
+        // QA AI Helper tab: lazy-load on first switch
+        if (targetId === '#qa-ai-helper-pane' && !helperDataLoaded) {
+            loadQaAiHelperDashboard();
+        }
     }
 
     /**
@@ -543,8 +553,12 @@
     async function loadAllStatistics() {
         AppUtils.showLoading('載入統計數據中...');
 
+        // Reset helper dashboard cache so refresh reloads it
+        helperDataLoaded = false;
+        helperSubTabData = {};
+
         try {
-            await Promise.all([
+            const tasks = [
                 loadOverview(),
                 loadTeamActivity(),
                 loadTestCaseTrends(),
@@ -552,7 +566,15 @@
                 loadUserActivity(),
                 loadAuditAnalysis()
                 // loadDepartmentStats()  // 已註解 - Department Stats 功能暫時停用
-            ]);
+            ];
+
+            // If helper tab is currently active, also reload it
+            const helperPane = document.getElementById('qa-ai-helper-pane');
+            if (helperPane && helperPane.classList.contains('active')) {
+                tasks.push(loadQaAiHelperDashboard());
+            }
+
+            await Promise.all(tasks);
 
             AppUtils.showSuccess('統計數據載入完成');
         } catch (error) {
@@ -1931,6 +1953,553 @@
         const div = document.createElement('div');
         div.textContent = text;
         return div.innerHTML;
+    }
+
+    // ===========================================================================
+    // QA AI Helper Dashboard
+    // ===========================================================================
+
+    const HELPER_API_BASE = '/api/admin/team_statistics/qa-ai-helper';
+
+    function buildHelperUrl(endpoint) {
+        return `${HELPER_API_BASE}/${endpoint}?${buildStatsQueryParams({ includeTeamFilter: true })}`;
+    }
+
+    function pct(value) {
+        if (value == null) return '-';
+        return `${(Number(value) * 100).toFixed(1)}%`;
+    }
+
+    function fmtNum(v) {
+        return formatNumber(v);
+    }
+
+    // ---------- state ----------
+    let helperDataLoaded = false;
+    let helperSubTabData = {};
+
+    // ---------- entry point ----------
+    async function loadQaAiHelperDashboard() {
+        const loading = document.getElementById('qa-ai-helper-loading');
+        if (loading) loading.classList.remove('d-none');
+
+        try {
+            // Load overview first (always needed for KPI cards)
+            const overviewData = await fetchStatsJson(buildHelperUrl('overview'));
+            helperSubTabData.overview = overviewData;
+            renderHelperOverview(overviewData);
+
+            helperDataLoaded = true;
+
+            // Load active sub-tab data
+            const activeSubTab = document.querySelector('#helperSubTab .nav-link.active');
+            if (activeSubTab) {
+                const target = activeSubTab.getAttribute('data-bs-target');
+                await loadHelperSubTabData(target);
+            }
+        } catch (err) {
+            console.error('QA AI Helper dashboard load failed:', err);
+        } finally {
+            if (loading) loading.classList.add('d-none');
+        }
+    }
+
+    async function loadHelperSubTabData(targetId) {
+        if (!targetId) return;
+        const map = {
+            '#helper-overview-spane': { key: 'overview', endpoint: 'overview', render: renderHelperOverview },
+            '#helper-adoption-spane': { key: 'adoption', endpoint: 'adoption', render: renderHelperAdoption },
+            '#helper-generation-spane': { key: 'generation', endpoint: 'generation', render: renderHelperGeneration },
+            '#helper-funnel-spane': { key: 'funnel', endpoint: 'funnel', render: renderHelperFunnel },
+            '#helper-telemetry-spane': { key: 'telemetry', endpoint: 'telemetry', render: renderHelperTelemetry },
+            '#helper-engagement-spane': { key: 'engagement', endpoint: 'user-engagement', render: renderHelperEngagement },
+            '#helper-airatio-spane': { key: 'airatio', endpoint: 'ai-ratio', render: renderHelperAiRatio },
+        };
+        const spec = map[targetId];
+        if (!spec) return;
+
+        if (helperSubTabData[spec.key]) {
+            spec.render(helperSubTabData[spec.key]);
+            return;
+        }
+
+        try {
+            const data = await fetchStatsJson(buildHelperUrl(spec.endpoint));
+            helperSubTabData[spec.key] = data;
+            spec.render(data);
+        } catch (err) {
+            console.error(`Helper sub-tab ${spec.key} load failed:`, err);
+        }
+    }
+
+    // Hook into sub-tab switch
+    document.addEventListener('shown.bs.tab', function(e) {
+        if (!e.target || !e.target.closest('#helperSubTab')) return;
+        const target = e.target.getAttribute('data-bs-target');
+        loadHelperSubTabData(target);
+    });
+
+    // ---------- Render: Overview ----------
+    function renderHelperOverview(data) {
+        if (!data || !data.kpi) return;
+        const k = data.kpi;
+        setText('helper-kpi-sessions', fmtNum(k.total_sessions));
+        setText('helper-kpi-completion-rate', pct(k.completion_rate));
+        setText('helper-kpi-tcs-generated', fmtNum(k.total_tcs_generated));
+        setText('helper-kpi-tcs-committed', fmtNum(k.total_tcs_committed));
+        setText('helper-kpi-seed-adoption', pct(k.overall_seed_adoption_rate));
+        setText('helper-kpi-tc-adoption', pct(k.overall_tc_adoption_rate));
+        setText('helper-kpi-seeds-generated', fmtNum(k.total_seeds_generated));
+        setText('helper-kpi-failed', fmtNum(k.failed_sessions));
+
+        const tbody = document.getElementById('helper-overview-team-tbody');
+        if (tbody && data.team_ranking) {
+            tbody.innerHTML = data.team_ranking.map((t, i) =>
+                `<tr>
+                    <td>${i + 1}</td>
+                    <td>${escapeHtml(t.team_name)}</td>
+                    <td>${fmtNum(t.session_count)}</td>
+                    <td>${pct(t.completion_rate)}</td>
+                    <td>${pct(t.seed_adoption_rate)}</td>
+                    <td>${pct(t.tc_adoption_rate)}</td>
+                    <td>${fmtNum(t.committed_tc_count)}</td>
+                </tr>`
+            ).join('');
+        }
+    }
+
+    // ---------- Render: Adoption ----------
+    function renderHelperAdoption(data) {
+        if (!data) return;
+        const o = data.overall || {};
+        setText('helper-adoption-seed-rate', pct(o.seed_adoption_rate));
+        setText('helper-adoption-tc-rate', pct(o.tc_adoption_rate));
+        setText('helper-adoption-edit-rate', pct(o.user_edit_rate));
+        setText('helper-adoption-ai-ratio', pct(o.ai_generated_ratio));
+
+        // Trend chart
+        if (data.overall_trend) {
+            renderHelperLineChart('helper-adoption-trend-chart', data.overall_trend.dates, [
+                { label: 'Seed 採用率', data: data.overall_trend.seed_adoption, color: teamColorPalette[0] },
+                { label: 'TC 採用率', data: data.overall_trend.tc_adoption, color: teamColorPalette[1] },
+            ], true);
+        }
+
+        // By-team trend
+        if (data.by_team_trend && data.by_team_trend.length > 0) {
+            const dates = data.by_team_trend[0]?.trend?.dates || [];
+            const datasets = data.by_team_trend.map((t, i) => ({
+                label: t.team_name,
+                data: t.trend?.tc_adoption || [],
+                color: teamColorPalette[i % teamColorPalette.length],
+            }));
+            renderHelperLineChart('helper-adoption-team-trend-chart', dates, datasets, true);
+        }
+
+        // Team ranking
+        renderHelperTable('helper-adoption-team-tbody', data.team_ranking, (t, i) =>
+            `<tr>
+                <td>${i + 1}</td>
+                <td>${escapeHtml(t.team_name)}</td>
+                <td>${pct(t.seed_adoption_rate)}</td>
+                <td>${pct(t.tc_adoption_rate)}</td>
+            </tr>`
+        );
+
+        // User ranking
+        renderHelperTable('helper-adoption-user-tbody', data.user_ranking, (u, i) =>
+            `<tr>
+                <td>${i + 1}</td>
+                <td>${escapeHtml(u.username)}</td>
+                <td>${escapeHtml(u.team_name || '')}</td>
+                <td>${pct(u.seed_adoption_rate)}</td>
+                <td>${pct(u.tc_adoption_rate)}</td>
+            </tr>`
+        );
+    }
+
+    // ---------- Render: Generation ----------
+    function renderHelperGeneration(data) {
+        if (!data) return;
+        const s = data.overall_summary || {};
+        setText('helper-gen-total-seeds', fmtNum(s.total_seeds));
+        setText('helper-gen-total-tcs', fmtNum(s.total_tcs));
+        setText('helper-gen-total-committed', fmtNum(s.total_committed));
+        setText('helper-gen-avg-per-session', s.avg_tcs_per_session != null ? Number(s.avg_tcs_per_session).toFixed(1) : '-');
+
+        // Trend chart
+        if (data.overall_trend) {
+            const t = data.overall_trend;
+            renderHelperBarChart('helper-generation-trend-chart', t.dates, [
+                { label: 'Seeds', data: t.seeds_generated, color: teamColorPalette[0] },
+                { label: 'TCs', data: t.tcs_generated, color: teamColorPalette[1] },
+                { label: '入庫', data: t.tcs_committed, color: teamColorPalette[2] },
+            ]);
+        }
+
+        // By-team trend
+        if (data.by_team_trend && data.by_team_trend.length > 0) {
+            const dates = data.by_team_trend[0]?.trend?.dates || [];
+            const datasets = data.by_team_trend.map((t, i) => ({
+                label: t.team_name,
+                data: t.trend?.tcs || [],
+                color: teamColorPalette[i % teamColorPalette.length],
+            }));
+            renderHelperBarChart('helper-generation-team-trend-chart', dates, datasets);
+        }
+
+        // Team ranking
+        renderHelperTable('helper-generation-team-tbody', data.team_ranking, (t, i) =>
+            `<tr>
+                <td>${i + 1}</td>
+                <td>${escapeHtml(t.team_name)}</td>
+                <td>${fmtNum(t.seeds_generated)}</td>
+                <td>${fmtNum(t.tcs_generated)}</td>
+                <td>${fmtNum(t.tcs_committed)}</td>
+            </tr>`
+        );
+
+        // User ranking
+        renderHelperTable('helper-generation-user-tbody', data.user_ranking, (u, i) =>
+            `<tr>
+                <td>${i + 1}</td>
+                <td>${escapeHtml(u.username)}</td>
+                <td>${escapeHtml(u.team_name || '')}</td>
+                <td>${fmtNum(u.seeds_generated)}</td>
+                <td>${fmtNum(u.tcs_generated)}</td>
+                <td>${fmtNum(u.tcs_committed)}</td>
+            </tr>`
+        );
+    }
+
+    // ---------- Render: Funnel ----------
+    function renderHelperFunnel(data) {
+        if (!data) return;
+        setText('helper-funnel-avg-time', data.avg_completion_time_hours != null ? `${Number(data.avg_completion_time_hours).toFixed(1)} hr` : '-');
+
+        // Funnel chart (horizontal bar)
+        if (data.funnel) {
+            const stages = Object.keys(data.funnel);
+            const values = Object.values(data.funnel);
+            destroyChart('helper-funnel-chart');
+            const ctx = document.getElementById('helper-funnel-chart');
+            if (ctx) {
+                charts['helper-funnel-chart'] = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: stages,
+                        datasets: [{
+                            label: 'Sessions',
+                            data: values,
+                            backgroundColor: stages.map((_, i) => toRgba(teamColorPalette[i % teamColorPalette.length], 0.7)),
+                            borderColor: stages.map((_, i) => teamColorPalette[i % teamColorPalette.length]),
+                            borderWidth: 1,
+                        }]
+                    },
+                    options: {
+                        indexAxis: 'y',
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: { x: { beginAtZero: true } },
+                        plugins: { legend: { display: false } },
+                    }
+                });
+            }
+        }
+
+        // Status distribution pie
+        if (data.status_distribution) {
+            destroyChart('helper-funnel-status-chart');
+            const ctx2 = document.getElementById('helper-funnel-status-chart');
+            if (ctx2) {
+                const labels = Object.keys(data.status_distribution);
+                const vals = Object.values(data.status_distribution);
+                charts['helper-funnel-status-chart'] = new Chart(ctx2, {
+                    type: 'doughnut',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            data: vals,
+                            backgroundColor: labels.map((_, i) => toRgba(teamColorPalette[i % teamColorPalette.length], 0.7)),
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                    }
+                });
+            }
+        }
+
+        // Team funnel comparison
+        renderHelperTable('helper-funnel-team-tbody', data.by_team, (t) =>
+            `<tr>
+                <td>${escapeHtml(t.team_name)}</td>
+                <td>${fmtNum(t.total)}</td>
+                <td>${fmtNum(t.completed)}</td>
+                <td>${fmtNum(t.failed)}</td>
+                <td>${pct(t.completion_rate)}</td>
+            </tr>`
+        );
+    }
+
+    // ---------- Render: Telemetry ----------
+    function renderHelperTelemetry(data) {
+        if (!data) return;
+        const o = data.overall || {};
+        setText('helper-tel-total-calls', fmtNum(o.total_calls));
+        setText('helper-tel-prompt-tokens', fmtNum(o.total_prompt_tokens));
+        setText('helper-tel-completion-tokens', fmtNum(o.total_completion_tokens));
+        setText('helper-tel-total-tokens', fmtNum(o.total_tokens));
+        setText('helper-tel-avg-duration', formatDurationMs(o.avg_duration_ms));
+        setText('helper-tel-error-rate', pct(o.error_rate));
+
+        // Token trend
+        if (data.token_trend) {
+            const t = data.token_trend;
+            renderHelperLineChart('helper-telemetry-trend-chart', t.dates, [
+                { label: 'Prompt Tokens', data: t.prompt_tokens, color: teamColorPalette[0] },
+                { label: 'Completion Tokens', data: t.completion_tokens, color: teamColorPalette[1] },
+            ]);
+        }
+
+        // By-team trend
+        if (data.by_team_trend && data.by_team_trend.length > 0) {
+            const dates = data.by_team_trend[0]?.trend?.dates || [];
+            const datasets = data.by_team_trend.map((t, i) => ({
+                label: t.team_name,
+                data: t.trend?.tokens || [],
+                color: teamColorPalette[i % teamColorPalette.length],
+            }));
+            renderHelperLineChart('helper-telemetry-team-trend-chart', dates, datasets);
+        }
+
+        // Team ranking
+        renderHelperTable('helper-telemetry-team-tbody', data.team_ranking, (t, i) =>
+            `<tr>
+                <td>${i + 1}</td>
+                <td>${escapeHtml(t.team_name)}</td>
+                <td>${fmtNum(t.total_calls)}</td>
+                <td>${fmtNum(t.prompt_tokens)}</td>
+                <td>${fmtNum(t.completion_tokens)}</td>
+                <td>${fmtNum(t.total_tokens)}</td>
+                <td>${formatDurationMs(t.avg_duration_ms)}</td>
+            </tr>`
+        );
+
+        // By stage (by_stage is a Dict keyed by stage name, convert to array)
+        if (data.by_stage && typeof data.by_stage === 'object' && !Array.isArray(data.by_stage)) {
+            const stageList = Object.entries(data.by_stage).map(([stage, info]) => ({ stage, ...info }));
+            renderHelperTable('helper-telemetry-stage-tbody', stageList, (s) =>
+                `<tr>
+                    <td>${escapeHtml(s.stage)}</td>
+                    <td>${fmtNum(s.calls)}</td>
+                    <td>${fmtNum(s.prompt_tokens)}</td>
+                    <td>${fmtNum(s.completion_tokens)}</td>
+                    <td>${fmtNum(s.tokens)}</td>
+                    <td>${formatDurationMs(s.avg_ms)}</td>
+                </tr>`
+            );
+        }
+    }
+
+    // ---------- Render: Engagement ----------
+    function renderHelperEngagement(data) {
+        if (!data) return;
+
+        // DAU trend chart
+        if (data.dau_trend) {
+            const dt = data.dau_trend;
+            const datasets = [{ label: 'DAU', data: dt.overall || [], color: teamColorPalette[0] }];
+            if (dt.by_team && dt.by_team.length > 0) {
+                dt.by_team.forEach((t, i) => {
+                    datasets.push({
+                        label: t.team_name,
+                        data: t.daily || [],
+                        color: teamColorPalette[(i + 1) % teamColorPalette.length],
+                    });
+                });
+            }
+            renderHelperLineChart('helper-engagement-dau-chart', dt.dates || [], datasets);
+        }
+
+        // Team ranking
+        renderHelperTable('helper-engagement-team-tbody', data.team_ranking, (t, i) =>
+            `<tr>
+                <td>${i + 1}</td>
+                <td>${escapeHtml(t.team_name)}</td>
+                <td>${fmtNum(t.active_user_count)}</td>
+                <td>${fmtNum(t.session_count)}</td>
+                <td>${t.session_count && t.active_user_count ? (t.session_count / t.active_user_count).toFixed(1) : '-'}</td>
+            </tr>`
+        );
+
+        // User ranking
+        renderHelperTable('helper-engagement-user-tbody', data.user_ranking, (u, i) =>
+            `<tr>
+                <td>${i + 1}</td>
+                <td>${escapeHtml(u.username)}</td>
+                <td>${escapeHtml(u.team_name || '')}</td>
+                <td>${fmtNum(u.session_count)}</td>
+                <td>${fmtNum(u.committed_tc_count)}</td>
+            </tr>`
+        );
+    }
+
+    // ---------- Render: AI vs Manual Ratio ----------
+    function renderHelperAiRatio(data) {
+        if (!data) return;
+
+        // KPI cards
+        var o = data.overall || {};
+        setText('helper-airatio-total', fmtNum(o.total_created));
+        setText('helper-airatio-ai', fmtNum(o.ai_committed));
+        setText('helper-airatio-manual', fmtNum(o.manual_created));
+        setText('helper-airatio-percent', pct(o.ai_ratio));
+
+        // Overall trend — stacked bar chart (AI + Manual)
+        if (data.overall_trend) {
+            var t = data.overall_trend;
+            destroyChart('helper-airatio-overall-chart');
+            var ctx = document.getElementById('helper-airatio-overall-chart');
+            if (ctx) {
+                charts['helper-airatio-overall-chart'] = new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: t.dates || [],
+                        datasets: [
+                            {
+                                label: 'AI Committed',
+                                data: t.ai_committed || [],
+                                backgroundColor: toRgba(teamColorPalette[0], 0.7),
+                                borderColor: teamColorPalette[0],
+                                borderWidth: 1,
+                            },
+                            {
+                                label: 'Manual',
+                                data: t.manual_created || [],
+                                backgroundColor: toRgba(teamColorPalette[3], 0.7),
+                                borderColor: teamColorPalette[3],
+                                borderWidth: 1,
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            x: { stacked: true },
+                            y: { stacked: true, beginAtZero: true }
+                        },
+                        plugins: { legend: { position: 'top' } }
+                    }
+                });
+            }
+        }
+
+        // Top 10 team AI ratio trend line chart
+        if (data.by_team_trend && data.by_team_trend.length > 0) {
+            var dates = data.by_team_trend[0].trend ? data.by_team_trend[0].trend.dates : [];
+            var datasets = data.by_team_trend.map(function(t, i) {
+                return {
+                    label: t.team_name,
+                    data: t.trend ? t.trend.ai_ratio : [],
+                    color: teamColorPalette[i % teamColorPalette.length],
+                };
+            });
+            renderHelperLineChart('helper-airatio-team-chart', dates, datasets, true);
+        }
+
+        // Team ranking table
+        renderHelperTable('helper-airatio-team-tbody', data.team_ranking, function(t, i) {
+            return '<tr>' +
+                '<td>' + (i + 1) + '</td>' +
+                '<td>' + escapeHtml(t.team_name) + '</td>' +
+                '<td>' + fmtNum(t.total_created) + '</td>' +
+                '<td>' + fmtNum(t.ai_committed) + '</td>' +
+                '<td>' + fmtNum(t.manual_created) + '</td>' +
+                '<td>' + pct(t.ai_ratio) + '</td>' +
+            '</tr>';
+        });
+    }
+
+    // ---------- Chart Helpers ----------
+    function renderHelperLineChart(canvasId, labels, datasets, isPercentage) {
+        destroyChart(canvasId);
+        const ctx = document.getElementById(canvasId);
+        if (!ctx) return;
+
+        charts[canvasId] = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: datasets.map(ds => ({
+                    label: ds.label,
+                    data: ds.data,
+                    borderColor: ds.color,
+                    backgroundColor: toRgba(ds.color, 0.1),
+                    fill: false,
+                    tension: 0.3,
+                    pointRadius: 2,
+                }))
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: { mode: 'index', intersect: false },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ...(isPercentage ? {
+                            max: 1,
+                            ticks: { callback: v => `${(v * 100).toFixed(0)}%` }
+                        } : {})
+                    }
+                },
+                plugins: { legend: { position: 'top' } }
+            }
+        });
+    }
+
+    function renderHelperBarChart(canvasId, labels, datasets) {
+        destroyChart(canvasId);
+        const ctx = document.getElementById(canvasId);
+        if (!ctx) return;
+
+        charts[canvasId] = new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: datasets.map(ds => ({
+                    label: ds.label,
+                    data: ds.data,
+                    backgroundColor: toRgba(ds.color, 0.6),
+                    borderColor: ds.color,
+                    borderWidth: 1,
+                }))
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: { y: { beginAtZero: true } },
+                plugins: { legend: { position: 'top' } }
+            }
+        });
+    }
+
+    function renderHelperTable(tbodyId, list, rowFn) {
+        const tbody = document.getElementById(tbodyId);
+        if (!tbody) return;
+        if (!Array.isArray(list) || list.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="99" class="text-center text-muted">-</td></tr>';
+            return;
+        }
+        tbody.innerHTML = list.map(rowFn).join('');
+    }
+
+    function setText(id, text) {
+        const el = document.getElementById(id);
+        if (el) el.textContent = text;
     }
 
 })();
