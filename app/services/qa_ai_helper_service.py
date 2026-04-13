@@ -2588,7 +2588,12 @@ class QAAIHelperService:
                 output_payload = json.loads(llm_result.content or "{}")
             except json.JSONDecodeError as exc:
                 raise RuntimeError(f"seed 模型輸出非 JSON: {exc}") from exc
-            model_outputs = output_payload.get("outputs") or []
+            model_outputs = (
+                output_payload.get("outputs") or []
+                if isinstance(output_payload, dict)
+                else output_payload if isinstance(output_payload, list)
+                else []
+            )
             outputs_by_ref = {
                 str(item.get("seed_reference_key") or "").strip(): item
                 for item in model_outputs
@@ -2903,7 +2908,12 @@ class QAAIHelperService:
             output_payload = json.loads(llm_result.content or "{}")
         except json.JSONDecodeError as exc:
             raise RuntimeError(f"seed refine 模型輸出非 JSON: {exc}") from exc
-        model_outputs = output_payload.get("outputs") or []
+        model_outputs = (
+            output_payload.get("outputs") or []
+            if isinstance(output_payload, dict)
+            else output_payload if isinstance(output_payload, list)
+            else []
+        )
         outputs_by_ref = {
             str(item.get("seed_reference_key") or "").strip(): item
             for item in model_outputs
@@ -3157,7 +3167,12 @@ class QAAIHelperService:
             output_payload = json.loads(llm_result.content or "{}")
         except json.JSONDecodeError as exc:
             raise RuntimeError(f"testcase 模型輸出非 JSON: {exc}") from exc
-        model_outputs = output_payload.get("outputs") or []
+        model_outputs = (
+            output_payload.get("outputs") or []
+            if isinstance(output_payload, dict)
+            else output_payload if isinstance(output_payload, list)
+            else []
+        )
         outputs_by_ref = {
             str(item.get("seed_reference_key") or "").strip(): item
             for item in model_outputs
@@ -4601,9 +4616,15 @@ class QAAIHelperService:
                 output_payload = json.loads(llm_result.content or "{}")
             except json.JSONDecodeError as exc:
                 raise RuntimeError(f"模型輸出非 JSON: {exc}") from exc
+            _model_outputs = (
+                output_payload.get("outputs") or []
+                if isinstance(output_payload, dict)
+                else output_payload if isinstance(output_payload, list)
+                else []
+            )
             merged_batch = post_merge_generation_outputs(
                 generation_items=task["batch"].get("generation_items", []),
-                model_outputs=output_payload.get("outputs") or [],
+                model_outputs=_model_outputs,
                 selected_references=task["section_references"],
             )
             all_merged_drafts.extend(merged_batch)
