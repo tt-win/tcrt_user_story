@@ -31,6 +31,7 @@ class QAAIHelperLLMResult:
     cost_note: str
     model_name: Optional[str] = None
     response_id: Optional[str] = None
+    finish_reason: Optional[str] = None
 
 
 class QAAIHelperLLMService:
@@ -147,13 +148,27 @@ class QAAIHelperLLMService:
                         f"qa_ai_helper {stage} 模型呼叫失敗: HTTP {response.status} {text_body}"
                     )
                 data = json.loads(text_body)
+                choices = data.get("choices") or []
+                finish_reason = (
+                    choices[0].get("finish_reason")
+                    if choices and isinstance(choices[0], dict)
+                    else None
+                )
+                content = self._extract_content(data)
+                if finish_reason == "length":
+                    logger.warning(
+                        "qa_ai_helper %s output truncated (finish_reason=length, "
+                        "max_tokens=%d, content_len=%d)",
+                        stage, max_tokens, len(content),
+                    )
                 return QAAIHelperLLMResult(
-                    content=self._extract_content(data),
+                    content=content,
                     usage=self._extract_usage(data),
                     cost=float(data.get("cost") or data.get("total_cost") or 0.0),
                     cost_note="",
                     model_name=model_name,
                     response_id=data.get("id"),
+                    finish_reason=finish_reason,
                 )
 
     def _fallback_result(

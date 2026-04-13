@@ -2549,7 +2549,7 @@ class QAAIHelperService:
                 result = await self.llm_service.call_stage(
                     stage="seed",
                     prompt=prompt,
-                    max_tokens=max(1200, len(batch_items) * 220),
+                    max_tokens=max(4000, len(batch_items) * 500),
                 )
             return result, batch_items
 
@@ -2881,7 +2881,7 @@ class QAAIHelperService:
         llm_result = await self.llm_service.call_stage(
             stage="seed_refine",
             prompt=prompt,
-            max_tokens=max(800, len(dirty_seed_items) * 220),
+            max_tokens=max(4000, len(dirty_seed_items) * 500),
         )
         duration_ms = int((time.perf_counter() - refine_started_at) * 1000)
         try:
