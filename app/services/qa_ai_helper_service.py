@@ -2098,6 +2098,7 @@ class QAAIHelperService:
         team_id: int,
         limit: int = 50,
         offset: int = 0,
+        search: str = "",
     ) -> QAAIHelperSessionListResponse:
         def _list(sync_db: Session) -> QAAIHelperSessionListResponse:
             query = (
@@ -2105,6 +2106,8 @@ class QAAIHelperService:
                 .filter(QAAIHelperSession.team_id == team_id)
                 .order_by(QAAIHelperSession.updated_at.desc(), QAAIHelperSession.id.desc())
             )
+            if search:
+                query = query.filter(QAAIHelperSession.ticket_key.ilike(f"%{search}%"))
             total = query.count()
             sessions = query.offset(offset).limit(limit).all()
             items: List[QAAIHelperSessionListItemResponse] = []

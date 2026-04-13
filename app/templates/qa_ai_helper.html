@@ -437,7 +437,7 @@
                 <div class="row g-3">
                     <div class="col-lg-5">
                         <div class="qa-helper-side-card h-100">
-                            <div class="d-flex justify-content-between align-items-center gap-2 mb-3 flex-wrap">
+                            <div class="d-flex justify-content-between align-items-center gap-2 mb-2 flex-wrap">
                                 <div>
                                     <div class="fw-semibold" data-i18n="qaAiHelper.savedSessions">既有 Sessions</div>
                                     <small class="text-muted" id="qaHelperSessionManagerSelectionSummary" data-i18n="qaAiHelper.sessionManagerNoSelection">尚未選取項目</small>
@@ -451,7 +451,11 @@
                                     </button>
                                 </div>
                             </div>
-                            <div class="list-group qa-helper-session-manager-list" id="qaHelperSessionManagerList"></div>
+                            <div class="mb-2">
+                                <input type="text" class="form-control form-control-sm" id="qaHelperSessionManagerSearch"
+                                       data-i18n-placeholder="qaAiHelper.sessionManagerSearchPlaceholder" placeholder="搜尋 Ticket Key...">
+                            </div>
+                            <div class="list-group qa-helper-session-manager-list" id="qaHelperSessionManagerList" style="max-height:420px;overflow-y:auto"></div>
                         </div>
                     </div>
                     <div class="col-lg-7">

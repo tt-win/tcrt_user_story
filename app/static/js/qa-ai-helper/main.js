@@ -32,7 +32,12 @@
     sessionManagerCheckedIds: [],
     sessionManagerModalInstance: null,
     sessionManagerLoading: false,
+    sessionManagerLoadingMore: false,
     sessionManagerError: '',
+    sessionManagerSearch: '',
+    sessionManagerHasMore: false,
+    sessionManagerTotal: 0,
+    sessionManagerSearchTimer: null,
   };
 
   const PHASE_ORDER = ['fetch', 'canonical', 'plan', 'draft'];
@@ -394,38 +399,62 @@
     state.sets = await response.json();
   }
 
-  async function loadSessions() {
+  const SESSION_PAGE_SIZE = 30;
+
+  async function loadSessions({ append = false } = {}) {
     const teamId = ensureTeamId();
     if (!teamId) {
       state.sessions = [];
       state.sessionManagerSelectedId = null;
       state.sessionManagerCheckedIds = [];
       state.sessionManagerLoading = false;
+      state.sessionManagerLoadingMore = false;
       state.sessionManagerError = '';
+      state.sessionManagerHasMore = false;
+      state.sessionManagerTotal = 0;
       renderSessionSelect();
       return;
     }
-    state.sessionManagerLoading = true;
-    state.sessionManagerError = '';
-    renderSessionManager();
-    const response = await authFetch(`/api/teams/${teamId}/qa-ai-helper/sessions?limit=200&offset=0`);
+    if (append) {
+      state.sessionManagerLoadingMore = true;
+      renderSessionManager();
+    } else if (!state.sessions.length) {
+      // Only show full loading spinner on very first load (empty list)
+      state.sessionManagerLoading = true;
+      state.sessionManagerError = '';
+      renderSessionManager();
+    }
+    const offset = append ? state.sessions.length : 0;
+    const search = (state.sessionManagerSearch || '').trim();
+    const params = new URLSearchParams({ limit: String(SESSION_PAGE_SIZE), offset: String(offset) });
+    if (search) params.set('search', search);
+    const response = await authFetch(`/api/teams/${teamId}/qa-ai-helper/sessions?${params}`);
     if (!response.ok) {
       const errorText = await response.text();
       state.sessionManagerLoading = false;
+      state.sessionManagerLoadingMore = false;
       state.sessionManagerError = errorText;
       renderSessionManager();
       throw new Error(errorText);
     }
     const payload = await response.json();
-    state.sessions = payload.items || [];
+    const newItems = payload.items || [];
+    if (append) {
+      state.sessions = [...state.sessions, ...newItems];
+    } else {
+      state.sessions = newItems;
+    }
+    state.sessionManagerTotal = payload.total || 0;
+    state.sessionManagerHasMore = state.sessions.length < state.sessionManagerTotal;
     const availableIds = new Set((state.sessions || []).map((item) => Number(((item || {}).session || {}).id || 0)));
-    if (!availableIds.has(Number(state.sessionManagerSelectedId || 0))) {
+    if (!append && !availableIds.has(Number(state.sessionManagerSelectedId || 0))) {
       state.sessionManagerSelectedId = state.sessionId && availableIds.has(Number(state.sessionId))
         ? Number(state.sessionId)
         : (state.sessions[0] ? Number((state.sessions[0].session || {}).id || 0) : null);
     }
     state.sessionManagerCheckedIds = (state.sessionManagerCheckedIds || []).filter((id) => availableIds.has(Number(id)));
     state.sessionManagerLoading = false;
+    state.sessionManagerLoadingMore = false;
     state.sessionManagerError = '';
     renderSessionSelect();
   }
@@ -489,6 +518,22 @@
     return (state.sessions || []).find((item) => Number(((item || {}).session || {}).id || 0) === Number(state.sessionManagerSelectedId || 0)) || null;
   }
 
+  function _buildSessionItemHtml(session, id, isSelected, isChecked) {
+    return `
+      <div class="d-flex align-items-start gap-2">
+        <input class="form-check-input mt-1 qa-helper-session-manager-check" type="checkbox" data-session-manager-check-id="${id}" ${isChecked ? 'checked' : ''}>
+        <div class="flex-grow-1 text-start">
+          <div class="d-flex justify-content-between gap-2 flex-wrap">
+            <span class="fw-semibold qa-helper-mono">${escapeHtml(String(session.ticket_key || '-'))}</span>
+            <span class="badge ${session.status === 'completed' ? 'text-bg-success' : 'text-bg-light'}">${escapeHtml(String(session.status || '-'))}</span>
+          </div>
+          <div class="small text-muted">#${escapeHtml(String(id || '-'))} · ${escapeHtml(sessionScreenText(session))}</div>
+          <div class="small text-muted">${escapeHtml(formatUtcDate(session.updated_at))}</div>
+        </div>
+      </div>
+    `;
+  }
+
   function renderSessionManager() {
     const list = el('qaHelperSessionManagerList');
     const summary = el('qaHelperSessionManagerSelectionSummary');
@@ -502,7 +547,10 @@
 
     const items = state.sessions || [];
     const checkedIds = new Set((state.sessionManagerCheckedIds || []).map((id) => Number(id)));
-    if (state.sessionManagerLoading) {
+    const selectedId = Number(state.sessionManagerSelectedId || 0);
+
+    /* ---------- Loading (initial only, not append) ---------- */
+    if (state.sessionManagerLoading && !items.length) {
       list.innerHTML = `<div class="qa-helper-empty">${escapeHtml(t('qaAiHelper.sessionManagerLoading', {}, '載入 Session 列表中...'))}</div>`;
     } else if (state.sessionManagerError) {
       list.innerHTML = `
@@ -511,30 +559,55 @@
           <div class="small mt-2">${escapeHtml(state.sessionManagerError)}</div>
         </div>
       `;
+    } else if (!items.length) {
+      list.innerHTML = `<div class="qa-helper-empty">${escapeHtml(t('qaAiHelper.sessionManagerEmpty', {}, '目前沒有可管理的 Session'))}</div>`;
     } else {
-      list.innerHTML = items.length
-        ? items.map((item) => {
-            const session = item.session || {};
-            const id = Number(session.id || 0);
-            const isSelected = Number(state.sessionManagerSelectedId || 0) === id;
-            const isChecked = checkedIds.has(id);
-            return `
-              <button type="button" class="list-group-item list-group-item-action qa-helper-session-manager-item ${isSelected ? 'active' : ''}" data-session-manager-item-id="${id}">
-                <div class="d-flex align-items-start gap-2">
-                  <input class="form-check-input mt-1 qa-helper-session-manager-check" type="checkbox" data-session-manager-check-id="${id}" ${isChecked ? 'checked' : ''}>
-                  <div class="flex-grow-1 text-start">
-                    <div class="d-flex justify-content-between gap-2 flex-wrap">
-                      <span class="fw-semibold qa-helper-mono">${escapeHtml(String(session.ticket_key || '-'))}</span>
-                      <span class="badge ${session.status === 'completed' ? 'text-bg-success' : 'text-bg-light'}">${escapeHtml(String(session.status || '-'))}</span>
-                    </div>
-                    <div class="small text-muted">#${escapeHtml(String(id || '-'))} · ${escapeHtml(sessionScreenText(session))}</div>
-                    <div class="small text-muted">${escapeHtml(formatUtcDate(session.updated_at))}</div>
-                  </div>
-                </div>
-              </button>
-            `;
-          }).join('')
-        : `<div class="qa-helper-empty">${escapeHtml(t('qaAiHelper.sessionManagerEmpty', {}, '目前沒有可管理的 Session'))}</div>`;
+      /* --- Incremental DOM: reconcile existing item buttons --- */
+      const existingById = {};
+      list.querySelectorAll('[data-session-manager-item-id]').forEach((node) => {
+        existingById[node.getAttribute('data-session-manager-item-id')] = node;
+      });
+      // Remove non-item nodes (old footer / load-more / count)
+      list.querySelectorAll('.qa-helper-session-manager-footer').forEach((n) => n.remove());
+      list.querySelectorAll('.qa-helper-empty').forEach((n) => n.remove());
+
+      items.forEach((item) => {
+        const session = item.session || {};
+        const id = Number(session.id || 0);
+        const isSelected = selectedId === id;
+        const isChecked = checkedIds.has(id);
+        let btn = existingById[String(id)];
+        if (btn) {
+          // Update classes & checkbox without replacing the whole node
+          btn.classList.toggle('active', isSelected);
+          const cb = btn.querySelector('[data-session-manager-check-id]');
+          if (cb) cb.checked = isChecked;
+          delete existingById[String(id)];
+        } else {
+          // New item — create and append
+          btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = `list-group-item list-group-item-action qa-helper-session-manager-item${isSelected ? ' active' : ''}`;
+          btn.setAttribute('data-session-manager-item-id', String(id));
+          btn.innerHTML = _buildSessionItemHtml(session, id, isSelected, isChecked);
+          list.appendChild(btn);
+        }
+      });
+      // Remove items no longer in the list (e.g. after search change)
+      Object.values(existingById).forEach((node) => node.remove());
+
+      // Footer: load-more / count
+      const footer = document.createElement('div');
+      footer.className = 'qa-helper-session-manager-footer text-center text-muted small py-1';
+      if (state.sessionManagerLoadingMore) {
+        footer.innerHTML = `<i class="fas fa-spinner fa-spin me-1"></i>${escapeHtml(t('qaAiHelper.sessionManagerLoadMore', {}, '載入更多...'))}`;
+      } else if (state.sessionManagerHasMore) {
+        footer.textContent = t('qaAiHelper.sessionManagerScrollMore', {}, '往下捲動載入更多');
+      }
+      if (state.sessionManagerTotal > 0) {
+        footer.textContent = (footer.textContent ? footer.textContent + ' · ' : '') + `${items.length} / ${state.sessionManagerTotal}`;
+      }
+      if (footer.textContent) list.appendChild(footer);
     }
 
     summary.textContent = checkedIds.size > 0
@@ -571,6 +644,9 @@
     if (!state.sessionManagerModalInstance) {
       state.sessionManagerModalInstance = new window.bootstrap.Modal(modalEl);
     }
+    state.sessionManagerSearch = '';
+    const searchInput = el('qaHelperSessionManagerSearch');
+    if (searchInput) searchInput.value = '';
     renderSessionManager();
     state.sessionManagerModalInstance.show();
   }
@@ -2748,6 +2824,21 @@
         state.sessionManagerSelectedId = sessionId;
       }
       renderSessionManager();
+    });
+    bindIfPresent('qaHelperSessionManagerList', 'scroll', (event) => {
+      const el = event.currentTarget;
+      if (!el || !state.sessionManagerHasMore || state.sessionManagerLoadingMore || state.sessionManagerLoading) return;
+      if (el.scrollTop + el.clientHeight >= el.scrollHeight - 40) {
+        loadSessions({ append: true }).catch(handleError);
+      }
+    });
+    bindIfPresent('qaHelperSessionManagerSearch', 'input', (event) => {
+      const value = String(event.target.value || '');
+      state.sessionManagerSearch = value;
+      if (state.sessionManagerSearchTimer) clearTimeout(state.sessionManagerSearchTimer);
+      state.sessionManagerSearchTimer = setTimeout(() => {
+        loadSessions().catch(handleError);
+      }, 800);
     });
     bindIfPresent('qaHelperSectionStartNumber', 'input', (event) => {
       const plan = currentRequirementPlan();

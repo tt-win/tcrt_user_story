@@ -111,14 +111,15 @@ async def create_session(
 @router.get("/sessions", response_model=QAAIHelperSessionListResponse)
 async def list_sessions(
     team_id: int,
-    limit: int = Query(50, ge=1, le=200),
+    limit: int = Query(50, ge=1, le=1000),
     offset: int = Query(0, ge=0),
+    search: str = Query("", max_length=200),
     current_user: User = Depends(get_current_user),
 ) -> QAAIHelperSessionListResponse:
     await _verify_team_write_access(team_id=team_id, current_user=current_user)
     service = QAAIHelperService()
     try:
-        return await service.list_sessions(team_id=team_id, limit=limit, offset=offset)
+        return await service.list_sessions(team_id=team_id, limit=limit, offset=offset, search=search.strip())
     except Exception as exc:  # noqa: BLE001
         raise _map_exception(exc) from exc
 
