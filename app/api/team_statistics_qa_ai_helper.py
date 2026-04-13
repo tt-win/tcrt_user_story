@@ -870,6 +870,12 @@ async def get_qa_ai_helper_generation(
                 if uid is not None:
                     user_seeds[uid] += ss.generated_seed_count or 0
 
+            user_tcs: Dict[int, int] = defaultdict(int)
+            for td in td_rows:
+                uid = session_user_map.get(td.session_id)
+                if uid is not None:
+                    user_tcs[uid] += td.generated_testcase_count or 0
+
             user_committed: Dict[int, int] = defaultdict(int)
             for cl in cl_rows:
                 uid = session_user_map.get(cl.session_id)
@@ -893,6 +899,7 @@ async def get_qa_ai_helper_generation(
                         "team_name": team_names.get(tid, f"Team #{tid}"),
                         "session_count": user_sessions.get(uid, 0),
                         "seeds_generated": user_seeds.get(uid, 0),
+                        "tcs_generated": user_tcs.get(uid, 0),
                         "tcs_committed": user_committed.get(uid, 0),
                     }
                 )

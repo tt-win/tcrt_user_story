@@ -2123,8 +2123,8 @@
         if (!data) return;
         const s = data.overall_summary || {};
         setText('helper-gen-total-seeds', fmtNum(s.total_seeds));
-        setText('helper-gen-total-tcs', fmtNum(s.total_tcs));
-        setText('helper-gen-total-committed', fmtNum(s.total_committed));
+        setText('helper-gen-total-tcs', fmtNum(s.total_tcs_generated));
+        setText('helper-gen-total-committed', fmtNum(s.total_tcs_committed));
         setText('helper-gen-avg-per-session', s.avg_tcs_per_session != null ? Number(s.avg_tcs_per_session).toFixed(1) : '-');
 
         // Trend chart
