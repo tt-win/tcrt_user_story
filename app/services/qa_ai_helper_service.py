@@ -1882,16 +1882,33 @@ class QAAIHelperService:
         sync_db: Session,
         *,
         set_id: int,
+        ticket_key: str = "",
     ) -> TestCaseSection:
+        root_name = ticket_key.strip() or "QA AI Helper"
+        # 先嘗試用 ticket_key 查找，若找不到再 fallback 查舊名稱 "QA AI Helper"
         section = (
             sync_db.query(TestCaseSection)
             .filter(
                 TestCaseSection.test_case_set_id == set_id,
                 TestCaseSection.parent_section_id.is_(None),
-                TestCaseSection.name == "QA AI Helper",
+                TestCaseSection.name == root_name,
             )
             .first()
         )
+        if not section and root_name != "QA AI Helper":
+            section = (
+                sync_db.query(TestCaseSection)
+                .filter(
+                    TestCaseSection.test_case_set_id == set_id,
+                    TestCaseSection.parent_section_id.is_(None),
+                    TestCaseSection.name == "QA AI Helper",
+                )
+                .first()
+            )
+            if section:
+                section.name = root_name
+                section.updated_at = _now()
+                sync_db.flush()
         if section:
             return section
         max_sort = (
@@ -1905,8 +1922,8 @@ class QAAIHelperService:
         )
         section = TestCaseSection(
             test_case_set_id=set_id,
-            name="QA AI Helper",
-            description="由新版 QA AI Helper 產生的測試案例區段",
+            name=root_name,
+            description=f"由 QA AI Helper 產生的測試案例區段 ({root_name})",
             parent_section_id=None,
             level=1,
             sort_order=(max_sort[0] + 1) if max_sort and max_sort[0] is not None else 0,
@@ -3577,7 +3594,9 @@ class QAAIHelperService:
                     payload=request.new_test_case_set_payload,
                 )
 
-            root_section = self._ensure_ai_helper_root_section_sync(sync_db, set_id=target_set.id)
+            root_section = self._ensure_ai_helper_root_section_sync(
+                sync_db, set_id=target_set.id, ticket_key=session.ticket_key or "",
+            )
             requested_ids: List[int] = list(dict.fromkeys(int(item) for item in request.selected_draft_ids))
             if not requested_ids:
                 raise ValueError("至少需勾選一筆 testcase")
@@ -4937,7 +4956,9 @@ class QAAIHelperService:
             )
             if target_set is None:
                 raise ValueError("目標 Test Case Set 不存在")
-            root_section = self._ensure_ai_helper_root_section_sync(sync_db, set_id=target_set.id)
+            root_section = self._ensure_ai_helper_root_section_sync(
+                sync_db, set_id=target_set.id, ticket_key=session.ticket_key or "",
+            )
             created_count = 0
             updated_count = 0
             for draft in draft_set.drafts:
