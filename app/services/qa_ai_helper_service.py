@@ -2549,7 +2549,6 @@ class QAAIHelperService:
                 result = await self.llm_service.call_stage(
                     stage="seed",
                     prompt=prompt,
-                    max_tokens=max(4000, len(batch_items) * 500),
                 )
             return result, batch_items
 
@@ -2881,7 +2880,6 @@ class QAAIHelperService:
         llm_result = await self.llm_service.call_stage(
             stage="seed_refine",
             prompt=prompt,
-            max_tokens=max(4000, len(dirty_seed_items) * 500),
         )
         duration_ms = int((time.perf_counter() - refine_started_at) * 1000)
         try:
@@ -3136,7 +3134,6 @@ class QAAIHelperService:
         llm_result = await self.llm_service.call_stage(
             stage="testcase",
             prompt=prompt,
-            max_tokens=max(1200, len(generation_items) * 260),
         )
         duration_ms = int((time.perf_counter() - testcase_started_at) * 1000)
         try:
@@ -4632,7 +4629,6 @@ class QAAIHelperService:
             repair_result = await self.llm_service.call_stage(
                 stage="repair",
                 prompt=prompt,
-                max_tokens=max(600, len(all_merged_drafts) * 200),
             )
             duration_ms = int((time.perf_counter() - start_ts) * 1000)
             telemetry_records.append(

@@ -116,7 +116,6 @@ class QAAIHelperLLMService:
         *,
         stage: QAAIHelperLLMStage,
         prompt: str,
-        max_tokens: int = 4000,
     ) -> QAAIHelperLLMResult:
         model_name = self.resolve_stage_model_id(stage)
         if not self._openrouter_key:
@@ -131,7 +130,6 @@ class QAAIHelperLLMService:
                 }
             ],
             "temperature": float(self._stage_config(stage).temperature),
-            "max_tokens": max_tokens,
             "response_format": {"type": "json_object"},
         }
 
@@ -158,8 +156,8 @@ class QAAIHelperLLMService:
                 if finish_reason == "length":
                     logger.warning(
                         "qa_ai_helper %s output truncated (finish_reason=length, "
-                        "max_tokens=%d, content_len=%d)",
-                        stage, max_tokens, len(content),
+                        "content_len=%d)",
+                        stage, len(content),
                     )
                 return QAAIHelperLLMResult(
                     content=content,
