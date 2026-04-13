@@ -504,6 +504,7 @@ class QAAIHelperScreenGuardResponse(BaseModel):
     current_screen: Optional[QAAIHelperSessionScreen] = None
     allowed_next_screens: List[QAAIHelperSessionScreen] = Field(default_factory=list)
     can_restart: bool = False
+    can_reopen: bool = False
     next_screen_on_restart: str = "ticket_input"
 
     model_config = ConfigDict(from_attributes=True)

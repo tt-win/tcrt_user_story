@@ -165,6 +165,23 @@ async def restart_session(
         raise _map_exception(exc) from exc
 
 
+@router.post("/sessions/{session_id}/reopen", response_model=QAAIHelperWorkspaceResponse)
+async def reopen_session(
+    team_id: int,
+    session_id: int,
+    target_screen: str = Query(..., description="目標畫面 (seed_review / testcase_review / verification_planning)"),
+    current_user: User = Depends(get_current_user),
+) -> QAAIHelperWorkspaceResponse:
+    await _verify_team_write_access(team_id=team_id, current_user=current_user)
+    service = QAAIHelperService()
+    try:
+        return await service.reopen_session(
+            team_id=team_id, session_id=session_id, target_screen=target_screen,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise _map_exception(exc) from exc
+
+
 @router.post("/sessions/{session_id}/requirement-plan", response_model=QAAIHelperWorkspaceResponse)
 async def initialize_requirement_plan(
     team_id: int,

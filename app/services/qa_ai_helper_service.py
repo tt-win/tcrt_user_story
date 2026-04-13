@@ -159,7 +159,11 @@ _SESSION_SCREEN_TRANSITIONS: Dict[str | None, set[str]] = {
         QAAIHelperSessionScreen.TESTCASE_REVIEW.value,
         QAAIHelperSessionScreen.FAILED.value,
     },
-    QAAIHelperSessionScreen.COMMIT_RESULT.value: set(),
+    QAAIHelperSessionScreen.COMMIT_RESULT.value: {
+        QAAIHelperSessionScreen.VERIFICATION_PLANNING.value,
+        QAAIHelperSessionScreen.SEED_REVIEW.value,
+        QAAIHelperSessionScreen.TESTCASE_REVIEW.value,
+    },
     QAAIHelperSessionScreen.FAILED.value: set(),
 }
 _SCENARIO_TITLE_PREFIX_PATTERN = re.compile(r"^Scenario\s+\d+\s*:\s*", re.IGNORECASE)
@@ -872,6 +876,10 @@ class QAAIHelperService:
         seed_set: Optional[QAAIHelperSeedSet],
         testcase_draft_set: Optional[QAAIHelperTestcaseDraftSet],
     ) -> QAAIHelperScreenGuardResponse:
+        is_completed = (
+            session.status == QAAIHelperSessionStatus.COMPLETED.value
+            and session.current_screen == QAAIHelperSessionScreen.COMMIT_RESULT.value
+        )
         return QAAIHelperScreenGuardResponse.model_validate(
             {
                 "current_screen": session.current_screen,
@@ -886,6 +894,7 @@ class QAAIHelperService:
                     session.status != QAAIHelperSessionStatus.COMPLETED.value
                     and session.current_screen != QAAIHelperSessionScreen.COMMIT_RESULT.value
                 ),
+                "can_reopen": is_completed,
             }
         )
 
@@ -2180,6 +2189,58 @@ class QAAIHelperService:
             )
 
         return await self._run_write(_restart)
+
+    async def reopen_session(
+        self,
+        *,
+        team_id: int,
+        session_id: int,
+        target_screen: str,
+    ) -> QAAIHelperWorkspaceResponse:
+        """Reopen a completed session by navigating back to seed_review or testcase_review.
+
+        The session status is changed from ``completed`` back to ``active``, and
+        ``current_screen`` is set to the requested *target_screen* using the
+        normal transition table (``commit_result`` is now allowed to go back).
+        """
+        _valid_targets = {
+            QAAIHelperSessionScreen.VERIFICATION_PLANNING.value,
+            QAAIHelperSessionScreen.SEED_REVIEW.value,
+            QAAIHelperSessionScreen.TESTCASE_REVIEW.value,
+        }
+        if target_screen not in _valid_targets:
+            raise ValueError(
+                f"target_screen 必須為 {', '.join(sorted(_valid_targets))} 之一"
+            )
+
+        def _reopen(sync_db: Session) -> QAAIHelperWorkspaceResponse:
+            session = (
+                sync_db.query(QAAIHelperSession)
+                .filter(QAAIHelperSession.id == session_id, QAAIHelperSession.team_id == team_id)
+                .first()
+            )
+            if session is None:
+                raise ValueError("找不到 qa_ai_helper session")
+            if (
+                session.status != QAAIHelperSessionStatus.COMPLETED.value
+                or session.current_screen != QAAIHelperSessionScreen.COMMIT_RESULT.value
+            ):
+                raise ValueError("只有已完成 (completed) 且在 commit_result 畫面的 session 才能 reopen")
+
+            # Change status back to active
+            session.status = QAAIHelperSessionStatus.ACTIVE.value
+
+            # Navigate to the requested screen using normal transition rules
+            self._set_session_screen(
+                session,
+                target_screen,
+                allow_same=False,
+                force=False,
+            )
+            session.updated_at = _now()
+            return self._load_workspace_sync(sync_db, team_id=team_id, session_id=session.id)
+
+        return await self._run_write(_reopen)
 
     async def initialize_requirement_plan(
         self,

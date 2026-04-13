@@ -2382,6 +2382,13 @@
     `;
     openBtn.disabled = !result.target_set_link;
     openBtn.setAttribute('data-target-set-link', result.target_set_link || '');
+
+    const screenGuard = ((state.workspace || {}).screen_guard) || {};
+    const canReopen = !!screenGuard.can_reopen;
+    const reopenSeedBtn = el('qaHelperReopenToSeedBtn');
+    const reopenTcBtn = el('qaHelperReopenToTestcaseBtn');
+    if (reopenSeedBtn) reopenSeedBtn.classList.toggle('d-none', !canReopen);
+    if (reopenTcBtn) reopenTcBtn.classList.toggle('d-none', !canReopen);
   }
 
   async function openSetSelection() {
@@ -2463,6 +2470,26 @@
     } finally {
       state.commitInFlight = false;
       renderSetSelectionWorkspace();
+    }
+  }
+
+  async function reopenSession(targetScreen) {
+    clearFeedback();
+    const teamId = ensureTeamId();
+    if (!teamId || !state.sessionId) return;
+    try {
+      const response = await authFetch(
+        `/api/teams/${teamId}/qa-ai-helper/sessions/${state.sessionId}/reopen?target_screen=${encodeURIComponent(targetScreen)}`,
+        { method: 'POST' },
+      );
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+      updateWorkspace(await response.json());
+      await loadSessions();
+      setFeedback('success', t('qaAiHelper.sessionReopened', {}, '已重新開啟 Session，可繼續編輯。'));
+    } catch (err) {
+      handleError(err);
     }
   }
 
@@ -2691,6 +2718,8 @@
     bindIfPresent('qaHelperSelectTargetSetBtn', 'click', () => openSetSelection().catch(handleError));
     bindIfPresent('qaHelperBackToTestcaseReviewBtn', 'click', () => backToTestcaseReview().catch(handleError));
     bindIfPresent('qaHelperCommitSelectedBtn', 'click', () => commitSelectedTestcases().catch(handleError));
+    bindIfPresent('qaHelperReopenToSeedBtn', 'click', () => reopenSession('seed_review').catch(handleError));
+    bindIfPresent('qaHelperReopenToTestcaseBtn', 'click', () => reopenSession('testcase_review').catch(handleError));
     bindIfPresent('qaHelperOpenTargetSetBtn', 'click', (event) => {
       const link = String(event.currentTarget.getAttribute('data-target-set-link') || '').trim();
       if (link) {
