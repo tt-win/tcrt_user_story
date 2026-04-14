@@ -1406,3 +1406,96 @@ def test_commit_selected_testcases_reports_failed_and_skipped_results(qa_ai_help
     assert result["skipped_count"] == 1
     assert result["failed_drafts"][0]["reason"].startswith("Test Case 編號已存在")
     assert result["skipped_drafts"][0]["reason"] == "找不到 testcase draft"
+
+
+def _prepare_committed_session(client: TestClient, team_id: int) -> tuple[int, dict, dict]:
+    """Create a fully committed session and return (session_id, commit_payload, draft_set)."""
+    session_id, selected_workspace = _prepare_selected_testcase_draft(client, team_id)
+    draft_set = selected_workspace["testcase_draft_set"]
+    draft = draft_set["drafts"][0]
+
+    target_set_resp = client.post(
+        f"/api/teams/{team_id}/test-case-sets",
+        json={"name": "Reopen Test Target", "description": "reopen target"},
+    )
+    assert target_set_resp.status_code == 201, target_set_resp.text
+    target_set = target_set_resp.json()
+
+    opened = client.post(
+        f"/api/teams/{team_id}/qa-ai-helper/sessions/{session_id}/testcase-draft-sets/{draft_set['id']}/set-selection"
+    )
+    assert opened.status_code == 200, opened.text
+
+    committed = client.post(
+        f"/api/teams/{team_id}/qa-ai-helper/sessions/{session_id}/testcase-draft-sets/{draft_set['id']}/commit",
+        json={
+            "testcase_draft_set_id": draft_set["id"],
+            "selected_draft_ids": [draft["id"]],
+            "target_test_case_set_id": target_set["id"],
+            "new_test_case_set_payload": None,
+        },
+    )
+    assert committed.status_code == 200, committed.text
+    payload = committed.json()
+    assert payload["session"]["status"] == "completed"
+    assert payload["session"]["current_screen"] == "commit_result"
+    return session_id, payload, draft_set
+
+
+def test_reopen_to_testcase_review_allows_selection_toggle(qa_ai_helper_db):
+    """After reopen to testcase_review, toggling draft selection must succeed (not 400)."""
+    client = TestClient(app)
+    team_id = qa_ai_helper_db["team_id"]
+    session_id, commit_payload, draft_set = _prepare_committed_session(client, team_id)
+    draft = draft_set["drafts"][0]
+
+    # Verify draft_set is COMMITTED before reopen
+    with qa_ai_helper_db["sync_session_factory"]() as sync_db:
+        tds = sync_db.query(QAAIHelperTestcaseDraftSet).filter(QAAIHelperTestcaseDraftSet.id == draft_set["id"]).first()
+        assert tds.status == "committed"
+
+    # Reopen to testcase_review
+    reopen = client.post(
+        f"/api/teams/{team_id}/qa-ai-helper/sessions/{session_id}/reopen?target_screen=testcase_review"
+    )
+    assert reopen.status_code == 200, reopen.text
+    reopen_payload = reopen.json()
+    assert reopen_payload["session"]["status"] == "active"
+    assert reopen_payload["session"]["current_screen"] == "testcase_review"
+    assert reopen_payload["testcase_draft_set"]["status"] == "reviewing"
+
+    # Toggle selection off — this was the operation that used to fail
+    toggle_off = client.post(
+        f"/api/teams/{team_id}/qa-ai-helper/sessions/{session_id}/testcase-draft-sets/{draft_set['id']}/drafts/{draft['id']}/selection",
+        json={"selected_for_commit": False},
+    )
+    assert toggle_off.status_code == 200, toggle_off.text
+
+    # Toggle selection back on
+    toggle_on = client.post(
+        f"/api/teams/{team_id}/qa-ai-helper/sessions/{session_id}/testcase-draft-sets/{draft_set['id']}/drafts/{draft['id']}/selection",
+        json={"selected_for_commit": True},
+    )
+    assert toggle_on.status_code == 200, toggle_on.text
+
+
+def test_reopen_to_testcase_review_allows_section_selection(qa_ai_helper_db):
+    """After reopen to testcase_review, section-level selection toggle must succeed."""
+    client = TestClient(app)
+    team_id = qa_ai_helper_db["team_id"]
+    session_id, commit_payload, draft_set = _prepare_committed_session(client, team_id)
+    drafts = draft_set["drafts"]
+    section_key = drafts[0].get("section_key") or ""
+
+    # Reopen to testcase_review
+    reopen = client.post(
+        f"/api/teams/{team_id}/qa-ai-helper/sessions/{session_id}/reopen?target_screen=testcase_review"
+    )
+    assert reopen.status_code == 200, reopen.text
+
+    # Section-level clear — this also used to fail
+    section_toggle = client.post(
+        f"/api/teams/{team_id}/qa-ai-helper/sessions/{session_id}/testcase-draft-sets/{draft_set['id']}/sections/{section_key}/selection",
+        json={"selected": False},
+    )
+    assert section_toggle.status_code == 200, section_toggle.text

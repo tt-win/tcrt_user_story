@@ -2229,9 +2229,7 @@ class QAAIHelperService:
             QAAIHelperSessionScreen.TESTCASE_REVIEW.value,
         }
         if target_screen not in _valid_targets:
-            raise ValueError(
-                f"target_screen 必須為 {', '.join(sorted(_valid_targets))} 之一"
-            )
+            raise ValueError(f"target_screen 必須為 {', '.join(sorted(_valid_targets))} 之一")
 
         def _reopen(sync_db: Session) -> QAAIHelperWorkspaceResponse:
             session = (
@@ -2249,6 +2247,22 @@ class QAAIHelperService:
 
             # Change status back to active
             session.status = QAAIHelperSessionStatus.ACTIVE.value
+
+            # Revert COMMITTED testcase_draft_set back to REVIEWING so it
+            # becomes editable again.  This is needed for *all* target screens:
+            #   - testcase_review: user wants to edit selections directly.
+            #   - seed_review / verification_planning: the draft_set must be in
+            #     draft/reviewing for _mark_active_testcase_draft_sets_superseded_sync
+            #     to properly supersede it when new testcases are generated.
+            if session.active_testcase_draft_set_id:
+                active_tds = (
+                    sync_db.query(QAAIHelperTestcaseDraftSet)
+                    .filter(QAAIHelperTestcaseDraftSet.id == session.active_testcase_draft_set_id)
+                    .first()
+                )
+                if active_tds and active_tds.status == QAAIHelperTestcaseDraftSetStatus.COMMITTED.value:
+                    active_tds.status = QAAIHelperTestcaseDraftSetStatus.REVIEWING.value
+                    active_tds.updated_at = _now()
 
             # Navigate to the requested screen using normal transition rules
             self._set_session_screen(
@@ -2594,7 +2608,8 @@ class QAAIHelperService:
             model_outputs = (
                 output_payload.get("outputs") or []
                 if isinstance(output_payload, dict)
-                else output_payload if isinstance(output_payload, list)
+                else output_payload
+                if isinstance(output_payload, list)
                 else []
             )
             outputs_by_ref = {
@@ -2914,7 +2929,8 @@ class QAAIHelperService:
         model_outputs = (
             output_payload.get("outputs") or []
             if isinstance(output_payload, dict)
-            else output_payload if isinstance(output_payload, list)
+            else output_payload
+            if isinstance(output_payload, list)
             else []
         )
         outputs_by_ref = {
@@ -3173,7 +3189,8 @@ class QAAIHelperService:
         model_outputs = (
             output_payload.get("outputs") or []
             if isinstance(output_payload, dict)
-            else output_payload if isinstance(output_payload, list)
+            else output_payload
+            if isinstance(output_payload, list)
             else []
         )
         outputs_by_ref = {
@@ -3613,7 +3630,9 @@ class QAAIHelperService:
                 )
 
             root_section = self._ensure_ai_helper_root_section_sync(
-                sync_db, set_id=target_set.id, ticket_key=session.ticket_key or "",
+                sync_db,
+                set_id=target_set.id,
+                ticket_key=session.ticket_key or "",
             )
             requested_ids: List[int] = list(dict.fromkeys(int(item) for item in request.selected_draft_ids))
             if not requested_ids:
@@ -4622,7 +4641,8 @@ class QAAIHelperService:
             _model_outputs = (
                 output_payload.get("outputs") or []
                 if isinstance(output_payload, dict)
-                else output_payload if isinstance(output_payload, list)
+                else output_payload
+                if isinstance(output_payload, list)
                 else []
             )
             merged_batch = post_merge_generation_outputs(
@@ -4981,7 +5001,9 @@ class QAAIHelperService:
             if target_set is None:
                 raise ValueError("目標 Test Case Set 不存在")
             root_section = self._ensure_ai_helper_root_section_sync(
-                sync_db, set_id=target_set.id, ticket_key=session.ticket_key or "",
+                sync_db,
+                set_id=target_set.id,
+                ticket_key=session.ticket_key or "",
             )
             created_count = 0
             updated_count = 0
