@@ -379,6 +379,14 @@
   overflow: hidden;
 }
 
+.qa-helper-section-rail > .qa-helper-section-rail-header {
+  flex-shrink: 0;
+  background: #fff;
+  border-bottom: 1px solid var(--qa-helper-border);
+  border-radius: 0;
+  padding: 0.75rem 1rem;
+}
+
 .qa-helper-section-rail > .card-body {
   flex: 1 1 auto;
   min-height: 0;
@@ -404,6 +412,127 @@
   background: #e8f0fb;
   border-color: var(--btn-primary-border, #2463eb);
   color: #0f172a;
+}
+
+/* Section management: item wrapper */
+.qa-helper-section-item-wrapper {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--qa-helper-border);
+  border-radius: 0.8rem;
+  background: #fff;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.qa-helper-section-item-wrapper.active {
+  background: #e8f0fb;
+  border-color: var(--btn-primary-border, #2463eb);
+}
+
+.qa-helper-section-item-wrapper:hover {
+  background: #f1f5f9;
+}
+
+.qa-helper-section-item-wrapper.active:hover {
+  background: #dbeafe;
+}
+
+/* Section checkbox (Task 4.1) */
+.qa-helper-section-checkbox {
+  flex-shrink: 0;
+  margin-top: 0.2rem;
+  cursor: pointer;
+}
+
+/* Section content area (text block inside wrapper) */
+.qa-helper-section-item-content {
+  flex: 1 1 auto;
+  min-width: 0;
+  line-height: 1.35;
+  pointer-events: none;
+}
+
+/* Section action buttons column (badge + move btns) (Task 4.4) */
+.qa-helper-section-item-actions {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+/* Move buttons (Task 4.4) */
+.qa-helper-move-btn {
+  padding: 0.1rem 0.3rem;
+  font-size: 0.7rem;
+  line-height: 1;
+  color: #64748b;
+  border: 1px solid transparent;
+  border-radius: 0.35rem;
+  background: none;
+  transition: color 0.15s, background 0.15s, border-color 0.15s;
+}
+
+.qa-helper-move-btn:hover:not(:disabled) {
+  color: #1e40af;
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+
+.qa-helper-move-btn:disabled {
+  color: #cbd5e1;
+  cursor: not-allowed;
+}
+
+/* Batch action bar (Task 4.2) */
+.qa-helper-section-batch-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.45rem 0.65rem;
+  margin-bottom: 0.5rem;
+  background: #fff7ed;
+  border: 1px solid #fed7aa;
+  border-radius: 0.7rem;
+  font-size: 0.85rem;
+}
+
+.qa-helper-section-batch-count {
+  color: #92400e;
+  font-weight: 500;
+}
+
+/* Batch delete visibility toggle — keeps layout stable (no shift when appearing) */
+.qa-helper-batch-invisible {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* Add section button (Task 4.3) */
+.qa-helper-add-section-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  margin-top: 0.6rem;
+  padding: 0.4rem 0.75rem;
+  background: none;
+  border: 1.5px dashed #94a3b8;
+  border-radius: 0.75rem;
+  color: #64748b;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.qa-helper-add-section-btn:hover {
+  border-color: #2463eb;
+  color: #2463eb;
+  background: #eff6ff;
 }
 
 .qa-helper-field-help {
@@ -496,6 +625,29 @@
   border: 1px solid var(--qa-helper-border);
   border-radius: 0.8rem;
   background: var(--qa-helper-surface);
+}
+
+/* Editable GIVEN/WHEN/THEN (Task 3 - CSS) */
+.qa-helper-gherkin-editor {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  padding: 0.875rem 1rem;
+  border: 1px solid var(--qa-helper-border);
+  border-radius: 0.8rem;
+  background: var(--qa-helper-surface);
+}
+
+.qa-helper-gherkin-field {
+  display: flex;
+  flex-direction: column;
+}
+
+.qa-helper-gherkin-textarea {
+  resize: vertical;
+  min-height: 5rem;
+  font-size: 0.85rem;
+  line-height: 1.5;
 }
 
 .qa-helper-verification-header {

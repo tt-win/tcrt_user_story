@@ -139,13 +139,19 @@
                     <div class="row g-3">
                         <div class="col-12 col-xxl-3">
                             <div class="qa-helper-section-rail card border-0 shadow-sm">
-                                <div class="card-body">
-                                    <div class="d-flex justify-content-between align-items-center mb-3">
-                                        <div>
-                                            <div class="fw-semibold" data-i18n="qaAiHelper.sectionRailTitle">Sections</div>
+                                <div class="card-header qa-helper-section-rail-header d-flex justify-content-between align-items-center">
+                                    <div class="fw-semibold" data-i18n="qaAiHelper.sectionRailTitle">Sections</div>
+                                    <div class="d-flex align-items-center gap-2">
+                                        <div class="d-flex align-items-center gap-1 qa-helper-batch-invisible" id="qaHelperBatchDeleteBar">
+                                            <span class="text-muted small" id="qaHelperBatchDeleteCount"></span>
+                                            <button type="button" class="btn btn-danger btn-sm" id="qaHelperDeleteSelectedSectionsBtn">
+                                                <i class="fas fa-trash me-1"></i><span data-i18n="qaAiHelper.deleteSelectedSections">刪除選取區段</span>
+                                            </button>
                                         </div>
                                         <span class="badge text-bg-light" id="qaHelperSectionRailCount">0</span>
                                     </div>
+                                </div>
+                                <div class="card-body">
                                     <div class="list-group qa-helper-section-list" id="qaHelperPlanSectionRail"></div>
                                 </div>
                             </div>
@@ -418,6 +424,25 @@
                         </a>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="qaHelperDeleteSectionsModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" data-i18n="qaAiHelper.confirmDeleteSectionsTitle">確認刪除區段</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="mb-2" id="qaHelperDeleteSectionsModalDesc"></p>
+                <ul class="list-unstyled mb-0 ps-1" id="qaHelperDeleteSectionsModalList"></ul>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">取消</button>
+                <button type="button" class="btn btn-danger" id="qaHelperConfirmDeleteSectionsBtn" data-i18n="qaAiHelper.confirmDeleteSectionsConfirm">確認刪除</button>
             </div>
         </div>
     </div>

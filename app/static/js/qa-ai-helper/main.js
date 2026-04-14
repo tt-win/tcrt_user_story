@@ -9,6 +9,7 @@
     sets: [],
     selectedDraftKey: null,
     selectedPlanSectionKey: null,
+    selectedSectionKeysForDelete: [],
     selectedSeedSectionKey: null,
     selectedTestcaseSectionKey: null,
     planDirty: false,
@@ -38,6 +39,7 @@
     sessionManagerHasMore: false,
     sessionManagerTotal: 0,
     sessionManagerSearchTimer: null,
+    deleteSectionsModalInstance: null,
   };
 
   const PHASE_ORDER = ['fetch', 'canonical', 'plan', 'draft'];
@@ -1079,6 +1081,20 @@
     };
   }
 
+  function createEmptySection() {
+    return {
+      id: null,
+      section_key: `manual_${crypto.randomUUID()}`,
+      section_id: '',
+      section_title: '',
+      given: [],
+      when: [],
+      then: [],
+      display_order: 0,
+      verification_items: [createEmptyVerificationItem()],
+    };
+  }
+
   function combineVerificationTargetAndCondition(summary, conditionText) {
     const target = String(summary || '').trim();
     const condition = String(conditionText || '').trim();
@@ -1305,6 +1321,8 @@
       count.textContent = '0';
       editor.innerHTML = `<div class="qa-helper-empty">${escapeHtml(t('qaAiHelper.screen3Empty', {}, '進入畫面三後會顯示 section 編輯工作區。'))}</div>`;
       sectionStartInput.value = '010';
+      const _batchBarOnEmpty = el('qaHelperBatchDeleteBar');
+      if (_batchBarOnEmpty) _batchBarOnEmpty.classList.add('qa-helper-batch-invisible');
       renderRequirementReferences();
       renderRequirementPlanStatus();
       return;
@@ -1328,24 +1346,51 @@
     }
     count.textContent = String(sections.length);
     const selectedKey = ensureSelectedPlanSectionKey();
-    rail.innerHTML = sections.length
-      ? sections.map((section) => {
+    const locked = isRequirementPlanLocked();
+
+    const checkedCount = state.selectedSectionKeysForDelete.length;
+    const batchDeleteBar = el('qaHelperBatchDeleteBar');
+    const batchDeleteCount = el('qaHelperBatchDeleteCount');
+    if (batchDeleteBar) {
+      const showBar = !locked && checkedCount > 0;
+      batchDeleteBar.classList.toggle('qa-helper-batch-invisible', !showBar);
+      if (batchDeleteCount) {
+        batchDeleteCount.textContent = showBar ? String(checkedCount) : '';
+      }
+    }
+
+    const sectionItems = sections.length
+      ? sections.map((section, index) => {
           const itemCount = Array.isArray(section.verification_items) ? section.verification_items.length : 0;
+          const isActive = section.section_key === selectedKey;
+          const isChecked = state.selectedSectionKeysForDelete.includes(section.section_key);
           return `
-            <button type="button" class="list-group-item list-group-item-action qa-helper-section-item ${section.section_key === selectedKey ? 'active' : ''}" data-plan-section-key="${escapeHtml(section.section_key)}">
-              <div class="d-flex justify-content-between align-items-start gap-2">
-                <div>
-                  <div class="fw-semibold qa-helper-mono">${escapeHtml(section.section_id || '-')}</div>
-                  <div>${escapeHtml(section.section_title || '-')}</div>
-                </div>
-                <span class="badge text-bg-light">${escapeHtml(String(itemCount))}</span>
+            <div class="qa-helper-section-item-wrapper${isActive ? ' active' : ''}" data-plan-section-key="${escapeHtml(section.section_key)}" role="button" tabindex="0">
+              ${!locked ? `<input type="checkbox" class="form-check-input qa-helper-section-checkbox" data-plan-section-checkbox="${escapeHtml(section.section_key)}" ${isChecked ? 'checked' : ''} aria-label="${escapeHtml(t('qaAiHelper.selectSection', {}, '選取區段'))}">` : ''}
+              <div class="qa-helper-section-item-content">
+                <div class="fw-semibold qa-helper-mono">${escapeHtml(section.section_id || '-')}</div>
+                <div>${escapeHtml(section.section_title || '-')}</div>
               </div>
-            </button>
+              <div class="qa-helper-section-item-actions">
+                <span class="badge text-bg-light">${escapeHtml(String(itemCount))}</span>
+                ${!locked ? `
+                  <button type="button" class="btn qa-helper-move-btn" data-plan-section-move-up="${escapeHtml(section.section_key)}" ${index === 0 ? 'disabled' : ''} aria-label="${escapeHtml(t('qaAiHelper.moveUp', {}, '上移'))}"><i class="fas fa-chevron-up"></i></button>
+                  <button type="button" class="btn qa-helper-move-btn" data-plan-section-move-down="${escapeHtml(section.section_key)}" ${index === sections.length - 1 ? 'disabled' : ''} aria-label="${escapeHtml(t('qaAiHelper.moveDown', {}, '下移'))}"><i class="fas fa-chevron-down"></i></button>
+                ` : ''}
+              </div>
+            </div>
           `;
         }).join('')
       : `<div class="qa-helper-empty">${escapeHtml(t('qaAiHelper.noSections', {}, '尚未有可編輯的 sections'))}</div>`;
 
-    const locked = isRequirementPlanLocked();
+    const addSectionBtn = !locked ? `
+      <button type="button" class="qa-helper-add-section-btn" id="qaHelperAddSectionBtn">
+        <i class="fas fa-plus me-1"></i>${escapeHtml(t('qaAiHelper.addSection', {}, '新增區段'))}
+      </button>
+    ` : '';
+
+    rail.innerHTML = sectionItems + addSectionBtn;
+
     const section = selectedPlanSection();
     if (!section) {
       editor.innerHTML = `<div class="qa-helper-empty">${escapeHtml(t('qaAiHelper.noSections', {}, '尚未有可編輯的 sections'))}</div>`;
@@ -1367,11 +1412,26 @@
             <div class="form-control qa-helper-mono qa-helper-static-field">${escapeHtml(section.section_id || '-')}</div>
           </div>
           <div class="col-12">
-            <div class="qa-helper-gherkin-summary">
-              <div><span class="fw-semibold">Given</span><div>${(section.given || []).map((item) => `<div>${escapeHtml(item)}</div>`).join('') || `<span class="text-muted">${escapeHtml(t('common.none', {}, '無'))}</span>`}</div></div>
-              <div><span class="fw-semibold">When</span><div>${(section.when || []).map((item) => `<div>${escapeHtml(item)}</div>`).join('') || `<span class="text-muted">${escapeHtml(t('common.none', {}, '無'))}</span>`}</div></div>
-              <div><span class="fw-semibold">Then</span><div>${(section.then || []).map((item) => `<div>${escapeHtml(item)}</div>`).join('') || `<span class="text-muted">${escapeHtml(t('common.none', {}, '無'))}</span>`}</div></div>
-            </div>
+            ${locked
+              ? `<div class="qa-helper-gherkin-summary">
+                  <div><span class="fw-semibold">Given</span><div>${(section.given || []).map((item) => `<div>${escapeHtml(item)}</div>`).join('') || `<span class="text-muted">${escapeHtml(t('common.none', {}, '無'))}</span>`}</div></div>
+                  <div><span class="fw-semibold">When</span><div>${(section.when || []).map((item) => `<div>${escapeHtml(item)}</div>`).join('') || `<span class="text-muted">${escapeHtml(t('common.none', {}, '無'))}</span>`}</div></div>
+                  <div><span class="fw-semibold">Then</span><div>${(section.then || []).map((item) => `<div>${escapeHtml(item)}</div>`).join('') || `<span class="text-muted">${escapeHtml(t('common.none', {}, '無'))}</span>`}</div></div>
+                </div>`
+              : `<div class="qa-helper-gherkin-editor">
+                  <div class="qa-helper-gherkin-field">
+                    <label class="form-label fw-semibold mb-1">Given</label>
+                    <textarea class="form-control qa-helper-gherkin-textarea" data-plan-section-given placeholder="${escapeHtml(t('qaAiHelper.gherkinGivenPlaceholder', {}, '每行一條，描述前提條件'))}" rows="3">${escapeHtml(joinLines(section.given))}</textarea>
+                  </div>
+                  <div class="qa-helper-gherkin-field">
+                    <label class="form-label fw-semibold mb-1">When</label>
+                    <textarea class="form-control qa-helper-gherkin-textarea" data-plan-section-when placeholder="${escapeHtml(t('qaAiHelper.gherkinWhenPlaceholder', {}, '每行一條，描述操作步驟'))}" rows="3">${escapeHtml(joinLines(section.when))}</textarea>
+                  </div>
+                  <div class="qa-helper-gherkin-field">
+                    <label class="form-label fw-semibold mb-1">Then</label>
+                    <textarea class="form-control qa-helper-gherkin-textarea" data-plan-section-then placeholder="${escapeHtml(t('qaAiHelper.gherkinThenPlaceholder', {}, '每行一條，描述預期結果'))}" rows="3">${escapeHtml(joinLines(section.then))}</textarea>
+                  </div>
+                </div>`}
           </div>
           <div class="col-12">
             <div class="qa-helper-verification-header d-flex justify-content-between align-items-center flex-wrap gap-2 mb-3">
@@ -2853,6 +2913,21 @@
       }
     });
 
+    bindIfPresent('qaHelperConfirmDeleteSectionsBtn', 'click', () => {
+      const plan = currentRequirementPlan();
+      if (!plan || isRequirementPlanLocked() || !state.selectedSectionKeysForDelete.length) return;
+      const toDelete = new Set(state.selectedSectionKeysForDelete);
+      plan.sections = (plan.sections || []).filter((s) => !toDelete.has(s.section_key));
+      recomputeRequirementSectionIds(plan);
+      state.selectedSectionKeysForDelete = [];
+      if (!plan.sections.find((s) => s.section_key === state.selectedPlanSectionKey)) {
+        state.selectedPlanSectionKey = plan.sections.length ? plan.sections[0].section_key : null;
+      }
+      markRequirementPlanDirty();
+      if (state.deleteSectionsModalInstance) state.deleteSectionsModalInstance.hide();
+      renderRequirementPlanWorkspace();
+    });
+
     document.addEventListener('change', (event) => {
       if (event.target && event.target.name === 'qaHelperTargetSetMode') {
         const mode = String(event.target.value || 'existing').trim();
@@ -2885,8 +2960,74 @@
         renderSeedReviewWorkspace();
         return;
       }
+      const sectionMoveUpButton = event.target.closest('[data-plan-section-move-up]');
+      if (sectionMoveUpButton) {
+        const plan = currentRequirementPlan();
+        if (!plan || isRequirementPlanLocked()) return;
+        const key = sectionMoveUpButton.getAttribute('data-plan-section-move-up');
+        const idx = (plan.sections || []).findIndex((s) => s.section_key === key);
+        if (idx > 0) {
+          const tmp = plan.sections[idx];
+          plan.sections[idx] = plan.sections[idx - 1];
+          plan.sections[idx - 1] = tmp;
+          recomputeRequirementSectionIds(plan);
+          markRequirementPlanDirty();
+          renderRequirementPlanWorkspace();
+        }
+        return;
+      }
+      const sectionMoveDownButton = event.target.closest('[data-plan-section-move-down]');
+      if (sectionMoveDownButton) {
+        const plan = currentRequirementPlan();
+        if (!plan || isRequirementPlanLocked()) return;
+        const key = sectionMoveDownButton.getAttribute('data-plan-section-move-down');
+        const idx = (plan.sections || []).findIndex((s) => s.section_key === key);
+        if (idx >= 0 && idx < (plan.sections || []).length - 1) {
+          const tmp = plan.sections[idx];
+          plan.sections[idx] = plan.sections[idx + 1];
+          plan.sections[idx + 1] = tmp;
+          recomputeRequirementSectionIds(plan);
+          markRequirementPlanDirty();
+          renderRequirementPlanWorkspace();
+        }
+        return;
+      }
+      if (event.target.closest('#qaHelperDeleteSelectedSectionsBtn')) {
+        const plan = currentRequirementPlan();
+        if (!plan || isRequirementPlanLocked() || !state.selectedSectionKeysForDelete.length) return;
+        const toDelete = new Set(state.selectedSectionKeysForDelete);
+        const sectionLabels = (plan.sections || [])
+          .filter((s) => toDelete.has(s.section_key))
+          .map((s) => s.section_id ? `${s.section_id} ${s.section_title || ''}`.trim() : (s.section_title || s.section_key));
+        const descEl = el('qaHelperDeleteSectionsModalDesc');
+        const listEl = el('qaHelperDeleteSectionsModalList');
+        const modalEl = el('qaHelperDeleteSectionsModal');
+        if (!descEl || !listEl || !modalEl) return;
+        if (!(window.bootstrap && window.bootstrap.Modal)) return;
+        descEl.textContent = t('qaAiHelper.confirmDeleteSections', { count: toDelete.size }, `確定要刪除以下 ${toDelete.size} 個區段？`);
+        listEl.innerHTML = sectionLabels.map((label) => `<li class="small text-muted py-1 border-bottom"><i class="fas fa-layer-group me-2 text-danger opacity-50"></i>${escapeHtml(label)}</li>`).join('');
+        if (!state.deleteSectionsModalInstance) {
+          state.deleteSectionsModalInstance = new window.bootstrap.Modal(modalEl);
+        }
+        state.deleteSectionsModalInstance.show();
+        return;
+      }
+      if (event.target.closest('#qaHelperAddSectionBtn')) {
+        const plan = currentRequirementPlan();
+        if (!plan || isRequirementPlanLocked()) return;
+        const newSection = createEmptySection();
+        plan.sections = plan.sections || [];
+        plan.sections.push(newSection);
+        recomputeRequirementSectionIds(plan);
+        state.selectedPlanSectionKey = newSection.section_key;
+        markRequirementPlanDirty();
+        renderRequirementPlanWorkspace();
+        const titleInput = el('qaHelperSectionTitleInput');
+        if (titleInput) titleInput.focus();
+        return;
+      }
       const sectionButton = event.target.closest('[data-plan-section-key]');
-      if (sectionButton) {
+      if (sectionButton && event.target.type !== 'checkbox') {
         state.selectedPlanSectionKey = sectionButton.getAttribute('data-plan-section-key');
         renderRequirementPlanWorkspace();
         return;
@@ -2956,6 +3097,21 @@
         markRequirementPlanDirty();
         return;
       }
+      if (event.target.hasAttribute('data-plan-section-given')) {
+        section.given = splitLines(event.target.value);
+        markRequirementPlanDirty();
+        return;
+      }
+      if (event.target.hasAttribute('data-plan-section-when')) {
+        section.when = splitLines(event.target.value);
+        markRequirementPlanDirty();
+        return;
+      }
+      if (event.target.hasAttribute('data-plan-section-then')) {
+        section.then = splitLines(event.target.value);
+        markRequirementPlanDirty();
+        return;
+      }
       const itemField = event.target.getAttribute('data-plan-item-field');
       const itemIndex = Number(event.target.getAttribute('data-plan-item-index'));
       if (itemField && Number.isInteger(itemIndex)) {
@@ -2973,6 +3129,18 @@
       }
     });
     document.addEventListener('change', (event) => {
+      const sectionCheckboxKey = event.target.getAttribute('data-plan-section-checkbox');
+      if (sectionCheckboxKey) {
+        if (event.target.checked) {
+          if (!state.selectedSectionKeysForDelete.includes(sectionCheckboxKey)) {
+            state.selectedSectionKeysForDelete = [...state.selectedSectionKeysForDelete, sectionCheckboxKey];
+          }
+        } else {
+          state.selectedSectionKeysForDelete = state.selectedSectionKeysForDelete.filter((k) => k !== sectionCheckboxKey);
+        }
+        renderRequirementPlanWorkspace();
+        return;
+      }
       const seedToggleId = event.target.getAttribute('data-seed-item-id');
       if (event.target.classList && event.target.classList.contains('qa-helper-seed-include-toggle') && seedToggleId) {
         updateSeedItemInclusion(Number(seedToggleId), !!event.target.checked).catch(handleError);
