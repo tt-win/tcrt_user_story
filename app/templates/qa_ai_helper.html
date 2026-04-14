@@ -100,7 +100,29 @@
                         <div class="col-12 col-xl-8">
                             <div class="qa-helper-markdown-card">
                                 <div class="qa-helper-ticket-meta mb-3" id="qaHelperTicketMeta"></div>
+                                <!-- 預覽模式工具列 -->
+                                <div class="qa-helper-edit-toolbar mb-2 d-flex gap-2" id="qaHelperPreviewToolbar">
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" id="qaHelperEditMarkdownBtn">
+                                        <i class="fas fa-pen me-1"></i><span data-i18n="qaAiHelper.editRequirement">編輯需求</span>
+                                    </button>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" id="qaHelperReloadTicketBtn">
+                                        <i class="fas fa-rotate me-1"></i><span data-i18n="qaAiHelper.reloadTicket">重新載入需求單</span>
+                                    </button>
+                                </div>
+                                <!-- Markdown 預覽 -->
                                 <div class="markdown-preview qa-helper-markdown-preview" id="qaHelperTicketMarkdown"></div>
+                                <!-- 編輯模式區域（預設隱藏） -->
+                                <div class="d-none" id="qaHelperEditArea">
+                                    <textarea class="form-control qa-helper-markdown-editor" id="qaHelperMarkdownTextarea" rows="20"></textarea>
+                                    <div class="qa-helper-edit-toolbar mt-2 d-flex gap-2">
+                                        <button type="button" class="btn btn-primary btn-sm" id="qaHelperReparseBtn">
+                                            <i class="fas fa-sync me-1"></i><span data-i18n="qaAiHelper.reparseRequirement">重新解析</span>
+                                        </button>
+                                        <button type="button" class="btn btn-outline-secondary btn-sm" id="qaHelperCancelEditBtn">
+                                            <i class="fas fa-xmark me-1"></i><span data-i18n="qaAiHelper.cancelEdit">取消編輯</span>
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                         <div class="col-12 col-xl-4">

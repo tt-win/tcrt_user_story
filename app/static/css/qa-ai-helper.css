@@ -182,6 +182,31 @@
   padding: 1rem 1.125rem;
 }
 
+.qa-helper-markdown-editor {
+  font-family: "SFMono-Regular", "Consolas", "Liberation Mono", "Menlo", monospace;
+  font-size: 0.85rem;
+  line-height: 1.6;
+  min-height: 22rem;
+  resize: vertical;
+  background: var(--qa-helper-surface);
+  border: 1px solid var(--qa-helper-border);
+  border-radius: 0.5rem;
+  color: #0f172a;
+  padding: 0.75rem 0.875rem;
+}
+
+.qa-helper-markdown-editor:focus {
+  outline: none;
+  border-color: var(--qa-helper-primary, #6366f1);
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.12);
+}
+
+.qa-helper-edit-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
 .qa-helper-markdown-preview {
   min-height: 20rem;
   color: #0f172a;

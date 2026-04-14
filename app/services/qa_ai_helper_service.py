@@ -347,6 +347,99 @@ def _jira_wiki_to_markdown(text: str) -> str:
     return "\n".join(result)
 
 
+
+def _md_inline_to_jira_wiki(text: str) -> str:
+    """Reverse of ``_jira_wiki_inline_to_md``: convert Markdown inline
+    formatting back to JIRA wiki markup so that the deterministic parser's
+    ``clean_inline`` (which only strips JIRA-wiki inline tokens) can process
+    it correctly.
+
+    Order matters – bold (``**``) must be converted before italic (``*``)
+    to avoid ambiguity.
+    """
+    if not text:
+        return text or ""
+    # Bold: **text** → *text*
+    text = re.sub(r"\*\*(.+?)\*\*", r"*\1*", text)
+    # Italic: *text* → _text_  (after bold conversion, remaining single-star = italic)
+    # Use word-boundary-like guards to avoid matching bullet prefixes
+    text = re.sub(r"(?<![*\w])\*([^\s*][^*]*[^\s*])\*(?![*\w])", r"_\1_", text)
+    # Also handle single-word italic: *word*
+    text = re.sub(r"(?<![*\w])\*([^\s*]+)\*(?![*\w])", r"_\1_", text)
+    # Strikethrough: ~~text~~ → -text-
+    text = re.sub(r"~~(.+?)~~", r"-\1-", text)
+    # Monospace: `text` → {{text}}
+    text = re.sub(r"`([^`]+)`", r"{{\1}}", text)
+    # Links: [text](url) → [text|url]
+    text = re.sub(r"\[([^\]]+)\]\(([^)]+)\)", r"[\1|\2]", text)
+    # Simple links: <url> → [url]
+    text = re.sub(r"<(https?://[^>]+)>", r"[\1]", text)
+    return text
+
+def _markdown_to_jira_wiki(text: str) -> str:
+    """Best-effort reverse of ``_jira_wiki_to_markdown`` so that content
+    edited in the Markdown-based textarea can be fed back to the JIRA-wiki
+    based deterministic parser (``split_sections`` / ``parse_bullet_tree``).
+
+    Converts both structural tokens (headings, lists, horizontal rules) and
+    inline formatting (bold, italic, strikethrough, monospace, links) back to
+    JIRA wiki markup so that ``clean_inline`` in the parser can strip them
+    correctly.
+    """
+    if not text or not text.strip():
+        return text or ""
+    lines = text.split("\n")
+    result: List[str] = []
+    in_code = False
+
+    for line in lines:
+        stripped = line.strip()
+
+        # --- code fences (pass through) ---
+        if stripped.startswith("```"):
+            in_code = not in_code
+            result.append(line)
+            continue
+        if in_code:
+            result.append(line)
+            continue
+
+        # --- headings:  ## Title  →  h2. Title ---
+        hm = re.match(r"^(#{1,6})\s+(.*)", stripped)
+        if hm:
+            lvl = len(hm.group(1))
+            title = _md_inline_to_jira_wiki(hm.group(2).strip())
+            result.append(f"h{lvl}. {title}")
+            continue
+
+        # --- unordered list:  "  - text"  →  "** text" ---
+        ul = re.match(r"^(\s*)[-•]\s+(.*)", line)
+        if ul:
+            indent = len(ul.group(1))
+            depth = (indent // 2) + 1
+            content = _md_inline_to_jira_wiki(ul.group(2))
+            result.append(f"{'*' * depth} {content}")
+            continue
+
+        # --- ordered list:  "  1. text"  →  "## text" ---
+        ol = re.match(r"^(\s*)\d+\.\s+(.*)", line)
+        if ol:
+            indent = len(ol.group(1))
+            depth = (indent // 2) + 1
+            content = _md_inline_to_jira_wiki(ol.group(2))
+            result.append(f"{'#' * depth} {content}")
+            continue
+
+        # --- horizontal rule ---
+        if stripped == "---":
+            result.append("----")
+            continue
+
+        result.append(_md_inline_to_jira_wiki(line))
+
+    return "\n".join(result)
+
+
 def _build_ticket_markdown(*, ticket_key: str, summary: str, description: str) -> str:
     heading = f"# {ticket_key}"
     if summary:
@@ -3928,6 +4021,145 @@ class QAAIHelperService:
             return self._load_workspace_sync(sync_db, team_id=team_id, session_id=session.id)
 
         return await self._run_write(_save)
+
+    async def reparse_ticket(
+        self,
+        *,
+        team_id: int,
+        session_id: int,
+        raw_ticket_markdown: str,
+    ) -> QAAIHelperWorkspaceResponse:
+        """接收使用者編修後的 markdown，重新執行 deterministic parser 與格式驗證，
+        直接更新既有 ticket_snapshot 的 raw_ticket_markdown、structured_requirement、
+        validation_summary，並回傳更新後的 workspace。"""
+
+        # 從 markdown 中提取 description 部分（去掉第一行的標題 heading）
+        lines = raw_ticket_markdown.strip().splitlines()
+        if lines and lines[0].startswith("#"):
+            description_md = "\n".join(lines[1:]).strip()
+        else:
+            description_md = raw_ticket_markdown.strip()
+
+        # 反轉 markdown → JIRA wiki markup，因為 deterministic parser
+        # (split_sections / parse_bullet_tree) 預期 JIRA wiki 格式
+        description_wiki = _markdown_to_jira_wiki(description_md)
+
+        parser_payload = parse_ticket_to_requirement_payload(description_wiki, [])
+
+        def _update(sync_db: Session) -> QAAIHelperWorkspaceResponse:
+            session = (
+                sync_db.query(QAAIHelperSession)
+                .filter(QAAIHelperSession.id == session_id, QAAIHelperSession.team_id == team_id)
+                .first()
+            )
+            if session is None:
+                raise ValueError("找不到 qa_ai_helper session")
+            if not session.active_ticket_snapshot_id:
+                raise ValueError("此 session 尚未有 ticket snapshot，無法重新解析")
+            ticket_snapshot = (
+                sync_db.query(QAAIHelperTicketSnapshot)
+                .filter(QAAIHelperTicketSnapshot.id == session.active_ticket_snapshot_id)
+                .first()
+            )
+            if ticket_snapshot is None:
+                raise ValueError("找不到 ticket_snapshot")
+
+            validation_result = parser_payload.get("validation_result") or {}
+            ticket_snapshot.raw_ticket_markdown = raw_ticket_markdown
+            ticket_snapshot.structured_requirement_json = json_storage_dumps(
+                parser_payload.get("structured_requirement") or {}
+            )
+            ticket_snapshot.validation_summary_json = json_storage_dumps(validation_result)
+            ticket_snapshot.status = "validated" if bool(validation_result.get("is_valid")) else "loaded"
+            ticket_snapshot.updated_at = _now()
+            session.updated_at = _now()
+            return self._load_workspace_sync(sync_db, team_id=team_id, session_id=session.id)
+
+        return await self._run_write(_update)
+
+    async def reload_ticket_from_jira(
+        self,
+        *,
+        team_id: int,
+        session_id: int,
+    ) -> QAAIHelperWorkspaceResponse:
+        """從 JIRA 重新取得 ticket 內容，重新執行 deterministic parser，
+        更新既有 ticket_snapshot 的 raw_ticket_markdown、structured_requirement、
+        validation_summary，並回傳更新後的 workspace。
+
+        與 ``fetch_ticket()`` 不同，此方法不會進入 canonical revision 流程，
+        只更新 ticket_snapshot 並停留在 screen 2（需求單內容確認）。
+        """
+
+        # 1. 先讀取 session 取得 ticket_key
+        def _prepare(sync_db: Session) -> Dict[str, Any]:
+            session = (
+                sync_db.query(QAAIHelperSession)
+                .filter(QAAIHelperSession.id == session_id, QAAIHelperSession.team_id == team_id)
+                .first()
+            )
+            if session is None:
+                raise ValueError("找不到 qa_ai_helper session")
+            if not session.ticket_key:
+                raise ValueError("此 session 尚未有 ticket_key，無法重新載入")
+            if not session.active_ticket_snapshot_id:
+                raise ValueError("此 session 尚未有 ticket snapshot，無法重新載入")
+            return {
+                "ticket_key": session.ticket_key,
+                "active_ticket_snapshot_id": session.active_ticket_snapshot_id,
+            }
+
+        prepared = await self._run_read(_prepare)
+
+        # 2. 從 JIRA 取得 ticket 內容
+        jira_issue = self.jira_client_factory().get_issue(
+            prepared["ticket_key"],
+            fields=["summary", "description", "comment"],
+        )
+        if not jira_issue:
+            raise RuntimeError(f"Jira 找不到 ticket: {prepared['ticket_key']}")
+
+        jira_fields = jira_issue.get("fields") or {}
+        summary = _coerce_jira_text(jira_fields.get("summary"))
+        description = _coerce_jira_text(jira_fields.get("description"))
+
+        # 3. 執行 deterministic parser（使用原始 JIRA wiki 格式的 description）
+        parser_payload = parse_ticket_to_requirement_payload(description, [])
+        raw_ticket_markdown = _build_ticket_markdown(
+            ticket_key=prepared["ticket_key"],
+            summary=summary,
+            description=description,
+        )
+
+        # 4. 更新既有 ticket_snapshot
+        def _update(sync_db: Session) -> QAAIHelperWorkspaceResponse:
+            session = (
+                sync_db.query(QAAIHelperSession)
+                .filter(QAAIHelperSession.id == session_id, QAAIHelperSession.team_id == team_id)
+                .first()
+            )
+            if session is None:
+                raise ValueError("找不到 qa_ai_helper session")
+            ticket_snapshot = (
+                sync_db.query(QAAIHelperTicketSnapshot)
+                .filter(QAAIHelperTicketSnapshot.id == prepared["active_ticket_snapshot_id"])
+                .first()
+            )
+            if ticket_snapshot is None:
+                raise ValueError("找不到 ticket_snapshot")
+
+            validation_result = parser_payload.get("validation_result") or {}
+            ticket_snapshot.raw_ticket_markdown = raw_ticket_markdown
+            ticket_snapshot.structured_requirement_json = json_storage_dumps(
+                parser_payload.get("structured_requirement") or {}
+            )
+            ticket_snapshot.validation_summary_json = json_storage_dumps(validation_result)
+            ticket_snapshot.status = "validated" if bool(validation_result.get("is_valid")) else "loaded"
+            ticket_snapshot.updated_at = _now()
+            session.updated_at = _now()
+            return self._load_workspace_sync(sync_db, team_id=team_id, session_id=session.id)
+
+        return await self._run_write(_update)
 
     async def save_canonical_revision(
         self,

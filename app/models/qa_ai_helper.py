@@ -356,6 +356,18 @@ class QAAIHelperTicketFetchRequest(BaseModel):
     include_comments: Optional[bool] = None
 
 
+class QAAIHelperTicketReparseRequest(BaseModel):
+    raw_ticket_markdown: str
+
+    @field_validator("raw_ticket_markdown")
+    @classmethod
+    def _validate_markdown(cls, value: str) -> str:
+        normalized = (value or "").strip()
+        if not normalized:
+            raise ValueError("raw_ticket_markdown 不可為空")
+        return normalized
+
+
 class QAAIHelperPlanRequest(BaseModel):
     canonical_revision_id: Optional[int] = None
     selected_references: Optional[Dict[str, Any]] = None

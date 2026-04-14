@@ -31,6 +31,7 @@ from app.models.qa_ai_helper import (
     QAAIHelperSessionCreateRequest,
     QAAIHelperSessionListResponse,
     QAAIHelperTicketFetchRequest,
+    QAAIHelperTicketReparseRequest,
     QAAIHelperTestcaseDraftSelectionRequest,
     QAAIHelperTestcaseDraftUpdateRequest,
     QAAIHelperTestcaseGenerateRequest,
@@ -177,7 +178,9 @@ async def reopen_session(
     service = QAAIHelperService()
     try:
         return await service.reopen_session(
-            team_id=team_id, session_id=session_id, target_screen=target_screen,
+            team_id=team_id,
+            session_id=session_id,
+            target_screen=target_screen,
         )
     except Exception as exc:  # noqa: BLE001
         raise _map_exception(exc) from exc
@@ -577,6 +580,43 @@ async def fetch_ticket(
             team_id=team_id,
             session_id=session_id,
             request=request,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise _map_exception(exc) from exc
+
+
+@router.post("/sessions/{session_id}/ticket/reparse", response_model=QAAIHelperWorkspaceResponse)
+async def reparse_ticket(
+    team_id: int,
+    session_id: int,
+    request: QAAIHelperTicketReparseRequest,
+    current_user: User = Depends(get_current_user),
+) -> QAAIHelperWorkspaceResponse:
+    await _verify_team_write_access(team_id=team_id, current_user=current_user)
+    service = QAAIHelperService()
+    try:
+        return await service.reparse_ticket(
+            team_id=team_id,
+            session_id=session_id,
+            raw_ticket_markdown=request.raw_ticket_markdown,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise _map_exception(exc) from exc
+
+
+@router.post("/sessions/{session_id}/ticket/reload", response_model=QAAIHelperWorkspaceResponse)
+async def reload_ticket_from_jira(
+    team_id: int,
+    session_id: int,
+    current_user: User = Depends(get_current_user),
+) -> QAAIHelperWorkspaceResponse:
+    """從 JIRA 重新取得 ticket 內容並更新 ticket_snapshot（不進入 canonical revision 流程）。"""
+    await _verify_team_write_access(team_id=team_id, current_user=current_user)
+    service = QAAIHelperService()
+    try:
+        return await service.reload_ticket_from_jira(
+            team_id=team_id,
+            session_id=session_id,
         )
     except Exception as exc:  # noqa: BLE001
         raise _map_exception(exc) from exc

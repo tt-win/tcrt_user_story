@@ -40,6 +40,7 @@
     sessionManagerTotal: 0,
     sessionManagerSearchTimer: null,
     deleteSectionsModalInstance: null,
+    ticketMarkdownDirty: false,
   };
 
   const PHASE_ORDER = ['fetch', 'canonical', 'plan', 'draft'];
@@ -984,12 +985,102 @@
     `;
   }
 
+  // ── Ticket Markdown Editing ─────────────────────────────────────────────────
+
+  function enterEditMode() {
+    const preview = el('qaHelperTicketMarkdown');
+    const previewToolbar = el('qaHelperPreviewToolbar');
+    const editArea = el('qaHelperEditArea');
+    const textarea = el('qaHelperMarkdownTextarea');
+    if (!preview || !previewToolbar || !editArea || !textarea) return;
+    const ticketSnapshot = (state.workspace || {}).ticket_snapshot;
+    const rawMarkdown = (ticketSnapshot && ticketSnapshot.raw_ticket_markdown) || '';
+    textarea.value = rawMarkdown;
+    state.ticketMarkdownDirty = false;
+    preview.classList.add('d-none');
+    previewToolbar.classList.add('d-none');
+    editArea.classList.remove('d-none');
+  }
+
+  function exitEditMode() {
+    const preview = el('qaHelperTicketMarkdown');
+    const previewToolbar = el('qaHelperPreviewToolbar');
+    const editArea = el('qaHelperEditArea');
+    if (!preview || !previewToolbar || !editArea) return;
+    editArea.classList.add('d-none');
+    preview.classList.remove('d-none');
+    previewToolbar.classList.remove('d-none');
+    state.ticketMarkdownDirty = false;
+  }
+
+  async function reparseTicketMarkdown() {
+    const textarea = el('qaHelperMarkdownTextarea');
+    if (!textarea) return;
+    const teamId = ensureTeamId();
+    const sessionId = state.sessionId;
+    if (!teamId || !sessionId) return;
+    const rawMarkdown = textarea.value;
+    clearFeedback();
+    try {
+      const response = await authFetch(
+        `/api/teams/${teamId}/qa-ai-helper/sessions/${sessionId}/ticket/reparse`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ raw_ticket_markdown: rawMarkdown }),
+        }
+      );
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+      updateWorkspace(await response.json());
+      state.activePhaseView = 'fetch'; // Stay on screen 2 (ticket confirmation)
+      exitEditMode();
+      renderAll();
+      setFeedback('success', t('qaAiHelper.reparseSuccess', {}, '重新解析完成'));
+    } catch (err) {
+      handleError(err);
+    }
+  }
+
+  async function reloadTicketFromJira() {
+    if (state.ticketMarkdownDirty) {
+      const confirmed = confirmAction(
+        t('qaAiHelper.confirmReloadOverwrite', {}, '目前編輯內容尚未儲存，確定要從 JIRA 重新載入並覆蓋嗎？')
+      );
+      if (!confirmed) return;
+    }
+    const teamId = ensureTeamId();
+    const sessionId = state.sessionId;
+    if (!teamId || !sessionId) return;
+    clearFeedback();
+    try {
+      const response = await authFetch(
+        `/api/teams/${teamId}/qa-ai-helper/sessions/${sessionId}/ticket/reload`,
+        { method: 'POST' }
+      );
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+      updateWorkspace(await response.json());
+      state.activePhaseView = 'fetch'; // Stay on screen 2 (ticket confirmation)
+      exitEditMode();
+      renderAll();
+      setFeedback('success', t('qaAiHelper.reloadTicketSuccess', {}, '已從 JIRA 重新載入需求單'));
+    } catch (err) {
+      handleError(err);
+    }
+  }
+
+  // ────────────────────────────────────────────────────────────────────────────
+
   function renderTicketConfirmation() {
     const loadCard = el('qaHelperLoadTicketCard');
     const card = el('qaHelperTicketConfirmationCard');
     const meta = el('qaHelperTicketMeta');
     const markdown = el('qaHelperTicketMarkdown');
     const proceedBtn = el('qaHelperProceedVerificationBtn');
+    const editArea = el('qaHelperEditArea');
     const ticketSnapshot = (state.workspace || {}).ticket_snapshot;
     const session = (state.workspace || {}).session || {};
     if (!card || !meta || !markdown || !proceedBtn) return;
@@ -1010,6 +1101,12 @@
       </div>
     `;
     markdown.innerHTML = renderMarkdownHtml(ticketSnapshot.raw_ticket_markdown);
+    // 若 editArea 不在編輯模式，確保 preview 可見
+    if (editArea && !editArea.classList.contains('d-none')) {
+      // 仍在編輯中，不強制切換
+    } else {
+      exitEditMode();
+    }
     proceedBtn.disabled = !validation.is_valid;
   }
 
@@ -2764,6 +2861,16 @@
       button.addEventListener('click', () => restartSession().catch(handleError));
     });
     bindIfPresent('qaHelperProceedVerificationBtn', 'click', () => proceedToVerificationPlanning().catch(handleError));
+    bindIfPresent('qaHelperEditMarkdownBtn', 'click', () => enterEditMode());
+    bindIfPresent('qaHelperCancelEditBtn', 'click', () => exitEditMode());
+    bindIfPresent('qaHelperReparseBtn', 'click', () => reparseTicketMarkdown().catch(handleError));
+    bindIfPresent('qaHelperReloadTicketBtn', 'click', () => reloadTicketFromJira().catch(handleError));
+    const markdownTextarea = el('qaHelperMarkdownTextarea');
+    if (markdownTextarea) {
+      markdownTextarea.addEventListener('input', () => {
+        state.ticketMarkdownDirty = true;
+      });
+    }
     bindIfPresent('qaHelperBackToTicketConfirmationBtn', 'click', () => navigateToPhase('fetch'));
     bindIfPresent('qaHelperBackToRequirementPlanBtn', 'click', () => navigateToPhase('canonical'));
     bindIfPresent('qaHelperBackToSeedReviewBtn', 'click', () => navigateToPhase('plan'));
