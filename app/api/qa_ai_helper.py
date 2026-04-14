@@ -28,6 +28,7 @@ from app.models.qa_ai_helper import (
     QAAIHelperSeedItemReviewUpdateRequest,
     QAAIHelperSeedRefineRequest,
     QAAIHelperSeedSectionInclusionRequest,
+    QAAIHelperNoTicketSessionRequest,
     QAAIHelperSessionCreateRequest,
     QAAIHelperSessionListResponse,
     QAAIHelperTicketFetchRequest,
@@ -104,6 +105,26 @@ async def create_session(
             team_id=team_id,
             user_id=current_user.id,
             request=request,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise _map_exception(exc) from exc
+
+
+@router.post("/sessions/no-ticket", response_model=QAAIHelperWorkspaceResponse, status_code=status.HTTP_201_CREATED)
+async def create_no_ticket_session(
+    team_id: int,
+    request: QAAIHelperNoTicketSessionRequest,
+    current_user: User = Depends(get_current_user),
+) -> QAAIHelperWorkspaceResponse:
+    """建立無需求單模式的 session，直接進入 verification_planning 階段。"""
+    await _verify_team_write_access(team_id=team_id, current_user=current_user)
+    service = QAAIHelperService()
+    try:
+        return await service.start_no_ticket_session(
+            team_id=team_id,
+            user_id=current_user.id,
+            section_header=request.section_header,
+            output_locale=request.output_locale,
         )
     except Exception as exc:  # noqa: BLE001
         raise _map_exception(exc) from exc

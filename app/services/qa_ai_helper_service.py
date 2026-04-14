@@ -134,7 +134,10 @@ logger = logging.getLogger(__name__)
 
 T = TypeVar("T")
 _SESSION_SCREEN_TRANSITIONS: Dict[str | None, set[str]] = {
-    None: {QAAIHelperSessionScreen.TICKET_CONFIRMATION.value},
+    None: {
+        QAAIHelperSessionScreen.TICKET_CONFIRMATION.value,
+        QAAIHelperSessionScreen.VERIFICATION_PLANNING.value,  # no-ticket mode
+    },
     QAAIHelperSessionScreen.TICKET_CONFIRMATION.value: {
         QAAIHelperSessionScreen.VERIFICATION_PLANNING.value,
         QAAIHelperSessionScreen.FAILED.value,
@@ -347,7 +350,6 @@ def _jira_wiki_to_markdown(text: str) -> str:
     return "\n".join(result)
 
 
-
 def _md_inline_to_jira_wiki(text: str) -> str:
     """Reverse of ``_jira_wiki_inline_to_md``: convert Markdown inline
     formatting back to JIRA wiki markup so that the deterministic parser's
@@ -375,6 +377,7 @@ def _md_inline_to_jira_wiki(text: str) -> str:
     # Simple links: <url> → [url]
     text = re.sub(r"<(https?://[^>]+)>", r"[\1]", text)
     return text
+
 
 def _markdown_to_jira_wiki(text: str) -> str:
     """Best-effort reverse of ``_jira_wiki_to_markdown`` so that content
@@ -673,6 +676,14 @@ class QAAIHelperService:
                                 "message": "檢查條件必須指定 coverage 類型",
                             }
                         )
+
+        if section_count == 0:
+            errors.append(
+                {
+                    "code": "plan_requires_at_least_one_section",
+                    "message": "需求驗證計畫至少需要一個分類區段",
+                }
+            )
 
         return {
             "is_valid": len(errors) == 0,
@@ -1419,8 +1430,10 @@ class QAAIHelperService:
         sync_db.flush()
 
         start_value = int(section_start_number)
+        ticket_key = (requirement_plan.session.ticket_key or "").strip()
         for section_index, section_payload in enumerate(sections):
-            section_id = f"{requirement_plan.session.ticket_key}.{start_value + (section_index * 10):03d}"
+            section_number = f"{start_value + (section_index * 10):03d}"
+            section_id = f"{ticket_key}.{section_number}" if ticket_key else section_number
             section = QAAIHelperPlanSection(
                 requirement_plan_id=requirement_plan.id,
                 section_key=str(section_payload.get("section_key") or f"scenario-{section_index + 1:03d}").strip(),
@@ -2180,6 +2193,110 @@ class QAAIHelperService:
             sync_db.flush()
 
             session.active_ticket_snapshot_id = ticket_snapshot.id
+            session.updated_at = _now()
+            return self._load_workspace_sync(sync_db, team_id=team_id, session_id=session.id)
+
+        return await self._run_write(_create)
+
+    async def start_no_ticket_session(
+        self,
+        *,
+        team_id: int,
+        user_id: int,
+        section_header: str,
+        output_locale: str = "zh-TW",
+    ) -> QAAIHelperWorkspaceResponse:
+        """無需求單模式：建立 session 並直接進入 verification_planning。
+        section_header 取代 ticket_key 的角色，作為 session 識別名稱與 section_id 前綴。"""
+
+        def _create(sync_db: Session) -> QAAIHelperWorkspaceResponse:
+            team = sync_db.query(Team).filter(Team.id == team_id).first()
+            if team is None:
+                raise ValueError(f"找不到 Team {team_id}")
+
+            session = QAAIHelperSession(
+                team_id=team_id,
+                created_by_user_id=user_id,
+                target_test_case_set_id=None,
+                ticket_key=section_header.strip(),
+                include_comments=False,
+                output_locale=output_locale,
+                canonical_language=None,
+                current_phase=QAAIHelperPhase.INTAKE.value,
+                status=QAAIHelperSessionStatus.ACTIVE.value,
+                source_payload_json=None,
+                created_at=_now(),
+                updated_at=_now(),
+            )
+            sync_db.add(session)
+            sync_db.flush()
+
+            # 建立 stub ticket_snapshot 以滿足 requirement_plan 的 FK 需求
+            stub_markdown = f"# 無需求單模式\n\n標頭：{section_header.strip()}\n\n（使用者自行定義驗證項目）"
+            stub_validation = {
+                "is_valid": True,
+                "no_ticket_mode": True,
+                "missing_sections": [],
+                "errors": [],
+                "warnings": [],
+                "stats": {},
+            }
+            ticket_snapshot = QAAIHelperTicketSnapshot(
+                session_id=session.id,
+                status="validated",
+                raw_ticket_markdown=stub_markdown,
+                structured_requirement_json=json_storage_dumps({}),
+                validation_summary_json=json_storage_dumps(stub_validation),
+                created_at=_now(),
+                updated_at=_now(),
+            )
+            sync_db.add(ticket_snapshot)
+            sync_db.flush()
+            session.active_ticket_snapshot_id = ticket_snapshot.id
+
+            # 建立 requirement plan 帶一個空 section（使用者在 Screen 3 自行填寫）
+            first_section_id = f"{section_header.strip()}.010"
+            plan = QAAIHelperRequirementPlan(
+                session_id=session.id,
+                ticket_snapshot_id=ticket_snapshot.id,
+                revision_number=1,
+                status=QAAIHelperRequirementPlanStatus.DRAFT.value,
+                section_start_number="010",
+                criteria_reference_json=json_storage_dumps({}),
+                technical_reference_json=json_storage_dumps({}),
+                autosave_summary_json=json_storage_dumps(
+                    {
+                        "mode": "no_ticket",
+                        "section_header": section_header.strip(),
+                    }
+                ),
+                created_at=_now(),
+                updated_at=_now(),
+            )
+            sync_db.add(plan)
+            sync_db.flush()
+
+            initial_section = QAAIHelperPlanSection(
+                requirement_plan_id=plan.id,
+                section_key="scenario-001",
+                section_id=first_section_id,
+                section_title="",
+                given_json=json_storage_dumps([]),
+                when_json=json_storage_dumps([]),
+                then_json=json_storage_dumps([]),
+                display_order=0,
+                created_at=_now(),
+                updated_at=_now(),
+            )
+            sync_db.add(initial_section)
+            sync_db.flush()
+
+            session.active_requirement_plan_id = plan.id
+            self._set_session_screen(
+                session,
+                QAAIHelperSessionScreen.VERIFICATION_PLANNING.value,
+                allow_same=False,
+            )
             session.updated_at = _now()
             return self._load_workspace_sync(sync_db, team_id=team_id, session_id=session.id)
 

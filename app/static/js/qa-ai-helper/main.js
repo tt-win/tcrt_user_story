@@ -377,6 +377,54 @@
     return workspace;
   }
 
+  /** 無需求單模式：建立 session 並直接進入 verification_planning */
+  async function startNoTicketSession() {
+    clearFeedback();
+    const teamId = ensureTeamId();
+    if (!teamId) {
+      setFeedback('warning', t('qaAiHelper.errorTeamRequired', {}, '請先選擇團隊'));
+      return;
+    }
+    const sectionHeader = String((el('qaHelperNoTicketSectionTitle') || {}).value || '').trim();
+    if (!sectionHeader) {
+      setFeedback('warning', t('qaAiHelper.noTicketSectionHeaderRequired', {}, '請輸入 Section 標頭'));
+      return;
+    }
+    const localeSelect = el('qaHelperNoTicketOutputLocale');
+    const outputLocale = localeSelect ? normalizeLocale(localeSelect.value) : currentOutputLocale();
+    const payload = {
+      section_header: sectionHeader,
+      output_locale: outputLocale,
+    };
+    const response = await authFetch(`/api/teams/${teamId}/qa-ai-helper/sessions/no-ticket`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(text || 'create no-ticket session failed');
+    }
+    const workspace = await response.json();
+    updateWorkspace(workspace);
+    await loadSessions();
+    setActivePhaseView('canonical', { force: true });
+    renderAll();
+    setFeedback('success', t('qaAiHelper.noTicketSessionCreated', {}, '已建立無需求單 Session，請開始規劃驗證項目'));
+  }
+
+  /** 顯示無需求單模式卡片，隱藏 Screen 1 */
+  function showNoTicketCard() {
+    const loadCard = el('qaHelperLoadTicketCard');
+    const noTicketCard = el('qaHelperNoTicketCard');
+    if (loadCard) loadCard.classList.add('d-none');
+    if (noTicketCard) {
+      noTicketCard.classList.remove('d-none');
+      const input = el('qaHelperNoTicketSectionTitle');
+      if (input) input.focus();
+    }
+  }
+
   async function loadWorkspace(sessionId) {
     const teamId = ensureTeamId();
     if (!teamId || !sessionId) return;
@@ -2857,6 +2905,8 @@
       }
     });
     bindIfPresent('qaHelperCreateSessionBtn', 'click', () => fetchTicket().catch(handleError));
+    bindIfPresent('qaHelperToggleNoTicketBtn', 'click', () => showNoTicketCard());
+    bindIfPresent('qaHelperStartNoTicketBtn', 'click', () => startNoTicketSession().catch(handleError));
     document.querySelectorAll('[data-qa-helper-restart]').forEach((button) => {
       button.addEventListener('click', () => restartSession().catch(handleError));
     });

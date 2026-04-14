@@ -368,6 +368,21 @@ class QAAIHelperTicketReparseRequest(BaseModel):
         return normalized
 
 
+class QAAIHelperNoTicketSessionRequest(BaseModel):
+    """無需求單模式：使用者提供 section 標頭（取代 ticket number），直接進入需求驗證規劃。"""
+
+    section_header: str
+    output_locale: Optional[str] = "zh-TW"
+
+    @field_validator("section_header")
+    @classmethod
+    def _validate_section_header(cls, value: str) -> str:
+        normalized = (value or "").strip()
+        if not normalized:
+            raise ValueError("section_header 不可為空")
+        return normalized
+
+
 class QAAIHelperPlanRequest(BaseModel):
     canonical_revision_id: Optional[int] = None
     selected_references: Optional[Dict[str, Any]] = None
