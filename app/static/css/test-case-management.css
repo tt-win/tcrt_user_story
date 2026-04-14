@@ -194,6 +194,18 @@ body {
     margin-bottom: 1rem;
 }
 
+.markdown-preview ul {
+    list-style: disc outside;
+}
+
+.markdown-preview ol {
+    list-style: decimal outside;
+}
+
+.markdown-preview li {
+    display: list-item;
+}
+
 .markdown-preview code {
     background-color: var(--tr-bg-sidebar);
     padding: 0.125rem 0.25rem;

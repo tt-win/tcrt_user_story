@@ -479,10 +479,11 @@ function updateTreSortIndicators() {
     } catch (_) {}
 }
 
-function sortTestRunItems() {
+function sortTestRunItems(items = testRunItems) {
     const priRank = v => ({ High: 3, Medium: 2, Low: 1 }[v] || 0);
     const resRank = v => ({ Passed: 6, Failed: 5, Retest: 4, 'Not Available': 3, 'Not Required': 2, Skip: 2, Pending: 1 }[v] || 0);
     const assigneeOf = it => (it.assignee_name || (it.assignee && it.assignee.name) || '').toLowerCase();
+    const compareText = (aValue, bValue) => String(aValue || '').localeCompare(String(bValue || ''), undefined, { numeric: true, sensitivity: 'base' });
     const parseNumberSegments = str => {
         try {
             if (!str) return [];
@@ -497,30 +498,35 @@ function sortTestRunItems() {
         for (let i = 0; i < len; i++) {
             if (aSeg[i] !== bSeg[i]) return aSeg[i] - bSeg[i];
         }
-        return aSeg.length - bSeg.length;
+        const lengthDiff = aSeg.length - bSeg.length;
+        if (lengthDiff !== 0) return lengthDiff;
+        return compareText(aStr, bStr);
     };
     const cmp = (a, b) => {
         switch (treSortField) {
             case 'number':
                 return compareByNumericParts(a.test_case_number || '', b.test_case_number || '');
             case 'title':
-                return (a.title || '').toLowerCase().localeCompare((b.title || '').toLowerCase());
+                return compareText(a.title, b.title);
             case 'priority':
                 return priRank(a.priority) - priRank(b.priority);
             case 'result':
                 return resRank(getExecutionItemStatus(a)) - resRank(getExecutionItemStatus(b));
             case 'assignee':
-                return assigneeOf(a).localeCompare(assigneeOf(b));
+                return compareText(assigneeOf(a), assigneeOf(b));
             case 'executed':
-                return (a.executed_at || '').localeCompare(b.executed_at || '');
+                return compareText(a.executed_at, b.executed_at);
             default:
                 return 0;
         }
     };
 
-    const sorted = [...(testRunItems || [])].sort((a, b) => {
+    const sorted = [...(Array.isArray(items) ? items : [])].sort((a, b) => {
         const r = cmp(a, b);
-        return treSortOrder === 'asc' ? r : -r;
+        if (r !== 0) {
+            return treSortOrder === 'asc' ? r : -r;
+        }
+        return compareText(a.test_case_number, b.test_case_number) || ((a.id || 0) - (b.id || 0));
     });
 
     return sorted;

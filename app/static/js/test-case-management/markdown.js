@@ -328,6 +328,95 @@ function updateMarkdownPreview(fieldId) {
     adjustTestCasesScrollHeight();
 }
 
+function escapeMarkdownHtml(value) {
+    if (typeof escapeHtml === 'function') {
+        return escapeHtml(value);
+    }
+    if (value === undefined || value === null) return '';
+    const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+    return String(value).replace(/[&<>"']/g, (ch) => map[ch]);
+}
+
+function renderMarkdownInline(text) {
+    return escapeMarkdownHtml(text || '')
+        .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" style="max-width: 100%; height: auto;">')
+        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>')
+        .replace(/`([^`]+)`/g, '<code>$1</code>')
+        .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+        .replace(/\*([^*]+)\*/g, '<em>$1</em>');
+}
+
+function renderBasicMarkdownHtml(content) {
+    const lines = String(content || '').replace(/\r\n?/g, '\n').split('\n');
+    const htmlParts = [];
+    let paragraphLines = [];
+    let listType = null;
+    let listItems = [];
+
+    const flushParagraph = () => {
+        if (!paragraphLines.length) return;
+        htmlParts.push(`<p>${paragraphLines.join('<br>')}</p>`);
+        paragraphLines = [];
+    };
+
+    const flushList = () => {
+        if (!listType || !listItems.length) {
+            listType = null;
+            listItems = [];
+            return;
+        }
+        htmlParts.push(`<${listType}>${listItems.join('')}</${listType}>`);
+        listType = null;
+        listItems = [];
+    };
+
+    lines.forEach((rawLine) => {
+        const line = rawLine.trimEnd();
+        const trimmed = line.trim();
+
+        if (!trimmed) {
+            flushParagraph();
+            flushList();
+            return;
+        }
+
+        const headingMatch = trimmed.match(/^(#{1,6})\s+(.*)$/);
+        if (headingMatch) {
+            flushParagraph();
+            flushList();
+            const level = headingMatch[1].length;
+            htmlParts.push(`<h${level}>${renderMarkdownInline(headingMatch[2])}</h${level}>`);
+            return;
+        }
+
+        const unorderedMatch = line.match(/^\s*[-*+]\s+(.*)$/);
+        if (unorderedMatch) {
+            flushParagraph();
+            if (listType !== 'ul') flushList();
+            listType = 'ul';
+            listItems.push(`<li>${renderMarkdownInline(unorderedMatch[1])}</li>`);
+            return;
+        }
+
+        const orderedMatch = line.match(/^\s*\d+\.\s+(.*)$/);
+        if (orderedMatch) {
+            flushParagraph();
+            if (listType !== 'ol') flushList();
+            listType = 'ol';
+            listItems.push(`<li>${renderMarkdownInline(orderedMatch[1])}</li>`);
+            return;
+        }
+
+        flushList();
+        paragraphLines.push(renderMarkdownInline(trimmed));
+    });
+
+    flushParagraph();
+    flushList();
+
+    return htmlParts.join('');
+}
+
 function renderMarkdownToElement(content, previewDiv) {
     if (!previewDiv) return;
     if (typeof marked !== 'undefined') {
@@ -340,21 +429,8 @@ function renderMarkdownToElement(content, previewDiv) {
             return;
         }
     }
-    // 簡單的 Markdown 轉換
-    let html = content
-        .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-        .replace(/\*(.*?)\*/g, '<em>$1</em>')
-        .replace(/`(.*?)`/g, '<code>$1</code>')
-        .replace(/^# (.*$)/gim, '<h1>$1</h1>')
-        .replace(/^## (.*$)/gim, '<h2>$1</h2>')
-        .replace(/^### (.*$)/gim, '<h3>$1</h3>')
-        .replace(/^\- (.*$)/gim, '<li>$1</li>')
-        .replace(/^\d+\. (.*$)/gim, '<li>$1</li>')
-        .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
-        .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" style="max-width: 100%; height: auto;">')
-        .replace(/\n/g, '<br>');
-
     const previewPlaceholder = window.i18n ? window.i18n.t('messages.previewDisplayHere') : '預覽將在此顯示...';
+    const html = renderBasicMarkdownHtml(content);
     previewDiv.innerHTML = html || `<p class="text-muted">${previewPlaceholder}</p>`;
 }
 

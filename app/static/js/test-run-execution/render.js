@@ -97,10 +97,9 @@ function renderTestRunItems() {
     // 更新表格標頭顯示
     updateTableHeader();
     // 依排序設定排序並更新指示
-    sortTestRunItems();
     updateTreSortIndicators();
 
-    const filteredItems = getFilteredTestRunItems();
+    const filteredItems = sortTestRunItems(getFilteredTestRunItems());
     updateExecutionFilterSummary(filteredItems.length, testRunItems.length);
 
     const showCheckbox = shouldShowCheckbox(testRunConfig ? testRunConfig.status : 'draft');
