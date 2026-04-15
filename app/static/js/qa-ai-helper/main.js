@@ -1125,6 +1125,7 @@
   function renderTicketConfirmation() {
     const loadCard = el('qaHelperLoadTicketCard');
     const card = el('qaHelperTicketConfirmationCard');
+    const noTicketCard = el('qaHelperNoTicketCard');
     const meta = el('qaHelperTicketMeta');
     const markdown = el('qaHelperTicketMarkdown');
     const proceedBtn = el('qaHelperProceedVerificationBtn');
@@ -1136,6 +1137,14 @@
       if (loadCard) loadCard.classList.remove('d-none');
       card.classList.add('d-none');
       proceedBtn.disabled = true;
+      return;
+    }
+    // 無需求單模式：不顯示「需求單內容確認」卡片，改顯示「無需求單模式」卡片
+    const isNoTicketMode = !!((ticketSnapshot.validation_summary || {}).no_ticket_mode);
+    if (isNoTicketMode) {
+      card.classList.add('d-none');
+      if (loadCard) loadCard.classList.add('d-none');
+      if (noTicketCard) noTicketCard.classList.remove('d-none');
       return;
     }
     if (loadCard) loadCard.classList.add('d-none');
@@ -1348,6 +1357,19 @@
     const regenerateSeedsButton = el('qaHelperRegenerateSeedsBtn');
     const proceedSeedButton = el('qaHelperProceedToSeedReviewBtn');
     const saveButton = el('qaHelperSaveRequirementPlanBtn');
+
+    // 無需求單模式：按鈕文字改為「返回 Section 標頭設定」
+    const backToTicketBtn = el('qaHelperBackToTicketConfirmationBtn');
+    if (backToTicketBtn) {
+      const ticketSnapshot = (state.workspace || {}).ticket_snapshot;
+      const isNoTicketMode = !!(((ticketSnapshot && ticketSnapshot.validation_summary) || {}).no_ticket_mode);
+      const labelSpan = backToTicketBtn.querySelector('span');
+      if (labelSpan) {
+        labelSpan.textContent = isNoTicketMode
+          ? t('qaAiHelper.backToNoTicketSetup', {}, '返回 Section 標頭設定')
+          : t('qaAiHelper.backToTicketConfirmation', {}, '返回需求單內容確認');
+      }
+    }
 
     if (!plan) {
       [headerStatus, footerStatus, autosaveStatus, validationSummary].forEach((node) => {
