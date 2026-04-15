@@ -171,12 +171,17 @@ i18n_test.html
 !README.md
 !docs/*.md
 !AGENTS.md
+!prompts/**/*.md
+!openspec/**/*.md
 plan/
 architecture.md
 spec.md
 task.md
 lark_*.md
 api_*.md
+# Re-exempt openspec and prompts (overrides spec.md/task.md above)
+!prompts/**/*.md
+!openspec/**/*.md
 principle.txt
 manual_sync_integration_test_report.json
 tests/
