@@ -11,7 +11,9 @@ from typing import Dict, Literal, Optional
 
 from app.config import QAAIHelperConfig, QAAIHelperStageModelConfig, get_settings
 
-QAAIHelperPromptStage = Literal["seed", "seed_refine", "testcase", "repair"]
+QAAIHelperPromptStage = Literal[
+    "seed", "seed_refine", "testcase", "repair", "inspection_extraction", "inspection_consolidation"
+]
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +23,8 @@ PROMPT_FILE_MAP: Dict[QAAIHelperPromptStage, str] = {
     "seed_refine": "seed_refine.md",
     "testcase": "testcase.md",
     "repair": "repair.md",
+    "inspection_extraction": "inspection_extraction.md",
+    "inspection_consolidation": "inspection_consolidation.md",
 }
 
 FALLBACK_PROMPTS: Dict[QAAIHelperPromptStage, str] = {

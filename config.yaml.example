@@ -42,6 +42,33 @@ ai:
       testcase:
         model: 'google/gemini-3-flash-preview'
         temperature: 0.0
+      # --- Council Inspection 模型設定 ---
+      # Extraction Phase: 三個不同模型各自負責不同角色方向
+      inspection_extraction_a:
+        model: 'openai/gpt-5.4-mini'
+        temperature: 0.1
+      inspection_extraction_b:
+        model: 'google/gemini-3-flash-preview'
+        temperature: 0.1
+      inspection_extraction_c:
+        model: 'x-ai/grok-4.20'
+        temperature: 0.1
+      # Consolidation Phase: 高階模型統合結果
+      inspection_consolidation:
+        model: 'openai/gpt-5.3-chat'
+        temperature: 0.1
+    inspection:
+      max_scenarios_warning: 5  # 超過此值時前端提醒使用者 inspection 可能耗時較長
+      roles:
+        - label: 'A'
+          role_name: 'Happy Path + Permission'
+          role_focus: '你專注於 Happy Path（正常流程驗證）與基本 Permission（權限控制）。確保主要正常使用情境都有對應的驗證項目，以及各角色的存取權限控制正確。'
+        - label: 'B'
+          role_name: 'Edge Cases + Performance'
+          role_focus: '你專注於 Edge Cases（邊界與異常輸入）與 Performance/Concurrency（效能與併發）。找出邊界值、空值、超長輸入、特殊字元等情境，以及併發操作、大量資料等效能相關的驗證項目。'
+        - label: 'C'
+          role_name: 'Error Handling + Abuse'
+          role_focus: '你專注於 Error Handling（錯誤處理）、進階 Permission 與 Abuse（濫用防護）。確保各種錯誤情境的處理正確，以及系統能防範惡意操作與權限繞過。'
 qdrant:
   url: 'http://localhost:6333'
   api_key: ''

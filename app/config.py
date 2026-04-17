@@ -152,6 +152,22 @@ class QAAIHelperModelsConfig(BaseModel):
         temperature=0.0,
     )
     repair: Optional[QAAIHelperStageModelConfig] = None
+    inspection_extraction_a: QAAIHelperStageModelConfig = QAAIHelperStageModelConfig(
+        model="openai/gpt-5.4-mini",
+        temperature=0.1,
+    )
+    inspection_extraction_b: QAAIHelperStageModelConfig = QAAIHelperStageModelConfig(
+        model="google/gemini-3-flash-preview",
+        temperature=0.1,
+    )
+    inspection_extraction_c: QAAIHelperStageModelConfig = QAAIHelperStageModelConfig(
+        model="x-ai/grok-4.20",
+        temperature=0.1,
+    )
+    inspection_consolidation: QAAIHelperStageModelConfig = QAAIHelperStageModelConfig(
+        model="openai/gpt-5.3-chat",
+        temperature=0.1,
+    )
 
     @classmethod
     def from_env(cls, fallback: "QAAIHelperModelsConfig" = None) -> "QAAIHelperModelsConfig":
@@ -164,7 +180,62 @@ class QAAIHelperModelsConfig(BaseModel):
             ),
             testcase=QAAIHelperStageModelConfig.from_env("TESTCASE", fallback_models.testcase),
             repair=fallback_models.repair,
+            inspection_extraction_a=QAAIHelperStageModelConfig.from_env(
+                "INSPECTION_EXTRACTION_A",
+                fallback_models.inspection_extraction_a,
+            ),
+            inspection_extraction_b=QAAIHelperStageModelConfig.from_env(
+                "INSPECTION_EXTRACTION_B",
+                fallback_models.inspection_extraction_b,
+            ),
+            inspection_extraction_c=QAAIHelperStageModelConfig.from_env(
+                "INSPECTION_EXTRACTION_C",
+                fallback_models.inspection_extraction_c,
+            ),
+            inspection_consolidation=QAAIHelperStageModelConfig.from_env(
+                "INSPECTION_CONSOLIDATION",
+                fallback_models.inspection_consolidation,
+            ),
         )
+
+
+class InspectionRoleConfig(BaseModel):
+    label: str
+    role_name: str
+    role_focus: str
+
+
+class InspectionConfig(BaseModel):
+    max_scenarios_warning: int = 5
+    roles: List[InspectionRoleConfig] = [
+        InspectionRoleConfig(
+            label="A",
+            role_name="Happy Path + Permission",
+            role_focus=(
+                "你專注於 Happy Path（正常流程驗證）與基本 Permission（權限控制）。"
+                "確保主要正常使用情境都有對應的驗證項目，"
+                "以及各角色的存取權限控制正確。"
+            ),
+        ),
+        InspectionRoleConfig(
+            label="B",
+            role_name="Edge Cases + Performance",
+            role_focus=(
+                "你專注於 Edge Cases（邊界與異常輸入）與 Performance/Concurrency（效能與併發）。"
+                "找出邊界值、空值、超長輸入、特殊字元等情境，"
+                "以及併發操作、大量資料等效能相關的驗證項目。"
+            ),
+        ),
+        InspectionRoleConfig(
+            label="C",
+            role_name="Error Handling + Abuse",
+            role_focus=(
+                "你專注於 Error Handling（錯誤處理）、進階 Permission 與 Abuse（濫用防護）。"
+                "確保各種錯誤情境的處理正確，"
+                "以及系統能防範惡意操作與權限繞過。"
+            ),
+        ),
+    ]
 
 
 class QAAIHelperConfig(BaseModel):
@@ -179,6 +250,7 @@ class QAAIHelperConfig(BaseModel):
     generation_budget_output_tokens: int = 12000
     max_concurrent_llm_calls: int = 5
     models: QAAIHelperModelsConfig = QAAIHelperModelsConfig()
+    inspection: InspectionConfig = InspectionConfig()
 
     @classmethod
     def from_env(cls, fallback: "QAAIHelperConfig" = None) -> "QAAIHelperConfig":
@@ -197,6 +269,7 @@ class QAAIHelperConfig(BaseModel):
                 os.getenv("QA_AI_HELPER_MAX_CONCURRENT_LLM_CALLS", str(current.max_concurrent_llm_calls))
             ),
             models=QAAIHelperModelsConfig.from_env(current.models),
+            inspection=current.inspection,
         )
 
 

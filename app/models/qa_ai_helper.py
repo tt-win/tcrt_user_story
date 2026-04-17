@@ -49,6 +49,7 @@ class QAAIHelperSessionStatus(str, Enum):
 
 class QAAIHelperSessionScreen(str, Enum):
     TICKET_CONFIRMATION = "ticket_confirmation"
+    COUNCIL_INSPECTION = "council_inspection"
     VERIFICATION_PLANNING = "verification_planning"
     SEED_REVIEW = "seed_review"
     TESTCASE_REVIEW = "testcase_review"

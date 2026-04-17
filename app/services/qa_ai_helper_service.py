@@ -139,6 +139,11 @@ _SESSION_SCREEN_TRANSITIONS: Dict[str | None, set[str]] = {
         QAAIHelperSessionScreen.VERIFICATION_PLANNING.value,  # no-ticket mode
     },
     QAAIHelperSessionScreen.TICKET_CONFIRMATION.value: {
+        QAAIHelperSessionScreen.COUNCIL_INSPECTION.value,
+        QAAIHelperSessionScreen.VERIFICATION_PLANNING.value,
+        QAAIHelperSessionScreen.FAILED.value,
+    },
+    QAAIHelperSessionScreen.COUNCIL_INSPECTION.value: {
         QAAIHelperSessionScreen.VERIFICATION_PLANNING.value,
         QAAIHelperSessionScreen.FAILED.value,
     },
@@ -1479,6 +1484,317 @@ class QAAIHelperService:
         requirement_plan.updated_at = _now()
         sync_db.flush()
         sync_db.expire(requirement_plan, ["sections"])
+
+    # ---- MAGI Inspection ----
+
+    _VALID_CATEGORIES = {"API", "UI", "功能驗證", "其他"}
+    _VALID_COVERAGE_TAGS = {"Happy Path", "Error Handling", "Edge Test Case", "Permission"}
+
+    @staticmethod
+    def _transform_inspection_to_sections_payload(
+        consolidation_json: Dict[str, Any],
+    ) -> List[Dict[str, Any]]:
+        """Convert consolidation JSON → _replace_requirement_plan_sections_sync 期望格式."""
+        sections_out: List[Dict[str, Any]] = []
+        for s_idx, section in enumerate(consolidation_json.get("sections") or []):
+            vi_list: List[Dict[str, Any]] = []
+            for item in section.get("items") or []:
+                category_raw = str(item.get("category") or "功能驗證").strip()
+                category = category_raw if category_raw in QAAIHelperService._VALID_CATEGORIES else "功能驗證"
+                conditions: List[Dict[str, str]] = []
+                for cond in item.get("conditions") or []:
+                    tag_raw = str(cond.get("coverage_tag") or "").strip()
+                    tag = tag_raw if tag_raw in QAAIHelperService._VALID_COVERAGE_TAGS else "Happy Path"
+                    conditions.append(
+                        {
+                            "condition_text": str(cond.get("condition_text") or "").strip(),
+                            "coverage_tag": tag,
+                        }
+                    )
+                raw_detail = item.get("detail") or ""
+                if isinstance(raw_detail, str):
+                    detail_value: Dict[str, Any] = {"text": raw_detail.strip()} if raw_detail.strip() else {}
+                elif isinstance(raw_detail, dict):
+                    detail_value = raw_detail
+                else:
+                    detail_value = {"text": str(raw_detail)}
+                vi_list.append(
+                    {
+                        "category": category,
+                        "summary": str(item.get("summary") or "").strip(),
+                        "detail": detail_value,
+                        "check_conditions": conditions,
+                    }
+                )
+            sections_out.append(
+                {
+                    "section_key": f"scenario-{s_idx + 1:03d}",
+                    "section_title": str(section.get("scenario_name") or f"Scenario {s_idx + 1}").strip(),
+                    "given": section.get("given") or [],
+                    "when": section.get("when") or [],
+                    "then": section.get("then") or [],
+                    "verification_items": vi_list,
+                }
+            )
+        return sections_out
+
+    @staticmethod
+    def _validate_consolidation_json(data: Any) -> Optional[str]:
+        """Return error message if schema is invalid, else None."""
+        if not isinstance(data, dict):
+            return "Root is not a dict"
+        sections = data.get("sections")
+        if not isinstance(sections, list):
+            return "Missing or invalid 'sections' array"
+        for i, sec in enumerate(sections):
+            if not isinstance(sec, dict):
+                return f"sections[{i}] is not a dict"
+            if not sec.get("scenario_name"):
+                return f"sections[{i}] missing scenario_name"
+            items = sec.get("items")
+            if not isinstance(items, list):
+                return f"sections[{i}] missing or invalid 'items'"
+            for j, item in enumerate(items):
+                if not isinstance(item, dict):
+                    return f"sections[{i}].items[{j}] is not a dict"
+                if not isinstance(item.get("conditions"), list):
+                    return f"sections[{i}].items[{j}] missing 'conditions'"
+        return None
+
+    async def run_council_inspection(
+        self,
+        *,
+        session: QAAIHelperSession,
+        ticket_snapshot: QAAIHelperTicketSnapshot,
+        on_event: Optional[Callable[..., Any]] = None,
+    ) -> Dict[str, Any]:
+        """Run MAGI inspection: Phase 1 parallel extraction + Phase 2 consolidation.
+
+        Returns dict with keys: success, sections_payload, error (optional).
+        Calls `on_event(event_type, data)` for SSE progress if provided.
+        """
+
+        def _emit(event_type: str, data: Dict[str, Any]) -> None:
+            if on_event is not None:
+                on_event(event_type, data)
+
+        structured = json_storage_loads(ticket_snapshot.structured_requirement_json, {})
+        scenarios = structured.get("Acceptance Criteria") or []
+        user_story = str(structured.get("User Story") or "").strip()
+        criteria = json.dumps(structured.get("Criteria") or {}, ensure_ascii=False)
+        tech_specs = json.dumps(structured.get("Technical Specifications") or {}, ensure_ascii=False)
+        acceptance_criteria = json.dumps(scenarios, ensure_ascii=False)
+
+        roles = self.settings.ai.qa_ai_helper.inspection.roles
+        llm_svc = get_qa_ai_helper_llm_service()
+        prompt_svc = get_qa_ai_helper_prompt_service()
+
+        # ── Phase 1: Parallel Extraction ──
+        max_concurrent = max(1, self.settings.ai.qa_ai_helper.max_concurrent_llm_calls)
+        sem = asyncio.Semaphore(max_concurrent)
+
+        extraction_results: Dict[str, Dict[int, str]] = {}  # role_label -> {scenario_idx: content}
+        extraction_errors: List[Dict[str, Any]] = []
+
+        async def _extract(role, scenario_idx, scenario):
+            scenario_data = scenario.get("Scenario") if isinstance(scenario, dict) else None
+            if not isinstance(scenario_data, dict):
+                return
+            scenario_name = str(scenario_data.get("name") or f"Scenario {scenario_idx + 1}")
+            gherkin_lines = []
+            for k in ("Given", "When", "Then"):
+                for line in scenario_data.get(k) or []:
+                    gherkin_lines.append(f"{k} {line}")
+            scenario_gherkin = "\n".join(gherkin_lines)
+
+            prompt = prompt_svc.render_stage_prompt(
+                "inspection_extraction",
+                {
+                    "role_focus": role.role_focus,
+                    "user_story": user_story,
+                    "criteria": criteria,
+                    "tech_specs": tech_specs,
+                    "scenario_name": scenario_name,
+                    "scenario_gherkin": scenario_gherkin,
+                },
+            )
+            async with sem:
+                try:
+                    result = await llm_svc.call_inspection_extraction(
+                        role_label=role.label,
+                        prompt=prompt,
+                    )
+                    extraction_results.setdefault(role.label, {})[scenario_idx] = result.content
+                    _emit(
+                        "extraction_complete",
+                        {
+                            "model_label": role.label,
+                            "scenario_index": scenario_idx,
+                            "scenario_name": scenario_name,
+                            "status": "success",
+                        },
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "MAGI extraction failed: role=%s scenario=%d error=%s",
+                        role.label,
+                        scenario_idx,
+                        exc,
+                    )
+                    extraction_errors.append(
+                        {
+                            "model_label": role.label,
+                            "scenario_index": scenario_idx,
+                            "scenario_name": scenario_name,
+                            "error": str(exc),
+                        }
+                    )
+                    _emit(
+                        "extraction_error",
+                        {
+                            "model_label": role.label,
+                            "scenario_index": scenario_idx,
+                            "scenario_name": scenario_name,
+                            "error": str(exc),
+                        },
+                    )
+
+        tasks = []
+        for role in roles:
+            for s_idx, scenario in enumerate(scenarios):
+                tasks.append(_extract(role, s_idx, scenario))
+        await asyncio.gather(*tasks)
+
+        # Check: at least one role succeeded for at least one scenario
+        total_extraction_calls = len(roles) * len(scenarios)
+        if len(extraction_errors) >= total_extraction_calls and total_extraction_calls > 0:
+            _emit("done", {"success": False, "error": "All extraction calls failed"})
+            return {"success": False, "error": "All extraction calls failed", "sections_payload": []}
+
+        # ── Phase 2: Consolidation ──
+        _emit("phase_change", {"phase": "consolidation"})
+
+        # Build extraction_results text block
+        result_blocks: List[str] = []
+        for s_idx, scenario in enumerate(scenarios):
+            scenario_data = scenario.get("Scenario") if isinstance(scenario, dict) else None
+            scenario_name = str((scenario_data or {}).get("name") or f"Scenario {s_idx + 1}")
+            result_blocks.append(f"### Scenario: {scenario_name}")
+            for role in roles:
+                content = extraction_results.get(role.label, {}).get(s_idx, "")
+                if content:
+                    result_blocks.append(f"#### Model {role.label} ({role.role_name})")
+                    result_blocks.append(content)
+                else:
+                    result_blocks.append(f"#### Model {role.label} ({role.role_name})")
+                    result_blocks.append("(no output — extraction failed)")
+            result_blocks.append("")
+
+        consolidation_prompt = prompt_svc.render_stage_prompt(
+            "inspection_consolidation",
+            {
+                "user_story": user_story,
+                "acceptance_criteria": acceptance_criteria,
+                "extraction_results": "\n".join(result_blocks),
+            },
+        )
+
+        try:
+            consolidation_result = await llm_svc.call_inspection_consolidation(
+                prompt=consolidation_prompt,
+            )
+        except Exception as exc:
+            logger.error("MAGI consolidation failed: %s", exc)
+            _emit("consolidation_error", {"error": str(exc)})
+            _emit("done", {"success": False, "error": f"Consolidation failed: {exc}"})
+            return {"success": False, "error": f"Consolidation failed: {exc}", "sections_payload": []}
+
+        # Parse and validate JSON
+        try:
+            consolidation_data = json.loads(consolidation_result.content)
+        except (json.JSONDecodeError, TypeError) as exc:
+            logger.error("MAGI consolidation JSON parse error: %s", exc)
+            _emit("consolidation_error", {"error": f"JSON parse error: {exc}"})
+            _emit("done", {"success": False, "error": f"JSON parse error: {exc}"})
+            return {"success": False, "error": f"JSON parse error: {exc}", "sections_payload": []}
+
+        validation_error = self._validate_consolidation_json(consolidation_data)
+        if validation_error:
+            # Attempt one repair call
+            logger.warning("MAGI consolidation schema invalid: %s — attempting repair", validation_error)
+            try:
+                repair_prompt = (
+                    f"以下 JSON 不符合 schema 要求（{validation_error}）。"
+                    f"請修正並回傳符合要求的完整 JSON，不要輸出 JSON 以外的文字。\n\n"
+                    f"{consolidation_result.content}"
+                )
+                repair_result = await llm_svc.call_inspection_consolidation(prompt=repair_prompt)
+                consolidation_data = json.loads(repair_result.content)
+                validation_error = self._validate_consolidation_json(consolidation_data)
+            except Exception:
+                pass
+            if validation_error:
+                error_msg = f"Consolidation schema invalid after repair: {validation_error}"
+                _emit("consolidation_error", {"error": error_msg})
+                _emit("done", {"success": False, "error": error_msg})
+                return {"success": False, "error": error_msg, "sections_payload": []}
+
+        sections_payload = self._transform_inspection_to_sections_payload(consolidation_data)
+        section_count = len(sections_payload)
+        item_count = sum(len(s.get("verification_items") or []) for s in sections_payload)
+
+        _emit(
+            "consolidation_complete",
+            {
+                "status": "success",
+                "sections_count": section_count,
+                "items_count": item_count,
+            },
+        )
+        _emit("done", {"success": True})
+        return {"success": True, "sections_payload": sections_payload}
+
+    async def apply_council_inspection_results(
+        self,
+        *,
+        session: QAAIHelperSession,
+        ticket_snapshot: QAAIHelperTicketSnapshot,
+        sections_payload: List[Dict[str, Any]],
+    ) -> None:
+        """Create or replace requirement plan sections from MAGI inspection results."""
+        session_id = session.id
+        snapshot_id = ticket_snapshot.id
+
+        def _do(sync_db: Session) -> None:
+            # Re-query session inside write context so changes are tracked
+            sess = sync_db.query(QAAIHelperSession).filter(QAAIHelperSession.id == session_id).first()
+            if sess is None:
+                raise ValueError(f"Session {session_id} not found in write context")
+
+            snap = sync_db.query(QAAIHelperTicketSnapshot).filter(QAAIHelperTicketSnapshot.id == snapshot_id).first()
+
+            plan = None
+            if sess.active_requirement_plan_id:
+                plan = (
+                    sync_db.query(QAAIHelperRequirementPlan)
+                    .filter(QAAIHelperRequirementPlan.id == sess.active_requirement_plan_id)
+                    .first()
+                )
+            if plan is None:
+                plan = self._create_requirement_plan_sync(
+                    sync_db,
+                    session=sess,
+                    ticket_snapshot=snap or ticket_snapshot,
+                )
+                sess.active_requirement_plan_id = plan.id
+            self._replace_requirement_plan_sections_sync(
+                sync_db,
+                requirement_plan=plan,
+                section_start_number=plan.section_start_number or "010",
+                sections=sections_payload,
+            )
+
+        await self._run_write(_do)
 
     def _seed_generation_items_from_plan(
         self,

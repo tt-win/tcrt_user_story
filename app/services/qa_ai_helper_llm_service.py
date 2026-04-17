@@ -17,7 +17,16 @@ import aiohttp
 from app.config import get_settings
 from app.services.qa_ai_helper_title_utils import build_testcase_title_summary
 
-QAAIHelperLLMStage = Literal["seed", "seed_refine", "testcase", "repair"]
+QAAIHelperLLMStage = Literal[
+    "seed",
+    "seed_refine",
+    "testcase",
+    "repair",
+    "inspection_extraction_a",
+    "inspection_extraction_b",
+    "inspection_extraction_c",
+    "inspection_consolidation",
+]
 
 logger = logging.getLogger(__name__)
 OPENROUTER_CHAT_COMPLETIONS_URL = "https://openrouter.ai/api/v1/chat/completions"
@@ -55,6 +64,14 @@ class QAAIHelperLLMService:
                 self._settings.ai.qa_ai_helper.models.repair
                 or self._settings.ai.qa_ai_helper.models.testcase
             )
+        if stage == "inspection_extraction_a":
+            return self._settings.ai.qa_ai_helper.models.inspection_extraction_a
+        if stage == "inspection_extraction_b":
+            return self._settings.ai.qa_ai_helper.models.inspection_extraction_b
+        if stage == "inspection_extraction_c":
+            return self._settings.ai.qa_ai_helper.models.inspection_extraction_c
+        if stage == "inspection_consolidation":
+            return self._settings.ai.qa_ai_helper.models.inspection_consolidation
         return self._settings.ai.qa_ai_helper.models.testcase
 
     def resolve_stage_model_id(self, stage: QAAIHelperLLMStage) -> str:
@@ -79,9 +96,7 @@ class QAAIHelperLLMService:
     def _extract_usage(data: Dict[str, Any]) -> Dict[str, int]:
         usage_raw = data.get("usage") or {}
         prompt_tokens = int(usage_raw.get("prompt_tokens") or usage_raw.get("promptTokens") or 0)
-        completion_tokens = int(
-            usage_raw.get("completion_tokens") or usage_raw.get("completionTokens") or 0
-        )
+        completion_tokens = int(usage_raw.get("completion_tokens") or usage_raw.get("completionTokens") or 0)
         total_tokens = int(
             usage_raw.get("total_tokens") or usage_raw.get("totalTokens") or (prompt_tokens + completion_tokens)
         )
@@ -142,23 +157,119 @@ class QAAIHelperLLMService:
             ) as response:
                 text_body = await response.text()
                 if response.status >= 400:
-                    raise RuntimeError(
-                        f"qa_ai_helper {stage} 模型呼叫失敗: HTTP {response.status} {text_body}"
-                    )
+                    raise RuntimeError(f"qa_ai_helper {stage} 模型呼叫失敗: HTTP {response.status} {text_body}")
                 data = json.loads(text_body)
                 choices = data.get("choices") or []
-                finish_reason = (
-                    choices[0].get("finish_reason")
-                    if choices and isinstance(choices[0], dict)
-                    else None
-                )
+                finish_reason = choices[0].get("finish_reason") if choices and isinstance(choices[0], dict) else None
                 content = self._extract_content(data)
                 if finish_reason == "length":
                     logger.warning(
-                        "qa_ai_helper %s output truncated (finish_reason=length, "
-                        "content_len=%d)",
-                        stage, len(content),
+                        "qa_ai_helper %s output truncated (finish_reason=length, content_len=%d)",
+                        stage,
+                        len(content),
                     )
+                return QAAIHelperLLMResult(
+                    content=content,
+                    usage=self._extract_usage(data),
+                    cost=float(data.get("cost") or data.get("total_cost") or 0.0),
+                    cost_note="",
+                    model_name=model_name,
+                    response_id=data.get("id"),
+                    finish_reason=finish_reason,
+                )
+
+    # ---- MAGI Inspection 專用呼叫方法 ----
+
+    _ROLE_LABEL_TO_STAGE: dict[str, QAAIHelperLLMStage] = {
+        "A": "inspection_extraction_a",
+        "B": "inspection_extraction_b",
+        "C": "inspection_extraction_c",
+    }
+
+    async def call_inspection_extraction(
+        self,
+        *,
+        role_label: str,
+        prompt: str,
+    ) -> QAAIHelperLLMResult:
+        """Phase 1: 呼叫指定角色的 extraction 模型（純文字輸出，不用 json_object）。"""
+        stage = self._ROLE_LABEL_TO_STAGE.get(role_label)
+        if stage is None:
+            raise ValueError(f"Unknown inspection role_label: {role_label!r}")
+        model_name = self.resolve_stage_model_id(stage)
+        if not self._openrouter_key:
+            return self._fallback_result(stage=stage, prompt=prompt, model_name=model_name)
+
+        payload = {
+            "model": model_name,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": float(self._stage_config(stage).temperature),
+        }
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                OPENROUTER_CHAT_COMPLETIONS_URL,
+                headers=self._base_headers(),
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=120),
+            ) as response:
+                text_body = await response.text()
+                if response.status >= 400:
+                    raise RuntimeError(
+                        f"qa_ai_helper inspection extraction ({role_label}) 呼叫失敗: "
+                        f"HTTP {response.status} {text_body}"
+                    )
+                data = json.loads(text_body)
+                content = self._extract_content(data)
+                finish_reason = None
+                choices = data.get("choices") or []
+                if choices and isinstance(choices[0], dict):
+                    finish_reason = choices[0].get("finish_reason")
+                return QAAIHelperLLMResult(
+                    content=content,
+                    usage=self._extract_usage(data),
+                    cost=float(data.get("cost") or data.get("total_cost") or 0.0),
+                    cost_note="",
+                    model_name=model_name,
+                    response_id=data.get("id"),
+                    finish_reason=finish_reason,
+                )
+
+    async def call_inspection_consolidation(
+        self,
+        *,
+        prompt: str,
+    ) -> QAAIHelperLLMResult:
+        """Phase 2: 呼叫 consolidation 模型（強制 JSON 輸出）。"""
+        stage: QAAIHelperLLMStage = "inspection_consolidation"
+        model_name = self.resolve_stage_model_id(stage)
+        if not self._openrouter_key:
+            return self._fallback_result(stage=stage, prompt=prompt, model_name=model_name)
+
+        payload = {
+            "model": model_name,
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": float(self._stage_config(stage).temperature),
+            "response_format": {"type": "json_object"},
+        }
+        async with aiohttp.ClientSession() as session:
+            async with session.post(
+                OPENROUTER_CHAT_COMPLETIONS_URL,
+                headers=self._base_headers(),
+                json=payload,
+                timeout=aiohttp.ClientTimeout(total=300),
+            ) as response:
+                text_body = await response.text()
+                if response.status >= 400:
+                    raise RuntimeError(
+                        f"qa_ai_helper inspection consolidation 呼叫失敗: "
+                        f"HTTP {response.status} {text_body}"
+                    )
+                data = json.loads(text_body)
+                content = self._extract_content(data)
+                finish_reason = None
+                choices = data.get("choices") or []
+                if choices and isinstance(choices[0], dict):
+                    finish_reason = choices[0].get("finish_reason")
                 return QAAIHelperLLMResult(
                     content=content,
                     usage=self._extract_usage(data),
@@ -225,10 +336,7 @@ class QAAIHelperLLMService:
             for index, item in enumerate(items):
                 item_index = int(item.get("item_index", index))
                 title = str(
-                    item.get("title_hint")
-                    or item.get("seed_summary")
-                    or item.get("intent")
-                    or f"Seed {item_index + 1}"
+                    item.get("title_hint") or item.get("seed_summary") or item.get("intent") or f"Seed {item_index + 1}"
                 ).strip()
                 required_assertions = item.get("required_assertions", []) or []
                 seed_body = ""
@@ -265,7 +373,8 @@ class QAAIHelperLLMService:
                         "check_condition_ids": item.get("check_condition_ids") or [],
                         "seed_summary": title,
                         "seed_body": seed_body,
-                        "coverage_tags": [str(value).strip() for value in coverage if str(value).strip()] or ["Happy Path"],
+                        "coverage_tags": [str(value).strip() for value in coverage if str(value).strip()]
+                        or ["Happy Path"],
                     }
                 )
             return {"outputs": outputs}
@@ -274,9 +383,7 @@ class QAAIHelperLLMService:
             item_index = int(item.get("item_index", index))
             preconditions = [str(value).strip() for value in item.get("precondition_hints", []) if str(value).strip()]
             steps = [str(value).strip() for value in item.get("step_hints", []) if str(value).strip()]
-            expected_results = [
-                str(value).strip() for value in item.get("expected_hints", []) if str(value).strip()
-            ]
+            expected_results = [str(value).strip() for value in item.get("expected_hints", []) if str(value).strip()]
             required_assertions = item.get("required_assertions", []) or []
             if len(preconditions) < 1:
                 preconditions = ["已準備符合需求的測試資料", "使用者具備執行本案例所需權限"]

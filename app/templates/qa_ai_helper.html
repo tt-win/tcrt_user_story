@@ -170,14 +170,20 @@
                 </div>
                 <div class="card-footer qa-helper-action-bar">
                     <div class="qa-helper-action-bar-meta small text-muted" data-i18n="qaAiHelper.validationResultHint">至少需通過 User Story Narrative、Criteria、Acceptance Criteria 與 clause 檢查。</div>
-                    <div class="d-flex flex-wrap gap-2">
-                        <button type="button" class="btn btn-primary btn-sm" id="qaHelperProceedVerificationBtn">
-                            <i class="fas fa-list-check me-1"></i><span data-i18n="qaAiHelper.proceedVerificationPlanning">需求驗證項目分類與填充</span>
-                        </button>
-                        <button type="button" class="btn btn-secondary btn-sm" data-qa-helper-restart>
-                            <i class="fas fa-rotate-left me-1"></i><span data-i18n="qaAiHelper.restart">重新開始</span>
-                        </button>
-                    </div>
+                     <div class="d-flex flex-wrap gap-2">
+                         <button type="button" class="btn btn-primary btn-sm" id="qaHelperProceedVerificationBtn">
+                             <i class="fas fa-list-check me-1"></i><span data-i18n="qaAiHelper.proceedVerificationPlanning">需求驗證項目分類與填充</span>
+                         </button>
+                         <button type="button" class="btn btn-warning btn-sm d-none" id="qaHelperResubmitCouncilBtn">
+                             <i class="fas fa-rotate me-1"></i><span data-i18n="qaAiHelper.resubmitCouncil">重新送交 AI 處理</span>
+                         </button>
+                         <button type="button" class="btn btn-outline-secondary btn-sm" id="qaHelperSkipInspectionBtn">
+                             <i class="fas fa-forward me-1"></i><span data-i18n="qaAiHelper.skipInspection">跳過 AI 處理</span>
+                         </button>
+                         <button type="button" class="btn btn-secondary btn-sm" data-qa-helper-restart>
+                             <i class="fas fa-rotate-left me-1"></i><span data-i18n="qaAiHelper.restart">重新開始</span>
+                         </button>
+                     </div>
                 </div>
             </div>
         </div>
@@ -591,5 +597,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="/static/js/qa-ai-helper/council-animation.js"></script>
+<script src="/static/js/qa-ai-helper/ai-thinking-animation.js"></script>
 <script src="/static/js/qa-ai-helper/main.js"></script>
 {% endblock %}

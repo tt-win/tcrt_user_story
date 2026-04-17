@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.auth.dependencies import get_current_user
@@ -835,3 +838,88 @@ async def commit_draft_set(
         )
     except Exception as exc:  # noqa: BLE001
         raise _map_exception(exc) from exc
+
+
+@router.post("/sessions/{session_id}/council-inspection")
+async def run_council_inspection(
+    team_id: int,
+    session_id: int,
+    current_user: User = Depends(get_current_user),
+) -> StreamingResponse:
+    """Run council inspection and stream SSE progress events."""
+    await _verify_team_write_access(team_id=team_id, current_user=current_user)
+
+    service = QAAIHelperService()
+
+    from app.models.database_models import (
+        QAAIHelperSession as SessionDB,
+        QAAIHelperTicketSnapshot as SnapshotDB,
+    )
+
+    async def _load_context():
+        def _do(sync_db):
+            session = sync_db.query(SessionDB).filter(SessionDB.id == session_id, SessionDB.team_id == team_id).first()
+            if session is None:
+                raise ValueError("找不到 qa_ai_helper session")
+            snapshot = (
+                sync_db.query(SnapshotDB).filter(SnapshotDB.id == session.active_ticket_snapshot_id).first()
+                if session.active_ticket_snapshot_id
+                else None
+            )
+            if snapshot is None:
+                raise ValueError("找不到 ticket snapshot")
+            return session, snapshot
+
+        return await service._run_read(_do)
+
+    try:
+        session_obj, snapshot_obj = await _load_context()
+    except Exception as exc:
+        raise _map_exception(exc) from exc
+
+    event_queue: asyncio.Queue = asyncio.Queue()
+
+    def on_event(event_type: str, data: dict):
+        event_queue.put_nowait((event_type, data))
+
+    async def _run_and_apply():
+        try:
+            result = await service.run_council_inspection(
+                session=session_obj,
+                ticket_snapshot=snapshot_obj,
+                on_event=on_event,
+            )
+            if result.get("success") and result.get("sections_payload"):
+                await service.apply_council_inspection_results(
+                    session=session_obj,
+                    ticket_snapshot=snapshot_obj,
+                    sections_payload=result["sections_payload"],
+                )
+        except Exception as exc:
+            logger.exception("MAGI inspection failed: %s", exc)
+            on_event("done", {"success": False, "error": str(exc)})
+        finally:
+            await event_queue.put(None)
+
+    async def sse_generator():
+        task = asyncio.create_task(_run_and_apply())
+        try:
+            while True:
+                item = await event_queue.get()
+                if item is None:
+                    break
+                event_type, data = item
+                yield f"event: {event_type}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+        finally:
+            if not task.done():
+                task.cancel()
+
+    return StreamingResponse(
+        sse_generator(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
