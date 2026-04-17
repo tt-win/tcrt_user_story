@@ -6,14 +6,14 @@
     <title>{% block title %}Test Case Repository Web Tool{% endblock %}</title>
     
     <!-- Favicon -->
-    <link rel="icon" type="image/x-icon" href="/static/favicon.ico">
-    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <link rel="icon" type="image/x-icon" href="{{ asset_url('favicon.ico') }}">
+    <link rel="icon" type="image/svg+xml" href="{{ asset_url('favicon.svg') }}">
     
     <!-- Stylesheets -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <link href="https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700&family=Noto+Sans+CJK+TC:wght@400;500;600;700&family=Noto+Sans+Condensed:wght@400;600;700&display=swap" rel="stylesheet">
-    <link href="/static/css/style.css" rel="stylesheet">
+    <link href="{{ asset_url('css/style.css') }}" rel="stylesheet">
     
     <!-- i18n 初始載入保護：在翻譯就緒前隱藏整體畫面，避免顯示鍵名（避免 FOUC） -->
     <style>
@@ -123,15 +123,18 @@
         ['placeholder', 'title', 'alt', 'aria-label', 'value'].forEach(captureAttributeFallbacks);
     })();
     </script>
+    <script>
+    window.__TCRT_SERVER_VERSION__ = "{{ asset_version() }}";
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
-    <script src="/static/js/auth.js?v=20260313-3"></script>
-    <script src="/static/js/base-auth.js?v=20260313-3"></script>
-    <script src="/static/js/i18n.js?v=20260313-4"></script>
-    <script src="/static/js/datetime-formatter.js?v=20260313-3"></script>
-    <script src="/static/js/app.js?v=20260313-3"></script>
-    <script src="/static/js/trcache.js?v=20260313-3"></script>
-    <script src="/static/js/version-checker.js?v=20260313-3"></script>
+    <script src="{{ asset_url('js/auth.js') }}"></script>
+    <script src="{{ asset_url('js/base-auth.js') }}"></script>
+    <script src="{{ asset_url('js/i18n.js') }}"></script>
+    <script src="{{ asset_url('js/datetime-formatter.js') }}"></script>
+    <script src="{{ asset_url('js/app.js') }}"></script>
+    <script src="{{ asset_url('js/trcache.js') }}"></script>
+    <script src="{{ asset_url('js/version-checker.js') }}"></script>
     {% block scripts %}{% endblock %}
 
     <!-- Language Switcher Script -->

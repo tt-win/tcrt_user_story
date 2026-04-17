@@ -5,14 +5,16 @@
 
 class VersionChecker {
     constructor() {
-        this.CHECK_INTERVAL = 60 * 60 * 1000; // 每小時檢查一次 (60分鐘)
+        this.CHECK_INTERVAL = 60 * 1000; // 每分鐘檢查一次，確保 server 重啟後能盡快強制更新
         this.STORAGE_KEY = 'client_server_timestamp';
         this.checkTimer = null;
         this.isChecking = false;
+        this.isReloading = false;
 
         // 綁定方法
         this.checkVersion = this.checkVersion.bind(this);
         this.handleUpdateClick = this.handleUpdateClick.bind(this);
+        this.handleServerVersionResponse = this.handleServerVersionResponse.bind(this);
 
         console.log('版本檢查器初始化');
     }
@@ -22,6 +24,11 @@ class VersionChecker {
      */
     start() {
         console.log('啟動版本檢查服務');
+
+        const bootstrapVersion = this.getBootstrapVersion();
+        if (bootstrapVersion !== null && this.getClientTimestamp() === null) {
+            this.saveClientTimestamp(bootstrapVersion);
+        }
 
         // 立即進行一次檢查
         this.checkVersion();
@@ -53,7 +60,7 @@ class VersionChecker {
      * 檢查伺服器版本
      */
     async checkVersion() {
-        if (this.isChecking) {
+        if (this.isChecking || this.isReloading) {
             return;
         }
 
@@ -62,11 +69,14 @@ class VersionChecker {
         try {
             console.log('正在檢查伺服器版本...');
 
-            const response = await window.AuthClient.fetch('/api/version/', {
+            const response = await window.fetch('/api/version/', {
                 method: 'GET',
                 headers: {
-                    'Content-Type': 'application/json'
-                }
+                    'Content-Type': 'application/json',
+                    'Cache-Control': 'no-cache',
+                    'Pragma': 'no-cache'
+                },
+                cache: 'no-store'
             });
 
             if (!response.ok) {
@@ -77,27 +87,7 @@ class VersionChecker {
             const serverTimestamp = data.server_timestamp;
 
             console.log(`伺服器時間戳: ${serverTimestamp} (${data.server_time})`);
-
-            // 取得本地儲存的時間戳
-            const clientTimestamp = this.getClientTimestamp();
-            console.log(`本地時間戳: ${clientTimestamp || '無'}`);
-
-            if (clientTimestamp === null) {
-                // 首次使用或清空了 storage，強制 reload
-                console.log('首次使用或無本地時間戳，強制重新載入');
-                this.saveClientTimestamp(serverTimestamp);
-                this.forceReload();
-                return;
-            }
-
-            if (serverTimestamp > clientTimestamp) {
-                // 伺服器版本較新，顯示更新按鈕
-                console.log('發現新版本，顯示更新提醒');
-                this.showUpdateButton(serverTimestamp);
-            } else {
-                // 版本一致，隱藏更新按鈕
-                this.hideUpdateButton();
-            }
+            this.syncServerVersion(serverTimestamp, 'version-check');
 
         } catch (error) {
             console.error('版本檢查失敗:', error);
@@ -115,12 +105,99 @@ class VersionChecker {
         return stored ? parseInt(stored, 10) : null;
     }
 
+    getBootstrapVersion() {
+        const rawValue = window.__TCRT_SERVER_VERSION__;
+        if (rawValue === undefined || rawValue === null || rawValue === '') {
+            return null;
+        }
+
+        const parsedValue = parseInt(String(rawValue), 10);
+        return Number.isFinite(parsedValue) ? parsedValue : null;
+    }
+
     /**
      * 儲存時間戳到本地
      */
     saveClientTimestamp(timestamp) {
         localStorage.setItem(this.STORAGE_KEY, timestamp.toString());
         console.log(`已儲存時間戳: ${timestamp}`);
+    }
+
+    syncServerVersion(serverTimestamp, source = 'unknown') {
+        if (!Number.isFinite(serverTimestamp)) {
+            return;
+        }
+
+        const clientTimestamp = this.getClientTimestamp();
+        const bootstrapVersion = this.getBootstrapVersion();
+        console.log(`[VersionChecker] 同步版本(${source})，頁面=${bootstrapVersion || '無'}，本地=${clientTimestamp || '無'}，伺服器=${serverTimestamp}`);
+
+        if (clientTimestamp === null) {
+            if (bootstrapVersion !== null && bootstrapVersion < serverTimestamp) {
+                this.applyMandatoryUpdate(serverTimestamp, source);
+                return;
+            }
+
+            this.saveClientTimestamp(serverTimestamp);
+            this.hideUpdateButton();
+            return;
+        }
+
+        if (serverTimestamp > clientTimestamp) {
+            if (bootstrapVersion !== null && bootstrapVersion === serverTimestamp) {
+                console.log('[VersionChecker] 目前頁面已經是最新版本，只同步本地時間戳');
+                this.saveClientTimestamp(serverTimestamp);
+                this.hideUpdateButton();
+                return;
+            }
+
+            this.applyMandatoryUpdate(serverTimestamp, source);
+            return;
+        }
+
+        if (serverTimestamp !== clientTimestamp) {
+            this.saveClientTimestamp(serverTimestamp);
+        }
+
+        this.hideUpdateButton();
+    }
+
+    handleServerVersionResponse(response) {
+        if (!response || !response.headers || this.isReloading) {
+            return;
+        }
+
+        const headerVersion = response.headers.get('X-TCRT-Server-Version');
+        if (!headerVersion) {
+            return;
+        }
+
+        const serverTimestamp = parseInt(headerVersion, 10);
+        if (!Number.isFinite(serverTimestamp)) {
+            return;
+        }
+
+        this.syncServerVersion(serverTimestamp, 'response-header');
+    }
+
+    applyMandatoryUpdate(newTimestamp, source = 'unknown') {
+        if (this.isReloading) {
+            return;
+        }
+
+        this.isReloading = true;
+        this.newTimestamp = newTimestamp;
+        this.saveClientTimestamp(newTimestamp);
+        console.warn(`[VersionChecker] 偵測到 server 已重啟，強制更新頁面 (${source})`);
+
+        const reloadPromise = this.forceReload();
+        if (reloadPromise && typeof reloadPromise.catch === 'function') {
+            reloadPromise.catch(err => {
+                this.isReloading = false;
+                console.error('強制更新頁面失敗:', err);
+                this.showUpdateButton(newTimestamp);
+            });
+        }
     }
 
     /**
@@ -243,11 +320,44 @@ class VersionChecker {
             console.warn('註銷 Service Worker 失敗:', swError);
         }
 
+        try {
+            if (window.TRCache && typeof window.TRCache.clearAll === 'function') {
+                await window.TRCache.clearAll();
+                console.log('已清除 TRCache IndexedDB 快取');
+            }
+        } catch (trCacheError) {
+            console.warn('清除 TRCache 失敗:', trCacheError);
+        }
+
+        try {
+            const removableLocalStorageKeys = [];
+            for (let i = 0; i < localStorage.length; i += 1) {
+                const key = localStorage.key(i);
+                if (!key) {
+                    continue;
+                }
+
+                if (
+                    key.startsWith('i18n_') ||
+                    key.startsWith('test_cases_list_cache_v1') ||
+                    key.startsWith('tr_exec_tc_cache_v1')
+                ) {
+                    removableLocalStorageKeys.push(key);
+                }
+            }
+            removableLocalStorageKeys.forEach(key => localStorage.removeItem(key));
+            if (removableLocalStorageKeys.length > 0) {
+                console.log('已清除本地快取鍵:', removableLocalStorageKeys);
+            }
+        } catch (localStorageError) {
+            console.warn('清除 localStorage 快取失敗:', localStorageError);
+        }
+
         setTimeout(() => {
             const url = new URL(window.location.href);
-            url.searchParams.set('_v', Date.now().toString());
+            url.searchParams.set('_v', (this.newTimestamp || Date.now()).toString());
             window.location.replace(url.toString());
-        }, 500);
+        }, 300);
     }
 
     /**

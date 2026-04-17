@@ -39,6 +39,9 @@ from app.audit import init_audit_database, cleanup_audit_database, audit_service
 
 version_service = get_version_service()
 logging.info(f"應用啟動，伺服器版本時間戳: {version_service.get_server_timestamp()}")
+SERVER_VERSION_HEADER = "X-TCRT-Server-Version"
+HTML_CACHE_CONTROL = "no-store, no-cache, must-revalidate, max-age=0"
+STATIC_CACHE_CONTROL = "no-cache, must-revalidate, max-age=0"
 
 # 設置靜態文件和模板路徑 - 必須在其他路由之前
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -76,6 +79,37 @@ app.mount("/reports", StaticFiles(directory=str(REPORT_DIR), html=True), name="r
 app.mount("/attachments", StaticFiles(directory=str(ATTACHMENTS_DIR), html=False), name="attachments")
 
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+
+
+def get_asset_version() -> str:
+    return str(version_service.get_server_timestamp())
+
+
+def asset_url(path: str) -> str:
+    normalized_path = path.lstrip("/")
+    return f"/static/{normalized_path}?v={get_asset_version()}"
+
+
+templates.env.globals["asset_version"] = get_asset_version
+templates.env.globals["asset_url"] = asset_url
+
+
+@app.middleware("http")
+async def apply_version_headers(request: Request, call_next):
+    response = await call_next(request)
+
+    response.headers[SERVER_VERSION_HEADER] = get_asset_version()
+
+    path = request.url.path
+    content_type = response.headers.get("content-type", "")
+    if path.startswith("/api/version") or content_type.startswith("text/html"):
+        response.headers["Cache-Control"] = HTML_CACHE_CONTROL
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    elif path.startswith("/static/"):
+        response.headers["Cache-Control"] = STATIC_CACHE_CONTROL
+
+    return response
 
 # 包含 API 路由
 from app.api import api_router

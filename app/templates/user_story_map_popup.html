@@ -12,9 +12,9 @@
     <!-- React Flow CSS -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reactflow@11.11.0/dist/style.css">
     <!-- Custom App CSS -->
-    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="{{ asset_url('css/style.css') }}">
     
-    <link rel="stylesheet" href="/static/css/user-story-map-popup.css">
+    <link rel="stylesheet" href="{{ asset_url('css/user-story-map-popup.css') }}">
 </head>
 <body>
     <div id="app" class="usm-popup-container">
@@ -49,9 +49,13 @@
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <!-- React Flow Library -->
     <script src="https://unpkg.com/reactflow@11.11.0"></script>
+    <script>
+    window.__TCRT_SERVER_VERSION__ = "{{ asset_version() }}";
+    </script>
 
-    <script src="/static/js/user-story-map-popup-inline.js"></script>
+    <script src="{{ asset_url('js/version-checker.js') }}"></script>
+    <script src="{{ asset_url('js/user-story-map-popup-inline.js') }}"></script>
 
-    <script src="/static/js/user_story_map_popup.js"></script>
+    <script src="{{ asset_url('js/user_story_map_popup.js') }}"></script>
 </body>
 </html>

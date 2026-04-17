@@ -33,6 +33,16 @@ class AuthClient {
         
         console.log('[AuthClient] 認證客戶端初始化完成');
     }
+
+    observeServerVersion(response) {
+        try {
+            if (window.versionChecker && typeof window.versionChecker.handleServerVersionResponse === 'function') {
+                window.versionChecker.handleServerVersionResponse(response);
+            }
+        } catch (error) {
+            console.warn('[AuthClient] 同步伺服器版本失敗:', error);
+        }
+    }
     
     /**
      * 從本地儲存載入 Token
@@ -222,6 +232,8 @@ class AuthClient {
                 })
             });
             
+            this.observeServerVersion(response);
+
             if (response.ok) {
                 const data = await response.json();
                 this.setToken(data.access_token, data.expires_in);
@@ -301,6 +313,8 @@ class AuthClient {
                 }
             });
             
+            this.observeServerVersion(response);
+
             if (response.ok) {
                 const userInfo = await response.json();
                 console.log('[AuthClient] 取得使用者資訊成功');
@@ -339,6 +353,7 @@ class AuthClient {
         };
         
         const response = await fetch(url, { ...options, headers });
+        this.observeServerVersion(response);
         
         // 如果回傳 401，嘗試刷新 Token 並重試一次
         if (response.status === 401 && this.shouldRefreshToken()) {
@@ -353,7 +368,9 @@ class AuthClient {
                 };
                 
                 console.log('[AuthClient] 使用新 Token 重試請求');
-                return fetch(url, { ...options, headers: newHeaders });
+                const retryResponse = await fetch(url, { ...options, headers: newHeaders });
+                this.observeServerVersion(retryResponse);
+                return retryResponse;
             }
         }
         

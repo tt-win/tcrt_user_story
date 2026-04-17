@@ -1109,7 +1109,7 @@ TC-1003,API 健康檢查,\"服務已啟動\",\"發送 GET /health\",\"回傳 200
 </div>
 
 <!-- Test Case Set 整合模組 -->
-<script src="/static/js/test-case-set-integration.js?v=20260319-1"></script>
+<script src="{{ asset_url('js/test-case-set-integration.js') }}"></script>
 
 <!-- Test Case Section List 側邊欄模組 -->
 <script src="/static/js/test-case-section-list.js"></script>
@@ -1119,10 +1119,10 @@ TC-1003,API 健康檢查,\"服務已啟動\",\"發送 GET /health\",\"回傳 200
 <!-- <script src="/static/js/test-case-section-integration.js"></script> -->
 
 <!-- Test Case 和 Section 拖拽功能 -->
-<script src="/static/js/test-case-drag-drop.js?v=20260319-1"></script>
+<script src="{{ asset_url('js/test-case-drag-drop.js') }}"></script>
 
 <!-- 跨 Test Case Set 複製/搬移功能 -->
-<script src="/static/js/test-case-cross-set-ops.js?v=20260319-1"></script>
+<script src="{{ asset_url('js/test-case-cross-set-ops.js') }}"></script>
 
 <!-- 初始化 Test Case Section List -->
 {% endblock %}
