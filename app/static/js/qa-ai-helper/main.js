@@ -918,8 +918,8 @@
 
   function jiraWikiToMarkdown(text) {
     if (!text) return text || '';
-    // Detect Jira wiki: presence of h1. … h6. heading syntax at line start
-    if (!/^h[1-6]\.\s/m.test(text)) return text;
+    // Detect Jira wiki: heading (h1. …) or table (||…||) syntax
+    if (!/^h[1-6]\.\s/m.test(text) && !/^\|\|.+\|\|/m.test(text)) return text;
     const lines = text.split('\n');
     const result = [];
     let inCode = false, inNoformat = false, inQuote = false;
@@ -953,6 +953,21 @@
       // ordered list
       const ol = s.match(/^(#+)\s+(.*)/);
       if (ol) { result.push('  '.repeat(ol[1].length - 1) + '1. ' + jiraInline(ol[2])); continue; }
+      // table header row: ||col1||col2||...||
+      const thMatch = s.match(/^\|\|(.+)\|\|$/);
+      if (thMatch) {
+        const cols = thMatch[1].split('||').map(c => jiraInline(c.trim()));
+        result.push('| ' + cols.join(' | ') + ' |');
+        result.push('| ' + cols.map(() => '---').join(' | ') + ' |');
+        continue;
+      }
+      // table data row: |col1|col2|...|
+      const tdMatch = s.match(/^\|(.+)\|$/);
+      if (tdMatch && !/^\|.*\|\|/.test(s)) {
+        const cols = tdMatch[1].split('|').map(c => jiraInline(c.trim()));
+        result.push('| ' + cols.join(' | ') + ' |');
+        continue;
+      }
       // regular line
       const converted = jiraInline(s);
       result.push(inQuote ? '> ' + converted : converted);
@@ -1165,6 +1180,15 @@
       exitEditMode();
     }
     proceedBtn.disabled = !validation.is_valid;
+    // Show "重新送交 AI 處理" button if plan already has AI-filled verification items
+    const resubmitBtn = el('qaHelperResubmitCouncilBtn');
+    if (resubmitBtn) {
+      const plan = (state.workspace || {}).requirement_plan;
+      const hasAiFilled = plan && Array.isArray(plan.sections) && plan.sections.some(function (s) {
+        return Array.isArray(s.verification_items) && s.verification_items.length > 0;
+      });
+      resubmitBtn.classList.toggle('d-none', !hasAiFilled || !validation.is_valid);
+    }
   }
 
   function currentRequirementPlan() {
@@ -1937,6 +1961,7 @@
     if (!teamId || !state.sessionId) return;
     state.seedActionInFlight = true;
     renderSeedReviewSummary();
+    if (window.AiThinkingAnimation) window.AiThinkingAnimation.show(t('qaAiHelper.aiThinkingSeed', {}, 'AI 正在產生 Test Case 種子...'));
     try {
       const response = await authFetch(`/api/teams/${teamId}/qa-ai-helper/sessions/${state.sessionId}/seed-sets`, {
         method: 'POST',
@@ -1956,6 +1981,7 @@
     } finally {
       state.seedActionInFlight = false;
       renderSeedReviewSummary();
+      if (window.AiThinkingAnimation) window.AiThinkingAnimation.hide();
     }
   }
 
@@ -2130,6 +2156,7 @@
     if (!teamId || !state.sessionId) return;
     state.testcaseActionInFlight = true;
     renderTestcaseReviewSummary();
+    if (window.AiThinkingAnimation) window.AiThinkingAnimation.show(t('qaAiHelper.aiThinkingTestcase', {}, 'AI 正在產生 Test Case Drafts...'));
     try {
       const response = await authFetch(`/api/teams/${teamId}/qa-ai-helper/sessions/${state.sessionId}/testcase-draft-sets`, {
         method: 'POST',
@@ -2149,6 +2176,7 @@
     } finally {
       state.testcaseActionInFlight = false;
       renderTestcaseReviewSummary();
+      if (window.AiThinkingAnimation) window.AiThinkingAnimation.hide();
     }
   }
 
@@ -2851,9 +2879,48 @@
       setFeedback('warning', t('qaAiHelper.validationBlocked', {}, '格式檢查未通過，暫時不能進入下一步。'));
       return;
     }
+
+    // --- Council Inspection ---
+    if (window.CouncilAnimation) {
+      const teamId = ensureTeamId();
+      if (!teamId || !state.sessionId) return;
+      return new Promise((resolve, reject) => {
+        window.CouncilAnimation.start(teamId, state.sessionId, {
+          authFetch: authFetch,
+          t: t,
+          onDone: async function () {
+            try {
+              await initializeRequirementPlan();
+              resolve();
+            } catch (err) {
+              reject(err);
+            }
+          },
+          onError: function (errMsg) {
+            if (errMsg === 'cancelled') {
+              setFeedback('info', t('qaAiHelper.councilCancelled', {}, 'AI 審查已取消'));
+              resolve();
+            } else {
+              setFeedback('danger', t('qaAiHelper.councilError', {}, 'AI 審查失敗：') + String(errMsg));
+              reject(new Error(errMsg));
+            }
+          },
+        });
+      });
+    }
+
     await initializeRequirementPlan();
   }
 
+  async function skipInspectionToVerificationPlanning() {
+    const ticketSnapshot = (state.workspace || {}).ticket_snapshot;
+    const validation = (ticketSnapshot && ticketSnapshot.validation_summary) || {};
+    if (!ticketSnapshot || !validation.is_valid) {
+      setFeedback('warning', t('qaAiHelper.validationBlocked', {}, '格式檢查未通過，暫時不能進入下一步。'));
+      return;
+    }
+    await initializeRequirementPlan();
+  }
   function bindEvents() {
     bindIfPresent('qaHelperRefreshSessionsBtn', 'click', () => loadSessions().catch(handleError));
     bindIfPresent('qaHelperSessionManagerBtn', 'click', () => {
@@ -2933,6 +3000,8 @@
       button.addEventListener('click', () => restartSession().catch(handleError));
     });
     bindIfPresent('qaHelperProceedVerificationBtn', 'click', () => proceedToVerificationPlanning().catch(handleError));
+    bindIfPresent('qaHelperSkipInspectionBtn', 'click', () => skipInspectionToVerificationPlanning().catch(handleError));
+    bindIfPresent('qaHelperResubmitCouncilBtn', 'click', () => proceedToVerificationPlanning().catch(handleError));
     bindIfPresent('qaHelperEditMarkdownBtn', 'click', () => enterEditMode());
     bindIfPresent('qaHelperCancelEditBtn', 'click', () => exitEditMode());
     bindIfPresent('qaHelperReparseBtn', 'click', () => reparseTicketMarkdown().catch(handleError));
