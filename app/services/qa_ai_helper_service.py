@@ -108,6 +108,7 @@ from app.services.qa_ai_helper_llm_service import (
     get_qa_ai_helper_llm_service,
 )
 from app.services.qa_ai_helper_preclean_service import parse_ticket_to_requirement_payload
+from scripts.qa_ai_helper_preclean import remove_jira_strikethrough
 from app.services.qa_ai_helper_planner import QAAIHelperPlanner
 from app.services.qa_ai_helper_prompt_service import get_qa_ai_helper_prompt_service
 from app.services.qa_ai_helper_runtime import (
@@ -457,7 +458,8 @@ def _build_ticket_markdown(*, ticket_key: str, summary: str, description: str) -
     if summary:
         heading = f"{heading} {summary.strip()}"
     lines = [heading.strip()]
-    converted = _jira_wiki_to_markdown(description)
+    filtered_description = remove_jira_strikethrough(description)
+    converted = _jira_wiki_to_markdown(filtered_description)
     if converted.strip():
         lines.extend(["", converted.strip()])
     return "\n".join(lines).strip()
