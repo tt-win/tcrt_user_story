@@ -1,6 +1,8 @@
 import sys
 from pathlib import Path
 
+import yaml
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
@@ -80,6 +82,49 @@ h3. Scenario 4: 異常處理 - 數據完整性
     assert len(output["Acceptance Criteria"]) == 4
     assert output["Acceptance Criteria"][0]["Scenario"]["name"] == "資料抓取排程 F5 與 F7 輪流拉取"
     assert output["Acceptance Criteria"][0]["Scenario"]["Given"] == ["玩家在 F5 與 F7 環境進行 AG、WM 遊戲產生注單"]
+
+
+def test_build_output_skips_jira_strikethrough_paragraphs():
+    description = """
+h1. Criteria
+ * 保留的需求 A
+ * -這個需求已被刪除-
+ * 保留的需求 B
+ * 保留的需求 C -此尾段已取消-
+-整段不要的需求-
+
+h1. Acceptance Criteria
+h3. Scenario 1: 保留
+ * *Given* 一個前置條件
+ * *When* 觸發
+ * *Then* 預期結果
+
+h3. -Scenario 2: 整段已作廢-
+ * -*Given* 不該被保留-
+ * -*When* 不該被保留-
+ * -*Then* 不該被保留-
+
+h3. Scenario 3: 也保留
+ * *Given* G3
+ * *When* W3
+ * *Then* T3
+""".strip()
+
+    output = build_output(description, comments=["-這整段 comment 已作廢-"])
+
+    serialized = yaml.safe_dump(output, allow_unicode=True)
+    assert "保留的需求 A" in serialized
+    assert "保留的需求 B" in serialized
+    assert "保留的需求 C" in serialized
+    assert "這個需求已被刪除" not in serialized
+    assert "此尾段已取消" not in serialized
+    assert "整段不要的需求" not in serialized
+    assert "這整段 comment 已作廢" not in serialized
+
+    scenarios = [s["Scenario"]["name"] for s in output["Acceptance Criteria"]]
+    assert scenarios == ["保留", "也保留"]
+    assert "整段已作廢" not in serialized
+    assert "不該被保留" not in serialized
 
 
 def test_validate_preclean_output_accepts_valid_ticket_and_warns_missing_technical_specs():

@@ -110,6 +110,23 @@ def remove_strikethrough(text: str) -> str:
     return re.sub(r"~~.*?~~", "", text, flags=re.DOTALL)
 
 
+INLINE_JIRA_STRIKE_RE = re.compile(r"(?<![\w\-])-([^-\n]+?)-(?![\w\-])")
+EMPTY_LINE_RESIDUE_RE = re.compile(r"^(?:\*+|h[1-6]\.)$", re.IGNORECASE)
+
+
+def remove_jira_strikethrough(text: str) -> str:
+    cleaned: List[str] = []
+    for line in text.splitlines():
+        new_line = INLINE_JIRA_STRIKE_RE.sub("", line)
+        stripped = new_line.strip()
+        if not stripped:
+            continue
+        if EMPTY_LINE_RESIDUE_RE.match(stripped):
+            continue
+        cleaned.append(new_line)
+    return "\n".join(cleaned)
+
+
 def clean_inline(text: str) -> str:
     value = str(text or "")
     value = value.replace("\u00a0", " ")
@@ -518,9 +535,11 @@ def parse_acceptance_criteria(lines: List[str]) -> List[Dict[str, Any]]:
 
 
 def build_output(description: str, comments: List[str]) -> Dict[str, Any]:
-    merged = remove_strikethrough(description)
+    merged = remove_jira_strikethrough(remove_strikethrough(description))
     if comments:
-        merged += "\n\n" + remove_strikethrough("\n\n".join(comments))
+        merged += "\n\n" + remove_jira_strikethrough(
+            remove_strikethrough("\n\n".join(comments))
+        )
 
     sections = split_sections(merged)
 

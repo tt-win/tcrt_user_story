@@ -1150,6 +1150,9 @@
     if (!card || !meta || !markdown || !proceedBtn) return;
     if (!ticketSnapshot) {
       if (loadCard) loadCard.classList.remove('d-none');
+      if (noTicketCard) noTicketCard.classList.add('d-none');
+      const noTicketTitleInput = el('qaHelperNoTicketSectionTitle');
+      if (noTicketTitleInput) noTicketTitleInput.value = '';
       card.classList.add('d-none');
       proceedBtn.disabled = true;
       return;
