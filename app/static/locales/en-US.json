@@ -308,7 +308,10 @@
       "aiRatioPercent": "AI Ratio",
       "aiRatioOverallTrend": "AI vs Manual Trend",
       "aiRatioTeamTrend": "Team AI Ratio Trend (Top 10)",
-      "aiRatioTeamRanking": "Team AI Creation Ratio Ranking"
+      "aiRatioTeamRanking": "Team AI Creation Ratio Ranking",
+      "inspectionTitle": "Requirement Analysis (Council Inspection) Token Stats",
+      "inspectionCalls": "Analysis Calls",
+      "inspectionTokens": "Analysis Tokens"
     }
   },
   "profile": {

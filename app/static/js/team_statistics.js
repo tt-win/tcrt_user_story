@@ -2244,6 +2244,21 @@
     }
 
     // ---------- Render: Telemetry ----------
+    const STAGE_LABELS = {
+        'seed': '種子生成',
+        'seed_refine': '種子精煉',
+        'testcase': '測試案例生成',
+        'repair': '修復',
+        'inspection_extraction_a': '需求分析 - 抽取 A',
+        'inspection_extraction_b': '需求分析 - 抽取 B',
+        'inspection_extraction_c': '需求分析 - 抽取 C',
+        'inspection_consolidation': '需求分析 - 整合',
+    };
+    const INSPECTION_STAGES = new Set([
+        'inspection_extraction_a', 'inspection_extraction_b', 'inspection_extraction_c',
+        'inspection_consolidation',
+    ]);
+
     function renderHelperTelemetry(data) {
         if (!data) return;
         const o = data.overall || {};
@@ -2253,6 +2268,25 @@
         setText('helper-tel-total-tokens', fmtNum(o.total_tokens));
         setText('helper-tel-avg-duration', formatDurationMs(o.avg_duration_ms));
         setText('helper-tel-error-rate', pct(o.error_rate));
+
+        // Inspection aggregation KPI
+        if (data.by_stage && typeof data.by_stage === 'object') {
+            let insCalls = 0, insPrompt = 0, insCompletion = 0, insTokens = 0;
+            for (const [stage, info] of Object.entries(data.by_stage)) {
+                if (INSPECTION_STAGES.has(stage)) {
+                    insCalls += info.calls || 0;
+                    insPrompt += info.prompt_tokens || 0;
+                    insCompletion += info.completion_tokens || 0;
+                    insTokens += info.tokens || 0;
+                }
+            }
+            setText('helper-tel-inspection-calls', fmtNum(insCalls));
+            setText('helper-tel-inspection-tokens', fmtNum(insTokens));
+            const insDetailEl = document.getElementById('helper-tel-inspection-detail');
+            if (insDetailEl) {
+                insDetailEl.textContent = `P: ${fmtNum(insPrompt)} / C: ${fmtNum(insCompletion)}`;
+            }
+        }
 
         // Token trend
         if (data.token_trend) {
@@ -2292,7 +2326,7 @@
             const stageList = Object.entries(data.by_stage).map(([stage, info]) => ({ stage, ...info }));
             renderHelperTable('helper-telemetry-stage-tbody', stageList, (s) =>
                 `<tr>
-                    <td>${escapeHtml(s.stage)}</td>
+                    <td>${escapeHtml(STAGE_LABELS[s.stage] || s.stage)}</td>
                     <td>${fmtNum(s.calls)}</td>
                     <td>${fmtNum(s.prompt_tokens)}</td>
                     <td>${fmtNum(s.completion_tokens)}</td>

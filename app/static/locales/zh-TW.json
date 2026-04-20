@@ -308,7 +308,10 @@
       "aiRatioPercent": "AI 佔比",
       "aiRatioOverallTrend": "AI vs 手動趨勢",
       "aiRatioTeamTrend": "團隊 AI 比例趨勢 (Top 10)",
-      "aiRatioTeamRanking": "團隊 AI 生成比例排行"
+      "aiRatioTeamRanking": "團隊 AI 生成比例排行",
+      "inspectionTitle": "需求分析 (Council Inspection) Token 統計",
+      "inspectionCalls": "分析呼叫數",
+      "inspectionTokens": "分析 Token 總計"
     }
   },
   "profile": {

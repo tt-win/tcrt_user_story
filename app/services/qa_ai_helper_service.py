@@ -175,7 +175,11 @@ _SESSION_SCREEN_TRANSITIONS: Dict[str | None, set[str]] = {
     QAAIHelperSessionScreen.FAILED.value: set(),
 }
 _SCENARIO_TITLE_PREFIX_PATTERN = re.compile(r"^Scenario\s+\d+\s*:\s*", re.IGNORECASE)
-_QA_AI_HELPER_LLM_STAGES = {"seed", "seed_refine", "testcase", "repair"}
+_QA_AI_HELPER_LLM_STAGES = {
+    "seed", "seed_refine", "testcase", "repair",
+    "inspection_extraction_a", "inspection_extraction_b", "inspection_extraction_c",
+    "inspection_consolidation",
+}
 
 
 def _now() -> datetime:
@@ -1595,6 +1599,7 @@ class QAAIHelperService:
 
         extraction_results: Dict[str, Dict[int, str]] = {}  # role_label -> {scenario_idx: content}
         extraction_errors: List[Dict[str, Any]] = []
+        _telemetry_records: List[Dict[str, Any]] = []  # 收集所有 LLM 呼叫的遙測資料
 
         async def _extract(role, scenario_idx, scenario):
             scenario_data = scenario.get("Scenario") if isinstance(scenario, dict) else None
@@ -1618,13 +1623,26 @@ class QAAIHelperService:
                     "scenario_gherkin": scenario_gherkin,
                 },
             )
+            stage = llm_svc._ROLE_LABEL_TO_STAGE.get(role.label, f"inspection_extraction_{role.label.lower()}")
+            t0 = time.monotonic()
             async with sem:
                 try:
                     result = await llm_svc.call_inspection_extraction(
                         role_label=role.label,
                         prompt=prompt,
                     )
+                    duration_ms = int((time.monotonic() - t0) * 1000)
                     extraction_results.setdefault(role.label, {})[scenario_idx] = result.content
+                    _telemetry_records.append({
+                        "stage": stage,
+                        "event_name": "extraction",
+                        "status": QAAIHelperRunStatus.SUCCEEDED.value,
+                        "model_name": result.model_name,
+                        "usage": result.usage or {},
+                        "duration_ms": duration_ms,
+                        "payload": {"role_label": role.label, "scenario_index": scenario_idx},
+                        "error_message": None,
+                    })
                     _emit(
                         "extraction_complete",
                         {
@@ -1635,12 +1653,23 @@ class QAAIHelperService:
                         },
                     )
                 except Exception as exc:
+                    duration_ms = int((time.monotonic() - t0) * 1000)
                     logger.warning(
                         "MAGI extraction failed: role=%s scenario=%d error=%s",
                         role.label,
                         scenario_idx,
                         exc,
                     )
+                    _telemetry_records.append({
+                        "stage": stage,
+                        "event_name": "extraction",
+                        "status": QAAIHelperRunStatus.FAILED.value,
+                        "model_name": None,
+                        "usage": {},
+                        "duration_ms": duration_ms,
+                        "payload": {"role_label": role.label, "scenario_index": scenario_idx},
+                        "error_message": str(exc),
+                    })
                     extraction_errors.append(
                         {
                             "model_label": role.label,
@@ -1669,6 +1698,7 @@ class QAAIHelperService:
         total_extraction_calls = len(roles) * len(scenarios)
         if len(extraction_errors) >= total_extraction_calls and total_extraction_calls > 0:
             _emit("done", {"success": False, "error": "All extraction calls failed"})
+            await self._persist_inspection_telemetry(session, _telemetry_records)
             return {"success": False, "error": "All extraction calls failed", "sections_payload": []}
 
         # ── Phase 2: Consolidation ──
@@ -1700,13 +1730,37 @@ class QAAIHelperService:
         )
 
         try:
+            t0 = time.monotonic()
             consolidation_result = await llm_svc.call_inspection_consolidation(
                 prompt=consolidation_prompt,
             )
+            duration_ms = int((time.monotonic() - t0) * 1000)
+            _telemetry_records.append({
+                "stage": "inspection_consolidation",
+                "event_name": "consolidation",
+                "status": QAAIHelperRunStatus.SUCCEEDED.value,
+                "model_name": consolidation_result.model_name,
+                "usage": consolidation_result.usage or {},
+                "duration_ms": duration_ms,
+                "payload": None,
+                "error_message": None,
+            })
         except Exception as exc:
+            duration_ms = int((time.monotonic() - t0) * 1000)
+            _telemetry_records.append({
+                "stage": "inspection_consolidation",
+                "event_name": "consolidation",
+                "status": QAAIHelperRunStatus.FAILED.value,
+                "model_name": None,
+                "usage": {},
+                "duration_ms": duration_ms,
+                "payload": None,
+                "error_message": str(exc),
+            })
             logger.error("MAGI consolidation failed: %s", exc)
             _emit("consolidation_error", {"error": str(exc)})
             _emit("done", {"success": False, "error": f"Consolidation failed: {exc}"})
+            await self._persist_inspection_telemetry(session, _telemetry_records)
             return {"success": False, "error": f"Consolidation failed: {exc}", "sections_payload": []}
 
         # Parse and validate JSON
@@ -1728,7 +1782,19 @@ class QAAIHelperService:
                     f"請修正並回傳符合要求的完整 JSON，不要輸出 JSON 以外的文字。\n\n"
                     f"{consolidation_result.content}"
                 )
+                t0_repair = time.monotonic()
                 repair_result = await llm_svc.call_inspection_consolidation(prompt=repair_prompt)
+                repair_duration_ms = int((time.monotonic() - t0_repair) * 1000)
+                _telemetry_records.append({
+                    "stage": "inspection_consolidation",
+                    "event_name": "repair",
+                    "status": QAAIHelperRunStatus.SUCCEEDED.value,
+                    "model_name": repair_result.model_name,
+                    "usage": repair_result.usage or {},
+                    "duration_ms": repair_duration_ms,
+                    "payload": {"reason": validation_error},
+                    "error_message": None,
+                })
                 consolidation_data = json.loads(repair_result.content)
                 validation_error = self._validate_consolidation_json(consolidation_data)
             except Exception:
@@ -1737,6 +1803,7 @@ class QAAIHelperService:
                 error_msg = f"Consolidation schema invalid after repair: {validation_error}"
                 _emit("consolidation_error", {"error": error_msg})
                 _emit("done", {"success": False, "error": error_msg})
+                await self._persist_inspection_telemetry(session, _telemetry_records)
                 return {"success": False, "error": error_msg, "sections_payload": []}
 
         sections_payload = self._transform_inspection_to_sections_payload(consolidation_data)
@@ -1752,6 +1819,7 @@ class QAAIHelperService:
             },
         )
         _emit("done", {"success": True})
+        await self._persist_inspection_telemetry(session, _telemetry_records)
         return {"success": True, "sections_payload": sections_payload}
 
     async def apply_council_inspection_results(
@@ -2298,6 +2366,43 @@ class QAAIHelperService:
             )
         )
         sync_db.flush()
+
+    async def _persist_inspection_telemetry(
+        self,
+        session: QAAIHelperSession,
+        records: List[Dict[str, Any]],
+    ) -> None:
+        """Persist collected council inspection telemetry records in a single write transaction."""
+        if not records:
+            return
+        session_id = session.id
+
+        def _do(sync_db: Session) -> None:
+            sess = sync_db.query(QAAIHelperSession).filter(QAAIHelperSession.id == session_id).first()
+            if sess is None:
+                logger.warning("_persist_inspection_telemetry: session %d not found, skipping", session_id)
+                return
+            for rec in records:
+                self._persist_telemetry_sync(
+                    sync_db,
+                    session=sess,
+                    planned_revision_id=None,
+                    draft_set_id=None,
+                    user_id=sess.created_by_user_id,
+                    stage=rec["stage"],
+                    event_name=rec["event_name"],
+                    status=rec["status"],
+                    model_name=rec.get("model_name"),
+                    usage=rec.get("usage") or {},
+                    duration_ms=rec.get("duration_ms", 0),
+                    payload=rec.get("payload"),
+                    error_message=rec.get("error_message"),
+                )
+
+        try:
+            await self._run_write(_do)
+        except Exception:
+            logger.exception("Failed to persist inspection telemetry for session %d", session_id)
 
     def _ensure_ai_helper_root_section_sync(
         self,
