@@ -1036,11 +1036,9 @@ async def search_configs_by_tp_tickets(
         search_query = q.strip().upper()
 
         # 驗證搜尋查詢格式（基本的 TP 票號格式檢查）
+        # live-search UX：格式不符時回空列表，不丟 400
         if not _is_valid_tp_search_query(search_query):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="搜尋查詢必須包含 TP 票號相關內容"
-            )
+            return []
 
         # 使用 tp_tickets_search 欄位進行模糊搜尋
         query = sync_db.query(TestRunConfigDB).filter(
@@ -1087,6 +1085,8 @@ async def search_configs_by_tp_tickets(
 
     try:
         return await main_boundary.run_sync_read(_search)
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

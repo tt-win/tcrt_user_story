@@ -664,11 +664,9 @@ async def search_test_run_sets_by_tp_tickets(
         verify_team_exists(team_id, sync_db)
 
         search_query = q.strip().upper()
+        # live-search UX：格式不符時回空列表，不丟 400
         if not _is_valid_tp_search_query(search_query):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="搜尋查詢必須包含 TP 票號相關內容",
-            )
+            return []
 
         query = (
             sync_db.query(TestRunSetDB)
