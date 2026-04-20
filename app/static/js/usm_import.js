@@ -40,7 +40,7 @@ function openUSMImportModal() {
  */
 async function populateTeamSelect() {
     try {
-        const response = await window.AuthClient.fetch('/api/teams', {
+        const response = await window.AuthClient.fetch('/api/teams/', {
             method: 'GET',
             headers: { 'Content-Type': 'application/json' }
         });

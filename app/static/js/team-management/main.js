@@ -597,7 +597,7 @@ async function saveTeam() {
     }
     
     try {
-        let url = '/api/teams';
+        let url = '/api/teams/';
         let method = 'POST';
         
         if (currentEditTeam) {
@@ -1464,7 +1464,7 @@ function loadSyncModalState() {
 
 async function loadTcSyncTeams() {
     try {
-        const res = await window.AuthClient.fetch('/api/teams');
+        const res = await window.AuthClient.fetch('/api/teams/');
         if (!res.ok) return;
         const teams = await res.json();
         sel.innerHTML = '';

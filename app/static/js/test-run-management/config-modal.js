@@ -196,7 +196,7 @@ async function handleSaveConfig() {
 
     const url = isEdit
       ? `/api/teams/${currentTeamId}/test-run-configs/${configId}`
-      : `/api/teams/${currentTeamId}/test-run-configs`;
+      : `/api/teams/${currentTeamId}/test-run-configs/`;
     const method = isEdit ? 'PUT' : 'POST';
 
     const saveBtn = document.getElementById('saveConfigBtn');

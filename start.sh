@@ -15,9 +15,9 @@ fi
 
 echo "Starting server in background..."
 if [ "$UVICORN_RELOAD" = "1" ]; then
-    uv run uvicorn app.main:app --host "$HOST" --port "$PORT" --reload &
+    uv run uvicorn app.main:app --host "$HOST" --port "$PORT" --proxy-headers --forwarded-allow-ips '*' --reload &
 else
-    uv run uvicorn app.main:app --host "$HOST" --port "$PORT" &
+    uv run uvicorn app.main:app --host "$HOST" --port "$PORT" --proxy-headers --forwarded-allow-ips '*' &
 fi
 PID=$!
 echo $PID > "$SERVER_PID_FILE"

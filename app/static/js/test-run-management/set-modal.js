@@ -131,7 +131,7 @@ async function handleSaveTestRunSet() {
 
     const endpoint = setId
         ? `/api/teams/${currentTeamId}/test-run-sets/${setId}`
-        : `/api/teams/${currentTeamId}/test-run-sets`;
+        : `/api/teams/${currentTeamId}/test-run-sets/`;
     const method = setId ? 'PUT' : 'POST';
 
     const saveBtn = document.getElementById('saveTestRunSetBtn');

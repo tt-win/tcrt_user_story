@@ -90,7 +90,7 @@ async function resolveConfigTestCaseSetIds(configId) {
         return configScope;
       }
     }
-    const resp = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${configId}/items?limit=10000`);
+    const resp = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${configId}/items/?limit=10000`);
     if (!resp.ok) return [];
     const items = await resp.json();
     if (!Array.isArray(items) || items.length === 0) return [];
@@ -302,7 +302,7 @@ async function loadCaseSelectData() {
     currentSectionTree = mergedSections;
 
     const casesResponses = await Promise.all(
-      scopeIds.map(setId => window.AuthClient.fetch(`/api/teams/${currentTeamId}/testcases?set_id=${setId}&limit=10000`))
+      scopeIds.map(setId => window.AuthClient.fetch(`/api/teams/${currentTeamId}/testcases/?set_id=${setId}&limit=10000`))
     );
     const mergedCases = [];
     for (const casesResp of casesResponses) {
@@ -536,7 +536,7 @@ async function editTestCases(configId) {
     createdItemsInSession = false;
     currentSelectingConfigId = configId;
     // 讀取現有 items，預設勾選
-    const resp = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${configId}/items?limit=10000`);
+    const resp = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${configId}/items/?limit=10000`);
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const items = await resp.json();
 
@@ -934,7 +934,7 @@ async function createItemsFromSelection() {
   }));
 
   try {
-    const url = `/api/teams/${currentTeamId}/test-run-configs/${currentSelectingConfigId}/items`;
+    const url = `/api/teams/${currentTeamId}/test-run-configs/${currentSelectingConfigId}/items/`;
     const resp = await window.AuthClient.fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items }) });
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const res = await resp.json();
@@ -982,7 +982,7 @@ async function saveEditedItems() {
         parent_record: c.parent_record || [],
         raw_fields: c.raw_fields || null,
       }));
-      const url = `/api/teams/${currentTeamId}/test-run-configs/${currentSelectingConfigId}/items`;
+      const url = `/api/teams/${currentTeamId}/test-run-configs/${currentSelectingConfigId}/items/`;
       const resp = await window.AuthClient.fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ items }) });
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       await resp.json();

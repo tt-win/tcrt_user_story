@@ -1824,7 +1824,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     let options = [];
     try {
       const resp = await window.AuthClient.fetch(
-        "/api/users?page=1&per_page=100",
+        "/api/users/?page=1&per_page=100",
       );
       if (resp.ok) {
         const data = await resp.json();

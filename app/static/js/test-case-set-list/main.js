@@ -794,7 +794,7 @@ async function ensureQuickSearchTestCases() {
   quickSearchLoadPromise = (async () => {
     try {
       if (!window.AuthClient) throw new Error('AuthClient 尚未初始化');
-      const resp = await window.AuthClient.fetch(`/api/teams/${teamId}/testcases?load_all=true`);
+      const resp = await window.AuthClient.fetch(`/api/teams/${teamId}/testcases/?load_all=true`);
       if (!resp.ok) {
         const errorText = await resp.text();
         throw new Error(errorText || `Failed to load test cases (${resp.status})`);
@@ -1073,7 +1073,7 @@ async function loadSetSectionsAndTestCases(setId) {
 
     // 載入該 Set 內的所有 Test Cases
     const casesResponse = await window.AuthClient.fetch(
-      `/api/teams/${currentTeamId}/testcases?set_id=${setId}&limit=10000`,
+      `/api/teams/${currentTeamId}/testcases/?set_id=${setId}&limit=10000`,
       { method: 'GET' }
     );
 
@@ -1429,14 +1429,15 @@ async function confirmSetCaseSelection() {
     btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 建立中...';
 
     // 1. 建立 Test Run Config
-    const configResponse = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs`, {
+    const configResponse = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
             name: name,
             description: 'Created from Test Case Set card',
             status: 'active',
-            team_id: currentTeamId
+            team_id: currentTeamId,
+            test_case_set_ids: currentTestCaseSetId != null ? [currentTestCaseSetId] : []
         })
     });
 
@@ -1466,7 +1467,7 @@ async function confirmSetCaseSelection() {
     }
 
     // 3. 批次新增 Test Run Items
-    const itemsResponse = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${newConfigId}/items`, {
+    const itemsResponse = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-configs/${newConfigId}/items/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

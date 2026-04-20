@@ -4846,7 +4846,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             }
 
             // Fetch all available teams (via search API or team list)
-            const response = await fetch(`/api/teams?map_id=${currentMapId}`, {
+            const response = await fetch(`/api/teams/?map_id=${currentMapId}`, {
                 method: 'GET',
                 headers,
             });

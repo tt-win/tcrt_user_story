@@ -148,7 +148,7 @@
         teamFilterInitialized = true;
 
         try {
-            const response = await authFetch('/api/teams');
+            const response = await authFetch('/api/teams/');
             if (!response.ok) {
                 const body = await response.text().catch(() => '');
                 throw new Error(`Failed to load teams: ${response.status} ${body}`);

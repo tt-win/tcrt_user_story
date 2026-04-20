@@ -185,7 +185,7 @@
       const q = (document.getElementById('pm-search')?.value || '').trim();
       const params = new URLSearchParams({ page: String(state.page), per_page: String(state.perPage) });
       if (q) params.set('search', q);
-      const url = `/api/users?${params.toString()}`;
+      const url = `/api/users/?${params.toString()}`;
       const resp = await window.AuthClient.fetch(url);
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
       const json = await resp.json();
@@ -504,7 +504,7 @@
       }
       try {
         const body = collectForm(null /* new */);
-        const resp = await window.AuthClient.fetch('/api/users', {
+        const resp = await window.AuthClient.fetch('/api/users/', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
         });
         if (!resp.ok) throw await respError(resp);
@@ -724,7 +724,7 @@
 
   async function searchLarkUsers(term){
     const params = new URLSearchParams({ search: term, per_page: '20' });
-    const resp = await window.AuthClient.fetch(`/api/lark/users?${params.toString()}`);
+    const resp = await window.AuthClient.fetch(`/api/lark/users/?${params.toString()}`);
     if (!resp.ok) throw new Error('HTTP '+resp.status);
     const json = await resp.json();
     return json?.users || [];
