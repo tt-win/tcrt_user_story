@@ -246,11 +246,29 @@ def _priority_from_text(value: str) -> Priority:
     return Priority.MEDIUM
 
 
+_LEADING_NUMBER_PATTERN = re.compile(
+    r"^\s*[\(（]?\s*\d+\s*[\)）\.。、:：]\s*"
+)
+
+
+def _strip_leading_numbering(text: str) -> str:
+    stripped = text
+    # 去除多層前導編號，避免「1. 1. ...」這類重複編號
+    while True:
+        new_value = _LEADING_NUMBER_PATTERN.sub("", stripped, count=1)
+        if new_value == stripped:
+            break
+        stripped = new_value
+    return stripped.strip()
+
+
 def _join_lines(lines: Sequence[str], *, numbered: bool = False) -> str:
     normalized = [str(item).strip() for item in lines if str(item).strip()]
     if not numbered:
         return "\n".join(normalized)
-    return "\n".join(f"{index + 1}. {line}" for index, line in enumerate(normalized))
+    cleaned = [_strip_leading_numbering(line) for line in normalized]
+    cleaned = [line for line in cleaned if line]
+    return "\n".join(f"{index + 1}. {line}" for index, line in enumerate(cleaned))
 
 
 def _jira_wiki_inline_to_md(text: str) -> str:
