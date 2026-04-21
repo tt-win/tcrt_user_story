@@ -34,8 +34,10 @@ function renderTestRunSetCards(filterStatus) {
             if (filterStatus === 'archived') {
                 return setStatus === 'archived';
             }
-            // 其他篩選 (draft, active, completed)：只顯示非 archived 的 set
-            return setStatus !== 'archived';
+            // 其他篩選 (draft, active, completed)：需為非 archived 且內含符合狀態的 Test Run
+            if (setStatus === 'archived') return false;
+            const runs = Array.isArray(set.test_runs) ? set.test_runs : [];
+            return filterTestRunsByStatus(runs, filterStatus).length > 0;
         });
     }
 
