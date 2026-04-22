@@ -435,6 +435,7 @@ class TestCaseLocal(Base):
     tcg_json = Column(Text, nullable=True)
     parent_record_json = Column(Text, nullable=True)
     raw_fields_json = Column(Text, nullable=True)
+    test_data_json = Column(Text, nullable=True)
 
     # 版本與同步控制
     sync_status = Column(Enum(SyncStatus), default=SyncStatus.SYNCED, nullable=False, index=True)

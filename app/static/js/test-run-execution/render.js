@@ -1682,6 +1682,26 @@ function generateScrollableContentHtml(testCase) {
                     </div>
                 </div>
                 ` : ''}
+                ${(testCase.test_data && testCase.test_data.length) ? `
+                <div class="mb-3">
+                    <h6 class="mb-2"><i class="fas fa-database me-2"></i><span data-i18n="testRun.testData">Test Data</span></h6>
+                    <div class="section-block section-test-data">
+                        ${testCase.test_data.map((td, idx) => `
+                            <div class="d-flex align-items-center mb-2 p-2 rounded" style="background: var(--tr-bg-light);">
+                                <div class="flex-grow-1 me-2">
+                                    <div class="fw-bold small text-muted">${escapeHtml(td.name)}</div>
+                                    <code class="small">${escapeHtml(td.value)}</code>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-outline-secondary copy-test-data-btn"
+                                        data-value="${escapeHtml(td.value)}"
+                                        data-i18n-title="testRun.copyTestData">
+                                    <i class="fas fa-copy"></i>
+                                </button>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+                ` : ''}
                 ${testCase.expected_result ? `
                 <div class="mb-3">
                     <h6 class="mb-2" data-i18n="testRun.expectedResult">預期結果</h6>
@@ -2084,5 +2104,63 @@ function handleAttachmentDownload(attachmentName, fileToken, fileUrl) {
         AppUtils.showWarning(warningMessage);
     }
 }
+
+// ===== Test Data 複製功能 =====
+function copyTestDataValue(btn) {
+    const value = btn.getAttribute('data-value');
+    if (!value) return;
+    
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(value).then(() => {
+            const originalHtml = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-check"></i>';
+            btn.classList.remove('btn-outline-secondary');
+            btn.classList.add('btn-success');
+            setTimeout(() => {
+                btn.innerHTML = originalHtml;
+                btn.classList.remove('btn-success');
+                btn.classList.add('btn-outline-secondary');
+            }, 1500);
+        }).catch(err => {
+            console.error('複製 Test Data 失敗:', err);
+            const errorMessage = window.i18n ? window.i18n.t('errors.copyFailed', {}, '複製失敗') : '複製失敗';
+            AppUtils.showError(errorMessage);
+        });
+    } else {
+        // 降級方案
+        const textarea = document.createElement('textarea');
+        textarea.value = value;
+        textarea.style.position = 'fixed';
+        textarea.style.left = '-9999px';
+        document.body.appendChild(textarea);
+        textarea.select();
+        try {
+            document.execCommand('copy');
+            const originalHtml = btn.innerHTML;
+            btn.innerHTML = '<i class="fas fa-check"></i>';
+            btn.classList.remove('btn-outline-secondary');
+            btn.classList.add('btn-success');
+            setTimeout(() => {
+                btn.innerHTML = originalHtml;
+                btn.classList.remove('btn-success');
+                btn.classList.add('btn-outline-secondary');
+            }, 1500);
+        } catch (err) {
+            console.error('複製 Test Data 失敗:', err);
+            const errorMessage = window.i18n ? window.i18n.t('errors.copyFailed', {}, '複製失敗') : '複製失敗';
+            AppUtils.showError(errorMessage);
+        }
+        document.body.removeChild(textarea);
+    }
+}
+
+// 使用事件委派綁定 Test Data 複製按鈕
+document.addEventListener('click', function(e) {
+    const btn = e.target.closest('.copy-test-data-btn');
+    if (btn) {
+        e.preventDefault();
+        copyTestDataValue(btn);
+    }
+});
 
 // ===== JIRA Tooltip 功能 =====

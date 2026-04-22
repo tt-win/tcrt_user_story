@@ -75,6 +75,16 @@ def _to_response(
     except Exception:
         tcg_items = []
 
+    # 解析 Test Data
+    test_data_items: list = []
+    try:
+        if row.test_data_json:
+            data = json.loads(row.test_data_json)
+            if isinstance(data, list):
+                test_data_items = [t for t in data if isinstance(t, dict)]
+    except Exception:
+        test_data_items = []
+
     section_id = row.test_case_section_id
     section_info = section_meta or {}
     section_name = section_info.get("name")
@@ -109,6 +119,7 @@ def _to_response(
         section_name=section_name,
         section_path=section_path,
         section_level=section_level,
+        test_data=test_data_items,
     )
 
 

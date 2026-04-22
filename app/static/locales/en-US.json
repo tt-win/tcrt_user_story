@@ -553,7 +553,10 @@
     "testRunDetails": "Test Run Details",
     "testRunNameRequired": "Test Run Name",
     "testSteps": "Test Steps",
-    "uploadedAttachments": "Uploaded Attachments"
+    "uploadedAttachments": "Uploaded Attachments",
+    "testData": "Test Data",
+    "addTestData": "Add Test Data",
+    "noTestData": "No Test Data"
   },
   "hotkeys": {
     "quickSearch": "Press / for quick search",
@@ -1486,6 +1489,8 @@
     },
     "statusUpdated": "Status updated",
     "steps": "Test Steps",
+    "testData": "Test Data",
+    "copyTestData": "Copy Test Data",
     "subtitle": "Manage test execution records, track test progress and results",
     "tableIdHint": "Please enter the Lark table Table ID, format should start with \"tbl\"",
     "tableIdOptionalHint": "Optional in local mode; to sync with Lark, use a Table ID starting with \"tbl\"",

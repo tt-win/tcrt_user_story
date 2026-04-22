@@ -121,6 +121,10 @@ function showTestCaseModal(testCase = null) {
             expected_result: testCase.expected_result || ''
         };
 
+        // 初始化 Test Data
+        currentTestData = Array.isArray(testCase.test_data) ? testCase.test_data.map(td => ({...td})) : [];
+        renderTestDataList();
+
         // 初始化 Markdown 預覽內容
         markdownFields.forEach(fieldId => {
             updateMarkdownPreview(fieldId);
@@ -199,6 +203,10 @@ function showTestCaseModal(testCase = null) {
 
         // 渲染附件列表（新增模式下為空）
         renderAttachmentsList();
+
+        // 初始化 Test Data（新增模式為空）
+        currentTestData = [];
+        renderTestDataList();
 
         // 清空所有 Markdown 預覽內容
         markdownFields.forEach(fieldId => {
@@ -500,6 +508,13 @@ async function saveTestCase() {
     const form = document.getElementById('testCaseForm');
     const formData = new FormData(form);
 
+    // 收集 Test Data
+    const testData = currentTestData.map(td => ({
+        id: td.id || crypto.randomUUID(),
+        name: td.name || '',
+        value: td.value || ''
+    })).filter(td => td.name.trim() !== '');
+
     const testCaseData = {
         title: formData.get('title'),
         test_case_number: formData.get('test_case_number'),
@@ -509,6 +524,7 @@ async function saveTestCase() {
         steps: document.getElementById('test_steps').value,
         expected_result: document.getElementById('expected_result').value,
         tcg: document.getElementById('tcg').value,  // 從隱藏欄位取得 TCG（由 Modal 多選系統維護）
+        test_data: testData,
         // 新增：包含當前選擇的 Test Case Set ID
         ...(currentSetId && { test_case_set_id: currentSetId })
         // 注意：不再包含 attachments，因為附件現在是立即附加到記錄的
@@ -2091,6 +2107,89 @@ function ensurePaginationControls() {
     }
     return controls;
 }
+
+// ===== Test Data 管理功能 =====
+let currentTestData = [];
+
+function renderTestDataList() {
+    const container = document.getElementById('testDataList');
+    if (!container) return;
+
+    if (!currentTestData || currentTestData.length === 0) {
+        container.innerHTML = '<p class="text-muted small mb-0"><i class="fas fa-info-circle me-1"></i><span data-i18n="form.noTestData">尚無 Test Data</span></p>';
+        return;
+    }
+
+    container.innerHTML = currentTestData.map((td, idx) => `
+        <div class="d-flex align-items-center gap-2 mb-2 test-data-item" data-idx="${idx}">
+            <input type="text" class="form-control form-control-sm test-data-name"
+                   placeholder="Name" value="${escapeHtml(td.name || '')}" style="flex: 1;">
+            <input type="text" class="form-control form-control-sm test-data-value"
+                   placeholder="Value" value="${escapeHtml(td.value || '')}" style="flex: 2;">
+            <button type="button" class="btn btn-sm btn-outline-danger remove-test-data-btn" data-idx="${idx}">
+                <i class="fas fa-trash-alt"></i>
+            </button>
+        </div>
+    `).join('');
+
+    // 綁定變更事件
+    container.querySelectorAll('.test-data-name, .test-data-value').forEach(input => {
+        input.addEventListener('change', updateTestDataFromDOM);
+        input.addEventListener('input', updateTestDataFromDOM);
+    });
+
+    // 綁定刪除事件
+    container.querySelectorAll('.remove-test-data-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const idx = parseInt(e.currentTarget.dataset.idx);
+            currentTestData.splice(idx, 1);
+            renderTestDataList();
+            isFormChanged = true;
+        });
+    });
+}
+
+function updateTestDataFromDOM() {
+    const container = document.getElementById('testDataList');
+    if (!container) return;
+
+    const items = container.querySelectorAll('.test-data-item');
+    items.forEach((item, idx) => {
+        if (currentTestData[idx]) {
+            currentTestData[idx].name = item.querySelector('.test-data-name').value;
+            currentTestData[idx].value = item.querySelector('.test-data-value').value;
+        }
+    });
+    isFormChanged = true;
+}
+
+function addTestData() {
+    currentTestData.push({
+        id: crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(),
+        name: '',
+        value: ''
+    });
+    renderTestDataList();
+    isFormChanged = true;
+
+    // 聚焦到新項目的 name 輸入框
+    const container = document.getElementById('testDataList');
+    if (container) {
+        const lastItem = container.querySelector('.test-data-item:last-child');
+        if (lastItem) {
+            const nameInput = lastItem.querySelector('.test-data-name');
+            if (nameInput) nameInput.focus();
+        }
+    }
+}
+
+// 初始化 Test Data 新增按鈕事件
+document.addEventListener('DOMContentLoaded', function() {
+    const addBtn = document.getElementById('addTestDataBtn');
+    if (addBtn) {
+        addBtn.addEventListener('click', addTestData);
+    }
+});
 
 function updatePagination() {
     // 分頁控制已停用；僅重新計算列表高度

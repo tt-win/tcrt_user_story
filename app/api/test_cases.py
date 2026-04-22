@@ -576,6 +576,16 @@ async def get_test_case(
             except Exception:
                 tcg_items = []
 
+            # 解析 Test Data
+            test_data_items = []
+            try:
+                if item.test_data_json:
+                    data = json.loads(item.test_data_json)
+                    if isinstance(data, list):
+                        test_data_items = [t for t in data if isinstance(t, dict)]
+            except Exception:
+                test_data_items = []
+
             return TestCaseResponse(
                 record_id=item.lark_record_id or str(item.id),
                 test_case_number=item.test_case_number or "",
@@ -599,6 +609,7 @@ async def get_test_case(
                 updated_at=item.updated_at,
                 last_sync_at=item.last_sync_at,
                 test_case_set_id=item.test_case_set_id,
+                test_data=test_data_items,
                 raw_fields={},
             )
         return result
@@ -730,6 +741,9 @@ async def create_test_case(
                 tcg_json=None,
                 parent_record_json=None,
                 raw_fields_json=None,
+                test_data_json=json.dumps([td.model_dump() for td in case.test_data], ensure_ascii=False)
+                if case.test_data
+                else None,
                 sync_status=SyncStatus.PENDING,
                 local_version=1,
                 # ✅ 設置 Test Case Set 和 Section（使用指定的或 Unassigned）
@@ -802,6 +816,7 @@ async def create_test_case(
                 section_name=section_name,
                 section_path=section_path,
                 section_level=section_level,
+                test_data=case.test_data if case.test_data else [],
             )
 
             audit_context = {
@@ -987,6 +1002,10 @@ async def update_test_case(
                 item.test_result = case_update.test_result
                 changed = True
                 changed_fields.append("test_result")
+            if case_update.test_data is not None:
+                item.test_data_json = json.dumps([td.model_dump() for td in case_update.test_data], ensure_ascii=False)
+                changed = True
+                changed_fields.append("test_data")
 
             # Set / Section 更新
             if case_update.test_case_set_id is not None or case_update.test_case_section_id is not None:
@@ -1896,6 +1915,16 @@ async def get_test_case_by_number(
             except Exception:
                 tcg_items = []
 
+            # 解析 Test Data
+            test_data_items = []
+            try:
+                if item.test_data_json:
+                    data = json.loads(item.test_data_json)
+                    if isinstance(data, list):
+                        test_data_items = [t for t in data if isinstance(t, dict)]
+            except Exception:
+                test_data_items = []
+
             return TestCaseResponse(
                 record_id=item.lark_record_id or str(item.id),
                 test_case_number=item.test_case_number or "",
@@ -1919,6 +1948,7 @@ async def get_test_case_by_number(
                 updated_at=item.updated_at,
                 last_sync_at=item.last_sync_at,
                 test_case_set_id=item.test_case_set_id,
+                test_data=test_data_items,
                 raw_fields={},
             )
 
