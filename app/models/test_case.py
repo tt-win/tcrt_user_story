@@ -4,6 +4,7 @@
 基於真實的 Lark 表格結構設計，支援擴展性和靈活的欄位映射
 """
 
+from enum import Enum
 from pydantic import BaseModel, Field, field_validator, ConfigDict
 from typing import Optional, List, Dict, Any, Union, ClassVar
 from datetime import datetime
@@ -41,18 +42,116 @@ class SimpleAttachment(BaseModel):
     )
 
 
-class TestDataItem(BaseModel):
-    """測試資料項目模型"""
+class TestDataCategory(str, Enum):
+    """Test Data 類別：給 LLM / 自動化工具對齊語義。"""
 
-    id: str = Field(..., description="Test Data 唯一識別碼")
+    TEXT = "text"               # 一般字串輸入（預設）
+    NUMBER = "number"           # 整數 / 浮點數
+    CREDENTIAL = "credential"   # 帳號 / 密碼 / token（敏感）
+    EMAIL = "email"             # email 地址
+    URL = "url"                 # URL / endpoint
+    IDENTIFIER = "identifier"   # ID / 編號（環境相依）
+    DATE = "date"               # 日期 / 時間 / timestamp
+    JSON = "json"               # JSON payload / 結構化
+    OTHER = "other"             # 無法歸類（fallback）
+
+
+class TestDataItem(BaseModel):
+    """測試資料項目模型
+
+    Response/read 路徑保持寬鬆（不驗證長度），避免舊資料解析失敗；
+    input normalization 與限制請呼叫 normalize_test_data_items()。
+    """
+
+    id: Optional[str] = Field(None, description="Test Data 唯一識別碼，未提供則由 server 產生")
     name: str = Field(..., min_length=1, description="顯示名稱")
+    category: TestDataCategory = Field(TestDataCategory.TEXT, description="類別；舊資料或未提供時預設 text")
     value: str = Field(..., description="內容值（允許空字串）")
 
     model_config = ConfigDict(
         json_schema_extra={
-            "example": {"id": "550e8400-e29b-41d4-a716-446655440000", "name": "valid_email", "value": "qa@example.com"}
+            "example": {
+                "id": "550e8400-e29b-41d4-a716-446655440000",
+                "name": "valid_email",
+                "category": "email",
+                "value": "qa@example.com",
+            }
         }
     )
+
+    @field_validator("category", mode="before")
+    @classmethod
+    def _default_category(cls, v):
+        # 容忍舊資料：None / 空字串 / 未知值一律退回 text
+        if v is None or v == "":
+            return TestDataCategory.TEXT
+        if isinstance(v, TestDataCategory):
+            return v
+        try:
+            return TestDataCategory(str(v).lower())
+        except ValueError:
+            return TestDataCategory.TEXT
+
+
+# Test Data 寫入限制
+MAX_TEST_DATA_NAME_LEN = 500
+MAX_TEST_DATA_VALUE_LEN = 100_000
+MAX_TEST_DATA_ITEMS = 100
+
+import re as _re
+import uuid as _uuid
+
+# C0 控制字元（保留 \t \n \r）
+_TD_CONTROL_CHARS_RE = _re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+# 雙向控制字元 (Trojan Source 攻擊向量)
+_TD_BIDI_OVERRIDE_RE = _re.compile(r"[\u202a-\u202e\u2066-\u2069]")
+# 純 NULL byte（value 的唯一移除目標）
+_TD_NULL_BYTE_RE = _re.compile(r"\x00")
+
+
+def normalize_test_data_items(items: Optional[List["TestDataItem"]]) -> List["TestDataItem"]:
+    """在寫入 DB 前對 test_data 做正規化與驗證。
+
+    規則：
+    - name：strip 前後空白、移除 NULL/C0 控制字元/bidi override/換行；非空；長度上限
+    - value：僅移除 NULL byte（保留 Unicode、emoji、RTL、換行、tab 等所有測試可能需要的字元）；長度上限
+    - id：未提供則產生 UUID4
+    - 清單上限、同清單內 name 唯一（case-sensitive）
+
+    違規時 raise ValueError，由 API 層轉為 400。
+    """
+    if not items:
+        return []
+
+    if len(items) > MAX_TEST_DATA_ITEMS:
+        raise ValueError(f"test_data 數量超過上限 {MAX_TEST_DATA_ITEMS}")
+
+    seen_names: set[str] = set()
+    normalized: List[TestDataItem] = []
+
+    for idx, item in enumerate(items):
+        raw_name = item.name or ""
+        name = _TD_CONTROL_CHARS_RE.sub("", raw_name)
+        name = _TD_BIDI_OVERRIDE_RE.sub("", name)
+        name = name.replace("\n", " ").replace("\r", " ").strip()
+        if not name:
+            raise ValueError(f"test_data[{idx}].name 不可為空白")
+        if len(name) > MAX_TEST_DATA_NAME_LEN:
+            raise ValueError(f"test_data[{idx}].name 長度超過 {MAX_TEST_DATA_NAME_LEN}")
+        if name in seen_names:
+            raise ValueError(f"test_data name '{name}' 在同一 test case 內重複")
+        seen_names.add(name)
+
+        raw_value = item.value if item.value is not None else ""
+        value = _TD_NULL_BYTE_RE.sub("", raw_value)
+        if len(value) > MAX_TEST_DATA_VALUE_LEN:
+            raise ValueError(f"test_data[{idx}].value 長度超過 {MAX_TEST_DATA_VALUE_LEN}")
+
+        item_id = (item.id or "").strip() or str(_uuid.uuid4())
+
+        normalized.append(TestDataItem(id=item_id, name=name, category=item.category, value=value))
+
+    return normalized
 
 
 class TestCase(BaseModel):

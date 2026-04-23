@@ -42,6 +42,7 @@ from app.models.test_case import (
     TestCaseResponse,
     TestCaseBatchOperation,
     TestCaseBatchResponse,
+    normalize_test_data_items,
 )
 from app.models.test_run_scope import ImpactPreviewResponse
 from app.models.database_models import (
@@ -647,6 +648,12 @@ async def create_test_case(
                 detail="無權限在此團隊建立測試案例",
             )
 
+    # 正規化 test_data（strip 有害字元、長度限制、name 去重、補 UUID）
+    try:
+        case.test_data = normalize_test_data_items(case.test_data)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
     try:
         import json
         from pathlib import Path
@@ -934,6 +941,13 @@ async def update_test_case(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="無權限修改此團隊的測試案例",
             )
+
+    # 正規化 test_data（僅在呼叫端有提供時才處理）
+    if case_update.test_data is not None:
+        try:
+            case_update.test_data = normalize_test_data_items(case_update.test_data)
+        except ValueError as e:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
     try:
         import json
