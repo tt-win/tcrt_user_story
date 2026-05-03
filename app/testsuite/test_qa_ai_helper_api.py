@@ -913,6 +913,46 @@ def test_seed_review_supports_include_toggle_and_section_bulk_inclusion(qa_ai_he
     assert included_payload["seed_set"]["seed_items"][0]["included_for_testcase_generation"] is True
 
 
+def test_seed_review_accepts_test_data_suggestions(qa_ai_helper_db):
+    client = TestClient(app)
+    team_id = qa_ai_helper_db["team_id"]
+    session_id, _locked_payload = _prepare_locked_requirement_plan(client, team_id)
+
+    generated = client.post(f"/api/teams/{team_id}/qa-ai-helper/sessions/{session_id}/seed-sets")
+    assert generated.status_code == 200, generated.text
+    seed_set = generated.json()["seed_set"]
+    seed_item = seed_set["seed_items"][0]
+
+    # Replace suggestions with a mixed payload: valid, unknown category, credential.
+    updated = client.put(
+        f"/api/teams/{team_id}/qa-ai-helper/sessions/{session_id}/seed-sets/{seed_set['id']}/items/{seed_item['id']}",
+        json={
+            "test_data_suggestions": [
+                {"id": "sug-a", "category": "credential", "name": "登入帳號"},
+                {"category": "bogus", "name": "帳號長度上限"},  # falls back to text
+            ]
+        },
+    )
+    assert updated.status_code == 200, updated.text
+    payload = updated.json()
+    item = payload["seed_set"]["seed_items"][0]
+    suggestions = item["seed_body"].get("test_data_suggestions") or []
+    assert len(suggestions) == 2
+    assert suggestions[0] == {"id": "sug-a", "category": "credential", "name": "登入帳號"}
+    assert suggestions[1]["category"] == "text"
+    assert suggestions[1]["name"] == "帳號長度上限"
+    assert suggestions[1]["id"]  # auto uuid
+
+    # Submitting empty list clears suggestions.
+    cleared = client.put(
+        f"/api/teams/{team_id}/qa-ai-helper/sessions/{session_id}/seed-sets/{seed_set['id']}/items/{seed_item['id']}",
+        json={"test_data_suggestions": []},
+    )
+    assert cleared.status_code == 200, cleared.text
+    cleared_item = cleared.json()["seed_set"]["seed_items"][0]
+    assert cleared_item["seed_body"].get("test_data_suggestions") == []
+
+
 def test_seed_refine_only_updates_items_with_dirty_comments(qa_ai_helper_db):
     client = TestClient(app)
     team_id = qa_ai_helper_db["team_id"]

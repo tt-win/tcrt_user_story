@@ -11,8 +11,38 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from .test_case import TestDataCategory, TestDataItem
+
 
 TCG_TICKET_PATTERN = re.compile(r"^[A-Z]+-\d+$")
+
+
+class QAAIHelperTestDataSuggestion(BaseModel):
+    """Seed 層的 test_data 建議（僅 category + name，無 value）。"""
+
+    id: Optional[str] = Field(None, description="建議項目唯一識別碼，未提供時由後端補 UUID")
+    category: TestDataCategory = Field(TestDataCategory.TEXT, description="Test Data 類別")
+    name: str = Field(..., min_length=1, description="建議欄位名稱")
+
+    @field_validator("category", mode="before")
+    @classmethod
+    def _default_category(cls, v):
+        if v is None or v == "":
+            return TestDataCategory.TEXT
+        if isinstance(v, TestDataCategory):
+            return v
+        try:
+            return TestDataCategory(str(v).lower())
+        except ValueError:
+            return TestDataCategory.TEXT
+
+    @field_validator("name")
+    @classmethod
+    def _strip_name(cls, value: str) -> str:
+        normalized = (value or "").strip()
+        if not normalized:
+            raise ValueError("name 不可為空")
+        return normalized
 
 
 def _validate_counter_value(value: str, field_name: str) -> str:
@@ -281,6 +311,7 @@ class QAAIHelperDraftBody(BaseModel):
     preconditions: List[str] = Field(default_factory=list)
     steps: List[str] = Field(default_factory=list)
     expected_results: List[str] = Field(default_factory=list)
+    test_data: List[TestDataItem] = Field(default_factory=list)
 
     @field_validator("title")
     @classmethod
@@ -458,6 +489,7 @@ class QAAIHelperRequirementPlanSaveRequest(BaseModel):
 class QAAIHelperSeedItemReviewUpdateRequest(BaseModel):
     included_for_testcase_generation: Optional[bool] = None
     comment_text: Optional[str] = None
+    test_data_suggestions: Optional[List[QAAIHelperTestDataSuggestion]] = None
 
     @field_validator("comment_text")
     @classmethod

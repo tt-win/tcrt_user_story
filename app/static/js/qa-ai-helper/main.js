@@ -18,6 +18,9 @@
     planChangeVersion: 0,
     seedCommentDrafts: {},
     seedCommentDirtyMap: {},
+    seedSuggestionDrafts: {},
+    seedSuggestionSaveTimers: {},
+    testcaseDataDrafts: {},
     expandedSeedCommentIds: {},
     seedActionInFlight: false,
     testcaseActionInFlight: false,
@@ -772,6 +775,7 @@
       state.seedCommentDrafts = {};
       state.seedCommentDirtyMap = {};
       state.expandedSeedCommentIds = {};
+      state.seedSuggestionDrafts = {};
     } else {
       state.seedCommentDrafts = Object.fromEntries(
         Object.entries(state.seedCommentDrafts).filter(([key]) => validSeedIds.has(key))
@@ -781,6 +785,9 @@
       );
       state.expandedSeedCommentIds = Object.fromEntries(
         Object.entries(state.expandedSeedCommentIds).filter(([key]) => validSeedIds.has(key))
+      );
+      state.seedSuggestionDrafts = Object.fromEntries(
+        Object.entries(state.seedSuggestionDrafts).filter(([key]) => validSeedIds.has(key))
       );
     }
     const seedSections = seedItems.map((item) => item.section_key).filter(Boolean);
@@ -792,9 +799,14 @@
     const testcaseSections = testcaseDrafts.map((item) => item.section_key).filter(Boolean);
     if (previousTestcaseDraftSetId !== nextTestcaseDraftSetId) {
       state.selectedTestcaseSectionKey = testcaseSections.length ? testcaseSections[0] : null;
+      state.testcaseDataDrafts = {};
     } else if (!testcaseSections.includes(state.selectedTestcaseSectionKey)) {
       state.selectedTestcaseSectionKey = testcaseSections.length ? testcaseSections[0] : null;
     }
+    const validDraftIds = new Set(testcaseDrafts.map((item) => String(item.id)));
+    state.testcaseDataDrafts = Object.fromEntries(
+      Object.entries(state.testcaseDataDrafts).filter(([key]) => validDraftIds.has(key))
+    );
     state.activePhaseView = inferPhaseView();
     populateFormFromWorkspace();
     if (renderMode === 'requirement-plan-status') {
@@ -1770,6 +1782,48 @@
     return JSON.stringify(body || {}, null, 2);
   }
 
+  const TEST_DATA_CATEGORIES = [
+    'text', 'number', 'credential', 'email', 'url', 'identifier', 'date', 'json', 'other',
+  ];
+
+  function testDataCategoryLabel(category) {
+    const key = String(category || 'text').toLowerCase();
+    return t(`form.testDataCategory.${key}`, {}, key);
+  }
+
+  function genSuggestionId() {
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+      try { return window.crypto.randomUUID(); } catch (_) { /* fallthrough */ }
+    }
+    return `sug-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+  }
+
+  function seedSuggestionsOf(seedItem) {
+    const key = String((seedItem || {}).id || '');
+    if (Object.prototype.hasOwnProperty.call(state.seedSuggestionDrafts, key)) {
+      return state.seedSuggestionDrafts[key];
+    }
+    const body = (seedItem || {}).seed_body || {};
+    const raw = Array.isArray(body.test_data_suggestions) ? body.test_data_suggestions : [];
+    return raw.map((item) => ({
+      id: String(item && item.id || genSuggestionId()),
+      category: String(item && item.category || 'text').toLowerCase(),
+      name: String(item && item.name || ''),
+    }));
+  }
+
+  function setSeedSuggestions(seedItemId, suggestions) {
+    state.seedSuggestionDrafts[String(seedItemId)] = suggestions.map((s) => ({
+      id: String(s.id || genSuggestionId()),
+      category: String(s.category || 'text').toLowerCase(),
+      name: String(s.name || ''),
+    }));
+  }
+
+  function clearSeedSuggestionDraft(seedItemId) {
+    delete state.seedSuggestionDrafts[String(seedItemId)];
+  }
+
   function seedCommentValue(seedItem) {
     const key = String((seedItem || {}).id || '');
     if (Object.prototype.hasOwnProperty.call(state.seedCommentDrafts, key)) {
@@ -1888,6 +1942,164 @@
     if (excludeAllButton) excludeAllButton.disabled = !seedSet || state.seedActionInFlight;
   }
 
+  function renderSeedSuggestionBlock(seedItem) {
+    const readonly = isSeedSetLocked();
+    const suggestions = seedSuggestionsOf(seedItem);
+    const seedId = escapeHtml(String(seedItem.id));
+    const rows = suggestions.map((item, index) => {
+      const categoryOptions = TEST_DATA_CATEGORIES.map((cat) =>
+        `<option value="${cat}" ${cat === item.category ? 'selected' : ''}>${escapeHtml(testDataCategoryLabel(cat))}</option>`
+      ).join('');
+      return `
+        <div class="input-group input-group-sm mb-1" data-suggestion-row data-seed-item-id="${seedId}" data-suggestion-index="${index}">
+          <select class="form-select" style="flex: 0 0 110px;" data-suggestion-field="category" data-seed-item-id="${seedId}" data-suggestion-index="${index}" ${readonly ? 'disabled' : ''}>
+            ${categoryOptions}
+          </select>
+          <input type="text" class="form-control" data-suggestion-field="name" data-seed-item-id="${seedId}" data-suggestion-index="${index}" value="${escapeHtml(item.name)}" placeholder="${escapeHtml(t('qaAiHelper.testDataSuggestionNamePlaceholder', {}, '欄位名稱，例如：登入帳號'))}" ${readonly ? 'readonly' : ''}>
+          ${readonly ? '' : `<button type="button" class="btn btn-outline-danger" data-suggestion-delete data-seed-item-id="${seedId}" data-suggestion-index="${index}" title="${escapeHtml(t('common.delete', {}, '刪除'))}"><i class="fas fa-times"></i></button>`}
+        </div>
+      `;
+    }).join('');
+    const empty = suggestions.length
+      ? ''
+      : `<div class="small text-muted mb-1">${escapeHtml(t('qaAiHelper.testDataSuggestionEmpty', {}, '尚未有測試資料建議。'))}</div>`;
+    const addButton = readonly ? '' : `
+      <button type="button" class="btn btn-outline-primary btn-sm" data-suggestion-add data-seed-item-id="${seedId}">
+        <i class="fas fa-plus me-1"></i>${escapeHtml(t('qaAiHelper.testDataSuggestionAdd', {}, '新增建議'))}
+      </button>
+    `;
+    return `
+      <details class="qa-helper-suggestion-block mt-2" ${suggestions.length ? 'open' : ''}>
+        <summary class="small fw-semibold">${escapeHtml(t('qaAiHelper.testDataSuggestionsTitle', {}, 'Test Data 建議'))} <span class="badge text-bg-light ms-1">${suggestions.length}</span></summary>
+        <div class="pt-2">
+          ${empty}
+          ${rows}
+          ${addButton}
+        </div>
+      </details>
+    `;
+  }
+
+  async function saveSeedSuggestions(seedItemId, options = {}) {
+    const { silent = false } = options;
+    const teamId = ensureTeamId();
+    const seedSet = currentSeedSet();
+    if (!teamId || !state.sessionId || !seedSet) return;
+    const key = String(seedItemId);
+    const suggestions = state.seedSuggestionDrafts[key];
+    if (!Array.isArray(suggestions)) return;
+    const payload = suggestions
+      .filter((s) => String(s.name || '').trim())
+      .map((s) => ({ id: s.id, category: s.category, name: String(s.name).trim() }));
+    try {
+      const response = await authFetch(
+        `/api/teams/${teamId}/qa-ai-helper/sessions/${state.sessionId}/seed-sets/${seedSet.id}/items/${seedItemId}`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ test_data_suggestions: payload }),
+        }
+      );
+      if (!response.ok) throw new Error(await response.text());
+      const workspace = await response.json();
+      if (silent) {
+        // Merge workspace silently without re-render (keeps focus/cursor in input).
+        state.workspace = workspace;
+        clearSeedSuggestionDraft(seedItemId);
+      } else {
+        clearSeedSuggestionDraft(seedItemId);
+        updateWorkspace(workspace);
+      }
+    } catch (error) {
+      handleError(error);
+    }
+  }
+
+  function scheduleSaveSeedSuggestions(seedItemId, delayMs = 600) {
+    const key = String(seedItemId);
+    if (state.seedSuggestionSaveTimers[key]) {
+      clearTimeout(state.seedSuggestionSaveTimers[key]);
+    }
+    state.seedSuggestionSaveTimers[key] = setTimeout(() => {
+      delete state.seedSuggestionSaveTimers[key];
+      saveSeedSuggestions(seedItemId, { silent: true });
+    }, delayMs);
+  }
+
+  function testcaseDataOf(draft) {
+    const key = String((draft || {}).id || '');
+    if (Object.prototype.hasOwnProperty.call(state.testcaseDataDrafts, key)) {
+      return state.testcaseDataDrafts[key];
+    }
+    const body = (draft || {}).body || {};
+    const raw = Array.isArray(body.test_data) ? body.test_data : [];
+    return raw.map((item) => ({
+      id: String(item && item.id || genSuggestionId()),
+      category: String(item && item.category || 'text').toLowerCase(),
+      name: String(item && item.name || ''),
+      value: String(item && item.value || ''),
+    }));
+  }
+
+  function setTestcaseData(draftId, items) {
+    state.testcaseDataDrafts[String(draftId)] = items.map((item) => ({
+      id: String(item.id || genSuggestionId()),
+      category: String(item.category || 'text').toLowerCase(),
+      name: String(item.name || ''),
+      value: String(item.value || ''),
+    }));
+  }
+
+  function clearTestcaseDataDraft(draftId) {
+    delete state.testcaseDataDrafts[String(draftId)];
+  }
+
+  function renderTestcaseDataBlock(draft) {
+    const items = testcaseDataOf(draft);
+    const draftId = escapeHtml(String(draft.id));
+    const credentialNotice = t('qaAiHelper.testDataCredentialHint', {}, 'credential 類別 value 一律留空');
+    const rows = items.map((item, index) => {
+      const categoryOptions = TEST_DATA_CATEGORIES.map((cat) =>
+        `<option value="${cat}" ${cat === item.category ? 'selected' : ''}>${escapeHtml(testDataCategoryLabel(cat))}</option>`
+      ).join('');
+      const valueDisabled = item.category === 'credential';
+      return `
+        <div class="input-group input-group-sm mb-1" data-testdata-row data-testcase-draft-id="${draftId}" data-testdata-index="${index}">
+          <select class="form-select" style="flex: 0 0 110px;" data-testdata-field="category" data-testcase-draft-id="${draftId}" data-testdata-index="${index}">
+            ${categoryOptions}
+          </select>
+          <input type="text" class="form-control" style="flex: 0 0 180px;" data-testdata-field="name" data-testcase-draft-id="${draftId}" data-testdata-index="${index}" value="${escapeHtml(item.name)}" placeholder="${escapeHtml(t('qaAiHelper.testDataNamePlaceholder', {}, '欄位名稱'))}">
+          <input type="text" class="form-control" data-testdata-field="value" data-testcase-draft-id="${draftId}" data-testdata-index="${index}" value="${escapeHtml(valueDisabled ? '' : item.value)}" placeholder="${escapeHtml(valueDisabled ? credentialNotice : t('qaAiHelper.testDataValuePlaceholder', {}, '實際值，不確定請留空'))}" ${valueDisabled ? 'disabled' : ''}>
+          <button type="button" class="btn btn-outline-danger" data-testdata-delete data-testcase-draft-id="${draftId}" data-testdata-index="${index}" title="${escapeHtml(t('common.delete', {}, '刪除'))}"><i class="fas fa-times"></i></button>
+        </div>
+      `;
+    }).join('');
+    const empty = items.length ? '' : `<div class="small text-muted mb-1">${escapeHtml(t('qaAiHelper.testDataEmpty', {}, '尚無測試資料。'))}</div>`;
+    return `
+      <div class="col-12">
+        <label class="form-label d-flex align-items-center gap-2">
+          <span>${escapeHtml(t('qaAiHelper.testDataTitle', {}, 'Test Data'))}</span>
+          <span class="badge text-bg-light">${items.length}</span>
+        </label>
+        <div class="qa-helper-testdata-block">
+          ${empty}
+          ${rows}
+          <button type="button" class="btn btn-outline-primary btn-sm" data-testdata-add data-testcase-draft-id="${draftId}">
+            <i class="fas fa-plus me-1"></i>${escapeHtml(t('qaAiHelper.testDataAdd', {}, '新增測試資料'))}
+          </button>
+        </div>
+      </div>
+    `;
+  }
+
+  function flushSeedSuggestionTimer(seedItemId) {
+    const key = String(seedItemId);
+    if (state.seedSuggestionSaveTimers[key]) {
+      clearTimeout(state.seedSuggestionSaveTimers[key]);
+      delete state.seedSuggestionSaveTimers[key];
+    }
+  }
+
   function renderSeedReviewWorkspace() {
     const card = el('qaHelperSeedReviewCard');
     const rail = el('qaHelperSeedSectionRail');
@@ -1956,6 +2168,7 @@
                   <dd>${escapeHtml(coverageText)}</dd>
                 </dl>
                 <div class="qa-helper-seed-body">${escapeHtml(seedBodyText(seedItem))}</div>
+                ${renderSeedSuggestionBlock(seedItem)}
                 <div class="d-flex justify-content-between align-items-center gap-2">
                   <div class="qa-helper-comment-preview" title="${escapeHtml(comment || '')}">
                     <i class="fas fa-comment"></i>
@@ -2164,12 +2377,22 @@
       const node = document.querySelector(`[data-testcase-field="${field}"][data-testcase-draft-id="${stringId}"]`);
       return node ? node.value : '';
     };
+    const draft = (((currentTestcaseDraftSet() || {}).drafts) || []).find((item) => String(item.id) === stringId);
+    const testData = (draft ? testcaseDataOf(draft) : [])
+      .filter((item) => String(item.name || '').trim())
+      .map((item) => ({
+        id: item.id,
+        category: item.category,
+        name: String(item.name).trim(),
+        value: item.category === 'credential' ? '' : String(item.value || ''),
+      }));
     return {
       title: String(readField('title') || '').trim(),
       priority: String(readField('priority') || 'Medium').trim() || 'Medium',
       preconditions: splitLines(readField('preconditions')),
       steps: splitLines(readField('steps')),
       expected_results: splitLines(readField('expected_results')),
+      test_data: testData,
     };
   }
 
@@ -2217,6 +2440,7 @@
       if (!response.ok) {
         throw new Error(await response.text());
       }
+      clearTestcaseDataDraft(draftId);
       updateWorkspace(await response.json());
       setFeedback('success', t('qaAiHelper.testcaseDraftSaved', {}, '已更新 testcase draft。'));
     } finally {
@@ -2609,6 +2833,7 @@
                 <label class="form-label">${escapeHtml(t('qaAiHelper.expectedResults', {}, 'Expected Results'))}</label>
                 <textarea class="form-control qa-helper-textarea-sm" data-testcase-field="expected_results" data-testcase-draft-id="${draft.id}">${escapeHtml(joinLines(body.expected_results || []))}</textarea>
               </div>
+              ${renderTestcaseDataBlock(draft)}
             </div>
             <dl class="qa-helper-seed-kv">
               <dt>${escapeHtml(t('qaAiHelper.seedSourceSection', {}, '來源 Section'))}</dt>
@@ -3222,6 +3447,62 @@
         renderSeedReviewWorkspace();
         return;
       }
+      const testdataAddBtn = event.target.closest('[data-testdata-add]');
+      if (testdataAddBtn) {
+        const draftId = String(testdataAddBtn.getAttribute('data-testcase-draft-id') || '').trim();
+        if (!draftId) return;
+        const draft = (((currentTestcaseDraftSet() || {}).drafts) || []).find((item) => String(item.id) === draftId);
+        if (!draft) return;
+        const next = testcaseDataOf(draft).slice();
+        next.push({ id: genSuggestionId(), category: 'text', name: '', value: '' });
+        setTestcaseData(draftId, next);
+        renderTestcaseReviewWorkspace();
+        return;
+      }
+      const testdataDeleteBtn = event.target.closest('[data-testdata-delete]');
+      if (testdataDeleteBtn) {
+        const draftId = String(testdataDeleteBtn.getAttribute('data-testcase-draft-id') || '').trim();
+        const index = Number(testdataDeleteBtn.getAttribute('data-testdata-index'));
+        if (!draftId || !Number.isInteger(index)) return;
+        const draft = (((currentTestcaseDraftSet() || {}).drafts) || []).find((item) => String(item.id) === draftId);
+        if (!draft) return;
+        const next = testcaseDataOf(draft).slice();
+        if (index < 0 || index >= next.length) return;
+        next.splice(index, 1);
+        setTestcaseData(draftId, next);
+        renderTestcaseReviewWorkspace();
+        return;
+      }
+      const suggestionAddBtn = event.target.closest('[data-suggestion-add]');
+      if (suggestionAddBtn) {
+        if (isSeedSetLocked()) return;
+        const seedItemId = String(suggestionAddBtn.getAttribute('data-seed-item-id') || '').trim();
+        if (!seedItemId) return;
+        const seedItem = currentSeedItems().find((item) => String(item.id) === seedItemId);
+        if (!seedItem) return;
+        const next = seedSuggestionsOf(seedItem).slice();
+        next.push({ id: genSuggestionId(), category: 'text', name: '' });
+        setSeedSuggestions(seedItemId, next);
+        renderSeedReviewWorkspace();
+        return;
+      }
+      const suggestionDeleteBtn = event.target.closest('[data-suggestion-delete]');
+      if (suggestionDeleteBtn) {
+        if (isSeedSetLocked()) return;
+        const seedItemId = String(suggestionDeleteBtn.getAttribute('data-seed-item-id') || '').trim();
+        const index = Number(suggestionDeleteBtn.getAttribute('data-suggestion-index'));
+        if (!seedItemId || !Number.isInteger(index)) return;
+        const seedItem = currentSeedItems().find((item) => String(item.id) === seedItemId);
+        if (!seedItem) return;
+        const next = seedSuggestionsOf(seedItem).slice();
+        if (index < 0 || index >= next.length) return;
+        next.splice(index, 1);
+        setSeedSuggestions(seedItemId, next);
+        flushSeedSuggestionTimer(seedItemId);
+        renderSeedReviewWorkspace();
+        saveSeedSuggestions(seedItemId).catch(handleError);
+        return;
+      }
       const seedCommentToggle = event.target.closest('[data-seed-comment-toggle]');
       if (seedCommentToggle) {
         const seedItemId = String(seedCommentToggle.getAttribute('data-seed-comment-toggle') || '').trim();
@@ -3339,6 +3620,34 @@
       }
     });
     document.addEventListener('input', (event) => {
+      const testdataField = event.target.getAttribute && event.target.getAttribute('data-testdata-field');
+      if (testdataField === 'name' || testdataField === 'value') {
+        const draftId = String(event.target.getAttribute('data-testcase-draft-id') || '').trim();
+        const index = Number(event.target.getAttribute('data-testdata-index'));
+        if (!draftId || !Number.isInteger(index)) return;
+        const draft = (((currentTestcaseDraftSet() || {}).drafts) || []).find((item) => String(item.id) === draftId);
+        if (!draft) return;
+        const current = testcaseDataOf(draft).slice();
+        if (index < 0 || index >= current.length) return;
+        current[index] = { ...current[index], [testdataField]: String(event.target.value || '') };
+        setTestcaseData(draftId, current);
+        return;
+      }
+      const suggestionField = event.target.getAttribute && event.target.getAttribute('data-suggestion-field');
+      if (suggestionField === 'name') {
+        if (isSeedSetLocked()) return;
+        const seedItemId = String(event.target.getAttribute('data-seed-item-id') || '').trim();
+        const index = Number(event.target.getAttribute('data-suggestion-index'));
+        if (!seedItemId || !Number.isInteger(index)) return;
+        const seedItem = currentSeedItems().find((item) => String(item.id) === seedItemId);
+        if (!seedItem) return;
+        const current = seedSuggestionsOf(seedItem).slice();
+        if (index < 0 || index >= current.length) return;
+        current[index] = { ...current[index], name: String(event.target.value || '') };
+        setSeedSuggestions(seedItemId, current);
+        scheduleSaveSeedSuggestions(seedItemId);
+        return;
+      }
       const seedCommentInput = event.target.getAttribute('data-seed-comment-input');
       if (seedCommentInput) {
         const seedItem = currentSeedItems().find((item) => String(item.id) === String(seedCommentInput));
@@ -3399,6 +3708,42 @@
       }
     });
     document.addEventListener('change', (event) => {
+      const testdataField = event.target.getAttribute && event.target.getAttribute('data-testdata-field');
+      if (testdataField === 'category') {
+        const draftId = String(event.target.getAttribute('data-testcase-draft-id') || '').trim();
+        const index = Number(event.target.getAttribute('data-testdata-index'));
+        if (!draftId || !Number.isInteger(index)) return;
+        const draft = (((currentTestcaseDraftSet() || {}).drafts) || []).find((item) => String(item.id) === draftId);
+        if (!draft) return;
+        const current = testcaseDataOf(draft).slice();
+        if (index < 0 || index >= current.length) return;
+        const nextCategory = String(event.target.value || 'text').toLowerCase();
+        current[index] = {
+          ...current[index],
+          category: nextCategory,
+          // credential value must stay empty
+          value: nextCategory === 'credential' ? '' : current[index].value,
+        };
+        setTestcaseData(draftId, current);
+        renderTestcaseReviewWorkspace();
+        return;
+      }
+      const suggestionField = event.target.getAttribute && event.target.getAttribute('data-suggestion-field');
+      if (suggestionField === 'category') {
+        if (isSeedSetLocked()) return;
+        const seedItemId = String(event.target.getAttribute('data-seed-item-id') || '').trim();
+        const index = Number(event.target.getAttribute('data-suggestion-index'));
+        if (!seedItemId || !Number.isInteger(index)) return;
+        const seedItem = currentSeedItems().find((item) => String(item.id) === seedItemId);
+        if (!seedItem) return;
+        const current = seedSuggestionsOf(seedItem).slice();
+        if (index < 0 || index >= current.length) return;
+        current[index] = { ...current[index], category: String(event.target.value || 'text').toLowerCase() };
+        setSeedSuggestions(seedItemId, current);
+        flushSeedSuggestionTimer(seedItemId);
+        saveSeedSuggestions(seedItemId).catch(handleError);
+        return;
+      }
       const sectionCheckboxKey = event.target.getAttribute('data-plan-section-checkbox');
       if (sectionCheckboxKey) {
         if (event.target.checked) {
