@@ -122,6 +122,54 @@ def _seed_mcp_data(session):
     session.add_all([section_a, section_b])
     session.commit()
 
+    # Sections endpoint fixtures: hierarchy + multi-set + empty section.
+    set_a2 = TestCaseSet(
+        team_id=team_a.id,
+        name=f"Auxiliary-{team_a.id}",
+        description="Team A auxiliary set",
+        is_default=False,
+    )
+    session.add(set_a2)
+    session.commit()
+
+    section_a_login = TestCaseSection(
+        test_case_set_id=set_a.id,
+        name="Login",
+        description="Auth flows",
+        level=1,
+        sort_order=10,
+    )
+    section_a_empty = TestCaseSection(
+        test_case_set_id=set_a.id,
+        name="Empty Module",
+        description=None,
+        level=1,
+        sort_order=20,
+    )
+    session.add_all([section_a_login, section_a_empty])
+    session.commit()
+
+    section_a_login_sso = TestCaseSection(
+        test_case_set_id=set_a.id,
+        parent_section_id=section_a_login.id,
+        name="SSO",
+        description=None,
+        level=2,
+        sort_order=0,
+    )
+    session.add(section_a_login_sso)
+    session.commit()
+
+    section_a2_misc = TestCaseSection(
+        test_case_set_id=set_a2.id,
+        name="Misc",
+        description=None,
+        level=1,
+        sort_order=0,
+    )
+    session.add(section_a2_misc)
+    session.commit()
+
     tc_a1 = TestCaseLocal(
         team_id=team_a.id,
         lark_record_id="rec-a1",
@@ -139,6 +187,22 @@ def _seed_mcp_data(session):
         tcg_json=json.dumps(["TP-1001"]),
         parent_record_json=json.dumps([{"record_id": "rec-parent"}]),
         raw_fields_json=json.dumps({"custom_field": "custom-value"}),
+        test_data_json=json.dumps(
+            [
+                {
+                    "id": "td-1",
+                    "name": "valid_email",
+                    "category": "email",
+                    "value": "qa@example.com",
+                },
+                {
+                    "id": "td-2",
+                    "name": "admin_password",
+                    "category": "credential",
+                    "value": "P@ssw0rd!",
+                },
+            ]
+        ),
         test_case_set_id=set_a.id,
         test_case_section_id=section_a.id,
     )
@@ -162,7 +226,32 @@ def _seed_mcp_data(session):
         test_case_set_id=set_b.id,
         test_case_section_id=section_b.id,
     )
-    session.add_all([tc_a1, tc_a2, tc_b1])
+    # Cases for sections endpoint testing (count > 0 on login + sso, 0 on empty).
+    tc_a_login_1 = TestCaseLocal(
+        team_id=team_a.id,
+        test_case_number="TC-A-LOGIN-001",
+        title="Login form renders",
+        priority=Priority.MEDIUM,
+        test_case_set_id=set_a.id,
+        test_case_section_id=section_a_login.id,
+    )
+    tc_a_login_2 = TestCaseLocal(
+        team_id=team_a.id,
+        test_case_number="TC-A-LOGIN-002",
+        title="Login error message",
+        priority=Priority.MEDIUM,
+        test_case_set_id=set_a.id,
+        test_case_section_id=section_a_login.id,
+    )
+    tc_a_sso_1 = TestCaseLocal(
+        team_id=team_a.id,
+        test_case_number="TC-A-SSO-001",
+        title="SSO redirect",
+        priority=Priority.MEDIUM,
+        test_case_set_id=set_a.id,
+        test_case_section_id=section_a_login_sso.id,
+    )
+    session.add_all([tc_a1, tc_a2, tc_b1, tc_a_login_1, tc_a_login_2, tc_a_sso_1])
     session.commit()
 
     set_run = TestRunSet(
@@ -305,7 +394,16 @@ def _seed_mcp_data(session):
         "team_a_id": team_a.id,
         "team_b_id": team_b.id,
         "set_a_id": set_a.id,
+        "set_a2_id": set_a2.id,
+        "set_b_id": set_b.id,
+        "section_a_id": section_a.id,
+        "section_a_login_id": section_a_login.id,
+        "section_a_login_sso_id": section_a_login_sso.id,
+        "section_a_empty_id": section_a_empty.id,
+        "section_a2_misc_id": section_a2_misc.id,
         "tc_a1_id": tc_a1.id,
+        "tc_a2_id": tc_a2.id,
+        "tc_b1_id": tc_b1.id,
         "config_in_set_id": config_in_set.id,
         "config_unassigned_id": config_unassigned.id,
         "config_archived_id": config_archived.id,
@@ -571,6 +669,20 @@ def test_mcp_team_test_case_detail_and_scope(temp_db):
         assert case["user_story_map"] == [{"id": "US-1", "title": "Login"}]
         assert case["parent_record"] == [{"record_id": "rec-parent"}]
         assert case["raw_fields"] == {"custom_field": "custom-value"}
+        assert case["test_data"] == [
+            {
+                "id": "td-1",
+                "name": "valid_email",
+                "category": "email",
+                "value": "qa@example.com",
+            },
+            {
+                "id": "td-2",
+                "name": "admin_password",
+                "category": "credential",
+                "value": "P@ssw0rd!",
+            },
+        ]
 
         deny_scope = client.get(
             f"/api/mcp/teams/{seeded['team_b_id']}/test-cases/{seeded['tc_a1_id']}",
@@ -629,3 +741,362 @@ def test_mcp_team_test_runs_unified_filters(temp_db):
         assert adhoc_archived_payload["sets"] == []
         assert adhoc_archived_payload["unassigned"] == []
         assert [item["name"] for item in adhoc_archived_payload["adhoc"]] == ["Adhoc Archived"]
+
+
+
+def test_mcp_detail_returns_empty_test_data_when_null(temp_db):
+    with temp_db() as session:
+        seeded = _seed_mcp_data(session)
+
+    with TestClient(app) as client:
+        resp = client.get(
+            f"/api/mcp/teams/{seeded['team_a_id']}/test-cases/{seeded['tc_a2_id']}",
+            headers=_bearer(seeded["all_token"]),
+        )
+        assert resp.status_code == 200
+        case = resp.json()["test_case"]
+        assert case["test_data"] == []
+
+
+def test_mcp_detail_handles_corrupted_test_data_json(temp_db):
+    with temp_db() as session:
+        seeded = _seed_mcp_data(session)
+        target = (
+            session.query(TestCaseLocal)
+            .filter(TestCaseLocal.id == seeded["tc_a2_id"])
+            .one()
+        )
+        target.test_data_json = "{not valid json"
+        session.commit()
+
+    with TestClient(app) as client:
+        resp = client.get(
+            f"/api/mcp/teams/{seeded['team_a_id']}/test-cases/{seeded['tc_a2_id']}",
+            headers=_bearer(seeded["all_token"]),
+        )
+        assert resp.status_code == 200
+        case = resp.json()["test_case"]
+        assert case["test_data"] == []
+
+
+def test_mcp_list_test_cases_include_test_data_flag(temp_db):
+    with temp_db() as session:
+        seeded = _seed_mcp_data(session)
+
+    with TestClient(app) as client:
+        default_resp = client.get(
+            f"/api/mcp/teams/{seeded['team_a_id']}/test-cases",
+            headers=_bearer(seeded["all_token"]),
+        )
+        assert default_resp.status_code == 200
+        default_payload = default_resp.json()
+        assert default_payload["filters"]["include_test_data"] is False
+        for case in default_payload["test_cases"]:
+            assert "test_data" not in case
+
+        with_resp = client.get(
+            f"/api/mcp/teams/{seeded['team_a_id']}/test-cases",
+            headers=_bearer(seeded["all_token"]),
+            params={"include_test_data": "true"},
+        )
+        assert with_resp.status_code == 200
+        with_payload = with_resp.json()
+        assert with_payload["filters"]["include_test_data"] is True
+        cases_by_id = {case["id"]: case for case in with_payload["test_cases"]}
+        target_case = cases_by_id[seeded["tc_a1_id"]]
+        assert target_case["test_data"] == [
+            {
+                "id": "td-1",
+                "name": "valid_email",
+                "category": "email",
+                "value": "qa@example.com",
+            },
+            {
+                "id": "td-2",
+                "name": "admin_password",
+                "category": "credential",
+                "value": "P@ssw0rd!",
+            },
+        ]
+        # tc_a2 has no test_data set, should still expose empty array
+        assert cases_by_id[seeded["tc_a2_id"]]["test_data"] == []
+
+
+def test_mcp_list_test_cases_decouples_content_and_test_data(temp_db):
+    with temp_db() as session:
+        seeded = _seed_mcp_data(session)
+
+    with TestClient(app) as client:
+        resp = client.get(
+            f"/api/mcp/teams/{seeded['team_a_id']}/test-cases",
+            headers=_bearer(seeded["all_token"]),
+            params={"include_content": "true", "include_test_data": "false"},
+        )
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert payload["filters"]["include_content"] is True
+        assert payload["filters"]["include_test_data"] is False
+        target_case = next(
+            case for case in payload["test_cases"] if case["id"] == seeded["tc_a1_id"]
+        )
+        assert target_case["precondition"] == "User is on login page"
+        assert target_case["steps"] == "1. Input account\n2. Click login"
+        assert target_case["expected_result"] == "Redirect to dashboard"
+        assert "test_data" not in target_case
+
+
+def test_mcp_lookup_include_test_data_flag(temp_db):
+    with temp_db() as session:
+        seeded = _seed_mcp_data(session)
+
+    with TestClient(app) as client:
+        default_resp = client.get(
+            "/api/mcp/test-cases/lookup",
+            headers=_bearer(seeded["all_token"]),
+            params={"test_case_number": "TC-A-001"},
+        )
+        assert default_resp.status_code == 200
+        default_payload = default_resp.json()
+        assert default_payload["filters"]["include_test_data"] is False
+        for item in default_payload["items"]:
+            assert "test_data" not in item["test_case"]
+
+        with_resp = client.get(
+            "/api/mcp/test-cases/lookup",
+            headers=_bearer(seeded["all_token"]),
+            params={
+                "test_case_number": "TC-A-001",
+                "include_test_data": "true",
+            },
+        )
+        assert with_resp.status_code == 200
+        with_payload = with_resp.json()
+        assert with_payload["filters"]["include_test_data"] is True
+        assert len(with_payload["items"]) == 1
+        item_case = with_payload["items"][0]["test_case"]
+        assert any(td["category"] == "credential" for td in item_case["test_data"])
+        # Credential value MUST NOT be redacted at the API layer.
+        credential_item = next(
+            td for td in item_case["test_data"] if td["category"] == "credential"
+        )
+        assert credential_item["value"] == "P@ssw0rd!"
+
+
+def test_mcp_test_data_respects_team_scope(temp_db):
+    with temp_db() as session:
+        seeded = _seed_mcp_data(session)
+
+    with TestClient(app) as client:
+        # scoped token (team_a only) cannot see tc_b1 even when asking for test_data
+        resp = client.get(
+            f"/api/mcp/teams/{seeded['team_b_id']}/test-cases",
+            headers=_bearer(seeded["scoped_token"]),
+            params={"include_test_data": "true"},
+        )
+        assert resp.status_code == 403
+        assert resp.json()["detail"]["code"] == "TEAM_SCOPE_DENIED"
+
+
+
+def test_mcp_sections_default_returns_all_sections_with_counts(temp_db):
+    with temp_db() as session:
+        seeded = _seed_mcp_data(session)
+
+    with TestClient(app) as client:
+        resp = client.get(
+            f"/api/mcp/teams/{seeded['team_a_id']}/test-case-sections",
+            headers=_bearer(seeded["all_token"]),
+        )
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert payload["team_id"] == seeded["team_a_id"]
+        assert payload["filters"] == {
+            "set_id": None,
+            "set_not_found": False,
+            "parent_section_id": None,
+            "roots_only": False,
+            "include_empty": True,
+        }
+        sections_by_id = {s["id"]: s for s in payload["sections"]}
+        # All five team_a sections should appear (Unassigned, Login, SSO, Empty, set_a2's Misc).
+        assert seeded["section_a_id"] in sections_by_id
+        assert seeded["section_a_login_id"] in sections_by_id
+        assert seeded["section_a_login_sso_id"] in sections_by_id
+        assert seeded["section_a_empty_id"] in sections_by_id
+        assert seeded["section_a2_misc_id"] in sections_by_id
+        # Counts are direct (not recursive): Login has 2, SSO has 1, Unassigned has 2 (tc_a1, tc_a2),
+        # Empty has 0, set_a2's Misc has 0.
+        assert sections_by_id[seeded["section_a_login_id"]]["test_case_count"] == 2
+        assert sections_by_id[seeded["section_a_login_sso_id"]]["test_case_count"] == 1
+        assert sections_by_id[seeded["section_a_id"]]["test_case_count"] == 2
+        assert sections_by_id[seeded["section_a_empty_id"]]["test_case_count"] == 0
+        assert sections_by_id[seeded["section_a2_misc_id"]]["test_case_count"] == 0
+        assert payload["total"] == len(payload["sections"])
+        # Sections ordered by (test_case_set_id, level, sort_order, id) — set_a sections before set_a2.
+        set_ids_in_order = [s["test_case_set_id"] for s in payload["sections"]]
+        assert set_ids_in_order == sorted(set_ids_in_order)
+
+
+def test_mcp_sections_set_id_filter(temp_db):
+    with temp_db() as session:
+        seeded = _seed_mcp_data(session)
+
+    with TestClient(app) as client:
+        resp = client.get(
+            f"/api/mcp/teams/{seeded['team_a_id']}/test-case-sections",
+            headers=_bearer(seeded["all_token"]),
+            params={"set_id": seeded["set_a_id"]},
+        )
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert payload["filters"]["set_id"] == seeded["set_a_id"]
+        assert payload["filters"]["set_not_found"] is False
+        assert all(s["test_case_set_id"] == seeded["set_a_id"] for s in payload["sections"])
+        # set_a2's Misc section must not leak in.
+        assert seeded["section_a2_misc_id"] not in {s["id"] for s in payload["sections"]}
+
+        # Unknown set_id soft-fallback to empty list with set_not_found.
+        unknown_resp = client.get(
+            f"/api/mcp/teams/{seeded['team_a_id']}/test-case-sections",
+            headers=_bearer(seeded["all_token"]),
+            params={"set_id": 999999},
+        )
+        assert unknown_resp.status_code == 200
+        unknown_payload = unknown_resp.json()
+        assert unknown_payload["filters"]["set_id"] == 999999
+        assert unknown_payload["filters"]["set_not_found"] is True
+        assert unknown_payload["sections"] == []
+        assert unknown_payload["total"] == 0
+
+
+def test_mcp_sections_parent_filter_returns_direct_children_only(temp_db):
+    with temp_db() as session:
+        seeded = _seed_mcp_data(session)
+
+    with TestClient(app) as client:
+        resp = client.get(
+            f"/api/mcp/teams/{seeded['team_a_id']}/test-case-sections",
+            headers=_bearer(seeded["all_token"]),
+            params={"parent_section_id": seeded["section_a_login_id"]},
+        )
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert payload["filters"]["parent_section_id"] == seeded["section_a_login_id"]
+        section_ids = [s["id"] for s in payload["sections"]]
+        # Only the SSO direct child appears.
+        assert section_ids == [seeded["section_a_login_sso_id"]]
+
+
+def test_mcp_sections_roots_only(temp_db):
+    with temp_db() as session:
+        seeded = _seed_mcp_data(session)
+
+    with TestClient(app) as client:
+        resp = client.get(
+            f"/api/mcp/teams/{seeded['team_a_id']}/test-case-sections",
+            headers=_bearer(seeded["all_token"]),
+            params={"roots_only": "true"},
+        )
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert payload["filters"]["roots_only"] is True
+        for section in payload["sections"]:
+            assert section["parent_section_id"] is None
+        # SSO (level=2 child of Login) must NOT be in roots.
+        assert seeded["section_a_login_sso_id"] not in {
+            s["id"] for s in payload["sections"]
+        }
+
+
+def test_mcp_sections_include_empty_false_excludes_zero_count(temp_db):
+    with temp_db() as session:
+        seeded = _seed_mcp_data(session)
+
+    with TestClient(app) as client:
+        resp = client.get(
+            f"/api/mcp/teams/{seeded['team_a_id']}/test-case-sections",
+            headers=_bearer(seeded["all_token"]),
+            params={"include_empty": "false"},
+        )
+        assert resp.status_code == 200
+        payload = resp.json()
+        assert payload["filters"]["include_empty"] is False
+        ids = {s["id"] for s in payload["sections"]}
+        # Empty + set_a2 Misc both have count=0 — must be excluded.
+        assert seeded["section_a_empty_id"] not in ids
+        assert seeded["section_a2_misc_id"] not in ids
+        # Login (count=2) and SSO (count=1) and Unassigned (count=2) remain.
+        assert seeded["section_a_login_id"] in ids
+        assert seeded["section_a_login_sso_id"] in ids
+        assert seeded["section_a_id"] in ids
+
+
+def test_mcp_sections_ordering_is_deterministic(temp_db):
+    with temp_db() as session:
+        seeded = _seed_mcp_data(session)
+
+    with TestClient(app) as client:
+        first = client.get(
+            f"/api/mcp/teams/{seeded['team_a_id']}/test-case-sections",
+            headers=_bearer(seeded["all_token"]),
+        ).json()
+        second = client.get(
+            f"/api/mcp/teams/{seeded['team_a_id']}/test-case-sections",
+            headers=_bearer(seeded["all_token"]),
+        ).json()
+        assert [s["id"] for s in first["sections"]] == [
+            s["id"] for s in second["sections"]
+        ]
+
+
+def test_mcp_sections_team_scope_and_404(temp_db):
+    with temp_db() as session:
+        seeded = _seed_mcp_data(session)
+
+    with TestClient(app) as client:
+        # Scoped token can only see team_a; team_b call must be 403.
+        forbidden = client.get(
+            f"/api/mcp/teams/{seeded['team_b_id']}/test-case-sections",
+            headers=_bearer(seeded["scoped_token"]),
+        )
+        assert forbidden.status_code == 403
+        assert forbidden.json()["detail"]["code"] == "TEAM_SCOPE_DENIED"
+
+        # Unknown team must be 404.
+        not_found = client.get(
+            "/api/mcp/teams/999999/test-case-sections",
+            headers=_bearer(seeded["all_token"]),
+        )
+        assert not_found.status_code == 404
+
+
+def test_mcp_sections_count_is_direct_not_recursive(temp_db):
+    with temp_db() as session:
+        seeded = _seed_mcp_data(session)
+
+    with TestClient(app) as client:
+        resp = client.get(
+            f"/api/mcp/teams/{seeded['team_a_id']}/test-case-sections",
+            headers=_bearer(seeded["all_token"]),
+        )
+        assert resp.status_code == 200
+        sections_by_id = {s["id"]: s for s in resp.json()["sections"]}
+        login = sections_by_id[seeded["section_a_login_id"]]
+        sso = sections_by_id[seeded["section_a_login_sso_id"]]
+        # Login has 2 cases directly attached; SSO has 1. Login MUST NOT include SSO's case.
+        assert login["test_case_count"] == 2
+        assert sso["test_case_count"] == 1
+
+
+def test_mcp_sections_endpoint_is_read_only(temp_db):
+    with temp_db() as session:
+        seeded = _seed_mcp_data(session)
+
+    with TestClient(app) as client:
+        for method in ("post", "put", "patch", "delete"):
+            resp = getattr(client, method)(
+                f"/api/mcp/teams/{seeded['team_a_id']}/test-case-sections",
+                headers=_bearer(seeded["all_token"]),
+            )
+            # FastAPI returns 405 for unknown methods on a registered path.
+            assert resp.status_code == 405

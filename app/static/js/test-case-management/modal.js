@@ -121,6 +121,10 @@ function showTestCaseModal(testCase = null) {
             expected_result: testCase.expected_result || ''
         };
 
+        // 初始化 Test Data
+        currentTestData = Array.isArray(testCase.test_data) ? testCase.test_data.map(td => ({...td})) : [];
+        renderTestDataList();
+
         // 初始化 Markdown 預覽內容
         markdownFields.forEach(fieldId => {
             updateMarkdownPreview(fieldId);
@@ -199,6 +203,10 @@ function showTestCaseModal(testCase = null) {
 
         // 渲染附件列表（新增模式下為空）
         renderAttachmentsList();
+
+        // 初始化 Test Data（新增模式為空）
+        currentTestData = [];
+        renderTestDataList();
 
         // 清空所有 Markdown 預覽內容
         markdownFields.forEach(fieldId => {
@@ -500,6 +508,14 @@ async function saveTestCase() {
     const form = document.getElementById('testCaseForm');
     const formData = new FormData(form);
 
+    // 收集 Test Data
+    const testData = currentTestData.map(td => ({
+        id: td.id || crypto.randomUUID(),
+        name: td.name || '',
+        category: td.category || 'text',
+        value: td.value || ''
+    })).filter(td => td.name.trim() !== '');
+
     const testCaseData = {
         title: formData.get('title'),
         test_case_number: formData.get('test_case_number'),
@@ -509,6 +525,7 @@ async function saveTestCase() {
         steps: document.getElementById('test_steps').value,
         expected_result: document.getElementById('expected_result').value,
         tcg: document.getElementById('tcg').value,  // 從隱藏欄位取得 TCG（由 Modal 多選系統維護）
+        test_data: testData,
         // 新增：包含當前選擇的 Test Case Set ID
         ...(currentSetId && { test_case_set_id: currentSetId })
         // 注意：不再包含 attachments，因為附件現在是立即附加到記錄的
@@ -2090,6 +2107,319 @@ function ensurePaginationControls() {
         }
     }
     return controls;
+}
+
+// ===== Test Data 管理功能 =====
+let currentTestData = [];
+
+// Category enum（與後端 TestDataCategory 對齊）
+const TEST_DATA_CATEGORIES = [
+    'text', 'number', 'credential', 'email', 'url',
+    'identifier', 'date', 'json', 'other'
+];
+
+function buildTestDataCategoryOptions(selected) {
+    const current = TEST_DATA_CATEGORIES.includes(selected) ? selected : 'text';
+    return TEST_DATA_CATEGORIES.map(cat => {
+        const selAttr = cat === current ? ' selected' : '';
+        return `<option value="${cat}" data-i18n="form.testDataCategory.${cat}"${selAttr}>${cat}</option>`;
+    }).join('');
+}
+
+// 依 category 產生對應 value 編輯區
+function buildTestDataValueEditor(td, idx) {
+    const category = td.category || 'text';
+    const val = td.value || '';
+
+    if (category === 'credential') {
+        const c = window.TestDataUtils.parseCredential(val);
+        return `
+            <div class="input-group input-group-sm" style="flex: 1;">
+                <input type="text" class="form-control test-data-cred-username"
+                       placeholder="Username" value="${escapeHtml(c.username)}">
+            </div>
+            <div class="input-group input-group-sm" style="flex: 1;">
+                <input type="password" class="form-control test-data-cred-password"
+                       placeholder="Password" value="${escapeHtml(c.password)}">
+                <button type="button" class="btn btn-outline-secondary toggle-pw-btn" tabindex="-1"
+                        data-idx="${idx}" title="顯示/隱藏">
+                    <i class="fas fa-eye"></i>
+                </button>
+            </div>`;
+    }
+    if (category === 'email') {
+        const invalid = val && !window.TestDataUtils.isValidEmail(val);
+        return `
+            <input type="email" class="form-control form-control-sm test-data-value${invalid ? ' is-invalid' : ''}"
+                   placeholder="user@example.com" value="${escapeHtml(val)}" style="flex: 2;">`;
+    }
+    if (category === 'date') {
+        return `
+            <input type="date" class="form-control form-control-sm test-data-value"
+                   value="${escapeHtml(val)}" style="flex: 2;">`;
+    }
+    if (category === 'json') {
+        const invalid = val && !window.TestDataUtils.isValidJson(val);
+        // 單行壓縮預覽（不含換行），點擊開啟 JSON 編輯器 modal
+        const preview = (val || '').replace(/\s+/g, ' ').trim();
+        return `
+            <input type="text" readonly
+                   class="form-control form-control-sm test-data-value test-data-json-trigger${invalid ? ' is-invalid' : ''}"
+                   value="${escapeHtml(preview)}" placeholder='{"key":"value"}'
+                   data-idx="${idx}"
+                   style="flex: 2; cursor: pointer; caret-color: transparent;"
+                   title="點擊編輯 JSON">`;
+    }
+    // text / number / url / identifier / other
+    const inputType = category === 'number' ? 'number' : (category === 'url' ? 'url' : 'text');
+    return `
+        <input type="${inputType}" class="form-control form-control-sm test-data-value"
+               placeholder="Value" value="${escapeHtml(val)}" style="flex: 2;">`;
+}
+
+function renderTestDataList() {
+    const container = document.getElementById('testDataList');
+    if (!container) return;
+
+    if (!currentTestData || currentTestData.length === 0) {
+        container.innerHTML = '<p class="text-muted small mb-0"><i class="fas fa-info-circle me-1"></i><span data-i18n="form.noTestData">尚無 Test Data</span></p>';
+        return;
+    }
+
+    container.innerHTML = currentTestData.map((td, idx) => `
+        <div class="d-flex align-items-center gap-2 mb-2 test-data-item" data-idx="${idx}">
+            <input type="text" class="form-control form-control-sm test-data-name"
+                   placeholder="Name" value="${escapeHtml(td.name || '')}" style="flex: 1;">
+            <select class="form-select form-select-sm test-data-category" style="flex: 0 0 110px;">
+                ${buildTestDataCategoryOptions(td.category)}
+            </select>
+            ${buildTestDataValueEditor(td, idx)}
+            <button type="button" class="btn btn-sm btn-outline-danger remove-test-data-btn" data-idx="${idx}">
+                <i class="fas fa-trash-alt"></i>
+            </button>
+        </div>
+    `).join('');
+
+    // 欄位變更
+    container.querySelectorAll('.test-data-name, .test-data-value, .test-data-cred-username, .test-data-cred-password').forEach(input => {
+        input.addEventListener('input', updateTestDataFromDOM);
+        input.addEventListener('change', updateTestDataFromDOM);
+    });
+    // category 切換需要重繪 value 編輯器
+    container.querySelectorAll('.test-data-category').forEach(sel => {
+        sel.addEventListener('change', (e) => {
+            const item = e.target.closest('.test-data-item');
+            const idx = parseInt(item.dataset.idx);
+            if (currentTestData[idx]) {
+                const prevCat = currentTestData[idx].category;
+                const newCat = e.target.value;
+                // 切換 category 時重置 value（避免不同格式混雜）
+                if (prevCat !== newCat) {
+                    currentTestData[idx].category = newCat;
+                    currentTestData[idx].value = '';
+                    renderTestDataList();
+                    isFormChanged = true;
+                }
+            }
+        });
+    });
+    // 密碼顯示/隱藏
+    container.querySelectorAll('.toggle-pw-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const grp = e.currentTarget.closest('.input-group');
+            const pw = grp.querySelector('.test-data-cred-password');
+            const icon = e.currentTarget.querySelector('i');
+            if (pw.type === 'password') {
+                pw.type = 'text';
+                icon.classList.remove('fa-eye');
+                icon.classList.add('fa-eye-slash');
+            } else {
+                pw.type = 'password';
+                icon.classList.remove('fa-eye-slash');
+                icon.classList.add('fa-eye');
+            }
+        });
+    });
+    // JSON 單行預覽 → 點擊開啟 modal
+    container.querySelectorAll('.test-data-json-trigger').forEach(inp => {
+        inp.addEventListener('click', (e) => {
+            const idx = parseInt(e.currentTarget.dataset.idx);
+            openTestDataJsonEditor(idx);
+        });
+    });
+    // 刪除
+    container.querySelectorAll('.remove-test-data-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+            const idx = parseInt(e.currentTarget.dataset.idx);
+            currentTestData.splice(idx, 1);
+            renderTestDataList();
+            isFormChanged = true;
+        });
+    });
+
+    if (window.i18n && typeof window.i18n.applyTranslations === 'function') {
+        window.i18n.applyTranslations(container);
+    }
+}
+
+function updateTestDataFromDOM() {
+    const container = document.getElementById('testDataList');
+    if (!container) return;
+
+    const items = container.querySelectorAll('.test-data-item');
+    items.forEach((item, idx) => {
+        if (!currentTestData[idx]) return;
+        const entry = currentTestData[idx];
+        entry.name = item.querySelector('.test-data-name').value;
+        const catEl = item.querySelector('.test-data-category');
+        if (catEl) entry.category = catEl.value;
+
+        if (entry.category === 'credential') {
+            const u = item.querySelector('.test-data-cred-username');
+            const p = item.querySelector('.test-data-cred-password');
+            entry.value = window.TestDataUtils.serializeCredential(
+                u ? u.value : '', p ? p.value : ''
+            );
+        } else {
+            const v = item.querySelector('.test-data-value');
+            if (v) entry.value = v.value;
+        }
+
+        // 即時格式驗證（email / json）
+        if (entry.category === 'email') {
+            const v = item.querySelector('.test-data-value');
+            if (v) v.classList.toggle('is-invalid', !!entry.value && !window.TestDataUtils.isValidEmail(entry.value));
+        }
+        if (entry.category === 'json') {
+            const v = item.querySelector('.test-data-value');
+            if (v) v.classList.toggle('is-invalid', !window.TestDataUtils.isValidJson(entry.value));
+        }
+    });
+    isFormChanged = true;
+}
+
+function addTestData() {
+    currentTestData.push({
+        id: crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(),
+        name: '',
+        category: 'text',
+        value: ''
+    });
+    renderTestDataList();
+    isFormChanged = true;
+
+    // 聚焦到新項目的 name 輸入框
+    const container = document.getElementById('testDataList');
+    if (container) {
+        const lastItem = container.querySelector('.test-data-item:last-child');
+        if (lastItem) {
+            const nameInput = lastItem.querySelector('.test-data-name');
+            if (nameInput) nameInput.focus();
+        }
+    }
+}
+
+// 初始化 Test Data 新增按鈕事件
+document.addEventListener('DOMContentLoaded', function() {
+    const addBtn = document.getElementById('addTestDataBtn');
+    if (addBtn) {
+        addBtn.addEventListener('click', addTestData);
+    }
+});
+
+// ===== Test Data JSON 編輯器 Modal =====
+let _testDataJsonEditingIdx = null;
+
+function ensureJsonEditorModal() {
+    let modalEl = document.getElementById('testDataJsonEditorModal');
+    if (modalEl) return modalEl;
+    modalEl = document.createElement('div');
+    modalEl.id = 'testDataJsonEditorModal';
+    modalEl.className = 'modal fade';
+    modalEl.tabIndex = -1;
+    modalEl.setAttribute('aria-hidden', 'true');
+    modalEl.innerHTML = `
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-code me-2"></i>編輯 JSON</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <textarea id="testDataJsonEditorTextarea"
+                              class="form-control font-monospace"
+                              rows="14" spellcheck="false"
+                              placeholder='{"key":"value"}'></textarea>
+                    <div class="small text-danger mt-1" id="testDataJsonEditorError" style="display:none;"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary me-auto" id="testDataJsonPrettifyBtn">
+                        <i class="fas fa-magic me-1"></i>格式化
+                    </button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" id="testDataJsonEditorSaveBtn">儲存</button>
+                </div>
+            </div>
+        </div>`;
+    document.body.appendChild(modalEl);
+
+    const ta = modalEl.querySelector('#testDataJsonEditorTextarea');
+    const errEl = modalEl.querySelector('#testDataJsonEditorError');
+    const showErr = (msg) => {
+        if (msg) { errEl.textContent = msg; errEl.style.display = 'block'; ta.classList.add('is-invalid'); }
+        else { errEl.style.display = 'none'; ta.classList.remove('is-invalid'); }
+    };
+
+    ta.addEventListener('input', () => {
+        if (!ta.value || window.TestDataUtils.isValidJson(ta.value)) showErr(null);
+        else showErr('JSON 格式不正確');
+    });
+
+    modalEl.querySelector('#testDataJsonPrettifyBtn').addEventListener('click', () => {
+        if (!ta.value) return;
+        if (!window.TestDataUtils.isValidJson(ta.value)) {
+            showErr('JSON 格式不正確，無法格式化');
+            return;
+        }
+        ta.value = window.TestDataUtils.tryPrettyJson(ta.value);
+        showErr(null);
+    });
+
+    modalEl.querySelector('#testDataJsonEditorSaveBtn').addEventListener('click', () => {
+        if (ta.value && !window.TestDataUtils.isValidJson(ta.value)) {
+            showErr('JSON 格式不正確，請修正後再儲存');
+            return;
+        }
+        if (_testDataJsonEditingIdx !== null && currentTestData[_testDataJsonEditingIdx]) {
+            currentTestData[_testDataJsonEditingIdx].value = ta.value;
+            isFormChanged = true;
+            renderTestDataList();
+        }
+        bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+    });
+
+    modalEl.addEventListener('hidden.bs.modal', () => {
+        _testDataJsonEditingIdx = null;
+    });
+
+    return modalEl;
+}
+
+function openTestDataJsonEditor(idx) {
+    if (!currentTestData[idx]) return;
+    const modalEl = ensureJsonEditorModal();
+    const ta = modalEl.querySelector('#testDataJsonEditorTextarea');
+    const errEl = modalEl.querySelector('#testDataJsonEditorError');
+    _testDataJsonEditingIdx = idx;
+    const raw = currentTestData[idx].value || '';
+    // 開啟時若已是合法 JSON 自動 pretty
+    ta.value = window.TestDataUtils.isValidJson(raw)
+        ? window.TestDataUtils.tryPrettyJson(raw)
+        : raw;
+    errEl.style.display = 'none';
+    ta.classList.remove('is-invalid');
+    bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    setTimeout(() => ta.focus(), 200);
 }
 
 function updatePagination() {

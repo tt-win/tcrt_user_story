@@ -1682,6 +1682,14 @@ function generateScrollableContentHtml(testCase) {
                     </div>
                 </div>
                 ` : ''}
+                ${(testCase.test_data && testCase.test_data.length) ? `
+                <div class="mb-3">
+                    <h6 class="mb-2"><i class="fas fa-database me-2"></i><span data-i18n="testRun.testData">Test Data</span></h6>
+                    <div class="section-block section-test-data">
+                        ${testCase.test_data.map((td, idx) => renderTestDataRow(td, idx)).join('')}
+                    </div>
+                </div>
+                ` : ''}
                 ${testCase.expected_result ? `
                 <div class="mb-3">
                     <h6 class="mb-2" data-i18n="testRun.expectedResult">預期結果</h6>
@@ -2084,5 +2092,118 @@ function handleAttachmentDownload(attachmentName, fileToken, fileUrl) {
         AppUtils.showWarning(warningMessage);
     }
 }
+
+// ===== Test Data 顯示 =====
+function renderTestDataRow(td, idx) {
+    const cat = td.category || 'text';
+    const value = td.value || '';
+    const empty = !value;
+    const warnTitle = treTranslate('testRun.testDataValueMissing', '尚未填入測試資料');
+    const catLabel = treTranslate('form.testDataCategory.' + cat, cat);
+
+    // 依 category 決定 value 顯示
+    let valueHtml = '';
+    if (empty) {
+        valueHtml = '';
+    } else if (cat === 'credential') {
+        const c = window.TestDataUtils.parseCredential(value);
+        const mask = c.password ? '•'.repeat(Math.min(c.password.length, 10)) : '';
+        valueHtml = `<code class="small">${escapeHtml(c.username)}${mask ? ' / ' + mask : ''}</code>`;
+    } else if (cat === 'json') {
+        valueHtml = `<pre class="td-json-block small mb-0">${window.TestDataUtils.highlightJson(value)}</pre>`;
+    } else {
+        valueHtml = `<code class="small">${escapeHtml(value)}</code>`;
+    }
+
+    // 複製按鈕：有選項用 dropdown，否則單鍵
+    const options = window.TestDataUtils.getCopyOptions(cat, value);
+    let copyBtnHtml;
+    if (empty) {
+        copyBtnHtml = `<button type="button" class="btn btn-sm btn-outline-secondary" disabled><i class="fas fa-copy"></i></button>`;
+    } else if (options) {
+        const items = options.map(opt => {
+            const label = treTranslate(opt.labelKey, opt.fallback);
+            const preview = (opt.value || '').substring(0, 40);
+            return `<li><a class="dropdown-item copy-test-data-option" href="#" data-value="${escapeHtml(opt.value || '')}">
+                <div class="fw-bold small">${escapeHtml(label)}</div>
+                <div class="text-muted small font-monospace">${escapeHtml(preview)}</div>
+            </a></li>`;
+        }).join('');
+        copyBtnHtml = `<div class="dropdown">
+            <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
+                <i class="fas fa-copy"></i>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">${items}</ul>
+        </div>`;
+    } else {
+        copyBtnHtml = `<button type="button" class="btn btn-sm btn-outline-secondary copy-test-data-btn"
+                data-value="${escapeHtml(value)}"
+                data-i18n-title="testRun.copyTestData">
+                <i class="fas fa-copy"></i>
+            </button>`;
+    }
+
+    return `
+        <div class="d-flex align-items-start mb-2 p-2 rounded" style="background: var(--tr-bg-light);">
+            <div class="flex-grow-1 me-2">
+                <div class="d-flex align-items-center gap-2 mb-1">
+                    <span class="fw-bold small text-muted">${escapeHtml(td.name)}</span>
+                    <span class="badge bg-secondary" style="font-size: 0.7em;">${escapeHtml(catLabel)}</span>
+                    ${empty ? `<i class="fas fa-exclamation-triangle text-warning" title="${escapeHtml(warnTitle)}"></i>` : ''}
+                </div>
+                ${valueHtml}
+            </div>
+            ${copyBtnHtml}
+        </div>`;
+}
+
+// ===== Test Data 複製功能 =====
+function copyTestDataValue(btn) {
+    const value = btn.getAttribute('data-value');
+    if (value === null || value === '') return;
+
+    const successMsg = window.i18n ? window.i18n.t('testRun.testDataCopied', {}, '已複製 Test Data') : '已複製 Test Data';
+    const errorMsg = window.i18n ? window.i18n.t('errors.copyFailed', {}, '複製失敗') : '複製失敗';
+
+    const onOk = () => AppUtils.showSuccess(successMsg);
+    const onErr = (err) => {
+        console.error('複製 Test Data 失敗:', err);
+        AppUtils.showError(errorMsg);
+    };
+
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(value).then(onOk).catch(onErr);
+        return;
+    }
+    // 降級方案
+    const textarea = document.createElement('textarea');
+    textarea.value = value;
+    textarea.style.position = 'fixed';
+    textarea.style.left = '-9999px';
+    document.body.appendChild(textarea);
+    textarea.select();
+    try {
+        document.execCommand('copy');
+        onOk();
+    } catch (err) {
+        onErr(err);
+    }
+    document.body.removeChild(textarea);
+}
+
+// 使用事件委派綁定 Test Data 複製按鈕
+document.addEventListener('click', function(e) {
+    const btn = e.target.closest('.copy-test-data-btn');
+    if (btn) {
+        e.preventDefault();
+        copyTestDataValue(btn);
+        return;
+    }
+    const opt = e.target.closest('.copy-test-data-option');
+    if (opt) {
+        e.preventDefault();
+        copyTestDataValue(opt);
+    }
+});
 
 // ===== JIRA Tooltip 功能 =====

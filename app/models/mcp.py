@@ -88,6 +88,7 @@ class MCPTestCaseDetailItem(BaseModel):
     user_story_map: List[Dict[str, Any]] = Field(default_factory=list)
     parent_record: List[Dict[str, Any]] = Field(default_factory=list)
     raw_fields: Optional[Dict[str, Any]] = None
+    test_data: List[Dict[str, Any]] = Field(default_factory=list)
 
 
 class MCPTestCaseDetailResponse(BaseModel):
@@ -132,3 +133,24 @@ class MCPTeamTestRunsResponse(BaseModel):
     unassigned: List[Dict[str, Any]] = Field(default_factory=list)
     adhoc: List[MCPAdhocRunItem] = Field(default_factory=list)
     summary: Dict[str, int]
+
+
+
+class MCPTestCaseSectionItem(BaseModel):
+    id: int
+    test_case_set_id: int
+    parent_section_id: Optional[int] = None
+    name: str
+    description: Optional[str] = None
+    level: int
+    sort_order: int = 0
+    test_case_count: int = 0
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class MCPTeamTestCaseSectionsResponse(BaseModel):
+    team_id: int
+    filters: Dict[str, Any]
+    sections: List[MCPTestCaseSectionItem] = Field(default_factory=list)
+    total: int

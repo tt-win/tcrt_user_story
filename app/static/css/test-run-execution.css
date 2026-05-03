@@ -1264,3 +1264,26 @@
 }
 
 /* reverted: no fixed height for attachments list */
+
+/* ===== Test Data JSON 語法高亮 ===== */
+.td-json-block {
+    background: rgba(0, 0, 0, 0.04);
+    padding: 0.5rem 0.75rem;
+    border-radius: 4px;
+    margin-top: 0.25rem;
+    white-space: pre-wrap;
+    word-break: break-all;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.8125rem;
+    line-height: 1.4;
+}
+.td-json-key     { color: #c2185b; font-weight: 600; }
+.td-json-string  { color: #2e7d32; }
+.td-json-number  { color: #1565c0; }
+.td-json-bool    { color: #6a1b9a; font-weight: 600; }
+
+/* ===== Test Data 複製 dropdown 不被外層 overflow 裁切 ===== */
+.section-test-data .dropdown-menu.show {
+    position: fixed !important;
+    z-index: 1080 !important;
+}

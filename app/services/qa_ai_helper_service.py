@@ -7,6 +7,7 @@ import json
 import logging
 import time
 import re
+import uuid
 from copy import deepcopy
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Sequence, TypeVar
@@ -42,6 +43,7 @@ from app.models.database_models import (
     TestCaseSection,
     TestCaseSet,
 )
+from app.models.test_case import TestDataCategory, TestDataItem
 from app.models.qa_ai_helper import (
     QAAIHelperApplicabilityStatus,
     QAAIHelperCanonicalRevisionCreateRequest,
@@ -764,6 +766,9 @@ class QAAIHelperService:
             seed_body = {"text": seed_body}
         elif not isinstance(seed_body, dict):
             seed_body = {"text": str(seed_body or "").strip()}
+        seed_body["test_data_suggestions"] = self._normalize_test_data_suggestions(
+            seed_body.get("test_data_suggestions")
+        )
         return QAAIHelperSeedItemResponse.model_validate(
             {
                 "id": item.id,
@@ -1976,6 +1981,105 @@ class QAAIHelperService:
         chunk_size = max(1, (len(items) + max_workers - 1) // max_workers)
         return [items[index : index + chunk_size] for index in range(0, len(items), chunk_size)]
 
+    @staticmethod
+    def _normalize_test_data_suggestions(raw: Any) -> List[Dict[str, str]]:
+        """Normalize test_data_suggestions from LLM output or user payload.
+
+        - Accepts list of dicts; ignores non-list / malformed values (returns []).
+        - Each item requires non-empty ``name``; empty names are dropped.
+        - ``category`` falls back to ``text`` when missing / unknown.
+        - ``id`` is assigned a UUID4 when missing.
+        """
+        if not isinstance(raw, list):
+            return []
+        valid_categories = {member.value for member in TestDataCategory}
+        normalized: List[Dict[str, str]] = []
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name") or "").strip()
+            if not name:
+                continue
+            raw_category = item.get("category")
+            if isinstance(raw_category, TestDataCategory):
+                category = raw_category.value
+            else:
+                category = str(raw_category or "").strip().lower()
+            if category not in valid_categories:
+                category = TestDataCategory.TEXT.value
+            item_id = str(item.get("id") or "").strip() or str(uuid.uuid4())
+            normalized.append({"id": item_id, "category": category, "name": name})
+        return normalized
+
+    @staticmethod
+    def _normalize_test_data_items(
+        raw: Any,
+        suggestions: Optional[List[Dict[str, str]]] = None,
+    ) -> List[Dict[str, str]]:
+        """Normalize test_data from testcase LLM output.
+
+        If ``suggestions`` is provided, output is aligned to that skeleton:
+        same length/order/category/name; value taken from matching LLM output
+        (by name, case-insensitive) or empty string. Credential category value
+        is always forced to empty string regardless of LLM output.
+        """
+        valid_categories = {member.value for member in TestDataCategory}
+
+        def _extract(item: Any) -> Optional[Dict[str, str]]:
+            if not isinstance(item, dict):
+                return None
+            name = str(item.get("name") or "").strip()
+            if not name:
+                return None
+            raw_category = item.get("category")
+            if isinstance(raw_category, TestDataCategory):
+                category = raw_category.value
+            else:
+                category = str(raw_category or "").strip().lower()
+            if category not in valid_categories:
+                category = TestDataCategory.TEXT.value
+            value = str(item.get("value") or "")
+            if category == TestDataCategory.CREDENTIAL.value:
+                value = ""
+            item_id = str(item.get("id") or "").strip() or str(uuid.uuid4())
+            return {"id": item_id, "category": category, "name": name, "value": value}
+
+        if suggestions:
+            llm_items = raw if isinstance(raw, list) else []
+            llm_by_name: Dict[str, Dict[str, Any]] = {}
+            for candidate in llm_items:
+                if not isinstance(candidate, dict):
+                    continue
+                key = str(candidate.get("name") or "").strip().lower()
+                if key and key not in llm_by_name:
+                    llm_by_name[key] = candidate
+            aligned: List[Dict[str, str]] = []
+            for suggestion in suggestions:
+                name = suggestion["name"]
+                category = suggestion["category"]
+                match = llm_by_name.get(name.lower()) or {}
+                value = str(match.get("value") or "")
+                if category == TestDataCategory.CREDENTIAL.value:
+                    value = ""
+                aligned.append(
+                    {
+                        "id": suggestion.get("id") or str(uuid.uuid4()),
+                        "category": category,
+                        "name": name,
+                        "value": value,
+                    }
+                )
+            return aligned
+
+        if not isinstance(raw, list):
+            return []
+        normalized: List[Dict[str, str]] = []
+        for item in raw:
+            entry = _extract(item)
+            if entry is not None:
+                normalized.append(entry)
+        return normalized
+
     def _default_seed_output(self, generation_item: Dict[str, Any]) -> Dict[str, Any]:
         required_assertions = generation_item.get("required_assertions") or []
         first_assertion = required_assertions[0] if required_assertions else {}
@@ -1996,6 +2100,7 @@ class QAAIHelperService:
             or str(generation_item.get("verification_item_summary") or "").strip()
             or "請依驗證項目執行測試",
             "coverage_tags": generation_item.get("coverage_tags") or [QAAIHelperCoverageCategory.HAPPY_PATH.value],
+            "test_data_suggestions": [],
         }
 
     def _normalize_seed_output(
@@ -2024,6 +2129,9 @@ class QAAIHelperService:
         normalized["check_condition_ids"] = [
             int(value) for value in condition_ids if str(value).strip().isdigit()
         ] or normalized["check_condition_ids"]
+        normalized["test_data_suggestions"] = self._normalize_test_data_suggestions(
+            output.get("test_data_suggestions")
+        )
         return normalized
 
     def _refresh_seed_adoption_summary_sync(self, seed_set: QAAIHelperSeedSet) -> None:
@@ -2100,8 +2208,12 @@ class QAAIHelperService:
             seed_body = json_storage_loads(seed_item.seed_body_json, {})
             if isinstance(seed_body, dict):
                 seed_body_text = str(seed_body.get("text") or seed_body.get("summary") or "").strip()
+                test_data_suggestions = self._normalize_test_data_suggestions(
+                    seed_body.get("test_data_suggestions")
+                )
             else:
                 seed_body_text = str(seed_body or "").strip()
+                test_data_suggestions = []
             check_condition_ids = json_storage_loads(seed_item.check_condition_refs_json, [])
             check_conditions = []
             if verification_item is not None:
@@ -2154,6 +2266,7 @@ class QAAIHelperService:
                     or ([seed_body_text] if seed_body_text else []),
                     "required_assertions": check_conditions,
                     "seed_body_text": seed_body_text,
+                    "test_data_suggestions": test_data_suggestions,
                 }
             )
         return items
@@ -2197,6 +2310,17 @@ class QAAIHelperService:
                 generation_item.get("intent"),
             ],
         )
+        suggestions = generation_item.get("test_data_suggestions") or []
+        default_test_data = [
+            {
+                "id": suggestion.get("id") or str(uuid.uuid4()),
+                "category": suggestion["category"],
+                "name": suggestion["name"],
+                "value": "",
+            }
+            for suggestion in suggestions
+            if isinstance(suggestion, dict) and suggestion.get("name")
+        ]
         return {
             "item_index": int(generation_item.get("item_index") or 0),
             "seed_reference_key": str(generation_item.get("seed_reference_key") or "").strip(),
@@ -2205,6 +2329,7 @@ class QAAIHelperService:
             "preconditions": preconditions,
             "steps": steps,
             "expected_results": expected_results,
+            "test_data": default_test_data,
         }
 
     def _normalize_testcase_output(
@@ -2252,6 +2377,10 @@ class QAAIHelperService:
                     generation_item.get("intent"),
                 ],
             )
+        normalized["test_data"] = self._normalize_test_data_items(
+            output.get("test_data"),
+            suggestions=generation_item.get("test_data_suggestions") or None,
+        )
         return normalized
 
     def _refresh_testcase_adoption_summary_sync(
@@ -3347,7 +3476,12 @@ class QAAIHelperService:
                         coverage_tags_json=json_storage_dumps(normalized_output.get("coverage_tags") or []),
                         seed_reference_key=normalized_output["seed_reference_key"],
                         seed_summary=normalized_output["seed_summary"],
-                        seed_body_json=json_storage_dumps({"text": normalized_output["seed_body"]}),
+                        seed_body_json=json_storage_dumps(
+                            {
+                                "text": normalized_output["seed_body"],
+                                "test_data_suggestions": normalized_output.get("test_data_suggestions") or [],
+                            }
+                        ),
                         comment_text=None,
                         is_ai_generated=True,
                         user_edited=False,
@@ -3438,6 +3572,23 @@ class QAAIHelperService:
                 comment_text = request.comment_text
                 if (seed_item.comment_text or None) != comment_text:
                     seed_item.comment_text = comment_text
+                    seed_item.user_edited = True
+                    changed = True
+            if "test_data_suggestions" in request.model_fields_set:
+                raw_suggestions = [
+                    suggestion.model_dump(mode="json")
+                    for suggestion in (request.test_data_suggestions or [])
+                ]
+                new_suggestions = self._normalize_test_data_suggestions(raw_suggestions)
+                seed_body = json_storage_loads(seed_item.seed_body_json, {})
+                if not isinstance(seed_body, dict):
+                    seed_body = {"text": str(seed_body or "").strip()}
+                current_suggestions = self._normalize_test_data_suggestions(
+                    seed_body.get("test_data_suggestions")
+                )
+                if current_suggestions != new_suggestions:
+                    seed_body["test_data_suggestions"] = new_suggestions
+                    seed_item.seed_body_json = json_storage_dumps(seed_body)
                     seed_item.user_edited = True
                     changed = True
             if changed:
@@ -3636,7 +3787,12 @@ class QAAIHelperService:
                     continue
                 seed_item.comment_text = dirty_comment["comment_text"]
                 seed_item.seed_summary = normalized_output["seed_summary"]
-                seed_item.seed_body_json = json_storage_dumps({"text": normalized_output["seed_body"]})
+                seed_item.seed_body_json = json_storage_dumps(
+                    {
+                        "text": normalized_output["seed_body"],
+                        "test_data_suggestions": normalized_output.get("test_data_suggestions") or [],
+                    }
+                )
                 seed_item.coverage_tags_json = json_storage_dumps(normalized_output.get("coverage_tags") or [])
                 seed_item.check_condition_refs_json = json_storage_dumps(
                     normalized_output.get("check_condition_ids") or []
@@ -3913,6 +4069,7 @@ class QAAIHelperService:
                                 "preconditions": normalized_output["preconditions"],
                                 "steps": normalized_output["steps"],
                                 "expected_results": normalized_output["expected_results"],
+                                "test_data": normalized_output.get("test_data") or [],
                             }
                         ),
                         is_ai_generated=True,
@@ -3995,12 +4152,16 @@ class QAAIHelperService:
             )
             if draft is None:
                 raise ValueError("找不到 testcase draft")
-            draft.body_json = json_storage_dumps(request.body.model_dump())
+            body_payload = request.body.model_dump(mode="json")
+            body_payload["test_data"] = self._normalize_test_data_items(
+                body_payload.get("test_data")
+            )
+            draft.body_json = json_storage_dumps(body_payload)
             draft.user_edited = True
             draft.updated_at = _now()
             validation_summary = self._validate_testcase_draft_body(
                 draft=draft,
-                body=request.body.model_dump(),
+                body=body_payload,
             )
             if not validation_summary["is_valid"] and draft.selected_for_commit:
                 draft.selected_for_commit = False
@@ -4387,6 +4548,10 @@ class QAAIHelperService:
                     parent_section_id=root_section.id,
                     name=section_name,
                 )
+                draft_test_data = body.get("test_data") or []
+                if not isinstance(draft_test_data, list):
+                    draft_test_data = []
+                test_data_for_persist = self._normalize_test_data_items(draft_test_data)
                 test_case = TestCaseLocal(
                     team_id=team_id,
                     test_case_set_id=target_set.id,
@@ -4398,6 +4563,7 @@ class QAAIHelperService:
                     steps=_join_lines(body.get("steps") or [], numbered=True),
                     expected_result=_join_lines(body.get("expected_results") or []),
                     tcg_json=json_compact_dumps_nullable([session.ticket_key] if session.ticket_key else []),
+                    test_data_json=json_storage_dumps(test_data_for_persist) if test_data_for_persist else None,
                     sync_status=SyncStatus.SYNCED,
                     created_at=_now(),
                     updated_at=_now(),

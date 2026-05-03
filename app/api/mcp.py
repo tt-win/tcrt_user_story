@@ -21,6 +21,7 @@ from app.models.database_models import (
     AdHocRunSheet,
     Team as TeamDB,
     TestCaseLocal as TestCaseLocalDB,
+    TestCaseSection as TestCaseSectionDB,
     TestCaseSet as TestCaseSetDB,
     TestRunConfig as TestRunConfigDB,
     TestRunSet as TestRunSetDB,
@@ -33,7 +34,9 @@ from app.models.mcp import (
     MCPMachinePrincipal,
     MCPPageMeta,
     MCPTeamItem,
+    MCPTeamTestCaseSectionsResponse,
     MCPTestCaseLookupResponse,
+    MCPTestCaseSectionItem,
     MCPTeamTestCasesResponse,
     MCPTeamTestRunsResponse,
     MCPTeamsResponse,
@@ -96,6 +99,8 @@ def _parse_tcg_list(tcg_json: Optional[str]) -> list[str]:
 
 
 def _parse_json_list(raw_json: Optional[str]) -> list[Dict[str, Any]]:
+    # MCP read API 對 JSON 陣列欄位（如 test_data, attachments）採 dict 直接 passthrough，
+    # 不做欄位正規化；test_data 必須完整保留 id/name/category/value 四欄位由下游自行處理 redaction。
     if not raw_json:
         return []
     try:
@@ -132,6 +137,7 @@ def _build_case_payload(
     *,
     include_content: bool = False,
     include_extended: bool = False,
+    include_test_data: bool = False,
 ) -> Dict[str, Any]:
     payload: Dict[str, Any] = {
         "id": row.id,
@@ -164,8 +170,11 @@ def _build_case_payload(
                 "user_story_map": _parse_json_list(row.user_story_map_json),
                 "parent_record": _parse_json_list(row.parent_record_json),
                 "raw_fields": _parse_json_dict(row.raw_fields_json),
+                "test_data": _parse_json_list(row.test_data_json),
             }
         )
+    elif include_test_data:
+        payload["test_data"] = _parse_json_list(row.test_data_json)
     return payload
 
 
@@ -321,6 +330,9 @@ async def lookup_test_cases(
     include_content: bool = Query(
         True, description="是否回傳 precondition/steps/expected_result"
     ),
+    include_test_data: bool = Query(
+        False, description="是否回傳每筆 case 的 test_data 陣列（含 id/name/category/value）"
+    ),
     skip: int = Query(0, ge=0, description="分頁 offset"),
     limit: int = Query(20, ge=1, le=200, description="分頁大小"),
 ):
@@ -348,6 +360,7 @@ async def lookup_test_cases(
                 "team_id": team_id,
                 "team_name": team_name,
                 "include_content": include_content,
+                "include_test_data": include_test_data,
             },
             items=[],
             page=MCPPageMeta(skip=skip, limit=limit, total=0, has_next=False),
@@ -420,7 +433,11 @@ async def lookup_test_cases(
                     test_case_number=number_filter or None,
                     ticket=ticket_filter or None,
                 ),
-                test_case=_build_case_payload(row, include_content=include_content),
+                test_case=_build_case_payload(
+                    row,
+                    include_content=include_content,
+                    include_test_data=include_test_data,
+                ),
             )
         )
 
@@ -438,6 +455,7 @@ async def lookup_test_cases(
             "team_id": team_id,
             "team_name": team_name,
             "include_content": include_content,
+            "include_test_data": include_test_data,
         },
         items=items,
         page=MCPPageMeta(skip=skip, limit=limit, total=int(total), has_next=has_next),
@@ -468,6 +486,9 @@ async def list_team_test_cases(
     ),
     include_content: bool = Query(
         False, description="是否回傳 precondition/steps/expected_result"
+    ),
+    include_test_data: bool = Query(
+        False, description="是否回傳每筆 case 的 test_data 陣列（含 id/name/category/value）"
     ),
     skip: int = Query(0, ge=0, description="分頁 offset"),
     limit: int = Query(100, ge=1, le=1000, description="分頁大小"),
@@ -567,7 +588,13 @@ async def list_team_test_cases(
 
     cases: list[Dict[str, Any]] = []
     for row in rows:
-        cases.append(_build_case_payload(row, include_content=include_content))
+        cases.append(
+            _build_case_payload(
+                row,
+                include_content=include_content,
+                include_test_data=include_test_data,
+            )
+        )
 
     return MCPTeamTestCasesResponse(
         team_id=team_id,
@@ -583,6 +610,7 @@ async def list_team_test_cases(
             "ticket": ticket,
             "strict_set": strict_set,
             "include_content": include_content,
+            "include_test_data": include_test_data,
         },
         sets=set_items,
         test_cases=cases,
@@ -600,6 +628,7 @@ async def get_team_test_case_detail(
     db: AsyncSession = Depends(get_db),
     principal: MCPMachinePrincipal = Depends(require_mcp_team_access),
 ):
+    """Detail 端點預設回傳完整 extended 欄位（含 test_data），與 attachments / raw_fields 等價對待。"""
     del principal  # 由 dependency 完成 team scope 驗證
     await _ensure_team_exists(db, team_id)
 
@@ -805,4 +834,131 @@ async def list_team_test_runs(
             "adhoc_count": len(adhoc_payloads),
             "total_runs": total_runs,
         },
+    )
+
+
+
+async def _get_section_case_counts(
+    db: AsyncSession, team_id: int
+) -> dict[int, int]:
+    """回傳 {section_id: 直接掛在該 section 的 case 數}，section_id 為 NULL 的不計。"""
+    rows = await db.execute(
+        select(
+            TestCaseLocalDB.test_case_section_id,
+            func.count(TestCaseLocalDB.id),
+        )
+        .where(
+            TestCaseLocalDB.team_id == team_id,
+            TestCaseLocalDB.test_case_section_id.is_not(None),
+        )
+        .group_by(TestCaseLocalDB.test_case_section_id)
+    )
+    return {section_id: int(count or 0) for section_id, count in rows.all()}
+
+
+@router.get(
+    "/teams/{team_id}/test-case-sections",
+    response_model=MCPTeamTestCaseSectionsResponse,
+)
+async def list_team_test_case_sections(
+    team_id: int,
+    db: AsyncSession = Depends(get_db),
+    principal: MCPMachinePrincipal = Depends(require_mcp_team_access),
+    set_id: Optional[int] = Query(None, description="限制單一 Test Case Set"),
+    parent_section_id: Optional[int] = Query(
+        None,
+        description="限制單一 parent section（取直系 children）；要查 root section 請改用 roots_only",
+    ),
+    roots_only: bool = Query(
+        False, description="是否只回傳 parent_section_id IS NULL 的 root sections"
+    ),
+    include_empty: bool = Query(
+        True, description="是否包含 test_case_count == 0 的 section（預設 true）"
+    ),
+):
+    """列出 team 範圍內的 test case sections（扁平 list，含 parent_section_id 供 client 重組樹）。"""
+    del principal  # 由 dependency 完成 team scope 驗證
+    await _ensure_team_exists(db, team_id)
+
+    set_not_found = False
+    if set_id is not None:
+        set_exists = await db.execute(
+            select(TestCaseSetDB.id).where(
+                TestCaseSetDB.id == set_id,
+                TestCaseSetDB.team_id == team_id,
+            )
+        )
+        if set_exists.scalar_one_or_none() is None:
+            set_not_found = True
+            return MCPTeamTestCaseSectionsResponse(
+                team_id=team_id,
+                filters={
+                    "set_id": set_id,
+                    "set_not_found": set_not_found,
+                    "parent_section_id": parent_section_id,
+                    "roots_only": roots_only,
+                    "include_empty": include_empty,
+                },
+                sections=[],
+                total=0,
+            )
+
+    count_map = await _get_section_case_counts(db, team_id)
+
+    conditions = [TestCaseSetDB.team_id == team_id]
+    if set_id is not None:
+        conditions.append(TestCaseSectionDB.test_case_set_id == set_id)
+    if roots_only:
+        conditions.append(TestCaseSectionDB.parent_section_id.is_(None))
+    elif parent_section_id is not None:
+        conditions.append(TestCaseSectionDB.parent_section_id == parent_section_id)
+
+    rows = (
+        await db.execute(
+            select(TestCaseSectionDB)
+            .join(
+                TestCaseSetDB,
+                TestCaseSetDB.id == TestCaseSectionDB.test_case_set_id,
+            )
+            .where(*conditions)
+            .order_by(
+                TestCaseSectionDB.test_case_set_id.asc(),
+                TestCaseSectionDB.level.asc(),
+                TestCaseSectionDB.sort_order.asc(),
+                TestCaseSectionDB.id.asc(),
+            )
+        )
+    ).scalars().all()
+
+    sections: list[MCPTestCaseSectionItem] = []
+    for row in rows:
+        case_count = count_map.get(row.id, 0)
+        if not include_empty and case_count == 0:
+            continue
+        sections.append(
+            MCPTestCaseSectionItem(
+                id=row.id,
+                test_case_set_id=row.test_case_set_id,
+                parent_section_id=row.parent_section_id,
+                name=row.name,
+                description=row.description,
+                level=row.level,
+                sort_order=row.sort_order,
+                test_case_count=case_count,
+                created_at=row.created_at,
+                updated_at=row.updated_at,
+            )
+        )
+
+    return MCPTeamTestCaseSectionsResponse(
+        team_id=team_id,
+        filters={
+            "set_id": set_id,
+            "set_not_found": set_not_found,
+            "parent_section_id": parent_section_id,
+            "roots_only": roots_only,
+            "include_empty": include_empty,
+        },
+        sections=sections,
+        total=len(sections),
     )

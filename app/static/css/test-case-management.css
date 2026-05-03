@@ -1120,3 +1120,8 @@ body {
         grid-template-columns: 1fr;
     }
 }
+
+/* ===== Test Data 列表列：取消全域 .input-group 的 margin-bottom 以對齊相鄰元件 ===== */
+.test-data-item .input-group {
+    margin-bottom: 0 !important;
+}
