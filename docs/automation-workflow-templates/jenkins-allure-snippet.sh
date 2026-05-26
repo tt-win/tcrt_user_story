@@ -39,6 +39,15 @@ if [ -n "${ALLURE_BASE_URL:-}" ] && [ -n "${ALLURE_PROJECT_ID:-}" ] && [ -d "${W
     AUTH_HEADER="Authorization: Bearer ${ALLURE_TOKEN}"
   fi
 
+  # Ensure the project exists on the Allure server. Idempotent: a 4xx
+  # "already exists" response is ignored; only send-results is treated as
+  # authoritative for failure.
+  curl -sS -o /dev/null -X POST -H "Content-Type: application/json" \
+    -H "${AUTH_HEADER}" \
+    -d "{\"id\":\"${ALLURE_PROJECT_ID}\"}" \
+    "${ALLURE_BASE_URL}/allure-docker-service/projects" \
+    || echo "Allure project ensure failed (non-fatal; project may already exist or server unreachable)"
+
   for f in "${WORKSPACE}/allure-results/"*; do
     [ -f "$f" ] || continue
     curl -fsS -H "${AUTH_HEADER}" \

@@ -60,6 +60,12 @@ jobs:
           if [ -n "$ALLURE_TOKEN" ]; then
             AUTH=(-H "Authorization: Bearer $ALLURE_TOKEN")
           fi
+          # Idempotent project ensure (Allure returns 4xx if already present)
+          curl -sS -o /dev/null -X POST "${AUTH[@]}" \
+            -H "Content-Type: application/json" \
+            -d "{\"id\":\"$ALLURE_PROJECT_ID\"}" \
+            "$ALLURE_BASE_URL/allure-docker-service/projects" \
+            || echo "Allure project ensure failed (non-fatal)"
           if [ -d allure-results ]; then
             for f in allure-results/*; do
               [ -f "$f" ] || continue

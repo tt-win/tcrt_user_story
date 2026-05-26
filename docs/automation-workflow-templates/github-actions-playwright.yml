@@ -69,6 +69,14 @@ jobs:
             AUTH=(-H "Authorization: Bearer $ALLURE_TOKEN")
           fi
 
+          # 0) Ensure the project exists. Idempotent — Allure returns 4xx if
+          #    the project is already present, which we deliberately swallow.
+          curl -sS -o /dev/null -X POST "${AUTH[@]}" \
+            -H "Content-Type: application/json" \
+            -d "{\"id\":\"$ALLURE_PROJECT_ID\"}" \
+            "$ALLURE_BASE_URL/allure-docker-service/projects" \
+            || echo "Allure project ensure failed (non-fatal)"
+
           # 1) Push raw result files (multipart upload, one POST per file)
           if [ -d allure-results ]; then
             for f in allure-results/*; do
