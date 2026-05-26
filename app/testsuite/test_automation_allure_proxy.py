@@ -149,6 +149,17 @@ def _make_archive(files: dict[str, bytes]) -> bytes:
     return buf.getvalue()
 
 
+def _make_jenkins_zip(files: dict[str, bytes]) -> bytes:
+    """Mimic Jenkins's /artifact/*zip*/archive.zip layout, where everything
+    is nested under an ``archive/`` prefix."""
+    import zipfile
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for name, payload in files.items():
+            zf.writestr(f"archive/allure-results/{name}", payload)
+    return buf.getvalue()
+
+
 class _FakeAllureClient:
     """Stand-in for ``httpx.AsyncClient`` that records calls and returns canned
     responses, so we can assert on the proxy's HTTP interaction shape without
@@ -290,6 +301,41 @@ async def test_upload_run_results_raises_when_not_configured(proxy_db, monkeypat
 
         with pytest.raises(AllureProxyNotConfiguredError):
             await upload_run_results(session=session, run=run, archive_bytes=archive)
+
+
+@pytest.mark.asyncio
+async def test_upload_run_results_accepts_jenkins_zip_layout(proxy_db, monkeypatch):
+    """Jenkins's /artifact/*zip*/archive.zip namespaces files under
+    ``archive/allure-results/`` — the proxy must locate and forward them
+    despite the extra nesting that doesn't appear in the tar.gz layout."""
+    ids = proxy_db["ids"]
+
+    fake = _FakeAllureClient()
+    monkeypatch.setattr(proxy_module.httpx, "AsyncClient", lambda **kw: fake)
+
+    import app.config as cfg_mod
+    monkeypatch.setattr(
+        cfg_mod.get_settings().automation_provider,
+        "allure",
+        cfg_mod.AllureConfig(
+            base_url="http://127.0.0.1:5050",
+            api_token="",
+            project_id_template="tcrt-team-{team_slug}",
+        ),
+    )
+
+    archive = _make_jenkins_zip({"result-1.json": b"{}", "result-2.json": b"{}"})
+
+    async with proxy_db["async_sessionmaker"]() as session:
+        from sqlalchemy import select
+        run = (await session.execute(
+            select(AutomationRun).where(AutomationRun.id == ids["script_run_id"])
+        )).scalar_one()
+
+        await upload_run_results(session=session, run=run, archive_bytes=archive)
+
+    send_calls = [u for m, u, _ in fake.calls if "send-results" in u]
+    assert len(send_calls) == 2  # both files made it through despite the archive/ prefix
 
 
 @pytest.mark.asyncio

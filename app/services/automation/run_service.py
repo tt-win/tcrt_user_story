@@ -327,12 +327,20 @@ class AutomationRunService:
         provider = ci_provider or await self._provider_from_run_record(run)
         snapshot = await provider.get_run_status(run.external_run_id)
         merged = self._merge_status_snapshot(run=run, snapshot=snapshot)
-        await self._maybe_fill_report_url(run=merged)
+        # Pass the live CI provider into the backfill helper so it can pull
+        # build artifacts from Jenkins (cross-network firewalls usually
+        # prevent the reverse — Jenkins pushing to TCRT — but TCRT always
+        # has working auth to Jenkins for status polling).
+        await self._maybe_fill_report_url(run=merged, ci_provider=provider)
         return merged
 
-    async def _maybe_fill_report_url(self, *, run: AutomationRun) -> None:
-        """Backfill report_url from team's Result provider when run is terminal."""
-        await maybe_fill_report_url(session=self.session, run=run)
+    async def _maybe_fill_report_url(
+        self, *, run: AutomationRun, ci_provider: CIProvider | None = None
+    ) -> None:
+        """Backfill report_url; see ``maybe_fill_report_url`` docstring."""
+        await maybe_fill_report_url(
+            session=self.session, run=run, ci_provider=ci_provider
+        )
 
     def _merge_status_snapshot(
         self,
@@ -449,11 +457,31 @@ async def load_result_provider(
         return None
 
 
-async def maybe_fill_report_url(*, session: AsyncSession, run: AutomationRun) -> None:
-    """Backfill run.report_url from the team's Result provider when run is terminal.
+async def maybe_fill_report_url(
+    *,
+    session: AsyncSession,
+    run: AutomationRun,
+    ci_provider: CIProvider | None = None,
+) -> None:
+    """Populate ``run.report_url`` when the run reaches a terminal state.
 
-    No-op when the run already has a report_url, isn't terminal, has no external_run_id,
-    or no Result provider is configured. Errors from the provider are swallowed (logged).
+    Two strategies, tried in order:
+
+    1. **CI artifact pull → Allure proxy.** When the CI provider exposes
+       ``download_build_artifacts_zip`` (currently Jenkins), TCRT pulls the
+       build's archived ``allure-results`` and forwards them to the local
+       Allure server. This is the only viable path when Jenkins can't reach
+       TCRT (air-gapped / one-way-firewall topology); pull works because
+       TCRT already has Jenkins credentials for status polling.
+
+    2. **Legacy Result provider URL template.** Falls back to the team's
+       ``result:allure`` provider's ``run_url_template`` (opt-in only — see
+       ``allure_result.py``). Mostly a no-op now that the proxy is the
+       canonical path.
+
+    All exceptions are swallowed + logged so a flaky Allure server doesn't
+    fail the sync loop. Idempotent: a subsequent call no-ops once
+    ``report_url`` is set.
     """
     if run.report_url:
         return
@@ -461,6 +489,39 @@ async def maybe_fill_report_url(*, session: AsyncSession, run: AutomationRun) ->
         return
     if not run.external_run_id:
         return
+
+    # Strategy 1 — TCRT pulls artifacts from the CI (Jenkins) and forwards.
+    if ci_provider is not None and hasattr(ci_provider, "download_build_artifacts_zip"):
+        try:
+            archive_bytes = await ci_provider.download_build_artifacts_zip(run.external_run_id)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "CI artifact download failed for run %s: %s", run.id, exc
+            )
+            archive_bytes = None
+        if archive_bytes:
+            from app.services.automation.allure_proxy import (
+                AllureProxyError,
+                AllureProxyNotConfiguredError,
+                upload_run_results,
+            )
+
+            try:
+                await upload_run_results(
+                    session=session, run=run, archive_bytes=archive_bytes
+                )
+                run.updated_at = _utcnow()
+                return
+            except AllureProxyNotConfiguredError:
+                # operator hasn't set base_url — fall through to strategy 2
+                pass
+            except AllureProxyError as exc:
+                logger.warning(
+                    "Allure proxy upload failed for run %s: %s", run.id, exc
+                )
+                # fall through
+
+    # Strategy 2 — legacy result-provider URL template (opt-in via config).
     result_provider = await load_result_provider(session=session, team_id=run.team_id)
     if result_provider is None:
         return

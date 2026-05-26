@@ -334,6 +334,60 @@ async def test_jenkins_auto_view_uses_list_view_xml(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_jenkins_download_build_artifacts_zip_returns_none_for_queue_id():
+    """Queue-state runs have no built build yet — return None instead of 404'ing."""
+    provider = JenkinsCIProvider(
+        {"base_url": "https://jenkins.example.test"},
+        {"username": "qa", "api_token": "token"},
+    )
+    assert await provider.download_build_artifacts_zip("queue:42") is None
+
+
+@pytest.mark.asyncio
+async def test_jenkins_download_build_artifacts_zip_streams_bytes(monkeypatch):
+    """Returns the zip payload Jenkins serves at /artifact/*zip*/archive.zip."""
+    provider = JenkinsCIProvider(
+        {"base_url": "https://jenkins.example.test"},
+        {"username": "qa", "api_token": "token"},
+    )
+
+    async def fake_request(method, path, **kwargs):
+        assert method == "GET"
+        assert path.endswith("/artifact/*zip*/archive.zip")
+        request = httpx.Request(method, path)
+        return httpx.Response(200, request=request, content=b"PKfake-zip-bytes")
+
+    monkeypatch.setattr(provider, "_request", fake_request)
+
+    payload = await provider.download_build_artifacts_zip(
+        "https://jenkins.example.test/job/foo/6#6"
+    )
+    assert payload == b"PKfake-zip-bytes"
+
+
+@pytest.mark.asyncio
+async def test_jenkins_download_build_artifacts_zip_handles_404_as_no_artifacts(monkeypatch):
+    """Jenkins returns 404 when the build archived nothing — that's a normal
+    "no allure-results" outcome, not an exception."""
+    provider = JenkinsCIProvider(
+        {"base_url": "https://jenkins.example.test"},
+        {"username": "qa", "api_token": "token"},
+    )
+
+    async def fake_request(method, path, **kwargs):
+        request = httpx.Request(method, path)
+        response = httpx.Response(404, request=request)
+        raise httpx.HTTPStatusError("not found", request=request, response=response)
+
+    monkeypatch.setattr(provider, "_request", fake_request)
+
+    payload = await provider.download_build_artifacts_zip(
+        "https://jenkins.example.test/job/foo/6#6"
+    )
+    assert payload is None
+
+
+@pytest.mark.asyncio
 async def test_allure_result_provider_formats_run_url():
     provider = AllureResultProvider(
         {

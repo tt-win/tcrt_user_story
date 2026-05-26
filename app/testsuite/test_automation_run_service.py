@@ -462,6 +462,96 @@ async def test_maybe_fill_report_url_uses_result_provider_when_terminal(automati
 
 
 @pytest.mark.asyncio
+async def test_maybe_fill_report_url_pulls_from_jenkins_and_proxies_to_allure(
+    automation_run_db, monkeypatch
+):
+    """End-to-end pull path: ci_provider has download_build_artifacts_zip,
+    proxy forwards bytes to local Allure, run.report_url is populated."""
+    from app.services.automation.run_service import maybe_fill_report_url
+    from app.services.automation import allure_proxy as proxy_module
+    import app.config as cfg_mod
+    import io, zipfile, httpx
+
+    ids = automation_run_db["ids"]
+
+    # Allure proxy must be configured for the upload to proceed.
+    monkeypatch.setattr(
+        cfg_mod.get_settings().automation_provider,
+        "allure",
+        cfg_mod.AllureConfig(
+            base_url="http://127.0.0.1:5050",
+            api_token="",
+            project_id_template="tcrt-team-{team_slug}",
+        ),
+    )
+
+    # Stand-in for httpx.AsyncClient used by the proxy.
+    class _FakeAllure:
+        calls = []
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *_a):
+            return None
+
+        async def post(self, url, **kw):
+            self.calls.append(("POST", url))
+            return httpx.Response(201, request=httpx.Request("POST", url))
+
+        async def get(self, url, **kw):
+            self.calls.append(("GET", url))
+            if "generate-report" in url:
+                return httpx.Response(
+                    200,
+                    json={"data": {"report_url": "http://127.0.0.1:5050/r/9/index.html"}},
+                    request=httpx.Request("GET", url),
+                )
+            return httpx.Response(200, request=httpx.Request("GET", url))
+
+    fake = _FakeAllure()
+    monkeypatch.setattr(proxy_module.httpx, "AsyncClient", lambda **kw: fake)
+
+    # Build a Jenkins-style ZIP that the fake provider will hand back.
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, mode="w") as zf:
+        zf.writestr("archive/allure-results/r.json", b"{}")
+    jenkins_zip = buf.getvalue()
+
+    class _FakeJenkins:
+        async def download_build_artifacts_zip(self, external_run_id):
+            assert external_run_id == "https://jenkins/job/x/1#1"
+            return jenkins_zip
+
+    async with automation_run_db["async_sessionmaker"]() as session:
+        service = AutomationRunService(session)
+
+        class _FakeCI:
+            async def trigger_run(self, *a, **kw):
+                return ExternalRunRef(external_run_id="queue:1", external_run_url="https://ci/1")
+
+        run = await service.trigger_script(
+            team_id=ids["team_id"],
+            script_id=ids["script_id"],
+            workflow_id="job-y",
+            ci_provider=_FakeCI(),
+        )
+        run.status = AutomationRunStatus.SUCCEEDED
+        run.external_run_id = "https://jenkins/job/x/1#1"
+        run.report_url = None
+        await session.flush()
+
+        await maybe_fill_report_url(
+            session=session, run=run, ci_provider=_FakeJenkins()
+        )
+
+        assert run.report_url == "http://127.0.0.1:5050/r/9/index.html"
+        # The proxy actually made an Allure send-results call (proves the zip
+        # was extracted past Jenkins's `archive/` prefix).
+        assert any("/send-results" in u for _m, u in fake.calls)
+
+
+@pytest.mark.asyncio
 async def test_maybe_fill_report_url_noop_when_provider_has_no_template(automation_run_db):
     """Terminal run with Result provider but no run_url_template configured → no-op.
 

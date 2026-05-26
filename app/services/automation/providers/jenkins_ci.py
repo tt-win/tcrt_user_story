@@ -300,6 +300,35 @@ class JenkinsCIProvider:
         build_url, _ = _parse_build_ref(external_run_id)
         return build_url
 
+    async def download_build_artifacts_zip(self, external_run_id: str) -> bytes | None:
+        """Pull all build artifacts as a single ZIP via Jenkins's bulk endpoint.
+
+        Returns ``None`` when there are no artifacts on this build (Jenkins
+        returns 404), or when ``external_run_id`` still references a queue
+        item (not yet a built build). The caller is expected to defer pull
+        until the run has reached a terminal state.
+
+        This is the inverse of the previously-attempted "Jenkins POSTs to
+        TCRT" flow: in topologies where Jenkins agents can't reach TCRT (the
+        common air-gapped / one-way-firewall case), the only viable path is
+        for TCRT to pull from Jenkins, which we can do because TCRT already
+        has working auth to Jenkins for status polling.
+        """
+        if external_run_id.startswith("queue:"):
+            return None
+        try:
+            build_url, _build_id = _parse_build_ref(external_run_id)
+        except ValueError:
+            return None
+        artifact_path = f"{build_url.rstrip('/')}/artifact/*zip*/archive.zip"
+        try:
+            response = await self._request("GET", artifact_path)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code == 404:
+                return None
+            raise
+        return response.content
+
     async def list_artifacts(self, external_run_id: str) -> list[ArtifactRef]:
         if external_run_id.startswith("queue:"):
             snapshot = await self.get_run_status(external_run_id)

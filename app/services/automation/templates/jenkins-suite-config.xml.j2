@@ -33,11 +33,6 @@
           <description>Optional GitHub PAT for cloning private repos. Masked in console output.</description>
           <defaultValue></defaultValue>
         </hudson.model.PasswordParameterDefinition>
-        <hudson.model.PasswordParameterDefinition>
-          <name>TCRT_WEBHOOK_URL</name>
-          <description>Full TCRT inbound webhook URL (run-status). Baked from TCRT's config.yaml app.public_base_url + the team's auto-managed webhook token. Masked in console.</description>
-          <defaultValue>{{ tcrt_webhook_url }}</defaultValue>
-        </hudson.model.PasswordParameterDefinition>
       </parameterDefinitions>
     </hudson.model.ParametersDefinitionProperty>
   </properties>
@@ -112,69 +107,13 @@ pipeline {
     }
     post {
         always {
-            // Promote Groovy-only vars (`params.tcrt_run_id`,
-            // `currentBuild.currentResult`) into env vars in a `script {}`
-            // block so the sh body can stay single-quoted (Groovy does not
-            // interpolate) and reference them as plain `$VAR` — sh accepts
-            // them, no "Bad substitution" risk from Groovy-style `${a.b}`.
-            script {
-                env.TCRT_WEBHOOK_RUN_ID = params.tcrt_run_id ?: ''
-                env.TCRT_WEBHOOK_STATUS = currentBuild.currentResult ?: 'UNKNOWN'
-                // TCRT_WEBHOOK_URL is a PasswordParameter baked from config.yaml;
-                // promote it into env so the sh body's `$TCRT_WEBHOOK_URL` works.
-                env.TCRT_WEBHOOK_URL = params.TCRT_WEBHOOK_URL ?: ''
-            }
-            // Allure handoff — Jenkins doesn't talk to Allure directly. We tar
-            // up allure-results and POST to TCRT's proxy endpoint, which is
-            // co-located with the Allure server (typically on its loopback).
-            // The proxy returns a report_url which we then include in the
-            // run-status webhook payload.
-            sh '''
-            set +e
-            ALLURE_REPORT_URL=""
-            if [ -n "${TCRT_WEBHOOK_URL:-}" ] && [ -d "${WORKSPACE}/allure-results" ]; then
-              # Derive the upload URL from the existing run-status webhook URL
-              # so the operator only needs to configure ONE base — Jenkins
-              # never needs to know the Allure server address.
-              ALLURE_UPLOAD_URL="${TCRT_WEBHOOK_URL%/run-status}/allure-results"
-              tar czf "${WORKSPACE}/allure-results.tgz" -C "${WORKSPACE}" allure-results \
-                || echo "Failed to archive allure-results (non-fatal)"
-              if [ -f "${WORKSPACE}/allure-results.tgz" ]; then
-                RESP=$(curl -sS -X POST "${ALLURE_UPLOAD_URL}" \
-                  -F "tcrt_run_id=${TCRT_WEBHOOK_RUN_ID}" \
-                  -F "results=@${WORKSPACE}/allure-results.tgz" \
-                  || echo "")
-                if [ -n "$RESP" ]; then
-                  ALLURE_REPORT_URL=$(echo "$RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('report_url') or '')" 2>/dev/null || echo "")
-                fi
-                # The proxy already wrote report_url onto the run, so the
-                # subsequent status webhook doesn't strictly need to repeat
-                # it — but doing so makes the webhook self-describing and
-                # avoids relying on call ordering.
-              fi
-            fi
-            echo "ALLURE_REPORT_URL=${ALLURE_REPORT_URL}" > "${WORKSPACE}/.tcrt-allure-url"
-            set -e
-            '''
-            sh '''
-            if [ -n "${TCRT_WEBHOOK_URL:-}" ]; then
-              ALLURE_REPORT_URL=""
-              if [ -f "${WORKSPACE}/.tcrt-allure-url" ]; then
-                . "${WORKSPACE}/.tcrt-allure-url"
-              fi
-              if [ -n "${ALLURE_REPORT_URL}" ]; then
-                PAYLOAD=$(printf '{"tcrt_run_id":"%s","status":"%s","report_url":"%s"}' \
-                  "$TCRT_WEBHOOK_RUN_ID" "$TCRT_WEBHOOK_STATUS" "$ALLURE_REPORT_URL")
-              else
-                PAYLOAD=$(printf '{"tcrt_run_id":"%s","status":"%s"}' \
-                  "$TCRT_WEBHOOK_RUN_ID" "$TCRT_WEBHOOK_STATUS")
-              fi
-              curl -fsS -X POST "$TCRT_WEBHOOK_URL" \
-                -H "Content-Type: application/json" \
-                -d "$PAYLOAD" \
-                || echo "TCRT webhook delivery failed (non-fatal)"
-            fi
-            '''
+            // Archive allure-results so TCRT can pull them via the Jenkins API
+            // after the build reaches a terminal state. This is the only post-
+            // build action we need: Jenkins doesn't push anywhere — TCRT polls
+            // for status and downloads artifacts from this archive, which keeps
+            // the pipeline working in air-gapped / one-way-firewall topologies
+            // where Jenkins can't reach TCRT.
+            archiveArtifacts artifacts: 'allure-results/**', allowEmptyArchive: true, fingerprint: false
         }
     }
 }

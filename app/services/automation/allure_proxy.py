@@ -20,6 +20,7 @@ import io
 import logging
 import re
 import tarfile
+import zipfile
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any
@@ -114,23 +115,54 @@ async def upload_run_results(
 
 
 def _extract_archive(archive_bytes: bytes, dest: Path) -> list[Path]:
-    """Untar an ``allure-results.tgz``; return the list of regular files inside.
+    """Detect ``.tgz`` or ``.zip`` from magic bytes, extract, and return the
+    list of regular files inside the resulting ``allure-results/`` layer.
 
-    Handles both the common "tar wraps an ``allure-results/`` directory" layout
-    and the bare "tar of the directory contents" layout (CI scripts vary).
+    Two archive shapes the proxy accepts:
+      - ``.tgz`` from the CI-pushes-to-TCRT path (webhook upload) — tar
+        usually wraps an ``allure-results/`` directory.
+      - ``.zip`` from the TCRT-pulls-from-Jenkins path — Jenkins's bulk
+        ``/artifact/*zip*/archive.zip`` namespaces everything under an
+        ``archive/`` prefix, so the result files end up at
+        ``archive/allure-results/<name>``.
+
+    We tolerate both nestings (and "no wrapper, bare contents") so the call
+    site doesn't need to know which CI produced the archive.
     """
-    try:
-        with tarfile.open(fileobj=io.BytesIO(archive_bytes), mode="r:gz") as tar:
-            # ``filter='data'`` (Python 3.12+) blocks absolute paths / symlinks
-            # / device files — safe extraction even for untrusted CI uploads.
-            tar.extractall(dest, filter="data")
-    except (tarfile.ReadError, tarfile.CompressionError, EOFError) as exc:
-        raise AllureProxyError(f"Invalid allure-results archive: {exc}") from exc
+    if archive_bytes[:2] == b"PK":
+        try:
+            with zipfile.ZipFile(io.BytesIO(archive_bytes)) as zf:
+                # Guard against zipslip — ZipFile.extractall in modern
+                # Python validates member names, but we double-check by
+                # rejecting any absolute-path / parent-traversal entries
+                # before extracting.
+                for member in zf.infolist():
+                    if member.filename.startswith("/") or ".." in Path(member.filename).parts:
+                        raise AllureProxyError(
+                            f"Refusing to extract unsafe zip member: {member.filename}"
+                        )
+                zf.extractall(dest)
+        except zipfile.BadZipFile as exc:
+            raise AllureProxyError(f"Invalid allure-results zip: {exc}") from exc
+    elif archive_bytes[:3] == b"\x1f\x8b\x08":
+        try:
+            with tarfile.open(fileobj=io.BytesIO(archive_bytes), mode="r:gz") as tar:
+                # ``filter='data'`` (Python 3.12+) blocks absolute paths /
+                # symlinks / device files — safe extraction even for
+                # untrusted CI uploads.
+                tar.extractall(dest, filter="data")
+        except (tarfile.ReadError, tarfile.CompressionError, EOFError) as exc:
+            raise AllureProxyError(f"Invalid allure-results tarball: {exc}") from exc
+    else:
+        raise AllureProxyError(
+            "Archive format not recognised (expected .tgz or .zip)"
+        )
 
-    # Prefer ``allure-results/`` subdirectory when present; otherwise treat the
-    # tar contents themselves as the results.
-    nested = dest / "allure-results"
-    root = nested if nested.is_dir() else dest
+    # Find the first 'allure-results' directory anywhere in the extraction —
+    # handles both Jenkins zip (archive/allure-results/) and CI-pushed tarball
+    # (allure-results/) without a per-shape branch.
+    candidates = [p for p in dest.rglob("allure-results") if p.is_dir()]
+    root = candidates[0] if candidates else dest
     return sorted(p for p in root.iterdir() if p.is_file())
 
 
