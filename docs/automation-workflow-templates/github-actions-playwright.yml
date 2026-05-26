@@ -1,0 +1,111 @@
+# GitHub Actions — single-script Playwright + Allure Docker Service + TCRT callback
+#
+# Drop this at .github/workflows/playwright.yml as a starting point for the
+# repo. TCRT injects tcrt_run_id and runner_label as workflow_dispatch inputs
+# when triggering single-script runs; this template wires them into pytest and
+# the inbound webhook callback.
+#
+# Required repo / org secrets:
+#   ALLURE_BASE_URL     — e.g. http://allure.internal:5050 (allure-docker-service root)
+#   ALLURE_PROJECT_ID   — Allure project id (must already exist on the server;
+#                         create via: curl -XPOST $ALLURE_BASE_URL/allure-docker-service/projects -d '{"id":"<id>"}')
+#   ALLURE_TOKEN        — optional; only required when SECURITY_ENABLED=1 on Allure
+#   TCRT_BASE_URL       — TCRT public origin
+#   TCRT_WEBHOOK_TOKEN  — webhook token from the TCRT inbound CI integration
+#   TCRT_WEBHOOK_SECRET — HMAC shared secret
+
+name: Playwright
+
+on:
+  workflow_dispatch:
+    inputs:
+      tcrt_run_id:
+        description: TCRT correlation id (auto-injected)
+        required: false
+      runner_label:
+        description: Which runner pool to use (auto-injected)
+        required: false
+        default: ubuntu-latest
+      test_paths:
+        description: JSON-encoded list of test paths
+        required: false
+        default: "[]"
+
+jobs:
+  test:
+    runs-on: ${{ inputs.runner_label || 'ubuntu-latest' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          pip install allure-pytest pytest-playwright
+          python -m playwright install --with-deps chromium
+
+      - name: Run pytest
+        id: pytest
+        continue-on-error: true
+        env:
+          TCRT_RUN_ID: ${{ inputs.tcrt_run_id }}
+        run: |
+          PATHS=$(echo '${{ inputs.test_paths }}' | jq -r '. | join(" ")')
+          if [ -z "$PATHS" ]; then PATHS="tests/"; fi
+          pytest $PATHS --alluredir=allure-results
+
+      - name: Upload results to Allure Docker Service
+        if: always()
+        id: allure
+        env:
+          ALLURE_BASE_URL: ${{ secrets.ALLURE_BASE_URL }}
+          ALLURE_PROJECT_ID: ${{ secrets.ALLURE_PROJECT_ID }}
+          ALLURE_TOKEN: ${{ secrets.ALLURE_TOKEN }}
+          TCRT_RUN_ID: ${{ inputs.tcrt_run_id }}
+        run: |
+          AUTH=()
+          if [ -n "$ALLURE_TOKEN" ]; then
+            AUTH=(-H "Authorization: Bearer $ALLURE_TOKEN")
+          fi
+
+          # 1) Push raw result files (multipart upload, one POST per file)
+          if [ -d allure-results ]; then
+            for f in allure-results/*; do
+              [ -f "$f" ] || continue
+              curl -fsS "${AUTH[@]}" \
+                -F "files[]=@${f}" \
+                "$ALLURE_BASE_URL/allure-docker-service/send-results?project_id=$ALLURE_PROJECT_ID" \
+                >/dev/null
+            done
+          fi
+
+          # 2) Generate the report; capture the URL Allure assigns to this run
+          EXEC_NAME="tcrt-${TCRT_RUN_ID:-${GITHUB_RUN_ID}}"
+          RESP=$(curl -fsS "${AUTH[@]}" \
+            "$ALLURE_BASE_URL/allure-docker-service/generate-report?project_id=$ALLURE_PROJECT_ID&execution_name=$EXEC_NAME")
+          REPORT_URL=$(echo "$RESP" | jq -r '.data.report_url // empty')
+          echo "report_url=$REPORT_URL" >> "$GITHUB_OUTPUT"
+
+      - name: Notify TCRT
+        if: always()
+        env:
+          TCRT_BASE_URL: ${{ secrets.TCRT_BASE_URL }}
+          TCRT_WEBHOOK_TOKEN: ${{ secrets.TCRT_WEBHOOK_TOKEN }}
+          TCRT_WEBHOOK_SECRET: ${{ secrets.TCRT_WEBHOOK_SECRET }}
+        run: |
+          STATUS=$([[ "${{ steps.pytest.outcome }}" == "success" ]] && echo "SUCCEEDED" || echo "FAILED")
+          PAYLOAD=$(jq -nc \
+            --arg id "${{ inputs.tcrt_run_id }}" \
+            --arg status "$STATUS" \
+            --arg url "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+            --arg report "${{ steps.allure.outputs.report_url }}" \
+            '{tcrt_run_id:$id, status:$status, external_run_url:$url}
+             + (if $report == "" then {} else {report_url:$report} end)')
+          SIG=$(printf '%s' "$PAYLOAD" | openssl dgst -sha256 -hmac "$TCRT_WEBHOOK_SECRET" | awk '{print $2}')
+          curl -fsS -X POST \
+            "$TCRT_BASE_URL/api/v1/webhooks/ci/$TCRT_WEBHOOK_TOKEN/run-status" \
+            -H "Content-Type: application/json" \
+            -H "X-TCRT-Signature: sha256=$SIG" \
+            -H "X-TCRT-Delivery: ${{ github.run_id }}" \
+            -d "$PAYLOAD"

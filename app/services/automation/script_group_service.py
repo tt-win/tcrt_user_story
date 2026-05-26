@@ -1,0 +1,569 @@
+from __future__ import annotations
+
+import json
+import logging
+import uuid
+from datetime import datetime, timezone
+from typing import Any
+
+import httpx
+from sqlalchemy import and_, func, or_, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.database_models import (
+    AutomationProviderSlot,
+    AutomationRun,
+    AutomationRunStatus,
+    AutomationRunTrigger,
+    AutomationScript,
+    AutomationScriptGroup,
+    AutomationScriptGroupJobType,
+    SystemAutomationProvider,
+    Team,
+)
+from app.services.automation.provider_credential_service import decrypt_credentials
+from app.services.automation.provider_registry import get_active_provider_record, instantiate_provider
+from app.services.automation.providers.base import CIProvider
+
+
+class AutomationScriptGroupServiceError(ValueError):
+    """Base error raised by automation script group service."""
+
+
+class AutomationScriptGroupNotFoundError(AutomationScriptGroupServiceError):
+    pass
+
+
+class AutomationScriptGroupNameConflictError(AutomationScriptGroupServiceError):
+    pass
+
+
+class AutomationScriptGroupScriptNotFoundError(AutomationScriptGroupServiceError):
+    pass
+
+
+class AutomationScriptGroupCIJobMissingError(AutomationScriptGroupServiceError):
+    pass
+
+
+class AutomationScriptGroupCIApiError(AutomationScriptGroupServiceError):
+    """Raised when the upstream CI (Jenkins / GH Actions) rejects a request."""
+
+
+logger = logging.getLogger(__name__)
+
+
+def _wrap_ci_http_error(exc: httpx.HTTPStatusError, action: str) -> AutomationScriptGroupCIApiError:
+    """Turn a raw httpx.HTTPStatusError into a domain error with a helpful hint.
+
+    Common upstream symptoms:
+    - 401 → credentials wrong / expired
+    - 403 → user lacks permission (e.g. Job > Create on Jenkins) or CSRF crumb missing
+    - 404 → wrong base_url / job_name_template producing an invalid path
+    - 5xx → CI server itself is unhealthy
+    """
+    status_code = exc.response.status_code if exc.response is not None else 0
+    url = str(exc.request.url) if exc.request is not None else "<unknown>"
+    body_excerpt = ""
+    try:
+        body_excerpt = (exc.response.text or "")[:200] if exc.response is not None else ""
+    except Exception:  # noqa: BLE001
+        body_excerpt = ""
+    hint = {
+        401: "credentials rejected — verify the CI provider username + API token in 同步組織架構 → Org Automation Infra",
+        403: (
+            "CI server refused the request — usually the API-token user lacks Job/Create permission, "
+            "or Jenkins CSRF protection rejected the request. Check the Jenkins user's role and the "
+            "`csrf_protection_enabled` config."
+        ),
+        404: "URL not found — verify base_url, default_job_name and view_name_template config",
+    }.get(status_code, f"CI server returned HTTP {status_code}")
+    message = f"Failed to {action}: {hint}. URL: {url}"
+    if body_excerpt:
+        message += f". Body: {body_excerpt}"
+    logger.warning("CI API error while %s: %s", action, message)
+    return AutomationScriptGroupCIApiError(message)
+
+
+class AutomationScriptGroupService:
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+
+    async def list_groups(
+        self,
+        *,
+        team_id: int,
+        q: str | None = None,
+        cursor: int | None = None,
+        limit: int = 50,
+    ) -> tuple[list[AutomationScriptGroup], int | None, int]:
+        limit = max(1, min(limit, 200))
+        conditions = [AutomationScriptGroup.team_id == team_id]
+        if cursor is not None:
+            conditions.append(AutomationScriptGroup.id > cursor)
+        if q:
+            query = f"%{q.strip()}%"
+            conditions.append(or_(AutomationScriptGroup.name.ilike(query), AutomationScriptGroup.description.ilike(query)))
+
+        stmt = select(AutomationScriptGroup).where(and_(*conditions)).order_by(AutomationScriptGroup.id).limit(limit + 1)
+        count_stmt = select(func.count(AutomationScriptGroup.id)).where(and_(*conditions))
+        rows = list((await self.session.execute(stmt)).scalars().all())
+        total = int((await self.session.execute(count_stmt)).scalar_one())
+        next_cursor = rows[-1].id if len(rows) > limit else None
+        return rows[:limit], next_cursor, total
+
+    async def _get_team_name(self, team_id: int) -> str | None:
+        """Look up the team name for Allure project-id-template expansion.
+
+        Returns None when the team has been deleted out from under us; callers
+        treat None as "fall back to default placeholder" so suite-job creation
+        keeps working even on dangling references.
+        """
+        result = await self.session.execute(select(Team.name).where(Team.id == team_id))
+        return result.scalar_one_or_none()
+
+    async def get_group(self, *, team_id: int, group_id: int) -> AutomationScriptGroup:
+        result = await self.session.execute(
+            select(AutomationScriptGroup).where(
+                AutomationScriptGroup.id == group_id,
+                AutomationScriptGroup.team_id == team_id,
+            )
+        )
+        group = result.scalar_one_or_none()
+        if group is None:
+            raise AutomationScriptGroupNotFoundError(f"Automation script group {group_id} not found")
+        return group
+
+    async def create_group(
+        self,
+        *,
+        team_id: int,
+        name: str,
+        description: str | None,
+        script_ids: list[int],
+        actor: str | None = None,
+        ci_provider: CIProvider | None = None,
+    ) -> AutomationScriptGroup:
+        await self._ensure_unique_name(team_id=team_id, name=name)
+        scripts = await self.validate_script_paths(team_id=team_id, script_ids=script_ids)
+        script_paths = [script.ref_path for script in scripts]
+        provider_record, provider, provider_config = await self._resolve_ci_provider(team_id, ci_provider)
+
+        now = _utcnow()
+        group = AutomationScriptGroup(
+            team_id=team_id,
+            name=name,
+            description=description,
+            script_paths_json=json.dumps(script_paths, ensure_ascii=False),
+            ci_job_type=_job_type_for_provider(provider_record.provider_type),
+            created_by=actor,
+            updated_by=actor,
+            created_at=now,
+            updated_at=now,
+        )
+        self.session.add(group)
+        await self.session.flush()
+
+        git_context = await _build_git_context_for_group(self.session, scripts)
+        team_name = await self._get_team_name(team_id)
+        try:
+            group.ci_job_name = await provider.create_suite_job(
+                str(group.id),
+                group.name,
+                script_paths,
+                _default_runner_label(provider_config, group.ci_job_type),
+                git_context=git_context,
+                team_id=team_id,
+                team_name=team_name,
+            )
+        except httpx.HTTPStatusError as exc:
+            raise _wrap_ci_http_error(exc, action="create suite job on CI") from exc
+        group.updated_at = _utcnow()
+        await self.session.flush()
+        return group
+
+    async def update_group(
+        self,
+        *,
+        team_id: int,
+        group_id: int,
+        actor: str | None = None,
+        name: str | None = None,
+        description: str | None = None,
+        description_provided: bool = False,
+        script_ids: list[int] | None = None,
+        ci_provider: CIProvider | None = None,
+    ) -> AutomationScriptGroup:
+        group = await self.get_group(team_id=team_id, group_id=group_id)
+        next_name = name or group.name
+        if name is not None and name != group.name:
+            await self._ensure_unique_name(team_id=team_id, name=name, exclude_group_id=group.id)
+
+        script_paths = _load_script_paths(group.script_paths_json)
+        if script_ids is not None:
+            scripts = await self.validate_script_paths(team_id=team_id, script_ids=script_ids)
+            script_paths = [script.ref_path for script in scripts]
+
+        should_sync_ci = name is not None or script_ids is not None
+        if should_sync_ci:
+            _, provider, provider_config = await self._resolve_ci_provider(team_id, ci_provider)
+            scripts_for_git = scripts if script_ids is not None else await self.load_group_scripts(group=group)
+            git_context = await _build_git_context_for_group(self.session, scripts_for_git)
+            team_name = await self._get_team_name(team_id)
+            try:
+                group.ci_job_name = await provider.update_suite_job(
+                    str(group.id),
+                    next_name,
+                    script_paths,
+                    _default_runner_label(provider_config, group.ci_job_type),
+                    git_context=git_context,
+                    team_id=team_id,
+                    team_name=team_name,
+                )
+            except httpx.HTTPStatusError as exc:
+                raise _wrap_ci_http_error(exc, action="update suite job on CI") from exc
+
+        group.name = next_name
+        if description_provided:
+            group.description = description
+        if script_ids is not None:
+            group.script_paths_json = json.dumps(script_paths, ensure_ascii=False)
+        group.updated_by = actor
+        group.updated_at = _utcnow()
+        await self.session.flush()
+        return group
+
+    async def delete_group(
+        self,
+        *,
+        team_id: int,
+        group_id: int,
+        ci_provider: CIProvider | None = None,
+    ) -> AutomationScriptGroup:
+        group = await self.get_group(team_id=team_id, group_id=group_id)
+        if group.ci_job_name:
+            _, provider, _ = await self._resolve_ci_provider(team_id, ci_provider)
+            try:
+                await provider.delete_suite_job(str(group.id), group.ci_job_name)
+            except httpx.HTTPStatusError as exc:
+                raise _wrap_ci_http_error(exc, action="delete suite job on CI") from exc
+        await self.session.delete(group)
+        await self.session.flush()
+        return group
+
+    async def validate_script_paths(self, *, team_id: int, script_ids: list[int]) -> list[AutomationScript]:
+        ordered_ids = _dedupe_ints(script_ids)
+        if not ordered_ids:
+            raise AutomationScriptGroupScriptNotFoundError("At least one automation script is required")
+
+        result = await self.session.execute(
+            select(AutomationScript).where(
+                AutomationScript.team_id == team_id,
+                AutomationScript.id.in_(ordered_ids),
+            )
+        )
+        scripts_by_id = {script.id: script for script in result.scalars().all()}
+        missing_ids = [script_id for script_id in ordered_ids if script_id not in scripts_by_id]
+        if missing_ids:
+            raise AutomationScriptGroupScriptNotFoundError(
+                f"Automation scripts not found for team {team_id}: {missing_ids}"
+            )
+        return [scripts_by_id[script_id] for script_id in ordered_ids]
+
+    async def load_group_scripts(self, *, group: AutomationScriptGroup) -> list[AutomationScript]:
+        script_paths = _load_script_paths(group.script_paths_json)
+        if not script_paths:
+            return []
+        result = await self.session.execute(
+            select(AutomationScript).where(
+                AutomationScript.team_id == group.team_id,
+                AutomationScript.ref_path.in_(script_paths),
+            )
+        )
+        scripts_by_path = {script.ref_path: script for script in result.scalars().all()}
+        return [scripts_by_path[path] for path in script_paths if path in scripts_by_path]
+
+    async def load_recent_runs(self, *, group: AutomationScriptGroup, limit: int = 5) -> list[AutomationRun]:
+        result = await self.session.execute(
+            select(AutomationRun)
+            .where(
+                AutomationRun.team_id == group.team_id,
+                AutomationRun.script_group_id == group.id,
+            )
+            .order_by(AutomationRun.started_at.desc().nullslast(), AutomationRun.id.desc())
+            .limit(limit)
+        )
+        return list(result.scalars().all())
+
+    async def trigger_group_run(
+        self,
+        *,
+        team_id: int,
+        group_id: int,
+        actor: str | None = None,
+        branch: str | None = None,
+        runner_label: str | None = None,
+        inputs: dict[str, str] | None = None,
+        ci_provider: CIProvider | None = None,
+    ) -> AutomationRun:
+        group = await self.get_group(team_id=team_id, group_id=group_id)
+        if not group.ci_job_name:
+            raise AutomationScriptGroupCIJobMissingError(f"Automation script group {group_id} has no CI job")
+
+        provider_record, provider, provider_config = await self._resolve_ci_provider(team_id, ci_provider)
+        script_paths = _load_script_paths(group.script_paths_json)
+        tcrt_correlation_id = str(uuid.uuid4())
+        resolved_branch = branch or str(provider_config.get("default_branch") or "main")
+        resolved_runner_label = runner_label or _default_runner_label(provider_config, group.ci_job_type)
+        scripts = await self.load_group_scripts(group=group)
+        git_context = await _build_git_context_for_group(
+            self.session, scripts, override_branch=resolved_branch
+        )
+        # Self-heal the CI job before triggering. Mirrors `_resolve_script_workflow`
+        # for single scripts: the user may have deleted/renamed the job out-of-band
+        # from the Jenkins UI, leaving our `ci_job_name` stale. update→404→create
+        # restores it; on success we refresh `ci_job_name` because Jenkins may
+        # canonicalise the name differently from our local slug.
+        default_label = _default_runner_label(provider_config, group.ci_job_type)
+        team_name = await self._get_team_name(team_id)
+        try:
+            group.ci_job_name = await provider.update_suite_job(
+                str(group.id), group.name, script_paths, default_label,
+                git_context=git_context, team_id=team_id, team_name=team_name,
+            )
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code != 404:
+                raise _wrap_ci_http_error(exc, action="ensure suite job on CI") from exc
+            try:
+                group.ci_job_name = await provider.create_suite_job(
+                    str(group.id), group.name, script_paths, default_label,
+                    git_context=git_context, team_id=team_id, team_name=team_name,
+                )
+            except httpx.HTTPStatusError as create_exc:
+                raise _wrap_ci_http_error(create_exc, action="recreate suite job on CI") from create_exc
+        except TypeError:
+            # Provider doesn't accept git_context kwarg (older test fakes) —
+            # fall back to the legacy positional signature.
+            try:
+                group.ci_job_name = await provider.update_suite_job(
+                    str(group.id), group.name, script_paths, default_label,
+                )
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code != 404:
+                    raise _wrap_ci_http_error(exc, action="ensure suite job on CI") from exc
+                group.ci_job_name = await provider.create_suite_job(
+                    str(group.id), group.name, script_paths, default_label,
+                )
+
+        run_inputs = {
+            **(inputs or {}),
+            "tcrt_run_id": tcrt_correlation_id,
+            "runner_label": resolved_runner_label,
+            "test_paths": json.dumps(script_paths, ensure_ascii=False),
+        }
+        if git_context:
+            if git_context.get("url"):
+                run_inputs["git_url"] = git_context["url"]
+            if git_context.get("branch"):
+                run_inputs["git_branch"] = git_context["branch"]
+            if git_context.get("token"):
+                run_inputs["git_token"] = git_context["token"]
+        try:
+            external_run = await provider.trigger_run(group.ci_job_name, resolved_branch, run_inputs)
+        except httpx.HTTPStatusError as exc:
+            raise _wrap_ci_http_error(exc, action="trigger suite run on CI") from exc
+        now = _utcnow()
+        run = AutomationRun(
+            team_id=team_id,
+            automation_script_id=None,
+            script_group_id=group.id,
+            provider_id=provider_record.id,
+            external_run_id=external_run.external_run_id,
+            external_run_url=external_run.external_run_url,
+            status=AutomationRunStatus.QUEUED,
+            triggered_by=AutomationRunTrigger.USER,
+            triggered_by_user_id=actor,
+            tcrt_correlation_id=tcrt_correlation_id,
+            workflow_id=group.ci_job_name,
+            branch=resolved_branch,
+            inputs_json=json.dumps(run_inputs, ensure_ascii=False),
+            runner_label=resolved_runner_label,
+            started_at=now,
+            created_at=now,
+            updated_at=now,
+        )
+        self.session.add(run)
+        await self.session.flush()
+        return run
+
+    async def _ensure_unique_name(
+        self,
+        *,
+        team_id: int,
+        name: str,
+        exclude_group_id: int | None = None,
+    ) -> None:
+        conditions = [AutomationScriptGroup.team_id == team_id, AutomationScriptGroup.name == name]
+        if exclude_group_id is not None:
+            conditions.append(AutomationScriptGroup.id != exclude_group_id)
+        result = await self.session.execute(select(AutomationScriptGroup.id).where(and_(*conditions)).limit(1))
+        if result.scalar_one_or_none() is not None:
+            raise AutomationScriptGroupNameConflictError(f"Automation script group name already exists: {name}")
+
+    async def _resolve_ci_provider(
+        self,
+        team_id: int,
+        ci_provider: CIProvider | None,
+    ) -> tuple[SystemAutomationProvider, CIProvider, dict[str, Any]]:
+        provider_record = await get_active_provider_record(team_id, AutomationProviderSlot.CI, self.session)
+        provider_config = _load_json_object(provider_record.config_json)
+        if ci_provider is not None:
+            return provider_record, ci_provider, provider_config
+        provider = instantiate_provider(
+            provider_record.provider_type,
+            provider_config,
+            decrypt_credentials(provider_record.credentials_encrypted),
+        )
+        return provider_record, provider, provider_config
+
+
+def script_group_to_dict(
+    group: AutomationScriptGroup,
+    *,
+    scripts: list[AutomationScript] | None = None,
+    recent_runs: list[AutomationRun] | None = None,
+) -> dict[str, Any]:
+    script_paths = _load_script_paths(group.script_paths_json)
+    scripts = scripts or []
+    return {
+        "id": group.id,
+        "team_id": group.team_id,
+        "name": group.name,
+        "description": group.description,
+        "script_ids": [script.id for script in scripts],
+        "script_paths": script_paths,
+        "script_count": len(script_paths),
+        "ci_job_name": group.ci_job_name,
+        "ci_job_type": group.ci_job_type,
+        "created_by": group.created_by,
+        "updated_by": group.updated_by,
+        "created_at": group.created_at,
+        "updated_at": group.updated_at,
+        "scripts": [_script_summary_to_dict(script) for script in scripts],
+        "recent_runs": [automation_run_to_dict(run) for run in (recent_runs or [])],
+    }
+
+
+def automation_run_to_dict(run: AutomationRun) -> dict[str, Any]:
+    return {
+        "id": run.id,
+        "team_id": run.team_id,
+        "automation_script_id": run.automation_script_id,
+        "script_group_id": run.script_group_id,
+        "provider_id": run.provider_id,
+        "external_run_id": run.external_run_id,
+        "external_run_url": run.external_run_url,
+        "status": run.status,
+        "triggered_by": run.triggered_by,
+        "triggered_by_user_id": run.triggered_by_user_id,
+        "triggered_by_webhook_id": run.triggered_by_webhook_id,
+        "tcrt_correlation_id": run.tcrt_correlation_id,
+        "ci_correlation_id": run.ci_correlation_id,
+        "workflow_id": run.workflow_id,
+        "branch": run.branch,
+        "inputs": _load_json_object(run.inputs_json),
+        "runner_label": run.runner_label,
+        "report_url": run.report_url,
+        "started_at": run.started_at,
+        "finished_at": run.finished_at,
+        "duration_ms": run.duration_ms,
+        "error_summary": run.error_summary,
+        "last_synced_at": run.last_synced_at,
+        "created_at": run.created_at,
+        "updated_at": run.updated_at,
+    }
+
+
+def _script_summary_to_dict(script: AutomationScript) -> dict[str, Any]:
+    return {
+        "id": script.id,
+        "name": script.name,
+        "script_format": script.script_format,
+        "ref_path": script.ref_path,
+        "ref_branch": script.ref_branch,
+    }
+
+
+async def _build_git_context_for_group(
+    session: AsyncSession,
+    scripts: list[AutomationScript],
+    *,
+    override_branch: str | None = None,
+) -> dict[str, Any] | None:
+    """Resolve git checkout context from the group's first script.
+
+    Suites share a team-wide storage provider in practice (all scripts in a
+    group point at the same repo), so the first script's provider is the
+    authoritative source of GIT_URL / GIT_TOKEN / default branch. Imported
+    from run_service to avoid duplicating the GitHub-vs-other-storage logic.
+    """
+    from app.services.automation.run_service import _build_git_context_for_script
+
+    if not scripts:
+        return None
+    return await _build_git_context_for_script(
+        session=session, script=scripts[0], override_branch=override_branch
+    )
+
+
+def _job_type_for_provider(provider_type: str) -> AutomationScriptGroupJobType:
+    if provider_type == "ci:github_actions":
+        return AutomationScriptGroupJobType.GITHUB_ACTIONS
+    if provider_type == "ci:jenkins":
+        return AutomationScriptGroupJobType.JENKINS
+    raise AutomationScriptGroupServiceError(f"Unsupported CI provider type for script groups: {provider_type}")
+
+
+def _default_runner_label(
+    provider_config: dict[str, Any],
+    job_type: AutomationScriptGroupJobType | None,
+) -> str:
+    fallback = "any" if job_type == AutomationScriptGroupJobType.JENKINS else "ubuntu-latest"
+    return str(provider_config.get("default_runner_label") or fallback)
+
+
+def _load_script_paths(value: str | None) -> list[str]:
+    if not value:
+        return []
+    try:
+        payload = json.loads(value)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(payload, list):
+        return []
+    return [str(item) for item in payload if str(item).strip()]
+
+
+def _load_json_object(value: str | None) -> dict[str, Any]:
+    if not value:
+        return {}
+    try:
+        payload = json.loads(value)
+    except json.JSONDecodeError:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _dedupe_ints(values: list[int]) -> list[int]:
+    seen: set[int] = set()
+    result: list[int] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        result.append(value)
+    return result
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)

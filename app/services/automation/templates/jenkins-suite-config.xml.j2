@@ -1,0 +1,201 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<flow-definition plugin="workflow-job">
+  <description>TCRT Suite - {{ suite_name }}</description>
+  <properties>
+    <hudson.model.ParametersDefinitionProperty>
+      <parameterDefinitions>
+        <hudson.model.StringParameterDefinition>
+          <name>tcrt_run_id</name>
+          <description>TCRT correlation ID</description>
+          <defaultValue></defaultValue>
+          <trim>true</trim>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>NODE_LABEL</name>
+          <description>Target node label</description>
+          <defaultValue>{{ default_runner_label }}</defaultValue>
+          <trim>true</trim>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>GIT_URL</name>
+          <description>Git repo to clone (HTTPS). Default baked from the team's storage provider.</description>
+          <defaultValue>{{ default_git_url }}</defaultValue>
+          <trim>true</trim>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>GIT_BRANCH</name>
+          <description>Branch to check out for this run.</description>
+          <defaultValue>{{ default_git_branch }}</defaultValue>
+          <trim>true</trim>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.PasswordParameterDefinition>
+          <name>GIT_TOKEN</name>
+          <description>Optional GitHub PAT for cloning private repos. Masked in console output.</description>
+          <defaultValue></defaultValue>
+        </hudson.model.PasswordParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>ALLURE_BASE_URL</name>
+          <description>Allure Docker Service root (empty = skip Allure upload). Default baked from TCRT config.yaml.</description>
+          <defaultValue>{{ allure_base_url }}</defaultValue>
+          <trim>true</trim>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>ALLURE_PROJECT_ID</name>
+          <description>Allure project id. Default baked from TCRT config.yaml's project_id_template.</description>
+          <defaultValue>{{ allure_project_id }}</defaultValue>
+          <trim>true</trim>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.PasswordParameterDefinition>
+          <name>ALLURE_TOKEN</name>
+          <description>Optional Allure API token (SECURITY_ENABLED=1 servers). Default baked from TCRT config.yaml; masked in console.</description>
+          <defaultValue>{{ allure_api_token }}</defaultValue>
+        </hudson.model.PasswordParameterDefinition>
+      </parameterDefinitions>
+    </hudson.model.ParametersDefinitionProperty>
+  </properties>
+  <definition class="org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition" plugin="workflow-cps">
+    <script><![CDATA[
+pipeline {
+    // params.NODE_LABEL is always set (parameter declared above with a
+    // defaultValue). Empty string label is the Jenkins-native way to say
+    // "any online agent" — DO NOT use Groovy `?:` fallback here because
+    // empty strings are falsy in Groovy and would resurrect a stale literal
+    // label name.
+    agent { label "${params.NODE_LABEL}" }
+    stages {
+        stage('Checkout') {
+            steps {
+                // Clone the test repo into ./repo. `set +x` before any line
+                // that interpolates GIT_TOKEN so the PAT isn't echoed; Jenkins
+                // also masks GIT_TOKEN automatically (PasswordParameter), but
+                // double-protect against `git clone` echoing the resolved URL
+                // on error paths.
+                sh '''
+                set -e
+                if [ -z "${GIT_URL}" ]; then
+                    echo "GIT_URL is empty — nothing to checkout. Update the suite from TCRT or set GIT_URL manually."
+                    exit 1
+                fi
+                rm -rf repo
+                set +x
+                if [ -n "${GIT_TOKEN}" ]; then
+                    # Inject token into HTTPS URL. The token isn't echoed
+                    # because `set +x` is in effect.
+                    CLONE_URL=$(echo "${GIT_URL}" | sed -E "s#^https?://#&x-access-token:${GIT_TOKEN}@#")
+                else
+                    CLONE_URL="${GIT_URL}"
+                fi
+                git clone --depth 1 --branch "${GIT_BRANCH}" "${CLONE_URL}" repo
+                unset CLONE_URL
+                set -x
+                '''
+            }
+        }
+        stage('Setup') {
+            steps {
+                // PEP 668 (Debian 12+ / Ubuntu 23+) forbids `pip install` into
+                // the system Python. Use a per-build venv instead so the
+                // pipeline works on any modern Linux distro without needing
+                // `--break-system-packages` or root privileges.
+                sh '''
+                set -e
+                cd repo
+                python3 -m venv .tcrt-venv
+                . .tcrt-venv/bin/activate
+                pip install --upgrade pip
+                pip install pytest pytest-playwright allure-pytest
+                playwright install chromium
+                '''
+            }
+        }
+        stage('Test') {
+            steps {
+                echo "TCRT Suite: {{ suite_name }}"
+                sh '''
+                set -e
+                cd repo
+                . .tcrt-venv/bin/activate
+                # Emit allure-results into the workspace root so the post step
+                # can find it without depending on the repo layout.
+                pytest --alluredir="${WORKSPACE}/allure-results" {% for path in test_paths %}{{ path }} {% endfor %}
+                '''
+            }
+        }
+    }
+    post {
+        always {
+            // Promote Groovy-only vars (`params.tcrt_run_id`,
+            // `currentBuild.currentResult`) into env vars in a `script {}`
+            // block so the sh body can stay single-quoted (Groovy does not
+            // interpolate) and reference them as plain `$VAR` — sh accepts
+            // them, no "Bad substitution" risk from Groovy-style `${a.b}`.
+            //
+            // Allure params get the same promotion: defaults are baked into
+            // job XML from TCRT's config.yaml at suite-job creation time, so
+            // there is no dependency on per-agent env. Per-build overrides
+            // are still possible via the Jenkins UI "Build with Parameters".
+            script {
+                env.TCRT_WEBHOOK_RUN_ID = params.tcrt_run_id ?: ''
+                env.TCRT_WEBHOOK_STATUS = currentBuild.currentResult ?: 'UNKNOWN'
+                env.ALLURE_BASE_URL = params.ALLURE_BASE_URL ?: ''
+                env.ALLURE_PROJECT_ID = params.ALLURE_PROJECT_ID ?: ''
+                env.ALLURE_TOKEN = params.ALLURE_TOKEN ?: ''
+            }
+            // Allure Docker Service upload — no-op when ALLURE_BASE_URL or
+            // ALLURE_PROJECT_ID is empty (e.g. TCRT config.yaml left it blank,
+            // or the user cleared the parameter for this build).
+            sh '''
+            set +e
+            ALLURE_REPORT_URL=""
+            if [ -n "${ALLURE_BASE_URL:-}" ] && [ -n "${ALLURE_PROJECT_ID:-}" ] && [ -d "${WORKSPACE}/allure-results" ]; then
+              AUTH_HEADER=""
+              if [ -n "${ALLURE_TOKEN:-}" ]; then
+                AUTH_HEADER="Authorization: Bearer ${ALLURE_TOKEN}"
+              fi
+              for f in "${WORKSPACE}/allure-results/"*; do
+                [ -f "$f" ] || continue
+                curl -fsS -H "${AUTH_HEADER}" \
+                  -F "files[]=@${f}" \
+                  "${ALLURE_BASE_URL}/allure-docker-service/send-results?project_id=${ALLURE_PROJECT_ID}" \
+                  >/dev/null \
+                  || echo "Allure send-results upload failed for ${f} (non-fatal)"
+              done
+              EXEC_NAME="tcrt-${TCRT_WEBHOOK_RUN_ID:-${BUILD_NUMBER}}"
+              RESP=$(curl -fsS -H "${AUTH_HEADER}" \
+                "${ALLURE_BASE_URL}/allure-docker-service/generate-report?project_id=${ALLURE_PROJECT_ID}&execution_name=${EXEC_NAME}" \
+                || echo "")
+              if [ -n "$RESP" ]; then
+                ALLURE_REPORT_URL=$(echo "$RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print((d.get('data') or {}).get('report_url') or '')" 2>/dev/null || echo "")
+              fi
+            fi
+            echo "ALLURE_REPORT_URL=${ALLURE_REPORT_URL}" > "${WORKSPACE}/.tcrt-allure-url"
+            set -e
+            '''
+            sh '''
+            if [ -n "${TCRT_WEBHOOK_URL:-}" ]; then
+              ALLURE_REPORT_URL=""
+              if [ -f "${WORKSPACE}/.tcrt-allure-url" ]; then
+                . "${WORKSPACE}/.tcrt-allure-url"
+              fi
+              if [ -n "${ALLURE_REPORT_URL}" ]; then
+                PAYLOAD=$(printf '{"tcrt_run_id":"%s","status":"%s","report_url":"%s"}' \
+                  "$TCRT_WEBHOOK_RUN_ID" "$TCRT_WEBHOOK_STATUS" "$ALLURE_REPORT_URL")
+              else
+                PAYLOAD=$(printf '{"tcrt_run_id":"%s","status":"%s"}' \
+                  "$TCRT_WEBHOOK_RUN_ID" "$TCRT_WEBHOOK_STATUS")
+              fi
+              curl -fsS -X POST "$TCRT_WEBHOOK_URL" \
+                -H "Content-Type: application/json" \
+                -d "$PAYLOAD" \
+                || echo "TCRT webhook delivery failed (non-fatal)"
+            fi
+            '''
+        }
+    }
+}
+    ]]></script>
+    <sandbox>true</sandbox>
+  </definition>
+  <triggers/>
+  <disabled>false</disabled>
+</flow-definition>

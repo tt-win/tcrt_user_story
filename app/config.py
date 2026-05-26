@@ -3,7 +3,7 @@ import os
 import logging
 import re
 from pathlib import Path
-from typing import Optional, Dict, Any, List
+from typing import Optional, Any, List
 from urllib.parse import urlparse
 from pydantic import BaseModel
 from dotenv import load_dotenv
@@ -114,6 +114,57 @@ class OpenRouterConfig(BaseModel):
     def from_env(cls, fallback: "OpenRouterConfig" = None) -> "OpenRouterConfig":
         return cls(
             api_key=os.getenv("OPENROUTER_API_KEY", fallback.api_key if fallback else ""),
+        )
+
+
+class AllureConfig(BaseModel):
+    """Org-level Allure Docker Service settings.
+
+    Consumed at Jenkins suite-job render time: ``base_url`` / ``api_token`` /
+    expanded ``project_id_template`` are baked into the generated job XML as
+    parameter ``<defaultValue>``s, so the resulting job can upload results +
+    fetch the report URL without depending on per-agent environment.
+
+    Leave ``base_url`` empty to disable the Allure integration in generated
+    Jenkins jobs (the post-test upload / report-fetch step then no-ops).
+
+    ``project_id_template`` placeholders:
+      - ``{team_id}``    — numeric team id
+      - ``{team_slug}``  — slugified team name
+      - ``{suite_id}``   — numeric suite id
+      - ``{suite_slug}`` — slugified suite name
+    Use a static string (no placeholders) for a single org-wide project.
+    """
+
+    base_url: str = ""
+    api_token: str = ""
+    project_id_template: str = "tcrt-team-{team_slug}"
+
+    @classmethod
+    def from_env(cls, fallback: "AllureConfig" = None) -> "AllureConfig":
+        fb = fallback or cls()
+        return cls(
+            base_url=os.getenv("ALLURE_BASE_URL", fb.base_url),
+            api_token=os.getenv("ALLURE_API_TOKEN", fb.api_token),
+            project_id_template=os.getenv(
+                "ALLURE_PROJECT_ID_TEMPLATE", fb.project_id_template
+            ),
+        )
+
+
+class AutomationProviderConfig(BaseModel):
+    encryption_key: str = ""
+    allure: AllureConfig = AllureConfig()
+
+    @classmethod
+    def from_env(cls, fallback: "AutomationProviderConfig" = None) -> "AutomationProviderConfig":
+        fb = fallback or cls()
+        return cls(
+            encryption_key=os.getenv(
+                "AUTOMATION_PROVIDER_ENCRYPTION_KEY",
+                fb.encryption_key,
+            ),
+            allure=AllureConfig.from_env(fb.allure),
         )
 
 
@@ -521,6 +572,7 @@ class Settings(BaseModel):
     lark: LarkConfig = LarkConfig()
     jira: JiraConfig = JiraConfig()
     openrouter: OpenRouterConfig = OpenRouterConfig()
+    automation_provider: AutomationProviderConfig = AutomationProviderConfig()
     ai: AIConfig = AIConfig()
     qdrant: QdrantConfig = QdrantConfig()
     attachments: AttachmentsConfig = AttachmentsConfig()
@@ -547,6 +599,7 @@ class Settings(BaseModel):
             lark=LarkConfig.from_env(base_settings.lark),
             jira=JiraConfig.from_env(base_settings.jira),
             openrouter=OpenRouterConfig.from_env(base_settings.openrouter),
+            automation_provider=AutomationProviderConfig.from_env(base_settings.automation_provider),
             ai=AIConfig.from_env(base_settings.ai),
             qdrant=QdrantConfig.from_env(base_settings.qdrant),
             attachments=AttachmentsConfig.from_env(base_settings.attachments),
@@ -603,6 +656,7 @@ def create_default_config(config_path: str = "config.yaml") -> None:
         "lark": {"app_id": "", "app_secret": ""},
         "jira": {"server_url": "", "username": "", "api_token": "", "ca_cert_path": ""},
         "openrouter": {"api_key": ""},
+        "automation_provider": {"encryption_key": ""},
         "ai": {
             "qa_ai_helper": {
                 "enable": True,

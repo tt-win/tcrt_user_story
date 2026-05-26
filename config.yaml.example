@@ -14,6 +14,19 @@ lark:
   app_secret: 'YOUR_LARK_APP_SECRET'
 openrouter:
   api_key: 'YOUR_OPENROUTER_API_KEY'
+automation_provider:
+  # Provider config encryption — required when storing CI/Result provider
+  # credentials in the DB. Set via env var AUTOMATION_PROVIDER_ENCRYPTION_KEY.
+  encryption_key: '${AUTOMATION_PROVIDER_ENCRYPTION_KEY}'
+  # Allure Docker Service settings, baked into TCRT-generated Jenkins suite
+  # jobs as build-parameter defaults. Leave base_url empty to disable Allure
+  # integration entirely (the upload + report-fetch step becomes a no-op).
+  allure:
+    base_url: ''                                  # e.g. http://allure.internal:5050
+    api_token: ''                                 # optional; only when SECURITY_ENABLED=1
+    # Placeholders: {team_id} / {team_slug} / {suite_id} / {suite_slug}.
+    # Use a literal string (no placeholders) for one org-wide project.
+    project_id_template: 'tcrt-team-{team_slug}'
 ai:
   qa_ai_helper:
     enable: true
