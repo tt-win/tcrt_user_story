@@ -12,7 +12,6 @@ import httpx
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 from pydantic import BaseModel
 
-from app.config import get_settings
 from app.services.automation.providers.base import (
     ArtifactRef,
     ExternalRunRef,
@@ -509,6 +508,15 @@ class JenkinsCIProvider:
         team_id: int | None = None,
         team_name: str | None = None,
     ) -> str:
+        """Render the Jenkins suite/script job XML.
+
+        ``team_id`` / ``team_name`` are accepted for forward compatibility
+        with future per-team rendering needs; the current template does not
+        reference them (Allure project resolution happens server-side in the
+        TCRT proxy endpoint, not on the Jenkins side, so the job XML stays
+        identical across teams).
+        """
+        del team_id, team_name  # currently unused — kept for API stability
         template = self.templates.get_template("jenkins-suite-config.xml.j2")
         # See trigger_run: "any" is a TCRT-side sentinel meaning "any node"
         # but Jenkins treats it as a literal label search. Translate before
@@ -520,27 +528,6 @@ class JenkinsCIProvider:
         # trigger directly from Jenkins UI (without TCRT) and still get a
         # checkout. trigger_run overrides at build time.
         git_ctx = git_context or {}
-        suite_slug = _slugify(suite_name) or "suite"
-        team_slug = _slugify(team_name or "") or "team"
-
-        # Resolve Allure org-level settings from config.yaml at render time so
-        # the generated job XML carries concrete <defaultValue>s — Jenkins jobs
-        # then don't need any agent-level env vars to upload reports.
-        allure_cfg = get_settings().automation_provider.allure
-        allure_project_id = ""
-        if allure_cfg.base_url and allure_cfg.project_id_template:
-            try:
-                allure_project_id = allure_cfg.project_id_template.format(
-                    team_id=team_id if team_id is not None else "",
-                    team_slug=team_slug,
-                    suite_id=suite_id,
-                    suite_slug=suite_slug,
-                )
-            except (KeyError, IndexError):
-                # Bad placeholder in user's template — fall through to empty
-                # project_id, which disables the Allure step at runtime.
-                allure_project_id = ""
-
         return template.render(
             suite_id=suite_id,
             suite_name=suite_name,
@@ -548,9 +535,6 @@ class JenkinsCIProvider:
             default_runner_label=effective_label,
             default_git_url=git_ctx.get("url", ""),
             default_git_branch=git_ctx.get("branch", "main"),
-            allure_base_url=allure_cfg.base_url,
-            allure_project_id=allure_project_id,
-            allure_api_token=allure_cfg.api_token,
         )
 
     def _render_list_view_config(self, view_name: str) -> str:

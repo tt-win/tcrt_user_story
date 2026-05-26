@@ -7,7 +7,6 @@
 # close to the single-script template so muscle memory carries over.
 #
 # Required repo / org secrets (same as the single-script template):
-#   ALLURE_BASE_URL, ALLURE_PROJECT_ID, ALLURE_TOKEN (optional)
 #   TCRT_BASE_URL, TCRT_WEBHOOK_TOKEN, TCRT_WEBHOOK_SECRET
 
 name: "TCRT Suite — {{ suite_name }}"
@@ -47,38 +46,26 @@ jobs:
           PATHS=$(echo '${{ inputs.test_paths }}' | jq -r '. | join(" ")')
           pytest $PATHS --alluredir=allure-results
 
-      - name: Upload results to Allure Docker Service
+      - name: Ship allure-results to TCRT proxy
         if: always()
         id: allure
         env:
-          ALLURE_BASE_URL: ${{ secrets.ALLURE_BASE_URL }}
-          ALLURE_PROJECT_ID: ${{ secrets.ALLURE_PROJECT_ID }}
-          ALLURE_TOKEN: ${{ secrets.ALLURE_TOKEN }}
+          TCRT_BASE_URL: ${{ secrets.TCRT_BASE_URL }}
+          TCRT_WEBHOOK_TOKEN: ${{ secrets.TCRT_WEBHOOK_TOKEN }}
           TCRT_RUN_ID: ${{ inputs.tcrt_run_id }}
         run: |
-          AUTH=()
-          if [ -n "$ALLURE_TOKEN" ]; then
-            AUTH=(-H "Authorization: Bearer $ALLURE_TOKEN")
+          REPORT_URL=""
+          if [ -d allure-results ] && [ -n "$TCRT_BASE_URL" ] && [ -n "$TCRT_WEBHOOK_TOKEN" ]; then
+            tar czf allure-results.tgz allure-results
+            RESP=$(curl -sS -X POST \
+              "$TCRT_BASE_URL/api/v1/webhooks/ci/$TCRT_WEBHOOK_TOKEN/allure-results" \
+              -F "tcrt_run_id=${TCRT_RUN_ID}" \
+              -F "results=@allure-results.tgz" \
+              || echo "")
+            if [ -n "$RESP" ]; then
+              REPORT_URL=$(echo "$RESP" | jq -r '.report_url // empty')
+            fi
           fi
-          # Idempotent project ensure (Allure returns 4xx if already present)
-          curl -sS -o /dev/null -X POST "${AUTH[@]}" \
-            -H "Content-Type: application/json" \
-            -d "{\"id\":\"$ALLURE_PROJECT_ID\"}" \
-            "$ALLURE_BASE_URL/allure-docker-service/projects" \
-            || echo "Allure project ensure failed (non-fatal)"
-          if [ -d allure-results ]; then
-            for f in allure-results/*; do
-              [ -f "$f" ] || continue
-              curl -fsS "${AUTH[@]}" \
-                -F "files[]=@${f}" \
-                "$ALLURE_BASE_URL/allure-docker-service/send-results?project_id=$ALLURE_PROJECT_ID" \
-                >/dev/null
-            done
-          fi
-          EXEC_NAME="tcrt-${TCRT_RUN_ID:-${GITHUB_RUN_ID}}"
-          RESP=$(curl -fsS "${AUTH[@]}" \
-            "$ALLURE_BASE_URL/allure-docker-service/generate-report?project_id=$ALLURE_PROJECT_ID&execution_name=$EXEC_NAME")
-          REPORT_URL=$(echo "$RESP" | jq -r '.data.report_url // empty')
           echo "report_url=$REPORT_URL" >> "$GITHUB_OUTPUT"
 
       - if: always()

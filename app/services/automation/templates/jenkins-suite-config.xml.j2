@@ -33,23 +33,6 @@
           <description>Optional GitHub PAT for cloning private repos. Masked in console output.</description>
           <defaultValue></defaultValue>
         </hudson.model.PasswordParameterDefinition>
-        <hudson.model.StringParameterDefinition>
-          <name>ALLURE_BASE_URL</name>
-          <description>Allure Docker Service root (empty = skip Allure upload). Default baked from TCRT config.yaml.</description>
-          <defaultValue>{{ allure_base_url }}</defaultValue>
-          <trim>true</trim>
-        </hudson.model.StringParameterDefinition>
-        <hudson.model.StringParameterDefinition>
-          <name>ALLURE_PROJECT_ID</name>
-          <description>Allure project id. Default baked from TCRT config.yaml's project_id_template.</description>
-          <defaultValue>{{ allure_project_id }}</defaultValue>
-          <trim>true</trim>
-        </hudson.model.StringParameterDefinition>
-        <hudson.model.PasswordParameterDefinition>
-          <name>ALLURE_TOKEN</name>
-          <description>Optional Allure API token (SECURITY_ENABLED=1 servers). Default baked from TCRT config.yaml; masked in console.</description>
-          <defaultValue>{{ allure_api_token }}</defaultValue>
-        </hudson.model.PasswordParameterDefinition>
       </parameterDefinitions>
     </hudson.model.ParametersDefinitionProperty>
   </properties>
@@ -129,51 +112,37 @@ pipeline {
             // block so the sh body can stay single-quoted (Groovy does not
             // interpolate) and reference them as plain `$VAR` — sh accepts
             // them, no "Bad substitution" risk from Groovy-style `${a.b}`.
-            //
-            // Allure params get the same promotion: defaults are baked into
-            // job XML from TCRT's config.yaml at suite-job creation time, so
-            // there is no dependency on per-agent env. Per-build overrides
-            // are still possible via the Jenkins UI "Build with Parameters".
             script {
                 env.TCRT_WEBHOOK_RUN_ID = params.tcrt_run_id ?: ''
                 env.TCRT_WEBHOOK_STATUS = currentBuild.currentResult ?: 'UNKNOWN'
-                env.ALLURE_BASE_URL = params.ALLURE_BASE_URL ?: ''
-                env.ALLURE_PROJECT_ID = params.ALLURE_PROJECT_ID ?: ''
-                env.ALLURE_TOKEN = params.ALLURE_TOKEN ?: ''
             }
-            // Allure Docker Service upload — no-op when ALLURE_BASE_URL or
-            // ALLURE_PROJECT_ID is empty (e.g. TCRT config.yaml left it blank,
-            // or the user cleared the parameter for this build).
+            // Allure handoff — Jenkins doesn't talk to Allure directly. We tar
+            // up allure-results and POST to TCRT's proxy endpoint, which is
+            // co-located with the Allure server (typically on its loopback).
+            // The proxy returns a report_url which we then include in the
+            // run-status webhook payload.
             sh '''
             set +e
             ALLURE_REPORT_URL=""
-            if [ -n "${ALLURE_BASE_URL:-}" ] && [ -n "${ALLURE_PROJECT_ID:-}" ] && [ -d "${WORKSPACE}/allure-results" ]; then
-              AUTH_HEADER=""
-              if [ -n "${ALLURE_TOKEN:-}" ]; then
-                AUTH_HEADER="Authorization: Bearer ${ALLURE_TOKEN}"
-              fi
-              # Ensure the project exists on the Allure server. Idempotent: a
-              # 4xx "already exists" response is ignored; only the subsequent
-              # send-results call is treated as authoritative for failure.
-              curl -sS -o /dev/null -X POST -H "Content-Type: application/json" \
-                -H "${AUTH_HEADER}" \
-                -d "{\"id\":\"${ALLURE_PROJECT_ID}\"}" \
-                "${ALLURE_BASE_URL}/allure-docker-service/projects" \
-                || echo "Allure project ensure failed (non-fatal; project may already exist or server unreachable)"
-              for f in "${WORKSPACE}/allure-results/"*; do
-                [ -f "$f" ] || continue
-                curl -fsS -H "${AUTH_HEADER}" \
-                  -F "files[]=@${f}" \
-                  "${ALLURE_BASE_URL}/allure-docker-service/send-results?project_id=${ALLURE_PROJECT_ID}" \
-                  >/dev/null \
-                  || echo "Allure send-results upload failed for ${f} (non-fatal)"
-              done
-              EXEC_NAME="tcrt-${TCRT_WEBHOOK_RUN_ID:-${BUILD_NUMBER}}"
-              RESP=$(curl -fsS -H "${AUTH_HEADER}" \
-                "${ALLURE_BASE_URL}/allure-docker-service/generate-report?project_id=${ALLURE_PROJECT_ID}&execution_name=${EXEC_NAME}" \
-                || echo "")
-              if [ -n "$RESP" ]; then
-                ALLURE_REPORT_URL=$(echo "$RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print((d.get('data') or {}).get('report_url') or '')" 2>/dev/null || echo "")
+            if [ -n "${TCRT_WEBHOOK_URL:-}" ] && [ -d "${WORKSPACE}/allure-results" ]; then
+              # Derive the upload URL from the existing run-status webhook URL
+              # so the operator only needs to configure ONE base — Jenkins
+              # never needs to know the Allure server address.
+              ALLURE_UPLOAD_URL="${TCRT_WEBHOOK_URL%/run-status}/allure-results"
+              tar czf "${WORKSPACE}/allure-results.tgz" -C "${WORKSPACE}" allure-results \
+                || echo "Failed to archive allure-results (non-fatal)"
+              if [ -f "${WORKSPACE}/allure-results.tgz" ]; then
+                RESP=$(curl -sS -X POST "${ALLURE_UPLOAD_URL}" \
+                  -F "tcrt_run_id=${TCRT_WEBHOOK_RUN_ID}" \
+                  -F "results=@${WORKSPACE}/allure-results.tgz" \
+                  || echo "")
+                if [ -n "$RESP" ]; then
+                  ALLURE_REPORT_URL=$(echo "$RESP" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('report_url') or '')" 2>/dev/null || echo "")
+                fi
+                # The proxy already wrote report_url onto the run, so the
+                # subsequent status webhook doesn't strictly need to repeat
+                # it — but doing so makes the webhook self-describing and
+                # avoids relying on call ordering.
               fi
             fi
             echo "ALLURE_REPORT_URL=${ALLURE_REPORT_URL}" > "${WORKSPACE}/.tcrt-allure-url"

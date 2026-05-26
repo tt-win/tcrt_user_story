@@ -1,18 +1,21 @@
-# GitHub Actions — single-script Playwright + Allure Docker Service + TCRT callback
+# GitHub Actions — single-script Playwright + TCRT-proxied Allure callback
 #
 # Drop this at .github/workflows/playwright.yml as a starting point for the
 # repo. TCRT injects tcrt_run_id and runner_label as workflow_dispatch inputs
 # when triggering single-script runs; this template wires them into pytest and
 # the inbound webhook callback.
 #
+# Architecture: GitHub Actions runners ship allure-results.tgz to TCRT's proxy
+# endpoint. TCRT — co-located with Allure — does the project ensure / upload /
+# generate-report handshake locally and writes the captured report_url back
+# onto the run. The runner only needs ONE URL to know about (TCRT's webhook
+# base) regardless of where Allure actually lives.
+#
 # Required repo / org secrets:
-#   ALLURE_BASE_URL     — e.g. http://allure.internal:5050 (allure-docker-service root)
-#   ALLURE_PROJECT_ID   — Allure project id (must already exist on the server;
-#                         create via: curl -XPOST $ALLURE_BASE_URL/allure-docker-service/projects -d '{"id":"<id>"}')
-#   ALLURE_TOKEN        — optional; only required when SECURITY_ENABLED=1 on Allure
-#   TCRT_BASE_URL       — TCRT public origin
+#   TCRT_BASE_URL       — TCRT public origin (must be reachable from GH runners)
 #   TCRT_WEBHOOK_TOKEN  — webhook token from the TCRT inbound CI integration
-#   TCRT_WEBHOOK_SECRET — HMAC shared secret
+#   TCRT_WEBHOOK_SECRET — HMAC shared secret (used for the status webhook;
+#                         the allure-results upload uses token-only auth)
 
 name: Playwright
 
@@ -55,44 +58,26 @@ jobs:
           if [ -z "$PATHS" ]; then PATHS="tests/"; fi
           pytest $PATHS --alluredir=allure-results
 
-      - name: Upload results to Allure Docker Service
+      - name: Ship allure-results to TCRT proxy
         if: always()
         id: allure
         env:
-          ALLURE_BASE_URL: ${{ secrets.ALLURE_BASE_URL }}
-          ALLURE_PROJECT_ID: ${{ secrets.ALLURE_PROJECT_ID }}
-          ALLURE_TOKEN: ${{ secrets.ALLURE_TOKEN }}
+          TCRT_BASE_URL: ${{ secrets.TCRT_BASE_URL }}
+          TCRT_WEBHOOK_TOKEN: ${{ secrets.TCRT_WEBHOOK_TOKEN }}
           TCRT_RUN_ID: ${{ inputs.tcrt_run_id }}
         run: |
-          AUTH=()
-          if [ -n "$ALLURE_TOKEN" ]; then
-            AUTH=(-H "Authorization: Bearer $ALLURE_TOKEN")
+          REPORT_URL=""
+          if [ -d allure-results ] && [ -n "$TCRT_BASE_URL" ] && [ -n "$TCRT_WEBHOOK_TOKEN" ]; then
+            tar czf allure-results.tgz allure-results
+            RESP=$(curl -sS -X POST \
+              "$TCRT_BASE_URL/api/v1/webhooks/ci/$TCRT_WEBHOOK_TOKEN/allure-results" \
+              -F "tcrt_run_id=${TCRT_RUN_ID}" \
+              -F "results=@allure-results.tgz" \
+              || echo "")
+            if [ -n "$RESP" ]; then
+              REPORT_URL=$(echo "$RESP" | jq -r '.report_url // empty')
+            fi
           fi
-
-          # 0) Ensure the project exists. Idempotent — Allure returns 4xx if
-          #    the project is already present, which we deliberately swallow.
-          curl -sS -o /dev/null -X POST "${AUTH[@]}" \
-            -H "Content-Type: application/json" \
-            -d "{\"id\":\"$ALLURE_PROJECT_ID\"}" \
-            "$ALLURE_BASE_URL/allure-docker-service/projects" \
-            || echo "Allure project ensure failed (non-fatal)"
-
-          # 1) Push raw result files (multipart upload, one POST per file)
-          if [ -d allure-results ]; then
-            for f in allure-results/*; do
-              [ -f "$f" ] || continue
-              curl -fsS "${AUTH[@]}" \
-                -F "files[]=@${f}" \
-                "$ALLURE_BASE_URL/allure-docker-service/send-results?project_id=$ALLURE_PROJECT_ID" \
-                >/dev/null
-            done
-          fi
-
-          # 2) Generate the report; capture the URL Allure assigns to this run
-          EXEC_NAME="tcrt-${TCRT_RUN_ID:-${GITHUB_RUN_ID}}"
-          RESP=$(curl -fsS "${AUTH[@]}" \
-            "$ALLURE_BASE_URL/allure-docker-service/generate-report?project_id=$ALLURE_PROJECT_ID&execution_name=$EXEC_NAME")
-          REPORT_URL=$(echo "$RESP" | jq -r '.data.report_url // empty')
           echo "report_url=$REPORT_URL" >> "$GITHUB_OUTPUT"
 
       - name: Notify TCRT
