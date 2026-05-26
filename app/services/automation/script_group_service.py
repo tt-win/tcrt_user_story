@@ -24,6 +24,10 @@ from app.models.database_models import (
 from app.services.automation.provider_credential_service import decrypt_credentials
 from app.services.automation.provider_registry import get_active_provider_record, instantiate_provider
 from app.services.automation.providers.base import CIProvider
+from app.services.automation.webhook_service import (
+    AutomationWebhookService,
+    build_inbound_webhook_url,
+)
 
 
 class AutomationScriptGroupServiceError(ValueError):
@@ -122,6 +126,19 @@ class AutomationScriptGroupService:
         result = await self.session.execute(select(Team.name).where(Team.id == team_id))
         return result.scalar_one_or_none()
 
+    async def _resolve_tcrt_webhook_url(self, team_id: int) -> str:
+        """Get-or-create the team's auto-managed inbound webhook and build its URL.
+
+        Used to bake a TCRT_WEBHOOK_URL default into the generated Jenkins job
+        XML so the Jenkins agent doesn't need any agent-level configuration.
+        Returns an empty string when ``app.public_base_url`` is unset — the
+        Jinja template then renders an empty <defaultValue>, which the shell
+        gracefully skips (the existing ``if [ -n "$TCRT_WEBHOOK_URL" ]`` guard).
+        """
+        webhook_service = AutomationWebhookService(self.session)
+        webhook = await webhook_service.ensure_default_inbound_webhook(team_id=team_id)
+        return build_inbound_webhook_url(webhook)
+
     async def get_group(self, *, team_id: int, group_id: int) -> AutomationScriptGroup:
         result = await self.session.execute(
             select(AutomationScriptGroup).where(
@@ -166,6 +183,7 @@ class AutomationScriptGroupService:
 
         git_context = await _build_git_context_for_group(self.session, scripts)
         team_name = await self._get_team_name(team_id)
+        tcrt_webhook_url = await self._resolve_tcrt_webhook_url(team_id)
         try:
             group.ci_job_name = await provider.create_suite_job(
                 str(group.id),
@@ -175,6 +193,7 @@ class AutomationScriptGroupService:
                 git_context=git_context,
                 team_id=team_id,
                 team_name=team_name,
+                tcrt_webhook_url=tcrt_webhook_url,
             )
         except httpx.HTTPStatusError as exc:
             raise _wrap_ci_http_error(exc, action="create suite job on CI") from exc
@@ -210,6 +229,7 @@ class AutomationScriptGroupService:
             scripts_for_git = scripts if script_ids is not None else await self.load_group_scripts(group=group)
             git_context = await _build_git_context_for_group(self.session, scripts_for_git)
             team_name = await self._get_team_name(team_id)
+            tcrt_webhook_url = await self._resolve_tcrt_webhook_url(team_id)
             try:
                 group.ci_job_name = await provider.update_suite_job(
                     str(group.id),
@@ -219,6 +239,7 @@ class AutomationScriptGroupService:
                     git_context=git_context,
                     team_id=team_id,
                     team_name=team_name,
+                    tcrt_webhook_url=tcrt_webhook_url,
                 )
             except httpx.HTTPStatusError as exc:
                 raise _wrap_ci_http_error(exc, action="update suite job on CI") from exc
@@ -326,10 +347,12 @@ class AutomationScriptGroupService:
         # canonicalise the name differently from our local slug.
         default_label = _default_runner_label(provider_config, group.ci_job_type)
         team_name = await self._get_team_name(team_id)
+        tcrt_webhook_url = await self._resolve_tcrt_webhook_url(team_id)
         try:
             group.ci_job_name = await provider.update_suite_job(
                 str(group.id), group.name, script_paths, default_label,
                 git_context=git_context, team_id=team_id, team_name=team_name,
+                tcrt_webhook_url=tcrt_webhook_url,
             )
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code != 404:
@@ -338,6 +361,7 @@ class AutomationScriptGroupService:
                 group.ci_job_name = await provider.create_suite_job(
                     str(group.id), group.name, script_paths, default_label,
                     git_context=git_context, team_id=team_id, team_name=team_name,
+                    tcrt_webhook_url=tcrt_webhook_url,
                 )
             except httpx.HTTPStatusError as create_exc:
                 raise _wrap_ci_http_error(create_exc, action="recreate suite job on CI") from create_exc

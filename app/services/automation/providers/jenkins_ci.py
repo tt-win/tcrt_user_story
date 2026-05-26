@@ -326,6 +326,7 @@ class JenkinsCIProvider:
         git_context: dict[str, Any] | None = None,
         team_id: int | None = None,
         team_name: str | None = None,
+        tcrt_webhook_url: str | None = None,
     ) -> str:
         job_name = self._suite_job_name(suite_id, suite_name)
         config_xml = self._render_suite_job(
@@ -336,6 +337,7 @@ class JenkinsCIProvider:
             git_context,
             team_id=team_id,
             team_name=team_name,
+            tcrt_webhook_url=tcrt_webhook_url,
         )
         await self._request(
             "POST",
@@ -358,6 +360,7 @@ class JenkinsCIProvider:
         git_context: dict[str, Any] | None = None,
         team_id: int | None = None,
         team_name: str | None = None,
+        tcrt_webhook_url: str | None = None,
     ) -> str:
         job_name = self._suite_job_name(suite_id, suite_name)
         # Probe before POST: Jenkins's `/job/{name}/config.xml` endpoint
@@ -377,6 +380,7 @@ class JenkinsCIProvider:
             git_context,
             team_id=team_id,
             team_name=team_name,
+            tcrt_webhook_url=tcrt_webhook_url,
         )
         await self._request(
             "POST",
@@ -507,6 +511,7 @@ class JenkinsCIProvider:
         git_context: dict[str, Any] | None = None,
         team_id: int | None = None,
         team_name: str | None = None,
+        tcrt_webhook_url: str | None = None,
     ) -> str:
         """Render the Jenkins suite/script job XML.
 
@@ -515,6 +520,9 @@ class JenkinsCIProvider:
         reference them (Allure project resolution happens server-side in the
         TCRT proxy endpoint, not on the Jenkins side, so the job XML stays
         identical across teams).
+        ``tcrt_webhook_url`` (when provided) is baked into the job XML as a
+        masked default parameter, so the resulting Jenkins job phones home
+        without any agent-level env. Empty / None disables the callback path.
         """
         del team_id, team_name  # currently unused — kept for API stability
         template = self.templates.get_template("jenkins-suite-config.xml.j2")
@@ -535,6 +543,7 @@ class JenkinsCIProvider:
             default_runner_label=effective_label,
             default_git_url=git_ctx.get("url", ""),
             default_git_branch=git_ctx.get("branch", "main"),
+            tcrt_webhook_url=tcrt_webhook_url or "",
         )
 
     def _render_list_view_config(self, view_name: str) -> str:

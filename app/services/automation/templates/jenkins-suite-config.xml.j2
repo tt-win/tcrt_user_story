@@ -33,6 +33,11 @@
           <description>Optional GitHub PAT for cloning private repos. Masked in console output.</description>
           <defaultValue></defaultValue>
         </hudson.model.PasswordParameterDefinition>
+        <hudson.model.PasswordParameterDefinition>
+          <name>TCRT_WEBHOOK_URL</name>
+          <description>Full TCRT inbound webhook URL (run-status). Baked from TCRT's config.yaml app.public_base_url + the team's auto-managed webhook token. Masked in console.</description>
+          <defaultValue>{{ tcrt_webhook_url }}</defaultValue>
+        </hudson.model.PasswordParameterDefinition>
       </parameterDefinitions>
     </hudson.model.ParametersDefinitionProperty>
   </properties>
@@ -115,6 +120,9 @@ pipeline {
             script {
                 env.TCRT_WEBHOOK_RUN_ID = params.tcrt_run_id ?: ''
                 env.TCRT_WEBHOOK_STATUS = currentBuild.currentResult ?: 'UNKNOWN'
+                // TCRT_WEBHOOK_URL is a PasswordParameter baked from config.yaml;
+                // promote it into env so the sh body's `$TCRT_WEBHOOK_URL` works.
+                env.TCRT_WEBHOOK_URL = params.TCRT_WEBHOOK_URL ?: ''
             }
             // Allure handoff — Jenkins doesn't talk to Allure directly. We tar
             // up allure-results and POST to TCRT's proxy endpoint, which is

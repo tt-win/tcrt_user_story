@@ -38,6 +38,7 @@ class FakeCIProvider:
         git_context: dict | None = None,
         team_id: int | None = None,
         team_name: str | None = None,
+        tcrt_webhook_url: str | None = None,
     ) -> str:
         self.create_calls.append(
             (suite_id, suite_name, test_paths, default_runner_label, git_context, team_id, team_name)
@@ -53,6 +54,7 @@ class FakeCIProvider:
         git_context: dict | None = None,
         team_id: int | None = None,
         team_name: str | None = None,
+        tcrt_webhook_url: str | None = None,
     ) -> str:
         self.update_calls.append(
             (suite_id, suite_name, test_paths, default_runner_label, git_context, team_id, team_name)
