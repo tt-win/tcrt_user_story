@@ -326,6 +326,8 @@ class AutomationScriptGroupService:
         runner_label: str | None = None,
         inputs: dict[str, str] | None = None,
         ci_provider: CIProvider | None = None,
+        triggered_by: AutomationRunTrigger = AutomationRunTrigger.USER,
+        triggered_by_webhook_id: int | None = None,
     ) -> AutomationRun:
         group = await self.get_group(team_id=team_id, group_id=group_id)
         if not group.ci_job_name:
@@ -405,8 +407,9 @@ class AutomationScriptGroupService:
             external_run_id=external_run.external_run_id,
             external_run_url=external_run.external_run_url,
             status=AutomationRunStatus.QUEUED,
-            triggered_by=AutomationRunTrigger.USER,
+            triggered_by=triggered_by,
             triggered_by_user_id=actor,
+            triggered_by_webhook_id=triggered_by_webhook_id,
             tcrt_correlation_id=tcrt_correlation_id,
             workflow_id=group.ci_job_name,
             branch=resolved_branch,

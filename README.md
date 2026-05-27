@@ -178,6 +178,20 @@ docker compose -f docker-compose.app.yml up -d --build
 
 > AI 模型選擇、溫度等進階設定位於 `config.yaml` 的 `ai` 區段。
 
+### Automation Hub
+
+| 變數 | 說明 |
+|------|------|
+| `AUTOMATION_PROVIDER_ENCRYPTION_KEY` | AES-256-GCM 金鑰（base64 編碼的 32 bytes），用於加密 Automation Hub 的 provider credentials（GitHub PAT、Jenkins API token 等）。env 優先；亦可在 `config.yaml` 用 `automation_provider.encryption_key` 設定。**一旦有 provider 資料寫入後請勿輪替**，否則既有 credentials 將無法解密。 |
+
+> Bootstrap (`database_init.py`) 偵測到 `team_automation_providers` 表已有資料但金鑰缺失或無效時會阻擋啟動。生成金鑰：
+>
+> ```bash
+> python3 -c "import os, base64; print(base64.b64encode(os.urandom(32)).decode())"
+> ```
+>
+> Automation Hub 完整使用手冊：[`docs/automation-hub-overview.md`](docs/automation-hub-overview.md)、[`docs/automation-provider-setup.md`](docs/automation-provider-setup.md)、[`docs/automation-webhook.md`](docs/automation-webhook.md)、[`docs/automation-security.md`](docs/automation-security.md)、[`docs/automation-workflow-templates/`](docs/automation-workflow-templates/)。
+
 ### 初始化管理員帳號
 
 | 變數 | 說明 |

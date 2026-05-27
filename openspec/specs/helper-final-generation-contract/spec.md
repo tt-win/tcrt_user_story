@@ -66,3 +66,64 @@ commit 結果 SHALL 保留每筆 testcase draft 的成功 / 失敗狀態。
 #### Scenario: Partial commit retains per-draft status
 - **WHEN** commit 部分成功、部分失敗
 - **THEN** 系統保留逐筆結果與失敗原因
+
+### Requirement: Screen 4 MUST not support manual seed creation or deletion
+
+The system SHALL preserve screen-4 seed traceability by disallowing manual seed creation or deletion in V3.
+
+#### Scenario: User cannot manually add or delete a seed
+- **WHEN** the user reviews the seed list on screen 4
+- **THEN** the UI provides comment editing and include/exclude controls, but does not provide manual add-seed or delete-seed actions
+
+### Requirement: Model output MUST carry seed references but MUST NOT assign final IDs
+
+The system SHALL require the testcase-generation model to return testcase body fields together with the originating seed reference, and MUST assign final testcase IDs locally after model output is received.
+
+#### Scenario: Model returns reference keys only
+- **WHEN** the testcase-generation model responds
+- **THEN** the response contains seed or item references for local merge, and the model does not decide the final testcase numbering
+
+### Requirement: Local numbering MUST use section and verification-item block allocation
+
+The system SHALL assign testcase IDs with the pattern `[ticket_key].[section].[tail]`, where:
+- section numbers come from screen-3 section allocation
+- the first testcase in a section starts tail allocation at `010`
+- each subsequent testcase in the same section increments by `10`
+- verification items do not create separate numbering blocks
+
+#### Scenario: Later verification items continue the same sequence
+- **WHEN** section `TCG-93178.010` has two verification items and the first item uses tails `010` and `020`
+- **THEN** the first seed of the second verification item becomes `TCG-93178.010.030`
+
+#### Scenario: Numbering stays sequential across many generated testcases
+- **WHEN** a section already has generated testcase tails through `110`
+- **THEN** the next testcase tail becomes `120`
+
+### Requirement: Screen 5 selection MUST be blocked by validation failures
+
+The system SHALL validate testcase drafts before they can be selected for commit or moved to screen 6.
+
+#### Scenario: Invalid draft cannot be selected
+- **WHEN** one testcase draft has an empty title, no steps, or no expected results
+- **THEN** that draft cannot be selected for commit until the validation issue is fixed
+
+#### Scenario: No valid selections blocks screen-6 progression
+- **WHEN** the user has not selected any valid testcase draft
+- **THEN** the flow cannot advance to screen 6
+
+### Requirement: Screen 5 MUST not support manual testcase-draft creation or deletion
+
+The system SHALL preserve traceability by disallowing manual testcase-draft add/delete operations in V3.
+
+#### Scenario: User cannot manually add or delete a testcase draft
+- **WHEN** the user reviews testcase drafts on screen 5
+- **THEN** the UI provides edit and selection controls only, without manual add-draft or delete-draft actions
+
+### Requirement: Final generation contracts MUST be split by responsibility
+**Reason**: The new design still separates responsibilities, but the primary contract boundary is now `seed generation -> seed refinement -> testcase generation -> local numbering/commit`, not the prior internal/model/post-merge structure.
+**Migration**: Keep internal traceability data, but express the contract around the two explicit model stages and their lock gates.
+
+### Requirement: Runtime MUST downshift batch size when consistency risk is high
+**Reason**: Batch downshifting and complexity scoring are not part of the currently requested redesign.
+**Migration**: If batching controls are needed later, they can be reintroduced as an operational enhancement without changing the screen flow.
+

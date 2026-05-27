@@ -443,6 +443,25 @@
                                 <!-- 附件列表將由 JavaScript 動態載入 -->
                             </div>
                         </div>
+
+                        <!-- Automation Hub 連結區域 -->
+                        <div class="mb-3" id="automationPanelWrap" style="display: none;">
+                            <label class="form-label d-flex align-items-center justify-content-between">
+                                <span>
+                                    <i class="fas fa-robot me-2"></i><span data-i18n="testCase.automation.title">Automation</span>
+                                </span>
+                                <a href="#" class="btn btn-link btn-sm py-0" id="automationOpenHubLink" target="_blank" rel="noopener">
+                                    <i class="fas fa-external-link-alt me-1"></i><span data-i18n="testCase.automation.openHub">Manage in Automation Hub</span>
+                                </a>
+                            </label>
+                            <div id="automationPanelLoading" class="text-muted small d-none">
+                                <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                                <span data-i18n="common.loading">載入中...</span>
+                            </div>
+                            <div id="automationPanelEmpty" class="text-muted small p-3 border rounded d-none" data-i18n="testCase.automation.empty">No automation scripts linked yet.</div>
+                            <div id="automationPanelError" class="alert alert-warning small py-2 mb-0 d-none"></div>
+                            <div id="automationPanelList" class="automation-panel-list"></div>
+                        </div>
                     </div>
 
                     <!-- 固定按鈕區域 -->
@@ -1091,6 +1110,7 @@ TC-1003,API 健康檢查,\"服務已啟動\",\"發送 GET /health\",\"回傳 200
 <script src="/static/js/test-case-management/utils.js"></script>
 <script src="/static/js/test-case-management/markdown.js"></script>
 <script src="/static/js/test-case-management/attachments.js"></script>
+<script src="/static/js/test-case-management/automation-panel.js"></script>
 <script src="/static/js/test-case-management/tcg-tooltip.js"></script>
 <script src="/static/js/test-case-management/reference-test-case.js"></script>
 <script src="/static/js/test-case-management/bulk-edit.js"></script>

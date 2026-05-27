@@ -28,6 +28,16 @@ from .test_case_sets import router as test_case_sets_router
 from .test_case_sections import router as test_case_sections_router
 from .qa_ai_helper import router as qa_ai_helper_router
 from .mcp import router as mcp_router
+from .automation_providers import router as automation_providers_router
+from .system_automation_providers import router as system_automation_providers_router
+from .automation_scripts import router as automation_scripts_router
+from .automation_links import router as automation_links_router
+from .automation_script_groups import router as automation_script_groups_router
+from .automation_runs import router as automation_runs_router
+from .automation_coverage import router as automation_coverage_router
+from .automation_webhooks import router as automation_webhooks_router
+from .automation_webhooks_public import router as automation_webhooks_public_router
+from .automation_result import router as automation_result_router
 
 # 創建主 API 路由器
 api_router = APIRouter()
@@ -59,5 +69,15 @@ api_router.include_router(test_case_sets_router)  # Test Case Set 路由
 api_router.include_router(test_case_sections_router)  # Test Case Section 路由
 api_router.include_router(qa_ai_helper_router)  # 新版 QA AI Helper 路由
 api_router.include_router(mcp_router)  # MCP Read 路由
+api_router.include_router(automation_providers_router)  # 團隊層 Provider 設定（僅 storage）
+api_router.include_router(system_automation_providers_router)  # 組織層 Provider 設定（CI / Result）
+api_router.include_router(automation_scripts_router)  # Automation Hub Script 快取路由
+api_router.include_router(automation_links_router)  # Automation Hub Script Link 路由
+api_router.include_router(automation_script_groups_router)  # Automation Hub Suite 路由
+api_router.include_router(automation_runs_router)  # Automation Hub Run 路由
+api_router.include_router(automation_coverage_router)  # Automation Hub Coverage 路由
+api_router.include_router(automation_webhooks_router)  # Automation Hub Webhook (admin) 路由
+api_router.include_router(automation_webhooks_public_router)  # Automation Hub Webhook (公開 CI callback)
+api_router.include_router(automation_result_router)  # Automation Hub Result provider 連結（dashboard / report URL）
 
 # 可以在此添加其他 API 路由

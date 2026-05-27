@@ -18,13 +18,11 @@ from sqlalchemy import (
     Float,
     UniqueConstraint,
     Index,
-    and_,
+    CheckConstraint,
     select,
-    text,
 )
-from sqlalchemy.orm import relationship, declarative_base, foreign, column_property
+from sqlalchemy.orm import relationship, declarative_base, column_property
 from datetime import datetime
-from typing import Optional
 from enum import Enum as PyEnum
 
 # 從現有的資料模型導入枚舉類型
@@ -63,6 +61,76 @@ class MCPMachineCredentialStatus(PyEnum):
 
     ACTIVE = "active"
     REVOKED = "revoked"
+
+
+class AutomationProviderSlot(PyEnum):
+    """Automation Hub provider slot"""
+
+    STORAGE = "storage"
+    CI = "ci"
+    RESULT = "result"
+
+
+class AutomationScriptFormat(PyEnum):
+    """Automation script format"""
+
+    PLAYWRIGHT_PY_ASYNC = "PLAYWRIGHT_PY_ASYNC"
+    PYTEST = "PYTEST"
+    PLAYWRIGHT_JS = "PLAYWRIGHT_JS"
+    OTHER = "OTHER"
+
+
+class AutomationScriptLinkType(PyEnum):
+    """Automation script to test case relationship type"""
+
+    PRIMARY = "PRIMARY"
+    COVERS = "COVERS"
+    REFERENCES = "REFERENCES"
+
+
+class AutomationScriptGroupJobType(PyEnum):
+    """Automation script group CI job type"""
+
+    GITHUB_ACTIONS = "GITHUB_ACTIONS"
+    JENKINS = "JENKINS"
+
+
+class AutomationRunStatus(PyEnum):
+    """Automation run status mirrored from external CI"""
+
+    QUEUED = "QUEUED"
+    RUNNING = "RUNNING"
+    SUCCEEDED = "SUCCEEDED"
+    FAILED = "FAILED"
+    CANCELLED = "CANCELLED"
+    UNKNOWN = "UNKNOWN"
+
+
+class AutomationRunTrigger(PyEnum):
+    """Automation run trigger source"""
+
+    USER = "USER"
+    WEBHOOK = "WEBHOOK"
+    SCHEDULE = "SCHEDULE"
+    MCP = "MCP"
+
+
+class AutomationWebhookDirection(PyEnum):
+    """Automation webhook direction"""
+
+    INBOUND = "INBOUND"
+    OUTBOUND = "OUTBOUND"
+
+
+class AutomationSmartScanStatus(PyEnum):
+    """Automation Smart Scan run status"""
+
+    QUEUED = "QUEUED"
+    SCANNING = "SCANNING"
+    ENRICHING = "ENRICHING"
+    READY = "READY"
+    FAILED = "FAILED"
+    CANCELLED = "CANCELLED"
 
 
 class Team(Base):
@@ -1643,6 +1711,326 @@ class MCPMachineCredential(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     created_by = relationship("User")
+
+
+class _AutomationProviderColumnsMixin:
+    """Shared columns between team-scoped storage providers and org-scoped CI/result
+    providers. The two ORM classes diverge only on team_id (team table only) and
+    table-level constraints (slot CHECK + uniqueness key)."""
+
+    id = Column(Integer, primary_key=True)
+    provider_slot = Column(
+        Enum(AutomationProviderSlot, values_callable=lambda values: [item.value for item in values]),
+        nullable=False,
+    )
+    provider_type = Column(String(60), nullable=False)
+    name = Column(String(100), nullable=False)
+    config_json = Column(Text, nullable=False)
+    credentials_encrypted = Column(Text, nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+    last_health_check_at = Column(DateTime, nullable=True)
+    last_health_status = Column(String(40), nullable=True)
+    created_by = Column(String(64), nullable=True)
+    updated_by = Column(String(64), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+class TeamAutomationProvider(_AutomationProviderColumnsMixin, Base):
+    """Per-team storage provider configuration (CI/result moved to SystemAutomationProvider)."""
+
+    __tablename__ = "team_automation_providers"
+    __table_args__ = (
+        UniqueConstraint("team_id", "provider_slot", "name", name="uq_team_automation_provider_name"),
+        Index("ix_team_automation_providers_team_slot_active", "team_id", "provider_slot", "is_active"),
+        CheckConstraint("provider_slot = 'storage'", name="ck_team_provider_storage_only"),
+    )
+
+    team_id = Column(Integer, ForeignKey("teams.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    team = relationship("Team", backref="automation_providers")
+
+
+class SystemAutomationProvider(_AutomationProviderColumnsMixin, Base):
+    """Org-scoped CI / Result provider — one config shared by all teams,
+    managed by Super Admin via team-management's org-sync modal."""
+
+    __tablename__ = "system_automation_providers"
+    __table_args__ = (
+        UniqueConstraint("provider_slot", "name", name="uq_system_automation_provider_name"),
+        Index("ix_system_automation_providers_slot_active", "provider_slot", "is_active"),
+        CheckConstraint("provider_slot IN ('ci', 'result')", name="ck_system_provider_ci_or_result_only"),
+    )
+
+
+class AutomationScript(Base):
+    """Auto-discovered automation script cache"""
+
+    __tablename__ = "automation_scripts"
+    __table_args__ = (
+        UniqueConstraint("team_id", "provider_id", "ref_path", "ref_branch", name="uq_automation_script_ref"),
+        Index("ix_automation_scripts_team_format", "team_id", "script_format"),
+        Index("ix_automation_scripts_provider_synced", "provider_id", "last_synced_at"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    team_id = Column(Integer, ForeignKey("teams.id", ondelete="CASCADE"), nullable=False, index=True)
+    provider_id = Column(
+        Integer,
+        ForeignKey("team_automation_providers.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    name = Column(String(200), nullable=False)
+    description = Column(Text, nullable=True)
+    script_format = Column(
+        Enum(AutomationScriptFormat, values_callable=lambda values: [item.value for item in values]),
+        nullable=False,
+        default=AutomationScriptFormat.OTHER,
+    )
+    ref_path = Column(String(500), nullable=False)
+    ref_branch = Column(String(200), nullable=False)
+    cached_content = Column(medium_text_type(), nullable=True)
+    cached_content_etag = Column(String(120), nullable=True)
+    last_synced_at = Column(DateTime, nullable=True)
+    tags_json = Column(Text, nullable=True)
+    preferred_runner_label = Column(String(100), nullable=True)
+    linked_test_case_count = Column(Integer, default=0, nullable=False)
+    created_by = Column(String(64), nullable=True)
+    updated_by = Column(String(64), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    team = relationship("Team", backref="automation_scripts")
+    provider = relationship("TeamAutomationProvider")
+    case_links = relationship(
+        "AutomationScriptCaseLink",
+        back_populates="automation_script",
+        cascade="all, delete-orphan",
+    )
+
+
+class AutomationScriptCaseLink(Base):
+    """Automation script to manual test case many-to-many link"""
+
+    __tablename__ = "automation_script_case_links"
+    __table_args__ = (
+        UniqueConstraint("automation_script_id", "test_case_id", name="uq_automation_script_case_link"),
+        Index("ix_automation_script_case_links_test_case_id", "test_case_id"),
+        Index("ix_automation_script_case_links_team_id", "team_id"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    team_id = Column(Integer, ForeignKey("teams.id", ondelete="CASCADE"), nullable=False, index=True)
+    automation_script_id = Column(
+        Integer,
+        ForeignKey("automation_scripts.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    test_case_id = Column(Integer, ForeignKey("test_cases.id", ondelete="CASCADE"), nullable=False)
+    link_type = Column(
+        Enum(AutomationScriptLinkType, values_callable=lambda values: [item.value for item in values]),
+        nullable=False,
+        default=AutomationScriptLinkType.COVERS,
+    )
+    note = Column(Text, nullable=True)
+    created_by = Column(String(64), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    automation_script = relationship("AutomationScript", back_populates="case_links")
+    test_case = relationship("TestCaseLocal")
+    team = relationship("Team")
+
+
+class AutomationScriptGroup(Base):
+    """Automation script logical group for executable suites"""
+
+    __tablename__ = "automation_script_groups"
+    __table_args__ = (
+        UniqueConstraint("team_id", "name", name="uq_automation_script_group_name"),
+        Index("ix_automation_script_groups_team_id", "team_id"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    team_id = Column(Integer, ForeignKey("teams.id", ondelete="CASCADE"), nullable=False, index=True)
+    name = Column(String(200), nullable=False)
+    description = Column(Text, nullable=True)
+    script_paths_json = Column(medium_text_type(), nullable=False)
+    ci_job_name = Column(String(200), nullable=True)
+    ci_job_type = Column(
+        Enum(AutomationScriptGroupJobType, values_callable=lambda values: [item.value for item in values]),
+        nullable=True,
+    )
+    created_by = Column(String(64), nullable=True)
+    updated_by = Column(String(64), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    team = relationship("Team", backref="automation_script_groups")
+    runs = relationship("AutomationRun", back_populates="script_group")
+
+
+class AutomationRun(Base):
+    """Automation run metadata mirrored from external CI"""
+
+    __tablename__ = "automation_runs"
+    __table_args__ = (
+        UniqueConstraint("tcrt_correlation_id", name="uq_automation_runs_tcrt_correlation_id"),
+        Index("ix_automation_runs_team_started", "team_id", "started_at"),
+        Index("ix_automation_runs_script_started", "automation_script_id", "started_at"),
+        Index("ix_automation_runs_group_started", "script_group_id", "started_at"),
+        Index("ix_automation_runs_status_synced", "status", "last_synced_at"),
+        Index("ix_automation_runs_tcrt_correlation_id", "tcrt_correlation_id"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    team_id = Column(Integer, ForeignKey("teams.id", ondelete="CASCADE"), nullable=False, index=True)
+    automation_script_id = Column(
+        Integer,
+        ForeignKey("automation_scripts.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    script_group_id = Column(
+        Integer,
+        ForeignKey("automation_script_groups.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    # Runs are CI runs; CI providers are org-scoped → FK to system table.
+    provider_id = Column(Integer, ForeignKey("system_automation_providers.id"), nullable=False, index=True)
+    external_run_id = Column(String(120), nullable=True, index=True)
+    external_run_url = Column(String(500), nullable=True)
+    status = Column(
+        Enum(AutomationRunStatus, values_callable=lambda values: [item.value for item in values]),
+        nullable=False,
+        default=AutomationRunStatus.QUEUED,
+    )
+    triggered_by = Column(
+        Enum(AutomationRunTrigger, values_callable=lambda values: [item.value for item in values]),
+        nullable=False,
+    )
+    triggered_by_user_id = Column(String(64), nullable=True)
+    triggered_by_webhook_id = Column(Integer, ForeignKey("automation_webhooks.id"), nullable=True)
+    tcrt_correlation_id = Column(String(36), nullable=False)
+    ci_correlation_id = Column(String(120), nullable=True)
+    workflow_id = Column(String(200), nullable=False)
+    branch = Column(String(200), nullable=False)
+    inputs_json = Column(Text, nullable=True)
+    runner_label = Column(String(100), nullable=True)
+    report_url = Column(String(500), nullable=True)
+    started_at = Column(DateTime, nullable=True)
+    finished_at = Column(DateTime, nullable=True)
+    duration_ms = Column(Integer, nullable=True)
+    error_summary = Column(Text, nullable=True)
+    last_synced_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    team = relationship("Team", backref="automation_runs")
+    automation_script = relationship("AutomationScript")
+    script_group = relationship("AutomationScriptGroup", back_populates="runs")
+    provider = relationship("SystemAutomationProvider")
+    triggered_by_webhook = relationship("AutomationWebhook")
+
+
+class AutomationWebhook(Base):
+    """Automation Hub inbound/outbound webhook configuration"""
+
+    __tablename__ = "automation_webhooks"
+    __table_args__ = (
+        UniqueConstraint("token", name="uq_automation_webhooks_token"),
+        Index("ix_automation_webhooks_team_direction_active", "team_id", "direction", "is_active"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    team_id = Column(Integer, ForeignKey("teams.id", ondelete="CASCADE"), nullable=False, index=True)
+    direction = Column(
+        Enum(AutomationWebhookDirection, values_callable=lambda values: [item.value for item in values]),
+        nullable=False,
+    )
+    name = Column(String(100), nullable=False)
+    token = Column(String(64), nullable=False, unique=True)
+    secret = Column(String(128), nullable=True)
+    target_url = Column(String(500), nullable=True)
+    events_json = Column(Text, nullable=True)
+    # Optional suite binding: INBOUND trigger webhooks fire this script group.
+    script_group_id = Column(
+        Integer,
+        ForeignKey("automation_script_groups.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    is_active = Column(Boolean, default=True, nullable=False)
+    last_triggered_at = Column(DateTime, nullable=True)
+    last_status = Column(String(40), nullable=True)
+    created_by = Column(String(64), nullable=True)
+    updated_by = Column(String(64), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    team = relationship("Team", backref="automation_webhooks")
+    script_group = relationship("AutomationScriptGroup")
+
+
+class AutomationSmartScanRun(Base):
+    """Persisted Smart Scan execution state and result."""
+
+    __tablename__ = "automation_smart_scan_runs"
+    __table_args__ = (
+        Index("ix_automation_smart_scan_runs_team_status", "team_id", "status"),
+        Index("ix_automation_smart_scan_runs_provider_hash", "provider_id", "scan_config_hash"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    team_id = Column(Integer, ForeignKey("teams.id", ondelete="CASCADE"), nullable=False, index=True)
+    provider_id = Column(Integer, ForeignKey("team_automation_providers.id", ondelete="CASCADE"), nullable=False, index=True)
+    status = Column(
+        Enum(AutomationSmartScanStatus, values_callable=lambda values: [item.value for item in values]),
+        nullable=False,
+        default=AutomationSmartScanStatus.QUEUED,
+    )
+    scan_config_hash = Column(String(64), nullable=False)
+    progress_json = Column(Text, nullable=True)
+    result_json = Column(medium_text_type(), nullable=True)
+    error_summary = Column(Text, nullable=True)
+    created_by = Column(String(64), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    finished_at = Column(DateTime, nullable=True)
+
+    team = relationship("Team", backref="automation_smart_scan_runs")
+    provider = relationship("TeamAutomationProvider")
+
+
+class AutomationWebhookDelivery(Base):
+    """Outbound webhook delivery history for failure visibility and replay."""
+
+    __tablename__ = "automation_webhook_deliveries"
+    __table_args__ = (
+        Index("ix_automation_webhook_deliveries_team_created", "team_id", "created_at"),
+        Index("ix_automation_webhook_deliveries_webhook_created", "webhook_id", "created_at"),
+        Index("ix_automation_webhook_deliveries_delivery_id", "delivery_id"),
+    )
+
+    id = Column(Integer, primary_key=True)
+    team_id = Column(Integer, ForeignKey("teams.id", ondelete="CASCADE"), nullable=False, index=True)
+    webhook_id = Column(Integer, ForeignKey("automation_webhooks.id", ondelete="CASCADE"), nullable=False, index=True)
+    event = Column(String(80), nullable=False)
+    delivery_id = Column(String(36), nullable=False)
+    target_url = Column(String(500), nullable=False)
+    status = Column(String(20), nullable=False)
+    status_code = Column(Integer, nullable=True)
+    request_body = Column(medium_text_type(), nullable=False)
+    response_body = Column(Text, nullable=True)
+    error_message = Column(Text, nullable=True)
+    duration_ms = Column(Integer, nullable=False, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    completed_at = Column(DateTime, nullable=True)
+
+    team = relationship("Team", backref="automation_webhook_deliveries")
+    webhook = relationship("AutomationWebhook", backref="deliveries")
 
 
 # 建立資料庫表格的函數

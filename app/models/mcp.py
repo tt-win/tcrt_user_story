@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, Field
@@ -66,6 +66,20 @@ class MCPTeamTestCasesResponse(BaseModel):
     page: MCPPageMeta
 
 
+class MCPLinkedAutomationSummary(BaseModel):
+    """Per-test-case linked automation script summary (reverse view)."""
+
+    script_id: int
+    name: str
+    script_format: str
+    ref_path: Optional[str] = None
+    link_type: str
+    last_run_status: Optional[str] = None
+    last_run_at: Optional[datetime] = None
+    last_run_url: Optional[str] = None
+    report_url: Optional[str] = None
+
+
 class MCPTestCaseDetailItem(BaseModel):
     id: int
     record_id: str
@@ -89,6 +103,7 @@ class MCPTestCaseDetailItem(BaseModel):
     parent_record: List[Dict[str, Any]] = Field(default_factory=list)
     raw_fields: Optional[Dict[str, Any]] = None
     test_data: List[Dict[str, Any]] = Field(default_factory=list)
+    linked_automation_scripts: List[MCPLinkedAutomationSummary] = Field(default_factory=list)
 
 
 class MCPTestCaseDetailResponse(BaseModel):
@@ -154,3 +169,98 @@ class MCPTeamTestCaseSectionsResponse(BaseModel):
     filters: Dict[str, Any]
     sections: List[MCPTestCaseSectionItem] = Field(default_factory=list)
     total: int
+
+
+class MCPAutomationScriptItem(BaseModel):
+    """Team-wide automation script entry for MCP listing."""
+
+    id: int
+    name: str
+    script_format: str
+    ref_path: str
+    ref_branch: Optional[str] = None
+    description: Optional[str] = None
+    preferred_runner_label: Optional[str] = None
+    tags: List[str] = Field(default_factory=list)
+    linked_test_case_count: int = 0
+    linked_test_case_numbers: List[str] = Field(default_factory=list)
+    last_run_status: Optional[str] = None
+    last_run_at: Optional[datetime] = None
+    last_run_url: Optional[str] = None
+    last_synced_at: Optional[datetime] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class MCPTeamAutomationScriptsResponse(BaseModel):
+    team_id: int
+    items: List[MCPAutomationScriptItem] = Field(default_factory=list)
+    page: MCPPageMeta
+
+
+class MCPAutomationRunItem(BaseModel):
+    id: int
+    automation_script_id: Optional[int] = None
+    script_group_id: Optional[int] = None
+    workflow_id: str
+    branch: str
+    status: str
+    triggered_by: str
+    triggered_by_user_id: Optional[str] = None
+    external_run_id: Optional[str] = None
+    external_run_url: Optional[str] = None
+    report_url: Optional[str] = None
+    runner_label: Optional[str] = None
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+    duration_ms: Optional[int] = None
+    tcrt_correlation_id: str
+    error_summary: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class MCPTeamAutomationRunsResponse(BaseModel):
+    team_id: int
+    items: List[MCPAutomationRunItem] = Field(default_factory=list)
+    page: MCPPageMeta
+
+
+class MCPAutomationCoverageSummary(BaseModel):
+    total_test_cases: int
+    with_primary_link: int
+    with_covers_link: int
+    with_any_link: int
+    uncovered_count: int
+    by_format: Dict[str, int] = Field(default_factory=dict)
+
+
+class MCPAutomationCoverageUncoveredCase(BaseModel):
+    test_case_id: int
+    test_case_number: Optional[str] = None
+    title: Optional[str] = None
+
+
+class MCPAutomationCoverageStaleScript(BaseModel):
+    script_id: int
+    name: str
+    script_format: Optional[str] = None
+    ref_path: Optional[str] = None
+    last_run_at: Optional[datetime] = None
+    days_since_last_run: Optional[int] = None
+
+
+class MCPAutomationCoverageTrendPoint(BaseModel):
+    date: date
+    with_primary_link: int
+    with_any_link: int
+    uncovered_count: int
+    coverage_rate: float
+
+
+class MCPTeamAutomationCoverageResponse(BaseModel):
+    team_id: int
+    summary: MCPAutomationCoverageSummary
+    uncovered_sample: List[MCPAutomationCoverageUncoveredCase] = Field(default_factory=list)
+    stale_scripts: List[MCPAutomationCoverageStaleScript] = Field(default_factory=list)
+    trend: List[MCPAutomationCoverageTrendPoint] = Field(default_factory=list)

@@ -32,3 +32,12 @@
 #### Scenario: Parser errors are surfaced to the user
 - **WHEN** parser 無法正規化必要 sections
 - **THEN** 系統將 parser error 與缺漏原因回傳給使用者
+
+### Requirement: Explicit Override Continuation Contract
+**Reason**: The new screen-2 gate does not allow users to override missing required sections and continue.
+**Migration**: Invalid tickets must be corrected at the ticket source or reloaded later; the helper does not proceed with `unknown` or override markers.
+
+### Requirement: Override Auditability
+**Reason**: There is no longer an override path for missing required sections in the new design.
+**Migration**: Keep only current-flow validation results needed by V3 sessions; do not preserve or migrate legacy override or legacy validation statistics.
+

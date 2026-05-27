@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+
+{% block title %}Git 來源設定 - Test Case Repository Web Tool{% endblock %}
+
+{% block head %}
+<link rel="stylesheet" href="{{ asset_url('css/automation-hub.css') }}">
+<link rel="stylesheet" href="{{ asset_url('css/automation-provider-settings.css') }}">
+{% endblock %}
+
+{% block page_title_text %}
+<span data-i18n="gitSourceSettings.title">Git 來源設定</span>
+{% endblock %}
+
+{% block page_subtitle_text %}{% endblock %}
+
+{% block page_specific_actions %}
+<div class="d-flex gap-2 flex-wrap">
+  <a href="/automation-hub" class="btn btn-secondary btn-sm" id="automationHubLink">
+    <i class="fas fa-arrow-left me-1"></i><span data-i18n="automationHub.backToHub">Back to Automation Hub</span>
+  </a>
+  <button type="button" class="btn btn-primary btn-sm" id="addProviderBtn">
+    <i class="fas fa-plus me-1"></i><span data-i18n="automationHub.providers.addProvider">Add Provider</span>
+  </button>
+  <button type="button" class="btn btn-secondary btn-sm" id="refreshProvidersBtn">
+    <i class="fas fa-sync-alt me-1"></i><span data-i18n="common.refresh">Refresh</span>
+  </button>
+  <a href="/team-management" class="btn btn-secondary btn-sm">
+    <i class="fas fa-users me-1"></i><span data-i18n="navigation.teamManagement">Team Management</span>
+  </a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid automation-provider-settings automation-hub-page">
+  <div id="no-team-state" class="card automation-state-card d-none">
+    <div class="card-body text-center py-5">
+      <i class="fas fa-users-cog text-muted automation-state-icon"></i>
+      <h2 class="h6 mt-3 mb-3" data-i18n="automationHub.providers.noTeamTitle">No team selected</h2>
+      <a href="/team-management" class="btn btn-primary btn-sm">
+        <i class="fas fa-users me-1"></i><span data-i18n="navigation.teamManagement">Team Management</span>
+      </a>
+    </div>
+  </div>
+
+  <div id="loading-state" class="card automation-state-card d-none">
+    <div class="card-body text-center py-5">
+      <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden" data-i18n="common.loading">Loading...</span>
+      </div>
+      <div class="mt-3 text-muted" data-i18n="common.loading">Loading...</div>
+    </div>
+  </div>
+
+  <div id="empty-state" class="card automation-state-card d-none">
+    <div class="card-body text-center py-5">
+      <i class="fas fa-plug text-muted automation-state-icon"></i>
+      <h2 class="h6 mt-3 mb-3" data-i18n="automationHub.providers.emptyTitle">No providers configured</h2>
+      <button type="button" class="btn btn-primary btn-sm" id="emptyStateAddProviderBtn">
+        <i class="fas fa-plus me-1"></i><span data-i18n="automationHub.providers.addProvider">Add Provider</span>
+      </button>
+    </div>
+  </div>
+
+  <div id="provider-content" class="card d-none">
+    <div class="card-header d-flex align-items-center justify-content-between gap-2 flex-wrap">
+      <div class="fw-semibold" data-i18n="automationHub.providers.tableTitle">Configured Providers</div>
+      <div class="provider-slot-summary text-muted small d-flex gap-3 flex-wrap" id="providerSlotSummary">
+        <span><strong id="providerSlotStorage">0</strong>&nbsp;<span data-i18n="automationHub.settings.slotStorage">Storage</span></span>
+        <span><strong id="providerSlotCi">0</strong>&nbsp;<span data-i18n="automationHub.settings.slotCi">CI</span></span>
+        <span><strong id="providerSlotResult">0</strong>&nbsp;<span data-i18n="automationHub.settings.slotResult">Result</span></span>
+        <span class="text-muted">·</span>
+        <span><span id="provider-count">0</span>&nbsp;<span data-i18n="automationHub.providers.total">total</span></span>
+      </div>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive provider-table-wrap">
+        <table class="table table-hover table-sm align-middle mb-0">
+          <thead class="table-light sticky-top">
+            <tr>
+              <th class="text-center" style="width: 64px;" data-i18n="automationHub.providers.slot">Slot</th>
+              <th data-i18n="common.name">Name</th>
+              <th data-i18n="automationHub.providers.credentials">Credentials</th>
+              <th data-i18n="automationHub.providers.health">Health</th>
+              <th data-i18n="common.status">Status</th>
+              <th class="text-end" data-i18n="common.actions">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="providerRows"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="providerModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="providerModalTitle" data-i18n="automationHub.providers.createTitle">Add Provider</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <form id="providerForm" class="provider-form">
+          <input type="hidden" id="providerId">
+
+          <section class="modal-section">
+            <header class="modal-section-header">
+              <i class="fas fa-id-badge text-muted me-2"></i>
+              <span data-i18n="automationHub.providers.basicsSection">Basics</span>
+            </header>
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label for="providerType" class="form-label" data-i18n="automationHub.providers.slot">Slot</label>
+                <select id="providerType" class="form-select" required></select>
+              </div>
+              <div class="col-md-6">
+                <label for="providerName" class="form-label" data-i18n="common.name">Name</label>
+                <input type="text" id="providerName" class="form-control" maxlength="100" required>
+              </div>
+              <div class="col-md-6 d-flex align-items-end">
+                <div class="form-check">
+                  <input class="form-check-input" type="checkbox" id="providerActive" checked>
+                  <label class="form-check-label" for="providerActive" data-i18n="automationHub.providers.active">Active</label>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="modal-section">
+            <header class="modal-section-header">
+              <i class="fas fa-sliders-h text-muted me-2"></i>
+              <span data-i18n="automationHub.providers.configSection">Configuration</span>
+            </header>
+            <div id="configFields" class="row g-3"></div>
+          </section>
+
+          <section class="modal-section">
+            <header class="modal-section-header">
+              <i class="fas fa-key text-muted me-2"></i>
+              <span data-i18n="automationHub.providers.credentialSection">Credentials</span>
+            </header>
+            <div class="text-muted small mb-2" data-i18n="automationHub.providers.credentialHint">Leave credential fields blank while editing to keep the existing credentials.</div>
+            <div id="credentialFields" class="row g-3"></div>
+            <div class="form-check mt-3 d-none" id="clearCredentialsWrap">
+              <input class="form-check-input" type="checkbox" id="clearCredentials">
+              <label class="form-check-label" for="clearCredentials" data-i18n="automationHub.providers.clearCredentials">Clear stored credentials</label>
+            </div>
+          </section>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">Cancel</button>
+        <button type="button" class="btn btn-outline-info" id="testProviderConfigBtn">
+          <i class="fas fa-vial me-1"></i><span data-i18n="automationHub.providers.testConnection">Test connection</span>
+        </button>
+        <button type="button" class="btn btn-primary" id="saveProviderBtn">
+          <i class="fas fa-save me-1"></i><span data-i18n="common.save">Save</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="providerHealthModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">
+          <i class="fas fa-vial me-2"></i>
+          <span data-i18n="automationHub.providers.healthModalTitle">Connection test result</span>
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div id="providerHealthLoading" class="text-center py-4 d-none">
+          <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden" data-i18n="common.loading">Loading...</span>
+          </div>
+          <div class="mt-2 text-muted" data-i18n="automationHub.providers.testingNow">Testing connection...</div>
+        </div>
+        <div id="providerHealthContent" class="d-none">
+          <div class="d-flex align-items-center gap-2 mb-3">
+            <span id="providerHealthStatusBadge" class="badge"></span>
+            <span id="providerHealthStatusLabel" class="fw-semibold"></span>
+          </div>
+          <div id="providerHealthMessage" class="mb-3"></div>
+          <div id="providerHealthWarning" class="alert alert-warning d-none mb-3" role="alert"></div>
+          <div id="providerHealthDetailsWrap" class="d-none">
+            <h6 class="text-muted small text-uppercase mb-2" data-i18n="automationHub.providers.healthDetailsTitle">Details</h6>
+            <dl id="providerHealthDetails" class="row mb-0 small"></dl>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.close">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ asset_url('js/automation-hub/providers/settings.js') }}"></script>
+{% endblock %}

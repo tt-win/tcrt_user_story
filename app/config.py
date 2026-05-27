@@ -120,25 +120,28 @@ class OpenRouterConfig(BaseModel):
 class AllureConfig(BaseModel):
     """Org-level Allure Docker Service settings.
 
-    Consumed at Jenkins suite-job render time: ``base_url`` / ``api_token`` /
-    expanded ``project_id_template`` are baked into the generated job XML as
-    parameter ``<defaultValue>``s, so the resulting job can upload results +
-    fetch the report URL without depending on per-agent environment.
+    Consumed by the TCRT-side Allure proxy (``allure_proxy._resolve_project_id``)
+    when a run reaches a terminal state: ``base_url`` / ``api_token`` select the
+    Allure server and ``project_id_template`` (expanded per run) selects which
+    Allure project the results are sent to and the report generated from.
 
-    Leave ``base_url`` empty to disable the Allure integration in generated
-    Jenkins jobs (the post-test upload / report-fetch step then no-ops).
+    Leave ``base_url`` empty to disable the Allure integration (the proxy then
+    no-ops and ``report_url`` stays unset).
 
     ``project_id_template`` placeholders:
       - ``{team_id}``    — numeric team id
       - ``{team_slug}``  — slugified team name
-      - ``{suite_id}``   — numeric suite id
-      - ``{suite_slug}`` — slugified suite name
-    Use a static string (no placeholders) for a single org-wide project.
+      - ``{suite_id}``   — ``script-<id>`` for a single-script run, else the
+        numeric script-group id (unique + stable across renames)
+      - ``{suite_slug}`` — slugified script path / group name
+    The default keeps each script and each suite in its own project so their
+    reports don't bleed into one another. Use a static string (no placeholders)
+    for a single org-wide project.
     """
 
     base_url: str = ""
     api_token: str = ""
-    project_id_template: str = "tcrt-team-{team_slug}"
+    project_id_template: str = "tcrt-team-{team_slug}-{suite_slug}-{suite_id}"
 
     @classmethod
     def from_env(cls, fallback: "AllureConfig" = None) -> "AllureConfig":

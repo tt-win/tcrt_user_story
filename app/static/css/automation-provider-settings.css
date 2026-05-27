@@ -1,0 +1,103 @@
+/* Provider settings page sits on the shared .automation-hub-page chrome
+   (loaded via automation-hub.css). This file only carries page-specific tweaks. */
+
+.automation-provider-settings .provider-slot-summary strong {
+  color: var(--tr-text-primary, #212529);
+  font-weight: 600;
+}
+
+.provider-table-wrap {
+  max-height: 62vh;
+  overflow: auto;
+}
+
+.provider-form .form-label {
+  font-weight: 600;
+  font-size: 0.8125rem;
+  margin-bottom: 0.25rem;
+}
+
+/* The schema-help block is rendered per-field, but most fields have no
+   description. Drop its enforced min-height (was 1.25rem) so empty hints
+   don't reserve a blank row beneath every input. JS also skips emitting the
+   element when description is empty — this just guards mixed cases. */
+.provider-schema-help {
+  min-height: 0;
+  font-size: 0.75rem;
+  margin-top: 0.125rem;
+}
+
+/* Inline help icon next to a schema field label. Hover shows the field's
+   `description` via Bootstrap tooltip. Cursor flips to a help cursor so the
+   icon clearly invites hovering rather than clicking. */
+.provider-help-icon {
+  cursor: help;
+  font-size: 0.875rem;
+  vertical-align: baseline;
+}
+
+.provider-help-icon:hover,
+.provider-help-icon:focus {
+  color: var(--tr-primary, #0d6efd) !important;
+  outline: none;
+}
+
+/* Tighten the shared .modal-section chrome inside the provider modal only —
+   other modals (webhook, suite) still use the looser default spacing. */
+.provider-form .modal-section {
+  margin-bottom: 0.625rem;
+  padding: 0.5rem 0.75rem;
+}
+
+.provider-form .modal-section-header {
+  margin: -0.5rem -0.75rem 0.5rem;
+  padding: 0.375rem 0.75rem;
+  font-size: 0.75rem;
+}
+
+/* Halve the row vertical gutter — fields previously had 1rem between rows. */
+.provider-form .row.g-3 {
+  --bs-gutter-y: 0.5rem;
+}
+
+/* Booleans render their label inline with the checkbox; drop the alignment
+   spacer that an empty form-label would otherwise leave above the row. */
+.provider-form .form-check {
+  padding-top: 0.125rem;
+}
+
+/* Runner discovery dropdown: cap height, allow scrolling, give the menu a
+   sensible minimum width so single-word labels don't render in a too-narrow
+   popover. Anchored to the Discover button (dropdown-menu-end). */
+.provider-runner-dropdown {
+  max-height: 280px;
+  overflow-y: auto;
+  min-width: 240px;
+}
+
+.provider-runner-dropdown .dropdown-item.active {
+  background-color: var(--tr-primary, #0d6efd);
+  color: #fff;
+}
+
+.provider-runner-dropdown .dropdown-item.active .text-muted {
+  color: rgba(255, 255, 255, 0.75) !important;
+}
+
+/* Let action cells size naturally; webhook table uses the same approach. */
+.provider-actions .btn + .btn {
+  margin-left: 0.25rem;
+}
+
+@media (max-width: 768px) {
+  .provider-slot-summary {
+    gap: 0.5rem !important;
+    flex-direction: column;
+    align-items: flex-start !important;
+  }
+
+  .provider-slot-summary > span {
+    display: inline-flex;
+    align-items: center;
+  }
+}

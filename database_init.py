@@ -17,6 +17,8 @@
 from __future__ import annotations
 
 import argparse
+import base64
+import binascii
 import json
 import os
 import shutil
@@ -63,6 +65,15 @@ MAIN_REQUIRED_TABLES: List[str] = [
     "active_sessions",
     "password_reset_tokens",
     "mcp_machine_credentials",
+    "team_automation_providers",
+    "system_automation_providers",
+    "automation_scripts",
+    "automation_script_groups",
+    "automation_script_case_links",
+    "automation_runs",
+    "automation_webhooks",
+    "automation_smart_scan_runs",
+    "automation_webhook_deliveries",
     "teams",
     "test_cases",
     "test_case_sets",
@@ -229,6 +240,52 @@ def verify_mysql_mediumtext_defaults(
 
     logger.debug(f"{label} MySQL 文字欄位皆為 MEDIUMTEXT/LONGTEXT")
     return True, []
+
+
+def verify_automation_provider_encryption_key(engine: Engine, logger: Logger) -> Tuple[bool, str | None]:
+    inspector = inspect(engine, raiseerr=False)
+    if inspector is None:
+        logger.debug("略過 Automation provider encryption key 檢查：engine 不支援 inspect")
+        return True, None
+    if "team_automation_providers" not in {name.lower() for name in inspector.get_table_names()}:
+        return True, None
+
+    with engine.connect() as conn:
+        provider_count = conn.execute(
+            text(f"SELECT COUNT(*) FROM {quote_ident(engine, 'team_automation_providers')}")
+        ).scalar()
+
+    if int(provider_count or 0) == 0:
+        return True, None
+
+    from app.config import get_settings
+
+    key = (get_settings().automation_provider.encryption_key or "").strip()
+    if not key:
+        message = (
+            "team_automation_providers 已有資料，但缺少 automation provider encryption key。"
+            "請於 config.yaml 設定 automation_provider.encryption_key，"
+            "或匯出環境變數 AUTOMATION_PROVIDER_ENCRYPTION_KEY；"
+            "金鑰需為 base64-encoded 32 bytes，例如："
+            "python -c \"import secrets,base64;print(base64.b64encode(secrets.token_bytes(32)).decode())\""
+        )
+        logger.error(message)
+        return False, message
+
+    try:
+        decoded = base64.b64decode(key, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        message = f"AUTOMATION_PROVIDER_ENCRYPTION_KEY 不是有效 base64：{exc}"
+        logger.error(message)
+        return False, message
+
+    if len(decoded) != 32:
+        message = "AUTOMATION_PROVIDER_ENCRYPTION_KEY 必須解碼為 32 bytes，才能用於 AES-256-GCM"
+        logger.error(message)
+        return False, message
+
+    logger.debug("Automation provider encryption key 檢查通過")
+    return True, None
 
 
 def get_database_stats(engine: Engine) -> Dict[str, Any]:
@@ -418,6 +475,10 @@ def bootstrap_target(target_name: str, logger: Logger, no_backup: bool) -> Tuple
         )
         if not mysql_text_ok:
             raise RuntimeError(f"{label} migration 完成後仍存在未升級的 TEXT 欄位")
+        if target_name == "main":
+            automation_key_ok, _automation_key_error = verify_automation_provider_encryption_key(engine, logger)
+            if not automation_key_ok:
+                raise RuntimeError("Automation provider credential encryption key 檢查失敗")
 
         logger.info(f"✅ {label} bootstrap 完成")
         print_verification_summary(
@@ -509,7 +570,7 @@ def ensure_super_admin_seed(engine: Engine, logger: Logger) -> Dict[str, Any]:
 
     with Session(engine) as session:
         super_admin_count = (
-            session.query(User).filter(User.role == UserRole.SUPER_ADMIN.value).filter(User.is_active == True).count()
+            session.query(User).filter(User.role == UserRole.SUPER_ADMIN.value).filter(User.is_active).count()
         )
 
         if super_admin_count == 0 and seed_config:
@@ -719,6 +780,13 @@ def main(argv: Optional[List[str]] = None) -> int:
                         logger.error(f"{TARGET_LABELS[target_name]} 仍存在未升級的 TEXT 欄位")
                         return 2
                     if target_name == "main":
+                        automation_key_ok, _automation_key_error = verify_automation_provider_encryption_key(
+                            engine,
+                            logger,
+                        )
+                        if not automation_key_ok:
+                            logger.error(f"{TARGET_LABELS[target_name]} bootstrap 檢查未通過：automation provider 金鑰缺失或無效")
+                            return 2
                         ensure_super_admin_seed(engine, logger)
                 finally:
                     engine.dispose()

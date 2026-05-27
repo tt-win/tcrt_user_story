@@ -49,3 +49,12 @@ screen 3 編輯中的 requirement plan SHALL 週期性自動儲存。
 #### Scenario: Unlock disables seed generation
 - **WHEN** 使用者解鎖 plan
 - **THEN** 需重新確認後才能進入下一階段
+
+### Requirement: Seed coverage taxonomy MUST include four baseline categories
+**Reason**: The new design no longer generates seeds locally; coverage taxonomy now governs screen-3 check conditions, but V3 no longer uses those tags to generate automatic screen-4 suggestions.
+**Migration**: Keep coverage tags as part of screen-3 requirement structure only; screen-4 refinement is driven by per-seed comments instead of derived suggestion candidates.
+
+### Requirement: Planner MUST expand explicit requirement combinations into a verification matrix
+**Reason**: The new workflow relies on user-authored verification items and check conditions, not an automatically expanded verification matrix.
+**Migration**: If combination expansion is needed later, it should be modeled as a future enhancement to refinement or planning, not as the current primary planner output.
+

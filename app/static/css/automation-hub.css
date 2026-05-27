@@ -1,0 +1,919 @@
+/* ── Automation Hub ────────────────────────────────────────────── */
+
+.automation-hub-page,
+.automation-webhook-page {
+  padding: 0.5rem;
+}
+
+.automation-hub-page .card,
+.automation-webhook-page .card {
+  border: 1px solid var(--tr-border, #dee2e6);
+  border-radius: 8px;
+  box-shadow: var(--tr-shadow-sm, 0 1px 2px rgba(0, 0, 0, 0.06));
+}
+
+/* ── State Card ────────────────────────────────────────────────── */
+.automation-state-card {
+  max-width: 720px;
+  margin: 2rem auto;
+}
+
+.automation-state-icon {
+  font-size: 2rem;
+}
+
+/* ── Tabs ──────────────────────────────────────────────────────── */
+.automation-tabs {
+  margin-bottom: 0.5rem;
+}
+
+.automation-tab-content {
+  min-height: 0;
+}
+
+/* ── Toolbar ───────────────────────────────────────────────────── */
+.automation-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-wrap: wrap;
+}
+
+.automation-toolbar .btn {
+  font-size: 0.8125rem;
+  padding: 0.25rem 0.5rem;
+}
+
+.automation-toolbar-divider {
+  width: 1px;
+  height: 1.25rem;
+  background: var(--tr-border, #dee2e6);
+  margin: 0 0.25rem;
+  flex-shrink: 0;
+}
+
+/* ── Suites Grid ───────────────────────────────────────────────── */
+.automation-suites-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.95fr) minmax(360px, 1.05fr);
+  gap: 0.5rem;
+  align-items: start;
+}
+
+.automation-suites-grid.collapsed {
+  grid-template-columns: 0px minmax(360px, 1fr);
+}
+
+.automation-panel {
+  min-height: 56vh;
+  overflow: hidden;
+}
+
+.automation-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.625rem;
+  border-bottom: 1px solid var(--tr-border-subtle, #edf0f2);
+  background: var(--tr-bg-sidebar, #f8f9fa);
+  font-size: 0.8125rem;
+  font-weight: 600;
+}
+
+/* ── Panel Toggle (collapse/expand) ────────────────────────────── */
+.automation-panel-toggle {
+  position: fixed;
+  left: 0.75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 10;
+  width: 36px;
+  height: 32px;
+  padding: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--tr-border, #dee2e6);
+  border-radius: 6px;
+  background: var(--tr-bg-card, #fff);
+  color: var(--tr-text-muted, #6c757d);
+  cursor: pointer;
+  font-size: 0.875rem;
+  box-shadow: var(--tr-shadow-sm, 0 1px 2px rgba(0,0,0,0.06));
+}
+
+.automation-suites-grid.collapsed .automation-panel-toggle {
+  display: flex;
+}
+
+.automation-panel-toggle:hover {
+  color: var(--tr-primary, #0d6efd);
+  border-color: var(--tr-primary, #0d6efd);
+}
+
+/* ── Search ────────────────────────────────────────────────────── */
+.automation-search {
+  max-width: 220px;
+}
+
+/* Browser toolbar: search + expand/collapse + group-by share one row,
+   all the same -sm height and centered so their baselines line up. */
+.automation-browser-toolbar > .d-flex {
+  align-items: center;
+}
+
+.automation-browser-toolbar .automation-search {
+  max-width: none;        /* let the search grow; buttons keep natural width */
+  min-width: 160px;
+}
+
+.automation-browser-toolbar .btn-group .btn {
+  white-space: nowrap;
+}
+
+/* ── Script Tree & Suite List ──────────────────────────────────── */
+.automation-script-tree,
+.automation-suite-list {
+  max-height: calc(56vh - 40px);
+  overflow: auto;
+}
+
+.automation-script-item,
+.automation-suite-item {
+  border-bottom: 1px solid var(--tr-border-subtle, #edf0f2);
+}
+
+.automation-script-row,
+.automation-suite-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.5rem;
+}
+
+.automation-script-row:hover,
+.automation-suite-row:hover {
+  background: var(--tr-bg-sidebar, #f8f9fa);
+}
+
+.automation-script-main,
+.automation-suite-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.automation-path,
+.automation-suite-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.8125rem;
+}
+
+/* ── Grouped headers (Script-by-dir / Test-by-script|tc) ───────── */
+.automation-group-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.5rem;
+  background: var(--tr-bg-sidebar, #f1f3f5);
+  border-top: 1px solid var(--tr-border-subtle, #edf0f2);
+  border-bottom: 1px solid var(--tr-border-subtle, #edf0f2);
+  cursor: pointer;
+  user-select: none;
+  font-size: 0.8125rem;
+}
+
+.automation-group-header:hover {
+  background: var(--tr-bg-hover, #e9ecef);
+}
+
+.automation-group-caret {
+  width: 0.75rem;
+  font-size: 0.6875rem;
+  color: var(--tr-text-muted, #6c757d);
+}
+
+.automation-group-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  font-family: var(--bs-font-monospace, ui-monospace, SFMono-Regular, Menlo, monospace);
+}
+
+/* Folder-tree children share the group body's indentation cues. */
+.automation-tree-children {
+  /* depth padding is applied inline per row/header */
+}
+
+/* File rows are click-to-expand: the whole left area toggles the source
+   preview (collapsed by default), matching the folder caret affordance. */
+.automation-script-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.automation-script-toggle:hover .automation-path {
+  text-decoration: underline;
+}
+
+/* Search keyword highlight in row / folder / test labels. */
+mark.automation-hl {
+  padding: 0 0.1em;
+  border-radius: 0.15em;
+  background: #fff3b0;
+  color: inherit;
+}
+
+/* Link-type "?" legend popover. */
+.automation-linktype-help {
+  line-height: 1;
+}
+
+.automation-linktype-popover {
+  max-width: 320px;
+}
+
+.automation-linktype-pop {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.automation-linktype-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+}
+
+.automation-linktype-row .badge {
+  flex-shrink: 0;
+  font-weight: 500;
+}
+
+/* Full-height browser panel + scroll area for the dedicated Scripts tab. */
+.automation-browser-panel .automation-script-tree,
+.automation-browser-panel .automation-test-flat-list {
+  max-height: calc(100vh - 320px);
+  min-height: 200px;
+}
+
+.automation-tree-action {
+  font-size: 0.75rem;
+  text-decoration: none;
+}
+
+/* ── Suite modal script picker ─────────────────────────────────── */
+.automation-suite-picker {
+  max-height: 48vh;
+  overflow: auto;
+  border: 1px solid var(--tr-border-subtle, #edf0f2);
+  border-radius: 0.375rem;
+}
+
+.automation-pick-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3125rem 0.5rem 0.3125rem 1.75rem;
+  margin: 0;
+  cursor: pointer;
+  font-size: 0.8125rem;
+}
+
+.automation-pick-row:hover {
+  background: var(--tr-bg-sidebar, #f8f9fa);
+}
+
+.automation-pick-row .text-truncate {
+  min-width: 0;
+}
+
+/* Full-width suite list when the Suites tab owns the whole pane. */
+.automation-suite-list-full {
+  max-height: calc(100vh - 260px);
+}
+
+/* ── Test view rows ────────────────────────────────────────────── */
+.automation-test-flat-list {
+  max-height: calc(56vh - 40px);
+  overflow: auto;
+}
+
+/* One clean line per test: icon · name · link badges · source (right). */
+.automation-test-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3125rem 0.5rem 0.3125rem 1.75rem;
+  border-bottom: 1px solid var(--tr-border-subtle, #edf0f2);
+}
+
+.automation-test-row:hover {
+  background: var(--tr-bg-sidebar, #f8f9fa);
+}
+
+.automation-test-icon {
+  flex-shrink: 0;
+  font-size: 0.8125rem;
+  color: var(--bs-primary, #0d6efd);
+}
+
+.automation-test-name {
+  flex: 0 1 auto;
+  min-width: 6rem;
+  font-weight: 600;
+  font-size: 0.8125rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.automation-test-badges {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.automation-test-badges .badge {
+  font-weight: 500;
+}
+
+.automation-test-flag {
+  font-size: 0.72rem;
+  color: var(--tr-text-muted, #6c757d);
+}
+
+.automation-test-loc {
+  flex-shrink: 0;
+  margin-left: auto;
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--tr-text-muted, #6c757d);
+  font-size: 0.72rem;
+  font-family: var(--bs-font-monospace, ui-monospace, SFMono-Regular, Menlo, monospace);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.automation-test-loc:hover {
+  text-decoration: underline;
+  color: var(--bs-primary, #0d6efd);
+}
+
+/* ── Script Preview ────────────────────────────────────────────── */
+.automation-preview {
+  border-top: 1px solid var(--tr-border-subtle, #edf0f2);
+  background: var(--tr-bg-sidebar, #f8f9fa);
+  padding: 0.5rem;
+}
+
+.automation-preview pre {
+  max-height: 220px;
+  margin: 0;
+  padding: 0.5rem;
+  overflow: auto;
+  font-size: 0.75rem;
+  white-space: pre-wrap;
+}
+
+/* highlight.js: keep our preview box; use the theme only for token colors. */
+.automation-preview pre.automation-code code {
+  display: block;
+  font-family: var(--bs-font-monospace, ui-monospace, SFMono-Regular, Menlo, monospace);
+}
+
+.automation-preview pre.automation-code code.hljs {
+  padding: 0;
+  background: transparent;
+}
+
+.automation-preview-hint {
+  margin-top: 0.375rem;
+  font-size: 0.75rem;
+}
+
+/* ── Script Runs (in preview) ──────────────────────────────────── */
+.automation-script-runs {
+  margin-bottom: 0.375rem;
+  padding-bottom: 0.375rem;
+  border-bottom: 1px dashed var(--tr-border-subtle, #edf0f2);
+}
+
+.automation-script-runs-title {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--tr-text-muted, #6c757d);
+  margin-bottom: 0.25rem;
+}
+
+.automation-script-runs-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.automation-script-run-item {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  flex-wrap: wrap;
+  font-size: 0.75rem;
+}
+
+.automation-script-run-status {
+  flex-shrink: 0;
+}
+
+.automation-script-run-branch {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.automation-script-run-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.automation-script-run-actions {
+  flex-shrink: 0;
+}
+
+/* ── Suite Detail ──────────────────────────────────────────────── */
+.automation-suite-detail {
+  padding: 0.375rem 0.5rem 0.5rem 2.25rem;
+  border-top: 1px dashed var(--tr-border-subtle, #edf0f2);
+  background: var(--tr-bg-sidebar, #f8f9fa);
+}
+
+.automation-suite-detail-scripts {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+/* ── Suite Actions ─────────────────────────────────────────────── */
+.automation-suite-actions {
+  display: flex;
+  gap: 0.1875rem;
+  flex-shrink: 0;
+}
+
+.btn-xs {
+  padding: 0.125rem 0.313rem;
+  font-size: 0.6875rem;
+  line-height: 1.4;
+}
+
+/* ── Selected Scripts (modal) ──────────────────────────────────── */
+.automation-selected-scripts {
+  max-height: 240px;
+  overflow: auto;
+  border: 1px solid var(--tr-border, #dee2e6);
+  border-radius: 8px;
+}
+
+.automation-selected-script {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.375rem 0.5rem;
+  border-bottom: 1px solid var(--tr-border-subtle, #edf0f2);
+}
+
+.automation-selected-script:last-child {
+  border-bottom: 0;
+}
+
+/* ── Runs Tab ──────────────────────────────────────────────────── */
+.automation-run-filters {
+  flex-grow: 1;
+  min-width: 0;
+}
+
+/* The global `.form-select` override (style.css) drops Bootstrap's right-side
+   caret gutter to 0.5rem; on these width:auto filters the box hugs the text so
+   the dropdown chevron lands on top of the label. Restore the gutter here. */
+.automation-run-filters .form-select {
+  padding-right: 2.25rem !important;
+}
+
+.automation-runs-wrap {
+  max-height: 60vh;
+  overflow: auto;
+  border: 1px solid var(--tr-border, #dee2e6);
+  border-radius: 8px;
+}
+
+.automation-run-table {
+  font-size: 0.8125rem;
+}
+
+.automation-run-table th {
+  font-weight: 600;
+  white-space: nowrap;
+  position: sticky;
+  top: 0;
+  background: var(--tr-bg-card, #fff);
+  z-index: 1;
+}
+
+.automation-run-table td {
+  vertical-align: middle;
+}
+
+.automation-run-actions {
+  white-space: nowrap;
+}
+
+.automation-run-actions .btn {
+  margin-left: 0.1875rem;
+}
+
+.automation-run-actions .btn:first-child {
+  margin-left: 0;
+}
+
+/* ── Coverage ──────────────────────────────────────────────────── */
+.automation-coverage-stats {
+  display: flex;
+  gap: 0;
+  border: 1px solid var(--tr-border, #dee2e6);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--tr-bg-card, #fff);
+}
+
+.automation-stat-card {
+  flex: 1;
+  min-width: 0;
+  padding: 0.5rem 0.75rem;
+  text-align: center;
+  border-right: 1px solid var(--tr-border-subtle, #edf0f2);
+}
+
+.automation-stat-card:last-child {
+  border-right: 0;
+}
+
+.automation-stat-label {
+  color: var(--tr-text-muted, #6c757d);
+  font-size: 0.75rem;
+}
+
+.automation-stat-value {
+  margin-top: 0.125rem;
+  font-size: 1.25rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.automation-stat-card:hover {
+  background: var(--tr-bg-sidebar, #f8f9fa);
+}
+
+.automation-stat-sub {
+  margin-top: 0.125rem;
+  font-size: 0.75rem;
+  line-height: 1.1;
+}
+
+/* ── Reusable Modal Section (Provider / Webhook / Suite modals) ── */
+.modal-section {
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  border: 1px solid var(--tr-border-subtle, #edf0f2);
+  border-radius: 8px;
+  background: var(--tr-bg-card, #fff);
+}
+
+.modal-section:last-child {
+  margin-bottom: 0;
+}
+
+.modal-section-header {
+  display: flex;
+  align-items: center;
+  margin: -0.75rem -0.75rem 0.75rem;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--tr-border-subtle, #edf0f2);
+  background: var(--tr-bg-sidebar, #f8f9fa);
+  border-top-left-radius: 8px;
+  border-top-right-radius: 8px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--tr-text-secondary, #495057);
+}
+
+/* ── Settings dashboard ────────────────────────────────────────── */
+.automation-settings-dashboard {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.5rem;
+}
+
+.automation-settings-dashboard .automation-panel {
+  min-height: auto;
+}
+
+.automation-settings-stats {
+  display: flex;
+  gap: 0;
+  border-top: 1px solid var(--tr-border-subtle, #edf0f2);
+}
+
+.automation-settings-stats .automation-stat-card {
+  flex: 1;
+  min-width: 0;
+  padding: 0.625rem 0.75rem;
+  text-align: center;
+  border-right: 1px solid var(--tr-border-subtle, #edf0f2);
+  border-bottom: 0;
+}
+
+.automation-settings-stats .automation-stat-card:last-child {
+  border-right: 0;
+}
+
+.automation-settings-system {
+  font-size: 0.875rem;
+}
+
+.automation-settings-system li + li {
+  padding-top: 0.5rem;
+  border-top: 1px dashed var(--tr-border-subtle, #edf0f2);
+}
+
+@media (min-width: 992px) {
+  .automation-settings-dashboard {
+    grid-template-columns: 1fr 1fr;
+  }
+  /* The third (System) card spans full width on wide viewports */
+  .automation-settings-dashboard .automation-panel:nth-child(3) {
+    grid-column: 1 / -1;
+  }
+}
+
+.automation-coverage-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(240px, 0.35fr);
+  gap: 0.5rem;
+  align-items: start;
+}
+
+.automation-section-title {
+  margin-bottom: 0.375rem;
+  font-weight: 600;
+  font-size: 0.8125rem;
+}
+
+/* ── Coverage Trend ────────────────────────────────────────────── */
+.automation-trend-wrap {
+  border: 1px solid var(--tr-border, #dee2e6);
+  border-radius: 8px;
+  background: var(--tr-bg-sidebar, #f8f9fa);
+  padding: 0.375rem;
+}
+
+.automation-trend-svg {
+  display: block;
+  width: 100%;
+  min-height: 120px;
+}
+
+.automation-trend-axis {
+  stroke: var(--tr-border, #dee2e6);
+  stroke-width: 1;
+}
+
+.automation-trend-line {
+  fill: none;
+  stroke: var(--tr-primary, #0d6efd);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.automation-trend-label,
+.automation-trend-empty {
+  fill: var(--tr-text-muted, #6c757d);
+  font-size: 0.8125rem;
+}
+
+/* ── Coverage Tables ───────────────────────────────────────────── */
+.automation-coverage-table-wrap {
+  max-height: 28vh;
+  overflow: auto;
+  border: 1px solid var(--tr-border, #dee2e6);
+  border-radius: 8px;
+}
+
+.automation-coverage-table-wrap th {
+  position: sticky;
+  top: 0;
+  background: var(--tr-bg-card, #fff);
+  z-index: 1;
+}
+
+.automation-coverage-case-title {
+  max-width: 440px;
+}
+
+/* ── Stale Scripts ─────────────────────────────────────────────── */
+.automation-stale-list {
+  max-height: 40vh;
+  overflow: auto;
+  border: 1px solid var(--tr-border, #dee2e6);
+  border-radius: 8px;
+}
+
+.automation-stale-item {
+  padding: 0.375rem 0.5rem;
+  border-bottom: 1px solid var(--tr-border-subtle, #edf0f2);
+}
+
+.automation-stale-item:last-child {
+  border-bottom: 0;
+}
+
+/* ── Webhook Settings ──────────────────────────────────────────── */
+.automation-webhook-table-wrap {
+  max-height: 60vh;
+  overflow: auto;
+}
+
+.automation-webhook-table-wrap th {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.automation-webhook-target {
+  max-width: 280px;
+}
+
+.automation-webhook-events,
+.automation-webhook-event-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.automation-webhook-actions {
+  white-space: nowrap;
+}
+
+.automation-secret-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.automation-code-block {
+  max-height: 220px;
+  overflow: auto;
+  margin: 0;
+  padding: 0.5rem;
+  border: 1px solid var(--tr-border, #dee2e6);
+  border-radius: 8px;
+  background: var(--tr-bg-sidebar, #f8f9fa);
+  font-size: 0.75rem;
+  white-space: pre-wrap;
+}
+
+/* ── Utilities ─────────────────────────────────────────────────── */
+.min-w-0 {
+  min-width: 0;
+}
+
+/* ── Responsive ────────────────────────────────────────────────── */
+@media (max-width: 992px) {
+  .automation-suites-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .automation-suites-grid.collapsed {
+    grid-template-columns: 1fr;
+  }
+
+  .automation-panel {
+    min-height: auto;
+  }
+
+  .automation-script-tree,
+  .automation-suite-list {
+    max-height: 44vh;
+  }
+
+  .automation-coverage-stats {
+    flex-wrap: wrap;
+  }
+
+  .automation-stat-card {
+    flex-basis: 50%;
+    border-bottom: 1px solid var(--tr-border-subtle, #edf0f2);
+  }
+
+  .automation-coverage-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .automation-panel-toggle {
+    display: none !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .automation-hub-page {
+    padding: 0.25rem;
+  }
+
+  .automation-search {
+    max-width: none;
+    width: 100%;
+  }
+
+  .automation-script-row,
+  .automation-suite-row {
+    align-items: flex-start;
+  }
+
+  .automation-suite-actions {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .automation-run-filters {
+    width: 100%;
+  }
+
+  .automation-runs-wrap {
+    max-height: 50vh;
+  }
+
+  .automation-trend-svg {
+    min-height: 100px;
+  }
+
+  .automation-webhook-page {
+    padding: 0.25rem;
+  }
+
+  .automation-secret-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .automation-toolbar .btn {
+    padding: 0.25rem 0.375rem;
+    font-size: 0.75rem;
+  }
+
+  .automation-toolbar-divider {
+    display: none;
+  }
+
+  .automation-coverage-stats {
+    flex-direction: column;
+  }
+
+  .automation-stat-card {
+    flex-basis: auto;
+    border-right: 0;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    text-align: left;
+    padding: 0.375rem 0.5rem;
+  }
+
+  .automation-stat-value {
+    font-size: 1rem;
+  }
+}

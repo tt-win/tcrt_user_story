@@ -1,0 +1,2442 @@
+h1. Automation Hub Change Specification
+
+* Change ID: {{add-automation-hub}}
+* Source Directory: {{openspec/changes/add-automation-hub}}
+* Generated Date: 2026-05-14
+* Scope: 6 added capabilities + 1 modified capability
+* Format: JIRA wiki markup
+
+h2. Included Source Files
+* {{openspec/changes/add-automation-hub/proposal.md}}
+* {{openspec/changes/add-automation-hub/design.md}}
+* {{openspec/changes/add-automation-hub/specs/automation-hub-provider-framework/spec.md}}
+* {{openspec/changes/add-automation-hub/specs/automation-hub-script-management/spec.md}}
+* {{openspec/changes/add-automation-hub/specs/automation-hub-run-orchestration/spec.md}}
+* {{openspec/changes/add-automation-hub/specs/automation-hub-smart-suite-recommendation/spec.md}}
+* {{openspec/changes/add-automation-hub/specs/automation-hub-webhook-integration/spec.md}}
+* {{openspec/changes/add-automation-hub/specs/automation-hub-mcp-read/spec.md}}
+* {{openspec/changes/add-automation-hub/specs/mcp-read-api/spec.md}}
+* {{openspec/changes/add-automation-hub/tasks.md}}
+
+h1. Proposal
+_Source: {{openspec/changes/add-automation-hub/proposal.md}}_
+
+h3. Why
+
+TCRT 已具備手動測試案例管理；團隊有兩個外部工具產生 Playwright 腳本（{{ai_steps_recorder}} 錄製、{{element_locator_generator}} 出 selector）；CI 系統（GitHub Actions / GitLab CI / Jenkins）已負責執行；Allure / ReportPortal / Playwright HTML Reporter 已負責結果與報表。*這些工具已能解決「寫、跑、報」的問題*。
+
+但仍存在三個 TCRT 才能解決的痛點：
+
+# *手動 Test Case ↔ 自動化腳本的對照消失*：沒有任何工具知道 TCRT 的 {{test_cases}} 表；QA 不知道哪些 case 已有自動化、覆蓋率多少
+# *跨工具切換成本*：QA 在 TCRT 看 case，然後跳到 GitHub 看 script，再跳到 GH Actions 看 run，再跳到 Allure 看 report；缺乏「single pane of glass」
+# *AI Helper 缺少自動化視角*：QA AI Helper 推薦 test case 時不知道哪些 case 已自動化，無法建議「補手動 case」vs「複用既有 script」
+
+本 change 把 TCRT 改造為 *「自動化測試的 Hub」*：用 Provider 適配器代理 git / CI / 報表工具，UI 整合在 TCRT 既有 team 工作區。*所有重活由專業 OSS 工具負責，TCRT 只做：協調 + 對照 + AI 介接*。
+
+h3. What Changes
+
+h4. 核心：Provider 抽象框架
+* 定義三個 {{Protocol}} 介面：{{StorageProvider}}、{{CIProvider}}、{{ResultProvider}}
+* 內建適配器（v1）：
+** StorageProvider：{{GitHubProvider}}（透過 GitHub REST API）、{{LocalGitProvider}}（air-gapped）
+** CIProvider：{{GitHubActionsProvider}}（透過 {{workflow_dispatch}} API）、{{JenkinsProvider}}（透過 buildWithParameters + queue item 配對）
+** ResultProvider：{{AllureProvider}}（URL 連結 / iframe）
+* 未來可擴充（v2 候選，不在本 change）：{{GitLabProvider}}、{{GiteaProvider}}、{{GitLabCIProvider}}、{{ReportPortalProvider}}、{{PlaywrightHTMLProvider}}、{{JenkinsBuiltinResultProvider}}
+* 每個 team 配置一組 provider 設定，credentials AES-256-GCM 加密落地
+
+h4. Script 自動發現，不手動管理
+* {{automation_scripts}} 表為*自動掃描快取*：TCRT 呼叫 {{StorageProvider.list_scripts()}} 掃描 repo（如 {{tests/}} 目錄），自動填入/更新快取
+* *無*手動 register 流程；使用者直接在 GitHub / IDE 管理檔案
+* TCRT 只負責：載入列表 → 顯示於 Suites tab → 讓使用者勾選組合成 suite → 產生 CI workflow/job
+* Script preview 為 read-only；所有編輯在 IDE 完成後推上 git
+
+h4. 觸發執行 → 委派 CIProvider
+* TCRT 提供「執行此 script」/「執行整 set」按鈕
+* 後端透過 CIProvider 觸發外部 CI（GH Actions 用 {{workflow_dispatch}}、GitLab 用 pipeline trigger token）
+* 新增 {{automation_runs}} 表紀錄 external_run_id + url + status，不存 stdout / artifact
+* 狀態同步：CI 完成後 webhook 通知 TCRT；過渡狀態 TCRT 可低頻 poll（cache + etag）
+
+h4. 看結果 → 嵌入 / 跳轉 ResultProvider
+* Per-run 報表：iframe 嵌入 Allure URL 或 Playwright HTML 報表，或直接跳轉
+* Trend / dashboard：跳轉到 ReportPortal（若 team 有部署）或 GH Actions Insights
+* TCRT 自己*不重做*這些介面
+
+h4. M2M linkage 是 TCRT 的核心價值
+* 新增 {{automation_script_case_links}} 表：script ↔ test_case 多對多，含 {{link_type ∈ {PRIMARY, COVERS, REFERENCES}}}、{{note}}
+* Script preview（嵌入在 Suites tab 或 case detail）可檢視 linked cases 與執行歷史，提供「Open in GitHub」連結至 IDE 編輯
+* Test case detail 頁新增「Automation Coverage」面板：列出所有 linked scripts 與 last_run_status + 跳轉到 CI / Allure 的連結
+* Audit 整合：linkage 變更寫稽核
+
+h4. Webhook 雙向（簡化版）
+* *Inbound*：{{POST /api/v1/webhooks/ci/{token}}} 接收 CI 完成事件（GH Actions / GitLab CI 都有 native webhook），更新 {{automation_runs}} status
+* *Outbound*：TCRT 對 user 設定的目標 URL 發送 {{script.linked}}、{{script.unlinked}}、{{run.tracked}} 等事件（給 Slack / Lark / 第三方）
+* 不需要自家 webhook retry queue（events 是輕量 broadcast，丟掉就丟掉，UI 上仍能看到）
+
+h4. MCP 唯讀擴充
+* {{GET /api/mcp/teams/{team_id}/automation-scripts}} 列出所有 script 與 last_run_status
+* {{GET /api/mcp/teams/{team_id}/automation-runs}} 列出最近 runs
+* 既有 {{GET /api/mcp/teams/{team_id}/test-cases/{id}}} 追加 {{linked_automation_scripts}} 陣列
+* AI Helper 可問「哪些 case 還沒有自動化覆蓋」、「最近哪些自動化跑 fail 了」
+
+h3. 非目標
+
+* *不在 TCRT 內 host runner*：執行交給 GH Actions / GitLab CI / Jenkins
+* *不存 script 內容為 source of truth*：git 是主存，TCRT 只快取
+* *不重做 Allure / ReportPortal 的報表*：直接連結 / iframe
+* *不做自家 CodeMirror IDE 體驗*：TCRT *不*提供內建編輯器，所有編輯由使用者在慣用 IDE（VS Code / PyCharm / GitHub Web Editor）完成後推上 git；TCRT 只提供唯讀預覽
+* *不做 test_data 加密管理*：交給 GH Secrets / GitLab Variables / Vault；TCRT 只記錄「這個 workflow 用了哪些 secret key 名稱」供 UI 顯示
+* *不做 marker 替換 / 偵測 Playwright fill 的綁定*：交給標準環境變數注入（CI 既有能力）
+* *v1 不做 GitLab / Gitea / ReportPortal / Playwright HTML / Jenkins 內建報表適配器*：先聚焦 GitHub + Jenkins（CI）+ Allure（Result），v2 再擴充
+* *不取代既有 manual test case management*：純粹是補強
+
+h3. Capabilities
+
+h4. Added Capabilities
+* {{automation-hub-provider-framework}}：Provider Protocol 抽象 + per-team 設定表 + credential 加密 + GitHub / LocalGit / GH Actions / Allure 內建適配器
+* {{automation-hub-script-management}}：Script 自動發現（auto-discovery from StorageProvider）+ M2M linkage to test cases + 唯讀預覽（read-only preview）+ Suite 組合與管理 + 反向 panel on test case detail
+* {{automation-hub-smart-suite-recommendation}}：*Smart Scan* — Automation Repo Contract + deterministic repo scan 自動識別 test script 進入點並推薦 regression suite 組合；LLM 只做 optional suite 名稱/描述 enrichment；一鍵掃描、確認後批次建立 suites
+* {{automation-hub-run-orchestration}}：觸發 run（delegate to CIProvider）+ 狀態同步 + 歷史列表 + 報表跳轉 / 嵌入
+* {{automation-hub-webhook-integration}}：Inbound CI 完成 webhook + Outbound 事件廣播 + HMAC 簽章
+* {{automation-hub-mcp-read}}：MCP 端 scripts / runs / linkage 唯讀暴露
+
+h4. Modified Capabilities
+* {{mcp-read-api}}：test case detail 追加 {{linked_automation_scripts}} 概要
+
+h3. Impact
+
+* *程式*：
+** 新增 ORM 於 {{app/models/database_models.py}}（5 張表：{{team_automation_providers}}、{{automation_scripts}}、{{automation_script_case_links}}、{{automation_runs}}、{{automation_webhooks}}）
+** 新增 Pydantic schemas：{{app/models/automation_provider.py}}、{{automation_script.py}}、{{automation_run.py}}、{{automation_webhook.py}}
+** 新增 services：
+*** {{app/services/automation/providers/base.py}}（Protocol 定義）
+*** {{app/services/automation/providers/github_storage.py}}、{{local_git_storage.py}}
+*** {{app/services/automation/providers/github_actions_ci.py}}、{{jenkins_ci.py}}
+*** {{app/services/automation/providers/allure_result.py}}
+*** {{app/services/automation/provider_registry.py}}、{{provider_credential_service.py}}
+*** {{app/services/automation/script_service.py}}、{{run_service.py}}、{{linkage_service.py}}、{{webhook_service.py}}
+** 新增 routers：
+*** {{app/api/automation_providers.py}}、{{automation_scripts.py}}、{{automation_runs.py}}、{{automation_webhooks.py}}、{{automation_links.py}}、{{automation_webhooks_public.py}}
+** 修改：{{app/api/__init__.py}}、{{app/api/mcp.py}}、{{app/models/mcp.py}}、{{app/database_init.py}}、{{app/audit/__init__.py}}、{{app/templates/team_management.html}}、{{app/templates/test_case_management.html}}
+** 新增 templates：{{automation_hub.html}}（team 內 hub 入口，含 Suites tab / Runs tab / Coverage tab / Settings tab）、{{automation_run_history.html}}、{{automation_provider_settings.html}}；*無* {{automation_script_detail.html}}（script preview 為嵌入式展開區塊）
+** 新增 JS 模組：{{app/static/js/automation-hub/}}（list / detail / runs / providers）
+* *API*：
+** Team-scoped：providers / scripts / runs / links / webhooks
+** 公開：inbound CI webhook
+** MCP：automation scripts / runs 列表 + test case 反向
+* *資料*：5 張新表 + Alembic migration；不存 script content 為主存（cached_content 為快取）
+* *安全*：
+** Provider credentials（GitHub PAT、Jenkins password）AES-256-GCM 加密
+** Webhook secret 一次性顯示
+** Inbound webhook 走 HMAC 驗章
+* *i18n*：新增 {{automationHub.*}} namespace
+* *相容性*：所有變更為新增；既有 manual test case 流程不變
+* *部署*：
+** 必填新環境變數 {{AUTOMATION_PROVIDER_ENCRYPTION_KEY}}（AES-256 base64-encoded 32 bytes）
+** 不新增 Docker service；user 自備 CI（GH Actions / GitLab / Jenkins）
+** 不強制依賴 ReportPortal 等外部報表（Allure 已足夠）
+* *文件*：新增 {{docs/automation-hub-overview.md}}、{{docs/automation-provider-setup.md}}（含 GitHub / LocalGit / GH Actions 設定範例）、{{docs/automation-webhook.md}}
+
+
+h1. Design
+_Source: {{openspec/changes/add-automation-hub/design.md}}_
+
+h3. Context
+
+TCRT 是 FastAPI async + Jinja2 + SQLite/MySQL + Bootstrap 5（無 JS build）的測試管理系統，所有資料 team-scoped。手動測試完整生命週期已支援；自動化測試目前依賴外部生態（git + CI + Allure / ReportPortal），但沒有與 TCRT 的 manual test case 對照。
+
+本 change 採 *Backend for Frontend / Facade* 模式：TCRT 變成「自動化測試 Hub」，定義 Provider 適配器抽象介面，把實際工作委派給專業 OSS 工具（GitHub、GH Actions、Allure），自己只守住「manual case ↔ automation 對照」、「team-scoped UI 整合」、「MCP 給 AI Helper」。
+
+h3. Goals / Non-Goals
+
+*Goals*
+* 一個 single pane of glass：QA 在 TCRT 看 case + 看 script + 觸發 run + 看 report，不需要切五個工具
+* 不重造輪子：執行、儲存、報表全部交給 OSS
+* Provider 抽象：未來換 CI / git 平台不痛
+* M2M linkage 是核心；test case detail 上即時可見「哪些自動化覆蓋」
+* AI Helper / MCP 可看到自動化覆蓋與最近執行狀態
+* v1 air-gapped 場景仍可用（LocalGit + 自架 Jenkins）
+
+*Non-Goals*
+* 不 host runner、不執行 Playwright
+* 不複製 script content 為主存（git 是主存）
+* 不重做 Allure / ReportPortal 的報表
+* v1 不支援 GitLab / ReportPortal / Playwright HTML 適配器
+* 不做 test_data 加密與綁定（交給 CI secret 與環境變數注入）
+* 不做 marker 替換（CI 已有 secret 注入機制）
+
+h3. Decisions
+
+h4. 1. Hub 模式優於完整 lifecycle
+
+*Decision*：TCRT 是 facade / aggregator，不是 IDE + runner + report 平台。
+
+*Rationale*：
+* {{ai_steps_recorder}} + {{element_locator_generator}} 已能產出腳本；TCRT 不需要當 IDE
+* GitHub / GitLab + Playwright Docker image + native CI runner 已是業界標準；TCRT 自己做 runner 是重造輪子且維運成本高
+* Allure / ReportPortal / Playwright HTML 已比我們能做的好；TCRT 只做連結 / iframe 即可
+* TCRT 真正不可替代的是「*manual case ↔ automation 對照*」+「*AI Helper 上下文*」
+
+*Alternatives considered*：
+* 完整 lifecycle（自家 runner + 編輯器 + 報表）：4 週工時、~120 任務、長期維運負擔大
+* 純 metadata（只存連結，不代理 git / CI）：UI 體驗碎片化，使用者仍要切多個工具
+
+h4. 2. Provider Protocol 抽象
+
+定義三個 Python {{Protocol}}（type-only），讓真實適配器實作：
+
+{code:python}
+class StorageProvider(Protocol):
+    """git-like 儲存。負責讀寫 script 檔案、列分支、列檔案。"""
+    async def list_scripts(self, path: str, ref: str | None = None) -> list[ScriptRef]: ...
+    async def read_script(self, path: str, ref: str | None = None, etag: str | None = None) -> ScriptContent: ...
+    async def write_script(self, path: str, content: str, message: str, branch: str | None = None) -> CommitRef: ...
+    async def list_branches(self) -> list[BranchRef]: ...
+    async def create_pull_request(self, branch: str, title: str, body: str) -> PullRequestRef | None: ...
+
+class CIProvider(Protocol):
+    """執行端。負責觸發、查狀態、列 artifact。"""
+    async def list_workflows(self) -> list[WorkflowRef]: ...
+    async def trigger_run(self, workflow_id: str, branch: str, inputs: dict[str, str]) -> ExternalRunRef: ...
+    async def get_run_status(self, run_id: str) -> RunStatusSnapshot: ...
+    async def cancel_run(self, run_id: str) -> None: ...
+    async def get_run_url(self, run_id: str) -> str: ...
+    async def list_artifacts(self, run_id: str) -> list[ArtifactRef]: ...
+
+class ResultProvider(Protocol):
+    """報表 / 結果視覺化。負責 per-run report URL 與 dashboard URL。"""
+    async def get_run_report_url(self, ci_external_run_id: str) -> str | None: ...
+    async def get_dashboard_url(self) -> str | None: ...
+{code}
+
+*Rationale*：標準 Python typing，無需引入額外抽象框架；好測試、好替換、好擴充。
+
+h4. 3. Provider 註冊與選擇
+
+{{provider_registry.py}} 維護一份 {{{provider_type: provider_class}}} 對照表。內建：
+
+||Provider type||Module||
+|{{storage:github}}|{{providers/github_storage.py}}|
+|{{storage:local_git}}|{{providers/local_git_storage.py}}|
+|{{ci:github_actions}}|{{providers/github_actions_ci.py}}|
+|{{ci:jenkins}}|{{providers/jenkins_ci.py}}|
+|{{result:allure}}|{{providers/allure_result.py}}|
+
+每個 team 在 {{team_automation_providers}} 中為三個 slot（storage / ci / result）各選一個。同 team 同時用 GitHub Actions 與 Jenkins 兩個 CI 的場景，v1 透過「每個 script register 時指定 provider_id」處理；單 team 多 CI provider 並存允許但 UI 列「執行」按鈕需要顯式選擇要去哪個 CI。
+
+未來新增 {{storage:gitlab}}、{{storage:gitea}}、{{result:reportportal}}、{{result:playwright_html}} 只需加 module + 註冊；無需動 core。
+
+h4. 4. Credential 加密
+
+{{team_automation_providers.credentials_encrypted}} 為 AES-256-GCM 加密的 JSON（含 token / password / API key）。金鑰由 {{AUTOMATION_PROVIDER_ENCRYPTION_KEY}} 環境變數提供（base64-encoded 32 bytes），可與既有設定共用同一個 secret 服務。
+
+Bootstrap 啟動時若 {{team_automation_providers}} 表非空但金鑰缺失：報錯並提供生成指引。
+
+*為何不沿用 SCRIPT_DATA_ENCRYPTION_KEY*：原計畫該金鑰用於 test_data 加密，現已不存 test_data；本 change 引入新 namespace 的金鑰避免概念混淆。
+
+h4. 5. Script 是「指標」不是「內容」
+
+{{automation_scripts}} 欄位：
+
+||欄位||用途||
+|{{id}}、{{team_id}}、{{name}}|基本身份|
+|{{provider_id}} FK → {{team_automation_providers}}|屬於哪個 storage provider|
+|{{ref_path}}|在 repo 中的路徑（如 {{tests/test_login.py}}）|
+|{{ref_branch}}|預設讀寫的 branch（如 {{main}}）|
+|{{script_format}}|{{PLAYWRIGHT_JS}} / {{PLAYWRIGHT_PY_ASYNC}} / {{PYTEST}} / {{OTHER}}|
+|{{cached_content}}|optional：上次讀到的內容，用於離線 preview 與 diff|
+|{{cached_content_etag}}|provider 端 etag / SHA，cache 失效用|
+|{{last_synced_at}}|上次同步時間|
+|{{linked_test_case_count}}|反向計數（query 效能）|
+|{{description}}、{{tags_json}}|使用者自訂 metadata|
+
+*Source of truth 是 git*。TCRT cache 一份是為了 list 頁不用每次打 GH API、case detail 顯示時可秒回；過期 / 失效時透明 refresh。
+
+h4. 6. Script 管理流程（TCRT 不編輯，只觸發與連結）
+
+TCRT *不*提供內建編輯器，所有 script 的建立與修改由使用者在慣用 IDE 完成後推上 git。
+
+使用者在 TCRT 管理 script：
+
+# *Register*：使用者在 IDE 建立 {{tests/test_login.py}} 並 push → 在 TCRT 填 {{ref_path}}、{{ref_branch}}、{{name}} → TCRT 呼叫 {{StorageProvider.read_script}} 驗證存在 → 建立 {{automation_scripts}} 紀錄 → 拉 {{cached_content}} 用於 preview
+# *Preview*：在 Suites tab 點擊檔案 → 展開 CodeMirror *read-only* 顯示 cached_content；點擊「Open in GitHub」跳轉到 IDE 編輯
+# *Sync*：使用者編輯並 push 後 → TCRT 背景 sync 或手動 Refresh → 比對 etag → 更新 cached_content
+# *Link*：在 suite 詳情或 case detail 建立 {{automation_script_case_links}}
+# *Run*：點「Run Now」→ TCRT 觸發 CI → 建立 {{automation_runs}} → 輪詢狀態 → 收 webhook 更新
+
+*Rationale*：TCRT 是觸發與管理平台，不是 IDE。讓 QA 在專業工具（VS Code / PyCharm）編輯，確保 POM、import、debug 等複雜場景都能處理；TCRT 只負責「登記、預覽、連結、觸發、看報告」。
+
+h4. 7. M2M linkage 是 TCRT 端純資料
+
+{{automation_script_case_links}} 完全活在 TCRT DB：
+
+||欄位||用途||
+|{{id}}、{{team_id}}||
+|{{automation_script_id}} FK CASCADE||
+|{{test_case_id}} FK → {{test_cases.id}} CASCADE||
+|{{link_type}}|{{PRIMARY}} / {{COVERS}} / {{REFERENCES}}，預設 {{COVERS}}|
+|{{note}}||
+|{{created_by}}、{{created_at}}||
+
+UniqueConstraint {{(automation_script_id, test_case_id)}}；同 case 至多一支 PRIMARY（service 層驗證）。
+
+*Rationale*：linkage 是 TCRT 唯一不該外包的概念；獨立表方便反向查詢與將來的 coverage 分析。
+
+h4. 8. Run 觸發委派 CIProvider
+
+使用者在 TCRT 點「執行此 script」：
+
+# TCRT 解析 script 所屬的 CI provider 與 workflow（從 script.tags 或讓使用者選；若 team 有多 CI provider，UI 提示選定）
+# 產生 {{tcrt_correlation_id = uuid4()}}
+# TCRT 呼叫 {{CIProvider.trigger_run(workflow_id, branch, inputs={**user_inputs, "tcrt_run_id": tcrt_correlation_id})}}
+# TCRT 建立 {{automation_runs}} 紀錄，status=QUEUED；external_run_id 可能尚未取得
+# 背景任務輪詢配對 external_run_id；成功 → 更新；60 秒失敗 → 標 UNKNOWN
+
+h5. GitHub Actions 配對機制
+* API：{{POST /repos/{owner}/{repo}/actions/workflows/{id}/dispatches}}，body {{{ref, inputs}}}，*fire-and-forget*，不回 run_id
+* 配對：注入 {{inputs.tcrt_run_id}}，後續 60 秒內輪詢 {{GET /repos/.../actions/runs?event=workflow_dispatch&created>=<trigger_time-5s>}}，用 workflow + branch + event + 建立時間做 best-effort 配對。GitHub REST run list API 不回傳 workflow_dispatch input 值，因此 {{inputs.tcrt_run_id}} 只保留為 CI 端排查與後續 reconcile 線索，不能當作 list API 上的精準比對條件
+* workflow YAML 範例：第一步 {{echo "tcrt_run_id=${{ inputs.tcrt_run_id }}"}} 讓 user 後續排查
+
+h5. Jenkins 配對機制
+* API：{{POST /job/{name}/buildWithParameters?token=<trigger_token>&tcrt_run_id=<uuid>}}，可帶任意自訂參數
+* 認證：Basic Auth (username + API token) 或 trigger token plugin；adapter 先 GET {{/crumbIssuer/api/json}} 取 CSRF crumb（若啟用）
+* 回應：201 Created + {{Location: /queue/item/{queue_id}/}} header
+* 配對：輪詢 {{GET /queue/item/{queue_id}/api/json}}，取 {{executable.url}}（含 build number）；queue 中 {{cancelled=true}} 則標 CANCELLED；60 秒未上 build 也標 UNKNOWN
+* 一旦取得 build number，後續切到 {{GET /job/{name}/{build_id}/api/json}} 同步狀態
+* 狀態映射：{{result=SUCCESS → SUCCEEDED}}、{{FAILURE/UNSTABLE → FAILED}}、{{ABORTED → CANCELLED}}、{{result=null + building=true → RUNNING}}、{{result=null + building=false → QUEUED}}
+
+v1 兩個 adapter 都採「uuid 注入 + 配對」模式；docs 各提供一份 workflow / Jenkinsfile 範例。
+
+h4. 9. Run 狀態同步：webhook 為主、輪詢為輔
+
+*Webhook 為主*：CI 完成後 POST 到 TCRT inbound endpoint，更新 {{automation_runs.status}} + {{finished_at}} + result_report_url。
+
+*輪詢為輔*：對 status=QUEUED / RUNNING 的 run，TCRT 每 60 秒呼叫 {{CIProvider.get_run_status}} 對齊。避免完全依賴 webhook（會丟）。
+
+*狀態值*：{{QUEUED}} / {{RUNNING}} / {{SUCCEEDED}} / {{FAILED}} / {{CANCELLED}} / {{UNKNOWN}}（API 回傳超出已知範圍時）。
+
+h4. 10. Result 嵌入策略（v1：Allure 單一）
+
+v1 只內建 {{result:allure}}。理由（與其他三個方案比較）：
+
+||方案||為何不在 v1||
+|Playwright HTML|沒 history / trend，只支援 Playwright；Jenkins / GH Actions 內已可直接看|
+|ReportPortal|5 個 docker service ~3-4GB RAM，部署成本高；可由 team 自行加 v2 adapter 接|
+|Jenkins built-in|介面老舊、iframe CSP 常炸；Jenkins job URL 已由 {{ci:jenkins}} 提供，按鈕跳過去自然能看|
+
+{{result:allure}} 兩種模式並存：
+
+* *URL link mode*（預設）：UI 顯示按鈕「在 Allure 中開啟」→ 新分頁；最簡單、最不出錯
+* *iframe embed mode*：UI 內嵌 {{<iframe src="...">}}；需要 Allure server 允許跨域（移除 X-Frame-Options DENY、設適當 CSP）；好處是不切頁
+
+Allure config schema：
+* {{base_url}}: e.g. {{https://allure.internal.tcg.com}}
+* {{run_url_template}}: e.g. {{{base_url}/projects/{project}/launches/{ci_external_run_id}}}
+* {{embed_mode}}: {{link}} | {{iframe}}，預設 {{link}}
+* {{dashboard_url}}: optional，hub 首頁 dashboard 連結
+* {{project}}: optional，多專案場景下指定
+
+Allure 的部署由 user 自理（GitHub Pages / S3 / 公司內 nginx 都可）；TCRT 不負責。docs 提供常見部署 pattern。
+
+h4. 11. Webhook 設計（簡化）
+
+h5. Inbound：{{POST /api/v1/webhooks/ci/{token}/run-status}}
+
+||Header||用途||
+|{{X-TCRT-Signature: sha256=<hex>}}|HMAC-SHA256 over raw body|
+|{{X-TCRT-Delivery: <uuid>}}|idempotency|
+
+Body：{{{ "tcrt_run_id": "uuid", "external_run_id": "...", "status": "SUCCEEDED", "report_url": "...", "finished_at": "ISO8601" }}}
+
+h5. Outbound：對 user 設定的 URL 發送事件
+
+事件：{{script.discovered}}、{{script.synced}}、{{script.linked}}、{{script.unlinked}}、{{run.triggered}}、{{run.tracked}}、{{run.completed}}
+
+無 retry queue（v1）：發送失敗只寫 audit + UI 顯示警告。理由：外部訂閱者一般有自己的訂閱機制（Slack incoming webhook 失敗就丟），不需要 TCRT 端 retry 引擎。
+
+未來若有 webhook reliability 強需求，可另立 change 加入 retry。
+
+h4. 12. UI 結構
+
+TCRT team 工作區內新增 *Automation Hub* 入口（與 manual test case management 並列），分三個 tab（*無 Scripts tab*）：
+
+# *Suites*：從 GitHub 自動載入檔案列表（左側），組合成 suite / 執行 suite（右側）；點擊單一檔案可展開 read-only preview
+# *Runs*：執行歷史列表，跨 suite，跨 workflow；點開直接跳 CI 原生 UI
+# *Coverage*：顯示「manual cases 自動化覆蓋率」+ 未覆蓋清單；補強 manual case detail 的反向 panel
+# *Settings*：admin 配置 storage / ci / result providers
+
+Manual {{test_case_management.html}} 內每個 case detail 新增「Automation」面板：顯示 linked scripts（來自 auto-discovery）、last run status、跳轉到報表的連結。
+
+h4. 13. AI Helper / MCP 整合
+
+新增 MCP 端點讓 AI Helper（與第三方 MCP client）能：
+
+* {{GET /api/mcp/teams/{team_id}/automation-scripts}}：列所有 script + last_run_status + linked_test_case_numbers
+* {{GET /api/mcp/teams/{team_id}/automation-runs}}：最近 N 筆 runs
+* {{GET /api/mcp/teams/{team_id}/test-cases/{id}}} 既有端點追加 {{linked_automation_scripts: [{name, format, last_run_status, link_type}]}}
+
+AI Helper 場景：
+* 「這個 sprint 要產 case 100 張」→ 先看哪些既有 case 有自動化 → 推薦複用 / 不重複建
+* 「最近 7 天 fail 最多的自動化是？」→ 直接 query MCP
+* 「TC-456 有自動化嗎？沒有的話有沒有類似的 script 可以複用？」
+
+h4. 14. Audit 整合
+
+新增 {{ResourceType}}：{{AUTOMATION_PROVIDER}}、{{AUTOMATION_SCRIPT}}、{{AUTOMATION_SCRIPT_LINK}}、{{AUTOMATION_RUN}}、{{AUTOMATION_WEBHOOK}}。所有寫入操作 SHALL 寫 audit；inbound webhook 觸發的 run status 變更標 {{change_source=ci_webhook}}。
+
+h4. 15. Smart Scan：repo contract + deterministic scan + optional LLM enrichment
+
+TCRT 在 Suites tab 提供「Smart Scan」按鈕：
+
+# *非同步 scan run*：{{POST .../smart-scan}} 立即回 {{scan_run_id}}；UI 輪詢 progress / result，避免大型 repo 或 LLM timeout 卡住 request
+# *Automation Repo Contract*：優先讀取 repo root 的 {{tcrt-automation.yml}}，取得 {{paths.tests}}、POM/support paths、include/exclude、suite grouping、artifact paths；沒有 manifest 時才 fallback 到 provider {{smart_scan}} config
+# *Repo structure validation*：檢查標準 QA automation 結構（{{tests/}}、{{pages/}}、{{flows/}}、{{fixtures/}}、{{resources/}}、{{config/}}），並把 manifest 狀態、missing paths、violations 寫入 scan result
+# *Deterministic entry point detection*：{{list_scripts(recursive=True)}} 掃描 effective tests path → path filtering → Python AST / JS bounded lexical scan 判斷 test entry points；POM、fixtures、resources、config、scripts、reports 一律視為 support / ignored path
+# *Rule-based 分組*：按子目錄結構初步分群（{{tests/auth/}} → Auth group），此結果即為可用 fallback
+# *Optional LLM enrichment*：若 {{enable_llm=true}} 且 OpenRouter 設定可用，將每個 group 的 {{ref_path + test function names + format + estimated count}} 送給 LLM，產生較語意化的 suite 名稱與描述
+# *建議清單*：UI 顯示 repo contract validation、推薦 suites、excluded files 與 enrichment source，使用者確認/修改後批次建立
+
+建議的 repo contract：
+
+{code}
+automation-repo/
+  tcrt-automation.yml
+  tests/       # test entry points only
+  pages/       # POM / Page Object Model
+  flows/       # reusable business flows
+  fixtures/    # setup helpers
+  resources/   # data, files, locators
+  config/      # env templates, no secrets
+  scripts/     # local helper scripts
+  reports/     # generated artifacts
+{code}
+
+有效掃描設定解析順序：
+# provider config 中 admin-enforced 的值
+# valid {{tcrt-automation.yml}}
+# provider {{smart_scan}} defaults
+
+*LLM 輸入限制*：預設只傳送 {{ref_path}} + test function names + detected format + estimated count，不傳完整內容或 snippet；除非 admin 明確設定 {{send_source_snippets_to_llm=true}}，才可傳送經截斷與 masking 的 snippet。timeout 10 秒，超時 fallback 為 rule-based 名稱。
+
+*增量掃描*：以 {{manifest_etag + ref_path + branch + etag + scan_config_hash}} 判斷變更；再次掃描時重用未變更 entry point / enrichment 結果，建議「加入既有 suite」或「建立新 suite」。
+
+h4. 16. Rate limit 與 cache
+
+GitHub API 限 5000 req/hour authenticated。TCRT 使用：
+* {{If-None-Match}} / {{etag}} cache（GitHub 不算 304 入 rate limit）
+* script list cache TTL 5 分鐘
+* script content cache TTL 30 秒（預覽體驗）
+* run status cache TTL 30 秒（變化頻繁）
+* workflow list cache TTL 30 分鐘
+* *Smart Scan result cache*：cache key 含 manifest etag、script etags、test_names hash、model id、prompt version、scan_config_hash
+
+team 等級啟用 GitHub App 而非 PAT 可把 limit 提升到 15000 / hour；docs 建議 production 走 GitHub App。
+
+h4. 17. 雙工部署模式
+
+* *與 cloud git / CI 整合*（多數場景）：用 {{storage:github}} + {{ci:github_actions}}
+* *Air-gapped*（無外部網路）：v1 用 {{storage:local_git}}（mount 內部 git server 的 working copy）+ {{ci:}}...
+** Jenkins provider 透過自架 Jenkins REST API 整合；若團隊不用 Jenkins，仍可自行擴充 provider
+
+h4. 18. 升級 / migration plan
+
+* 純新增資料；既有 manual test case 流程不變
+* 既有 team 升級後看到「Automation Hub」入口；點進去若未設 provider 顯示引導頁
+* Migration 不種預設 provider（每 team 自行配置）
+
+h3. Risks / Trade-offs
+
+* *外部依賴*：GitHub down 時 script list / 預覽不可用。對策：UI 友善降級顯示 cached content + 提示「無法連線到 GitHub」；run history 仍可看（純 TCRT DB）
+* *API rate limit*：高峰時可能打到 GitHub 限制。對策：etag cache + 鼓勵 GitHub App
+* *Provider API 變化*：GH Actions API 改版可能破壞觸發流程。對策：適配器版本化、CI 對適配器做 integration smoke test、API version pin
+* *workflow_dispatch 不回 run_id*：觸發後需要輪詢配對。對策：注入 uuid input + 60 秒 windowed search；若 60 秒內配對不到標 UNKNOWN，user 可手動關聯
+* *Multi-CI 並存*：有些 team 同時用 GH 與 GitLab；v1 不支援單 team 多 CI provider。對策：v2 改為多 provider per team；v1 可拆 team 處理
+* *IDE 學習曲線*：非技術 QA 可能不會使用 IDE 或 git。對策：提供 Starter Template Repo（GitHub Template）降低門檻；文件清楚說明「TCRT 只負責觸發，編輯請用 IDE」；半技術 QA 可用 GitHub Web Editor 作為輕量替代
+* *Webhook 不可靠*：偶有丟訊。對策：60 秒輪詢補位
+* *iframe embed CSP*：Allure 預設未必允許被嵌入。對策：v1 預設 link mode，iframe 為 opt-in 並提供 docs 教 user 設 Allure server header
+* *Smart Scan LLM 成本與隱私*：每次掃描呼叫 LLM 產生 API cost；prompt 預設只含公開路徑與 function names，不含 source snippet。對策：LLM enrichment 可關閉；結果 cache key 包含 etag / model / prompt / config；{{send_source_snippets_to_llm}} 預設 false
+* *Smart Scan 誤判*：helper 檔案被誤認為 entry point，或目錄分組不符合語意。對策：Python AST / JS bounded lexical scan 過濾 false positive；UI 顯示 excluded reasons 與 enrichment source；允許手動調整
+* *Repo contract 採用門檻*：既有 automation repo 可能沒有 {{tcrt-automation.yml}} 或資料夾命名不一致。對策：v1 預設 warning + fallback；只有 admin 設定 {{require_manifest=true}} 或 {{enforce_repo_contract=true}} 時才阻擋；提供 starter template / 文件降低導入成本
+
+h3. Migration Plan
+
+h4. 資料庫
+* Alembic migration 新增 5 張表 + 索引 + unique constraint
+* 更新 {{app/database_init.py}} 的 {{MAIN_REQUIRED_TABLES}}
+* 不種預設 provider
+
+h4. Deployment
+* 必填新環境變數 {{AUTOMATION_PROVIDER_ENCRYPTION_KEY}}（base64 32 bytes）
+* 提供 {{make automation-key-gen}} 簡化生成
+
+h4. 程式碼
+* 全部新增；既有 API 不變
+* MCP {{test_cases/{id}}} detail 響應追加欄位（向後相容）
+
+h3. Open Questions
+
+# *GitHub App 還是 PAT？* v1 兩者都支援，docs 強烈推薦 GitHub App for production
+# *Script list 是自動掃描還是手動註冊？* v1 採自動掃描；掃描路徑優先由 {{tcrt-automation.yml}} 的 {{paths.tests}} 決定，找不到 manifest 時 fallback 到 provider config 的 {{scan_path}}
+# *掃描範圍控制*：如何避免掃到非 test 檔案？v1 由 Automation Repo Contract + include/exclude + Python AST / JS bounded lexical scan 控制；POM、flows、fixtures、resources、config 皆視為 support path
+# *Starter Template Repo*：是否提供官方 GitHub Template Repository（{{tcrt-playwright-starter}}）供新團隊快速開始？v1 建議提供，內容至少包含 {{tcrt-automation.yml}} 與標準目錄
+# *Smart Scan enrichment 準確度*：rule-based 分群後 LLM 命名是否夠準？若 confidence 低，fallback 策略是否夠好？需實際 repo 測試調整 prompt
+# *Cache invalidation 策略*：v1 用 TTL，未來可加 webhook（GitHub push event）即時失效
+# *Workflow inputs 對應 test data*：使用者可能在 workflow 內定義輸入（如 {{environment: staging/prod}}）；UI 是否要解析 workflow YAML 並提供下拉？v1 不做，使用者自填；v2 評估
+
+
+h1. Spec: automation-hub-provider-framework
+_Source: {{openspec/changes/add-automation-hub/specs/automation-hub-provider-framework/spec.md}}_
+
+h2. automation-hub-provider-framework Specification
+
+h3. Purpose
+定義 Automation Hub 的 Provider 抽象框架：三個 {{Protocol}} 介面（Storage / CI / Result）、provider 註冊機制、per-team 設定表、credential 加密、與 v1 內建適配器（GitHub Storage、LocalGit、GitHub Actions、Jenkins CI、Allure）。本能力讓 TCRT 不綁特定 git / CI / 報表工具，未來可擴充。
+
+h3. ADDED Requirements
+
+h4. Requirement: System MUST define StorageProvider Protocol for git-like file operations
+{{app/services/automation/providers/base.py}} SHALL 定義 {{StorageProvider}} 為 Python {{typing.Protocol}}，包含以下 async methods 與 dataclass：
+
+* {{async def list_scripts(self, path: str, ref: str | None = None) -> list[ScriptRef]}}
+* {{async def read_script(self, path: str, ref: str | None = None, etag: str | None = None) -> ScriptContent}}（含 content + etag；etag 命中時可回 {{not_modified=true}}）
+* {{async def write_script(self, path: str, content: str, message: str, branch: str | None = None) -> CommitRef}}（*主要供 CIProvider suite job 管理內部使用*，如寫入 {{.github/workflows/tcrt-suite-*.yml}}；TCRT *不*提供使用者編輯 script 內容的功能，所有 script 編輯由 IDE 完成後推上 git）
+* {{async def list_branches(self) -> list[BranchRef]}}
+* {{async def create_pull_request(self, branch: str, title: str, body: str) -> PullRequestRef | None}}（不支援的 provider 回 None；*TCRT 不主動為 script 內容開 PR*，此 method 保留供未來擴充或 suite job 相關操作）
+* {{async def health_check(self) -> HealthStatus}}（whoami / connectivity test）
+
+對應 dataclass SHALL 為 frozen Pydantic models，欄位明確。
+
+h5. Scenario: Protocol is structural, not nominal
+* *WHEN* 第三方適配器實作上述 methods 但不顯式 inherit
+* *THEN* Python typing SHALL 接受其作為 {{StorageProvider}}，無需修改 core
+
+h4. Requirement: System MUST define CIProvider Protocol for execution orchestration
+{{StorageProvider}} 同檔案 SHALL 定義 {{CIProvider}} Protocol：
+
+* {{async def list_workflows(self) -> list[WorkflowRef]}}
+* {{async def list_runners(self) -> list[RunnerRef]}}（GitHub Actions 與 Jenkins 皆支援；其他 CI 若無節點概念可回 empty list）
+* {{async def trigger_run(self, workflow_id: str, branch: str, inputs: dict[str, str]) -> ExternalRunRef}}
+* {{async def get_run_status(self, external_run_id: str) -> RunStatusSnapshot}}
+* {{async def cancel_run(self, external_run_id: str) -> None}}
+* {{async def get_run_url(self, external_run_id: str) -> str}}
+* {{async def list_artifacts(self, external_run_id: str) -> list[ArtifactRef]}}
+* {{async def health_check(self) -> HealthStatus}}
+
+對應 dataclass：
+
+{code:python}
+@dataclass
+class RunnerRef:
+    id: int
+    name: str
+    os: str
+    status: str          # "online" | "offline"
+    busy: bool
+    labels: list[str]
+{code}
+
+h5. Scenario: trigger_run accepts tcrt_run_id input for correlation
+* *WHEN* TCRT 觸發 run
+* *THEN* TCRT SHALL 注入 {{inputs.tcrt_run_id}} (uuid4)，並期望 workflow 在 metadata / log 中 echo 此值，以利後續配對
+
+h5. Scenario: Runner list for self-hosted deployments
+* *WHEN* team 使用 GitHub Actions 並在內網部署 self-hosted runners
+* *THEN* {{list_runners()}} SHALL 呼叫 GitHub API {{GET /repos/{owner}/{repo}/actions/runners}}，回傳每個 runner 的 name、labels、status、busy 狀態
+* *WHEN* runner status="offline"
+* *THEN* UI SHALL 顯示為不可選（disabled）並標註「offline」
+* *WHEN* runner busy=true
+* *THEN* UI SHALL 顯示為「執行中」並仍可選擇（排隊）
+
+h5. Scenario: Jenkins node list for distributed builds
+* *WHEN* team 使用 Jenkins 並有多台 slave/agent（如 staging、prod、專用測試機）
+* *THEN* {{list_runners()}} SHALL 呼叫 Jenkins API {{GET /computer/api/json}}，回傳每個 node 的 displayName、assignedLabels、idle、offline 狀態
+* *WHEN* node offline=true
+* *THEN* UI SHALL 顯示為不可選（disabled）並標註「offline」
+* *WHEN* node idle=false（busy）
+* *THEN* UI SHALL 顯示為「執行中」並仍可選擇（Jenkins 會自動排隊）
+
+h4. Requirement: System MUST define ResultProvider Protocol for report URLs
+{{base.py}} SHALL 定義 {{ResultProvider}} Protocol：
+
+* {{async def get_run_report_url(self, ci_external_run_id: str) -> str | None}}
+* {{async def get_dashboard_url(self) -> str | None}}
+* {{async def health_check(self) -> HealthStatus}}
+
+h5. Scenario: Report URL may not always be available
+* *WHEN* report 尚未產生（如 run 仍 RUNNING）
+* *THEN* provider SHALL 回 None，UI 顯示「報表生成中」
+
+h4. Requirement: Provider registry MUST support type-based lookup and per-team binding
+{{app/services/automation/provider_registry.py}} SHALL 維護 {{{provider_type: provider_class}}} 對照表，類型格式為 {{<slot>:<vendor>}}（如 {{storage:github}}、{{ci:github_actions}}、{{result:allure}}）。
+
+{{get_provider(team_id, slot)}} factory SHALL：
+# 從 {{team_automation_providers}} 查該 team 的 active provider for slot
+# 解密 credentials
+# 實例化對應 provider class，注入 config + credentials
+# 回傳實例（可選擇 cache 一段時間）
+
+h5. Scenario: Unknown provider_type rejected at config time
+* *WHEN* admin 嘗試建立 {{provider_type=storage:unknown}} 的 config
+* *THEN* API SHALL 回 400，錯誤訊息 SHALL 列出可用的 provider types
+
+h5. Scenario: Team without provider configured
+* *WHEN* team 未配置 storage provider 但前端嘗試 list scripts
+* *THEN* API SHALL 回 412 {{PROVIDER_NOT_CONFIGURED}}，UI SHALL 顯示引導至 settings 頁
+
+h4. Requirement: System MUST store per-team provider configuration
+資料表 {{team_automation_providers}} SHALL 包含：
+
+* {{id}} PK
+* {{team_id}} FK NOT NULL, indexed
+* {{provider_slot}} enum({{STORAGE}}/{{CI}}/{{RESULT}}) NOT NULL
+* {{provider_type}} VARCHAR(60) NOT NULL（如 {{storage:github}}）
+* {{name}} VARCHAR(100) NOT NULL
+* {{config_json}} TEXT NOT NULL（plaintext config，含 owner / repo / base_url 等）
+* {{credentials_encrypted}} TEXT nullable（AES-256-GCM；含 PAT / password / API key；nonce 內嵌）
+* {{is_active}} BOOLEAN default true
+* {{last_health_check_at}} DATETIME nullable
+* {{last_health_status}} VARCHAR(40) nullable
+* {{created_by}}, {{updated_by}}, timestamps
+* UniqueConstraint {{(team_id, provider_slot, name)}}
+* Index {{(team_id, provider_slot, is_active)}}
+
+h5. Scenario: One active provider per slot per team (recommended, not enforced)
+* *WHEN* team 有兩筆 {{provider_slot=STORAGE, is_active=true}} 的 provider
+* *THEN* 系統 SHALL 允許（可能用於不同 repo），但 {{get_provider(team_id, 'STORAGE')}} SHALL 取最新 {{updated_at}} 的；admin UI SHALL 警示「建議只保留一個 active storage provider」
+
+h4. Requirement: Provider credentials MUST be encrypted at rest with AES-256-GCM
+所有 credential 欄位（PAT、password、API key、SSH key 內容）SHALL 透過 {{provider_credential_service.encrypt_credentials()}} 加密後存入 {{credentials_encrypted}}。金鑰由 {{AUTOMATION_PROVIDER_ENCRYPTION_KEY}} 環境變數提供（base64-encoded 32 bytes for AES-256）。
+
+Bootstrap 啟動時若 {{team_automation_providers}} 表非空但金鑰缺失：SHALL 阻擋啟動並列印生成指引（如 {{python -c "import secrets,base64;print(base64.b64encode(secrets.token_bytes(32)).decode())"}}）。
+
+API 永遠不回傳 plaintext credentials；GET 端點 SHALL 回傳 {{credentials_set: bool}} 與最末 4 字元 fingerprint（如 GitHub PAT {{ghp_***abcd}}）。
+
+h5. Scenario: API never returns plaintext credential
+* *WHEN* admin 呼叫 {{GET /api/teams/{id}/automation-providers/{provider_id}}}
+* *THEN* 回應 SHALL 包含 {{credentials_set: true}}、{{credentials_fingerprint: "...abcd"}}，*不* 包含完整 credential
+
+h5. Scenario: Missing key blocks bootstrap when providers exist
+* *WHEN* TCRT 啟動，{{team_automation_providers}} 有 ≥1 筆但 {{AUTOMATION_PROVIDER_ENCRYPTION_KEY}} 未設定
+* *THEN* bootstrap SHALL 拋錯並列出生成指令
+
+h4. Requirement: System MUST ship GitHub storage adapter as v1 default
+{{app/services/automation/providers/github_storage.py}} SHALL 實作 {{StorageProvider}}，使用 GitHub REST API v3：
+
+* 認證：支援 PAT（{{Authorization: token <pat>}}）與 GitHub App（installation token，由 config 提供 app_id + private_key）
+* {{list_scripts}}：GET {{/repos/{owner}/{repo}/contents/{path}}}，遞迴展開資料夾
+* {{read_script}}：GET 同上，base64 decode；保留 {{sha}} 作為 etag
+* {{write_script}}：PUT contents API，帶 sha；支援 branch 參數
+* {{list_branches}}：GET {{/repos/{owner}/{repo}/branches}}
+* {{create_pull_request}}：POST {{/repos/{owner}/{repo}/pulls}}
+* {{health_check}}：GET {{/user}}，回 ok / fail
+* Rate limit：使用 {{If-None-Match}} header；304 不計入 quota
+
+Config schema：{{{ owner: str, repo: str, default_branch: str = "main", auth_method: "pat" | "github_app", api_base_url: str = "https://api.github.com", default_runner_label: str = "ubuntu-latest", scan_path: str = "tests/" }}}
+
+{{scan_path}} 為 TCRT auto-discovery 時掃描的起始路徑（預設 {{"tests/"}}）；{{list_scripts(path=scan_path, recursive=True)}} 會遞迴列出所有檔案。
+Credential schema：{{{ pat: str }}} 或 {{{ app_id: str, installation_id: str, private_key_pem: str }}}
+
+{{default_runner_label}} 用於觸發 run 時的預設 runner（當 script 未設定 {{preferred_runner_label}} 時 fallback）。GitHub Actions workflow YAML 必須使用 {{runs-on: ${{ github.event.inputs.runner_label }}}} 才能動態接收。
+
+h5. Scenario: PAT authentication
+* *WHEN* admin 配置 GitHub provider with PAT
+* *THEN* provider SHALL 用 {{token}} header 認證；{{health_check}} SHALL 回 user login
+
+h5. Scenario: GitHub App authentication
+* *WHEN* admin 配置 GitHub App with app_id + private_key
+* *THEN* provider SHALL 自行產生 JWT + 換 installation token；token 過期前自動 refresh
+
+h4. Requirement: System MUST ship LocalGit storage adapter for air-gapped deployments
+{{app/services/automation/providers/local_git_storage.py}} SHALL 實作 {{StorageProvider}}，透過 {{git}} CLI 對本機 mount 的 working copy 操作。
+
+Config：{{{ working_dir: str, remote_name: str = "origin", default_branch: str = "main", ssh_key_path: str | None = None }}}
+
+不支援 {{create_pull_request}}（回 None）；其他 method 透過 subprocess git 完成。
+
+h5. Scenario: Air-gapped GitLab via mount
+* *WHEN* team 配置 LocalGit provider 指向 {{/data/repos/playwright-tests}}
+* *THEN* TCRT SHALL 透過 git CLI 讀寫該目錄；commit + push 透過 SSH key 推到內部 GitLab
+
+h4. Requirement: System MUST ship GitHub Actions CI adapter
+{{app/services/automation/providers/github_actions_ci.py}} SHALL 實作 {{CIProvider}}：
+
+* {{list_workflows}}：GET {{/repos/{owner}/{repo}/actions/workflows}}
+* {{trigger_run}}：POST {{/repos/{owner}/{repo}/actions/workflows/{id}/dispatches}}，body 帶 {{ref}}、{{inputs}}（含 {{tcrt_run_id}} uuid）
+* {{get_run_status}}：GET {{/repos/{owner}/{repo}/actions/runs/{run_id}}}，把 {{status}}/{{conclusion}} 映射到 {{QUEUED/RUNNING/SUCCEEDED/FAILED/CANCELLED/UNKNOWN}}
+* {{cancel_run}}：POST {{/repos/{owner}/{repo}/actions/runs/{id}/cancel}}
+* {{get_run_url}}：組 {{https://github.com/{owner}/{repo}/actions/runs/{id}}}
+* {{list_artifacts}}：GET {{/repos/{owner}/{repo}/actions/runs/{id}/artifacts}}
+
+h5. Scenario: workflow_dispatch correlation
+* *WHEN* TCRT 觸發 workflow_dispatch 後 30 秒內查詢
+* *THEN* provider SHALL 注入 {{inputs.tcrt_run_id}}，並以 {{event=workflow_dispatch}} + branch + workflow + 時間範圍做 best-effort 配對找出 external_run_id；GitHub REST run list API 不回傳 workflow_dispatch input 值，因此不得宣稱已驗證 {{inputs.tcrt_run_id}} 精準相等；找不到 → 視為 pending（後續 sync job 或 user 手動 reconcile）
+
+h5. Scenario: Workflow status mapping
+* *WHEN* GH 回 {{status=in_progress, conclusion=null}}
+* *THEN* provider SHALL 回 {{RunStatusSnapshot(status='RUNNING')}}
+* *WHEN* GH 回 {{status=completed, conclusion=success}}
+* *THEN* provider SHALL 回 {{status='SUCCEEDED'}}
+* *WHEN* GH 回 {{status=completed, conclusion=cancelled}}
+* *THEN* provider SHALL 回 {{status='CANCELLED'}}
+
+h4. Requirement: System MUST ship Jenkins CI adapter
+{{app/services/automation/providers/jenkins_ci.py}} SHALL 實作 {{CIProvider}}，使用 Jenkins REST API：
+
+* 認證：Basic Auth（{{username + api_token}}）或 trigger token plugin（per-job）；adapter SHALL 先呼叫 {{GET /crumbIssuer/api/json}} 取得 CSRF crumb（若 Jenkins 啟用 CSRF protection），後續所有寫操作攜帶 {{Jenkins-Crumb}} header
+* {{list_workflows}}：{{GET /api/json?tree=jobs[name,url,buildable]}}，列出所有 buildable jobs
+* {{list_runners}}：{{GET /computer/api/json?tree=computer[displayName,idle,offline,assignedLabels[name]]}}，回傳 Jenkins nodes/agents（master + 所有 slave/agent）；{{offline=true}} 標為 offline；{{idle=false}} 標為 busy
+* {{trigger_run}}：{{POST /job/{name}/buildWithParameters?tcrt_run_id=<uuid>&NODE_LABEL=<label>&<other_params>}}；回應 201 + {{Location: /queue/item/{queue_id}/}} header；{{NODE_LABEL}} 傳入目標 node label
+* {{get_run_status}}：先 {{GET /queue/item/{queue_id}/api/json}} 取 {{executable.url}}（含 build number）；取得後切到 {{GET /job/{name}/{build_id}/api/json}}；狀態映射：
+** {{result=SUCCESS}} → {{SUCCEEDED}}
+** {{result=FAILURE}} 或 {{UNSTABLE}} → {{FAILED}}
+** {{result=ABORTED}} → {{CANCELLED}}
+** {{result=null}} + {{building=true}} → {{RUNNING}}
+** {{result=null}} + {{building=false}} + 仍在 queue → {{QUEUED}}
+** 其他 → {{UNKNOWN}}
+* {{cancel_run}}：{{POST /job/{name}/{build_id}/stop}}
+* {{get_run_url}}：直接用 {{executable.url}}
+* {{list_artifacts}}：{{GET /job/{name}/{build_id}/api/json?tree=artifacts[*]}}
+* {{health_check}}：{{GET /me/api/json}}
+
+Config schema：{{{ base_url: str, auth_method: "api_token" | "trigger_token", default_job_name: str | None, default_runner_label: str = "any", csrf_protection_enabled: bool = true }}}
+Credential schema（auth_method=api_token）：{{{ username: str, api_token: str }}}
+Credential schema（auth_method=trigger_token）：{{{ job_token: str }}}（無法呼叫 user-scoped API 如 health_check / list_workflows / list_runners，僅能 trigger）
+
+h5. Scenario: Basic Auth with CSRF crumb
+* *WHEN* Jenkins 啟用 CSRF protection
+* *THEN* adapter SHALL 在 trigger_run 前先取 crumb，並在 POST 攜帶 {{Jenkins-Crumb}} header；缺 crumb 而 Jenkins 拒絕時 SHALL 自動 retry 一次取新 crumb
+
+h5. Scenario: Queue item correlation
+* *WHEN* TCRT 觸發 buildWithParameters 後立即查詢
+* *THEN* adapter SHALL 解析 {{Location}} header 取 queue_id，後續輪詢 queue item；{{executable.url}} 出現後切換 endpoint
+
+h5. Scenario: Build status mapping
+* *WHEN* Jenkins 回 {{result=FAILURE, building=false}}
+* *THEN* adapter SHALL 回 {{RunStatusSnapshot(status='FAILED')}}
+* *WHEN* Jenkins 回 {{result=UNSTABLE}}（測試有失敗但 build 沒 error）
+* *THEN* adapter SHALL 回 {{status='FAILED'}}（v1 不區分 UNSTABLE；若有需要區分 v2 加 {{FLAKY}} status）
+
+h5. Scenario: Trigger-token-only mode limits health_check
+* *WHEN* team 使用 {{auth_method=trigger_token}}
+* *THEN* {{health_check}} SHALL 回 {{HealthStatus(status="LIMITED", message="trigger_token mode cannot verify user API; only trigger is testable")}}；admin UI SHALL 警示但不阻擋使用
+
+h5. Scenario: Jenkins runner selection via NODE_LABEL parameter
+* *WHEN* TCRT 觸發 Jenkins build with {{NODE_LABEL=staging-agent-01}}
+* *THEN* {{trigger_run}} SHALL 將 {{NODE_LABEL}} 作為 build parameter 傳入 {{buildWithParameters}}
+* *WHEN* Jenkins Pipeline 使用 {{agent { label "${params.NODE_LABEL ?: 'any'}" }}}
+* *THEN* build SHALL 在對應 label 的 node 上執行
+* *WHEN* 目標 node 目前 busy（已有 build 在跑）
+* *THEN* Jenkins SHALL 自動排隊；TCRT 端 status 仍為 QUEUED，不報錯
+
+h5. Scenario: Jenkins node offline
+* *WHEN* {{list_runners}} 發現某 node {{offline=true}}
+* *THEN* UI SHALL 將該 node 顯示為 disabled 並標註「offline」
+* *WHEN* 使用者嘗試選擇 offline node 觸發 run
+* *THEN* API SHALL 接受請求（Jenkins 會自行處理 queue / 等待 node 上線），但 UI SHALL 顯示警示「目標節點目前離線，build 將排隊等待"
+
+h4. Requirement: System MUST ship Allure result adapter as the sole v1 result provider
+{{app/services/automation/providers/allure_result.py}} SHALL 實作 {{ResultProvider}}，為 v1 唯一內建 result provider。其他 result 候選（Playwright HTML、ReportPortal、Jenkins built-in）皆留 v2 評估。
+
+Config schema：
+
+* {{base_url: str}}：Allure server / static host 根 URL（如 {{https://allure.internal.tcg.com}}）
+* {{run_url_template: str = "{base_url}/runs/{ci_external_run_id}"}}：可用 placeholder {{{base_url}}}、{{{ci_external_run_id}}}、{{{project}}}
+* {{embed_mode: "link" | "iframe" = "link"}}
+* {{dashboard_url: str | None = None}}：optional，hub 首頁「Team Dashboard」按鈕用
+* {{project: str | None = None}}：optional，多專案場景下指定
+
+{{get_run_report_url(ci_external_run_id)}} SHALL 用 template 字串 interpolation 組 URL；{{embed_mode=iframe}} 時 UI 改為 iframe 嵌入；偵測到目標頁面 {{X-Frame-Options: DENY}} 或 {{Content-Security-Policy: frame-ancestors 'none'}} 時 SHALL fallback 為 link mode 並警示 admin。
+
+h5. Scenario: Default link mode
+* *WHEN* team 配置 Allure with {{embed_mode=link}}
+* *THEN* UI SHALL 顯示「在 Allure 中開啟」按鈕，新分頁打開
+
+h5. Scenario: iframe mode opt-in
+* *WHEN* team 配置 {{embed_mode=iframe}}
+* *THEN* UI SHALL 嵌入 {{<iframe>}} 顯示報表
+
+h5. Scenario: iframe blocked by CSP
+* *WHEN* Allure server 回 {{X-Frame-Options: DENY}}，使用者開啟 run detail
+* *THEN* UI SHALL 偵測 iframe load 失敗（透過 onerror / postMessage probe），自動降級為 link 模式並顯示「無法嵌入，請聯絡 admin 調整 Allure server CSP」
+
+h5. Scenario: Template with project
+* *WHEN* team 配置 {{run_url_template="{base_url}/projects/{project}/launches/{ci_external_run_id}"}} + {{project="frontend"}}
+* *THEN* {{get_run_report_url("123")}} SHALL 回傳 {{{base_url}/projects/frontend/launches/123}}
+
+h4. Requirement: CIProvider MUST support suite job lifecycle management
+{{CIProvider}} Protocol SHALL 定義 suite job 管理 methods，讓 TCRT 自動在 CI 端建立/更新/刪除對應的 job/workflow：
+
+{code:python}
+class CIProvider(Protocol):
+    # 既有方法...
+    
+    # Suite job 管理（新增）
+    async def create_suite_job(
+        self,
+        suite_id: str,
+        suite_name: str,
+        test_paths: list[str],
+        default_runner_label: str,
+    ) -> str: ...  # 回傳 CI 端 job/workflow 名稱
+    
+    async def update_suite_job(
+        self,
+        suite_id: str,
+        suite_name: str,
+        test_paths: list[str],
+        default_runner_label: str,
+    ) -> str: ...  # 回傳更新後的 job/workflow 名稱
+    
+    async def delete_suite_job(self, suite_id: str, job_name: str) -> None: ...
+    
+    async def list_suite_jobs(self) -> list[WorkflowRef]: ...  # 列出所有 TCRT 管理的 suite jobs
+{code}
+
+h5. GitHub Actions 實作
+{{github_actions_ci.py}} 的 suite job 管理 SHALL 透過 *StorageProvider.write_script* / *delete_file* 實作：
+
+* {{create_suite_job}}：產生 workflow YAML 內容 → {{write_script(path=".github/workflows/tcrt-suite-{suite_id}-{sanitized_name}.yml", content=..., sha=None)}}
+* {{update_suite_job}}：重新產生 YAML → {{write_script(path=..., content=..., sha=<current>)}}
+* {{delete_suite_job}}：{{delete_file(path=..., sha=<current>)}}
+* {{list_suite_jobs}}：{{list_workflows()}} 並過濾 {{name starts_with "tcrt-suite-"}}
+
+Workflow YAML 模板（TCRT 內建）：
+{code:yaml}
+# ============================================
+# AUTO-GENERATED BY TCRT
+# Suite: {{ suite_name }}
+# DO NOT EDIT MANUALLY - Changes will be overwritten
+# ============================================
+name: TCRT Suite - {{ suite_name }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      tcrt_run_id:
+        description: 'TCRT correlation ID'
+        required: true
+      runner_label:
+        description: 'Runner label'
+        required: false
+        default: '{{ default_runner_label }}'
+
+jobs:
+  test:
+    runs-on: ${{ github.event.inputs.runner_label }}
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest-playwright
+          playwright install
+      
+      - name: Run TCRT Suite
+        run: |
+          paths=({% for path in test_paths %}"{{ path }}" {% endfor %})
+          pytest "${paths[@]}"
+      
+      - name: Notify TCRT
+        if: always()
+        run: |
+          curl -X POST "${{ secrets.TCRT_WEBHOOK_URL }}" \
+            -H "Content-Type: application/json" \
+            -d "{\"tcrt_run_id\":\"${{ inputs.tcrt_run_id }}\",\"status\":\"${{ job.status }}\"}"
+{code}
+
+h5. Jenkins 實作
+{{jenkins_ci.py}} 的 suite job 管理 SHALL 透過 *Jenkins REST API* 實作：
+
+* {{create_suite_job}}：產生 config.xml → {{POST /createItem?name={job_name}}} → {{POST /view/{view_name}/addJobToView}}
+* {{update_suite_job}}：產生 config.xml → {{POST /job/{job_name}/config.xml}}
+* {{delete_suite_job}}：{{POST /job/{job_name}/doDelete}}
+* {{list_suite_jobs}}：{{list_workflows()}} 並過濾 {{name starts_with "tcrt-suite-"}}
+
+Config.xml 模板（TCRT 內建）：
+{code:xml}
+<?xml version='1.1' encoding='UTF-8'?>
+<flow-definition plugin="workflow-job">
+  <description>TCRT Suite - {{ suite_name }}</description>
+  <properties>
+    <hudson.model.ParametersDefinitionProperty>
+      <parameterDefinitions>
+        <hudson.model.StringParameterDefinition>
+          <name>tcrt_run_id</name>
+          <description>TCRT correlation ID</description>
+          <defaultValue></defaultValue>
+          <trim>true</trim>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>NODE_LABEL</name>
+          <description>Target node label</description>
+          <defaultValue>{{ default_runner_label }}</defaultValue>
+          <trim>true</trim>
+        </hudson.model.StringParameterDefinition>
+      </parameterDefinitions>
+    </hudson.model.ParametersDefinitionProperty>
+  </properties>
+  <definition class="org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition" plugin="workflow-cps">
+    <script>
+pipeline {
+    agent { label "${params.NODE_LABEL ?: '{{ default_runner_label }}'}" }
+    stages {
+        stage('Setup') {
+            steps {
+                sh '''
+                python3 -m pip install --upgrade pip
+                pip install pytest-playwright
+                playwright install
+                '''
+            }
+        }
+        stage('Test') {
+            steps {
+                echo "TCRT Suite: {{ suite_name }}"
+                echo "TCRT ID: ${params.tcrt_run_id}"
+                sh 'pytest {% for path in test_paths %}{{ path }} {% endfor %}'
+            }
+        }
+    }
+    post {
+        always {
+            sh '''
+            curl -X POST "${TCRT_WEBHOOK_URL}" \
+              -H "Content-Type: application/json" \
+              -d "{\\"tcrt_run_id\\":\\"${params.tcrt_run_id}\\",\\"status\\":\\"${currentBuild.result}\\"}"
+            '''
+        }
+    }
+}</script>
+    <sandbox>true</sandbox>
+  </definition>
+  <triggers/>
+  <disabled>false</disabled>
+</flow-definition>
+{code}
+
+h5. Scenario: GitHub Actions suite auto-created
+* *WHEN* QA 建立 suite「Login Regression」
+* *THEN* {{github_actions_ci.create_suite_job()}} SHALL 建立 {{.github/workflows/tcrt-suite-5-login-regression.yml}}
+* *WHEN* workflow 成功建立
+* *THEN* TCRT SHALL 在 {{automation_script_groups.ci_job_name}} 記錄 {{tcrt-suite-5-login-regression}}
+
+h5. Scenario: Jenkins suite auto-created
+* *WHEN* QA 建立 suite「Login Regression」，team 已配置 Jenkins provider
+* *THEN* {{jenkins_ci.create_suite_job()}} SHALL：
+## 若 team view 不存在 → {{create_view("TCRT-TCG-QA", "...")}}
+## {{create_job("tcrt-suite-5-login-regression", config_xml)}}
+## {{add_job_to_view("TCRT-TCG-QA", "tcrt-suite-5-login-regression")}}
+
+h5. Scenario: Suite modification syncs to CI
+* *WHEN* QA 從 suite 移除一個 script
+* *THEN* {{update_suite_job()}} SHALL 重新產生 config 並更新 CI 端；GitHub Actions 更新 YAML 內容；Jenkins 更新 config.xml
+
+h5. Scenario: Delete suite cleans up CI
+* *WHEN* QA 刪除 suite
+* *THEN* {{delete_suite_job()}} SHALL：
+** GitHub Actions：{{delete_file(path=".github/workflows/tcrt-suite-xxx.yml")}}
+** Jenkins：{{delete_job("tcrt-suite-xxx")}}（Jenkins 自動從 view 移除）
+
+h4. Requirement: Provider self-test MUST be available
+admin UI SHALL 提供「Test Connection」按鈕，呼叫 {{POST /api/teams/{team_id}/automation-providers/{provider_id}/test-connection}}，後端執行該 provider 的 {{health_check()}}，結果寫回 {{last_health_check_at}} + {{last_health_status}}，並即時回應給 UI。
+
+h5. Scenario: Failed health check stored
+* *WHEN* GitHub PAT 過期，admin 點 Test Connection
+* *THEN* API SHALL 回 200 with {{{status: "FAILED", error: "Bad credentials"}}}，{{last_health_status}} SHALL 更新
+
+h4. Requirement: Provider config schema MUST be reflectable
+每個 provider class SHALL 暴露 {{config_schema()}} 與 {{credential_schema()}} 回傳 Pydantic model class。admin 設定 UI SHALL 透過此 schema 動態渲染表單（field name / type / description），避免 hard-code 表單。
+
+h5. Scenario: New provider added
+* *WHEN* 開發者新增 {{providers/gitlab_storage.py}} 並於 registry 註冊
+* *THEN* admin UI 在選擇 {{storage:gitlab}} 時 SHALL 自動依其 {{config_schema()}} 渲染對應欄位，無需動 frontend
+
+
+h1. Spec: automation-hub-script-management
+_Source: {{openspec/changes/add-automation-hub/specs/automation-hub-script-management/spec.md}}_
+
+h2. automation-hub-script-management Specification
+
+h3. Purpose
+定義 Automation Script 在 TCRT 端的「自動發現」模型、唯讀預覽（read-only preview）、M2M linkage 到手動 test case、與 case detail 上的反向「Automation Coverage」面板。TCRT *不*維護獨立的 script 註冊列表，而是直接從 GitHub StorageProvider 載入檔案列表；使用者從該列表中選擇檔案組合成 suite / 連結到 test case。Script 內容 source of truth 為 git；TCRT *不*提供內建編輯器，所有編輯由使用者在其慣用 IDE 完成後推上 git。TCRT 僅保留 {{cached_content}} 用於 read-only preview / diff。
+
+h3. ADDED Requirements
+
+h4. Requirement: System MUST auto-discover scripts from StorageProvider
+TCRT *不*提供手動 register 或 script 列表管理功能。{{automation_scripts}} 資料表 SHALL 為*自動發現的快取*，由 background sync job 或使用者觸發時從 StorageProvider 掃描並填入，schema MUST 包含：
+
+* {{id}} PK
+* {{team_id}} FK NOT NULL, indexed
+* {{provider_id}} FK → {{team_automation_providers.id}} NOT NULL
+* {{name}} VARCHAR(200) NOT NULL（預設為檔案名稱，使用者可 override）
+* {{description}} TEXT nullable
+* {{script_format}} ENUM({{PLAYWRIGHT_PY_ASYNC}}, {{PYTEST}}, {{PLAYWRIGHT_JS}}, {{OTHER}})
+* {{ref_path}} VARCHAR(500) NOT NULL（相對於 repo root，例：{{tests/test_login.py}}）
+* {{ref_branch}} VARCHAR(200) NOT NULL（掃描時的 branch）
+* {{cached_content}} MEDIUMTEXT nullable（最近一次 fetch 的內容）
+* {{cached_content_etag}} VARCHAR(120) nullable
+* {{last_synced_at}} DATETIME nullable
+* {{tags_json}} TEXT nullable
+* {{preferred_runner_label}} VARCHAR(100) nullable（觸發 run 時預設使用的 runner label；NULL 時 fallback 到 provider config 的 default_runner_label）
+* {{linked_test_case_count}} INT default 0（反向計數，由 service 層維護）
+* {{created_by}}, {{updated_by}}, {{created_at}}, {{updated_at}}
+* UniqueConstraint {{(team_id, provider_id, ref_path, ref_branch)}}
+* Index {{(team_id, script_format)}}、{{(provider_id, last_synced_at)}}
+
+h5. Scenario: Auto-discovery from GitHub
+* *WHEN* team 首次進入 Automation Hub Suites tab 或點擊「重新掃描」
+* *THEN* TCRT SHALL 先解析 {{tcrt-automation.yml}}（若存在）取得 effective tests path，否則使用 provider config 的 {{scan_path}}（預設 {{"tests/"}}），再呼叫 {{StorageProvider.list_scripts(path=effective_tests_path, recursive=True)}}
+* *THEN* 所有符合條件的檔案 SHALL 自動填入 {{automation_scripts}}；已存在者更新 {{last_synced_at}}，已不存在者標記為 {{stale}}（或刪除）
+
+h5. Scenario: Script appears after auto-discovery
+* *WHEN* 使用者在 IDE 建立 {{tests/test_new_feature.py}} 並 push 到 {{main}} branch
+* *THEN* 下次 auto-discovery（手動或每小時背景排程）SHALL 自動發現該檔案並填入 {{automation_scripts}}
+* *THEN* 使用者可在 Suites tab 看到該檔案並直接勾選加入 suite，無需任何 register 動作
+
+h5. Scenario: cached_content is cache, not source of truth
+* *WHEN* team 將 {{automation_scripts.cached_content}} 直接從資料庫 truncate
+* *THEN* 下次使用者開啟 script preview，service 層 SHALL 透過 StorageProvider 重新 fetch 並回填，UI 體驗不受影響
+
+h5. Scenario: Script has preferred runner
+* *WHEN* script 設定 {{preferred_runner_label="self-hosted-staging"}}
+* *THEN* 觸發 run 時，若使用者未特別指定 runner，UI SHALL 預設選擇該 label
+* *WHEN* provider config 設有 {{default_runner_label="ubuntu-latest"}} 但 script 有自己的 preferred_runner_label
+* *THEN* script 層級 SHALL 優先於 provider 層級
+
+h4. Requirement: API MUST support auto-discovery and sync from StorageProvider
+TCRT *不*提供手動 register 或 script 管理功能。API 層 SHALL 只允許讀取、同步與 metadata 更新，不提供建立或改寫 git script content 的端點。所有 script 相關端點皆為*唯讀或自動發現*：
+
+* {{GET /api/teams/{team_id}/automation-scripts}}：列表（從 {{automation_scripts}} 快取表讀取），支援 {{?provider_id=&format=&linked_test_case_id=&q=&cursor=&limit=}}（預設 50，max 200）
+* {{GET /api/teams/{team_id}/automation-scripts/{script_id}}}：詳情，含最近 5 筆 runs、linked test cases、cached_content 與 stale 旗標
+* {{POST /api/teams/{team_id}/automation-scripts/sync}}：強制觸發自動掃描；呼叫 {{StorageProvider.list_scripts()}} 掃描 repo → 比對現有 {{automation_scripts}} → 新增/更新/標記 stale
+* {{PUT /api/teams/{team_id}/automation-scripts/{script_id}}}：更新可編輯 metadata（name / description / format / tags / preferred_runner_label）；*不* 更改 ref_path / ref_branch（由 auto-discovery 管理）
+* {{DELETE /api/teams/{team_id}/automation-scripts/{script_id}}}：僅刪 TCRT 端快取紀錄，*不* 刪 git 檔案；cascade linked 紀錄
+
+所有寫端點 SHALL 寫 audit。
+
+h5. Scenario: Auto-discovery on first visit
+* *WHEN* team 首次進入 Automation Hub Suites tab
+* *THEN* 若 {{automation_scripts}} 表為空或上次掃描超過 1 小時，UI SHALL 自動觸發 sync，顯示 loading spinner
+* *THEN* 掃描完成後顯示檔案列表
+
+h5. Scenario: Delete only removes TCRT cache
+* *WHEN* 使用者刪除 script 快取
+* *THEN* TCRT 端紀錄刪除，git repo 內檔案 SHALL 不被觸碰；下次 sync 會重新發現
+
+h4. Requirement: Script content cache MUST be read-only preview
+{{cached_content}} SHALL 僅供 UI *唯讀預覽*使用，TCRT *不*提供任何編輯或回寫 git 的能力。所有內容變更由使用者在 IDE 完成後推上 git，TCRT 透過下次 {{sync}} 或背景排程重新 fetch。
+
+h5. Scenario: User attempts to edit via TCRT
+* *WHEN* 使用者點擊展開的 script preview 內容區域（Suites tab 或 case detail）
+* *THEN* UI SHALL 顯示提示「請使用 IDE 編輯後推上 git」+「Open in GitHub」連結，*不*開啟編輯模式
+
+h4. Requirement: Script content cache MUST be transparent and bounded
+Service 層 SHALL 以下列策略管理 cached_content：
+
+# List 頁載入時，若 {{last_synced_at}} 距今 > 5 分鐘 → 背景 sync（不阻擋 UI）
+# Preview 展開時（點擊檔案名稱展開 cached_content），若 {{last_synced_at}} 距今 > 30 秒 → 同步 sync（顯示 loading）
+# cached_content 上限 1 MB；超過此值的檔案 SHALL {{cached_content = null}}，UI 提示「檔案過大，請至 git 直接查看」
+# Cache 失效採 etag 304；GitHub provider 透過 {{If-None-Match}} 不消耗 rate limit
+# UI SHALL 顯示「Last synced: X minutes ago」與「Refresh」按鈕（手動觸發 sync）
+
+h5. Scenario: Stale content auto-refreshed
+* *WHEN* 使用者展開 script preview（於 Suites tab 或 case detail），last_synced_at 為 10 分鐘前
+* *THEN* UI SHALL 顯示 cached 內容但同時觸發 sync，sync 完成後 UI SHALL 自動更新並顯示「Updated」提示
+
+h5. Scenario: Oversized content not cached
+* *WHEN* 嘗試 sync 一個 1.5 MB 的檔案
+* *THEN* cached_content SHALL 設為 null，{{last_sync_status}} 標示 {{OVERSIZED}}，UI 顯示「檔案超過 1 MB cache 限制，請至 git 查看」+ 跳轉連結
+
+h4. Requirement: System MUST provide M2M linkage between scripts and test cases
+資料表 {{automation_script_case_links}} SHALL 提供 script ↔ manual test case 多對多關聯：
+
+* {{id}} PK
+* {{team_id}} FK indexed
+* {{automation_script_id}} FK → {{automation_scripts.id}} ON DELETE CASCADE
+* {{test_case_id}} FK → {{test_cases.id}} ON DELETE CASCADE
+* {{link_type}} ENUM({{PRIMARY}}, {{COVERS}}, {{REFERENCES}}) default {{COVERS}}
+* {{note}} TEXT nullable
+* {{created_by}}, {{created_at}}
+* UniqueConstraint {{(automation_script_id, test_case_id)}}
+* Index {{(test_case_id)}}、{{(team_id)}}
+
+對應 API：
+* {{POST /api/teams/{team_id}/automation-scripts/{script_id}/links}}（payload: {{test_case_id}}, {{link_type}}, {{note}}）
+* {{DELETE /api/teams/{team_id}/automation-scripts/{script_id}/links/{link_id}}}
+* {{PATCH /api/teams/{team_id}/automation-scripts/{script_id}/links/{link_id}}}（更新 link_type / note）
+* {{GET /api/teams/{team_id}/test-cases/{case_id}/linked-automation}}（反向）
+
+Service 層 SHALL 拒絕同 case 出現第二筆 {{link_type=PRIMARY}}。
+
+h5. Scenario: PRIMARY uniqueness per case
+* *WHEN* 為 test_case_id=5 已有 PRIMARY link，再次建立 PRIMARY
+* *THEN* API SHALL 回 409 並提示「該 case 已有 PRIMARY link」
+
+h5. Scenario: Cascade on script delete
+* *WHEN* 使用者刪除一支 script
+* *THEN* 該 script 的所有 {{automation_script_case_links}} 紀錄 SHALL 透過 FK CASCADE 一併刪除
+
+h5. Scenario: Cascade on test case delete
+* *WHEN* 刪除一筆 {{test_cases}} 紀錄
+* *THEN* 指向該 case 的所有 link 紀錄 SHALL 被清除，script 本體保留
+
+h4. Requirement: UI MUST provide Automation Hub entry in team workspace
+{{app/templates/team_management.html}} SHALL 為每張團隊卡片新增「Automation Hub」連結，導向 {{/teams/{team_id}/automation-hub}}。
+
+{{app/templates/automation_hub.html}} SHALL 提供 3 個 tabs（*無 Scripts tab*）：
+* *Suites*：suite / group 列表與管理；從 GitHub 檔案列表中選擇 script 組合成 suite；執行 suite
+* *Runs*：執行歷史，依時間排序，跨 suite
+* *Coverage*：覆蓋率統計與未覆蓋 case 清單
+* *Settings*：admin 配置 storage / ci / result providers
+
+未配置任何 provider 的 team 開啟 Hub 時 SHALL 看到引導頁，主動帶到 Settings tab。
+
+h5. Scenario: First-time onboarding
+* *WHEN* 一個從未配置 provider 的 team 進入 Hub
+* *THEN* UI SHALL 顯示「Welcome to Automation Hub」引導，提供「設定 GitHub」「設定 Local Git」兩個 CTA
+
+h4. Requirement: Script preview UI MUST be embedded in Suites tab context
+Script preview *不*作為獨立頁面。UI SHALL 以 read-only preview 呈現 script content，並把編輯入口導向外部 git / IDE；preview 嵌入在以下場景：
+
+*1. Suites tab 檔案樹展開*：
+* 點擊左側 GitHub 檔案樹的檔案名稱 → 展開顯示：
+** Metadata（name、format、ref_path、last_synced_at + Refresh 按鈕）
+** CodeMirror 6 *read-only* 顯示 cached_content
+** 「Open in GitHub」「Open in VS Code」連結
+** 「Run Now」按鈕（觸發單一 script 執行）
+
+*2. Suite detail 內的 script 列表*：
+* 點擊 suite 內的組成 script → 展開顯示 read-only preview + Run Now + Linked Cases
+
+*3. Case detail Automation 面板*：
+* 點擊 linked script → 展開或跳轉顯示 preview + 最近 runs
+
+h5. Scenario: User wants to edit script
+* *WHEN* 使用者點擊「Open in GitHub」
+* *THEN* 新分頁開啟 GitHub 檔案頁，使用者可點擊「Edit this file」或「Open with GitHub Desktop」
+* *WHEN* 使用者修改並 push 後回到 TCRT
+* *THEN* 點擊 Refresh 按鈕或等待背景 sync，cached_content SHALL 更新為最新內容
+
+h5. Scenario: Script with external dependencies
+* *WHEN* cached_content 包含 {{from pages.xxx import ...}} 或 {{import ./utils/...}}
+* *THEN* UI SHALL 在預覽區上方顯示提示「⚠️ 此 script 依賴外部模組，請在 IDE 中開啟完整專案以確保正確編輯」
+
+h4. Requirement: Test case detail MUST display reverse Automation Coverage panel
+{{app/templates/test_case_management.html}} 的 case detail 區域 SHALL 新增「Automation」面板，顯示：
+
+* 該 case 所有 linked scripts，每筆含：script name、format、link_type badge、last_run_status badge（PASSED / FAILED / RUNNING / etc.）、provider 名稱、展開 preview 的連結、跳轉到最近 run report 的連結
+* Empty state：「This case has no automation coverage」+「+ Link automation script」按鈕
+* 「+ Link script」按鈕：開啟 picker 搜尋 {{automation_scripts}} 快取表（由 GitHub 自動掃描填入），顯示 ref_path 與 format；選擇後建立 link
+
+對應 API：{{GET /api/teams/{team_id}/test-cases/{case_id}/linked-automation}} 已於前文 Requirement 定義。
+
+h5. Scenario: Test case without automation
+* *WHEN* 使用者開啟一筆無 link 的 test case detail
+* *THEN* Automation 面板 SHALL 顯示 empty state 與 CTA
+
+h5. Scenario: Last run status badge updates
+* *WHEN* linked script 完成新 run（透過 webhook 更新 status）
+* *THEN* 下次 case detail 載入 SHALL 顯示新的 last_run_status
+
+h4. Requirement: System MUST compute coverage statistics per team
+端點 {{GET /api/teams/{team_id}/automation-coverage}} SHALL 回傳：
+
+{code:json}
+{
+  "total_test_cases": 250,
+  "with_primary_link": 80,
+  "with_any_link": 145,
+  "uncovered_count": 105,
+  "uncovered_sample": [{"test_case_id": 1, "test_case_number": "TC-001", "title": "..."}, ...],
+  "stale_scripts": [{"script_id": 5, "name": "...", "last_run_at": "...", "days_since_last_run": 45}, ...]
+}
+{code}
+
+{{stale_scripts}} 為 30 天以上無 run 的 scripts。
+
+對應的 Coverage tab UI SHALL 視覺化呈現這些數字（statistic cards + 未覆蓋列表 + stale 列表）。
+
+h5. Scenario: Coverage reflects link_type weighting
+* *WHEN* team 有 100 case，其中 30 有 PRIMARY、20 有 COVERS、其餘無 link
+* *THEN* API SHALL 回 {{with_primary_link=30}}, {{with_any_link=50}}, {{uncovered_count=50}}
+
+h4. Requirement: System MUST support automation script groups (suites)
+資料表 {{automation_script_groups}} SHALL 提供 script 的邏輯分組，用於將多個 script 組合成一個可執行的 suite：
+
+* {{id}} PK
+* {{team_id}} FK NOT NULL, indexed
+* {{name}} VARCHAR(200) NOT NULL
+* {{description}} TEXT nullable
+* {{script_paths_json}} TEXT NOT NULL（script ref_path 陣列，如 {{["tests/test_login.py","tests/test_logout.py"]}}）
+* {{ci_job_name}} VARCHAR(200) nullable（在 CI provider 端的 job/workflow 名稱，由 TCRT 自動管理）
+* {{ci_job_type}} ENUM({{GITHUB_ACTIONS}}, {{JENKINS}}) nullable
+* {{created_by}}, {{updated_by}}, timestamps
+
+UniqueConstraint {{(team_id, name)}}。
+
+API：
+* {{POST /api/teams/{team_id}/automation-script-groups}}：建立 group；payload 含 {{name}}、{{description}}、{{script_ids}}（array）；service SHALL 呼叫 {{CIProvider.create_suite_job()}} 在 CI 端建立對應 job/workflow
+* {{PUT /api/teams/{team_id}/automation-script-groups/{group_id}}}：更新 metadata 與 scripts；service SHALL 呼叫 {{CIProvider.update_suite_job()}} 同步 CI 端
+* {{DELETE /api/teams/{team_id}/automation-script-groups/{group_id}}}：刪除 group；service SHALL 呼叫 {{CIProvider.delete_suite_job()}} 清理 CI 端
+* {{GET /api/teams/{team_id}/automation-script-groups}}：列表
+* {{GET /api/teams/{team_id}/automation-script-groups/{group_id}}}：詳情，含 scripts 列表與最近 runs
+* {{POST /api/teams/{team_id}/automation-script-groups/{group_id}/runs}}：觸發執行（見 run-orchestration spec）
+
+h5. Scenario: Create suite syncs to CI
+* *WHEN* QA 建立 suite「Login Regression」，包含 3 個 scripts
+* *THEN* TCRT SHALL 自動在 CI 端建立對應 job：
+** GitHub Actions：建立 {{.github/workflows/tcrt-suite-{group_id}-login-regression.yml}}
+** Jenkins：建立 Job {{tcrt-suite-5-login-regression}} 並加入 team View
+* *THEN* {{automation_script_groups.ci_job_name}} SHALL 記錄該 job 名稱
+
+h5. Scenario: Update suite syncs to CI
+* *WHEN* QA 從 suite 移除一個 script
+* *THEN* TCRT SHALL 呼叫 {{CIProvider.update_suite_job()}} 更新 CI 端配置，反映新的 test paths
+
+h5. Scenario: Delete suite cleans up CI
+* *WHEN* QA 刪除 suite
+* *THEN* TCRT SHALL 呼叫 {{CIProvider.delete_suite_job()}} 清理 CI 端 job/workflow，不留下孤兒
+
+h4. Requirement: Suites UI MUST allow composing from GitHub file list
+Suites tab 為 Automation Hub 的*主頁籤*。UI SHALL 允許 QA 從左側檔案列表勾選 scripts，並在右側建立或更新 suite；頁面直接顯示從 GitHub 載入的檔案列表與 suite 管理：
+
+*左側：GitHub 檔案列表*
+* 自動呼叫 {{StorageProvider.list_scripts()}} 載入 repo 中的 script 檔案（依 provider 設定的掃描路徑，預設 {{tests/}}）
+* 顯示檔案樹：ref_path、last_modified（git commit date）、script_format（從副檔名推斷）
+* 每個檔案可勾選（checkbox）用於加入 suite
+* 「重新掃描」按鈕：手動觸發 {{POST .../automation-scripts/sync}}
+* 點擊檔案名稱：展開 read-only preview（CodeMirror 6）與「Open in GitHub」連結
+
+*右側：Suites 列表*
+* 顯示所有 suites（card 或列表），每個 suite 含：名稱、scripts 數量、最後執行狀態 badge、執行按鈕
+* 點開 suite 顯示詳情：組成的 scripts 列表、執行歷史、編輯名稱/描述
+* 「+ New Suite」按鈕：modal 輸入名稱 → 從左側檔案列表勾選 scripts → 確認建立 → TCRT 自動呼叫 {{CIProvider.create_suite_job()}}
+* 編輯 suite：可從左側勾選/取消勾選調整組成 scripts → 自動呼叫 {{CIProvider.update_suite_job()}}
+
+h5. Scenario: Create suite from GitHub file list
+* *WHEN* QA 點「+ New Suite」，輸入名稱「Login Regression」，從左側勾選 {{tests/test_login.py}}、{{tests/test_logout.py}}、{{tests/test_password_reset.py}}
+* *THEN* TCRT SHALL 自動建立 suite、呼叫 {{CIProvider.create_suite_job()}} 在 CI 端建立對應 job/workflow
+
+h5. Scenario: Edit suite adds new script from GitHub
+* *WHEN* QA 在 suite 詳情中點「編輯」，從左側新勾選 {{tests/test_2fa.py}}
+* *THEN* TCRT SHALL 更新 {{automation_script_groups.script_paths_json}} 並觸發 {{CIProvider.update_suite_job()}}
+
+h4. Requirement: All write operations MUST write audit records
+script / link / group 的 CREATE / UPDATE / DELETE / sync 操作 SHALL 透過 {{audit_service.log_action()}} 寫 audit（TCRT *不*記錄 content_commit 或 content_proposed_via_pr，因為所有編輯由 IDE 完成，版控歷史在 git 中），{{resource_type ∈ {AUTOMATION_SCRIPT, AUTOMATION_SCRIPT_LINK, AUTOMATION_SCRIPT_GROUP}}}，details 含相關上下文（如 PR URL、commit sha、被連結的 case number、group name、CI job name）。
+
+h5. Scenario: Audit on link create
+* *WHEN* 使用者連結 script 到 test_case_number=TC-001 with link_type=PRIMARY
+* *THEN* audit log SHALL 出現 {{AUTOMATION_SCRIPT_LINK}} + {{CREATE}}，details 含 {{script_name}}、{{test_case_number}}、{{link_type}}
+
+h5. Scenario: Audit on suite create
+* *WHEN* QA 建立 suite「Login Regression」並同步到 Jenkins Job {{tcrt-suite-5-login-regression}}
+* *THEN* audit log SHALL 出現 {{AUTOMATION_SCRIPT_GROUP}} + {{CREATE}}，details 含 {{group_name}}、{{script_count}}、{{ci_job_name}}
+
+
+h1. Spec: automation-hub-run-orchestration
+_Source: {{openspec/changes/add-automation-hub/specs/automation-hub-run-orchestration/spec.md}}_
+
+h2. automation-hub-run-orchestration Specification
+
+h3. Purpose
+定義 TCRT 觸發、追蹤、顯示自動化執行的能力。實際執行由 CIProvider 委派到外部 CI（GH Actions / GitLab / Jenkins）；TCRT 只記錄 external_run_id、同步狀態、整合 ResultProvider 提供報表跳轉。
+
+h3. ADDED Requirements
+
+h4. Requirement: System MUST store run metadata as external references
+資料表 {{automation_runs}} SHALL 紀錄每次執行，schema MUST 包含：
+
+* {{id}} PK
+* {{team_id}} FK NOT NULL
+* {{automation_script_id}} FK nullable（single script run 時填入；suite run 時 NULL）
+* {{script_group_id}} FK → {{automation_script_groups.id}} nullable（suite run 時填入；single script run 時 NULL）
+* {{provider_id}} FK → {{team_automation_providers.id}}（CI slot 的 provider）
+* {{external_run_id}} VARCHAR(120) nullable, indexed（CI 端的 run id；可能在 trigger 後一段時間才填上）
+* {{external_run_url}} VARCHAR(500) nullable
+* {{status}} ENUM({{QUEUED}}, {{RUNNING}}, {{SUCCEEDED}}, {{FAILED}}, {{CANCELLED}}, {{UNKNOWN}})
+* {{triggered_by}} ENUM({{USER}}, {{WEBHOOK}}, {{SCHEDULE}}, {{MCP}})
+* {{triggered_by_user_id}} VARCHAR(64) nullable
+* {{triggered_by_webhook_id}} FK nullable
+* {{tcrt_correlation_id}} VARCHAR(36) NOT NULL, unique（uuid4，注入 CI workflow 的 input 用於配對）
+* {{ci_correlation_id}} VARCHAR(120) nullable（外部呼叫端提供的 id，如 GH commit sha）
+* {{workflow_id}} VARCHAR(200) NOT NULL（CIProvider 端的 workflow 識別）
+* {{branch}} VARCHAR(200) NOT NULL
+* {{inputs_json}} TEXT nullable（觸發時帶的 inputs）
+* {{runner_label}} VARCHAR(100) nullable（實際使用的 runner label，如 "self-hosted-staging"）
+* {{report_url}} VARCHAR(500) nullable（ResultProvider 解析後寫入）
+* {{started_at}} DATETIME nullable
+* {{finished_at}} DATETIME nullable
+* {{duration_ms}} INT nullable
+* {{error_summary}} TEXT nullable
+* {{last_synced_at}} DATETIME nullable
+* timestamps
+
+Indexes: {{(team_id, started_at)}}, {{(automation_script_id, started_at)}}, {{(status, last_synced_at)}}, {{(tcrt_correlation_id)}}.
+
+h5. Scenario: tcrt_correlation_id uniqueness
+* *WHEN* TCRT 觸發 2 次 run
+* *THEN* 兩筆 {{tcrt_correlation_id}} SHALL 為不同 uuid4，且 DB 唯一索引保證
+
+h5. Scenario: external_run_id may be empty initially
+* *WHEN* 剛觸發 GH Actions workflow_dispatch，API 立即回應，但 GH 尚未產生 run id
+* *THEN* {{automation_runs}} 紀錄 SHALL 先寫入 {{external_run_id=null, status=QUEUED, tcrt_correlation_id=<uuid>}}，後續 sync 配對成功才填 external_run_id
+
+h4. Requirement: System MUST trigger runs via CIProvider with tcrt_run_id injection
+端點 {{POST /api/teams/{team_id}/automation-scripts/{script_id}/runs}} SHALL：
+
+# 解析 script 的 CI workflow（從 script.tags 或 query param {{?workflow_id=}}；若未指定且 team 只有一個 workflow → 使用該唯一）
+# 產生 {{tcrt_correlation_id = uuid4()}}
+# 呼叫 {{CIProvider.trigger_run(workflow_id, branch, inputs={**user_inputs, "tcrt_run_id": tcrt_correlation_id})}}
+# 取得 {{ExternalRunRef}}（可能僅含 acknowledged=true、external_run_id 未知）
+# 建立 {{automation_runs}} 紀錄
+# 回傳 {{{run_id, tcrt_correlation_id, status: "QUEUED", status_url}}}
+
+Payload 可選欄位：
+* {{workflow_id}}：目標 workflow（未指定且 team 只有一個 workflow → 自動選）
+* {{branch}}：預設用 script.ref_branch
+* {{runner_label}}：目標 runner label（如 "self-hosted-staging"）；預設順序：script.preferred_runner_label → provider config {{default_runner_label}} → "ubuntu-latest"
+* {{inputs}}：workflow 的 dispatch inputs（key=value pairs）
+
+觸發流程 SHALL：
+# 若 payload 含 {{runner_label}}，將其併入 {{inputs}}（key 為 {{runner_label}}）
+# workflow YAML 必須用 {{runs-on: ${{ github.event.inputs.runner_label }}}} 來接收（TCRT docs 提供範本）
+# 寫入 {{automation_runs.runner_label}}
+
+h5. Scenario: Single workflow auto-selected
+* *WHEN* team 只配置一個 GH Actions workflow，使用者點「執行」未指定 workflow
+* *THEN* TCRT SHALL 自動用該 workflow，無需 user 選擇
+
+h5. Scenario: Multiple workflows require explicit choice
+* *WHEN* team 有多個 workflow，使用者點「執行」未指定
+* *THEN* UI SHALL 跳 modal 讓 user 選 workflow + branch + runner + inputs；API 缺 {{workflow_id}} SHALL 回 400 並列出可選 workflows
+
+h5. Scenario: Self-hosted runner selected
+* *WHEN* 使用者選擇 {{runner_label="self-hosted-staging"}}，觸發 run
+* *THEN* {{automation_runs.runner_label}} SHALL 記錄該值；inputs SHALL 包含 {{"runner_label": "self-hosted-staging"}}；GitHub Actions workflow SHALL 用 {{runs-on: ${{ inputs.runner_label }}}} 跑到正確的 runner
+* *WHEN* 該 runner 目前 busy
+* *THEN* GitHub SHALL 排隊；TCRT 端 status 仍為 QUEUED，不報錯
+
+h4. Requirement: System MUST trigger suite runs via CIProvider
+端點 {{POST /api/teams/{team_id}/automation-script-groups/{group_id}/runs}} SHALL 觸發整個 suite 的執行：
+
+# 從 {{automation_script_groups}} 取得 suite 資訊（含 {{ci_job_name}}、{{script_paths_json}}）
+# 產生 {{tcrt_correlation_id = uuid4()}}
+# 呼叫 {{CIProvider.trigger_run(ci_job_name, branch, inputs={tcrt_run_id, runner_label, test_paths})}}
+** GitHub Actions：{{workflow_id}} = suite workflow 檔名（如 {{tcrt-suite-5-login-regression.yml}}）
+** Jenkins：{{job_name}} = {{ci_job_name}}（如 {{tcrt-suite-5-login-regression}}）
+# 建立 {{automation_runs}} 紀錄（{{automation_script_id}} 為 NULL，因為這是 suite-level run）
+# 回傳 {{{run_id, tcrt_correlation_id, status: "QUEUED", status_url}}}
+
+{{automation_runs}} 表更新：
+* 新增 {{script_group_id}} FK → {{automation_script_groups.id}} nullable（suite run 時填入，single script run 時 NULL）
+* {{automation_script_id}} 改為 nullable（suite run 時 NULL）
+
+h5. Scenario: Run suite from group detail
+* *WHEN* QA 在「Login Regression」suite detail 頁點「Run Suite」
+* *THEN* TCRT SHALL 觸發對應的 CI job/workflow，執行 suite 內所有 scripts
+* *WHEN* suite 內有 3 個 scripts
+* *THEN* CI SHALL 依序（或並行）執行 {{pytest tests/test_login.py tests/test_logout.py tests/test_password_reset.py}}
+
+h5. Scenario: Suite run appears in run history
+* *WHEN* suite run 完成
+* *THEN* run history SHALL 顯示 suite name 而非 single script name，點開可看到 suite 內各 script 的執行結果（若 CI provider 支援 per-test 結果回傳）
+
+h4. Requirement: System MUST reconcile external_run_id via correlation polling
+觸發後 60 秒內，背景任務 SHALL 對 {{external_run_id=null}} 的 runs 反覆呼叫 {{CIProvider.list_workflows}}/{{get_recent_runs}}（或 vendor-specific 配對 method），用 {{inputs.tcrt_run_id == automation_runs.tcrt_correlation_id}} 配對；找到 → 寫入 external_run_id + external_run_url；60 秒仍未找到 → 標 {{status=UNKNOWN}} 並提供 UI 手動關聯按鈕。
+
+h5. Scenario: Successful correlation within window
+* *WHEN* 觸發後 15 秒，CI 已產生 run
+* *THEN* background poll SHALL 配對成功，automation_runs.external_run_id 填上 + status 同步
+
+h5. Scenario: Failed correlation
+* *WHEN* 60 秒過後仍找不到對應 run（CI 可能拒絕觸發）
+* *THEN* status 標 UNKNOWN；UI run detail 顯示「無法自動關聯到 CI run」+「手動關聯」按鈕，user 可貼上 external_run_id
+
+h4. Requirement: System MUST sync run status periodically for non-terminal runs
+背景 scheduler 任務 SHALL 每 60 秒掃描 {{status ∈ {QUEUED, RUNNING}}} 且 {{last_synced_at < now - 60s}} 的 runs，呼叫 {{CIProvider.get_run_status}} 取最新 status，更新 DB。
+
+到達終態（SUCCEEDED / FAILED / CANCELLED / UNKNOWN）後 sync SHALL 停止；同時 TCRT SHALL 呼叫 {{ResultProvider.get_run_report_url}} 填 {{report_url}}。
+
+h5. Scenario: RUNNING to SUCCEEDED transition
+* *WHEN* run 在 CI 完成
+* *THEN* 下次 sync SHALL 更新 status=SUCCEEDED、finished_at、duration_ms、report_url，並觸發 outbound webhook event {{run.completed}}
+
+h4. Requirement: System MUST allow cancelling runs
+端點 {{POST /api/teams/{team_id}/automation-runs/{run_id}/cancel}} SHALL 呼叫 {{CIProvider.cancel_run(external_run_id)}}；成功則 status=CANCELLED、寫 audit。CIProvider 不支援 cancel 時 SHALL 回 400 並提示「Provider 不支援 cancel」。
+
+h5. Scenario: Cancel succeeds
+* *WHEN* 使用者點 cancel，CI 確認取消
+* *THEN* TCRT 端 status 更新為 CANCELLED；audit 紀錄 actor + 原因（user 可選填）
+
+h4. Requirement: API MUST provide run list and detail
+API SHALL 提供下列端點，所有端點 SHALL 要求 team 讀取權限：
+
+* {{GET /api/teams/{team_id}/automation-runs}}：列表，SHALL 支援篩選 {{?script_id=&status=&branch=&since=&until=&triggered_by=}}，cursor 分頁（預設 50，max 200），排序 {{started_at DESC}}
+* {{GET /api/teams/{team_id}/automation-runs/{run_id}}}：詳情，SHALL 含完整 metadata + report_url + 跳轉到 external_run_url
+
+h5. Scenario: Locate run by CI correlation
+* *WHEN* 查詢 {{?ci_correlation_id=abc123}}
+* *THEN* API SHALL 回對應 run（若存在）
+
+h4. Requirement: UI MUST list runs and embed report links
+{{automation_run_history.html}} SHALL 顯示 run 列表，每行：status badge、script name、started_at、duration、triggered_by、branch、external_run_url 連結、report_url 連結。
+
+點開單筆 run SHALL 顯示「在 CI 中查看 logs」「在 Allure 中查看 report」兩個按鈕，*不嘗試在 TCRT 內顯示 stdout/stderr*（讓 CI 自己處理）。
+
+iframe embed mode（若 ResultProvider 設定）SHALL 直接在 run detail 內嵌入 {{<iframe src="{report_url}">}}。
+
+h5. Scenario: Click-through to CI
+* *WHEN* 使用者點「View on GitHub Actions」
+* *THEN* 新分頁開啟 {{external_run_url}}，顯示 GH 原生介面
+
+h4. Requirement: Script preview MUST surface recent runs and quick-run button
+Script preview（嵌入在 Suites tab 檔案樹展開區塊或 case detail）SHALL 顯示「Recent Runs」（最近 5 筆，showing status / started_at），與「Run Now」按鈕。
+
+「Run Now」按鈕點擊 SHALL 觸發 modal：
+* 顯示可選 workflow（從 CIProvider 列表）
+* branch（預設 script.ref_branch，可改）
+* runner（從 CIProvider.list_runners() 拉取，顯示 online/idle 狀態；預設 script.preferred_runner_label → provider default → "ubuntu-latest"）
+* workflow inputs（從 workflow YAML 解析；v1 可不解析，user 自填 key=value pairs）
+* 「Trigger」按鈕送出
+
+h5. Scenario: Quick run from suite context
+* *WHEN* 使用者於 suite detail 或展開的 script preview 中點 Run Now、確認 modal
+* *THEN* API 觸發 run，UI 立即跳轉到 run detail 頁顯示 status=QUEUED 並輪詢 status 變化
+
+h4. Requirement: Manual run reconcile MUST be supported
+端點 {{POST /api/teams/{team_id}/automation-runs/{run_id}/reconcile}} SHALL 接受 user 提供的 {{external_run_id}}，呼叫 {{CIProvider.get_run_status(external_run_id)}} 驗證；驗證通過則寫入 + 更新 status。
+
+h5. Scenario: Manual link after correlation failed
+* *WHEN* run 標 UNKNOWN，user 從 CI UI 找到真正的 run id 貼回 TCRT
+* *THEN* TCRT SHALL 驗證並關聯，後續 sync 繼續運作
+
+h4. Requirement: Audit MUST record trigger / cancel / reconcile
+所有 run 相關寫操作 SHALL 寫 audit {{ResourceType.AUTOMATION_RUN}}，details 含 script name、workflow_id、branch、actor、external_run_id（若已知）。
+
+h5. Scenario: Audit on trigger
+* *WHEN* 使用者觸發 run
+* *THEN* audit log SHALL 出現一筆 {{AUTOMATION_RUN}} + {{CREATE}}，details 含 {{script_name}}、{{workflow_id}}、{{branch}}、{{tcrt_correlation_id}}
+
+
+h1. Spec: automation-hub-smart-suite-recommendation
+_Source: {{openspec/changes/add-automation-hub/specs/automation-hub-smart-suite-recommendation/spec.md}}_
+
+h2. automation-hub-smart-suite-recommendation Specification
+
+h3. Purpose
+定義 TCRT 在連接 repo 後，透過標準 Automation Repo Contract 與 deterministic repo scan 先穩定識別 test script entry points，再以 optional LLM enrichment 產生較好的 suite 名稱與描述。Smart Scan 的核心 SHALL 不依賴 LLM；沒有 LLM key、LLM timeout、或團隊關閉 LLM 時，仍 SHALL 能以 rule-based 結果推薦 suites。
+
+h3. ADDED Requirements
+
+h4. Requirement: System MUST run Smart Scan as an asynchronous scan run
+Smart Scan SHALL 以非同步 scan run 執行，避免大型 repo、GitHub API latency 或 LLM timeout 阻塞 request。系統 SHALL 新增 scan run 持久化模型，至少包含 {{team_id}}、{{provider_id}}、{{status}}、{{scan_config_hash}}、{{progress_json}}、{{result_json}}、{{error_summary}}、timestamps。
+
+h5. Scenario: Smart Scan starts and returns scan_run_id
+* *WHEN* 使用者點擊 Smart Scan
+* *THEN* API SHALL 建立 scan run 並立即回 {{202 Accepted}} + {{scan_run_id}}
+* *THEN* 前端 SHALL 輪詢 scan run 狀態，而不是等待 GitHub + LLM 全部完成
+
+h5. Scenario: Existing ready scan can be reused
+* *WHEN* 相同 team、provider、branch、script etags、prompt version、model id、scan_config_hash 的 scan run 已是 {{READY}}
+* *THEN* API MAY 直接回可重用的 {{scan_run_id}}，避免重複打 GitHub 或 LLM
+
+h4. Requirement: System MUST support an Automation Repo Contract manifest
+Smart Scan SHALL support a repo-root manifest named {{tcrt-automation.yml}} by default。Manifest 的目的 SHALL 是讓 QA repo 使用固定且可驗證的結構，避免 TCRT 只靠 heuristic 猜測測試檔、POM、fixtures、resources 與 config。
+
+標準 repo structure SHOULD 為：
+
+{code}
+automation-repo/
+  tcrt-automation.yml
+  tests/                 # test entry points only
+  pages/                 # POM / Page Object Model
+  flows/                 # reusable business flows / scenario steps
+  fixtures/              # pytest fixtures / setup helpers
+  resources/
+    data/
+    files/
+    locators/
+  config/
+    envs/
+    config.example.yaml
+  scripts/               # local helper scripts
+  reports/               # generated artifacts, should not be committed
+{code}
+
+Manifest v1 SHALL support at least:
+
+{code:yaml}
+version: 1
+framework: pytest
+paths:
+  tests: tests/
+  pages: pages/
+  flows: flows/
+  fixtures: fixtures/
+  resources: resources/
+  config: config/
+scan:
+  include:
+    - "test_*.py"
+    - "*_test.py"
+    - "*.spec.ts"
+    - "*.test.ts"
+  exclude:
+    - "*conftest*"
+    - "*/pages/*"
+    - "*/flows/*"
+    - "*/fixtures/*"
+    - "*/resources/*"
+    - "*/config/*"
+suites:
+  grouping: first_level_directory
+  default_suite: Full Regression
+commands:
+  smoke: "pytest tests/smoke --junitxml=reports/junit/smoke.xml"
+  regression: "pytest tests/regression --junitxml=reports/junit/regression.xml"
+artifacts:
+  junit: reports/junit/
+  html: reports/html/
+  traces: reports/traces/
+{code}
+
+Smart Scan SHALL resolve the effective scan configuration in this order:
+# Provider config values explicitly marked as admin-enforced
+# Valid {{tcrt-automation.yml}} manifest
+# Provider {{smart_scan}} defaults
+
+Manifest parsing SHALL be non-destructive：invalid or missing manifest SHALL NOT block Smart Scan unless provider config sets {{smart_scan.require_manifest=true}} or {{smart_scan.enforce_repo_contract=true}}。
+
+Scan result SHALL include {{repo_contract}} metadata：{{manifest_path}}、{{manifest_found}}、{{manifest_etag}}、{{contract_status}}、{{framework}}、{{effective_tests_path}}、{{support_paths}}、{{missing_paths}}、{{violations}}。
+
+h5. Scenario: Manifest defines test and support paths
+* *WHEN* repo root contains valid {{tcrt-automation.yml}} with {{paths.tests=tests/}} and {{paths.pages=pages/}}
+* *THEN* Smart Scan SHALL scan only the effective tests path for entry points
+* *THEN* {{pages/}} SHALL be treated as support path and excluded from suite suggestions
+
+h5. Scenario: Manifest is missing but not required
+* *WHEN* repo has no {{tcrt-automation.yml}} and provider config has {{require_manifest=false}}
+* *THEN* Smart Scan SHALL fallback to provider {{smart_scan}} defaults
+* *THEN* {{repo_contract.contract_status}} SHALL be {{MISSING}} with a warning message
+
+h5. Scenario: Repo contract is enforced
+* *WHEN* provider config has {{require_manifest=true}} and repo has no valid manifest
+* *THEN* scan run SHALL stop with {{FAILED}}
+* *THEN* UI SHALL show a repo contract error instead of returning heuristic suite suggestions
+
+h4. Requirement: System MUST detect test script entry points deterministically
+Smart Scan SHALL 以 deterministic path filtering + structural content analysis 判斷 entry points。LLM SHALL NOT be required for entry point detection.
+
+*Phase 1 — Path-based filtering（快速過濾）：*
+* 掃描範圍：{{StorageProvider.list_scripts(path=effective_tests_path, recursive=True)}}；{{effective_tests_path}} 優先來自 {{tcrt-automation.yml}} 的 {{paths.tests}}，缺省時 fallback 為 provider config 的 {{smart_scan.scan_path}}，再缺省則為 {{"tests/"}}
+* 納入條件：檔案名稱符合 {{test_*}} 前綴 或 {{*.spec.*}} / {{*.test.*}} pattern
+* 排除條件（硬編碼 blacklist）：
+** {{__init__.py}}、{{conftest.py}}、{{conftest.js}}
+** 路徑含 {{pages/}}、{{page_objects/}}、{{pom/}}、{{flows/}}、{{utils/}}、{{helpers/}}、{{fixtures/}}、{{mocks/}}、{{resources/}}、{{testdata/}}、{{data/}}、{{config/}}、{{scripts/}}、{{reports/}}
+** 路徑含 {{.github/}}、{{.git/}}、{{node_modules/}}、{{venv/}}、{{env/}}、{{__pycache__/}}
+** 副檔名非 {{.py}}、{{.js}}、{{.ts}}、{{.jsx}}、{{.tsx}}、{{.spec.ts}}、{{.spec.js}}
+
+*Phase 2 — Content validation（精準確認）：*
+* 對 Phase 1 通過的檔案，service SHALL 讀取可接受大小內的 content（預設 {{max_scan_bytes=262144}}）
+* Python SHALL 使用 {{ast}} 判斷 {{def test_*}}、{{async def test_*}}、{{class Test*}}
+* JS/TS SHALL 先以 bounded lexical scan 判斷 {{test(}}、{{test.describe(}}、{{test.only(}}、{{test.skip(}}、{{it(}}、{{describe(}}；未來 MAY 改用 JS parser
+* 若內容不含任何 test pattern → 標記為 {{false_positive}}，不納入進入點列表
+* 若檔案超過 {{max_scan_bytes}}，SHALL 不送 LLM，並 MAY 以 Phase 1 結果保守納入且標記 {{content_unverified=true}}
+
+對應 API：
+回傳 entry point 每筆 SHALL 包含：{{ref_path}}、{{ref_branch}}、{{etag}}、{{detected_format}}、{{test_names}}、{{test_count}}、{{content_unverified}}。
+
+h5. Scenario: Mixed repo with helpers and real tests
+* *WHEN* repo 結構為：
+  ```
+  tests/
+  ├── auth/
+  │   ├── test_login.py          ← 進入點
+  │   ├── test_logout.py         ← 進入點
+  │   └── __init__.py            ← 排除
+  ├── pages/
+  │   └── login_page.py          ← 排除
+  ├── conftest.py                ← 排除
+  └── utils/
+      └── helpers.py             ← 排除
+  ```
+* *THEN* Smart Scan SHALL 只回傳 {{tests/auth/test_login.py}}、{{tests/auth/test_logout.py}}
+
+h5. Scenario: False positive filtered by content
+* *WHEN* {{tests/auth/setup_data.py}} 位於 {{tests/}} 下且檔名以 {{test_}} 開頭，但內容無任何 {{def test_}} 或 {{class Test}}
+* *THEN* Phase 2 標記為 false_positive，不納入進入點列表，回傳中標示 {{excluded: ["tests/auth/setup_data.py"]}}
+
+h4. Requirement: System MUST group entry points by directory structure
+Smart Scan SHALL 以*目錄結構*為基礎產生初步分組（rule-based clustering）：
+
+分組演算法：
+# 取所有 entry points 的 {{ref_path}}，按目錄層級分群
+# 若 effective tests path 下有子目錄（如 {{tests/auth/}}、{{tests/checkout/}}），每個子目錄為一個潛在 suite
+# 若 effective tests path 下無子目錄（flat 結構），所有 entry points 歸為單一 suite「Full Regression」
+# effective tests path 根目錄下零散檔案歸入「General」
+
+每個初步分組含：
+* {{directory_path}}：群組的根目錄（如 {{tests/auth/}}）
+* {{entry_points}}：該目錄下的進入點 ref_path 列表
+* {{estimated_test_count}}：所有 entry points 的 test_count 總和
+
+h5. Scenario: Nested directory structure
+* *WHEN* repo 結構為：
+  ```
+  tests/
+  ├── auth/
+  │   ├── test_login.py
+  │   └── test_logout.py
+  ├── checkout/
+  │   ├── test_cart.py
+  │   └── test_payment.py
+  └── admin/
+      └── test_user_management.py
+  ```
+* *THEN* 初步分組為：
+** Group A: {{tests/auth/}} → 2 scripts
+** Group B: {{tests/checkout/}} → 2 scripts
+** Group C: {{tests/admin/}} → 1 script
+
+h5. Scenario: Flat directory structure
+* *WHEN* repo 結構為 {{tests/test_login.py}}、{{tests/test_logout.py}}、{{tests/test_api.py}}（無子目錄）
+* *THEN* 初步分組為單一 group：「Full Regression」含 3 scripts
+
+h4. Requirement: System MUST keep LLM enrichment optional and privacy-bounded
+LLM enrichment SHALL 只用於改善 suite name / description / confidence，不得影響 entry point 是否成立。當 {{enable_llm=false}}、OpenRouter key 缺失、LLM timeout、或 LLM 回傳格式錯誤時，Smart Scan SHALL fallback 到 rule-based suggestions。
+
+*LLM Prompt 設計：*
+
+{code}
+You are a QA automation expert. I have a group of test scripts from a GitHub repository.
+
+Directory: {directory_path}
+Scripts:
+{script_paths_and_test_names}
+
+Please generate:
+1. A concise suite name (max 40 chars) in English, e.g., "Auth Regression", "Checkout Flow"
+2. A short description (max 120 chars) explaining what this suite covers
+3. A confidence score (0-1) for how well these scripts belong together
+
+Return as JSON:
+{
+  "suite_name": "...",
+  "description": "...",
+  "confidence": 0.95
+}
+{code}
+
+*Input 給 LLM 的資料：*
+* {{directory_path}}：目錄路徑
+* {{script_paths}}：每個 script 的 {{ref_path}}
+* {{test_names}}：deterministic scan 擷取出的 test function / describe names
+* {{detected_format}} 與 {{estimated_test_count}}
+* 預設不傳送完整檔案內容或 snippet；只有 {{send_source_snippets_to_llm=true}} 時 MAY 傳送截斷與 masking 後的 snippet
+
+*處理流程：*
+# 對每個 rule-based group 平行呼叫 LLM（async，可控制 concurrency）
+# 收集回傳的 suite_name / description / confidence
+# 若 confidence < 0.6 → 標記為「低信心」，UI 顯示警示「建議手動檢視」
+
+*LLM 配置：*
+* 先使用既有 app-level QA AI Helper / OpenRouter 設定；不得宣稱 team-level AI provider，除非另行新增 team-level AI provider capability
+* 預設 model：與 QA AI Helper 設定一致
+* Timeout：10 秒 per group；超時則 fallback 為 rule-based 名稱（如 {{auth/ → "Auth Regression"}}）
+* 錯誤處理：LLM 回傳非 JSON 或格式錯誤 → fallback 為 rule-based 名稱
+
+LLM enrichment SHALL 在 scan run background flow 中執行；API 使用者透過 scan_run 狀態查詢結果。
+
+h5. Scenario: LLM generates semantic name
+* *WHEN* rule-based group 為 {{tests/auth/}}（含 test_login.py, test_logout.py, test_2fa.py）
+* *THEN* LLM 回傳：{{suite_name: "Authentication Flows"}}（而非單純 "Auth Regression"）
+
+h5. Scenario: LLM disabled still returns suggestions
+* *WHEN* provider config 設定 {{smart_scan.enable_llm=false}}
+* *THEN* Smart Scan SHALL 回傳 rule-based suite suggestions，且 {{enrichment_source}} SHALL 為 {{rule_based}}
+
+h5. Scenario: Low confidence group
+* *WHEN* {{tests/miscellaneous/}} 內雜亂混有 API test、UI test、unit test
+* *THEN* LLM confidence=0.45 → UI 顯示「⚠️ 此群組信心較低，建議手動調整」
+
+h4. Requirement: System MUST provide Smart Scan suggestion UI
+Suites tab SHALL 顯示「Smart Scan」按鈕，點擊後開啟 suggestion modal。Modal SHALL 顯示 scan progress、repo contract validation、entry point summary、excluded reasons、suggested suites。
+
+*Modal 內容：*
+# *掃描進度條*（Step 1: 掃描檔案 → Step 2: 分析內容 → Step 3: 產生建議）
+# *Repo contract validation*：manifest 狀態、effective tests path、support paths、missing paths、violations
+# *建議 Suite 列表*（每個 suite 為一個 card）：
+** Suite 名稱（可 inline 編輯）
+** 描述（可 inline 編輯）
+** 組成的 scripts 列表（每個 script 可展開 read-only preview）
+** 信心度 indicator（綠色 ≥0.8 / 黃色 0.6-0.8 / 紅色 <0.6）
+** Checkbox：是否要建立此 suite（預設全勾）
+# *操作按鈕*：
+** 「重新掃描」：再次觸發 Smart Scan
+** 「取消」：關閉 modal，不建立任何 suite
+** 「建立選取的 Suites」：對勾選的 suites 逐一呼叫 {{POST .../automation-script-groups}} → 自動產生 CI jobs
+
+*建立後行為：*
+* 成功建立的 suites 在 modal 中顯示「✓ 已建立」並附 CI job URL
+* 自動關閉 modal，跳回 Suites tab 顯示新建的 suites
+* Audit 記錄 {{AUTOMATION_SCRIPT_GROUP}} + {{CREATE_FROM_SMART_SCAN}}
+
+h5. Scenario: User reviews and modifies suggestions
+* *WHEN* Smart Scan 建議 3 個 suites，使用者把其中一個 suite 名稱從 "Authentication Flows" 改為 "Login & Auth"
+* *THEN* 點擊「建立」後，以修改後的名稱建立 suite
+
+h5. Scenario: User deselects one suite
+* *WHEN* Smart Scan 建議 3 個 suites，使用者取消勾選第 2 個
+* *THEN* 只建立 2 個 suites，未勾選的不建立
+
+h5. Scenario: User sees repo contract validation
+* *WHEN* Smart Scan 使用 manifest 且發現 {{resources/}} 存在、{{config/}} 不存在
+* *THEN* UI SHALL 顯示 manifest 狀態、effective tests path、support paths 與 missing optional paths
+* *THEN* missing optional paths SHALL be warning, not fatal
+
+h4. Requirement: System MUST support incremental Smart Scan
+Smart Scan SHALL 支援增量掃描：若 repo 已掃描過且 {{automation_scripts}} 表已有資料，再次掃描時：
+
+# 以 {{manifest_etag + ref_path + ref_branch + etag + scan_config_hash}} 判斷變更並重用未變更結果
+# 對新增或變更的 entry points 執行分組與 optional LLM enrichment
+# 提供「新增 suite 建議」或「加入既有 suite」的選項
+
+UI 顯示：
+* 「發現 3 個新 scripts，建議更新以下 suites」
+* 顯示建議的新增 suite + 既有 suite 的擴充建議
+
+h5. Scenario: New scripts added after initial scan
+* *WHEN* 初次 Smart Scan 建立了「Auth Regression」suite（含 2 scripts）
+* *WHEN* 使用者後來新增 {{tests/auth/test_password_reset.py}}
+* *THEN* 再次 Smart Scan 偵測到新檔案 → 建議「將 test_password_reset.py 加入既有 Auth Regression suite」或「建立新 suite」
+
+h4. Requirement: System MUST persist Smart Scan results for audit
+Smart Scan 的每次執行 SHALL 寫 audit：
+
+* {{ResourceType.AUTOMATION_SCRIPT_GROUP}}
+* {{Action.SMART_SCAN}}
+* Details 含：
+** {{scan_run_id}}：scan run id
+** {{scanned_path}}：掃描的根路徑
+** {{manifest_found}}：是否找到 repo contract manifest
+** {{repo_contract_status}}：repo contract validation 狀態
+** {{entry_points_found}}：發現的進入點數量
+** {{entry_points_excluded}}：排除的檔案數量
+** {{groups_suggested}}：建議的 suite 數量
+** {{groups_created}}：實際建立的 suite 數量
+** {{llm_enabled}}：是否啟用 LLM enrichment
+** {{enrichment_source_counts}}：rule_based / llm 各自產生幾組建議
+** {{duration_ms}}：整體掃描耗時
+
+h5. Scenario: Smart Scan writes audit record
+* *WHEN* 使用者執行 Smart Scan 並建立 2 個 suites
+* *THEN* audit log SHALL 寫入 {{AUTOMATION_SCRIPT_GROUP}} + {{SMART_SCAN}}，details SHALL 包含 scan_run_id 與摘要數字
+
+h4. Requirement: System MUST allow custom scan configuration
+Provider config schema SHALL 新增 {{smart_scan}} 欄位：
+
+{code:json}
+{
+  "manifest_path": "tcrt-automation.yml",
+  "use_manifest": true,
+  "require_manifest": false,
+  "enforce_repo_contract": false,
+  "scan_path": "tests/",
+  "scan_depth": 3,
+  "include_patterns": ["test_*.py", "*_test.py", "*.spec.ts", "*.test.ts"],
+  "exclude_patterns": ["*conftest*", "*/pages/*", "*/page_objects/*", "*/pom/*", "*/flows/*", "*/fixtures/*", "*/resources/*", "*/config/*", "*/utils/*"],
+  "max_scan_bytes": 262144,
+  "enable_llm": true,
+  "llm_timeout_seconds": 10,
+  "llm_max_concurrency": 3,
+  "send_source_snippets_to_llm": false
+}
+{code}
+
+* {{manifest_path}}：repo contract manifest path，預設 {{tcrt-automation.yml}}
+* {{use_manifest}}：是否優先使用 manifest 解析掃描設定
+* {{require_manifest}}：是否要求 repo 必須有 valid manifest
+* {{enforce_repo_contract}}：是否將 repo contract validation violation 視為 fatal
+* {{scan_depth}}：最大遞迴深度（預設 3，避免掃到 node_modules 深層）
+* {{include_patterns}} / {{exclude_patterns}}：glob pattern 列表，覆寫硬編碼 blacklist
+* {{max_scan_bytes}}：單一檔案 content validation 的讀取上限
+* {{enable_llm}}：是否啟用 LLM 語意分析（關閉時只用 rule-based 分組 + 目錄名稱命名）
+* {{llm_timeout_seconds}}：LLM 呼叫 timeout
+* {{send_source_snippets_to_llm}}：是否允許傳送經截斷與 masking 的 source snippet；預設 false
+
+Admin 可在 Settings tab 的 provider 編輯頁面調整這些設定。
+
+h5. Scenario: Admin customizes Smart Scan filters
+* *WHEN* admin 將 {{smart_scan.include_patterns}} 設為 {{["*.spec.ts"]}} 且 {{enable_llm=false}}
+* *THEN* Smart Scan SHALL 只納入符合 include pattern 的檔案，並 SHALL 使用 rule-based 分組而不呼叫 LLM
+
+h5. Scenario: Admin requires manifest
+* *WHEN* admin 將 {{smart_scan.require_manifest=true}}
+* *THEN* 沒有 valid {{tcrt-automation.yml}} 的 repo SHALL 無法產生 Smart Scan suggestions
+* *THEN* UI SHALL 提供缺少 manifest 的錯誤與 expected structure summary
+
+h3. UI Specifications
+
+h4. Suites Tab — Smart Scan Button
+{code}
+┌─────────────────────────────────────────────┐
+│  Suites                                     │
+│  ┌─────────────────────────────────────┐   │
+│  │ [Smart Scan]  [+ New Suite Manual]  │   │
+│  └─────────────────────────────────────┘   │
+│                                             │
+│  ┌──────────────────┐  ┌────────────────┐  │
+│  │ GitHub File Tree │  │ Suite List     │  │
+│  │ (auto-discovered)│  │ (existing)     │  │
+│  └──────────────────┘  └────────────────┘  │
+└─────────────────────────────────────────────┘
+{code}
+
+h4. Smart Scan Modal — Suggestion Review
+{code}
+┌─────────────────────────────────────────────┐
+│  Smart Scan Results                    [X]  │
+│  ========================================== │
+│  Found 8 entry points → 3 suggested suites  │
+│                                             │
+│  [✓] Authentication Flows        [confidence: 95%]  │
+│      tests/auth/test_login.py               │
+│      tests/auth/test_logout.py              │
+│      tests/auth/test_2fa.py                 │
+│      [Edit Name] [Edit Desc] [Preview]      │
+│                                             │
+│  [✓] Checkout Regression         [confidence: 88%]  │
+│      tests/checkout/test_cart.py            │
+│      tests/checkout/test_payment.py         │
+│                                             │
+│  [ ] Miscellaneous Tests         [confidence: 42%] ⚠️│
+│      tests/test_api_health.py               │
+│      tests/test_performance.py              │
+│                                             │
+│  [Rescan]          [Cancel]  [Create 2 Suites]      │
+└─────────────────────────────────────────────┘
+{code}
+
+h3. API Endpoints
+
+h4. {{POST /api/teams/{team_id}/automation-scripts/smart-scan}}
+建立並啟動 Smart Scan run。
+
+Payload：
+* {{provider_id}}（選填，未填則使用 team 預設 storage provider）
+* {{branch}}（選填，未填則使用 provider default branch）
+* {{force}}（選填；true 時不重用 ready cache）
+
+回應（202）：
+{code:json}
+{
+  "scan_run_id": 42,
+  "status": "QUEUED"
+}
+{code}
+
+h4. {{GET /api/teams/{team_id}/automation-scripts/smart-scan/{scan_run_id}}}
+查詢 Smart Scan run 狀態與結果。
+
+回應（200）：
+{code:json}
+{
+  "scan_run_id": 42,
+  "status": "READY",
+  "progress": {"step": "READY", "completed": 8, "total": 8},
+  "result": {
+    "repo_contract": {
+      "manifest_path": "tcrt-automation.yml",
+      "manifest_found": true,
+      "contract_status": "VALID",
+      "framework": "pytest",
+      "effective_tests_path": "tests/",
+      "support_paths": {
+        "pages": "pages/",
+        "flows": "flows/",
+        "fixtures": "fixtures/",
+        "resources": "resources/",
+        "config": "config/"
+      },
+      "missing_paths": [],
+      "violations": []
+    },
+    "scanned_path": "tests/",
+    "entry_points_found": 8,
+    "entry_points_excluded": 3,
+    "suggested_suites": [
+      {
+        "suggested_name": "Authentication Flows",
+        "suggested_description": "Covers login, logout, and 2FA authentication scenarios",
+        "confidence": 0.95,
+        "enrichment_source": "llm",
+        "directory_path": "tests/auth/",
+        "script_paths": ["tests/auth/test_login.py", "tests/auth/test_logout.py"],
+        "estimated_test_count": 8
+      }
+    ]
+  }
+}
+{code}
+
+h4. {{POST /api/teams/{team_id}/automation-script-groups/batch-create}}
+批次建立 suites（從 Smart Scan 確認後呼叫）。
+
+Payload：
+{code:json}
+{
+  "scan_run_id": 42,
+  "suites": [
+    {
+      "name": "Authentication Flows",
+      "description": "Covers login, logout, and 2FA authentication scenarios",
+      "script_paths": ["tests/auth/test_login.py", "tests/auth/test_logout.py"]
+    }
+  ]
+}
+{code}
+
+回應（200）：
+{code:json}
+{
+  "created": [
+    {
+      "group_id": 5,
+      "name": "Authentication Flows",
+      "ci_job_name": "tcrt-suite-5-authentication-flows",
+      "ci_job_url": "https://github.com/..."
+    }
+  ],
+  "failed": []
+}
+{code}
+
+h3. Implementation Notes
+
+h4. Performance Considerations
+* Smart Scan SHALL read {{tcrt-automation.yml}} first when {{use_manifest=true}}；manifest content SHOULD be cached by {{manifest_etag}}
+* GitHub API {{list_scripts(recursive=True)}} 對大型 repo 可能很慢；{{scan_depth}} 與 include/exclude patterns SHALL 控制掃描範圍
+* Entry point detection SHALL be deterministic and local after content is fetched
+* LLM enrichment MAY 平行化，但 SHALL 控制 concurrency（預設 max 3）
+* 首次掃描大型 repo 可能耗時超過 30 秒；UI SHALL 透過 scan run progress 顯示狀態
+* LLM cache key SHALL 包含 manifest etag、script etags、test_names hash、model id、prompt version、scan_config_hash
+
+h4. Error Handling
+* GitHub API rate limit → scan run 標 {{FAILED}}，UI 顯示「掃描次數過多，請稍後再試」
+* LLM timeout → fallback 為 rule-based suggestion，不 block scan run
+* LLM 回傳非 JSON → fallback 為 rule-based suggestion
+* Manifest missing/invalid 且 {{require_manifest=true}} → scan run 標 {{FAILED}}，UI 顯示 repo contract 錯誤與 expected structure
+* Manifest invalid 且 {{require_manifest=false}} → scan run MAY continue with provider defaults，result 記錄 {{repo_contract.contract_status=INVALID}}
+* 無 entry points 發現 → scan run {{READY}} 且 result 為空列表，UI 顯示「未發現 test scripts，請確認 repo 結構」
+
+h4. Security
+* LLM prompt 預設 SHALL NOT 包含完整 script content 或 snippet
+* 預設只傳送 {{ref_path}}、test function names、detected format、estimated count
+* {{send_source_snippets_to_llm=true}} 時 SHALL 對 snippet 做長度限制與 credential pattern masking
+
+
+h1. Spec: automation-hub-webhook-integration
+_Source: {{openspec/changes/add-automation-hub/specs/automation-hub-webhook-integration/spec.md}}_
+
+h2. automation-hub-webhook-integration Specification
+
+h3. Purpose
+定義 Automation Hub 與外部系統的 webhook 整合：inbound 接收 CI 完成事件以更新 run status、outbound 廣播 TCRT 事件給訂閱端（Slack / Lark / 自家 dashboard）。雙向皆採 HMAC-SHA256 簽章。v1 outbound 無 retry queue（簡化），失敗只寫 audit。
+
+h3. ADDED Requirements
+
+h4. Requirement: System MUST provide inbound webhook for CI run-status updates
+端點 {{POST /api/v1/webhooks/ci/{token}/run-status}} SHALL 接收 CI 完成事件，token 對應 {{automation_webhooks}} 中 {{direction=INBOUND, is_active=true}} 的紀錄。
+
+Payload schema：
+
+{code:json}
+{
+  "tcrt_correlation_id": "uuid-string",
+  "external_run_id": "ci-run-123",
+  "external_run_url": "https://github.com/.../actions/runs/123",
+  "status": "SUCCEEDED",
+  "started_at": "2026-05-11T10:00:00Z",
+  "finished_at": "2026-05-11T10:12:34Z",
+  "duration_ms": 754000,
+  "report_url": "https://allure.../runs/123",
+  "error_summary": null
+}
+{code}
+
+成功 SHALL 更新對應 {{automation_runs}} 紀錄（依 {{tcrt_correlation_id}} 配對；若無則依 {{external_run_id}} + {{team_id}}），回 200 {{{"updated": true, "run_id": 33}}}。
+
+h5. Scenario: Successful update
+* *WHEN* CI 帶有效 token + 簽章 + 已知的 {{tcrt_correlation_id}}
+* *THEN* TCRT SHALL 更新 status / finished_at / report_url 等欄位，並觸發 outbound {{run.completed}} 事件
+
+h5. Scenario: Token not found
+* *WHEN* token 不存在或 is_active=false
+* *THEN* API SHALL 回 401（不洩漏存在性），寫 audit {{WEBHOOK_AUTH_FAIL}}
+
+h5. Scenario: Correlation id not found
+* *WHEN* payload 的 {{tcrt_correlation_id}} 在 TCRT DB 中不存在
+* *THEN* API SHALL 回 404 {{{"error": "Run not found"}}}，寫 audit 並提示 CI 端可能 race condition
+
+h4. Requirement: Inbound webhook MUST verify HMAC-SHA256 signature
+若 webhook 紀錄有 {{secret}}，請求 SHALL 攜帶 {{X-TCRT-Signature: sha256=<hex>}}，後端以 webhook secret 計算 raw body 的 HMAC-SHA256，與 header 比對；不符 SHALL 回 401。
+
+亦 SHALL 驗證 {{X-TCRT-Delivery: <uuid>}}（idempotency）；同 delivery_id 在 24 小時內第二次呼叫 SHALL 回 200 with {{{"duplicate": true}}}，不重複更新。
+
+h5. Scenario: Signature mismatch
+* *WHEN* 請求帶錯誤 signature
+* *THEN* TCRT SHALL 回 401，寫 audit {{WEBHOOK_AUTH_FAIL}}
+
+h5. Scenario: Idempotent delivery
+* *WHEN* 同 {{X-TCRT-Delivery}} 在 1 小時內第二次到達
+* *THEN* TCRT SHALL 回 200 {{{"duplicate": true}}}，不重複處理
+
+h4. Requirement: Inbound webhook MUST enforce per-token rate limit
+TCRT SHALL 對每個 token 套用 120 req/min 的 in-memory token bucket。超過 SHALL 回 429 並帶 {{Retry-After}} header。
+
+h5. Scenario: Burst protection
+* *WHEN* 同一 token 1 分鐘內第 121 次請求
+* *THEN* TCRT SHALL 回 429
+
+h4. Requirement: System MUST emit outbound events for hub lifecycle
+TCRT SHALL 對 {{automation_webhooks}} 中 {{direction=OUTBOUND, is_active=true}} 且符合事件訂閱的紀錄發送 POST。事件類型 SHALL 包含：
+
+* {{script.discovered}}：新 script 經 auto-discovery 發現並加入 hub
+* {{script.linked}}：script 連結到 test case
+* {{script.unlinked}}：script 解除連結
+* {{script.synced}}：script cached_content 重新 fetch 完成（etag 變更或手動觸發）
+* {{run.triggered}}：TCRT 觸發 run
+* {{run.tracked}}：run 配對到 external_run_id
+* {{run.completed}}：run 進入終態（含 SUCCEEDED / FAILED / CANCELLED）
+
+Payload envelope：
+
+{code:json}
+{
+  "event": "run.completed",
+  "delivery_id": "uuid",
+  "occurred_at": "2026-05-11T10:00:00Z",
+  "team_id": 1,
+  "data": {
+    "run_id": 33,
+    "script_id": 5,
+    "script_name": "Login Flow E2E",
+    "status": "FAILED",
+    "external_run_url": "...",
+    "report_url": "..."
+  }
+}
+{code}
+
+Headers：{{X-TCRT-Signature: sha256=<hex>}}（HMAC over raw body）、{{X-TCRT-Event}}、{{X-TCRT-Delivery}}、{{Content-Type: application/json}}。
+
+h5. Scenario: Slack receives run.completed
+* *WHEN* 一個 outbound webhook 訂閱 {{run.completed}}，run 進入 FAILED 狀態
+* *THEN* TCRT SHALL POST 到 target_url 帶 HMAC 簽章，Slack incoming webhook 可解析並轉成訊息
+
+h4. Requirement: Outbound dispatch MUST be fire-and-forget in v1
+v1 outbound SHALL *不* 引入 retry queue：
+
+* 發送 timeout 10 秒
+* 失敗（非 2xx 或 timeout）SHALL 寫一筆 audit {{WEBHOOK_DELIVERY_FAILED}}（含 status code、回應截斷 1KB、duration_ms）
+* UI SHALL 顯示「最近 50 次投遞」（含失敗），但 *不* 自動重試
+* 每次投遞無論成敗 SHALL 更新 {{automation_webhooks.last_triggered_at}} 與 {{last_status}}
+
+h5. Scenario: Outbound failure not retried in v1
+* *WHEN* outbound POST 收 503
+* *THEN* TCRT SHALL 寫 audit 標 FAILED，*不* 重試；UI 列入失敗清單
+
+h5. Scenario: User-driven manual replay
+* *WHEN* admin 在 UI 點「重發此事件」
+* *THEN* TCRT SHALL 重新發送該 delivery（含新 delivery_id），結果再次寫 audit
+
+h4. Requirement: System MUST provide webhook CRUD with one-time secret disclosure
+API SHALL 提供下列端點，所有端點 SHALL 要求 team admin 權限：
+
+* {{POST /api/teams/{team_id}/automation-webhooks}}：建立；payload 含 {{direction}}, {{name}}, {{target_url}}（outbound 必填）, {{events}}（list, outbound 必填）; response SHALL 一次性回 {{token + secret}}
+* {{GET /api/teams/{team_id}/automation-webhooks}}：列表，SHALL 只回 metadata + fingerprint，不回 token / secret
+* {{PATCH /api/teams/{team_id}/automation-webhooks/{id}}}：更新 name / target_url / events / is_active；SHALL 不允許改 direction
+* {{POST /api/teams/{team_id}/automation-webhooks/{id}/rotate-secret}}：重新產生 secret，SHALL 一次性回應
+* {{DELETE /api/teams/{team_id}/automation-webhooks/{id}}}：刪除
+* {{POST /api/teams/{team_id}/automation-webhooks/{id}/test}}：發送 test ping（outbound only）；inbound webhook SHALL 無此端點
+
+h5. Scenario: One-time secret display
+* *WHEN* 建立新 webhook
+* *THEN* API response SHALL 包含 token + secret；後續 GET SHALL 只回 fingerprint
+
+h4. Requirement: UI MUST provide webhook config page with examples
+{{automation_webhook_config.html}} SHALL 提供：
+
+* 建立 inbound webhook：表單 {{name}}；回應顯示 token + secret 一次（提供「複製 curl 範例」按鈕，內含完整 HMAC 計算示意）
+* 建立 outbound webhook：表單 {{name}}, {{target_url}}, events 多選 checkbox, secret（auto-generated）；「發送測試 ping」按鈕
+* 列表現有 webhook：fingerprint、last_triggered_at、last_status、is_active 切換
+* 最近 50 次投遞紀錄（從 audit 過濾）
+* 失敗投遞「重發」按鈕
+
+h5. Scenario: Test ping
+* *WHEN* admin 點「發送測試 ping」
+* *THEN* TCRT SHALL POST 假事件 {{{"event":"test","data":{...}}}} 到 target_url，UI 即時顯示 response status
+
+h4. Requirement: Documentation MUST include payload schema and CI workflow template
+{{docs/automation-webhook.md}} SHALL 包含：
+
+* Inbound payload schema 與必要 / 選用欄位
+* HMAC-SHA256 簽章計算範例（Python / Node / shell）
+* Outbound 各事件 payload schema
+* v1 不重試的行為說明
+* Rate limit 說明
+* 安全建議（secret 保管、IP 白名單）
+
+{{docs/automation-workflow-templates/github-actions-playwright.yml}} SHALL 提供完整可用的 GH Actions workflow 範例，包含：
+* 讀取 {{inputs.tcrt_run_id}}
+* 完成後 curl POST 到 TCRT inbound webhook 帶 HMAC 簽章
+* 用 secrets.TCRT_WEBHOOK_TOKEN + TCRT_WEBHOOK_SECRET
+
+h5. Scenario: Copy-paste workflow works
+* *WHEN* 使用者複製 docs 中的 GH Actions workflow，替換 owner / repo / secrets
+* *THEN* workflow SHALL 能正確觸發 → 執行 Playwright → 回報結果到 TCRT，無需修改其他細節
+
+
+h1. Spec: automation-hub-mcp-read
+_Source: {{openspec/changes/add-automation-hub/specs/automation-hub-mcp-read/spec.md}}_
+
+h2. automation-hub-mcp-read Specification
+
+h3. Purpose
+定義 Automation Hub 的 MCP 唯讀 API 暴露，讓 AI Helper / 第三方 MCP client 可讀取 script 列表、最近執行狀態、覆蓋率統計，並透過既有 test case detail 端點看到反向 linked automation 概要。
+
+h3. ADDED Requirements
+
+h4. Requirement: MCP MUST expose automation scripts list
+端點 {{GET /api/mcp/teams/{team_id}/automation-scripts}} SHALL 回傳 team 內所有 automation scripts，每筆含：
+
+* {{id}}, {{name}}, {{description}}, {{script_format}}
+* {{provider_name}}, {{provider_type}}
+* {{ref_path}}, {{ref_branch}}
+* {{linked_test_case_count}}, {{linked_test_case_numbers}}（陣列，最多 20 筆）
+* {{last_run_status}}, {{last_run_at}}, {{last_run_url}}, {{last_run_report_url}}
+* {{tags}} (array), {{updated_at}}
+
+Query params SHALL 支援 {{?format=&linked_test_case_id=&q=&cursor=&limit=}}（預設 50, max 200）。
+
+h5. Scenario: AI Helper queries automation inventory
+* *WHEN* MCP machine token 持有 team_id=1 存取權，呼叫端點
+* *THEN* SHALL 回傳全部 scripts，AI 可依此判斷 coverage 與最近健康度
+
+h5. Scenario: Filter by linked test case
+* *WHEN* 呼叫 {{?linked_test_case_id=5}}
+* *THEN* SHALL 回所有指向 case 5 的 scripts
+
+h4. Requirement: MCP MUST expose recent automation runs
+端點 {{GET /api/mcp/teams/{team_id}/automation-runs}} SHALL 回最近 N 筆 run（預設 50, max 200），每筆含：
+
+* {{id}}, {{automation_script_id}}, {{script_name}}
+* {{status}}, {{triggered_by}}
+* {{started_at}}, {{finished_at}}, {{duration_ms}}
+* {{external_run_url}}, {{report_url}}
+* {{branch}}, {{error_summary}}
+
+Query params SHALL 支援 {{?script_id=&status=&since=ISO8601&until=ISO8601}}。
+
+h5. Scenario: Find recent failures
+* *WHEN* 呼叫 {{?status=FAILED&since=2026-05-01T00:00:00Z}}
+* *THEN* 回該時間之後所有 FAILED runs
+
+h4. Requirement: MCP MUST expose coverage summary
+端點 {{GET /api/mcp/teams/{team_id}/automation-coverage}} SHALL 回：
+
+{code:json}
+{
+  "total_test_cases": 250,
+  "with_primary_link": 80,
+  "with_any_link": 145,
+  "uncovered_count": 105,
+  "uncovered_sample": [
+    {"test_case_id": 1, "test_case_number": "TC-001", "title": "..."}
+  ],
+  "stale_scripts": [
+    {"script_id": 5, "name": "...", "last_run_at": "...", "days_since_last_run": 45}
+  ],
+  "by_format": {
+    "PLAYWRIGHT_PY_ASYNC": 30,
+    "PYTEST": 15,
+    "PLAYWRIGHT_JS": 5
+  }
+}
+{code}
+
+{{uncovered_sample}} 最多 50 筆。
+
+h5. Scenario: AI Helper plans new test cases
+* *WHEN* AI 接到「為 sprint X 規劃測試案例」任務
+* *THEN* 可呼叫此端點得知哪些 case 未覆蓋、哪些 script 已 stale，避免重複建議
+
+h4. Requirement: All MCP automation reads MUST write audit
+所有 automation 相關 MCP 端點存取 SHALL 透過 {{audit_service.log_action()}} 寫 audit，{{resource_type ∈ {AUTOMATION_SCRIPT, AUTOMATION_RUN}}}，{{action_type=READ}}，details 含 query params 與 result count。
+
+h5. Scenario: Audit captures MCP usage
+* *WHEN* AI Helper 呼叫 {{/api/mcp/teams/1/automation-scripts?q=login}}
+* *THEN* audit log SHALL 出現對應紀錄，details 含 {{query=login}} 與 {{result_count}}
+
+h4. Requirement: MCP endpoints MUST respect machine principal team scope
+所有端點 SHALL 透過 {{mcp_dependencies.require_mcp_team_access}} 驗證 machine token 對該 team_id 有讀取權限；無權限 SHALL 回 403。
+
+h5. Scenario: Cross-team access blocked
+* *WHEN* machine token 只持有 team_id=2 存取權，呼叫 {{team_id=1}} 的端點
+* *THEN* API SHALL 回 403 並寫 audit {{MCP_UNAUTHORIZED_ACCESS}}
+
+
+h1. Spec: mcp-read-api (modified)
+_Source: {{openspec/changes/add-automation-hub/specs/mcp-read-api/spec.md}}_
+
+h2. mcp-read-api Specification (MODIFIED)
+
+h3. Purpose
+此 delta 修改既有 {{mcp-read-api}} capability，將 test case detail schema 擴充以攜帶 linked automation scripts 概要，讓 AI Helper / MCP client 可在單次取得測試案例詳情時得知該 case 的自動化覆蓋情況。
+
+h3. MODIFIED Requirements
+
+h4. Requirement: MCP test case detail schema MUST include linked automation scripts
+既有 {{MCPTestCaseDetailItem}} SHALL 追加兩個欄位：
+
+* {{linked_automation_script_count}}：integer，該 case 被連結的 automation script 總數
+* {{linked_automation_scripts}}：array，每筆包含：
+** {{script_id}}：integer
+** {{name}}：string
+** {{script_format}}：string（{{PLAYWRIGHT_PY_ASYNC}} / {{PYTEST}} / {{PLAYWRIGHT_JS}} / {{OTHER}}）
+** {{link_type}}：string（{{PRIMARY}} / {{COVERS}} / {{REFERENCES}}）
+** {{last_run_status}}：string（{{SUCCEEDED}} / {{FAILED}} / {{RUNNING}} / {{QUEUED}} / {{CANCELLED}} / {{UNKNOWN}} / {{null}}）
+** {{last_run_at}}：string (ISO 8601) or null
+** {{last_run_url}}：string or null（CI 端 run URL）
+** {{report_url}}：string or null（ResultProvider 提供）
+
+當該 case 無 linked script 時 {{linked_automation_script_count=0}}、{{linked_automation_scripts=[]}}。
+
+h5. Scenario: Existing clients remain compatible
+* *WHEN* 既有 MCP client 取得 test case detail，無視新欄位
+* *THEN* 回應 SHALL 保留所有原欄位，client SHALL 不受影響
+
+h5. Scenario: Test case with multiple linked automation scripts
+* *WHEN* test case 同時被 1 支 PRIMARY + 2 支 COVERS automation script 連結
+* *THEN* {{linked_automation_script_count=3}}，{{linked_automation_scripts}} SHALL 為 3 筆，各帶對應 {{link_type}} 與最新 run 狀態
+
+h5. Scenario: Linked script with no run yet
+* *WHEN* linked script 從未執行過
+* *THEN* 該筆的 {{last_run_status}}, {{last_run_at}}, {{last_run_url}}, {{report_url}} SHALL 全為 {{null}}
+
+h5. Scenario: Audit records remain unchanged
+* *WHEN* MCP client 取得擴充後的 test case detail
+* *THEN* 既有 audit 紀錄行為 SHALL 不變（仍為單筆 READ on TEST_CASE），新欄位 SHALL 不額外觸發 audit
+
+
+h1. Implementation Tasks
+_Source: {{openspec/changes/add-automation-hub/tasks.md}}_
+
+h3. 1. Data Model & Migration (P1)
+
+* [ ] 1.1 於 {{app/models/database_models.py}} 新增 5 張 ORM 表：{{TeamAutomationProvider}}、{{AutomationScript}}、{{AutomationScriptCaseLink}}、{{AutomationRun}}、{{AutomationWebhook}}，含 enum / FK / 索引 / unique constraint
+* [ ] 1.2 {{TeamAutomationProvider}}：{{team_id}} FK、{{provider_slot}} enum({{storage}}/{{ci}}/{{result}})、{{provider_type}} (varchar, 例如 {{storage:github}})、{{name}}、{{config_json}} (TEXT)、{{credentials_encrypted}} (TEXT, AES-256-GCM)、{{is_active}}、timestamps；unique {{(team_id, provider_slot, name)}}
+* [ ] 1.3 {{AutomationScript}}：{{team_id}}、{{provider_id}} FK、{{name}}、{{description}}、{{script_format}} enum、{{ref_path}}、{{ref_branch}}、{{cached_content}} (MEDIUMTEXT)、{{cached_content_etag}}、{{last_synced_at}}、{{tags_json}}、{{preferred_runner_label}} (VARCHAR(100))、{{created_by}}、{{updated_by}}、timestamps；unique {{(team_id, provider_id, ref_path, ref_branch)}}
+* [ ] 1.4 {{AutomationScriptCaseLink}}：{{team_id}} 索引、{{automation_script_id}} FK CASCADE、{{test_case_id}} FK → {{test_cases.id}} CASCADE、{{link_type}} enum、{{note}}、{{created_by}}、{{created_at}}；unique {{(automation_script_id, test_case_id)}}；index {{(test_case_id)}}
+* [ ] 1.5 {{AutomationRun}}：{{team_id}}、{{automation_script_id}} FK、{{provider_id}} FK (ci slot)、{{external_run_id}} (varchar 120 index)、{{external_run_url}}、{{status}} enum({{QUEUED}}/{{RUNNING}}/{{SUCCEEDED}}/{{FAILED}}/{{CANCELLED}}/{{UNKNOWN}})、{{triggered_by}} enum、{{triggered_by_user_id}}、{{triggered_by_webhook_id}}、{{tcrt_correlation_id}} (uuid)、{{ci_correlation_id}}、{{workflow_id}}、{{branch}}、{{inputs_json}}、{{runner_label}} (VARCHAR(100))、{{report_url}}、{{started_at}}、{{finished_at}}、{{duration_ms}}、{{error_summary}} (TEXT) timestamps
+* [ ] 1.6 {{AutomationWebhook}}：{{team_id}}、{{direction}} enum({{INBOUND}}/{{OUTBOUND}})、{{name}}、{{token}} (varchar 64 unique)、{{secret}} (varchar 128)、{{target_url}}、{{events_json}}、{{is_active}}、{{last_triggered_at}}、{{last_status}}、timestamps
+* [ ] 1.7 Alembic migration {{alembic/versions/<hash>_add_automation_hub_tables.py}}，含 indexes、unique、enum；downgrade 可還原
+* [ ] 1.8 更新 {{app/database_init.py}} 的 {{MAIN_REQUIRED_TABLES}}；bootstrap 驗證 {{AUTOMATION_PROVIDER_ENCRYPTION_KEY}} 是否設定（若 {{team_automation_providers}} 表非空且金鑰缺失 → 阻擋啟動並提供生成指引）
+* [ ] 1.9 新增 Pydantic schemas：{{app/models/automation_provider.py}}、{{automation_script.py}}、{{automation_run.py}}、{{automation_webhook.py}}、{{automation_link.py}}
+* [ ] 1.10 {{app/audit/__init__.py}} 新增 {{ResourceType.AUTOMATION_PROVIDER / AUTOMATION_SCRIPT / AUTOMATION_SCRIPT_LINK / AUTOMATION_RUN / AUTOMATION_WEBHOOK}}
+
+h3. 2. Provider Framework (P1)
+
+* [ ] 2.1 {{app/services/automation/providers/base.py}}：定義三個 {{Protocol}}（StorageProvider / CIProvider / ResultProvider）+ 共用 dataclass（ScriptRef / ScriptContent / CommitRef / BranchRef / PullRequestRef / WorkflowRef / ExternalRunRef / RunStatusSnapshot / ArtifactRef）
+* [ ] 2.2 {{app/services/automation/provider_registry.py}}：{{{provider_type: provider_class}}} 對照表 + {{get_provider(team_id, slot)}} 工廠
+* [ ] 2.3 {{app/services/automation/provider_credential_service.py}}：AES-256-GCM 加解密；nonce per record；fetch from env {{AUTOMATION_PROVIDER_ENCRYPTION_KEY}}
+* [ ] 2.4 {{app/services/automation/providers/github_storage.py}}：GitHub REST API；含 {{list_scripts}}（GET {{/repos/{owner}/{repo}/contents/{path}}} recursive）、{{read_script}}（GET contents + base64 decode + etag 處理）、{{write_script}}（PUT contents with sha）、{{list_branches}}、{{create_pull_request}}；支援 PAT 與 GitHub App auth
+* [ ] 2.5 {{app/services/automation/providers/local_git_storage.py}}：local filesystem + {{git}} CLI subprocess（air-gapped fallback）
+* [ ] 2.6 {{app/services/automation/providers/github_actions_ci.py}}：{{list_workflows}}、{{list_runners}}（GET {{/repos/{owner}/{repo}/actions/runners}}）、{{trigger_run}}（POST workflow_dispatches，注入 {{tcrt_run_id}} uuid input）、{{get_run_status}}（GET runs 配對）、{{cancel_run}}、{{list_artifacts}}
+* [x] 2.7 GH Actions 觸發後輪詢配對：60 秒內以 workflow + branch + event + 建立時間做 best-effort 配對；GitHub run list API 不回傳 workflow_dispatch inputs，{{tcrt_run_id}} 保留為排查 / 後續 reconcile 線索；找不到標 UNKNOWN 並允許 user 手動 reconcile
+* [ ] 2.8 {{app/services/automation/providers/jenkins_ci.py}}：
+** 認證：Basic Auth (username + API token) 或 trigger token；自動 GET {{/crumbIssuer/api/json}} 取 CSRF crumb
+** {{list_workflows}}：GET {{/api/json?tree=jobs[name,url,buildable]}} 列 jobs
+** {{list_runners}}：GET {{/computer/api/json?tree=computer[displayName,idle,offline,assignedLabels[name]]}} 列 nodes/agents；映射為 {{RunnerRef}}
+** {{trigger_run}}：POST {{/job/{name}/buildWithParameters?tcrt_run_id=...&NODE_LABEL=...}}；回應 {{Location}} header 拿 queue_item id；{{NODE_LABEL}} 傳入目標 node label
+** {{get_run_status}}：先查 queue（若尚未排入 build），再查 {{/job/{name}/{build_id}/api/json}}；狀態映射 {{SUCCESS/FAILURE/UNSTABLE/ABORTED/building}}
+** {{cancel_run}}：POST {{/job/{name}/{build_id}/stop}}
+** {{list_artifacts}}：GET {{/job/{name}/{build_id}/api/json?tree=artifacts[*]}}
+* [ ] 2.9 Jenkins 配對：queue item → executable.url → build number；queue 中 cancelled 或 60 秒未上 build 都標 UNKNOWN
+* [ ] 2.10 {{app/services/automation/providers/allure_result.py}}：依 {{base_url}} 與 {{run_url_template}} 組 URL；支援 {{link}} / {{iframe}} 兩種 mode；config 含 optional {{project}} 與 {{dashboard_url}}
+* [ ] 2.11 Provider self-test：每個 provider 啟動時呼叫 {{health_check()}}（GH whoami / Jenkins {{/me/api/json}} / Allure base_url 200 check），結果寫入 {{last_status}}；admin UI 可看
+* [ ] 2.12 Provider config schema：每個 provider 提供 Pydantic config model（GH: {{{owner, repo, default_branch, default_runner_label, auth_method, ...}}}；Jenkins: {{{base_url, auth_method, username, default_job_token, default_runner_label, auto_manage_views, view_name_template, job_name_template, ...}}}；Allure: {{{base_url, run_url_template, embed_mode, project, dashboard_url}}}），用於 settings UI validation 與 docs 自動生成
+* [ ] 2.13 {{github_actions_ci.py}} 新增 suite job 管理：{{create_suite_job}}（寫入 {{.github/workflows/tcrt-suite-{id}.yml}}）、{{update_suite_job}}、{{delete_suite_job}}、{{list_suite_jobs}}；內建 Jinja2 YAML 模板
+* [ ] 2.14 {{jenkins_ci.py}} 新增 suite job 管理：{{create_suite_job}}（{{createItem}} + {{addJobToView}}）、{{update_suite_job}}、{{delete_suite_job}}、{{list_suite_jobs}}；內建 Jinja2 config.xml 模板；支援 {{auto_manage_views}} 自動建立 team view
+* [ ] 2.15 {{app/services/automation/templates/}}：Jinja2 模板目錄，含 {{github-actions-suite.yml.j2}}、{{jenkins-suite-config.xml.j2}}；模板變數：{{suite_id}}、{{suite_name}}、{{test_paths}}、{{default_runner_label}}、{{tcrt_webhook_url_placeholder}}
+
+h3. 3. Provider Settings UI & API (P1)
+
+* [ ] 3.1 {{app/api/automation_providers.py}}：CRUD 端點 + 設定驗證 + {{POST .../test-connection}} 觸發 health_check
+* [ ] 3.2 {{app/templates/automation_provider_settings.html}}：admin 設定頁，依 provider type 動態渲染 config 表單（用 provider config schema 反射）
+* [ ] 3.3 {{app/static/js/automation-hub/providers/}}：JS 模組，依 provider_type 渲染表單；test connection 按鈕
+* [ ] 3.4 i18n 文案：每個 provider 的 label / description / help text
+* [ ] 3.5 Audit：provider CRUD 寫 audit
+
+h3. 4. Script Auto-Discovery & Suite Management (P2)
+
+* [x] 4.1 {{app/api/automation_scripts.py}}：唯讀端點（列表 / 詳情 / sync 觸發）+ 篩選 + cursor 分頁；*無 register / create endpoint*
+** {{GET /api/teams/{team_id}/automation-scripts}}：從 {{automation_scripts}} 快取表讀取
+** {{GET /api/teams/{team_id}/automation-scripts/{script_id}}}：詳情含 cached_content
+** {{POST /api/teams/{team_id}/automation-scripts/sync}}：觸發 auto-discovery
+* [x] 4.1.1 {{POST /api/teams/{team_id}/automation-scripts/sync}}：先解析 {{tcrt-automation.yml}}（若存在）取得 effective tests path，否則使用 provider config 的 {{scan_path}}（預設 {{"tests/"}}）；呼叫 {{StorageProvider.list_scripts(path, recursive=True)}} → 比對現有 {{automation_scripts}} → upsert（新增/更新/標記 stale）→ 回傳掃描摘要（新增 N / 更新 M / 移除 K）
+* [x] 4.2 {{app/services/automation/script_service.py}}：
+** auto_discover: 掃描 {{StorageProvider.list_scripts()}} → 比對 DB → upsert {{automation_scripts}}（name 預設為檔案名稱，script_format 從副檔名推斷：{{.py}} → PLAYWRIGHT_PY_ASYNC / PYTEST）
+** sync_single: 強制重新 fetch 單一 script cached_content；比對 etag
+** delete: TCRT 端刪快取紀錄，不刪 git 檔案；下次 auto_discover 會重新出現
+** update_metadata: 更新 name / description / preferred_runner_label（不影響 git 檔案）
+* [ ] 4.3 自動同步策略：首次進入 Suites tab 若 {{automation_scripts}} 表為空自動觸發 auto-discovery；背景排程每小時自動掃描；cached_content TTL 30 秒
+* [x] 4.4 {{app/api/automation_links.py}}：M2M link CRUD（{{POST /api/teams/{team_id}/automation-scripts/{script_id}/links}}、{{DELETE}}、{{PATCH}}）；反向 {{GET /api/teams/{team_id}/test-cases/{case_id}/linked-automation}}
+* [x] 4.5 Service 層驗證：同 case 至多一支 script 標 PRIMARY；cascade 測試
+* [x] 4.6 {{app/templates/automation_hub.html}}：team 內 hub 入口頁，3 tabs（*Suites* / Runs / Coverage / Settings）— *無 Scripts tab*
+* [x] 4.7 {{app/templates/automation_hub.html}} Suites tab：左側 GitHub 檔案樹（{{StorageProvider.list_scripts()}} 結果，可展開 read-only preview）+ 右側 Suite 列表；檔案可勾選用於組合 suite
+* [x] 4.8 {{app/static/js/automation-hub/suites/}}：GitHub 檔案樹元件 / suite 列表 / suite detail / 檔案勾選與組合邏輯
+* [x] 4.8.1 Suite 建立流程：勾選左側檔案 → 點「+ New Suite」→ 輸入名稱 → 確認 → 呼叫 {{POST .../automation-script-groups}} → 後端自動呼叫 {{CIProvider.create_suite_job()}}
+* [ ] 4.9 CodeMirror 6 read-only preview：嵌入在檔案樹展開區塊中；點擊檔案名稱展開顯示 cached_content；點擊內容區顯示「請使用 IDE 編輯」提示
+* [x] 4.10 {{app/templates/team_management.html}}：團隊卡片新增「Automation Hub」連結
+* [ ] 4.11 {{app/templates/test_case_management.html}} + 對應 JS：case detail 新增「Automation」面板，列 linked scripts、last_run_status、跳 CI / report 連結；admin 可解除 link；picker 從 {{automation_scripts}} 快取表搜尋
+* [ ] 4.12 i18n 文案
+* [x] 4.13 Audit：script auto-discovery、link CRUD、suite CRUD 寫 audit
+* [x] 4.14 {{automation_script_groups}} 資料表與 ORM：含 {{team_id}}、{{name}}、{{description}}、{{script_paths_json}}、{{ci_job_name}}、{{ci_job_type}}、timestamps
+* [x] 4.15 {{app/api/automation_script_groups.py}}：Suite CRUD（{{POST .../automation-script-groups}}、{{PUT}}、{{DELETE}}、{{GET}}）+ suite 觸發執行（{{POST .../automation-script-groups/{group_id}/runs}}）
+* [x] 4.16 {{app/services/automation/script_group_service.py}}：
+** create_group: 建立 group → 呼叫 {{CIProvider.create_suite_job()}} 在 CI 端建立對應 job/workflow → 寫入 {{ci_job_name}}
+** update_group: 更新 group scripts → 呼叫 {{CIProvider.update_suite_job()}} 同步 CI 端
+** delete_group: 刪除 group → 呼叫 {{CIProvider.delete_suite_job()}} 清理 CI 端
+** validate_script_paths: 確認所有 script paths 存在於 provider
+* [ ] 4.17 Suite UI：{{app/templates/automation_hub.html}} *Suites tab* 為主介面；左側 GitHub 檔案樹 + 右側 Suite 列表；suite detail 顯示組成 scripts（可重新排序）、執行歷史、編輯名稱/描述
+* [x] 4.18 Audit：script group CRUD 寫 audit {{AUTOMATION_SCRIPT_GROUP}}
+
+h3. 4.5 Smart Suite Recommendation (P2)
+
+* [ ] 4.5.0 {{automation_smart_scan_runs}} 資料表與 ORM/schema：記錄 scan run status/progress/result/error/config hash；支援 async progress 與結果重開
+* [ ] 4.5.1 {{app/services/automation/smart_scan_service.py}}：
+** load_repo_contract: 從 repo root 讀取 {{tcrt-automation.yml}}，解析 manifest v1 schema（framework、paths、scan、suites、commands、artifacts）
+** resolve_effective_scan_config: admin-enforced provider config → valid manifest → provider {{smart_scan}} defaults
+** validate_repo_contract: 檢查標準 QA repo paths（tests/pages/flows/fixtures/resources/config），回傳 manifest_found、contract_status、missing_paths、violations、support_paths
+** detect_entry_points: Phase 1 path filtering（effective tests path + include/exclude patterns）→ Phase 2 deterministic validation（Python AST；JS/TS bounded lexical scan）；POM/pages/flows/fixtures/resources/config/scripts/reports 不納入 entry points
+** group_by_directory: 依目錄結構 rule-based 分群；flat 結構時歸為單一 "Full Regression"；此結果不依賴 LLM
+** llm_enhance: optional enrichment；只送 ref_path + test_names + format + estimated count；timeout 10 秒 fallback rule-based
+** incremental_scan: 以 {{manifest_etag + ref_path + branch + etag + scan_config_hash}} 重用未變更結果，建議「加入既有 suite」或「新 suite」
+* [ ] 4.5.2 {{app/api/automation_scripts.py}} 新增 {{POST .../smart-scan}}：建立 scan run 並回 {{202 + scan_run_id}}；新增 {{GET .../smart-scan/{scan_run_id}}} 查 progress/result
+* [ ] 4.5.3 {{app/api/automation_script_groups.py}} 新增 {{POST .../batch-create}}：從 Smart Scan 確認後批次建立 suites；逐一呼叫 {{CIProvider.create_suite_job()}}
+* [ ] 4.5.4 Provider config 新增 {{smart_scan}} 欄位：{{manifest_path}}、{{use_manifest}}、{{require_manifest}}、{{enforce_repo_contract}}、{{scan_path}}、{{scan_depth}}、{{include_patterns}}、{{exclude_patterns}}、{{max_scan_bytes}}、{{enable_llm}}、{{llm_timeout_seconds}}、{{llm_max_concurrency}}、{{send_source_snippets_to_llm}}
+* [ ] 4.5.5 {{app/templates/automation_hub.html}} Suites tab 新增「Smart Scan」按鈕；點擊開啟 suggestion modal
+* [ ] 4.5.6 Smart Scan Modal UI：
+** 掃描進度條（queued → scanning → enriching → ready）
+** 顯示 repo contract validation（manifest 狀態、effective tests path、support paths、missing paths、violations）
+** 顯示 entry point summary 與 excluded files / reasons
+** 建議 Suite 卡片列表：suite 名稱（inline editable）、描述（inline editable）、組成 scripts（可展開 preview）、enrichment source/confidence、checkbox 是否建立
+** 操作按鈕：「重新掃描」、「取消」、「建立選取的 Suites」
+* [ ] 4.5.7 {{app/static/js/automation-hub/smart-scan/}}：掃描觸發、進度顯示、建議清單渲染、批次建立
+* [ ] 4.5.8 LLM client 整合：複用目前 app-level QA AI Helper / OpenRouter 設定；新增 smart_scan prompt/version；支援 async parallel（max concurrency 3）；無 key 時 deterministic fallback
+* [ ] 4.5.9 LLM / scan 結果快取：cache key 包含 manifest etag、script etags、test_names hash、model id、prompt version、scan_config_hash
+* [ ] 4.5.10 i18n 文案：Smart Scan 與 repo contract validation 相關 UI 文字
+* [ ] 4.5.11 Audit：Smart Scan 執行寫 audit {{AUTOMATION_SCRIPT_GROUP}} + {{SMART_SCAN}}
+* [ ] 4.5.12 文件 / starter template：新增 Automation Repo Contract 說明，提供 {{tcrt-automation.yml}} 範例與建議目錄（tests/pages/flows/fixtures/resources/config/scripts/reports）
+
+h3. 5. Run Orchestration (P2)
+
+* [ ] 5.1 {{app/api/automation_runs.py}}：{{POST /api/teams/{team_id}/automation-scripts/{script_id}/runs}} 單一 script 觸發（從 suite detail 或 case detail 呼叫）；{{POST /api/teams/{team_id}/automation-script-groups/{group_id}/runs}} suite 觸發（主要使用場景）；{{GET .../runs}}（列表）、{{GET .../runs/{run_id}}}（detail）、{{POST .../runs/{run_id}/cancel}}、{{POST .../runs/{run_id}/reconcile}}
+* [ ] 5.2 {{app/services/automation/run_service.py}}：
+** trigger_script: 解析 script 所屬 CI provider + workflow → 決定 runner_label（script.preferred_runner_label → provider config default → "ubuntu-latest"）→ 將 runner_label 併入 inputs → 呼叫 CIProvider.trigger_run（注入 tcrt_correlation_id）→ 寫 {{automation_runs}}（{{automation_script_id}} 填入，{{script_group_id}} NULL）
+** trigger_suite: 從 {{automation_script_groups}} 取得 suite 資訊（含 {{ci_job_name}}、{{script_paths_json}}）→ 決定 runner_label → 將 runner_label + test_paths 併入 inputs → 呼叫 CIProvider.trigger_run（注入 tcrt_correlation_id）→ 寫 {{automation_runs}}（{{script_group_id}} 填入，{{automation_script_id}} NULL）
+** sync: 對 QUEUED/RUNNING runs 每 60 秒呼叫 {{CIProvider.get_run_status}} 對齊；終態時呼叫 {{ResultProvider.get_run_report_url}} 填 report_url
+** reconcile: 處理觸發後 60 秒配對失敗（標 UNKNOWN + 提供 user 介面手動關聯外部 run_id）
+** 同 team 多 CI provider：UI 在「執行」按鈕的 modal 顯式選擇 provider + workflow
+* [ ] 5.3 {{app/services/scheduler.py}} 註冊 60 秒 sync job
+* [ ] 5.4 {{app/templates/automation_run_history.html}}：執行歷史列表，跨 script、跨 workflow；篩選 status / branch / triggered_by；點開直接跳 CI 原生 UI（external_run_url）
+* [ ] 5.5 Script preview（嵌入在 Suites tab 檔案樹展開區塊）顯示「最近 5 筆 runs」
+* [ ] 5.6 「執行此 script」按鈕：modal 讓 user 選 branch + workflow inputs（若 workflow 有 declared inputs）
+* [ ] 5.7 Cancel run：API 呼叫 {{CIProvider.cancel_run}} + 更新 status
+* [ ] 5.8 Audit：run trigger / cancel 寫 audit
+
+h3. 6. Result Provider Integration (P3)
+
+* [ ] 6.1 Per-run report URL：run detail 顯示「在 Allure 中開啟」按鈕 → {{AllureProvider.get_run_report_url(external_run_id)}}
+* [ ] 6.2 iframe embed mode（opt-in）：provider config 加 {{embed_mode: link | iframe}}；UI 依設定顯示 iframe 或 button；偵測到 X-Frame-Options DENY 時 fallback 為 link + 警示
+* [ ] 6.3 Dashboard 連結：Hub 頁顯示「Team Dashboard」按鈕 → {{AllureProvider.get_dashboard_url()}}（若 config 有設）
+* [ ] 6.4 Test case detail 的 Automation 面板：每筆 linked script 顯示 last_run 的 report 跳轉連結（Allure URL）
+* [ ] 6.5 docs 提供 Allure 部署 pattern：GitHub Pages、S3 + CloudFront、公司內 nginx + history dir 保留
+* [ ] 6.6 i18n 文案
+
+h3. 7. Coverage Tab (P3)
+
+* [x] 7.1 {{app/api/automation_coverage.py}}：{{GET /api/teams/{team_id}/automation-coverage}} 計算「總 test case 數」、「已 PRIMARY 覆蓋數」、「已 COVERS 覆蓋數」、「未覆蓋清單」、「stale scripts」（30 天無 run）
+* [x] 7.2 Hub Coverage tab：渲染統計 + 未覆蓋 case 列表 + 一鍵「為此 case 連結既有 script」+ stale scripts 警示
+* [x] 7.3 30 天 trend：簡單 SVG line chart（純前端，不引外部 lib）
+* [x] 7.4 i18n 文案
+
+h3. 8. MCP Read API (P3)
+
+* [ ] 8.1 {{app/models/mcp.py}} 新增 schemas：{{MCPAutomationScriptItem}}、{{MCPAutomationRunItem}}、{{MCPLinkedAutomationSummary}}
+* [ ] 8.2 {{app/api/mcp.py}} 新增端點：
+** {{GET /api/mcp/teams/{team_id}/automation-scripts}}（含 last_run_status、linked_test_case_numbers）
+** {{GET /api/mcp/teams/{team_id}/automation-runs}}（最近 N 筆）
+** {{GET /api/mcp/teams/{team_id}/automation-coverage}}（與 7.1 對齊但 read-only）
+* [ ] 8.3 既有 {{GET /api/mcp/teams/{team_id}/test-cases/{id}}} 追加 {{linked_automation_scripts}} 欄位（向後相容）
+* [ ] 8.4 MCP 端 audit 寫入
+* [ ] 8.5 更新 {{openspec/specs/mcp-read-api/spec.md}}（archive 階段）
+
+h3. 9. Webhook (Inbound + Outbound) (P4)
+
+* [ ] 9.1 {{app/api/automation_webhooks.py}}：webhook CRUD（per team）+ 建立時一次性回 token / secret + fingerprint
+* [ ] 9.2 {{app/api/automation_webhooks_public.py}}：{{POST /api/v1/webhooks/ci/{token}/run-status}}：HMAC 驗章 + idempotency（X-TCRT-Delivery）+ 更新 {{automation_runs.status}}
+* [ ] 9.3 {{app/services/automation/webhook_service.py}}：outbound 發送 + 簽章（簡化，無 retry queue）
+* [ ] 9.4 事件：{{script.linked}} / {{script.unlinked}} / {{run.triggered}} / {{run.tracked}} / {{run.completed}}
+* [ ] 9.5 失敗只寫 audit + UI 警告（v1 不做 retry）
+* [x] 9.6 {{app/templates/automation_webhook_config.html}} + JS：webhook 設定頁，含「複製 curl 範例」、「發送測試 ping」
+* [ ] 9.7 i18n + audit
+
+h3. 10. Local Git Provider & Air-gapped Support (P5)
+
+* [ ] 10.1 {{providers/local_git_storage.py}}：以 {{git}} CLI subprocess 讀寫；clone 預先 mount 的 working copy；fetch / pull / commit / push
+* [ ] 10.2 設定欄位：{{{ working_dir, remote_name, ssh_key_path, default_branch }}}
+* [ ] 10.3 Provider 本身不做 PR（只支援 commit + push）
+* [ ] 10.4 文件：air-gapped 部署範例（GitLab self-hosted、Gitea + Jenkins）
+
+h3. 11. Documentation
+
+* [ ] 11.1 {{docs/automation-hub-overview.md}}：使用者 onboarding（從 extension 產出腳本 → register 到 TCRT → 連結 case → 觸發 → 看結果）
+* [ ] 11.2 {{docs/automation-provider-setup.md}}：GitHub（PAT vs App）、LocalGit、GH Actions、Jenkins（API token / trigger token / CSRF crumb）、Allure 設定範例
+* [ ] 11.3 {{docs/automation-webhook.md}}：inbound webhook payload / 簽章 / curl 範例；outbound 事件 schema
+* [ ] 11.4 {{docs/automation-workflow-templates/}}：
+** {{github-actions-playwright.yml}}：含 {{tcrt_run_id}} input、{{runner_label}} input（用於 {{runs-on:}} 動態選擇 runner）、Python setup、pytest-playwright 安裝、執行 {{pytest}}、Allure 上傳到 Pages、完成後 curl 回 TCRT webhook
+** {{github-actions-suite-template.yml}}：TCRT 自動產生的 suite workflow 範例，含 {{tcrt_run_id}}、{{runner_label}}、{{test_paths}}（陣列）input、Python setup、pytest-playwright 安裝、執行 {{pytest}} 帶入所有 test paths、完成後 curl 回 TCRT webhook
+** {{jenkinsfile-playwright.groovy}}：含 {{tcrt_run_id}} 參數、{{NODE_LABEL}} 參數（用於 {{agent { label ... }}} 動態選擇 node）、Python 依賴安裝、執行 {{pytest}}、Allure publishHTML、完成後 sh curl 回 TCRT webhook
+** {{jenkins-suite-config-example.xml}}：TCRT 自動產生的 suite job config.xml 範例，含 Pipeline script、參數定義（{{tcrt_run_id}}、{{NODE_LABEL}}）、Python 依賴安裝、執行 {{pytest}} 帶入 suite 的 test paths
+* [ ] 11.5 {{README.md}} 新增 Automation Hub 章節與 {{AUTOMATION_PROVIDER_ENCRYPTION_KEY}} 環境變數說明
+* [ ] 11.6 {{docs/automation-security.md}}：credential 加密、HMAC、Provider 認證選擇建議
+
+h3. 12. Testing
+
+* [ ] 12.1 {{app/testsuite/automation/test_provider_registry.py}}：註冊、查詢、未知 provider type 報錯
+* [ ] 12.2 {{app/testsuite/automation/test_provider_credential_service.py}}：加解密、key 缺失行為、nonce 唯一性
+* [ ] 12.3 {{app/testsuite/automation/test_github_storage_provider.py}}：mock GH API；list / read / write / etag 304 / error 處理
+* [ ] 12.4 {{app/testsuite/automation/test_local_git_storage_provider.py}}：tmpdir + 本地 git；commit / list
+* [ ] 12.5 {{app/testsuite/automation/test_github_actions_ci_provider.py}}：mock GH API；trigger + tcrt_run_id 配對、status sync、cancel
+* [ ] 12.5.1 {{app/testsuite/automation/test_jenkins_ci_provider.py}}：mock Jenkins API；CSRF crumb、buildWithParameters、queue item 配對、build 狀態映射、cancel、artifact list
+* [x] 12.6 {{app/testsuite/automation/test_script_service.py}}：auto_discover（掃描 mock repo → upsert 多筆、stale 標記）、sync（etag 304、etag 變更更新）、delete（只刪 cache 不刪 git 檔案）
+* [x] 12.7 {{app/testsuite/automation/test_linkage_service.py}}：M2M CRUD、PRIMARY 唯一、cascade
+* [ ] 12.8 {{app/testsuite/automation/test_run_service.py}}：trigger、sync、reconcile UNKNOWN、cancel
+* [ ] 12.9 {{app/testsuite/automation/test_webhook_inbound.py}}：HMAC 驗章、idempotency、status 轉換
+* [ ] 12.10 {{app/testsuite/automation/test_webhook_outbound.py}}：簽章、事件 dispatch、失敗 audit
+* [ ] 12.11 {{app/testsuite/automation/test_mcp_endpoints.py}}：MCP 端唯讀、coverage 計算、test case detail 反向欄位
+* [ ] 12.12 {{app/testsuite/automation/test_smart_scan_service.py}}：mock repo 結構掃描、manifest 解析、repo contract validation、entry point 偵測、POM/resources/config 排除、false positive 過濾、rule-based 分群、LLM enhance fallback、增量掃描
+* [ ] 12.13 手動 E2E：建立 GitHub PAT 設定 provider → 在 GitHub repo 建立 {{tcrt-automation.yml}}、{{tests/test_login.py}}、{{pages/login_page.py}}、{{resources/data/users.yaml}} 並 push → TCRT auto-discovery 自動發現 → *點擊 Smart Scan → 確認 repo contract validation 與建議 suites → 自動建立* → 連結 manual case → 觸發 suite 執行 → 收 webhook 回 → case detail 看到 SUCCEEDED + 報表連結
+
+h3. 13. OpenSpec Sync & Archive
+
+* [ ] 13.1 完成所有實作與測試後，執行 {{openspec validate add-automation-hub}}
+* [ ] 13.2 同步 {{openspec/specs/<capability>/spec.md}}（6 新增 capability + mcp-read-api 修改）
+* [ ] 13.3 執行 {{openspec archive add-automation-hub}}

@@ -7,8 +7,10 @@ Jenkins agents often live on a different host from TCRT, so the natural
 "Jenkins curls Allure directly" pattern breaks when the operator wants Allure
 to stay reachable only on TCRT's loopback (e.g. ``127.0.0.1:5050``). Instead,
 Jenkins ships the raw ``allure-results`` directory as a single ``tar.gz`` to a
-TCRT webhook endpoint and TCRT — co-located with Allure — does the three-step
-handshake (project ensure / send-results / generate-report) over loopback.
+TCRT webhook endpoint and TCRT — co-located with Allure — does the handshake
+(project ensure / clean-results / send-results / generate-report) over loopback.
+Each report is scoped to a single run (clean-results clears only the staging
+dir, leaving prior report builds + trend history intact).
 
 The resulting per-run ``report_url`` is written back onto ``AutomationRun`` and
 returned to the caller so the run-status webhook can include it; either way
@@ -102,10 +104,16 @@ async def upload_run_results(
             # already exists; that's expected and not an error for us.
             await _ensure_project(client, api_root, project_id, auth_headers)
 
-            # 2. Upload each result file.
+            # 2. Empty the results staging dir so this report reflects ONLY the
+            # current run (send-results appends; without this every report
+            # rebuilds from the union of all runs ever sent). Generated report
+            # builds + trend history live elsewhere and are untouched.
+            await _clean_results(client, api_root, project_id, auth_headers)
+
+            # 3. Upload each result file.
             await _send_results(client, api_root, project_id, result_files, auth_headers)
 
-            # 3. Generate the report and capture the URL Allure assigns.
+            # 4. Generate the report and capture the URL Allure assigns.
             report_url = await _generate_report(
                 client, api_root, project_id, run, auth_headers
             )
@@ -188,6 +196,40 @@ async def _ensure_project(
             )
     except httpx.HTTPError as exc:
         logger.info("Allure project ensure for %s failed (non-fatal): %s", project_id, exc)
+
+
+async def _clean_results(
+    client: httpx.AsyncClient,
+    api_root: str,
+    project_id: str,
+    auth_headers: dict[str, str],
+) -> None:
+    """Empty the project's *results* staging dir before this run's upload.
+
+    Scopes the next ``generate-report`` to exactly one run. This clears only
+    the raw results staging area — already-generated report builds (prior
+    ``report_url``s stay valid) and the trend history are stored separately and
+    survive, so past executions remain viewable and the trend graph keeps
+    accumulating across runs.
+
+    Best-effort: a failed clean only risks a stale-contaminated report, which
+    shouldn't sink the whole upload — log and continue, matching the rest of
+    the handshake.
+    """
+    try:
+        resp = await client.get(
+            f"{api_root}/allure-docker-service/clean-results",
+            params={"project_id": project_id},
+            headers=auth_headers,
+        )
+        if resp.status_code >= 500:
+            logger.warning(
+                "Allure clean-results for %s returned %s", project_id, resp.status_code
+            )
+    except httpx.HTTPError as exc:
+        logger.warning(
+            "Allure clean-results for %s failed (non-fatal): %s", project_id, exc
+        )
 
 
 async def _send_results(

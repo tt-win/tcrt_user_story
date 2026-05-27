@@ -19,6 +19,9 @@ from app.database import get_db
 from app.models.database_models import (
     AdHocRun,
     AdHocRunSheet,
+    AutomationRun as AutomationRunDB,
+    AutomationScript as AutomationScriptDB,
+    AutomationScriptCaseLink as AutomationScriptCaseLinkDB,
     Team as TeamDB,
     TestCaseLocal as TestCaseLocalDB,
     TestCaseSection as TestCaseSectionDB,
@@ -29,21 +32,32 @@ from app.models.database_models import (
 )
 from app.models.lark_types import Priority, TestResultStatus
 from app.models.mcp import (
-    MCPCrossTeamTestCaseItem,
     MCPAdhocRunItem,
+    MCPAutomationCoverageStaleScript,
+    MCPAutomationCoverageSummary,
+    MCPAutomationCoverageTrendPoint,
+    MCPAutomationCoverageUncoveredCase,
+    MCPAutomationRunItem,
+    MCPAutomationScriptItem,
+    MCPCrossTeamTestCaseItem,
     MCPMachinePrincipal,
     MCPPageMeta,
+    MCPTeamAutomationCoverageResponse,
+    MCPTeamAutomationRunsResponse,
+    MCPTeamAutomationScriptsResponse,
     MCPTeamItem,
     MCPTeamTestCaseSectionsResponse,
-    MCPTestCaseLookupResponse,
-    MCPTestCaseSectionItem,
     MCPTeamTestCasesResponse,
     MCPTeamTestRunsResponse,
     MCPTeamsResponse,
     MCPTestCaseDetailResponse,
+    MCPTestCaseLookupResponse,
+    MCPTestCaseSectionItem,
     MCPTestCaseSetItem,
     MCPTestRunSetItem,
 )
+from app.services.automation.coverage_service import AutomationCoverageService
+from app.services.automation.linkage_service import AutomationLinkageService
 from app.models.test_run_set import TestRunSetStatus
 from app.services.test_run_set_status import resolve_status_for_response
 
@@ -647,13 +661,37 @@ async def get_team_test_case_detail(
             detail=f"找不到團隊 {team_id} 的 Test Case {test_case_id}",
         )
 
+    linkage_service = AutomationLinkageService(db)
+    try:
+        linked_automation = await linkage_service.list_linked_automation(
+            team_id=team_id,
+            test_case_id=test_case_id,
+        )
+    except Exception:
+        linked_automation = []
+
+    payload = _build_case_payload(
+        row,
+        include_content=True,
+        include_extended=True,
+    )
+    payload["linked_automation_scripts"] = [
+        {
+            "script_id": item.get("script_id"),
+            "name": item.get("name", ""),
+            "script_format": item.get("script_format", "OTHER"),
+            "ref_path": item.get("ref_path"),
+            "link_type": _to_text(item.get("link_type", "")) or "REFERENCES",
+            "last_run_status": item.get("last_run_status"),
+            "last_run_at": item.get("last_run_at"),
+            "last_run_url": item.get("last_run_url"),
+            "report_url": item.get("report_url"),
+        }
+        for item in linked_automation
+    ]
     return MCPTestCaseDetailResponse(
         team_id=team_id,
-        test_case=_build_case_payload(
-            row,
-            include_content=True,
-            include_extended=True,
-        ),
+        test_case=payload,
     )
 
 
@@ -961,4 +999,286 @@ async def list_team_test_case_sections(
         },
         sections=sections,
         total=len(sections),
+    )
+
+
+# ---------------------------------------------------------------- Automation Hub
+
+
+def _parse_string_list(raw: Optional[str]) -> list[str]:
+    if not raw:
+        return []
+    try:
+        data = json.loads(raw)
+    except (TypeError, ValueError):
+        return []
+    if not isinstance(data, list):
+        return []
+    return [str(item) for item in data if item is not None]
+
+
+async def _batch_latest_runs_by_script(
+    db: AsyncSession,
+    team_id: int,
+    script_ids: list[int],
+    *,
+    per_script_limit: int = 1,
+) -> Dict[int, list[AutomationRunDB]]:
+    """Return up to per_script_limit most-recent runs per script id."""
+    if not script_ids:
+        return {}
+    result = await db.execute(
+        select(AutomationRunDB)
+        .where(
+            AutomationRunDB.team_id == team_id,
+            AutomationRunDB.automation_script_id.in_(script_ids),
+        )
+        .order_by(AutomationRunDB.automation_script_id, AutomationRunDB.id.desc())
+    )
+    grouped: Dict[int, list[AutomationRunDB]] = {}
+    for run in result.scalars().all():
+        bucket = grouped.setdefault(int(run.automation_script_id), [])
+        if len(bucket) < per_script_limit:
+            bucket.append(run)
+    return grouped
+
+
+async def _batch_linked_case_numbers(
+    db: AsyncSession,
+    team_id: int,
+    script_ids: list[int],
+    *,
+    per_script_limit: int = 20,
+) -> Dict[int, list[str]]:
+    if not script_ids:
+        return {}
+    result = await db.execute(
+        select(
+            AutomationScriptCaseLinkDB.automation_script_id,
+            TestCaseLocalDB.test_case_number,
+            AutomationScriptCaseLinkDB.id,
+        )
+        .join(
+            TestCaseLocalDB,
+            TestCaseLocalDB.id == AutomationScriptCaseLinkDB.test_case_id,
+        )
+        .where(
+            AutomationScriptCaseLinkDB.team_id == team_id,
+            AutomationScriptCaseLinkDB.automation_script_id.in_(script_ids),
+        )
+        .order_by(AutomationScriptCaseLinkDB.automation_script_id, AutomationScriptCaseLinkDB.id)
+    )
+    grouped: Dict[int, list[str]] = {}
+    for script_id, test_case_number, _link_id in result.all():
+        bucket = grouped.setdefault(int(script_id), [])
+        if len(bucket) < per_script_limit and test_case_number:
+            bucket.append(str(test_case_number))
+    return grouped
+
+
+@router.get(
+    "/teams/{team_id}/automation-scripts",
+    response_model=MCPTeamAutomationScriptsResponse,
+)
+async def list_team_automation_scripts(
+    team_id: int,
+    db: AsyncSession = Depends(get_db),
+    principal: MCPMachinePrincipal = Depends(require_mcp_team_access),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    script_format: Optional[str] = Query(None, description="Filter by script_format"),
+    keyword: Optional[str] = Query(None, description="Partial match against name or ref_path"),
+):
+    del principal
+    await _ensure_team_exists(db, team_id)
+
+    conditions = [AutomationScriptDB.team_id == team_id]
+    if script_format:
+        conditions.append(AutomationScriptDB.script_format == script_format)
+    if keyword:
+        like = f"%{keyword.strip()}%"
+        conditions.append(or_(AutomationScriptDB.name.ilike(like), AutomationScriptDB.ref_path.ilike(like)))
+
+    total_stmt = select(func.count(AutomationScriptDB.id)).where(*conditions)
+    total = int((await db.execute(total_stmt)).scalar_one() or 0)
+
+    rows_stmt = (
+        select(AutomationScriptDB)
+        .where(*conditions)
+        .order_by(AutomationScriptDB.id.desc())
+        .offset(skip)
+        .limit(limit)
+    )
+    scripts = list((await db.execute(rows_stmt)).scalars().all())
+    script_ids = [int(script.id) for script in scripts]
+
+    latest_runs = await _batch_latest_runs_by_script(db, team_id, script_ids, per_script_limit=1)
+    linked_numbers = await _batch_linked_case_numbers(db, team_id, script_ids, per_script_limit=20)
+
+    items: list[MCPAutomationScriptItem] = []
+    for script in scripts:
+        runs = latest_runs.get(int(script.id), [])
+        latest = runs[0] if runs else None
+        items.append(
+            MCPAutomationScriptItem(
+                id=int(script.id),
+                name=script.name,
+                script_format=_to_text(script.script_format) or "OTHER",
+                ref_path=script.ref_path,
+                ref_branch=script.ref_branch,
+                description=script.description,
+                preferred_runner_label=script.preferred_runner_label,
+                tags=_parse_string_list(script.tags_json),
+                linked_test_case_count=int(script.linked_test_case_count or 0),
+                linked_test_case_numbers=linked_numbers.get(int(script.id), []),
+                last_run_status=(_to_text(latest.status) or None) if latest else None,
+                last_run_at=latest.started_at if latest else None,
+                last_run_url=latest.external_run_url if latest else None,
+                last_synced_at=script.last_synced_at,
+                created_at=script.created_at,
+                updated_at=script.updated_at,
+            )
+        )
+
+    return MCPTeamAutomationScriptsResponse(
+        team_id=team_id,
+        items=items,
+        page=MCPPageMeta(skip=skip, limit=limit, total=total, has_next=(skip + len(items)) < total),
+    )
+
+
+@router.get(
+    "/teams/{team_id}/automation-runs",
+    response_model=MCPTeamAutomationRunsResponse,
+)
+async def list_team_automation_runs(
+    team_id: int,
+    db: AsyncSession = Depends(get_db),
+    principal: MCPMachinePrincipal = Depends(require_mcp_team_access),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    status_filter: Optional[str] = Query(None, alias="status"),
+    branch: Optional[str] = Query(None),
+    script_id: Optional[int] = Query(None),
+    script_group_id: Optional[int] = Query(None),
+):
+    del principal
+    await _ensure_team_exists(db, team_id)
+
+    conditions = [AutomationRunDB.team_id == team_id]
+    if status_filter:
+        conditions.append(AutomationRunDB.status == status_filter)
+    if branch:
+        conditions.append(AutomationRunDB.branch == branch.strip())
+    if script_id is not None:
+        conditions.append(AutomationRunDB.automation_script_id == script_id)
+    if script_group_id is not None:
+        conditions.append(AutomationRunDB.script_group_id == script_group_id)
+
+    total = int((await db.execute(select(func.count(AutomationRunDB.id)).where(*conditions))).scalar_one() or 0)
+
+    rows_stmt = (
+        select(AutomationRunDB)
+        .where(*conditions)
+        .order_by(AutomationRunDB.id.desc())
+        .offset(skip)
+        .limit(limit)
+    )
+    rows = list((await db.execute(rows_stmt)).scalars().all())
+    items = [
+        MCPAutomationRunItem(
+            id=int(run.id),
+            automation_script_id=run.automation_script_id,
+            script_group_id=run.script_group_id,
+            workflow_id=run.workflow_id,
+            branch=run.branch,
+            status=_to_text(run.status) or "UNKNOWN",
+            triggered_by=_to_text(run.triggered_by) or "USER",
+            triggered_by_user_id=run.triggered_by_user_id,
+            external_run_id=run.external_run_id,
+            external_run_url=run.external_run_url,
+            report_url=run.report_url,
+            runner_label=run.runner_label,
+            started_at=run.started_at,
+            finished_at=run.finished_at,
+            duration_ms=run.duration_ms,
+            tcrt_correlation_id=run.tcrt_correlation_id,
+            error_summary=run.error_summary,
+            created_at=run.created_at,
+            updated_at=run.updated_at,
+        )
+        for run in rows
+    ]
+
+    return MCPTeamAutomationRunsResponse(
+        team_id=team_id,
+        items=items,
+        page=MCPPageMeta(skip=skip, limit=limit, total=total, has_next=(skip + len(items)) < total),
+    )
+
+
+@router.get(
+    "/teams/{team_id}/automation-coverage",
+    response_model=MCPTeamAutomationCoverageResponse,
+)
+async def get_team_automation_coverage(
+    team_id: int,
+    db: AsyncSession = Depends(get_db),
+    principal: MCPMachinePrincipal = Depends(require_mcp_team_access),
+    uncovered_limit: int = Query(50, ge=1, le=200),
+    stale_days: int = Query(30, ge=1, le=365),
+):
+    del principal
+    await _ensure_team_exists(db, team_id)
+
+    service = AutomationCoverageService(db)
+    data = await service.compute_coverage(
+        team_id=team_id,
+        uncovered_limit=uncovered_limit,
+        stale_days=stale_days,
+    )
+
+    summary = MCPAutomationCoverageSummary(
+        total_test_cases=int(data.get("total_test_cases", 0) or 0),
+        with_primary_link=int(data.get("with_primary_link", 0) or 0),
+        with_covers_link=int(data.get("with_covers_link", 0) or 0),
+        with_any_link=int(data.get("with_any_link", 0) or 0),
+        uncovered_count=int(data.get("uncovered_count", 0) or 0),
+        by_format={str(k): int(v or 0) for k, v in (data.get("by_format") or {}).items()},
+    )
+    uncovered = [
+        MCPAutomationCoverageUncoveredCase(
+            test_case_id=int(item["test_case_id"]),
+            test_case_number=item.get("test_case_number"),
+            title=item.get("title"),
+        )
+        for item in (data.get("uncovered_sample") or [])
+    ]
+    stale = [
+        MCPAutomationCoverageStaleScript(
+            script_id=int(item["script_id"]),
+            name=item.get("name", ""),
+            script_format=item.get("script_format"),
+            ref_path=item.get("ref_path"),
+            last_run_at=item.get("last_run_at"),
+            days_since_last_run=item.get("days_since_last_run"),
+        )
+        for item in (data.get("stale_scripts") or [])
+    ]
+    trend = [
+        MCPAutomationCoverageTrendPoint(
+            date=item["date"],
+            with_primary_link=int(item.get("with_primary_link", 0) or 0),
+            with_any_link=int(item.get("with_any_link", 0) or 0),
+            uncovered_count=int(item.get("uncovered_count", 0) or 0),
+            coverage_rate=float(item.get("coverage_rate", 0.0) or 0.0),
+        )
+        for item in (data.get("trend") or [])
+    ]
+    return MCPTeamAutomationCoverageResponse(
+        team_id=team_id,
+        summary=summary,
+        uncovered_sample=uncovered,
+        stale_scripts=stale,
+        trend=trend,
     )

@@ -209,6 +209,11 @@
                     <li class="nav-item" role="presentation">
                         <button class="nav-link" id="tab-mcp-token" data-bs-toggle="tab" data-bs-target="#tab-pane-mcp-token" type="button" role="tab" aria-controls="tab-pane-mcp-token" aria-selected="false" data-testid="tab-mcp-token" data-i18n="mcpToken.tabTitle">MCP Token</button>
                     </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="tab-org-automation-infra" data-bs-toggle="tab" data-bs-target="#tab-pane-org-automation-infra" type="button" role="tab" aria-controls="tab-pane-org-automation-infra" aria-selected="false" data-testid="tab-org-automation-infra">
+                            <i class="fas fa-cogs me-1"></i><span data-i18n="orgAutomationInfra.tabTitle">組織自動化基礎設施</span>
+                        </button>
+                    </li>
                 </ul>
                 <div class="tab-content pt-3" id="syncTabsContent">
                     <!-- 人員管理分頁內容 -->
@@ -527,6 +532,164 @@
                             </div>
                         </div>
                     </div>
+
+                    <!-- 組織自動化基礎設施（Super Admin only via org-sync modal） -->
+                    <div class="tab-pane fade" id="tab-pane-org-automation-infra" role="tabpanel" aria-labelledby="tab-org-automation-infra">
+                        <div class="card mb-3">
+                            <div class="card-header bg-light d-flex align-items-center justify-content-between flex-wrap gap-2">
+                                <div class="d-flex align-items-center">
+                                    <i class="fas fa-cogs me-2"></i>
+                                    <strong data-i18n="orgAutomationInfra.tabTitle">組織自動化基礎設施</strong>
+                                </div>
+                                <div class="d-flex gap-2">
+                                    <button type="button" class="btn btn-secondary btn-sm" id="orgInfraRefreshBtn">
+                                        <i class="fas fa-sync-alt me-1"></i><span data-i18n="common.refresh">Refresh</span>
+                                    </button>
+                                    <button type="button" class="btn btn-primary btn-sm" id="orgInfraAddProviderBtn">
+                                        <i class="fas fa-plus me-1"></i><span data-i18n="orgAutomationInfra.addProvider">新增 Provider</span>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="card-body">
+                                <p class="text-muted small mb-3" data-i18n="orgAutomationInfra.tabHint">全組織共用的 CI / Result Provider（僅 Super Admin 可管理）</p>
+
+                                <div id="orgInfraLoadingState" class="text-center py-4 d-none">
+                                    <div class="spinner-border text-primary" role="status">
+                                        <span class="visually-hidden" data-i18n="common.loading">Loading...</span>
+                                    </div>
+                                </div>
+
+                                <div id="orgInfraEmptyState" class="text-center py-4 d-none">
+                                    <i class="fas fa-plug text-muted" style="font-size: 2rem;"></i>
+                                    <h6 class="mt-3 mb-1" data-i18n="orgAutomationInfra.emptyTitle">尚未設定組織層 Provider</h6>
+                                    <p class="text-muted small mb-0" data-i18n="orgAutomationInfra.emptyDesc">設定全公司共用的 Jenkins / Allure Provider。</p>
+                                </div>
+
+                                <div id="orgInfraContent" class="d-none">
+                                    <div class="table-responsive">
+                                        <table class="table table-hover table-sm align-middle mb-0">
+                                            <thead class="table-light">
+                                                <tr>
+                                                    <th class="text-center" style="width: 64px;" data-i18n="automationHub.providers.slot">Slot</th>
+                                                    <th data-i18n="common.name">Name</th>
+                                                    <th data-i18n="automationHub.providers.credentials">Credentials</th>
+                                                    <th data-i18n="automationHub.providers.health">Health</th>
+                                                    <th data-i18n="common.status">Status</th>
+                                                    <th class="text-end" data-i18n="common.actions">Actions</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody id="orgInfraProviderRows"></tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Org Automation Infra: Provider Add/Edit Modal -->
+<div class="modal fade" id="orgInfraProviderModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="orgInfraProviderModalTitle"><span data-i18n="orgAutomationInfra.addProvider">新增 Provider</span></h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="orgInfraProviderForm" class="provider-form">
+                    <input type="hidden" id="orgInfraProviderId">
+                    <section class="modal-section">
+                        <header class="modal-section-header">
+                            <i class="fas fa-id-badge text-muted me-2"></i>
+                            <span data-i18n="automationHub.providers.basicsSection">Basics</span>
+                        </header>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label for="orgInfraProviderType" class="form-label" data-i18n="automationHub.providers.slot">Slot</label>
+                                <select id="orgInfraProviderType" class="form-select" required></select>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="orgInfraProviderName" class="form-label" data-i18n="common.name">Name</label>
+                                <input type="text" id="orgInfraProviderName" class="form-control" maxlength="100" required>
+                            </div>
+                            <div class="col-md-6 d-flex align-items-end">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="orgInfraProviderActive" checked>
+                                    <label class="form-check-label" for="orgInfraProviderActive" data-i18n="automationHub.providers.active">Active</label>
+                                </div>
+                            </div>
+                        </div>
+                    </section>
+                    <section class="modal-section">
+                        <header class="modal-section-header">
+                            <i class="fas fa-sliders-h text-muted me-2"></i>
+                            <span data-i18n="automationHub.providers.configSection">Configuration</span>
+                        </header>
+                        <div id="orgInfraConfigFields" class="row g-3"></div>
+                    </section>
+                    <section class="modal-section">
+                        <header class="modal-section-header">
+                            <i class="fas fa-key text-muted me-2"></i>
+                            <span data-i18n="automationHub.providers.credentialSection">Credentials</span>
+                        </header>
+                        <div class="text-muted small mb-2" data-i18n="automationHub.providers.credentialHint">Leave credential fields blank while editing to keep the existing credentials.</div>
+                        <div id="orgInfraCredentialFields" class="row g-3"></div>
+                        <div class="form-check mt-3 d-none" id="orgInfraClearCredentialsWrap">
+                            <input class="form-check-input" type="checkbox" id="orgInfraClearCredentials">
+                            <label class="form-check-label" for="orgInfraClearCredentials" data-i18n="automationHub.providers.clearCredentials">Clear stored credentials</label>
+                        </div>
+                    </section>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">Cancel</button>
+                <button type="button" class="btn btn-outline-info" id="orgInfraTestProviderConfigBtn">
+                    <i class="fas fa-vial me-1"></i><span data-i18n="automationHub.providers.testConnection">Test connection</span>
+                </button>
+                <button type="button" class="btn btn-primary" id="orgInfraSaveProviderBtn">
+                    <i class="fas fa-save me-1"></i><span data-i18n="common.save">Save</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Org Automation Infra: Health Result Modal -->
+<div class="modal fade" id="orgInfraProviderHealthModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-vial me-2"></i>
+                    <span data-i18n="automationHub.providers.healthModalTitle">Connection test result</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="orgInfraProviderHealthLoading" class="text-center py-4 d-none">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden" data-i18n="common.loading">Loading...</span>
+                    </div>
+                    <div class="mt-2 text-muted" data-i18n="automationHub.providers.testingNow">Testing connection...</div>
+                </div>
+                <div id="orgInfraProviderHealthContent" class="d-none">
+                    <div class="d-flex align-items-center gap-2 mb-3">
+                        <span id="orgInfraProviderHealthStatusBadge" class="badge"></span>
+                        <span id="orgInfraProviderHealthStatusLabel" class="fw-semibold"></span>
+                    </div>
+                    <div id="orgInfraProviderHealthMessage" class="mb-3"></div>
+                    <div id="orgInfraProviderHealthWarning" class="alert alert-warning d-none mb-3" role="alert"></div>
+                    <div id="orgInfraProviderHealthDetailsWrap" class="d-none">
+                        <h6 class="text-muted small text-uppercase mb-2" data-i18n="automationHub.providers.healthDetailsTitle">Details</h6>
+                        <dl id="orgInfraProviderHealthDetails" class="row mb-0 small"></dl>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.close">Close</button>
             </div>
         </div>
     </div>
@@ -535,6 +698,7 @@
 
 {% block scripts %}
 <script src="/static/js/team-management/main.js"></script>
+<script src="/static/js/team-management/org-automation-infra.js"></script>
 
 <!-- Hidden i18n texts for Organization Sync (used by JS without window.i18n.t) -->
 <div id="org-sync-i18n" class="d-none">

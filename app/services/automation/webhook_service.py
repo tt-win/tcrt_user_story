@@ -18,6 +18,7 @@ from app.audit import ActionType, AuditSeverity, ResourceType, audit_service
 from app.models.database_models import (
     AutomationRun,
     AutomationRunStatus,
+    AutomationRunTrigger,
     AutomationWebhook,
     AutomationWebhookDelivery,
     AutomationWebhookDirection,
@@ -80,6 +81,18 @@ class AutomationWebhookOutboundOnlyError(AutomationWebhookServiceError):
 
 class AutomationRunForWebhookNotFoundError(AutomationWebhookServiceError):
     pass
+
+
+class AutomationWebhookSuiteBindingError(AutomationWebhookServiceError):
+    """Raised when a script_group_id binding is invalid (wrong direction / team)."""
+
+
+class AutomationWebhookNoSuiteBoundError(AutomationWebhookServiceError):
+    """Raised when a /trigger call hits an inbound webhook with no bound suite."""
+
+
+class AutomationWebhookSuiteNotFoundError(AutomationWebhookServiceError):
+    """Raised when the webhook's bound script group no longer exists."""
 
 
 _DEFAULT_AUTO_WEBHOOK_NAME = "TCRT default (auto)"
@@ -172,8 +185,12 @@ class AutomationWebhookService:
         events: list[str] | None,
         is_active: bool,
         actor: str | None,
+        script_group_id: int | None = None,
     ) -> tuple[AutomationWebhook, str, str]:
         await self._ensure_unique_name(team_id=team_id, direction=direction, name=name)
+        await self._validate_suite_binding(
+            team_id=team_id, direction=direction, script_group_id=script_group_id
+        )
         token = _generate_token()
         secret = _generate_secret()
         now = _utcnow()
@@ -185,6 +202,7 @@ class AutomationWebhookService:
             secret=secret,
             target_url=(target_url or None),
             events_json=json.dumps(events or [], ensure_ascii=False, sort_keys=True),
+            script_group_id=script_group_id,
             is_active=is_active,
             created_by=actor,
             updated_by=actor,
@@ -207,6 +225,8 @@ class AutomationWebhookService:
         target_url_provided: bool = False,
         events: list[str] | None = None,
         is_active: bool | None = None,
+        script_group_id: int | None = None,
+        script_group_id_provided: bool = False,
     ) -> AutomationWebhook:
         webhook = await self.get_webhook(team_id=team_id, webhook_id=webhook_id)
         if name is not None and name != webhook.name:
@@ -221,6 +241,13 @@ class AutomationWebhookService:
             webhook.target_url = target_url or None
         if events is not None:
             webhook.events_json = json.dumps(events, ensure_ascii=False, sort_keys=True)
+        if script_group_id_provided:
+            await self._validate_suite_binding(
+                team_id=team_id,
+                direction=AutomationWebhookDirection(webhook.direction),
+                script_group_id=script_group_id,
+            )
+            webhook.script_group_id = script_group_id
         if is_active is not None:
             webhook.is_active = bool(is_active)
         webhook.updated_by = actor
@@ -450,6 +477,55 @@ class AutomationWebhookService:
             raise AutomationWebhookInactiveError("Webhook is disabled")
         return webhook
 
+    async def trigger_suite_run(
+        self,
+        *,
+        webhook: AutomationWebhook,
+        branch: str | None = None,
+        runner_label: str | None = None,
+        inputs: dict[str, str] | None = None,
+        ci_provider: Any = None,
+    ) -> AutomationRun:
+        """Trigger the suite (script group) bound to ``webhook`` on CI.
+
+        Reuses ``AutomationScriptGroupService.trigger_group_run`` (CI self-heal +
+        provider trigger), tagging the run as WEBHOOK-triggered. Imported locally
+        to avoid a circular import (script_group_service imports this module).
+        Returns the freshly created QUEUED run; final status flows back via the
+        existing ``/run-status`` inbound callback.
+        """
+        if not webhook.script_group_id:
+            raise AutomationWebhookNoSuiteBoundError(
+                "Webhook is not bound to a test suite"
+            )
+
+        from app.services.automation.script_group_service import (
+            AutomationScriptGroupNotFoundError,
+            AutomationScriptGroupService,
+        )
+
+        group_service = AutomationScriptGroupService(self.session)
+        try:
+            run = await group_service.trigger_group_run(
+                team_id=webhook.team_id,
+                group_id=webhook.script_group_id,
+                actor=None,
+                branch=branch,
+                runner_label=runner_label,
+                inputs=inputs,
+                ci_provider=ci_provider,
+                triggered_by=AutomationRunTrigger.WEBHOOK,
+                triggered_by_webhook_id=webhook.id,
+            )
+        except AutomationScriptGroupNotFoundError as exc:
+            raise AutomationWebhookSuiteNotFoundError(str(exc)) from exc
+
+        now = _utcnow()
+        webhook.last_triggered_at = now
+        webhook.last_status = "TRIGGERED"
+        await self.session.flush()
+        return run
+
     def verify_signature(
         self,
         *,
@@ -569,6 +645,32 @@ class AutomationWebhookService:
                 f"Webhook name '{name}' already exists for direction {direction.value}"
             )
 
+    async def _validate_suite_binding(
+        self,
+        *,
+        team_id: int,
+        direction: AutomationWebhookDirection,
+        script_group_id: int | None,
+    ) -> None:
+        if script_group_id is None:
+            return
+        if direction != AutomationWebhookDirection.INBOUND:
+            raise AutomationWebhookSuiteBindingError(
+                "script_group_id can only be set on INBOUND webhooks"
+            )
+        from app.models.database_models import AutomationScriptGroup
+
+        result = await self.session.execute(
+            select(AutomationScriptGroup.id).where(
+                AutomationScriptGroup.id == script_group_id,
+                AutomationScriptGroup.team_id == team_id,
+            )
+        )
+        if result.scalar_one_or_none() is None:
+            raise AutomationWebhookSuiteBindingError(
+                f"Script group {script_group_id} not found for team {team_id}"
+            )
+
 
 # ----------------------------------------------------------------- helpers
 
@@ -620,6 +722,7 @@ def webhook_to_dict(
         "secret_fingerprint": _fingerprint(webhook.secret),
         "target_url": webhook.target_url,
         "events": _load_events(webhook.events_json),
+        "script_group_id": webhook.script_group_id,
         "is_active": webhook.is_active,
         "last_triggered_at": webhook.last_triggered_at,
         "last_status": webhook.last_status,

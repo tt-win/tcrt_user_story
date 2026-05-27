@@ -1,3 +1,4 @@
+# ruff: noqa: E402
 from fastapi import FastAPI, Request, Query, Depends
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -136,6 +137,21 @@ async def index(request: Request):
 @app.get("/team-management", response_class=HTMLResponse)
 async def team_management(request: Request):
     return templates.TemplateResponse("team_management.html", {"request": request})
+
+
+@app.get("/automation-provider-settings", response_class=HTMLResponse)
+async def automation_provider_settings(request: Request):
+    return templates.TemplateResponse("automation_provider_settings.html", {"request": request})
+
+
+@app.get("/automation-webhook-config", response_class=HTMLResponse)
+async def automation_webhook_config(request: Request):
+    return templates.TemplateResponse("automation_webhook_config.html", {"request": request})
+
+
+@app.get("/automation-hub", response_class=HTMLResponse)
+async def automation_hub(request: Request):
+    return templates.TemplateResponse("automation_hub.html", {"request": request})
 
 
 @app.get("/adhoc-runs/{run_id}/execution", response_class=HTMLResponse)
@@ -357,6 +373,15 @@ async def startup_event():
         task_scheduler.start()
         logging.info("定時任務調度器已啟動")
 
+        # 啟動 Automation Hub 背景 ticker（每 60 秒 run sync、每小時 script 自動掃描）
+        try:
+            from app.services.automation.background import automation_background_manager
+
+            await automation_background_manager.start()
+            logging.info("Automation Hub 背景 ticker 已啟動")
+        except Exception as auto_err:
+            logging.warning("啟動 Automation Hub 背景 ticker 失敗（不阻止啟動）: %s", auto_err)
+
         # 初始化 Qdrant Async Client（若連線失敗不阻止服務啟動，後續請求會自動重試）
         try:
             from app.services.qdrant_client import get_qdrant_client
@@ -383,6 +408,14 @@ async def shutdown_event():
         logging.info("定時任務調度器已停止")
     except Exception as e:
         logging.error(f"停止定時任務調度器失敗: {e}")
+
+    try:
+        from app.services.automation.background import automation_background_manager
+
+        await automation_background_manager.stop()
+        logging.info("Automation Hub 背景 ticker 已停止")
+    except Exception as e:
+        logging.error(f"停止 Automation Hub 背景 ticker 失敗: {e}")
 
     try:
         from app.services.qdrant_client import close_qdrant_client

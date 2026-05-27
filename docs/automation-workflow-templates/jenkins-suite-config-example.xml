@@ -1,0 +1,79 @@
+<?xml version='1.1' encoding='UTF-8'?>
+<!--
+  Jenkins suite job config.xml — worked example of the rendered output from
+  app/services/automation/templates/jenkins-suite-config.xml.j2 when TCRT
+  provisions a suite. Stored as a Pipeline item via createItem. The pipeline
+  body lives inline; for production prefer Pipeline-from-SCM.
+-->
+<flow-definition plugin="workflow-job">
+  <description>TCRT-managed suite: {{ suite_name }}</description>
+  <keepDependencies>false</keepDependencies>
+
+  <properties>
+    <hudson.model.ParametersDefinitionProperty>
+      <parameterDefinitions>
+        <hudson.model.StringParameterDefinition>
+          <name>tcrt_run_id</name>
+          <description>TCRT correlation id</description>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.StringParameterDefinition>
+          <name>NODE_LABEL</name>
+          <defaultValue>any</defaultValue>
+        </hudson.model.StringParameterDefinition>
+        <hudson.model.TextParameterDefinition>
+          <name>test_paths</name>
+          <defaultValue>{{ test_paths_space_separated }}</defaultValue>
+        </hudson.model.TextParameterDefinition>
+      </parameterDefinitions>
+    </hudson.model.ParametersDefinitionProperty>
+  </properties>
+
+  <definition class="org.jenkinsci.plugins.workflow.cps.CpsFlowDefinition" plugin="workflow-cps">
+    <script><![CDATA[
+pipeline {
+    agent { label "${params.NODE_LABEL ?: 'any'}" }
+    environment {
+        TCRT_BASE_URL = credentials('tcrt-base-url')
+        TCRT_WEBHOOK_TOKEN = credentials('tcrt-webhook-token')
+        TCRT_WEBHOOK_SECRET = credentials('tcrt-webhook-secret')
+    }
+    stages {
+        stage('Test') {
+            steps {
+                sh '''
+                    python3 -m venv .venv && . .venv/bin/activate
+                    pip install -r requirements.txt
+                    pip install allure-pytest pytest-playwright
+                    python -m playwright install --with-deps chromium
+                    pytest ${test_paths} --alluredir=allure-results || true
+                '''
+            }
+        }
+    }
+    post {
+        always {
+            script {
+                def status = currentBuild.currentResult == 'SUCCESS' ? 'SUCCEEDED' :
+                             currentBuild.currentResult == 'ABORTED' ? 'CANCELLED' : 'FAILED'
+                def payload = groovy.json.JsonOutput.toJson([
+                    tcrt_run_id: params.tcrt_run_id,
+                    status: status,
+                    external_run_url: env.BUILD_URL
+                ])
+                sh """
+                    SIG=\$(printf '%s' '${payload}' | openssl dgst -sha256 -hmac \"\$TCRT_WEBHOOK_SECRET\" | awk '{print \$2}')
+                    curl -fsS -X POST \"\$TCRT_BASE_URL/api/v1/webhooks/ci/\$TCRT_WEBHOOK_TOKEN/run-status\" \\
+                      -H 'Content-Type: application/json' \\
+                      -H \"X-TCRT-Signature: sha256=\$SIG\" \\
+                      -d '${payload}'
+                """
+            }
+        }
+    }
+}
+    ]]></script>
+    <sandbox>true</sandbox>
+  </definition>
+  <triggers/>
+  <disabled>false</disabled>
+</flow-definition>

@@ -623,6 +623,90 @@ async def test_maybe_fill_report_url_skips_when_no_result_provider(automation_ru
 
 
 @pytest.mark.asyncio
+async def test_backfill_pending_reports_retries_recent_terminal_runs(
+    automation_run_db, monkeypatch
+):
+    """A terminal run whose report_url never filled (artifacts not yet archived
+    at the terminal tick) should be retried by the backfill sweep, while runs
+    that are too old or already have a URL are left alone."""
+    from datetime import datetime, timedelta, timezone
+
+    from app.services.automation import allure_proxy as proxy_module
+
+    proxied: list[int] = []
+
+    async def _fake_upload(*, session, run, archive_bytes):
+        proxied.append(run.id)
+        run.report_url = f"http://allure/r/{run.id}"
+        return run.report_url
+
+    monkeypatch.setattr(proxy_module, "upload_run_results", _fake_upload)
+
+    class _FakeJenkins:
+        async def download_build_artifacts_zip(self, external_run_id):
+            return b"PK-fake-zip-bytes"
+
+    ids = automation_run_db["ids"]
+    now = datetime.now(timezone.utc)
+
+    async with automation_run_db["async_sessionmaker"]() as session:
+        service = AutomationRunService(session)
+
+        async def _fixed_provider(_run):
+            return _FakeJenkins()
+
+        service._provider_from_run_record = _fixed_provider  # type: ignore[assignment]
+
+        def _terminal_run(corr, *, status, finished_at, report_url=None):
+            run = AutomationRun(
+                team_id=ids["team_id"],
+                automation_script_id=ids["script_id"],
+                provider_id=ids["ci_provider_id"],
+                external_run_id="https://jenkins/job/x/1#1",
+                status=status,
+                triggered_by=AutomationRunTrigger.USER,
+                tcrt_correlation_id=corr,
+                workflow_id="job-a",
+                branch="main",
+                inputs_json="{}",
+                report_url=report_url,
+                finished_at=finished_at,
+            )
+            session.add(run)
+            return run
+
+        recent = _terminal_run(
+            "recent", status=AutomationRunStatus.SUCCEEDED, finished_at=now
+        )
+        failed_recent = _terminal_run(
+            "failed", status=AutomationRunStatus.FAILED, finished_at=now
+        )
+        stale = _terminal_run(
+            "stale",
+            status=AutomationRunStatus.SUCCEEDED,
+            finished_at=now - timedelta(hours=2),
+        )
+        already = _terminal_run(
+            "already",
+            status=AutomationRunStatus.SUCCEEDED,
+            finished_at=now,
+            report_url="http://allure/existing",
+        )
+        await session.flush()
+
+        filled = await service.backfill_pending_reports(team_id=ids["team_id"])
+
+    filled_ids = {r.id for r in filled}
+    assert recent.id in filled_ids
+    assert failed_recent.id in filled_ids
+    assert stale.id not in filled_ids  # outside the recency window
+    assert already.id not in filled_ids  # already had a URL
+    assert recent.report_url == f"http://allure/r/{recent.id}"
+    assert already.report_url == "http://allure/existing"
+    assert set(proxied) == {recent.id, failed_recent.id}
+
+
+@pytest.mark.asyncio
 async def test_maybe_fill_report_url_noop_when_not_terminal(automation_run_db):
     """Non-terminal runs (QUEUED / RUNNING) should not get a report_url."""
     from app.services.automation.run_service import maybe_fill_report_url

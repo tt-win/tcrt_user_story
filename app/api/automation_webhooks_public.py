@@ -18,13 +18,19 @@ from app.services.automation.allure_proxy import (
     AllureProxyNotConfiguredError,
     upload_run_results,
 )
+from app.services.automation.script_group_service import (
+    AutomationScriptGroupCIApiError,
+    AutomationScriptGroupCIJobMissingError,
+)
 from app.services.automation.webhook_service import (
     AutomationRunForWebhookNotFoundError,
     AutomationWebhookInactiveError,
     AutomationWebhookInboundOnlyError,
+    AutomationWebhookNoSuiteBoundError,
     AutomationWebhookNotFoundError,
     AutomationWebhookService,
     AutomationWebhookSignatureError,
+    AutomationWebhookSuiteNotFoundError,
     dispatch_event_async,
 )
 
@@ -260,6 +266,138 @@ async def ingest_allure_results(
         return AllureResultsUploadResponse(run_id=run.id, report_url=report_url)
 
     return await main_boundary.run_write(_apply)
+
+
+class WebhookTriggerResponse(BaseModel):
+    run_id: int
+    tcrt_correlation_id: str
+    external_run_id: Optional[str] = None
+    external_run_url: Optional[str] = None
+    status: AutomationRunStatus
+
+    model_config = ConfigDict(use_enum_values=True)
+
+
+@router.post(
+    "/{token}/trigger",
+    response_model=WebhookTriggerResponse,
+)
+async def trigger_suite(
+    token: str,
+    request: Request,
+    x_tcrt_signature: Optional[str] = Header(default=None, alias="X-TCRT-Signature"),
+) -> WebhookTriggerResponse:
+    """Trigger the test suite bound to an inbound webhook.
+
+    The webhook's ``script_group_id`` identifies the suite — the caller cannot
+    pick a different one, so a leaked token can only fire the one suite it's
+    bound to. The (optional) JSON body may carry ``branch`` / ``runner_label`` /
+    ``inputs`` to parametrise the run. Returns immediately with a QUEUED run
+    handle; final status arrives later via the ``/run-status`` callback.
+    """
+    retry_after = _consume_rate_limit(token)
+    if retry_after is not None:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={"code": "WEBHOOK_RATE_LIMITED", "message": "Webhook rate limit exceeded"},
+            headers={"Retry-After": str(retry_after)},
+        )
+
+    body = await request.body()
+    if body:
+        try:
+            payload = json.loads(body.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"code": "INVALID_PAYLOAD", "message": "Body must be valid JSON"},
+            )
+        if not isinstance(payload, dict):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"code": "INVALID_PAYLOAD", "message": "Body must be a JSON object"},
+            )
+    else:
+        payload = {}
+
+    branch = payload.get("branch") if isinstance(payload.get("branch"), str) else None
+    runner_label = payload.get("runner_label") if isinstance(payload.get("runner_label"), str) else None
+    raw_inputs = payload.get("inputs")
+    inputs = {str(k): str(v) for k, v in raw_inputs.items()} if isinstance(raw_inputs, dict) else None
+
+    main_boundary: MainAccessBoundary = get_main_access_boundary()
+
+    async def _verify(session: AsyncSession) -> Any:
+        service = AutomationWebhookService(session)
+        try:
+            webhook = await service.load_inbound_webhook(token=token)
+        except AutomationWebhookNotFoundError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"code": "WEBHOOK_NOT_FOUND", "message": str(exc)},
+            ) from exc
+        except AutomationWebhookInboundOnlyError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"code": "WEBHOOK_NOT_INBOUND", "message": str(exc)},
+            ) from exc
+        except AutomationWebhookInactiveError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"code": "WEBHOOK_INACTIVE", "message": str(exc)},
+            ) from exc
+
+        try:
+            service.verify_signature(webhook=webhook, body=body, signature=x_tcrt_signature)
+        except AutomationWebhookSignatureError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail={"code": "WEBHOOK_SIGNATURE_INVALID", "message": str(exc)},
+            ) from exc
+        return webhook
+
+    webhook = await main_boundary.run_read(_verify)
+
+    async def _trigger(session: AsyncSession) -> WebhookTriggerResponse:
+        service = AutomationWebhookService(session)
+        webhook_for_write = await service.get_webhook(team_id=webhook.team_id, webhook_id=webhook.id)
+        try:
+            run = await service.trigger_suite_run(
+                webhook=webhook_for_write,
+                branch=branch,
+                runner_label=runner_label,
+                inputs=inputs,
+            )
+        except AutomationWebhookNoSuiteBoundError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"code": "WEBHOOK_NO_SUITE_BOUND", "message": str(exc)},
+            ) from exc
+        except AutomationWebhookSuiteNotFoundError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"code": "SUITE_NOT_FOUND", "message": str(exc)},
+            ) from exc
+        except AutomationScriptGroupCIJobMissingError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"code": "SUITE_CI_JOB_MISSING", "message": str(exc)},
+            ) from exc
+        except AutomationScriptGroupCIApiError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail={"code": "SUITE_CI_TRIGGER_FAILED", "message": str(exc)},
+            ) from exc
+
+        return WebhookTriggerResponse(
+            run_id=run.id,
+            tcrt_correlation_id=run.tcrt_correlation_id,
+            external_run_id=run.external_run_id,
+            external_run_url=run.external_run_url,
+            status=AutomationRunStatus(run.status),
+        )
+
+    return await main_boundary.run_write(_trigger)
 
 
 def _consume_rate_limit(token: str) -> int | None:

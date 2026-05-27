@@ -1,0 +1,12 @@
+github:
+  pat: '${GITHUB_PAT}'          # GitHub Personal Access Token（repo + workflow 權限）
+  repo_url: 'https://github.com/cplus02/poc_test.git'
+  branch: 'main'
+  test_path: 'tests/test_poc.py'        # POC 寫入測試用的目標路徑（測完自動刪除）
+  workflow_id: 'playwright.yml'          # CI 測試用的 GitHub Actions workflow 檔名
+
+jenkins:
+  base_url: 'http://10.80.1.49:8080'    # Jenkins 伺服器 URL
+  username: 'admin'       # Jenkins 使用者名稱
+  api_token: '${JENKINS_API_TOKEN}'     # Jenkins API Token（User Settings → Configure → API Token）
+  default_runner_label: 'any'           # 預設 Jenkins node label

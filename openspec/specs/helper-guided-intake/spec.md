@@ -46,3 +46,24 @@ guided intake parser SHALL 在 ticket 載入後準備後續結構化資料。
 #### Scenario: Parser output is prepared after ticket load
 - **WHEN** ticket 成功載入
 - **THEN** 系統產出後續規劃與驗證所需的結構化 payload
+
+### Requirement: VERIFICATION_PLANNING initialization MUST support AI-populated data import
+VERIFICATION_PLANNING 畫面初始化 SHALL 支援從 MAGI inspection 結果匯入 AI 產生的 PlanSection / VerificationItem / CheckCondition 資料。
+
+#### Scenario: AI inspection result populates VERIFICATION_PLANNING on entry
+- **WHEN** MAGI inspection 流程成功完成且使用者進入 VERIFICATION_PLANNING
+- **THEN** 畫面自動載入 AI 產生的 sections、verification items 與 check conditions
+
+#### Scenario: AI-populated data merges with existing deterministic sections
+- **WHEN** 系統同時有 deterministic planner 與 AI inspection 的輸出
+- **THEN** AI inspection 結果作為 verification items 的主要來源，deterministic planner 的 section 結構作為骨架，兩者合併呈現
+
+
+### Requirement: Ticket fetch MUST support optional comment inclusion
+**Reason**: The revised screen-1 flow only asks for `Ticket Number`; comment-fetch toggles are no longer part of the primary journey.
+**Migration**: If comment support is needed later, it should be added as a separate optional extension without changing the session-creation rule.
+
+### Requirement: Guided intake MUST support multilingual raw source resolution
+**Reason**: The new intake flow focuses on a single read-only ticket confirmation step and does not ask the user to resolve multilingual source blocks before planning.
+**Migration**: Keep parser normalization compatible with current ticket formats, but do not surface a multilingual source-resolution workflow in the new helper.
+

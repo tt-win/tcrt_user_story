@@ -110,6 +110,13 @@ function showTestCaseModal(testCase = null) {
             }
         } catch (_) {}
 
+        // 載入 Automation Hub linked scripts
+        try {
+            if (window.testCaseAutomationPanel && testCase.record_id) {
+                window.testCaseAutomationPanel.load(testCase.record_id);
+            }
+        } catch (_) {}
+
         // 儲存原始資料用於比較
         originalFormData = {
             title: testCase.title || '',
@@ -203,6 +210,13 @@ function showTestCaseModal(testCase = null) {
 
         // 渲染附件列表（新增模式下為空）
         renderAttachmentsList();
+
+        // 隱藏 Automation 面板（新增模式下沒有 case_id 可查）
+        try {
+            if (window.testCaseAutomationPanel) {
+                window.testCaseAutomationPanel.reset();
+            }
+        } catch (_) {}
 
         // 初始化 Test Data（新增模式為空）
         currentTestData = [];

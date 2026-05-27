@@ -42,9 +42,33 @@ tcrt_user_story/
 │   └── testsuite/              # pytest 測試
 ├── ai/                         # ETL / RAG / CLI 工具
 ├── scripts/                    # migration / repair / ETL / maintenance 腳本
+├── tools/                      # 對外工具（sample repo、可攜 AI agent skill）
+│   ├── sample_automation_repo/         # TCRT Automation Hub 連接示範用的範例 git repo
+│   └── skills/                         # 可攜 AI agent skill bundle（跨 IDE / Agent 可用）
+│       └── tcrt-automation-pomify/     # 把使用者 script → POM + TCRT 格式
 ├── docs/                       # 使用與功能文件
 └── openspec/                   # OpenSpec 專案文件
 ```
+
+#### Automation Hub 工具鏈
+
+`tools/skills/tcrt-automation-pomify/` 是 TCRT 對外提供的可攜 AI agent skill，給使用 TCRT 的 QA / SDET 在他們**自家 automation repo** 的 IDE / agent（Claude Code、Cursor、Cline、Continue 等）中載入後，把寫好的 Playwright / Selenium 腳本一鍵整理成：
+
+1. **Page Object Model** 結構（`pages/` 目錄、locator 與 action 分離、無 assertion）
+2. **TCRT Automation Hub 規範格式**（檔名匹配 smart-scan 的 4 條 include regex、page object 放在自動排除的目錄、test function 用 `test_` 前綴）
+
+這個 skill 的內容**直接受 `automation-hub-*` 三份主規格約束**：
+
+- `automation-hub-script-management` — 檔案分類與命名規則（`PLAYWRIGHT_PY_ASYNC` / `PYTEST` / `PLAYWRIGHT_JS`）
+- `automation-hub-provider-framework` — `infer_script_format` 的副檔名 mapping
+- `automation-hub-smart-suite-recommendation` — smart-scan 的 `DEFAULT_INCLUDE_PATTERNS` / `DEFAULT_EXCLUDE_PATTERNS` / `STANDARD_REPO_PATHS`
+
+任一 spec 中的命名規則、掃描路徑、排除規則、`script_format` 推斷邏輯有變動時，**必須**同步更新 skill 內以下檔案，否則 skill 會發出與系統不一致的指引：
+
+- `tools/skills/tcrt-automation-pomify/SKILL.md`（步驟 2 / 步驟 4 對照表）
+- `tools/skills/tcrt-automation-pomify/references/tcrt-format-rules.md`（regex 與排除路徑的逐字摘錄）
+- `tools/skills/tcrt-automation-pomify/references/framework-detection.md`（template set 對照表）
+- `tools/skills/tcrt-automation-pomify/templates/`（如新增支援的 framework 變體，須加新 template 子目錄並回頭更新對照表）
 
 ### OpenSpec 現況
 
@@ -122,3 +146,6 @@ tcrt_user_story/
 - 主規格反映**目前已存在或已接受**的系統能力。
 - `changes/` 保留變更脈絡與未封存工件；完成實作後應同步主 spec，再視情況封存。
 - 若 `tasks.md` 與實作現況不一致，應先修正文檔狀態，再進行 archive / sync。
+- **Automation Hub 對外 skill 同步義務**：對 `openspec/specs/automation-hub-*` 任一規格的命名規則、`scan_path`、`include_patterns`、`exclude_patterns`、`infer_script_format` mapping、`STANDARD_REPO_PATHS` 或對應實作（`app/services/automation/smart_scan_service.py`、`app/services/automation/providers/github_storage.py`）做變更時，**必須**在同一個 change / PR 中同步更新 `tools/skills/tcrt-automation-pomify/`（SKILL.md、references/、templates/ 對應檔案），否則該 change 不得 archive。
+  - 對應 change 的 `tasks.md` SHALL 包含一條「同步更新 tcrt-automation-pomify skill」的 task，並在 PR 描述列出實際改了哪些 skill 檔案。
+  - 若該次變更純粹是 TCRT 內部行為（不影響 QA 寫 script 的方式 / TCRT 對外看到的格式），可在 PR 描述明確 opt-out 並附理由，否則同步義務預設成立。

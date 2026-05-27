@@ -34,6 +34,13 @@ class ResourceType(str, Enum):
     PERMISSION = "permission"
     ATTACHMENT = "attachment"
     SYSTEM = "system"
+    AUTOMATION_PROVIDER = "automation_provider"
+    SYSTEM_AUTOMATION_PROVIDER = "system_automation_provider"
+    AUTOMATION_SCRIPT = "automation_script"
+    AUTOMATION_SCRIPT_LINK = "automation_script_link"
+    AUTOMATION_SCRIPT_GROUP = "automation_script_group"
+    AUTOMATION_RUN = "automation_run"
+    AUTOMATION_WEBHOOK = "automation_webhook"
 
 
 class AuditSeverity(str, Enum):

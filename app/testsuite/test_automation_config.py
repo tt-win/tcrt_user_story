@@ -13,12 +13,12 @@ from app.config import AllureConfig, AutomationProviderConfig
 
 def test_allure_config_defaults():
     cfg = AllureConfig()
-    # Empty base_url signals "disabled" at Jenkins render time; the project_id
-    # template ships with a sensible per-team default so users only have to set
-    # base_url to opt in.
+    # Empty base_url signals "disabled"; the project_id template ships with a
+    # per-script/per-suite default (each in its own Allure project) so users
+    # only have to set base_url to opt in.
     assert cfg.base_url == ""
     assert cfg.api_token == ""
-    assert cfg.project_id_template == "tcrt-team-{team_slug}"
+    assert cfg.project_id_template == "tcrt-team-{team_slug}-{suite_slug}-{suite_id}"
 
 
 def test_allure_config_from_env_uses_yaml_fallback(monkeypatch):

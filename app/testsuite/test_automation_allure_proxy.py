@@ -280,6 +280,88 @@ async def test_upload_run_results_uses_suite_slug_for_group_run(proxy_db, monkey
 
 
 @pytest.mark.asyncio
+async def test_upload_run_results_cleans_results_before_send(proxy_db, monkeypatch):
+    """Each report must reflect only the current run: the proxy clears the
+    results staging dir (clean-results) before uploading this run's files, so a
+    report never accumulates prior executions' test cases. Prior report builds +
+    trend history are untouched, so past results stay viewable."""
+    ids = proxy_db["ids"]
+
+    fake = _FakeAllureClient()
+    monkeypatch.setattr(proxy_module.httpx, "AsyncClient", lambda **kw: fake)
+
+    import app.config as cfg_mod
+    monkeypatch.setattr(
+        cfg_mod.get_settings().automation_provider,
+        "allure",
+        cfg_mod.AllureConfig(base_url="http://127.0.0.1:5050", api_token=""),
+    )
+
+    archive = _make_archive({"a-result.json": b"{}", "b-result.json": b"{}"})
+
+    async with proxy_db["async_sessionmaker"]() as session:
+        from sqlalchemy import select
+        run = (await session.execute(
+            select(AutomationRun).where(AutomationRun.id == ids["script_run_id"])
+        )).scalar_one()
+        await upload_run_results(session=session, run=run, archive_bytes=archive)
+
+    # clean-results must fire exactly once, and strictly before any send-results.
+    clean_idx = [i for i, (m, u, _kw) in enumerate(fake.calls) if "clean-results" in u]
+    send_idx = [i for i, (m, u, _kw) in enumerate(fake.calls) if "send-results" in u]
+    assert len(clean_idx) == 1
+    assert send_idx
+    assert clean_idx[0] < min(send_idx)
+
+    # clean-results targets this run's own project (not a blanket wipe), and it
+    # matches the project the results are sent to.
+    clean_project = fake.calls[clean_idx[0]][2]["params"]["project_id"]
+    send_project = fake.calls[send_idx[0]][2]["params"]["project_id"]
+    assert clean_project == send_project
+    assert "script-" in clean_project
+
+
+@pytest.mark.asyncio
+async def test_default_template_isolates_script_and_suite_projects(proxy_db, monkeypatch):
+    """With the shipped default template, a single-script run and a suite run
+    must resolve to different Allure projects so their reports don't merge."""
+    ids = proxy_db["ids"]
+
+    import app.config as cfg_mod
+    # Use the real default template (no override) to lock in the separation.
+    monkeypatch.setattr(
+        cfg_mod.get_settings().automation_provider,
+        "allure",
+        cfg_mod.AllureConfig(base_url="http://127.0.0.1:5050", api_token=""),
+    )
+
+    archive = _make_archive({"result.json": b"{}"})
+
+    async def _project_id_for(run_id: int) -> str:
+        fake = _FakeAllureClient()
+        monkeypatch.setattr(proxy_module.httpx, "AsyncClient", lambda **kw: fake)
+        async with proxy_db["async_sessionmaker"]() as session:
+            from sqlalchemy import select
+            run = (await session.execute(
+                select(AutomationRun).where(AutomationRun.id == run_id)
+            )).scalar_one()
+            await upload_run_results(session=session, run=run, archive_bytes=archive)
+        return next(
+            kw["params"]["project_id"]
+            for _m, u, kw in fake.calls
+            if "send-results" in u
+        )
+
+    script_project = await _project_id_for(ids["script_run_id"])
+    suite_project = await _project_id_for(ids["group_run_id"])
+
+    assert script_project != suite_project
+    assert "tests-test_admin_apis-py" in script_project
+    assert "script-" in script_project
+    assert "smoke-suite" in suite_project
+
+
+@pytest.mark.asyncio
 async def test_upload_run_results_raises_when_not_configured(proxy_db, monkeypatch):
     """Empty base_url means the integration is disabled — proxy must refuse loudly."""
     ids = proxy_db["ids"]

@@ -499,6 +499,11 @@ function renderTeamCards() {
                                         </button>
                                     </li>
                                     <li>
+                                        <button class="dropdown-item" type="button" onclick="enterTeamWithPage(${team.id}, 'automation')">
+                                            <i class="fas fa-robot me-2"></i>${(window.i18n && window.i18n.isReady()) ? window.i18n.t('navigation.automationHub') : 'Automation Hub'}
+                                        </button>
+                                    </li>
+                                    <li>
                                         <button class="dropdown-item" type="button" onclick="enterTeamWithPage(${team.id}, 'usm')">
                                             <i class="fas fa-project-diagram me-2"></i>User Story Map
                                         </button>
@@ -735,6 +740,7 @@ function enterTeamWithPage(teamId, page) {
     const urlMap = {
         'test-cases': '/test-case-management',
         'test-runs': '/test-run-management',
+        'automation': '/automation-hub',
         'usm': `/user-story-map/${teamId}`
     };
     const base = urlMap[page] || urlMap['test-cases'];

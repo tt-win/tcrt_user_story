@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
@@ -315,6 +315,60 @@ class AutomationRunService:
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Sync failed for run %s: %s", run.id, exc, exc_info=True)
         return synced
+
+    async def backfill_pending_reports(
+        self,
+        *,
+        team_id: int | None = None,
+        limit: int = 50,
+        max_age_minutes: int = 30,
+    ) -> list[AutomationRun]:
+        """Retry ``report_url`` backfill for recently-terminal runs lacking one.
+
+        The terminal-transition sync pulls Jenkins build artifacts the moment
+        the build flips to a result, but Jenkins frequently hasn't finished
+        archiving ``allure-results`` at that instant — so the pull 404s and the
+        run, now terminal, leaves the QUEUED/RUNNING set ``sync_pending_runs``
+        watches and is never revisited. The race is worst for fast single-script
+        runs that complete between two sync ticks. This sweep gives the pull a
+        few more chances until the artifacts land.
+
+        Bounded by ``finished_at`` recency so we stop hammering the CI for runs
+        that genuinely never produced results (e.g. infra failures before the
+        test stage). CANCELLED runs are skipped — they have no artifacts.
+        """
+        cutoff = _utcnow() - timedelta(minutes=max_age_minutes)
+        conditions = [
+            AutomationRun.status.in_(
+                [AutomationRunStatus.SUCCEEDED, AutomationRunStatus.FAILED]
+            ),
+            AutomationRun.report_url.is_(None),
+            AutomationRun.external_run_id.isnot(None),
+            AutomationRun.finished_at.isnot(None),
+            AutomationRun.finished_at >= cutoff,
+        ]
+        if team_id is not None:
+            conditions.append(AutomationRun.team_id == team_id)
+        stmt = (
+            select(AutomationRun)
+            .where(and_(*conditions))
+            .order_by(AutomationRun.finished_at.asc(), AutomationRun.id.asc())
+            .limit(max(1, min(limit, 200)))
+        )
+        rows = list((await self.session.execute(stmt)).scalars().all())
+
+        filled: list[AutomationRun] = []
+        for run in rows:
+            try:
+                provider = await self._provider_from_run_record(run)
+                await self._maybe_fill_report_url(run=run, ci_provider=provider)
+                if run.report_url:
+                    filled.append(run)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "Report backfill failed for run %s: %s", run.id, exc, exc_info=True
+                )
+        return filled
 
     # ------------------------------------------------------------------ helpers
 
