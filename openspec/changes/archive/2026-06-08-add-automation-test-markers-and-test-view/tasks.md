@@ -61,10 +61,12 @@
 ## 8. 驗證與文件
 
 - [ ] 8.1 `pytest app/testsuite -q` 全綠
-- [ ] 8.2 `openspec validate add-automation-test-markers-and-test-view` 綠燈
+- [x] 8.2 `openspec validate add-automation-test-markers-and-test-view` 綠燈
 - [ ] 8.3 手動驗證：在 dev repo 加一支含 marker 的 test，觸發 sync，確認 link 出現、`created_by="marker-sync"`、note JSON 內容正確
 - [ ] 8.4 手動驗證：把 marker 從 covers 改 primary、再移除 marker，確認 reconcile 行為符合 spec
 - [ ] 8.5 手動驗證：UI Suites tab 切到 Test view，確認 marker / human / ai-suggested badge 顯示與切換持久化
 - [ ] 8.6 手動驗證：AI suggestion 走通至少一個 mock 案例（攔截 OpenRouter 出口斷言 payload）
-- [ ] 8.7 更新 `openspec/project.md`（若 marker grammar 屬於對外文件範圍）
+- [x] 8.7 更新 `openspec/project.md`（若 marker grammar 屬於對外文件範圍）
 - [ ] 8.8 PR 描述附 skill sync checklist 勾選
+
+> 2026-06-05 focused verification note: `uv run pytest app/testsuite/test_automation_smart_scan_service.py app/testsuite/test_automation_script_service.py app/testsuite/test_automation_ai_link_suggest_service.py app/testsuite/test_automation_linkage_service.py -q --no-header` → `56 passed`。全套 `pytest app/testsuite -q` 仍受 repo 既有非本 change 失敗影響，故 8.1 先不勾。

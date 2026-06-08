@@ -70,6 +70,34 @@ tcrt_user_story/
 - `tools/skills/tcrt-automation-pomify/references/framework-detection.md`（template set 對照表）
 - `tools/skills/tcrt-automation-pomify/templates/`（如新增支援的 framework 變體，須加新 template 子目錄並回頭更新對照表）
 
+#### Marker-derived linkage
+
+Automation Hub 的 script ↔ test case link 現況已收斂為 **marker-derived source of truth**：
+
+- TCRT 不再提供人工 link 建立 UI / write API。
+- Python 測試以 `@pytest.mark.tcrt(...)` 宣告 manual test case 對應。
+- JS/TS 測試以緊鄰 test 宣告的 `// tcrt:` 註解提供對應資訊。
+- `automation_script_case_links` 的自動同步列以 `created_by="marker-sync"` 標示；AI 建議接受後的列以 `ai-suggest:<id>` 標示來源。
+- `PRIMARY` / `COVERS` / `REFERENCES` 三種 link_type 中，coverage 統計只計 `PRIMARY` 與 `COVERS`。
+
+因此，任何會影響 marker grammar、marker 解析、`created_by` sentinel、或 link_type 行為的變更，都應同步更新：
+
+- `openspec/specs/automation-hub-script-management/spec.md`
+- `tools/skills/tcrt-automation-pomify/SKILL.md`
+- `tools/skills/tcrt-automation-pomify/references/tcrt-format-rules.md`
+
+#### 端到端 workflow 文件
+
+`docs/automation-workflow.md` 是 TCRT 自動化測試方案的端到端流程文件，涵蓋：用工具（`ai_steps_recorder` / `element_locator_generator` / `tcrt-automation-pomify`）撰寫腳本 → 設定 Storage(GitHub) / CI(Jenkins) / Result(Allure) provider → Rescan + 建 Suite → Test Run Set 觸發執行 → 狀態與 Allure 報告回流。
+
+此文件橫跨多份 `automation-hub-*` 規格與 provider / Test Run Set 行為，列為**追蹤修改文件**；下列任一項變動時必須同步更新（見「OpenSpec 維護原則」的 workflow 文件同步義務）：
+
+- provider 型別或設定流程（`storage:*` / `ci:*` / `result:*`、憑證欄位、`public_base_url` 與 `TCRT_WEBHOOK_URL` 烤入）
+- smart-scan 掃描規則、`script_format` 推斷、建立 Suite 時自動產生 CI job 的行為
+- marker grammar 或 marker-derived linkage 行為
+- Test Run Set 觸發自動化（`automation_suite_ids`、Run as Automation）與 run 狀態流轉
+- inbound / outbound webhook 路徑、Jenkins 整合、Allure proxy 報告回收流程
+
 ### OpenSpec 現況
 
 #### 主規格（`openspec/specs/`）
@@ -149,3 +177,4 @@ tcrt_user_story/
 - **Automation Hub 對外 skill 同步義務**：對 `openspec/specs/automation-hub-*` 任一規格的命名規則、`scan_path`、`include_patterns`、`exclude_patterns`、`infer_script_format` mapping、`STANDARD_REPO_PATHS` 或對應實作（`app/services/automation/smart_scan_service.py`、`app/services/automation/providers/github_storage.py`）做變更時，**必須**在同一個 change / PR 中同步更新 `tools/skills/tcrt-automation-pomify/`（SKILL.md、references/、templates/ 對應檔案），否則該 change 不得 archive。
   - 對應 change 的 `tasks.md` SHALL 包含一條「同步更新 tcrt-automation-pomify skill」的 task，並在 PR 描述列出實際改了哪些 skill 檔案。
   - 若該次變更純粹是 TCRT 內部行為（不影響 QA 寫 script 的方式 / TCRT 對外看到的格式），可在 PR 描述明確 opt-out 並附理由，否則同步義務預設成立。
+- **Automation Hub workflow 文件同步義務**：對「端到端 workflow 文件」所列任一行為（provider 設定流程、smart-scan / Suite→CI job、marker、Test Run Set 自動化執行、webhook / Jenkins / Allure 整合）的變更，**必須**在同一個 change / PR 中同步更新 `docs/automation-workflow.md`，且對應 change 的 `tasks.md` SHALL 包含一條「同步更新 automation-workflow 文件」task。純 TCRT 內部、不影響對外 workflow 的變更可在 PR 描述 opt-out 並附理由。
