@@ -152,6 +152,15 @@ async def sync_automation_scripts(
 
     try:
         response = await main_boundary.run_write(_sync)
+    except (ProviderNotConfiguredError, ProviderRegistryError) as exc:
+        # First entry into the hub auto-syncs before any storage provider is
+        # configured — a precondition gap, not a server fault. Return 400 so the
+        # UI can swallow the silent auto-sync (and show an actionable message on
+        # an explicit rescan) instead of surfacing a 500 + traceback.
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "PROVIDER_NOT_CONFIGURED", "message": str(exc)},
+        ) from exc
     except RepoContractRequiredError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
