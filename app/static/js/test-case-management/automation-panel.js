@@ -12,15 +12,6 @@
     REFERENCES: 'bg-secondary'
   };
 
-  const STATUS_BADGE = {
-    QUEUED: 'bg-secondary',
-    RUNNING: 'bg-info text-dark',
-    SUCCEEDED: 'bg-success',
-    FAILED: 'bg-danger',
-    CANCELLED: 'bg-warning text-dark',
-    UNKNOWN: 'bg-dark'
-  };
-
   const elements = () => ({
     wrap: document.getElementById('automationPanelWrap'),
     loading: document.getElementById('automationPanelLoading'),
@@ -85,19 +76,9 @@
 
   function renderItem(item) {
     const linkClass = LINK_BADGE[item.link_type] || 'bg-secondary';
-    const statusClass = item.last_run_status ? (STATUS_BADGE[item.last_run_status] || 'bg-secondary') : '';
-    const statusBadge = item.last_run_status
-      ? `<span class="badge ${statusClass}">${escapeHtml(item.last_run_status)}</span>`
-      : `<span class="text-muted small">${escapeHtml(t('testCase.automation.neverRun', 'No runs yet'))}</span>`;
-    const lastRunAt = item.last_run_at ? formatDate(item.last_run_at) : '';
-    const lastRunLink = item.last_run_url
-      ? `<a href="${escapeAttr(item.last_run_url)}" target="_blank" rel="noopener" class="btn btn-secondary btn-sm py-0" title="${escapeAttr(t('testCase.automation.openLastRun', 'Open last run in CI'))}"><i class="fas fa-external-link-alt"></i></a>`
-      : '';
-    const reportLink = item.report_url
-      ? `<a href="${escapeAttr(item.report_url)}" target="_blank" rel="noopener" class="btn btn-secondary btn-sm py-0" title="${escapeAttr(t('testCase.automation.openReport', 'Open report'))}"><i class="fas fa-chart-bar"></i></a>`
-      : '';
-
     const sourceBadge = renderLinkSourceBadge(item.created_by);
+    // Run history moved to Test Run Set detail (move-run-history-to-test-run-set).
+    // The case-level panel keeps the link row but drops the inline run status.
     return `
       <div class="automation-panel-item">
         <div class="automation-panel-item-main">
@@ -108,23 +89,14 @@
             <span class="text-muted small">${escapeHtml(item.script_format || 'OTHER')}</span>
           </div>
           <div class="automation-panel-item-meta">
-            ${statusBadge}
-            ${lastRunAt ? `<span class="text-muted small">${escapeHtml(lastRunAt)}</span>` : ''}
+            <span class="text-muted small">${escapeHtml(t('testCase.automation.runsMoved', 'Runs live in Test Run Set detail.'))}</span>
           </div>
         </div>
-        <div class="automation-panel-item-actions">
-          ${lastRunLink}
-          ${reportLink}
-        </div>
+        <div class="automation-panel-item-actions"></div>
       </div>`;
   }
 
   function renderLinkSourceBadge(createdBy) {
-    if (createdBy === 'marker-sync') {
-      return `<span class="badge bg-info text-dark" title="${escapeAttr(t('testCase.automation.sourceMarkerTip', 'Derived from @pytest.mark.tcrt or // tcrt:'))}">
-                <i class="fas fa-tag me-1"></i>${escapeHtml(t('testCase.automation.sourceMarker', 'marker'))}
-              </span>`;
-    }
     if (typeof createdBy === 'string' && createdBy.indexOf('ai-suggest:') === 0) {
       return `<span class="badge bg-warning text-dark" title="${escapeAttr(t('testCase.automation.sourceAiTip', 'Accepted from an AI suggestion'))}">
                 <i class="fas fa-robot me-1"></i>${escapeHtml(t('testCase.automation.sourceAi', 'AI'))}
@@ -151,17 +123,6 @@
     el.empty.classList.add('d-none');
     el.error.classList.add('d-none');
     el.loading.classList.add('d-none');
-  }
-
-  function formatDate(value) {
-    if (!value) return '';
-    try {
-      const date = new Date(value);
-      if (Number.isNaN(date.getTime())) return value;
-      return date.toLocaleString();
-    } catch (_e) {
-      return value;
-    }
   }
 
   function retranslate(root) {

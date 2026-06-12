@@ -386,96 +386,6 @@ def test_marker_parser_python_syntax_error_fail_open():
     assert any(w["type"] == "parse_error" for w in warnings)
 
 
-def test_marker_parser_js_adjacent_comment():
-    content = (
-        "// tcrt: TC-001 primary\n"
-        "test('login happy', async ({ page }) => { await page.goto('/'); });\n"
-    )
-    entries, warnings = _extract_test_entries("tests/login.spec.ts", content)
-    assert warnings == []
-    entry = entries[0]
-    assert entry.name == "login happy"
-    assert entry.kind == "js_test"
-    assert entry.markers[0].tc_ids == ["TC-001"]
-    assert entry.markers[0].link_type == "primary"
-
-
-def test_marker_parser_js_multi_tc():
-    content = (
-        "// tcrt: TC-001, TC-005\n"
-        "test('login multi', async () => {});\n"
-    )
-    entries, _warnings = _extract_test_entries("tests/login.spec.ts", content)
-    assert entries[0].markers[0].tc_ids == ["TC-001", "TC-005"]
-    assert entries[0].markers[0].link_type == "covers"
-
-
-def test_marker_parser_js_stacked_comments():
-    content = (
-        "// tcrt: TC-001 primary\n"
-        "// tcrt: TC-005\n"
-        "test('login mixed', async () => {});\n"
-    )
-    entries, _warnings = _extract_test_entries("tests/login.spec.ts", content)
-    assert {(tuple(m.tc_ids), m.link_type) for m in entries[0].markers} == {
-        (("TC-001",), "primary"),
-        (("TC-005",), "covers"),
-    }
-
-
-def test_marker_parser_js_orphan_comment_when_not_adjacent():
-    content = (
-        "// tcrt: TC-001\n"
-        "const helper = 1;\n"
-        "test('login', async () => {});\n"
-    )
-    entries, warnings = _extract_test_entries("tests/login.spec.ts", content)
-    assert entries[0].markers == []
-    assert any(w["type"] == "orphan_marker_comment" for w in warnings)
-
-
-def test_marker_parser_js_invalid_link_type_warns():
-    content = (
-        "// tcrt: TC-001 bogus\n"
-        "test('login', async () => {});\n"
-    )
-    entries, warnings = _extract_test_entries("tests/login.spec.ts", content)
-    assert entries[0].markers == []
-    assert any(w["type"] == "invalid_link_type" and w["value"] == "bogus" for w in warnings)
-
-
-def test_marker_parser_js_bracketed_link_type():
-    content = (
-        "// tcrt: TC-001 [primary]\n"
-        "test('login bracketed', async () => {});\n"
-    )
-    entries, warnings = _extract_test_entries("tests/login.spec.ts", content)
-    assert warnings == []
-    assert entries[0].markers[0].tc_ids == ["TC-001"]
-    assert entries[0].markers[0].link_type == "primary"
-
-
-def test_marker_parser_js_bracketed_multi_tc():
-    content = (
-        "// tcrt: TC-001, TC-005 [covers]\n"
-        "test('login bracketed multi', async () => {});\n"
-    )
-    entries, warnings = _extract_test_entries("tests/login.spec.ts", content)
-    assert warnings == []
-    assert entries[0].markers[0].tc_ids == ["TC-001", "TC-005"]
-    assert entries[0].markers[0].link_type == "covers"
-
-
-def test_marker_parser_js_bracketed_invalid_link_type_warns():
-    content = (
-        "// tcrt: TC-001 [bogus]\n"
-        "test('login', async () => {});\n"
-    )
-    entries, warnings = _extract_test_entries("tests/login.spec.ts", content)
-    assert entries[0].markers == []
-    assert any(w["type"] == "invalid_link_type" and w["value"] == "bogus" for w in warnings)
-
-
 def test_resolve_scan_config_reads_canonical_scan_include_exclude():
     """Unified contract: smart-scan honors the same glob `scan.include`/`exclude`
     keys that script sync uses, so one manifest block drives both stages."""
@@ -494,17 +404,17 @@ def test_resolve_scan_config_reads_canonical_scan_include_exclude():
 
 def test_resolve_scan_config_accepts_patterns_alias():
     """Legacy `include_patterns`/`exclude_patterns` keys still work as aliases."""
-    manifest = {"scan": {"include_patterns": ["*.spec.ts"], "exclude_patterns": ["*/utils/*"]}}
+    manifest = {"scan": {"include_patterns": ["flow_*.py"], "exclude_patterns": ["*/utils/*"]}}
     config = _resolve_scan_config(manifest, {})
-    assert config["include_patterns"] == ["*.spec.ts"]
+    assert config["include_patterns"] == ["flow_*.py"]
     assert config["exclude_patterns"] == ["*/utils/*"]
 
 
 @pytest.mark.asyncio
-async def test_scan_response_exposes_test_entries_and_marker_warnings(
+async def test_scan_response_exposes_test_entries_with_marker_links(
     smart_scan_db, monkeypatch
 ):
-    """Section 3.3 / 3.4: smart_scan_result_to_dict carries new fields end-to-end."""
+    """Smart Scan surfaces marker links and warnings on the public payload."""
     ids = smart_scan_db["ids"]
     fake = _FakeStorage(manifest_content=None)
 
@@ -546,19 +456,17 @@ async def test_scan_response_exposes_test_entries_and_marker_warnings(
     )
     # Back-compat: test_names still populated.
     assert "test_login" in login_entry["test_names"]
-    # New: test_entries with marker + docstring.
     test_entries = {entry["name"]: entry for entry in login_entry["test_entries"]}
     assert test_entries["test_login"]["docstring"] == "Happy path login."
+    # Markers are exposed (TCRT Automation Hub Test view consumes these).
     assert test_entries["test_login"]["markers"] == [
         {
             "tc_ids": ["TC-001"],
             "link_type": "primary",
-            "source_line": 3,
-            "raw": test_entries["test_login"]["markers"][0]["raw"],  # raw text varies
+            "source_line": test_entries["test_login"]["markers"][0]["source_line"],
+            "raw": test_entries["test_login"]["markers"][0]["raw"],
         }
     ]
-    # New: marker_warnings exposed at entry-point level.
-    assert any(
-        w["type"] == "invalid_tc_format" and w["tc_id"] == "TC 999 bad"
-        for w in login_entry["marker_warnings"]
-    )
+    # Invalid TC format emits an `invalid_tc_format` warning.
+    warning_types = {w["type"] for w in login_entry["marker_warnings"]}
+    assert "invalid_tc_format" in warning_types

@@ -57,6 +57,32 @@ class FakeStorageProvider:
         return content
 
 
+class _RepoFake:
+    """A single-repo view used by MultiRepoFakeStorage's fan-out."""
+
+    def __init__(self, slug: str, scripts: list[ScriptRef]) -> None:
+        self.active_repo_slug = slug
+        self.default_ref = "main"
+        self._scripts = scripts
+
+    async def list_scripts(self, path: str, ref: str | None = None, recursive: bool = True) -> list[ScriptRef]:
+        return list(self._scripts)
+
+    async def read_script(self, path: str, ref: str | None = None, etag: str | None = None) -> ScriptContent:
+        # No manifest → repo contract falls back to the provider's scan_path.
+        raise FileNotFoundError(path)
+
+
+class MultiRepoFakeStorage:
+    """Fake GitHub-style provider holding several repos (exposes fan-out)."""
+
+    def __init__(self, repo_scripts: dict[str, list[ScriptRef]]) -> None:
+        self._repo_scripts = repo_scripts
+
+    def iter_repo_providers(self) -> list[_RepoFake]:
+        return [_RepoFake(slug, scripts) for slug, scripts in self._repo_scripts.items()]
+
+
 @pytest.fixture
 def automation_script_db(tmp_path):
     database_bundle = create_managed_test_database(tmp_path / "test_case_repo.db")
@@ -199,8 +225,8 @@ async def test_sync_scripts_falls_back_to_provider_scan_path_when_manifest_missi
     assert summary.scanned_path == "fallback-tests/"
 
 
-def test_script_to_dict_serializes_test_entries_from_cached_content():
-    """List endpoint must surface parsed test entries + markers for the Test view."""
+def test_script_to_dict_serializes_test_entries_with_markers():
+    """List endpoint surfaces test entries with their marker metadata."""
     script = AutomationScript(
         team_id=1,
         provider_id=1,
@@ -219,8 +245,14 @@ def test_script_to_dict_serializes_test_entries_from_cached_content():
     assert len(data["test_entries"]) == 1
     entry = data["test_entries"][0]
     assert entry["name"] == "test_login"
-    assert entry["markers"][0]["tc_ids"] == ["TC-1"]
-    assert entry["markers"][0]["link_type"] == "primary"
+    assert entry["markers"] == [
+        {
+            "tc_ids": ["TC-1"],
+            "link_type": "primary",
+            "source_line": entry["markers"][0]["source_line"],
+            "raw": entry["markers"][0]["raw"],
+        }
+    ]
     assert data["marker_warnings"] == []
 
 
@@ -277,7 +309,14 @@ async def test_sync_scripts_fetch_content_populates_cached_content(automation_sc
 
     assert row.cached_content is not None
     assert "pytest.mark.tcrt" in row.cached_content
-    assert script_to_dict(row)["test_entries"][0]["markers"][0]["tc_ids"] == ["TC-1"]
+    assert script_to_dict(row)["test_entries"][0]["markers"] == [
+        {
+            "tc_ids": ["TC-1"],
+            "link_type": "covers",
+            "source_line": script_to_dict(row)["test_entries"][0]["markers"][0]["source_line"],
+            "raw": script_to_dict(row)["test_entries"][0]["markers"][0]["raw"],
+        }
+    ]
 
 
 @pytest.mark.asyncio
@@ -313,6 +352,34 @@ async def test_sync_scripts_deletes_cache_rows_missing_from_repo(automation_scri
 
     assert summary.removed == 1
     assert remaining == []
+
+
+@pytest.mark.asyncio
+async def test_sync_scripts_fans_out_over_repos_and_tags_ref_repo(automation_script_db):
+    """One provider holding two repos discovers + tags scripts per repo, even
+    when both repos share the same ref_path (uniqueness now includes ref_repo)."""
+    shared_path = "fallback-tests/test_login.py"
+    provider = MultiRepoFakeStorage(
+        {
+            "acme/web": [ScriptRef(path=shared_path, name="test_login.py", script_format="PYTEST", ref="main", etag="w1")],
+            "acme/api": [ScriptRef(path=shared_path, name="test_login.py", script_format="PYTEST", ref="main", etag="a1")],
+        }
+    )
+    async with automation_script_db["async_sessionmaker"]() as session:
+        service = AutomationScriptService(session)
+        summary = await service.sync_scripts(
+            team_id=automation_script_db["team_id"],
+            provider_id=automation_script_db["provider_id"],
+            storage_provider=provider,
+        )
+        await session.commit()
+        rows = list((await session.execute(select(AutomationScript))).scalars().all())
+
+    assert summary.added == 2
+    assert {row.ref_repo: row.ref_path for row in rows} == {
+        "acme/web": shared_path,
+        "acme/api": shared_path,
+    }
 
 
 @pytest.mark.asyncio
@@ -540,6 +607,84 @@ async def _all_links(session, script_id):
         )
     )
     return list(result.scalars().all())
+
+
+@pytest.mark.asyncio
+async def test_sync_scripts_does_not_create_marker_links(marker_sync_db):
+    ids = marker_sync_db["ids"]
+    provider = FakeStorageProvider(
+        scripts=[
+            ScriptRef(
+                path="tests/test_login.py",
+                name="test_login.py",
+                script_format="PYTEST",
+                ref="main",
+                etag="a1",
+            )
+        ],
+        contents={
+            "tests/test_login.py": ScriptContent(
+                path="tests/test_login.py",
+                content='import pytest\n\n@pytest.mark.tcrt("TC-001")\ndef test_login():\n    pass\n',
+                etag="a1",
+                ref="main",
+            )
+        },
+    )
+
+    async with marker_sync_db["async_sessionmaker"]() as session:
+        service = AutomationScriptService(session)
+        summary = await service.sync_scripts(
+            team_id=ids["team_id"],
+            provider_id=ids["provider_id"],
+            actor="42",
+            storage_provider=provider,
+            fetch_content=True,
+        )
+        await session.commit()
+        links = list((await session.execute(select(AutomationScriptCaseLink))).scalars().all())
+
+    assert summary.added == 1
+    assert links == []
+
+
+@pytest.mark.asyncio
+async def test_marker_sync_resolves_dashed_marker_to_dotted_case_number(marker_sync_db):
+    """Dotted TCG numbers can't appear in markers (tc_id grammar bans dots), so
+    markers use the dash form; sync must still resolve them to the dotted case."""
+    ids = marker_sync_db["ids"]
+    async with marker_sync_db["async_sessionmaker"]() as session:
+        tc001 = await session.get(TestCaseLocal, ids["tc001_id"])
+        dotted = TestCaseLocal(
+            team_id=ids["team_id"],
+            test_case_set_id=tc001.test_case_set_id,
+            test_case_section_id=tc001.test_case_section_id,
+            test_case_number="TCG-100558.020.010",
+            title="Related player filter",
+        )
+        session.add(dotted)
+        await session.flush()
+        dotted_id = dotted.id
+
+        content = (
+            "import pytest\n"
+            "@pytest.mark.tcrt(\"TCG-100558-020-010\")\n"
+            "def test_related_player_filter():\n    pass\n"
+        )
+        script = await _make_script(
+            session, ids["team_id"], ids["provider_id"],
+            ref_path="tests/test_related.py", content=content,
+        )
+        await session.commit()
+
+        service = AutomationScriptService(session)
+        summary = await service.sync_markers_for_team(team_id=ids["team_id"], actor="42")
+        await session.commit()
+        links = await _all_links(session, script.id)
+
+    assert summary.links_created == 1
+    assert len(links) == 1
+    assert links[0].test_case_id == dotted_id
 
 
 @pytest.mark.asyncio

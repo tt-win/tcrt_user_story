@@ -21,10 +21,6 @@ DEFAULT_SCAN_PATH = "tests/"
 DEFAULT_INCLUDE_PATTERNS: list[str] = [
     "test_*.py",
     "*_test.py",
-    "*.spec.ts",
-    "*.test.ts",
-    "*.spec.js",
-    "*.test.js",
 ]
 
 DEFAULT_EXCLUDE_PATTERNS: list[str] = [

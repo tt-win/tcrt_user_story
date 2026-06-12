@@ -14,7 +14,7 @@ from app.auth.dependencies import get_current_user
 from app.auth.models import PermissionType
 from app.auth.permission_service import permission_service
 from app.db_access.main import MainAccessBoundary, get_main_access_boundary
-from app.models.automation_run import AutomationRunCreate, AutomationRunResponse
+from app.models.automation_run import AutomationRunResponse
 from app.models.automation_script import (
     AILinkSuggestRequest,
     AILinkSuggestResponse,
@@ -36,7 +36,6 @@ from app.services.automation.provider_registry import (
 from app.services.automation.run_service import (
     AutomationRunService,
     AutomationRunServiceError,
-    AutomationScriptNotFoundForRunError,
     automation_run_to_dict,
 )
 from app.services.automation.ai_link_suggest_service import (
@@ -48,7 +47,6 @@ from app.services.automation.smart_scan_service import (
     create_smart_scan_run,
     execute_smart_scan_run,
 )
-from app.services.automation.webhook_service import dispatch_event_async
 from app.services.automation.script_service import (
     AutomationScriptNotFoundError,
     AutomationScriptService,
@@ -148,7 +146,7 @@ async def sync_automation_scripts(
             branch=payload.branch,
             actor=str(current_user.id),
             fetch_content=True,
-            reconcile_markers=True,
+            reconcile_markers=False,
         )
         return AutomationScriptSyncResponse(**summary.to_dict())
 
@@ -305,79 +303,12 @@ async def delete_automation_script_cache(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.post(
-    "/{script_id}/runs",
-    response_model=AutomationRunResponse,
-    status_code=status.HTTP_202_ACCEPTED,
-)
-async def trigger_automation_script_run(
-    team_id: int,
-    script_id: int,
-    payload: AutomationRunCreate,
-    request: Request,
-    current_user: User = Depends(require_team_admin),
-    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
-) -> AutomationRunResponse:
-    async def _trigger(session: AsyncSession) -> AutomationRunResponse:
-        service = AutomationRunService(session)
-        try:
-            run = await service.trigger_script(
-                team_id=team_id,
-                script_id=script_id,
-                actor=str(current_user.id),
-                workflow_id=payload.workflow_id,
-                branch=payload.branch,
-                runner_label=payload.runner_label,
-                inputs=dict(payload.inputs or {}),
-            )
-        except AutomationScriptNotFoundForRunError as exc:
-            raise _script_not_found(script_id) from exc
-        return AutomationRunResponse(**automation_run_to_dict(run))
-
-    try:
-        response = await main_boundary.run_write(_trigger)
-    except ProviderNotConfiguredError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"code": "AUTOMATION_PROVIDER_NOT_CONFIGURED", "message": str(exc)},
-        ) from exc
-    except (AutomationRunServiceError, ProviderRegistryError) as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"code": "AUTOMATION_RUN_OPERATION_FAILED", "message": str(exc)},
-        ) from exc
-
-    await _log_run_action(
-        current_user,
-        team_id,
-        str(response.id),
-        f"觸發 Automation Script Run: {script_id}",
-        {
-            "script_id": script_id,
-            "workflow_id": response.workflow_id,
-            "branch": response.branch,
-            "tcrt_correlation_id": response.tcrt_correlation_id,
-            "external_run_id": response.external_run_id,
-        },
-        request,
-    )
-    asyncio.create_task(dispatch_event_async(
-        team_id,
-        "run.triggered",
-        {
-            "run_id": response.id,
-            "automation_script_id": script_id,
-            "script_group_id": None,
-            "workflow_id": response.workflow_id,
-            "branch": response.branch,
-            "status": str(response.status),
-            "external_run_id": response.external_run_id,
-            "external_run_url": response.external_run_url,
-            "tcrt_correlation_id": response.tcrt_correlation_id,
-        },
-    ))
-    return response
-
+# NOTE: `POST /api/teams/{team_id}/automation-scripts/{script_id}/runs` 已於
+# `move-automation-execution-to-test-run-set` 移除。Automation Hub 對外
+# 不再提供任何 run trigger 端點；觸發由 Test Run Set 的
+# `POST /api/teams/{team_id}/test-run-sets/{set_id}/run-automation` 統一入口接管。
+# 對舊端點送 request 會得到 404 / 405（由 FastAPI 自動回應，
+# response body 為 generic JSON 格式）。
 
 @router.post(
     "/smart-scan",

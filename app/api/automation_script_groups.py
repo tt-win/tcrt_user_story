@@ -20,12 +20,10 @@ from app.models.automation_script_group import (
     AutomationScriptGroupCreate,
     AutomationScriptGroupListResponse,
     AutomationScriptGroupResponse,
-    AutomationScriptGroupRunRequest,
     AutomationScriptGroupUpdate,
 )
 from app.models.database_models import AutomationScript, Team, User
 from app.services.automation.provider_registry import ProviderRegistryError
-from app.services.automation.webhook_service import dispatch_event_async
 from app.services.automation.script_group_service import (
     AutomationScriptGroupCIApiError,
     AutomationScriptGroupCIJobMissingError,
@@ -122,8 +120,7 @@ async def get_automation_script_group(
         except AutomationScriptGroupNotFoundError as exc:
             raise _group_not_found(group_id) from exc
         scripts = await service.load_group_scripts(group=group)
-        recent_runs = await service.load_recent_runs(group=group)
-        return AutomationScriptGroupResponse(**script_group_to_dict(group, scripts=scripts, recent_runs=recent_runs))
+        return AutomationScriptGroupResponse(**script_group_to_dict(group, scripts=scripts))
 
     return await main_boundary.run_read(_get)
 
@@ -205,62 +202,11 @@ async def delete_automation_script_group(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-@router.post("/{group_id}/runs", response_model=AutomationRunResponse, status_code=status.HTTP_202_ACCEPTED)
-async def trigger_automation_script_group_run(
-    team_id: int,
-    group_id: int,
-    payload: AutomationScriptGroupRunRequest,
-    request: Request,
-    current_user: User = Depends(require_team_admin),
-    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
-) -> AutomationRunResponse:
-    async def _trigger(session: AsyncSession) -> AutomationRunResponse:
-        service = AutomationScriptGroupService(session)
-        try:
-            run = await service.trigger_group_run(
-                team_id=team_id,
-                group_id=group_id,
-                actor=str(current_user.id),
-                branch=payload.branch,
-                runner_label=payload.runner_label,
-                inputs=payload.inputs,
-            )
-        except AutomationScriptGroupNotFoundError as exc:
-            raise _group_not_found(group_id) from exc
-        return AutomationRunResponse(**automation_run_to_dict(run))
-
-    response = await _run_group_write(main_boundary, _trigger)
-    await _log_run_action(
-        current_user,
-        team_id,
-        str(response.id),
-        f"觸發 Automation Suite Run: {group_id}",
-        {
-            "group_id": group_id,
-            "workflow_id": response.workflow_id,
-            "branch": response.branch,
-            "tcrt_correlation_id": response.tcrt_correlation_id,
-            "external_run_id": response.external_run_id,
-        },
-        request,
-    )
-    asyncio.create_task(dispatch_event_async(
-        team_id,
-        "run.triggered",
-        {
-            "run_id": response.id,
-            "automation_script_id": None,
-            "script_group_id": group_id,
-            "workflow_id": response.workflow_id,
-            "branch": response.branch,
-            "status": str(response.status),
-            "external_run_id": response.external_run_id,
-            "external_run_url": response.external_run_url,
-            "tcrt_correlation_id": response.tcrt_correlation_id,
-        },
-    ))
-    return response
-
+# NOTE: `POST /api/teams/{team_id}/automation-script-groups/{group_id}/runs` 已於
+# `move-automation-execution-to-test-run-set` 移除。Automation Hub 對外
+# 不再提供任何 run trigger 端點；觸發由 Test Run Set 的
+# `POST /api/teams/{team_id}/test-run-sets/{set_id}/run-automation` 統一入口接管。
+# 對舊端點送 request 會得到 404 / 405（由 FastAPI 自動回應）。
 
 @router.post("/batch-create", response_model=AutomationScriptGroupBatchCreateResponse)
 async def batch_create_automation_script_groups(
@@ -276,15 +222,20 @@ async def batch_create_automation_script_groups(
     successful suites. The response is a per-proposal status summary.
     """
 
-    async def _resolve_paths(session: AsyncSession, paths: list[str]) -> list[int]:
+    async def _resolve_paths(session: AsyncSession, paths: list[str], ref_repo: str) -> list[int]:
         cleaned = [p.strip() for p in paths if isinstance(p, str) and p.strip()]
         if not cleaned:
             return []
+        conditions = [
+            AutomationScript.team_id == team_id,
+            AutomationScript.ref_path.in_(cleaned),
+        ]
+        # Disambiguate when several repos share a ref_path. Empty = legacy /
+        # single-repo proposal: fall back to path-only matching.
+        if ref_repo:
+            conditions.append(AutomationScript.ref_repo == ref_repo)
         result = await session.execute(
-            select(AutomationScript.id, AutomationScript.ref_path).where(
-                AutomationScript.team_id == team_id,
-                AutomationScript.ref_path.in_(cleaned),
-            )
+            select(AutomationScript.id, AutomationScript.ref_path).where(*conditions)
         )
         by_path = {row.ref_path: int(row.id) for row in result.all()}
         return [by_path[p] for p in cleaned if p in by_path]
@@ -297,7 +248,7 @@ async def batch_create_automation_script_groups(
     for proposal in payload.proposals:
         async def _create_one(session: AsyncSession, prop=proposal) -> tuple[int, str]:
             await _ensure_team_exists(session, team_id)
-            script_ids = await _resolve_paths(session, prop.script_paths)
+            script_ids = await _resolve_paths(session, prop.script_paths, prop.ref_repo)
             if not script_ids:
                 raise AutomationScriptGroupScriptNotFoundError(
                     "No matching scripts found for proposed paths"
@@ -421,26 +372,6 @@ async def _log_group_action(
     await _log_action(
         action_type,
         ResourceType.AUTOMATION_SCRIPT_GROUP,
-        current_user,
-        team_id,
-        resource_id,
-        action_brief,
-        details,
-        request,
-    )
-
-
-async def _log_run_action(
-    current_user: User,
-    team_id: int,
-    resource_id: str,
-    action_brief: str,
-    details: dict[str, Any] | None = None,
-    request: Request | None = None,
-) -> None:
-    await _log_action(
-        ActionType.CREATE,
-        ResourceType.AUTOMATION_RUN,
         current_user,
         team_id,
         resource_id,

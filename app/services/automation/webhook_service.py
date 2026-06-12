@@ -5,22 +5,17 @@ import hmac
 import json
 import logging
 import secrets
-import time
-import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-import httpx
-from sqlalchemy import and_, desc, select
+from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.audit import ActionType, AuditSeverity, ResourceType, audit_service
 from app.models.database_models import (
     AutomationRun,
     AutomationRunStatus,
     AutomationRunTrigger,
     AutomationWebhook,
-    AutomationWebhookDelivery,
     AutomationWebhookDirection,
 )
 
@@ -72,10 +67,6 @@ class AutomationWebhookInactiveError(AutomationWebhookServiceError):
 
 
 class AutomationWebhookInboundOnlyError(AutomationWebhookServiceError):
-    pass
-
-
-class AutomationWebhookOutboundOnlyError(AutomationWebhookServiceError):
     pass
 
 
@@ -158,7 +149,12 @@ class AutomationWebhookService:
     async def list_webhooks(self, *, team_id: int) -> list[AutomationWebhook]:
         result = await self.session.execute(
             select(AutomationWebhook)
-            .where(AutomationWebhook.team_id == team_id)
+            .where(
+                AutomationWebhook.team_id == team_id,
+                # Hide the system-managed run-status receiver baked into Jenkins
+                # jobs; it's an internal sink, not a user-facing webhook.
+                AutomationWebhook.name != _DEFAULT_AUTO_WEBHOOK_NAME,
+            )
             .order_by(AutomationWebhook.id.desc())
         )
         return list(result.scalars().all())
@@ -273,192 +269,6 @@ class AutomationWebhookService:
         await self.session.refresh(webhook)
         return webhook, secret
 
-    async def dispatch_event(
-        self,
-        *,
-        team_id: int,
-        event: str,
-        data: dict[str, Any],
-    ) -> list[dict[str, Any]]:
-        """Send `event` to all active OUTBOUND webhooks for the team that are
-        either subscribed to it or have an empty subscription list (wildcard).
-
-        Returns one delivery dict per webhook attempted (status / status_code /
-        duration_ms / message). Errors are swallowed per-webhook; the caller can
-        log the aggregate.
-        """
-        result = await self.session.execute(
-            select(AutomationWebhook).where(
-                AutomationWebhook.team_id == team_id,
-                AutomationWebhook.direction == AutomationWebhookDirection.OUTBOUND,
-                AutomationWebhook.is_active.is_(True),
-            )
-        )
-        webhooks = list(result.scalars().all())
-        deliveries: list[dict[str, Any]] = []
-        for webhook in webhooks:
-            events = _load_events(webhook.events_json)
-            if events and event not in events:
-                continue
-            if not webhook.target_url:
-                continue
-            deliveries.append(await self._deliver_event(webhook=webhook, event=event, data=data))
-        return deliveries
-
-    async def list_deliveries(
-        self,
-        *,
-        team_id: int,
-        webhook_id: int,
-        limit: int = 50,
-    ) -> list[AutomationWebhookDelivery]:
-        await self.get_webhook(team_id=team_id, webhook_id=webhook_id)
-        result = await self.session.execute(
-            select(AutomationWebhookDelivery)
-            .where(
-                AutomationWebhookDelivery.team_id == team_id,
-                AutomationWebhookDelivery.webhook_id == webhook_id,
-            )
-            .order_by(desc(AutomationWebhookDelivery.created_at), desc(AutomationWebhookDelivery.id))
-            .limit(limit)
-        )
-        return list(result.scalars().all())
-
-    async def replay_delivery(
-        self,
-        *,
-        team_id: int,
-        delivery_id: int,
-    ) -> AutomationWebhookDelivery:
-        original = await self.session.get(AutomationWebhookDelivery, delivery_id)
-        if original is None or original.team_id != team_id:
-            raise AutomationWebhookNotFoundError(f"Webhook delivery {delivery_id} not found")
-        webhook = await self.get_webhook(team_id=team_id, webhook_id=original.webhook_id)
-        if AutomationWebhookDirection(webhook.direction) != AutomationWebhookDirection.OUTBOUND:
-            raise AutomationWebhookOutboundOnlyError("Only OUTBOUND webhooks can be replayed")
-        if not webhook.is_active:
-            raise AutomationWebhookInactiveError("Webhook is inactive")
-        try:
-            payload = json.loads(original.request_body or "{}")
-        except json.JSONDecodeError as exc:
-            raise AutomationWebhookServiceError("Stored delivery payload is not valid JSON") from exc
-        event = str(payload.get("event") or original.event)
-        data = payload.get("data") if isinstance(payload.get("data"), dict) else {}
-        delivery = await self._deliver_event(webhook=webhook, event=event, data=data)
-        replayed = await self.session.get(AutomationWebhookDelivery, delivery["delivery_row_id"])
-        if replayed is None:
-            raise AutomationWebhookServiceError("Replay delivery was not recorded")
-        return replayed
-
-    async def _deliver_event(
-        self,
-        *,
-        webhook: AutomationWebhook,
-        event: str,
-        data: dict[str, Any],
-    ) -> dict[str, Any]:
-        delivery_id = str(uuid.uuid4())
-        payload = {
-            "event": event,
-            "delivery_id": delivery_id,
-            "occurred_at": _utcnow().isoformat() + "Z",
-            "team_id": webhook.team_id,
-            "data": data,
-        }
-        body = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode("utf-8")
-        body_text = body.decode("utf-8")
-        headers = {
-            "Content-Type": "application/json",
-            "X-TCRT-Event": event,
-            "X-TCRT-Delivery": delivery_id,
-            "X-TCRT-Signature": f"sha256={_sign_body(webhook.secret, body)}",
-        }
-
-        delivery = AutomationWebhookDelivery(
-            team_id=webhook.team_id,
-            webhook_id=webhook.id,
-            event=event,
-            delivery_id=delivery_id,
-            target_url=webhook.target_url,
-            status="PENDING",
-            request_body=body_text,
-            duration_ms=0,
-            created_at=_utcnow(),
-        )
-        self.session.add(delivery)
-        await self.session.flush()
-
-        started = time.perf_counter()
-        status_code: int | None = None
-        response_body: str | None = None
-        error_message: str | None = None
-        try:
-            async with httpx.AsyncClient(timeout=10, follow_redirects=False) as client:
-                response = await client.post(webhook.target_url, content=body, headers=headers)
-            status_code = response.status_code
-            response_body = response.text[:1024]
-            message = response.text[:200] or response.reason_phrase
-            ok = 200 <= response.status_code < 300
-        except httpx.TimeoutException:
-            message = "Request timed out"
-            error_message = message
-            ok = False
-        except httpx.RequestError as exc:
-            message = str(exc)[:200]
-            error_message = message
-            ok = False
-        except Exception as exc:  # noqa: BLE001
-            message = f"Unexpected error: {exc}"[:200]
-            error_message = message
-            ok = False
-
-        duration_ms = int((time.perf_counter() - started) * 1000)
-        delivery.status = "OK" if ok else "FAILED"
-        delivery.status_code = status_code
-        delivery.response_body = response_body
-        delivery.error_message = error_message
-        delivery.duration_ms = duration_ms
-        delivery.completed_at = _utcnow()
-        webhook.last_triggered_at = _utcnow()
-        suffix = f" {status_code}" if status_code else ""
-        webhook.last_status = f"{event.upper()}_{'OK' if ok else 'FAILED'}{suffix}"
-        if not ok:
-            await _log_delivery_failed(
-                webhook=webhook,
-                delivery=delivery,
-                status_code=status_code,
-                message=message,
-            )
-        return {
-            "webhook_id": webhook.id,
-            "delivery_row_id": delivery.id,
-            "event": event,
-            "delivery_id": delivery_id,
-            "status": "OK" if ok else "FAILED",
-            "status_code": status_code,
-            "duration_ms": duration_ms,
-            "message": message,
-        }
-
-    async def send_test_ping(self, *, team_id: int, webhook_id: int) -> dict[str, Any]:
-        webhook = await self.get_webhook(team_id=team_id, webhook_id=webhook_id)
-        if AutomationWebhookDirection(webhook.direction) != AutomationWebhookDirection.OUTBOUND:
-            raise AutomationWebhookOutboundOnlyError("Test ping is only available for outbound webhooks")
-        if not webhook.is_active:
-            raise AutomationWebhookInactiveError("Webhook is disabled")
-        if not webhook.target_url:
-            raise AutomationWebhookServiceError("Outbound webhook requires target_url")
-
-        return await self._deliver_event(
-            webhook=webhook,
-            event="test",
-            data={
-                "source": "tcrt",
-                "webhook_id": webhook.id,
-                "message": "Automation Hub outbound webhook test",
-            },
-        )
-
     # -------------------------------------------------------------- inbound
 
     async def load_inbound_webhook(self, *, token: str) -> AutomationWebhook:
@@ -476,6 +286,40 @@ class AutomationWebhookService:
         if not webhook.is_active:
             raise AutomationWebhookInactiveError("Webhook is disabled")
         return webhook
+
+    async def load_triggered_run(
+        self,
+        *,
+        webhook: AutomationWebhook,
+        tcrt_run_id: str,
+    ) -> AutomationRun:
+        """Fetch a run THIS webhook triggered, keyed by its ``tcrt_correlation_id``.
+
+        Backs the public ``GET /{token}/runs/{tcrt_run_id}`` polling endpoint:
+        external software captures ``tcrt_correlation_id`` from the ``/trigger``
+        response, then polls here until the status is terminal.
+
+        Scoped to ``triggered_by_webhook_id == webhook.id`` (not just team) so a
+        leaked token can only read back runs it fired itself — it can't enumerate
+        UI-triggered runs or runs fired by a different webhook in the same team.
+        """
+        cleaned = (tcrt_run_id or "").strip()
+        if not cleaned:
+            raise AutomationRunForWebhookNotFoundError("Missing tcrt_run_id")
+        result = await self.session.execute(
+            select(AutomationRun)
+            .where(
+                AutomationRun.tcrt_correlation_id == cleaned,
+                AutomationRun.triggered_by_webhook_id == webhook.id,
+            )
+            .limit(1)
+        )
+        run = result.scalar_one_or_none()
+        if run is None:
+            raise AutomationRunForWebhookNotFoundError(
+                f"No run {cleaned} triggered by webhook {webhook.id}"
+            )
+        return run
 
     async def trigger_suite_run(
         self,
@@ -532,11 +376,17 @@ class AutomationWebhookService:
         webhook: AutomationWebhook,
         body: bytes,
         signature: str | None,
+        require_signature: bool = True,
     ) -> None:
         if not webhook.secret:
             # No secret configured = accept (caller may decide to require one)
             return
         if not signature:
+            if not require_signature:
+                # The URL token is treated as the bearer credential; a signature
+                # is optional defence-in-depth. Used by /trigger so the copied
+                # curl is a single line with no HMAC step.
+                return
             raise AutomationWebhookSignatureError("Missing X-TCRT-Signature header")
         cleaned = signature.strip()
         # Accept either "sha256=<hex>" or "<hex>"
@@ -675,38 +525,6 @@ class AutomationWebhookService:
 # ----------------------------------------------------------------- helpers
 
 
-async def dispatch_event_async(
-    team_id: int,
-    event: str,
-    data: dict[str, Any],
-) -> list[dict[str, Any]]:
-    """Module-level convenience: opens a write session via the main boundary,
-    dispatches the event to all matching OUTBOUND webhooks, and returns the
-    deliveries. Safe to wrap with `asyncio.create_task()` for fire-and-forget
-    semantics from API handlers.
-
-    All errors are caught and logged; never raises.
-    """
-    from app.db_access.main import get_main_access_boundary
-
-    boundary = get_main_access_boundary()
-
-    async def _dispatch(session: AsyncSession) -> list[dict[str, Any]]:
-        service = AutomationWebhookService(session)
-        return await service.dispatch_event(team_id=team_id, event=event, data=data)
-
-    try:
-        return await boundary.run_write(_dispatch)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning(
-            "Outbound webhook dispatch failed for team=%s event=%s: %s",
-            team_id,
-            event,
-            exc,
-        )
-        return []
-
-
 def webhook_to_dict(
     webhook: AutomationWebhook,
     *,
@@ -764,41 +582,6 @@ def _generate_token() -> str:
 def _generate_secret() -> str:
     # ~43 chars from 32 random bytes (fits in VARCHAR(128))
     return secrets.token_urlsafe(32)
-
-
-def _sign_body(secret: str | None, body: bytes) -> str:
-    return hmac.new((secret or "").encode("utf-8"), body, hashlib.sha256).hexdigest()
-
-
-async def _log_delivery_failed(
-    *,
-    webhook: AutomationWebhook,
-    delivery: AutomationWebhookDelivery,
-    status_code: int | None,
-    message: str,
-) -> None:
-    try:
-        await audit_service.log_action(
-            user_id=0,
-            username="automation-webhook",
-            role="system",
-            action_type=ActionType.UPDATE,
-            resource_type=ResourceType.AUTOMATION_WEBHOOK,
-            resource_id=str(webhook.id),
-            team_id=webhook.team_id,
-            details={
-                "event": delivery.event,
-                "delivery_id": delivery.delivery_id,
-                "status_code": status_code,
-                "response_or_error": message[:1024],
-                "duration_ms": delivery.duration_ms,
-                "audit_event": "WEBHOOK_DELIVERY_FAILED",
-            },
-            action_brief=f"WEBHOOK_DELIVERY_FAILED: {delivery.event}",
-            severity=AuditSeverity.WARNING,
-        )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Failed to write webhook delivery audit log: %s", exc, exc_info=True)
 
 
 def _utcnow() -> datetime:

@@ -3,9 +3,9 @@
     teamId: null,
     providerTypes: [],
     providers: [],
-    editingProvider: null,
     modal: null,
-    healthModal: null
+    healthModal: null,
+    addRepoModal: null
   };
 
   document.addEventListener('DOMContentLoaded', init);
@@ -18,6 +18,8 @@
     state.modal = new bootstrap.Modal(document.getElementById('providerModal'));
     const healthModalEl = document.getElementById('providerHealthModal');
     if (healthModalEl) state.healthModal = new bootstrap.Modal(healthModalEl);
+    const addRepoModalEl = document.getElementById('addRepoModal');
+    if (addRepoModalEl) state.addRepoModal = new bootstrap.Modal(addRepoModalEl);
     bindEvents();
 
     if (!state.teamId) {
@@ -48,27 +50,18 @@
   function bindEvents() {
     document.getElementById('addProviderBtn').addEventListener('click', () => openProviderModal());
     document.getElementById('refreshProvidersBtn').addEventListener('click', loadAll);
-    document.getElementById('providerType').addEventListener('change', () => renderSchemaFields());
     document.getElementById('saveProviderBtn').addEventListener('click', saveProvider);
     const testBtn = document.getElementById('testProviderConfigBtn');
     if (testBtn) testBtn.addEventListener('click', testProviderConfig);
     const emptyAdd = document.getElementById('emptyStateAddProviderBtn');
     if (emptyAdd) emptyAdd.addEventListener('click', () => openProviderModal());
+    const addRepoSave = document.getElementById('addRepoSaveBtn');
+    if (addRepoSave) addRepoSave.addEventListener('click', submitAddRepo);
 
-    // Delegated: the discover-runners button lives inside dynamically rendered
-    // config fields (only for CI providers' default_runner_label). It is a
-    // Bootstrap dropdown toggle — opening the dropdown triggers a fresh fetch
-    // and populates menu items in-place, so the form layout never shifts.
     const configFields = document.getElementById('configFields');
     if (configFields) {
-      configFields.addEventListener('show.bs.dropdown', (event) => {
-        const trigger = event.target;
-        if (trigger && (trigger.id === 'discoverRunnersBtn' || (trigger.closest && trigger.closest('#discoverRunnersBtn')))) {
-          discoverRunners();
-        }
-      });
-      // Switching Jenkins auth_method changes which credential fields apply,
-      // so re-render the credentials block to hide/show the right ones.
+      // Switching GitHub auth_method (pat ↔ github_app) changes which
+      // credential fields apply, so re-render the credentials block.
       configFields.addEventListener('change', (event) => {
         if (event.target && event.target.id === 'config-auth_method') {
           const typeInfo = currentTypeInfo();
@@ -90,7 +83,6 @@
       ]);
       state.providerTypes = types;
       state.providers = providers;
-      renderProviderTypeOptions();
       renderProviders();
     } catch (error) {
       showError(error.message || t('automationHub.providers.loadFailed', 'Failed to load providers'));
@@ -100,31 +92,11 @@
     }
   }
 
-  // Canonical mapping — this page is now Git 來源設定 (storage-only).
-  // CI / Result providers moved to the org-level system router and are
-  // managed from team-management's 同步組織架構 modal.
-  // Existing rows with non-canonical types still load but are not offered for new providers.
-  const CANONICAL_TYPES = ['storage:github'];
-
-  function renderProviderTypeOptions(extraType) {
-    const select = document.getElementById('providerType');
-    const seen = new Set();
-    const ordered = CANONICAL_TYPES.slice();
-    if (extraType && !ordered.includes(extraType)) {
-      // When editing a provider with a non-canonical type (e.g. storage:local_git),
-      // expose it as a one-off option so the dropdown matches the stored value.
-      ordered.push(extraType);
-    }
-    select.innerHTML = ordered
-      .filter((pt) => state.providerTypes.some((info) => info.provider_type === pt))
-      .filter((pt) => {
-        if (seen.has(pt)) return false;
-        seen.add(pt);
-        return true;
-      })
-      .map((pt) => `<option value="${escapeHtml(pt)}">${escapeHtml(slotOptionLabel(pt))}</option>`)
-      .join('');
-  }
+  // This page is Git 來源設定 (storage-only) — CI / Result providers moved to
+  // the org-level system router (team-management's 同步組織架構 modal). New
+  // providers are always GitHub; editing a legacy row (e.g. storage:local_git)
+  // keeps its stored type via the hidden #providerType input.
+  const DEFAULT_PROVIDER_TYPE = 'storage:github';
 
   function slotOptionLabel(providerType) {
     const slot = providerType.split(':')[0];
@@ -196,6 +168,7 @@
             <div class="fw-semibold">${escapeHtml(provider.name)}</div>
             <div class="text-muted small">${escapeHtml(provider.provider_type)}</div>
           </td>
+          <td>${renderRepoCell(provider)}</td>
           <td>${credential}</td>
           <td>${health}</td>
           <td>${activeBadge}</td>
@@ -220,12 +193,38 @@
         if (button.dataset.action === 'edit') openProviderModal(provider);
         if (button.dataset.action === 'delete') deleteProvider(provider);
         if (button.dataset.action === 'test') testConnection(provider);
+        if (button.dataset.action === 'add-repo') openAddRepoModal(provider);
+        if (button.dataset.action === 'remove-repo') removeRepo(provider, button.dataset.repoSlug);
       });
     });
   }
 
+  // Repositories belong to a GitHub storage provider and are managed one at a
+  // time, right on the row — each add/remove persists immediately (PUT).
+  // Rendered as plain text lines (no badges/borders): the remove × stays
+  // subtle until the line is hovered; "add" is a quiet link-style button.
+  function renderRepoCell(provider) {
+    if (provider.provider_type !== 'storage:github') return '<span class="text-muted">—</span>';
+    const repos = provider.config && Array.isArray(provider.config.repos) ? provider.config.repos : [];
+    const items = repos.map((r) => {
+      const slug = `${r.owner}/${r.repo}`;
+      const branch = r.default_branch
+        ? ` <span class="text-muted">@${escapeHtml(r.default_branch)}</span>`
+        : '';
+      return `<div class="provider-repo-item">
+        <i class="fas fa-code-branch text-muted"></i>
+        <span class="text-truncate">${escapeHtml(slug)}${branch}</span>
+        <button type="button" class="provider-repo-remove" data-action="remove-repo" data-provider-id="${provider.id}" data-repo-slug="${escapeAttr(slug)}" title="${escapeAttr(t('common.remove', 'Remove'))}" aria-label="${escapeAttr(t('common.remove', 'Remove'))} ${escapeAttr(slug)}"><i class="fas fa-times"></i></button>
+      </div>`;
+    }).join('');
+    const addLabel = escapeHtml(t('automationHub.providers.addRepo', 'Add repository'));
+    return `${items}
+      <button type="button" class="btn btn-link btn-sm p-0 provider-repo-add" data-action="add-repo" data-provider-id="${provider.id}">
+        <i class="fas fa-plus me-1"></i>${addLabel}
+      </button>`;
+  }
+
   function openProviderModal(provider) {
-    state.editingProvider = provider || null;
     document.getElementById('providerModalTitle').textContent = provider
       ? t('automationHub.providers.editTitle', 'Edit Provider')
       : t('automationHub.providers.createTitle', 'Add Provider');
@@ -234,12 +233,7 @@
     document.getElementById('providerActive').checked = provider ? provider.is_active : true;
     document.getElementById('clearCredentials').checked = false;
     document.getElementById('clearCredentialsWrap').classList.toggle('d-none', !provider);
-
-    const providerType = provider ? provider.provider_type : CANONICAL_TYPES[0];
-    // Re-render the slot dropdown so it includes the editing row's legacy type
-    // (if any) before we try to set the value.
-    renderProviderTypeOptions(provider ? provider.provider_type : null);
-    document.getElementById('providerType').value = providerType || '';
+    document.getElementById('providerType').value = provider ? (provider.provider_type || '') : DEFAULT_PROVIDER_TYPE;
     renderSchemaFields(provider);
     state.modal.show();
     refreshTexts();
@@ -248,14 +242,25 @@
   function renderSchemaFields(provider) {
     const typeInfo = currentTypeInfo();
     if (!typeInfo) return;
-    renderFieldGroup(document.getElementById('configFields'), typeInfo.config_schema, provider ? provider.config : {}, false);
+    // `repos` is managed on the provider row (one at a time), not in this modal.
+    renderFieldGroup(document.getElementById('configFields'), typeInfo.config_schema, provider ? provider.config : {}, false, ['repos']);
     renderFieldGroup(document.getElementById('credentialFields'), typeInfo.credential_schema, {}, true);
+
+    // A new GitHub source needs its first repo here (the rest are added from
+    // the row). Editing manages repos on the row, so this section is hidden.
+    const firstRepo = document.getElementById('firstRepoSection');
+    if (firstRepo) {
+      const show = !provider && document.getElementById('providerType').value === 'storage:github';
+      firstRepo.classList.toggle('d-none', !show);
+      if (show) ['firstRepoOwner', 'firstRepoName', 'firstRepoBranch'].forEach((id) => { document.getElementById(id).value = ''; });
+    }
   }
 
-  function renderFieldGroup(container, schema, values, isCredential) {
+  function renderFieldGroup(container, schema, values, isCredential, exclude) {
     const properties = schema.properties || {};
+    const skip = new Set(exclude || []);
     const required = new Set(schema.required || []);
-    const entries = Object.entries(properties);
+    const entries = Object.entries(properties).filter(([name]) => !skip.has(name));
     container.innerHTML = entries.length ? entries.map(([name, property]) => renderSchemaField(name, property, values[name], required.has(name), Boolean(isCredential))).join('') : `
       <div class="col-12 text-muted small">${escapeHtml(t('automationHub.providers.noFields', 'No fields required'))}</div>`;
     initFieldTooltips(container);
@@ -272,10 +277,8 @@
   }
 
   function renderSchemaField(name, property, value, required, isCredential) {
-    // Jenkins-specific: hide credential fields that don't apply to the
-    // currently selected auth_method. api_token mode uses username + api_token
-    // (no job_token); trigger_token mode uses only job_token. Skipping the
-    // unused ones avoids leading users to fill noise that the provider ignores.
+    // GitHub credentials differ by auth_method (pat vs github_app); hide the
+    // fields that don't apply to the current selection.
     if (isCredential && shouldHideForAuthMethod(name)) return '';
 
     const id = `${propertyGroup(property)}-${name}`;
@@ -283,18 +286,7 @@
     const description = property.description || '';
     const type = resolveSchemaType(property);
     const isSecret = /token|password|secret|private_key|pat|api_key/i.test(name);
-    let currentValue = value === undefined || value === null ? (property.default ?? '') : value;
-    // Substitute `{team_name}` placeholders coming from schema defaults
-    // (e.g. Jenkins view_name_template = "TCRT_{team_name}") so the form
-    // pre-fills "TCRT_ARD" for team ARD. Editing existing rows shows the
-    // stored value as-is unless the user re-introduces the placeholder.
-    if (typeof currentValue === 'string' && currentValue.includes('{team_name}')) {
-      const teamName = getCurrentTeamName();
-      if (teamName) currentValue = currentValue.split('{team_name}').join(teamName);
-    }
-    const typeInfo = currentTypeInfo();
-    const isCiProvider = typeInfo && typeof typeInfo.provider_type === 'string' && typeInfo.provider_type.startsWith('ci:');
-    const isRunnerLabelField = name === 'default_runner_label' && isCiProvider && propertyGroup(property) === 'config';
+    const currentValue = value === undefined || value === null ? (property.default ?? '') : value;
     let control = '';
 
     // `?` icon next to the label — shows the schema description as a
@@ -314,147 +306,15 @@
       </div>`;
     } else if (/private_key|pem/i.test(name)) {
       control = `<textarea id="${escapeAttr(id)}" class="form-control" rows="4" data-schema-field="${escapeAttr(name)}" data-schema-type="string" ${required ? 'required' : ''}>${escapeHtml(currentValue)}</textarea>`;
-    } else if (isRunnerLabelField) {
-      // Special-case: default_runner_label on CI providers. The Discover button
-      // is a Bootstrap dropdown toggle — clicking it fetches live runners and
-      // shows them as overlay menu items, so picking one fills the input
-      // without ever changing the form's layout.
-      const discoverLabel = escapeHtml(t('automationHub.providers.discoverRunners', 'Discover runners'));
-      const initialHint = escapeHtml(t('automationHub.providers.discoverHint', 'Click to fetch runners'));
-      control = `
-        <div class="input-group">
-          <input id="${escapeAttr(id)}" type="text" class="form-control"
-                 value="${escapeAttr(currentValue)}"
-                 autocomplete="off"
-                 data-schema-field="${escapeAttr(name)}"
-                 data-schema-type="${escapeAttr(type)}"
-                 ${required && !isSecret ? 'required' : ''}>
-          <button type="button" class="btn btn-secondary dropdown-toggle" id="discoverRunnersBtn"
-                  data-bs-toggle="dropdown" aria-expanded="false" title="${escapeAttr(discoverLabel)}">
-            <i class="fas fa-search me-1"></i><span data-i18n="automationHub.providers.discoverRunners">Discover</span>
-          </button>
-          <ul class="dropdown-menu dropdown-menu-end provider-runner-dropdown" id="discoveredRunnersMenu" aria-labelledby="discoverRunnersBtn">
-            <li><span class="dropdown-item-text text-muted small" id="discoverRunnersStatus">${initialHint}</span></li>
-          </ul>
-        </div>`;
     } else {
       const inputType = type === 'integer' || type === 'number' ? 'number' : (isSecret ? 'password' : 'text');
       control = `<input id="${escapeAttr(id)}" type="${inputType}" class="form-control" value="${escapeAttr(currentValue)}" data-schema-field="${escapeAttr(name)}" data-schema-type="${escapeAttr(type)}" ${required && !isSecret ? 'required' : ''}>`;
     }
 
-    const colClass = isRunnerLabelField ? 'col-12' : 'col-md-6';
     return `
-      <div class="${colClass}" data-field-name="${escapeAttr(name)}">
+      <div class="col-md-6" data-field-name="${escapeAttr(name)}">
         ${type === 'boolean' ? control : `<label for="${escapeAttr(id)}" class="form-label">${escapeHtml(label)}${required ? ' *' : ''}${helpIcon}</label>${control}`}
       </div>`;
-  }
-
-  async function discoverRunners() {
-    const typeInfo = currentTypeInfo();
-    if (!typeInfo) return;
-    const status = document.getElementById('discoverRunnersStatus');
-    const menu = document.getElementById('discoveredRunnersMenu');
-    if (!menu) return;
-
-    const payload = {
-      provider_slot: typeInfo.provider_slot,
-      provider_type: typeInfo.provider_type,
-      name: document.getElementById('providerName').value.trim() || 'discover-probe',
-      config: collectFieldGroup(document.getElementById('configFields')),
-      credentials: collectFieldGroup(document.getElementById('credentialFields'), true),
-      is_active: true,
-    };
-
-    clearRunnerMenuItems();
-    if (status) {
-      status.textContent = t('automationHub.providers.discovering', 'Discovering runners...');
-      status.classList.remove('text-success', 'text-danger');
-      status.classList.add('text-muted');
-    }
-    try {
-      const data = await apiFetch(
-        `/api/teams/${state.teamId}/automation-providers/discover-runners`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        }
-      );
-      const labels = Array.isArray(data && data.labels) ? data.labels : [];
-      renderRunnerMenu(labels);
-      if (status) {
-        if (data && data.error) {
-          status.textContent = `${t('automationHub.providers.discoverFailed', 'Discovery failed')}: ${data.error}`;
-          status.classList.remove('text-muted', 'text-success');
-          status.classList.add('text-danger');
-        } else if (!labels.length) {
-          status.textContent = t('automationHub.providers.discoverEmpty', 'No runners returned.');
-          status.classList.remove('text-success', 'text-danger');
-          status.classList.add('text-muted');
-        } else {
-          status.textContent = `${t('automationHub.providers.discoverFound', 'Found')} ${labels.length} ${t('automationHub.providers.discoverFoundSuffix', 'labels — pick one to use it.')}`;
-          status.classList.remove('text-muted', 'text-danger');
-          status.classList.add('text-success');
-        }
-      }
-    } catch (error) {
-      renderRunnerMenu([]);
-      if (status) {
-        status.textContent = error.message || t('automationHub.providers.discoverFailed', 'Discovery failed');
-        status.classList.remove('text-muted', 'text-success');
-        status.classList.add('text-danger');
-      }
-    }
-  }
-
-  function clearRunnerMenuItems() {
-    const menu = document.getElementById('discoveredRunnersMenu');
-    if (!menu) return;
-    // Keep only the first <li> (the status header); strip stale results.
-    while (menu.children.length > 1) {
-      menu.removeChild(menu.lastElementChild);
-    }
-  }
-
-  function renderRunnerMenu(labels) {
-    clearRunnerMenuItems();
-    const menu = document.getElementById('discoveredRunnersMenu');
-    if (!menu || !labels || !labels.length) return;
-
-    const currentValue = (document.getElementById('config-default_runner_label') || {}).value || '';
-
-    const divider = document.createElement('li');
-    divider.innerHTML = '<hr class="dropdown-divider">';
-    menu.appendChild(divider);
-
-    labels.forEach((label) => {
-      const li = document.createElement('li');
-      const isSelected = label === currentValue;
-      const activeCls = isSelected ? ' active' : '';
-      const description = runnerLabelDescription(label);
-      const icon = isAnyRunnerLabel(label) ? 'fa-globe' : 'fa-server';
-      const descriptionHtml = description
-        ? `<small class="text-muted ms-1">· ${escapeHtml(description)}</small>`
-        : '';
-      li.innerHTML = `
-        <button type="button" class="dropdown-item d-flex align-items-center gap-2${activeCls}" data-runner-chip="${escapeAttr(label)}">
-          <i class="fas ${icon} text-muted"></i>
-          <span class="flex-grow-1 text-truncate">${escapeHtml(label)}${descriptionHtml}</span>
-          ${isSelected ? '<i class="fas fa-check text-success"></i>' : ''}
-        </button>`;
-      menu.appendChild(li);
-    });
-
-    menu.querySelectorAll('[data-runner-chip]').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const value = btn.dataset.runnerChip;
-        const input = document.getElementById('config-default_runner_label');
-        if (!input) return;
-        input.value = value;
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-        // Bootstrap auto-closes the dropdown after a dropdown-item click.
-      });
-    });
   }
 
   async function saveProvider() {
@@ -468,11 +328,15 @@
       nameInput.focus();
       return;
     }
+    const providerType = document.getElementById('providerType').value;
+    const config = buildModalConfig(providerType, providerId);
+    if (config === null) return;
+
     const payload = {
       provider_slot: typeInfo.provider_slot,
-      provider_type: document.getElementById('providerType').value,
+      provider_type: providerType,
       name,
-      config: collectFieldGroup(document.getElementById('configFields')),
+      config,
       credentials: collectFieldGroup(document.getElementById('credentialFields'), true),
       is_active: document.getElementById('providerActive').checked
     };
@@ -501,6 +365,33 @@
     }
   }
 
+  // Build the full provider config from the modal. `repos` isn't among the
+  // rendered config fields (managed on the row): on create it's seeded from
+  // the First repository section; on edit the rendered fields are overlaid
+  // onto the stored config so repos and non-rendered keys (e.g. smart_scan)
+  // survive a full-config replace. Returns null (after showing an error) when
+  // the first repo is required but missing. Shared by Save and Test connection.
+  function buildModalConfig(providerType, providerId) {
+    const config = collectFieldGroup(document.getElementById('configFields'));
+    if (providerType === 'storage:github') {
+      if (providerId) {
+        const existing = state.providers.find((p) => String(p.id) === String(providerId));
+        const stored = existing && existing.config ? existing.config : {};
+        Object.keys(stored).forEach((key) => { if (!(key in config)) config[key] = stored[key]; });
+      } else {
+        const first = readRepoInputs('firstRepo');
+        if (!first) {
+          showError(t('automationHub.providers.repoRequired', 'Owner and repository are required'));
+          return null;
+        }
+        config.repos = [first];
+      }
+      delete config.owner;
+      delete config.repo;
+    }
+    return config;
+  }
+
   function collectFieldGroup(container, skipEmpty) {
     const result = {};
     container.querySelectorAll('[data-schema-field]').forEach((input) => {
@@ -524,6 +415,83 @@
       await loadAll();
     } catch (error) {
       showError(error.message || t('automationHub.providers.deleteFailed', 'Failed to delete provider'));
+    }
+  }
+
+  function readRepoInputs(prefix) {
+    const owner = (document.getElementById(`${prefix}Owner`).value || '').trim();
+    const repo = (document.getElementById(`${prefix}Name`).value || '').trim();
+    const branch = (document.getElementById(`${prefix}Branch`).value || '').trim();
+    if (!owner || !repo) return null;
+    const entry = { owner, repo };
+    if (branch) entry.default_branch = branch;
+    return entry;
+  }
+
+  function openAddRepoModal(provider) {
+    document.getElementById('addRepoProviderId').value = provider.id;
+    ['addRepoOwner', 'addRepoName', 'addRepoBranch'].forEach((id) => { document.getElementById(id).value = ''; });
+    if (state.addRepoModal) state.addRepoModal.show();
+  }
+
+  async function submitAddRepo() {
+    const providerId = document.getElementById('addRepoProviderId').value;
+    const provider = state.providers.find((p) => String(p.id) === String(providerId));
+    if (!provider) return;
+    const entry = readRepoInputs('addRepo');
+    if (!entry) {
+      showError(t('automationHub.providers.repoRequired', 'Owner and repository are required'));
+      return;
+    }
+    const slug = `${entry.owner}/${entry.repo}`;
+    const repos = (provider.config && Array.isArray(provider.config.repos) ? provider.config.repos : []).slice();
+    if (repos.some((r) => `${r.owner}/${r.repo}` === slug)) {
+      showError(t('automationHub.providers.repoDuplicate', 'This repository is already added'));
+      return;
+    }
+    repos.push(entry);
+    if (await putProviderRepos(provider, repos)) {
+      if (state.addRepoModal) state.addRepoModal.hide();
+    }
+  }
+
+  async function removeRepo(provider, slug) {
+    const repos = (provider.config && Array.isArray(provider.config.repos) ? provider.config.repos : [])
+      .filter((r) => `${r.owner}/${r.repo}` !== slug);
+    if (repos.length === 0) {
+      showError(t('automationHub.providers.lastRepoBlock', 'A source must keep at least one repository. Delete the provider instead.'));
+      return;
+    }
+    const confirmed = await AppUtils.showConfirm(
+      `${t('automationHub.providers.removeRepoConfirm', 'Remove repository')} ${slug}?`
+    );
+    if (!confirmed) return;
+    await putProviderRepos(provider, repos);
+  }
+
+  // Persist a repos change via the existing PUT (full-config replace). Omitting
+  // credentials keeps the stored PAT. Returns true on success.
+  async function putProviderRepos(provider, repos) {
+    const config = { ...(provider.config || {}), repos };
+    delete config.owner;
+    delete config.repo;
+    try {
+      await apiFetch(`/api/teams/${state.teamId}/automation-providers/${provider.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          provider_type: provider.provider_type,
+          name: provider.name,
+          config,
+          is_active: provider.is_active,
+        }),
+      });
+      showSuccess(t('automationHub.providers.saveDone', 'Provider saved'));
+      await loadAll();
+      return true;
+    } catch (error) {
+      showError(error.message || t('automationHub.providers.saveFailed', 'Failed to save provider'));
+      return false;
     }
   }
 
@@ -560,11 +528,14 @@
       }
     }
 
+    const config = buildModalConfig(typeInfo.provider_type, editingId);
+    if (config === null) return;
+
     const payload = {
       provider_slot: typeInfo.provider_slot,
       provider_type: typeInfo.provider_type,
       name,
-      config: collectFieldGroup(document.getElementById('configFields')),
+      config,
       credentials,
       is_active: true,
     };
@@ -664,11 +635,6 @@
     return state.providerTypes.find((item) => item.provider_type === value);
   }
 
-  function providerTypeLabel(providerType, fallback) {
-    const key = providerType.replace(':', '.');
-    return t(`automationHub.providers.types.${key}`, fallback);
-  }
-
   async function apiFetch(url, options) {
     const response = await window.AuthClient.fetch(url, options || {});
     if (response.status === 204) return null;
@@ -697,45 +663,27 @@
     return (response && response.statusText) || 'Request failed';
   }
 
-  // Caller passes isCredential separately (see renderSchemaField), so this
-  // function only needs the field name + current Jenkins auth_method.
+  // GitHub storage credentials are split by auth_method: `pat` needs only the
+  // PAT field; `github_app` needs app_id / installation_id / private_key_pem.
+  // Hiding the unused ones keeps the modal from leading users to fill noise.
   function shouldHideForAuthMethod(name) {
     const typeInfo = currentTypeInfo();
-    if (!typeInfo || typeInfo.provider_type !== 'ci:jenkins') return false;
+    if (!typeInfo || typeInfo.provider_type !== 'storage:github') return false;
     const authMethod = getCurrentAuthMethod();
-    if (authMethod === 'api_token' && name === 'job_token') return true;
-    if (authMethod === 'trigger_token' && (name === 'username' || name === 'api_token')) return true;
+    if (authMethod === 'pat') return name !== 'pat';
+    if (authMethod === 'github_app') return name === 'pat';
     return false;
   }
 
   function getCurrentAuthMethod() {
     const el = document.getElementById('config-auth_method');
     if (el && el.value) return el.value;
-    // Pre-render fallback: Jenkins config schema default.
-    return 'api_token';
-  }
-
-  // Reserved Jenkins "any" label means "use any available agent". The stored
-  // value MUST stay literally "any" (Jenkins parses it), so we only translate
-  // the description shown next to it in the dropdown — the chip's value is
-  // unchanged.
-  function isAnyRunnerLabel(label) {
-    return String(label || '').trim().toLowerCase() === 'any';
-  }
-
-  function runnerLabelDescription(label) {
-    if (isAnyRunnerLabel(label)) {
-      return t('automationHub.providers.runnerAny', 'Any available agent');
-    }
-    return '';
-  }
-
-  function getCurrentTeamName() {
-    if (window.AppUtils && window.AppUtils.getCurrentTeam) {
-      const team = window.AppUtils.getCurrentTeam();
-      if (team && team.name) return String(team.name);
-    }
-    return '';
+    // Pre-render fallback: the schema's declared default.
+    const typeInfo = currentTypeInfo();
+    const prop = typeInfo && typeInfo.config_schema && typeInfo.config_schema.properties
+      ? typeInfo.config_schema.properties.auth_method
+      : null;
+    return (prop && prop.default) || '';
   }
 
   function resolveTeamId() {

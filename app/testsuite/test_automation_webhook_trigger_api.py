@@ -192,6 +192,16 @@ def test_trigger_with_signed_empty_body_succeeds(trigger_client):
     assert data["tcrt_correlation_id"]
 
 
+def test_trigger_without_signature_succeeds(trigger_client):
+    """The copied one-line curl (no body, no signature) is accepted —
+    the URL token is the credential."""
+    resp = trigger_client.post(f"/api/v1/webhooks/ci/{_TOKEN}/trigger")
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["run_id"] > 0
+    assert data["status"] == "QUEUED"
+
+
 def test_trigger_bad_signature_rejected(trigger_client):
     resp = trigger_client.post(
         f"/api/v1/webhooks/ci/{_TOKEN}/trigger",
@@ -211,3 +221,52 @@ def test_trigger_unbound_webhook_conflict(trigger_client):
     )
     assert resp.status_code == 409
     assert resp.json()["detail"]["code"] == "WEBHOOK_NO_SUITE_BOUND"
+
+
+def _trigger(client) -> str:
+    """Fire the bound webhook and return the run's tcrt_correlation_id."""
+    resp = client.post(f"/api/v1/webhooks/ci/{_TOKEN}/trigger")
+    assert resp.status_code == 200, resp.text
+    return resp.json()["tcrt_correlation_id"]
+
+
+def test_poll_returns_triggered_run(trigger_client):
+    """Scenario A: external software triggers, captures the correlation id, then
+    polls the GET endpoint to read the result back."""
+    correlation_id = _trigger(trigger_client)
+
+    resp = trigger_client.get(f"/api/v1/webhooks/ci/{_TOKEN}/runs/{correlation_id}")
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["tcrt_correlation_id"] == correlation_id
+    assert data["status"] == "QUEUED"
+    assert data["external_run_id"] == "queue:555"
+    assert data["external_run_url"] == "https://jenkins.example/queue/item/555/"
+    # Curated public shape — internal / secret-bearing fields must never leak.
+    for leaked in ("inputs", "inputs_json", "provider_id", "triggered_by_user_id", "ci_correlation_id"):
+        assert leaked not in data, f"{leaked} leaked into public run result"
+    assert "git_token" not in resp.text
+
+
+def test_poll_unknown_correlation_is_404(trigger_client):
+    resp = trigger_client.get(f"/api/v1/webhooks/ci/{_TOKEN}/runs/does-not-exist")
+    assert resp.status_code == 404
+    assert resp.json()["detail"]["code"] == "AUTOMATION_RUN_NOT_MATCHED"
+
+
+def test_poll_other_webhooks_run_is_404(trigger_client):
+    """A run fired by the bound webhook is invisible to a different token —
+    the lookup is scoped to triggered_by_webhook_id, not just the team."""
+    correlation_id = _trigger(trigger_client)
+
+    resp = trigger_client.get(f"/api/v1/webhooks/ci/{_TOKEN}-u/runs/{correlation_id}")
+    assert resp.status_code == 404
+    assert resp.json()["detail"]["code"] == "AUTOMATION_RUN_NOT_MATCHED"
+
+
+def test_poll_bad_token_is_404(trigger_client):
+    correlation_id = _trigger(trigger_client)
+
+    resp = trigger_client.get(f"/api/v1/webhooks/ci/nope-nope/runs/{correlation_id}")
+    assert resp.status_code == 404
+    assert resp.json()["detail"]["code"] == "WEBHOOK_NOT_FOUND"

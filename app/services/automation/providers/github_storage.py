@@ -7,7 +7,7 @@ from typing import Any, Literal
 
 import httpx
 import jwt
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.services.automation.providers.base import (
     BranchRef,
@@ -20,15 +20,13 @@ from app.services.automation.providers.base import (
 
 
 def infer_script_format(path: str) -> str:
-    if path.endswith(".spec.ts") or path.endswith(".test.ts") or path.endswith(".spec.js") or path.endswith(".test.js"):
-        return "PLAYWRIGHT_JS"
     if path.endswith(".py"):
         filename = path.rsplit("/", 1)[-1]
         return "PYTEST" if filename.startswith("test_") or filename.endswith("_test.py") else "PLAYWRIGHT_PY_ASYNC"
     return "OTHER"
 
 
-class GitHubStorageConfig(BaseModel):
+class GitHubRepo(BaseModel):
     owner: str = Field(
         ...,
         description=(
@@ -43,9 +41,24 @@ class GitHubStorageConfig(BaseModel):
             "or `.git` suffix. Example: for https://github.com/octocat/Hello-World, fill `Hello-World`."
         ),
     )
+    default_branch: str | None = Field(
+        default=None,
+        description="Optional branch override for this repo. Leave blank to use the provider-level default branch.",
+    )
+
+    @property
+    def slug(self) -> str:
+        return f"{self.owner}/{self.repo}"
+
+
+class GitHubStorageConfig(BaseModel):
+    repos: list[GitHubRepo] = Field(
+        default_factory=list,
+        description="One or more repositories to scan, all sharing the credential below. Add each repo's owner + name.",
+    )
     default_branch: str = Field(
         default="main",
-        description="Branch to scan scripts from. Usually `main` or `master`.",
+        description="Branch to scan when a repo has no override. Usually `main` or `master`.",
     )
     auth_method: Literal["pat", "github_app"] = Field(
         default="pat",
@@ -57,8 +70,39 @@ class GitHubStorageConfig(BaseModel):
     )
     scan_path: str = Field(
         default="tests/",
-        description="Subdirectory inside the repo to scan for test scripts. Trailing slash optional.",
+        description="Subdirectory inside each repo to scan for test scripts. Trailing slash optional.",
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _fold_legacy_owner_repo(cls, data: Any) -> Any:
+        """Accept pre-multi-repo config_json that stored a single top-level
+        owner/repo, folding it into a one-element `repos` list."""
+        if isinstance(data, dict) and not data.get("repos"):
+            owner = data.get("owner")
+            repo = data.get("repo")
+            if owner and repo:
+                return {**data, "repos": [{"owner": owner, "repo": repo}]}
+        return data
+
+    @model_validator(mode="after")
+    def _validate_repos(self) -> "GitHubStorageConfig":
+        if not self.repos:
+            raise ValueError("GitHub storage requires at least one repository")
+        slugs = [r.slug for r in self.repos]
+        duplicates = sorted({slug for slug in slugs if slugs.count(slug) > 1})
+        if duplicates:
+            raise ValueError(f"Duplicate repositories: {', '.join(duplicates)}")
+        return self
+
+    def repo_for(self, slug: str) -> GitHubRepo:
+        for repo in self.repos:
+            if repo.slug == slug:
+                return repo
+        return self.repos[0]
+
+    def branch_for(self, repo: GitHubRepo) -> str:
+        return repo.default_branch or self.default_branch
 
 
 class GitHubStorageCredentials(BaseModel):
@@ -71,11 +115,47 @@ class GitHubStorageCredentials(BaseModel):
 class GitHubStorageProvider:
     display_name = "GitHub Repository"
 
-    def __init__(self, config: dict[str, Any], credentials: dict[str, Any]) -> None:
+    def __init__(
+        self,
+        config: dict[str, Any],
+        credentials: dict[str, Any],
+        active_repo: "GitHubRepo | str | None" = None,
+    ) -> None:
         self.config = GitHubStorageConfig.model_validate(config)
         self.credentials = GitHubStorageCredentials.model_validate(credentials)
+        if isinstance(active_repo, GitHubRepo):
+            self._repo = active_repo
+        elif isinstance(active_repo, str):
+            self._repo = self.config.repo_for(active_repo)
+        else:
+            self._repo = self.config.repos[0]
         self._installation_token: str | None = None
         self._installation_token_expires_at = 0.0
+
+    def _with_repo(self, repo: "GitHubRepo") -> "GitHubStorageProvider":
+        """Lightweight clone bound to a different repo, reusing parsed
+        config/credentials (no re-validation)."""
+        clone = GitHubStorageProvider.__new__(GitHubStorageProvider)
+        clone.config = self.config
+        clone.credentials = self.credentials
+        clone._repo = repo
+        clone._installation_token = None
+        clone._installation_token_expires_at = 0.0
+        return clone
+
+    def for_repo(self, slug: str) -> "GitHubStorageProvider":
+        return self._with_repo(self.config.repo_for(slug))
+
+    def iter_repo_providers(self) -> list["GitHubStorageProvider"]:
+        return [self._with_repo(repo) for repo in self.config.repos]
+
+    @property
+    def active_repo_slug(self) -> str:
+        return self._repo.slug
+
+    @property
+    def default_ref(self) -> str:
+        return self.config.branch_for(self._repo)
 
     @classmethod
     def config_schema(cls) -> type[BaseModel]:
@@ -141,7 +221,7 @@ class GitHubStorageProvider:
             return response
 
     def _repo_path(self, suffix: str) -> str:
-        return f"/repos/{self.config.owner}/{self.config.repo}{suffix}"
+        return f"/repos/{self._repo.owner}/{self._repo.repo}{suffix}"
 
     async def _get_content(
         self,
@@ -149,7 +229,7 @@ class GitHubStorageProvider:
         ref: str | None = None,
         etag: str | None = None,
     ) -> tuple[httpx.Response, Any | None]:
-        params = {"ref": ref or self.config.default_branch}
+        params = {"ref": ref or self.default_ref}
         headers = {"If-None-Match": etag} if etag else {}
         response = await self._request(
             "GET",
@@ -189,7 +269,7 @@ class GitHubStorageProvider:
                             path=item_path,
                             name=item.get("name") or item_path.rsplit("/", 1)[-1],
                             script_format=infer_script_format(item_path),
-                            ref=ref or self.config.default_branch,
+                            ref=ref or self.default_ref,
                             size=item.get("size"),
                             etag=item.get("sha"),
                             web_url=item.get("html_url"),
@@ -211,7 +291,7 @@ class GitHubStorageProvider:
                 path=path,
                 content="",
                 etag=etag,
-                ref=ref or self.config.default_branch,
+                ref=ref or self.default_ref,
                 not_modified=True,
             )
         if isinstance(data, list) or data.get("type") != "file":
@@ -222,7 +302,7 @@ class GitHubStorageProvider:
             path=data.get("path", path),
             content=content,
             etag=response.headers.get("etag") or data.get("sha"),
-            ref=ref or self.config.default_branch,
+            ref=ref or self.default_ref,
             web_url=data.get("html_url"),
         )
 
@@ -233,7 +313,7 @@ class GitHubStorageProvider:
         message: str,
         branch: str | None = None,
     ) -> CommitRef:
-        ref = branch or self.config.default_branch
+        ref = branch or self.default_ref
         body: dict[str, Any] = {
             "message": message,
             "content": base64.b64encode(content.encode("utf-8")).decode("ascii"),
@@ -257,7 +337,7 @@ class GitHubStorageProvider:
         )
 
     async def delete_file(self, path: str, message: str, branch: str | None = None) -> None:
-        ref = branch or self.config.default_branch
+        ref = branch or self.default_ref
         _, existing = await self._get_content(path, ref)
         if not isinstance(existing, dict) or not existing.get("sha"):
             raise ValueError(f"GitHub path is not a deletable file: {path}")
@@ -279,7 +359,7 @@ class GitHubStorageProvider:
     async def file_exists(self, path: str, ref: str | None = None) -> bool:
         response = await self._request(
             "GET",
-            self._repo_path(f"/git/trees/{ref or self.config.default_branch}"),
+            self._repo_path(f"/git/trees/{ref or self.default_ref}"),
             params={"recursive": "1"},
             raise_for_status=False,
         )
@@ -307,7 +387,7 @@ class GitHubStorageProvider:
         response = await self._request(
             "POST",
             self._repo_path("/pulls"),
-            json={"head": branch, "base": self.config.default_branch, "title": title, "body": body},
+            json={"head": branch, "base": self.default_ref, "title": title, "body": body},
         )
         data = response.json()
         return PullRequestRef(

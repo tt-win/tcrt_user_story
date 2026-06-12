@@ -33,7 +33,6 @@ from .system_automation_providers import router as system_automation_providers_r
 from .automation_scripts import router as automation_scripts_router
 from .automation_links import router as automation_links_router
 from .automation_script_groups import router as automation_script_groups_router
-from .automation_runs import router as automation_runs_router
 from .automation_coverage import router as automation_coverage_router
 from .automation_webhooks import router as automation_webhooks_router
 from .automation_webhooks_public import router as automation_webhooks_public_router
@@ -74,7 +73,6 @@ api_router.include_router(system_automation_providers_router)  # 組織層 Provi
 api_router.include_router(automation_scripts_router)  # Automation Hub Script 快取路由
 api_router.include_router(automation_links_router)  # Automation Hub Script Link 路由
 api_router.include_router(automation_script_groups_router)  # Automation Hub Suite 路由
-api_router.include_router(automation_runs_router)  # Automation Hub Run 路由
 api_router.include_router(automation_coverage_router)  # Automation Hub Coverage 路由
 api_router.include_router(automation_webhooks_router)  # Automation Hub Webhook (admin) 路由
 api_router.include_router(automation_webhooks_public_router)  # Automation Hub Webhook (公開 CI callback)

@@ -682,10 +682,6 @@ async def get_team_test_case_detail(
             "script_format": item.get("script_format", "OTHER"),
             "ref_path": item.get("ref_path"),
             "link_type": _to_text(item.get("link_type", "")) or "REFERENCES",
-            "last_run_status": item.get("last_run_status"),
-            "last_run_at": item.get("last_run_at"),
-            "last_run_url": item.get("last_run_url"),
-            "report_url": item.get("report_url"),
         }
         for item in linked_automation
     ]
@@ -1017,32 +1013,6 @@ def _parse_string_list(raw: Optional[str]) -> list[str]:
     return [str(item) for item in data if item is not None]
 
 
-async def _batch_latest_runs_by_script(
-    db: AsyncSession,
-    team_id: int,
-    script_ids: list[int],
-    *,
-    per_script_limit: int = 1,
-) -> Dict[int, list[AutomationRunDB]]:
-    """Return up to per_script_limit most-recent runs per script id."""
-    if not script_ids:
-        return {}
-    result = await db.execute(
-        select(AutomationRunDB)
-        .where(
-            AutomationRunDB.team_id == team_id,
-            AutomationRunDB.automation_script_id.in_(script_ids),
-        )
-        .order_by(AutomationRunDB.automation_script_id, AutomationRunDB.id.desc())
-    )
-    grouped: Dict[int, list[AutomationRunDB]] = {}
-    for run in result.scalars().all():
-        bucket = grouped.setdefault(int(run.automation_script_id), [])
-        if len(bucket) < per_script_limit:
-            bucket.append(run)
-    return grouped
-
-
 async def _batch_linked_case_numbers(
     db: AsyncSession,
     team_id: int,
@@ -1112,13 +1082,14 @@ async def list_team_automation_scripts(
     scripts = list((await db.execute(rows_stmt)).scalars().all())
     script_ids = [int(script.id) for script in scripts]
 
-    latest_runs = await _batch_latest_runs_by_script(db, team_id, script_ids, per_script_limit=1)
+    # last_run batch lookup removed: run history is owned by Test Run Set
+    # (see move-run-history-to-test-run-set). Callers wanting the latest
+    # run status for a script should follow the script's groups to their
+    # triggering Test Run Set.
     linked_numbers = await _batch_linked_case_numbers(db, team_id, script_ids, per_script_limit=20)
 
     items: list[MCPAutomationScriptItem] = []
     for script in scripts:
-        runs = latest_runs.get(int(script.id), [])
-        latest = runs[0] if runs else None
         items.append(
             MCPAutomationScriptItem(
                 id=int(script.id),
@@ -1131,9 +1102,8 @@ async def list_team_automation_scripts(
                 tags=_parse_string_list(script.tags_json),
                 linked_test_case_count=int(script.linked_test_case_count or 0),
                 linked_test_case_numbers=linked_numbers.get(int(script.id), []),
-                last_run_status=(_to_text(latest.status) or None) if latest else None,
-                last_run_at=latest.started_at if latest else None,
-                last_run_url=latest.external_run_url if latest else None,
+                # last_run_* removed: run history is owned by Test Run Set
+                # (see move-run-history-to-test-run-set).
                 last_synced_at=script.last_synced_at,
                 created_at=script.created_at,
                 updated_at=script.updated_at,
@@ -1148,32 +1118,49 @@ async def list_team_automation_scripts(
 
 
 @router.get(
-    "/teams/{team_id}/automation-runs",
+    "/teams/{team_id}/test-run-sets/{set_id}/automation-runs",
     response_model=MCPTeamAutomationRunsResponse,
 )
-async def list_team_automation_runs(
+async def list_team_test_run_set_automation_runs(
     team_id: int,
+    set_id: int,
     db: AsyncSession = Depends(get_db),
     principal: MCPMachinePrincipal = Depends(require_mcp_team_access),
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=200),
     status_filter: Optional[str] = Query(None, alias="status"),
     branch: Optional[str] = Query(None),
-    script_id: Optional[int] = Query(None),
-    script_group_id: Optional[int] = Query(None),
 ):
+    """List automation runs triggered by a specific Test Run Set.
+
+    Replaces the removed ``GET /api/mcp/teams/{team_id}/automation-runs``
+    team-wide endpoint; runs are now scoped to their owning Test Run Set.
+    """
     del principal
     await _ensure_team_exists(db, team_id)
+    # Verify the set belongs to the team (defensive — surfaces 404 cleanly).
+    set_exists = await db.execute(
+        select(TestRunSetDB.id).where(
+            TestRunSetDB.id == set_id, TestRunSetDB.team_id == team_id
+        )
+    )
+    if set_exists.scalar_one_or_none() is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={
+                "code": "TEST_RUN_SET_NOT_FOUND",
+                "message": f"Test Run Set {set_id} not found in team {team_id}",
+            },
+        )
 
-    conditions = [AutomationRunDB.team_id == team_id]
+    conditions = [
+        AutomationRunDB.team_id == team_id,
+        AutomationRunDB.test_run_set_id == set_id,
+    ]
     if status_filter:
         conditions.append(AutomationRunDB.status == status_filter)
     if branch:
         conditions.append(AutomationRunDB.branch == branch.strip())
-    if script_id is not None:
-        conditions.append(AutomationRunDB.automation_script_id == script_id)
-    if script_group_id is not None:
-        conditions.append(AutomationRunDB.script_group_id == script_group_id)
 
     total = int((await db.execute(select(func.count(AutomationRunDB.id)).where(*conditions))).scalar_one() or 0)
 
@@ -1190,6 +1177,7 @@ async def list_team_automation_runs(
             id=int(run.id),
             automation_script_id=run.automation_script_id,
             script_group_id=run.script_group_id,
+            test_run_set_id=run.test_run_set_id,
             workflow_id=run.workflow_id,
             branch=run.branch,
             status=_to_text(run.status) or "UNKNOWN",

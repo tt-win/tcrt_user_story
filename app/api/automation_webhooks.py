@@ -3,29 +3,32 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.automation_scripts import require_team_admin
 from app.audit import ActionType, AuditSeverity, ResourceType, audit_service
 from app.db_access.main import MainAccessBoundary, get_main_access_boundary
+from app.models.automation_run import (
+    AutomationRunListResponse,
+    AutomationRunResponse,
+    AutomationRunStatus,
+)
 from app.models.automation_webhook import (
     AutomationWebhookCreate,
     AutomationWebhookCreateResponse,
-    AutomationWebhookDeliveryListResponse,
-    AutomationWebhookDeliveryResponse,
-    AutomationWebhookReplayResponse,
     AutomationWebhookResponse,
-    AutomationWebhookTestPingResponse,
     AutomationWebhookUpdate,
 )
 from app.models.database_models import AutomationWebhookDirection, Team, User
+from app.services.automation.run_service import (
+    AutomationRunService,
+    automation_run_to_dict,
+)
 from app.services.automation.webhook_service import (
-    AutomationWebhookInactiveError,
     AutomationWebhookNameConflictError,
     AutomationWebhookNotFoundError,
-    AutomationWebhookOutboundOnlyError,
     AutomationWebhookService,
     AutomationWebhookServiceError,
     AutomationWebhookSuiteBindingError,
@@ -60,6 +63,23 @@ async def create_automation_webhook(
     current_user: User = Depends(require_team_admin),
     main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ) -> AutomationWebhookCreateResponse:
+    if payload.direction != AutomationWebhookDirection.INBOUND:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": "AUTOMATION_WEBHOOK_OUTBOUND_REMOVED",
+                "message": "Outbound webhooks are no longer supported",
+            },
+        )
+    if payload.script_group_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": "AUTOMATION_WEBHOOK_SUITE_REQUIRED",
+                "message": "Inbound webhooks must be bound to a test suite",
+            },
+        )
+
     async def _create(session: AsyncSession) -> tuple[int, str, str, AutomationWebhookDirection, str]:
         await _ensure_team_exists(session, team_id)
         service = AutomationWebhookService(session)
@@ -238,110 +258,44 @@ async def regenerate_automation_webhook_secret(
     return AutomationWebhookCreateResponse(id=webhook_id_out, token=token, secret=secret)
 
 
-@router.get("/{webhook_id}/deliveries", response_model=AutomationWebhookDeliveryListResponse)
-async def list_automation_webhook_deliveries(
+@router.get("/{webhook_id}/runs", response_model=AutomationRunListResponse)
+async def list_automation_webhook_runs(
     team_id: int,
     webhook_id: int,
-    limit: int = 50,
+    run_status: AutomationRunStatus | None = Query(default=None, alias="status"),
+    cursor: int | None = Query(default=None, ge=1),
+    limit: int = Query(default=50, ge=1, le=200),
     current_user: User = Depends(require_team_admin),
     main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
-) -> AutomationWebhookDeliveryListResponse:
-    async def _list(session: AsyncSession) -> AutomationWebhookDeliveryListResponse:
-        service = AutomationWebhookService(session)
+) -> AutomationRunListResponse:
+    """List automation runs triggered by this inbound webhook.
+
+    Webhook-triggered runs are not attached to any Test Run Set
+    (``test_run_set_id`` is NULL), so they don't appear under the
+    ``/test-run-sets/{set_id}/runs`` history. This endpoint is their home,
+    scoped by ``triggered_by_webhook_id``.
+    """
+    async def _list(session: AsyncSession) -> AutomationRunListResponse:
+        webhook_service = AutomationWebhookService(session)
         try:
-            rows = await service.list_deliveries(
-                team_id=team_id,
-                webhook_id=webhook_id,
-                limit=min(max(limit, 1), 50),
-            )
+            await webhook_service.get_webhook(team_id=team_id, webhook_id=webhook_id)
         except AutomationWebhookNotFoundError as exc:
             raise _webhook_not_found(webhook_id) from exc
-        return AutomationWebhookDeliveryListResponse(
-            items=[AutomationWebhookDeliveryResponse.model_validate(row) for row in rows]
+        run_service = AutomationRunService(session)
+        rows, next_cursor, total = await run_service.list_runs(
+            team_id=team_id,
+            triggered_by_webhook_id=webhook_id,
+            status=run_status,
+            cursor=cursor,
+            limit=limit,
+        )
+        return AutomationRunListResponse(
+            items=[AutomationRunResponse(**automation_run_to_dict(row)) for row in rows],
+            next_cursor=str(next_cursor) if next_cursor is not None else None,
+            total=total,
         )
 
     return await main_boundary.run_read(_list)
-
-
-@router.post("/deliveries/{delivery_id}/replay", response_model=AutomationWebhookReplayResponse)
-async def replay_automation_webhook_delivery(
-    team_id: int,
-    delivery_id: int,
-    request: Request,
-    current_user: User = Depends(require_team_admin),
-    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
-) -> AutomationWebhookReplayResponse:
-    async def _replay(session: AsyncSession) -> AutomationWebhookReplayResponse:
-        service = AutomationWebhookService(session)
-        try:
-            delivery = await service.replay_delivery(team_id=team_id, delivery_id=delivery_id)
-        except AutomationWebhookNotFoundError as exc:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail={"code": "WEBHOOK_DELIVERY_NOT_FOUND", "message": str(exc)},
-            ) from exc
-        return AutomationWebhookReplayResponse(
-            status=delivery.status,
-            delivery=AutomationWebhookDeliveryResponse.model_validate(delivery),
-        )
-
-    response = await main_boundary.run_write(_replay)
-    await _log_webhook_action(
-        ActionType.UPDATE,
-        current_user,
-        team_id,
-        str(response.delivery.webhook_id),
-        f"重發 Automation Webhook delivery: {delivery_id}",
-        {"delivery_id": delivery_id, "new_delivery_id": response.delivery.delivery_id},
-        request,
-    )
-    return response
-
-
-@router.post("/{webhook_id}/test", response_model=AutomationWebhookTestPingResponse)
-async def test_automation_webhook(
-    team_id: int,
-    webhook_id: int,
-    request: Request,
-    current_user: User = Depends(require_team_admin),
-    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
-) -> AutomationWebhookTestPingResponse:
-    async def _test(session: AsyncSession) -> AutomationWebhookTestPingResponse:
-        service = AutomationWebhookService(session)
-        try:
-            result = await service.send_test_ping(team_id=team_id, webhook_id=webhook_id)
-        except AutomationWebhookNotFoundError as exc:
-            raise _webhook_not_found(webhook_id) from exc
-        return AutomationWebhookTestPingResponse(**result)
-
-    try:
-        response = await main_boundary.run_write(_test)
-    except AutomationWebhookOutboundOnlyError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"code": "AUTOMATION_WEBHOOK_NOT_OUTBOUND", "message": str(exc)},
-        ) from exc
-    except AutomationWebhookInactiveError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"code": "AUTOMATION_WEBHOOK_INACTIVE", "message": str(exc)},
-        ) from exc
-    except AutomationWebhookServiceError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail={"code": "AUTOMATION_WEBHOOK_OPERATION_FAILED", "message": str(exc)},
-        ) from exc
-
-    await _log_webhook_action(
-        ActionType.UPDATE,
-        current_user,
-        team_id,
-        str(webhook_id),
-        f"測試 Automation Webhook: {webhook_id}",
-        response.model_dump(),
-        request,
-    )
-    return response
 
 
 # --------------------------------------------------------------------- helpers

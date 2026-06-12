@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.pool import NullPool
 
 from app.audit.database import AuditDatabaseManager
+from app.audit.models import AuditLogCreate, ActionType, AuditSeverity, ResourceType
 from app.db_migrations import (
     LegacyDatabaseAdoptionRequiredError,
     adopt_legacy_database,
@@ -87,7 +88,7 @@ def test_audit_legacy_varchar_enum_schema_is_treated_as_compatible(tmp_path: Pat
                         action_type VARCHAR(6) NOT NULL,
                         resource_type VARCHAR(12) NOT NULL,
                         resource_id VARCHAR(100) NOT NULL,
-                        team_id INTEGER NOT NULL,
+                        team_id INTEGER,
                         details TEXT,
                         action_brief VARCHAR(500),
                         severity VARCHAR(8) NOT NULL,
@@ -121,6 +122,86 @@ def test_audit_legacy_varchar_enum_schema_is_treated_as_compatible(tmp_path: Pat
         engine.dispose()
 
     assert validate_legacy_database(database_url=database_url, target_name="audit") == []
+
+
+def test_audit_log_create_accepts_system_scope_without_team() -> None:
+    audit_log = AuditLogCreate(
+        user_id=1,
+        username="admin",
+        role="super_admin",
+        action_type=ActionType.UPDATE,
+        resource_type=ResourceType.SYSTEM_AUTOMATION_PROVIDER,
+        resource_id="ci:jenkins",
+        team_id=None,
+        severity=AuditSeverity.INFO,
+    )
+
+    assert audit_log.team_id is None
+
+
+def test_audit_migration_allows_null_team_id(tmp_path: Path) -> None:
+    db_path = tmp_path / "audit_nullable_team.db"
+    database_url = _sqlite_url(db_path)
+
+    upgrade_database(
+        revision="8ac7d1e42b90",
+        database_url=database_url,
+        target_name="audit",
+    )
+
+    engine = get_sync_engine_for_target("audit", database_url=database_url)
+    try:
+        team_column = next(
+            column
+            for column in inspect(engine).get_columns("audit_logs")
+            if column["name"] == "team_id"
+        )
+        assert team_column["nullable"] is False
+    finally:
+        engine.dispose()
+
+    upgrade_database(database_url=database_url, target_name="audit")
+
+    engine = get_sync_engine_for_target("audit", database_url=database_url)
+    try:
+        team_column = next(
+            column
+            for column in inspect(engine).get_columns("audit_logs")
+            if column["name"] == "team_id"
+        )
+        assert team_column["nullable"] is True
+
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO audit_logs (
+                        timestamp,
+                        user_id,
+                        username,
+                        role,
+                        action_type,
+                        resource_type,
+                        resource_id,
+                        team_id,
+                        severity
+                    )
+                    VALUES (
+                        CURRENT_TIMESTAMP,
+                        1,
+                        'admin',
+                        'super_admin',
+                        'UPDATE',
+                        'SYSTEM_AUTOMATION_PROVIDER',
+                        'ci:jenkins',
+                        NULL,
+                        'INFO'
+                    )
+                    """
+                )
+            )
+    finally:
+        engine.dispose()
 
 
 @pytest.mark.parametrize(

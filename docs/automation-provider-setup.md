@@ -64,21 +64,6 @@ Recommended deployment patterns:
 
 ## CI providers
 
-### `ci:github_actions`
-
-| Config | Example |
-|---|---|
-| `owner` / `repo` | mirror the storage provider. |
-| `default_branch` | `main` |
-| `default_runner_label` | `ubuntu-latest` |
-| `default_workflow` | `tcrt-suite-{suite_id}.yml` (auto-managed) |
-
-**Credentials**: GitHub PAT/App with `Actions: read/write` on the repo.
-
-TCRT auto-creates per-suite workflows at `.github/workflows/tcrt-suite-{id}.yml`
-when you create a suite (`CIProvider.create_suite_job`). Updates and deletes
-sync automatically; copy the [github-actions-suite-template.yml](./automation-workflow-templates/github-actions-suite-template.yml) for the canonical layout.
-
 ### `ci:jenkins`
 
 | Config | Example | Notes |
@@ -90,15 +75,17 @@ sync automatically; copy the [github-actions-suite-template.yml](./automation-wo
 | `default_runner_label` | `any` | Injected as `NODE_LABEL`. |
 | `csrf_protection_enabled` | `true` | Auto-fetches `/crumbIssuer/api/json`. |
 | `auto_manage_views` | `false` | Add suite jobs to a team view. |
-| `view_name_template` | `TCRT` | View name when auto-managed. |
-| `job_name_template` | `tcrt-suite-{suite_id}-{suite_slug}` | Suite job naming. |
+| `view_name_template` | `TCRT_{team_name}` | View name when auto-managed. Supports `{team_name}`, `{team_slug}`, and `{team_id}`. |
+| `job_name_template` | `tcrt_{team_slug}_{suite_slug}` | Suite job naming (suite names are unique per team). |
 
 **Credentials**: `username` + `api_token` (recommended) or just `job_token`
 for trigger-only workflows.
 
 TCRT auto-creates each suite as a Pipeline `Item` via `createItem`, writes the
 config.xml from [jenkins-suite-config-example.xml](./automation-workflow-templates/jenkins-suite-config-example.xml), and optionally adds it to the team
-view if `auto_manage_views=true`.
+view if `auto_manage_views=true`. Because the Jenkins CI provider is org-level,
+the view template is expanded at suite job creation / refresh time using the
+suite's team context.
 
 ---
 
@@ -115,6 +102,19 @@ view if `auto_manage_views=true`.
 | `dashboard_url` | `https://allure.example.com/dashboards/team-qa` | Team-level entry; surfaces as the "Team Dashboard" button. |
 
 **Credentials**: optional `api_token` for authenticated Allure servers.
+
+When running `frankescobar/allure-docker-service` for the TCRT proxy flow,
+persist projects at `/app/allure-docker-api/static/projects`, for example:
+
+```bash
+docker run -d --name allure -p 5050:5050 \
+  -e KEEP_HISTORY=1 \
+  -v "$PWD/allure-projects:/app/allure-docker-api/static/projects" \
+  frankescobar/allure-docker-service
+```
+
+Mounting the same host directory at `/app/projects` is not enough for current
+images; project creation can fail and TCRT will not receive a `report_url`.
 
 `embed_mode: iframe` renders Report links in a modal `<iframe>`. If the
 upstream sends `X-Frame-Options: DENY` the iframe will be blank — the modal

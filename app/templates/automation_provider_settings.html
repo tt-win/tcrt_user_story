@@ -79,6 +79,7 @@
             <tr>
               <th class="text-center" style="width: 64px;" data-i18n="automationHub.providers.slot">Slot</th>
               <th data-i18n="common.name">Name</th>
+              <th data-i18n="automationHub.providers.repos">Repositories</th>
               <th data-i18n="automationHub.providers.credentials">Credentials</th>
               <th data-i18n="automationHub.providers.health">Health</th>
               <th data-i18n="common.status">Status</th>
@@ -102,6 +103,9 @@
       <div class="modal-body">
         <form id="providerForm" class="provider-form">
           <input type="hidden" id="providerId">
+          {# Storage-only page — provider type is fixed (storage:github for new
+             rows; legacy rows keep their stored type). No user-facing picker. #}
+          <input type="hidden" id="providerType">
 
           <section class="modal-section">
             <header class="modal-section-header">
@@ -109,10 +113,6 @@
               <span data-i18n="automationHub.providers.basicsSection">Basics</span>
             </header>
             <div class="row g-3">
-              <div class="col-md-6">
-                <label for="providerType" class="form-label" data-i18n="automationHub.providers.slot">Slot</label>
-                <select id="providerType" class="form-select" required></select>
-              </div>
               <div class="col-md-6">
                 <label for="providerName" class="form-label" data-i18n="common.name">Name</label>
                 <input type="text" id="providerName" class="form-control" maxlength="100" required>
@@ -132,6 +132,29 @@
               <span data-i18n="automationHub.providers.configSection">Configuration</span>
             </header>
             <div id="configFields" class="row g-3"></div>
+          </section>
+
+          {# Create-only: a source needs at least one repo. Extra repos are
+             added one at a time from the provider row, not here. #}
+          <section class="modal-section d-none" id="firstRepoSection">
+            <header class="modal-section-header">
+              <i class="fas fa-code-branch text-muted me-2"></i>
+              <span data-i18n="automationHub.providers.firstRepoSection">First repository</span>
+            </header>
+            <div class="row g-3">
+              <div class="col-md-5">
+                <label for="firstRepoOwner" class="form-label" data-i18n="automationHub.providers.repoOwner">Owner</label>
+                <input type="text" id="firstRepoOwner" class="form-control" placeholder="octocat" autocomplete="off">
+              </div>
+              <div class="col-md-4">
+                <label for="firstRepoName" class="form-label" data-i18n="automationHub.providers.repoName">Repository</label>
+                <input type="text" id="firstRepoName" class="form-control" placeholder="Hello-World" autocomplete="off">
+              </div>
+              <div class="col-md-3">
+                <label for="firstRepoBranch" class="form-label" data-i18n="automationHub.providers.repoBranch">Branch (optional)</label>
+                <input type="text" id="firstRepoBranch" class="form-control" placeholder="main" autocomplete="off">
+              </div>
+            </div>
           </section>
 
           <section class="modal-section">
@@ -155,6 +178,43 @@
         </button>
         <button type="button" class="btn btn-primary" id="saveProviderBtn">
           <i class="fas fa-save me-1"></i><span data-i18n="common.save">Save</span>
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="addRepoModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">
+          <i class="fas fa-code-branch me-2"></i>
+          <span data-i18n="automationHub.providers.addRepoTitle">Add repository</span>
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="addRepoProviderId">
+        <div class="row g-3">
+          <div class="col-md-5">
+            <label for="addRepoOwner" class="form-label" data-i18n="automationHub.providers.repoOwner">Owner</label>
+            <input type="text" id="addRepoOwner" class="form-control" placeholder="octocat" autocomplete="off">
+          </div>
+          <div class="col-md-4">
+            <label for="addRepoName" class="form-label" data-i18n="automationHub.providers.repoName">Repository</label>
+            <input type="text" id="addRepoName" class="form-control" placeholder="Hello-World" autocomplete="off">
+          </div>
+          <div class="col-md-3">
+            <label for="addRepoBranch" class="form-label" data-i18n="automationHub.providers.repoBranch">Branch (optional)</label>
+            <input type="text" id="addRepoBranch" class="form-control" placeholder="main" autocomplete="off">
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">Cancel</button>
+        <button type="button" class="btn btn-primary" id="addRepoSaveBtn">
+          <i class="fas fa-plus me-1"></i><span data-i18n="common.add">Add</span>
         </button>
       </div>
     </div>

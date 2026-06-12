@@ -5,7 +5,6 @@ import json
 import pytest
 
 from app.api import automation_webhooks_public
-from app.services.automation import webhook_service as webhook_service_module
 from app.models.database_models import (
     AutomationProviderSlot,
     AutomationRun,
@@ -21,7 +20,6 @@ from app.services.automation.webhook_service import (
     AutomationWebhookInboundOnlyError,
     AutomationWebhookNameConflictError,
     AutomationWebhookNotFoundError,
-    AutomationWebhookOutboundOnlyError,
     AutomationWebhookService,
     AutomationWebhookSignatureError,
 )
@@ -89,6 +87,31 @@ async def test_ensure_default_inbound_webhook_is_idempotent(webhook_db):
         assert first.token == second.token
         assert AutomationWebhookDirection(first.direction) == AutomationWebhookDirection.INBOUND
         assert first.name == "TCRT default (auto)"
+
+
+@pytest.mark.asyncio
+async def test_list_webhooks_excludes_auto_managed_receiver(webhook_db):
+    """The system-managed run-status receiver is hidden from the user-facing
+    list — it's an internal sink, not a webhook the team created."""
+    ids = webhook_db["ids"]
+    async with webhook_db["async_sessionmaker"]() as session:
+        service = AutomationWebhookService(session)
+        auto = await service.ensure_default_inbound_webhook(team_id=ids["team_id"])
+        outbound, _t, _s = await service.create_webhook(
+            team_id=ids["team_id"],
+            direction=AutomationWebhookDirection.OUTBOUND,
+            name="My Hook",
+            target_url="https://example.test/hook",
+            events=["run.completed"],
+            is_active=True,
+            actor="1",
+        )
+
+        listed = await service.list_webhooks(team_id=ids["team_id"])
+
+    listed_ids = {w.id for w in listed}
+    assert auto.id not in listed_ids
+    assert outbound.id in listed_ids
 
 
 def test_build_inbound_webhook_url_empty_when_public_base_url_unset(monkeypatch):
@@ -342,188 +365,6 @@ async def test_apply_run_status_terminal_run_does_not_revert(webhook_db):
 
 
 @pytest.mark.asyncio
-async def test_dispatch_event_fanout_only_matching_subscriptions(webhook_db, monkeypatch):
-    """OUTBOUND webhooks subscribed (or wildcard) to an event get a POST; others are skipped."""
-    ids = webhook_db["ids"]
-    calls: list[dict] = []
-
-    class _FakeResponse:
-        def __init__(self, status_code=204):
-            self.status_code = status_code
-            self.text = ""
-            self.reason_phrase = "No Content"
-
-    class _FakeClient:
-        def __init__(self, *args, **kwargs):
-            pass
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *exc):
-            return False
-
-        async def post(self, url, *, content, headers):
-            calls.append({"url": url, "event": headers.get("X-TCRT-Event")})
-            return _FakeResponse(204)
-
-    monkeypatch.setattr(webhook_service_module.httpx, "AsyncClient", _FakeClient)
-
-    async with webhook_db["async_sessionmaker"]() as session:
-        service = AutomationWebhookService(session)
-        # subscriber: only "run.completed"
-        sub_completed, _t, _s = await service.create_webhook(
-            team_id=ids["team_id"],
-            direction=AutomationWebhookDirection.OUTBOUND,
-            name="completed-only",
-            target_url="https://hook.example/completed",
-            events=["run.completed"],
-            is_active=True,
-            actor="1",
-        )
-        # subscriber: wildcard (empty events)
-        sub_wildcard, _t2, _s2 = await service.create_webhook(
-            team_id=ids["team_id"],
-            direction=AutomationWebhookDirection.OUTBOUND,
-            name="wildcard",
-            target_url="https://hook.example/all",
-            events=[],
-            is_active=True,
-            actor="1",
-        )
-        # inactive
-        inactive, _t3, _s3 = await service.create_webhook(
-            team_id=ids["team_id"],
-            direction=AutomationWebhookDirection.OUTBOUND,
-            name="inactive",
-            target_url="https://hook.example/off",
-            events=[],
-            is_active=False,
-            actor="1",
-        )
-
-        deliveries = await service.dispatch_event(
-            team_id=ids["team_id"],
-            event="run.triggered",
-            data={"run_id": 1},
-        )
-
-    # wildcard hit, completed-only skipped, inactive skipped
-    assert len(deliveries) == 1
-    assert deliveries[0]["webhook_id"] == sub_wildcard.id
-    assert deliveries[0]["status"] == "OK"
-    assert {c["url"] for c in calls} == {"https://hook.example/all"}
-
-
-@pytest.mark.asyncio
-async def test_dispatch_event_records_failure_status(webhook_db, monkeypatch):
-    """Non-2xx response should mark webhook last_status with FAILED."""
-    ids = webhook_db["ids"]
-
-    class _FakeResponse:
-        def __init__(self):
-            self.status_code = 500
-            self.text = "boom"
-            self.reason_phrase = "Internal Server Error"
-
-    class _FakeClient:
-        def __init__(self, *args, **kwargs):
-            pass
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *exc):
-            return False
-
-        async def post(self, url, *, content, headers):
-            return _FakeResponse()
-
-    monkeypatch.setattr(webhook_service_module.httpx, "AsyncClient", _FakeClient)
-
-    async with webhook_db["async_sessionmaker"]() as session:
-        service = AutomationWebhookService(session)
-        webhook, _t, _s = await service.create_webhook(
-            team_id=ids["team_id"],
-            direction=AutomationWebhookDirection.OUTBOUND,
-            name="broken",
-            target_url="https://broken.example",
-            events=[],
-            is_active=True,
-            actor="1",
-        )
-        deliveries = await service.dispatch_event(
-            team_id=ids["team_id"],
-            event="run.completed",
-            data={"run_id": 7},
-        )
-        assert len(deliveries) == 1
-        assert deliveries[0]["status"] == "FAILED"
-        assert deliveries[0]["status_code"] == 500
-        assert webhook.last_status.startswith("RUN.COMPLETED_FAILED")
-        rows = await service.list_deliveries(team_id=ids["team_id"], webhook_id=webhook.id)
-        assert len(rows) == 1
-        assert rows[0].delivery_id == deliveries[0]["delivery_id"]
-        assert rows[0].status == "FAILED"
-        assert rows[0].status_code == 500
-        assert rows[0].response_body == "boom"
-        assert json.loads(rows[0].request_body)["event"] == "run.completed"
-
-
-@pytest.mark.asyncio
-async def test_replay_delivery_resends_recorded_payload(webhook_db, monkeypatch):
-    ids = webhook_db["ids"]
-    calls: list[dict] = []
-
-    class _FakeResponse:
-        status_code = 204
-        text = ""
-        reason_phrase = "No Content"
-
-    class _FakeClient:
-        def __init__(self, *args, **kwargs):
-            pass
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *exc):
-            return False
-
-        async def post(self, url, *, content, headers):
-            calls.append({"url": url, "payload": json.loads(content), "event": headers.get("X-TCRT-Event")})
-            return _FakeResponse()
-
-    monkeypatch.setattr(webhook_service_module.httpx, "AsyncClient", _FakeClient)
-
-    async with webhook_db["async_sessionmaker"]() as session:
-        service = AutomationWebhookService(session)
-        webhook, _t, _s = await service.create_webhook(
-            team_id=ids["team_id"],
-            direction=AutomationWebhookDirection.OUTBOUND,
-            name="replayable",
-            target_url="https://hook.example/replay",
-            events=[],
-            is_active=True,
-            actor="1",
-        )
-        await service.dispatch_event(
-            team_id=ids["team_id"],
-            event="run.completed",
-            data={"run_id": 7},
-        )
-        original = (await service.list_deliveries(team_id=ids["team_id"], webhook_id=webhook.id))[0]
-        replayed = await service.replay_delivery(team_id=ids["team_id"], delivery_id=original.id)
-
-    assert len(calls) == 2
-    assert calls[0]["payload"]["data"] == {"run_id": 7}
-    assert calls[1]["payload"]["data"] == {"run_id": 7}
-    assert replayed.id != original.id
-    assert replayed.status == "OK"
-    assert replayed.event == "run.completed"
-
-
-@pytest.mark.asyncio
 async def test_regenerate_secret_replaces_secret_only(webhook_db):
     ids = webhook_db["ids"]
     async with webhook_db["async_sessionmaker"]() as session:
@@ -547,70 +388,3 @@ async def test_regenerate_secret_replaces_secret_only(webhook_db):
     assert rotated.secret == new_secret
     assert new_secret != original_secret
 
-
-@pytest.mark.asyncio
-async def test_send_test_ping_posts_signed_payload_and_updates_status(webhook_db, monkeypatch):
-    captured = {}
-
-    class FakeResponse:
-        status_code = 202
-        text = "accepted"
-        reason_phrase = "Accepted"
-
-    class FakeAsyncClient:
-        def __init__(self, **kwargs):
-            captured["client_kwargs"] = kwargs
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, exc_type, exc, tb):
-            return False
-
-        async def post(self, url, *, content, headers):
-            captured["url"] = url
-            captured["content"] = content
-            captured["headers"] = headers
-            return FakeResponse()
-
-    monkeypatch.setattr(webhook_service_module.httpx, "AsyncClient", FakeAsyncClient)
-    ids = webhook_db["ids"]
-
-    async with webhook_db["async_sessionmaker"]() as session:
-        service = AutomationWebhookService(session)
-        webhook, _token, secret = await service.create_webhook(
-            team_id=ids["team_id"],
-            direction=AutomationWebhookDirection.OUTBOUND,
-            name="Outbound",
-            target_url="https://hooks.example/test",
-            events=["run.completed"],
-            is_active=True,
-            actor="1",
-        )
-        result = await service.send_test_ping(team_id=ids["team_id"], webhook_id=webhook.id)
-
-    assert result["status"] == "OK"
-    assert result["status_code"] == 202
-    assert captured["url"] == "https://hooks.example/test"
-    assert captured["headers"]["X-TCRT-Event"] == "test"
-    assert captured["headers"]["X-TCRT-Signature"] == f"sha256={_sign(captured['content'], secret)}"
-    assert webhook.last_status == "TEST_OK 202"
-    assert webhook.last_triggered_at is not None
-
-
-@pytest.mark.asyncio
-async def test_send_test_ping_rejects_inbound_webhook(webhook_db):
-    ids = webhook_db["ids"]
-    async with webhook_db["async_sessionmaker"]() as session:
-        service = AutomationWebhookService(session)
-        webhook, _token, _secret = await service.create_webhook(
-            team_id=ids["team_id"],
-            direction=AutomationWebhookDirection.INBOUND,
-            name="Inbound",
-            target_url=None,
-            events=[],
-            is_active=True,
-            actor="1",
-        )
-        with pytest.raises(AutomationWebhookOutboundOnlyError):
-            await service.send_test_ping(team_id=ids["team_id"], webhook_id=webhook.id)

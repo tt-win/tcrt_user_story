@@ -172,6 +172,7 @@ class AutomationScriptGroupService:
             name=name,
             description=description,
             script_paths_json=json.dumps(script_paths, ensure_ascii=False),
+            ref_repo=scripts[0].ref_repo or "",
             ci_job_type=_job_type_for_provider(provider_record.provider_type),
             created_by=actor,
             updated_by=actor,
@@ -240,6 +241,7 @@ class AutomationScriptGroupService:
                     team_id=team_id,
                     team_name=team_name,
                     tcrt_webhook_url=tcrt_webhook_url,
+                    existing_job_name=group.ci_job_name,
                 )
             except httpx.HTTPStatusError as exc:
                 raise _wrap_ci_http_error(exc, action="update suite job on CI") from exc
@@ -249,6 +251,7 @@ class AutomationScriptGroupService:
             group.description = description
         if script_ids is not None:
             group.script_paths_json = json.dumps(script_paths, ensure_ascii=False)
+            group.ref_repo = scripts[0].ref_repo or ""
         group.updated_by = actor
         group.updated_at = _utcnow()
         await self.session.flush()
@@ -289,7 +292,20 @@ class AutomationScriptGroupService:
             raise AutomationScriptGroupScriptNotFoundError(
                 f"Automation scripts not found for team {team_id}: {missing_ids}"
             )
-        return [scripts_by_id[script_id] for script_id in ordered_ids]
+        scripts = [scripts_by_id[script_id] for script_id in ordered_ids]
+        self._assert_single_repo(scripts)
+        return scripts
+
+    @staticmethod
+    def _assert_single_repo(scripts: list[AutomationScript]) -> str:
+        """A suite is bound to a single repo (B1). Returns the common repo slug."""
+        repos = {(script.ref_repo or "") for script in scripts}
+        if len(repos) > 1:
+            shown = ", ".join(sorted(r or "(none)" for r in repos))
+            raise AutomationScriptGroupServiceError(
+                f"A suite must contain scripts from a single repository; got: {shown}"
+            )
+        return next(iter(repos), "")
 
     async def load_group_scripts(self, *, group: AutomationScriptGroup) -> list[AutomationScript]:
         script_paths = _load_script_paths(group.script_paths_json)
@@ -298,23 +314,12 @@ class AutomationScriptGroupService:
         result = await self.session.execute(
             select(AutomationScript).where(
                 AutomationScript.team_id == group.team_id,
+                AutomationScript.ref_repo == (group.ref_repo or ""),
                 AutomationScript.ref_path.in_(script_paths),
             )
         )
         scripts_by_path = {script.ref_path: script for script in result.scalars().all()}
         return [scripts_by_path[path] for path in script_paths if path in scripts_by_path]
-
-    async def load_recent_runs(self, *, group: AutomationScriptGroup, limit: int = 5) -> list[AutomationRun]:
-        result = await self.session.execute(
-            select(AutomationRun)
-            .where(
-                AutomationRun.team_id == group.team_id,
-                AutomationRun.script_group_id == group.id,
-            )
-            .order_by(AutomationRun.started_at.desc().nullslast(), AutomationRun.id.desc())
-            .limit(limit)
-        )
-        return list(result.scalars().all())
 
     async def trigger_group_run(
         self,
@@ -328,7 +333,16 @@ class AutomationScriptGroupService:
         ci_provider: CIProvider | None = None,
         triggered_by: AutomationRunTrigger = AutomationRunTrigger.USER,
         triggered_by_webhook_id: int | None = None,
+        test_run_set_id: int | None = None,
     ) -> AutomationRun:
+        """Internal helper used by the webhook service AND `TestRunSetAutomationService`.
+
+        The Test Run Set trigger flow calls this method with ``test_run_set_id``
+        so the resulting ``automation_runs`` row is linked back to its source
+        set. The webhook flow leaves ``test_run_set_id=None`` (no set context).
+        Public trigger paths on the Automation Hub have been removed; see
+        `move-automation-execution-to-test-run-set`.
+        """
         group = await self.get_group(team_id=team_id, group_id=group_id)
         if not group.ci_job_name:
             raise AutomationScriptGroupCIJobMissingError(f"Automation script group {group_id} has no CI job")
@@ -383,7 +397,6 @@ class AutomationScriptGroupService:
 
         run_inputs = {
             **(inputs or {}),
-            "tcrt_run_id": tcrt_correlation_id,
             "runner_label": resolved_runner_label,
             "test_paths": json.dumps(script_paths, ensure_ascii=False),
         }
@@ -403,6 +416,7 @@ class AutomationScriptGroupService:
             team_id=team_id,
             automation_script_id=None,
             script_group_id=group.id,
+            test_run_set_id=test_run_set_id,
             provider_id=provider_record.id,
             external_run_id=external_run.external_run_id,
             external_run_url=external_run.external_run_url,
@@ -458,7 +472,6 @@ def script_group_to_dict(
     group: AutomationScriptGroup,
     *,
     scripts: list[AutomationScript] | None = None,
-    recent_runs: list[AutomationRun] | None = None,
 ) -> dict[str, Any]:
     script_paths = _load_script_paths(group.script_paths_json)
     scripts = scripts or []
@@ -477,7 +490,6 @@ def script_group_to_dict(
         "created_at": group.created_at,
         "updated_at": group.updated_at,
         "scripts": [_script_summary_to_dict(script) for script in scripts],
-        "recent_runs": [automation_run_to_dict(run) for run in (recent_runs or [])],
     }
 
 
@@ -544,8 +556,6 @@ async def _build_git_context_for_group(
 
 
 def _job_type_for_provider(provider_type: str) -> AutomationScriptGroupJobType:
-    if provider_type == "ci:github_actions":
-        return AutomationScriptGroupJobType.GITHUB_ACTIONS
     if provider_type == "ci:jenkins":
         return AutomationScriptGroupJobType.JENKINS
     raise AutomationScriptGroupServiceError(f"Unsupported CI provider type for script groups: {provider_type}")

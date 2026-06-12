@@ -25,6 +25,18 @@ TCRT itself never executes a Playwright spec. It coordinates external systems
 and maintains the M2M link between **manual test cases** (the system of record
 for QA intent) and **automation scripts** (the system of record for code).
 
+## Release note: links now come from pytest markers
+
+This is a breaking behavior change for teams that previously created links from
+the UI.
+
+- Automation script links are now read-only in TCRT.
+- Links come from source-code markers such as `@pytest.mark.tcrt(...)`.
+- Historical manual link rows can be audited and cleaned with
+  `scripts/cleanup_manual_automation_links.py`.
+- If a repo has not adopted markers yet, linked automation may disappear from
+  the UI until the next marker-based sync is in place.
+
 ## End-to-end onboarding (5 minutes once providers are configured)
 
 1. **Generate an encryption key** (one time per deployment):
@@ -36,7 +48,7 @@ for QA intent) and **automation scripts** (the system of record for code).
 
 2. **Configure providers** at `/automation-provider-settings`:
    - **Storage** (GitHub or LocalGit) — where the scripts live.
-   - **CI** (GitHub Actions or Jenkins) — what runs them.
+   - **CI** (Jenkins) — what runs them.
    - **Result** (Allure) — where reports are served.
 
 3. **Discover scripts**: open `/automation-hub` → Suites tab → click *Rescan*.
@@ -51,18 +63,31 @@ for QA intent) and **automation scripts** (the system of record for code).
 
 5. **Link to test cases**: open a test case in `test-case-management`. The
    *Automation* panel (below Attachments) shows linked scripts, link types
-   (`PRIMARY` / `COVERS` / `REFERENCES`), latest run status, and direct
-   buttons to the CI run and Allure report.
+   (`PRIMARY` / `COVERS` / `REFERENCES`), and link source badges. Links are
+   read-only in the UI and come from source-code markers; run history now
+   lives in the Test Run Set detail page.
 
-6. **Trigger**: hit the green ▶ on a suite or the *Run* action on a row → fill
-   branch / runner / extra inputs → confirm. A `automation_runs` row is
-   created with a TCRT correlation id and an `external_run_id` from the
-   provider.
+6. **Trigger (via Test Run Set)**: the Automation Hub no longer exposes a
+   direct *Run Suite* / *Run Script* button. To execute a suite, bundle it
+   into a [Test Run Set](./user_manual.md#test-run-sets) (the
+   *Automation Suites* section on the set detail page) and click
+   *Run as Automation*. TCRT walks every linked suite in order, calls
+   `CIProvider.trigger_run` per suite, and creates one `automation_runs`
+   row per suite with a TCRT correlation id and the provider's
+   `external_run_id`. The historical public endpoints
+   `POST /automation-scripts/{id}/runs` and
+   `POST /automation-script-groups/{id}/runs` have been retired; the
+   inbound webhook `/api/v1/webhooks/ci/{token}/trigger` still works for
+   automation bound to a webhook suite binding (see
+   [add-webhook-suite-trigger](../openspec/changes/add-webhook-suite-trigger/)).
 
 7. **Wait for status**: CI calls back via inbound webhook
    (`POST /api/v1/webhooks/ci/{token}/run-status`, HMAC signed) **or** the
    per-team background ticker polls `CIProvider.get_run_status` every 60s
    and pulls the report URL through `ResultProvider.get_run_report_url`.
+   The run itself (status, cancel, reconcile, report embed) is surfaced
+   from the Test Run Set detail page — the Hub no longer has a Runs tab
+   (see `move-run-history-to-test-run-set`).
 
 8. **See coverage**: the Coverage tab shows total cases, PRIMARY / COVERS
    coverage, uncovered cases, stale scripts (no run in 30 days), and a 30-day

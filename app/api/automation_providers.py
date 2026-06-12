@@ -75,8 +75,25 @@ async def _ensure_team_exists(session: AsyncSession, team_id: int) -> None:
         )
 
 
+def _normalize_storage_config_for_response(provider_type: str, config: Any) -> Any:
+    """Fold a legacy single-repo GitHub config (top-level owner/repo) into a
+    `repos` list so the schema-driven edit form pre-fills it. Keeps every other
+    key (e.g. smart_scan) intact — unlike model_dump, which would drop extras."""
+    if (
+        provider_type == "storage:github"
+        and isinstance(config, dict)
+        and not config.get("repos")
+        and config.get("owner")
+        and config.get("repo")
+    ):
+        return {**config, "repos": [{"owner": config["owner"], "repo": config["repo"]}]}
+    return config
+
+
 def _provider_to_response(provider: TeamAutomationProvider) -> AutomationProviderResponse:
-    config = json.loads(provider.config_json or "{}")
+    config = _normalize_storage_config_for_response(
+        provider.provider_type, json.loads(provider.config_json or "{}")
+    )
     return AutomationProviderResponse(
         id=provider.id,
         team_id=provider.team_id,

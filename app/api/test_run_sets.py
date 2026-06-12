@@ -8,6 +8,8 @@ import json
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status, Body, Request
+from pydantic import BaseModel, Field
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session, joinedload
 from typing import Dict, Any
@@ -15,9 +17,19 @@ from typing import Dict, Any
 from app.db_access import MainAccessBoundary, get_main_access_boundary
 from app.database import get_db
 from app.auth.dependencies import get_current_user
-from app.models.database_models import User
-from app.audit import audit_service, ActionType, ResourceType, AuditSeverity
 from app.models.database_models import (
+    AutomationRunStatus,
+    AutomationRunTrigger,
+    Team,
+    User,
+)
+from app.audit import audit_service, ActionType, ResourceType, AuditSeverity
+from app.models.automation_run import AutomationRunListResponse, AutomationRunResponse
+from app.models.database_models import (
+    AutomationScript,
+    AutomationScriptCaseLink,
+    AutomationScriptGroup,
+    AutomationScriptLinkType,
     TestRunConfig as TestRunConfigDB,
     TestRunSet as TestRunSetDB,
     TestRunSetMembership as TestRunSetMembershipDB,
@@ -26,7 +38,9 @@ from app.models.database_models import (
 )
 from app.models.test_run_config import TestRunConfigSummary, TestRunStatus
 from app.models.test_run_set import (
+    AutomationSuiteSummary,
     TestRunSet,
+    TestRunSetAutomationCoveredCases,
     TestRunSetCreate,
     TestRunSetDetail,
     TestRunSetOverview,
@@ -35,6 +49,20 @@ from app.models.test_run_set import (
     TestRunSetStatus,
     TestRunSetSummary,
     TestRunSetUpdate,
+    _deserialize_suite_ids,
+    _serialize_suite_ids,
+)
+from app.services.automation.run_service import (
+    AutomationRunAlreadyTerminalError,
+    AutomationRunExternalIdMissingError,
+    AutomationRunNotFoundError,
+    AutomationRunService,
+    AutomationRunServiceError,
+    automation_run_to_dict,
+)
+from app.services.automation.provider_registry import (
+    ProviderNotConfiguredError,
+    ProviderRegistryError,
 )
 from app.services.test_run_set_status import (
     recalculate_set_status_sync,
@@ -54,6 +82,83 @@ from .test_run_configs import (
 
 
 logger = logging.getLogger(__name__)
+
+
+# --------------------------------------------------------------------- run helpers
+# (replaces the removed automation_runs.py endpoints; the new home of run
+#  history is /test-run-sets/{set_id}/runs; see move-run-history-to-test-run-set)
+
+
+class AutomationRunReconcileRequest(BaseModel):
+    external_run_id: Optional[str] = Field(default=None, max_length=120)
+
+
+class TestRunSetRunAutomationRequest(BaseModel):
+    suite_id: Optional[int] = Field(default=None, ge=1)
+
+
+async def _run_write(main_boundary: MainAccessBoundary, operation):
+    try:
+        return await main_boundary.run_write(operation)
+    except AutomationRunAlreadyTerminalError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "AUTOMATION_RUN_ALREADY_TERMINAL", "message": str(exc)},
+        ) from exc
+    except AutomationRunExternalIdMissingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "AUTOMATION_RUN_EXTERNAL_ID_MISSING", "message": str(exc)},
+        ) from exc
+    except ProviderNotConfiguredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "AUTOMATION_PROVIDER_NOT_CONFIGURED", "message": str(exc)},
+        ) from exc
+    except (AutomationRunServiceError, ProviderRegistryError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "AUTOMATION_RUN_OPERATION_FAILED", "message": str(exc)},
+        ) from exc
+
+
+def _run_not_found_in_set(run_id: int, set_id: int) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail={
+            "code": "AUTOMATION_RUN_NOT_IN_SET",
+            "message": f"Run {run_id} is not part of Test Run Set {set_id}",
+        },
+    )
+
+
+async def _log_run_action(
+    action_type: ActionType,
+    current_user: User,
+    team_id: int,
+    resource_id: str,
+    action_brief: str,
+    details: dict[str, Any] | None = None,
+    request: Request | None = None,
+) -> None:
+    try:
+        role_value = current_user.role.value if hasattr(current_user.role, "value") else str(current_user.role)
+        await audit_service.log_action(
+            user_id=current_user.id,
+            username=current_user.username,
+            role=role_value,
+            action_type=action_type,
+            resource_type=ResourceType.AUTOMATION_RUN,
+            resource_id=resource_id,
+            team_id=team_id,
+            details=details,
+            action_brief=action_brief,
+            severity=AuditSeverity.INFO,
+            ip_address=request.client.host if request and request.client else None,
+            user_agent=request.headers.get("user-agent") if request else None,
+        )
+    except Exception as exc:
+        logger.warning("Failed to write automation run audit log: %s", exc, exc_info=True)
 
 router = APIRouter(prefix="/teams/{team_id}/test-run-sets", tags=["test-run-sets"])
 
@@ -119,7 +224,8 @@ def _query_set_with_members(db: Session):
     return db.query(TestRunSetDB).options(
         joinedload(TestRunSetDB.memberships)
         .joinedload(TestRunSetMembershipDB.config)
-        .joinedload(TestRunConfigDB.set_membership)
+        .joinedload(TestRunConfigDB.set_membership),
+        joinedload(TestRunSetDB.team).joinedload(Team.automation_script_groups),
     )
 
 
@@ -136,13 +242,106 @@ def _build_set_summary(set_db: TestRunSetDB) -> TestRunSetSummary:
     )
 
 
-def _build_set_detail(set_db: TestRunSetDB) -> TestRunSetDetail:
+def _query_automation_covered_case_rows(
+    sync_db: Session, team_id: int, suite_ids: List[int]
+) -> list:
+    """Distinct (id, test_case_number) rows of cases covered by the suites.
+
+    Coverage = a PRIMARY/COVERS link from any script belonging to any of the
+    given suites. Shared by the covered-cases endpoint and the set detail
+    automation_covered_case_count field.
+    """
+    if not suite_ids:
+        return []
+
+    suites = (
+        sync_db.query(AutomationScriptGroup)
+        .filter(
+            AutomationScriptGroup.id.in_(suite_ids),
+            AutomationScriptGroup.team_id == team_id,
+        )
+        .all()
+    )
+    script_ids: set[int] = set()
+    for suite in suites:
+        try:
+            paths = json.loads(suite.script_paths_json or "[]")
+        except (TypeError, ValueError):
+            paths = []
+        if not isinstance(paths, list) or not paths:
+            continue
+        rows = (
+            sync_db.query(AutomationScript.id)
+            .filter(
+                AutomationScript.team_id == team_id,
+                AutomationScript.ref_repo == (suite.ref_repo or ""),
+                AutomationScript.ref_path.in_([str(p) for p in paths]),
+            )
+            .all()
+        )
+        script_ids.update(int(row.id) for row in rows)
+
+    if not script_ids:
+        return []
+
+    return (
+        sync_db.query(TestCaseLocalDB.id, TestCaseLocalDB.test_case_number)
+        .join(
+            AutomationScriptCaseLink,
+            AutomationScriptCaseLink.test_case_id == TestCaseLocalDB.id,
+        )
+        .filter(
+            AutomationScriptCaseLink.team_id == team_id,
+            AutomationScriptCaseLink.automation_script_id.in_(script_ids),
+            AutomationScriptCaseLink.link_type.in_(
+                [AutomationScriptLinkType.PRIMARY, AutomationScriptLinkType.COVERS]
+            ),
+        )
+        .distinct()
+        .all()
+    )
+
+
+def _build_set_detail(
+    set_db: TestRunSetDB, automation_covered_case_count: int = 0
+) -> TestRunSetDetail:
     test_runs: List[TestRunConfigSummary] = []
     for membership in sorted(set_db.memberships, key=lambda m: (m.position or 0, m.id)):
         if membership.config:
             test_runs.append(build_config_summary(membership.config))
 
     resolved_status = resolve_status_for_response(set_db)
+    suite_ids = _deserialize_suite_ids(set_db.automation_suite_ids_json)
+    suites_by_id: dict[int, AutomationScriptGroup] = {}
+    if suite_ids:
+        suite_rows = (
+            set_db.team.automation_script_groups if getattr(set_db, "team", None) else []
+        ) or []
+        suites_by_id = {
+            int(s.id): s
+            for s in suite_rows
+            if s is not None and int(getattr(s, "team_id", 0)) == int(set_db.team_id)
+        }
+
+    automation_suites: List[AutomationSuiteSummary] = []
+    for sid in suite_ids:
+        suite = suites_by_id.get(int(sid))
+        if not suite:
+            continue
+        try:
+            script_paths = json.loads(suite.script_paths_json or "[]")
+        except (TypeError, ValueError):
+            script_paths = []
+        script_count = len(script_paths) if isinstance(script_paths, list) else 0
+        automation_suites.append(
+            AutomationSuiteSummary(
+                id=suite.id,
+                name=suite.name,
+                script_count=script_count,
+                ci_job_name=suite.ci_job_name,
+                ref_branch=None,
+            )
+        )
 
     return TestRunSetDetail(
         id=set_db.id,
@@ -152,9 +351,12 @@ def _build_set_detail(set_db: TestRunSetDB) -> TestRunSetDetail:
         status=resolved_status,
         archived_at=set_db.archived_at,
         related_tp_tickets=deserialize_tp_tickets(set_db.related_tp_tickets_json),
+        automation_suite_ids=suite_ids,
         created_at=set_db.created_at,
         updated_at=set_db.updated_at,
         test_runs=test_runs,
+        automation_suites=automation_suites,
+        automation_covered_case_count=automation_covered_case_count,
     )
 
 
@@ -273,6 +475,9 @@ async def create_test_run_set(
             name=payload.name,
             description=payload.description,
             status=TestRunSetStatus.ACTIVE,
+            automation_suite_ids_json=_serialize_suite_ids(
+                payload.automation_suite_ids
+            ),
         )
 
         sync_db.add(new_set)
@@ -322,7 +527,40 @@ async def get_test_run_set(
     def _get(sync_db: Session):
         verify_team_exists(team_id, sync_db)
         test_run_set = _load_set_or_404(sync_db, team_id, set_id)
-        return _build_set_detail(test_run_set)
+        suite_ids = _deserialize_suite_ids(test_run_set.automation_suite_ids_json)
+        covered_rows = _query_automation_covered_case_rows(sync_db, team_id, suite_ids)
+        return _build_set_detail(
+            test_run_set,
+            automation_covered_case_count=len({int(row.id) for row in covered_rows}),
+        )
+
+    return await main_boundary.run_sync_read(_get)
+
+
+@router.get("/{set_id}/automation-covered-cases", response_model=TestRunSetAutomationCoveredCases)
+async def get_set_automation_covered_cases(
+    team_id: int,
+    set_id: int,
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
+):
+    """Test cases already covered by the set's automation suites.
+
+    Coverage = a PRIMARY/COVERS link from any script belonging to any suite
+    attached to this set. Case selection uses this to filter out (or badge)
+    cases the automation already exercises.
+    """
+
+    def _get(sync_db: Session):
+        verify_team_exists(team_id, sync_db)
+        test_run_set = _load_set_or_404(sync_db, team_id, set_id)
+        suite_ids = _deserialize_suite_ids(test_run_set.automation_suite_ids_json)
+        link_rows = _query_automation_covered_case_rows(sync_db, team_id, suite_ids)
+        if not link_rows:
+            return TestRunSetAutomationCoveredCases()
+        return TestRunSetAutomationCoveredCases(
+            test_case_ids=sorted({int(row.id) for row in link_rows}),
+            test_case_numbers=sorted({row.test_case_number for row in link_rows if row.test_case_number}),
+        )
 
     return await main_boundary.run_sync_read(_get)
 
@@ -353,6 +591,13 @@ async def update_test_run_set(
         if tp_tickets is not None:
             sync_tp_tickets_to_db(test_run_set, tp_tickets)
 
+        # automation_suite_ids: list[int] (Pydantic) → automation_suite_ids_json: str
+        suite_ids_update = update_data.pop("automation_suite_ids", None)
+        if suite_ids_update is not None:
+            test_run_set.automation_suite_ids_json = _serialize_suite_ids(
+                suite_ids_update
+            )
+
         for key, value in update_data.items():
             setattr(test_run_set, key, value)
 
@@ -376,6 +621,9 @@ async def update_test_run_set(
             status=new_status,
             archived_at=test_run_set.archived_at,
             related_tp_tickets=deserialize_tp_tickets(test_run_set.related_tp_tickets_json),
+            automation_suite_ids=_deserialize_suite_ids(
+                test_run_set.automation_suite_ids_json
+            ),
             created_at=test_run_set.created_at,
             updated_at=test_run_set.updated_at,
         )
@@ -416,6 +664,335 @@ async def update_test_run_set(
     )
 
     return response
+
+
+@router.get("/{set_id}/runs", response_model=AutomationRunListResponse)
+async def list_test_run_set_runs(
+    team_id: int,
+    set_id: int,
+    run_status: AutomationRunStatus | None = Query(default=None, alias="status"),
+    branch: str | None = Query(default=None),
+    cursor: int | None = Query(default=None, ge=1),
+    limit: int = Query(default=50, ge=1, le=200),
+    current_user: User = Depends(get_current_user),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
+) -> AutomationRunListResponse:
+    """List every automation run triggered by this Test Run Set.
+
+    This is the new home of run history (replaces the removed
+    ``GET /api/teams/{team_id}/automation-runs`` endpoint). The list is
+    always filtered by ``test_run_set_id == {set_id}`` and the caller must
+    have read access to the team; the set itself is loaded to enforce
+    team-scope and surface 404 when the set is missing or cross-team.
+
+    Supports cursor pagination on ``run.id`` and an optional
+    ``status`` / ``branch`` filter.
+    """
+    async def _list(session: AsyncSession) -> AutomationRunListResponse:
+        service = AutomationRunService(session)
+        rows, next_cursor, total = await service.list_runs(
+            team_id=team_id,
+            test_run_set_id=set_id,
+            status=run_status,
+            branch=branch,
+            cursor=cursor,
+            limit=limit,
+        )
+        return AutomationRunListResponse(
+            items=[AutomationRunResponse(**automation_run_to_dict(row)) for row in rows],
+            next_cursor=str(next_cursor) if next_cursor is not None else None,
+            total=total,
+        )
+
+    return await main_boundary.run_read(_list)
+
+
+@router.get("/{set_id}/runs/{run_id}", response_model=AutomationRunResponse)
+async def get_test_run_set_run(
+    team_id: int,
+    set_id: int,
+    run_id: int,
+    current_user: User = Depends(get_current_user),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
+) -> AutomationRunResponse:
+    """Get a single run that belongs to this Test Run Set.
+
+    Returns 404 if the run does not exist **or** does not belong to the
+    set — the set-scoping prevents leaking runs from other sets / teams.
+    """
+    async def _get(session: AsyncSession) -> AutomationRunResponse:
+        run_service = AutomationRunService(session)
+        try:
+            run = await run_service.get_run(team_id=team_id, run_id=run_id)
+        except AutomationRunNotFoundError as exc:
+            raise _run_not_found_in_set(run_id, set_id) from exc
+        if run.test_run_set_id != set_id:
+            raise _run_not_found_in_set(run_id, set_id)
+        return AutomationRunResponse(**automation_run_to_dict(run))
+
+    return await main_boundary.run_read(_get)
+
+
+@router.post("/{set_id}/runs/{run_id}/cancel", response_model=AutomationRunResponse)
+async def cancel_test_run_set_run(
+    team_id: int,
+    set_id: int,
+    run_id: int,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
+) -> AutomationRunResponse:
+    """Cancel a run triggered by this Test Run Set."""
+    async def _cancel(session: AsyncSession) -> AutomationRunResponse:
+        run_service = AutomationRunService(session)
+        try:
+            run = await run_service.get_run(team_id=team_id, run_id=run_id)
+        except AutomationRunNotFoundError as exc:
+            raise _run_not_found_in_set(run_id, set_id) from exc
+        if run.test_run_set_id != set_id:
+            raise _run_not_found_in_set(run_id, set_id)
+        return AutomationRunResponse(
+            **automation_run_to_dict(
+                await run_service.cancel_run(
+                    team_id=team_id, run_id=run_id, actor=str(current_user.id)
+                )
+            )
+        )
+
+    response = await _run_write(main_boundary, _cancel)
+    await _log_run_action(
+        ActionType.UPDATE,
+        current_user,
+        team_id,
+        str(response.id),
+        f"取消 Test Run Set Run: set={set_id} run={run_id}",
+        {
+            "test_run_set_id": set_id,
+            "external_run_id": response.external_run_id,
+            "workflow_id": response.workflow_id,
+            "status": response.status,
+        },
+        request,
+    )
+    return response
+
+
+@router.post("/{set_id}/runs/{run_id}/reconcile", response_model=AutomationRunResponse)
+async def reconcile_test_run_set_run(
+    team_id: int,
+    set_id: int,
+    run_id: int,
+    payload: AutomationRunReconcileRequest,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
+) -> AutomationRunResponse:
+    """Manually link a run to an external CI run id (only for set-scoped runs)."""
+    async def _reconcile(session: AsyncSession) -> AutomationRunResponse:
+        run_service = AutomationRunService(session)
+        try:
+            run = await run_service.get_run(team_id=team_id, run_id=run_id)
+        except AutomationRunNotFoundError as exc:
+            raise _run_not_found_in_set(run_id, set_id) from exc
+        if run.test_run_set_id != set_id:
+            raise _run_not_found_in_set(run_id, set_id)
+        return AutomationRunResponse(
+            **automation_run_to_dict(
+                await run_service.reconcile_run(
+                    team_id=team_id,
+                    run_id=run_id,
+                    external_run_id=payload.external_run_id,
+                    actor=str(current_user.id),
+                )
+            )
+        )
+
+    response = await _run_write(main_boundary, _reconcile)
+    await _log_run_action(
+        ActionType.UPDATE,
+        current_user,
+        team_id,
+        str(response.id),
+        f"對齊 Test Run Set Run: set={set_id} run={run_id}",
+        {
+            "test_run_set_id": set_id,
+            "external_run_id": response.external_run_id,
+            "status": response.status,
+            "manual_external_run_id": payload.external_run_id,
+        },
+        request,
+    )
+    return response
+
+
+@router.post("/{set_id}/run-automation")
+async def run_automation_for_test_run_set(
+    team_id: int,
+    set_id: int,
+    request: Request,
+    payload: TestRunSetRunAutomationRequest | None = Body(default=None),
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
+    current_user: User = Depends(get_current_user),
+):
+    """Trigger every automation suite associated with this Test Run Set.
+
+    Replaces the removed ``POST /automation-scripts/{id}/runs`` and
+    ``POST /automation-script-groups/{id}/runs`` public endpoints. The Test
+    Run Set becomes the single trigger entry point; suites that should run
+    together are bundled into a set's ``automation_suite_ids`` list.
+
+    Returns:
+        ``{"triggered_suite_ids": [int, ...], "run_ids": [int, ...]}``
+
+    Errors:
+        - 404 if the set is not found
+        - 400 if the set has no automation suites
+        - 400 if any suite id does not belong to this team / no longer exists
+        - 400 if requested suite_id is not associated with the set
+    """
+    from app.services.test_run_set_automation_service import (
+        TestRunSetAutomationError,
+        TestRunSetAutomationService,
+        TestRunSetEmptySuitesError,
+        TestRunSetNotFoundError,
+        TestRunSetSuiteCrossTeamError,
+        TestRunSetSuiteNotFoundError,
+        TestRunSetSuiteNotInSetError,
+    )
+    from app.services.automation.script_group_service import AutomationScriptGroupCIApiError
+    from app.models.database_models import AutomationRun, AutomationScriptGroup
+    from sqlalchemy import select as sa_select
+
+    async def _run_async(async_db: AsyncSession) -> dict[str, list[int]]:
+        service = TestRunSetAutomationService(async_db)
+        return await service.trigger_automation_suites(
+            team_id=team_id,
+            set_id=set_id,
+            suite_id=payload.suite_id if payload else None,
+            actor=str(current_user.id),
+        )
+
+    try:
+        result = await main_boundary.run_write(_run_async)
+    except TestRunSetNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "TEST_RUN_SET_NOT_FOUND", "message": str(exc)},
+        ) from exc
+    except TestRunSetEmptySuitesError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "NO_AUTOMATION_SUITES", "message": str(exc)},
+        ) from exc
+    except (TestRunSetSuiteCrossTeamError, TestRunSetSuiteNotFoundError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "AUTOMATION_SUITE_INVALID", "message": str(exc)},
+        ) from exc
+    except TestRunSetSuiteNotInSetError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "AUTOMATION_SUITE_NOT_IN_SET", "message": str(exc)},
+        ) from exc
+    except AutomationScriptGroupCIApiError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail={"code": "AUTOMATION_RUN_CI_API_FAILED", "message": str(exc)},
+        ) from exc
+    except ProviderNotConfiguredError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "AUTOMATION_PROVIDER_NOT_CONFIGURED", "message": str(exc)},
+        ) from exc
+    except ProviderRegistryError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "AUTOMATION_PROVIDER_INVALID", "message": str(exc)},
+        ) from exc
+    except TestRunSetAutomationError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={"code": "AUTOMATION_RUN_OPERATION_FAILED", "message": str(exc)},
+        ) from exc
+
+    # Best-effort audit + outbound webhook for each created run. Failures
+    # here MUST NOT roll back the trigger; the runs are already QUEUED on CI.
+    for triggered_suite_id, run_id in zip(
+        result["triggered_suite_ids"], result["run_ids"]
+    ):
+        try:
+            await main_boundary.run_write(
+                lambda db: _audit_run_for_test_run_set(
+                    db=db,
+                    run_id=run_id,
+                    triggered_suite_id=triggered_suite_id,
+                    team_id=team_id,
+                    current_user=current_user,
+                    request=request,
+                )
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "Failed to write Test Run Set automation audit log for run %s: %s",
+                run_id, exc, exc_info=True,
+            )
+
+    return result
+
+
+async def _audit_run_for_test_run_set(
+    *,
+    db: AsyncSession,
+    run_id: int,
+    triggered_suite_id: int,
+    team_id: int,
+    current_user: User,
+    request: Request,
+) -> None:
+    """Write a single automation run audit record for a Test Run Set trigger."""
+    from app.models.database_models import AutomationRun, AutomationScriptGroup
+    from sqlalchemy import select
+
+    row = (
+        await db.execute(
+            select(AutomationRun, AutomationScriptGroup)
+            .join(AutomationScriptGroup, AutomationScriptGroup.id == AutomationRun.script_group_id)
+            .where(AutomationRun.id == run_id)
+        )
+    ).first()
+    if row is None:
+        return
+    run_db, suite_db = row
+    role_value = (
+        current_user.role.value
+        if hasattr(current_user.role, "value")
+        else str(current_user.role)
+    )
+    await audit_service.log_action(
+        user_id=current_user.id,
+        username=current_user.username,
+        role=role_value,
+        action_type=ActionType.CREATE,
+        resource_type=ResourceType.AUTOMATION_RUN,
+        resource_id=str(run_id),
+        team_id=team_id,
+        details={
+            "test_run_set_id": run_db.test_run_set_id,
+            "script_group_id": run_db.script_group_id,
+            "suite_name": suite_db.name,
+            "workflow_id": run_db.workflow_id,
+            "branch": run_db.branch,
+            "tcrt_correlation_id": run_db.tcrt_correlation_id,
+            "trigger_source": "test-run-set",
+        },
+        action_brief=(
+            f"Test Run Set triggered automation suite: set_id={run_db.test_run_set_id} "
+            f"suite_id={run_db.script_group_id} run_id={run_id}"
+        ),
+        severity=AuditSeverity.INFO,
+        ip_address=request.client.host if request and request.client else None,
+        user_agent=request.headers.get("user-agent") if request else None,
+    )
 
 
 @router.post("/{set_id}/members", response_model=TestRunSetDetail)
@@ -582,6 +1159,9 @@ async def archive_test_run_set(
             status=test_run_set.status,
             archived_at=test_run_set.archived_at,
             related_tp_tickets=deserialize_tp_tickets(test_run_set.related_tp_tickets_json),
+            automation_suite_ids=_deserialize_suite_ids(
+                test_run_set.automation_suite_ids_json
+            ),
             created_at=test_run_set.created_at,
             updated_at=test_run_set.updated_at,
         )
@@ -739,6 +1319,7 @@ async def create_test_run_set_from_cases(
                 name=name.strip(),
                 description=description,
                 status=TestRunSetStatus.ACTIVE,
+                automation_suite_ids_json=None,
             )
             sync_db.add(new_set)
             sync_db.flush()

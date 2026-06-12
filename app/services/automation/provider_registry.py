@@ -15,7 +15,6 @@ from app.models.database_models import (
 from app.services.automation.provider_credential_service import decrypt_credentials
 from app.services.automation.providers.allure_result import AllureResultProvider
 from app.services.automation.providers.base import CIProvider, ResultProvider, StorageProvider
-from app.services.automation.providers.github_actions_ci import GitHubActionsCIProvider
 from app.services.automation.providers.github_storage import GitHubStorageProvider
 from app.services.automation.providers.jenkins_ci import JenkinsCIProvider
 from app.services.automation.providers.local_git_storage import LocalGitStorageProvider
@@ -39,7 +38,6 @@ class ProviderNotConfiguredError(ProviderRegistryError):
 PROVIDER_CLASSES: dict[str, ProviderClass] = {
     "storage:github": GitHubStorageProvider,
     "storage:local_git": LocalGitStorageProvider,
-    "ci:github_actions": GitHubActionsCIProvider,
     "ci:jenkins": JenkinsCIProvider,
     "result:allure": AllureResultProvider,
 }

@@ -172,6 +172,10 @@ class CIProvider(ProviderWithSchemas, Protocol):
         test_paths: list[str],
         default_runner_label: str,
         git_context: dict[str, Any] | None = None,
+        # The job/workflow name the suite currently maps to. When a rename
+        # changes the derived name, providers use this to relocate the existing
+        # job instead of orphaning it.
+        existing_job_name: str | None = None,
     ) -> str: ...
 
     async def delete_suite_job(self, suite_id: str, job_name: str) -> None: ...

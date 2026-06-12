@@ -91,7 +91,6 @@ class AutomationScriptLinkType(PyEnum):
 class AutomationScriptGroupJobType(PyEnum):
     """Automation script group CI job type"""
 
-    GITHUB_ACTIONS = "GITHUB_ACTIONS"
     JENKINS = "JENKINS"
 
 
@@ -240,6 +239,17 @@ class TestRunSet(Base):
     archived_at = Column(DateTime, nullable=True)
     related_tp_tickets_json = Column(Text, nullable=True, comment="相關 JIRA Tickets 票號 JSON 陣列")
     tp_tickets_search = Column(String(512), nullable=True, index=True, comment="JIRA Ticket 搜尋索引欄位")
+    automation_suite_ids_json = Column(
+        Text,
+        nullable=True,
+        comment=(
+            "Automation Suites that this Test Run Set can trigger via the "
+            "Run-as-Automation entry point. JSON array of automation_script_groups.id. "
+            "Stored as text because SQLite/PG have no native int[] support; "
+            "serialized/deserialized in Pydantic schemas (TestRunSetBase). "
+            "See move-automation-execution-to-test-run-set."
+        ),
+    )
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -1768,7 +1778,10 @@ class AutomationScript(Base):
 
     __tablename__ = "automation_scripts"
     __table_args__ = (
-        UniqueConstraint("team_id", "provider_id", "ref_path", "ref_branch", name="uq_automation_script_ref"),
+        UniqueConstraint(
+            "team_id", "provider_id", "ref_repo", "ref_path", "ref_branch",
+            name="uq_automation_script_ref",
+        ),
         Index("ix_automation_scripts_team_format", "team_id", "script_format"),
         Index("ix_automation_scripts_provider_synced", "provider_id", "last_synced_at"),
     )
@@ -1788,6 +1801,7 @@ class AutomationScript(Base):
         nullable=False,
         default=AutomationScriptFormat.OTHER,
     )
+    ref_repo = Column(String(255), nullable=False, server_default="")
     ref_path = Column(String(500), nullable=False)
     ref_branch = Column(String(200), nullable=False)
     cached_content = Column(medium_text_type(), nullable=True)
@@ -1857,6 +1871,7 @@ class AutomationScriptGroup(Base):
     name = Column(String(200), nullable=False)
     description = Column(Text, nullable=True)
     script_paths_json = Column(medium_text_type(), nullable=False)
+    ref_repo = Column(String(255), nullable=False, server_default="")
     ci_job_name = Column(String(200), nullable=True)
     ci_job_type = Column(
         Enum(AutomationScriptGroupJobType, values_callable=lambda values: [item.value for item in values]),
@@ -1882,6 +1897,7 @@ class AutomationRun(Base):
         Index("ix_automation_runs_group_started", "script_group_id", "started_at"),
         Index("ix_automation_runs_status_synced", "status", "last_synced_at"),
         Index("ix_automation_runs_tcrt_correlation_id", "tcrt_correlation_id"),
+        Index("ix_automation_runs_test_run_set_started", "test_run_set_id", "started_at"),
     )
 
     id = Column(Integer, primary_key=True)
@@ -1897,6 +1913,17 @@ class AutomationRun(Base):
         ForeignKey("automation_script_groups.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
+    )
+    test_run_set_id = Column(
+        Integer,
+        ForeignKey("test_run_sets.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        comment=(
+            "Source Test Run Set that triggered this run. "
+            "NULL for legacy hub-triggered runs and webhook-triggered runs. "
+            "See move-automation-execution-to-test-run-set."
+        ),
     )
     # Runs are CI runs; CI providers are org-scoped → FK to system table.
     provider_id = Column(Integer, ForeignKey("system_automation_providers.id"), nullable=False, index=True)

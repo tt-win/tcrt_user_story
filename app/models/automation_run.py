@@ -20,6 +20,8 @@ class AutomationRunResponse(BaseModel):
     team_id: int
     automation_script_id: Optional[int] = None
     script_group_id: Optional[int] = None
+    script_group_name: Optional[str] = None
+    test_run_set_id: Optional[int] = None
     provider_id: int
     external_run_id: Optional[str] = None
     external_run_url: Optional[str] = None

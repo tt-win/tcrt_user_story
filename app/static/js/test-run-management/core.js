@@ -28,6 +28,9 @@ let testRunPermissions = {
 
 let currentStatusFilter = 'all';
 let currentSetTpTickets = [];
+let currentSetAutomationSuiteIds = [];
+let currentSetAutomationSuiteOptions = [];
+let currentSetAutomationSuiteSearch = '';
 let setTpInputInitialized = false;
 let reopenSetDetailAfterForm = false;
 let suppressSetDetailReopen = false;

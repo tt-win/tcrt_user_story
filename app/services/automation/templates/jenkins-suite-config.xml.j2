@@ -5,12 +5,6 @@
     <hudson.model.ParametersDefinitionProperty>
       <parameterDefinitions>
         <hudson.model.StringParameterDefinition>
-          <name>tcrt_run_id</name>
-          <description>TCRT correlation ID</description>
-          <defaultValue></defaultValue>
-          <trim>true</trim>
-        </hudson.model.StringParameterDefinition>
-        <hudson.model.StringParameterDefinition>
           <name>NODE_LABEL</name>
           <description>Target node label</description>
           <defaultValue>{{ default_runner_label }}</defaultValue>
@@ -94,14 +88,28 @@ pipeline {
         stage('Test') {
             steps {
                 echo "TCRT Suite: {{ suite_name }}"
-                sh '''
-                set -e
-                cd repo
-                . .tcrt-venv/bin/activate
-                # Emit allure-results into the workspace root so the post step
-                # can find it without depending on the repo layout.
-                pytest --alluredir="${WORKSPACE}/allure-results" {% for path in test_paths %}{{ path }} {% endfor %}
-                '''
+                // pytest exit 1 == some tests failed. That is the run's RESULT,
+                // not a pipeline error — TCRT reads per-test pass/fail from the
+                // archived allure-results — so flag the build UNSTABLE (which
+                // TCRT maps to a FAILED run) instead of letting the step abort
+                // with a red FAILURE. Exit codes >= 2 (collection / internal /
+                // usage errors, or a broken checkout / venv) mean the run could
+                // not produce trustworthy results, so fail the build hard.
+                script {
+                    def code = sh(returnStatus: true, script: '''
+                    cd repo || exit 3
+                    . .tcrt-venv/bin/activate || exit 3
+                    # allure-results in the workspace root so the post step finds
+                    # it regardless of repo layout. pytest is the last command, so
+                    # its exit code becomes the script's exit code.
+                    pytest --alluredir="${WORKSPACE}/allure-results" {% for path in test_paths %}{{ path }} {% endfor %}
+                    ''')
+                    if (code == 1) {
+                        unstable('pytest reported failing tests — see the Allure results.')
+                    } else if (code != 0) {
+                        error("pytest exited ${code} (not a plain test failure).")
+                    }
+                }
             }
         }
     }

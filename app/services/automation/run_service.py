@@ -2,19 +2,18 @@ from __future__ import annotations
 
 import json
 import logging
-import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import httpx
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.models.database_models import (
     AutomationProviderSlot,
     AutomationRun,
     AutomationRunStatus,
-    AutomationRunTrigger,
     AutomationScript,
     SystemAutomationProvider,
 )
@@ -57,6 +56,13 @@ class AutomationRunNotFoundError(AutomationRunServiceError):
 
 
 class AutomationScriptNotFoundForRunError(AutomationRunServiceError):
+    """Raised when a single-script lookup fails (legacy trigger helper).
+
+    Retained for backward compat with `AutomationRunService._load_script`,
+    which is still used by legacy callers (e.g. webhook service). No new
+    callers should be added; see `move-automation-execution-to-test-run-set`.
+    """
+
     pass
 
 
@@ -83,6 +89,8 @@ class AutomationRunService:
         triggered_by: AutomationRunTrigger | None = None,
         script_id: int | None = None,
         group_id: int | None = None,
+        test_run_set_id: int | None = None,
+        triggered_by_webhook_id: int | None = None,
         cursor: int | None = None,
         limit: int = 50,
     ) -> tuple[list[AutomationRun], int | None, int]:
@@ -98,11 +106,16 @@ class AutomationRunService:
             conditions.append(AutomationRun.automation_script_id == script_id)
         if group_id is not None:
             conditions.append(AutomationRun.script_group_id == group_id)
+        if test_run_set_id is not None:
+            conditions.append(AutomationRun.test_run_set_id == test_run_set_id)
+        if triggered_by_webhook_id is not None:
+            conditions.append(AutomationRun.triggered_by_webhook_id == triggered_by_webhook_id)
         if cursor is not None:
             conditions.append(AutomationRun.id < cursor)
 
         stmt = (
             select(AutomationRun)
+            .options(selectinload(AutomationRun.script_group))
             .where(and_(*conditions))
             .order_by(AutomationRun.id.desc())
             .limit(limit + 1)
@@ -115,7 +128,9 @@ class AutomationRunService:
 
     async def get_run(self, *, team_id: int, run_id: int) -> AutomationRun:
         result = await self.session.execute(
-            select(AutomationRun).where(
+            select(AutomationRun)
+            .options(selectinload(AutomationRun.script_group))
+            .where(
                 AutomationRun.id == run_id,
                 AutomationRun.team_id == team_id,
             )
@@ -127,85 +142,10 @@ class AutomationRunService:
 
     # ------------------------------------------------------------------ trigger
 
-    async def trigger_script(
-        self,
-        *,
-        team_id: int,
-        script_id: int,
-        actor: str | None = None,
-        workflow_id: str | None = None,
-        branch: str | None = None,
-        runner_label: str | None = None,
-        inputs: dict[str, Any] | None = None,
-        ci_provider: CIProvider | None = None,
-    ) -> AutomationRun:
-        script = await self._load_script(team_id=team_id, script_id=script_id)
-        provider_record, provider, provider_config = await self._resolve_ci_provider(team_id, ci_provider)
-
-        resolved_branch = (branch or "").strip() or script.ref_branch or str(provider_config.get("default_branch") or "main")
-        resolved_runner_label = (runner_label or script.preferred_runner_label or "").strip() or _default_runner_label(
-            provider_record.provider_type, provider_config
-        )
-        # Load the script's STORAGE provider (per-team) to build the git
-        # checkout context. Jenkins workspace doesn't have the repo by default;
-        # the pipeline clones it during the Checkout stage using these values.
-        git_context = await _build_git_context_for_script(
-            session=self.session, script=script, override_branch=resolved_branch
-        )
-        tcrt_webhook_url = await _resolve_tcrt_webhook_url_for_team(
-            session=self.session, team_id=team_id
-        )
-        resolved_workflow = await _resolve_script_workflow(
-            provider=provider,
-            script=script,
-            workflow_id=workflow_id,
-            default_runner_label=resolved_runner_label,
-            git_context=git_context,
-            tcrt_webhook_url=tcrt_webhook_url,
-        )
-        tcrt_correlation_id = str(uuid.uuid4())
-        run_inputs = {
-            **(inputs or {}),
-            "tcrt_run_id": tcrt_correlation_id,
-            "runner_label": resolved_runner_label,
-            "test_paths": json.dumps([script.ref_path], ensure_ascii=False),
-        }
-        # Pass git checkout info as build parameters too — `JenkinsCIProvider
-        # .trigger_run` maps these to GIT_URL / GIT_BRANCH / GIT_TOKEN params
-        # on the Jenkins job (token is PasswordParameter → masked in console).
-        if git_context:
-            if git_context.get("url"):
-                run_inputs["git_url"] = git_context["url"]
-            if git_context.get("branch"):
-                run_inputs["git_branch"] = git_context["branch"]
-            if git_context.get("token"):
-                run_inputs["git_token"] = git_context["token"]
-
-        external_run = await provider.trigger_run(resolved_workflow, resolved_branch, run_inputs)
-        now = _utcnow()
-        run = AutomationRun(
-            team_id=team_id,
-            automation_script_id=script.id,
-            script_group_id=None,
-            provider_id=provider_record.id,
-            external_run_id=external_run.external_run_id,
-            external_run_url=external_run.external_run_url,
-            status=AutomationRunStatus.QUEUED,
-            triggered_by=AutomationRunTrigger.USER,
-            triggered_by_user_id=actor,
-            tcrt_correlation_id=tcrt_correlation_id,
-            workflow_id=resolved_workflow,
-            branch=resolved_branch,
-            inputs_json=json.dumps(run_inputs, ensure_ascii=False),
-            runner_label=resolved_runner_label,
-            started_at=now,
-            created_at=now,
-            updated_at=now,
-        )
-        self.session.add(run)
-        await self.session.flush()
-        await self.session.refresh(run)
-        return run
+    # NOTE: 觸發 automation run 的公開方法已於 `move-automation-execution-to-test-run-set` 移除。
+    # Automation Hub 對外不暴露任何 trigger 端點；suite 觸發由 `TestRunSetService` 透過
+    # webhook service（既有 `trigger_group_run` 內部 helper）呼叫。
+    # 歷史 row（automation_script_id NOT NULL）仍可查詢；status sync / cancel / reconcile 維持不變。
 
     # ------------------------------------------------------------------ cancel / reconcile
 
@@ -312,6 +252,11 @@ class AutomationRunService:
             try:
                 updated = await self._apply_status_sync(run=run, ci_provider=None)
                 synced.append(updated)
+            except httpx.HTTPError as exc:
+                # CI connectivity/HTTP errors (timeouts, unreachable host, 4xx/5xx)
+                # are operational, not bugs — log concisely without a stack trace
+                # so a flaky or relocated CI doesn't flood the log every tick.
+                logger.warning("Sync failed for run %s: %s", run.id, exc)
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Sync failed for run %s: %s", run.id, exc, exc_info=True)
         return synced
@@ -434,7 +379,13 @@ class AutomationRunService:
         run.updated_at = now
         return run
 
-    async def _load_script(self, *, team_id: int, script_id: int) -> AutomationScript:
+    async def _load_script(self, *, team_id: int, script_id: int) -> AutomationScript:  # noqa: D401 — kept for backward compat
+        """Load an AutomationScript by id+team; raises if missing.
+
+        Retained for legacy callers (e.g. webhook service) that still resolve
+        a single script. Not used by any public trigger path — the single
+        script trigger has been removed; see `move-automation-execution-to-test-run-set`.
+        """
         result = await self.session.execute(
             select(AutomationScript).where(
                 AutomationScript.id == script_id,
@@ -453,6 +404,11 @@ class AutomationRunService:
         team_id: int,
         ci_provider: CIProvider | None,
     ) -> tuple[SystemAutomationProvider, CIProvider, dict[str, Any]]:
+        """Resolve the team's active CI provider; pass-through if pre-injected.
+
+        Kept on the service for `cancel_run` / `sync_run` / `reconcile_run`
+        (which need to look up the provider from a stored `AutomationRun`).
+        """
         provider_record = await get_active_provider_record(
             team_id, AutomationProviderSlot.CI, self.session
         )
@@ -597,6 +553,8 @@ def automation_run_to_dict(run: AutomationRun) -> dict[str, Any]:
         "team_id": run.team_id,
         "automation_script_id": run.automation_script_id,
         "script_group_id": run.script_group_id,
+        "script_group_name": run.script_group.name if getattr(run, "script_group", None) else None,
+        "test_run_set_id": run.test_run_set_id,
         "provider_id": run.provider_id,
         "external_run_id": run.external_run_id,
         "external_run_url": run.external_run_url,
@@ -645,66 +603,6 @@ async def _resolve_tcrt_webhook_url_for_team(
     return build_inbound_webhook_url(webhook)
 
 
-async def _resolve_script_workflow(
-    provider: CIProvider,
-    script: AutomationScript,
-    workflow_id: str | None,
-    default_runner_label: str,
-    git_context: dict[str, Any] | None = None,
-    tcrt_webhook_url: str | None = None,
-) -> str:
-    requested = (workflow_id or "").strip()
-    if requested:
-        return requested
-
-    job_id = f"script-{script.id}"
-    job_name = _single_script_job_name(script)
-    test_paths = [script.ref_path]
-    # `git_context` flows into the job XML's GIT_URL / GIT_BRANCH defaultValue
-    # so Jenkins-UI-direct triggers (without TCRT) still get a checkout.
-    # `tcrt_webhook_url` is baked into the TCRT_WEBHOOK_URL PasswordParameter
-    # default so the Jenkins post-stage callback works without per-agent env.
-    # `JenkinsCIProvider.update_suite_job` accepts these kwargs; other providers
-    # (GH Actions) get passed-through and ignore the kwargs they don't know.
-    try:
-        return await provider.update_suite_job(
-            job_id, job_name, test_paths, default_runner_label,
-            git_context=git_context, tcrt_webhook_url=tcrt_webhook_url,
-        )
-    except TypeError:
-        # Provider implementation doesn't accept the kwargs yet — fall back
-        # to legacy signature.
-        try:
-            return await provider.update_suite_job(job_id, job_name, test_paths, default_runner_label)
-        except httpx.HTTPStatusError as exc:
-            if exc.response.status_code != 404:
-                raise AutomationRunServiceError(
-                    f"Provider failed to update single-script CI job: {exc}"
-                ) from exc
-    except httpx.HTTPStatusError as exc:
-        if exc.response.status_code != 404:
-            raise AutomationRunServiceError(
-                f"Provider failed to update single-script CI job: {exc}"
-            ) from exc
-
-    try:
-        return await provider.create_suite_job(
-            job_id, job_name, test_paths, default_runner_label,
-            git_context=git_context, tcrt_webhook_url=tcrt_webhook_url,
-        )
-    except TypeError:
-        try:
-            return await provider.create_suite_job(job_id, job_name, test_paths, default_runner_label)
-        except httpx.HTTPStatusError as exc:
-            raise AutomationRunServiceError(
-                f"Provider failed to create single-script CI job: {exc}"
-            ) from exc
-    except httpx.HTTPStatusError as exc:
-        raise AutomationRunServiceError(
-            f"Provider failed to create single-script CI job: {exc}"
-        ) from exc
-
-
 async def _build_git_context_for_script(
     *,
     session: AsyncSession,
@@ -716,7 +614,13 @@ async def _build_git_context_for_script(
     Returns a dict with `url`, `branch`, optional `token`. Returns None if
     the storage provider can't be resolved or isn't a supported git host
     (e.g. local_git provider — those would need a different checkout path).
+
+    NOTE: Single-script trigger has been removed (see
+    `move-automation-execution-to-test-run-set`). This helper is retained
+    solely because `AutomationScriptGroupService` still imports it
+    via a late import (line 537) for group-level git context derivation.
     """
+
     from app.models.database_models import TeamAutomationProvider
 
     result = await session.execute(
@@ -729,21 +633,25 @@ async def _build_git_context_for_script(
     provider_type = storage.provider_type or ""
 
     if provider_type == "storage:github":
-        owner = str(config.get("owner") or "").strip()
-        repo = str(config.get("repo") or "").strip()
-        if not owner or not repo:
+        from app.services.automation.providers.github_storage import GitHubStorageConfig
+
+        try:
+            gh_config = GitHubStorageConfig.model_validate(config)
+        except Exception:  # noqa: BLE001
             return None
+        # A provider may hold several repos — pick the one this script came from.
+        repo_entry = gh_config.repo_for((script.ref_repo or "").strip())
         # Default to GitHub.com; api_base_url is set for GHE — derive web URL
         # by stripping the `/api/v3` suffix if present.
-        api_base = str(config.get("api_base_url") or "https://api.github.com").rstrip("/")
+        api_base = gh_config.api_base_url.rstrip("/")
         if api_base == "https://api.github.com":
             web_host = "https://github.com"
         else:
             web_host = api_base[: -len("/api/v3")] if api_base.endswith("/api/v3") else api_base
-        url = f"{web_host}/{owner}/{repo}.git"
+        url = f"{web_host}/{repo_entry.owner}/{repo_entry.repo}.git"
         creds = decrypt_credentials(storage.credentials_encrypted)
         token = creds.get("pat") if isinstance(creds, dict) else None
-        branch = (override_branch or "").strip() or str(config.get("default_branch") or "main")
+        branch = (override_branch or "").strip() or gh_config.branch_for(repo_entry)
         ctx: dict[str, Any] = {"url": url, "branch": branch}
         if token:
             ctx["token"] = token
@@ -753,11 +661,6 @@ async def _build_git_context_for_script(
     # working dir pre-mounted; skip git_context so the legacy template path
     # (no Checkout stage) doesn't try to clone.
     return None
-
-
-def _single_script_job_name(script: AutomationScript) -> str:
-    name = (script.name or script.ref_path.rsplit("/", 1)[-1] or f"script-{script.id}").strip()
-    return f"Script {name}"
 
 
 def _load_json_object(value: str | None) -> dict[str, Any]:

@@ -45,7 +45,7 @@ class AuditService:
         action_type: ActionType,
         resource_type: ResourceType,
         resource_id: str,
-        team_id: int,
+        team_id: Optional[int],
         details: Optional[Dict[str, Any]] = None,
         action_brief: Optional[str] = None,
         severity: AuditSeverity = AuditSeverity.INFO,
@@ -94,7 +94,7 @@ class AuditService:
             logger.error(f"記錄審計失敗: {e}", exc_info=True)
             
     async def log_create(self, user_id: int, username: str, resource_type: ResourceType,
-                        resource_id: str, team_id: int, role: str,
+                        resource_id: str, team_id: Optional[int], role: str,
                         details: Optional[Dict] = None,
                         action_brief: Optional[str] = None,
                         ip_address: Optional[str] = None, user_agent: Optional[str] = None) -> None:
@@ -115,7 +115,7 @@ class AuditService:
         )
         
     async def log_update(self, user_id: int, username: str, resource_type: ResourceType,
-                        resource_id: str, team_id: int, role: str,
+                        resource_id: str, team_id: Optional[int], role: str,
                         details: Optional[Dict] = None,
                         action_brief: Optional[str] = None,
                         ip_address: Optional[str] = None, user_agent: Optional[str] = None) -> None:
@@ -136,7 +136,7 @@ class AuditService:
         )
         
     async def log_delete(self, user_id: int, username: str, resource_type: ResourceType,
-                        resource_id: str, team_id: int, role: str,
+                        resource_id: str, team_id: Optional[int], role: str,
                         details: Optional[Dict] = None,
                         action_brief: Optional[str] = None,
                         ip_address: Optional[str] = None, user_agent: Optional[str] = None) -> None:
@@ -157,7 +157,7 @@ class AuditService:
         )
         
     async def log_read(self, user_id: int, username: str, resource_type: ResourceType,
-                      resource_id: str, team_id: int, role: str,
+                      resource_id: str, team_id: Optional[int], role: str,
                       details: Optional[Dict] = None,
                       ip_address: Optional[str] = None, user_agent: Optional[str] = None) -> None:
         """記錄讀取操作"""
@@ -577,7 +577,7 @@ async def log_audit_action(
     action_type: ActionType,
     resource_type: ResourceType,
     resource_id: str,
-    team_id: int,
+    team_id: Optional[int],
     details: Optional[Dict[str, Any]] = None,
     severity: AuditSeverity = AuditSeverity.INFO,
     ip_address: Optional[str] = None,

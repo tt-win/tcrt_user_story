@@ -17,7 +17,10 @@ from app.models.database_models import (
 )
 from app.services.automation.linkage_service import (
     AutomationLinkageService,
-    PrimaryAutomationLinkConflictError,
+)
+from app.services.automation.marker_sync import (
+    MARKER_SYNC_CREATED_BY,
+    build_marker_note,
 )
 from app.services.automation.script_service import AutomationScriptService
 from app.testsuite.db_test_helpers import create_managed_test_database, dispose_managed_test_database
@@ -96,113 +99,256 @@ def automation_linkage_db(tmp_path):
     dispose_managed_test_database(database_bundle)
 
 
+def _seed_link(*, session, team_id, script_id, test_case_id, link_type, created_by, note=None):
+    """Insert a link row directly — the public write API was removed; tests seed via ORM."""
+    link = AutomationScriptCaseLink(
+        team_id=team_id,
+        automation_script_id=script_id,
+        test_case_id=test_case_id,
+        link_type=link_type,
+        note=note,
+        created_by=created_by,
+    )
+    session.add(link)
+    session.flush()
+    return link
+
+
 @pytest.mark.asyncio
-async def test_create_link_and_list_linked_automation(automation_linkage_db):
+async def test_list_links_for_script_detailed_includes_case_number_and_title(automation_linkage_db):
+    """The read API surfaces the test case number + title for each link."""
     ids = automation_linkage_db["ids"]
     async with automation_linkage_db["async_sessionmaker"]() as session:
+        _seed_link(
+            session=session,
+            team_id=ids["team_id"],
+            script_id=ids["script_a_id"],
+            test_case_id=ids["case_id"],
+            link_type=AutomationScriptLinkType.COVERS,
+            created_by="42",
+        )
+        await session.flush()
         service = AutomationLinkageService(session)
-        link = await service.create_link(
+        rows = await service.list_links_for_script_detailed(
+            team_id=ids["team_id"], script_id=ids["script_a_id"]
+        )
+
+    assert len(rows) == 1
+    assert rows[0]["test_case_id"] == ids["case_id"]
+    assert rows[0]["test_case_number"] == "TC-001"
+    assert rows[0]["title"] == "Login"
+    assert rows[0]["created_by"] == "42"
+
+
+@pytest.mark.asyncio
+async def test_list_linked_automation_summarises_links_for_a_case(automation_linkage_db):
+    """The read API still returns script summaries for a test case."""
+    ids = automation_linkage_db["ids"]
+    async with automation_linkage_db["async_sessionmaker"]() as session:
+        _seed_link(
+            session=session,
             team_id=ids["team_id"],
             script_id=ids["script_a_id"],
             test_case_id=ids["case_id"],
             link_type=AutomationScriptLinkType.PRIMARY,
-            note="main automation",
-            actor="1",
+            created_by="42",
         )
-        summaries = await service.list_linked_automation(team_id=ids["team_id"], test_case_id=ids["case_id"])
+        await session.flush()
+        service = AutomationLinkageService(session)
+        summaries = await service.list_linked_automation(
+            team_id=ids["team_id"], test_case_id=ids["case_id"]
+        )
 
-    assert link.link_type == AutomationScriptLinkType.PRIMARY
     assert summaries[0]["script_id"] == ids["script_a_id"]
     assert summaries[0]["name"] == "test_login.py"
     assert summaries[0]["link_type"] == AutomationScriptLinkType.PRIMARY
-
-
-@pytest.mark.asyncio
-async def test_primary_link_is_unique_per_test_case(automation_linkage_db):
-    ids = automation_linkage_db["ids"]
-    async with automation_linkage_db["async_sessionmaker"]() as session:
-        service = AutomationLinkageService(session)
-        await service.create_link(
-            team_id=ids["team_id"],
-            script_id=ids["script_a_id"],
-            test_case_id=ids["case_id"],
-            link_type=AutomationScriptLinkType.PRIMARY,
-        )
-
-        with pytest.raises(PrimaryAutomationLinkConflictError):
-            await service.create_link(
-                team_id=ids["team_id"],
-                script_id=ids["script_b_id"],
-                test_case_id=ids["case_id"],
-                link_type=AutomationScriptLinkType.PRIMARY,
-            )
-
-
-@pytest.mark.asyncio
-async def test_update_link_to_primary_checks_existing_primary(automation_linkage_db):
-    ids = automation_linkage_db["ids"]
-    async with automation_linkage_db["async_sessionmaker"]() as session:
-        service = AutomationLinkageService(session)
-        await service.create_link(
-            team_id=ids["team_id"],
-            script_id=ids["script_a_id"],
-            test_case_id=ids["case_id"],
-            link_type=AutomationScriptLinkType.PRIMARY,
-        )
-        covers = await service.create_link(
-            team_id=ids["team_id"],
-            script_id=ids["script_b_id"],
-            test_case_id=ids["case_id"],
-            link_type=AutomationScriptLinkType.COVERS,
-        )
-
-        with pytest.raises(PrimaryAutomationLinkConflictError):
-            await service.update_link(
-                team_id=ids["team_id"],
-                script_id=ids["script_b_id"],
-                link_id=covers.id,
-                link_type=AutomationScriptLinkType.PRIMARY,
-            )
-
-
-@pytest.mark.asyncio
-async def test_delete_link_refreshes_script_link_count(automation_linkage_db):
-    ids = automation_linkage_db["ids"]
-    async with automation_linkage_db["async_sessionmaker"]() as session:
-        service = AutomationLinkageService(session)
-        link = await service.create_link(
-            team_id=ids["team_id"],
-            script_id=ids["script_a_id"],
-            test_case_id=ids["case_id"],
-            link_type=AutomationScriptLinkType.COVERS,
-        )
-        await service.delete_link(team_id=ids["team_id"], script_id=ids["script_a_id"], link_id=link.id)
-
-        script = (
-            await session.execute(select(AutomationScript).where(AutomationScript.id == ids["script_a_id"]))
-        ).scalar_one()
-        links = list((await session.execute(select(AutomationScriptCaseLink))).scalars().all())
-
-    assert script.linked_test_case_count == 0
-    assert links == []
+    assert summaries[0]["created_by"] == "42"
 
 
 @pytest.mark.asyncio
 async def test_delete_script_cache_cascades_links(automation_linkage_db):
+    """Deleting a script's cache cascades its links (FK ON DELETE CASCADE)."""
     ids = automation_linkage_db["ids"]
     async with automation_linkage_db["async_sessionmaker"]() as session:
-        linkage_service = AutomationLinkageService(session)
-        await linkage_service.create_link(
+        _seed_link(
+            session=session,
             team_id=ids["team_id"],
             script_id=ids["script_a_id"],
             test_case_id=ids["case_id"],
             link_type=AutomationScriptLinkType.COVERS,
+            created_by=MARKER_SYNC_CREATED_BY,
         )
+        await session.flush()
 
         script_service = AutomationScriptService(session)
-        await script_service.delete_script_cache(team_id=ids["team_id"], script_id=ids["script_a_id"])
+        await script_service.delete_script_cache(
+            team_id=ids["team_id"], script_id=ids["script_a_id"]
+        )
         await session.flush()
 
         links = list((await session.execute(select(AutomationScriptCaseLink))).scalars().all())
 
     assert links == []
+
+
+# ------------------------------------------------------------------ marker-sync interface
+
+
+@pytest.mark.asyncio
+async def test_upsert_marker_link_creates_new_link(automation_linkage_db):
+    """upsert_marker_link inserts a new marker-sync link when none exists."""
+    ids = automation_linkage_db["ids"]
+    async with automation_linkage_db["async_sessionmaker"]() as session:
+        script = (
+            await session.execute(
+                select(AutomationScript).where(AutomationScript.id == ids["script_a_id"])
+            )
+        ).scalar_one()
+        service = AutomationLinkageService(session)
+        link, action = await service.upsert_marker_link(
+            team_id=ids["team_id"],
+            script=script,
+            test_case_id=ids["case_id"],
+            link_type=AutomationScriptLinkType.PRIMARY,
+            marker_meta={"test_name": "test_login", "line": 12, "marker_raw": "pytest.mark.tcrt"},
+        )
+        await session.flush()
+
+    assert action == "created"
+    assert link.created_by == MARKER_SYNC_CREATED_BY
+    assert link.link_type == AutomationScriptLinkType.PRIMARY
+    parsed = json.loads(link.note)
+    assert parsed["test_name"] == "test_login"
+    assert parsed["line"] == 12
+
+
+@pytest.mark.asyncio
+async def test_upsert_marker_link_is_noop_when_unchanged(automation_linkage_db):
+    """A second upsert with the same args returns 'unchanged' and does not bump audit."""
+    ids = automation_linkage_db["ids"]
+    async with automation_linkage_db["async_sessionmaker"]() as session:
+        script = (
+            await session.execute(
+                select(AutomationScript).where(AutomationScript.id == ids["script_a_id"])
+            )
+        ).scalar_one()
+        service = AutomationLinkageService(session)
+        marker_meta = {"test_name": "test_login", "line": 12, "marker_raw": "pytest.mark.tcrt"}
+        _, action1 = await service.upsert_marker_link(
+            team_id=ids["team_id"],
+            script=script,
+            test_case_id=ids["case_id"],
+            link_type=AutomationScriptLinkType.COVERS,
+            marker_meta=marker_meta,
+        )
+        await session.flush()
+        _, action2 = await service.upsert_marker_link(
+            team_id=ids["team_id"],
+            script=script,
+            test_case_id=ids["case_id"],
+            link_type=AutomationScriptLinkType.COVERS,
+            marker_meta=marker_meta,
+        )
+
+    assert action1 == "created"
+    assert action2 == "unchanged"
+
+
+@pytest.mark.asyncio
+async def test_upsert_marker_link_skips_non_marker_existing_link(automation_linkage_db):
+    """A pre-existing manual/AI link blocks the upsert and returns skipped_conflict."""
+    ids = automation_linkage_db["ids"]
+    async with automation_linkage_db["async_sessionmaker"]() as session:
+        _seed_link(
+            session=session,
+            team_id=ids["team_id"],
+            script_id=ids["script_a_id"],
+            test_case_id=ids["case_id"],
+            link_type=AutomationScriptLinkType.COVERS,
+            created_by="42",  # manual
+        )
+        await session.flush()
+        script = (
+            await session.execute(
+                select(AutomationScript).where(AutomationScript.id == ids["script_a_id"])
+            )
+        ).scalar_one()
+        service = AutomationLinkageService(session)
+        _, action = await service.upsert_marker_link(
+            team_id=ids["team_id"],
+            script=script,
+            test_case_id=ids["case_id"],
+            link_type=AutomationScriptLinkType.PRIMARY,
+            marker_meta={"test_name": "test_login", "line": 12, "marker_raw": "pytest.mark.tcrt"},
+        )
+
+    assert action == "skipped_conflict"
+
+
+@pytest.mark.asyncio
+async def test_delete_marker_link_only_removes_marker_sync(automation_linkage_db):
+    """delete_marker_link refuses to touch a manually-created link."""
+    ids = automation_linkage_db["ids"]
+    async with automation_linkage_db["async_sessionmaker"]() as session:
+        _seed_link(
+            session=session,
+            team_id=ids["team_id"],
+            script_id=ids["script_a_id"],
+            test_case_id=ids["case_id"],
+            link_type=AutomationScriptLinkType.COVERS,
+            created_by="42",  # manual
+        )
+        await session.flush()
+        service = AutomationLinkageService(session)
+        deleted = await service.delete_marker_link(
+            team_id=ids["team_id"],
+            script_id=ids["script_a_id"],
+            test_case_id=ids["case_id"],
+        )
+        await session.flush()
+        still_there = (
+            await session.execute(
+                select(AutomationScriptCaseLink).where(
+                    AutomationScriptCaseLink.automation_script_id == ids["script_a_id"]
+                )
+            )
+        ).scalar_one()
+
+    assert deleted is False
+    assert still_there.created_by == "42"
+
+
+@pytest.mark.asyncio
+async def test_refresh_script_link_count_persists_count(automation_linkage_db):
+    ids = automation_linkage_db["ids"]
+    async with automation_linkage_db["async_sessionmaker"]() as session:
+        _seed_link(
+            session=session,
+            team_id=ids["team_id"],
+            script_id=ids["script_a_id"],
+            test_case_id=ids["case_id"],
+            link_type=AutomationScriptLinkType.COVERS,
+            created_by=MARKER_SYNC_CREATED_BY,
+            note=build_marker_note(test_name="t", line=1, marker_raw="x"),
+        )
+        _seed_link(
+            session=session,
+            team_id=ids["team_id"],
+            script_id=ids["script_a_id"],
+            test_case_id=ids["case_id"] + 999,  # fake id — still counts as a row
+            link_type=AutomationScriptLinkType.COVERS,
+            created_by=MARKER_SYNC_CREATED_BY,
+            note=build_marker_note(test_name="t", line=2, marker_raw="y"),
+        )
+        await session.flush()
+        service = AutomationLinkageService(session)
+        count = await service.refresh_script_link_count(script_id=ids["script_a_id"])
+        await session.flush()
+        script = (
+            await session.execute(
+                select(AutomationScript).where(AutomationScript.id == ids["script_a_id"])
+            )
+        ).scalar_one()
+
+    assert count == 2
+    assert script.linked_test_case_count == 2

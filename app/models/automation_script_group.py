@@ -52,7 +52,6 @@ class AutomationScriptGroupResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     scripts: list[AutomationScriptGroupScriptResponse] = Field(default_factory=list)
-    recent_runs: list[AutomationRunResponse] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
@@ -67,6 +66,9 @@ class AutomationScriptGroupBatchProposal(BaseModel):
     name: str = Field(..., min_length=1, max_length=200)
     description: Optional[str] = None
     script_paths: list[str] = Field(..., min_length=1)
+    # Repo (owner/repo) the proposed scripts belong to. Lets path resolution
+    # disambiguate when several repos share the same ref_path. "" = any/legacy.
+    ref_repo: str = ""
 
 
 class AutomationScriptGroupBatchCreateRequest(BaseModel):

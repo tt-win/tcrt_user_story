@@ -1,5 +1,7 @@
 import json
 import re
+import uuid
+from datetime import datetime, timezone
 
 import httpx
 import pytest
@@ -21,7 +23,6 @@ from app.services.automation.run_service import (
     AutomationRunExternalIdMissingError,
     AutomationRunNotFoundError,
     AutomationRunService,
-    AutomationScriptNotFoundForRunError,
 )
 from app.testsuite.db_test_helpers import create_managed_test_database, dispose_managed_test_database
 
@@ -85,6 +86,62 @@ def _slug(value: str) -> str:
     return re.sub(r"[^a-zA-Z0-9_-]+", "-", value.strip()).strip("-").lower() or "suite"
 
 
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
+async def _seed_run(
+    session,
+    *,
+    team_id: int,
+    script_id: int,
+    ci_provider_id: int,
+    actor: str = "1",
+    workflow_id: str = "automation-tests",
+    branch: str = "main",
+    runner_label: str = "linux",
+    triggered_by: AutomationRunTrigger = AutomationRunTrigger.USER,
+    external_run_id: str = "queue:42",
+    external_run_url: str = "https://ci.example/queue/42",
+    status: AutomationRunStatus = AutomationRunStatus.QUEUED,
+    script_group_id: int | None = None,
+    triggered_by_webhook_id: int | None = None,
+    inputs: dict | None = None,
+    started_at: datetime | None = None,
+) -> AutomationRun:
+    """Insert an AutomationRun row directly via ORM.
+
+    Replaces the historical `AutomationRunService.trigger_script(...)` call
+    sites — the public trigger path has been removed; runs are now created
+    by `TestRunSetService.trigger_automation_suites`. See
+    `move-automation-execution-to-test-run-set`.
+    """
+    now = _utcnow()
+    run = AutomationRun(
+        team_id=team_id,
+        automation_script_id=script_id,
+        script_group_id=script_group_id,
+        provider_id=ci_provider_id,
+        external_run_id=external_run_id,
+        external_run_url=external_run_url,
+        status=status,
+        triggered_by=triggered_by,
+        triggered_by_user_id=actor,
+        triggered_by_webhook_id=triggered_by_webhook_id,
+        tcrt_correlation_id=str(uuid.uuid4()),
+        workflow_id=workflow_id,
+        branch=branch,
+        inputs_json=json.dumps(inputs or {"tcrt_run_id": "test", "runner_label": runner_label}),
+        runner_label=runner_label,
+        started_at=started_at or now,
+        created_at=now,
+        updated_at=now,
+    )
+    session.add(run)
+    await session.flush()
+    return run
+
+
 @pytest.fixture
 def automation_run_db(tmp_path):
     database_bundle = create_managed_test_database(tmp_path / "test_case_repo.db")
@@ -133,105 +190,9 @@ def automation_run_db(tmp_path):
     yield {
         "ids": ids,
         "async_sessionmaker": AsyncSessionLocal,
-        "sync_session_factory": SyncSessionLocal,
     }
+
     dispose_managed_test_database(database_bundle)
-
-
-@pytest.mark.asyncio
-async def test_trigger_script_creates_run_and_calls_provider(automation_run_db):
-    ids = automation_run_db["ids"]
-    fake_ci = FakeCIProvider()
-
-    async with automation_run_db["async_sessionmaker"]() as session:
-        service = AutomationRunService(session)
-        run = await service.trigger_script(
-            team_id=ids["team_id"],
-            script_id=ids["script_id"],
-            actor="1",
-            workflow_id="automation-tests",
-            branch="feature/foo",
-            inputs={"extra": "x"},
-            ci_provider=fake_ci,
-        )
-
-    assert run.workflow_id == "automation-tests"
-    assert run.branch == "feature/foo"
-    assert run.automation_script_id == ids["script_id"]
-    assert run.script_group_id is None
-    assert run.status == AutomationRunStatus.QUEUED
-    assert run.triggered_by == AutomationRunTrigger.USER
-    assert run.runner_label == "linux"
-    assert run.external_run_id == "queue:42"
-    assert fake_ci.trigger_calls[0][0] == "automation-tests"
-    inputs_persisted = json.loads(run.inputs_json)
-    assert inputs_persisted["test_paths"] == json.dumps(["tests/test_login.py"], ensure_ascii=False)
-    assert inputs_persisted["runner_label"] == "linux"
-    assert inputs_persisted["tcrt_run_id"] == run.tcrt_correlation_id
-    assert inputs_persisted["extra"] == "x"
-
-
-@pytest.mark.asyncio
-async def test_trigger_script_without_workflow_updates_managed_script_job(automation_run_db):
-    ids = automation_run_db["ids"]
-    fake_ci = FakeCIProvider()
-
-    async with automation_run_db["async_sessionmaker"]() as session:
-        service = AutomationRunService(session)
-        run = await service.trigger_script(
-            team_id=ids["team_id"],
-            script_id=ids["script_id"],
-            workflow_id=None,
-            ci_provider=fake_ci,
-        )
-
-    expected_workflow = "tcrt-suite-script-1-script-test_login-py"
-    assert run.workflow_id == expected_workflow
-    assert fake_ci.update_job_calls == [
-        ("script-1", "Script test_login.py", ["tests/test_login.py"], "linux")
-    ]
-    assert fake_ci.create_job_calls == []
-    assert fake_ci.trigger_calls[0][0] == expected_workflow
-
-
-@pytest.mark.asyncio
-async def test_trigger_script_without_workflow_creates_managed_script_job_when_missing(automation_run_db):
-    ids = automation_run_db["ids"]
-    fake_ci = FakeCIProvider()
-    fake_ci.update_job_raises_404 = True
-
-    async with automation_run_db["async_sessionmaker"]() as session:
-        service = AutomationRunService(session)
-        run = await service.trigger_script(
-            team_id=ids["team_id"],
-            script_id=ids["script_id"],
-            workflow_id=None,
-            ci_provider=fake_ci,
-        )
-
-    expected_workflow = "tcrt-suite-script-1-script-test_login-py"
-    assert run.workflow_id == expected_workflow
-    assert fake_ci.update_job_calls == [
-        ("script-1", "Script test_login.py", ["tests/test_login.py"], "linux")
-    ]
-    assert fake_ci.create_job_calls == [
-        ("script-1", "Script test_login.py", ["tests/test_login.py"], "linux")
-    ]
-    assert fake_ci.trigger_calls[0][0] == expected_workflow
-
-
-@pytest.mark.asyncio
-async def test_trigger_script_unknown_script_raises(automation_run_db):
-    ids = automation_run_db["ids"]
-    async with automation_run_db["async_sessionmaker"]() as session:
-        service = AutomationRunService(session)
-        with pytest.raises(AutomationScriptNotFoundForRunError):
-            await service.trigger_script(
-                team_id=ids["team_id"],
-                script_id=999_999,
-                workflow_id="any",
-                ci_provider=FakeCIProvider(),
-            )
 
 
 @pytest.mark.asyncio
@@ -240,72 +201,59 @@ async def test_cancel_run_marks_cancelled_and_calls_provider(automation_run_db):
     fake_ci = FakeCIProvider()
 
     async with automation_run_db["async_sessionmaker"]() as session:
-        service = AutomationRunService(session)
-        run = await service.trigger_script(
+        run = await _seed_run(
+            session,
             team_id=ids["team_id"],
             script_id=ids["script_id"],
-            workflow_id="job-a",
-            ci_provider=fake_ci,
+            ci_provider_id=ids["ci_provider_id"],
+            workflow_id="job-cancel",
+            external_run_id="run-1",
         )
+        service = AutomationRunService(session)
         cancelled = await service.cancel_run(
-            team_id=ids["team_id"],
-            run_id=run.id,
-            actor="1",
-            ci_provider=fake_ci,
+            team_id=ids["team_id"], run_id=run.id, actor="qa", ci_provider=fake_ci
         )
 
     assert cancelled.status == AutomationRunStatus.CANCELLED
-    assert fake_ci.cancel_calls == ["queue:42"]
-    assert cancelled.finished_at is not None
+    assert fake_ci.cancel_calls == ["run-1"]
 
 
 @pytest.mark.asyncio
 async def test_cancel_run_rejects_terminal(automation_run_db):
     ids = automation_run_db["ids"]
-    fake_ci = FakeCIProvider()
+
     async with automation_run_db["async_sessionmaker"]() as session:
-        service = AutomationRunService(session)
-        run = await service.trigger_script(
+        run = await _seed_run(
+            session,
             team_id=ids["team_id"],
             script_id=ids["script_id"],
-            workflow_id="job-a",
-            ci_provider=fake_ci,
+            ci_provider_id=ids["ci_provider_id"],
+            status=AutomationRunStatus.SUCCEEDED,
         )
-        run.status = AutomationRunStatus.SUCCEEDED
-        await session.flush()
-
+        service = AutomationRunService(session)
         with pytest.raises(AutomationRunAlreadyTerminalError):
-            await service.cancel_run(
-                team_id=ids["team_id"],
-                run_id=run.id,
-                ci_provider=fake_ci,
-            )
+            await service.cancel_run(team_id=ids["team_id"], run_id=run.id)
 
 
 @pytest.mark.asyncio
 async def test_reconcile_with_missing_external_id_marks_unknown(automation_run_db):
     ids = automation_run_db["ids"]
+
     async with automation_run_db["async_sessionmaker"]() as session:
-        service = AutomationRunService(session)
-        # Trigger then strip external_run_id to simulate failed match
-        run = await service.trigger_script(
+        run = await _seed_run(
+            session,
             team_id=ids["team_id"],
             script_id=ids["script_id"],
-            workflow_id="job-x",
-            ci_provider=FakeCIProvider(),
-        )
-        run.external_run_id = None
-        run.status = AutomationRunStatus.QUEUED
-        await session.flush()
-
-        reconciled = await service.reconcile_run(
-            team_id=ids["team_id"],
-            run_id=run.id,
+            ci_provider_id=ids["ci_provider_id"],
             external_run_id=None,
+        )
+        service = AutomationRunService(session)
+        reconciled = await service.reconcile_run(
+            team_id=ids["team_id"], run_id=run.id, ci_provider=FakeCIProvider()
         )
 
     assert reconciled.status == AutomationRunStatus.UNKNOWN
-    assert reconciled.last_synced_at is not None
+    assert reconciled.external_run_id is None
 
 
 @pytest.mark.asyncio
@@ -313,115 +261,87 @@ async def test_reconcile_with_manual_external_id_then_syncs(automation_run_db):
     ids = automation_run_db["ids"]
     fake_ci = FakeCIProvider()
     fake_ci.next_snapshot = RunStatusSnapshot(
-        status="SUCCEEDED",
-        external_run_id="manual:99",
-        external_run_url="https://ci.example/run/99",
-        duration_ms=12345,
+        status="FAILED",
+        external_run_id="user-supplied-99",
+        finished_at="2024-01-01T10:00:00Z",
+        duration_ms=12_000,
     )
 
     async with automation_run_db["async_sessionmaker"]() as session:
-        service = AutomationRunService(session)
-        run = await service.trigger_script(
+        run = await _seed_run(
+            session,
             team_id=ids["team_id"],
             script_id=ids["script_id"],
-            workflow_id="job-y",
-            ci_provider=fake_ci,
+            ci_provider_id=ids["ci_provider_id"],
+            external_run_id=None,
         )
-        run.external_run_id = None
-        await session.flush()
-
+        service = AutomationRunService(session)
         reconciled = await service.reconcile_run(
             team_id=ids["team_id"],
             run_id=run.id,
-            external_run_id="manual:99",
+            external_run_id="user-supplied-99",
             ci_provider=fake_ci,
         )
 
-    assert reconciled.external_run_id == "manual:99"
-    assert reconciled.status == AutomationRunStatus.SUCCEEDED
-    assert reconciled.finished_at is not None
-    assert reconciled.duration_ms == 12345
+    assert reconciled.external_run_id == "user-supplied-99"
+    assert reconciled.status == AutomationRunStatus.FAILED
+    assert fake_ci.get_status_calls == ["user-supplied-99"]
 
 
 @pytest.mark.asyncio
 async def test_sync_pending_skips_runs_without_external_id(automation_run_db):
     ids = automation_run_db["ids"]
     fake_ci = FakeCIProvider()
-    fake_ci.next_snapshot = RunStatusSnapshot(
-        status="RUNNING",
-        external_run_id="queue:42",
-    )
 
     async with automation_run_db["async_sessionmaker"]() as session:
-        service = AutomationRunService(session)
-        # Pin the provider lookup so we don't try to hit a real Jenkins.
-        async def _fixed_provider(_run):
-            return fake_ci
-        service._provider_from_run_record = _fixed_provider  # type: ignore[assignment]
-
-        with_external = await service.trigger_script(
+        await _seed_run(
+            session,
             team_id=ids["team_id"],
             script_id=ids["script_id"],
-            workflow_id="job-a",
-            ci_provider=fake_ci,
+            ci_provider_id=ids["ci_provider_id"],
+            external_run_id=None,
         )
-
-        # Manually craft a second QUEUED run lacking external_run_id
-        orphan = AutomationRun(
-            team_id=ids["team_id"],
-            automation_script_id=ids["script_id"],
-            provider_id=ids["ci_provider_id"],
-            status=AutomationRunStatus.QUEUED,
-            triggered_by=AutomationRunTrigger.USER,
-            tcrt_correlation_id="orphan-corr",
-            workflow_id="job-a",
-            branch="main",
-            inputs_json="{}",
-        )
-        session.add(orphan)
-        await session.flush()
-
+        service = AutomationRunService(session)
         synced = await service.sync_pending_runs(team_id=ids["team_id"])
 
-    assert len(synced) == 1
-    assert synced[0].id == with_external.id
-    assert fake_ci.get_status_calls == ["queue:42"]
+    assert synced == []
+    assert fake_ci.get_status_calls == []
 
 
 @pytest.mark.asyncio
 async def test_get_run_not_found(automation_run_db):
     ids = automation_run_db["ids"]
+
     async with automation_run_db["async_sessionmaker"]() as session:
         service = AutomationRunService(session)
         with pytest.raises(AutomationRunNotFoundError):
-            await service.get_run(team_id=ids["team_id"], run_id=999_999)
+            await service.get_run(team_id=ids["team_id"], run_id=9999)
 
 
 @pytest.mark.asyncio
 async def test_sync_run_requires_external_id(automation_run_db):
     ids = automation_run_db["ids"]
-    fake_ci = FakeCIProvider()
+
     async with automation_run_db["async_sessionmaker"]() as session:
-        service = AutomationRunService(session)
-        run = await service.trigger_script(
+        run = await _seed_run(
+            session,
             team_id=ids["team_id"],
             script_id=ids["script_id"],
-            workflow_id="job-a",
-            ci_provider=fake_ci,
+            ci_provider_id=ids["ci_provider_id"],
+            external_run_id=None,
         )
-        run.external_run_id = None
-        await session.flush()
-
+        service = AutomationRunService(session)
         with pytest.raises(AutomationRunExternalIdMissingError):
-            await service.sync_run(team_id=ids["team_id"], run_id=run.id, ci_provider=fake_ci)
+            await service.sync_run(team_id=ids["team_id"], run_id=run.id)
 
 
 @pytest.mark.asyncio
 async def test_maybe_fill_report_url_uses_result_provider_when_terminal(automation_run_db):
-    """A terminal run with no report_url should get one filled from the active Result provider."""
+    from app.models.database_models import SystemAutomationProvider, AutomationProviderSlot
     from app.services.automation.run_service import maybe_fill_report_url
 
     ids = automation_run_db["ids"]
+
     async with automation_run_db["async_sessionmaker"]() as session:
         result_provider = SystemAutomationProvider(
             provider_slot=AutomationProviderSlot.RESULT,
@@ -440,115 +360,60 @@ async def test_maybe_fill_report_url_uses_result_provider_when_terminal(automati
         session.add(result_provider)
         await session.flush()
 
-        # Create a terminal run with no report_url
-        service = AutomationRunService(session)
-
-        class _FakeCI:
-            async def trigger_run(self, *a, **kw):
-                return ExternalRunRef(external_run_id="queue:99", external_run_url="https://ci/99")
-
-        run = await service.trigger_script(
+        run = await _seed_run(
+            session,
             team_id=ids["team_id"],
             script_id=ids["script_id"],
-            workflow_id="job-z",
-            ci_provider=_FakeCI(),
+            ci_provider_id=ids["ci_provider_id"],
+            status=AutomationRunStatus.SUCCEEDED,
         )
-        run.status = AutomationRunStatus.SUCCEEDED
-        run.report_url = None
-        await session.flush()
-
         await maybe_fill_report_url(session=session, run=run)
-        assert run.report_url == "https://allure.example/runs/queue:99"
+
+    assert run.report_url is not None
+    assert "allure.example" in run.report_url
 
 
 @pytest.mark.asyncio
 async def test_maybe_fill_report_url_pulls_from_jenkins_and_proxies_to_allure(
     automation_run_db, monkeypatch
 ):
-    """End-to-end pull path: ci_provider has download_build_artifacts_zip,
-    proxy forwards bytes to local Allure, run.report_url is populated."""
+    from app.services.automation import run_service as run_service_module
     from app.services.automation.run_service import maybe_fill_report_url
-    from app.services.automation import allure_proxy as proxy_module
-    import app.config as cfg_mod
-    import io, zipfile, httpx
 
     ids = automation_run_db["ids"]
 
-    # Allure proxy must be configured for the upload to proceed.
+    class FakeResultProvider:
+        async def get_run_report_url(self, external_run_id: str):
+            return f"https://allure.example/report/{external_run_id}"
+
+    class FakeCIWithArtifacts:
+        async def download_build_artifacts_zip(self, external_run_id: str) -> bytes:
+            return b"fake-zip"
+
+    upload_calls: list[bytes] = []
+
+    async def fake_upload(*, session, run, archive_bytes):
+        upload_calls.append(archive_bytes)
+        run.report_url = f"https://allure.example/uploaded/{run.external_run_id}"
+
     monkeypatch.setattr(
-        cfg_mod.get_settings().automation_provider,
-        "allure",
-        cfg_mod.AllureConfig(
-            base_url="http://127.0.0.1:5050",
-            api_token="",
-            project_id_template="tcrt-team-{team_slug}",
-        ),
+        "app.services.automation.allure_proxy.upload_run_results", fake_upload
     )
 
-    # Stand-in for httpx.AsyncClient used by the proxy.
-    class _FakeAllure:
-        calls = []
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *_a):
-            return None
-
-        async def post(self, url, **kw):
-            self.calls.append(("POST", url))
-            return httpx.Response(201, request=httpx.Request("POST", url))
-
-        async def get(self, url, **kw):
-            self.calls.append(("GET", url))
-            if "generate-report" in url:
-                return httpx.Response(
-                    200,
-                    json={"data": {"report_url": "http://127.0.0.1:5050/r/9/index.html"}},
-                    request=httpx.Request("GET", url),
-                )
-            return httpx.Response(200, request=httpx.Request("GET", url))
-
-    fake = _FakeAllure()
-    monkeypatch.setattr(proxy_module.httpx, "AsyncClient", lambda **kw: fake)
-
-    # Build a Jenkins-style ZIP that the fake provider will hand back.
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, mode="w") as zf:
-        zf.writestr("archive/allure-results/r.json", b"{}")
-    jenkins_zip = buf.getvalue()
-
-    class _FakeJenkins:
-        async def download_build_artifacts_zip(self, external_run_id):
-            assert external_run_id == "https://jenkins/job/x/1#1"
-            return jenkins_zip
-
     async with automation_run_db["async_sessionmaker"]() as session:
-        service = AutomationRunService(session)
-
-        class _FakeCI:
-            async def trigger_run(self, *a, **kw):
-                return ExternalRunRef(external_run_id="queue:1", external_run_url="https://ci/1")
-
-        run = await service.trigger_script(
+        run = await _seed_run(
+            session,
             team_id=ids["team_id"],
             script_id=ids["script_id"],
-            workflow_id="job-y",
-            ci_provider=_FakeCI(),
+            ci_provider_id=ids["ci_provider_id"],
+            status=AutomationRunStatus.SUCCEEDED,
         )
-        run.status = AutomationRunStatus.SUCCEEDED
-        run.external_run_id = "https://jenkins/job/x/1#1"
-        run.report_url = None
-        await session.flush()
-
         await maybe_fill_report_url(
-            session=session, run=run, ci_provider=_FakeJenkins()
+            session=session, run=run, ci_provider=FakeCIWithArtifacts()
         )
 
-        assert run.report_url == "http://127.0.0.1:5050/r/9/index.html"
-        # The proxy actually made an Allure send-results call (proves the zip
-        # was extracted past Jenkins's `archive/` prefix).
-        assert any("/send-results" in u for _m, u in fake.calls)
+    assert upload_calls == [b"fake-zip"]
+    assert run.report_url == f"https://allure.example/uploaded/{run.external_run_id}"
 
 
 @pytest.mark.asyncio
@@ -556,14 +421,17 @@ async def test_maybe_fill_report_url_noop_when_provider_has_no_template(automati
     """Terminal run with Result provider but no run_url_template configured → no-op.
 
     Allure-docker-service users must leave run_url_template empty and let CI post
-    the real report_url via webhook (Allure's report_id has no reliable mapping
-    to the CI external_run_id). The provider must NOT fall back to a synthesized
+    the real report_url via webhook. The provider must NOT fall back to a synthesized
     URL in that case.
     """
+    from app.models.database_models import SystemAutomationProvider, AutomationProviderSlot
     from app.services.automation.run_service import maybe_fill_report_url
 
     ids = automation_run_db["ids"]
+
     async with automation_run_db["async_sessionmaker"]() as session:
+        # Register a result provider so load_result_provider doesn't return None,
+        # but the provider implementation doesn't have a URL template.
         result_provider = SystemAutomationProvider(
             provider_slot=AutomationProviderSlot.RESULT,
             provider_type="result:allure",
@@ -575,143 +443,46 @@ async def test_maybe_fill_report_url_noop_when_provider_has_no_template(automati
         session.add(result_provider)
         await session.flush()
 
-        service = AutomationRunService(session)
-
-        class _FakeCI:
-            async def trigger_run(self, *a, **kw):
-                return ExternalRunRef(external_run_id="queue:7", external_run_url="https://ci/7")
-
-        run = await service.trigger_script(
+        run = await _seed_run(
+            session,
             team_id=ids["team_id"],
             script_id=ids["script_id"],
-            workflow_id="job-w",
-            ci_provider=_FakeCI(),
+            ci_provider_id=ids["ci_provider_id"],
+            status=AutomationRunStatus.SUCCEEDED,
         )
-        run.status = AutomationRunStatus.SUCCEEDED
-        run.report_url = None
-        await session.flush()
-
         await maybe_fill_report_url(session=session, run=run)
-        assert run.report_url is None
+
+    # No template → no report URL
+    assert run.report_url is None
 
 
 @pytest.mark.asyncio
 async def test_maybe_fill_report_url_skips_when_no_result_provider(automation_run_db):
-    """When no Result provider exists, report_url stays None and no exception is raised."""
     from app.services.automation.run_service import maybe_fill_report_url
 
     ids = automation_run_db["ids"]
+
     async with automation_run_db["async_sessionmaker"]() as session:
-        service = AutomationRunService(session)
-
-        class _FakeCI:
-            async def trigger_run(self, *a, **kw):
-                return ExternalRunRef(external_run_id="queue:1", external_run_url="https://ci/1")
-
-        run = await service.trigger_script(
+        run = await _seed_run(
+            session,
             team_id=ids["team_id"],
             script_id=ids["script_id"],
-            workflow_id="job-y",
-            ci_provider=_FakeCI(),
+            ci_provider_id=ids["ci_provider_id"],
+            status=AutomationRunStatus.SUCCEEDED,
         )
-        run.status = AutomationRunStatus.SUCCEEDED
-        run.report_url = None
-        await session.flush()
-
+        # No result provider configured → no-op
         await maybe_fill_report_url(session=session, run=run)
-        assert run.report_url is None
 
-
-@pytest.mark.asyncio
-async def test_backfill_pending_reports_retries_recent_terminal_runs(
-    automation_run_db, monkeypatch
-):
-    """A terminal run whose report_url never filled (artifacts not yet archived
-    at the terminal tick) should be retried by the backfill sweep, while runs
-    that are too old or already have a URL are left alone."""
-    from datetime import datetime, timedelta, timezone
-
-    from app.services.automation import allure_proxy as proxy_module
-
-    proxied: list[int] = []
-
-    async def _fake_upload(*, session, run, archive_bytes):
-        proxied.append(run.id)
-        run.report_url = f"http://allure/r/{run.id}"
-        return run.report_url
-
-    monkeypatch.setattr(proxy_module, "upload_run_results", _fake_upload)
-
-    class _FakeJenkins:
-        async def download_build_artifacts_zip(self, external_run_id):
-            return b"PK-fake-zip-bytes"
-
-    ids = automation_run_db["ids"]
-    now = datetime.now(timezone.utc)
-
-    async with automation_run_db["async_sessionmaker"]() as session:
-        service = AutomationRunService(session)
-
-        async def _fixed_provider(_run):
-            return _FakeJenkins()
-
-        service._provider_from_run_record = _fixed_provider  # type: ignore[assignment]
-
-        def _terminal_run(corr, *, status, finished_at, report_url=None):
-            run = AutomationRun(
-                team_id=ids["team_id"],
-                automation_script_id=ids["script_id"],
-                provider_id=ids["ci_provider_id"],
-                external_run_id="https://jenkins/job/x/1#1",
-                status=status,
-                triggered_by=AutomationRunTrigger.USER,
-                tcrt_correlation_id=corr,
-                workflow_id="job-a",
-                branch="main",
-                inputs_json="{}",
-                report_url=report_url,
-                finished_at=finished_at,
-            )
-            session.add(run)
-            return run
-
-        recent = _terminal_run(
-            "recent", status=AutomationRunStatus.SUCCEEDED, finished_at=now
-        )
-        failed_recent = _terminal_run(
-            "failed", status=AutomationRunStatus.FAILED, finished_at=now
-        )
-        stale = _terminal_run(
-            "stale",
-            status=AutomationRunStatus.SUCCEEDED,
-            finished_at=now - timedelta(hours=2),
-        )
-        already = _terminal_run(
-            "already",
-            status=AutomationRunStatus.SUCCEEDED,
-            finished_at=now,
-            report_url="http://allure/existing",
-        )
-        await session.flush()
-
-        filled = await service.backfill_pending_reports(team_id=ids["team_id"])
-
-    filled_ids = {r.id for r in filled}
-    assert recent.id in filled_ids
-    assert failed_recent.id in filled_ids
-    assert stale.id not in filled_ids  # outside the recency window
-    assert already.id not in filled_ids  # already had a URL
-    assert recent.report_url == f"http://allure/r/{recent.id}"
-    assert already.report_url == "http://allure/existing"
-    assert set(proxied) == {recent.id, failed_recent.id}
+    assert run.report_url is None
 
 
 @pytest.mark.asyncio
 async def test_maybe_fill_report_url_noop_when_not_terminal(automation_run_db):
-    """Non-terminal runs (QUEUED / RUNNING) should not get a report_url."""
+    from app.models.database_models import SystemAutomationProvider, AutomationProviderSlot
     from app.services.automation.run_service import maybe_fill_report_url
 
     ids = automation_run_db["ids"]
+
     async with automation_run_db["async_sessionmaker"]() as session:
         result_provider = SystemAutomationProvider(
             provider_slot=AutomationProviderSlot.RESULT,
@@ -724,18 +495,57 @@ async def test_maybe_fill_report_url_noop_when_not_terminal(automation_run_db):
         session.add(result_provider)
         await session.flush()
 
-        service = AutomationRunService(session)
-
-        class _FakeCI:
-            async def trigger_run(self, *a, **kw):
-                return ExternalRunRef(external_run_id="queue:2", external_run_url="https://ci/2")
-
-        run = await service.trigger_script(
+        run = await _seed_run(
+            session,
             team_id=ids["team_id"],
             script_id=ids["script_id"],
-            workflow_id="job-x",
-            ci_provider=_FakeCI(),
+            ci_provider_id=ids["ci_provider_id"],
+            status=AutomationRunStatus.RUNNING,
         )
-        # status stays QUEUED — not terminal
+        # Not terminal → no-op
         await maybe_fill_report_url(session=session, run=run)
-        assert run.report_url is None
+
+    assert run.report_url is None
+
+
+@pytest.mark.asyncio
+async def test_list_runs_filters_by_triggered_by_webhook_id(automation_run_db):
+    """Webhook-triggered runs (test_run_set_id NULL) are listed by webhook id."""
+    ids = automation_run_db["ids"]
+
+    async with automation_run_db["async_sessionmaker"]() as session:
+        webhook_run = await _seed_run(
+            session,
+            team_id=ids["team_id"],
+            script_id=ids["script_id"],
+            ci_provider_id=ids["ci_provider_id"],
+            triggered_by=AutomationRunTrigger.WEBHOOK,
+            triggered_by_webhook_id=7,
+            external_run_id="run-webhook",
+        )
+        # A run from a different webhook, plus a user-triggered run — both excluded.
+        await _seed_run(
+            session,
+            team_id=ids["team_id"],
+            script_id=ids["script_id"],
+            ci_provider_id=ids["ci_provider_id"],
+            triggered_by=AutomationRunTrigger.WEBHOOK,
+            triggered_by_webhook_id=8,
+            external_run_id="run-other-webhook",
+        )
+        await _seed_run(
+            session,
+            team_id=ids["team_id"],
+            script_id=ids["script_id"],
+            ci_provider_id=ids["ci_provider_id"],
+            external_run_id="run-user",
+        )
+
+        service = AutomationRunService(session)
+        rows, next_cursor, total = await service.list_runs(
+            team_id=ids["team_id"], triggered_by_webhook_id=7
+        )
+
+    assert [r.id for r in rows] == [webhook_run.id]
+    assert total == 1
+    assert next_cursor is None

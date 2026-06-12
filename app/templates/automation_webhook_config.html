@@ -27,43 +27,6 @@
     <i class="fas fa-users me-1"></i><span data-i18n="navigation.teamManagement">Team Management</span>
   </a>
 </div>
-
-<div class="modal fade" id="webhookDeliveriesModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-scrollable">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title">
-          <i class="fas fa-history text-secondary me-2"></i><span data-i18n="automationHub.webhooks.deliveriesTitle">Recent deliveries</span>
-        </h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body">
-        <div id="webhookDeliveriesLoading" class="text-center py-4 d-none">
-          <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>
-        </div>
-        <div class="table-responsive">
-          <table class="table table-hover table-sm align-middle mb-0">
-            <thead class="table-light">
-              <tr>
-                <th data-i18n="automationHub.webhooks.event">Event</th>
-                <th data-i18n="automationHub.webhooks.deliveryId">Delivery ID</th>
-                <th data-i18n="common.status">Status</th>
-                <th data-i18n="automationHub.webhooks.duration">Duration</th>
-                <th data-i18n="automationHub.webhooks.completedAt">Completed</th>
-                <th class="text-end" data-i18n="common.actions">Actions</th>
-              </tr>
-            </thead>
-            <tbody id="webhookDeliveryRows"></tbody>
-          </table>
-        </div>
-        <div id="webhookDeliveriesEmpty" class="text-muted text-center py-4 d-none" data-i18n="automationHub.webhooks.noDeliveries">No deliveries yet.</div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.close">Close</button>
-      </div>
-    </div>
-  </div>
-</div>
 {% endblock %}
 
 {% block content %}
@@ -107,10 +70,8 @@
         <table class="table table-hover table-sm align-middle mb-0">
           <thead class="table-light sticky-top">
             <tr>
-              <th data-i18n="automationHub.webhooks.direction">Direction</th>
               <th data-i18n="common.name">Name</th>
               <th data-i18n="automationHub.webhooks.fingerprints">Fingerprints</th>
-              <th data-i18n="automationHub.webhooks.events">Events</th>
               <th data-i18n="automationHub.webhooks.lastDelivery">Last Delivery</th>
               <th data-i18n="common.status">Status</th>
               <th class="text-end" data-i18n="common.actions">Actions</th>
@@ -118,6 +79,42 @@
           </thead>
           <tbody id="webhookRows"></tbody>
         </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="webhookRunsModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">
+          <i class="fas fa-play-circle text-secondary me-2"></i><span data-i18n="automationHub.webhooks.runsTitle">Trigger history</span>
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div id="webhookRunsLoading" class="text-center py-4 d-none">
+          <div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div>
+        </div>
+        <div class="table-responsive">
+          <table class="table table-hover table-sm align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <th data-i18n="common.status">Status</th>
+                <th data-i18n="automationHub.webhooks.runBranch">Branch</th>
+                <th data-i18n="automationHub.webhooks.runStartedAt">Started</th>
+                <th data-i18n="automationHub.webhooks.runDuration">Duration</th>
+                <th class="text-end" data-i18n="automationHub.webhooks.runLinks">Links</th>
+              </tr>
+            </thead>
+            <tbody id="webhookRunRows"></tbody>
+          </table>
+        </div>
+        <div id="webhookRunsEmpty" class="text-muted text-center py-4 d-none" data-i18n="automationHub.webhooks.noRuns">No runs triggered yet.</div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.close">Close</button>
       </div>
     </div>
   </div>
@@ -134,31 +131,14 @@
         <form id="webhookForm">
           <input type="hidden" id="webhookId">
           <div class="row g-3">
-            <div class="col-md-6">
-              <label class="form-label" for="webhookDirection" data-i18n="automationHub.webhooks.direction">Direction</label>
-              <select class="form-select" id="webhookDirection" required>
-                <option value="INBOUND" data-i18n="automationHub.webhooks.directionInbound">Inbound</option>
-                <option value="OUTBOUND" data-i18n="automationHub.webhooks.directionOutbound">Outbound</option>
-              </select>
-            </div>
-            <div class="col-md-6">
+            <div class="col-12">
               <label class="form-label" for="webhookName" data-i18n="common.name">Name</label>
               <input type="text" class="form-control" id="webhookName" maxlength="100" required>
-            </div>
-            <div class="col-12" id="webhookTargetWrap">
-              <label class="form-label" for="webhookTargetUrl" data-i18n="automationHub.webhooks.targetUrl">Target URL</label>
-              <input type="url" class="form-control" id="webhookTargetUrl" maxlength="500">
-              <div class="form-text" data-i18n="automationHub.webhooks.targetUrlHint">Required for outbound webhooks.</div>
-            </div>
-            <div class="col-12" id="webhookEventsWrap">
-              <label class="form-label" data-i18n="automationHub.webhooks.events">Events</label>
-              <div id="webhookEventOptions" class="automation-webhook-event-options"></div>
-              <div class="form-text" data-i18n="automationHub.webhooks.eventsHint">Select events for outbound delivery.</div>
             </div>
             <div class="col-12" id="webhookSuiteWrap">
               <label class="form-label" for="webhookScriptGroup" data-i18n="automationHub.webhooks.bindSuite">Bind test suite</label>
               <select class="form-select" id="webhookScriptGroup">
-                <option value="" data-i18n="automationHub.webhooks.bindSuiteNone">No suite (status callback only)</option>
+                <option value="" disabled selected data-i18n="automationHub.webhooks.bindSuitePlaceholder">Select a suite…</option>
               </select>
               <div class="form-text" data-i18n="automationHub.webhooks.bindSuiteHint">Bind a suite to enable the /trigger endpoint that runs it on demand.</div>
             </div>
@@ -212,15 +192,6 @@
             </div>
           </div>
         </div>
-        <div class="mt-3" id="webhookEndpointWrap">
-          <label class="form-label" for="webhookEndpoint" data-i18n="automationHub.webhooks.endpoint">Inbound endpoint</label>
-          <div class="input-group">
-            <input type="text" id="webhookEndpoint" class="form-control font-monospace" readonly>
-            <button type="button" class="btn btn-secondary" id="copyEndpointBtn" data-i18n-title="common.copy" title="Copy">
-              <i class="fas fa-copy"></i>
-            </button>
-          </div>
-        </div>
         <div class="mt-3 d-none" id="webhookTriggerWrap">
           <label class="form-label" for="webhookTriggerEndpoint" data-i18n="automationHub.webhooks.triggerEndpoint">Suite trigger endpoint</label>
           <div class="input-group">
@@ -237,15 +208,13 @@
             </button>
           </div>
           <pre class="automation-code-block" id="webhookTriggerCurlExample"></pre>
-        </div>
-        <div class="mt-3">
-          <div class="d-flex align-items-center justify-content-between gap-2 mb-2">
-            <label class="form-label mb-0" for="webhookCurlExample" data-i18n="automationHub.webhooks.curlExample">curl example</label>
-            <button type="button" class="btn btn-secondary btn-sm" id="copyCurlBtn">
+          <div class="d-flex align-items-center justify-content-between gap-2 mt-3 mb-2">
+            <label class="form-label mb-0" for="webhookPollCurlExample" data-i18n="automationHub.webhooks.pollCurlExample">Poll for result (curl example)</label>
+            <button type="button" class="btn btn-secondary btn-sm" id="copyPollCurlBtn">
               <i class="fas fa-copy me-1"></i><span data-i18n="automationHub.webhooks.copyCurl">Copy curl example</span>
             </button>
           </div>
-          <pre class="automation-code-block" id="webhookCurlExample"></pre>
+          <pre class="automation-code-block" id="webhookPollCurlExample"></pre>
         </div>
       </div>
       <div class="modal-footer">

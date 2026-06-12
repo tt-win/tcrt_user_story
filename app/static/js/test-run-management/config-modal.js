@@ -255,7 +255,10 @@ async function handleSaveConfig() {
               isPreselectedFromTestCaseSet = false;
             }
             
-            openCaseSelectModal(data.id);
+            // configData.set_id was read from the hidden field BEFORE the form
+            // modal hid (its hidden.bs.modal handler clears that field), so the
+            // automation-coverage context must travel explicitly.
+            openCaseSelectModal(data.id, { automationSetId: configData.set_id || data.set_id || null });
         }
 
     } catch (error) {

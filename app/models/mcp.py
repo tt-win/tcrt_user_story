@@ -74,10 +74,6 @@ class MCPLinkedAutomationSummary(BaseModel):
     script_format: str
     ref_path: Optional[str] = None
     link_type: str
-    last_run_status: Optional[str] = None
-    last_run_at: Optional[datetime] = None
-    last_run_url: Optional[str] = None
-    report_url: Optional[str] = None
 
 
 class MCPTestCaseDetailItem(BaseModel):
@@ -184,9 +180,6 @@ class MCPAutomationScriptItem(BaseModel):
     tags: List[str] = Field(default_factory=list)
     linked_test_case_count: int = 0
     linked_test_case_numbers: List[str] = Field(default_factory=list)
-    last_run_status: Optional[str] = None
-    last_run_at: Optional[datetime] = None
-    last_run_url: Optional[str] = None
     last_synced_at: Optional[datetime] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
@@ -202,6 +195,7 @@ class MCPAutomationRunItem(BaseModel):
     id: int
     automation_script_id: Optional[int] = None
     script_group_id: Optional[int] = None
+    test_run_set_id: Optional[int] = None
     workflow_id: str
     branch: str
     status: str

@@ -19,6 +19,10 @@ let currentSectionFilterId = null; // 依 Section 過濾
 let currentSectionTree = [];
 let sectionTreeContainer = null;
 let caseSelectData = { sections: [], testCases: [], filteredCases: [], selectedCaseIds: new Set() };
+// 父層 Test Run Set 掛的 Automation Suites 已涵蓋的 case numbers（PRIMARY/COVERS）。
+// 無 set 脈絡或 set 沒掛 suite 時為空 → 過濾開關隱藏、標示不顯示。
+let automationCoveredCaseNumbers = new Set();
+let hideAutomationCovered = false;
 
 function normalizeSetIds(values) {
   const normalized = [];
@@ -106,27 +110,17 @@ function renderSectionTree() {
 }
 
 function getCasesInCurrentSetFilter() {
-  if (!Array.isArray(caseSelectData.testCases)) return [];
-  if (!currentSetIdForCaseSelection) return [];
-  return caseSelectData.testCases.filter(tc => Number(tc.test_case_set_id) === Number(currentSetIdForCaseSelection));
+  // "Select all" acts on the cases currently shown in the list. filteredCases
+  // is recomputed by renderCaseSelectList and already respects the set
+  // dropdown, the search box and the automation-coverage filter, so a single
+  // source keeps the checkbox, its count and the visible rows in lock-step.
+  return Array.isArray(caseSelectData.filteredCases) ? caseSelectData.filteredCases : [];
 }
 
 function updateCurrentSetSelectAllState() {
   const checkbox = document.getElementById('selectAllCurrentSetCheckbox');
   const hintEl = document.getElementById('selectAllCurrentSetHint');
   if (!checkbox) return;
-
-  const chooseHint = (window.i18n && window.i18n.isReady())
-    ? window.i18n.t('testRun.caseSelect.selectAllCurrentSetChooseHint', {}, '請先選擇單一 Test Case Set')
-    : '請先選擇單一 Test Case Set';
-
-  if (!currentSetIdForCaseSelection) {
-    checkbox.checked = false;
-    checkbox.indeterminate = false;
-    checkbox.disabled = true;
-    if (hintEl) hintEl.textContent = chooseHint;
-    return;
-  }
 
   const scopedCases = getCasesInCurrentSetFilter();
   const selectedCount = scopedCases.reduce((count, testCase) => {
@@ -138,15 +132,22 @@ function updateCurrentSetSelectAllState() {
   checkbox.indeterminate = selectedCount > 0 && selectedCount < scopedCases.length;
 
   if (hintEl) {
-    const setName = getTestRunSetDisplayName(currentSetIdForCaseSelection) || `Set #${currentSetIdForCaseSelection}`;
-    const readyHint = (window.i18n && window.i18n.isReady())
+    if (scopedCases.length === 0) {
+      hintEl.textContent = (window.i18n && window.i18n.isReady())
+        ? window.i18n.t('testRun.caseSelect.selectAllCurrentSetEmptyHint', {}, '目前清單沒有可選的案例')
+        : '目前清單沒有可選的案例';
+      return;
+    }
+    const setName = currentSetIdForCaseSelection
+      ? (getTestRunSetDisplayName(currentSetIdForCaseSelection) || `Set #${currentSetIdForCaseSelection}`)
+      : '';
+    hintEl.textContent = (window.i18n && window.i18n.isReady())
       ? window.i18n.t(
-          'testRun.caseSelect.selectAllCurrentSetHint',
-          { set_name: setName, selected: selectedCount, total: scopedCases.length },
-          `${setName}：已選 ${selectedCount}/${scopedCases.length}`
+          'testRun.caseSelect.selectAllShownHint',
+          { selected: selectedCount, total: scopedCases.length },
+          `已選 ${selectedCount}/${scopedCases.length}${setName ? `（${setName}）` : ''}`
         )
-      : `${setName}：已選 ${selectedCount}/${scopedCases.length}`;
-    hintEl.textContent = readyHint;
+      : `已選 ${selectedCount}/${scopedCases.length}${setName ? `（${setName}）` : ''}`;
   }
 }
 
@@ -155,7 +156,6 @@ function bindSelectAllCurrentSetCheckbox() {
   if (!checkbox) return;
 
   checkbox.onchange = () => {
-    if (!currentSetIdForCaseSelection) return;
     const scopedCases = getCasesInCurrentSetFilter();
     if (!scopedCases.length) return;
 
@@ -343,14 +343,75 @@ async function loadCaseSelectData() {
 }
 
 // Removed confirmation step; open modal directly and rely on hidden handler for rollback
-function openCaseSelectModalWithConfirm(configId) {
+function resolveTestRunSetIdForConfig(configId, explicitSetId) {
+  // Create-in-set flow: handleSaveConfig knows the target set and passes it
+  // explicitly — the hidden #configSetId field is already cleared by the
+  // config modal's hidden.bs.modal handler by the time we run.
+  if (Number.isFinite(Number(explicitSetId)) && Number(explicitSetId) > 0) {
+    return Number(explicitSetId);
+  }
+  // Edit flow: the run's summary carries its set linkage.
+  const config = (testRunConfigs || []).find(c => c.id === configId);
+  if (config && config.set_id) return Number(config.set_id);
+  // Last resort: the config form's hidden field (still set when the case
+  // modal opens without the config form having closed).
+  const hidden = document.getElementById('configSetId');
+  const hiddenValue = Number(hidden?.value || 0);
+  return Number.isFinite(hiddenValue) && hiddenValue > 0 ? hiddenValue : null;
+}
+
+async function loadAutomationCoverageForConfig(configId, explicitSetId) {
+  automationCoveredCaseNumbers = new Set();
+  const setId = resolveTestRunSetIdForConfig(configId, explicitSetId);
+  if (!setId || !currentTeamId) return;
+  try {
+    const response = await window.AuthClient.fetch(
+      `/api/teams/${currentTeamId}/test-run-sets/${setId}/automation-covered-cases`
+    );
+    if (!response.ok) return;
+    const payload = await response.json();
+    automationCoveredCaseNumbers = new Set(
+      Array.isArray(payload?.test_case_numbers) ? payload.test_case_numbers : []
+    );
+  } catch (error) {
+    console.warn('Load automation covered cases failed:', error);
+  }
+}
+
+function isAutomationCovered(testCase) {
+  return automationCoveredCaseNumbers.has(testCase?.test_case_number);
+}
+
+function casePassesAutomationFilter(testCase) {
+  return !(hideAutomationCovered && isAutomationCovered(testCase));
+}
+
+function refreshAutomationCoverageFilterUi() {
+  const group = document.getElementById('automationCoverageFilterGroup');
+  const checkbox = document.getElementById('hideAutomationCoveredCheckbox');
+  const countEl = document.getElementById('automationCoveredCount');
+  if (!group || !checkbox) return;
+  const coveredCount = automationCoveredCaseNumbers.size;
+  group.classList.toggle('d-none', coveredCount === 0);
+  checkbox.checked = hideAutomationCovered;
+  if (countEl) countEl.textContent = String(coveredCount);
+  if (!checkbox.dataset.bound) {
+    checkbox.dataset.bound = 'true';
+    checkbox.addEventListener('change', () => {
+      hideAutomationCovered = checkbox.checked;
+      renderCaseSelectList();
+    });
+  }
+}
+
+function openCaseSelectModalWithConfirm(configId, options = {}) {
   pendingCreate = true;
   createdItemsInSession = false;
   modalMode = 'create';
-  openCaseSelectModal(configId);
+  openCaseSelectModal(configId, options);
 }
 
-async function openCaseSelectModal(configId) {
+async function openCaseSelectModal(configId, options = {}) {
   const permissions = window._testRunPermissions || testRunPermissions || {};
   if (modalMode === 'edit' && !permissions.canUpdate) {
     showPermissionDenied();
@@ -415,6 +476,9 @@ async function openCaseSelectModal(configId) {
   const infoEl = document.getElementById('caseSelectInfo');
   if (infoEl) infoEl.textContent = '';
   currentCaseFilter = 'all';
+  hideAutomationCovered = false;
+  await loadAutomationCoverageForConfig(configId, options.automationSetId);
+  refreshAutomationCoverageFilterUi();
   // set modal title and confirm button text/handler per mode
   const titleSpan = modalEl.querySelector('.modal-title [data-i18n]');
   if (titleSpan) {
@@ -643,6 +707,7 @@ function renderCaseSelectList() {
   caseSelectData.filteredCases = caseSelectData.testCases.filter(tc => {
     const inSetScope = !currentSetIdForCaseSelection || Number(tc.test_case_set_id) === Number(currentSetIdForCaseSelection);
     if (!inSetScope) return false;
+    if (!casePassesAutomationFilter(tc)) return false;
     const num = (tc.test_case_number || '').toLowerCase();
     const title = (tc.title || '').toLowerCase();
     return num.includes(searchVal) || title.includes(searchVal);
@@ -721,6 +786,9 @@ function renderCaseSelectList() {
             ${sectionCases.map(testCase => {
               const key = getCaseKey(testCase);
               const checked = selectedCaseMap.has(key) ? 'checked' : '';
+              const coveredBadge = isAutomationCovered(testCase)
+                ? `<span class="badge bg-info-subtle text-info-emphasis border border-info-subtle ms-2 flex-shrink-0" title="${escapeHtml(window.i18n?.t('testRun.caseSelect.automationCoveredHint') || '此案例已由 Test Run Set 內的 Automation Suite 涵蓋')}"><i class="fas fa-robot me-1"></i><span data-i18n="testRun.caseSelect.automationCoveredBadge">已自動化</span></span>`
+                : '';
               return `
                 <div class="case-item d-flex align-items-center py-2 px-3" style="background-color: #f8f9fa; border-bottom: 1px solid #e9ecef;">
                   <input type="checkbox"
@@ -729,6 +797,7 @@ function renderCaseSelectList() {
                          ${checked}>
                   <code class="me-2" style="min-width: 100px; flex-shrink: 0; color: rgb(194, 54, 120); font-size: inherit; font-weight: 500;">${escapeHtml(testCase.test_case_number || '')}</code>
                   <div class="flex-grow-1 text-truncate">${escapeHtml(testCase.title || '')}</div>
+                  ${coveredBadge}
                   ${testCase.priority ? `<span class="badge bg-secondary ms-2">${escapeHtml(testCase.priority)}</span>` : ''}
                 </div>
               `;
@@ -814,7 +883,7 @@ function handleSectionCheckboxChange(sectionId, isChecked) {
 
   const affectedCases = caseSelectData.testCases.filter(tc => {
     const sid = getCaseSectionId(tc) ?? 'unassigned';
-    return sectionIds.has(sid) && matchesSearch(tc);
+    return sectionIds.has(sid) && matchesSearch(tc) && casePassesAutomationFilter(tc);
   });
 
   affectedCases.forEach(tc => {

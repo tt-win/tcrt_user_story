@@ -1,13 +1,14 @@
 # Automation Hub — Webhook Reference
 
-TCRT integrates with CI in **two directions**:
+TCRT integrates with CI in **two ways**:
 
 - **Inbound**: CI calls `POST /api/v1/webhooks/ci/{token}/run-status` when a
   run finishes (or any time mid-flight). HMAC-signed, no auth header.
-- **Outbound**: TCRT POSTs events (`script.linked`, `run.triggered`,
-  `run.completed`, etc.) to URLs configured per team. Same HMAC scheme.
+- **Trigger + poll**: external software fires a suite via `POST .../trigger`
+  and reads the result back via `GET .../runs/{tcrt_run_id}`. Token-auth, no
+  signature — see "Trigger a suite & poll for the result" below.
 
-Each team can create as many INBOUND or OUTBOUND webhooks as needed via the
+Each team can create as many INBOUND webhooks as needed via the
 Webhooks settings page or the admin API at
 `/api/teams/{team_id}/automation-webhooks`.
 
@@ -104,54 +105,91 @@ curl -X POST "$TCRT_BASE_URL/api/v1/webhooks/ci/$TOKEN/run-status" \
 
 ---
 
-## Outbound: TCRT → your endpoint
+## Trigger a suite & poll for the result
 
-Configure an OUTBOUND webhook with a `target_url` and an `events` array. An
-empty `events` array means **wildcard** — receives every event. Otherwise, only
-matching events are delivered.
+For external software that **kicks off a run and then wants the result** — as
+opposed to receiving push callbacks — use the trigger + poll pair on an INBOUND
+webhook bound to a suite (`script_group_id`). Both endpoints authenticate with
+the path token alone (no signature), so each is a runnable one-line curl.
 
-### Event types
+This pairs cleanly with how TCRT tracks CI today: the run row is kept current by
+a background loop that **pulls** status and the Allure report from CI, so the
+poll endpoint just exposes that already-synced state — it never calls CI inline.
 
-| Event | Fired when | Payload `data` shape |
-|---|---|---|
-| `script.linked` | A test case is linked to a script | `{link_id, script_id, test_case_id, link_type, actor_user_id}` |
-| `script.unlinked` | A link is deleted | `{link_id, script_id, actor_user_id}` |
-| `run.triggered` | User triggers a script or suite run | `{run_id, automation_script_id, script_group_id, workflow_id, branch, status, external_run_id, external_run_url, tcrt_correlation_id}` |
-| `run.tracked` | Any run status update (incl. inbound webhook ingest, cancel, reconcile) | `{run_id, automation_script_id, script_group_id, workflow_id, branch, status, external_run_id, external_run_url, report_url, tcrt_correlation_id, duration_ms}` |
-| `run.completed` | Run transitions to a terminal status | same shape as `run.tracked` |
+### 1. Trigger
 
-### Envelope
+```
+POST /api/v1/webhooks/ci/{token}/trigger
+Content-Type: application/json        # body optional
+```
 
-Every outbound delivery POSTs JSON in this shape:
+Optional JSON body: `{ "branch": "…", "runner_label": "…", "inputs": {…} }`.
+Returns immediately with a QUEUED handle. **Keep `tcrt_correlation_id`** — it's
+the stable key for polling (`external_run_id` is a transient `queue:NNNN` at this
+point and mutates to the build number later):
 
 ```json
 {
-  "event": "run.completed",
-  "delivery_id": "uuid",
-  "occurred_at": "2026-05-18T10:24:11Z",
-  "team_id": 7,
-  "data": { … see table above … }
+  "run_id": 42,
+  "tcrt_correlation_id": "5f8b4d8e-…",
+  "external_run_id": "queue:123",
+  "external_run_url": "https://ci.example/queue/item/123/",
+  "status": "QUEUED"
 }
 ```
 
-Headers:
-- `Content-Type: application/json`
-- `X-TCRT-Event: <event-name>`
-- `X-TCRT-Delivery: <delivery-id>`
-- `X-TCRT-Signature: sha256=<hex>` over the raw body bytes.
+### 2. Poll
 
-### Failure handling
+```
+GET /api/v1/webhooks/ci/{token}/runs/{tcrt_run_id}
+```
 
-Outbound delivery is **fire-and-forget**: any non-2xx, timeout, or connection
-error is logged on the webhook row as `<EVENT>_FAILED [<status_code>]` in
-`last_status`. The Webhooks settings page colour-codes failed deliveries red
-so admins can spot misconfigured endpoints. There is **no automatic retry**;
-the receiver is expected to be tolerant of dropped events and reconcile via
-the read APIs if needed.
+`{tcrt_run_id}` is the `tcrt_correlation_id` from step 1. Poll until `status` is
+terminal (`SUCCEEDED` / `FAILED` / `CANCELLED`). The lookup is scoped to runs
+**this** webhook triggered (`triggered_by_webhook_id`), so a token can only read
+back its own runs — never other runs in the team.
 
-### Test pings
+```json
+{
+  "run_id": 42,
+  "tcrt_correlation_id": "5f8b4d8e-…",
+  "status": "SUCCEEDED",
+  "external_run_id": "12",
+  "external_run_url": "https://ci.example/job/…/12/",
+  "report_url": "https://allure.example/runs/12",
+  "branch": "main",
+  "started_at": "2026-05-18T10:20:30",
+  "finished_at": "2026-05-18T10:24:11",
+  "duration_ms": 221000,
+  "error_summary": null,
+  "last_synced_at": "2026-05-18T10:24:20"
+}
+```
 
-The Webhooks UI exposes a "Send test ping" action per OUTBOUND webhook
-(`POST /api/teams/{id}/automation-webhooks/{webhook_id}/test-ping`) that fires
-a synthetic `event: "test"` delivery. Use it to verify connectivity and HMAC
-config before going live.
+### Sample trigger + poll loop
+
+```bash
+TCRT_BASE_URL="https://tcrt.internal"
+TOKEN="…webhook-token…"
+
+CID=$(curl -fsS -X POST "$TCRT_BASE_URL/api/v1/webhooks/ci/$TOKEN/trigger" \
+  | jq -r .tcrt_correlation_id)
+
+while :; do
+  STATUS=$(curl -fsS "$TCRT_BASE_URL/api/v1/webhooks/ci/$TOKEN/runs/$CID" | jq -r .status)
+  case "$STATUS" in
+    SUCCEEDED|FAILED|CANCELLED) echo "done: $STATUS"; break ;;
+    *) sleep 10 ;;
+  esac
+done
+```
+
+### Error codes
+
+| HTTP | `detail.code` | Cause |
+|---|---|---|
+| 400 | `WEBHOOK_NOT_INBOUND` | Token belongs to an OUTBOUND webhook. |
+| 403 | `WEBHOOK_INACTIVE` | Webhook was disabled by an admin. |
+| 404 | `WEBHOOK_NOT_FOUND` | Unknown token. |
+| 404 | `AUTOMATION_RUN_NOT_MATCHED` | No run with that id was triggered by this webhook. |
+| 429 | `WEBHOOK_RATE_LIMITED` | >120 req/min on this token; honour `Retry-After`. |

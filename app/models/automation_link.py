@@ -8,17 +8,6 @@ from pydantic import BaseModel, ConfigDict
 from app.models.database_models import AutomationScriptLinkType
 
 
-class AutomationScriptLinkCreate(BaseModel):
-    test_case_id: int
-    link_type: AutomationScriptLinkType = AutomationScriptLinkType.COVERS
-    note: Optional[str] = None
-
-
-class AutomationScriptLinkUpdate(BaseModel):
-    link_type: Optional[AutomationScriptLinkType] = None
-    note: Optional[str] = None
-
-
 class AutomationScriptLinkResponse(BaseModel):
     id: int
     team_id: int
@@ -32,6 +21,11 @@ class AutomationScriptLinkResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 
 
+class AutomationScriptLinkDetailResponse(AutomationScriptLinkResponse):
+    test_case_number: str
+    title: str
+
+
 class LinkedAutomationSummary(BaseModel):
     script_id: int
     name: str
@@ -40,9 +34,5 @@ class LinkedAutomationSummary(BaseModel):
     # Marker-sync / ai-suggest:<id> / numeric user id (or null for legacy rows).
     # The case detail Automation panel uses this to render a link source badge.
     created_by: Optional[str] = None
-    last_run_status: Optional[str] = None
-    last_run_at: Optional[datetime] = None
-    last_run_url: Optional[str] = None
-    report_url: Optional[str] = None
 
     model_config = ConfigDict(use_enum_values=True)

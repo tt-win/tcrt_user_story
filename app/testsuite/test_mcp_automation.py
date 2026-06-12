@@ -35,6 +35,8 @@ from app.models.database_models import (
     TestCaseLocal,
     TestCaseSection,
     TestCaseSet,
+    TestRunSet as TestRunSetDB,
+    TestRunSetStatus as TestRunSetStatusEnum,
 )
 from app.models.lark_types import Priority
 from app.testsuite.db_test_helpers import (
@@ -175,9 +177,21 @@ def _seed(session) -> dict:
     session.add(link)
     session.commit()
 
+    # Seed a Test Run Set so the MCP automation-runs endpoint (now
+    # scoped to a set) has something to read.
+    run_set = TestRunSetDB(
+        team_id=team.id,
+        name="MCP Set",
+        description="",
+        status=TestRunSetStatusEnum.ACTIVE,
+        automation_suite_ids_json=json.dumps([]),
+    )
+    session.add(run_set)
+    session.commit()
+
     run = AutomationRun(
         team_id=team.id,
-        automation_script_id=script_login.id,
+        test_run_set_id=run_set.id,
         provider_id=ci_provider.id,
         external_run_id="ext-1",
         external_run_url="https://ci.example/run/1",
@@ -214,6 +228,7 @@ def _seed(session) -> dict:
         "script_login_id": script_login.id,
         "script_logout_id": script_logout.id,
         "run_id": run.id,
+        "run_set_id": run_set.id,
         "token": raw_token,
     }
 
@@ -241,12 +256,14 @@ def test_mcp_automation_scripts_lists_with_linked_cases_and_last_run(temp_db):
         assert login["script_format"] == "PYTEST"
         assert login["ref_path"] == "tests/test_login.py"
         assert login["tags"] == ["smoke", "auth"]
-        assert login["last_run_status"] == "SUCCEEDED"
-        assert login["last_run_url"] == "https://ci.example/run/1"
+        # last_run_* removed from script response: run history is owned by
+        # Test Run Set (see move-run-history-to-test-run-set).
+        assert "last_run_status" not in login
+        assert "last_run_url" not in login
         assert login["linked_test_case_numbers"] == ["TC-001"]
 
         logout = items_by_id[seeded["script_logout_id"]]
-        assert logout["last_run_status"] is None
+        assert "last_run_status" not in logout
         assert logout["linked_test_case_numbers"] == []
 
 
@@ -256,7 +273,7 @@ def test_mcp_automation_runs_filters(temp_db):
 
     with TestClient(app) as client:
         all_resp = client.get(
-            f"/api/mcp/teams/{seeded['team_id']}/automation-runs",
+            f"/api/mcp/teams/{seeded['team_id']}/test-run-sets/{seeded['run_set_id']}/automation-runs",
             headers=_bearer(seeded["token"]),
         )
         assert all_resp.status_code == 200, all_resp.text
@@ -268,24 +285,24 @@ def test_mcp_automation_runs_filters(temp_db):
         assert run["external_run_id"] == "ext-1"
         assert run["tcrt_correlation_id"] == "corr-1"
         assert run["duration_ms"] == 120000
-
-        # script_id filter
-        filtered = client.get(
-            f"/api/mcp/teams/{seeded['team_id']}/automation-runs",
-            headers=_bearer(seeded["token"]),
-            params={"script_id": seeded["script_logout_id"]},
-        )
-        assert filtered.status_code == 200
-        assert filtered.json()["page"]["total"] == 0
+        assert run["test_run_set_id"] == seeded["run_set_id"]
 
         # status filter
         running_only = client.get(
-            f"/api/mcp/teams/{seeded['team_id']}/automation-runs",
+            f"/api/mcp/teams/{seeded['team_id']}/test-run-sets/{seeded['run_set_id']}/automation-runs",
             headers=_bearer(seeded["token"]),
             params={"status": "RUNNING"},
         )
         assert running_only.status_code == 200
         assert running_only.json()["page"]["total"] == 0
+
+        # unknown set id within the team surfaces 404
+        missing = client.get(
+            f"/api/mcp/teams/{seeded['team_id']}/test-run-sets/99999/automation-runs",
+            headers=_bearer(seeded["token"]),
+        )
+        assert missing.status_code == 404
+        assert missing.json()["detail"]["code"] == "TEST_RUN_SET_NOT_FOUND"
 
 
 def test_mcp_automation_coverage_returns_summary_and_trend(temp_db):
@@ -328,7 +345,9 @@ def test_mcp_test_case_detail_includes_linked_automation(temp_db):
         assert first["script_id"] == seeded["script_login_id"]
         assert first["name"] == "test_login.py"
         assert first["link_type"] == "PRIMARY"
-        assert first["last_run_status"] == "SUCCEEDED"
+        # last_run_status removed: run history lives in Test Run Set detail
+        # (see move-run-history-to-test-run-set).
+        assert "last_run_status" not in first
 
 
 def test_mcp_automation_endpoints_respect_team_scope(temp_db):

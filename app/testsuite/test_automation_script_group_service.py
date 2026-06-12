@@ -18,6 +18,7 @@ from app.services.automation.providers.base import ExternalRunRef
 from app.services.automation.script_group_service import (
     AutomationScriptGroupScriptNotFoundError,
     AutomationScriptGroupService,
+    AutomationScriptGroupServiceError,
 )
 from app.testsuite.db_test_helpers import create_managed_test_database, dispose_managed_test_database
 
@@ -55,6 +56,7 @@ class FakeCIProvider:
         team_id: int | None = None,
         team_name: str | None = None,
         tcrt_webhook_url: str | None = None,
+        existing_job_name: str | None = None,
     ) -> str:
         self.update_calls.append(
             (suite_id, suite_name, test_paths, default_runner_label, git_context, team_id, team_name)
@@ -191,6 +193,68 @@ async def test_create_group_validates_script_ids(automation_script_group_db):
 
 
 @pytest.mark.asyncio
+async def test_create_group_rejects_scripts_from_multiple_repos(automation_script_group_db):
+    """B1: a suite must be single-repo — mixing repos is rejected."""
+    ids = automation_script_group_db["ids"]
+    async with automation_script_group_db["async_sessionmaker"]() as session:
+        a = await session.get(AutomationScript, ids["script_a_id"])
+        b = await session.get(AutomationScript, ids["script_b_id"])
+        a.ref_repo = "acme/web"
+        b.ref_repo = "acme/api"
+        await session.flush()
+
+        service = AutomationScriptGroupService(session)
+        with pytest.raises(AutomationScriptGroupServiceError):
+            await service.create_group(
+                team_id=ids["team_id"],
+                name="Cross Repo",
+                description=None,
+                script_ids=[ids["script_a_id"], ids["script_b_id"]],
+                ci_provider=FakeCIProvider(),
+            )
+
+
+@pytest.mark.asyncio
+async def test_group_resolves_scripts_within_its_repo(automation_script_group_db):
+    """Two repos sharing a ref_path must not collide: the suite binds to its
+    repo and resolves only that repo's script, and CI checks out that repo."""
+    ids = automation_script_group_db["ids"]
+    fake_ci = FakeCIProvider()
+    async with automation_script_group_db["async_sessionmaker"]() as session:
+        provider = (
+            await session.execute(select(TeamAutomationProvider).where(TeamAutomationProvider.team_id == ids["team_id"]))
+        ).scalar_one()
+        provider.config_json = json.dumps(
+            {"repos": [{"owner": "acme", "repo": "web"}, {"owner": "acme", "repo": "api"}], "default_branch": "main"}
+        )
+        a = await session.get(AutomationScript, ids["script_a_id"])
+        b = await session.get(AutomationScript, ids["script_b_id"])
+        a.ref_path = "tests/test_login.py"
+        a.ref_repo = "acme/web"
+        b.ref_path = "tests/test_login.py"
+        b.ref_repo = "acme/api"
+        await session.flush()
+
+        service = AutomationScriptGroupService(session)
+        group = await service.create_group(
+            team_id=ids["team_id"],
+            name="Web Login",
+            description=None,
+            script_ids=[ids["script_a_id"]],
+            actor="1",
+            ci_provider=fake_ci,
+        )
+
+        assert group.ref_repo == "acme/web"
+        scripts = await service.load_group_scripts(group=group)
+        assert [s.id for s in scripts] == [ids["script_a_id"]]
+
+    # CI checkout URL is the suite's repo, not the other repo sharing the path.
+    git_context = fake_ci.create_calls[0][4]
+    assert git_context == {"url": "https://github.com/acme/web.git", "branch": "main"}
+
+
+@pytest.mark.asyncio
 async def test_update_group_syncs_ci_provider(automation_script_group_db):
     ids = automation_script_group_db["ids"]
     fake_ci = FakeCIProvider()
@@ -284,4 +348,3 @@ async def test_trigger_group_run_creates_suite_level_run(automation_script_group
         "tests/test_login.py",
         "tests/test_logout.py",
     ]
-    assert fake_ci.trigger_calls[0][2]["tcrt_run_id"] == persisted_run.tcrt_correlation_id

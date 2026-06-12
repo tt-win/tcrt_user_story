@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import logging
 import time
+from datetime import datetime
 from typing import Any, Optional
 
 from fastapi import APIRouter, File, Form, Header, HTTPException, Request, UploadFile, status
@@ -31,11 +31,9 @@ from app.services.automation.webhook_service import (
     AutomationWebhookService,
     AutomationWebhookSignatureError,
     AutomationWebhookSuiteNotFoundError,
-    dispatch_event_async,
 )
 
 
-_TERMINAL_RUN_STATUSES = {"SUCCEEDED", "FAILED", "CANCELLED"}
 _RATE_LIMIT_CAPACITY = 120
 _RATE_LIMIT_REFILL_PER_SECOND = _RATE_LIMIT_CAPACITY / 60
 _rate_limit_buckets: dict[str, tuple[float, float]] = {}
@@ -148,19 +146,6 @@ async def ingest_run_status(
         )
 
     response = await main_boundary.run_write(_apply)
-
-    # Fan out lifecycle events to OUTBOUND webhooks (independent of inbound flow)
-    status_str = str(response.status)
-    event_payload = {
-        "run_id": response.run_id,
-        "tcrt_correlation_id": response.tcrt_correlation_id,
-        "status": status_str,
-        "external_run_id": response.external_run_id,
-    }
-    asyncio.create_task(dispatch_event_async(webhook.team_id, "run.tracked", event_payload))
-    if status_str in _TERMINAL_RUN_STATUSES:
-        asyncio.create_task(dispatch_event_async(webhook.team_id, "run.completed", event_payload))
-
     return response
 
 
@@ -348,7 +333,14 @@ async def trigger_suite(
             ) from exc
 
         try:
-            service.verify_signature(webhook=webhook, body=body, signature=x_tcrt_signature)
+            # Token-in-path is the credential for /trigger; signature is optional
+            # (verified only when supplied) so the copied curl is a single line.
+            service.verify_signature(
+                webhook=webhook,
+                body=body,
+                signature=x_tcrt_signature,
+                require_signature=False,
+            )
         except AutomationWebhookSignatureError as exc:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -398,6 +390,100 @@ async def trigger_suite(
         )
 
     return await main_boundary.run_write(_trigger)
+
+
+class WebhookRunResultResponse(BaseModel):
+    run_id: int
+    tcrt_correlation_id: str
+    status: AutomationRunStatus
+    external_run_id: Optional[str] = None
+    external_run_url: Optional[str] = None
+    report_url: Optional[str] = None
+    branch: Optional[str] = None
+    started_at: Optional[datetime] = None
+    finished_at: Optional[datetime] = None
+    duration_ms: Optional[int] = None
+    error_summary: Optional[str] = None
+    last_synced_at: Optional[datetime] = None
+
+    model_config = ConfigDict(use_enum_values=True)
+
+
+@router.get(
+    "/{token}/runs/{tcrt_run_id}",
+    response_model=WebhookRunResultResponse,
+)
+async def get_run_result(
+    token: str,
+    tcrt_run_id: str,
+) -> WebhookRunResultResponse:
+    """Return the current status + result of a run this webhook triggered.
+
+    The companion to ``/trigger``: external software captures the
+    ``tcrt_correlation_id`` from the trigger response, then polls this endpoint
+    until ``status`` is terminal (``SUCCEEDED`` / ``FAILED`` / ``CANCELLED``).
+
+    Auth is the path token only — this is a read-only status query so we skip
+    HMAC (mirrors ``/trigger``'s optional-signature stance). The lookup is
+    scoped to runs THIS webhook fired, so a leaked token can't read other runs
+    in the team. TCRT keeps the row fresh by pulling status/artifacts from CI in
+    the background (see ``app.services.automation.background``); this endpoint
+    just exposes that already-synced state — it never calls CI inline.
+    """
+    retry_after = _consume_rate_limit(token)
+    if retry_after is not None:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={"code": "WEBHOOK_RATE_LIMITED", "message": "Webhook rate limit exceeded"},
+            headers={"Retry-After": str(retry_after)},
+        )
+
+    main_boundary: MainAccessBoundary = get_main_access_boundary()
+
+    async def _load(session: AsyncSession) -> WebhookRunResultResponse:
+        service = AutomationWebhookService(session)
+        try:
+            webhook = await service.load_inbound_webhook(token=token)
+        except AutomationWebhookNotFoundError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"code": "WEBHOOK_NOT_FOUND", "message": str(exc)},
+            ) from exc
+        except AutomationWebhookInboundOnlyError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail={"code": "WEBHOOK_NOT_INBOUND", "message": str(exc)},
+            ) from exc
+        except AutomationWebhookInactiveError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"code": "WEBHOOK_INACTIVE", "message": str(exc)},
+            ) from exc
+
+        try:
+            run = await service.load_triggered_run(webhook=webhook, tcrt_run_id=tcrt_run_id)
+        except AutomationRunForWebhookNotFoundError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail={"code": "AUTOMATION_RUN_NOT_MATCHED", "message": str(exc)},
+            ) from exc
+
+        return WebhookRunResultResponse(
+            run_id=run.id,
+            tcrt_correlation_id=run.tcrt_correlation_id,
+            status=AutomationRunStatus(run.status),
+            external_run_id=run.external_run_id,
+            external_run_url=run.external_run_url,
+            report_url=run.report_url,
+            branch=run.branch,
+            started_at=run.started_at,
+            finished_at=run.finished_at,
+            duration_ms=run.duration_ms,
+            error_summary=run.error_summary,
+            last_synced_at=run.last_synced_at,
+        )
+
+    return await main_boundary.run_read(_load)
 
 
 def _consume_rate_limit(token: str) -> int | None:

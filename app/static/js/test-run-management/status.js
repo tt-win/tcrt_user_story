@@ -102,9 +102,9 @@ function generateStatusDropdownItems(config) {
         const icon = getStatusIcon(status);
         
         items.push(`
-            <li><a class="dropdown-item" href="#" onclick="event.stopPropagation(); changeTestRunStatus(${config.id}, '${status}', '${escapeHtml(config.name)}')">
+            <li><button type="button" class="dropdown-item" onclick="event.stopPropagation(); changeTestRunStatus(${config.id}, '${status}', '${escapeHtml(config.name)}')">
                 <i class="${icon} me-2"></i>${statusText}
-            </a></li>
+            </button></li>
         `);
     });
     

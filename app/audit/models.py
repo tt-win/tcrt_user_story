@@ -60,7 +60,7 @@ class AuditLogBase(BaseModel):
     action_type: ActionType = Field(..., description="操作類型")
     resource_type: ResourceType = Field(..., description="資源類型")
     resource_id: str = Field(..., max_length=100, description="資源 ID")
-    team_id: int = Field(..., description="相關團隊 ID")
+    team_id: Optional[int] = Field(None, description="相關團隊 ID；系統層級資源可為空")
     details: Optional[Dict[str, Any]] = Field(None, description="操作詳情（JSON，已遮罩敏感資料）")
     action_brief: Optional[str] = Field(None, max_length=500, description="人類可讀之操作摘要")
     severity: AuditSeverity = Field(AuditSeverity.INFO, description="嚴重性等級")
@@ -91,7 +91,7 @@ class AuditLogSummary(BaseModel):
     action_type: ActionType
     resource_type: ResourceType
     resource_id: str
-    team_id: int
+    team_id: Optional[int] = None
     severity: AuditSeverity
     action_brief: Optional[str] = None
     ip_address: Optional[str] = None

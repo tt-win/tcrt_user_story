@@ -103,7 +103,7 @@ class MarkerHit:
 class TestEntry:
     """A single test function / class / JS test discovered inside an entry-point file."""
     name: str
-    kind: str  # "function" | "class" | "js_test"
+    kind: str  # "function" | "class"
     line: int
     docstring: str | None = None
     markers: list[MarkerHit] = field(default_factory=list)
@@ -114,6 +114,7 @@ class EntryPoint:
     script_id: int | None
     name: str
     ref_path: str
+    ref_repo: str
     ref_branch: str
     etag: str | None
     script_format: str
@@ -130,6 +131,7 @@ class SuiteProposal:
     name: str
     description: str
     script_paths: list[str] = field(default_factory=list)
+    ref_repo: str = ""
     enrichment_source: str = "rule-based"
     confidence: float = 0.7
 
@@ -277,10 +279,10 @@ class SmartScanService:
             if scan_path and not normalised.startswith(scan_path):
                 excluded.append({"ref_path": ref_path, "reason": "outside tests path"})
                 continue
-            if filename in {"__init__.py", "conftest.py", "conftest.js", "conftest.ts"}:
+            if filename in {"__init__.py", "conftest.py"}:
                 excluded.append({"ref_path": ref_path, "reason": "conftest_or_init"})
                 continue
-            if suffix not in {"py", "js", "ts", "jsx", "tsx"}:
+            if suffix != "py":
                 excluded.append({"ref_path": ref_path, "reason": "unsupported_extension"})
                 continue
             # Exclude globs on basename or any part of the path
@@ -317,6 +319,7 @@ class SmartScanService:
                 script_id=int(script.id),
                 name=script.name,
                 ref_path=ref_path,
+                ref_repo=script.ref_repo or "",
                 ref_branch=script.ref_branch,
                 etag=script.cached_content_etag,
                 script_format=script_format,
@@ -332,31 +335,44 @@ class SmartScanService:
     def _group_by_directory(self, entry_points: list[EntryPoint]) -> list[SuiteProposal]:
         if not entry_points:
             return []
-        # Bucket by the directory immediately after the tests root
-        buckets: dict[str, list[EntryPoint]] = {}
+        # Bucket by (repo, directory immediately after the tests root). A suite is
+        # single-repo (B1), so the repo is always part of the grouping key.
+        buckets: dict[tuple[str, str], list[EntryPoint]] = {}
         for ep in entry_points:
             parts = ep.ref_path.split("/")
             # parts[0] is "tests" (or whatever), parts[1] is the bucket
-            key = parts[1] if len(parts) > 2 else "_root"
-            buckets.setdefault(key, []).append(ep)
+            dir_key = parts[1] if len(parts) > 2 else "_root"
+            buckets.setdefault((ep.ref_repo or "", dir_key), []).append(ep)
 
-        # Flat layout (only _root): single "Full Regression" suite
-        if len(buckets) == 1 and "_root" in buckets:
-            return [SuiteProposal(
-                name="Full Regression",
-                description=f"All {len(entry_points)} entry-point tests under the tests path.",
-                script_paths=[ep.ref_path for ep in entry_points],
-            )]
+        dirs_by_repo: dict[str, set[str]] = {}
+        for repo, dir_key in buckets:
+            dirs_by_repo.setdefault(repo, set()).add(dir_key)
 
         proposals: list[SuiteProposal] = []
-        for key in sorted(buckets):
-            members = buckets[key]
-            display = "Root" if key == "_root" else key.replace("_", " ").replace("-", " ").title()
-            proposals.append(SuiteProposal(
-                name=f"{display} Suite",
-                description=f"{len(members)} tests grouped from `{key}/`.",
-                script_paths=[ep.ref_path for ep in members],
-            ))
+        for repo in sorted(dirs_by_repo):
+            # Suffix the repo only when several are in play, so single-repo
+            # (and legacy) scans keep their original suite names.
+            suffix = f" ({repo})" if repo and len(dirs_by_repo) > 1 else ""
+            dirs = dirs_by_repo[repo]
+            # Flat layout (only _root) for this repo: single "Full Regression" suite
+            if dirs == {"_root"}:
+                members = buckets[(repo, "_root")]
+                proposals.append(SuiteProposal(
+                    name=f"Full Regression{suffix}",
+                    description=f"All {len(members)} entry-point tests under the tests path.",
+                    script_paths=[ep.ref_path for ep in members],
+                    ref_repo=repo,
+                ))
+                continue
+            for dir_key in sorted(dirs):
+                members = buckets[(repo, dir_key)]
+                display = "Root" if dir_key == "_root" else dir_key.replace("_", " ").replace("-", " ").title()
+                proposals.append(SuiteProposal(
+                    name=f"{display} Suite{suffix}",
+                    description=f"{len(members)} tests grouped from `{dir_key}/`.",
+                    script_paths=[ep.ref_path for ep in members],
+                    ref_repo=repo,
+                ))
         return proposals
 
 
@@ -507,6 +523,9 @@ def _build_scan_config_hash(
 async def _load_script_content(storage: Any, script: AutomationScript) -> str | None:
     if script.cached_content:
         return script.cached_content
+    # Bind to the script's own repo when the provider holds several.
+    if hasattr(storage, "for_repo"):
+        storage = storage.for_repo(script.ref_repo)
     try:
         content = await storage.read_script(
             script.ref_path,
@@ -526,10 +545,6 @@ async def _load_script_content(storage: Any, script: AutomationScript) -> str | 
 
 _VALID_LINK_TYPES = frozenset({"primary", "covers", "references"})
 _TC_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]+$")
-_JS_TCRT_COMMENT = re.compile(r"^\s*//\s*tcrt:\s*(.+?)\s*$", re.IGNORECASE)
-_JS_TEST_CALL = re.compile(
-    r"\b(?:test(?:\.(?:describe|only|skip))?|it|describe)\s*\(\s*['\"]([^'\"]+)['\"]"
-)
 
 
 def _extract_test_entries(
@@ -537,13 +552,11 @@ def _extract_test_entries(
 ) -> tuple[list[TestEntry], list[dict[str, Any]]]:
     """Detect test functions/classes plus tcrt markers from source.
 
-    Returns (entries, warnings). Fail-open: parse errors flow into warnings,
-    never raise; entries with bad markers still appear with empty markers list.
+    Python-only. Returns (entries, warnings). Fail-open: parse errors flow
+    into warnings, never raise; entries with bad markers still appear with
+    empty markers list.
     """
-    lower = ref_path.lower()
-    if lower.endswith(".py"):
-        return _extract_py_test_entries(content)
-    return _extract_js_test_entries(content)
+    return _extract_py_test_entries(content)
 
 
 def _extract_py_test_entries(
@@ -684,102 +697,6 @@ def _is_pytest_tcrt_call(node: Any) -> bool:
     return isinstance(root, ast.Name) and root.id == "pytest"
 
 
-def _extract_js_test_entries(
-    content: str,
-) -> tuple[list[TestEntry], list[dict[str, Any]]]:
-    warnings: list[dict[str, Any]] = []
-    lines = content.split("\n")
-    entries: list[TestEntry] = []
-    used_marker_lines: set[int] = set()
-
-    for match in _JS_TEST_CALL.finditer(content):
-        name = match.group(1)
-        line_no = content.count("\n", 0, match.start()) + 1
-
-        markers: list[MarkerHit] = []
-        idx = line_no - 2  # 0-indexed line directly above the test() call
-        while idx >= 0:
-            stripped = lines[idx].strip()
-            if not stripped:
-                idx -= 1
-                continue
-            comment_match = _JS_TCRT_COMMENT.match(lines[idx])
-            if comment_match:
-                marker_line = idx + 1
-                used_marker_lines.add(marker_line)
-                hit = _parse_js_marker_payload(
-                    comment_match.group(1).strip(), marker_line, warnings
-                )
-                if hit is not None:
-                    markers.append(hit)
-                idx -= 1
-                continue
-            break
-        markers.reverse()  # restore top-to-bottom source order
-        entries.append(
-            TestEntry(
-                name=name,
-                kind="js_test",
-                line=line_no,
-                docstring=None,
-                markers=markers,
-            )
-        )
-
-    # Any `// tcrt:` comment not consumed by an adjacent test → orphan
-    for i, raw_line in enumerate(lines):
-        if _JS_TCRT_COMMENT.match(raw_line) and (i + 1) not in used_marker_lines:
-            warnings.append({"type": "orphan_marker_comment", "line": i + 1})
-
-    entries.sort(key=lambda e: e.line)
-    return entries, warnings
-
-
-def _parse_js_marker_payload(
-    payload: str, line: int, warnings: list[dict[str, Any]]
-) -> MarkerHit | None:
-    """Parse the body after `// tcrt:` into a MarkerHit (or None on failure)."""
-    trimmed = payload.strip()
-    if not trimmed:
-        warnings.append({"type": "empty_marker", "line": line})
-        return None
-
-    link_type = "covers"
-    tc_list_str = trimmed
-    tokens = trimmed.rsplit(None, 1)
-    if len(tokens) == 2:
-        candidate = tokens[1]
-        # Accept both bracketed `[covers]` and bare `covers` link_type forms.
-        bracketed = len(candidate) >= 2 and candidate[0] == "[" and candidate[-1] == "]"
-        normalized = candidate[1:-1] if bracketed else candidate
-        if normalized.lower() in _VALID_LINK_TYPES:
-            tc_list_str, link_type = tokens[0], normalized.lower()
-        elif bracketed or normalized.isalpha():
-            # Looks like a link_type annotation but isn't a valid value → warn + drop.
-            warnings.append(
-                {"type": "invalid_link_type", "line": line, "value": normalized}
-            )
-            return None
-
-    tc_ids_raw = [t.strip() for t in tc_list_str.split(",") if t.strip()]
-    valid_tcs: list[str] = []
-    invalid_seen = False
-    for tc in tc_ids_raw:
-        if _TC_ID_PATTERN.match(tc):
-            valid_tcs.append(tc)
-        else:
-            warnings.append({"type": "invalid_tc_format", "line": line, "tc_id": tc})
-            invalid_seen = True
-    if invalid_seen or not valid_tcs:
-        return None
-    return MarkerHit(
-        tc_ids=valid_tcs,
-        link_type=link_type,
-        source_line=line,
-        raw=f"// tcrt: {trimmed}",
-    )
-
-
 # Back-compat: callers expecting list[str] still work; derives names from entries.
 def _extract_test_metadata(ref_path: str, content: str) -> list[str]:
     entries, _ = _extract_test_entries(ref_path, content)
@@ -899,6 +816,7 @@ def smart_scan_result_to_dict(result: SmartScanResult) -> dict[str, Any]:
                 "script_id": ep.script_id,
                 "name": ep.name,
                 "ref_path": ep.ref_path,
+                "ref_repo": ep.ref_repo,
                 "ref_branch": ep.ref_branch,
                 "etag": ep.etag,
                 "script_format": ep.script_format,
@@ -934,6 +852,7 @@ def smart_scan_result_to_dict(result: SmartScanResult) -> dict[str, Any]:
                 "name": p.name,
                 "description": p.description,
                 "script_paths": p.script_paths,
+                "ref_repo": p.ref_repo,
                 "enrichment_source": p.enrichment_source,
                 "confidence": p.confidence,
             }

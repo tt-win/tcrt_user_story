@@ -75,8 +75,8 @@ def automation_coverage_db(tmp_path):
                 team_id=team.id,
                 provider_id=provider.id,
                 name="test_logout.py",
-                script_format=AutomationScriptFormat.PLAYWRIGHT_JS,
-                ref_path="tests/test_logout.spec.js",
+                script_format=AutomationScriptFormat.PYTEST,
+                ref_path="tests/test_logout.py",
                 ref_branch="main",
                 tags_json="[]",
             ),
@@ -165,9 +165,29 @@ async def test_compute_coverage_counts_uncovered_and_stale_scripts(automation_co
     assert coverage["with_any_link"] == 2
     assert coverage["uncovered_count"] == 2
     assert [item["test_case_number"] for item in coverage["uncovered_sample"]] == ["TC-003", "TC-004"]
-    assert coverage["by_format"] == {"PLAYWRIGHT_JS": 1, "PYTEST": 2}
+    assert coverage["by_format"] == {"PYTEST": 3}
 
     stale_names = {item["name"] for item in coverage["stale_scripts"]}
     assert stale_names == {"test_logout.py", "test_profile.py"}
     assert coverage["trend"][-1]["with_any_link"] == 2
     assert coverage["trend"][-1]["coverage_rate"] == 50.0
+
+    # Group rollup: dotless numbers each form their own group; REFERENCES-only
+    # links (TC-003) do NOT count as coverage.
+    assert {g["group"]: (g["total"], g["covered"], g["primary"]) for g in coverage["by_group"]} == {
+        "TC-001": (1, 1, 1),
+        "TC-002": (1, 1, 0),
+        "TC-003": (1, 0, 0),
+        "TC-004": (1, 0, 0),
+    }
+
+    # Covered cases carry their linked scripts (link list shows all types,
+    # but only PRIMARY/COVERS-linked cases appear here).
+    covered = {item["test_case_number"]: item for item in coverage["covered_cases"]}
+    assert set(covered) == {"TC-001", "TC-002"}
+    assert [(l["script_name"], l["link_type"]) for l in covered["TC-001"]["links"]] == [
+        ("test_login.py", "PRIMARY"),
+    ]
+    assert [(l["script_name"], l["link_type"]) for l in covered["TC-002"]["links"]] == [
+        ("test_logout.py", "COVERS"),
+    ]

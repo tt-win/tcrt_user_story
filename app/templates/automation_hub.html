@@ -66,11 +66,6 @@
         </button>
       </li>
       <li class="nav-item" role="presentation">
-        <button class="nav-link" id="runs-tab" data-bs-toggle="tab" data-bs-target="#runs-pane" type="button" role="tab" aria-controls="runs-pane" aria-selected="false">
-          <i class="fas fa-play-circle me-1"></i><span data-i18n="automationHub.tabs.runs">Runs</span>
-        </button>
-      </li>
-      <li class="nav-item" role="presentation">
         <button class="nav-link" id="coverage-tab" data-bs-toggle="tab" data-bs-target="#coverage-pane" type="button" role="tab" aria-controls="coverage-pane" aria-selected="false">
           <i class="fas fa-chart-pie me-1"></i><span data-i18n="automationHub.tabs.coverage">Coverage</span>
         </button>
@@ -172,71 +167,6 @@
         </div>
       </section>
 
-      <section class="tab-pane fade" id="runs-pane" role="tabpanel" aria-labelledby="runs-tab">
-        <div class="card automation-panel">
-          <div class="card-header d-flex flex-wrap gap-2 align-items-center justify-content-between py-2">
-            <div class="d-flex flex-wrap gap-2 align-items-center automation-run-filters">
-              <select id="runFilterStatus" class="form-select form-select-sm" style="width:auto;">
-                <option value="" data-i18n="automationHub.runs.filterAllStatus">All statuses</option>
-                <option value="QUEUED">QUEUED</option>
-                <option value="RUNNING">RUNNING</option>
-                <option value="SUCCEEDED">SUCCEEDED</option>
-                <option value="FAILED">FAILED</option>
-                <option value="CANCELLED">CANCELLED</option>
-                <option value="UNKNOWN">UNKNOWN</option>
-              </select>
-              <select id="runFilterTrigger" class="form-select form-select-sm" style="width:auto;">
-                <option value="" data-i18n="automationHub.runs.filterAllTriggers">All triggers</option>
-                <option value="USER">USER</option>
-                <option value="WEBHOOK">WEBHOOK</option>
-                <option value="SCHEDULE">SCHEDULE</option>
-                <option value="MCP">MCP</option>
-              </select>
-              <input type="text" id="runFilterBranch" class="form-control form-control-sm" data-i18n-placeholder="automationHub.runs.filterBranch" placeholder="Branch" style="max-width: 160px;">
-            </div>
-            <div class="d-flex gap-2">
-              <button type="button" class="btn btn-secondary btn-sm" id="runRefreshBtn">
-                <i class="fas fa-redo me-1"></i><span data-i18n="automationHub.runs.refresh">Refresh</span>
-              </button>
-              <button type="button" class="btn btn-primary btn-sm" id="runSyncPendingBtn">
-                <i class="fas fa-sync-alt me-1"></i><span data-i18n="automationHub.runs.syncPending">Sync pending</span>
-              </button>
-            </div>
-          </div>
-          <div class="card-body p-0">
-            <div id="runLoading" class="text-center py-5 d-none">
-              <div class="spinner-border text-primary" role="status">
-                <span class="visually-hidden" data-i18n="common.loading">Loading...</span>
-              </div>
-              <div class="mt-3 text-muted" data-i18n="common.loading">Loading...</div>
-            </div>
-            <div id="runEmpty" class="text-center py-4 d-none">
-              <i class="fas fa-play-circle text-muted automation-state-icon"></i>
-              <div class="fw-semibold mt-3" data-i18n="automationHub.runs.emptyTitle">No runs yet</div>
-              <div class="text-muted small mt-1" data-i18n="automationHub.runs.emptyHint">Trigger a suite from the Suites tab to see runs here.</div>
-            </div>
-            <div class="automation-runs-wrap d-none" id="runTableWrap">
-              <table class="table automation-run-table mb-0">
-                <thead class="table-light">
-                  <tr>
-                    <th data-i18n="automationHub.runs.colId">ID</th>
-                    <th data-i18n="automationHub.runs.colSource">Source</th>
-                    <th data-i18n="automationHub.runs.colWorkflow">Workflow</th>
-                    <th data-i18n="automationHub.runs.colBranch">Branch</th>
-                    <th data-i18n="automationHub.runs.colStatus">Status</th>
-                    <th data-i18n="automationHub.runs.colTrigger">Trigger</th>
-                    <th data-i18n="automationHub.runs.colStarted">Started</th>
-                    <th data-i18n="automationHub.runs.colDuration">Duration</th>
-                    <th class="text-end" data-i18n="automationHub.runs.colActions">Actions</th>
-                  </tr>
-                </thead>
-                <tbody id="runRows"></tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      </section>
-
       <section class="tab-pane fade" id="coverage-pane" role="tabpanel" aria-labelledby="coverage-tab">
         <div class="card automation-panel">
           <div class="card-header d-flex flex-wrap gap-2 align-items-center justify-content-between py-2">
@@ -253,47 +183,54 @@
               <div class="mt-3 text-muted" data-i18n="common.loading">Loading...</div>
             </div>
             <div id="coverageContent" class="d-none">
-              <div class="automation-coverage-stats mb-3">
-                <div class="automation-stat-card">
-                  <div class="automation-stat-label" data-i18n="automationHub.coverage.totalCases">Total cases</div>
-                  <div class="automation-stat-value" id="coverageTotalCases">0</div>
+              {# Hero — one segmented bar tells the whole story: PRIMARY /
+                 COVERS-only / uncovered are disjoint slices of all cases. #}
+              <div class="automation-coverage-hero mb-3">
+                <div class="automation-coverage-hero-rate">
+                  <span id="coverageRateText" class="automation-coverage-rate-value">0%</span>
+                  <span class="text-muted small"><span id="coverageCoveredOfTotal">0 / 0</span> <span data-i18n="automationHub.coverage.covered">covered</span></span>
                 </div>
-                <div class="automation-stat-card">
-                  <div class="automation-stat-label" data-i18n="automationHub.coverage.primaryCovered">PRIMARY covered</div>
-                  <div class="automation-stat-value text-success" id="coveragePrimaryCount">0</div>
+                <div class="automation-coverage-bar" role="img" aria-label="Coverage breakdown">
+                  <div class="automation-coverage-bar-seg seg-primary" id="coverageBarPrimary"></div>
+                  <div class="automation-coverage-bar-seg seg-covers" id="coverageBarCovers"></div>
+                  <div class="automation-coverage-bar-seg seg-uncovered" id="coverageBarUncovered"></div>
                 </div>
-                <div class="automation-stat-card">
-                  <div class="automation-stat-label" data-i18n="automationHub.coverage.coversCovered">COVERS covered</div>
-                  <div class="automation-stat-value text-info" id="coverageCoversCount">0</div>
-                </div>
-                <div class="automation-stat-card">
-                  <div class="automation-stat-label" data-i18n="automationHub.coverage.uncovered">Uncovered</div>
-                  <div class="automation-stat-value text-warning" id="coverageUncoveredCount">0</div>
-                </div>
-                <div class="automation-stat-card">
-                  <div class="automation-stat-label" data-i18n="automationHub.coverage.coverageRate">Coverage rate</div>
-                  <div class="automation-stat-value" id="coverageRateText">0%</div>
+                <div class="automation-coverage-legend">
+                  <span class="legend-item"><span class="legend-dot seg-primary"></span>PRIMARY <strong id="coveragePrimaryCount">0</strong></span>
+                  <span class="legend-item"><span class="legend-dot seg-covers"></span>COVERS <strong id="coverageCoversOnlyCount">0</strong></span>
+                  <span class="legend-item"><span class="legend-dot seg-uncovered"></span><span data-i18n="automationHub.coverage.uncovered">Uncovered</span> <strong id="coverageUncoveredCount">0</strong></span>
                 </div>
               </div>
 
               <div class="automation-coverage-layout">
                 <div class="automation-coverage-main">
-                  <div class="automation-section-title" data-i18n="automationHub.coverage.trendTitle">30-day coverage trend</div>
-                  <div class="automation-trend-wrap">
-                    <svg id="coverageTrendSvg" class="automation-trend-svg" role="img" aria-label="Coverage trend"></svg>
-                  </div>
+                  <div class="automation-section-title" data-i18n="automationHub.coverage.byGroup">By case group</div>
+                  <div id="coverageGroupList" class="automation-coverage-groups mb-3"></div>
 
-                  <div class="automation-section-title mt-3" data-i18n="automationHub.coverage.uncoveredTitle">Uncovered cases</div>
+                  <div class="d-flex align-items-center gap-2 mb-2">
+                    <div class="btn-group btn-group-sm" role="group" aria-label="Coverage case view">
+                      <button type="button" class="btn btn-outline-secondary active" id="coverageTabUncovered">
+                        <span data-i18n="automationHub.coverage.uncovered">Uncovered</span> <span id="coverageTabUncoveredCount" class="ms-1">0</span>
+                      </button>
+                      <button type="button" class="btn btn-outline-secondary" id="coverageTabCovered">
+                        <span data-i18n="automationHub.coverage.covered">Covered</span> <span id="coverageTabCoveredCount" class="ms-1">0</span>
+                      </button>
+                    </div>
+                    <span class="badge bg-light text-dark border d-none" id="coverageGroupFilterBadge">
+                      <span id="coverageGroupFilterText"></span>
+                      <button type="button" class="btn btn-link btn-sm p-0 ms-1 align-baseline" id="coverageGroupFilterClear" aria-label="Clear group filter"><i class="fas fa-times"></i></button>
+                    </span>
+                  </div>
                   <div class="table-responsive automation-coverage-table-wrap">
                     <table class="table table-hover table-sm align-middle mb-0">
                       <thead class="table-light">
                         <tr>
-                          <th data-i18n="automationHub.coverage.caseNumber">Case</th>
+                          <th style="width: 220px;" data-i18n="automationHub.coverage.caseNumber">Case</th>
                           <th data-i18n="common.title">Title</th>
-                          <th class="text-end" data-i18n="common.actions">Actions</th>
+                          <th id="coverageLinksHeader" class="d-none" style="width: 40%;" data-i18n="automationHub.coverage.linkedScripts">Linked scripts</th>
                         </tr>
                       </thead>
-                      <tbody id="coverageUncoveredRows"></tbody>
+                      <tbody id="coverageCaseRows"></tbody>
                     </table>
                   </div>
                 </div>
@@ -401,43 +338,6 @@
   </div>
 </div>
 
-</div>
-
-<div class="modal fade" id="coverageLinkModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title" data-i18n="automationHub.coverage.linkModalTitle">Link automation script</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body">
-        <input type="hidden" id="coverageLinkCaseId">
-        <div class="mb-3">
-          <label class="form-label text-muted small" data-i18n="automationHub.coverage.case">Case</label>
-          <div class="fw-semibold" id="coverageLinkCaseTitle">—</div>
-        </div>
-        <div class="mb-3">
-          <label class="form-label" for="coverageScriptSelect" data-i18n="automationHub.coverage.script">Script</label>
-          <select class="form-select" id="coverageScriptSelect"></select>
-        </div>
-        <div class="mb-3">
-          <label class="form-label" for="coverageLinkType" data-i18n="automationHub.coverage.linkType">Link type</label>
-          <select class="form-select" id="coverageLinkType">
-            <option value="COVERS">COVERS</option>
-            <option value="PRIMARY">PRIMARY</option>
-          </select>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">Cancel</button>
-        <button type="button" class="btn btn-primary" id="coverageSaveLinkBtn">
-          <i class="fas fa-link me-1"></i><span data-i18n="automationHub.coverage.linkScript">Link script</span>
-        </button>
-      </div>
-    </div>
-  </div>
-</div>
-
 <div class="modal fade" id="smartScanModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
     <div class="modal-content">
@@ -477,69 +377,6 @@
         </button>
         <button type="button" class="btn btn-primary" id="smartScanCreateBtn">
           <i class="fas fa-check me-1"></i><span data-i18n="automationHub.smartScan.createSelected">Create selected suites</span>
-        </button>
-      </div>
-    </div>
-  </div>
-</div>
-
-<div class="modal fade" id="reportEmbedModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title">
-          <i class="fas fa-chart-bar me-2"></i><span data-i18n="automationHub.runs.report">Report</span>
-        </h5>
-        <a id="reportEmbedOpenLink" href="#" target="_blank" rel="noopener" class="btn btn-link btn-sm ms-auto me-2">
-          <i class="fas fa-external-link-alt me-1"></i><span data-i18n="automationHub.runs.openExternal">Open in CI</span>
-        </a>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body p-0" style="height: 70vh;">
-        <iframe id="reportEmbedFrame" src="about:blank" style="width: 100%; height: 100%; border: 0;" loading="lazy" referrerpolicy="no-referrer"></iframe>
-      </div>
-      <div class="modal-footer text-muted small">
-        <span data-i18n="automationHub.runs.iframeBlockedHint">If the report doesn't load, your result server may block embedding via X-Frame-Options — use "Open in CI" instead.</span>
-        <span id="reportEmbedWarning" class="text-warning ms-2 d-none" data-i18n="automationHub.runs.iframeFallbackOpened">Embedding was blocked or timed out, so the report was opened in a new tab.</span>
-      </div>
-    </div>
-  </div>
-</div>
-
-<div class="modal fade" id="runSuiteModal" tabindex="-1" aria-hidden="true">
-  <div class="modal-dialog modal-dialog-centered">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h5 class="modal-title" id="runSuiteModalTitle" data-i18n="automationHub.runs.modalTitle">Run Suite</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-      </div>
-      <div class="modal-body">
-        <div class="mb-3">
-          <label class="form-label text-muted small" id="runSuiteSourceLabel" data-i18n="automationHub.runs.modalSuite">Suite</label>
-          <div class="fw-semibold" id="runSuiteName">—</div>
-          <div class="text-muted small"><span id="runSuiteMetaLabel" data-i18n="automationHub.runs.modalCiJob">CI job</span>: <span id="runSuiteJob" class="font-monospace">—</span></div>
-        </div>
-        <div class="mb-3">
-          <label class="form-label" for="runSuiteBranch" data-i18n="automationHub.runs.modalBranch">Branch</label>
-          <input type="text" class="form-control" id="runSuiteBranch" placeholder="main">
-          <div class="form-text" data-i18n="automationHub.runs.modalBranchHint">Leave blank to use the provider's default branch.</div>
-        </div>
-        <div class="mb-3">
-          <label class="form-label" for="runSuiteRunner" data-i18n="automationHub.runs.modalRunner">Runner label</label>
-          <input type="text" class="form-control" id="runSuiteRunner" list="runSuiteRunnerOptions" placeholder="ubuntu-latest / any" autocomplete="off">
-          <datalist id="runSuiteRunnerOptions"></datalist>
-          <div class="form-text" id="runSuiteRunnerHint" data-i18n="automationHub.runs.modalRunnerHint">Maps to GitHub Actions runs-on or Jenkins NODE_LABEL.</div>
-        </div>
-        <div class="mb-3">
-          <label class="form-label" for="runSuiteInputs" data-i18n="automationHub.runs.modalInputs">Extra inputs (JSON)</label>
-          <textarea class="form-control font-monospace" id="runSuiteInputs" rows="3" placeholder='{"key": "value"}'></textarea>
-          <div class="form-text" data-i18n="automationHub.runs.modalInputsHint">Optional. Merged with auto-injected tcrt_run_id / runner_label / test_paths.</div>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">Cancel</button>
-        <button type="button" class="btn btn-primary" id="runSuiteConfirmBtn">
-          <i class="fas fa-play me-1"></i><span data-i18n="automationHub.runs.modalSubmit">Trigger run</span>
         </button>
       </div>
     </div>
@@ -593,7 +430,6 @@
 {% block scripts %}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
 <script src="{{ asset_url('js/automation-hub/suites/main.js') }}"></script>
-<script src="{{ asset_url('js/automation-hub/runs/main.js') }}"></script>
 <script src="{{ asset_url('js/automation-hub/coverage/main.js') }}"></script>
 <script src="{{ asset_url('js/automation-hub/smart-scan/main.js') }}"></script>
 {% endblock %}

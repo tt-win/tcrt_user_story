@@ -31,13 +31,6 @@ class AutomationWebhookCreateResponse(BaseModel):
     secret: str
 
 
-class AutomationWebhookTestPingResponse(BaseModel):
-    status: str
-    status_code: Optional[int] = None
-    duration_ms: int
-    message: str
-
-
 class AutomationWebhookResponse(BaseModel):
     id: int
     team_id: int
@@ -57,30 +50,3 @@ class AutomationWebhookResponse(BaseModel):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True, use_enum_values=True)
-
-
-class AutomationWebhookDeliveryResponse(BaseModel):
-    id: int
-    team_id: int
-    webhook_id: int
-    event: str
-    delivery_id: str
-    target_url: str
-    status: str
-    status_code: Optional[int] = None
-    response_body: Optional[str] = None
-    error_message: Optional[str] = None
-    duration_ms: int
-    created_at: datetime
-    completed_at: Optional[datetime] = None
-
-    model_config = ConfigDict(from_attributes=True)
-
-
-class AutomationWebhookDeliveryListResponse(BaseModel):
-    items: list[AutomationWebhookDeliveryResponse]
-
-
-class AutomationWebhookReplayResponse(BaseModel):
-    status: str
-    delivery: AutomationWebhookDeliveryResponse

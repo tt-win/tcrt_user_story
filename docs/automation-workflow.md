@@ -138,6 +138,8 @@ repo-root/
    - 填 base_url、認證（api_token + username，或 trigger_token）。
    - 視需要開啟 csrf_protection_enabled、auto_manage_views，設定
      job_name_template / view_name_template。
+   - `view_name_template` 可用 `{team_name}`、`{team_slug}`、`{team_id}`；TCRT
+     會在建立或重新整理 suite job 時依當前 team 展開，並把 job 加進該 view。
 2. 點 **Test connection** 確認綠燈。
 
 > ⚠️ **Jenkins node label 陷阱**：程式預設的 Jenkins 執行 label fallback 是
@@ -172,6 +174,8 @@ repo-root/
    - 建立當下，TCRT 會**自動在 Jenkins 建對應 Pipeline job**：以 Jinja2 範本
      `app/services/automation/templates/jenkins-suite-config.xml.j2` 透過
      `createItem` 產生。
+   - 若 Jenkins provider 開啟 `auto_manage_views`，同一步會建立/補齊 team view
+     並把 suite job 加入 view。
    - job XML 會烤入 `GIT_URL`、`GIT_BRANCH`、`GIT_TOKEN` 與 `TCRT_WEBHOOK_URL`，
      並在 post-build 封存 `allure-results/**`、回呼狀態 webhook。
 
@@ -183,6 +187,8 @@ repo-root/
 2. 綁定要跑的自動化 Suite（存於欄位 `automation_suite_ids`）。
 3. 在 Test Run Set detail 點 **Run as Automation**。
    - TCRT 逐一觸發各 Suite 的 Jenkins job。
+   - 觸發前會重新整理 Jenkins suite job；若 `auto_manage_views=true`，也會補齊
+     team view 與 job membership。
    - 每個 Suite 產生一筆 `automation_runs`（狀態 `QUEUED`，帶 `tcrt_correlation_id`
      與 `test_run_set_id`）。
 4. Jenkins job 執行：用 `GIT_TOKEN` clone repo → 跑 pytest / playwright → 產出

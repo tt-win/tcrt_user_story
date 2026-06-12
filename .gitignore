@@ -193,3 +193,15 @@ refactor/
 openspec/.vector-search.db
 openspec/.vector-search.db*
 db_cross_migrate.yaml
+
+# Local tool/agent scratch dirs (not project source)
+.antigravitycli/
+.opencode/
+.playwright-mcp/
+# Allure Docker Service host bind-mount data (runtime, large)
+allure-projects/
+# Local config variants / backups that carry real secrets
+config.mysql.yaml
+config.yaml.backup_*
+# Generated inspection/dry-run output
+scripts/output/

@@ -18,6 +18,7 @@ the TCRT UI sees the link the next time the user looks at the run.
 """
 from __future__ import annotations
 
+import asyncio
 import io
 import logging
 import re
@@ -100,8 +101,10 @@ async def upload_run_results(
             raise AllureProxyError("Archive contains no allure-results files")
 
         async with httpx.AsyncClient(timeout=60) as client:
-            # 1. Idempotent project ensure. Allure returns 4xx if the project
-            # already exists; that's expected and not an error for us.
+            # 1. Idempotent project ensure. Some Allure Docker Service builds
+            # still fail project creation here but can create via
+            # send-results?force_project_creation=true below, so this stays
+            # best-effort and the post-upload verification is authoritative.
             await _ensure_project(client, api_root, project_id, auth_headers)
 
             # 2. Empty the results staging dir so this report reflects ONLY the
@@ -113,7 +116,12 @@ async def upload_run_results(
             # 3. Upload each result file.
             await _send_results(client, api_root, project_id, result_files, auth_headers)
 
-            # 4. Generate the report and capture the URL Allure assigns.
+            # 4. Confirm the project really exists before asking Allure to
+            # generate a report. This turns broken Allure volume / project
+            # setup into a clear error instead of a later generate-report 404.
+            await _assert_project_exists(client, api_root, project_id, auth_headers)
+
+            # 5. Generate the report and capture the URL Allure assigns.
             report_url = await _generate_report(
                 client, api_root, project_id, run, auth_headers
             )
@@ -186,16 +194,30 @@ async def _ensure_project(
             json={"id": project_id},
             headers={**auth_headers, "Content-Type": "application/json"},
         )
-        # Treat 2xx as created, 4xx as "already exists" (Allure returns 405
-        # for duplicate project ids in current versions). Only 5xx is a real
-        # error here — but we still don't raise, because send-results below
-        # is the authoritative signal for "project not usable".
-        if resp.status_code >= 500:
+        if resp.status_code < 400:
+            return
+        try:
+            if await _project_exists(client, api_root, project_id, auth_headers):
+                return
+        except AllureProxyError as exc:
             logger.warning(
-                "Allure project ensure for %s returned %s", project_id, resp.status_code
+                "Allure project lookup after ensure for %s failed "
+                "(will retry via send-results): %s",
+                project_id,
+                exc,
             )
+        logger.warning(
+            "Allure project ensure for %s returned %s: %s",
+            project_id,
+            resp.status_code,
+            _response_snippet(resp),
+        )
     except httpx.HTTPError as exc:
-        logger.info("Allure project ensure for %s failed (non-fatal): %s", project_id, exc)
+        logger.warning(
+            "Allure project ensure for %s failed (will retry via send-results): %s",
+            project_id,
+            exc,
+        )
 
 
 async def _clean_results(
@@ -244,7 +266,10 @@ async def _send_results(
             try:
                 resp = await client.post(
                     f"{api_root}/allure-docker-service/send-results",
-                    params={"project_id": project_id},
+                    params={
+                        "project_id": project_id,
+                        "force_project_creation": "true",
+                    },
                     files={"files[]": (path.name, fh, "application/octet-stream")},
                     headers=auth_headers,
                 )
@@ -258,6 +283,73 @@ async def _send_results(
                 )
 
 
+async def _assert_project_exists(
+    client: httpx.AsyncClient,
+    api_root: str,
+    project_id: str,
+    auth_headers: dict[str, str],
+) -> None:
+    if await _project_exists(client, api_root, project_id, auth_headers):
+        return
+    raise AllureProxyError(
+        f"Allure project {project_id!r} was not created; check the "
+        "Allure Docker Service projects volume and project permissions"
+    )
+
+
+async def _project_exists(
+    client: httpx.AsyncClient,
+    api_root: str,
+    project_id: str,
+    auth_headers: dict[str, str],
+) -> bool:
+    try:
+        resp = await client.get(
+            f"{api_root}/allure-docker-service/projects/{project_id}",
+            headers=auth_headers,
+        )
+        if resp.status_code == 404:
+            return False
+        resp.raise_for_status()
+        return True
+    except httpx.HTTPError as exc:
+        raise AllureProxyError(
+            f"Allure project lookup failed for {project_id!r}: {exc}"
+        ) from exc
+
+
+def _response_snippet(resp: httpx.Response) -> str:
+    body = resp.text.strip()
+    if len(body) > 300:
+        body = f"{body[:300]}..."
+    return body or "<empty response>"
+
+
+# Allure Docker Service ingests uploaded results asynchronously. A
+# generate-report call that lands while ingestion is still running is rejected
+# with HTTP 400 + a body like "Processing files for project_id '…'. Try
+# later!" — a transient state, not a real failure. It's easy to hit when
+# several runs of the same suite ("Run Automation Suites") finish back-to-back
+# and pile onto the same Allure project. We retry generate-report — and ONLY
+# generate-report, never re-sending results, since a re-send restarts ingestion
+# and would livelock the poll — until the project goes quiet.
+_GENERATE_RETRY_DELAYS = (2.0, 3.0, 5.0, 8.0, 8.0, 8.0)  # ~34s over 7 attempts
+_PROCESSING_MARKERS = ("try later", "processing files")
+
+
+def _is_processing_response(resp: httpx.Response) -> bool:
+    """True when Allure says it's still ingesting results (transient).
+
+    Allure signals "busy" with a 400 (sometimes 202/503 across versions)
+    whose body carries a processing marker. Match on the marker rather than
+    the bare status so a genuine 400 (bad project, etc.) still fails fast.
+    """
+    if resp.status_code not in (400, 202, 503):
+        return False
+    body = (resp.text or "").lower()
+    return any(marker in body for marker in _PROCESSING_MARKERS)
+
+
 async def _generate_report(
     client: httpx.AsyncClient,
     api_root: str,
@@ -266,27 +358,54 @@ async def _generate_report(
     auth_headers: dict[str, str],
 ) -> str:
     exec_name = f"tcrt-{run.tcrt_correlation_id or run.id}"
-    try:
-        resp = await client.get(
-            f"{api_root}/allure-docker-service/generate-report",
-            params={"project_id": project_id, "execution_name": exec_name},
-            headers=auth_headers,
-        )
-        resp.raise_for_status()
-        body = resp.json()
-    except httpx.HTTPError as exc:
-        raise AllureProxyError(f"Allure generate-report failed: {exc}") from exc
-    except ValueError as exc:
-        raise AllureProxyError(
-            f"Allure generate-report returned non-JSON body: {exc}"
-        ) from exc
+    processing_snippet = ""
+    for attempt, delay in enumerate((0.0, *_GENERATE_RETRY_DELAYS)):
+        if delay:
+            await asyncio.sleep(delay)
+        try:
+            resp = await client.get(
+                f"{api_root}/allure-docker-service/generate-report",
+                params={"project_id": project_id, "execution_name": exec_name},
+                headers=auth_headers,
+            )
+        except httpx.HTTPError as exc:
+            raise AllureProxyError(f"Allure generate-report failed: {exc}") from exc
 
-    report_url = ((body or {}).get("data") or {}).get("report_url")
-    if not report_url:
-        raise AllureProxyError(
-            "Allure generate-report response missing data.report_url"
-        )
-    return str(report_url)
+        if _is_processing_response(resp):
+            processing_snippet = _response_snippet(resp)
+            logger.info(
+                "Allure still ingesting results for %s (attempt %d/%d), retrying: %s",
+                project_id,
+                attempt + 1,
+                len(_GENERATE_RETRY_DELAYS) + 1,
+                processing_snippet,
+            )
+            continue
+
+        try:
+            resp.raise_for_status()
+            body = resp.json()
+        except httpx.HTTPError as exc:
+            raise AllureProxyError(f"Allure generate-report failed: {exc}") from exc
+        except ValueError as exc:
+            raise AllureProxyError(
+                f"Allure generate-report returned non-JSON body: {exc}"
+            ) from exc
+
+        report_url = ((body or {}).get("data") or {}).get("report_url")
+        if not report_url:
+            raise AllureProxyError(
+                "Allure generate-report response missing data.report_url"
+            )
+        return str(report_url)
+
+    # Still ingesting after every retry. Raise so the run stays pending and the
+    # backfill sweep retries the full upload on a later tick — better than
+    # claiming a report we never confirmed.
+    raise AllureProxyError(
+        f"Allure still processing results after {len(_GENERATE_RETRY_DELAYS) + 1} "
+        f"attempts: {processing_snippet}"
+    )
 
 
 async def _resolve_project_id(

@@ -1,14 +1,4 @@
 (function () {
-  const WEBHOOK_EVENTS = [
-    { value: 'script.discovered', key: 'eventScriptDiscovered', fallback: 'script.discovered' },
-    { value: 'script.synced', key: 'eventScriptSynced', fallback: 'script.synced' },
-    { value: 'script.linked', key: 'eventScriptLinked', fallback: 'script.linked' },
-    { value: 'script.unlinked', key: 'eventScriptUnlinked', fallback: 'script.unlinked' },
-    { value: 'run.triggered', key: 'eventRunTriggered', fallback: 'run.triggered' },
-    { value: 'run.tracked', key: 'eventRunTracked', fallback: 'run.tracked' },
-    { value: 'run.completed', key: 'eventRunCompleted', fallback: 'run.completed' }
-  ];
-
   const state = {
     teamId: null,
     webhooks: [],
@@ -16,16 +6,14 @@
     editingWebhook: null,
     webhookModal: null,
     credentialModal: null,
-    deliveriesModal: null,
-    deliveriesWebhookId: null,
-    lastCurlExample: '',
+    runsModal: null,
+    runsWebhookId: null,
     lastTriggerCurl: ''
   };
 
   document.addEventListener('DOMContentLoaded', init);
   document.addEventListener('i18nReady', refreshTexts);
   document.addEventListener('languageChanged', () => {
-    renderEventOptions(collectEvents());
     renderWebhooks();
     refreshTexts();
   });
@@ -33,9 +21,18 @@
 
   function init() {
     state.teamId = resolveTeamId();
-    state.webhookModal = new bootstrap.Modal(document.getElementById('webhookModal'));
-    state.credentialModal = new bootstrap.Modal(document.getElementById('webhookCredentialModal'));
-    state.deliveriesModal = new bootstrap.Modal(document.getElementById('webhookDeliveriesModal'));
+    const webhookModalEl = document.getElementById('webhookModal');
+    const credentialModalEl = document.getElementById('webhookCredentialModal');
+    const runsModalEl = document.getElementById('webhookRunsModal');
+    if (webhookModalEl && window.bootstrap) {
+      state.webhookModal = new bootstrap.Modal(webhookModalEl);
+    }
+    if (credentialModalEl && window.bootstrap) {
+      state.credentialModal = new bootstrap.Modal(credentialModalEl);
+    }
+    if (runsModalEl && window.bootstrap) {
+      state.runsModal = new bootstrap.Modal(runsModalEl);
+    }
     bindEvents();
 
     if (!state.teamId) {
@@ -45,7 +42,6 @@
 
     applyTeamLinks();
     showTeamBadge();
-    renderEventOptions([]);
     loadScriptGroups();
     loadWebhooks();
   }
@@ -60,41 +56,52 @@
   }
 
   function bindEvents() {
-    document.getElementById('addWebhookBtn').addEventListener('click', () => openWebhookModal());
-    document.getElementById('refreshWebhooksBtn').addEventListener('click', loadWebhooks);
+    const addWebhookBtn = document.getElementById('addWebhookBtn');
+    if (addWebhookBtn) addWebhookBtn.addEventListener('click', () => openWebhookModal());
+
+    const refreshWebhooksBtn = document.getElementById('refreshWebhooksBtn');
+    if (refreshWebhooksBtn) refreshWebhooksBtn.addEventListener('click', loadWebhooks);
+
     const emptyAdd = document.getElementById('emptyStateAddWebhookBtn');
     if (emptyAdd) emptyAdd.addEventListener('click', () => openWebhookModal());
-    document.getElementById('webhookDirection').addEventListener('change', updateDirectionFields);
-    document.getElementById('saveWebhookBtn').addEventListener('click', saveWebhook);
-    document.getElementById('copyTokenBtn').addEventListener('click', () => copyField('webhookToken'));
-    document.getElementById('copySecretBtn').addEventListener('click', () => copyField('webhookSecret'));
-    document.getElementById('copyEndpointBtn').addEventListener('click', () => copyField('webhookEndpoint'));
-    document.getElementById('copyTriggerBtn').addEventListener('click', () => copyField('webhookTriggerEndpoint'));
-    document.getElementById('copyTriggerCurlBtn').addEventListener('click', () => copyText(state.lastTriggerCurl));
-    document.getElementById('copyCurlBtn').addEventListener('click', () => copyText(state.lastCurlExample));
 
-    document.getElementById('webhookRows').addEventListener('click', (event) => {
-      const button = event.target.closest('[data-webhook-action]');
-      if (!button) return;
-      const webhook = state.webhooks.find((item) => String(item.id) === button.dataset.webhookId);
-      if (!webhook) return;
-      if (button.dataset.webhookAction === 'edit') openWebhookModal(webhook);
-      if (button.dataset.webhookAction === 'regenerate') regenerateSecret(webhook);
-      if (button.dataset.webhookAction === 'delete') deleteWebhook(webhook);
-      if (button.dataset.webhookAction === 'test') testPing(webhook);
-      if (button.dataset.webhookAction === 'deliveries') openDeliveries(webhook);
-    });
+    const saveWebhookBtn = document.getElementById('saveWebhookBtn');
+    if (saveWebhookBtn) saveWebhookBtn.addEventListener('click', saveWebhook);
 
-    document.getElementById('webhookDeliveryRows').addEventListener('click', (event) => {
-      const button = event.target.closest('[data-webhook-action="replay"]');
-      if (button) replayDelivery(button.dataset.deliveryId);
-    });
+    const copyTokenBtn = document.getElementById('copyTokenBtn');
+    if (copyTokenBtn) copyTokenBtn.addEventListener('click', () => copyField('webhookToken'));
 
-    document.getElementById('webhookRows').addEventListener('change', (event) => {
-      if (!event.target.matches('[data-active-toggle]')) return;
-      const webhook = state.webhooks.find((item) => String(item.id) === event.target.dataset.webhookId);
-      if (webhook) toggleWebhookActive(webhook, event.target.checked);
-    });
+    const copySecretBtn = document.getElementById('copySecretBtn');
+    if (copySecretBtn) copySecretBtn.addEventListener('click', () => copyField('webhookSecret'));
+
+    const copyTriggerBtn = document.getElementById('copyTriggerBtn');
+    if (copyTriggerBtn) copyTriggerBtn.addEventListener('click', () => copyField('webhookTriggerEndpoint'));
+
+    const copyTriggerCurlBtn = document.getElementById('copyTriggerCurlBtn');
+    if (copyTriggerCurlBtn) copyTriggerCurlBtn.addEventListener('click', () => copyText(state.lastTriggerCurl));
+
+    const copyPollCurlBtn = document.getElementById('copyPollCurlBtn');
+    if (copyPollCurlBtn) copyPollCurlBtn.addEventListener('click', () => copyText(state.lastPollCurl));
+
+    const webhookRows = document.getElementById('webhookRows');
+    if (webhookRows) {
+      webhookRows.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-webhook-action]');
+        if (!button) return;
+        const webhook = state.webhooks.find((item) => String(item.id) === button.dataset.webhookId);
+        if (!webhook) return;
+        if (button.dataset.webhookAction === 'edit') openWebhookModal(webhook);
+        if (button.dataset.webhookAction === 'regenerate') regenerateSecret(webhook);
+        if (button.dataset.webhookAction === 'delete') deleteWebhook(webhook);
+        if (button.dataset.webhookAction === 'runs') openRuns(webhook);
+      });
+
+      webhookRows.addEventListener('change', (event) => {
+        if (!event.target.matches('[data-active-toggle]')) return;
+        const webhook = state.webhooks.find((item) => String(item.id) === event.target.dataset.webhookId);
+        if (webhook) toggleWebhookActive(webhook, event.target.checked);
+      });
+    }
   }
 
   async function loadWebhooks() {
@@ -123,22 +130,10 @@
   }
 
   function renderWebhookRow(webhook) {
-    const direction = String(webhook.direction || '').toUpperCase();
-    const isOutbound = direction === 'OUTBOUND';
-    const directionClass = isOutbound ? 'bg-warning text-dark' : 'bg-info text-dark';
-    const directionLabel = isOutbound
-      ? t('automationHub.webhooks.directionOutbound', 'Outbound')
-      : t('automationHub.webhooks.directionInbound', 'Inbound');
-    const target = webhook.target_url
-      ? `<div class="text-muted small text-truncate automation-webhook-target" title="${escapeAttr(webhook.target_url)}">${escapeHtml(webhook.target_url)}</div>`
-      : '';
     const suiteName = webhook.script_group_id != null ? scriptGroupName(webhook.script_group_id) : '';
     const suite = suiteName
       ? `<div class="small mt-1"><span class="badge bg-light text-dark border"><i class="fas fa-layer-group me-1"></i>${escapeHtml(suiteName)}</span></div>`
       : '';
-    const events = (webhook.events || []).length
-      ? webhook.events.map((eventName) => `<span class="badge bg-light text-dark border">${escapeHtml(eventName)}</span>`).join('')
-      : `<span class="text-muted">${escapeHtml(t('automationHub.webhooks.noEvents', 'None'))}</span>`;
     const activeLabel = webhook.is_active
       ? t('automationHub.webhooks.active', 'Active')
       : t('automationHub.webhooks.inactive', 'Inactive');
@@ -148,24 +143,21 @@
     const lastStatus = webhook.last_status
       ? `<span class="badge ${lastStatusBadgeClass(webhook.last_status)}">${escapeHtml(webhook.last_status)}</span>`
       : `<span class="text-muted">${escapeHtml(t('common.notSet', 'Not set'))}</span>`;
-    const testButton = isOutbound ? `
-      <button type="button" class="btn btn-info btn-sm me-1" data-webhook-action="test" data-webhook-id="${webhook.id}" title="${escapeAttr(t('automationHub.webhooks.testPing', 'Send test ping'))}">
-        <i class="fas fa-vial"></i>
+    const runsButton = webhook.script_group_id != null ? `
+      <button type="button" class="btn btn-secondary btn-sm me-1" data-webhook-action="runs" data-webhook-id="${webhook.id}" title="${escapeAttr(t('automationHub.webhooks.runsTitle', 'Trigger history'))}">
+        <i class="fas fa-play-circle"></i>
       </button>` : '';
 
     return `
       <tr>
-        <td><span class="badge ${directionClass}">${escapeHtml(directionLabel)}</span></td>
         <td>
           <div class="fw-semibold">${escapeHtml(webhook.name)}</div>
-          ${target}
           ${suite}
         </td>
         <td class="font-monospace small">
           <div>${escapeHtml(t('automationHub.webhooks.tokenShort', 'tok'))}: ${escapeHtml(webhook.token_fingerprint || '-')}</div>
           <div>${escapeHtml(t('automationHub.webhooks.secretShort', 'sec'))}: ${escapeHtml(webhook.secret_fingerprint || '-')}</div>
         </td>
-        <td><div class="automation-webhook-events">${events}</div></td>
         <td>
           <div>${escapeHtml(lastTriggered)}</div>
           <div class="mt-1">${lastStatus}</div>
@@ -177,12 +169,9 @@
           </div>
         </td>
         <td class="text-end automation-webhook-actions">
-          ${testButton}
+          ${runsButton}
           <button type="button" class="btn btn-secondary btn-sm me-1" data-webhook-action="edit" data-webhook-id="${webhook.id}" title="${escapeAttr(t('common.edit', 'Edit'))}">
             <i class="fas fa-pen"></i>
-          </button>
-          <button type="button" class="btn btn-secondary btn-sm me-1" data-webhook-action="deliveries" data-webhook-id="${webhook.id}" title="${escapeAttr(t('automationHub.webhooks.deliveriesTitle', 'Recent deliveries'))}">
-            <i class="fas fa-history"></i>
           </button>
           <button type="button" class="btn btn-warning btn-sm me-1" data-webhook-action="regenerate" data-webhook-id="${webhook.id}" title="${escapeAttr(t('automationHub.webhooks.regenerateSecret', 'Regenerate secret'))}">
             <i class="fas fa-key"></i>
@@ -195,90 +184,55 @@
   }
 
   function openWebhookModal(webhook) {
+    if (!state.webhookModal) return;
     state.editingWebhook = webhook || null;
-    const direction = webhook ? String(webhook.direction || 'INBOUND') : 'INBOUND';
     const title = document.getElementById('webhookModalTitle');
     title.setAttribute('data-i18n', webhook ? 'automationHub.webhooks.editTitle' : 'automationHub.webhooks.createTitle');
     title.textContent = webhook
       ? t('automationHub.webhooks.editTitle', 'Edit Webhook')
       : t('automationHub.webhooks.createTitle', 'Add Webhook');
     document.getElementById('webhookId').value = webhook ? webhook.id : '';
-    document.getElementById('webhookDirection').value = direction;
-    document.getElementById('webhookDirection').disabled = Boolean(webhook);
     document.getElementById('webhookName').value = webhook ? webhook.name : '';
-    document.getElementById('webhookTargetUrl').value = webhook ? (webhook.target_url || '') : '';
     document.getElementById('webhookActive').checked = webhook ? webhook.is_active : true;
-    renderEventOptions(webhook ? webhook.events || [] : []);
     populateScriptGroupOptions(webhook && webhook.script_group_id != null ? String(webhook.script_group_id) : '');
-    updateDirectionFields();
     state.webhookModal.show();
     refreshTexts();
-  }
-
-  function updateDirectionFields() {
-    const direction = document.getElementById('webhookDirection').value;
-    const outbound = direction === 'OUTBOUND';
-    document.getElementById('webhookTargetWrap').classList.toggle('d-none', !outbound);
-    document.getElementById('webhookEventsWrap').classList.toggle('d-none', !outbound);
-    document.getElementById('webhookSuiteWrap').classList.toggle('d-none', outbound);
-    document.getElementById('webhookTargetUrl').required = outbound;
   }
 
   function populateScriptGroupOptions(selectedId) {
     const select = document.getElementById('webhookScriptGroup');
     if (!select) return;
-    const none = `<option value="" data-i18n="automationHub.webhooks.bindSuiteNone">${escapeHtml(t('automationHub.webhooks.bindSuiteNone', 'No suite (status callback only)'))}</option>`;
+    const placeholder = `<option value="" disabled ${selectedId ? '' : 'selected'} data-i18n="automationHub.webhooks.bindSuitePlaceholder">${escapeHtml(t('automationHub.webhooks.bindSuitePlaceholder', 'Select a suite…'))}</option>`;
     const options = state.scriptGroups.map((group) =>
       `<option value="${escapeAttr(String(group.id))}" ${String(group.id) === selectedId ? 'selected' : ''}>${escapeHtml(group.name)}</option>`
     ).join('');
-    select.innerHTML = none + options;
-  }
-
-  function renderEventOptions(selectedEvents) {
-    const selected = new Set(selectedEvents || []);
-    const container = document.getElementById('webhookEventOptions');
-    if (!container) return;
-    container.innerHTML = WEBHOOK_EVENTS.map((eventInfo) => `
-      <div class="form-check form-check-inline">
-        <input class="form-check-input" type="checkbox" id="webhook-event-${eventInfo.value}" value="${escapeAttr(eventInfo.value)}" ${selected.has(eventInfo.value) ? 'checked' : ''}>
-        <label class="form-check-label" for="webhook-event-${eventInfo.value}">${escapeHtml(t(`automationHub.webhooks.${eventInfo.key}`, eventInfo.fallback))}</label>
-      </div>`).join('');
+    select.innerHTML = placeholder + options;
   }
 
   async function saveWebhook() {
     const webhookId = document.getElementById('webhookId').value;
-    const direction = document.getElementById('webhookDirection').value;
-    const outbound = direction === 'OUTBOUND';
     const name = document.getElementById('webhookName').value.trim();
-    const targetUrl = document.getElementById('webhookTargetUrl').value.trim();
-    const events = collectEvents();
 
     if (!name) {
       showError(t('automationHub.webhooks.nameRequired', 'Name is required'));
       document.getElementById('webhookName').focus();
       return;
     }
-    if (outbound && !targetUrl) {
-      showError(t('automationHub.webhooks.targetUrlRequired', 'Outbound webhooks require a target URL'));
-      document.getElementById('webhookTargetUrl').focus();
-      return;
-    }
-    if (outbound && events.length === 0) {
-      showError(t('automationHub.webhooks.eventsRequired', 'Pick at least one event for outbound webhooks'));
-      return;
-    }
 
     const scriptGroupRaw = document.getElementById('webhookScriptGroup').value;
-    const scriptGroupId = !outbound && scriptGroupRaw ? Number(scriptGroupRaw) : null;
+    const scriptGroupId = scriptGroupRaw ? Number(scriptGroupRaw) : null;
+    if (scriptGroupId == null) {
+      showError(t('automationHub.webhooks.suiteRequired', 'Inbound webhooks must be bound to a suite'));
+      document.getElementById('webhookScriptGroup').focus();
+      return;
+    }
 
     const payload = {
       name,
-      target_url: outbound ? targetUrl : null,
-      events: outbound ? events : [],
-      script_group_id: outbound ? null : scriptGroupId,
+      script_group_id: scriptGroupId,
       is_active: document.getElementById('webhookActive').checked
     };
-    if (!webhookId) payload.direction = direction;
+    if (!webhookId) payload.direction = 'INBOUND';
 
     try {
       const result = await apiFetch(
@@ -291,10 +245,10 @@
           body: JSON.stringify(payload)
         }
       );
-      state.webhookModal.hide();
+      if (state.webhookModal) state.webhookModal.hide();
       showSuccess(t('automationHub.webhooks.saveDone', 'Webhook saved'));
       await loadWebhooks();
-      if (!webhookId) showCredentialModal(result, direction, scriptGroupId);
+      if (!webhookId) showCredentialModal(result, scriptGroupId);
     } catch (error) {
       showError(error.message || t('automationHub.webhooks.saveFailed', 'Failed to save webhook'));
     }
@@ -315,60 +269,50 @@
     }
   }
 
-  async function openDeliveries(webhook) {
-    state.deliveriesWebhookId = webhook.id;
-    if (state.deliveriesModal) state.deliveriesModal.show();
-    await loadDeliveries(webhook.id);
+  async function openRuns(webhook) {
+    state.runsWebhookId = webhook.id;
+    if (state.runsModal) state.runsModal.show();
+    await loadRuns(webhook.id);
   }
 
-  async function loadDeliveries(webhookId) {
-    const loading = document.getElementById('webhookDeliveriesLoading');
+  async function loadRuns(webhookId) {
+    const loading = document.getElementById('webhookRunsLoading');
     if (loading) loading.classList.remove('d-none');
     try {
-      const data = await apiFetch(`/api/teams/${state.teamId}/automation-webhooks/${webhookId}/deliveries`);
-      renderDeliveries(data.items || []);
+      const data = await apiFetch(`/api/teams/${state.teamId}/automation-webhooks/${webhookId}/runs`);
+      renderRuns(data.items || []);
     } catch (error) {
-      showError(error.message || t('automationHub.webhooks.deliveriesLoadFailed', 'Failed to load deliveries'));
+      showError(error.message || t('automationHub.webhooks.runsLoadFailed', 'Failed to load runs'));
     } finally {
       if (loading) loading.classList.add('d-none');
     }
   }
 
-  function renderDeliveries(items) {
-    const rows = document.getElementById('webhookDeliveryRows');
-    const empty = document.getElementById('webhookDeliveriesEmpty');
+  function renderRuns(items) {
+    const rows = document.getElementById('webhookRunRows');
+    const empty = document.getElementById('webhookRunsEmpty');
     empty.classList.toggle('d-none', items.length > 0);
     rows.innerHTML = items.map((item) => {
       const statusClass = lastStatusBadgeClass(item.status);
-      const code = item.status_code ? ` ${item.status_code}` : '';
-      const completed = item.completed_at ? formatDateTime(item.completed_at) : '—';
+      const started = item.started_at ? formatDateTime(item.started_at) : '—';
+      const duration = item.duration_ms != null ? `${item.duration_ms} ms` : '—';
+      const jenkinsLink = item.external_run_url
+        ? `<a href="${escapeAttr(item.external_run_url)}" target="_blank" rel="noopener" class="btn btn-outline-secondary btn-sm me-1"><i class="fas fa-external-link-alt me-1"></i>${escapeHtml(t('automationHub.webhooks.runJenkins', 'Jenkins'))}</a>`
+        : '';
+      const reportLink = item.report_url
+        ? `<a href="${escapeAttr(item.report_url)}" target="_blank" rel="noopener" class="btn btn-outline-secondary btn-sm"><i class="fas fa-chart-bar me-1"></i>${escapeHtml(t('automationHub.webhooks.runReport', 'Report'))}</a>`
+        : '';
+      const links = (jenkinsLink || reportLink) ? `${jenkinsLink}${reportLink}` : '<span class="text-muted">—</span>';
       return `
         <tr>
-          <td><code>${escapeHtml(item.event)}</code></td>
-          <td class="font-monospace small">${escapeHtml(item.delivery_id)}</td>
-          <td><span class="badge ${statusClass}">${escapeHtml(item.status)}${escapeHtml(code)}</span></td>
-          <td>${escapeHtml(item.duration_ms)} ms</td>
-          <td>${escapeHtml(completed)}</td>
-          <td class="text-end">
-            <button type="button" class="btn btn-warning btn-sm" data-webhook-action="replay" data-webhook-id="${item.webhook_id}" data-delivery-id="${item.id}" title="${escapeAttr(t('automationHub.webhooks.replay', 'Replay'))}">
-              <i class="fas fa-redo"></i>
-            </button>
-          </td>
+          <td><span class="badge ${statusClass}">${escapeHtml(item.status)}</span></td>
+          <td class="font-monospace small">${escapeHtml(item.branch || '—')}</td>
+          <td>${escapeHtml(started)}</td>
+          <td>${escapeHtml(duration)}</td>
+          <td class="text-end">${links}</td>
         </tr>`;
     }).join('');
-    refreshTexts(document.getElementById('webhookDeliveriesModal'));
-  }
-
-  async function replayDelivery(deliveryId) {
-    if (!deliveryId) return;
-    try {
-      await apiFetch(`/api/teams/${state.teamId}/automation-webhooks/deliveries/${deliveryId}/replay`, { method: 'POST' });
-      showSuccess(t('automationHub.webhooks.replayDone', 'Delivery replayed'));
-      if (state.deliveriesWebhookId) await loadDeliveries(state.deliveriesWebhookId);
-      await loadWebhooks();
-    } catch (error) {
-      showError(error.message || t('automationHub.webhooks.replayFailed', 'Failed to replay delivery'));
-    }
+    refreshTexts(document.getElementById('webhookRunsModal'));
   }
 
   async function regenerateSecret(webhook) {
@@ -378,7 +322,7 @@
       const result = await apiFetch(`/api/teams/${state.teamId}/automation-webhooks/${webhook.id}/regenerate-secret`, { method: 'POST' });
       showSuccess(t('automationHub.webhooks.regenerateDone', 'Secret regenerated'));
       await loadWebhooks();
-      showCredentialModal(result, webhook.direction, webhook.script_group_id != null ? webhook.script_group_id : null);
+      showCredentialModal(result, webhook.script_group_id != null ? webhook.script_group_id : null);
     } catch (error) {
       showError(error.message || t('automationHub.webhooks.regenerateFailed', 'Failed to regenerate secret'));
     }
@@ -396,71 +340,46 @@
     }
   }
 
-  async function testPing(webhook) {
-    try {
-      const result = await apiFetch(`/api/teams/${state.teamId}/automation-webhooks/${webhook.id}/test`, { method: 'POST' });
-      const message = `${result.status}${result.status_code ? ` ${result.status_code}` : ''}: ${result.message || ''}`.trim();
-      if (result.status === 'OK') {
-        showSuccess(message || t('automationHub.webhooks.testDone', 'Test ping sent'));
-      } else {
-        showError(message || t('automationHub.webhooks.testFailed', 'Test ping failed'));
-      }
-      await loadWebhooks();
-    } catch (error) {
-      showError(error.message || t('automationHub.webhooks.testFailed', 'Test ping failed'));
-    }
-  }
-
-  function showCredentialModal(credentials, direction, scriptGroupId) {
-    const inbound = String(direction || '').toUpperCase() === 'INBOUND';
-    const endpoint = inbound ? `${window.location.origin}/api/v1/webhooks/ci/${encodeURIComponent(credentials.token)}/run-status` : '';
+  function showCredentialModal(credentials, scriptGroupId) {
+    if (!state.credentialModal) return;
     document.getElementById('webhookToken').value = credentials.token || '';
     document.getElementById('webhookSecret').value = credentials.secret || '';
-    document.getElementById('webhookEndpoint').value = endpoint;
-    document.getElementById('webhookEndpointWrap').classList.toggle('d-none', !inbound);
-    const hasSuite = inbound && scriptGroupId != null;
+    const hasSuite = scriptGroupId != null;
     const triggerEndpoint = hasSuite ? `${window.location.origin}/api/v1/webhooks/ci/${encodeURIComponent(credentials.token)}/trigger` : '';
     document.getElementById('webhookTriggerEndpoint').value = triggerEndpoint;
     document.getElementById('webhookTriggerWrap').classList.toggle('d-none', !hasSuite);
-    state.lastTriggerCurl = hasSuite ? buildTriggerCurlExample(triggerEndpoint, credentials.secret || '') : '';
+    state.lastTriggerCurl = hasSuite ? buildTriggerCurlExample(triggerEndpoint) : '';
     document.getElementById('webhookTriggerCurlExample').textContent = state.lastTriggerCurl;
     document.getElementById('copyTriggerCurlBtn').disabled = !hasSuite;
-    document.getElementById('copyCurlBtn').disabled = !inbound;
-    state.lastCurlExample = inbound ? buildCurlExample(endpoint, credentials.secret || '') : '';
-    document.getElementById('webhookCurlExample').textContent = state.lastCurlExample || t('automationHub.webhooks.outboundSecretHint', 'Use this secret to verify outbound X-TCRT-Signature headers.');
+    state.lastPollCurl = hasSuite ? buildPollCurlExample(triggerEndpoint) : '';
+    document.getElementById('webhookPollCurlExample').textContent = state.lastPollCurl;
+    document.getElementById('copyPollCurlBtn').disabled = !hasSuite;
     state.credentialModal.show();
     refreshTexts();
   }
 
-  function buildCurlExample(endpoint, secret) {
-    return [
-      `TCRT_WEBHOOK_URL='${endpoint}'`,
-      `TCRT_WEBHOOK_SECRET='${secret}'`,
-      'BODY=\'{"tcrt_run_id":"<TCRT_RUN_ID>","status":"SUCCEEDED","external_run_id":"ci-run-123","report_url":"https://allure.example/runs/123"}\'',
-      'SIG=$(printf \'%s\' "$BODY" | openssl dgst -sha256 -hmac "$TCRT_WEBHOOK_SECRET" -binary | xxd -p -c 256)',
-      'curl -X POST "$TCRT_WEBHOOK_URL" \\',
-      '  -H "Content-Type: application/json" \\',
-      '  -H "X-TCRT-Signature: sha256=$SIG" \\',
-      '  -H "X-TCRT-Delivery: $(uuidgen)" \\',
-      '  -d "$BODY"'
-    ].join('\n');
+  function buildTriggerCurlExample(endpoint) {
+    // The URL token is the credential — paste-and-run, no HMAC step required.
+    // (Optional: add -H "X-TCRT-Signature: sha256=<hmac>" for payload integrity.)
+    return `curl -X POST '${endpoint}'`;
   }
 
-  function buildTriggerCurlExample(endpoint, secret) {
+  function buildPollCurlExample(triggerEndpoint) {
+    // Pure poll — pairs with the trigger example above as step 2. Paste the
+    // tcrt_correlation_id from the trigger response, then loop until terminal.
+    // The token in the URL is the credential; no signature needed.
+    const pollBase = triggerEndpoint.replace(/\/trigger$/, '/runs');
     return [
-      `TCRT_TRIGGER_URL='${endpoint}'`,
-      `TCRT_WEBHOOK_SECRET='${secret}'`,
-      "BODY='{}'",
-      'SIG=$(printf \'%s\' "$BODY" | openssl dgst -sha256 -hmac "$TCRT_WEBHOOK_SECRET" -binary | xxd -p -c 256)',
-      'curl -X POST "$TCRT_TRIGGER_URL" \\',
-      '  -H "Content-Type: application/json" \\',
-      '  -H "X-TCRT-Signature: sha256=$SIG" \\',
-      '  -d "$BODY"'
+      '# Requires jq. Paste the tcrt_correlation_id from the trigger response above.',
+      "CID='<tcrt_correlation_id>'",
+      'while :; do',
+      `  RESULT=$(curl -fsS '${pollBase}/'"$CID")`,
+      '  case "$(echo "$RESULT" | jq -r .status)" in',
+      '    SUCCEEDED|FAILED|CANCELLED) echo "$RESULT" | jq; break ;;',
+      '    *) sleep 10 ;;',
+      '  esac',
+      'done',
     ].join('\n');
-  }
-
-  function collectEvents() {
-    return Array.from(document.querySelectorAll('#webhookEventOptions input:checked')).map((input) => input.value);
   }
 
   function scriptGroupName(groupId) {
@@ -486,15 +405,20 @@
   }
 
   function showNoTeam() {
-    document.getElementById('webhook-no-team').classList.remove('d-none');
-    document.getElementById('webhook-content').classList.add('d-none');
+    const noTeam = document.getElementById('webhook-no-team');
+    const content = document.getElementById('webhook-content');
+    if (noTeam) noTeam.classList.remove('d-none');
+    if (content) content.classList.add('d-none');
   }
 
   function setLoading(isLoading) {
-    document.getElementById('webhook-loading').classList.toggle('d-none', !isLoading);
+    const loading = document.getElementById('webhook-loading');
+    if (loading) loading.classList.toggle('d-none', !isLoading);
     if (isLoading) {
-      document.getElementById('webhook-empty').classList.add('d-none');
-      document.getElementById('webhook-content').classList.add('d-none');
+      const empty = document.getElementById('webhook-empty');
+      const content = document.getElementById('webhook-content');
+      if (empty) empty.classList.add('d-none');
+      if (content) content.classList.add('d-none');
     }
   }
 

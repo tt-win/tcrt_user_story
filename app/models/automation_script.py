@@ -36,6 +36,7 @@ class AutomationScriptResponse(AutomationScriptBase):
     id: int
     team_id: int
     provider_id: int
+    ref_repo: str = ""
     cached_content: Optional[str] = None
     cached_content_etag: Optional[str] = None
     last_synced_at: Optional[datetime] = None

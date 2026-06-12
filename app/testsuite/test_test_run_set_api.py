@@ -14,7 +14,15 @@ from app.main import app
 from app.database import get_db
 from app.auth.dependencies import get_current_user
 from app.auth.models import UserRole
-from app.models.database_models import Team, TestCaseSet, TestRunConfig, TestRunSetMembership
+import json
+
+from app.models.database_models import (
+    AutomationScriptGroup,
+    Team,
+    TestCaseSet,
+    TestRunConfig,
+    TestRunSetMembership,
+)
 from app.testsuite.db_test_helpers import (
     create_managed_test_database,
     dispose_managed_test_database,
@@ -241,3 +249,53 @@ def test_test_run_set_status_auto_updates(temp_db):
     assert refreshed.status_code == 200
     refreshed_payload = refreshed.json()
     assert refreshed_payload["status"] == "active"
+
+
+def test_test_run_set_detail_includes_automation_suite_summaries(temp_db):
+    _, SessionLocal = temp_db
+    client = TestClient(app)
+
+    with SessionLocal() as session:
+        team_id, _, _, _ = _seed_team_with_runs(session)
+        suite_a = AutomationScriptGroup(
+            team_id=team_id,
+            name="Login Regression",
+            description="",
+            ci_job_name="suite-login",
+            ci_job_type="JENKINS",
+            script_paths_json=json.dumps(["tests/test_login.py", "tests/test_logout.py"]),
+        )
+        suite_b = AutomationScriptGroup(
+            team_id=team_id,
+            name="Checkout Smoke",
+            description="",
+            ci_job_name="suite-checkout",
+            ci_job_type="JENKINS",
+            script_paths_json=json.dumps(["tests/test_checkout.py"]),
+        )
+        session.add_all([suite_a, suite_b])
+        session.commit()
+        suite_a_id = suite_a.id
+        suite_b_id = suite_b.id
+
+    response = client.post(
+        f"/api/teams/{team_id}/test-run-sets",
+        json={
+            "name": "Automation Mixed Set",
+            "automation_suite_ids": [suite_a_id, suite_b_id],
+        },
+    )
+    assert response.status_code == 201, response.text
+    set_payload = response.json()
+    set_id = set_payload["id"]
+
+    detail = client.get(f"/api/teams/{team_id}/test-run-sets/{set_id}")
+    assert detail.status_code == 200, detail.text
+    payload = detail.json()
+    assert payload["automation_suite_ids"] == [suite_a_id, suite_b_id]
+    assert [suite["id"] for suite in payload["automation_suites"]] == [suite_a_id, suite_b_id]
+    assert payload["automation_suites"][0]["name"] == "Login Regression"
+    assert payload["automation_suites"][0]["script_count"] == 2
+    assert payload["automation_suites"][0]["ci_job_name"] == "suite-login"
+    assert payload["automation_suites"][1]["name"] == "Checkout Smoke"
+    assert payload["automation_suites"][1]["script_count"] == 1

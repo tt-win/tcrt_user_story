@@ -6,9 +6,6 @@
     selectedScriptIds: new Set(),
     previewOpenIds: new Set(),
     suiteDetailOpenIds: new Set(),
-    scriptRunsById: new Map(),
-    scriptRunsLoading: new Set(),
-    scriptRunsError: new Map(),
     editingGroup: null,
     modal: null,
     // Section 5: Script ↔ Test view toggle. Persisted per-team in localStorage.
@@ -31,14 +28,7 @@
   }
 
   function loadViewPreference() {
-    const key = viewStorageKey();
-    if (!key) return 'script';
-    try {
-      const stored = window.localStorage.getItem(key);
-      return stored === 'test' ? 'test' : 'script';
-    } catch (_e) {
-      return 'script';
-    }
+    return 'script';
   }
 
   function persistViewPreference(mode) {
@@ -97,7 +87,10 @@
 
   function init() {
     state.teamId = resolveTeamId();
-    state.modal = new bootstrap.Modal(document.getElementById('suiteModal'));
+    const suiteModalEl = document.getElementById('suiteModal');
+    if (suiteModalEl && window.bootstrap) {
+      state.modal = new bootstrap.Modal(suiteModalEl);
+    }
     bindEvents();
 
     if (!state.teamId) {
@@ -107,7 +100,8 @@
 
     applyTeamLinks();
     showTeamBadge();
-    document.getElementById('automation-content').classList.remove('d-none');
+    const automationContent = document.getElementById('automation-content');
+    if (automationContent) automationContent.classList.remove('d-none');
     state.viewMode = loadViewPreference();
     state.testGroupBy = loadTestGroupPreference();
     applyViewToggleVisual();
@@ -347,11 +341,20 @@
   }
 
   function bindEvents() {
-    document.getElementById('newSuiteBtn').addEventListener('click', () => openSuiteModal());
-    document.getElementById('newSuiteInlineBtn').addEventListener('click', () => openSuiteModal());
-    document.getElementById('rescanScriptsBtn').addEventListener('click', syncScripts);
-    document.getElementById('scriptSearch').addEventListener('input', renderScripts);
-    document.getElementById('saveSuiteBtn').addEventListener('click', saveSuite);
+    const newSuiteBtn = document.getElementById('newSuiteBtn');
+    if (newSuiteBtn) newSuiteBtn.addEventListener('click', () => openSuiteModal());
+
+    const newSuiteInlineBtn = document.getElementById('newSuiteInlineBtn');
+    if (newSuiteInlineBtn) newSuiteInlineBtn.addEventListener('click', () => openSuiteModal());
+
+    const rescanScriptsBtn = document.getElementById('rescanScriptsBtn');
+    if (rescanScriptsBtn) rescanScriptsBtn.addEventListener('click', syncScripts);
+
+    const scriptSearch = document.getElementById('scriptSearch');
+    if (scriptSearch) scriptSearch.addEventListener('input', renderScripts);
+
+    const saveSuiteBtn = document.getElementById('saveSuiteBtn');
+    if (saveSuiteBtn) saveSuiteBtn.addEventListener('click', saveSuite);
 
     // Section 5: view toggle buttons + delegated handler for Test view.
     const viewScriptBtn = document.getElementById('viewToggleScript');
@@ -386,22 +389,27 @@
     if (expandAllBtn) expandAllBtn.addEventListener('click', () => setAllExpanded(true));
     if (collapseAllBtn) collapseAllBtn.addEventListener('click', () => setAllExpanded(false));
 
-    document.getElementById('scriptTree').addEventListener('click', (event) => {
-      const dirToggle = event.target.closest('[data-tree-toggle]');
-      if (dirToggle) {
-        toggleScriptNode(dirToggle.dataset.treeToggle);
-        return;
-      }
-      const runButton = event.target.closest('[data-script-run]');
-      if (runButton) {
-        runScript(Number(runButton.dataset.scriptRun));
-        return;
-      }
-      const previewButton = event.target.closest('[data-script-preview]');
-      if (previewButton) {
-        togglePreview(Number(previewButton.dataset.scriptPreview));
-      }
-    });
+    const scriptTree = document.getElementById('scriptTree');
+    if (scriptTree) {
+      scriptTree.addEventListener('click', (event) => {
+        const dirToggle = event.target.closest('[data-tree-toggle]');
+        if (dirToggle) {
+          toggleScriptNode(dirToggle.dataset.treeToggle);
+          return;
+        }
+        const runButton = event.target.closest('[data-script-run]');
+        if (runButton) {
+          // Historical "Run Now" trigger has been removed (move-automation-execution-to-test-run-set).
+          // Fall through — no-op. The button itself was removed from the markup; this
+          // is a defensive guard in case an old cached bundle still renders it.
+          return;
+        }
+        const previewButton = event.target.closest('[data-script-preview]');
+        if (previewButton) {
+          togglePreview(Number(previewButton.dataset.scriptPreview));
+        }
+      });
+    }
 
     // Suite modal: in-modal script picker (search + checkable list).
     const picker = document.getElementById('suitePickerList');
@@ -421,16 +429,20 @@
     const pickerSearch = document.getElementById('suitePickerSearch');
     if (pickerSearch) pickerSearch.addEventListener('input', renderSuitePicker);
 
-    document.getElementById('suiteList').addEventListener('click', (event) => {
-      const button = event.target.closest('[data-suite-action]');
-      if (!button) return;
-      const group = state.groups.find((item) => String(item.id) === button.dataset.groupId);
-      if (!group) return;
-      if (button.dataset.suiteAction === 'edit') openSuiteModal(group);
-      if (button.dataset.suiteAction === 'delete') deleteSuite(group);
-      if (button.dataset.suiteAction === 'run') runSuite(group);
-      if (button.dataset.suiteAction === 'toggle-detail') toggleSuiteDetail(group.id);
-    });
+    const suiteList = document.getElementById('suiteList');
+    if (suiteList) {
+      suiteList.addEventListener('click', (event) => {
+        const button = event.target.closest('[data-suite-action]');
+        if (!button) return;
+        const group = state.groups.find((item) => String(item.id) === button.dataset.groupId);
+        if (!group) return;
+        if (button.dataset.suiteAction === 'edit') openSuiteModal(group);
+        if (button.dataset.suiteAction === 'delete') deleteSuite(group);
+        // Historical 'data-suite-action="run"' handler has been removed —
+        // execution is now triggered from the Test Run Set detail page.
+        if (button.dataset.suiteAction === 'toggle-detail') toggleSuiteDetail(group.id);
+      });
+    }
   }
 
   function toggleSuiteDetail(groupId) {
@@ -451,8 +463,6 @@
       ]);
       state.scripts = scriptResult.items || [];
       state.groups = groupResult.items || [];
-      state.scriptRunsById.clear();
-      state.scriptRunsError.clear();
       renderScripts();
       renderGroups();
 
@@ -634,7 +644,7 @@
   }
 
   function renderTestGroupsByTc(rows, expandAll) {
-    const NO_TC = ' none';
+    const NO_TC = '__none__';
     const groups = new Map();
     for (const row of rows) {
       const tcIds = Array.from(new Set((row.markers || []).flatMap((m) => m.tc_ids || [])));
@@ -807,8 +817,8 @@
     }
     const markers = Array.isArray(row.markers) ? row.markers : [];
     if (markers.length === 0) {
-      return `<span class="automation-test-flag" title="${escapeAttr(t('automationHub.tests.noMarkerHint', 'No @pytest.mark.tcrt / // tcrt: declared'))}">
-                <i class="fas fa-circle-notch me-1"></i>${escapeHtml(t('automationHub.tests.noMarker', 'no marker'))}</span>`;
+      return `<span class="automation-test-flag" title="${escapeAttr(t('automationHub.tests.noMarkerHint', 'Add a tcrt marker in code and re-sync to link this test'))}">
+                <i class="fas fa-circle-notch me-1"></i>${escapeHtml(t('automationHub.tests.noMarker', 'no link'))}</span>`;
     }
     if (groupedByTc) {
       // TC already shown in the group header → show only the link type(s).
@@ -851,9 +861,8 @@
               </div>
             </div>
           </button>
-          <button type="button" class="btn btn-primary btn-sm flex-shrink-0" data-script-run="${script.id}" title="${escapeAttr(t('automationHub.scripts.runNow', 'Run now'))}">
-            <i class="fas fa-play"></i>
-          </button>
+          <!-- Historical "Run Now" button removed (move-automation-execution-to-test-run-set).
+               Execution is now triggered from the Test Run Set detail page. -->
         </div>
         ${preview}
       </article>`;
@@ -866,7 +875,6 @@
     const langClass = hasContent ? langClassFor(script.ref_path) : 'nohighlight';
     return `
       <div class="automation-preview">
-        ${renderScriptRuns(script.id)}
         <pre class="automation-code" title="${escapeAttr(editHint)}"><code class="${langClass}">${escapeHtml(content)}</code></pre>
         <div class="automation-preview-hint text-muted small">
           <i class="fas fa-info-circle me-1"></i>${editHint}
@@ -894,66 +902,14 @@
     });
   }
 
-  function renderScriptRuns(scriptId) {
-    const title = escapeHtml(t('automationHub.scripts.lastRuns', 'Recent runs'));
-    if (state.scriptRunsLoading.has(scriptId)) {
-      return `
-        <div class="automation-script-runs">
-          <div class="automation-script-runs-title">${title}</div>
-          <div class="text-muted small">${escapeHtml(t('common.loading', 'Loading...'))}</div>
-        </div>`;
-    }
-    const error = state.scriptRunsError.get(scriptId);
-    if (error) {
-      return `
-        <div class="automation-script-runs">
-          <div class="automation-script-runs-title">${title}</div>
-          <div class="text-warning small">${escapeHtml(error)}</div>
-        </div>`;
-    }
-    const runs = state.scriptRunsById.get(scriptId);
-    if (!runs) {
-      // Not loaded yet for some reason — render the title and quiet hint.
-      return `
-        <div class="automation-script-runs">
-          <div class="automation-script-runs-title">${title}</div>
-          <div class="text-muted small">${escapeHtml(t('automationHub.scripts.runsPending', '—'))}</div>
-        </div>`;
-    }
-    if (runs.length === 0) {
-      return `
-        <div class="automation-script-runs">
-          <div class="automation-script-runs-title">${title}</div>
-          <div class="text-muted small">${escapeHtml(t('automationHub.scripts.noRuns', 'No runs yet'))}</div>
-        </div>`;
-    }
-    return `
-      <div class="automation-script-runs">
-        <div class="automation-script-runs-title">${title}</div>
-        <ul class="automation-script-runs-list">
-          ${runs.map(renderScriptRunRow).join('')}
-        </ul>
-      </div>`;
-  }
+  // (run history rendering removed: Automation Hub no longer surfaces
+  // script-level recent runs; run history now lives in Test Run Set detail)
 
-  function renderScriptRunRow(run) {
-    const badgeClass = RUN_STATUS_BADGE[run.status] || 'bg-secondary';
-    const started = run.started_at ? formatTimestamp(run.started_at) : '—';
-    const duration = formatDuration(run.duration_ms);
-    const branch = run.branch || '—';
-    const externalLink = run.external_run_url
-      ? `<a href="${escapeAttr(run.external_run_url)}" target="_blank" rel="noopener" class="btn btn-secondary btn-xs ms-2" title="${escapeAttr(t('automationHub.scripts.openInCi', 'Open in CI'))}"><i class="fas fa-external-link-alt"></i></a>`
-      : '';
-    const reportLink = run.report_url
-      ? `<a href="${escapeAttr(run.report_url)}" target="_blank" rel="noopener" class="btn btn-secondary btn-xs ms-1" title="${escapeAttr(t('automationHub.scripts.report', 'Report'))}"><i class="fas fa-chart-bar"></i></a>`
-      : '';
+  function renderSuiteRunsPlaceholder() {
     return `
-      <li class="automation-script-run-item">
-        <span class="badge ${badgeClass} automation-script-run-status">${escapeHtml(run.status)}</span>
-        <span class="font-monospace small text-muted automation-script-run-branch">${escapeHtml(branch)}</span>
-        <span class="text-muted small automation-script-run-meta">${escapeHtml(started)}${duration ? ' · ' + escapeHtml(duration) : ''}</span>
-        <span class="automation-script-run-actions">${externalLink}${reportLink}</span>
-      </li>`;
+      <div class="automation-suite-detail-runs mt-2">
+        <div class="text-muted small">${escapeHtml(t('automationHub.suites.runsMoved', 'Run history is now in Test Run Set detail.'))}</div>
+      </div>`;
   }
 
   function formatTimestamp(value) {
@@ -1001,9 +957,8 @@
         }
       })());
     }
-    if (!state.scriptRunsById.has(scriptId)) {
-      tasks.push(loadScriptRuns(scriptId));
-    }
+    // (script-level recent runs are not loaded here; run history is owned by
+    //  Test Run Set detail — see the header at the top of this file)
     renderScripts();
     if (tasks.length > 0) {
       await Promise.all(tasks);
@@ -1011,20 +966,8 @@
     }
   }
 
-  async function loadScriptRuns(scriptId) {
-    state.scriptRunsLoading.add(scriptId);
-    state.scriptRunsError.delete(scriptId);
-    try {
-      const url = `/api/teams/${state.teamId}/automation-runs?script_id=${encodeURIComponent(scriptId)}&limit=5`;
-      const result = await apiFetch(url);
-      const items = Array.isArray(result && result.items) ? result.items : [];
-      state.scriptRunsById.set(scriptId, items);
-    } catch (error) {
-      state.scriptRunsError.set(scriptId, error.message || t('automationHub.scripts.runsLoadFailed', 'Failed to load recent runs'));
-    } finally {
-      state.scriptRunsLoading.delete(scriptId);
-    }
-  }
+  // (script-level recent runs loader removed: run history now lives in
+  // Test Run Set detail; see the header at the top of this file)
 
   function renderGroups() {
     const container = document.getElementById('suiteList');
@@ -1051,10 +994,9 @@
               ${group.script_count} ${escapeHtml(t('automationHub.suites.scripts', 'scripts'))} · ${escapeHtml(ciJob)}
             </div>
           </div>
-          <div class="automation-suite-actions">
-            <button type="button" class="btn btn-success btn-sm" data-suite-action="run" data-group-id="${group.id}" title="${escapeAttr(t('automationHub.suites.run', 'Run suite'))}">
-              <i class="fas fa-play"></i>
-            </button>
+           <div class="automation-suite-actions">
+            <!-- Historical "Run suite" button removed (move-automation-execution-to-test-run-set).
+                 Execution is now triggered from the Test Run Set detail page. -->
             <button type="button" class="btn btn-secondary btn-sm" data-suite-action="toggle-detail" data-group-id="${group.id}" title="${escapeAttr(t('automationHub.suites.toggleDetail', 'Toggle details'))}">
               <i class="fas ${detailIcon}"></i>
             </button>
@@ -1081,30 +1023,18 @@
             <i class="fas fa-file-code text-primary me-1"></i>${escapeHtml(s.ref_path || s.name || '')}
           </li>`).join('')}</ul>`
       : `<div class="text-muted small">${escapeHtml(t('automationHub.suites.detailEmpty', 'This suite has no scripts.'))}</div>`;
-    const recentRuns = Array.isArray(group.recent_runs) ? group.recent_runs : [];
-    const runsBlock = recentRuns.length
-      ? `<div class="automation-suite-detail-runs mt-2">
-          <div class="text-muted small fw-semibold">${escapeHtml(t('automationHub.suites.detailRecentRuns', 'Recent runs'))}</div>
-          <ul class="automation-script-runs-list">${recentRuns.slice(0, 5).map((run) => {
-            const badge = RUN_STATUS_BADGE[run.status] || 'bg-secondary';
-            const started = run.started_at ? formatTimestamp(run.started_at) : '—';
-            return `<li class="automation-script-run-item">
-              <span class="badge ${badge}">${escapeHtml(run.status)}</span>
-              <span class="text-muted small">${escapeHtml(started)}</span>
-              ${run.external_run_url ? `<a href="${escapeAttr(run.external_run_url)}" target="_blank" rel="noopener" class="btn btn-secondary btn-xs ms-2"><i class="fas fa-external-link-alt"></i></a>` : ''}
-            </li>`;
-          }).join('')}</ul>
-        </div>`
-      : '';
     return `
       <div class="automation-suite-detail">
         ${description}
         ${scriptList}
-        ${runsBlock}
+        <div class="automation-suite-detail-runs mt-2">
+          <div class="text-muted small">${escapeHtml(t('automationHub.suites.runsMoved', 'Run history is now in Test Run Set detail.'))}</div>
+        </div>
       </div>`;
   }
 
   function openSuiteModal(group) {
+    if (!state.modal) return;
     state.editingGroup = group || null;
     document.getElementById('suiteId').value = group ? group.id : '';
     document.getElementById('suiteName').value = group ? group.name : '';
@@ -1181,6 +1111,7 @@
 
   async function saveSuite() {
     const nameInput = document.getElementById('suiteName');
+    if (!nameInput) return;
     const name = nameInput.value.trim();
     const scriptIds = Array.from(state.selectedScriptIds);
     if (!name) {
@@ -1211,7 +1142,7 @@
           body: JSON.stringify(payload)
         }
       );
-      state.modal.hide();
+      if (state.modal) state.modal.hide();
       showSuccess(t('automationHub.suites.saveDone', 'Suite saved'));
       await loadAll();
     } catch (error) {
@@ -1232,13 +1163,17 @@
   }
 
   function runSuite(group) {
-    document.dispatchEvent(new CustomEvent('automation:run-suite', { detail: { group } }));
+    // Deprecated stub: the historical "Run suite" trigger has been removed
+    // (move-automation-execution-to-test-run-set). Retained so older cached
+    // bundles that still emit 'automation:run-suite' events do not throw.
+    document.dispatchEvent(new CustomEvent('automation:run-suite-deprecated', { detail: { group } }));
   }
 
   function runScript(scriptId) {
+    // Deprecated stub — see runSuite() above.
     const script = state.scripts.find((item) => item.id === scriptId);
     if (!script) return;
-    document.dispatchEvent(new CustomEvent('automation:run-script', { detail: { script } }));
+    document.dispatchEvent(new CustomEvent('automation:run-script-deprecated', { detail: { script } }));
   }
 
   function selectedScripts() {
@@ -1251,13 +1186,17 @@
   }
 
   function setLoading(isLoading) {
-    document.getElementById('scriptLoading').classList.toggle('d-none', !isLoading);
-    document.getElementById('suiteLoading').classList.toggle('d-none', !isLoading);
+    const scriptLoading = document.getElementById('scriptLoading');
+    const suiteLoading = document.getElementById('suiteLoading');
+    if (scriptLoading) scriptLoading.classList.toggle('d-none', !isLoading);
+    if (suiteLoading) suiteLoading.classList.toggle('d-none', !isLoading);
   }
 
   function showNoTeam() {
-    document.getElementById('automation-no-team').classList.remove('d-none');
-    document.getElementById('automation-content').classList.add('d-none');
+    const noTeam = document.getElementById('automation-no-team');
+    const automationContent = document.getElementById('automation-content');
+    if (noTeam) noTeam.classList.remove('d-none');
+    if (automationContent) automationContent.classList.add('d-none');
   }
 
   function showTeamBadge() {
@@ -1414,4 +1353,5 @@
     }
     return out;
   }
+
 })();

@@ -27,7 +27,6 @@ from app.services.automation.provider_credential_service import (
 from app.services.automation.providers.base import HealthStatus, RunnerRef
 from app.services.automation.provider_registry import ProviderRegistryError, validate_provider_payload
 from app.services.automation.providers.allure_result import AllureResultProvider
-from app.services.automation.providers.github_actions_ci import GitHubActionsCIProvider
 from app.services.automation.providers.github_storage import GitHubStorageProvider
 from app.services.automation.providers.jenkins_ci import JenkinsCIProvider
 from app.testsuite.db_test_helpers import create_managed_test_database, dispose_managed_test_database
@@ -204,20 +203,6 @@ def test_provider_registry_validates_known_provider_payloads():
         validate_provider_payload("storage:unknown", {}, {})
 
 
-def test_github_actions_suite_template_preserves_github_expressions():
-    provider = GitHubActionsCIProvider({"owner": "example", "repo": "tests"}, {"pat": "ghp_test"})
-    content = provider._render_suite_workflow(
-        suite_id="smoke",
-        suite_name="Smoke Suite",
-        test_paths=["tests/test_login.py"],
-        default_runner_label="ubuntu-latest",
-    )
-
-    assert "name: TCRT Suite - Smoke Suite" in content
-    assert "${{ github.event.inputs.runner_label }}" in content
-    assert "tests/test_login.py" in content
-
-
 @pytest.mark.asyncio
 async def test_github_storage_read_script_uses_etag_cache(monkeypatch):
     provider = GitHubStorageProvider({"owner": "example", "repo": "tests"}, {"pat": "ghp_test"})
@@ -252,64 +237,42 @@ async def test_github_storage_list_scripts_returns_empty_for_missing_path(monkey
     assert await provider.list_scripts("missing") == []
 
 
-@pytest.mark.asyncio
-async def test_github_actions_trigger_marks_correlation_as_best_effort(monkeypatch):
-    provider = GitHubActionsCIProvider({"owner": "example", "repo": "tests"}, {"pat": "ghp_test"})
-    calls = []
-    created_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+def test_github_storage_config_folds_legacy_and_fans_out_repos():
+    # Legacy flat owner/repo folds into a one-element repos list (back-compat).
+    legacy = GitHubStorageProvider({"owner": "example", "repo": "tests"}, {"pat": "x"})
+    assert legacy.active_repo_slug == "example/tests"
+    assert legacy._repo_path("/contents/a.py") == "/repos/example/tests/contents/a.py"
 
-    async def fake_request(method, path, **kwargs):
-        calls.append((method, path, kwargs))
-        request = httpx.Request(method, f"https://api.github.test{path}")
-        if method == "POST":
-            return httpx.Response(204, request=request)
-        return httpx.Response(
-            200,
-            request=request,
-            json={
-                "workflow_runs": [
-                    {
-                        "id": 123,
-                        "html_url": "https://github.com/example/tests/actions/runs/123",
-                        "created_at": created_at,
-                    }
-                ]
-            },
+    # Multi-repo: fan-out yields one single-repo provider per entry, each
+    # routing requests to its own repo, with per-repo branch override.
+    multi = GitHubStorageProvider(
+        {"repos": [{"owner": "acme", "repo": "web"}, {"owner": "acme", "repo": "api", "default_branch": "dev"}]},
+        {"pat": "x"},
+    )
+    subs = multi.iter_repo_providers()
+    assert [s.active_repo_slug for s in subs] == ["acme/web", "acme/api"]
+    assert multi.for_repo("acme/api")._repo_path("") == "/repos/acme/api"
+    assert multi.for_repo("acme/api").default_ref == "dev"
+    assert multi.for_repo("acme/web").default_ref == "main"
+
+
+def test_github_storage_config_rejects_duplicate_and_empty_repos():
+    from pydantic import ValidationError
+
+    from app.services.automation.providers.github_storage import GitHubStorageConfig
+
+    with pytest.raises(ValidationError):
+        GitHubStorageConfig.model_validate(
+            {"repos": [{"owner": "a", "repo": "x"}, {"owner": "a", "repo": "x"}]}
         )
-
-    monkeypatch.setattr(provider, "_request", fake_request)
-
-    ref = await provider.trigger_run("suite.yml", "main", {"tcrt_run_id": "run-1"})
-
-    assert ref.external_run_id == "123"
-    assert calls[0][2]["json"]["inputs"]["tcrt_run_id"] == "run-1"
-    assert ref.raw["correlation_strategy"] == "recent_workflow_dispatch_run"
-    assert ref.raw["correlation_verified"] is False
+    with pytest.raises(ValidationError):
+        GitHubStorageConfig.model_validate({"repos": []})
 
 
 @pytest.mark.asyncio
-async def test_github_actions_trigger_reports_missing_workflow_dispatch(monkeypatch):
-    provider = GitHubActionsCIProvider({"owner": "example", "repo": "tests"}, {"pat": "ghp_test"})
-
-    async def fake_request(method, path, **kwargs):
-        request = httpx.Request(method, f"https://api.github.test{path}")
-        response = httpx.Response(
-            422,
-            request=request,
-            json={"message": "Workflow does not have 'workflow_dispatch' trigger"},
-        )
-        raise httpx.HTTPStatusError("422", request=request, response=response)
-
-    monkeypatch.setattr(provider, "_request", fake_request)
-
-    with pytest.raises(RuntimeError, match="workflow_dispatch"):
-        await provider.trigger_run("suite.yml", "main", {})
-
-
-@pytest.mark.asyncio
-async def test_jenkins_auto_view_uses_list_view_xml(monkeypatch):
+async def test_jenkins_auto_view_expands_team_template_and_uses_list_view_xml(monkeypatch):
     provider = JenkinsCIProvider(
-        {"base_url": "https://jenkins.example.test", "auto_manage_views": True, "view_name_template": "TCRT"},
+        {"base_url": "https://jenkins.example.test", "auto_manage_views": True},
         {"username": "qa", "api_token": "token"},
     )
     calls = []
@@ -324,13 +287,118 @@ async def test_jenkins_auto_view_uses_list_view_xml(monkeypatch):
 
     monkeypatch.setattr(provider, "_request", fake_request)
 
-    await provider._ensure_view_contains_job("tcrt-suite-login")
+    job_name = await provider.create_suite_job(
+        "7",
+        "Login Flow",
+        ["tests/test_login.py"],
+        "built-in",
+        team_id=3,
+        team_name="QA Team",
+    )
 
+    assert job_name == "tcrt_qa-team_login-flow"
+    get_view_call = next(call for call in calls if call[0] == "GET")
+    assert get_view_call[1] == "/view/TCRT_QA%20Team/api/json"
     create_view_call = next(call for call in calls if call[1] == "/createView")
-    assert create_view_call[2]["params"] == {"name": "TCRT"}
+    assert create_view_call[2]["params"] == {"name": "TCRT_QA Team"}
     assert create_view_call[2]["headers"] == {"Content-Type": "application/xml"}
     assert b"<hudson.model.ListView>" in create_view_call[2]["content"]
-    assert b"<name>TCRT</name>" in create_view_call[2]["content"]
+    assert b"<name>TCRT_QA Team</name>" in create_view_call[2]["content"]
+    add_view_call = next(call for call in calls if call[1].endswith("/addJobToView"))
+    assert add_view_call[1] == "/view/TCRT_QA%20Team/addJobToView"
+    assert add_view_call[2]["params"] == {"name": "tcrt_qa-team_login-flow"}
+
+
+@pytest.mark.asyncio
+async def test_jenkins_update_suite_job_renames_job_when_suite_name_changes(monkeypatch):
+    """A suite rename relocates the existing Jenkins job via doRename instead of
+    404'ing on the freshly-derived (non-existent) job name."""
+    provider = JenkinsCIProvider(
+        {"base_url": "https://jenkins.example.test"},
+        {"username": "qa", "api_token": "token"},
+    )
+    calls = []
+
+    async def fake_request(method, path, **kwargs):
+        calls.append((method, path, kwargs))
+        request = httpx.Request(method, f"https://jenkins.example.test{path}")
+        return httpx.Response(200, request=request)
+
+    monkeypatch.setattr(provider, "_request", fake_request)
+
+    returned = await provider.update_suite_job(
+        "1",
+        "1234",
+        ["tests/test_a.py"],
+        "built-in",
+        team_name="ARD",
+        existing_job_name="tcrt_ard_123",
+    )
+
+    assert returned == "tcrt_ard_1234"
+    rename_call = next(c for c in calls if c[1].endswith("/doRename"))
+    assert "tcrt_ard_123/doRename" in rename_call[1]
+    assert rename_call[2]["params"] == {"newName": "tcrt_ard_1234"}
+    # config.xml is written to the NEW job name, not the old one.
+    config_call = next(c for c in calls if c[1].endswith("/config.xml"))
+    assert "tcrt_ard_1234/config.xml" in config_call[1]
+
+
+@pytest.mark.asyncio
+async def test_jenkins_update_suite_job_skips_rename_when_name_unchanged(monkeypatch):
+    """When only scripts change (derived name stays the same), no rename fires."""
+    provider = JenkinsCIProvider(
+        {"base_url": "https://jenkins.example.test"},
+        {"username": "qa", "api_token": "token"},
+    )
+    calls = []
+
+    async def fake_request(method, path, **kwargs):
+        calls.append((method, path, kwargs))
+        request = httpx.Request(method, f"https://jenkins.example.test{path}")
+        return httpx.Response(200, request=request)
+
+    monkeypatch.setattr(provider, "_request", fake_request)
+
+    await provider.update_suite_job(
+        "1",
+        "123",
+        ["tests/test_a.py"],
+        "built-in",
+        team_name="ARD",
+        existing_job_name="tcrt_ard_123",
+    )
+
+    assert not any(c[1].endswith("/doRename") for c in calls)
+
+
+@pytest.mark.asyncio
+async def test_jenkins_suite_job_name_uses_team_and_suite_slug():
+    """Job name format: tcrt_{team_slug}_{suite_slug} (suite id no longer used)."""
+    provider = JenkinsCIProvider(
+        {"base_url": "https://jenkins.example.test"},
+        {"username": "qa", "api_token": "token"},
+    )
+    assert provider._suite_job_name("1", "Login Flow", "ARD") == "tcrt_ard_login-flow"
+    assert provider._suite_job_name("9", "123", "QA Team") == "tcrt_qa-team_123"
+
+
+def test_jenkins_rebase_url_realigns_stale_host_with_config():
+    """A run record's build URL keeps the host it was triggered against; if the
+    provider's base_url later moves, polling must follow the new host, not the
+    dead one baked into the run."""
+    provider = JenkinsCIProvider(
+        {"base_url": "http://10.81.1.49:8080/"},
+        {"username": "qa", "api_token": "token"},
+    )
+    # Absolute URL captured against the old host → rebased onto the new one,
+    # path/query/fragment preserved.
+    assert (
+        provider._rebase_url("http://10.80.1.49:8080/job/tcrt-suite-1-123/6/api/json")
+        == "http://10.81.1.49:8080/job/tcrt-suite-1-123/6/api/json"
+    )
+    # Relative paths are left untouched — httpx resolves them against base_url.
+    assert provider._rebase_url("/queue/item/42/api/json") == "/queue/item/42/api/json"
 
 
 @pytest.mark.asyncio
@@ -524,55 +592,3 @@ async def test_jenkins_list_runners_parses_assigned_labels(monkeypatch):
     assert runners[1].name == "linux-agent-1"
     assert runners[1].busy is True  # idle=False
     assert "linux" in runners[1].labels
-
-
-@pytest.mark.asyncio
-async def test_github_actions_list_runners_parses_repo_runners(monkeypatch):
-    """Mock the GH Actions /actions/runners response and verify it returns
-    runners with their default + custom labels."""
-    provider = GitHubActionsCIProvider(
-        {"owner": "example", "repo": "tests"},
-        {"pat": "ghp_test"},
-    )
-    calls: list[tuple[str, str]] = []
-
-    async def fake_request(method, path, **kwargs):
-        calls.append((method, path))
-        request = httpx.Request(method, f"https://api.github.test{path}")
-        body = {
-            "runners": [
-                {
-                    "id": 1,
-                    "name": "runner-01",
-                    "os": "linux",
-                    "status": "online",
-                    "busy": False,
-                    "labels": [
-                        {"name": "self-hosted"},
-                        {"name": "Linux"},
-                        {"name": "X64"},
-                    ],
-                },
-                {
-                    "id": 2,
-                    "name": "runner-02",
-                    "os": "linux",
-                    "status": "online",
-                    "busy": True,
-                    "labels": [
-                        {"name": "self-hosted"},
-                        {"name": "Linux"},
-                        {"name": "gpu"},
-                    ],
-                },
-            ],
-        }
-        return httpx.Response(200, request=request, json=body)
-
-    monkeypatch.setattr(provider, "_request", fake_request)
-    runners = await provider.list_runners()
-
-    assert calls == [("GET", "/repos/example/tests/actions/runners")]
-    assert [r.name for r in runners] == ["runner-01", "runner-02"]
-    assert "gpu" in runners[1].labels
-    assert runners[1].busy is True

@@ -12,6 +12,25 @@ class AutomationCoverageCaseItem(BaseModel):
     title: str
 
 
+class AutomationCoverageLinkItem(BaseModel):
+    script_id: int
+    script_name: str
+    ref_repo: str = ""
+    ref_path: str
+    link_type: str
+
+
+class AutomationCoverageCoveredCaseItem(AutomationCoverageCaseItem):
+    links: list[AutomationCoverageLinkItem]
+
+
+class AutomationCoverageGroupItem(BaseModel):
+    group: str
+    total: int
+    covered: int
+    primary: int
+
+
 class AutomationCoverageStaleScriptItem(BaseModel):
     script_id: int
     name: str
@@ -36,6 +55,8 @@ class AutomationCoverageResponse(BaseModel):
     with_any_link: int
     uncovered_count: int
     uncovered_sample: list[AutomationCoverageCaseItem]
+    covered_cases: list[AutomationCoverageCoveredCaseItem]
+    by_group: list[AutomationCoverageGroupItem]
     stale_scripts: list[AutomationCoverageStaleScriptItem]
     by_format: dict[str, int]
     trend: list[AutomationCoverageTrendPoint]

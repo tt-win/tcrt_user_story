@@ -2,9 +2,8 @@
   const state = {
     teamId: null,
     coverage: null,
-    scripts: [],
-    linkModal: null,
-    linkingCase: null
+    view: 'uncovered',      // 'uncovered' | 'covered'
+    groupFilter: null       // ticket-prefix group key, or null = all
   };
 
   document.addEventListener('DOMContentLoaded', init);
@@ -17,23 +16,47 @@
 
   function init() {
     state.teamId = resolveTeamId();
-    state.linkModal = new bootstrap.Modal(document.getElementById('coverageLinkModal'));
     bindEvents();
     if (!state.teamId) return;
     loadCoverage();
   }
 
   function bindEvents() {
-    document.getElementById('coverageRefreshBtn').addEventListener('click', loadCoverage);
-    document.getElementById('coverageSaveLinkBtn').addEventListener('click', saveLink);
-    document.getElementById('coverageUncoveredRows').addEventListener('click', (event) => {
-      const button = event.target.closest('[data-coverage-link-case]');
-      if (!button) return;
-      const caseItem = (state.coverage?.uncovered_sample || []).find(
-        (item) => String(item.test_case_id) === button.dataset.coverageLinkCase
-      );
-      if (caseItem) openLinkModal(caseItem);
-    });
+    const refreshBtn = document.getElementById('coverageRefreshBtn');
+    if (refreshBtn) refreshBtn.addEventListener('click', loadCoverage);
+
+    const uncoveredTab = document.getElementById('coverageTabUncovered');
+    const coveredTab = document.getElementById('coverageTabCovered');
+    if (uncoveredTab) uncoveredTab.addEventListener('click', () => setView('uncovered'));
+    if (coveredTab) coveredTab.addEventListener('click', () => setView('covered'));
+
+    const groupList = document.getElementById('coverageGroupList');
+    if (groupList) {
+      groupList.addEventListener('click', (event) => {
+        const row = event.target.closest('[data-group]');
+        if (!row) return;
+        const group = row.dataset.group;
+        state.groupFilter = state.groupFilter === group ? null : group;
+        renderGroups();
+        renderCaseTable();
+      });
+    }
+    const filterClear = document.getElementById('coverageGroupFilterClear');
+    if (filterClear) {
+      filterClear.addEventListener('click', () => {
+        state.groupFilter = null;
+        renderGroups();
+        renderCaseTable();
+      });
+    }
+  }
+
+  function setView(view) {
+    if (state.view === view) return;
+    state.view = view;
+    document.getElementById('coverageTabUncovered').classList.toggle('active', view === 'uncovered');
+    document.getElementById('coverageTabCovered').classList.toggle('active', view === 'covered');
+    renderCaseTable();
   }
 
   async function loadCoverage() {
@@ -51,47 +74,134 @@
 
   function renderCoverage() {
     if (!state.coverage) return;
-    const hasCases = state.coverage.total_test_cases > 0;
+    const hasCases = Number(state.coverage.total_test_cases || 0) > 0;
     document.getElementById('coverageContent').classList.toggle('d-none', !hasCases);
     document.getElementById('coverageEmpty').classList.toggle('d-none', hasCases);
     if (!hasCases) return;
 
-    const total = state.coverage.total_test_cases || 0;
-    const any = state.coverage.with_any_link || 0;
-    document.getElementById('coverageTotalCases').textContent = formatNumber(total);
-    document.getElementById('coveragePrimaryCount').textContent = formatNumber(state.coverage.with_primary_link || 0);
-    document.getElementById('coverageCoversCount').textContent = formatNumber(state.coverage.with_covers_link || 0);
-    document.getElementById('coverageUncoveredCount').textContent = formatNumber(state.coverage.uncovered_count || 0);
-    document.getElementById('coverageRateText').textContent = total ? `${Math.round((any / total) * 100)}%` : '0%';
-    renderTrend();
-    renderUncoveredCases();
+    renderHero();
+    renderGroups();
+    renderCaseTable();
     renderStaleScripts();
   }
 
-  function renderUncoveredCases() {
-    const rows = document.getElementById('coverageUncoveredRows');
-    const cases = state.coverage.uncovered_sample || [];
-    if (!cases.length) {
-      rows.innerHTML = `
-        <tr>
-          <td colspan="3" class="text-center text-muted py-4" data-i18n="automationHub.coverage.noUncovered">All cases have automation coverage.</td>
-        </tr>`;
-      refreshTexts(rows);
+  // Disjoint slices of all cases: PRIMARY-covered / covered-without-primary /
+  // uncovered. (with_covers_link overlaps with_primary_link, so the legend
+  // shows covered-only-by-COVERS instead.)
+  function heroSlices() {
+    const total = Number(state.coverage?.total_test_cases || 0);
+    const primary = Number(state.coverage?.with_primary_link || 0);
+    const covered = Number(state.coverage?.with_any_link || 0);
+    const coversOnly = Math.max(covered - primary, 0);
+    const uncovered = Math.max(total - covered, 0);
+    return { total, primary, covered, coversOnly, uncovered };
+  }
+
+  function renderHero() {
+    const { total, primary, covered, coversOnly, uncovered } = heroSlices();
+    const pct = (value) => (total ? (value / total) * 100 : 0);
+
+    document.getElementById('coverageRateText').textContent = total ? `${Math.round(pct(covered))}%` : '0%';
+    document.getElementById('coverageCoveredOfTotal').textContent = `${formatNumber(covered)} / ${formatNumber(total)}`;
+    document.getElementById('coverageBarPrimary').style.width = `${pct(primary)}%`;
+    document.getElementById('coverageBarCovers').style.width = `${pct(coversOnly)}%`;
+    document.getElementById('coverageBarUncovered').style.width = `${pct(uncovered)}%`;
+    document.getElementById('coveragePrimaryCount').textContent = formatNumber(primary);
+    document.getElementById('coverageCoversOnlyCount').textContent = formatNumber(coversOnly);
+    document.getElementById('coverageUncoveredCount').textContent = formatNumber(uncovered);
+  }
+
+  function renderGroups() {
+    const container = document.getElementById('coverageGroupList');
+    const groups = state.coverage.by_group || [];
+    if (groups.length <= 1) {
+      // A single group adds no information over the hero bar.
+      container.innerHTML = '';
+      container.classList.add('d-none');
       return;
     }
-    rows.innerHTML = cases.map((caseItem) => `
+    container.classList.remove('d-none');
+    container.innerHTML = groups.map((group) => {
+      const total = Number(group.total || 0);
+      const covered = Number(group.covered || 0);
+      const primary = Number(group.primary || 0);
+      const coversOnly = Math.max(covered - primary, 0);
+      const uncovered = Math.max(total - covered, 0);
+      const pct = (value) => (total ? (value / total) * 100 : 0);
+      const rate = total ? Math.round((covered / total) * 100) : 0;
+      const isActive = state.groupFilter === group.group;
+      return `
+        <button type="button" class="automation-coverage-group ${isActive ? 'active' : ''}" data-group="${escapeAttr(group.group)}" title="${escapeAttr(group.group)}">
+          <span class="automation-coverage-group-name font-monospace text-truncate">${escapeHtml(group.group)}</span>
+          <span class="automation-coverage-bar automation-coverage-bar-sm">
+            <span class="automation-coverage-bar-seg seg-primary" style="width:${pct(primary)}%"></span>
+            <span class="automation-coverage-bar-seg seg-covers" style="width:${pct(coversOnly)}%"></span>
+            <span class="automation-coverage-bar-seg seg-uncovered" style="width:${pct(uncovered)}%"></span>
+          </span>
+          <span class="automation-coverage-group-count text-muted">${formatNumber(covered)}/${formatNumber(total)}</span>
+          <span class="automation-coverage-group-rate ${rate >= 80 ? 'text-success' : (rate >= 50 ? 'text-warning' : 'text-danger')}">${rate}%</span>
+        </button>`;
+    }).join('');
+  }
+
+  function caseGroup(caseNumber) {
+    return String(caseNumber || '').split('.', 1)[0];
+  }
+
+  function renderCaseTable() {
+    const rows = document.getElementById('coverageCaseRows');
+    const linksHeader = document.getElementById('coverageLinksHeader');
+    const isCovered = state.view === 'covered';
+    linksHeader.classList.toggle('d-none', !isCovered);
+
+    // Toggle counts + group-filter badge
+    const uncoveredAll = state.coverage.uncovered_sample || [];
+    const coveredAll = state.coverage.covered_cases || [];
+    document.getElementById('coverageTabUncoveredCount').textContent = formatNumber(state.coverage.uncovered_count || uncoveredAll.length);
+    document.getElementById('coverageTabCoveredCount').textContent = formatNumber(coveredAll.length);
+
+    const badge = document.getElementById('coverageGroupFilterBadge');
+    badge.classList.toggle('d-none', !state.groupFilter);
+    if (state.groupFilter) {
+      document.getElementById('coverageGroupFilterText').textContent = state.groupFilter;
+    }
+
+    const source = isCovered ? coveredAll : uncoveredAll;
+    const items = state.groupFilter
+      ? source.filter((item) => caseGroup(item.test_case_number) === state.groupFilter)
+      : source;
+
+    if (!items.length) {
+      const emptyKey = isCovered ? 'automationHub.coverage.noCovered' : 'automationHub.coverage.noUncovered';
+      const emptyFallback = isCovered ? 'No covered cases yet.' : 'All cases have automation coverage.';
+      rows.innerHTML = `
+        <tr>
+          <td colspan="${isCovered ? 3 : 2}" class="text-center text-muted py-4">${escapeHtml(t(emptyKey, emptyFallback))}</td>
+        </tr>`;
+      return;
+    }
+
+    rows.innerHTML = items.map((item) => `
       <tr>
-        <td class="font-monospace">${escapeHtml(caseItem.test_case_number)}</td>
+        <td class="font-monospace">${escapeHtml(item.test_case_number)}</td>
         <td>
-          <div class="text-truncate automation-coverage-case-title" title="${escapeAttr(caseItem.title)}">${escapeHtml(caseItem.title)}</div>
+          <div class="text-truncate automation-coverage-case-title" title="${escapeAttr(item.title)}">${escapeHtml(item.title)}</div>
         </td>
-        <td class="text-end">
-          <button type="button" class="btn btn-primary btn-sm" data-coverage-link-case="${caseItem.test_case_id}">
-            <i class="fas fa-link me-1"></i><span data-i18n="automationHub.coverage.linkScript">Link script</span>
-          </button>
-        </td>
+        ${isCovered ? `<td>${renderLinkBadges(item.links || [])}</td>` : ''}
       </tr>`).join('');
-    refreshTexts(rows);
+  }
+
+  function renderLinkBadges(links) {
+    if (!links.length) return '<span class="text-muted">—</span>';
+    return `<div class="automation-coverage-links">${links.map((link) => {
+      const typeClass = {
+        PRIMARY: 'link-primary-badge',
+        COVERS: 'link-covers-badge',
+        REFERENCES: 'link-references-badge',
+      }[String(link.link_type || '').toUpperCase()] || 'link-references-badge';
+      const repoPrefix = link.ref_repo ? `${link.ref_repo}: ` : '';
+      return `<span class="automation-coverage-link-badge ${typeClass}" title="${escapeAttr(`[${link.link_type}] ${repoPrefix}${link.ref_path}`)}">${escapeHtml(link.script_name)}</span>`;
+    }).join('')}</div>`;
   }
 
   function renderStaleScripts() {
@@ -109,7 +219,7 @@
     container.innerHTML = scripts.map((script) => {
       const days = script.days_since_last_run === null || script.days_since_last_run === undefined
         ? t('automationHub.coverage.neverRun', 'Never run')
-        : t('automationHub.coverage.daysAgo', `${script.days_since_last_run} days ago`).replace('{count}', script.days_since_last_run);
+        : t('automationHub.coverage.daysAgo', '{count} days ago').replace('{count}', String(script.days_since_last_run));
       return `
         <article class="automation-stale-item">
           <div class="d-flex align-items-start justify-content-between gap-2">
@@ -123,87 +233,6 @@
         </article>`;
     }).join('');
     refreshTexts(container);
-  }
-
-  function renderTrend() {
-    const svg = document.getElementById('coverageTrendSvg');
-    const points = state.coverage.trend || [];
-    const width = 640;
-    const height = 180;
-    const pad = 20;
-    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
-    if (points.length === 0) {
-      svg.innerHTML = `<text x="${width / 2}" y="${height / 2}" text-anchor="middle" class="automation-trend-empty">${escapeHtml(t('automationHub.coverage.noTrend', 'No trend data'))}</text>`;
-      return;
-    }
-
-    const maxRate = Math.max(100, ...points.map((item) => Number(item.coverage_rate || 0)));
-    const coords = points.map((item, index) => {
-      const x = pad + (index * (width - pad * 2)) / Math.max(points.length - 1, 1);
-      const rate = Number(item.coverage_rate || 0);
-      const y = height - pad - (rate / maxRate) * (height - pad * 2);
-      return `${x.toFixed(2)},${y.toFixed(2)}`;
-    });
-    const last = points[points.length - 1];
-    const lastRate = Number(last.coverage_rate || 0).toFixed(0);
-    svg.innerHTML = `
-      <line x1="${pad}" y1="${height - pad}" x2="${width - pad}" y2="${height - pad}" class="automation-trend-axis"></line>
-      <line x1="${pad}" y1="${pad}" x2="${pad}" y2="${height - pad}" class="automation-trend-axis"></line>
-      <polyline points="${coords.join(' ')}" class="automation-trend-line"></polyline>
-      <text x="${width - pad}" y="${pad + 4}" text-anchor="end" class="automation-trend-label">${escapeHtml(lastRate)}%</text>
-    `;
-  }
-
-  async function openLinkModal(caseItem) {
-    state.linkingCase = caseItem;
-    document.getElementById('coverageLinkCaseId').value = caseItem.test_case_id;
-    document.getElementById('coverageLinkCaseTitle').textContent = `${caseItem.test_case_number} ${caseItem.title}`;
-    document.getElementById('coverageLinkType').value = 'COVERS';
-    await ensureScriptsLoaded();
-    renderScriptOptions();
-    state.linkModal.show();
-    refreshTexts();
-  }
-
-  async function ensureScriptsLoaded() {
-    if (state.scripts.length) return;
-    const result = await apiFetch(`/api/teams/${state.teamId}/automation-scripts?limit=200`);
-    state.scripts = result.items || [];
-  }
-
-  function renderScriptOptions() {
-    const select = document.getElementById('coverageScriptSelect');
-    if (!state.scripts.length) {
-      select.innerHTML = `<option value="">${escapeHtml(t('automationHub.coverage.noScripts', 'No scripts available'))}</option>`;
-      return;
-    }
-    select.innerHTML = state.scripts.map((script) => `
-      <option value="${script.id}">${escapeHtml(script.ref_path || script.name)}</option>`).join('');
-  }
-
-  async function saveLink() {
-    const caseId = document.getElementById('coverageLinkCaseId').value;
-    const scriptId = document.getElementById('coverageScriptSelect').value;
-    if (!caseId || !scriptId) {
-      showError(t('automationHub.coverage.linkValidation', 'Select a script first'));
-      return;
-    }
-    try {
-      await apiFetch(`/api/teams/${state.teamId}/automation-scripts/${scriptId}/links`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          test_case_id: Number(caseId),
-          link_type: document.getElementById('coverageLinkType').value,
-          note: 'Linked from Automation Hub coverage tab'
-        })
-      });
-      state.linkModal.hide();
-      showSuccess(t('automationHub.coverage.linkDone', 'Automation script linked'));
-      await loadCoverage();
-    } catch (error) {
-      showError(error.message || t('automationHub.coverage.linkFailed', 'Failed to link automation script'));
-    }
   }
 
   function setLoading(isLoading) {
@@ -258,10 +287,6 @@
 
   function refreshTexts(root) {
     if (window.i18n) window.i18n.retranslate(root || document);
-  }
-
-  function showSuccess(message) {
-    if (window.AppUtils) window.AppUtils.showSuccess(message);
   }
 
   function showError(message) {

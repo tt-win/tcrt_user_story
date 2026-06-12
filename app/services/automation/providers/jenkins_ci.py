@@ -3,7 +3,6 @@ from __future__ import annotations
 import re
 import time
 import urllib.parse
-import uuid
 from pathlib import Path
 from typing import Any, Literal
 from xml.sax.saxutils import escape
@@ -29,11 +28,14 @@ class JenkinsCIConfig(BaseModel):
     default_runner_label: str = "any"
     csrf_protection_enabled: bool = True
     auto_manage_views: bool = False
-    # The UI substitutes `{team_name}` with the current team name on the
-    # provider create form, so a new provider for team "ARD" gets pre-filled
-    # as "TCRT_ARD". Stored value is the concrete name the user chose.
+    # Expanded when a suite job is created / refreshed. CI providers are
+    # org-scoped, so placeholders must stay dynamic until the team context is
+    # known at runtime.
     view_name_template: str = "TCRT_{team_name}"
-    job_name_template: str = "tcrt-suite-{suite_id}-{suite_slug}"
+    # Suite job naming. `{team_slug}` / `{suite_slug}` are slugified at render
+    # time (see `_suite_job_name`). Suite names are unique within a team, so
+    # team + suite slug is collision-free without needing the suite id.
+    job_name_template: str = "tcrt_{team_slug}_{suite_slug}"
 
 
 class JenkinsCICredentials(BaseModel):
@@ -96,7 +98,28 @@ class JenkinsCIProvider:
         data = response.json()
         return {data.get("crumbRequestField", "Jenkins-Crumb"): data.get("crumb", "")}
 
+    def _rebase_url(self, url: str) -> str:
+        """Rewrite an absolute URL's host onto the configured ``base_url``.
+
+        Run records persist absolute build URLs captured at trigger time
+        (``external_run_id`` / ``external_run_url``). If the Jenkins address
+        later changes in the provider config, those stored URLs keep the old
+        host — and httpx honours an absolute URL over the client's
+        ``base_url``, so polling or cancelling an in-flight run would hit the
+        dead host forever. Rebasing realigns them with the current config.
+        Relative paths pass through untouched (httpx resolves them against
+        ``base_url`` already).
+        """
+        parts = urllib.parse.urlsplit(url)
+        if not parts.scheme and not parts.netloc:
+            return url
+        base = urllib.parse.urlsplit(self.config.base_url)
+        return urllib.parse.urlunsplit(
+            (base.scheme, base.netloc, parts.path, parts.query, parts.fragment)
+        )
+
     async def _request(self, method: str, path: str, *, write: bool = False, **kwargs: Any) -> httpx.Response:
+        path = self._rebase_url(path)
         headers = kwargs.pop("headers", {}) or {}
         async with await self._client() as client:
             if write:
@@ -181,8 +204,10 @@ class JenkinsCIProvider:
         job_name = workflow_id or self.config.default_job_name
         if not job_name:
             raise ValueError("Jenkins workflow_id or default_job_name is required")
-        tcrt_run_id = inputs.get("tcrt_run_id") or str(uuid.uuid4())
-        params = {**inputs, "tcrt_run_id": tcrt_run_id}
+        # TCRT correlates runs by the Jenkins queue/build id (external_run_id)
+        # and pulls results via the API — the job doesn't push back, so no
+        # correlation id needs to be injected as a build parameter.
+        params = {k: v for k, v in inputs.items() if k != "tcrt_run_id"}
         runner_label = inputs.get("runner_label") or self.config.default_runner_label
         # Jenkins has NO node called "any" — the conventional way to say
         # "any agent" is an empty label expression. Translate the UI sentinel
@@ -216,7 +241,7 @@ class JenkinsCIProvider:
         return ExternalRunRef(
             external_run_id=f"queue:{queue_id}" if queue_id else None,
             external_run_url=response.headers.get("Location"),
-            raw={"tcrt_run_id": tcrt_run_id, "job_name": job_name, "runner_label": runner_label},
+            raw={"job_name": job_name, "runner_label": runner_label},
         )
 
     async def get_run_status(self, external_run_id: str) -> RunStatusSnapshot:
@@ -256,6 +281,7 @@ class JenkinsCIProvider:
         return await self._get_build_status(build_url, build_id)
 
     async def _get_build_status(self, build_url: str, build_id: str) -> RunStatusSnapshot:
+        build_url = self._rebase_url(build_url)
         response = await self._request("GET", f"{build_url.rstrip('/')}/api/json")
         data = response.json()
         duration_ms = data.get("duration") or data.get("estimatedDuration")
@@ -357,7 +383,7 @@ class JenkinsCIProvider:
         team_name: str | None = None,
         tcrt_webhook_url: str | None = None,
     ) -> str:
-        job_name = self._suite_job_name(suite_id, suite_name)
+        job_name = self._suite_job_name(suite_id, suite_name, team_name, team_id=team_id)
         config_xml = self._render_suite_job(
             suite_id,
             suite_name,
@@ -377,7 +403,7 @@ class JenkinsCIProvider:
             headers={"Content-Type": "application/xml"},
         )
         if self.config.auto_manage_views:
-            await self._ensure_view_contains_job(job_name)
+            await self._ensure_view_contains_job(job_name, team_id=team_id, team_name=team_name)
         return job_name
 
     async def update_suite_job(
@@ -390,8 +416,16 @@ class JenkinsCIProvider:
         team_id: int | None = None,
         team_name: str | None = None,
         tcrt_webhook_url: str | None = None,
+        existing_job_name: str | None = None,
     ) -> str:
-        job_name = self._suite_job_name(suite_id, suite_name)
+        job_name = self._suite_job_name(suite_id, suite_name, team_name, team_id=team_id)
+        # A suite rename changes the derived job name, but the actual Jenkins
+        # job still carries its old name. Rename it on Jenkins first so the job
+        # name stays in sync with the suite name (and the old job isn't
+        # orphaned). Skip if the old job is already gone (deleted out-of-band) —
+        # the existence probe below then drives the caller's create recovery.
+        if existing_job_name and existing_job_name != job_name and await self._job_exists(existing_job_name):
+            await self._rename_job(existing_job_name, job_name)
         # Probe before POST: Jenkins's `/job/{name}/config.xml` endpoint
         # returns 500 (Stapler dispatch error) rather than 404 when the job
         # doesn't exist on some versions, which would otherwise cause the
@@ -419,8 +453,18 @@ class JenkinsCIProvider:
             headers={"Content-Type": "application/xml"},
         )
         if self.config.auto_manage_views:
-            await self._ensure_view_contains_job(job_name)
+            await self._ensure_view_contains_job(job_name, team_id=team_id, team_name=team_name)
         return job_name
+
+    async def _rename_job(self, old_name: str, new_name: str) -> None:
+        # Jenkins job rename: POST /job/{old}/doRename?newName=... (CSRF-protected,
+        # returns a 302 redirect to the new job URL on success).
+        await self._request(
+            "POST",
+            f"/job/{_quote_job(old_name)}/doRename",
+            write=True,
+            params={"newName": new_name},
+        )
 
     async def delete_suite_job(self, suite_id: str, job_name: str) -> None:
         try:
@@ -431,7 +475,13 @@ class JenkinsCIProvider:
 
     async def list_suite_jobs(self) -> list[WorkflowRef]:
         workflows = await self.list_workflows()
-        return [workflow for workflow in workflows if workflow.name.startswith("tcrt-suite-")]
+        # `tcrt_` is the current scheme; `tcrt-suite-` matches legacy jobs that
+        # haven't been migrated by a suite edit yet.
+        return [
+            workflow
+            for workflow in workflows
+            if workflow.name.startswith(("tcrt_", "tcrt-suite-"))
+        ]
 
     async def health_check(self) -> HealthStatus:
         if self.config.auth_method == "trigger_token":
@@ -509,10 +559,17 @@ class JenkinsCIProvider:
             details=details,
         )
 
-    async def _ensure_view_contains_job(self, job_name: str) -> None:
-        view_name = self.config.view_name_template
+    async def _ensure_view_contains_job(
+        self,
+        job_name: str,
+        *,
+        team_id: int | None = None,
+        team_name: str | None = None,
+    ) -> None:
+        view_name = self._view_name(team_id=team_id, team_name=team_name)
+        quoted_view_name = urllib.parse.quote(view_name, safe="")
         try:
-            await self._request("GET", f"/view/{urllib.parse.quote(view_name)}/api/json")
+            await self._request("GET", f"/view/{quoted_view_name}/api/json")
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code != 404:
                 raise
@@ -526,7 +583,7 @@ class JenkinsCIProvider:
             )
         await self._request(
             "POST",
-            f"/view/{urllib.parse.quote(view_name)}/addJobToView",
+            f"/view/{quoted_view_name}/addJobToView",
             write=True,
             params={"name": job_name},
         )
@@ -598,9 +655,34 @@ class JenkinsCIProvider:
   </columns>
 </hudson.model.ListView>"""
 
-    def _suite_job_name(self, suite_id: str, suite_name: str) -> str:
+    def _suite_job_name(
+        self,
+        suite_id: str,
+        suite_name: str,
+        team_name: str | None = None,
+        *,
+        team_id: int | None = None,
+    ) -> str:
+        team_slug = _slugify(team_name) or "team"
         suite_slug = _slugify(suite_name) or "suite"
-        return self.config.job_name_template.format(suite_id=suite_id, suite_slug=suite_slug)
+        # All keys are supplied so legacy templates that still reference
+        # `{suite_id}` keep working alongside the default team+suite scheme.
+        return self.config.job_name_template.format(
+            suite_id=suite_id,
+            suite_name=suite_name,
+            team_name=(team_name or "").strip() or "team",
+            team_id=team_id if team_id is not None else "",
+            suite_slug=suite_slug,
+            team_slug=team_slug,
+        )
+
+    def _view_name(self, *, team_id: int | None = None, team_name: str | None = None) -> str:
+        resolved_team_name = (team_name or "").strip() or "team"
+        return self.config.view_name_template.format(
+            team_id=team_id if team_id is not None else "",
+            team_name=resolved_team_name,
+            team_slug=_slugify(resolved_team_name) or "team",
+        )
 
 
 def _slugify(value: str) -> str:

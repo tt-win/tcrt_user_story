@@ -94,7 +94,9 @@ Every mutation writes to the audit log via `AuditService`:
 - `AUTOMATION_PROVIDER` — CRUD + test-connection
 - `AUTOMATION_SCRIPT` — auto-discovery, metadata update, cache delete
 - `AUTOMATION_SCRIPT_LINK` — create / update / delete link
-- `AUTOMATION_SCRIPT_GROUP` — suite CRUD + run trigger
+- `AUTOMATION_SCRIPT_GROUP` — suite CRUD (run trigger now lives in
+  Test Run Set; see
+  [move-automation-execution-to-test-run-set](../openspec/changes/move-automation-execution-to-test-run-set/))
 - `AUTOMATION_RUN` — trigger / cancel / reconcile / webhook ingest
 - `AUTOMATION_WEBHOOK` — CRUD + regenerate-secret + test ping
 

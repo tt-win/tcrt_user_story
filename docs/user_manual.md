@@ -110,6 +110,11 @@
 ### Test Run Sets
 - 可將多個相關的 Test Run 群組為一個 **Test Run Set** (例如：依據不同平台 iOS/Android 分組)。
 - 方便統一查看整體進度。
+- 從 2026-02 起，Test Run Set 也是**觸發 Automation Suite** 的唯一入口：
+  在 Set 詳情頁的「Automation Suites」段落加入 suite，點 *Run as Automation* 即依序觸發每個 suite 內所有 scripts（透過 CIProvider）。Automation Hub 本身的 *Run Now / Run Suite* 按鈕已退役。詳細合約見 `openspec/changes/move-automation-execution-to-test-run-set/`。
+- 從 2026-06 起，Test Run Set 詳情頁也承接 **Automation Run history**：
+  Set 觸發的每個 run（含 status、Cancel、Reconcile、Report iframe）都從這裡看。
+  Automation Hub 原本的 Runs tab 已退役。詳細合約見 `openspec/changes/move-run-history-to-test-run-set/`。
 
 ---
 

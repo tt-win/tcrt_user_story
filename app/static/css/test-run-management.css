@@ -659,46 +659,205 @@
     line-height: 1.4;
 }
 
-/* 確保 modal-header 中的 title 不會被拉長 */
+/* 確保 modal-header 中的 title 不會被拉長，並保留 header 動作區空間 */
 #testRunSetDetailModal .modal-header h5.modal-title {
-    flex: 1;
-    max-width: calc(100% - 2rem);
+    flex: 1 1 auto;
+    min-width: 0;
     word-break: break-word;
 }
 
-/* Test Run Set 信息區域 */
+/* Test Run Set detail compact layout */
+#testRunSetDetailModal .test-run-set-detail-body {
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+}
+
 #testRunSetDetailInfoSection {
-    padding-bottom: 1rem;
+    padding-bottom: 0;
+}
+
+#testRunSetDetailDescription {
+    font-size: 0.875rem;
+    line-height: 1.35;
 }
 
 #testRunSetDetailInfoSection .row {
-    margin-top: 0.75rem;
+    margin-top: 0.25rem;
 }
 
-#testRunSetDetailActions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.75rem;
-}
-
-#testRunSetDetailActions .btn {
+.test-run-set-section-actions .btn,
+.testRunDetailRunActions .btn {
+    flex: 0 0 auto;
+    padding: 0.2rem 0.45rem;
+    font-size: 0.78rem;
+    line-height: 1.25;
     white-space: nowrap;
 }
 
-
+.test-run-set-section-actions,
 .testRunDetailRunActions {
     display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
+    flex-wrap: nowrap;
+    gap: 0.35rem;
+    align-items: center;
 }
 
-.testRunDetailRunActions .btn {
+.test-run-set-section-actions {
+    overflow-x: auto;
+    scrollbar-width: thin;
+}
+
+/* Modal header 動作區（報告 + ⋯ 選單） */
+.test-run-set-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-shrink: 0;
+    margin-left: auto;
+    margin-right: 0.25rem;
+}
+
+/* 「⋯」按鈕：平常無框低調，hover / 展開時浮現 */
+.btn.test-run-kebab-btn {
+    width: 1.9rem;
+    height: 1.9rem;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--tr-text-secondary, #6c757d);
+    border: 1px solid transparent;
+    background: transparent;
+}
+
+.btn.test-run-kebab-btn:hover,
+.btn.test-run-kebab-btn:focus-visible,
+.btn.test-run-kebab-btn[aria-expanded="true"] {
+    background: var(--tr-bg-light, #f8f9fa);
+    border-color: var(--tr-border-light, #dee2e6);
+    color: var(--tr-text-primary, #212529);
+}
+
+/* 列上的「⋯」選單：項目多時可捲動（含搬移目標清單） */
+.test-run-row-menu {
+    max-height: min(70vh, 32rem);
+    overflow-y: auto;
+}
+
+.test-run-set-detail-section {
+    margin-bottom: 0.65rem;
+    padding-top: 0.55rem;
+    border-top: 1px solid var(--tr-border-light);
+}
+
+.test-run-set-section-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.45rem;
+}
+
+.test-run-set-section-title {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    min-width: 0;
+}
+
+.test-run-set-section-title h6 {
+    font-size: 0.9rem;
+    line-height: 1.2;
+}
+
+.test-run-set-section-title .badge {
+    font-size: 0.68rem;
+}
+
+.test-run-set-section-actions {
+    justify-content: flex-end;
+    min-width: 0;
+}
+
+.test-run-set-detail-card {
+    margin-bottom: 0.45rem;
+    border-radius: 6px;
+}
+
+.test-run-set-detail-card .card-body {
+    padding: 0.5rem 0.65rem;
+}
+
+.test-run-detail-item-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.65rem;
+    min-width: 0;
+}
+
+.test-run-detail-item-content {
+    flex: 1 1 auto;
+    min-width: 10rem;
+}
+
+.test-run-detail-item-title {
+    margin: 0 0 0.2rem;
+    overflow: hidden;
+    text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 0.8rem;
+    font-size: 0.9rem;
+    line-height: 1.25;
+}
+
+.test-run-detail-item-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem 0.5rem;
+    font-size: 0.78rem;
+    line-height: 1.2;
+}
+
+.testRunDetailRunActions {
+    flex: 0 1 auto;
+    justify-content: flex-end;
+    margin-left: auto;
+    min-width: 0;
 }
 
 .testRunDetailRunActions .dropdown {
-    display: flex;
+    display: inline-flex;
+    flex: 0 0 auto;
+}
+
+#setDetailAutomationRunsSection .table {
+    font-size: 0.8rem;
+}
+
+#setDetailAutomationRunsSection .table > :not(caption) > * > * {
+    padding: 0.35rem 0.45rem;
+}
+
+@media (max-width: 768px) {
+    .test-run-set-section-heading,
+    .test-run-detail-item-row {
+        align-items: stretch;
+        flex-direction: column;
+        gap: 0.4rem;
+    }
+
+    .test-run-set-section-actions,
+    .testRunDetailRunActions {
+        justify-content: flex-start;
+        margin-left: 0;
+        overflow-x: auto;
+        scrollbar-width: thin;
+    }
+
+    .test-run-detail-item-content {
+        min-width: 0;
+    }
 }
 
 /* Test Case 選擇介面 (對齊 setCaseSelectModal 風格) */

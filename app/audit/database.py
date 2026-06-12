@@ -248,7 +248,7 @@ class AuditLogTable(AuditBase):
     action_type = Column(SQLEnum(ActionType), nullable=False, index=True)
     resource_type = Column(SQLEnum(ResourceType), nullable=False, index=True)
     resource_id = Column(String(100), nullable=False, index=True)
-    team_id = Column(Integer, nullable=False, index=True)
+    team_id = Column(Integer, nullable=True, index=True)
 
     # 詳細資訊
     details = Column(Text, nullable=True)  # JSON 字串格式

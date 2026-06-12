@@ -31,6 +31,7 @@ from app.services.automation.scan_filters import (
     DEFAULT_SCAN_PATH,
     matches_scan_filters,
 )
+from app.services.automation.linkage_service import AutomationLinkageService
 from app.services.automation.smart_scan_service import (
     MarkerHit,
     TestEntry,
@@ -41,42 +42,18 @@ from app.services.automation.smart_scan_service import (
 logger = logging.getLogger(__name__)
 
 
-# Sentinel value stored in AutomationScriptCaseLink.created_by to mark records
-# derived from in-code `@pytest.mark.tcrt` / `// tcrt:` markers.
-MARKER_SYNC_CREATED_BY = "marker-sync"
-AI_SUGGEST_PREFIX = "ai-suggest:"
-
-
-def is_marker_sync_link(created_by: str | None) -> bool:
-    return created_by == MARKER_SYNC_CREATED_BY
-
-
-def is_ai_suggest_link(created_by: str | None) -> bool:
-    return bool(created_by) and created_by.startswith(AI_SUGGEST_PREFIX)
-
-
-def parse_ai_suggest_user_id(created_by: str | None) -> str | None:
-    """Extract user id from `ai-suggest:<id>`; returns None if not the prefix."""
-    if not created_by or not created_by.startswith(AI_SUGGEST_PREFIX):
-        return None
-    return created_by[len(AI_SUGGEST_PREFIX):] or None
-
-
-def build_marker_note(*, test_name: str, line: int, marker_raw: str) -> str:
-    """Serialize the JSON payload stored in AutomationScriptCaseLink.note."""
-    payload = {"test_name": test_name, "line": line, "marker_raw": marker_raw}
-    return json.dumps(payload, ensure_ascii=False)
-
-
-def parse_marker_note(note: str | None) -> dict[str, Any] | None:
-    """Inverse of build_marker_note. Returns None on parse failure."""
-    if not note:
-        return None
-    try:
-        payload = json.loads(note)
-    except json.JSONDecodeError:
-        return None
-    return payload if isinstance(payload, dict) else None
+# Re-exports for backward compatibility — the canonical home of these utilities
+# is `app.services.automation.marker_sync`. Tests and external callers may
+# still import the names below; do not remove without an OpenSpec migration.
+from app.services.automation.marker_sync import (  # noqa: F401
+    AI_SUGGEST_PREFIX,
+    MARKER_SYNC_CREATED_BY,
+    build_marker_note,
+    is_ai_suggest_link,
+    is_marker_sync_link,
+    parse_ai_suggest_user_id,
+    parse_marker_note,
+)
 
 
 DEFAULT_MANIFEST_PATH = "tcrt-automation.yml"
@@ -252,15 +229,83 @@ class AutomationScriptService:
                 decrypt_credentials(credentials_encrypted),
             )
 
-        resolved_branch = branch or _default_branch(provider_config)
-        repo_contract = await self.resolve_repo_contract(provider, provider_config, resolved_branch)
-        refs = await provider.list_scripts(repo_contract.effective_tests_path, ref=resolved_branch, recursive=True)
+        # One provider config may hold several repos sharing the same credential.
+        # Fan out the scan over each. Non-GitHub / injected providers (no
+        # iter_repo_providers) scan once under the "" sentinel repo.
+        if hasattr(provider, "iter_repo_providers"):
+            targets = [(sub.active_repo_slug, sub) for sub in provider.iter_repo_providers()]
+        else:
+            targets = [("", provider)]
+
+        total_added = total_updated = total_removed = total_refs = 0
+        primary_contract: RepoContract | None = None
+        primary_branch = branch or _default_branch(provider_config)
+        primary_path = ""
+
+        for repo_slug, sub_provider in targets:
+            resolved_branch = (
+                branch
+                or getattr(sub_provider, "default_ref", None)
+                or _default_branch(provider_config)
+            )
+            added, updated, removed, total, repo_contract = await self._sync_one_repo(
+                team_id=team_id,
+                provider_record_id=provider_record.id,
+                sub_provider=sub_provider,
+                repo_slug=repo_slug,
+                provider_config=provider_config,
+                resolved_branch=resolved_branch,
+                actor=actor,
+                fetch_content=fetch_content,
+            )
+            total_added += added
+            total_updated += updated
+            total_removed += removed
+            total_refs += total
+            if primary_contract is None:
+                primary_contract = repo_contract
+                primary_branch = resolved_branch
+                primary_path = repo_contract.effective_tests_path
+
+        await self.session.flush()
+
+        if reconcile_markers:
+            await self.sync_markers_for_team(team_id=team_id, actor=actor)
+
+        return ScriptSyncSummary(
+            provider_id=provider_record.id,
+            branch=primary_branch,
+            scanned_path=primary_path,
+            added=total_added,
+            updated=total_updated,
+            removed=total_removed,
+            total=total_refs,
+            repo_contract=primary_contract,
+        )
+
+    async def _sync_one_repo(
+        self,
+        *,
+        team_id: int,
+        provider_record_id: int,
+        sub_provider: StorageProvider,
+        repo_slug: str,
+        provider_config: dict[str, Any],
+        resolved_branch: str,
+        actor: str | None,
+        fetch_content: bool,
+    ) -> tuple[int, int, int, int, RepoContract]:
+        repo_contract = await self.resolve_repo_contract(sub_provider, provider_config, resolved_branch)
+        refs = await sub_provider.list_scripts(
+            repo_contract.effective_tests_path, ref=resolved_branch, recursive=True
+        )
         refs = [ref for ref in refs if _matches_scan_filters(ref.path, repo_contract)]
 
         existing_result = await self.session.execute(
             select(AutomationScript).where(
                 AutomationScript.team_id == team_id,
-                AutomationScript.provider_id == provider_record.id,
+                AutomationScript.provider_id == provider_record_id,
+                AutomationScript.ref_repo == repo_slug,
                 AutomationScript.ref_branch == resolved_branch,
             )
         )
@@ -275,16 +320,17 @@ class AutomationScriptService:
             script = existing_by_path.get(ref.path)
             if script is None:
                 content = (
-                    await self._safe_fetch_content(provider, ref.path, resolved_branch)
+                    await self._safe_fetch_content(sub_provider, ref.path, resolved_branch)
                     if fetch_content
                     else None
                 )
                 self.session.add(
                     AutomationScript(
                         team_id=team_id,
-                        provider_id=provider_record.id,
+                        provider_id=provider_record_id,
                         name=ref.name or ref.path.rsplit("/", 1)[-1],
                         script_format=_normalize_script_format(ref.script_format),
+                        ref_repo=repo_slug,
                         ref_path=ref.path,
                         ref_branch=resolved_branch,
                         cached_content=content,
@@ -310,7 +356,7 @@ class AutomationScriptService:
                 script.cached_content is None
                 or (ref.etag and script.cached_content_etag != ref.etag)
             ):
-                content = await self._safe_fetch_content(provider, ref.path, resolved_branch)
+                content = await self._safe_fetch_content(sub_provider, ref.path, resolved_branch)
                 if content is not None and content != script.cached_content:
                     script.cached_content = content
                     changed = True
@@ -329,21 +375,7 @@ class AutomationScriptService:
             await self.session.execute(delete(AutomationScript).where(AutomationScript.id.in_(stale_ids)))
             removed = len(stale_ids)
 
-        await self.session.flush()
-
-        if reconcile_markers:
-            await self.sync_markers_for_team(team_id=team_id, actor=actor)
-
-        return ScriptSyncSummary(
-            provider_id=provider_record.id,
-            branch=resolved_branch,
-            scanned_path=repo_contract.effective_tests_path,
-            added=added,
-            updated=updated,
-            removed=removed,
-            total=len(refs),
-            repo_contract=repo_contract,
-        )
+        return added, updated, removed, len(refs), repo_contract
 
     async def _safe_fetch_content(
         self, provider: StorageProvider, path: str, branch: str | None
@@ -385,6 +417,10 @@ class AutomationScriptService:
             )
         else:
             provider = storage_provider
+
+        # Bind to the script's own repo when the provider holds several.
+        if hasattr(provider, "for_repo"):
+            provider = provider.for_repo(script.ref_repo)
 
         content = await provider.read_script(script.ref_path, ref=script.ref_branch, etag=script.cached_content_etag)
         now = _utcnow()
@@ -518,18 +554,32 @@ class AutomationScriptService:
         )
         scripts = list(scripts_result.scalars().all())
 
-        # Build test_case_number → id index, scoped to this team.
+        # Build test_case_number → id index, scoped to this team. Markers can't
+        # carry dots (the tc_id grammar is [A-Za-z0-9_-]+), so a dotted number
+        # like "TCG-100558.020.010" is written in markers with dots replaced by
+        # dashes ("TCG-100558-020-010"). Register a dash-normalized alias for
+        # each number so those markers resolve. The canonical dotted key is
+        # inserted first, keeping the reverse lookup below dot-canonical.
         case_result = await self.session.execute(
             select(TestCaseLocal.id, TestCaseLocal.test_case_number).where(
                 TestCaseLocal.team_id == team_id
             )
         )
-        case_by_number: dict[str, int] = {
-            number: case_id for case_id, number in case_result.all()
-        }
+        case_by_number: dict[str, int] = {}
+        for case_id, number in case_result.all():
+            if not number:
+                continue
+            case_by_number[number] = case_id
+            dashed = number.replace(".", "-")
+            if dashed != number:
+                case_by_number.setdefault(dashed, case_id)
 
         summary = MarkerSyncSummary(team_id=team_id)
         touched_script_ids: set[int] = set()
+        # Per-row writes go through the linkage service; this orchestrator only
+        # parses, decides, audits, and counts.
+        linkage = AutomationLinkageService(self.session)
+
         for script in scripts:
             warnings: list[dict[str, Any]] = []
             if not script.cached_content:
@@ -561,17 +611,6 @@ class AutomationScriptService:
                             "source_line": marker.source_line,
                         }
 
-            # Load existing links for this script once.
-            existing_result = await self.session.execute(
-                select(AutomationScriptCaseLink).where(
-                    AutomationScriptCaseLink.automation_script_id == script.id
-                )
-            )
-            existing_links = list(existing_result.scalars().all())
-            existing_by_case_id: dict[int, AutomationScriptCaseLink] = {
-                link.test_case_id: link for link in existing_links
-            }
-
             seen_case_ids: set[int] = set()
             for tc_id, plan in desired.items():
                 case_id = case_by_number.get(tc_id)
@@ -587,24 +626,20 @@ class AutomationScriptService:
                     continue
                 seen_case_ids.add(case_id)
                 desired_link_type = _link_type_from_string(plan["link_type"])
-                note = build_marker_note(
-                    test_name=plan["test_name"],
-                    line=plan["line"],
-                    marker_raw=plan["marker_raw"],
+                marker_meta = {
+                    "test_name": plan["test_name"],
+                    "line": plan["line"],
+                    "marker_raw": plan["marker_raw"],
+                }
+                existing, action = await linkage.upsert_marker_link(
+                    team_id=team_id,
+                    script=script,
+                    test_case_id=case_id,
+                    link_type=desired_link_type,
+                    marker_meta=marker_meta,
                 )
-
-                existing = existing_by_case_id.get(case_id)
-                if existing is None:
-                    new_link = AutomationScriptCaseLink(
-                        team_id=team_id,
-                        automation_script_id=script.id,
-                        test_case_id=case_id,
-                        link_type=desired_link_type,
-                        note=note,
-                        created_by=MARKER_SYNC_CREATED_BY,
-                        created_at=_utcnow(),
-                    )
-                    self.session.add(new_link)
+                note = existing.note
+                if action == "created":
                     summary.links_created += 1
                     touched_script_ids.add(script.id)
                     await self._audit_marker_link(
@@ -618,33 +653,23 @@ class AutomationScriptService:
                         actor=actor,
                         note=note,
                     )
-                    continue
-
-                if is_marker_sync_link(existing.created_by):
-                    # Same source — refresh link_type / note if drifted.
-                    changed = False
-                    if existing.link_type != desired_link_type:
-                        existing.link_type = desired_link_type
-                        changed = True
-                    if existing.note != note:
-                        existing.note = note
-                        changed = True
-                    if changed:
-                        summary.links_updated += 1
-                        touched_script_ids.add(script.id)
-                        await self._audit_marker_link(
-                            action=ActionType.UPDATE,
-                            team_id=team_id,
-                            script=script,
-                            test_case_id=case_id,
-                            test_case_number=tc_id,
-                            link_type=desired_link_type,
-                            reason="marker_updated",
-                            actor=actor,
-                            note=note,
-                        )
-                else:
-                    # Human or AI-confirmed link — never overwrite.
+                elif action == "updated":
+                    summary.links_updated += 1
+                    touched_script_ids.add(script.id)
+                    await self._audit_marker_link(
+                        action=ActionType.UPDATE,
+                        team_id=team_id,
+                        script=script,
+                        test_case_id=case_id,
+                        test_case_number=tc_id,
+                        link_type=desired_link_type,
+                        reason="marker_updated",
+                        actor=actor,
+                        note=note,
+                    )
+                elif action == "skipped_conflict":
+                    # Manual / AI-confirmed link blocks the marker upsert; the link's
+                    # `link_type` differs from the marker's, so we surface a warning.
                     if existing.link_type != desired_link_type:
                         warnings.append(
                             {
@@ -664,36 +689,48 @@ class AutomationScriptService:
                         )
 
             # Cleanup pass: drop marker-sync links not present in `desired`.
-            for link in existing_links:
-                if not is_marker_sync_link(link.created_by):
+            for case_id in await linkage.list_marker_link_case_ids(script_id=script.id):
+                if case_id in seen_case_ids:
                     continue
-                if link.test_case_id in seen_case_ids:
+                # Look up the existing note (for audit) before delete clears it.
+                resolved_number = next(
+                    (n for n, cid in case_by_number.items() if cid == case_id), None
+                )
+                # Fetch the link row for audit context (link_type + note).
+                existing_link = await linkage._find_link(
+                    script_id=script.id, test_case_id=case_id
+                )
+                if existing_link is None:
+                    continue
+                link_type_for_audit = existing_link.link_type
+                note_for_audit = existing_link.note
+                deleted = await linkage.delete_marker_link(
+                    team_id=team_id,
+                    script_id=script.id,
+                    test_case_id=case_id,
+                )
+                if not deleted:
                     continue
                 summary.links_removed += 1
                 touched_script_ids.add(script.id)
-                resolved_number = next(
-                    (n for n, cid in case_by_number.items() if cid == link.test_case_id),
-                    None,
-                )
                 await self._audit_marker_link(
                     action=ActionType.DELETE,
                     team_id=team_id,
                     script=script,
-                    test_case_id=link.test_case_id,
+                    test_case_id=case_id,
                     test_case_number=resolved_number,
-                    link_type=link.link_type,
+                    link_type=link_type_for_audit,
                     reason="marker_removed",
                     actor=actor,
-                    note=link.note,
+                    note=note_for_audit,
                 )
-                await self.session.delete(link)
 
             summary.per_script_warnings[script.id] = warnings
 
         await self.session.flush()
         # Refresh linked_test_case_count for any touched script.
         for script_id in touched_script_ids:
-            await self._refresh_script_link_count(script_id)
+            await linkage.refresh_script_link_count(script_id)
         await self.session.flush()
         return summary
 
@@ -733,25 +770,6 @@ class AutomationScriptService:
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("Failed to write marker-sync audit log: %s", exc, exc_info=True)
-
-    async def _refresh_script_link_count(self, script_id: int) -> None:
-        count_result = await self.session.execute(
-            select(func.count(AutomationScriptCaseLink.id)).where(
-                AutomationScriptCaseLink.automation_script_id == script_id
-            )
-        )
-        count = int(count_result.scalar_one())
-        await self.session.execute(
-            select(AutomationScript).where(AutomationScript.id == script_id)
-        )
-        # Use a direct UPDATE to avoid loading the full row twice.
-        from sqlalchemy import update as sa_update
-
-        await self.session.execute(
-            sa_update(AutomationScript)
-            .where(AutomationScript.id == script_id)
-            .values(linked_test_case_count=count)
-        )
 
     async def _get_storage_provider_record(
         self,
@@ -816,6 +834,7 @@ def script_to_dict(script: AutomationScript) -> dict[str, Any]:
         "name": script.name,
         "description": script.description,
         "script_format": script.script_format,
+        "ref_repo": script.ref_repo,
         "ref_path": script.ref_path,
         "ref_branch": script.ref_branch,
         "tags": _load_tags(script.tags_json),

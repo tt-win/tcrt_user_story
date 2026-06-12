@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from datetime import datetime
 from enum import Enum
 from typing import List, Optional
@@ -27,6 +28,14 @@ class TestRunSetBase(BaseModel):
     related_tp_tickets: Optional[List[str]] = Field(
         default=None,
         description="相關 JIRA Tickets 票號",
+    )
+    automation_suite_ids: List[int] = Field(
+        default_factory=list,
+        description=(
+            "Automation Suites（automation_script_groups.id）"
+            "this Test Run Set can trigger via Run-as-Automation. "
+            "See move-automation-execution-to-test-run-set."
+        ),
     )
 
     @validator("name")
@@ -63,6 +72,46 @@ class TestRunSetBase(BaseModel):
             normalized.append(ticket)
         return normalized
 
+    @validator("automation_suite_ids")
+    def validate_automation_suite_ids(cls, value: List[int]) -> List[int]:
+        if not isinstance(value, list):
+            raise ValueError("automation_suite_ids must be a list")
+        # dedupe (preserve order), drop non-positive
+        seen: set[int] = set()
+        normalized: List[int] = []
+        for sid in value:
+            if not isinstance(sid, int):
+                raise ValueError(
+                    f"automation_suite_ids entries must be int, got: {type(sid).__name__}"
+                )
+            if sid <= 0:
+                raise ValueError(f"automation_suite_ids must be positive, got: {sid}")
+            if sid in seen:
+                continue
+            seen.add(sid)
+            normalized.append(sid)
+        return normalized
+
+
+def _serialize_suite_ids(suite_ids: Optional[List[int]]) -> Optional[str]:
+    """Convert a list of automation suite ids to its JSON-persisted form."""
+    if suite_ids is None:
+        return None
+    return json.dumps(list(suite_ids), ensure_ascii=False)
+
+
+def _deserialize_suite_ids(raw: Optional[str]) -> List[int]:
+    """Inverse of ``_serialize_suite_ids``; defensively returns [] on garbage."""
+    if not raw:
+        return []
+    try:
+        parsed = json.loads(raw)
+    except (TypeError, ValueError):
+        return []
+    if not isinstance(parsed, list):
+        return []
+    return [int(x) for x in parsed if isinstance(x, int) and x > 0]
+
 
 class TestRunSetCreate(TestRunSetBase):
     """建立 Test Run Set 的資料模型"""
@@ -81,7 +130,7 @@ class TestRunSetCreate(TestRunSetBase):
 
 
 class TestRunSetUpdate(BaseModel):
-    """更新 Test Run Set 資料模型"""
+    """更新 Test Run Set 的資料模型"""
 
     name: Optional[str] = Field(None, max_length=120, description="Test Run Set 名稱")
     description: Optional[str] = Field(None, description="Test Run Set 描述")
@@ -89,6 +138,10 @@ class TestRunSetUpdate(BaseModel):
     related_tp_tickets: Optional[List[str]] = Field(
         default=None,
         description="相關 JIRA Tickets 票號",
+    )
+    automation_suite_ids: Optional[List[int]] = Field(
+        default=None,
+        description="Automation Suites（automation_script_groups.id）to associate",
     )
 
     @validator("name")
@@ -103,6 +156,12 @@ class TestRunSetUpdate(BaseModel):
     def validate_related_tp_tickets(cls, value: Optional[List[str]]) -> Optional[List[str]]:
         return TestRunSetBase.validate_related_tp_tickets(value)  # type: ignore[arg-type]
 
+    @validator("automation_suite_ids")
+    def validate_automation_suite_ids(cls, value: Optional[List[int]]) -> Optional[List[int]]:
+        if value is None:
+            return value
+        return TestRunSetBase.validate_automation_suite_ids(value)
+
 
 class TestRunSet(BaseModel):
     """Test Run Set 完整資料模型"""
@@ -114,6 +173,10 @@ class TestRunSet(BaseModel):
     status: TestRunSetStatus = Field(TestRunSetStatus.ACTIVE, description="Test Run Set 狀態")
     archived_at: Optional[datetime] = Field(None, description="歸檔時間")
     related_tp_tickets: Optional[List[str]] = Field(default=None, description="相關 JIRA Tickets 票號")
+    automation_suite_ids: List[int] = Field(
+        default_factory=list,
+        description="Automation Suites associated with this set",
+    )
     created_at: datetime = Field(..., description="建立時間")
     updated_at: datetime = Field(..., description="更新時間")
 
@@ -130,10 +193,37 @@ class TestRunSetSummary(BaseModel):
     updated_at: datetime = Field(..., description="更新時間")
 
 
+class AutomationSuiteSummary(BaseModel):
+    """Automation Suite 摘要資訊，用於 Test Run Set detail 顯示。"""
+
+    id: int = Field(..., description="Automation Suite ID")
+    name: str = Field(..., description="Automation Suite 名稱")
+    script_count: int = Field(0, description="Suite 內 script 數量")
+    ci_job_name: Optional[str] = Field(None, description="CI job 名稱")
+    ref_branch: Optional[str] = Field(None, description="Suite 主要 branch")
+
+
+class TestRunSetAutomationCoveredCases(BaseModel):
+    """Manual test cases already covered (PRIMARY/COVERS links) by the
+    automation suites attached to a Test Run Set. Drives the case-selection
+    filter / badge when composing a manual Test Run inside the set."""
+
+    test_case_ids: List[int] = Field(default_factory=list)
+    test_case_numbers: List[str] = Field(default_factory=list)
+
+
 class TestRunSetDetail(TestRunSet):
     """Test Run Set 詳細資訊，包含底下 Test Runs"""
 
     test_runs: List[TestRunConfigSummary] = Field(default_factory=list, description="所屬 Test Runs 摘要清單")
+    automation_suites: List[AutomationSuiteSummary] = Field(
+        default_factory=list,
+        description="Automation Suite 摘要清單",
+    )
+    automation_covered_case_count: int = Field(
+        0,
+        description="Automation Suites 涵蓋（PRIMARY/COVERS link）的不重複案例數；僅單一 Set 的 GET 會計算，overview 為 0",
+    )
 
 
 class TestRunSetOverview(BaseModel):

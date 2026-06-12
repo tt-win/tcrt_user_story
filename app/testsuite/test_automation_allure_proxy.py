@@ -192,6 +192,147 @@ class _FakeAllureClient:
         return httpx.Response(200, request=httpx.Request("GET", url))
 
 
+class _ProjectCreationFailsAllureClient(_FakeAllureClient):
+    async def post(self, url, **kwargs):
+        self.calls.append(("POST", url, kwargs))
+        return httpx.Response(
+            400,
+            json={"meta_data": {"message": "project root missing"}},
+            request=httpx.Request("POST", url),
+        )
+
+    async def get(self, url, **kwargs):
+        self.calls.append(("GET", url, kwargs))
+        if "/allure-docker-service/projects/" in url:
+            return httpx.Response(
+                404,
+                json={"meta_data": {"message": "project not found"}},
+                request=httpx.Request("GET", url),
+            )
+        return httpx.Response(200, request=httpx.Request("GET", url))
+
+
+class _ProcessingThenReadyAllureClient(_FakeAllureClient):
+    """generate-report returns the transient "Processing files… Try later!" 400
+    for the first ``stall`` calls, then succeeds. Models Allure's async result
+    ingestion so we can assert the proxy retries instead of giving up."""
+
+    def __init__(self, stall: int = 2, **kwargs):
+        super().__init__(**kwargs)
+        self.stall = stall
+        self.generate_calls = 0
+        self.send_calls = 0
+
+    async def post(self, url, **kwargs):
+        if "send-results" in url:
+            self.send_calls += 1
+        return await super().post(url, **kwargs)
+
+    async def get(self, url, **kwargs):
+        if "generate-report" in url:
+            self.calls.append(("GET", url, kwargs))
+            self.generate_calls += 1
+            if self.generate_calls <= self.stall:
+                return httpx.Response(
+                    400,
+                    json={"meta_data": {"message": (
+                        f"Processing files for project_id 'x'. Try later!"
+                    )}},
+                    request=httpx.Request("GET", url),
+                )
+            return httpx.Response(
+                200,
+                json={"data": {"report_url": self.report_url}},
+                request=httpx.Request("GET", url),
+            )
+        return await super().get(url, **kwargs)
+
+
+class _AlwaysProcessingAllureClient(_ProcessingThenReadyAllureClient):
+    def __init__(self, **kwargs):
+        super().__init__(stall=10_000, **kwargs)
+
+
+@pytest.mark.asyncio
+async def test_generate_report_retries_while_allure_is_processing(proxy_db, monkeypatch):
+    """A transient "Try later!" 400 from generate-report must be retried (not
+    surfaced as a failure), and the retry must NOT re-send results — re-sending
+    restarts ingestion and would livelock the poll."""
+    ids = proxy_db["ids"]
+
+    fake = _ProcessingThenReadyAllureClient(stall=2)
+    monkeypatch.setattr(proxy_module.httpx, "AsyncClient", lambda **kw: fake)
+    # No real waiting between retries.
+    monkeypatch.setattr(proxy_module.asyncio, "sleep", AsyncMock())
+
+    import app.config as cfg_mod
+    monkeypatch.setattr(
+        cfg_mod.get_settings().automation_provider,
+        "allure",
+        cfg_mod.AllureConfig(
+            base_url="http://127.0.0.1:5050",
+            api_token="",
+            project_id_template="tcrt-team-{team_slug}",
+        ),
+    )
+
+    archive = _make_archive({"a-result.json": b"{}", "b-result.json": b"{}"})
+
+    async with proxy_db["async_sessionmaker"]() as session:
+        from sqlalchemy import select
+        run = (await session.execute(
+            select(AutomationRun).where(AutomationRun.id == ids["script_run_id"])
+        )).scalar_one()
+
+        report_url = await upload_run_results(
+            session=session, run=run, archive_bytes=archive
+        )
+
+    assert report_url.endswith("/index.html")
+    assert run.report_url == report_url
+    # Polled generate-report 3 times (2 "processing" + 1 success)…
+    assert fake.generate_calls == 3
+    # …but the 2 files were sent exactly once — retries must not re-upload.
+    assert fake.send_calls == 2
+
+
+@pytest.mark.asyncio
+async def test_generate_report_raises_if_processing_never_clears(proxy_db, monkeypatch):
+    """If Allure stays busy past the retry budget, the proxy raises (leaving the
+    run pending for a later backfill) rather than fabricating a report URL."""
+    ids = proxy_db["ids"]
+
+    fake = _AlwaysProcessingAllureClient()
+    monkeypatch.setattr(proxy_module.httpx, "AsyncClient", lambda **kw: fake)
+    monkeypatch.setattr(proxy_module.asyncio, "sleep", AsyncMock())
+
+    import app.config as cfg_mod
+    monkeypatch.setattr(
+        cfg_mod.get_settings().automation_provider,
+        "allure",
+        cfg_mod.AllureConfig(
+            base_url="http://127.0.0.1:5050",
+            api_token="",
+            project_id_template="tcrt-team-{team_slug}",
+        ),
+    )
+
+    archive = _make_archive({"r.json": b"{}"})
+
+    async with proxy_db["async_sessionmaker"]() as session:
+        from sqlalchemy import select
+        run = (await session.execute(
+            select(AutomationRun).where(AutomationRun.id == ids["script_run_id"])
+        )).scalar_one()
+
+        with pytest.raises(AllureProxyError, match="still processing"):
+            await upload_run_results(session=session, run=run, archive_bytes=archive)
+
+    assert run.report_url is None
+    # Bounded: 1 initial + len(_GENERATE_RETRY_DELAYS) retries.
+    assert fake.generate_calls == len(proxy_module._GENERATE_RETRY_DELAYS) + 1
+
+
 @pytest.mark.asyncio
 async def test_upload_run_results_happy_path_for_script_run(proxy_db, monkeypatch):
     """End-to-end: archive → ensure project → upload files → capture report URL."""
@@ -239,6 +380,7 @@ async def test_upload_run_results_happy_path_for_script_run(proxy_db, monkeypatc
     for _m, _u, kw in fake.calls:
         if "send-results" in _u:
             assert kw["params"]["project_id"] == "tcrt-team-qa-team"
+            assert kw["params"]["force_project_creation"] == "true"
 
 
 @pytest.mark.asyncio
@@ -319,6 +461,50 @@ async def test_upload_run_results_cleans_results_before_send(proxy_db, monkeypat
     send_project = fake.calls[send_idx[0]][2]["params"]["project_id"]
     assert clean_project == send_project
     assert "script-" in clean_project
+
+
+@pytest.mark.asyncio
+async def test_upload_run_results_raises_when_allure_project_cannot_be_created(
+    proxy_db,
+    monkeypatch,
+):
+    """A broken Allure projects volume should surface as a clear proxy error,
+    not as a missing report URL or a later generate-report 404."""
+    ids = proxy_db["ids"]
+
+    fake = _ProjectCreationFailsAllureClient()
+    monkeypatch.setattr(proxy_module.httpx, "AsyncClient", lambda **kw: fake)
+
+    import app.config as cfg_mod
+    monkeypatch.setattr(
+        cfg_mod.get_settings().automation_provider,
+        "allure",
+        cfg_mod.AllureConfig(
+            base_url="http://127.0.0.1:5050",
+            api_token="",
+            project_id_template="tcrt-team-{team_slug}",
+        ),
+    )
+
+    archive = _make_archive({"result.json": b"{}"})
+
+    async with proxy_db["async_sessionmaker"]() as session:
+        from sqlalchemy import select
+        run = (await session.execute(
+            select(AutomationRun).where(AutomationRun.id == ids["script_run_id"])
+        )).scalar_one()
+
+        with pytest.raises(AllureProxyError, match="was not created"):
+            await upload_run_results(session=session, run=run, archive_bytes=archive)
+
+    send_params = [
+        kw["params"]
+        for m, u, kw in fake.calls
+        if m == "POST" and "/send-results" in u
+    ]
+    assert send_params
+    assert send_params[0]["force_project_creation"] == "true"
+    assert not any("/generate-report" in u for _m, u, _kw in fake.calls)
 
 
 @pytest.mark.asyncio

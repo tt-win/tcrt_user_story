@@ -2,6 +2,172 @@
    TEST RUN MANAGEMENT - SET MODAL
    ============================================================ */
 
+function getSetSuiteSearchInput() {
+    return document.getElementById('testRunSetAutomationSuiteSearch');
+}
+
+function getSetSuiteListContainer() {
+    return document.getElementById('testRunSetAutomationSuiteList');
+}
+
+function getSetSuiteEmptyHint() {
+    return document.getElementById('testRunSetAutomationSuiteEmpty');
+}
+
+function getSetSuiteSelectedSummary() {
+    return document.getElementById('testRunSetAutomationSuiteSelected');
+}
+
+function escapeAttr(value) {
+    return escapeHtml(value).replace(/`/g, '&#96;');
+}
+
+function normalizeSuiteOption(option) {
+    if (!option || !option.id) {
+        return null;
+    }
+    return {
+        id: Number(option.id),
+        name: option.name || `Suite #${option.id}`,
+        script_count: Number(option.script_count || 0),
+        ci_job_name: option.ci_job_name || '',
+        ref_branch: option.ref_branch || '',
+    };
+}
+
+function mergeAutomationSuiteOptions(options) {
+    const merged = new Map();
+    (Array.isArray(currentSetAutomationSuiteOptions) ? currentSetAutomationSuiteOptions : []).forEach((item) => {
+        const normalized = normalizeSuiteOption(item);
+        if (normalized) merged.set(normalized.id, normalized);
+    });
+    (Array.isArray(options) ? options : []).forEach((item) => {
+        const normalized = normalizeSuiteOption(item);
+        if (normalized) merged.set(normalized.id, normalized);
+    });
+    currentSetAutomationSuiteOptions = Array.from(merged.values()).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function renderAutomationSuiteSelectedSummary() {
+    const container = getSetSuiteSelectedSummary();
+    if (!container) return;
+
+    const selected = currentSetAutomationSuiteIds
+        .map((id) => currentSetAutomationSuiteOptions.find((option) => option.id === id) || { id, name: `Suite #${id}`, script_count: 0, ci_job_name: '' })
+        .filter(Boolean);
+
+    if (!selected.length) {
+        container.innerHTML = `<span class="text-muted" data-i18n="testRun.sets.form.automationSuitesSelectedEmpty">尚未選取任何 Automation Suite</span>`;
+        return;
+    }
+
+    container.innerHTML = selected.map((suite) => `
+        <span class="badge rounded-pill text-bg-light border d-inline-flex align-items-center gap-2">
+            <span>${escapeHtml(suite.name)}</span>
+            <span class="text-muted">${escapeHtml(String(suite.script_count || 0))}</span>
+        </span>
+    `).join('');
+}
+
+function renderAutomationSuitePicker() {
+    const listContainer = getSetSuiteListContainer();
+    const emptyHint = getSetSuiteEmptyHint();
+    if (!listContainer || !emptyHint) return;
+
+    const keyword = (currentSetAutomationSuiteSearch || '').trim().toLowerCase();
+    const visibleOptions = currentSetAutomationSuiteOptions.filter((suite) => {
+        if (!keyword) return true;
+        return [suite.name, suite.ci_job_name, suite.ref_branch]
+            .filter(Boolean)
+            .some((value) => String(value).toLowerCase().includes(keyword));
+    });
+
+    if (!visibleOptions.length) {
+        listContainer.innerHTML = '';
+        emptyHint.classList.remove('d-none');
+    } else {
+        emptyHint.classList.add('d-none');
+        listContainer.innerHTML = visibleOptions.map((suite) => {
+            const checked = currentSetAutomationSuiteIds.includes(suite.id) ? 'checked' : '';
+            const scriptCountText = window.i18n?.t('testRun.sets.common.scriptsCount', { count: suite.script_count || 0 })
+                || `${suite.script_count || 0} scripts`;
+            const meta = [
+                scriptCountText,
+                suite.ci_job_name ? `${window.i18n?.t('testRun.sets.common.ciJobLabel') || 'CI'}: ${suite.ci_job_name}` : '',
+                suite.ref_branch ? `${window.i18n?.t('testRun.sets.common.branchLabel') || 'Branch'}: ${suite.ref_branch}` : '',
+            ].filter(Boolean).join(' · ');
+            return `
+                <label class="list-group-item d-flex align-items-start gap-3">
+                    <input class="form-check-input mt-1" type="checkbox" value="${suite.id}" data-suite-picker-checkbox ${checked}>
+                    <div class="flex-grow-1">
+                        <div class="fw-semibold">${escapeHtml(suite.name)}</div>
+                        <div class="small text-muted">${escapeHtml(meta)}</div>
+                    </div>
+                </label>
+            `;
+        }).join('');
+    }
+
+    renderAutomationSuiteSelectedSummary();
+
+    if (window.i18n && window.i18n.isReady()) {
+        window.i18n.retranslate(listContainer.parentElement || listContainer);
+    }
+}
+
+async function loadAutomationSuiteOptions() {
+    if (!currentTeamId) return;
+
+    const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/automation-script-groups?limit=200`);
+    if (!response.ok) {
+        const payload = await response.json().catch(() => ({ detail: null }));
+        throw new Error(payload?.detail || (window.i18n?.t('testRun.sets.form.automationSuitesLoadFailed') || '載入 Automation Suites 失敗'));
+    }
+
+    const payload = await response.json();
+    mergeAutomationSuiteOptions(payload?.items || []);
+}
+
+function bindAutomationSuitePickerEvents() {
+    const searchInput = getSetSuiteSearchInput();
+    const listContainer = getSetSuiteListContainer();
+
+    if (searchInput && !searchInput.dataset.bound) {
+        searchInput.dataset.bound = 'true';
+        searchInput.addEventListener('input', (event) => {
+            currentSetAutomationSuiteSearch = event.target.value || '';
+            renderAutomationSuitePicker();
+        });
+    }
+
+    if (listContainer && !listContainer.dataset.bound) {
+        listContainer.dataset.bound = 'true';
+        listContainer.addEventListener('change', (event) => {
+            const checkbox = event.target.closest('[data-suite-picker-checkbox]');
+            if (!checkbox) return;
+            const suiteId = Number(checkbox.value);
+            if (!suiteId) return;
+            if (checkbox.checked) {
+                if (!currentSetAutomationSuiteIds.includes(suiteId)) {
+                    currentSetAutomationSuiteIds = [...currentSetAutomationSuiteIds, suiteId];
+                }
+            } else {
+                currentSetAutomationSuiteIds = currentSetAutomationSuiteIds.filter((id) => id !== suiteId);
+            }
+            renderAutomationSuitePicker();
+        });
+    }
+}
+
+function resetAutomationSuitePicker() {
+    currentSetAutomationSuiteIds = [];
+    currentSetAutomationSuiteOptions = [];
+    currentSetAutomationSuiteSearch = '';
+    const searchInput = getSetSuiteSearchInput();
+    if (searchInput) searchInput.value = '';
+    renderAutomationSuitePicker();
+}
+
 function openTestRunSetFormModal(setId = null) {
     const permissions = window._testRunPermissions || testRunPermissions || {};
     if (setId) {
@@ -24,6 +190,7 @@ function openTestRunSetFormModal(setId = null) {
             if (idInput) idInput.value = '';
             clearAllSetTpTickets();
             clearSetTpInputError();
+            resetAutomationSuitePicker();
 
             // 檢查是否為儲存成功後關閉
             if (window._setFormSavedSuccessfully) {
@@ -69,6 +236,7 @@ function openTestRunSetFormModal(setId = null) {
 
     clearAllSetTpTickets();
     initSetTpTicketInput();
+    bindAutomationSuitePickerEvents();
 
     const detailModalEl = document.getElementById('testRunSetDetailModal');
     const detailInstanceVisible = detailModalEl && detailModalEl.classList.contains('show');
@@ -88,10 +256,27 @@ function openTestRunSetFormModal(setId = null) {
         if (setData && Array.isArray(setData.related_tp_tickets)) {
             setSetTpTickets(setData.related_tp_tickets);
         }
+        currentSetAutomationSuiteIds = setData
+            ? (Array.isArray(setData.automation_suite_ids) ? [...setData.automation_suite_ids] : [])
+            : [];
+        mergeAutomationSuiteOptions(setData?.automation_suites || []);
     } else {
         titleEl.setAttribute('data-i18n', 'testRun.sets.form.createTitle');
         titleEl.textContent = window.i18n?.t('testRun.sets.form.createTitle') || '新增 Test Run Set';
+        currentSetAutomationSuiteIds = [];
     }
+
+    currentSetAutomationSuiteSearch = '';
+    const searchInput = getSetSuiteSearchInput();
+    if (searchInput) searchInput.value = '';
+    renderAutomationSuitePicker();
+
+    loadAutomationSuiteOptions()
+        .then(() => renderAutomationSuitePicker())
+        .catch((error) => {
+            console.error('Load automation suites failed:', error);
+            AppUtils.showError(error.message);
+        });
 
     if (window.i18n && window.i18n.isReady()) {
         window.i18n.retranslate(modalElement);
@@ -128,6 +313,11 @@ async function handleSaveTestRunSet() {
         payload.description = description;
     }
     payload.related_tp_tickets = [...currentSetTpTickets];
+    // automation_suite_ids: preserve existing value on update; default to [] on create.
+    // Full suite-picker UI is a follow-up; for now, automation suites can be
+    // managed via the API directly. This guards against accidentally nulling
+    // the field on every save.
+    payload.automation_suite_ids = currentSetAutomationSuiteIds.slice();
 
     const endpoint = setId
         ? `/api/teams/${currentTeamId}/test-run-sets/${setId}`
@@ -188,6 +378,9 @@ async function openTestRunSetDetail(setId) {
                     currentSetContext = null;
                 }
                 preserveSetContextOnHide = false;
+                if (window.TestRunSetRunHistory && window.TestRunSetRunHistory.clear) {
+                    window.TestRunSetRunHistory.clear();
+                }
             });
         }
 
@@ -211,8 +404,9 @@ function renderTestRunSetDetail(setData, filterStatus = 'all') {
     const descEl = document.getElementById('testRunSetDetailDescription');
     const statusEl = document.getElementById('testRunSetDetailStatus');
     const metaEl = document.getElementById('testRunSetDetailMeta');
-    const actionsContainer = document.getElementById('testRunSetDetailActions');
+    const headerActions = document.getElementById('testRunSetHeaderActions');
     const runsContainer = document.getElementById('testRunSetRunsContainer');
+    const perms = window._testRunPermissions || testRunPermissions || {};
 
     titleEl.textContent = setData.name || '';
 
@@ -225,34 +419,44 @@ function renderTestRunSetDetail(setData, filterStatus = 'all') {
     statusEl.innerHTML = getSetStatusBadge(setData.status);
 
     const metrics = summarizeSetMetrics(setData.test_runs || []);
-    const metaText = `${window.i18n?.t('testRun.sets.detail.totalRuns') || 'Test Run 數'}: ${setData.test_runs?.length || 0} · ${window.i18n?.t('testRun.sets.detail.totalCases') || '總案例'}: ${metrics.totalCases}`;
+    const suiteCount = Array.isArray(setData.automation_suites) ? setData.automation_suites.length : 0;
+    // 總案例 = 手動 Test Run 案例數 + Automation Suites 涵蓋的不重複案例數
+    const automationCoveredCount = Number(setData.automation_covered_case_count || 0);
+    let totalCasesText = String(metrics.totalCases + automationCoveredCount);
+    if (automationCoveredCount > 0) {
+        totalCasesText += window.i18n?.t('testRun.sets.detail.totalCasesBreakdown', {
+            manual: metrics.totalCases,
+            automation: automationCoveredCount,
+        }) || `（手動 ${metrics.totalCases} · 自動化涵蓋 ${automationCoveredCount}）`;
+    }
+    const metaText = `${window.i18n?.t('testRun.sets.detail.totalRuns') || 'Test Run 數'}: ${setData.test_runs?.length || 0} · ${window.i18n?.t('testRun.sets.detail.totalSuites') || 'Automation Suites'}: ${suiteCount} · ${window.i18n?.t('testRun.sets.detail.totalCases') || '總案例'}: ${totalCasesText}`;
     metaEl.textContent = metaText;
     renderSetDetailTpTags(setData.related_tp_tickets || []);
 
-    const perms = window._testRunPermissions || testRunPermissions || {};
+    // Automation Suites + Run as Automation trigger (move-automation-execution-to-test-run-set)
+    window._currentTestRunSetId = setData.id;
 
-    const createBtn = document.getElementById('setDetailCreateConfigBtn');
-    const addExistingBtn = document.getElementById('setDetailAddExistingBtn');
+    // Run history for this set (move-run-history-to-test-run-set)
+    if (window.TestRunSetRunHistory && window.TestRunSetRunHistory.loadForSet) {
+      window.TestRunSetRunHistory.loadForSet(setData.id, currentTeamId);
+    }
+
     const editBtn = document.getElementById('setDetailEditBtn');
     const archiveBtn = document.getElementById('setDetailArchiveBtn');
     const reportBtn = document.getElementById('setDetailReportBtn');
     const deleteBtn = document.getElementById('setDetailDeleteBtn');
+    const moreActions = document.getElementById('setDetailMoreActions');
+    const deleteDivider = document.getElementById('setDetailDeleteDivider');
 
-    setElementVisibility('setDetailCreateConfigBtn', perms.canCreate);
-    setElementVisibility('setDetailAddExistingBtn', perms.canCreate);
     setElementVisibility('setDetailEditBtn', perms.canUpdate);
     setElementVisibility('setDetailArchiveBtn', perms.canUpdate);
     setElementVisibility('setDetailReportBtn', true);
     setElementVisibility('setDetailDeleteBtn', perms.canDelete);
-
-    if (createBtn) {
-        createBtn.disabled = setData.status === 'archived' || !perms.canCreate;
-        createBtn.onclick = () => openConfigFormModal(null, { setId: setData.id });
+    if (moreActions) {
+        moreActions.classList.toggle('d-none', !perms.canUpdate && !perms.canDelete);
     }
-
-    if (addExistingBtn) {
-        addExistingBtn.disabled = setData.status === 'archived' || !perms.canCreate;
-        addExistingBtn.onclick = () => openAddExistingToSetModal(setData);
+    if (deleteDivider) {
+        deleteDivider.classList.toggle('d-none', !(perms.canUpdate && perms.canDelete));
     }
 
     if (editBtn) {
@@ -263,10 +467,10 @@ function renderTestRunSetDetail(setData, filterStatus = 'all') {
     if (archiveBtn) {
         archiveBtn.disabled = !perms.canUpdate;
         if (setData.status === 'archived') {
-            archiveBtn.innerHTML = '<i class="fas fa-undo me-1"></i><span data-i18n="testRun.sets.detail.unarchive">取消 Archive</span>';
+            archiveBtn.innerHTML = '<i class="fas fa-undo me-2"></i><span data-i18n="testRun.sets.detail.unarchive">取消 Archive</span>';
             archiveBtn.onclick = () => toggleArchiveTestRunSet(setData, 'active');
         } else {
-            archiveBtn.innerHTML = '<i class="fas fa-archive me-1"></i><span data-i18n="testRun.sets.detail.archive">Archive</span>';
+            archiveBtn.innerHTML = '<i class="fas fa-archive me-2"></i><span data-i18n="testRun.sets.detail.archive">Archive</span>';
             archiveBtn.onclick = () => toggleArchiveTestRunSet(setData, 'archived');
         }
     }
@@ -303,22 +507,196 @@ function renderTestRunSetDetail(setData, filterStatus = 'all') {
         });
     }
 
-    const runs = filterTestRunsByStatus(setData.test_runs || [], filterStatus);
-    if (!runs.length) {
-        const emptyKey = filterStatus === 'all' ? 'testRun.sets.detail.noRuns' : 'testRun.sets.detail.noFilterMatches';
-        const fallbackText = filterStatus === 'all' ? '尚未加入任何 Test Run' : '目前沒有符合篩選條件的 Test Run';
-        runsContainer.innerHTML = `
-            <div class="text-center text-muted py-4" data-i18n="${emptyKey}">
-                ${fallbackText}
-            </div>
-        `;
-    } else {
-        runsContainer.innerHTML = runs.map(run => buildSetRunDetailRow(run, setData)).join('');
+    const allRuns = Array.isArray(setData.test_runs) ? setData.test_runs : [];
+    const runs = filterTestRunsByStatus(allRuns, filterStatus);
+    const suites = Array.isArray(setData.automation_suites) ? setData.automation_suites : [];
+
+    runsContainer.innerHTML = [
+        buildSetDetailItemSection({
+            titleKey: 'testRun.sets.detail.manualTestRuns',
+            titleFallback: 'Manual Test Runs',
+            count: runs.length,
+            actionsHtml: buildManualSectionActions(setData, perms),
+            itemsHtml: runs.map(run => buildSetRunDetailRow(run, setData)).join(''),
+            emptyKey: filterStatus === 'all'
+                ? 'testRun.sets.detail.manualTestRunsEmpty'
+                : 'testRun.sets.detail.noFilterMatches',
+            emptyFallback: filterStatus === 'all'
+                ? '尚未加入任何 Manual Test Run'
+                : '目前沒有符合篩選條件的 Test Run',
+        }),
+        buildSetDetailItemSection({
+            titleKey: 'testRun.sets.detail.automationSuites',
+            titleFallback: 'Automation Suites',
+            count: suites.length,
+            actionsHtml: buildAutomationSectionActions(setData, perms, suites.length),
+            itemsHtml: suites.map(suite => buildAutomationSuiteDetailRow(suite, setData)).join(''),
+            emptyKey: 'testRun.sets.detail.automationSuitesEmpty',
+            emptyFallback: '尚未關聯任何 Automation Suite',
+        }),
+    ].join('');
+
+    const createBtn = document.getElementById('setDetailCreateConfigBtn');
+    const addAutomationSuiteBtn = document.getElementById('setDetailAddAutomationSuiteBtn');
+    const runAutomationBtn = document.getElementById('setDetailRunAutomationBtn');
+
+    if (createBtn) {
+        createBtn.disabled = setData.status === 'archived' || !perms.canCreate;
+        createBtn.onclick = () => openConfigFormModal(null, { setId: setData.id });
     }
 
+    if (addAutomationSuiteBtn) {
+        addAutomationSuiteBtn.disabled = setData.status === 'archived' || !perms.canUpdate;
+        addAutomationSuiteBtn.onclick = () => openAddExistingToSetModal(setData);
+    }
+
+    if (runAutomationBtn && window.TestRunSetAutomation?.runAllAutomationSuites) {
+        runAutomationBtn.onclick = async (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            await window.TestRunSetAutomation.runAllAutomationSuites(runAutomationBtn);
+        };
+    }
+
+    if (window.TestRunSetAutomation && window.TestRunSetAutomation.setAutomationSuites) {
+        const automationSuiteIds = Array.isArray(setData.automation_suite_ids)
+            ? setData.automation_suite_ids
+            : suites.map((suite) => Number(suite.id)).filter(Boolean);
+        window.TestRunSetAutomation.setAutomationSuites(
+            automationSuiteIds,
+            suites
+        );
+    }
+
+    // 「⋯」選單在可捲動的 modal-body 內會被 overflow 裁切，改用 fixed 定位
+    if (window.bootstrap?.Dropdown) {
+        runsContainer.querySelectorAll('[data-bs-toggle="dropdown"]').forEach((toggle) => {
+            bootstrap.Dropdown.getOrCreateInstance(toggle, {
+                popperConfig(defaultConfig) {
+                    return { ...defaultConfig, strategy: 'fixed' };
+                },
+            });
+        });
+    }
+
+    runsContainer.querySelectorAll('[data-remove-suite-id]').forEach((button) => {
+        button.addEventListener('click', async (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const suiteId = Number(button.dataset.removeSuiteId);
+            const suiteName = button.dataset.removeSuiteName || `Suite #${suiteId}`;
+            if (suiteId) {
+                await removeAutomationSuiteFromSet(setData, suiteId, suiteName);
+            }
+        });
+    });
+    runsContainer.querySelectorAll('[data-run-suite-id]').forEach((button) => {
+        button.addEventListener('click', async (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            const suiteId = Number(button.dataset.runSuiteId);
+            if (suiteId && window.TestRunSetAutomation?.runAutomationSuite) {
+                await window.TestRunSetAutomation.runAutomationSuite(suiteId, button);
+            }
+        });
+    });
+
     if (window.i18n && window.i18n.isReady()) {
-        window.i18n.retranslate(actionsContainer);
+        if (headerActions) window.i18n.retranslate(headerActions);
         window.i18n.retranslate(runsContainer);
+    }
+}
+
+function buildSetDetailItemSection({
+    titleKey,
+    titleFallback,
+    count,
+    actionsHtml = '',
+    itemsHtml,
+    emptyKey,
+    emptyFallback,
+}) {
+    const hasItems = Boolean(itemsHtml);
+    return `
+        <section class="test-run-set-detail-section">
+            <div class="test-run-set-section-heading">
+                <div class="test-run-set-section-title">
+                    <h6 class="mb-0" data-i18n="${titleKey}">${escapeHtml(titleFallback)}</h6>
+                    <span class="badge bg-secondary">${count}</span>
+                </div>
+                ${actionsHtml ? `<div class="test-run-set-section-actions">${actionsHtml}</div>` : ''}
+            </div>
+            ${hasItems ? itemsHtml : `
+                <div class="text-muted small py-1" data-i18n="${emptyKey}">
+                    ${escapeHtml(emptyFallback)}
+                </div>
+            `}
+        </section>
+    `;
+}
+
+function buildManualSectionActions(setData, perms) {
+    if (!perms.canCreate) return '';
+    const disabledAttr = setData.status === 'archived' ? ' disabled' : '';
+    return `
+        <button type="button" class="btn btn-primary btn-sm" id="setDetailCreateConfigBtn"${disabledAttr}>
+            <i class="fas fa-plus me-1"></i><span data-i18n="testRun.sets.detail.createTestRun">新增 Test Run</span>
+        </button>
+    `;
+}
+
+function buildAutomationSectionActions(setData, perms, suiteCount) {
+    const disabledAttr = setData.status === 'archived' ? ' disabled' : '';
+    const addButton = perms.canUpdate
+        ? `
+            <button type="button" class="btn btn-outline-primary btn-sm" id="setDetailAddAutomationSuiteBtn"${disabledAttr}>
+                <i class="fas fa-link me-1"></i><span data-i18n="testRun.sets.detail.addAutomationSuiteCompact">加入 Suite</span>
+            </button>
+        `
+        : '';
+    const runDisabledAttr = suiteCount > 0 ? '' : ' disabled';
+    const runButton = `
+        <button type="button" class="btn btn-success btn-sm" id="setDetailRunAutomationBtn"${runDisabledAttr}
+                title="${escapeAttr(window.i18n?.t('testRun.sets.detail.runAutomationHint') || '依序觸發每個 Automation Suite 內所有 scripts（透過 CIProvider）')}">
+            <i class="fas fa-play me-1"></i><span data-i18n="testRun.sets.detail.runAutomationCompact">執行 Suites</span>
+        </button>
+    `;
+    return [addButton, runButton].filter(Boolean).join('');
+}
+
+function buildDetailCardActions(buttons) {
+    const renderedButtons = buttons.filter(Boolean);
+    if (!renderedButtons.length) return '';
+    return `<div class="testRunDetailRunActions">${renderedButtons.join('')}</div>`;
+}
+
+async function removeAutomationSuiteFromSet(setData, suiteId, suiteName) {
+    const nextSuiteIds = (Array.isArray(setData.automation_suite_ids) ? setData.automation_suite_ids : [])
+        .filter((id) => id !== suiteId);
+    const confirmed = await AppUtils.showConfirm(
+        window.i18n?.t('testRun.sets.removeAutomationSuiteConfirm', { name: suiteName })
+        || `確定要移除「${suiteName}」Automation Suite？`
+    );
+    if (!confirmed) return;
+
+    try {
+        const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-sets/${setData.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ automation_suite_ids: nextSuiteIds })
+        });
+
+        if (!response.ok) {
+            const payload = await response.json().catch(() => ({ detail: null }));
+            throw new Error(payload?.detail || (window.i18n?.t('testRun.sets.removeAutomationSuiteFailed') || '移除 Automation Suite 失敗'));
+        }
+
+        AppUtils.showSuccess(window.i18n?.t('testRun.sets.removeAutomationSuiteSuccess') || 'Automation Suite 已移除');
+        await loadTestRunConfigs();
+        await refreshCurrentSetDetail();
+    } catch (error) {
+        console.error('Remove automation suite from set failed:', error);
+        AppUtils.showError(error.message);
     }
 }
 
@@ -329,23 +707,6 @@ function buildSetRunDetailRow(run, setData) {
     const createdText = run.created_at ? AppUtils.formatDate(run.created_at, 'datetime') : '';
     const otherSets = (testRunSets || []).filter(s => s.id !== setData.id);
     const perms = window._testRunPermissions || testRunPermissions || {};
-    const moveLabel = window.i18n?.t('testRun.sets.detail.moveToOther') || '搬移至其他 Set';
-    const moveDropdown = (perms.canUpdate && otherSets.length > 0) ? `
-        <div class="dropdown" onclick="event.stopPropagation()">
-            <button class="btn btn-sm btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
-                <i class="fas fa-random me-1"></i><span data-i18n="testRun.sets.detail.moveToOther">${escapeHtml(moveLabel)}</span>
-            </button>
-            <ul class="dropdown-menu dropdown-menu-end">
-                ${otherSets.map(s => `
-                    <li>
-                        <button class="dropdown-item" type="button" onclick="event.stopPropagation(); moveTestRunToSet(${run.id}, ${s.id});">
-                            ${escapeHtml(s.name)}
-                        </button>
-                    </li>
-                `).join('')}
-            </ul>
-        </div>
-    ` : '';
 
     const lockedForConfigEdit = run.status === 'completed' || run.status === 'archived';
     const lockedForCasesEdit = run.status === 'completed';
@@ -355,126 +716,206 @@ function buildSetRunDetailRow(run, setData) {
     const lockedCasesMessage = (window.i18n && window.i18n.isReady())
         ? window.i18n.t('testRun.cannotEditCompleted')
         : '已完成的 Test Run 不可編輯 Test Case';
-    const lockedConfigTitle = lockedForConfigEdit ? ` title="${escapeHtml(lockedConfigMessage)}"` : '';
-    const lockedCasesTitle = (lockedForConfigEdit || lockedForCasesEdit) ? ` title="${escapeHtml(lockedCasesMessage)}"` : '';
+    const lockedConfigAttrs = lockedForConfigEdit
+        ? ` disabled title="${escapeHtml(lockedConfigMessage)}"`
+        : '';
+    const lockedCasesAttrs = (lockedForConfigEdit || lockedForCasesEdit)
+        ? ` disabled title="${escapeHtml(lockedCasesMessage)}"`
+        : '';
 
-    const primaryActionButtons = [];
-    const secondaryActionButtons = [];
-
-    primaryActionButtons.push(`
-        <button class="btn btn-sm btn-primary" onclick="event.stopPropagation(); enterTestRun(${run.id})">
-            <i class="fas fa-arrow-right me-1"></i><span data-i18n="testRun.enterButton">進入</span>
-        </button>
-    `);
+    // 收斂列上的操作：只留「進入」，其餘進「⋯」選單
+    const menuItems = [];
 
     if (perms.canUpdate) {
-        primaryActionButtons.push(`
-            <button class="btn btn-sm btn-secondary${lockedForConfigEdit ? ' disabled' : ''}" ${lockedForConfigEdit ? 'disabled' : ''}${lockedConfigTitle}
+        menuItems.push(`
+            <li><button type="button" class="dropdown-item${lockedForConfigEdit ? ' disabled' : ''}"${lockedConfigAttrs}
                     onclick="event.stopPropagation(); editBasicSettings(${run.id})">
-                <i class="fas fa-edit me-1"></i><span data-i18n="testRun.editBasicSettings">編輯基本設定</span>
-            </button>
+                <i class="fas fa-edit me-2"></i><span data-i18n="testRun.editBasicSettings">編輯基本設定</span>
+            </button></li>
         `);
-
-        primaryActionButtons.push(`
-            <button class="btn btn-sm btn-info${(lockedForConfigEdit || lockedForCasesEdit) ? ' disabled' : ''}" ${(lockedForConfigEdit || lockedForCasesEdit) ? 'disabled' : ''}${lockedCasesTitle}
+        menuItems.push(`
+            <li><button type="button" class="dropdown-item${(lockedForConfigEdit || lockedForCasesEdit) ? ' disabled' : ''}"${lockedCasesAttrs}
                     onclick="event.stopPropagation(); editTestCases(${run.id})">
-                <i class="fas fa-list me-1"></i><span data-i18n="testRun.editTestCases">編輯 Test Case</span>
-            </button>
+                <i class="fas fa-list me-2"></i><span data-i18n="testRun.editTestCases">編輯 Test Case</span>
+            </button></li>
         `);
     }
 
     if (perms.canChangeStatus) {
-        secondaryActionButtons.push(`
-            <div class="position-relative" onclick="event.stopPropagation()">
-                <button type="button" class="btn btn-sm btn-warning custom-status-btn"
-                        data-config-id="${run.id}"
-                        onclick="event.stopPropagation(); toggleCustomStatusDropdown(this, ${run.id})">
-                    <i class="fas fa-exchange-alt me-1"></i><span data-i18n="testRun.changeStatus">狀態</span>
-                    <i class="fas fa-chevron-down ms-1"></i>
-                </button>
-            </div>
-        `);
+        const statusItems = generateStatusDropdownItems(run);
+        if (statusItems) {
+            menuItems.push('<li><hr class="dropdown-divider"></li>');
+            menuItems.push('<li><h6 class="dropdown-header" data-i18n="testRun.changeStatus">變更狀態</h6></li>');
+            menuItems.push(statusItems);
+        }
     }
 
     if (perms.canUpdate) {
-        secondaryActionButtons.push(`
-            <button class="btn btn-sm btn-secondary" onclick="event.stopPropagation(); removeTestRunFromSet(${run.id}, '${escapeHtml(run.name)}')">
-                <i class="fas fa-unlink me-1"></i><span data-i18n="testRun.sets.detail.remove">移出 Test Run Set</span>
-            </button>
+        if (otherSets.length > 0) {
+            menuItems.push('<li><hr class="dropdown-divider"></li>');
+            menuItems.push('<li><h6 class="dropdown-header" data-i18n="testRun.sets.detail.actionMove">搬移</h6></li>');
+            otherSets.forEach((s) => {
+                menuItems.push(`
+                    <li><button type="button" class="dropdown-item" onclick="event.stopPropagation(); moveTestRunToSet(${run.id}, ${s.id});">
+                        <i class="fas fa-random me-2"></i>${escapeHtml(s.name)}
+                    </button></li>
+                `);
+            });
+        }
+        menuItems.push(`
+            <li><button type="button" class="dropdown-item" onclick="event.stopPropagation(); removeTestRunFromSet(${run.id}, '${escapeHtml(run.name)}')">
+                <i class="fas fa-unlink me-2"></i><span data-i18n="testRun.sets.detail.actionRemove">移出</span>
+            </button></li>
         `);
     }
 
     if (perms.canDelete) {
-        secondaryActionButtons.push(`
-            <button class="btn btn-sm btn-danger" onclick="event.stopPropagation(); deleteTestRun(${run.id}, '${escapeHtml(run.name)}')">
-                <i class="fas fa-trash me-1"></i><span data-i18n="common.delete">刪除</span>
-            </button>
+        menuItems.push('<li><hr class="dropdown-divider"></li>');
+        menuItems.push(`
+            <li><button type="button" class="dropdown-item text-danger" onclick="event.stopPropagation(); deleteTestRun(${run.id}, '${escapeHtml(run.name)}')">
+                <i class="fas fa-trash me-2"></i><span data-i18n="common.delete">刪除</span>
+            </button></li>
         `);
     }
 
-    if (moveDropdown) {
-        secondaryActionButtons.unshift(moveDropdown);
-    }
+    const enterButton = `
+        <button class="btn btn-sm btn-outline-primary" onclick="event.stopPropagation(); enterTestRun(${run.id})">
+            <i class="fas fa-arrow-right me-1"></i><span data-i18n="testRun.sets.detail.actionOpen">進入</span>
+        </button>
+    `;
+    const kebabMenu = menuItems.length ? `
+        <div class="dropdown" onclick="event.stopPropagation()">
+            <button type="button" class="btn btn-sm test-run-kebab-btn" data-bs-toggle="dropdown" aria-expanded="false" aria-label="More actions">
+                <i class="fas fa-ellipsis-v"></i>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end test-run-row-menu">${menuItems.join('')}</ul>
+        </div>
+    ` : '';
 
-    const actionsHtml = (() => {
-        const merged = [...primaryActionButtons, ...secondaryActionButtons];
-        if (!merged.length) return '';
-        return `<div class="testRunDetailRunActions">${merged.join('')}</div>`;
-    })();
+    const actionsHtml = buildDetailCardActions([enterButton, kebabMenu]);
 
     return `
-        <div class="card mb-3">
+        <div class="card test-run-set-detail-card">
             <div class="card-body">
-                <!-- Test Run 名稱 -->
-                <h6 class="mb-2 text-primary">${escapeHtml(run.name)}</h6>
-                <!-- Test Run 狀態資訊 -->
-                <div class="mb-3 small">
-                    <div class="d-flex gap-2 align-items-center flex-wrap">
-                        <span class="status-badge ${statusClass}">${statusText}</span>
-                        <span class="text-muted"><i class="fas fa-list-ul me-1"></i>${metricsText}</span>
-                        ${createdText ? `<span class="text-muted"><i class="fas fa-clock me-1\"></i>${createdText}</span>` : ''}
+                <div class="test-run-detail-item-row">
+                    <div class="test-run-detail-item-content">
+                        <h6 class="test-run-detail-item-title text-primary" title="${escapeAttr(run.name)}">${escapeHtml(run.name)}</h6>
+                        <div class="test-run-detail-item-meta">
+                            <span class="status-badge ${statusClass}">${statusText}</span>
+                            <span class="text-muted"><i class="fas fa-list-ul me-1"></i>${metricsText}</span>
+                            ${createdText ? `<span class="text-muted"><i class="fas fa-clock me-1\"></i>${createdText}</span>` : ''}
+                        </div>
                     </div>
+                    ${actionsHtml || ''}
                 </div>
-                <!-- 按鈕區域 -->
-                ${actionsHtml || ''}
             </div>
         </div>
     `;
 }
 
+function buildAutomationSuiteDetailRow(suite, setData) {
+    const perms = window._testRunPermissions || testRunPermissions || {};
+    const isArchived = setData.status === 'archived';
+    const scriptCountText = window.i18n?.t('testRun.sets.common.scriptsCount', { count: suite.script_count || 0 })
+        || `${suite.script_count || 0} scripts`;
+    const typeLabel = window.i18n?.t('testRun.sets.detail.automationSuiteType') || 'Test Automation Suite';
+    const ciLabel = suite.ci_job_name
+        ? `<span class="text-muted"><i class="fas fa-cogs me-1"></i>${escapeHtml(suite.ci_job_name)}</span>`
+        : '';
+
+    const runButton = `
+        <button class="btn btn-sm btn-outline-success flex-shrink-0"
+                data-run-suite-id="${suite.id}" data-run-suite-name="${escapeAttr(suite.name)}">
+            <i class="fas fa-play me-1"></i><span data-i18n="testRun.sets.detail.runAutomationSuite">執行</span>
+        </button>
+    `;
+    const kebabMenu = perms.canUpdate
+        ? `
+            <div class="dropdown" onclick="event.stopPropagation()">
+                <button type="button" class="btn btn-sm test-run-kebab-btn" data-bs-toggle="dropdown" aria-expanded="false" aria-label="More actions">
+                    <i class="fas fa-ellipsis-v"></i>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end">
+                    <li><button type="button" class="dropdown-item text-danger${isArchived ? ' disabled' : ''}" ${isArchived ? 'disabled' : ''}
+                            data-remove-suite-id="${suite.id}" data-remove-suite-name="${escapeAttr(suite.name)}">
+                        <i class="fas fa-unlink me-2"></i><span data-i18n="testRun.sets.detail.actionRemoveSuite">移除</span>
+                    </button></li>
+                </ul>
+            </div>
+        `
+        : '';
+    const actionButtons = buildDetailCardActions([runButton, kebabMenu]);
+
+    return `
+        <div class="card test-run-set-detail-card">
+            <div class="card-body">
+                <div class="test-run-detail-item-row">
+                    <div class="test-run-detail-item-content">
+                        <h6 class="test-run-detail-item-title text-primary" title="${escapeAttr(suite.name)}">${escapeHtml(suite.name)}</h6>
+                        <div class="test-run-detail-item-meta">
+                            <span class="badge bg-info-subtle text-info-emphasis border border-info-subtle">${escapeHtml(typeLabel)}</span>
+                            <span class="text-muted"><i class="fas fa-code-branch me-1"></i>${escapeHtml(scriptCountText)}</span>
+                            ${ciLabel}
+                        </div>
+                    </div>
+                    ${actionButtons || ''}
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+// Suite-only: existing Test Runs join a set via create-in-set or the per-run
+// "搬移至其他 Set" dropdown, so this modal only offers automation suites.
 function openAddExistingToSetModal(setData) {
     if (!addExistingToSetModalInstance) {
         const modalEl = document.getElementById('addExistingToSetModal');
         addExistingToSetModalInstance = new bootstrap.Modal(modalEl);
     }
 
+    const modalEl = document.getElementById('addExistingToSetModal');
     const listContainer = document.getElementById('addExistingToSetList');
     const emptyHint = document.getElementById('addExistingToSetEmpty');
     const confirmBtn = document.getElementById('confirmAddExistingToSetBtn');
     listContainer.innerHTML = '';
+    modalEl.dataset.targetSetId = String(setData.id);
 
-    const availableRuns = Array.isArray(unassignedTestRuns) ? unassignedTestRuns : [];
-    if (!availableRuns.length) {
-        emptyHint.style.display = 'block';
-        confirmBtn.disabled = true;
-    } else {
+    const renderSuiteList = async () => {
+        const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/automation-script-groups?limit=200`);
+        if (!response.ok) {
+            const payload = await response.json().catch(() => ({ detail: null }));
+            throw new Error(payload?.detail || '載入 Automation Suites 失敗');
+        }
+        const payload = await response.json();
+        const suites = Array.isArray(payload?.items) ? payload.items : [];
+        const selectedSuiteIds = Array.isArray(setData.automation_suite_ids) ? setData.automation_suite_ids : [];
+        const availableSuites = suites.filter((suite) => !selectedSuiteIds.includes(suite.id));
+
+        if (!availableSuites.length) {
+            emptyHint.style.display = 'block';
+            confirmBtn.disabled = true;
+            return;
+        }
+
         emptyHint.style.display = 'none';
         confirmBtn.disabled = false;
-        listContainer.innerHTML = availableRuns.map(run => `
+        listContainer.innerHTML = availableSuites.map((suite) => `
             <label class="list-group-item d-flex align-items-center justify-content-between">
                 <div class="form-check">
-                    <input class="form-check-input" type="checkbox" value="${run.id}" id="add-existing-${run.id}">
-                    <label class="form-check-label" for="add-existing-${run.id}">
-                        <strong>${escapeHtml(run.name)}</strong>
-                        <div class="small text-muted">${getStatusText(run.status)} · ${run.executed_cases || 0}/${run.total_test_cases || 0}</div>
+                    <input class="form-check-input" type="checkbox" value="${suite.id}" id="add-existing-suite-${suite.id}">
+                    <label class="form-check-label" for="add-existing-suite-${suite.id}">
+                        <strong>${escapeHtml(suite.name)}</strong>
+                        <div class="small text-muted">${escapeHtml(window.i18n?.t('testRun.sets.detail.automationSuiteType') || 'Test Automation Suite')} · ${escapeHtml(String(suite.script_count || 0))} scripts</div>
                     </label>
                 </div>
             </label>
         `).join('');
-    }
+    };
 
-    const modalEl = document.getElementById('addExistingToSetModal');
-    modalEl.dataset.targetSetId = String(setData.id);
+    renderSuiteList().catch((error) => {
+        console.error('Open add-suite modal failed:', error);
+        AppUtils.showError(error.message);
+    });
 
     if (window.i18n && window.i18n.isReady()) {
         window.i18n.retranslate(modalEl);
@@ -495,28 +936,35 @@ async function confirmAddExistingToSet() {
         .map(input => parseInt(input.value, 10));
 
     if (!selected.length) {
-        AppUtils.showWarning(window.i18n?.t('testRun.sets.addExisting.selectWarning') || '請至少選擇一個 Test Run');
+        AppUtils.showWarning(window.i18n?.t('testRun.sets.addExisting.selectWarningSuites') || '請至少選擇一個 Test Automation Suite');
         return;
     }
 
     try {
-        const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-sets/${targetSetId}/members`, {
-            method: 'POST',
+        const setResponse = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-sets/${targetSetId}`);
+        if (!setResponse.ok) {
+            const payload = await setResponse.json().catch(() => ({ detail: null }));
+            throw new Error(payload?.detail || '載入 Test Run Set 失敗');
+        }
+        const setData = await setResponse.json();
+        const existingSuiteIds = Array.isArray(setData.automation_suite_ids) ? setData.automation_suite_ids : [];
+        const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-sets/${targetSetId}`, {
+            method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ config_ids: selected })
+            body: JSON.stringify({ automation_suite_ids: [...existingSuiteIds, ...selected] })
         });
 
         if (!response.ok) {
             const payload = await response.json().catch(() => ({ detail: null }));
-            throw new Error(payload?.detail || '加入既有 Test Run 失敗');
+            throw new Error(payload?.detail || '加入成員失敗');
         }
 
         addExistingToSetModalInstance.hide();
-        AppUtils.showSuccess(window.i18n?.t('testRun.sets.addExisting.success') || '已將選定的 Test Run 加入 Set');
+        AppUtils.showSuccess(window.i18n?.t('testRun.sets.addExisting.successSuites') || '已將選定的 Automation Suite 加入 Set');
         await loadTestRunConfigs();
         await refreshCurrentSetDetail();
     } catch (error) {
-        console.error('Add existing Test Run failed:', error);
+        console.error('Add automation suite failed:', error);
         AppUtils.showError(error.message);
     }
 }
@@ -660,3 +1108,5 @@ async function refreshCurrentSetDetail() {
         console.warn('Refresh Test Run Set detail failed:', error);
     }
 }
+
+window.refreshCurrentSetDetail = refreshCurrentSetDetail;
