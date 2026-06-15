@@ -1027,8 +1027,8 @@
     },
     "lastSyncPrefix": "上次同步：",
     "loadingStatus": "載入狀態中...",
-    "modalTitle": "組織架構同步管理",
-    "openButton": "同步組織架構",
+    "modalTitle": "組織與系統設定",
+    "openButton": "組織與系統設定",
     "preparing": "準備開始中...",
     "readyToRun": "準備執行新的同步作業",
     "startFailedPrefix": "啟動同步失敗",
@@ -3205,7 +3205,7 @@
     "providersLabel": "Provider 數量",
     "healthLabel": "健康狀態",
     "backToHub": "返回 Automation Hub",
-    "wrongScopeToSystem": "CI / Result Provider 改在組織層管理，請至「團隊管理 → 同步組織架構」設定。",
+    "wrongScopeToSystem": "CI / Result Provider 改在組織層管理，請至「團隊管理 → 組織與系統設定」設定。",
     "wrongScopeToTeam": "Storage Provider 為各 team 各自設定，請至各 team 的 Git 來源設定頁。"
   },
   "automationHubEntryToggle": {

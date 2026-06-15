@@ -1027,8 +1027,8 @@
     },
     "lastSyncPrefix": "Last sync:",
     "loadingStatus": "Loading status...",
-    "modalTitle": "Organization Sync Management",
-    "openButton": "Sync Organization",
+    "modalTitle": "Organization & System Settings",
+    "openButton": "Organization & System Settings",
     "preparing": "Preparing...",
     "readyToRun": "Ready to run a new sync",
     "startFailedPrefix": "Failed to start sync",
@@ -3111,7 +3111,7 @@
     "providersLabel": "Providers",
     "healthLabel": "Health",
     "backToHub": "Back to Automation Hub",
-    "wrongScopeToSystem": "CI / Result providers are managed at org level. Open Team Management → 同步組織架構 to configure.",
+    "wrongScopeToSystem": "CI / Result providers are managed at org level. Open Team Management → Organization & System Settings to configure.",
     "wrongScopeToTeam": "Storage providers are managed per-team. Open Git Source Settings under each team."
   },
   "automationHubEntryToggle": {

@@ -93,7 +93,7 @@
   }
 
   // This page is Git 來源設定 (storage-only) — CI / Result providers moved to
-  // the org-level system router (team-management's 同步組織架構 modal). New
+  // the org-level system router (team-management's 組織與系統設定 modal). New
   // providers are always GitHub; editing a legacy row (e.g. storage:local_git)
   // keeps its stored type via the hidden #providerType input.
   const DEFAULT_PROVIDER_TYPE = 'storage:github';
