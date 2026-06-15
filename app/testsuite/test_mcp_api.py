@@ -20,6 +20,7 @@ from app.models.database_models import (
     AdHocRunSheet,
     Base,
     MCPMachineCredential,
+    MCPMachineCredentialStatus,
     Team,
     TestCaseLocal,
     TestCaseSection,
@@ -357,6 +358,7 @@ def _seed_mcp_data(session):
     all_token = "mcp-token-all"
     no_permission_token = "mcp-token-no-permission"
     expired_token = "mcp-token-expired"
+    revoked_token = "mcp-token-revoked"
 
     session.add_all(
         [
@@ -386,6 +388,13 @@ def _seed_mcp_data(session):
                 allow_all_teams=True,
                 expires_at=datetime.utcnow() - timedelta(hours=1),
             ),
+            MCPMachineCredential(
+                name="revoked-reader",
+                token_hash=_hash_token(revoked_token),
+                permission="mcp_read",
+                allow_all_teams=True,
+                status=MCPMachineCredentialStatus.REVOKED,
+            ),
         ]
     )
     session.commit()
@@ -411,6 +420,7 @@ def _seed_mcp_data(session):
         "all_token": all_token,
         "no_permission_token": no_permission_token,
         "expired_token": expired_token,
+        "revoked_token": revoked_token,
     }
 
 
@@ -438,6 +448,10 @@ def test_mcp_auth_requires_valid_machine_token(temp_db):
         expired = client.get("/api/mcp/teams", headers=_bearer(seeded["expired_token"]))
         assert expired.status_code == 401
         assert expired.json()["detail"]["code"] == "MACHINE_TOKEN_EXPIRED"
+
+        revoked = client.get("/api/mcp/teams", headers=_bearer(seeded["revoked_token"]))
+        assert revoked.status_code == 401
+        assert revoked.json()["detail"]["code"] == "MACHINE_TOKEN_REVOKED"
 
 
 def test_mcp_teams_returns_sanitized_and_count(temp_db):

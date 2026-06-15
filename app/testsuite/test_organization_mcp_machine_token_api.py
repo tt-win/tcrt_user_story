@@ -199,3 +199,159 @@ def test_admin_cannot_create_mcp_machine_token(organization_token_test_env):
     )
 
     assert response.status_code == 403
+
+
+# ---------------------------------------------------------------- list / revoke
+
+
+def _create_token(client, name, *, allow_all_teams=True, team_scope_ids=None, expires_in_days=None):
+    payload = {"name": name, "allow_all_teams": allow_all_teams}
+    if team_scope_ids is not None:
+        payload["team_scope_ids"] = team_scope_ids
+    if expires_in_days is not None:
+        payload["expires_in_days"] = expires_in_days
+    resp = client.post("/api/organization/mcp/machine-tokens", json=payload)
+    assert resp.status_code == 200
+    return resp.json()["data"]
+
+
+def _switch_to_admin(env):
+    session_factory = env["session_factory"]
+    current_user_ref = env["current_user_ref"]
+    with session_factory() as session:
+        admin = session.query(User).filter(User.role == UserRole.ADMIN).one()
+        current_user_ref["value"] = SimpleNamespace(
+            id=admin.id,
+            username=admin.username,
+            role=UserRole.ADMIN.value,
+            is_active=True,
+        )
+
+
+def _status_value(credential):
+    status = credential.status
+    return status.value if hasattr(status, "value") else str(status)
+
+
+def test_super_admin_can_list_mcp_machine_tokens(organization_token_test_env):
+    client = TestClient(app)
+    _create_token(client, "mcp-list-a", allow_all_teams=True)
+    _create_token(client, "mcp-list-b", allow_all_teams=True)
+
+    response = client.get("/api/organization/mcp/machine-tokens")
+    assert response.status_code == 200
+
+    data = response.json()
+    assert data["success"] is True
+    items = data["data"]["items"]
+    assert data["data"]["total"] == 2
+    # 依 created_at 由新到舊（id desc 作為同秒 tiebreak），後建立者在前
+    assert [item["name"] for item in items] == ["mcp-list-b", "mcp-list-a"]
+
+    expected_keys = {
+        "credential_id",
+        "name",
+        "description",
+        "permission",
+        "status",
+        "allow_all_teams",
+        "team_scope_ids",
+        "expires_at",
+        "last_used_at",
+        "created_at",
+        "updated_at",
+    }
+    for item in items:
+        assert expected_keys <= set(item.keys())
+        assert item["status"] == "active"
+        assert item["permission"] == "mcp_read"
+
+
+def test_list_excludes_token_secret(organization_token_test_env):
+    client = TestClient(app)
+    _create_token(client, "mcp-secret", allow_all_teams=True)
+
+    response = client.get("/api/organization/mcp/machine-tokens")
+    assert response.status_code == 200
+    for item in response.json()["data"]["items"]:
+        assert "token_hash" not in item
+        assert "raw_token" not in item
+
+
+def test_admin_cannot_list_mcp_machine_tokens(organization_token_test_env):
+    client = TestClient(app)
+    _switch_to_admin(organization_token_test_env)
+
+    response = client.get("/api/organization/mcp/machine-tokens")
+    assert response.status_code == 403
+
+
+def test_super_admin_can_revoke_mcp_machine_token(organization_token_test_env):
+    client = TestClient(app)
+    session_factory = organization_token_test_env["session_factory"]
+    created = _create_token(client, "mcp-revoke", allow_all_teams=True)
+    credential_id = created["credential_id"]
+
+    response = client.delete(f"/api/organization/mcp/machine-tokens/{credential_id}")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["success"] is True
+    assert body["data"]["status"] == "revoked"
+
+    with session_factory() as session:
+        saved = (
+            session.query(MCPMachineCredential)
+            .filter(MCPMachineCredential.id == credential_id)
+            .one_or_none()
+        )
+        assert saved is not None  # 軟刪：資料列保留
+        assert _status_value(saved) == "revoked"
+
+
+def test_revoke_nonexistent_token_returns_404(organization_token_test_env):
+    client = TestClient(app)
+
+    response = client.delete("/api/organization/mcp/machine-tokens/999999")
+    assert response.status_code == 404
+    assert response.json()["detail"]["code"] == "MCP_MACHINE_TOKEN_NOT_FOUND"
+
+
+def test_revoke_is_idempotent(organization_token_test_env):
+    client = TestClient(app)
+    session_factory = organization_token_test_env["session_factory"]
+    created = _create_token(client, "mcp-revoke-twice", allow_all_teams=True)
+    credential_id = created["credential_id"]
+
+    first = client.delete(f"/api/organization/mcp/machine-tokens/{credential_id}")
+    assert first.status_code == 200
+    second = client.delete(f"/api/organization/mcp/machine-tokens/{credential_id}")
+    assert second.status_code == 200
+    assert second.json()["data"]["status"] == "revoked"
+
+    with session_factory() as session:
+        saved = (
+            session.query(MCPMachineCredential)
+            .filter(MCPMachineCredential.id == credential_id)
+            .one()
+        )
+        assert _status_value(saved) == "revoked"
+
+
+def test_admin_cannot_revoke_mcp_machine_token(organization_token_test_env):
+    client = TestClient(app)
+    session_factory = organization_token_test_env["session_factory"]
+    created = _create_token(client, "mcp-revoke-by-admin", allow_all_teams=True)
+    credential_id = created["credential_id"]
+
+    _switch_to_admin(organization_token_test_env)
+
+    response = client.delete(f"/api/organization/mcp/machine-tokens/{credential_id}")
+    assert response.status_code == 403
+
+    with session_factory() as session:
+        saved = (
+            session.query(MCPMachineCredential)
+            .filter(MCPMachineCredential.id == credential_id)
+            .one()
+        )
+        assert _status_value(saved) == "active"

@@ -26,6 +26,8 @@ from app.models.database_models import (
     AutomationScript,
     AutomationScriptCaseLink,
     AutomationScriptFormat,
+    AutomationScriptGroup,
+    AutomationScriptGroupJobType,
     AutomationScriptLinkType,
     MCPMachineCredential,
     MCPMachineCredentialStatus,
@@ -152,6 +154,7 @@ def _seed(session) -> dict:
         name="test_login.py",
         script_format=AutomationScriptFormat.PYTEST,
         ref_path="tests/test_login.py",
+        ref_repo="ex/auto",
         ref_branch="main",
         tags_json=json.dumps(["smoke", "auth"]),
         description="login regression",
@@ -162,10 +165,27 @@ def _seed(session) -> dict:
         name="test_logout.py",
         script_format=AutomationScriptFormat.PYTEST,
         ref_path="tests/test_logout.py",
+        ref_repo="ex/auto",
         ref_branch="main",
         tags_json="[]",
     )
     session.add_all([script_login, script_logout])
+    session.commit()
+
+    # An executable suite composed of the two scripts' ref_paths plus one stale
+    # path (a renamed/removed script) so id-resolution's skip behavior is tested.
+    suite = AutomationScriptGroup(
+        team_id=team.id,
+        name="Login Regression Suite",
+        description="login + logout",
+        script_paths_json=json.dumps(
+            ["tests/test_login.py", "tests/test_logout.py", "tests/test_ghost.py"]
+        ),
+        ref_repo="ex/auto",
+        ci_job_name="tcrt-suite-login",
+        ci_job_type=AutomationScriptGroupJobType.JENKINS,
+    )
+    session.add(suite)
     session.commit()
 
     link = AutomationScriptCaseLink(
@@ -225,8 +245,10 @@ def _seed(session) -> dict:
         "team_id": team.id,
         "case_one_id": case_one.id,
         "case_two_id": case_two.id,
+        "provider_id": provider.id,
         "script_login_id": script_login.id,
         "script_logout_id": script_logout.id,
+        "suite_id": suite.id,
         "run_id": run.id,
         "run_set_id": run_set.id,
         "token": raw_token,
@@ -265,6 +287,55 @@ def test_mcp_automation_scripts_lists_with_linked_cases_and_last_run(temp_db):
         logout = items_by_id[seeded["script_logout_id"]]
         assert "last_run_status" not in logout
         assert logout["linked_test_case_numbers"] == []
+
+
+def test_mcp_automation_script_groups_lists_with_resolved_member_ids(temp_db):
+    with temp_db() as session:
+        seeded = _seed(session)
+        # Decoy: same ref_path as script_login but a DIFFERENT repo. ref_path is
+        # not unique per team, and the suite is scoped to ref_repo="ex/auto", so
+        # resolution must pick the ex/auto script — NOT this one. Guards the
+        # ref_repo-aware lookup against cross-repo id leakage.
+        decoy = AutomationScript(
+            team_id=seeded["team_id"],
+            provider_id=seeded["provider_id"],
+            name="test_login.py",
+            script_format=AutomationScriptFormat.PYTEST,
+            ref_path="tests/test_login.py",
+            ref_repo="other/repo",
+            ref_branch="main",
+            tags_json="[]",
+        )
+        session.add(decoy)
+        session.commit()
+        decoy_id = decoy.id
+
+    with TestClient(app) as client:
+        resp = client.get(
+            f"/api/mcp/teams/{seeded['team_id']}/automation-script-groups",
+            headers=_bearer(seeded["token"]),
+        )
+        assert resp.status_code == 200, resp.text
+        payload = resp.json()
+        assert payload["team_id"] == seeded["team_id"]
+        assert payload["page"]["total"] == 1
+        suite = payload["items"][0]
+        assert suite["id"] == seeded["suite_id"]
+        assert suite["name"] == "Login Regression Suite"
+        assert suite["ref_repo"] == "ex/auto"
+        assert suite["ci_job_name"] == "tcrt-suite-login"
+        assert suite["ci_job_type"] == "JENKINS"
+        # Stored composition preserved verbatim, including the stale path.
+        assert suite["script_paths"] == [
+            "tests/test_login.py",
+            "tests/test_logout.py",
+            "tests/test_ghost.py",
+        ]
+        assert suite["script_count"] == 3
+        # Only resolvable paths become ids, in stored order; ghost path skipped.
+        assert suite["script_ids"] == [seeded["script_login_id"], seeded["script_logout_id"]]
+        # The same ref_path in a DIFFERENT repo must NOT leak in (ref_repo-scoped).
+        assert decoy_id not in suite["script_ids"]
 
 
 def test_mcp_automation_runs_filters(temp_db):

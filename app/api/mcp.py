@@ -22,6 +22,7 @@ from app.models.database_models import (
     AutomationRun as AutomationRunDB,
     AutomationScript as AutomationScriptDB,
     AutomationScriptCaseLink as AutomationScriptCaseLinkDB,
+    AutomationScriptGroup as AutomationScriptGroupDB,
     Team as TeamDB,
     TestCaseLocal as TestCaseLocalDB,
     TestCaseSection as TestCaseSectionDB,
@@ -38,12 +39,14 @@ from app.models.mcp import (
     MCPAutomationCoverageTrendPoint,
     MCPAutomationCoverageUncoveredCase,
     MCPAutomationRunItem,
+    MCPAutomationScriptGroupItem,
     MCPAutomationScriptItem,
     MCPCrossTeamTestCaseItem,
     MCPMachinePrincipal,
     MCPPageMeta,
     MCPTeamAutomationCoverageResponse,
     MCPTeamAutomationRunsResponse,
+    MCPTeamAutomationScriptGroupsResponse,
     MCPTeamAutomationScriptsResponse,
     MCPTeamItem,
     MCPTeamTestCaseSectionsResponse,
@@ -58,6 +61,7 @@ from app.models.mcp import (
 )
 from app.services.automation.coverage_service import AutomationCoverageService
 from app.services.automation.linkage_service import AutomationLinkageService
+from app.services.automation.script_group_service import _load_script_paths
 from app.models.test_run_set import TestRunSetStatus
 from app.services.test_run_set_status import resolve_status_for_response
 
@@ -1111,6 +1115,102 @@ async def list_team_automation_scripts(
         )
 
     return MCPTeamAutomationScriptsResponse(
+        team_id=team_id,
+        items=items,
+        page=MCPPageMeta(skip=skip, limit=limit, total=total, has_next=(skip + len(items)) < total),
+    )
+
+
+@router.get(
+    "/teams/{team_id}/automation-script-groups",
+    response_model=MCPTeamAutomationScriptGroupsResponse,
+)
+async def list_team_automation_script_groups(
+    team_id: int,
+    db: AsyncSession = Depends(get_db),
+    principal: MCPMachinePrincipal = Depends(require_mcp_team_access),
+    skip: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    keyword: Optional[str] = Query(None, description="Partial match against name or description"),
+):
+    """List executable suites (``AutomationScriptGroup``) for a team.
+
+    Fills the read gap between scripts and runs: a client can enumerate which
+    suites exist, what scripts compose them, and the CI job each maps to. The
+    ``script_group_id`` carried on automation-run items resolves here.
+    """
+    del principal
+    await _ensure_team_exists(db, team_id)
+
+    conditions = [AutomationScriptGroupDB.team_id == team_id]
+    if keyword:
+        like = f"%{keyword.strip()}%"
+        conditions.append(
+            or_(
+                AutomationScriptGroupDB.name.ilike(like),
+                AutomationScriptGroupDB.description.ilike(like),
+            )
+        )
+
+    total = int((await db.execute(select(func.count(AutomationScriptGroupDB.id)).where(*conditions))).scalar_one() or 0)
+
+    rows_stmt = (
+        select(AutomationScriptGroupDB)
+        .where(*conditions)
+        .order_by(AutomationScriptGroupDB.id.desc())
+        .offset(skip)
+        .limit(limit)
+    )
+    groups = list((await db.execute(rows_stmt)).scalars().all())
+
+    # Resolve each suite's stored ref_paths → current script ids in one query.
+    # ref_path is NOT unique within a team (uq is team+provider+ref_repo+ref_path+
+    # ref_branch), so a suite must resolve against its OWN repo — key the lookup by
+    # (ref_repo, ref_path), mirroring AutomationScriptGroupService.load_group_scripts.
+    # Parse with the same _load_script_paths the run path uses so MCP and the Test
+    # Run Set trigger agree on a suite's composition.
+    paths_by_group = {int(g.id): _load_script_paths(g.script_paths_json) for g in groups}
+    all_paths = {path for paths in paths_by_group.values() for path in paths}
+    repo_path_to_id: Dict[tuple[str, str], int] = {}
+    if all_paths:
+        id_rows = await db.execute(
+            select(
+                AutomationScriptDB.ref_repo,
+                AutomationScriptDB.ref_path,
+                AutomationScriptDB.id,
+            ).where(
+                AutomationScriptDB.team_id == team_id,
+                AutomationScriptDB.ref_path.in_(all_paths),
+            )
+        )
+        for ref_repo, ref_path, script_id in id_rows.all():
+            repo_path_to_id[(ref_repo or "", str(ref_path))] = int(script_id)
+
+    items: list[MCPAutomationScriptGroupItem] = []
+    for group in groups:
+        repo = group.ref_repo or ""
+        paths = paths_by_group[int(group.id)]
+        items.append(
+            MCPAutomationScriptGroupItem(
+                id=int(group.id),
+                name=group.name,
+                description=group.description,
+                ref_repo=group.ref_repo or None,
+                script_ids=[
+                    repo_path_to_id[(repo, path)]
+                    for path in paths
+                    if (repo, path) in repo_path_to_id
+                ],
+                script_paths=paths,
+                script_count=len(paths),
+                ci_job_name=group.ci_job_name,
+                ci_job_type=_to_text(group.ci_job_type) or None,
+                created_at=group.created_at,
+                updated_at=group.updated_at,
+            )
+        )
+
+    return MCPTeamAutomationScriptGroupsResponse(
         team_id=team_id,
         items=items,
         page=MCPPageMeta(skip=skip, limit=limit, total=total, has_next=(skip + len(items)) < total),

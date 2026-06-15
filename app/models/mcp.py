@@ -191,6 +191,33 @@ class MCPTeamAutomationScriptsResponse(BaseModel):
     page: MCPPageMeta
 
 
+class MCPAutomationScriptGroupItem(BaseModel):
+    """Executable suite (``AutomationScriptGroup``) entry for MCP listing.
+
+    ``script_paths`` is the suite's composition as stored; ``script_ids`` are
+    those paths resolved to current script ids in the same team, so a client
+    can navigate run.script_group_id → this suite → member scripts.
+    """
+
+    id: int
+    name: str
+    description: Optional[str] = None
+    ref_repo: Optional[str] = None
+    script_ids: List[int] = Field(default_factory=list)
+    script_paths: List[str] = Field(default_factory=list)
+    script_count: int = 0
+    ci_job_name: Optional[str] = None
+    ci_job_type: Optional[str] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+
+
+class MCPTeamAutomationScriptGroupsResponse(BaseModel):
+    team_id: int
+    items: List[MCPAutomationScriptGroupItem] = Field(default_factory=list)
+    page: MCPPageMeta
+
+
 class MCPAutomationRunItem(BaseModel):
     id: int
     automation_script_id: Optional[int] = None

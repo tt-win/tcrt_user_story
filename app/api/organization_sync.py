@@ -101,6 +101,40 @@ def _resolve_role_value(raw_role: object) -> str:
     return str(raw_role or "")
 
 
+def _serialize_machine_credential(credential: MCPMachineCredential) -> dict:
+    """白名單序列化 machine credential 的 metadata。
+
+    刻意只輸出可公開的管理欄位；`token_hash` 永不進入序列化路徑，明文 raw token
+    亦未留存，故列表不可能洩漏任何 secret。
+    """
+    status_value = (
+        credential.status.value
+        if hasattr(credential.status, "value")
+        else str(credential.status or "")
+    )
+    if credential.allow_all_teams:
+        team_scope_ids: List[int] = []
+    else:
+        try:
+            raw_scope = json.loads(credential.team_scope_json or "[]")
+        except (TypeError, ValueError):
+            raw_scope = []
+        team_scope_ids = _normalize_team_scope_ids(raw_scope if isinstance(raw_scope, list) else [])
+    return {
+        "credential_id": credential.id,
+        "name": credential.name,
+        "description": credential.description,
+        "permission": credential.permission,
+        "status": status_value,
+        "allow_all_teams": bool(credential.allow_all_teams),
+        "team_scope_ids": team_scope_ids,
+        "expires_at": credential.expires_at.isoformat() if credential.expires_at else None,
+        "last_used_at": credential.last_used_at.isoformat() if credential.last_used_at else None,
+        "created_at": credential.created_at.isoformat() if credential.created_at else None,
+        "updated_at": credential.updated_at.isoformat() if credential.updated_at else None,
+    }
+
+
 @router.post("/mcp/machine-tokens")
 async def create_mcp_machine_token(
     payload: MCPMachineTokenCreateRequest,
@@ -247,6 +281,100 @@ async def create_mcp_machine_token(
         logger.warning("MCP machine token 審計紀錄寫入失敗: %s", exc, exc_info=True)
 
     return response_payload
+
+
+@router.get("/mcp/machine-tokens")
+async def list_mcp_machine_tokens(
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
+    current_user: User = Depends(require_super_admin()),
+):
+    """列出所有 MCP machine credential 的 metadata（Super Admin only）。
+
+    回傳 metadata-only；不含 token_hash、也不可能含 raw token。同時包含 active 與
+    revoked，依 created_at 由新到舊排序。
+    """
+    del current_user  # 僅用於 require_super_admin 授權
+
+    async def _load_credentials(session):
+        rows = await session.execute(
+            select(MCPMachineCredential).order_by(
+                MCPMachineCredential.created_at.desc(),
+                MCPMachineCredential.id.desc(),
+            )
+        )
+        return list(rows.scalars().all())
+
+    credentials = await main_boundary.run_read(_load_credentials)
+    items = [_serialize_machine_credential(credential) for credential in credentials]
+    return {"success": True, "data": {"items": items, "total": len(items)}}
+
+
+@router.delete("/mcp/machine-tokens/{credential_id}")
+async def revoke_mcp_machine_token(
+    credential_id: int,
+    request: Request,
+    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
+    current_user: User = Depends(require_super_admin()),
+):
+    """撤銷 machine credential（Super Admin only）。
+
+    軟刪：status → REVOKED，保留資料列與 last_used_at。重複撤銷為 idempotent
+    （回 200、不重複寫稽核）。撤銷後該 token 於下一次 MCP 驗證即被拒。
+    """
+
+    async def _revoke(session):
+        row = await session.execute(
+            select(MCPMachineCredential).where(MCPMachineCredential.id == credential_id)
+        )
+        credential = row.scalar_one_or_none()
+        if credential is None:
+            return {"found": False, "changed": False, "name": None}
+        status_value = (
+            credential.status.value
+            if hasattr(credential.status, "value")
+            else str(credential.status or "")
+        )
+        if status_value == MCPMachineCredentialStatus.REVOKED.value:
+            return {"found": True, "changed": False, "name": credential.name}
+        credential.status = MCPMachineCredentialStatus.REVOKED
+        await session.flush()
+        return {"found": True, "changed": True, "name": credential.name}
+
+    result = await main_boundary.run_write(_revoke)
+
+    if not result["found"]:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "code": "MCP_MACHINE_TOKEN_NOT_FOUND",
+                "message": f"找不到 machine token: {credential_id}",
+            },
+        )
+
+    if result["changed"]:
+        try:
+            await audit_service.log_action(
+                user_id=getattr(current_user, "id", 0) or 0,
+                username=getattr(current_user, "username", "unknown"),
+                role=_resolve_role_value(getattr(current_user, "role", "")),
+                action_type=ActionType.UPDATE,
+                resource_type=ResourceType.SYSTEM,
+                resource_id=f"mcp_machine_credential:{credential_id}",
+                team_id=0,
+                details={
+                    "credential_id": credential_id,
+                    "name": result["name"],
+                    "status": MCPMachineCredentialStatus.REVOKED.value,
+                },
+                action_brief=f"撤銷 MCP machine token: {result['name']}",
+                severity=AuditSeverity.INFO,
+                ip_address=request.client.host if request.client else None,
+                user_agent=request.headers.get("user-agent"),
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("MCP machine token 撤銷審計紀錄寫入失敗: %s", exc, exc_info=True)
+
+    return {"success": True, "data": {"credential_id": credential_id, "status": "revoked"}}
 
 
 @router.get("/sync/status")

@@ -30,6 +30,7 @@ from .qa_ai_helper import router as qa_ai_helper_router
 from .mcp import router as mcp_router
 from .automation_providers import router as automation_providers_router
 from .system_automation_providers import router as system_automation_providers_router
+from .system_automation_hub import router as system_automation_hub_router
 from .automation_scripts import router as automation_scripts_router
 from .automation_links import router as automation_links_router
 from .automation_script_groups import router as automation_script_groups_router
@@ -70,6 +71,7 @@ api_router.include_router(qa_ai_helper_router)  # 新版 QA AI Helper 路由
 api_router.include_router(mcp_router)  # MCP Read 路由
 api_router.include_router(automation_providers_router)  # 團隊層 Provider 設定（僅 storage）
 api_router.include_router(system_automation_providers_router)  # 組織層 Provider 設定（CI / Result）
+api_router.include_router(system_automation_hub_router)  # 組織層 Automation Hub 入口開關
 api_router.include_router(automation_scripts_router)  # Automation Hub Script 快取路由
 api_router.include_router(automation_links_router)  # Automation Hub Script Link 路由
 api_router.include_router(automation_script_groups_router)  # Automation Hub Suite 路由

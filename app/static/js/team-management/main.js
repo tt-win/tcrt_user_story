@@ -1,5 +1,8 @@
 let teams = [];
 let currentEditTeam = null;
+let mcpTokenListLoaded = false;
+let mcpTokenItems = [];
+let automationHubEntryEnabled = true;
 
 function toggleSyncTabVisibility(id, visible, isLi = false) {
     const el = document.getElementById(id);
@@ -101,6 +104,15 @@ document.addEventListener('DOMContentLoaded', function() {
     applyTeamManagementUiVisibility();
 });
 
+// Super Admin 於「組織自動化基礎設施」切換入口開關後，即時重繪 team card
+// （隱藏／恢復「進入團隊」選單中的 Automation Hub 項目），免去手動刷新。
+window.addEventListener('automationHubEntryToggled', (event) => {
+    automationHubEntryEnabled = !!(event && event.detail && event.detail.enabled);
+    if (teams && teams.length) {
+        renderTeamCards();
+    }
+});
+
 function initTeamManagement() {
     // 綁定事件監聽器
     document.getElementById('createTeamBtn').addEventListener('click', showCreateTeamModal);
@@ -148,6 +160,38 @@ function initMcpTokenTab() {
     const copyBtn = document.getElementById('mcpCopyTokenBtn');
     if (copyBtn) {
         copyBtn.addEventListener('click', copyMcpTokenToClipboard);
+    }
+
+    const tokenRefreshBtn = document.getElementById('mcpTokenRefreshBtn');
+    if (tokenRefreshBtn) {
+        tokenRefreshBtn.addEventListener('click', loadMcpTokens);
+    }
+
+    // 分頁首次顯示時才載入列表（lazy load）；Refresh 鈕則強制重載
+    const mcpTokenTabTrigger = document.getElementById('tab-mcp-token');
+    if (mcpTokenTabTrigger) {
+        mcpTokenTabTrigger.addEventListener('shown.bs.tab', () => {
+            if (!mcpTokenListLoaded) loadMcpTokens();
+        });
+    }
+
+    // 核發 modal：比照本專案其他 modal（org-automation-infra.js）以 JS new bootstrap.Modal
+    // 開啟，不依賴 data-bs-toggle data-API。
+    const mcpTokenCreateModalEl = document.getElementById('mcpTokenCreateModal');
+    let mcpTokenCreateModalInstance = null;
+    if (mcpTokenCreateModalEl && window.bootstrap && bootstrap.Modal) {
+        mcpTokenCreateModalInstance = new bootstrap.Modal(mcpTokenCreateModalEl);
+        // 開啟時重整可選團隊並清空表單（避免殘留上一次的一次性 token）
+        mcpTokenCreateModalEl.addEventListener('show.bs.modal', () => {
+            refreshMcpTokenTeamScopeOptions();
+            resetMcpTokenForm();
+        });
+    }
+    const mcpTokenOpenCreateBtn = document.getElementById('mcpTokenOpenCreateBtn');
+    if (mcpTokenOpenCreateBtn) {
+        mcpTokenOpenCreateBtn.addEventListener('click', () => {
+            if (mcpTokenCreateModalInstance) mcpTokenCreateModalInstance.show();
+        });
     }
 
     refreshMcpTokenTeamScopeOptions();
@@ -323,6 +367,7 @@ async function createMcpMachineToken(event) {
         const resetForm = document.getElementById('mcpTokenForm');
         if (resetForm) resetForm.reset();
         syncMcpTokenTeamScopeState();
+        loadMcpTokens();
     } catch (error) {
         console.error('建立 MCP machine token 失敗:', error);
         const prefix = getI18n('mcpToken.createFailedPrefix', '建立 token 失敗');
@@ -361,6 +406,132 @@ async function copyMcpTokenToClipboard() {
     }
 }
 
+async function loadMcpTokens() {
+    const loadingEl = document.getElementById('mcpTokenListLoading');
+    const emptyEl = document.getElementById('mcpTokenListEmpty');
+    const tableWrap = document.getElementById('mcpTokenTableWrap');
+    const tbody = document.getElementById('mcpTokenTableBody');
+    if (!tbody) return;
+
+    mcpTokenListLoaded = true;
+
+    if (loadingEl) loadingEl.classList.remove('d-none');
+    if (emptyEl) emptyEl.classList.add('d-none');
+    if (tableWrap) tableWrap.classList.add('d-none');
+
+    try {
+        if (!window.AuthClient) throw new Error('AuthClient 尚未初始化');
+        const response = await window.AuthClient.fetch('/api/organization/mcp/machine-tokens');
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !payload.success || !payload.data) {
+            const message = extractApiErrorMessage(payload) || `${response.status}`;
+            throw new Error(message);
+        }
+
+        mcpTokenItems = Array.isArray(payload.data.items) ? payload.data.items : [];
+        tbody.innerHTML = mcpTokenItems.map(renderMcpTokenRow).join('');
+        bindMcpTokenRowActions();
+
+        if (loadingEl) loadingEl.classList.add('d-none');
+        if (mcpTokenItems.length === 0) {
+            if (emptyEl) emptyEl.classList.remove('d-none');
+            if (tableWrap) tableWrap.classList.add('d-none');
+        } else if (tableWrap) {
+            tableWrap.classList.remove('d-none');
+        }
+    } catch (error) {
+        console.error('載入 MCP machine token 列表失敗:', error);
+        if (loadingEl) loadingEl.classList.add('d-none');
+        if (tableWrap) tableWrap.classList.add('d-none');
+        if (emptyEl) emptyEl.classList.add('d-none');
+        AppUtils.showError(`${getI18n('mcpToken.listLoadFailed', '載入 token 列表失敗')}：${error.message}`);
+    }
+}
+
+function deriveMcpTokenDisplayStatus(item) {
+    if (String(item.status || '').toLowerCase() === 'revoked') return 'revoked';
+    if (item.expires_at) {
+        const expires = new Date(item.expires_at);
+        if (!Number.isNaN(expires.getTime()) && expires.getTime() <= Date.now()) {
+            return 'expired';
+        }
+    }
+    return 'active';
+}
+
+function renderMcpTokenStatusBadge(status) {
+    const map = {
+        active: { cls: 'bg-success', key: 'mcpToken.statusActive', fallback: 'Active' },
+        revoked: { cls: 'bg-secondary', key: 'mcpToken.statusRevoked', fallback: 'Revoked' },
+        expired: { cls: 'bg-warning text-dark', key: 'mcpToken.statusExpired', fallback: 'Expired' }
+    };
+    const conf = map[status] || map.active;
+    return `<span class="badge ${conf.cls}">${escapeHtml(getI18n(conf.key, conf.fallback))}</span>`;
+}
+
+function renderMcpTokenRow(item) {
+    const status = deriveMcpTokenDisplayStatus(item);
+    const name = escapeHtml(item.name || '');
+    const scope = item.allow_all_teams
+        ? escapeHtml(getI18n('mcpToken.scopeAllTeams', '所有團隊'))
+        : (Array.isArray(item.team_scope_ids) && item.team_scope_ids.length
+            ? escapeHtml(item.team_scope_ids.map((id) => `#${id}`).join(', '))
+            : '-');
+    const neverExpires = getI18n('mcpToken.neverExpires', '永不過期');
+    const neverUsed = getI18n('mcpToken.neverUsed', '從未');
+    const expires = item.expires_at ? escapeHtml(formatIsoDatetime(item.expires_at)) : escapeHtml(neverExpires);
+    const lastUsed = item.last_used_at ? escapeHtml(formatIsoDatetime(item.last_used_at)) : escapeHtml(neverUsed);
+    const created = escapeHtml(formatIsoDatetime(item.created_at));
+
+    let actions = '';
+    if (status !== 'revoked') {
+        const revokeLabel = escapeHtml(getI18n('mcpToken.revokeButton', '撤銷'));
+        actions = `<button type="button" class="btn btn-outline-danger btn-sm mcp-token-revoke-btn" data-credential-id="${item.credential_id}"><i class="fas fa-ban me-1"></i>${revokeLabel}</button>`;
+    }
+
+    return `<tr>
+        <td>${name}</td>
+        <td>${renderMcpTokenStatusBadge(status)}</td>
+        <td>${scope}</td>
+        <td>${expires}</td>
+        <td>${lastUsed}</td>
+        <td>${created}</td>
+        <td class="text-end">${actions}</td>
+    </tr>`;
+}
+
+function bindMcpTokenRowActions() {
+    document.querySelectorAll('#mcpTokenTableBody .mcp-token-revoke-btn').forEach((btn) => {
+        btn.addEventListener('click', () => revokeMcpToken(btn.getAttribute('data-credential-id')));
+    });
+}
+
+async function revokeMcpToken(credentialId) {
+    const item = mcpTokenItems.find((entry) => String(entry.credential_id) === String(credentialId));
+    const name = item && item.name ? item.name : `#${credentialId}`;
+    const confirmTpl = getI18n('mcpToken.revokeConfirm', '確定要撤銷 token「{name}」嗎？撤銷後該 token 將立即失效且無法復原。');
+    if (!window.confirm(confirmTpl.replace('{name}', name))) return;
+
+    try {
+        if (!window.AuthClient) throw new Error('AuthClient 尚未初始化');
+        const response = await window.AuthClient.fetch(`/api/organization/mcp/machine-tokens/${encodeURIComponent(credentialId)}`, {
+            method: 'DELETE',
+            headers: { 'Accept': 'application/json' }
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || !payload.success) {
+            const message = extractApiErrorMessage(payload) || `${response.status}`;
+            throw new Error(message);
+        }
+        AppUtils.showSuccess(getI18n('mcpToken.revokeSuccess', 'Token 已撤銷'));
+        await loadMcpTokens();
+    } catch (error) {
+        console.error('撤銷 MCP machine token 失敗:', error);
+        const prefix = getI18n('mcpToken.revokeFailedPrefix', '撤銷 token 失敗');
+        AppUtils.showError(`${prefix}：${error.message}`);
+    }
+}
+
 async function loadTeams() {
     try {
         showLoading();
@@ -370,11 +541,13 @@ async function loadTeams() {
             throw new Error('AuthClient 尚未初始化');
         }
         
+        automationHubEntryEnabled = await AppUtils.getAutomationHubEntryEnabled();
+
         const response = await window.AuthClient.fetch('/api/teams/');
         if (!response.ok) {
             throw new Error(`HTTP ${response.status}: ${response.statusText}`);
         }
-        
+
         teams = await response.json();
         renderTeams();
         refreshMcpTokenTeamScopeOptions();
@@ -498,11 +671,11 @@ function renderTeamCards() {
                                             <i class="fas fa-play-circle me-2"></i>Test Runs
                                         </button>
                                     </li>
-                                    <li>
+                                    ${automationHubEntryEnabled ? `<li>
                                         <button class="dropdown-item" type="button" onclick="enterTeamWithPage(${team.id}, 'automation')">
                                             <i class="fas fa-robot me-2"></i>${(window.i18n && window.i18n.isReady()) ? window.i18n.t('navigation.automationHub') : 'Automation Hub'}
                                         </button>
-                                    </li>
+                                    </li>` : ''}
                                     <li>
                                         <button class="dropdown-item" type="button" onclick="enterTeamWithPage(${team.id}, 'usm')">
                                             <i class="fas fa-project-diagram me-2"></i>User Story Map

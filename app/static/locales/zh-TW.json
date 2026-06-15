@@ -1104,7 +1104,30 @@
     "invalidExpiresDays": "有效天數需為正整數",
     "copyModalTitle": "手動複製 Token",
     "copyModalInstruction": "請使用 Ctrl/Cmd + C 進行複製",
-    "rawTokenLabel": "Raw Token"
+    "rawTokenLabel": "Raw Token",
+    "listTitle": "已核發的 Token",
+    "openCreateButton": "核發 Token",
+    "createModalTitle": "核發 MCP Machine Token",
+    "listSubtitle": "列出已核發的 machine token（僅 metadata，無法再次查看明文）。可撤銷不再使用的 token。",
+    "listLoading": "載入 token 列表中...",
+    "listEmpty": "目前尚未核發任何 token",
+    "listLoadFailed": "載入 token 列表失敗",
+    "colName": "名稱",
+    "colStatus": "狀態",
+    "colScope": "可存取團隊",
+    "colExpires": "到期",
+    "colLastUsed": "最後使用",
+    "colCreated": "建立",
+    "colActions": "操作",
+    "statusActive": "啟用中",
+    "statusRevoked": "已撤銷",
+    "statusExpired": "已過期",
+    "scopeAllTeams": "所有團隊",
+    "neverUsed": "從未",
+    "revokeButton": "撤銷",
+    "revokeConfirm": "確定要撤銷 token「{name}」嗎？撤銷後該 token 將立即失效且無法復原。",
+    "revokeSuccess": "Token 已撤銷",
+    "revokeFailedPrefix": "撤銷 token 失敗"
   },
   "scheduledServices": {
     "tabTitle": "Service 管理",
@@ -3184,5 +3207,12 @@
     "backToHub": "返回 Automation Hub",
     "wrongScopeToSystem": "CI / Result Provider 改在組織層管理，請至「團隊管理 → 同步組織架構」設定。",
     "wrongScopeToTeam": "Storage Provider 為各 team 各自設定，請至各 team 的 Git 來源設定頁。"
+  },
+  "automationHubEntryToggle": {
+    "title": "Automation Hub 入口",
+    "switchLabel": "顯示 Automation Hub 入口",
+    "hint": "關閉後會隱藏首頁 team card 的「Automation Hub」按鈕，以及「進入團隊」選單中的 Automation Hub 項目；/automation-hub 頁面與 API 仍可由直接網址存取（保留後端能力）。",
+    "saveDone": "Automation Hub 入口設定已更新",
+    "saveFailed": "更新 Automation Hub 入口設定失敗"
   }
 }

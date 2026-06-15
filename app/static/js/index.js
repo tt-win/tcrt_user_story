@@ -1,8 +1,10 @@
 let teams = [];
 let uiPermissions = {};
+let automationHubEntryEnabled = true;
 
 document.addEventListener('DOMContentLoaded', async function() {
     await applyIndexUiVisibility();
+    automationHubEntryEnabled = await AppUtils.getAutomationHubEntryEnabled();
     loadTeams();
 });
 
@@ -147,9 +149,9 @@ function renderTeamCards() {
                         <button class="btn btn-secondary" onclick="event.stopPropagation(); selectTeamForTestRuns(${team.id})">
                             <i class="fas fa-play-circle me-2"></i><span data-i18n="navigation.testRunManagement">Test Run 管理</span>
                         </button>
-                        <button class="btn btn-success" onclick="event.stopPropagation(); selectTeamForAutomation(${team.id})">
+                        ${automationHubEntryEnabled ? `<button class="btn btn-success" onclick="event.stopPropagation(); selectTeamForAutomation(${team.id})">
                             <i class="fas fa-robot me-2"></i><span data-i18n="navigation.automationHub">Automation Hub</span>
-                        </button>
+                        </button>` : ''}
                         <button class="btn btn-info" onclick="event.stopPropagation(); selectTeamForUserStoryMap(${team.id})">
                             <i class="fas fa-project-diagram me-2"></i><span data-i18n="navigation.userStoryMap">User Story Map</span>
                         </button>

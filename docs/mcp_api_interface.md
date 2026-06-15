@@ -415,6 +415,67 @@ Accept: application/json
 }
 ```
 
+### 3.6 Automation 唯讀端點
+
+> 以下 automation 端點皆唯讀、沿用 2.2 的 machine token 驗證，並採 `skip` / `limit` 分頁（回應含 `page: {skip, limit, total, has_next}`）。執行 / 觸發 / smart-scan / provider 設定為寫入或含憑證操作，**不**經 MCP 暴露。
+
+#### 3.6.1 列出 Automation Scripts
+
+`GET /api/mcp/teams/{team_id}/automation-scripts`
+
+- 功能：列出 team 內所有 automation script，含 linked test case 數與最多 20 筆 case number。
+- Query 參數：`skip`（≥0, 預設 0）、`limit`（1–200, 預設 50）、`format`（script_format）、`keyword`（對 `name` 或 `ref_path` partial match）。
+- 主要回傳欄位（`items[i]`）：`id`、`name`、`script_format`、`ref_path`、`ref_branch`、`description`、`preferred_runner_label`、`tags[]`、`linked_test_case_count`、`linked_test_case_numbers[]`、`last_synced_at`、`created_at`、`updated_at`。
+
+#### 3.6.2 列出 Automation Script Groups（可執行 suite）
+
+`GET /api/mcp/teams/{team_id}/automation-script-groups`
+
+- 功能：列出 team 內所有可執行 suite 及其組成；用於從 automation-run 的 `script_group_id` 反查 suite 名稱、成員 script 與對應 CI job。
+- Query 參數：`skip`（≥0, 預設 0）、`limit`（1–200, 預設 50）、`keyword`（對 `name` 或 `description` partial match）。
+- 主要回傳欄位（`items[i]`）：`id`、`name`、`description`、`ref_repo`、`script_paths[]`、`script_count`、`script_ids[]`、`ci_job_name`、`ci_job_type`、`created_at`、`updated_at`。
+- 說明：`script_paths` 為 suite 儲存的組成（ref_path 清單）；`script_ids` 為這些 path 解析回同 team 現存 script id 的結果（保留 stored 順序，已改名／刪除的 stale path 略過，故 `len(script_ids)` 可能小於 `script_count`）。可沿 `run.script_group_id → suite → script_ids → /automation-scripts` 串接導覽。
+
+#### Response 範例
+
+```json
+{
+  "team_id": 1,
+  "items": [
+    {
+      "id": 12,
+      "name": "Login Regression Suite",
+      "description": "login + logout",
+      "ref_repo": "ex/auto",
+      "script_paths": ["tests/test_login.py", "tests/test_logout.py", "tests/test_ghost.py"],
+      "script_count": 3,
+      "script_ids": [101, 102],
+      "ci_job_name": "tcrt-suite-login",
+      "ci_job_type": "JENKINS",
+      "created_at": "2026-06-10T07:00:00.000000",
+      "updated_at": "2026-06-10T07:00:00.000000"
+    }
+  ],
+  "page": {"skip": 0, "limit": 50, "total": 1, "has_next": false}
+}
+```
+
+#### 3.6.3 列出某 Test Run Set 的 Automation Runs
+
+`GET /api/mcp/teams/{team_id}/test-run-sets/{set_id}/automation-runs`
+
+- 功能：列出指定 Test Run Set 所觸發的 automation runs（執行入口已集中於 Test Run Set，故 run 一律 set-scoped）。
+- Query 參數：`status`、`branch`、`skip`（≥0, 預設 0）、`limit`（1–200, 預設 50）。
+- 主要回傳欄位（`items[i]`）：`id`、`automation_script_id`、`script_group_id`、`test_run_set_id`、`workflow_id`、`branch`、`status`、`triggered_by`、`triggered_by_user_id`、`external_run_id`、`external_run_url`、`report_url`、`runner_label`、`started_at`、`finished_at`、`duration_ms`、`tcrt_correlation_id`、`error_summary`、`created_at`、`updated_at`。
+- `set_id` 不存在於該 team → `404`，detail code `TEST_RUN_SET_NOT_FOUND`。
+
+#### 3.6.4 取得 Automation Coverage
+
+`GET /api/mcp/teams/{team_id}/automation-coverage`
+
+- 功能：回傳該 team 的自動化覆蓋率摘要、未覆蓋 case 取樣、stale script，以及近 30 日趨勢。
+- 主要回傳欄位：`summary`（`total_test_cases` / `with_primary_link` / `with_covers_link` / `with_any_link` / `uncovered_count` / `by_format{}`）、`uncovered_sample[]`（最多 50 筆）、`stale_scripts[]`、`trend[]`（30 點）。
+
 ## 4. 錯誤碼對照（建議 MCP Server 映射）
 
 ### 4.1 認證/授權

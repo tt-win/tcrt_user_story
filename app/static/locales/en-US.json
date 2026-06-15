@@ -1104,7 +1104,30 @@
     "invalidExpiresDays": "Expires in days must be a positive integer",
     "copyModalTitle": "Copy Token Manually",
     "copyModalInstruction": "Use Ctrl/Cmd + C to copy",
-    "rawTokenLabel": "Raw Token"
+    "rawTokenLabel": "Raw Token",
+    "listTitle": "Issued Tokens",
+    "openCreateButton": "Issue Token",
+    "createModalTitle": "Issue MCP Machine Token",
+    "listSubtitle": "Lists issued machine tokens (metadata only; the secret cannot be viewed again). Revoke tokens you no longer need.",
+    "listLoading": "Loading tokens...",
+    "listEmpty": "No tokens have been issued yet",
+    "listLoadFailed": "Failed to load tokens",
+    "colName": "Name",
+    "colStatus": "Status",
+    "colScope": "Team Scope",
+    "colExpires": "Expires",
+    "colLastUsed": "Last Used",
+    "colCreated": "Created",
+    "colActions": "Actions",
+    "statusActive": "Active",
+    "statusRevoked": "Revoked",
+    "statusExpired": "Expired",
+    "scopeAllTeams": "All Teams",
+    "neverUsed": "Never",
+    "revokeButton": "Revoke",
+    "revokeConfirm": "Revoke token '{name}'? It will be invalidated immediately and cannot be restored.",
+    "revokeSuccess": "Token revoked",
+    "revokeFailedPrefix": "Failed to revoke token"
   },
   "scheduledServices": {
     "tabTitle": "Service Management",
@@ -3090,5 +3113,12 @@
     "backToHub": "Back to Automation Hub",
     "wrongScopeToSystem": "CI / Result providers are managed at org level. Open Team Management → 同步組織架構 to configure.",
     "wrongScopeToTeam": "Storage providers are managed per-team. Open Git Source Settings under each team."
+  },
+  "automationHubEntryToggle": {
+    "title": "Automation Hub Entry",
+    "switchLabel": "Show Automation Hub entry",
+    "hint": "When off, the home-page team card \"Automation Hub\" button and the Automation Hub item in the \"Enter Team\" menu are hidden; the /automation-hub page and APIs remain reachable by direct URL (backend capability retained).",
+    "saveDone": "Automation Hub entry setting updated",
+    "saveFailed": "Failed to update Automation Hub entry setting"
   }
 }

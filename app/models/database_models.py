@@ -1773,6 +1773,23 @@ class SystemAutomationProvider(_AutomationProviderColumnsMixin, Base):
     )
 
 
+class SystemSetting(Base):
+    """Org-level, runtime-mutable key/value settings.
+
+    Generic store for organization-wide toggles that must be changeable at
+    runtime from the UI (no static config restart). Missing keys fall back to
+    feature-specific defaults at the accessor layer, so an absent row means
+    "default" rather than "off". First consumer: Automation Hub entry
+    visibility (key ``automation_hub_entry_enabled``)."""
+
+    __tablename__ = "system_settings"
+
+    key = Column(String(100), primary_key=True)
+    value = Column(Text, nullable=True)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+    updated_by = Column(String(64), nullable=True)
+
+
 class AutomationScript(Base):
     """Auto-discovered automation script cache"""
 

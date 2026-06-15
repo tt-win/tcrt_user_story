@@ -34,6 +34,33 @@ const AppUtils = {
         this.triggerTeamClearEvent();
     },
 
+    // Automation Hub 入口開關（組織層級設定）快取
+    _automationHubEntryEnabledPromise: null,
+
+    // 讀取 Automation Hub 入口開關狀態（快取 promise）。
+    // 失敗一律回退為「顯示」(true)，避免暫時性錯誤把入口藏起來（與預設開啟一致）。
+    getAutomationHubEntryEnabled: function() {
+        if (!this._automationHubEntryEnabledPromise) {
+            this._automationHubEntryEnabledPromise = (async () => {
+                try {
+                    if (!window.AuthClient) return true;
+                    const resp = await window.AuthClient.fetch('/api/system/automation-hub/settings');
+                    if (!resp.ok) return true;
+                    const data = await resp.json();
+                    return !data || data.enabled !== false;
+                } catch (e) {
+                    return true;
+                }
+            })();
+        }
+        return this._automationHubEntryEnabledPromise;
+    },
+
+    // 重置快取（Super Admin 切換開關後呼叫，使下次讀取重新抓取）
+    resetAutomationHubEntryEnabledCache: function() {
+        this._automationHubEntryEnabledPromise = null;
+    },
+
     // 觸發團隊變更事件
     triggerTeamChangeEvent: function() {
         const event = new CustomEvent('teamChanged', { 

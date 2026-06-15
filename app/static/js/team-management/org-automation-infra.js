@@ -38,6 +38,7 @@
       if (!state.loaded) {
         loadAll();
       }
+      loadEntryToggle();
     });
 
     const modalEl = document.getElementById('orgInfraProviderModal');
@@ -82,6 +83,10 @@
   }
 
   function bindEvents() {
+    const entryToggle = document.getElementById('automationHubEntryToggle');
+    if (entryToggle) {
+      entryToggle.addEventListener('change', () => saveEntryToggle(entryToggle.checked));
+    }
     const addBtn = document.getElementById('orgInfraAddProviderBtn');
     if (addBtn) addBtn.addEventListener('click', () => openProviderModal());
     const refreshBtn = document.getElementById('orgInfraRefreshBtn');
@@ -105,6 +110,38 @@
           discoverRunners();
         }
       });
+    }
+  }
+
+  // ─── Automation Hub 入口開關 ───
+  async function loadEntryToggle() {
+    const toggle = document.getElementById('automationHubEntryToggle');
+    if (!toggle) return;
+    try {
+      const data = await apiFetch('/api/system/automation-hub/settings');
+      toggle.checked = !data || data.enabled !== false;
+    } catch (_error) {
+      // 讀取失敗時保留預設（顯示），非致命。
+    }
+  }
+
+  async function saveEntryToggle(enabled) {
+    const toggle = document.getElementById('automationHubEntryToggle');
+    try {
+      await apiFetch('/api/system/automation-hub/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ enabled }),
+      });
+      showSuccess(t('automationHubEntryToggle.saveDone', 'Automation Hub 入口設定已更新'));
+      if (window.AppUtils && window.AppUtils.resetAutomationHubEntryEnabledCache) {
+        window.AppUtils.resetAutomationHubEntryEnabledCache();
+      }
+      window.dispatchEvent(new CustomEvent('automationHubEntryToggled', { detail: { enabled } }));
+    } catch (error) {
+      // 失敗時還原開關狀態，避免 UI 與後端不一致。
+      if (toggle) toggle.checked = !enabled;
+      showError(error.message || t('automationHubEntryToggle.saveFailed', '更新 Automation Hub 入口設定失敗'));
     }
   }
 
