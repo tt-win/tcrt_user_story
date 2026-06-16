@@ -436,8 +436,9 @@ def parse_user_story(lines: List[str]) -> Dict[str, str]:
         node_text = clean_inline(node.text)
         node_lower = node_text.lower()
 
-        if node_lower.startswith("as a "):
-            result["As a"] = node_text[5:].strip().rstrip(",")
+        as_a_match = re.match(r"as an? ", node_lower)
+        if as_a_match:
+            result["As a"] = node_text[as_a_match.end():].strip().rstrip(",")
             for cont in node.continuations:
                 cont_clean = clean_inline(cont)
                 cont_lower = cont_clean.lower()

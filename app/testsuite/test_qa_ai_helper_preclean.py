@@ -268,3 +268,18 @@ h3. Scenario 1: 顯示唯讀 markdown
     assert payload["validation_result"]["is_valid"] is True
     assert structured["User Story Narrative"]["As a"] == "QA"
     assert structured["Acceptance Criteria"][0]["Scenario"]["name"] == "顯示唯讀 markdown"
+
+
+def test_parse_user_story_recognizes_as_an_determiner():
+    description = """
+h1. User Story Narrative（使用者故事敘述）
+ * *As an* Brand Admin
+ * *I want* 檢視品牌設定
+ * *So that* 我能管理品牌
+""".strip()
+
+    output = build_output(description, comments=[])
+
+    # "As an" 必須與 "As a" 一樣被辨認，且不可殘留冠詞的 "n"
+    assert output["User Story Narrative"]["As a"] == "Brand Admin"
+    assert output["User Story Narrative"]["I want"] == "檢視品牌設定"

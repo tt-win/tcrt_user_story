@@ -218,8 +218,9 @@ class StructuredRequirementParser:
         normalized = content.strip()
         lower = normalized.lower()
 
-        if lower.startswith("as a"):
-            user_story["as_a"] = self._clean_text(normalized[4:].strip(" :："))
+        as_a_match = re.match(r"as an?\b", lower)
+        if as_a_match:
+            user_story["as_a"] = self._clean_text(normalized[as_a_match.end():].strip(" :："))
             return
         if lower.startswith("i want"):
             user_story["i_want"] = self._clean_text(normalized[6:].strip(" :："))
@@ -229,12 +230,15 @@ class StructuredRequirementParser:
             return
 
         # Try soft matching for localized content.
-        if "as a" in lower and not user_story.get("as_a"):
-            user_story["as_a"] = self._clean_text(normalized.split("as a", 1)[-1])
-        elif "i want" in lower and not user_story.get("i_want"):
-            user_story["i_want"] = self._clean_text(normalized.split("i want", 1)[-1])
-        elif "so that" in lower and not user_story.get("so_that"):
-            user_story["so_that"] = self._clean_text(normalized.split("so that", 1)[-1])
+        as_a_soft = re.search(r"as an?\b", normalized, re.IGNORECASE)
+        i_want_soft = re.search(r"i want", normalized, re.IGNORECASE)
+        so_that_soft = re.search(r"so that", normalized, re.IGNORECASE)
+        if as_a_soft and not user_story.get("as_a"):
+            user_story["as_a"] = self._clean_text(normalized[as_a_soft.end():])
+        elif i_want_soft and not user_story.get("i_want"):
+            user_story["i_want"] = self._clean_text(normalized[i_want_soft.end():])
+        elif so_that_soft and not user_story.get("so_that"):
+            user_story["so_that"] = self._clean_text(normalized[so_that_soft.end():])
 
     @staticmethod
     def _new_scenario(title: str, scenarios: List[Dict[str, Any]]) -> Dict[str, Any]:
