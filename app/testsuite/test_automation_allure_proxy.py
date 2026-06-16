@@ -32,6 +32,9 @@ from app.services.automation import allure_proxy as proxy_module
 from app.services.automation.allure_proxy import (
     AllureProxyError,
     AllureProxyNotConfiguredError,
+    delete_project_for_group,
+    delete_projects_for_team,
+    delete_renamed_project,
     upload_run_results,
 )
 from app.testsuite.db_test_helpers import (
@@ -130,6 +133,7 @@ def proxy_db(tmp_path):
 
         ids = {
             "team_id": team.id,
+            "group_id": group.id,
             "script_run_id": run_for_script.id,
             "group_run_id": run_for_group.id,
         }
@@ -190,6 +194,10 @@ class _FakeAllureClient:
                 request=httpx.Request("GET", url),
             )
         return httpx.Response(200, request=httpx.Request("GET", url))
+
+    async def delete(self, url, **kwargs):
+        self.calls.append(("DELETE", url, kwargs))
+        return httpx.Response(200, request=httpx.Request("DELETE", url))
 
 
 class _ProjectCreationFailsAllureClient(_FakeAllureClient):
@@ -632,3 +640,255 @@ async def test_upload_run_results_raises_on_invalid_archive(proxy_db, monkeypatc
             await upload_run_results(
                 session=session, run=run, archive_bytes=b"not a tar.gz"
             )
+
+
+# --- delete_project_for_group: reclaim a deleted suite's Allure storage ------
+
+def _configure_allure(monkeypatch, *, base_url="http://127.0.0.1:5050", api_token=""):
+    import app.config as cfg_mod
+    monkeypatch.setattr(
+        cfg_mod.get_settings().automation_provider,
+        "allure",
+        cfg_mod.AllureConfig(
+            base_url=base_url,
+            api_token=api_token,
+            project_id_template="tcrt-team-{team_slug}-{suite_slug}-{suite_id}",
+        ),
+    )
+
+
+async def _load_group(proxy_db, group_id):
+    from sqlalchemy import select
+    async with proxy_db["async_sessionmaker"]() as session:
+        group = (await session.execute(
+            select(AutomationScriptGroup).where(AutomationScriptGroup.id == group_id)
+        )).scalar_one()
+        return session, group
+
+
+@pytest.mark.asyncio
+async def test_delete_project_for_group_targets_the_resolved_project(proxy_db, monkeypatch):
+    """Deleting a suite must DELETE exactly the per-suite Allure project that
+    uploads created — same project_id derivation as a group run."""
+    ids = proxy_db["ids"]
+    _configure_allure(monkeypatch, api_token="secret")
+    fake = _FakeAllureClient()
+    monkeypatch.setattr(proxy_module.httpx, "AsyncClient", lambda **kw: fake)
+
+    from sqlalchemy import select
+    async with proxy_db["async_sessionmaker"]() as session:
+        group = (await session.execute(
+            select(AutomationScriptGroup).where(AutomationScriptGroup.id == ids["group_id"])
+        )).scalar_one()
+        ok = await delete_project_for_group(
+            session=session, team_id=ids["team_id"], group=group
+        )
+
+    assert ok is True
+    deletes = [(m, u, kw) for m, u, kw in fake.calls if m == "DELETE"]
+    assert len(deletes) == 1
+    _, url, kwargs = deletes[0]
+    # team "QA Team" -> qa-team, group "Smoke Suite" -> smoke-suite, suite_id = group.id
+    assert url.endswith(
+        f"/allure-docker-service/projects/tcrt-team-qa-team-smoke-suite-{ids['group_id']}"
+    )
+    # api_token is forwarded as a bearer token.
+    assert kwargs["headers"]["Authorization"] == "Bearer secret"
+
+
+@pytest.mark.asyncio
+async def test_delete_project_for_group_skips_when_allure_disabled(proxy_db, monkeypatch):
+    """Empty base_url = integration off: no HTTP call, returns False."""
+    ids = proxy_db["ids"]
+    _configure_allure(monkeypatch, base_url="")
+    fake = _FakeAllureClient()
+    monkeypatch.setattr(proxy_module.httpx, "AsyncClient", lambda **kw: fake)
+
+    from sqlalchemy import select
+    async with proxy_db["async_sessionmaker"]() as session:
+        group = (await session.execute(
+            select(AutomationScriptGroup).where(AutomationScriptGroup.id == ids["group_id"])
+        )).scalar_one()
+        ok = await delete_project_for_group(
+            session=session, team_id=ids["team_id"], group=group
+        )
+
+    assert ok is False
+    assert fake.calls == []
+
+
+@pytest.mark.asyncio
+async def test_delete_project_for_group_treats_404_as_success(proxy_db, monkeypatch):
+    """A project that's already gone (404) is a no-op success, not a failure."""
+    ids = proxy_db["ids"]
+    _configure_allure(monkeypatch)
+
+    class _MissingProjectClient(_FakeAllureClient):
+        async def delete(self, url, **kwargs):
+            self.calls.append(("DELETE", url, kwargs))
+            return httpx.Response(404, request=httpx.Request("DELETE", url))
+
+    fake = _MissingProjectClient()
+    monkeypatch.setattr(proxy_module.httpx, "AsyncClient", lambda **kw: fake)
+
+    from sqlalchemy import select
+    async with proxy_db["async_sessionmaker"]() as session:
+        group = (await session.execute(
+            select(AutomationScriptGroup).where(AutomationScriptGroup.id == ids["group_id"])
+        )).scalar_one()
+        ok = await delete_project_for_group(
+            session=session, team_id=ids["team_id"], group=group
+        )
+
+    assert ok is True
+
+
+@pytest.mark.asyncio
+async def test_delete_project_for_group_swallows_transport_error(proxy_db, monkeypatch):
+    """An unreachable Allure server must not block suite deletion: log + False,
+    never raise."""
+    ids = proxy_db["ids"]
+    _configure_allure(monkeypatch)
+
+    class _UnreachableClient(_FakeAllureClient):
+        async def delete(self, url, **kwargs):
+            raise httpx.ConnectError("connection refused", request=httpx.Request("DELETE", url))
+
+    fake = _UnreachableClient()
+    monkeypatch.setattr(proxy_module.httpx, "AsyncClient", lambda **kw: fake)
+
+    from sqlalchemy import select
+    async with proxy_db["async_sessionmaker"]() as session:
+        group = (await session.execute(
+            select(AutomationScriptGroup).where(AutomationScriptGroup.id == ids["group_id"])
+        )).scalar_one()
+        ok = await delete_project_for_group(
+            session=session, team_id=ids["team_id"], group=group
+        )
+
+    assert ok is False
+
+
+# --- delete_projects_for_team: reclaim every suite when a team is deleted ----
+
+@pytest.mark.asyncio
+async def test_delete_projects_for_team_reclaims_every_suite(proxy_db, monkeypatch):
+    """A team delete cascades its suites away, bypassing per-suite cleanup, so
+    delete_projects_for_team must DELETE the Allure project of EVERY suite in
+    the team (one per group), not just one."""
+    ids = proxy_db["ids"]
+    _configure_allure(monkeypatch)
+    fake = _FakeAllureClient()
+    monkeypatch.setattr(proxy_module.httpx, "AsyncClient", lambda **kw: fake)
+
+    # Add a second suite so we prove the loop covers all of the team's groups.
+    async with proxy_db["async_sessionmaker"]() as session:
+        second = AutomationScriptGroup(
+            team_id=ids["team_id"],
+            name="Regression Suite",
+            description="",
+            script_paths_json=json.dumps(["tests/b.py"]),
+            ci_job_type=AutomationScriptGroupJobType.JENKINS,
+            created_by="1",
+            updated_by="1",
+        )
+        session.add(second)
+        await session.commit()
+        second_id = second.id
+
+    async with proxy_db["async_sessionmaker"]() as session:
+        count = await delete_projects_for_team(session=session, team_id=ids["team_id"])
+
+    assert count == 2
+    deleted_urls = {u for m, u, _ in fake.calls if m == "DELETE"}
+    assert any(
+        u.endswith(f"tcrt-team-qa-team-smoke-suite-{ids['group_id']}") for u in deleted_urls
+    )
+    assert any(
+        u.endswith(f"tcrt-team-qa-team-regression-suite-{second_id}") for u in deleted_urls
+    )
+
+
+@pytest.mark.asyncio
+async def test_delete_projects_for_team_skips_when_allure_disabled(proxy_db, monkeypatch):
+    """Empty base_url = integration off: no group lookup, no HTTP, returns 0."""
+    ids = proxy_db["ids"]
+    _configure_allure(monkeypatch, base_url="")
+    fake = _FakeAllureClient()
+    monkeypatch.setattr(proxy_module.httpx, "AsyncClient", lambda **kw: fake)
+
+    async with proxy_db["async_sessionmaker"]() as session:
+        count = await delete_projects_for_team(session=session, team_id=ids["team_id"])
+
+    assert count == 0
+    assert fake.calls == []
+
+
+# --- delete_renamed_project: reclaim the project stranded by a suite rename --
+
+@pytest.mark.asyncio
+async def test_delete_renamed_project_drops_old_when_slug_changes(proxy_db, monkeypatch):
+    """A name change moves the project_id (it embeds the name slug); the old
+    project must be DELETEd and its id returned for the user-facing warning."""
+    ids = proxy_db["ids"]
+    _configure_allure(monkeypatch)
+    fake = _FakeAllureClient()
+    monkeypatch.setattr(proxy_module.httpx, "AsyncClient", lambda **kw: fake)
+
+    async with proxy_db["async_sessionmaker"]() as session:
+        old_pid = await delete_renamed_project(
+            session=session,
+            team_id=ids["team_id"],
+            suite_id=ids["group_id"],
+            old_name="Smoke Suite",
+            new_name="Regression Suite",
+        )
+
+    assert old_pid == f"tcrt-team-qa-team-smoke-suite-{ids['group_id']}"
+    deletes = [u for m, u, _ in fake.calls if m == "DELETE"]
+    assert deletes == [
+        f"http://127.0.0.1:5050/allure-docker-service/projects/{old_pid}"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_delete_renamed_project_noop_when_slug_unchanged(proxy_db, monkeypatch):
+    """If the slug is identical (e.g. only casing/spacing differs) the project_id
+    doesn't move — deleting it would nuke the live project, so it must be a
+    no-op (None, no HTTP)."""
+    ids = proxy_db["ids"]
+    _configure_allure(monkeypatch)
+    fake = _FakeAllureClient()
+    monkeypatch.setattr(proxy_module.httpx, "AsyncClient", lambda **kw: fake)
+
+    async with proxy_db["async_sessionmaker"]() as session:
+        result = await delete_renamed_project(
+            session=session,
+            team_id=ids["team_id"],
+            suite_id=ids["group_id"],
+            old_name="Smoke Suite",
+            new_name="smoke   suite",  # slugifies to the same "smoke-suite"
+        )
+
+    assert result is None
+    assert [m for m, _u, _ in fake.calls if m == "DELETE"] == []
+
+
+@pytest.mark.asyncio
+async def test_delete_renamed_project_skips_when_allure_disabled(proxy_db, monkeypatch):
+    ids = proxy_db["ids"]
+    _configure_allure(monkeypatch, base_url="")
+    fake = _FakeAllureClient()
+    monkeypatch.setattr(proxy_module.httpx, "AsyncClient", lambda **kw: fake)
+
+    async with proxy_db["async_sessionmaker"]() as session:
+        result = await delete_renamed_project(
+            session=session,
+            team_id=ids["team_id"],
+            suite_id=ids["group_id"],
+            old_name="Smoke Suite",
+            new_name="Regression Suite",
+        )
+
+    assert result is None
+    assert fake.calls == []

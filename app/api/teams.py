@@ -355,6 +355,20 @@ async def delete_team(
             await session.delete(team_db)
             await session.flush()
 
+        # 刪除 team 前先回收其底下所有 suite 的 Allure 報表儲存空間：team 刪除會
+        # 透過 DB cascade 直接移除 AutomationScriptGroup，繞過 delete_group 的逐一
+        # 清理，所以要趁 suite 還在時先清。自成一個唯讀交易且吞掉所有例外，確保
+        # 不影響團隊刪除本身。
+        try:
+            from app.services.automation.allure_proxy import delete_projects_for_team
+
+            async def _reclaim_allure(session):
+                return await delete_projects_for_team(session=session, team_id=team_id)
+
+            await main_boundary.run_read(_reclaim_allure)
+        except Exception:
+            pass
+
         await main_boundary.run_write(_delete_team)
 
         # 嘗試移除磁碟附件資料夾（非致命）

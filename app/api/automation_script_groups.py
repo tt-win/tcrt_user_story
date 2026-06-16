@@ -149,7 +149,9 @@ async def update_automation_script_group(
         except AutomationScriptGroupNotFoundError as exc:
             raise _group_not_found(group_id) from exc
         scripts = await service.load_group_scripts(group=group)
-        return AutomationScriptGroupResponse(**script_group_to_dict(group, scripts=scripts))
+        response = AutomationScriptGroupResponse(**script_group_to_dict(group, scripts=scripts))
+        response.warnings = service.last_warnings
+        return response
 
     response = await _run_group_write(main_boundary, _update)
     await _log_group_action(

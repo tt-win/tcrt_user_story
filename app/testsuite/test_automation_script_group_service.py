@@ -316,6 +316,37 @@ async def test_delete_group_deletes_ci_job_and_row(automation_script_group_db):
 
 
 @pytest.mark.asyncio
+async def test_delete_group_reclaims_allure_project(automation_script_group_db, monkeypatch):
+    """Deleting a suite also reclaims its Allure report storage, wired through
+    allure_proxy.delete_project_for_group with the suite's team_id + group."""
+    ids = automation_script_group_db["ids"]
+    fake_ci = FakeCIProvider()
+
+    import app.services.automation.allure_proxy as allure_proxy
+
+    calls: list[tuple[int, int]] = []
+
+    async def _spy(*, session, team_id, group):
+        calls.append((team_id, group.id))
+        return True
+
+    monkeypatch.setattr(allure_proxy, "delete_project_for_group", _spy)
+
+    async with automation_script_group_db["async_sessionmaker"]() as session:
+        service = AutomationScriptGroupService(session)
+        group = await service.create_group(
+            team_id=ids["team_id"],
+            name="Login Regression",
+            description=None,
+            script_ids=[ids["script_a_id"]],
+            ci_provider=fake_ci,
+        )
+        await service.delete_group(team_id=ids["team_id"], group_id=group.id, ci_provider=fake_ci)
+
+    assert calls == [(ids["team_id"], group.id)]
+
+
+@pytest.mark.asyncio
 async def test_trigger_group_run_creates_suite_level_run(automation_script_group_db):
     ids = automation_script_group_db["ids"]
     fake_ci = FakeCIProvider()
@@ -348,3 +379,81 @@ async def test_trigger_group_run_creates_suite_level_run(automation_script_group
         "tests/test_login.py",
         "tests/test_logout.py",
     ]
+
+
+@pytest.mark.asyncio
+async def test_update_group_rename_reclaims_allure_and_warns(automation_script_group_db, monkeypatch):
+    """Renaming a suite strands its Allure project (id embeds the name slug);
+    update_group must reclaim it and surface a user-facing warning."""
+    ids = automation_script_group_db["ids"]
+    fake_ci = FakeCIProvider()
+
+    import app.services.automation.allure_proxy as allure_proxy
+
+    seen: dict = {}
+
+    async def _fake_delete_renamed(*, session, team_id, suite_id, old_name, new_name):
+        seen.update(team_id=team_id, suite_id=suite_id, old_name=old_name, new_name=new_name)
+        return "tcrt-team-qa-old-name-1"  # pretend a project was deleted
+
+    monkeypatch.setattr(allure_proxy, "delete_renamed_project", _fake_delete_renamed)
+
+    async with automation_script_group_db["async_sessionmaker"]() as session:
+        service = AutomationScriptGroupService(session)
+        group = await service.create_group(
+            team_id=ids["team_id"],
+            name="Old Name",
+            description=None,
+            script_ids=[ids["script_a_id"]],
+            ci_provider=fake_ci,
+        )
+        await service.update_group(
+            team_id=ids["team_id"],
+            group_id=group.id,
+            name="New Name",
+            ci_provider=fake_ci,
+        )
+
+    assert seen["old_name"] == "Old Name"
+    assert seen["new_name"] == "New Name"
+    assert seen["suite_id"] == group.id
+    assert any("Allure" in w for w in service.last_warnings)
+
+
+@pytest.mark.asyncio
+async def test_update_group_without_rename_does_not_touch_allure(automation_script_group_db, monkeypatch):
+    """A non-rename update (description only) must not reclaim any Allure
+    project and must leave warnings empty."""
+    ids = automation_script_group_db["ids"]
+    fake_ci = FakeCIProvider()
+
+    import app.services.automation.allure_proxy as allure_proxy
+
+    called = False
+
+    async def _fake_delete_renamed(*, session, team_id, suite_id, old_name, new_name):
+        nonlocal called
+        called = True
+        return None
+
+    monkeypatch.setattr(allure_proxy, "delete_renamed_project", _fake_delete_renamed)
+
+    async with automation_script_group_db["async_sessionmaker"]() as session:
+        service = AutomationScriptGroupService(session)
+        group = await service.create_group(
+            team_id=ids["team_id"],
+            name="Stable Name",
+            description=None,
+            script_ids=[ids["script_a_id"]],
+            ci_provider=fake_ci,
+        )
+        await service.update_group(
+            team_id=ids["team_id"],
+            group_id=group.id,
+            description="just a description change",
+            description_provided=True,
+            ci_provider=fake_ci,
+        )
+
+    assert called is False
+    assert service.last_warnings == []

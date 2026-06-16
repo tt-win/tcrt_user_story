@@ -408,6 +408,37 @@ async def _generate_report(
     )
 
 
+async def _lookup_team_slug(session: AsyncSession, team_id: int) -> str:
+    team_result = await session.execute(
+        select(Team.name).where(Team.id == team_id)
+    )
+    return _slugify(team_result.scalar_one_or_none() or "") or "team"
+
+
+def _format_project_id(
+    cfg: AllureConfig,
+    *,
+    team_id: int,
+    team_slug: str,
+    suite_id: str,
+    suite_slug: str,
+) -> str:
+    """Expand ``project_id_template`` or return "" on a bad placeholder."""
+    try:
+        return cfg.project_id_template.format(
+            team_id=team_id,
+            team_slug=team_slug,
+            suite_id=suite_id,
+            suite_slug=suite_slug,
+        )
+    except (KeyError, IndexError):
+        logger.warning(
+            "Bad allure.project_id_template placeholder in %r",
+            cfg.project_id_template,
+        )
+        return ""
+
+
 async def _resolve_project_id(
     *,
     session: AsyncSession,
@@ -421,11 +452,7 @@ async def _resolve_project_id(
     single-row queries; we accept the extra round-trip in exchange for not
     coupling this module to script_group_service.
     """
-    team_result = await session.execute(
-        select(Team.name).where(Team.id == run.team_id)
-    )
-    team_name = team_result.scalar_one_or_none() or ""
-    team_slug = _slugify(team_name) or "team"
+    team_slug = await _lookup_team_slug(session, run.team_id)
 
     suite_id: str = ""
     suite_slug: str = "suite"
@@ -448,16 +475,171 @@ async def _resolve_project_id(
         suite_id = f"script-{run.automation_script_id}"
         suite_slug = _slugify(script_path) or "script"
 
+    return _format_project_id(
+        cfg,
+        team_id=run.team_id,
+        team_slug=team_slug,
+        suite_id=suite_id,
+        suite_slug=suite_slug,
+    )
+
+
+async def delete_project_for_group(
+    *,
+    session: AsyncSession,
+    team_id: int,
+    group: AutomationScriptGroup,
+) -> bool:
+    """Best-effort: drop the Allure project that backs a deleted suite.
+
+    Reclaims the suite's report storage — raw results, every generated report
+    build, and the trend history — via Allure Docker Service
+    ``DELETE /projects/{id}``. The project_id is derived exactly as
+    ``_resolve_project_id`` does for a group run, so this targets the same
+    project that uploads created for the suite.
+
+    Non-fatal by design: a suite deletion must not be blocked by a disabled or
+    unreachable report server, so any transport/HTTP error is logged and
+    swallowed. Returns True only when Allure acknowledged the delete (2xx) or
+    the project was already gone (404); False when skipped or failed.
+    """
+    cfg = get_settings().automation_provider.allure
+    if not cfg.base_url:
+        return False  # report integration disabled — nothing to reclaim
+
+    project_id = _format_project_id(
+        cfg,
+        team_id=team_id,
+        team_slug=await _lookup_team_slug(session, team_id),
+        suite_id=str(group.id),
+        suite_slug=_slugify(group.name) or "suite",
+    )
+    if not project_id:
+        return False
+
+    return await _delete_project_by_id(cfg, project_id)
+
+
+async def _delete_project_by_id(cfg: AllureConfig, project_id: str) -> bool:
+    """Best-effort ``DELETE /projects/{id}`` against Allure. Never raises.
+
+    True when Allure acknowledged the delete (2xx) or the project was already
+    gone (404); False on transport/HTTP error or a 4xx/5xx body.
+    """
+    api_root = cfg.base_url.rstrip("/")
+    auth_headers: dict[str, str] = {}
+    if cfg.api_token:
+        auth_headers["Authorization"] = f"Bearer {cfg.api_token}"
+
     try:
-        return cfg.project_id_template.format(
-            team_id=run.team_id,
-            team_slug=team_slug,
-            suite_id=suite_id,
-            suite_slug=suite_slug,
-        )
-    except (KeyError, IndexError):
+        async with httpx.AsyncClient(timeout=30) as client:
+            resp = await client.delete(
+                f"{api_root}/allure-docker-service/projects/{project_id}",
+                headers=auth_headers,
+            )
+    except httpx.HTTPError as exc:
         logger.warning(
-            "Bad allure.project_id_template placeholder in %r",
-            cfg.project_id_template,
+            "Allure project delete for %s failed (non-fatal): %s", project_id, exc
         )
-        return ""
+        return False
+
+    if resp.status_code == 404:
+        return True  # already gone — treat as success
+    if resp.status_code >= 400:
+        logger.warning(
+            "Allure project delete for %s returned %s: %s",
+            project_id,
+            resp.status_code,
+            _response_snippet(resp),
+        )
+        return False
+    return True
+
+
+async def delete_renamed_project(
+    *,
+    session: AsyncSession,
+    team_id: int,
+    suite_id: int,
+    old_name: str,
+    new_name: str,
+) -> str | None:
+    """Best-effort: drop the Allure project stranded by a suite rename.
+
+    The project_id embeds the suite-name slug and Allure has no rename API, so
+    renaming a suite leaves its old project behind while new runs build a fresh
+    one under the new name. Delete the old project and return its project_id so
+    the caller can warn the user that the past reports / trend are gone.
+
+    No-op (returns None) when Allure is disabled, the project_id can't be
+    derived, the name slug is unchanged (old and new project_id are identical —
+    deleting would nuke the live project), or the delete didn't succeed.
+    """
+    cfg = get_settings().automation_provider.allure
+    if not cfg.base_url:
+        return None
+
+    team_slug = await _lookup_team_slug(session, team_id)
+    old_pid = _format_project_id(
+        cfg,
+        team_id=team_id,
+        team_slug=team_slug,
+        suite_id=str(suite_id),
+        suite_slug=_slugify(old_name) or "suite",
+    )
+    new_pid = _format_project_id(
+        cfg,
+        team_id=team_id,
+        team_slug=team_slug,
+        suite_id=str(suite_id),
+        suite_slug=_slugify(new_name) or "suite",
+    )
+    if not old_pid or old_pid == new_pid:
+        return None  # slug unchanged → same project → nothing to reclaim
+
+    return old_pid if await _delete_project_by_id(cfg, old_pid) else None
+
+
+async def delete_projects_for_team(
+    *,
+    session: AsyncSession,
+    team_id: int,
+) -> int:
+    """Best-effort: reclaim Allure projects for ALL of a team's suites.
+
+    A team delete drops its ``AutomationScriptGroup`` rows via DB cascade,
+    bypassing ``delete_group`` (and thus ``delete_project_for_group``). Call
+    this *before* the cascade — while the suites are still queryable — to
+    reclaim their report storage. Returns the number of projects Allure
+    acknowledged deleting.
+
+    Never raises: each suite's reclaim is guarded so one failure can't abort
+    the team deletion or skip the remaining suites.
+    """
+    cfg = get_settings().automation_provider.allure
+    if not cfg.base_url:
+        return 0  # report integration disabled — nothing to reclaim
+
+    groups = (
+        await session.execute(
+            select(AutomationScriptGroup).where(
+                AutomationScriptGroup.team_id == team_id
+            )
+        )
+    ).scalars().all()
+
+    deleted = 0
+    for group in groups:
+        try:
+            if await delete_project_for_group(
+                session=session, team_id=team_id, group=group
+            ):
+                deleted += 1
+        except Exception:  # defensive: delete_project_for_group is best-effort
+            logger.warning(
+                "Allure reclaim for suite %s (team %s) failed (non-fatal)",
+                group.id,
+                team_id,
+                exc_info=True,
+            )
+    return deleted

@@ -52,6 +52,9 @@ class AutomationScriptGroupResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     scripts: list[AutomationScriptGroupScriptResponse] = Field(default_factory=list)
+    # Non-fatal, user-facing notices from the last write (e.g. a rename that
+    # discarded the suite's old Allure report). Empty on reads / no-op updates.
+    warnings: list[str] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True, use_enum_values=True)
 

@@ -1132,7 +1132,7 @@
     };
 
     try {
-      await apiFetch(
+      const saved = await apiFetch(
         groupId
           ? `/api/teams/${state.teamId}/automation-script-groups/${groupId}`
           : `/api/teams/${state.teamId}/automation-script-groups`,
@@ -1144,6 +1144,9 @@
       );
       if (state.modal) state.modal.hide();
       showSuccess(t('automationHub.suites.saveDone', 'Suite saved'));
+      // Surface backend notices (e.g. a rename that discarded the suite's old
+      // Allure report) so the user knows the side effect happened.
+      (saved && Array.isArray(saved.warnings) ? saved.warnings : []).forEach(showWarning);
       await loadAll();
     } catch (error) {
       showError(error.message || t('automationHub.suites.saveFailed', 'Failed to save suite'));
@@ -1312,6 +1315,10 @@
 
   function showError(message) {
     if (window.AppUtils) window.AppUtils.showError(message);
+  }
+
+  function showWarning(message) {
+    if (window.AppUtils && window.AppUtils.showWarning) window.AppUtils.showWarning(message);
   }
 
   function t(key, fallback) {

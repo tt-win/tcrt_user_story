@@ -92,6 +92,9 @@ def _wrap_ci_http_error(exc: httpx.HTTPStatusError, action: str) -> AutomationSc
 class AutomationScriptGroupService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
+        # Populated by update_group: user-facing warnings from the last update
+        # (e.g. a rename that discarded the suite's old Allure report).
+        self.last_warnings: list[str] = []
 
     async def list_groups(
         self,
@@ -246,6 +249,27 @@ class AutomationScriptGroupService:
             except httpx.HTTPStatusError as exc:
                 raise _wrap_ci_http_error(exc, action="update suite job on CI") from exc
 
+        # A rename changes the Allure project_id (it embeds the name slug) and
+        # Allure has no rename API, so the old project is stranded. Reclaim it
+        # best-effort and warn the caller that the suite's past Allure reports /
+        # trend are gone (new runs rebuild under the new name).
+        self.last_warnings = []
+        if name is not None and next_name != group.name:
+            from app.services.automation.allure_proxy import delete_renamed_project
+
+            discarded_pid = await delete_renamed_project(
+                session=self.session,
+                team_id=team_id,
+                suite_id=group.id,
+                old_name=group.name,
+                new_name=next_name,
+            )
+            if discarded_pid:
+                self.last_warnings.append(
+                    f"改名後，舊的 Allure 報表與趨勢歷史已清除（專案 {discarded_pid}）；"
+                    "之後的執行會以新名稱重新建立報表。"
+                )
+
         group.name = next_name
         if description_provided:
             group.description = description
@@ -271,6 +295,16 @@ class AutomationScriptGroupService:
                 await provider.delete_suite_job(str(group.id), group.ci_job_name)
             except httpx.HTTPStatusError as exc:
                 raise _wrap_ci_http_error(exc, action="delete suite job on CI") from exc
+
+        # Reclaim the suite's Allure report storage (raw results, every report
+        # build, trend history). Best-effort: a disabled/unreachable report
+        # server must not block suite deletion, so this never raises.
+        from app.services.automation.allure_proxy import delete_project_for_group
+
+        await delete_project_for_group(
+            session=self.session, team_id=team_id, group=group
+        )
+
         await self.session.delete(group)
         await self.session.flush()
         return group
