@@ -35,6 +35,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import AllureConfig, get_settings
 from app.models.database_models import (
     AutomationRun,
+    AutomationRunTrigger,
     AutomationScript,
     AutomationScriptGroup,
     Team,
@@ -42,6 +43,16 @@ from app.models.database_models import (
 
 
 logger = logging.getLogger(__name__)
+
+# Webhook-triggered runs report to a dedicated Allure project (this suffix on
+# the suite slug) so their trend history stays isolated from Test-Run-Set runs
+# of the same suite. Reclaim (delete / rename) covers both variants.
+_WEBHOOK_PROJECT_SUFFIX = "-webhook"
+
+
+def _suite_slug_variants(base_slug: str) -> list[str]:
+    """Both project-slug variants for a suite: primary + webhook."""
+    return [base_slug, f"{base_slug}{_WEBHOOK_PROJECT_SUFFIX}"]
 
 
 class AllureProxyError(Exception):
@@ -475,6 +486,11 @@ async def _resolve_project_id(
         suite_id = f"script-{run.automation_script_id}"
         suite_slug = _slugify(script_path) or "script"
 
+    # Webhook-triggered runs land in a dedicated project variant, keeping their
+    # report / trend history separate from Test-Run-Set runs of the same suite.
+    if run.triggered_by == AutomationRunTrigger.WEBHOOK:
+        suite_slug = f"{suite_slug}{_WEBHOOK_PROJECT_SUFFIX}"
+
     return _format_project_id(
         cfg,
         team_id=run.team_id,
@@ -507,17 +523,23 @@ async def delete_project_for_group(
     if not cfg.base_url:
         return False  # report integration disabled — nothing to reclaim
 
-    project_id = _format_project_id(
-        cfg,
-        team_id=team_id,
-        team_slug=await _lookup_team_slug(session, team_id),
-        suite_id=str(group.id),
-        suite_slug=_slugify(group.name) or "suite",
-    )
-    if not project_id:
-        return False
-
-    return await _delete_project_by_id(cfg, project_id)
+    team_slug = await _lookup_team_slug(session, team_id)
+    base_slug = _slugify(group.name) or "suite"
+    # Reclaim BOTH the primary and webhook project variants. A suite that never
+    # ran via webhook has no webhook project, so that delete just 404s (treated
+    # as success). Returns True if any variant was acknowledged / already gone.
+    reclaimed = False
+    for suite_slug in _suite_slug_variants(base_slug):
+        project_id = _format_project_id(
+            cfg,
+            team_id=team_id,
+            team_slug=team_slug,
+            suite_id=str(group.id),
+            suite_slug=suite_slug,
+        )
+        if project_id and await _delete_project_by_id(cfg, project_id):
+            reclaimed = True
+    return reclaimed
 
 
 async def _delete_project_by_id(cfg: AllureConfig, project_id: str) -> bool:
@@ -580,24 +602,23 @@ async def delete_renamed_project(
         return None
 
     team_slug = await _lookup_team_slug(session, team_id)
-    old_pid = _format_project_id(
-        cfg,
-        team_id=team_id,
-        team_slug=team_slug,
-        suite_id=str(suite_id),
-        suite_slug=_slugify(old_name) or "suite",
-    )
-    new_pid = _format_project_id(
-        cfg,
-        team_id=team_id,
-        team_slug=team_slug,
-        suite_id=str(suite_id),
-        suite_slug=_slugify(new_name) or "suite",
-    )
-    if not old_pid or old_pid == new_pid:
-        return None  # slug unchanged → same project → nothing to reclaim
-
-    return old_pid if await _delete_project_by_id(cfg, old_pid) else None
+    old_base = _slugify(old_name) or "suite"
+    new_base = _slugify(new_name) or "suite"
+    # Reclaim the stranded old project for both variants (primary + webhook).
+    # Only the primary project's id is returned, for the user-facing warning.
+    discarded_primary: str | None = None
+    for old_slug, new_slug in zip(_suite_slug_variants(old_base), _suite_slug_variants(new_base)):
+        old_pid = _format_project_id(
+            cfg, team_id=team_id, team_slug=team_slug, suite_id=str(suite_id), suite_slug=old_slug
+        )
+        new_pid = _format_project_id(
+            cfg, team_id=team_id, team_slug=team_slug, suite_id=str(suite_id), suite_slug=new_slug
+        )
+        if not old_pid or old_pid == new_pid:
+            continue  # slug unchanged → same project → nothing to reclaim
+        if await _delete_project_by_id(cfg, old_pid) and old_slug == old_base:
+            discarded_primary = old_pid
+    return discarded_primary
 
 
 async def delete_projects_for_team(
@@ -642,4 +663,61 @@ async def delete_projects_for_team(
                 team_id,
                 exc_info=True,
             )
+    return deleted
+
+
+async def delete_projects_for_team_rename(
+    *,
+    session: AsyncSession,
+    team_id: int,
+    old_team_name: str,
+    new_team_name: str,
+) -> int:
+    """Best-effort: reclaim Allure projects stranded by a team rename.
+
+    The project_id embeds the team slug, so renaming a team moves every suite's
+    project to a new id while the old ones linger. For each suite (both the
+    primary and webhook variant) delete the project keyed by the OLD team slug.
+    No-op when the slug is unchanged (e.g. only casing/spacing differs) — the
+    project_id doesn't move, so deleting would nuke the live project.
+
+    Never raises; returns the number of projects Allure acknowledged deleting.
+    """
+    cfg = get_settings().automation_provider.allure
+    if not cfg.base_url:
+        return 0
+
+    old_slug = _slugify(old_team_name) or "team"
+    new_slug = _slugify(new_team_name) or "team"
+    if old_slug == new_slug:
+        return 0  # team slug unchanged → project ids unaffected
+
+    groups = (
+        await session.execute(
+            select(AutomationScriptGroup).where(AutomationScriptGroup.team_id == team_id)
+        )
+    ).scalars().all()
+
+    deleted = 0
+    for group in groups:
+        base_suite_slug = _slugify(group.name) or "suite"
+        for suite_slug in _suite_slug_variants(base_suite_slug):
+            old_pid = _format_project_id(
+                cfg, team_id=team_id, team_slug=old_slug, suite_id=str(group.id), suite_slug=suite_slug
+            )
+            new_pid = _format_project_id(
+                cfg, team_id=team_id, team_slug=new_slug, suite_id=str(group.id), suite_slug=suite_slug
+            )
+            if not old_pid or old_pid == new_pid:
+                continue
+            try:
+                if await _delete_project_by_id(cfg, old_pid):
+                    deleted += 1
+            except Exception:  # defensive: best-effort
+                logger.warning(
+                    "Allure reclaim (team %s rename) for %s failed (non-fatal)",
+                    team_id,
+                    old_pid,
+                    exc_info=True,
+                )
     return deleted

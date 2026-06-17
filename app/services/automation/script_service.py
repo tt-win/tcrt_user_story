@@ -32,9 +32,9 @@ from app.services.automation.scan_filters import (
     matches_scan_filters,
 )
 from app.services.automation.linkage_service import AutomationLinkageService
-from app.services.automation.smart_scan_service import (
-    MarkerHit,
-    TestEntry,
+from app.services.automation.marker_parse import (  # noqa: F401
+    MarkerHit,  # re-exported for backward compatibility
+    TestEntry,  # re-exported for backward compatibility
     _extract_test_entries,
 )
 
@@ -58,7 +58,7 @@ from app.services.automation.marker_sync import (  # noqa: F401
 
 DEFAULT_MANIFEST_PATH = "tcrt-automation.yml"
 # DEFAULT_SCAN_PATH / DEFAULT_INCLUDE_PATTERNS / DEFAULT_EXCLUDE_PATTERNS now live
-# in scan_filters and are shared with smart_scan_service.
+# in scan_filters.
 MAX_CACHED_CONTENT_BYTES = 1024 * 1024
 
 

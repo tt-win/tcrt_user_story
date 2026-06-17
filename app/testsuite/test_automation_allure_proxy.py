@@ -34,6 +34,7 @@ from app.services.automation.allure_proxy import (
     AllureProxyNotConfiguredError,
     delete_project_for_group,
     delete_projects_for_team,
+    delete_projects_for_team_rename,
     delete_renamed_project,
     upload_run_results,
 )
@@ -556,6 +557,55 @@ async def test_default_template_isolates_script_and_suite_projects(proxy_db, mon
 
 
 @pytest.mark.asyncio
+async def test_webhook_run_resolves_to_dedicated_project(proxy_db, monkeypatch):
+    """A webhook-triggered run uploads to a `-webhook` project variant, isolated
+    from the same suite's Test-Run-Set (USER) project."""
+    from sqlalchemy import select
+
+    ids = proxy_db["ids"]
+    _configure_allure(monkeypatch)  # tcrt-team-{team_slug}-{suite_slug}-{suite_id}
+    archive = _make_archive({"result.json": b"{}"})
+
+    # Insert a webhook-triggered run for the same suite as the USER group run.
+    async with proxy_db["async_sessionmaker"]() as session:
+        existing = (
+            await session.execute(select(AutomationRun).where(AutomationRun.id == ids["group_run_id"]))
+        ).scalar_one()
+        webhook_run = AutomationRun(
+            team_id=ids["team_id"],
+            script_group_id=ids["group_id"],
+            provider_id=existing.provider_id,
+            status=AutomationRunStatus.SUCCEEDED,
+            triggered_by=AutomationRunTrigger.WEBHOOK,
+            tcrt_correlation_id="corr-group-webhook",
+            external_run_id="77",
+            workflow_id="tcrt-suite-{}-smoke-suite_hook".format(ids["group_id"]),
+            branch="main",
+            inputs_json="{}",
+        )
+        session.add(webhook_run)
+        await session.commit()
+        webhook_run_id = webhook_run.id
+
+    async def _project_for(run_id: int) -> str:
+        fake = _FakeAllureClient()
+        monkeypatch.setattr(proxy_module.httpx, "AsyncClient", lambda **kw: fake)
+        async with proxy_db["async_sessionmaker"]() as session:
+            run = (
+                await session.execute(select(AutomationRun).where(AutomationRun.id == run_id))
+            ).scalar_one()
+            await upload_run_results(session=session, run=run, archive_bytes=archive)
+        return next(kw["params"]["project_id"] for _m, u, kw in fake.calls if "send-results" in u)
+
+    user_project = await _project_for(ids["group_run_id"])
+    webhook_project = await _project_for(webhook_run_id)
+
+    assert user_project == f"tcrt-team-qa-team-smoke-suite-{ids['group_id']}"
+    assert webhook_project == f"tcrt-team-qa-team-smoke-suite-webhook-{ids['group_id']}"
+    assert user_project != webhook_project
+
+
+@pytest.mark.asyncio
 async def test_upload_run_results_raises_when_not_configured(proxy_db, monkeypatch):
     """Empty base_url means the integration is disabled — proxy must refuse loudly."""
     ids = proxy_db["ids"]
@@ -686,14 +736,16 @@ async def test_delete_project_for_group_targets_the_resolved_project(proxy_db, m
 
     assert ok is True
     deletes = [(m, u, kw) for m, u, kw in fake.calls if m == "DELETE"]
-    assert len(deletes) == 1
-    _, url, kwargs = deletes[0]
+    # Both trigger-scoped project variants are reclaimed: primary + webhook.
+    assert len(deletes) == 2
+    urls = [u for _m, u, _kw in deletes]
     # team "QA Team" -> qa-team, group "Smoke Suite" -> smoke-suite, suite_id = group.id
-    assert url.endswith(
-        f"/allure-docker-service/projects/tcrt-team-qa-team-smoke-suite-{ids['group_id']}"
-    )
+    primary = f"/allure-docker-service/projects/tcrt-team-qa-team-smoke-suite-{ids['group_id']}"
+    webhook = f"/allure-docker-service/projects/tcrt-team-qa-team-smoke-suite-webhook-{ids['group_id']}"
+    assert any(u.endswith(primary) for u in urls)
+    assert any(u.endswith(webhook) for u in urls)
     # api_token is forwarded as a bearer token.
-    assert kwargs["headers"]["Authorization"] == "Bearer secret"
+    assert deletes[0][2]["headers"]["Authorization"] == "Bearer secret"
 
 
 @pytest.mark.asyncio
@@ -844,11 +896,14 @@ async def test_delete_renamed_project_drops_old_when_slug_changes(proxy_db, monk
             new_name="Regression Suite",
         )
 
+    # Returns the PRIMARY old project id (for the user-facing warning).
     assert old_pid == f"tcrt-team-qa-team-smoke-suite-{ids['group_id']}"
-    deletes = [u for m, u, _ in fake.calls if m == "DELETE"]
-    assert deletes == [
-        f"http://127.0.0.1:5050/allure-docker-service/projects/{old_pid}"
-    ]
+    deletes = {u for m, u, _ in fake.calls if m == "DELETE"}
+    # Both the primary and webhook variant's old project are reclaimed.
+    assert deletes == {
+        f"http://127.0.0.1:5050/allure-docker-service/projects/{old_pid}",
+        f"http://127.0.0.1:5050/allure-docker-service/projects/tcrt-team-qa-team-smoke-suite-webhook-{ids['group_id']}",
+    }
 
 
 @pytest.mark.asyncio
@@ -892,3 +947,52 @@ async def test_delete_renamed_project_skips_when_allure_disabled(proxy_db, monke
 
     assert result is None
     assert fake.calls == []
+
+
+# --- delete_projects_for_team_rename: reclaim projects stranded by a team rename
+
+
+@pytest.mark.asyncio
+async def test_delete_projects_for_team_rename_drops_old_slug_projects(proxy_db, monkeypatch):
+    """A team rename moves the project_id (it embeds the team slug); the old-slug
+    project of every suite — both primary and webhook variant — must be DELETEd."""
+    ids = proxy_db["ids"]
+    _configure_allure(monkeypatch)
+    fake = _FakeAllureClient()
+    monkeypatch.setattr(proxy_module.httpx, "AsyncClient", lambda **kw: fake)
+
+    async with proxy_db["async_sessionmaker"]() as session:
+        count = await delete_projects_for_team_rename(
+            session=session,
+            team_id=ids["team_id"],
+            old_team_name="QA Team",
+            new_team_name="QA Renamed",
+        )
+
+    assert count == 2
+    deletes = {u for m, u, _ in fake.calls if m == "DELETE"}
+    assert deletes == {
+        f"http://127.0.0.1:5050/allure-docker-service/projects/tcrt-team-qa-team-smoke-suite-{ids['group_id']}",
+        f"http://127.0.0.1:5050/allure-docker-service/projects/tcrt-team-qa-team-smoke-suite-webhook-{ids['group_id']}",
+    }
+
+
+@pytest.mark.asyncio
+async def test_delete_projects_for_team_rename_noop_when_slug_unchanged(proxy_db, monkeypatch):
+    """Team slug unchanged (only casing/spacing differs) → project_id doesn't
+    move, so no-op (no DELETE)."""
+    ids = proxy_db["ids"]
+    _configure_allure(monkeypatch)
+    fake = _FakeAllureClient()
+    monkeypatch.setattr(proxy_module.httpx, "AsyncClient", lambda **kw: fake)
+
+    async with proxy_db["async_sessionmaker"]() as session:
+        count = await delete_projects_for_team_rename(
+            session=session,
+            team_id=ids["team_id"],
+            old_team_name="QA Team",
+            new_team_name="qa   team",  # slugifies to the same "qa-team"
+        )
+
+    assert count == 0
+    assert [m for m, _u, _ in fake.calls if m == "DELETE"] == []

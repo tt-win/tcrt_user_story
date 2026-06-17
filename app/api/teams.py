@@ -25,8 +25,12 @@ from app.models.database_models import (
     SyncHistory as SyncHistoryDB,
     TestCaseLocal as TestCaseLocalDB,
 )
+import logging
+
 from app.services.lark_client import LarkClient
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/teams", tags=["teams"])
 
@@ -270,6 +274,8 @@ async def update_team(
 ):
     """更新指定的團隊（需要 ADMIN 或以上權限）"""
     try:
+        rename_info: dict[str, str] = {}
+
         async def _update_team(session):
             result = await session.execute(select(TeamDB).where(TeamDB.id == team_id))
             team_db = result.scalar_one_or_none()
@@ -280,6 +286,9 @@ async def update_team(
                 )
 
             if team_update.name is not None:
+                if team_update.name != team_db.name:
+                    rename_info["old"] = team_db.name
+                    rename_info["new"] = team_update.name
                 team_db.name = team_update.name
 
             if team_update.description is not None:
@@ -310,7 +319,35 @@ async def update_team(
             await session.refresh(team_db)
             return team_db_to_model(team_db)
 
-        return await main_boundary.run_write(_update_team)
+        result = await main_boundary.run_write(_update_team)
+
+        # A rename strands this team's Jenkins jobs/view + Allure projects (all
+        # embed the team name/slug). Re-sync them to the new name in an isolated,
+        # best-effort write — a CI / report-server outage must never fail or roll
+        # back the rename itself.
+        if rename_info:
+            try:
+                async def _resync(session):
+                    from app.services.automation.script_group_service import (
+                        AutomationScriptGroupService,
+                    )
+
+                    service = AutomationScriptGroupService(session)
+                    await service.resync_team_after_rename(
+                        team_id=team_id,
+                        old_team_name=rename_info["old"],
+                        new_team_name=rename_info["new"],
+                    )
+
+                await main_boundary.run_write(_resync)
+            except Exception:
+                logger.warning(
+                    "Automation re-sync after team %s rename failed (non-fatal)",
+                    team_id,
+                    exc_info=True,
+                )
+
+        return result
     except HTTPException:
         raise
     except Exception as e:

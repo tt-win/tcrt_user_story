@@ -25,7 +25,7 @@ Git（存腳本）、CI（跑腳本）、Allure（產報告）串起來。腳本
                                        │  push、Hub → Rescan
                                        ▼
 中樞層  TCRT Automation Hub
-  smart-scan 自動發現腳本 → marker-sync 建立 script↔測試案例連結
+  Rescan 同步發現腳本 → marker-sync 建立 script↔測試案例連結
   Suite 分組 · Coverage · Webhook(進/出) · MCP 唯讀 API · Test Run Set
                                        │  provider 框架（storage / ci / result）
                                        ▼
@@ -80,7 +80,7 @@ Git（存腳本）、CI（跑腳本）、Allure（產報告）串起來。腳本
 3. **整形 + 連結測試案例** — `tcrt-automation-pomify`（AI agent skill）
    - 在支援 skill 的 agent（Claude Code / Cursor…）對腳本下指令「pomify for TCRT」。
    - skill 會：① 重構成 Page Object Model（selector 進 `pages/`）；② 改檔名/目錄
-     符合 smart-scan 規則；③ 加上 `@pytest.mark.tcrt(...)` 標記連結手動測試案例。
+     符合 Rescan 掃描規則；③ 加上 `@pytest.mark.tcrt(...)` 標記連結手動測試案例。
    - 若 agent 掛了 **TCRT MCP**，skill 會用 MCP 即時解析 team / 測試案例 / ticket
      對應的 TC ID（不杜撰）。
 
@@ -99,7 +99,7 @@ def test_user_can_log_in(page):
 
 > Python 用 `@pytest.mark.tcrt(...)`；JS/TS 用註解 `// tcrt: TC-001 (primary)`。
 
-整形後的標準版面（TCRT smart-scan 可自動發現）：
+整形後的標準版面（TCRT Rescan 可自動發現）：
 
 ```
 repo-root/
@@ -107,7 +107,7 @@ repo-root/
 │   ├── api/        # pytest API             → PYTEST
 │   ├── ui/         # Playwright sync+pytest  → PYTEST
 │   └── e2e/        # Playwright async        → PLAYWRIGHT_PY_ASYNC
-├── pages/          # Page Object（被 smart-scan 排除）
+├── pages/          # Page Object（被掃描規則排除）
 ├── conftest.py     # 註冊 tcrt marker（排除）
 └── tcrt-automation.yml   # manifest（可選但建議，可覆寫 scan_path）
 ```
@@ -136,8 +136,7 @@ repo-root/
 1. TCRT → **Automation Provider Settings** → 新增 **CI Provider**：
    - 類型選 `ci:jenkins`。
    - 填 base_url、認證（api_token + username，或 trigger_token）。
-   - 視需要開啟 csrf_protection_enabled、auto_manage_views，設定
-     job_name_template / view_name_template。
+   - 視需要開啟 csrf_protection_enabled，設定 job_name_template / view_name_template。
    - `view_name_template` 可用 `{team_name}`、`{team_slug}`、`{team_id}`；TCRT
      會在建立或重新整理 suite job 時依當前 team 展開，並把 job 加進該 view。
 2. 點 **Test connection** 確認綠燈。
@@ -165,17 +164,16 @@ repo-root/
 ## 7. 階段五：掃描腳本 + 建立 Suite
 
 1. 進 **Automation Hub → Suites 分頁 → Rescan**。
-   - smart-scan 依 `tcrt-automation.yml` 的 scan_path 掃描，辨識每支腳本的
+   - Rescan 依 `tcrt-automation.yml` 的 scan_path 掃描，辨識每支腳本的
      `script_format`。
    - **marker-sync** 自動依 `@pytest.mark.tcrt` 建立 script 與測試案例的連結
      （`created_by=marker-sync`，是 `automation_script_case_links` 的唯一寫入路徑）。
-2. （可選）Smart Scan 依目錄提出 suite 分組建議（規則式，可選 LLM 加強命名）。
-3. 建立 **Suite**（把多支腳本打包成測試套件）。
+2. 建立 **Suite**（把多支腳本打包成測試套件）。
    - 建立當下，TCRT 會**自動在 Jenkins 建對應 Pipeline job**：以 Jinja2 範本
      `app/services/automation/templates/jenkins-suite-config.xml.j2` 透過
      `createItem` 產生。
-   - 若 Jenkins provider 開啟 `auto_manage_views`，同一步會建立/補齊 team view
-     並把 suite job 加入 view。
+   - 同一步會建立/補齊 team view（`TCRT_{team_name}`，一律自動、無開關）並把
+     suite job 加入該 view。
    - job XML 會烤入 `GIT_URL`、`GIT_BRANCH`、`GIT_TOKEN` 與 `TCRT_WEBHOOK_URL`，
      並在 post-build 封存 `allure-results/**`、回呼狀態 webhook。
 
@@ -186,9 +184,8 @@ repo-root/
 1. 建立或開啟一個 **Test Run Set**。
 2. 綁定要跑的自動化 Suite（存於欄位 `automation_suite_ids`）。
 3. 在 Test Run Set detail 點 **Run as Automation**。
-   - TCRT 逐一觸發各 Suite 的 Jenkins job。
-   - 觸發前會重新整理 Jenkins suite job；若 `auto_manage_views=true`，也會補齊
-     team view 與 job membership。
+   - TCRT 逐一觸發各 Suite 的**主 Jenkins job**（`tcrt_{team}_{suite}`）。
+   - 觸發前會重新整理 Jenkins suite job，並一併補齊 team view 與 job membership。
    - 每個 Suite 產生一筆 `automation_runs`（狀態 `QUEUED`，帶 `tcrt_correlation_id`
      與 `test_run_set_id`）。
 4. Jenkins job 執行：用 `GIT_TOKEN` clone repo → 跑 pytest / playwright → 產出
@@ -196,7 +193,9 @@ repo-root/
 
 > 💡 另一種觸發方式：將 inbound webhook 綁定某 Suite，對
 > `POST /api/v1/webhooks/ci/{token}/trigger` 發一次請求即可觸發（適合外部排程 /
-> CI 串接）。
+> CI 串接）。webhook 觸發走 Suite 的**專屬 webhook job**（`tcrt_{team}_{suite}_hook`，
+> 首次觸發時自動建立），與 Test Run Set 用的主 job 分開 build 歷史與佇列；其報告也
+> 寫入獨立的 Allure project（`…-webhook`），趨勢不與 Test Run Set 執行混在一起。
 
 ---
 

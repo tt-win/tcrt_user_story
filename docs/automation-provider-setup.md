@@ -74,16 +74,15 @@ Recommended deployment patterns:
 | `default_job_token` | `secret` | For `trigger_token` mode. |
 | `default_runner_label` | `any` | Injected as `NODE_LABEL`. |
 | `csrf_protection_enabled` | `true` | Auto-fetches `/crumbIssuer/api/json`. |
-| `auto_manage_views` | `false` | Add suite jobs to a team view. |
-| `view_name_template` | `TCRT_{team_name}` | View name when auto-managed. Supports `{team_name}`, `{team_slug}`, and `{team_id}`. |
+| `view_name_template` | `TCRT_{team_name}` | Team view name (always managed). Supports `{team_name}`, `{team_slug}`, and `{team_id}`. |
 | `job_name_template` | `tcrt_{team_slug}_{suite_slug}` | Suite job naming (suite names are unique per team). |
 
 **Credentials**: `username` + `api_token` (recommended) or just `job_token`
 for trigger-only workflows.
 
 TCRT auto-creates each suite as a Pipeline `Item` via `createItem`, writes the
-config.xml from [jenkins-suite-config-example.xml](./automation-workflow-templates/jenkins-suite-config-example.xml), and optionally adds it to the team
-view if `auto_manage_views=true`. Because the Jenkins CI provider is org-level,
+config.xml from [jenkins-suite-config-example.xml](./automation-workflow-templates/jenkins-suite-config-example.xml), and adds it to the team
+view (creating the view if missing). Because the Jenkins CI provider is org-level,
 the view template is expanded at suite job creation / refresh time using the
 suite's team context.
 

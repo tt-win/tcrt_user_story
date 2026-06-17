@@ -27,7 +27,6 @@ class JenkinsCIConfig(BaseModel):
     default_job_name: str | None = None
     default_runner_label: str = "any"
     csrf_protection_enabled: bool = True
-    auto_manage_views: bool = False
     # Expanded when a suite job is created / refreshed. CI providers are
     # org-scoped, so placeholders must stay dynamic until the team context is
     # known at runtime.
@@ -382,8 +381,9 @@ class JenkinsCIProvider:
         team_id: int | None = None,
         team_name: str | None = None,
         tcrt_webhook_url: str | None = None,
+        job_suffix: str = "",
     ) -> str:
-        job_name = self._suite_job_name(suite_id, suite_name, team_name, team_id=team_id)
+        job_name = self._suite_job_name(suite_id, suite_name, team_name, team_id=team_id, job_suffix=job_suffix)
         config_xml = self._render_suite_job(
             suite_id,
             suite_name,
@@ -402,8 +402,9 @@ class JenkinsCIProvider:
             content=config_xml.encode("utf-8"),
             headers={"Content-Type": "application/xml"},
         )
-        if self.config.auto_manage_views:
-            await self._ensure_view_contains_job(job_name, team_id=team_id, team_name=team_name)
+        # Always add to the team view (created if missing); the primary and
+        # `_hook` job variants of a team share the one TCRT_{team_name} view.
+        await self._ensure_view_contains_job(job_name, team_id=team_id, team_name=team_name)
         return job_name
 
     async def update_suite_job(
@@ -417,8 +418,9 @@ class JenkinsCIProvider:
         team_name: str | None = None,
         tcrt_webhook_url: str | None = None,
         existing_job_name: str | None = None,
+        job_suffix: str = "",
     ) -> str:
-        job_name = self._suite_job_name(suite_id, suite_name, team_name, team_id=team_id)
+        job_name = self._suite_job_name(suite_id, suite_name, team_name, team_id=team_id, job_suffix=job_suffix)
         # A suite rename changes the derived job name, but the actual Jenkins
         # job still carries its old name. Rename it on Jenkins first so the job
         # name stays in sync with the suite name (and the old job isn't
@@ -452,8 +454,9 @@ class JenkinsCIProvider:
             content=config_xml.encode("utf-8"),
             headers={"Content-Type": "application/xml"},
         )
-        if self.config.auto_manage_views:
-            await self._ensure_view_contains_job(job_name, team_id=team_id, team_name=team_name)
+        # Always add to the team view (created if missing); the primary and
+        # `_hook` job variants of a team share the one TCRT_{team_name} view.
+        await self._ensure_view_contains_job(job_name, team_id=team_id, team_name=team_name)
         return job_name
 
     async def _rename_job(self, old_name: str, new_name: str) -> None:
@@ -469,6 +472,17 @@ class JenkinsCIProvider:
     async def delete_suite_job(self, suite_id: str, job_name: str) -> None:
         try:
             await self._request("POST", f"/job/{_quote_job(job_name)}/doDelete", write=True)
+        except httpx.HTTPStatusError as exc:
+            if exc.response.status_code != 404:
+                raise
+
+    async def delete_view(self, team_id: int | None = None, team_name: str | None = None) -> None:
+        # Drop a team's list view (used after a team rename relocates its jobs to
+        # the new-name view). Swallows 404 — an already-gone view is a no-op.
+        view_name = self._view_name(team_id=team_id, team_name=team_name)
+        quoted_view_name = urllib.parse.quote(view_name, safe="")
+        try:
+            await self._request("POST", f"/view/{quoted_view_name}/doDelete", write=True)
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code != 404:
                 raise
@@ -662,12 +676,13 @@ class JenkinsCIProvider:
         team_name: str | None = None,
         *,
         team_id: int | None = None,
+        job_suffix: str = "",
     ) -> str:
         team_slug = _slugify(team_name) or "team"
         suite_slug = _slugify(suite_name) or "suite"
         # All keys are supplied so legacy templates that still reference
         # `{suite_id}` keep working alongside the default team+suite scheme.
-        return self.config.job_name_template.format(
+        base = self.config.job_name_template.format(
             suite_id=suite_id,
             suite_name=suite_name,
             team_name=(team_name or "").strip() or "team",
@@ -675,6 +690,10 @@ class JenkinsCIProvider:
             suite_slug=suite_slug,
             team_slug=team_slug,
         )
+        # `job_suffix` (e.g. "_hook") yields a trigger-scoped variant; it's
+        # appended after the template so the `tcrt_` prefix is preserved and
+        # `list_suite_jobs` discovery still matches.
+        return f"{base}{job_suffix}"
 
     def _view_name(self, *, team_id: int | None = None, team_name: str | None = None) -> str:
         resolved_team_name = (team_name or "").strip() or "team"

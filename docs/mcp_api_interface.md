@@ -417,7 +417,7 @@ Accept: application/json
 
 ### 3.6 Automation 唯讀端點
 
-> 以下 automation 端點皆唯讀、沿用 2.2 的 machine token 驗證，並採 `skip` / `limit` 分頁（回應含 `page: {skip, limit, total, has_next}`）。執行 / 觸發 / smart-scan / provider 設定為寫入或含憑證操作，**不**經 MCP 暴露。
+> 以下 automation 端點皆唯讀、沿用 2.2 的 machine token 驗證，並採 `skip` / `limit` 分頁（回應含 `page: {skip, limit, total, has_next}`）。執行 / 觸發 / provider 設定為寫入或含憑證操作，**不**經 MCP 暴露。
 
 #### 3.6.1 列出 Automation Scripts
 

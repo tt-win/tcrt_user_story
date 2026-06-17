@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import asyncio
-import json
 import logging
 from typing import Any
 
@@ -24,10 +22,6 @@ from app.models.automation_script import (
     AutomationScriptSyncResponse,
     AutomationScriptUpdate,
 )
-from app.models.automation_smart_scan import (
-    AutomationSmartScanRunResponse,
-    AutomationSmartScanStartResponse,
-)
 from app.models.database_models import AutomationScriptFormat, Team, User
 from app.services.automation.provider_registry import (
     ProviderNotConfiguredError,
@@ -41,11 +35,6 @@ from app.services.automation.run_service import (
 from app.services.automation.ai_link_suggest_service import (
     AILinkSuggestError,
     AILinkSuggestService,
-)
-from app.services.automation.smart_scan_service import (
-    SmartScanError,
-    create_smart_scan_run,
-    execute_smart_scan_run,
 )
 from app.services.automation.script_service import (
     AutomationScriptNotFoundError,
@@ -320,89 +309,6 @@ async def delete_automation_script_cache(
 # response body 為 generic JSON 格式）。
 
 @router.post(
-    "/smart-scan",
-    response_model=AutomationSmartScanStartResponse,
-    status_code=status.HTTP_202_ACCEPTED,
-)
-async def smart_scan_automation_scripts(
-    team_id: int,
-    request: Request,
-    current_user: User = Depends(require_team_admin),
-    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
-) -> AutomationSmartScanStartResponse:
-    """Start a persisted Smart Scan run and return immediately."""
-
-    async def _start(session: AsyncSession) -> tuple[int, str]:
-        await _ensure_team_exists(session, team_id)
-        try:
-            scan_run = await create_smart_scan_run(
-                session,
-                team_id=team_id,
-                actor=str(current_user.id),
-            )
-        except (SmartScanError, ProviderNotConfiguredError, ProviderRegistryError) as exc:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail={"code": "SMART_SCAN_PRECONDITION", "message": str(exc)},
-            ) from exc
-        return int(scan_run.id), str(scan_run.status.value if hasattr(scan_run.status, "value") else scan_run.status)
-
-    scan_run_id, scan_status = await main_boundary.run_write(_start)
-    await _log_script_action(
-        ActionType.READ,
-        current_user,
-        team_id,
-        str(scan_run_id),
-        f"啟動 Smart Scan: {scan_run_id}",
-        {"scan_run_id": scan_run_id, "status": scan_status},
-        request,
-    )
-    asyncio.create_task(execute_smart_scan_run(scan_run_id))
-    return AutomationSmartScanStartResponse(
-        scan_run_id=scan_run_id,
-        status=scan_status,
-        status_url=f"/api/teams/{team_id}/automation-scripts/smart-scan/{scan_run_id}",
-    )
-
-
-@router.get("/smart-scan/{scan_run_id}", response_model=AutomationSmartScanRunResponse)
-async def get_smart_scan_run(
-    team_id: int,
-    scan_run_id: int,
-    current_user: User = Depends(require_team_admin),
-    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
-) -> AutomationSmartScanRunResponse:
-    async def _get(session: AsyncSession) -> AutomationSmartScanRunResponse:
-        await _ensure_team_exists(session, team_id)
-        from app.models.database_models import AutomationSmartScanRun
-
-        scan_run = await session.get(AutomationSmartScanRun, scan_run_id)
-        if scan_run is None or scan_run.team_id != team_id:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail={"code": "SMART_SCAN_RUN_NOT_FOUND", "message": f"Smart Scan run {scan_run_id} not found"},
-            )
-        progress = _load_json_object(scan_run.progress_json)
-        result = _load_json_object(scan_run.result_json) if scan_run.result_json else None
-        return AutomationSmartScanRunResponse(
-            id=scan_run.id,
-            team_id=scan_run.team_id,
-            provider_id=scan_run.provider_id,
-            status=scan_run.status,
-            scan_config_hash=scan_run.scan_config_hash,
-            progress=progress,
-            result=result,
-            error_summary=scan_run.error_summary,
-            created_by=scan_run.created_by,
-            created_at=scan_run.created_at,
-            updated_at=scan_run.updated_at,
-            finished_at=scan_run.finished_at,
-        )
-
-    return await main_boundary.run_read(_get)
-
-
-@router.post(
     "/{script_id}/ai-link-suggestions",
     response_model=AILinkSuggestResponse,
 )
@@ -449,16 +355,6 @@ async def _ensure_team_exists(session: AsyncSession, team_id: int) -> None:
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"code": "TEAM_NOT_FOUND", "message": f"Team {team_id} not found"},
         )
-
-
-def _load_json_object(value: str | None) -> dict[str, Any]:
-    if not value:
-        return {}
-    try:
-        data = json.loads(value)
-    except json.JSONDecodeError:
-        return {}
-    return data if isinstance(data, dict) else {}
 
 
 def _script_not_found(script_id: int) -> HTTPException:

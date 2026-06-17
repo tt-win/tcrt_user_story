@@ -55,13 +55,12 @@ tcrt_user_story/
 `tools/skills/tcrt-automation-pomify/` 是 TCRT 對外提供的可攜 AI agent skill，給使用 TCRT 的 QA / SDET 在他們**自家 automation repo** 的 IDE / agent（Claude Code、Cursor、Cline、Continue 等）中載入後，把寫好的 Playwright / Selenium 腳本一鍵整理成：
 
 1. **Page Object Model** 結構（`pages/` 目錄、locator 與 action 分離、無 assertion）
-2. **TCRT Automation Hub 規範格式**（檔名匹配 smart-scan 的 4 條 include regex、page object 放在自動排除的目錄、test function 用 `test_` 前綴）
+2. **TCRT Automation Hub 規範格式**（檔名匹配掃描的 include glob、page object 放在自動排除的目錄、test function 用 `test_` 前綴）
 
-這個 skill 的內容**直接受 `automation-hub-*` 三份主規格約束**：
+這個 skill 的內容**直接受 `automation-hub-*` 兩份主規格約束**：
 
-- `automation-hub-script-management` — 檔案分類與命名規則（`PLAYWRIGHT_PY_ASYNC` / `PYTEST` / `PLAYWRIGHT_JS`）
+- `automation-hub-script-management` — 檔案分類與命名規則（`PLAYWRIGHT_PY_ASYNC` / `PYTEST` / `PLAYWRIGHT_JS`）、掃描的 `DEFAULT_INCLUDE_PATTERNS` / `DEFAULT_EXCLUDE_PATTERNS`（`scan_filters.py`）
 - `automation-hub-provider-framework` — `infer_script_format` 的副檔名 mapping
-- `automation-hub-smart-suite-recommendation` — smart-scan 的 `DEFAULT_INCLUDE_PATTERNS` / `DEFAULT_EXCLUDE_PATTERNS` / `STANDARD_REPO_PATHS`
 
 任一 spec 中的命名規則、掃描路徑、排除規則、`script_format` 推斷邏輯有變動時，**必須**同步更新 skill 內以下檔案，否則 skill 會發出與系統不一致的指引：
 
@@ -93,7 +92,7 @@ Automation Hub 的 script ↔ test case link 現況已收斂為 **marker-derived
 此文件橫跨多份 `automation-hub-*` 規格與 provider / Test Run Set 行為，列為**追蹤修改文件**；下列任一項變動時必須同步更新（見「OpenSpec 維護原則」的 workflow 文件同步義務）：
 
 - provider 型別或設定流程（`storage:*` / `ci:*` / `result:*`、憑證欄位、`public_base_url` 與 `TCRT_WEBHOOK_URL` 烤入）
-- smart-scan 掃描規則、`script_format` 推斷、建立 Suite 時自動產生 CI job 的行為
+- 腳本掃描規則（include/exclude）、`script_format` 推斷、建立 Suite 時自動產生 CI job 的行為
 - marker grammar 或 marker-derived linkage 行為
 - Test Run Set 觸發自動化（`automation_suite_ids`、Run as Automation）與 run 狀態流轉
 - inbound / outbound webhook 路徑、Jenkins 整合、Allure proxy 報告回收流程
@@ -174,7 +173,7 @@ Automation Hub 的 script ↔ test case link 現況已收斂為 **marker-derived
 - 主規格反映**目前已存在或已接受**的系統能力。
 - `changes/` 保留變更脈絡與未封存工件；完成實作後應同步主 spec，再視情況封存。
 - 若 `tasks.md` 與實作現況不一致，應先修正文檔狀態，再進行 archive / sync。
-- **Automation Hub 對外 skill 同步義務**：對 `openspec/specs/automation-hub-*` 任一規格的命名規則、`scan_path`、`include_patterns`、`exclude_patterns`、`infer_script_format` mapping、`STANDARD_REPO_PATHS` 或對應實作（`app/services/automation/smart_scan_service.py`、`app/services/automation/providers/github_storage.py`）做變更時，**必須**在同一個 change / PR 中同步更新 `tools/skills/tcrt-automation-pomify/`（SKILL.md、references/、templates/ 對應檔案），否則該 change 不得 archive。
+- **Automation Hub 對外 skill 同步義務**：對 `openspec/specs/automation-hub-*` 任一規格的命名規則、`scan_path`、`include_patterns`、`exclude_patterns`、`infer_script_format` mapping 或對應實作（`app/services/automation/scan_filters.py`、`app/services/automation/providers/github_storage.py`）做變更時，**必須**在同一個 change / PR 中同步更新 `tools/skills/tcrt-automation-pomify/`（SKILL.md、references/、templates/ 對應檔案），否則該 change 不得 archive。
   - 對應 change 的 `tasks.md` SHALL 包含一條「同步更新 tcrt-automation-pomify skill」的 task，並在 PR 描述列出實際改了哪些 skill 檔案。
   - 若該次變更純粹是 TCRT 內部行為（不影響 QA 寫 script 的方式 / TCRT 對外看到的格式），可在 PR 描述明確 opt-out 並附理由，否則同步義務預設成立。
-- **Automation Hub workflow 文件同步義務**：對「端到端 workflow 文件」所列任一行為（provider 設定流程、smart-scan / Suite→CI job、marker、Test Run Set 自動化執行、webhook / Jenkins / Allure 整合）的變更，**必須**在同一個 change / PR 中同步更新 `docs/automation-workflow.md`，且對應 change 的 `tasks.md` SHALL 包含一條「同步更新 automation-workflow 文件」task。純 TCRT 內部、不影響對外 workflow 的變更可在 PR 描述 opt-out 並附理由。
+- **Automation Hub workflow 文件同步義務**：對「端到端 workflow 文件」所列任一行為（provider 設定流程、腳本掃描 / Suite→CI job、marker、Test Run Set 自動化執行、webhook / Jenkins / Allure 整合）的變更，**必須**在同一個 change / PR 中同步更新 `docs/automation-workflow.md`，且對應 change 的 `tasks.md` SHALL 包含一條「同步更新 automation-workflow 文件」task。純 TCRT 內部、不影響對外 workflow 的變更可在 PR 描述 opt-out 並附理由。

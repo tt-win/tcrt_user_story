@@ -832,26 +832,6 @@
     "dashboard": {
       "openDashboard": "Team Dashboard"
     },
-    "smartScan": {
-      "button": "智慧掃描",
-      "title": "智慧掃描 — Suite 建議",
-      "loading": "正在掃描 repo...",
-      "rescan": "重新掃描",
-      "createSelected": "建立已選取的 suites",
-      "contractTitle": "Repo 結構檢查",
-      "proposalsTitle": "建議的 suites",
-      "excludedToggle": "排除的檔案",
-      "manifest": "Manifest",
-      "testsPath": "Tests 路徑",
-      "present": "已存在",
-      "missing": "缺少",
-      "viewPaths": "查看 paths",
-      "noProposals": "沒有建議 — 在設定的 tests 路徑下新增測試後再點重新掃描。",
-      "noExcluded": "無排除檔案。",
-      "batchDone": "Suites 已建立",
-      "batchFailed": "批次建立失敗",
-      "scanFailed": "智慧掃描失敗"
-    },
     "providers": {
       "title": "Automation Provider 設定",
       "subtitle": "設定目前團隊使用的 storage、CI 與 result providers",

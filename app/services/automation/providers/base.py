@@ -163,6 +163,10 @@ class CIProvider(ProviderWithSchemas, Protocol):
         # provider to bake `GIT_URL` / `GIT_BRANCH` defaults into job XML.
         # GH Actions provider can ignore (workflows use actions/checkout).
         git_context: dict[str, Any] | None = None,
+        # Appended to the derived job name to produce a trigger-scoped variant
+        # (e.g. "_hook" for the webhook job). Empty = the primary job. Providers
+        # treat it as an opaque string with no business meaning.
+        job_suffix: str = "",
     ) -> str: ...
 
     async def update_suite_job(
@@ -176,9 +180,14 @@ class CIProvider(ProviderWithSchemas, Protocol):
         # changes the derived name, providers use this to relocate the existing
         # job instead of orphaning it.
         existing_job_name: str | None = None,
+        job_suffix: str = "",
     ) -> str: ...
 
     async def delete_suite_job(self, suite_id: str, job_name: str) -> None: ...
+
+    # Delete a team's list view (e.g. after a team rename moved its jobs to the
+    # new-name view). Providers without a view concept may no-op.
+    async def delete_view(self, team_id: int | None = None, team_name: str | None = None) -> None: ...
 
     async def list_suite_jobs(self) -> list[WorkflowRef]: ...
 

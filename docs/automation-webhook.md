@@ -116,6 +116,14 @@ This pairs cleanly with how TCRT tracks CI today: the run row is kept current by
 a background loop that **pulls** status and the Allure report from CI, so the
 poll endpoint just exposes that already-synced state — it never calls CI inline.
 
+> **Dedicated webhook job.** A webhook trigger runs on the suite's **own** CI
+> job — `tcrt_{team}_{suite}_hook`, separate from the primary `tcrt_{team}_{suite}`
+> job that Test Run Sets use — so the two trigger sources keep independent build
+> history and queues. The webhook job is created lazily on the suite's first
+> webhook trigger (no setup needed). Webhook runs also report to their own Allure
+> project (`…-webhook`), so their report trend stays isolated from Test-Run-Set
+> runs of the same suite.
+
 ### 1. Trigger
 
 ```

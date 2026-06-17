@@ -271,8 +271,10 @@ def test_github_storage_config_rejects_duplicate_and_empty_repos():
 
 @pytest.mark.asyncio
 async def test_jenkins_auto_view_expands_team_template_and_uses_list_view_xml(monkeypatch):
+    # View management is unconditional now (no auto_manage_views flag): creating
+    # a suite job always ensures the team view exists and contains the job.
     provider = JenkinsCIProvider(
-        {"base_url": "https://jenkins.example.test", "auto_manage_views": True},
+        {"base_url": "https://jenkins.example.test"},
         {"username": "qa", "api_token": "token"},
     )
     calls = []

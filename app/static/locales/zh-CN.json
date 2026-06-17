@@ -832,26 +832,6 @@
     "dashboard": {
       "openDashboard": "Team Dashboard"
     },
-    "smartScan": {
-      "button": "智能扫描",
-      "title": "智能扫描 — Suite 建议",
-      "loading": "正在扫描 repo...",
-      "rescan": "重新扫描",
-      "createSelected": "创建已选 suites",
-      "contractTitle": "Repo 结构检查",
-      "proposalsTitle": "建议的 suites",
-      "excludedToggle": "排除的文件",
-      "manifest": "Manifest",
-      "testsPath": "Tests 路径",
-      "present": "已存在",
-      "missing": "缺少",
-      "viewPaths": "查看 paths",
-      "noProposals": "没有建议 — 在配置的 tests 路径下添加测试后再点重新扫描。",
-      "noExcluded": "无排除文件。",
-      "batchDone": "Suites 已创建",
-      "batchFailed": "批量创建失败",
-      "scanFailed": "智能扫描失败"
-    },
     "providers": {
       "title": "Automation Provider 设置",
       "subtitle": "设置当前团队使用的 storage、CI 与 result providers",

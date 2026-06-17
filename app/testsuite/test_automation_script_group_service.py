@@ -1,5 +1,6 @@
 import json
 
+import httpx
 import pytest
 from sqlalchemy import select
 
@@ -29,6 +30,22 @@ class FakeCIProvider:
         self.update_calls = []
         self.delete_calls = []
         self.trigger_calls = []
+        # Trigger-scoped variant tracking, kept separate from the legacy
+        # call tuples so existing exact-match assertions stay intact.
+        self.create_suffixes: list[str] = []
+        self.update_suffixes: list[tuple[str, str | None]] = []
+        # When set, the first update for a webhook job (truthy job_suffix)
+        # raises 404 so the service's update→404→create self-heal runs.
+        self.hook_update_raises_404 = False
+        self._hook_update_seen = False
+        # When set, every update_suite_job raises 404 (simulates a job that is
+        # already gone on CI), so the caller's update→404→create self-heal runs.
+        self.update_raises_404 = False
+        self.delete_view_calls: list[tuple] = []
+
+    @staticmethod
+    def _job_name(suite_id: str, suite_name: str, job_suffix: str) -> str:
+        return f"tcrt-suite-{suite_id}-{suite_name.lower().replace(' ', '-')}{job_suffix}"
 
     async def create_suite_job(
         self,
@@ -40,11 +57,13 @@ class FakeCIProvider:
         team_id: int | None = None,
         team_name: str | None = None,
         tcrt_webhook_url: str | None = None,
+        job_suffix: str = "",
     ) -> str:
         self.create_calls.append(
             (suite_id, suite_name, test_paths, default_runner_label, git_context, team_id, team_name)
         )
-        return f"tcrt-suite-{suite_id}-{suite_name.lower().replace(' ', '-')}"
+        self.create_suffixes.append(job_suffix)
+        return self._job_name(suite_id, suite_name, job_suffix)
 
     async def update_suite_job(
         self,
@@ -57,14 +76,30 @@ class FakeCIProvider:
         team_name: str | None = None,
         tcrt_webhook_url: str | None = None,
         existing_job_name: str | None = None,
+        job_suffix: str = "",
     ) -> str:
         self.update_calls.append(
             (suite_id, suite_name, test_paths, default_runner_label, git_context, team_id, team_name)
         )
-        return f"tcrt-suite-{suite_id}-{suite_name.lower().replace(' ', '-')}"
+        self.update_suffixes.append((job_suffix, existing_job_name))
+        if self.update_raises_404:
+            request = httpx.Request("POST", "https://ci.example/job/config.xml")
+            raise httpx.HTTPStatusError(
+                "not found", request=request, response=httpx.Response(404, request=request)
+            )
+        if job_suffix and self.hook_update_raises_404 and not self._hook_update_seen:
+            self._hook_update_seen = True
+            request = httpx.Request("POST", "https://ci.example/job/config.xml")
+            raise httpx.HTTPStatusError(
+                "not found", request=request, response=httpx.Response(404, request=request)
+            )
+        return self._job_name(suite_id, suite_name, job_suffix)
 
     async def delete_suite_job(self, suite_id: str, job_name: str) -> None:
         self.delete_calls.append((suite_id, job_name))
+
+    async def delete_view(self, team_id=None, team_name=None) -> None:
+        self.delete_view_calls.append((team_id, team_name))
 
     async def trigger_run(self, workflow_id: str, branch: str, inputs: dict[str, str]) -> ExternalRunRef:
         self.trigger_calls.append((workflow_id, branch, inputs))
@@ -457,3 +492,263 @@ async def test_update_group_without_rename_does_not_touch_allure(automation_scri
 
     assert called is False
     assert service.last_warnings == []
+
+
+@pytest.mark.asyncio
+async def test_webhook_trigger_routes_to_dedicated_hook_job(automation_script_group_db):
+    """Webhook-triggered runs execute on the suite's `_hook` job and populate
+    ci_job_name_webhook, leaving the primary ci_job_name untouched."""
+    from app.models.database_models import AutomationRunTrigger
+
+    ids = automation_script_group_db["ids"]
+    fake_ci = FakeCIProvider()
+
+    async with automation_script_group_db["async_sessionmaker"]() as session:
+        service = AutomationScriptGroupService(session)
+        group = await service.create_group(
+            team_id=ids["team_id"], name="Login Regression", description=None,
+            script_ids=[ids["script_a_id"]], ci_provider=fake_ci,
+        )
+        primary_job = group.ci_job_name
+        run = await service.trigger_group_run(
+            team_id=ids["team_id"], group_id=group.id,
+            triggered_by=AutomationRunTrigger.WEBHOOK, triggered_by_webhook_id=None,
+            ci_provider=fake_ci,
+        )
+        persisted = (
+            await session.execute(select(AutomationRun).where(AutomationRun.id == run.id))
+        ).scalar_one()
+        refreshed = await session.get(AutomationScriptGroup, group.id)
+
+    assert refreshed.ci_job_name == primary_job  # primary untouched
+    assert refreshed.ci_job_name_webhook == f"{primary_job}_hook"
+    assert persisted.workflow_id == f"{primary_job}_hook"
+    assert persisted.triggered_by == AutomationRunTrigger.WEBHOOK
+    assert fake_ci.trigger_calls[-1][0] == f"{primary_job}_hook"
+
+
+@pytest.mark.asyncio
+async def test_user_trigger_leaves_webhook_job_unset(automation_script_group_db):
+    """Test-Run-Set (USER) triggers run on the primary job and never create a
+    webhook job (ci_job_name_webhook stays NULL)."""
+    ids = automation_script_group_db["ids"]
+    fake_ci = FakeCIProvider()
+
+    async with automation_script_group_db["async_sessionmaker"]() as session:
+        service = AutomationScriptGroupService(session)
+        group = await service.create_group(
+            team_id=ids["team_id"], name="Login Regression", description=None,
+            script_ids=[ids["script_a_id"]], ci_provider=fake_ci,
+        )
+        run = await service.trigger_group_run(
+            team_id=ids["team_id"], group_id=group.id, actor="1", ci_provider=fake_ci,
+        )
+        refreshed = await session.get(AutomationScriptGroup, group.id)
+        persisted = (
+            await session.execute(select(AutomationRun).where(AutomationRun.id == run.id))
+        ).scalar_one()
+
+    assert refreshed.ci_job_name_webhook is None
+    assert persisted.workflow_id == refreshed.ci_job_name
+    assert not refreshed.ci_job_name.endswith("_hook")
+
+
+@pytest.mark.asyncio
+async def test_webhook_trigger_lazily_creates_hook_job_on_404(automation_script_group_db):
+    """When the webhook job doesn't exist yet, the update→404→create self-heal
+    provisions it and still populates ci_job_name_webhook."""
+    from app.models.database_models import AutomationRunTrigger
+
+    ids = automation_script_group_db["ids"]
+    fake_ci = FakeCIProvider()
+    fake_ci.hook_update_raises_404 = True
+
+    async with automation_script_group_db["async_sessionmaker"]() as session:
+        service = AutomationScriptGroupService(session)
+        group = await service.create_group(
+            team_id=ids["team_id"], name="Login Regression", description=None,
+            script_ids=[ids["script_a_id"]], ci_provider=fake_ci,
+        )
+        primary_job = group.ci_job_name
+        await service.trigger_group_run(
+            team_id=ids["team_id"], group_id=group.id,
+            triggered_by=AutomationRunTrigger.WEBHOOK, ci_provider=fake_ci,
+        )
+        refreshed = await session.get(AutomationScriptGroup, group.id)
+
+    # update raised 404 → create fallback ran with the _hook suffix.
+    assert "_hook" in fake_ci.create_suffixes
+    assert refreshed.ci_job_name_webhook == f"{primary_job}_hook"
+
+
+@pytest.mark.asyncio
+async def test_delete_suite_deletes_both_jobs(automation_script_group_db):
+    """A suite that has a webhook job deletes BOTH jobs on delete."""
+    from app.models.database_models import AutomationRunTrigger
+
+    ids = automation_script_group_db["ids"]
+    fake_ci = FakeCIProvider()
+
+    async with automation_script_group_db["async_sessionmaker"]() as session:
+        service = AutomationScriptGroupService(session)
+        group = await service.create_group(
+            team_id=ids["team_id"], name="Login Regression", description=None,
+            script_ids=[ids["script_a_id"]], ci_provider=fake_ci,
+        )
+        await service.trigger_group_run(
+            team_id=ids["team_id"], group_id=group.id,
+            triggered_by=AutomationRunTrigger.WEBHOOK, ci_provider=fake_ci,
+        )
+        primary = group.ci_job_name
+        webhook = f"{primary}_hook"
+        await service.delete_group(team_id=ids["team_id"], group_id=group.id, ci_provider=fake_ci)
+
+    deleted = {name for _, name in fake_ci.delete_calls}
+    assert primary in deleted
+    assert webhook in deleted
+
+
+@pytest.mark.asyncio
+async def test_rename_suite_with_webhook_job_renames_both(automation_script_group_db, monkeypatch):
+    """Renaming a suite that has a webhook job relocates BOTH jobs (each via
+    update_suite_job with its own existing name + suffix)."""
+    from app.models.database_models import AutomationRunTrigger
+    import app.services.automation.allure_proxy as allure_proxy
+
+    async def _noop_delete_renamed(*, session, team_id, suite_id, old_name, new_name):
+        return None
+
+    monkeypatch.setattr(allure_proxy, "delete_renamed_project", _noop_delete_renamed)
+
+    ids = automation_script_group_db["ids"]
+    fake_ci = FakeCIProvider()
+
+    async with automation_script_group_db["async_sessionmaker"]() as session:
+        service = AutomationScriptGroupService(session)
+        group = await service.create_group(
+            team_id=ids["team_id"], name="Old Name", description=None,
+            script_ids=[ids["script_a_id"]], ci_provider=fake_ci,
+        )
+        await service.trigger_group_run(
+            team_id=ids["team_id"], group_id=group.id,
+            triggered_by=AutomationRunTrigger.WEBHOOK, ci_provider=fake_ci,
+        )
+        old_webhook_name = f"{group.ci_job_name}_hook"
+        updated = await service.update_group(
+            team_id=ids["team_id"], group_id=group.id, name="New Name", ci_provider=fake_ci,
+        )
+
+    # The webhook job was relocated: an update with job_suffix="_hook" carried
+    # its old name as existing_job_name.
+    assert ("_hook", old_webhook_name) in fake_ci.update_suffixes
+    assert updated.ci_job_name_webhook == f"{updated.ci_job_name}_hook"
+    assert updated.ci_job_name_webhook.endswith("new-name_hook")
+
+
+@pytest.mark.asyncio
+async def test_resync_team_after_rename_relocates_jobs_view_and_allure(
+    automation_script_group_db, monkeypatch
+):
+    """A team rename relocates each suite's primary + webhook jobs to the new
+    team name, deletes the old team view, and reclaims the old Allure projects."""
+    from app.models.database_models import AutomationRunTrigger
+    import app.services.automation.allure_proxy as allure_proxy
+
+    reclaim_seen: dict = {}
+
+    async def _fake_team_reclaim(*, session, team_id, old_team_name, new_team_name):
+        reclaim_seen.update(team_id=team_id, old=old_team_name, new=new_team_name)
+        return 0
+
+    monkeypatch.setattr(allure_proxy, "delete_projects_for_team_rename", _fake_team_reclaim)
+
+    ids = automation_script_group_db["ids"]
+    fake_ci = FakeCIProvider()
+
+    async with automation_script_group_db["async_sessionmaker"]() as session:
+        service = AutomationScriptGroupService(session)
+        group = await service.create_group(
+            team_id=ids["team_id"], name="Login Regression", description=None,
+            script_ids=[ids["script_a_id"]], ci_provider=fake_ci,
+        )
+        # Give the suite a webhook job (lazy-created on first webhook trigger).
+        await service.trigger_group_run(
+            team_id=ids["team_id"], group_id=group.id,
+            triggered_by=AutomationRunTrigger.WEBHOOK, ci_provider=fake_ci,
+        )
+        old_primary = group.ci_job_name
+        old_webhook = group.ci_job_name_webhook
+
+        await service.resync_team_after_rename(
+            team_id=ids["team_id"], old_team_name="QA Team", new_team_name="QA Renamed",
+            ci_provider=fake_ci,
+        )
+
+    # Both variants were relocated via update_suite_job carrying their existing name.
+    assert ("", old_primary) in fake_ci.update_suffixes
+    assert ("_hook", old_webhook) in fake_ci.update_suffixes
+    # The relocate calls used the NEW team name (7th tuple element).
+    resync_calls = [c for c in fake_ci.update_calls if c[6] == "QA Renamed"]
+    assert len(resync_calls) == 2
+    # The orphaned old view was deleted; Allure reclaim got old/new names.
+    assert fake_ci.delete_view_calls == [(ids["team_id"], "QA Team")]
+    assert reclaim_seen == {"team_id": ids["team_id"], "old": "QA Team", "new": "QA Renamed"}
+
+
+@pytest.mark.asyncio
+async def test_resync_team_after_rename_noop_when_name_unchanged(automation_script_group_db):
+    """Same name in and out → nothing touches CI."""
+    ids = automation_script_group_db["ids"]
+    fake_ci = FakeCIProvider()
+
+    async with automation_script_group_db["async_sessionmaker"]() as session:
+        service = AutomationScriptGroupService(session)
+        await service.create_group(
+            team_id=ids["team_id"], name="Login Regression", description=None,
+            script_ids=[ids["script_a_id"]], ci_provider=fake_ci,
+        )
+        before_updates = len(fake_ci.update_calls)
+        await service.resync_team_after_rename(
+            team_id=ids["team_id"], old_team_name="QA Team", new_team_name="QA Team",
+            ci_provider=fake_ci,
+        )
+
+    assert len(fake_ci.update_calls) == before_updates
+    assert fake_ci.delete_view_calls == []
+
+
+@pytest.mark.asyncio
+async def test_resync_team_after_rename_creates_job_when_old_missing(
+    automation_script_group_db, monkeypatch
+):
+    """If a suite's old job is already gone on CI (update → 404), the team-rename
+    re-sync falls back to creating it under the new name and still completes
+    (deletes old view) — the 404 is not a fatal error."""
+    import app.services.automation.allure_proxy as allure_proxy
+
+    async def _noop_team_reclaim(*, session, team_id, old_team_name, new_team_name):
+        return 0
+
+    monkeypatch.setattr(allure_proxy, "delete_projects_for_team_rename", _noop_team_reclaim)
+
+    ids = automation_script_group_db["ids"]
+    fake_ci = FakeCIProvider()
+
+    async with automation_script_group_db["async_sessionmaker"]() as session:
+        service = AutomationScriptGroupService(session)
+        await service.create_group(
+            team_id=ids["team_id"], name="Login Regression", description=None,
+            script_ids=[ids["script_a_id"]], ci_provider=fake_ci,
+        )
+        creates_before = len(fake_ci.create_calls)  # 1 from create_group
+        # Simulate the suite's old job being absent on Jenkins.
+        fake_ci.update_raises_404 = True
+        await service.resync_team_after_rename(
+            team_id=ids["team_id"], old_team_name="QA Team", new_team_name="QA Renamed",
+            ci_provider=fake_ci,
+        )
+
+    # The primary job's update 404'd → create fallback ran (no webhook job here).
+    assert len(fake_ci.create_calls) == creates_before + 1
+    # Re-sync still reached the end of the loop and dropped the old view.
+    assert fake_ci.delete_view_calls == [(ids["team_id"], "QA Team")]

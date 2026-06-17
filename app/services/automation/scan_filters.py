@@ -1,10 +1,8 @@
 """Shared scan-pattern matching for automation script discovery.
 
-Both stages of repo scanning use these helpers, so a single
-`scan.include` / `scan.exclude` block in `tcrt-automation.yml` configures both:
-
-* script sync   — `script_service.sync_scripts` (filters the repo walk)
-* smart-scan    — `smart_scan_service` (classifies cached scripts into suites)
+`script_service.sync_scripts` uses these helpers to filter the repo walk, so a
+single `scan.include` / `scan.exclude` block in `tcrt-automation.yml` drives
+which repo files become tracked automation scripts.
 
 Patterns are GLOBS (``fnmatch``), matched against both the file basename and
 the full normalized path. Globs were chosen over regexes because they are the

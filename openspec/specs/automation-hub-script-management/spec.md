@@ -266,7 +266,7 @@ Suites tab 為 Automation Hub 的**主頁籤**。UI SHALL 允許 QA 從左側檔
 
 - Suites tab 工具列 SHALL 提供 `[Script view] ◀▶ [Test view]` 切換，預設為 Script view
 - View 狀態 SHALL 以 `localStorage` 持久化（per-team），下次開啟還原
-- 兩個 view 共用同一份 smart-scan / list API 資料
+- 兩個 view 共用同一份 list API 資料
 
 **Script view（保留既有行為）**：
 
@@ -398,7 +398,7 @@ script / link / group 的 CREATE / UPDATE / DELETE / sync 操作 SHALL 透過 `a
 
 #### Scenario: Python single TC marker
 - **WHEN** `tests/test_login.py` 內含 `@pytest.mark.tcrt("TC-001")\ndef test_login_happy(): ...`
-- **THEN** Smart Scan SHALL 在該 entry_point 的 `test_entries` 中產出 `{name: "test_login_happy", markers: [{tc_ids: ["TC-001"], link_type: "covers"}]}`
+- **THEN** scan SHALL 在該 script 的 `test_entries` 中產出 `{name: "test_login_happy", markers: [{tc_ids: ["TC-001"], link_type: "covers"}]}`
 
 #### Scenario: Python multi-TC marker with link_type
 - **WHEN** test 函式上有 `@pytest.mark.tcrt("TC-001", "TC-005", link_type="primary")`

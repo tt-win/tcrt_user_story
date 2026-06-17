@@ -832,26 +832,6 @@
     "dashboard": {
       "openDashboard": "Team Dashboard"
     },
-    "smartScan": {
-      "button": "Smart Scan",
-      "title": "Smart Scan — Suite Proposals",
-      "loading": "Scanning repository...",
-      "rescan": "Rescan",
-      "createSelected": "Create selected suites",
-      "contractTitle": "Repo contract",
-      "proposalsTitle": "Proposed suites",
-      "excludedToggle": "Excluded files",
-      "manifest": "Manifest",
-      "testsPath": "Tests path",
-      "present": "Present",
-      "missing": "Missing",
-      "viewPaths": "View paths",
-      "noProposals": "No suites suggested — try Rescan after adding tests under the configured tests path.",
-      "noExcluded": "No files excluded.",
-      "batchDone": "Suites created",
-      "batchFailed": "Batch create failed",
-      "scanFailed": "Smart Scan failed"
-    },
     "providers": {
       "title": "Automation Provider Settings",
       "subtitle": "Configure storage, CI, and result providers for the current team",

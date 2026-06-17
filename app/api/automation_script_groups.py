@@ -14,15 +14,12 @@ from app.audit import ActionType, AuditSeverity, ResourceType, audit_service
 from app.db_access.main import MainAccessBoundary, get_main_access_boundary
 from app.models.automation_run import AutomationRunResponse
 from app.models.automation_script_group import (
-    AutomationScriptGroupBatchCreateItem,
-    AutomationScriptGroupBatchCreateRequest,
-    AutomationScriptGroupBatchCreateResponse,
     AutomationScriptGroupCreate,
     AutomationScriptGroupListResponse,
     AutomationScriptGroupResponse,
     AutomationScriptGroupUpdate,
 )
-from app.models.database_models import AutomationScript, Team, User
+from app.models.database_models import Team, User
 from app.services.automation.provider_registry import ProviderRegistryError
 from app.services.automation.script_group_service import (
     AutomationScriptGroupCIApiError,
@@ -209,100 +206,6 @@ async def delete_automation_script_group(
 # 不再提供任何 run trigger 端點；觸發由 Test Run Set 的
 # `POST /api/teams/{team_id}/test-run-sets/{set_id}/run-automation` 統一入口接管。
 # 對舊端點送 request 會得到 404 / 405（由 FastAPI 自動回應）。
-
-@router.post("/batch-create", response_model=AutomationScriptGroupBatchCreateResponse)
-async def batch_create_automation_script_groups(
-    team_id: int,
-    payload: AutomationScriptGroupBatchCreateRequest,
-    request: Request,
-    current_user: User = Depends(require_team_admin),
-    main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
-) -> AutomationScriptGroupBatchCreateResponse:
-    """Batch-create suites from Smart Scan proposals.
-
-    Each proposal is created independently; partial failure does not roll back
-    successful suites. The response is a per-proposal status summary.
-    """
-
-    async def _resolve_paths(session: AsyncSession, paths: list[str], ref_repo: str) -> list[int]:
-        cleaned = [p.strip() for p in paths if isinstance(p, str) and p.strip()]
-        if not cleaned:
-            return []
-        conditions = [
-            AutomationScript.team_id == team_id,
-            AutomationScript.ref_path.in_(cleaned),
-        ]
-        # Disambiguate when several repos share a ref_path. Empty = legacy /
-        # single-repo proposal: fall back to path-only matching.
-        if ref_repo:
-            conditions.append(AutomationScript.ref_repo == ref_repo)
-        result = await session.execute(
-            select(AutomationScript.id, AutomationScript.ref_path).where(*conditions)
-        )
-        by_path = {row.ref_path: int(row.id) for row in result.all()}
-        return [by_path[p] for p in cleaned if p in by_path]
-
-    items: list[AutomationScriptGroupBatchCreateItem] = []
-    created = 0
-    skipped = 0
-    failed = 0
-
-    for proposal in payload.proposals:
-        async def _create_one(session: AsyncSession, prop=proposal) -> tuple[int, str]:
-            await _ensure_team_exists(session, team_id)
-            script_ids = await _resolve_paths(session, prop.script_paths, prop.ref_repo)
-            if not script_ids:
-                raise AutomationScriptGroupScriptNotFoundError(
-                    "No matching scripts found for proposed paths"
-                )
-            service = AutomationScriptGroupService(session)
-            group = await service.create_group(
-                team_id=team_id,
-                name=prop.name,
-                description=prop.description,
-                script_ids=script_ids,
-                actor=str(current_user.id),
-            )
-            return int(group.id), group.name
-
-        try:
-            group_id, name = await main_boundary.run_write(_create_one)
-            items.append(AutomationScriptGroupBatchCreateItem(
-                name=name, status="created", group_id=group_id,
-            ))
-            created += 1
-            await _log_group_action(
-                ActionType.CREATE,
-                current_user,
-                team_id,
-                str(group_id),
-                f"Smart Scan 批次建立 Suite: {name}",
-                {"source": "smart-scan", "name": name},
-                request,
-            )
-        except AutomationScriptGroupNameConflictError as exc:
-            items.append(AutomationScriptGroupBatchCreateItem(
-                name=proposal.name, status="skipped", message=str(exc),
-            ))
-            skipped += 1
-        except AutomationScriptGroupScriptNotFoundError as exc:
-            items.append(AutomationScriptGroupBatchCreateItem(
-                name=proposal.name, status="failed", message=str(exc),
-            ))
-            failed += 1
-        except Exception as exc:  # noqa: BLE001
-            items.append(AutomationScriptGroupBatchCreateItem(
-                name=proposal.name, status="failed", message=f"{type(exc).__name__}: {exc}",
-            ))
-            failed += 1
-
-    return AutomationScriptGroupBatchCreateResponse(
-        created=created,
-        skipped=skipped,
-        failed=failed,
-        items=items,
-    )
-
 
 async def _run_group_write(main_boundary: MainAccessBoundary, operation):
     try:

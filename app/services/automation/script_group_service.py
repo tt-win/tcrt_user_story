@@ -249,6 +249,26 @@ class AutomationScriptGroupService:
             except httpx.HTTPStatusError as exc:
                 raise _wrap_ci_http_error(exc, action="update suite job on CI") from exc
 
+            # Keep the suite's webhook job (if one exists) in sync too: same
+            # config refresh, and a rename must relocate it (doRename) so it is
+            # not orphaned. Suites that never got a webhook job (lazy) skip this.
+            if group.ci_job_name_webhook:
+                try:
+                    group.ci_job_name_webhook = await provider.update_suite_job(
+                        str(group.id),
+                        next_name,
+                        script_paths,
+                        _default_runner_label(provider_config, group.ci_job_type),
+                        git_context=git_context,
+                        team_id=team_id,
+                        team_name=team_name,
+                        tcrt_webhook_url=tcrt_webhook_url,
+                        existing_job_name=group.ci_job_name_webhook,
+                        job_suffix="_hook",
+                    )
+                except httpx.HTTPStatusError as exc:
+                    raise _wrap_ci_http_error(exc, action="update webhook suite job on CI") from exc
+
         # A rename changes the Allure project_id (it embeds the name slug) and
         # Allure has no rename API, so the old project is stranded. Reclaim it
         # best-effort and warn the caller that the suite's past Allure reports /
@@ -289,12 +309,17 @@ class AutomationScriptGroupService:
         ci_provider: CIProvider | None = None,
     ) -> AutomationScriptGroup:
         group = await self.get_group(team_id=team_id, group_id=group_id)
-        if group.ci_job_name:
+        if group.ci_job_name or group.ci_job_name_webhook:
             _, provider, _ = await self._resolve_ci_provider(team_id, ci_provider)
-            try:
-                await provider.delete_suite_job(str(group.id), group.ci_job_name)
-            except httpx.HTTPStatusError as exc:
-                raise _wrap_ci_http_error(exc, action="delete suite job on CI") from exc
+            # Delete both trigger-scoped jobs (primary + webhook). delete_suite_job
+            # swallows 404, so a never-created webhook job is a no-op.
+            for job_name in (group.ci_job_name, group.ci_job_name_webhook):
+                if not job_name:
+                    continue
+                try:
+                    await provider.delete_suite_job(str(group.id), job_name)
+                except httpx.HTTPStatusError as exc:
+                    raise _wrap_ci_http_error(exc, action="delete suite job on CI") from exc
 
         # Reclaim the suite's Allure report storage (raw results, every report
         # build, trend history). Best-effort: a disabled/unreachable report
@@ -308,6 +333,117 @@ class AutomationScriptGroupService:
         await self.session.delete(group)
         await self.session.flush()
         return group
+
+    async def resync_team_after_rename(
+        self,
+        *,
+        team_id: int,
+        old_team_name: str,
+        new_team_name: str,
+        ci_provider: CIProvider | None = None,
+    ) -> None:
+        """Re-sync a team's Jenkins jobs / view + Allure projects after a rename.
+
+        The view name embeds the team name, and job + Allure project ids embed
+        the team slug — all derived from the team name — so a rename strands the
+        old view, jobs, and projects. For each suite this relocates the primary
+        and webhook jobs to the new name (``doRename`` via ``update_suite_job``,
+        preserving build history) and adds them to the new team view; then it
+        deletes the now-orphaned old view and reclaims the old Allure projects.
+
+        Best-effort per suite: a CI/report failure on one suite is logged and
+        skipped so the rest still re-sync (the caller treats the whole thing as
+        non-fatal — a rename must never be blocked by a CI/report outage).
+        """
+        if old_team_name == new_team_name:
+            return
+        groups = (
+            await self.session.execute(
+                select(AutomationScriptGroup).where(AutomationScriptGroup.team_id == team_id)
+            )
+        ).scalars().all()
+        if not groups:
+            return
+
+        _, provider, provider_config = await self._resolve_ci_provider(team_id, ci_provider)
+        tcrt_webhook_url = await self._resolve_tcrt_webhook_url(team_id)
+
+        for group in groups:
+            try:
+                scripts = await self.load_group_scripts(group=group)
+                git_context = await _build_git_context_for_group(self.session, scripts)
+                label = _default_runner_label(provider_config, group.ci_job_type)
+                script_paths = _load_script_paths(group.script_paths_json)
+                # Relocate each existing trigger-scoped job to the new team name.
+                # Mirror the trigger self-heal: if the old job is already gone on
+                # CI (rename probe → 404), create it fresh under the new name
+                # instead of failing — the suite still ends up with a valid job.
+                for field, suffix in (("ci_job_name", ""), ("ci_job_name_webhook", "_hook")):
+                    existing = getattr(group, field)
+                    if not existing:
+                        continue
+                    try:
+                        new_name = await provider.update_suite_job(
+                            str(group.id),
+                            group.name,
+                            script_paths,
+                            label,
+                            git_context=git_context,
+                            team_id=team_id,
+                            team_name=new_team_name,
+                            tcrt_webhook_url=tcrt_webhook_url,
+                            existing_job_name=existing,
+                            job_suffix=suffix,
+                        )
+                    except httpx.HTTPStatusError as exc:
+                        if exc.response.status_code != 404:
+                            raise
+                        new_name = await provider.create_suite_job(
+                            str(group.id),
+                            group.name,
+                            script_paths,
+                            label,
+                            git_context=git_context,
+                            team_id=team_id,
+                            team_name=new_team_name,
+                            tcrt_webhook_url=tcrt_webhook_url,
+                            job_suffix=suffix,
+                        )
+                    setattr(group, field, new_name)
+            except Exception:  # best-effort: one suite must not abort the rest
+                logger.warning(
+                    "Suite %s CI re-sync after team %s rename failed (non-fatal)",
+                    group.id,
+                    team_id,
+                    exc_info=True,
+                )
+
+        # The jobs now live in the new-name view; drop the orphaned old view.
+        try:
+            await provider.delete_view(team_id=team_id, team_name=old_team_name)
+        except Exception:
+            logger.warning(
+                "Old team view delete after team %s rename failed (non-fatal)",
+                team_id,
+                exc_info=True,
+            )
+
+        # Reclaim the Allure projects stranded under the old team slug.
+        try:
+            from app.services.automation.allure_proxy import delete_projects_for_team_rename
+
+            await delete_projects_for_team_rename(
+                session=self.session,
+                team_id=team_id,
+                old_team_name=old_team_name,
+                new_team_name=new_team_name,
+            )
+        except Exception:
+            logger.warning(
+                "Allure reclaim after team %s rename failed (non-fatal)",
+                team_id,
+                exc_info=True,
+            )
 
     async def validate_script_paths(self, *, team_id: int, script_ids: list[int]) -> list[AutomationScript]:
         ordered_ids = _dedupe_ints(script_ids)
@@ -398,20 +534,27 @@ class AutomationScriptGroupService:
         default_label = _default_runner_label(provider_config, group.ci_job_type)
         team_name = await self._get_team_name(team_id)
         tcrt_webhook_url = await self._resolve_tcrt_webhook_url(team_id)
+        # Route by trigger source: webhook-triggered runs execute on the suite's
+        # dedicated webhook job (`*_hook`), everything else on the primary job.
+        # The two jobs keep separate build history / queue / Allure project. The
+        # webhook job is created lazily here on the suite's first webhook trigger
+        # (the same update→404→create self-heal that recovers a deleted job).
+        is_webhook = triggered_by == AutomationRunTrigger.WEBHOOK
+        job_suffix = "_hook" if is_webhook else ""
         try:
-            group.ci_job_name = await provider.update_suite_job(
+            resolved_job_name = await provider.update_suite_job(
                 str(group.id), group.name, script_paths, default_label,
                 git_context=git_context, team_id=team_id, team_name=team_name,
-                tcrt_webhook_url=tcrt_webhook_url,
+                tcrt_webhook_url=tcrt_webhook_url, job_suffix=job_suffix,
             )
         except httpx.HTTPStatusError as exc:
             if exc.response.status_code != 404:
                 raise _wrap_ci_http_error(exc, action="ensure suite job on CI") from exc
             try:
-                group.ci_job_name = await provider.create_suite_job(
+                resolved_job_name = await provider.create_suite_job(
                     str(group.id), group.name, script_paths, default_label,
                     git_context=git_context, team_id=team_id, team_name=team_name,
-                    tcrt_webhook_url=tcrt_webhook_url,
+                    tcrt_webhook_url=tcrt_webhook_url, job_suffix=job_suffix,
                 )
             except httpx.HTTPStatusError as create_exc:
                 raise _wrap_ci_http_error(create_exc, action="recreate suite job on CI") from create_exc
@@ -419,15 +562,20 @@ class AutomationScriptGroupService:
             # Provider doesn't accept git_context kwarg (older test fakes) —
             # fall back to the legacy positional signature.
             try:
-                group.ci_job_name = await provider.update_suite_job(
+                resolved_job_name = await provider.update_suite_job(
                     str(group.id), group.name, script_paths, default_label,
                 )
             except httpx.HTTPStatusError as exc:
                 if exc.response.status_code != 404:
                     raise _wrap_ci_http_error(exc, action="ensure suite job on CI") from exc
-                group.ci_job_name = await provider.create_suite_job(
+                resolved_job_name = await provider.create_suite_job(
                     str(group.id), group.name, script_paths, default_label,
                 )
+        # Persist the resolved job name back to the trigger-scoped field.
+        if is_webhook:
+            group.ci_job_name_webhook = resolved_job_name
+        else:
+            group.ci_job_name = resolved_job_name
 
         run_inputs = {
             **(inputs or {}),
@@ -442,7 +590,7 @@ class AutomationScriptGroupService:
             if git_context.get("token"):
                 run_inputs["git_token"] = git_context["token"]
         try:
-            external_run = await provider.trigger_run(group.ci_job_name, resolved_branch, run_inputs)
+            external_run = await provider.trigger_run(resolved_job_name, resolved_branch, run_inputs)
         except httpx.HTTPStatusError as exc:
             raise _wrap_ci_http_error(exc, action="trigger suite run on CI") from exc
         now = _utcnow()
@@ -459,7 +607,7 @@ class AutomationScriptGroupService:
             triggered_by_user_id=actor,
             triggered_by_webhook_id=triggered_by_webhook_id,
             tcrt_correlation_id=tcrt_correlation_id,
-            workflow_id=group.ci_job_name,
+            workflow_id=resolved_job_name,
             branch=resolved_branch,
             inputs_json=json.dumps(run_inputs, ensure_ascii=False),
             runner_label=resolved_runner_label,
@@ -518,6 +666,7 @@ def script_group_to_dict(
         "script_paths": script_paths,
         "script_count": len(script_paths),
         "ci_job_name": group.ci_job_name,
+        "ci_job_name_webhook": group.ci_job_name_webhook,
         "ci_job_type": group.ci_job_type,
         "created_by": group.created_by,
         "updated_by": group.updated_by,

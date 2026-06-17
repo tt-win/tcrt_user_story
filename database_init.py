@@ -72,7 +72,6 @@ MAIN_REQUIRED_TABLES: List[str] = [
     "automation_script_case_links",
     "automation_runs",
     "automation_webhooks",
-    "automation_smart_scan_runs",
     "automation_webhook_deliveries",
     "teams",
     "test_cases",

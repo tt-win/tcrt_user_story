@@ -121,17 +121,6 @@ class AutomationWebhookDirection(PyEnum):
     OUTBOUND = "OUTBOUND"
 
 
-class AutomationSmartScanStatus(PyEnum):
-    """Automation Smart Scan run status"""
-
-    QUEUED = "QUEUED"
-    SCANNING = "SCANNING"
-    ENRICHING = "ENRICHING"
-    READY = "READY"
-    FAILED = "FAILED"
-    CANCELLED = "CANCELLED"
-
-
 class Team(Base):
     """團隊表格"""
 
@@ -1890,6 +1879,10 @@ class AutomationScriptGroup(Base):
     script_paths_json = Column(medium_text_type(), nullable=False)
     ref_repo = Column(String(255), nullable=False, server_default="")
     ci_job_name = Column(String(200), nullable=True)
+    # Webhook-triggered runs execute on a dedicated CI job (separate build
+    # history / queue / Allure project from Test-Run-Set runs). Lazily created
+    # on the suite's first webhook trigger, so this stays NULL until then.
+    ci_job_name_webhook = Column(String(200), nullable=True)
     ci_job_type = Column(
         Enum(AutomationScriptGroupJobType, values_callable=lambda values: [item.value for item in values]),
         nullable=True,
@@ -2016,36 +2009,6 @@ class AutomationWebhook(Base):
 
     team = relationship("Team", backref="automation_webhooks")
     script_group = relationship("AutomationScriptGroup")
-
-
-class AutomationSmartScanRun(Base):
-    """Persisted Smart Scan execution state and result."""
-
-    __tablename__ = "automation_smart_scan_runs"
-    __table_args__ = (
-        Index("ix_automation_smart_scan_runs_team_status", "team_id", "status"),
-        Index("ix_automation_smart_scan_runs_provider_hash", "provider_id", "scan_config_hash"),
-    )
-
-    id = Column(Integer, primary_key=True)
-    team_id = Column(Integer, ForeignKey("teams.id", ondelete="CASCADE"), nullable=False, index=True)
-    provider_id = Column(Integer, ForeignKey("team_automation_providers.id", ondelete="CASCADE"), nullable=False, index=True)
-    status = Column(
-        Enum(AutomationSmartScanStatus, values_callable=lambda values: [item.value for item in values]),
-        nullable=False,
-        default=AutomationSmartScanStatus.QUEUED,
-    )
-    scan_config_hash = Column(String(64), nullable=False)
-    progress_json = Column(Text, nullable=True)
-    result_json = Column(medium_text_type(), nullable=True)
-    error_summary = Column(Text, nullable=True)
-    created_by = Column(String(64), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
-    finished_at = Column(DateTime, nullable=True)
-
-    team = relationship("Team", backref="automation_smart_scan_runs")
-    provider = relationship("TeamAutomationProvider")
 
 
 class AutomationWebhookDelivery(Base):
