@@ -198,6 +198,58 @@ def test_bootstrap_target_creates_database_before_upgrade(monkeypatch) -> None:
     ]
 
 
+def test_bootstrap_target_auto_upgrades_legacy_unmanaged_db(monkeypatch) -> None:
+    call_order: list[str] = []
+
+    class _BootstrapEngine:
+        def __init__(self):
+            self.dialect = SimpleNamespace(name="postgresql")
+            self.url = make_url("postgresql+psycopg://tcrt:tcrt@127.0.0.1:5432/tcrt_main")
+
+        def dispose(self):
+            return None
+
+    monkeypatch.setattr(database_init, "get_sync_engine_for_target", lambda _target: _BootstrapEngine())
+    monkeypatch.setattr(database_init, "create_database_if_missing", lambda _url: False)
+
+    def _raise_adoption_required():
+        call_order.append("upgrade")
+        raise database_init.LegacyDatabaseAdoptionRequiredError("legacy unmanaged")
+
+    monkeypatch.setitem(database_init.TARGET_UPGRADERS, "main", _raise_adoption_required)
+    monkeypatch.setitem(
+        database_init.TARGET_LEGACY_UPGRADERS,
+        "main",
+        lambda: call_order.append("legacy_upgrade") or ("7a26d2522198", "head"),
+    )
+    monkeypatch.setattr(
+        database_init,
+        "verify_required_tables",
+        lambda *_args, **_kwargs: (True, []),
+    )
+    monkeypatch.setattr(
+        database_init,
+        "collect_target_verification_summary",
+        lambda *_args, **_kwargs: {
+            "label": "主資料庫",
+            "target": "main",
+            "ready": True,
+            "database_state": "managed",
+            "head_revision": "head",
+            "current_revision": "head",
+            "total_tables": 1,
+            "required_tables": {"users": True},
+            "critical_row_counts": {"users": 0},
+        },
+    )
+    monkeypatch.setattr(database_init, "print_verification_summary", lambda _summary: None)
+
+    logger = database_init.Logger(quiet=True)
+    database_init.bootstrap_target("main", logger, no_backup=True)
+
+    assert call_order == ["upgrade", "legacy_upgrade"]
+
+
 def test_verify_mysql_mediumtext_defaults_detects_plain_text_columns(monkeypatch) -> None:
     class _Inspector:
         def get_table_names(self):

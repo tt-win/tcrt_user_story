@@ -457,7 +457,17 @@ def bootstrap_target(target_name: str, logger: Logger, no_backup: bool) -> Tuple
             backup_path = backup_sqlite_if_needed(engine, logger, label)
 
         logger.info(f"執行 {label} Alembic migration：upgrade head")
-        TARGET_UPGRADERS[target_name]()
+        try:
+            TARGET_UPGRADERS[target_name]()
+        except LegacyDatabaseAdoptionRequiredError:
+            logger.info(
+                f"偵測到{label}尚未納入 Alembic 版控，"
+                "改為自動偵測 schema 版本、stamp baseline 後升級至 head"
+            )
+            detected_rev, final_rev = TARGET_LEGACY_UPGRADERS[target_name]()
+            logger.info(
+                f"已自動將{label}從偵測到的版本 {detected_rev} 升級至 {final_rev}"
+            )
 
         ok, _missing = verify_required_tables(
             engine,
