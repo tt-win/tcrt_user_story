@@ -262,15 +262,6 @@ class MCPAutomationCoverageUncoveredCase(BaseModel):
     title: Optional[str] = None
 
 
-class MCPAutomationCoverageStaleScript(BaseModel):
-    script_id: int
-    name: str
-    script_format: Optional[str] = None
-    ref_path: Optional[str] = None
-    last_run_at: Optional[datetime] = None
-    days_since_last_run: Optional[int] = None
-
-
 class MCPAutomationCoverageTrendPoint(BaseModel):
     date: date
     with_primary_link: int
@@ -283,5 +274,4 @@ class MCPTeamAutomationCoverageResponse(BaseModel):
     team_id: int
     summary: MCPAutomationCoverageSummary
     uncovered_sample: List[MCPAutomationCoverageUncoveredCase] = Field(default_factory=list)
-    stale_scripts: List[MCPAutomationCoverageStaleScript] = Field(default_factory=list)
     trend: List[MCPAutomationCoverageTrendPoint] = Field(default_factory=list)

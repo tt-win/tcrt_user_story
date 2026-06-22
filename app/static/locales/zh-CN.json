@@ -777,7 +777,6 @@
       "filterAll": "全部 scripts",
       "filterUnlinked": "需要连接",
       "filterLinked": "已连接",
-      "filterStale": "Stale",
       "caseNumber": "Case",
       "case": "Case",
       "script": "Script",
@@ -788,7 +787,6 @@
       "noMatchingScripts": "没有符合的 scripts。",
       "linkCount": "已连接 {count} 个",
       "noLinkedCases": "需要连接",
-      "recentOrUnknown": "近期 / 未达 stale",
       "manageUnavailable": "连接管理器目前无法使用",
       "linkType": "Link type",
       "linkScript": "连接 script",
@@ -797,11 +795,7 @@
       "linkDone": "Automation script 已连接",
       "linkFailed": "连接 automation script 失败",
       "noScripts": "暂无可用 scripts",
-      "noUncovered": "所有 cases 都已有 automation coverage。",
-      "staleTitle": "Stale scripts",
-      "noStale": "没有 stale scripts",
-      "neverRun": "从未执行",
-      "daysAgo": "{count} 天前"
+      "noUncovered": "所有 cases 都已有 automation coverage。"
     },
     "settings": {
       "title": "Settings",

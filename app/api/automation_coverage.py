@@ -21,7 +21,6 @@ router = APIRouter(prefix="/teams/{team_id}/automation-coverage", tags=["automat
 async def get_automation_coverage(
     team_id: int,
     uncovered_limit: int = Query(default=50, ge=1, le=100),
-    stale_days: int = Query(default=30, ge=1, le=365),
     current_user: User = Depends(require_team_read),
     main_boundary: MainAccessBoundary = Depends(get_main_access_boundary),
 ) -> AutomationCoverageResponse:
@@ -31,7 +30,6 @@ async def get_automation_coverage(
         result = await service.compute_coverage(
             team_id=team_id,
             uncovered_limit=uncovered_limit,
-            stale_days=stale_days,
         )
         return AutomationCoverageResponse(**result)
 

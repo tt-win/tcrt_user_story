@@ -34,7 +34,6 @@ from app.models.database_models import (
 from app.models.lark_types import Priority, TestResultStatus
 from app.models.mcp import (
     MCPAdhocRunItem,
-    MCPAutomationCoverageStaleScript,
     MCPAutomationCoverageSummary,
     MCPAutomationCoverageTrendPoint,
     MCPAutomationCoverageUncoveredCase,
@@ -1314,7 +1313,6 @@ async def get_team_automation_coverage(
     db: AsyncSession = Depends(get_db),
     principal: MCPMachinePrincipal = Depends(require_mcp_team_access),
     uncovered_limit: int = Query(50, ge=1, le=200),
-    stale_days: int = Query(30, ge=1, le=365),
 ):
     del principal
     await _ensure_team_exists(db, team_id)
@@ -1323,7 +1321,6 @@ async def get_team_automation_coverage(
     data = await service.compute_coverage(
         team_id=team_id,
         uncovered_limit=uncovered_limit,
-        stale_days=stale_days,
     )
 
     summary = MCPAutomationCoverageSummary(
@@ -1342,17 +1339,6 @@ async def get_team_automation_coverage(
         )
         for item in (data.get("uncovered_sample") or [])
     ]
-    stale = [
-        MCPAutomationCoverageStaleScript(
-            script_id=int(item["script_id"]),
-            name=item.get("name", ""),
-            script_format=item.get("script_format"),
-            ref_path=item.get("ref_path"),
-            last_run_at=item.get("last_run_at"),
-            days_since_last_run=item.get("days_since_last_run"),
-        )
-        for item in (data.get("stale_scripts") or [])
-    ]
     trend = [
         MCPAutomationCoverageTrendPoint(
             date=item["date"],
@@ -1367,6 +1353,5 @@ async def get_team_automation_coverage(
         team_id=team_id,
         summary=summary,
         uncovered_sample=uncovered,
-        stale_scripts=stale,
         trend=trend,
     )

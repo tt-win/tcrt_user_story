@@ -82,7 +82,6 @@
     renderHero();
     renderGroups();
     renderCaseTable();
-    renderStaleScripts();
   }
 
   // Disjoint slices of all cases: PRIMARY-covered / covered-without-primary /
@@ -202,37 +201,6 @@
       const repoPrefix = link.ref_repo ? `${link.ref_repo}: ` : '';
       return `<span class="automation-coverage-link-badge ${typeClass}" title="${escapeAttr(`[${link.link_type}] ${repoPrefix}${link.ref_path}`)}">${escapeHtml(link.script_name)}</span>`;
     }).join('')}</div>`;
-  }
-
-  function renderStaleScripts() {
-    const container = document.getElementById('coverageStaleList');
-    const scripts = state.coverage.stale_scripts || [];
-    if (!scripts.length) {
-      container.innerHTML = `
-        <div class="automation-empty text-center py-4">
-          <i class="fas fa-check-circle text-success automation-state-icon"></i>
-          <div class="fw-semibold mt-2" data-i18n="automationHub.coverage.noStale">No stale scripts</div>
-        </div>`;
-      refreshTexts(container);
-      return;
-    }
-    container.innerHTML = scripts.map((script) => {
-      const days = script.days_since_last_run === null || script.days_since_last_run === undefined
-        ? t('automationHub.coverage.neverRun', 'Never run')
-        : t('automationHub.coverage.daysAgo', '{count} days ago').replace('{count}', String(script.days_since_last_run));
-      return `
-        <article class="automation-stale-item">
-          <div class="d-flex align-items-start justify-content-between gap-2">
-            <div class="min-w-0">
-              <div class="fw-semibold text-truncate" title="${escapeAttr(script.name)}">${escapeHtml(script.name)}</div>
-              <div class="text-muted small text-truncate" title="${escapeAttr(script.ref_path)}">${escapeHtml(script.ref_path)}</div>
-            </div>
-            <span class="badge bg-warning text-dark">${escapeHtml(days)}</span>
-          </div>
-          <div class="text-muted small mt-1">${escapeHtml(script.script_format || 'OTHER')}</div>
-        </article>`;
-    }).join('');
-    refreshTexts(container);
   }
 
   function setLoading(isLoading) {

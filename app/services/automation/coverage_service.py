@@ -7,7 +7,6 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.database_models import (
-    AutomationRun,
     AutomationScript,
     AutomationScriptCaseLink,
     AutomationScriptLinkType,
@@ -24,7 +23,6 @@ class AutomationCoverageService:
         *,
         team_id: int,
         uncovered_limit: int = 500,
-        stale_days: int = 30,
     ) -> dict[str, Any]:
         total_cases = await self._count_total_cases(team_id)
         with_primary = await self._count_cases_by_link_type(team_id, AutomationScriptLinkType.PRIMARY)
@@ -41,7 +39,6 @@ class AutomationCoverageService:
             "uncovered_sample": await self._list_uncovered_cases(team_id, uncovered_limit),
             "covered_cases": covered_cases,
             "by_group": by_group,
-            "stale_scripts": await self._list_stale_scripts(team_id, stale_days),
             "by_format": await self._count_scripts_by_format(team_id),
             "trend": await self._build_trend(team_id, total_cases),
         }
@@ -174,53 +171,6 @@ class AutomationCoverageService:
             }
             for row in result.all()
         ]
-
-    async def _list_stale_scripts(self, team_id: int, stale_days: int) -> list[dict[str, Any]]:
-        now = _utcnow()
-        cutoff = now - timedelta(days=stale_days)
-        last_run_at = func.max(
-            func.coalesce(AutomationRun.finished_at, AutomationRun.started_at, AutomationRun.created_at)
-        ).label("last_run_at")
-        last_run_subquery = (
-            select(AutomationRun.automation_script_id.label("script_id"), last_run_at)
-            .where(
-                AutomationRun.team_id == team_id,
-                AutomationRun.automation_script_id.is_not(None),
-            )
-            .group_by(AutomationRun.automation_script_id)
-            .subquery()
-        )
-
-        result = await self.session.execute(
-            select(
-                AutomationScript.id,
-                AutomationScript.name,
-                AutomationScript.script_format,
-                AutomationScript.ref_path,
-                last_run_subquery.c.last_run_at,
-            )
-            .outerjoin(last_run_subquery, last_run_subquery.c.script_id == AutomationScript.id)
-            .where(
-                AutomationScript.team_id == team_id,
-                (last_run_subquery.c.last_run_at.is_(None)) | (last_run_subquery.c.last_run_at < cutoff),
-            )
-            .order_by(last_run_subquery.c.last_run_at.asc(), AutomationScript.ref_path.asc())
-            .limit(50)
-        )
-        stale_scripts = []
-        for row in result.all():
-            last_run = row.last_run_at
-            stale_scripts.append(
-                {
-                    "script_id": row.id,
-                    "name": row.name,
-                    "script_format": _enum_value(row.script_format),
-                    "ref_path": row.ref_path,
-                    "last_run_at": last_run,
-                    "days_since_last_run": None if last_run is None else max((now - last_run).days, 0),
-                }
-            )
-        return stale_scripts
 
     async def _count_scripts_by_format(self, team_id: int) -> dict[str, int]:
         result = await self.session.execute(

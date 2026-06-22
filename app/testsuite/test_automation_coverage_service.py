@@ -5,9 +5,6 @@ import pytest
 
 from app.models.database_models import (
     AutomationProviderSlot,
-    AutomationRun,
-    AutomationRunStatus,
-    AutomationRunTrigger,
     AutomationScript,
     AutomationScriptCaseLink,
     AutomationScriptFormat,
@@ -116,35 +113,7 @@ def automation_coverage_db(tmp_path):
                 created_at=now - timedelta(days=1),
             ),
         ]
-        runs = [
-            AutomationRun(
-                team_id=team.id,
-                automation_script_id=scripts[0].id,
-                provider_id=provider.id,
-                status=AutomationRunStatus.SUCCEEDED,
-                triggered_by=AutomationRunTrigger.USER,
-                tcrt_correlation_id="corr-recent",
-                workflow_id="login",
-                branch="main",
-                inputs_json="{}",
-                started_at=now - timedelta(days=3),
-                finished_at=now - timedelta(days=3, minutes=-5),
-            ),
-            AutomationRun(
-                team_id=team.id,
-                automation_script_id=scripts[1].id,
-                provider_id=provider.id,
-                status=AutomationRunStatus.FAILED,
-                triggered_by=AutomationRunTrigger.USER,
-                tcrt_correlation_id="corr-old",
-                workflow_id="logout",
-                branch="main",
-                inputs_json="{}",
-                started_at=now - timedelta(days=45),
-                finished_at=now - timedelta(days=45, minutes=-5),
-            ),
-        ]
-        session.add_all([*links, *runs])
+        session.add_all(links)
         session.commit()
         ids = {"team_id": team.id}
 
@@ -153,7 +122,7 @@ def automation_coverage_db(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_compute_coverage_counts_uncovered_and_stale_scripts(automation_coverage_db):
+async def test_compute_coverage_counts_uncovered_cases(automation_coverage_db):
     ids = automation_coverage_db["ids"]
     async with automation_coverage_db["async_sessionmaker"]() as session:
         service = AutomationCoverageService(session)
@@ -167,8 +136,6 @@ async def test_compute_coverage_counts_uncovered_and_stale_scripts(automation_co
     assert [item["test_case_number"] for item in coverage["uncovered_sample"]] == ["TC-003", "TC-004"]
     assert coverage["by_format"] == {"PYTEST": 3}
 
-    stale_names = {item["name"] for item in coverage["stale_scripts"]}
-    assert stale_names == {"test_logout.py", "test_profile.py"}
     assert coverage["trend"][-1]["with_any_link"] == 2
     assert coverage["trend"][-1]["coverage_rate"] == 50.0
 
