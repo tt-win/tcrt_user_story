@@ -11,7 +11,8 @@ Web Tool{% endblock %} {% block page_title_text %}
 />
 <link rel="stylesheet" href="/static/css/user-story-map.css">
 {% endblock %} {% block page_specific_actions %}
-<div class="d-flex gap-2">
+<div class="d-flex gap-2 align-items-center">
+    <span class="usm-save-status" id="usmSaveStatus" aria-live="polite"></span>
     <button type="button" class="btn btn-secondary" id="mapListBtn">
         <i class="fas fa-list me-2"></i
         ><span data-i18n="usm.mapList">地圖列表</span>
@@ -190,6 +191,33 @@ Web Tool{% endblock %} {% block page_title_text %}
         <!-- Toolbar for layout and collapse operations -->
         <div class="usm-map-btn-container">
             <div class="btn-group-vertical" role="group">
+                <button
+                    type="button"
+                    class="btn btn-sm btn-secondary usm-map-btn"
+                    id="zoomInBtn"
+                    data-i18n-title="usm.zoomIn"
+                    title="放大"
+                >
+                    <i class="fas fa-plus"></i>
+                </button>
+                <button
+                    type="button"
+                    class="btn btn-sm btn-secondary usm-map-btn"
+                    id="zoomOutBtn"
+                    data-i18n-title="usm.zoomOut"
+                    title="縮小"
+                >
+                    <i class="fas fa-minus"></i>
+                </button>
+                <button
+                    type="button"
+                    class="btn btn-sm btn-secondary usm-map-btn"
+                    id="fitViewBtn"
+                    data-i18n-title="usm.fitView"
+                    title="適配畫面"
+                >
+                    <i class="fas fa-expand"></i>
+                </button>
                 <button
                     type="button"
                     class="btn btn-sm btn-secondary usm-map-btn"

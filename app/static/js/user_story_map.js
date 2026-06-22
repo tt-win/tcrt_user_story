@@ -636,13 +636,25 @@ window.initJiraTooltipListeners = function() {
 const CustomNode = ({ data, id }) => {
     const { Handle, Position } = window.ReactFlow;
     const [isHovered, setIsHovered] = React.useState(false);
+    const [editing, setEditing] = React.useState(false);
+    const [draft, setDraft] = React.useState(data.title || '');
+    React.useEffect(() => { if (!editing) setDraft(data.title || ''); }, [data.title, editing]);
+    const commitRename = () => {
+        const next = (draft || '').trim();
+        setEditing(false);
+        if (next && next !== (data.title || '')) {
+            window.userStoryMapFlow?.renameNode?.(id, next);
+        } else {
+            setDraft(data.title || '');
+        }
+    };
     const badges = [];
 
-    // Node type colors
+    // Node type colors — aligned with TCRT design tokens (--tr-*)
     const nodeTypeColors = {
-        root: '#6f42c1', // Purple
-        feature_category: '#87ceeb', // Light blue
-        user_story: '#dda0dd', // Plum (light purple)
+        root: '#f0ad4e', // --tr-warning (backbone / root)
+        feature_category: '#4a90e2', // --tr-primary (activity / feature)
+        user_story: '#7b68ee', // --tr-secondary (user story)
     };
 
     const nodeTypeLabels = {
@@ -743,11 +755,27 @@ const CustomNode = ({ data, id }) => {
         collapseToggle,
         // Node content
         additionalInfo, // Add external node info if applicable
-        React.createElement(
-            'div',
-            { className: 'node-title' },
-            data.title || 'Untitled'
-        ),
+        editing
+            ? React.createElement('input', {
+                className: 'node-title-input nodrag',
+                value: draft,
+                autoFocus: true,
+                onChange: (e) => setDraft(e.target.value),
+                onFocus: (e) => e.target.select(),
+                onClick: (e) => e.stopPropagation(),
+                onDoubleClick: (e) => e.stopPropagation(),
+                onBlur: commitRename,
+                onKeyDown: (e) => {
+                    e.stopPropagation();
+                    if (e.key === 'Enter') { e.preventDefault(); commitRename(); }
+                    else if (e.key === 'Escape') { e.preventDefault(); setDraft(data.title || ''); setEditing(false); }
+                },
+            })
+            : React.createElement('div', {
+                className: 'node-title',
+                title: tUsm('doubleClickToRename', '雙擊以重新命名'),
+                onDoubleClick: (e) => { e.stopPropagation(); if (!window.moveMode) setEditing(true); },
+            }, data.title || 'Untitled'),
         React.createElement(
             'div',
             { className: 'node-meta' },
@@ -776,10 +804,15 @@ const UserStoryMapFlow = () => {
     const [nodes, setNodes, onNodesChange] = useNodesState([]);
     const [edges, setEdges, onEdgesChange] = useEdgesState([]);
     const [selectedNode, setSelectedNode] = useState(null);
+    const selectedNodeRef = useRef(null);
+    useEffect(() => { selectedNodeRef.current = selectedNode; }, [selectedNode]);
     const [currentMapId, setCurrentMapId] = useState(null);
     const [maps, setMaps] = useState([]);
     const [teamName, setTeamName] = useState('');
     const [collapsedNodeIds, setCollapsedNodeIds] = useState(new Set());
+    // 控制收合/展開時是否重排：null = 不重排（載入/程式套用，尊重既有座標）；
+    // { anchorId, fit } = 使用者操作才重排，並以 anchorId 為定錨避免整張圖跳動
+    const reflowDirectiveRef = useRef(null);
     const [highlightedPath, setHighlightedPath] = useState(null);
     const [highlightedNodeIds, setHighlightedNodeIds] = useState([]);
     const [moveMode, setMoveMode] = useState(false);
@@ -870,6 +903,8 @@ const UserStoryMapFlow = () => {
         if (!node || !(node.data.childrenIds && node.data.childrenIds.length)) {
             return;
         }
+        // 使用者操作：以被點擊的節點為定錨重排，維持其畫面位置不動
+        reflowDirectiveRef.current = { anchorId: nodeId, fit: false };
         setCollapsedNodeIds((prev) => {
             const next = new Set(prev);
             if (next.has(nodeId)) {
@@ -988,7 +1023,8 @@ const UserStoryMapFlow = () => {
     }, []);
 
     // Load specific map
-    const loadMap = useCallback(async (mapId) => {
+    const loadMap = useCallback(async (mapId, options = {}) => {
+        const { preserveViewport = false, reflowAnchor = null } = options;
         // 避免多次搬移造成時間競賽：僅採用最後一次回應
         const requestId = ++loadMapRequestIdRef.current;
         try {
@@ -1116,7 +1152,13 @@ const UserStoryMapFlow = () => {
                 return copy;
             };
 
-            const layoutedNodes = computeLayout(flowNodes, flowEdges);
+            // 若節點皆已有非預設座標，視為使用者已手動排版：載入時尊重既有座標，不重新自動排版
+            const hasSavedLayout = Array.isArray(map.nodes)
+                && map.nodes.length > 0
+                && map.nodes.every((n) => n.position_x != null && n.position_y != null)
+                && map.nodes.some((n) => Number(n.position_x) !== 0 || Number(n.position_y) !== 0);
+
+            const layoutedNodes = hasSavedLayout ? flowNodes : computeLayout(flowNodes, flowEdges);
             const decoratedNodes = layoutedNodes.map(node => ({
                 ...node,
                 data: {
@@ -1184,6 +1226,11 @@ const UserStoryMapFlow = () => {
                     if (hasUserStoryChild) defaultCollapsed.add(node.id);
                 }
             });
+            // reflowAnchor（如搬移後）：以指定節點為定錨重排；
+            // 否則新地圖（無手動座標）依可見節點重排並 fitView，已有座標者不重排、僅框景
+            reflowDirectiveRef.current = reflowAnchor
+                ? { anchorId: reflowAnchor, fit: false }
+                : (hasSavedLayout ? null : { anchorId: null, fit: true });
             setCollapsedNodeIds(() => defaultCollapsed);
             setHighlightedNodeIds([]);
             setHighlightedPath(null);
@@ -1193,15 +1240,17 @@ const UserStoryMapFlow = () => {
                 highlightInfoEl.classList.add('d-none');
                 highlightInfoEl.innerHTML = '';
             }
-            // 自動排版與 fitView
+            // 視窗框景：新地圖由上方收合 effect 依可見節點重排並 fitView；
+            // 已有手動座標者於此框景一次（preserveViewport，如搬移後重載，則保留目前縮放/平移）
             setTimeout(() => {
                 try {
-                    window.userStoryMapFlow?.autoLayout?.();
-                    reactFlowInstance.current?.fitView({ padding: 0.05, duration: 300 });
+                    if (hasSavedLayout && !preserveViewport) {
+                        reactFlowInstance.current?.fitView({ padding: 0.05, duration: 300 });
+                    }
                 } catch (e) {
-                    console.warn('auto layout/fitView failed', e);
+                    console.warn('fitView failed', e);
                 }
-            }, 20);
+            }, 60);
         } catch (error) {
             console.error('Failed to load map:', error);
         }
@@ -1268,6 +1317,7 @@ const UserStoryMapFlow = () => {
             return;
         }
 
+        setUsmSaveStatus('saving');
         try {
             // Convert nodes back
             const mapNodes = nodes.map(node => ({
@@ -1314,17 +1364,110 @@ const UserStoryMapFlow = () => {
             });
 
             if (response.ok) {
+                setUsmSaveStatus('saved');
                 if (!silent) {
                     showMessage(tUsm('mapSaved', '地圖已儲存'), 'success');
                 }
             } else {
+                setUsmSaveStatus('error');
                 showMessage(tUsm('saveFailed', '儲存失敗'), 'error');
             }
         } catch (error) {
             console.error('Failed to save map:', error);
+            setUsmSaveStatus('error');
             showMessage(tUsm('saveFailed', '儲存失敗'), 'error');
         }
     }, [currentMapId, nodes, edges, teamName]);
+
+    // Debounced silent save — coalesces rapid edits (field blur, drag) into one PUT
+    const saveTimerRef = useRef(null);
+    const saveMapRef = useRef(null);
+    const performMoveNodeRef = useRef(null);
+    useEffect(() => { saveMapRef.current = saveMap; }, [saveMap]);
+    const scheduleSave = useCallback((delay = 800) => {
+        if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = setTimeout(() => { saveMapRef.current?.(true); }, delay);
+    }, []);
+    // 找出可作為「拖曳改父」目標的節點：被拖曳節點的中心落在其矩形內、且為合法父節點
+    const findReparentTarget = useCallback((node) => {
+        if (!node || !node.data || !node.data.parentId) return null; // root 不改父
+        const all = nodesRef.current;
+        // 收集 source 子孫，避免把節點拖進自己的子樹
+        const descendants = new Set();
+        const stack = [node.id];
+        while (stack.length) {
+            const cur = stack.pop();
+            all.forEach((n) => {
+                if (n.data.parentId === cur && !descendants.has(n.id)) {
+                    descendants.add(n.id);
+                    stack.push(n.id);
+                }
+            });
+        }
+        const NW = 200, NH = 110;
+        const cx = node.position.x + NW / 2;
+        const cy = node.position.y + NH / 2;
+        return all.find((t) =>
+            t.id !== node.id &&
+            !t.hidden &&
+            t.data.nodeType !== 'user_story' &&
+            t.id !== node.data.parentId &&
+            !descendants.has(t.id) &&
+            cx >= t.position.x && cx <= t.position.x + NW &&
+            cy >= t.position.y && cy <= t.position.y + NH
+        ) || null;
+    }, []);
+
+    const clearDropTargetHighlight = () => {
+        document.querySelectorAll('.react-flow__node.usm-drop-target')
+            .forEach((el) => el.classList.remove('usm-drop-target'));
+    };
+
+    // 拖曳過程中：高亮目前可放置的父節點
+    const onNodeDrag = useCallback((event, node) => {
+        clearDropTargetHighlight();
+        const target = findReparentTarget(node);
+        if (target) {
+            const el = document.querySelector(`.react-flow__node[data-id="${target.id}"]`);
+            if (el) el.classList.add('usm-drop-target');
+        }
+    }, [findReparentTarget]);
+
+    // 放開時：落在合法父節點上 → 改父；否則 → 只更新位置（防抖儲存）
+    const onNodeDragStop = useCallback((event, node) => {
+        clearDropTargetHighlight();
+        const target = node ? findReparentTarget(node) : null;
+        if (target) {
+            const srcTitle = node.data.title || '';
+            const tgtTitle = target.data.title || '';
+            const msg = tUsm('reparentConfirm',
+                `將「${srcTitle}」及其子節點移動到「${tgtTitle}」下？`,
+                { source: srcTitle, target: tgtTitle });
+            if (confirm(msg)) {
+                performMoveNodeRef.current?.(node.id, target.id);
+                return;
+            }
+        }
+        scheduleSave(400);
+    }, [findReparentTarget, scheduleSave]);
+
+    // Inline rename (double-click a node title on the canvas)
+    const renameNode = useCallback((nodeId, newTitle) => {
+        const title = (newTitle || '').trim();
+        if (!title) return;
+        if (!hasUsmAccess('nodeUpdate')) {
+            showUsmMessage('noPermissionUpdateNode', '您沒有權限更新節點', 'error');
+            return;
+        }
+        setNodes((nds) => nds.map((n) => (
+            n.id === nodeId ? { ...n, data: { ...n.data, title } } : n
+        )));
+        if (selectedNodeRef.current?.id === nodeId) {
+            const titleInput = document.getElementById('propTitle');
+            if (titleInput) titleInput.value = title;
+        }
+        scheduleSave();
+    }, [setNodes, scheduleSave]);
 
     // Add node
     const addNode = useCallback((nodeData) => {
@@ -1827,9 +1970,7 @@ const UserStoryMapFlow = () => {
                 return node;
             })
         );
-        setTimeout(() => {
-            window.userStoryMapFlow?.saveMap?.(true);
-        }, 0);
+        scheduleSave();
     };
 
     // JIRA Tickets 浮層編輯功能
@@ -2655,8 +2796,9 @@ const UserStoryMapFlow = () => {
                 }));
             });
 
-            // 重新載入地圖
-            loadMap(currentMapId);
+            // 重新載入（與後端同步），保留縮放/平移，並以新父節點為定錨重排，
+            // 讓被搬移的子樹整齊落到新父節點下、其餘維持不動
+            loadMap(currentMapId, { preserveViewport: true, reflowAnchor: targetNodeId });
         } catch (error) {
             showMessage(tUsm('moveFailed', `搬移失敗: ${error.message}`, { reason: error.message }), 'error');
             setMoveMode(false);
@@ -2674,6 +2816,9 @@ const UserStoryMapFlow = () => {
             });
         }
     };
+
+    // 讓拖曳改父能呼叫到最新的 performMoveNode（避免閉包過期）
+    useEffect(() => { performMoveNodeRef.current = performMoveNode; });
 
     // 取消搬移模式
     const cancelMoveMode = useCallback(() => {
@@ -3466,6 +3611,7 @@ const UserStoryMapFlow = () => {
 
     // Collapse all parent nodes that have User Story children
     const collapseUserStoryNodes = useCallback(() => {
+        reflowDirectiveRef.current = { anchorId: null, fit: true };
         setCollapsedNodeIds((prev) => {
             const next = new Set(prev);
             // Find all nodes that have User Story children and add them to collapsed set
@@ -3488,6 +3634,7 @@ const UserStoryMapFlow = () => {
 
     // Expand all nodes (clear all collapsed nodes)
     const expandAllNodes = useCallback(() => {
+        reflowDirectiveRef.current = { anchorId: null, fit: true };
         setCollapsedNodeIds(new Set());
     }, [setCollapsedNodeIds]);
 
@@ -3497,7 +3644,28 @@ const UserStoryMapFlow = () => {
             showUsmMessage('noPermissionDeleteNode', '您沒有權限刪除節點', 'error');
             return;
         }
-        if (confirm(tUsm('deleteNodeConfirm', '確定要刪除此節點嗎？'))) {
+        const target = nodesRef.current.find((n) => n.id === nodeId);
+        // 計算將一併移除的子孫數量，於確認訊息中提醒，避免誤刪整棵子樹
+        const countDescendants = (rootId) => {
+            const byId = new Map(nodesRef.current.map((n) => [n.id, n]));
+            let total = 0;
+            const stack = [...(byId.get(rootId)?.data.childrenIds || [])];
+            while (stack.length) {
+                const cid = stack.pop();
+                if (!byId.has(cid)) continue;
+                total += 1;
+                stack.push(...(byId.get(cid)?.data.childrenIds || []));
+            }
+            return total;
+        };
+        const descCount = countDescendants(nodeId);
+        const titleText = target?.data.title || '';
+        const confirmMsg = descCount > 0
+            ? tUsm('deleteNodeConfirmWithChildren',
+                `確定要刪除「${titleText}」嗎？將一併刪除其下 ${descCount} 個子節點，此操作無法復原。`,
+                { title: titleText, count: descCount })
+            : tUsm('deleteNodeConfirmNamed', `確定要刪除「${titleText}」嗎？`, { title: titleText });
+        if (confirm(confirmMsg)) {
             let remainingIds = new Set();
             setNodes((nds) => {
                 const updated = nds
@@ -3535,6 +3703,71 @@ const UserStoryMapFlow = () => {
             }, 0);
             showUsmMessage('nodeDeleted', '節點已刪除', 'success');
         }
+    };
+
+    // 取消選取（Esc）：清除側欄與 React Flow 的選取狀態
+    const deselectNode = () => {
+        setSelectedNode(null);
+        updateNodeProperties(null);
+        setNodes((nds) => (nds.some((n) => n.selected)
+            ? nds.map((n) => (n.selected ? { ...n, selected: false } : n))
+            : nds));
+    };
+
+    // 批次刪除：多選（框選 / Cmd-點選）後一次刪除選取節點及其子樹，單次確認、單次儲存
+    const bulkDeleteNodes = (ids) => {
+        if (!hasUsmAccess('nodeDelete')) {
+            showUsmMessage('noPermissionDeleteNode', '您沒有權限刪除節點', 'error');
+            return;
+        }
+        const byId = new Map(nodesRef.current.map((n) => [n.id, n]));
+        const toRemove = new Set();
+        const addSubtree = (id) => {
+            if (toRemove.has(id) || !byId.has(id)) return;
+            toRemove.add(id);
+            (byId.get(id)?.data.childrenIds || []).forEach(addSubtree);
+        };
+        ids.forEach(addSubtree);
+        const total = toRemove.size;
+        if (!total) return;
+        const confirmMsg = tUsm('bulkDeleteConfirm',
+            `刪除選取的 ${ids.length} 個節點（連同子節點共 ${total} 個）？此操作無法復原。`,
+            { selected: ids.length, total });
+        if (!confirm(confirmMsg)) return;
+
+        let remainingIds = new Set();
+        setNodes((nds) => {
+            const updated = nds
+                .filter((node) => !toRemove.has(node.id))
+                .map((node) => {
+                    if (node.data.childrenIds?.some((cid) => toRemove.has(cid))) {
+                        return {
+                            ...node,
+                            data: {
+                                ...node.data,
+                                childrenIds: node.data.childrenIds.filter((cid) => !toRemove.has(cid)),
+                            },
+                        };
+                    }
+                    return node;
+                });
+            remainingIds = new Set(updated.map((node) => node.id));
+            nodesRef.current = updated;
+            return updated;
+        });
+        setEdges((eds) => eds.filter((edge) => !toRemove.has(edge.source) && !toRemove.has(edge.target)));
+        setSelectedNode(null);
+        const container = document.getElementById('nodeProperties');
+        if (container) {
+            container.innerHTML = `<p class="text-muted small">${tUsm('selectNodeHint', '選擇一個節點以查看和編輯屬性')}</p>`;
+        }
+        setCollapsedNodeIds((prev) => {
+            const next = new Set();
+            remainingIds.forEach((id) => { if (prev.has(id)) next.add(id); });
+            return next;
+        });
+        setTimeout(() => { window.userStoryMapFlow?.saveMap?.(true); }, 0);
+        showUsmMessage('bulkDeleted', `已刪除 ${total} 個節點`, 'success', { count: total });
     };
 
     // Initialize
@@ -3639,17 +3872,50 @@ const UserStoryMapFlow = () => {
             };
         });
 
-        // 重新應用佈局以適應收合/展開的節點
-        const layoutedNodes = applyLayoutWithCollapsedNodes(updatedNodes, edges, collapsedNodeIds);
+        // 收合/展開重排：僅在使用者操作（reflowDirectiveRef 有值）時重排。
+        // 載入時的預設收合、以及新增/刪除造成的 edges 變動，維持既有座標，
+        // 避免整張圖跳動或洗掉使用者的手動排版。
+        const directive = reflowDirectiveRef.current;
+        reflowDirectiveRef.current = null;
 
-        nodesRef.current = layoutedNodes;
-        setNodes(layoutedNodes);
+        let finalNodes = updatedNodes;
+        if (directive) {
+            const reflowed = applyLayoutWithCollapsedNodes(updatedNodes, edges, collapsedNodeIds);
+            // 以定錨節點（被點擊者；否則 root）對齊重排前的位置，讓畫面以該點為中心局部展開/收合
+            const anchorId = directive.anchorId
+                || updatedNodes.find((n) => !n.data.parentId && !n.hidden)?.id
+                || null;
+            const before = anchorId ? updatedNodes.find((n) => n.id === anchorId) : null;
+            const after = anchorId ? reflowed.find((n) => n.id === anchorId) : null;
+            if (before && after && !after.hidden) {
+                const dx = before.position.x - after.position.x;
+                const dy = before.position.y - after.position.y;
+                finalNodes = (dx || dy)
+                    ? reflowed.map((n) => (n.hidden ? n : { ...n, position: { x: n.position.x + dx, y: n.position.y + dy } }))
+                    : reflowed;
+            } else {
+                finalNodes = reflowed;
+            }
+        }
+
+        nodesRef.current = finalNodes;
+        setNodes(finalNodes);
         setEdges((eds) =>
             eds.map((edge) => {
                 const hidden = hiddenStatus.get(edge.source) || hiddenStatus.get(edge.target);
                 return hidden === edge.hidden ? edge : { ...edge, hidden };
             })
         );
+
+        if (directive?.fit) {
+            setTimeout(() => {
+                try {
+                    reactFlowInstance.current?.fitView({ padding: 0.15, duration: 300 });
+                } catch (e) {
+                    console.warn('fitView after collapse/expand failed', e);
+                }
+            }, 60);
+        }
 
         if (selectedNode) {
             const isHidden = hiddenStatus.get(selectedNode.id);
@@ -3661,7 +3927,7 @@ const UserStoryMapFlow = () => {
                 }
                 updateAddChildButtonState(null);
             } else {
-                const refreshed = layoutedNodes.find((node) => node.id === selectedNode.id);
+                const refreshed = finalNodes.find((node) => node.id === selectedNode.id);
                 if (refreshed && refreshed !== selectedNode) {
                     setSelectedNode(refreshed);
                     updateNodeProperties(refreshed);
@@ -3791,6 +4057,10 @@ const UserStoryMapFlow = () => {
             setEdges,
             startMoveNodeMode,
             cancelMoveMode,
+            renameNode,
+            deleteNode,
+            bulkDeleteNodes,
+            deselectNode,
             clearGraph: () => {
                 setNodes([]);
                 setEdges([]);
@@ -3818,14 +4088,14 @@ const UserStoryMapFlow = () => {
         }
     }, [collapseUserStoryNodes, expandAllNodes]);
 
-    // MiniMap node color function
+    // MiniMap node color function — aligned with TCRT design tokens (--tr-*)
     const getNodeColor = (node) => {
         const nodeTypeColors = {
-            root: '#6f42c1', // Purple
-            feature_category: '#87ceeb', // Light blue
-            user_story: '#dda0dd', // Plum (light purple)
+            root: '#f0ad4e', // --tr-warning
+            feature_category: '#4a90e2', // --tr-primary
+            user_story: '#7b68ee', // --tr-secondary
         };
-        return nodeTypeColors[node.data.nodeType] || '#0d6efd';
+        return nodeTypeColors[node.data.nodeType] || '#4a90e2';
     };
 
     return React.createElement(
@@ -3838,12 +4108,17 @@ const UserStoryMapFlow = () => {
             onConnect: onConnect,
             onNodeClick: onNodeClick,
             onPaneClick: onPaneClick,
+            onNodeDrag: onNodeDrag,
+            onNodeDragStop: onNodeDragStop,
             onInit: (instance) => { reactFlowInstance.current = instance; },
             nodeTypes: nodeTypes,
             fitView: true,
+            nodesDraggable: !moveMode,
             nodesConnectable: false,
             edgesUpdatable: false,
             connectOnClick: false,
+            deleteKeyCode: null,
+            zoomOnDoubleClick: false,
             zoomOnScroll: false,
             panOnScroll: true,
             panOnScrollSpeed: 0.8,
@@ -3878,6 +4153,26 @@ function showMessage(message, type = 'info') {
     `;
     document.getElementById('flash-messages').appendChild(alert);
     setTimeout(() => alert.remove(), 3000);
+}
+
+// Toolbar save-status pill — surfaces silent autosave outcomes (saving / saved / error)
+let _usmSaveStatusTimer = null;
+function setUsmSaveStatus(state) {
+    const el = document.getElementById('usmSaveStatus');
+    if (!el) return;
+    if (_usmSaveStatusTimer) { clearTimeout(_usmSaveStatusTimer); _usmSaveStatusTimer = null; }
+    const cfg = {
+        saving: { icon: 'fa-spinner fa-spin', text: tUsm('saving', '儲存中…') },
+        saved: { icon: 'fa-check', text: tUsm('saved', '已儲存') },
+        error: { icon: 'fa-exclamation-triangle', text: tUsm('saveFailed', '儲存失敗') },
+    }[state];
+    if (!cfg) { el.classList.remove('is-visible'); return; }
+    el.dataset.state = state;
+    el.innerHTML = `<i class="fas ${cfg.icon}"></i><span>${escapeHtml(cfg.text)}</span>`;
+    el.classList.add('is-visible');
+    if (state === 'saved') {
+        _usmSaveStatusTimer = setTimeout(() => { el.classList.remove('is-visible'); }, 2000);
+    }
 }
 
 const tUsm = (key, fallback, params = {}) =>
@@ -4450,6 +4745,11 @@ document.addEventListener('DOMContentLoaded', async function() {
     });
 
     // Auto layout button
+    // Zoom / fit controls (reuse the styled .usm-map-btn cluster)
+    document.getElementById('zoomInBtn')?.addEventListener('click', () => window.userStoryMapFlow?.zoomIn?.());
+    document.getElementById('zoomOutBtn')?.addEventListener('click', () => window.userStoryMapFlow?.zoomOut?.());
+    document.getElementById('fitViewBtn')?.addEventListener('click', () => window.userStoryMapFlow?.fitView?.());
+
     document.getElementById('autoLayoutBtn')?.addEventListener('click', () => {
         if (!hasUsmAccess('nodeAdd')) {
             showUsmMessage('noPermissionLayout', '您沒有權限調整地圖排版', 'error');
@@ -4463,51 +4763,14 @@ document.addEventListener('DOMContentLoaded', async function() {
     document.getElementById('collapseUserStoryNodesBtn')?.addEventListener('click', () => {
         window.userStoryMapFlow?.collapseUserStoryNodes();
         showUsmMessage('collapseUserStorySuccess', '已收合所有 User Story 節點', 'success');
-        // Trigger auto-layout after collapse
-        setTimeout(() => {
-            window.userStoryMapFlow?.autoLayout();
-        }, 0);
+        // 重排與框景由 collapsedNodeIds effect 依 reflowDirective 處理
     });
 
     // Expand all nodes button
     document.getElementById('expandAllNodesBtn')?.addEventListener('click', () => {
         window.userStoryMapFlow?.expandAllNodes();
         showUsmMessage('expandAllSuccess', '已展開所有節點', 'success');
-        // Trigger auto-layout after expand
-        setTimeout(() => {
-            window.userStoryMapFlow?.autoLayout();
-            // Check if we need to zoom out
-            setTimeout(() => {
-                const nodes = window.userStoryMapFlow?.getNodes?.() || [];
-                const rootNode = nodes.find(n => !n.data.parentId);
-
-                if (reactFlowInstance.current && nodes.length > 0) {
-                    const nodeWidth = 200;
-                    const nodeHeight = 110;
-
-                    // Calculate graph bounds
-                    const minX = Math.min(...nodes.map(n => n.position.x));
-                    const maxX = Math.max(...nodes.map(n => n.position.x + nodeWidth));
-                    const minY = Math.min(...nodes.map(n => n.position.y));
-                    const maxY = Math.max(...nodes.map(n => n.position.y + nodeHeight));
-                    const graphWidth = maxX - minX + nodeWidth * 2;
-                    const graphHeight = maxY - minY + nodeHeight * 2;
-
-                    // If graph is too large (larger than 4x viewport), zoom to 1/4
-                    // Standard viewport is ~1200x800
-                    if (graphWidth > 4800 || graphHeight > 3200) {
-                        if (rootNode) {
-                            // Center on root node and zoom to 0.25
-                            reactFlowInstance.current.setCenter(
-                                rootNode.position.x + nodeWidth / 2,
-                                rootNode.position.y + nodeHeight / 2,
-                                { zoom: 0.25, duration: 500 }
-                            );
-                        }
-                    }
-                }
-            }, 100);
-        }, 0);
+        // 重排與框景由 collapsedNodeIds effect 依 reflowDirective 處理
     });
 
     // Highlight path button
@@ -5673,7 +5936,45 @@ document.addEventListener('DOMContentLoaded', function() {
             openQuickSearchUSM();
         }
     });
-    
+
+    // 畫布節點快捷鍵：Esc 取消選取、Del 刪除、Tab 新增子項、Enter 新增同層
+    document.addEventListener('keydown', function(e) {
+        const tag = (e.target && e.target.tagName || '').toLowerCase();
+        const isTyping = ['input', 'textarea', 'select'].includes(tag) || (e.target && e.target.isContentEditable);
+        if (isTyping) return;
+        if (e.ctrlKey || e.metaKey || e.altKey) return;
+        // 有彈窗開啟或處於搬移模式時不攔截
+        if (document.querySelector('.modal.show')) return;
+        if (window.moveMode) return;
+        const flow = window.userStoryMapFlow;
+        if (!flow) return;
+        if (e.key === 'Escape') {
+            flow.deselectNode?.();
+            return;
+        }
+        const selected = flow.getSelectedNode?.();
+        const selectedIds = flow.getSelectedNodeIds?.() || [];
+        if (e.key === 'Delete' || e.key === 'Backspace') {
+            if (selectedIds.length <= 1 && !selected) return;
+            e.preventDefault();
+            if (selectedIds.length > 1) {
+                flow.bulkDeleteNodes?.(selectedIds);
+            } else {
+                flow.deleteNode?.(selected ? selected.id : selectedIds[0]);
+            }
+            return;
+        }
+        // Tab / Enter 需要單一錨點節點
+        if (!selected) return;
+        if (e.key === 'Tab') {
+            e.preventDefault();
+            window.addChildNode?.(selected.id);
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            window.addSiblingNode?.(selected.id);
+        }
+    });
+
     // Add hint at bottom
     if (document.getElementById('quickSearchHint')) return;
     const hint = document.createElement('div');

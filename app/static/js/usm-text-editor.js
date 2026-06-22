@@ -371,9 +371,22 @@
         const textTab = document.getElementById('text-tab');
         if (textTab) {
             textTab.addEventListener('shown.bs.tab', () => {
+                // Monaco 在隱藏的分頁容器中建立，初次顯示時檢視層尺寸為 0、不會渲染，
+                // 導致語法高亮不出現。切到文字頁時手動 layout 觸發重新渲染即可修正。
+                const relayout = () => {
+                    if (!editor) return;
+                    editor.layout();
+                    setTimeout(() => { if (editor) editor.layout(); }, 50);
+                };
                 const mapId = getCurrentMapId();
-                if (!mapId) return;
-                const doExport = () => exportToText(false);
+                if (!mapId) {
+                    if (editorReady && editor) relayout();
+                    return;
+                }
+                const doExport = () => {
+                    relayout();
+                    Promise.resolve(exportToText(false)).finally(relayout);
+                };
                 if (!editorReady || !editor) {
                     let attempts = 0;
                     const maxAttempts = 10;

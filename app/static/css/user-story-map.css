@@ -1,38 +1,51 @@
     .reactflow-wrapper {
         flex: 1;
         min-height: 0;
-        background-color: #f8f9fa;
+        background-color: var(--tr-bg-body, #f8f9fa);
+    }
+
+    /* 收合/展開等造成的節點位移採用平滑過渡；拖曳中關閉過渡以維持跟手 */
+    .react-flow__node {
+        transition: transform 0.22s ease;
+    }
+    .react-flow__node.dragging {
+        transition: none;
     }
 
     .custom-node {
         padding: 12px 16px;
         padding-right: 24px;
         border-radius: 8px;
-        background: white;
-        border: 2px solid #0d6efd;
+        background: var(--tr-bg-card, #fff);
+        border: 2px solid var(--tr-primary);
         width: 200px;
         min-height: 110px;
         max-height: 110px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        box-shadow: var(--tr-shadow-sm);
         position: relative;
         display: flex;
         flex-direction: column;
         overflow: hidden;
+        transition: box-shadow 0.15s ease, border-color 0.15s ease;
+    }
+
+    .custom-node:hover {
+        box-shadow: var(--tr-shadow-md);
     }
 
     .custom-node.root-node {
-        background: linear-gradient(135deg, #fff9d6 0%, #fffef0 100%);
-        border-color: #f0c94d;
+        background: linear-gradient(135deg, var(--tr-warning-light) 0%, #fffdf5 100%);
+        border-color: var(--tr-warning);
     }
 
     .custom-node[data-node-type="feature_category"] {
-        background: linear-gradient(135deg, #f8fcff 0%, #f0f8ff 100%);
-        border-color: #87ceeb;
+        background: linear-gradient(135deg, var(--tr-primary-light) 0%, #f4faff 100%);
+        border-color: var(--tr-primary);
     }
 
     .custom-node[data-node-type="user_story"] {
-        background: linear-gradient(135deg, #fdf8ff 0%, #faf0ff 100%);
-        border-color: #dda0dd;
+        background: linear-gradient(135deg, var(--tr-secondary-light) 0%, #faf8ff 100%);
+        border-color: var(--tr-secondary);
     }
 
     .custom-node .react-flow__handle {
@@ -247,8 +260,60 @@
     }
 
     .react-flow__node.selected .custom-node {
-        border-color: #f76707;
-        box-shadow: 0 0 0 3px rgba(247, 103, 7, 0.35), 0 4px 12px rgba(0,0,0,0.15);
+        border-color: var(--tr-primary-dark);
+        box-shadow: 0 0 0 3px rgba(var(--tr-primary-rgb), 0.35), var(--tr-shadow-md);
+    }
+
+    /* 拖曳改父時，可放置的目標父節點高亮（綠色＝可放下） */
+    .react-flow__node.usm-drop-target .custom-node {
+        border-color: var(--tr-success) !important;
+        border-style: dashed !important;
+        box-shadow: 0 0 0 3px rgba(92, 184, 92, 0.35), var(--tr-shadow-md) !important;
+    }
+
+    /* Inline rename on canvas (double-click node title) */
+    .custom-node .node-title-input {
+        width: 100%;
+        font-weight: 600;
+        font-size: 14px;
+        line-height: 1.4;
+        color: var(--tr-text-primary);
+        border: 1.5px solid var(--tr-primary);
+        border-radius: 4px;
+        padding: 2px 6px;
+        outline: none;
+        box-shadow: 0 0 0 0.15rem rgba(var(--tr-primary-rgb), 0.2);
+        background: #fff;
+    }
+
+    /* Toolbar save-status pill */
+    .usm-save-status {
+        display: none;
+        align-items: center;
+        gap: 6px;
+        font-size: 0.78rem;
+        font-weight: 500;
+        padding: 4px 10px;
+        border-radius: 20px;
+        border: 1px solid transparent;
+        white-space: nowrap;
+        transition: opacity 0.3s ease;
+    }
+    .usm-save-status.is-visible { display: inline-flex; }
+    .usm-save-status[data-state="saving"] {
+        color: var(--tr-text-secondary);
+        background: var(--tr-bg-sidebar);
+        border-color: var(--tr-border);
+    }
+    .usm-save-status[data-state="saved"] {
+        color: var(--tr-success-dark);
+        background: var(--tr-success-light);
+        border-color: var(--tr-success);
+    }
+    .usm-save-status[data-state="error"] {
+        color: var(--tr-danger-dark);
+        background: var(--tr-danger-light);
+        border-color: var(--tr-danger);
     }
 
     .usm-sidebar {

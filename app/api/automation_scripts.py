@@ -135,7 +135,7 @@ async def sync_automation_scripts(
             branch=payload.branch,
             actor=str(current_user.id),
             fetch_content=True,
-            reconcile_markers=False,
+            reconcile_markers=True,
         )
         return AutomationScriptSyncResponse(**summary.to_dict())
 
