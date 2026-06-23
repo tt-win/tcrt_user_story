@@ -13,6 +13,8 @@ let configFormModalInstance = null;
 let testRunSetFormModalInstance = null;
 let testRunSetDetailModalInstance = null;
 let addExistingToSetModalInstance = null;
+let addExistingRunToSetModalInstance = null;
+let currentAddToSetConfigId = null;
 let currentSetContext = null;
 let pendingSetIdForNewConfig = null;
 // delete config modal is handled via bootstrap instance on demand

@@ -491,6 +491,14 @@ function createConfigCard(config) {
         `);
     }
 
+    if (permissions.canUpdate && Array.isArray(testRunSets) && testRunSets.some(s => s.status !== 'archived')) {
+        secondaryActions.push(`
+                        <button class="btn btn-outline-primary btn-sm" onclick="event.stopPropagation(); toggleAddToSetDropdown(this, ${config.id})">
+                            <i class="fas fa-folder-plus me-1"></i><span data-i18n="testRun.sets.addToSet">加入 Set</span>
+                        </button>
+        `);
+    }
+
     if (permissions.canDelete) {
         secondaryActions.push(`
                         <button class="btn btn-danger btn-sm" onclick="event.stopPropagation(); deleteTestRun(${config.id}, '${escapeHtml(config.name)}')">

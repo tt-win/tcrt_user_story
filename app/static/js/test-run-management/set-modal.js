@@ -537,12 +537,18 @@ function renderTestRunSetDetail(setData, filterStatus = 'all') {
     ].join('');
 
     const createBtn = document.getElementById('setDetailCreateConfigBtn');
+    const addExistingRunBtn = document.getElementById('setDetailAddExistingRunBtn');
     const addAutomationSuiteBtn = document.getElementById('setDetailAddAutomationSuiteBtn');
     const runAutomationBtn = document.getElementById('setDetailRunAutomationBtn');
 
     if (createBtn) {
         createBtn.disabled = setData.status === 'archived' || !perms.canCreate;
         createBtn.onclick = () => openConfigFormModal(null, { setId: setData.id });
+    }
+
+    if (addExistingRunBtn) {
+        addExistingRunBtn.disabled = setData.status === 'archived' || !perms.canUpdate;
+        addExistingRunBtn.onclick = () => openAddExistingRunToSetModal(setData);
     }
 
     if (addAutomationSuiteBtn) {
@@ -636,13 +642,22 @@ function buildSetDetailItemSection({
 }
 
 function buildManualSectionActions(setData, perms) {
-    if (!perms.canCreate) return '';
     const disabledAttr = setData.status === 'archived' ? ' disabled' : '';
-    return `
-        <button type="button" class="btn btn-primary btn-sm" id="setDetailCreateConfigBtn"${disabledAttr}>
-            <i class="fas fa-plus me-1"></i><span data-i18n="testRun.sets.detail.createTestRun">新增 Test Run</span>
-        </button>
-    `;
+    const addExistingButton = perms.canUpdate
+        ? `
+            <button type="button" class="btn btn-outline-primary btn-sm" id="setDetailAddExistingRunBtn"${disabledAttr}>
+                <i class="fas fa-link me-1"></i><span data-i18n="testRun.sets.detail.addExisting">加入既有 Test Run</span>
+            </button>
+        `
+        : '';
+    const createButton = perms.canCreate
+        ? `
+            <button type="button" class="btn btn-primary btn-sm" id="setDetailCreateConfigBtn"${disabledAttr}>
+                <i class="fas fa-plus me-1"></i><span data-i18n="testRun.sets.detail.createTestRun">新增 Test Run</span>
+            </button>
+        `
+        : '';
+    return [addExistingButton, createButton].filter(Boolean).join('');
 }
 
 function buildAutomationSectionActions(setData, perms, suiteCount) {
@@ -966,6 +981,148 @@ async function confirmAddExistingToSet() {
     } catch (error) {
         console.error('Add automation suite failed:', error);
         AppUtils.showError(error.message);
+    }
+}
+
+// Add already-existing (unassigned) Test Runs into a set. Mirrors the suite
+// picker above but lists ungrouped manual Test Runs and posts to /members.
+function openAddExistingRunToSetModal(setData) {
+    if (!addExistingRunToSetModalInstance) {
+        const modalEl = document.getElementById('addExistingRunToSetModal');
+        addExistingRunToSetModalInstance = new bootstrap.Modal(modalEl);
+    }
+
+    const modalEl = document.getElementById('addExistingRunToSetModal');
+    const listContainer = document.getElementById('addExistingRunToSetList');
+    const emptyHint = document.getElementById('addExistingRunToSetEmpty');
+    const confirmBtn = document.getElementById('confirmAddExistingRunToSetBtn');
+    listContainer.innerHTML = '';
+    modalEl.dataset.targetSetId = String(setData.id);
+
+    const availableRuns = Array.isArray(unassignedTestRuns) ? unassignedTestRuns : [];
+    if (!availableRuns.length) {
+        emptyHint.classList.remove('d-none');
+        confirmBtn.disabled = true;
+    } else {
+        emptyHint.classList.add('d-none');
+        confirmBtn.disabled = false;
+        listContainer.innerHTML = availableRuns.map(run => `
+            <label class="list-group-item d-flex align-items-center justify-content-between">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" value="${run.id}" id="add-existing-run-${run.id}">
+                    <label class="form-check-label" for="add-existing-run-${run.id}">
+                        <strong>${escapeHtml(run.name)}</strong>
+                        <div class="small text-muted">${getStatusText(run.status)} · ${run.executed_cases || 0}/${run.total_test_cases || 0}</div>
+                    </label>
+                </div>
+            </label>
+        `).join('');
+    }
+
+    if (window.i18n && window.i18n.isReady()) {
+        window.i18n.retranslate(modalEl);
+    }
+
+    addExistingRunToSetModalInstance.show();
+}
+
+async function confirmAddExistingRunToSet() {
+    const modalEl = document.getElementById('addExistingRunToSetModal');
+    const targetSetId = parseInt(modalEl.dataset.targetSetId || '0', 10);
+    if (!targetSetId) {
+        addExistingRunToSetModalInstance.hide();
+        return;
+    }
+
+    const selected = Array.from(document.querySelectorAll('#addExistingRunToSetList input[type="checkbox"]:checked'))
+        .map(input => parseInt(input.value, 10));
+
+    if (!selected.length) {
+        AppUtils.showWarning(window.i18n?.t('testRun.sets.addExisting.selectWarning') || '請至少選擇一個 Test Run');
+        return;
+    }
+
+    try {
+        const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-run-sets/${targetSetId}/members`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ config_ids: selected })
+        });
+
+        if (!response.ok) {
+            const payload = await response.json().catch(() => ({ detail: null }));
+            throw new Error(payload?.detail || '加入既有 Test Run 失敗');
+        }
+
+        addExistingRunToSetModalInstance.hide();
+        AppUtils.showSuccess(window.i18n?.t('testRun.sets.addExisting.success') || '已將選定的 Test Run 加入 Set');
+        await loadTestRunConfigs();
+        await refreshCurrentSetDetail();
+    } catch (error) {
+        console.error('Add existing Test Run failed:', error);
+        AppUtils.showError(error.message);
+    }
+}
+
+// Per-card "加入 Set" picker for ungrouped Test Runs. Uses a fixed-position
+// dropdown (same pattern as the status dropdown) to avoid card clipping.
+function toggleAddToSetDropdown(button, configId) {
+    const permissions = window._testRunPermissions || testRunPermissions || {};
+    if (!permissions.canUpdate) {
+        showPermissionDenied();
+        return;
+    }
+
+    const dropdown = document.getElementById('addToSetDropdown');
+    const overlay = document.getElementById('addToSetDropdownOverlay');
+    if (!dropdown || !overlay) return;
+
+    if (dropdown.classList.contains('show')) {
+        hideAddToSetDropdown();
+        return;
+    }
+
+    currentAddToSetConfigId = configId;
+    generateAddToSetDropdownItems(dropdown);
+
+    const rect = button.getBoundingClientRect();
+    dropdown.style.left = rect.left + 'px';
+    dropdown.style.top = (rect.bottom + 5) + 'px';
+
+    overlay.classList.add('show');
+    dropdown.classList.add('show');
+
+    if (window.i18n && window.i18n.isReady()) {
+        window.i18n.retranslate(dropdown);
+    }
+}
+
+function hideAddToSetDropdown() {
+    const dropdown = document.getElementById('addToSetDropdown');
+    const overlay = document.getElementById('addToSetDropdownOverlay');
+    if (dropdown) dropdown.classList.remove('show');
+    if (overlay) overlay.classList.remove('show');
+    currentAddToSetConfigId = null;
+}
+
+function generateAddToSetDropdownItems(dropdown) {
+    const sets = (Array.isArray(testRunSets) ? testRunSets : []).filter(s => s.status !== 'archived');
+    if (!sets.length) {
+        dropdown.innerHTML = `<div class="custom-status-dropdown-item text-muted" data-i18n="testRun.sets.addToSetEmpty">尚無可加入的 Set</div>`;
+        return;
+    }
+    dropdown.innerHTML = sets.map(s => `
+        <div class="custom-status-dropdown-item" onclick="handleAddToSetSelection(${s.id})">
+            <i class="fas fa-layer-group me-2"></i>${escapeHtml(s.name)}
+        </div>
+    `).join('');
+}
+
+function handleAddToSetSelection(setId) {
+    const configId = currentAddToSetConfigId;
+    hideAddToSetDropdown();
+    if (configId && setId) {
+        moveTestRunToSet(configId, setId);
     }
 }
 

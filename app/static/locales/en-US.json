@@ -2104,11 +2104,17 @@
         "automationRunsReportPendingTitle": "Allure report is still being generated or backfilled"
       },
       "addExisting": {
+        "hint": "Select the test runs to add to this set (only unassigned test runs can be added)",
+        "empty": "No test runs available to add",
+        "selectWarning": "Select at least one test run",
+        "success": "Selected test runs added to the set",
         "hintSuites": "Select test automation suites to include in this set",
         "emptySuites": "No test automation suites available to add",
         "selectWarningSuites": "Select at least one test automation suite",
         "successSuites": "Selected test automation suites added to the set"
       },
+      "addToSet": "Add to Set",
+      "addToSetEmpty": "No sets available",
       "moveToUnassigned": "Unassigned Test Runs",
       "moveSuccess": "Move succeeded",
       "removeConfirm": "Are you sure you want to remove \"{name}\" from this Test Run Set?",

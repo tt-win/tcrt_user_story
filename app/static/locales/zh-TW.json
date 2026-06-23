@@ -2104,11 +2104,17 @@
         "automationRunsReportPendingTitle": "Allure 報表仍在產生或回填中"
       },
       "addExisting": {
+        "hint": "選擇要加入此 Test Run Set 的 Test Run（僅未歸組的 Test Run 可加入）",
+        "empty": "目前沒有可加入的 Test Run",
+        "selectWarning": "請至少選擇一個 Test Run",
+        "success": "已將選定的 Test Run 加入 Set",
         "hintSuites": "選擇要加入 Test Run Set 的 Test Automation Suite",
         "emptySuites": "目前沒有可加入的 Test Automation Suite",
         "selectWarningSuites": "請至少選擇一個 Test Automation Suite",
         "successSuites": "已將選定的 Test Automation Suite 加入 Set"
       },
+      "addToSet": "加入 Set",
+      "addToSetEmpty": "尚無可加入的 Set",
       "moveToUnassigned": "未歸組 Test Run",
       "moveSuccess": "搬移成功",
       "removeConfirm": "確定要將「{name}」移出目前的 Test Run Set？",

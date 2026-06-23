@@ -703,6 +703,34 @@
     </div>
 </div>
 
+<!-- 加入既有 Test Run 到 Set Modal -->
+<div class="modal fade" id="addExistingRunToSetModal" tabindex="-1">
+    <div class="modal-dialog modal-lg modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title d-flex align-items-center gap-2">
+                    <i class="fas fa-link text-primary"></i>
+                    <span data-i18n="testRun.sets.detail.addExisting">加入既有 Test Run</span>
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label" id="addExistingRunToSetHint" data-i18n="testRun.sets.addExisting.hint">選擇要加入此 Test Run Set 的 Test Run（僅未歸組的 Test Run 可加入）</label>
+                    <div id="addExistingRunToSetList" class="list-group"></div>
+                    <div id="addExistingRunToSetEmpty" class="text-muted py-3 d-none" data-i18n="testRun.sets.addExisting.empty">目前沒有可加入的 Test Run</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.cancel">取消</button>
+                <button type="button" class="btn btn-primary" id="confirmAddExistingRunToSetBtn">
+                    <i class="fas fa-check me-2"></i><span data-i18n="common.confirm">確認</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Test Run Delete Confirmation Dialog - Temporarily commented to fix loading issues -->
 <!--
 <div class="modal fade" id="deleteTestRunModal" tabindex="-1" aria-hidden="true">
@@ -823,6 +851,12 @@
 <!-- 自訂狀態下拉選單 - Fixed positioning -->
 <div class="custom-status-dropdown-overlay" id="statusDropdownOverlay" onclick="hideCustomStatusDropdown()"></div>
 <div class="custom-status-dropdown" id="customStatusDropdown">
+    <!-- 選項將由 JavaScript 動態生成 -->
+</div>
+
+<!-- 加入 Set 下拉選單 - Fixed positioning -->
+<div class="custom-status-dropdown-overlay" id="addToSetDropdownOverlay" onclick="hideAddToSetDropdown()"></div>
+<div class="custom-status-dropdown" id="addToSetDropdown">
     <!-- 選項將由 JavaScript 動態生成 -->
 </div>
 {% endblock %}

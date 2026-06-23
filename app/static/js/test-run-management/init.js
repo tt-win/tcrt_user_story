@@ -144,6 +144,9 @@ function bindEventListeners() {
     const confirmAddExistingBtn = document.getElementById('confirmAddExistingToSetBtn');
     if (confirmAddExistingBtn) confirmAddExistingBtn.addEventListener('click', confirmAddExistingToSet);
 
+    const confirmAddExistingRunBtn = document.getElementById('confirmAddExistingRunToSetBtn');
+    if (confirmAddExistingRunBtn) confirmAddExistingRunBtn.addEventListener('click', confirmAddExistingRunToSet);
+
     const setReportGenerateBtn = document.getElementById('setReportGenerateHtmlBtn');
     if (setReportGenerateBtn) setReportGenerateBtn.addEventListener('click', generateTestRunSetHtmlReport);
     
