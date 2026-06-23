@@ -8,12 +8,15 @@ from types import SimpleNamespace
 
 import httpx
 import pytest
+from fastapi import HTTPException
 
+from app.api.automation_providers import require_team_admin
 from app.api.system_automation_providers import (
     discover_runners_for_saved_system_provider,
     test_system_provider_connection as call_system_provider_connection,
     update_system_provider,
 )
+from app.auth.models import UserRole
 from app.config import get_settings
 from app.db_access.main import MainAccessBoundary
 from app.models.automation_provider import AutomationProviderUpdate
@@ -66,6 +69,25 @@ def _seed_system_jenkins_provider(session_factory, credentials: dict[str, str]) 
         session.add(provider)
         session.commit()
         return int(provider.id)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("role", [UserRole.ADMIN, UserRole.SUPER_ADMIN, "admin", "super_admin"])
+async def test_git_source_settings_allow_admin_and_super_admin(role):
+    user = SimpleNamespace(id=1, username="provider-admin", role=role)
+
+    assert await require_team_admin(1, user) is user
+
+
+@pytest.mark.asyncio
+async def test_git_source_settings_reject_non_admin():
+    user = SimpleNamespace(id=2, username="provider-user", role=UserRole.USER)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await require_team_admin(1, user)
+
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail["code"] == "INSUFFICIENT_PERMISSION"
 
 
 def test_provider_credentials_encrypt_decrypt_and_preserve_fingerprint(monkeypatch):

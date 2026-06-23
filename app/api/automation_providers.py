@@ -47,20 +47,19 @@ async def require_team_admin(
     current_user: User = Depends(get_current_user),
 ) -> User:
     """Storage provider config holds encrypted GitHub PATs / SSH keys etc.
-    Per simplify-provider-scope-with-org-level-ci-result follow-up: Git source
-    settings are now Super Admin only across the board, regardless of which
-    team the row belongs to. The function name is retained to avoid churning
-    every Depends call site, but the actual gate is Super Admin."""
+    Git source settings are team-scoped, so Admin and Super Admin may manage
+    them. CI / Result providers remain org-scoped on the system router."""
     from app.auth.models import UserRole
 
     user_role = current_user.role
     role_value = user_role.value if hasattr(user_role, "value") else str(user_role)
-    if role_value.lower() != UserRole.SUPER_ADMIN.value:
+    allowed_roles = {UserRole.ADMIN.value, UserRole.SUPER_ADMIN.value}
+    if role_value.lower() not in allowed_roles:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={
                 "code": "INSUFFICIENT_PERMISSION",
-                "message": "Provider 設定僅 Super Admin 可管理",
+                "message": "Git 來源設定僅 Admin 以上可管理",
             },
         )
     return current_user

@@ -1224,8 +1224,7 @@
     if (webhookSettingsLink) webhookSettingsLink.href = `/automation-webhook-config${suffix}`;
     if (settingsWebhookLink) settingsWebhookLink.href = `/automation-webhook-config${suffix}`;
 
-    // Provider 設定（Git 來源）只給 Super Admin — provider config holds
-    // encrypted GitHub PATs / SSH keys etc; gate visibility accordingly.
+    // Git 來源設定含加密 GitHub PAT / SSH key；只對 Admin 以上顯示。
     applyProviderSettingsVisibility();
   }
 
@@ -1239,7 +1238,7 @@
       }
       const me = await resp.json().catch(() => ({}));
       const role = String((me && me.role) || '').toLowerCase();
-      if (role !== 'super_admin') {
+      if (!['admin', 'super_admin'].includes(role)) {
         hideProviderSettingsEntries();
       }
     } catch (_e) {
@@ -1257,9 +1256,8 @@
     // we only hide the link, leaving the card title visible can confuse users,
     // so collapse the whole card if it exists.
     const card = document.querySelector('.automation-settings-dashboard .card.automation-panel');
-    // Don't aggressively hide the whole settings card — leave the title so
-    // Super Admin still sees the entry; non-Super-Admin just won't see the
-    // action button to navigate. The card may still show stats for other roles.
+    // Don't aggressively hide the whole settings card; non-admin roles just
+    // won't see the action button to navigate. The card may still show stats.
     void card;
   }
 
