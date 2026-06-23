@@ -182,6 +182,10 @@ api_*.md
 # Re-exempt openspec and prompts (overrides spec.md/task.md above)
 !prompts/**/*.md
 !openspec/**/*.md
+!app/static/locales/GLOSSARY.md
+
+# Node (dev tooling for frontend lint; no build pipeline)
+node_modules/
 principle.txt
 manual_sync_integration_test_report.json
 tests/
