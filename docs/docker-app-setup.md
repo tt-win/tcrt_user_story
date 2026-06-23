@@ -88,14 +88,41 @@ docker compose --env-file .env.docker -f docker-compose.app.yml down -v
 
 ## 6. 部署注意事項
 
-- `WEB_CONCURRENCY` 建議保持 `1`
+- `WEB_CONCURRENCY` 可視負載調大：背景服務已由 DB advisory-lock leader 選舉確保跨 worker/副本僅單一執行，`>1` 時 entrypoint 會啟用對應數量的 uvicorn worker
+- `config.yaml` 預設以唯讀方式從 host 的 `./config.yaml` 掛載進容器（`APP_CONFIG_PATH=/app/config.yaml`）；可用 `APP_CONFIG_FILE` 指定其他 host 路徑。env 變數仍優先於 config.yaml
 - 若部署在 reverse proxy 後方，請搭配：
   - `PUBLIC_BASE_URL`
   - `UVICORN_PROXY_HEADERS=1`
   - `FORWARDED_ALLOW_IPS=*`
 - 若外部依賴尚未準備好，`database_init.py` 或後續 app startup 可能失敗
-- `ATTACHMENTS_ROOT_DIR` 與 `REPORTS_ROOT_DIR` 目前直接使用 host 路徑，並以同一路徑 bind mount 進 container：
-  - `/Users/hideman/tcrt_files/attachments`
-  - `/Users/hideman/tcrt_files/reports`
-- 這樣可保留既有資料庫中的 `absolute_path` 相容性；若資料庫已存舊路徑，container 內仍能直接讀到檔案
+- `ATTACHMENTS_ROOT_DIR` 與 `REPORTS_ROOT_DIR` 由 `.env.docker` 指定，`docker-compose.app.yml` 會以「同路徑」bind mount 進 container（不再寫死任何本機路徑）：
+  - 例如 `ATTACHMENTS_ROOT_DIR=/srv/tcrt/attachments` 會 mount 成 `/srv/tcrt/attachments:/srv/tcrt/attachments`
+  - 這樣可保留既有資料庫中的 `absolute_path` 相容性；若資料庫已存舊路徑，container 內仍能直接讀到檔案
 - 若外部 DB / Qdrant / Embedding 跑在宿主機，容器內不要用 `localhost`，請改用 `host.docker.internal`
+
+### RSA 簽章金鑰持久化（必要）
+
+- 應用程式以 `keys/` 內的 RSA 金鑰對保護登入時傳輸的密碼。金鑰目錄由 `RSA_KEY_DIR` 環境變數決定（預設容器內 `/app/keys`），並由 `docker-compose.app.yml` 的 named volume `tcrt-keys` 持久化。
+- **若不持久化此目錄**，每次重建容器都會重生金鑰，導致**先前以舊公鑰加密的 payload 全部無法解密**。請務必保留 `tcrt-keys` volume（`down` 時不要加 `-v`）。
+- **既有金鑰遷移**：若你之前已在 host 的 `keys/` 產生過金鑰，且要沿用（避免重生），請在首次啟動「新版」容器前，把現有金鑰連同權限複製進 named volume，例如：
+
+  ```bash
+  # 將現有 keys/*.pem 灌入 named volume，保留 0600 並 chown 給容器內非 root 使用者（uid 10001）
+  docker run --rm -v tcrt-keys:/keys -v "$(pwd)/keys":/src:ro alpine \
+    sh -c "cp /src/private_key.pem /src/public_key.pem /keys/ \
+           && chmod 600 /keys/private_key.pem \
+           && chown -R 10001:10001 /keys"
+  ```
+
+  之後啟動容器時，`PasswordEncryptionService.initialize()` 會走「有檔則載入」分支、不重生。可用私鑰指紋於遷移前後比對確認一致。
+
+### 非 root 執行與目錄權限
+
+- 映像以固定的非 root 使用者 **uid/gid 10001（`app`）** 執行（multi-stage build，最終映像不含 `build-essential`）。
+- **金鑰 named volume（`tcrt-keys`）**：映像已預建 `/app/keys` 並 chown 給 `app`，Docker 初始化 volume 時會沿用此 ownership，故 app 可讀寫（全新部署會自動產生金鑰；遷移既有金鑰見上方 chown 步驟）。
+- **附件 / 報告 bind mount**：host 上的 `ATTACHMENTS_ROOT_DIR` / `REPORTS_ROOT_DIR` 目錄必須對 uid `10001` 可寫，否則上傳會失敗。請於 host 先建立並授權，例如：
+
+  ```bash
+  sudo mkdir -p "$ATTACHMENTS_ROOT_DIR" "$REPORTS_ROOT_DIR"
+  sudo chown -R 10001:10001 "$ATTACHMENTS_ROOT_DIR" "$REPORTS_ROOT_DIR"
+  ```

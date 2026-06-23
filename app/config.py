@@ -736,7 +736,9 @@ def create_default_config(config_path: str = "config.yaml") -> None:
 
 
 # 全域設定實例
-settings = Settings.from_env_and_file()
+# APP_CONFIG_PATH 可指定 config.yaml 路徑（容器中以掛載方式提供）；未設定時回退預設 config.yaml。
+# 與 app/db_migrations.py 的 APP_CONFIG_PATH 解析保持一致。
+settings = Settings.from_env_and_file(os.getenv("APP_CONFIG_PATH") or "config.yaml")
 
 
 # 方便的 getter 函式

@@ -22,8 +22,10 @@ if [ "$UVICORN_PROXY_HEADERS" = "1" ]; then
     set -- "$@" --proxy-headers --forwarded-allow-ips "$FORWARDED_ALLOW_IPS"
 fi
 
+# 背景服務（排程器 / automation ticker）已改由 DB advisory-lock leader 選舉確保跨 worker/副本
+# 僅單一執行，故 WEB_CONCURRENCY 可 >1；此處據以啟用多 worker。
 if [ "$WEB_CONCURRENCY" != "1" ]; then
-    echo "Warning: WEB_CONCURRENCY=$WEB_CONCURRENCY, but the in-process scheduler is only safe with a single worker." >&2
+    set -- "$@" --workers "$WEB_CONCURRENCY"
 fi
 
 exec "$@"

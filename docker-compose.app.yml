@@ -9,14 +9,25 @@ services:
       - .env.docker
     environment:
       APP_PUBLISHED_PORT: ${APP_PUBLISHED_PORT:-9999}
+      RSA_KEY_DIR: ${RSA_KEY_DIR:-/app/keys}
+      APP_CONFIG_PATH: ${APP_CONFIG_PATH:-/app/config.yaml}
     ports:
       - "${APP_PUBLISHED_PORT:-9999}:9999"
     volumes:
-      - /Users/hideman/tcrt_files/attachments:/Users/hideman/tcrt_files/attachments
-      - /Users/hideman/tcrt_files/reports:/Users/hideman/tcrt_files/reports
+      # 附件 / 報告：以環境變數指定的 host 路徑 bind mount（同路徑映射，保留 DB 內 absolute_path 相容性）
+      - ${ATTACHMENTS_ROOT_DIR}:${ATTACHMENTS_ROOT_DIR}
+      - ${REPORTS_ROOT_DIR}:${REPORTS_ROOT_DIR}
+      # RSA 簽章金鑰：named volume 持久化，使容器重建後金鑰不重生（否則既有加密 payload 將無法解密）
+      - tcrt-keys:${RSA_KEY_DIR:-/app/keys}
+      # config.yaml：image 未含（見 .dockerignore），以唯讀掛載提供使 AI helper 等進階調校於容器內生效。
+      # 預設掛 host 的 ./config.yaml；可用 APP_CONFIG_FILE 指定其他 host 路徑。
+      - ${APP_CONFIG_FILE:-./config.yaml}:/app/config.yaml:ro
     healthcheck:
       test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:9999/health || exit 1"]
       interval: 15s
       timeout: 5s
       retries: 12
       start_period: 30s
+
+volumes:
+  tcrt-keys:

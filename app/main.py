@@ -4,16 +4,30 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
 from pathlib import Path
+import asyncio
 import logging
 import os
+from contextlib import asynccontextmanager
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
+
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """FastAPI lifespan handler（取代 deprecated 的 @app.on_event）。"""
+    await _run_startup()
+    try:
+        yield
+    finally:
+        await _run_shutdown()
+
 
 app = FastAPI(
     title="Test Case Repository Web Tool",
     description="A web-based test case management system with Lark integration",
     version="1.0.0",
+    lifespan=lifespan,
 )
 
 # 啟用 GZip 壓縮（預設對 >= 1KB 的回應進行壓縮）
@@ -327,9 +341,70 @@ async def health_check():
     return {"status": "healthy"}
 
 
-@app.on_event("startup")
-async def startup_event():
+# ===================== 背景服務 leader 選舉 =====================
+# 背景服務（排程器 + automation ticker）僅由單一 leader 行程執行，使 web 層可多
+# worker / 多副本而不重複扇出。leadership 由 DB advisory lock（SQLite 為檔案鎖）決定。
+_background_started = False
+_leader_retry_task: Optional[asyncio.Task] = None
+
+
+async def _start_background_services() -> None:
+    """啟動排程器與 automation ticker（僅 leader 行程呼叫；具冪等性）。"""
+    global _background_started
+    if _background_started:
+        return
+    from app.services.scheduler import task_scheduler
+    from app.services.automation.background import automation_background_manager
+
+    await task_scheduler.initialize()
+    task_scheduler.start()
+    try:
+        await automation_background_manager.start()
+    except Exception as auto_err:  # noqa: BLE001
+        logging.warning("啟動 Automation Hub 背景 ticker 失敗（不阻止啟動）: %s", auto_err)
+    _background_started = True
+    logging.info("背景服務已啟動（本行程為 leader）")
+
+
+async def _leader_retry_loop() -> None:
+    """非 leader 行程定期重試取得 leadership；取得後接手啟動背景服務。"""
+    from app.runtime_locks import background_leader_lock
+
+    try:
+        while True:
+            await asyncio.sleep(30)
+            if await asyncio.to_thread(background_leader_lock.try_acquire):
+                logging.info("已取得背景服務 leadership，接手啟動背景服務")
+                await _start_background_services()
+                return
+    except asyncio.CancelledError:
+        return
+
+
+async def _try_become_leader_and_start_background() -> None:
+    """嘗試成為 leader：成功則啟動背景服務，否則啟動重試迴圈等待接手。"""
+    from app.runtime_locks import background_leader_lock
+
+    global _leader_retry_task
+    if await asyncio.to_thread(background_leader_lock.try_acquire):
+        await _start_background_services()
+    else:
+        logging.info("本行程非背景服務 leader，背景服務不啟動；將定期重試接手")
+        _leader_retry_task = asyncio.create_task(_leader_retry_loop(), name="leader-retry")
+
+
+async def _run_startup():
     """應用程式啟動事件"""
+    # 安全前置檢查（置於 try 之外，使檢查失敗能中止啟動而非僅記錄）：
+    # 啟用認證時 JWT_SECRET_KEY 不可為空，避免以空密鑰簽章 JWT 造成靜默失去簽章安全性。
+    from app.config import settings as _settings
+
+    if _settings.auth.enable_auth and not (_settings.auth.jwt_secret_key or "").strip():
+        raise RuntimeError(
+            "JWT_SECRET_KEY 未設定但 ENABLE_AUTH=true：請以環境變數或 config.yaml 的 auth.jwt_secret_key 設定後再啟動。"
+            ' 產生方式：python3 -c "import secrets; print(secrets.token_urlsafe(48))"'
+        )
+
     try:
         try:
             from app.config import settings
@@ -366,21 +441,9 @@ async def startup_event():
         password_encryption_service.initialize()
         logging.info("密碼加密服務初始化完成")
 
-        # 啟動定時任務調度器
-        from app.services.scheduler import task_scheduler
-
-        await task_scheduler.initialize()
-        task_scheduler.start()
-        logging.info("定時任務調度器已啟動")
-
-        # 啟動 Automation Hub 背景 ticker（每 60 秒 run sync、每小時 script 自動掃描）
-        try:
-            from app.services.automation.background import automation_background_manager
-
-            await automation_background_manager.start()
-            logging.info("Automation Hub 背景 ticker 已啟動")
-        except Exception as auto_err:
-            logging.warning("啟動 Automation Hub 背景 ticker 失敗（不阻止啟動）: %s", auto_err)
+        # 背景服務（排程器 + automation ticker）僅由單一 leader 行程執行，
+        # 使 web 層可多 worker / 多副本而不重複扇出。
+        await _try_become_leader_and_start_background()
 
         # 初始化 Qdrant Async Client（若連線失敗不阻止服務啟動，後續請求會自動重試）
         try:
@@ -397,9 +460,18 @@ async def startup_event():
         logging.error(f"啟動服務失敗: {e}")
 
 
-@app.on_event("shutdown")
-async def shutdown_event():
+async def _run_shutdown():
     """應用程式關閉事件"""
+    # 取消 leader 重試迴圈（若本行程為等待接手的非 leader）
+    global _leader_retry_task, _background_started
+    if _leader_retry_task is not None:
+        _leader_retry_task.cancel()
+        try:
+            await _leader_retry_task
+        except Exception:  # noqa: BLE001
+            pass
+        _leader_retry_task = None
+
     try:
         # 停止定時任務調度器
         from app.services.scheduler import task_scheduler
@@ -429,6 +501,17 @@ async def shutdown_event():
         await cleanup_audit_database()
     except Exception as e:
         logging.error(f"關閉審計資料庫失敗: {e}")
+
+    # 釋放背景服務 leader 鎖（行程異常結束時連線/檔案關閉亦會自動釋放；此處為正常關閉的明確釋放）
+    try:
+        from app.runtime_locks import background_leader_lock
+
+        await asyncio.to_thread(background_leader_lock.release)
+    except Exception as e:  # noqa: BLE001
+        logging.error("釋放背景 leader 鎖失敗: %s", e)
+
+    # 重置啟動狀態，使「啟動→關閉→再啟動」（如測試多個 TestClient 生命週期）能對稱地重新初始化背景服務
+    _background_started = False
 
 
 if __name__ == "__main__":

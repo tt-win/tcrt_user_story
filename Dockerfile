@@ -1,4 +1,7 @@
-FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
+# syntax=docker/dockerfile:1
+
+# ---- builder stage：安裝 build-essential 並建立 venv，最終映像不含編譯工具鏈 ----
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS builder
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -7,18 +10,44 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends build-essential curl \
+    && apt-get install -y --no-install-recommends build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev
 
+# ---- runtime stage：僅含執行期所需（venv + 應用程式 + curl），非 root 執行 ----
+FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim AS runtime
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    UV_LINK_MODE=copy \
+    PATH="/app/.venv/bin:$PATH"
+
+WORKDIR /app
+
+# curl 供 HEALTHCHECK 使用；建立固定 uid/gid 的非 root 使用者（10001）
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && groupadd --gid 10001 app \
+    && useradd --uid 10001 --gid 10001 --home-dir /app --shell /usr/sbin/nologin app
+
+# 複製 builder 階段建好的 venv，以及應用程式碼（keys/、*.db、.venv 等已由 .dockerignore 排除）
 COPY . .
+COPY --from=builder /app/.venv /app/.venv
 
-RUN chmod +x docker/app-entrypoint.sh
+# 預建金鑰目錄並把 /app 交給非 root 使用者；named volume 掛到 /app/keys 時會沿用此 ownership
+RUN chmod +x docker/app-entrypoint.sh \
+    && mkdir -p /app/keys \
+    && chown -R app:app /app
 
-ENV PATH="/app/.venv/bin:$PATH"
+USER app
 
 EXPOSE 9999
+
+# 映像層級健康檢查（不僅依賴 compose）
+HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=12 \
+    CMD curl -fsS http://127.0.0.1:9999/health || exit 1
 
 ENTRYPOINT ["./docker/app-entrypoint.sh"]
