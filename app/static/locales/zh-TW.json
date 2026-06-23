@@ -1400,6 +1400,7 @@
     "duplicateNumber": "測試案例編號重複",
     "editMode": "編輯模式",
     "editTestCase": "編輯測試案例",
+    "editTestCaseSet": "編輯測試案例集",
     "enterTCGNumber": "輸入 TCG 單號或搜尋關鍵字",
     "expectedResults": "預期結果",
     "expectedResultsPlaceholder": "描述預期的測試結果，支援 Markdown 格式",
