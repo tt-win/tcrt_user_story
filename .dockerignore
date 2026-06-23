@@ -17,13 +17,31 @@ config.yaml
 config.yaml.backup
 config.yaml.backup_before_env_generation
 
+# RSA 簽章金鑰：絕不可烤進映像（應由 named volume 持久化提供，見 docker-compose.app.yml）
+keys/
+
 attachments/
 generated_report/
+allure-projects/
 .tmp/
 backup_*.db
 *.db
 *.db-shm
 *.db-wal
+
+# 執行期不需要的開發/代理工具、IDE 與規格文件（縮小映像、降低攻擊面）
+openspec/
+.cursor/
+.gemini/
+.qwen/
+.opencode/
+.codex/
+.serena/
+.spectra/
+.antigravitycli/
+.playwright-mcp/
+.github/
+.vscode/
 
 docs/_build/
 dist/

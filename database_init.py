@@ -800,34 +800,38 @@ def main(argv: Optional[List[str]] = None) -> int:
                 finally:
                     engine.dispose()
         else:
-            backup_paths: Dict[str, Optional[str]] = {}
-            main_engine: Optional[Engine] = None
-            aux_engines: List[Engine] = []
-            try:
-                for target_name in MIGRATION_ORDER:
-                    engine, backup_path = bootstrap_target(target_name, logger, args.no_backup)
-                    backup_paths[target_name] = backup_path
-                    if target_name == "main":
-                        main_engine = engine
-                    else:
-                        aux_engines.append(engine)
+            from app.runtime_locks import bootstrap_lock
 
-                if main_engine is None:
-                    raise RuntimeError("主資料庫 bootstrap 未建立 engine")
+            # 以 DB advisory lock（SQLite 為檔案鎖）序列化平行啟動下的 schema 變更，避免雙重 Alembic upgrade。
+            with bootstrap_lock():
+                backup_paths: Dict[str, Optional[str]] = {}
+                main_engine: Optional[Engine] = None
+                aux_engines: List[Engine] = []
+                try:
+                    for target_name in MIGRATION_ORDER:
+                        engine, backup_path = bootstrap_target(target_name, logger, args.no_backup)
+                        backup_paths[target_name] = backup_path
+                        if target_name == "main":
+                            main_engine = engine
+                        else:
+                            aux_engines.append(engine)
 
-                stats = get_database_stats(main_engine)
-                print_stats(stats, TARGET_LABELS["main"])
-                ensure_super_admin_seed(main_engine, logger)
-            finally:
-                if main_engine is not None:
-                    main_engine.dispose()
-                for engine in aux_engines:
-                    engine.dispose()
+                    if main_engine is None:
+                        raise RuntimeError("主資料庫 bootstrap 未建立 engine")
 
-            for target_name, backup_path in backup_paths.items():
-                if backup_path:
-                    logger.info(f"{TARGET_LABELS[target_name]} 如需回復，可使用備份檔：{backup_path}")
-            logger.info("✅ 所有資料庫 bootstrap 完成")
+                    stats = get_database_stats(main_engine)
+                    print_stats(stats, TARGET_LABELS["main"])
+                    ensure_super_admin_seed(main_engine, logger)
+                finally:
+                    if main_engine is not None:
+                        main_engine.dispose()
+                    for engine in aux_engines:
+                        engine.dispose()
+
+                for target_name, backup_path in backup_paths.items():
+                    if backup_path:
+                        logger.info(f"{TARGET_LABELS[target_name]} 如需回復，可使用備份檔：{backup_path}")
+                logger.info("✅ 所有資料庫 bootstrap 完成")
         return 0
     except LegacyDatabaseAdoptionRequiredError as exc:
         logger.error(str(exc))

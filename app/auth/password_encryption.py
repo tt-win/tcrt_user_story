@@ -12,12 +12,22 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# 預設金鑰儲存路徑（repo 相對 keys/）；可由環境變數 RSA_KEY_DIR 覆寫，
+# 以便在容器中指向 named volume，使金鑰於容器重建後存活。
+_DEFAULT_KEY_DIR = Path(__file__).parent.parent.parent / "keys"
+
+
+def _resolve_key_dir() -> Path:
+    """解析金鑰目錄：優先使用 RSA_KEY_DIR 環境變數，未設定時回退預設 keys/。"""
+    env_dir = os.getenv("RSA_KEY_DIR")
+    return Path(env_dir).expanduser() if env_dir else _DEFAULT_KEY_DIR
+
 
 class PasswordEncryptionService:
     """密碼加密解密服務"""
 
-    # 金鑰儲存路徑
-    KEY_DIR = Path(__file__).parent.parent.parent / "keys"
+    # 金鑰儲存路徑（預設值；initialize() 會依 RSA_KEY_DIR 環境變數重新解析）
+    KEY_DIR = _DEFAULT_KEY_DIR
     PRIVATE_KEY_FILE = KEY_DIR / "private_key.pem"
     PUBLIC_KEY_FILE = KEY_DIR / "public_key.pem"
 
@@ -28,6 +38,11 @@ class PasswordEncryptionService:
     def initialize(cls):
         """初始化金鑰對（如果不存在則生成）"""
         try:
+            # 依環境變數（RSA_KEY_DIR）解析金鑰目錄，未設定時沿用預設 keys/
+            cls.KEY_DIR = _resolve_key_dir()
+            cls.PRIVATE_KEY_FILE = cls.KEY_DIR / "private_key.pem"
+            cls.PUBLIC_KEY_FILE = cls.KEY_DIR / "public_key.pem"
+
             # 確保金鑰目錄存在
             cls.KEY_DIR.mkdir(parents=True, exist_ok=True)
 
