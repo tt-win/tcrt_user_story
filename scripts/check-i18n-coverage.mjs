@@ -69,10 +69,19 @@ const allowSet = new Set(allow.files || []);
 let cjkTemplateLines = 0;
 for (const f of walk(join(ROOT, "app", "templates"), [".html"])) {
   if (allowSet.has(relative(ROOT, f))) continue;
+  let inBlockComment = false; // 跨行 {# #} / <!-- --> 區塊註解（非使用者可見字串，略過）
   for (const line of readFileSync(f, "utf8").split("\n")) {
-    if (!CJK.test(line) || line.includes("data-i18n")) continue;
+    if (inBlockComment) {
+      if (line.includes("#}") || line.includes("-->")) inBlockComment = false;
+      continue;
+    }
     const t = line.trim();
-    if (t.startsWith("{#") || t.startsWith("<!--") || t.startsWith("//") || t.startsWith("*")) continue;
+    if (t.startsWith("{#") || t.startsWith("<!--")) {
+      if (!line.includes("#}") && !line.includes("-->")) inBlockComment = true;
+      continue;
+    }
+    if (t.startsWith("//") || t.startsWith("*")) continue;
+    if (!CJK.test(line) || line.includes("data-i18n")) continue;
     cjkTemplateLines++;
   }
 }
