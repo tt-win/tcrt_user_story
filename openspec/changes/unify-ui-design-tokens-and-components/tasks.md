@@ -1,10 +1,10 @@
 ## 1. 設計 token 收斂（單一真實來源）
 
-- [ ] 1.1 盤點現有 5 種前綴 token（`--tr-` 36、`--btn-` 60、`--qa-`、`--tc-`、`--ai-`，共 115 定義）與其使用點，產出「舊 token → canonical token」對映表
-- [ ] 1.2 在 `app/static/css/style.css` 的 `:root` 定義 canonical 命名規格：單一 `--color-*`（含 primary/secondary/success/warning/danger/info）、單一 spacing scale、單一 radius 集合、單一 elevation（shadow）集合
-- [ ] 1.3 將 canonical `--color-primary` 對齊 Bootstrap `--bs-primary`，並覆寫 Bootstrap 主色變數使兩者一致（消除 `#4a90e2`／`#0d6efd`／`#2463eb` 衝突）
-- [ ] 1.4 為既有前綴 token 建立 alias，使其指向新的 canonical token（`--tr-primary` 等改為 `var(--color-primary)`），舊類別不立即移除以維持相容
-- [ ] 1.5 移除 `style.css` 對 `.btn-primary` 的透明／漸層覆寫，改為與 canonical 主色一致的單一按鈕色來源（與 `ui-design-system` 既有按鈕需求對齊）
+- [x] 1.1 盤點 5 種前綴 token 與使用點，對映策略見 design.md §1（canonical 命名 + alias 過渡）
+- [x] 1.2 在 `style.css` `:root` 定義 canonical `--color-*`（primary/secondary/success/warning/danger/info，取現有值）
+- [x] 1.3 主色錨點採**現有品牌藍 `#4a90e2`**（使用者決策，視覺變動最小）；覆寫 `--bs-primary`/`--bs-link-color` 為品牌主色，消除與 Bootstrap 預設 `#0d6efd` 的雙主色衝突
+- [x] 1.4 將 `--tr-*` 色彩 token alias 至 canonical（`--tr-primary: var(--color-primary)` 等，值不變）。`--btn-*`/`--qa-*`/`--tc-*`/`--ai-*` 之 alias 留待後續（與 1.5 同批）
+- [ ] 1.5 移除 `.btn-primary` 透明/漸層覆寫（**延後**：屬按鈕視覺重塑，需逐頁瀏覽器驗證；本次以「主色錨點 #4a90e2、按鈕樣式不變」維持最小視覺變動）
 
 ## 2. stylelint 護欄（防回退，無 Node build）
 

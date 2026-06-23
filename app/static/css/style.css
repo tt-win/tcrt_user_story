@@ -48,24 +48,43 @@ body {
 /* TestRail 色彩系統 - 保留 */
 /* stylelint-disable color-no-hex -- design token 定義允許原始 hex（此處為單一真實來源） */
 :root {
-    /* TestRail 色彩系統 */
-    --tr-primary-rgb: 74, 144, 226;
-    --tr-primary: #4a90e2;
-    --tr-primary-dark: #357abd;
-    --tr-primary-light: #e3f2fd;
-    --tr-secondary: #7b68ee;
+    /* Canonical design tokens — 單一真實來源。舊前綴（--tr-/--btn-/--qa-/--tc-/--ai-）逐步 alias 至此。 */
+    --color-primary: #4a90e2;          /* 沿用現有品牌主藍（dominant，--tr-primary 用 462 處） */
+    --color-primary-rgb: 74, 144, 226;
+    --color-primary-dark: #357abd;
+    --color-primary-light: #e3f2fd;
+    --color-secondary: #7b68ee;
+    --color-success: #5cb85c;
+    --color-warning: #f0ad4e;
+    --color-danger: #d9534f;
+    --color-info: #5bc0de;
+
+    /* 對齊 Bootstrap，使框架元件（連結 / focus ring / .text-primary 等）採品牌主色，
+       消除 --tr-primary(#4a90e2) 與 Bootstrap 預設 #0d6efd 的雙主色衝突。 */
+    --bs-primary: var(--color-primary);
+    --bs-primary-rgb: var(--color-primary-rgb);
+    --bs-link-color: var(--color-primary);
+    --bs-link-color-rgb: var(--color-primary-rgb);
+    --bs-link-hover-color: var(--color-primary-dark);
+
+    /* TestRail 色彩系統（改為 alias 至 canonical，值不變以維持視覺一致） */
+    --tr-primary-rgb: var(--color-primary-rgb);
+    --tr-primary: var(--color-primary);
+    --tr-primary-dark: var(--color-primary-dark);
+    --tr-primary-light: var(--color-primary-light);
+    --tr-secondary: var(--color-secondary);
     --tr-secondary-dark: #5a4fcf;
     --tr-secondary-light: #f3f0ff;
-    --tr-success: #5cb85c;
+    --tr-success: var(--color-success);
     --tr-success-dark: #449d44;
     --tr-success-light: #dff0d8;
-    --tr-warning: #f0ad4e;
+    --tr-warning: var(--color-warning);
     --tr-warning-dark: #ec971f;
     --tr-warning-light: #fcf8e3;
-    --tr-danger: #d9534f;
+    --tr-danger: var(--color-danger);
     --tr-danger-dark: #c9302c;
     --tr-danger-light: #f2dede;
-    --tr-info: #5bc0de;
+    --tr-info: var(--color-info);
     --tr-info-dark: #31b0d5;
     --tr-info-light: #d9edf7;
 
