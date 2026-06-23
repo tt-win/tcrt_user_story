@@ -3,16 +3,25 @@
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Path
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 from typing import List, Optional
+import csv
+import io
+import json
 import logging
+from datetime import datetime
 
 from ..database import get_db
 from ..db_access.main import create_main_access_boundary_for_session
 from ..auth.dependencies import get_current_user
 from ..auth.models import User
-from ..models.database_models import TestCaseSet as TestCaseSetDB, Team as TeamDB
+from ..models.database_models import (
+    TestCaseSet as TestCaseSetDB,
+    Team as TeamDB,
+    TestCaseLocal,
+)
 from ..models.test_case_set import (
     TestCaseSet,
     TestCaseSetCreate,
@@ -22,14 +31,74 @@ from ..models.test_case_set import (
 )
 from ..models.test_run_scope import ImpactPreviewResponse
 from ..services.test_case_set_service import TestCaseSetService
+from ..services.test_case_repo_service import TestCaseRepoService
 from ..services.test_run_scope_service import TestRunScopeService
 from ..audit import audit_service, ActionType, ResourceType, AuditSeverity
+
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/teams", tags=["test-case-sets"])
 
 # 註: 所有路由都應用 /teams 前綴
+
+TEST_CASE_SET_CSV_COLUMNS = [
+    "record_id",
+    "test_case_number",
+    "title",
+    "priority",
+    "test_case_set_id",
+    "test_case_section_id",
+    "section_name",
+    "section_path",
+    "section_level",
+    "precondition",
+    "steps",
+    "expected_result",
+    "test_result",
+    "assignee",
+    "attachments",
+    "test_results_files",
+    "user_story_map",
+    "tcg",
+    "parent_record",
+    "test_data",
+    "team_id",
+    "created_at",
+    "updated_at",
+    "last_sync_at",
+    "raw_fields",
+]
+
+
+def _csv_datetime(value) -> str:
+    if value is None:
+        return ""
+    return value.isoformat()
+
+
+def _csv_enum(value) -> str:
+    if value is None:
+        return ""
+    if hasattr(value, "value"):
+        return value.value
+    return str(value)
+
+
+def _csv_json_cell(raw: str | None) -> str:
+    if not raw:
+        return ""
+    try:
+        parsed = json.loads(raw)
+        return json.dumps(parsed, ensure_ascii=False, separators=(",", ":"))
+    except (TypeError, ValueError):
+        return raw
+
+
+def _csv_text(value) -> str:
+    if value is None:
+        return ""
+    return str(value)
 
 
 async def log_set_action(
@@ -477,4 +546,106 @@ async def validate_test_case_set_name(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="驗證名稱失敗",
+        )
+
+
+
+@router.get("/{team_id}/test-case-sets/{set_id}/export-csv")
+async def export_test_case_set_csv(
+    team_id: int,
+    set_id: int,
+    current_user: User = Depends(get_current_user),
+    team: TeamDB = Depends(verify_team_write_permission),
+    db: AsyncSession = Depends(get_db),
+) -> StreamingResponse:
+    """匯出指定 Test Case Set 內全部 Test Cases 為 CSV"""
+    try:
+        service = TestCaseSetService(db)
+        set_data = await service.get_by_id(set_id, team_id)
+        if not set_data:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Test Case Set {set_id} not found",
+            )
+
+        main_boundary = create_main_access_boundary_for_session(db)
+
+        def _load_rows(sync_db: Session):
+            rows = (
+                sync_db.query(TestCaseLocal)
+                .filter(
+                    TestCaseLocal.team_id == team_id,
+                    TestCaseLocal.test_case_set_id == set_id,
+                )
+                .order_by(
+                    TestCaseLocal.test_case_number.asc(),
+                    TestCaseLocal.id.asc(),
+                )
+                .all()
+            )
+            section_lookup = TestCaseRepoService(db)._build_section_lookup(sync_db, rows)
+            return rows, section_lookup
+
+        rows, section_lookup = await main_boundary.run_sync_read(_load_rows)
+
+        output = io.StringIO(newline="")
+        writer = csv.writer(output)
+        writer.writerow(TEST_CASE_SET_CSV_COLUMNS)
+
+        for row in rows:
+            section_id = row.test_case_section_id
+            if section_id is None:
+                section_name = "Unassigned"
+                section_path = ""
+                section_level = 1
+            else:
+                section_meta = section_lookup.get(section_id, {})
+                section_name = section_meta.get("name") or ""
+                section_path = section_meta.get("path") or ""
+                section_level = section_meta.get("level") or ""
+
+            writer.writerow([
+                row.lark_record_id or str(row.id),
+                _csv_text(row.test_case_number),
+                _csv_text(row.title),
+                _csv_enum(row.priority),
+                row.test_case_set_id,
+                row.test_case_section_id if row.test_case_section_id is not None else "",
+                section_name,
+                section_path,
+                section_level,
+                _csv_text(row.precondition),
+                _csv_text(row.steps),
+                _csv_text(row.expected_result),
+                _csv_enum(row.test_result),
+                _csv_json_cell(row.assignee_json),
+                _csv_json_cell(row.attachments_json),
+                _csv_json_cell(row.test_results_files_json),
+                _csv_json_cell(row.user_story_map_json),
+                _csv_json_cell(row.tcg_json),
+                _csv_json_cell(row.parent_record_json),
+                _csv_json_cell(row.test_data_json),
+                row.team_id,
+                _csv_datetime(row.created_at),
+                _csv_datetime(row.updated_at),
+                _csv_datetime(row.last_sync_at),
+                _csv_json_cell(row.raw_fields_json),
+            ])
+
+        csv_bytes = output.getvalue().encode("utf-8-sig")
+        filename = f"test_case_set_{set_id}_test_cases_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}.csv"
+
+        return StreamingResponse(
+            iter([csv_bytes]),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f"attachment; filename={filename}"},
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"匯出 Test Case Set CSV 失敗: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="匯出 Test Case Set CSV 失敗",
         )

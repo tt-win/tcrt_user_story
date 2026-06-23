@@ -1550,7 +1550,10 @@
       "generateLinkTooltip": "Generate a shareable link with current filter state",
       "modalTitle": "Share Filter Link",
       "noFilters": "No filters applied. The link will show all test cases"
-    }
+    },
+    "exportCsv": "Export CSV",
+    "exportCsvSuccess": "CSV exported successfully",
+    "exportCsvFailed": "CSV export failed"
   },
   "testRun": {
     "currentExecution": "Currently Executing: ",

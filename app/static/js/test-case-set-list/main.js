@@ -39,7 +39,10 @@ const i18n = {
   'deleteImpactTitle': '此操作會影響以下 Test Run：',
   'deleteImpactHint': '刪除後會自動將不在範圍內的 Test Run 項目移除。',
   'deleteImpactFetchFailed': '無法取得影響預覽，請稍後再試。',
-  'loadingFailed': '載入資料失敗'
+  'loadingFailed': '載入資料失敗',
+  'exportCsv': '匯出 CSV',
+  'exportCsvSuccess': 'CSV 匯出成功',
+  'exportCsvFailed': 'CSV 匯出失敗'
 };
 
 // 初始化
@@ -222,7 +225,8 @@ function getButtonTexts() {
       createSetHint: window.i18n.t('testCaseSet.createSetHint', {}, 'Create a new test case set'),
       createSet: window.i18n.t('testCaseSet.create', {}, 'Create'),
       updateSet: window.i18n.t('testCaseSet.updateSet', {}, 'Update Set'),
-      setAsDefault: window.i18n.t('testCaseSet.setAsDefault', {}, 'Set Default')
+      setAsDefault: window.i18n.t('testCaseSet.setAsDefault', {}, 'Set Default'),
+      exportCsv: window.i18n.t('testCaseSet.exportCsv', {}, 'Export CSV')
     };
   }
   return {
@@ -234,7 +238,8 @@ function getButtonTexts() {
     createSetHint: 'Create a new test case set',
     createSet: 'Create',
     updateSet: 'Update Set',
-    setAsDefault: 'Set Default'
+    setAsDefault: 'Set Default',
+    exportCsv: 'Export CSV'
   };
 }
 
@@ -303,6 +308,9 @@ async function renderTestCaseSets() {
               </button>
               <button class="btn btn-success btn-sm" onclick="openSetCaseSelectModal(${set.id})">
                 <i class="fas fa-plus"></i> <span class="d-none d-md-inline">Test Run</span>
+              </button>
+              <button class="btn btn-info btn-sm" onclick="exportTestCasesFromSet(${set.id}, this)" title="${btnTexts.exportCsv}">
+                <i class="fas fa-file-csv"></i> <span class="d-none d-md-inline">${btnTexts.exportCsv}</span>
               </button>
               <button class="btn btn-secondary btn-sm" data-edit-set-id="${set.id}" data-edit-set-name="${escapeHtml(set.name)}" data-edit-set-desc="${escapeHtml(set.description || '')}" onclick="showEditSetModal(this.dataset.editSetId, this.dataset.editSetName, this.dataset.editSetDesc)">
                 <i class="fas fa-edit"></i> <span class="d-none d-md-inline">${btnTexts.edit}</span>
@@ -737,6 +745,80 @@ function navigateToSet(setId) {
   // 導航到 Test Case Management
   const url = `/test-case-management?set_id=${setId}${teamId ? `&team_id=${teamId}` : ''}`;
   window.location.href = url;
+}
+
+// 從 Test Case Set 匯出 CSV
+async function exportTestCasesFromSet(setId, button) {
+  if (!currentTeamId) {
+    const message = window.i18n && window.i18n.isReady()
+      ? window.i18n.t('errors.pleaseSelectTeam', {}, '請先選擇團隊')
+      : '請先選擇團隊';
+    if (window.AppUtils && typeof window.AppUtils.showError === 'function') {
+      window.AppUtils.showError(message);
+    } else {
+      showAlert(message, 'danger');
+    }
+    return;
+  }
+
+  const originalDisabled = button.disabled;
+  const originalInnerHTML = button.innerHTML;
+  button.disabled = true;
+  button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <span class="d-none d-md-inline">' + getButtonTexts().exportCsv + '</span>';
+
+  try {
+    const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-case-sets/${setId}/export-csv`);
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`HTTP ${response.status}: ${errText}`);
+    }
+
+    const blob = await response.blob();
+    const disposition = response.headers.get('Content-Disposition') || '';
+    const fileName = _extractExportFilename(disposition) || `test_case_set_${setId}_test_cases.csv`;
+
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+
+    const successMsg = window.i18n && window.i18n.isReady()
+      ? window.i18n.t('testCaseSet.exportCsvSuccess', {}, 'CSV 匯出成功')
+      : 'CSV 匯出成功';
+    if (window.AppUtils && typeof window.AppUtils.showSuccess === 'function') {
+      window.AppUtils.showSuccess(successMsg);
+    }
+  } catch (error) {
+    console.error('Export CSV failed', error);
+    const failedMsg = window.i18n && window.i18n.isReady()
+      ? window.i18n.t('testCaseSet.exportCsvFailed', {}, 'CSV 匯出失敗')
+      : `CSV 匯出失敗：${error.message}`;
+    if (window.AppUtils && typeof window.AppUtils.showError === 'function') {
+      window.AppUtils.showError(failedMsg);
+    } else {
+      showAlert(failedMsg, 'danger');
+    }
+  } finally {
+    button.disabled = originalDisabled;
+    button.innerHTML = originalInnerHTML;
+  }
+}
+
+function _extractExportFilename(disposition) {
+  const match = /filename\*=UTF-8''([^;]+)|filename="?([^";]+)"?/i.exec(disposition);
+  if (!match) return '';
+  if (match[1]) {
+    try {
+      return decodeURIComponent(match[1]);
+    } catch (_) {
+      return match[1];
+    }
+  }
+  return match[2] || '';
 }
 
 async function navigateToAiHelperFromSetList() {

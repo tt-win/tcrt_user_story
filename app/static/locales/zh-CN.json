@@ -1493,7 +1493,10 @@
       "generateLinkTooltip": "生成当前筛选条件的分享链接",
       "modalTitle": "分享筛选链接",
       "noFilters": "当前没有筛选条件，链接将显示所有测试案例"
-    }
+    },
+    "exportCsv": "导出 CSV",
+    "exportCsvSuccess": "CSV 导出成功",
+    "exportCsvFailed": "CSV 导出失败"
   },
   "section": {
     "unassigned": "Unassigned",

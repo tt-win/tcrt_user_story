@@ -113,7 +113,10 @@ Object.assign(window.i18n_dict['zh-TW'], {
   'loading': '載入中...',
   'saving': '儲存中...',
   'copied': '已複製',
-  'moved': '已搬移'
+  'moved': '已搬移',
+  'exportCsv': '匯出 CSV',
+  'exportCsvSuccess': 'CSV 匯出成功',
+  'exportCsvFailed': 'CSV 匯出失敗'
 });
 
 // 簡體中文翻譯
@@ -221,7 +224,10 @@ Object.assign(window.i18n_dict['zh-CN'], {
   'loading': '加载中...',
   'saving': '保存中...',
   'copied': '已复制',
-  'moved': '已移动'
+  'moved': '已移动',
+  'exportCsv': '导出 CSV',
+  'exportCsvSuccess': 'CSV 导出成功',
+  'exportCsvFailed': 'CSV 导出失败'
 });
 
 // 英文翻譯
@@ -329,5 +335,8 @@ Object.assign(window.i18n_dict['en-US'], {
   'loading': 'Loading...',
   'saving': 'Saving...',
   'copied': 'Copied',
-  'moved': 'Moved'
+  'moved': 'Moved',
+  'exportCsv': 'Export CSV',
+  'exportCsvSuccess': 'CSV exported successfully',
+  'exportCsvFailed': 'CSV export failed'
 });

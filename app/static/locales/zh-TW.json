@@ -1526,7 +1526,10 @@
       "generateLinkTooltip": "產生目前篩選條件的分享連結",
       "modalTitle": "分享篩選連結",
       "noFilters": "目前沒有篩選條件，連結將顯示所有測試案例"
-    }
+    },
+    "exportCsv": "匯出 CSV",
+    "exportCsvSuccess": "CSV 匯出成功",
+    "exportCsvFailed": "CSV 匯出失敗"
   },
   "section": {
     "unassigned": "Unassigned",
