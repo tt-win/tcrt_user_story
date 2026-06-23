@@ -1,0 +1,25 @@
+{#
+  統一按鈕元件。對齊 canonical 按鈕樣式與語意色 token，取代散落各頁的 .btn 變體。
+
+  參數：
+    intent        語意色：primary|secondary|success|warning|danger|info|light|link（預設 primary）
+    size          sm|md|lg（預設 md；md 不加尺寸 class）
+    label         按鈕文字
+    label_i18n    i18n key（設定時加 data-i18n，供 client-side 翻譯）
+    icon          icon class（如 'bi bi-plus'），置於文字前
+    type          button|submit|reset（預設 button）
+    id            元素 id（選填）
+    outline       True 時用 .btn-outline-{intent}
+    extra_classes 追加 class
+    attrs         追加屬性 dict（如 {'data-bs-toggle': 'modal'}）
+
+  用法：{{ button(intent='success', label='新增', label_i18n='common.add', icon='bi bi-plus') }}
+#}
+{% macro button(intent='primary', size='md', label='', label_i18n='', icon=none, type='button', id='', outline=False, extra_classes='', attrs={}) %}
+<button type="{{ type }}"{% if id %} id="{{ id }}"{% endif %}
+        class="btn btn-{{ 'outline-' if outline }}{{ intent }}{{ ' btn-' ~ size if size in ['sm', 'lg'] }}{{ ' ' ~ extra_classes if extra_classes }}"
+        {%- for k, v in attrs.items() %} {{ k }}="{{ v|e }}"{% endfor %}>
+  {%- if icon %}<i class="{{ icon }}"></i> {% endif -%}
+  <span{% if label_i18n %} data-i18n="{{ label_i18n }}"{% endif %}>{{ label }}</span>
+</button>
+{% endmacro %}

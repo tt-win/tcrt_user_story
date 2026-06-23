@@ -1,0 +1,9 @@
+{
+  "rules": {
+    "color-no-hex": [true, {
+      "severity": "warning",
+      "message": "請改用 :root 內的 design token（var(--color-*)），勿在選擇器中使用原始 hex。"
+    }]
+  },
+  "ignoreFiles": ["node_modules/**", "app/static/vendor/**"]
+}

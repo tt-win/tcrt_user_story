@@ -432,9 +432,6 @@
     background: rgba(73, 80, 87, 0.95);
     color: #ffffff;
 }
-        font-size: 12px;
-        pointer-events: auto;
-    }
 
       .tab-content.usm-tab-content {
         display: flex;

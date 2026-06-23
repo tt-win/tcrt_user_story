@@ -1,0 +1,22 @@
+{
+  "inlineStyles": 254,
+  "perFile": {
+    "app/templates/_partials/user_menu.html": 3,
+    "app/templates/adhoc_test_run_execution.html": 1,
+    "app/templates/automation_hub.html": 2,
+    "app/templates/automation_provider_settings.html": 1,
+    "app/templates/base.html": 5,
+    "app/templates/index.html": 3,
+    "app/templates/profile.html": 1,
+    "app/templates/qa_ai_helper.html": 1,
+    "app/templates/team_management.html": 22,
+    "app/templates/team_statistics.html": 10,
+    "app/templates/test_case_management.html": 84,
+    "app/templates/test_case_reference.html": 7,
+    "app/templates/test_case_set_list.html": 1,
+    "app/templates/test_run_execution.html": 57,
+    "app/templates/test_run_management.html": 16,
+    "app/templates/user_story_map.html": 31,
+    "app/templates/user_story_map_popup.html": 9
+  }
+}

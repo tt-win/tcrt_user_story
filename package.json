@@ -1,0 +1,15 @@
+{
+  "name": "tcrt-frontend-lint",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Frontend consistency guardrails for TCRT (stylelint + inline-style regression gate). Dev tooling only — NO build pipeline; CSS/JS ship as native assets.",
+  "scripts": {
+    "lint:css": "stylelint \"app/static/css/**/*.css\"",
+    "lint:templates": "node scripts/check-inline-styles.mjs",
+    "lint": "npm run lint:css && npm run lint:templates",
+    "baseline": "node scripts/check-inline-styles.mjs --update"
+  },
+  "devDependencies": {
+    "stylelint": "^16.10.0"
+  }
+}
