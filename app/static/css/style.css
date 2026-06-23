@@ -46,6 +46,7 @@ body {
 }
 
 /* TestRail 色彩系統 - 保留 */
+/* stylelint-disable color-no-hex -- design token 定義允許原始 hex（此處為單一真實來源） */
 :root {
     /* TestRail 色彩系統 */
     --tr-primary-rgb: 74, 144, 226;
@@ -161,6 +162,7 @@ body {
     --btn-info-active-border: var(--tr-info-dark);
     --btn-info-shadow: 0 0 0 0.2rem rgba(91, 192, 222, 0.25);
 }
+/* stylelint-enable color-no-hex */
 
 /* 基礎重置 */
 * {

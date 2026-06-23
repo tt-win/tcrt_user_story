@@ -127,6 +127,9 @@ ENV/
 env.bak/
 venv.bak/
 
+# Node (stylelint dev tooling only; no build pipeline)
+node_modules/
+
 # Configuration files with sensitive data
 config.yaml
 config.yaml.backup

@@ -1,0 +1,38 @@
+{#
+  統一 modal 元件（Bootstrap 5），取代各頁手刻的 .modal 樣式來源。
+  body 內容由 caller block 注入；footer 預設提供「關閉」按鈕，可關閉或自訂。
+
+  參數：
+    id            modal element id（必填；觸發者用 data-bs-target="#id"）
+    title         標題文字
+    title_i18n    標題 i18n key（選填）
+    size          sm|md|lg|xl（預設 md）
+    footer        True 顯示預設 footer（關閉鈕）/ False 不顯示（自訂 footer 時用）
+    scrollable    True 時 body 可捲動
+
+  用法：
+    {% from 'components/modal.html' import modal %}
+    {% call modal(id='edit-tc', title='編輯測試案例', title_i18n='testCase.edit', size='lg') %}
+      <form>...</form>
+    {% endcall %}
+#}
+{% macro modal(id, title='', title_i18n='', size='md', footer=True, scrollable=False) %}
+<div class="modal fade" id="{{ id }}" tabindex="-1" aria-labelledby="{{ id }}-label" aria-hidden="true">
+  <div class="modal-dialog{{ ' modal-' ~ size if size in ['sm', 'lg', 'xl'] }}{{ ' modal-dialog-scrollable' if scrollable }}">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="{{ id }}-label"{% if title_i18n %} data-i18n="{{ title_i18n }}"{% endif %}>{{ title }}</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        {{ caller() }}
+      </div>
+      {% if footer %}
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" data-i18n="common.close">關閉</button>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endmacro %}

@@ -1,0 +1,25 @@
+{#
+  統一頁面操作列（toolbar）。左側標題、右側操作按鈕（由 caller 注入），
+  取代各頁重複手刻的 d-flex justify-content-between 標題列。
+
+  參數：
+    title         標題文字
+    title_i18n    標題 i18n key（選填）
+    subtitle      副標題（選填）
+
+  用法：
+    {% call toolbar(title='測試案例', title_i18n='testCase.title') %}
+      {{ button(intent='primary', label='新增', icon='bi bi-plus') }}
+    {% endcall %}
+#}
+{% macro toolbar(title='', title_i18n='', subtitle='') %}
+<div class="d-flex justify-content-between align-items-center mb-3 page-toolbar">
+  <div class="page-toolbar-title">
+    {% if title or title_i18n %}<h5 class="mb-0"{% if title_i18n %} data-i18n="{{ title_i18n }}"{% endif %}>{{ title }}</h5>{% endif %}
+    {% if subtitle %}<small class="text-muted">{{ subtitle }}</small>{% endif %}
+  </div>
+  <div class="page-toolbar-actions d-flex gap-2">
+    {{ caller() }}
+  </div>
+</div>
+{% endmacro %}

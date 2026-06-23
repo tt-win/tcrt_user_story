@@ -1,0 +1,27 @@
+{#
+  統一表格元件容器（Bootstrap 5）。提供一致的 .table 樣式與 responsive wrapper。
+  資料列通常由 JS 動態填入，故預設只輸出表頭與空 <tbody>；亦可用 caller 注入列。
+
+  參數：
+    columns       表頭定義：[{label, label_i18n, th_class}]
+    id            <table> id（選填，供 JS 取得）
+    extra_classes 追加 class（如 'table-sm'）
+    striped       True 時加 .table-striped
+
+  用法：
+    {{ data_table(columns=[{'label':'名稱','label_i18n':'common.name'}, {'label':'狀態'}], id='tc-table') }}
+#}
+{% macro data_table(columns, id='', extra_classes='', striped=False) %}
+<div class="table-responsive">
+  <table{% if id %} id="{{ id }}"{% endif %} class="table table-hover align-middle{{ ' table-striped' if striped }}{{ ' ' ~ extra_classes if extra_classes }}">
+    <thead>
+      <tr>
+        {% for col in columns %}<th class="{{ col.th_class|default('') }}"{% if col.label_i18n %} data-i18n="{{ col.label_i18n }}"{% endif %}>{{ col.label }}</th>{% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% if caller %}{{ caller() }}{% endif %}
+    </tbody>
+  </table>
+</div>
+{% endmacro %}
