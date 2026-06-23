@@ -1,4 +1,5 @@
 .test-case-set-card {
+  position: relative;
   transition: all 0.3s ease;
   border: 1px solid #e9ecef;
   box-shadow: 0 2px 4px rgba(0,0,0,0.05);
@@ -9,8 +10,16 @@
   transform: translateY(-2px);
 }
 
+/* Lift the card above its grid siblings while its action dropdown is open,
+   otherwise later cards paint over the menu (transform on hover creates a
+   stacking context that clips the menu). */
+.test-case-set-card:hover,
+.test-case-set-card:has(.dropdown.show) {
+  z-index: 1030;
+}
+
 .test-case-set-card .dropdown-menu {
-  min-width: 150px;
+  min-width: 180px;
 }
 
 .test-case-set-card .card-header {

@@ -226,7 +226,9 @@ function getButtonTexts() {
       createSet: window.i18n.t('testCaseSet.create', {}, 'Create'),
       updateSet: window.i18n.t('testCaseSet.updateSet', {}, 'Update Set'),
       setAsDefault: window.i18n.t('testCaseSet.setAsDefault', {}, 'Set Default'),
-      exportCsv: window.i18n.t('testCaseSet.exportCsv', {}, 'Export CSV')
+      exportCsv: window.i18n.t('testCaseSet.exportCsv', {}, 'Export CSV'),
+      actions: window.i18n.t('common.actions', {}, 'Actions'),
+      createTestRun: window.i18n.t('testCaseSet.createTestRun', {}, 'Create Test Run')
     };
   }
   return {
@@ -239,7 +241,9 @@ function getButtonTexts() {
     createSet: 'Create',
     updateSet: 'Update Set',
     setAsDefault: 'Set Default',
-    exportCsv: 'Export CSV'
+    exportCsv: 'Export CSV',
+    actions: 'Actions',
+    createTestRun: 'Create Test Run'
   };
 }
 
@@ -306,23 +310,41 @@ async function renderTestCaseSets() {
               <button class="btn btn-primary btn-sm flex-grow-1" onclick="navigateToSet(${set.id})">
                 <i class="fas fa-arrow-right me-1"></i>${btnTexts.enter}
               </button>
-              <button class="btn btn-success btn-sm" onclick="openSetCaseSelectModal(${set.id})">
-                <i class="fas fa-plus"></i> <span class="d-none d-md-inline">Test Run</span>
-              </button>
-              <button class="btn btn-info btn-sm" onclick="exportTestCasesFromSet(${set.id}, this)" title="${btnTexts.exportCsv}">
-                <i class="fas fa-file-csv"></i> <span class="d-none d-md-inline">${btnTexts.exportCsv}</span>
-              </button>
-              <button class="btn btn-secondary btn-sm" data-edit-set-id="${set.id}" data-edit-set-name="${escapeHtml(set.name)}" data-edit-set-desc="${escapeHtml(set.description || '')}" onclick="showEditSetModal(this.dataset.editSetId, this.dataset.editSetName, this.dataset.editSetDesc)">
-                <i class="fas fa-edit"></i> <span class="d-none d-md-inline">${btnTexts.edit}</span>
-              </button>
-              <button class="btn btn-danger btn-sm ${set.is_default ? 'disabled' : ''}" ${set.is_default ? 'disabled' : `onclick="showDeleteConfirm(${set.id}, '${escapeHtml(set.name).replace(/'/g, "\\'")}')"`}>
-                <i class="fas fa-trash"></i> <span class="d-none d-md-inline">${btnTexts.deleteSet}</span>
-              </button>
-              ${!set.is_default && isAdmin ? `
-              <button class="btn btn-outline-warning btn-sm" onclick="showSetDefaultConfirm(${set.id}, '${escapeHtml(set.name).replace(/'/g, "\\'")}')">
-                <i class="fas fa-star"></i> <span class="d-none d-md-inline">${btnTexts.setAsDefault}</span>
-              </button>
-              ` : ''}
+              <div class="dropdown flex-shrink-0">
+                <button class="btn btn-outline-secondary btn-sm dropdown-toggle" type="button" id="setActionsDropdown${set.id}" data-bs-toggle="dropdown" aria-expanded="false" title="${btnTexts.actions}">
+                  <i class="fas fa-ellipsis-v"></i> <span class="d-none d-md-inline">${btnTexts.actions}</span>
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="setActionsDropdown${set.id}">
+                  <li>
+                    <button type="button" class="dropdown-item" onclick="openSetCaseSelectModal(${set.id})">
+                      <i class="fas fa-plus me-2 text-success"></i>${btnTexts.createTestRun}
+                    </button>
+                  </li>
+                  <li>
+                    <button type="button" class="dropdown-item" onclick="exportTestCasesFromSet(${set.id}, this)">
+                      <i class="fas fa-file-csv me-2 text-info"></i>${btnTexts.exportCsv}
+                    </button>
+                  </li>
+                  <li>
+                    <button type="button" class="dropdown-item" data-edit-set-id="${set.id}" data-edit-set-name="${escapeHtml(set.name)}" data-edit-set-desc="${escapeHtml(set.description || '')}" onclick="showEditSetModal(this.dataset.editSetId, this.dataset.editSetName, this.dataset.editSetDesc)">
+                      <i class="fas fa-edit me-2"></i>${btnTexts.edit}
+                    </button>
+                  </li>
+                  ${!set.is_default && isAdmin ? `
+                  <li>
+                    <button type="button" class="dropdown-item" onclick="showSetDefaultConfirm(${set.id}, '${escapeHtml(set.name).replace(/'/g, "\\'")}')">
+                      <i class="fas fa-star me-2 text-warning"></i>${btnTexts.setAsDefault}
+                    </button>
+                  </li>
+                  ` : ''}
+                  <li><hr class="dropdown-divider"></li>
+                  <li>
+                    <button type="button" class="dropdown-item text-danger ${set.is_default ? 'disabled' : ''}" ${set.is_default ? 'disabled aria-disabled="true"' : `onclick="showDeleteConfirm(${set.id}, '${escapeHtml(set.name).replace(/'/g, "\\'")}')"`}>
+                      <i class="fas fa-trash me-2"></i>${btnTexts.deleteSet}
+                    </button>
+                  </li>
+                </ul>
+              </div>
             </div>
           </div>
         </div>
@@ -760,11 +782,10 @@ async function exportTestCasesFromSet(setId, button) {
     }
     return;
   }
-
   const originalDisabled = button.disabled;
   const originalInnerHTML = button.innerHTML;
   button.disabled = true;
-  button.innerHTML = '<i class="fas fa-spinner fa-spin"></i> <span class="d-none d-md-inline">' + getButtonTexts().exportCsv + '</span>';
+  button.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>' + getButtonTexts().exportCsv;
 
   try {
     const response = await window.AuthClient.fetch(`/api/teams/${currentTeamId}/test-case-sets/${setId}/export-csv`);
