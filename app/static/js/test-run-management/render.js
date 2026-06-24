@@ -452,13 +452,13 @@ function createConfigCard(config) {
                         </button>
     `);
 
-    const lockedForConfigEdit = config.status === 'completed' || config.status === 'archived';
-    const lockedForCasesEdit = config.status === 'completed';
+    const lockedForConfigEdit = config.status === 'archived';
+    const lockedForCasesEdit = config.status === 'completed' || config.status === 'archived';
     const lockedConfigTitle = lockedForConfigEdit
-        ? ` title="${(window.i18n && window.i18n.isReady()) ? window.i18n.t('testRun.cannotEditCompleted') : '已完成或已歸檔的 Test Run 不可編輯'}"`
+        ? ` title="${(window.i18n && window.i18n.isReady()) ? window.i18n.t('testRun.cannotEditArchived') : 'Cannot edit archived Test Run'}"`
         : '';
     const lockedCasesTitle = lockedForCasesEdit
-        ? ` title="${(window.i18n && window.i18n.isReady()) ? window.i18n.t('testRun.cannotEditCompleted') : '已完成的 Test Run 不可編輯 Test Case'}"`
+        ? ` title="${(window.i18n && window.i18n.isReady()) ? window.i18n.t(config.status === 'archived' ? 'testRun.cannotEditArchived' : 'testRun.cannotEditCompleted') : (config.status === 'archived' ? 'Cannot edit archived Test Run' : 'Cannot edit Test Cases in completed Test Run')}"`
         : '';
 
     if (permissions.canUpdate) {
@@ -470,8 +470,8 @@ function createConfigCard(config) {
                         </button>
         `);
         primaryActions.push(`
-                        <button class="btn btn-info btn-sm${(lockedForConfigEdit || lockedForCasesEdit) ? ' disabled' : ''}" 
-                                ${(lockedForConfigEdit || lockedForCasesEdit) ? 'disabled' : ''}${lockedCasesTitle}
+                        <button class="btn btn-info btn-sm${lockedForCasesEdit ? ' disabled' : ''}"
+                                ${lockedForCasesEdit ? 'disabled' : ''}${lockedCasesTitle}
                                 onclick="event.stopPropagation(); editTestCases(${config.id})">
                             <i class="fas fa-list me-1"></i><span data-i18n="testRun.editTestCases">編輯 Test Case</span>
                         </button>

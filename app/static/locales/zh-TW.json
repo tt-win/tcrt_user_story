@@ -1611,6 +1611,7 @@
     "buildNumberPlaceholder": "例如：v1.2.3 / build #4567",
     "cancelled": "已取消",
     "cannotEditCompleted": "已完成的 Test Run 不可編輯 Test Case",
+    "cannotEditArchived": "已歸檔的 Test Run 不可編輯",
     "caseId": "案例 ID",
     "caseNumber": "案例編號",
     "caseSelect": {

@@ -566,13 +566,13 @@ function editBasicSettings(configId) {
     showPermissionDenied();
     return;
   }
-  // 檢查 Test Run 狀態，已完成或已歸檔的不允許編輯
+  // 檢查 Test Run 狀態，已歸檔的不允許編輯
   const config = testRunConfigs.find(c => c.id === configId);
-  if (config && (config.status === 'completed' || config.status === 'archived')) {
-    const completedEditMsg = window.i18n && window.i18n.isReady() 
-      ? window.i18n.t('testRun.cannotEditCompleted')
-      : '已完成或已歸檔的 Test Run 不可編輯';
-    AppUtils.showWarning(completedEditMsg);
+  if (config && config.status === 'archived') {
+    const archivedEditMsg = window.i18n && window.i18n.isReady()
+      ? window.i18n.t('testRun.cannotEditArchived')
+      : 'Cannot edit archived Test Run';
+    AppUtils.showWarning(archivedEditMsg);
     return;
   }
   openConfigFormModal(configId);
@@ -585,13 +585,13 @@ async function editTestCases(configId) {
     showPermissionDenied();
     return;
   }
-  // 檢查 Test Run 狀態，已完成的不允許編輯
+  // 檢查 Test Run 狀態，已完成或已歸檔的不允許編輯 Test Case
   const config = testRunConfigs.find(c => c.id === configId);
-  if (config && config.status === 'completed') {
-    const completedEditMsg = window.i18n && window.i18n.isReady() 
-      ? window.i18n.t('testRun.cannotEditCompleted')
-      : '已完成的 Test Run 不可編輯 Test Case';
-    AppUtils.showWarning(completedEditMsg);
+  if (config && (config.status === 'completed' || config.status === 'archived')) {
+    const lockedEditMsg = window.i18n && window.i18n.isReady()
+      ? window.i18n.t(config.status === 'archived' ? 'testRun.cannotEditArchived' : 'testRun.cannotEditCompleted')
+      : (config.status === 'archived' ? 'Cannot edit archived Test Run' : 'Cannot edit Test Cases in completed Test Run');
+    AppUtils.showWarning(lockedEditMsg);
     return;
   }
   try {

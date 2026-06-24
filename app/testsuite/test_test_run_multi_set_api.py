@@ -227,6 +227,77 @@ def test_scope_reduction_prunes_out_of_scope_items(temp_db):
     assert items[0]["test_case_number"] == seeded["case_a_no"]
 
 
+def test_completed_config_allows_basic_settings_and_scope_update(temp_db):
+    _, SessionLocal = temp_db
+    client = TestClient(app)
+
+    with SessionLocal() as session:
+        seeded = _seed_multi_set_team(session)
+
+    config = _create_multi_set_config(
+        client,
+        team_id=seeded["team_id"],
+        set_ids=[seeded["set_a_id"], seeded["set_b_id"]],
+        name="Completed Regression",
+    )
+    config_id = config["id"]
+
+    add_resp = client.post(
+        f"/api/teams/{seeded['team_id']}/test-run-configs/{config_id}/items",
+        json={
+            "items": [
+                {"test_case_number": seeded["case_a_no"]},
+                {"test_case_number": seeded["case_b_no"]},
+            ]
+        },
+    )
+    assert add_resp.status_code == 201
+    assert add_resp.json()["created_count"] == 2
+
+    status_resp = client.put(
+        f"/api/teams/{seeded['team_id']}/test-run-configs/{config_id}",
+        json={"status": "completed"},
+    )
+    assert status_resp.status_code == 200
+    assert status_resp.json()["status"] == "completed"
+
+    update_resp = client.put(
+        f"/api/teams/{seeded['team_id']}/test-run-configs/{config_id}",
+        json={
+            "name": "Completed Regression Updated",
+            "description": "metadata can be corrected after completion",
+            "test_environment": "UAT",
+            "build_number": "build-2026.06",
+            "related_tp_tickets": ["TP-1001", "TP-1002"],
+            "notifications_enabled": True,
+            "notify_chat_ids": ["oc_qa", "oc_release"],
+            "notify_chat_names_snapshot": ["QA Room", "Release Room"],
+            "test_case_set_ids": [seeded["set_a_id"]],
+        },
+    )
+    assert update_resp.status_code == 200
+    payload = update_resp.json()
+    assert payload["status"] == "completed"
+    assert payload["name"] == "Completed Regression Updated"
+    assert payload["description"] == "metadata can be corrected after completion"
+    assert payload["test_environment"] == "UAT"
+    assert payload["build_number"] == "build-2026.06"
+    assert payload["related_tp_tickets"] == ["TP-1001", "TP-1002"]
+    assert payload["notifications_enabled"] is True
+    assert payload["notify_chat_ids"] == ["oc_qa", "oc_release"]
+    assert payload["notify_chat_names_snapshot"] == ["QA Room", "Release Room"]
+    assert payload["test_case_set_ids"] == [seeded["set_a_id"]]
+    assert payload["cleanup_summary"]["removed_item_count"] == 1
+
+    items_resp = client.get(
+        f"/api/teams/{seeded['team_id']}/test-run-configs/{config_id}/items?limit=100"
+    )
+    assert items_resp.status_code == 200
+    items = items_resp.json()
+    assert len(items) == 1
+    assert items[0]["test_case_number"] == seeded["case_a_no"]
+
+
 def test_move_test_case_preview_and_cleanup_summary(temp_db):
     _, SessionLocal = temp_db
     client = TestClient(app)

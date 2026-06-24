@@ -723,18 +723,18 @@ function buildSetRunDetailRow(run, setData) {
     const otherSets = (testRunSets || []).filter(s => s.id !== setData.id);
     const perms = window._testRunPermissions || testRunPermissions || {};
 
-    const lockedForConfigEdit = run.status === 'completed' || run.status === 'archived';
-    const lockedForCasesEdit = run.status === 'completed';
+    const lockedForConfigEdit = run.status === 'archived';
+    const lockedForCasesEdit = run.status === 'completed' || run.status === 'archived';
     const lockedConfigMessage = (window.i18n && window.i18n.isReady())
-        ? window.i18n.t('testRun.cannotEditCompleted')
-        : '已完成或已歸檔的 Test Run 不可編輯';
+        ? window.i18n.t('testRun.cannotEditArchived')
+        : 'Cannot edit archived Test Run';
     const lockedCasesMessage = (window.i18n && window.i18n.isReady())
-        ? window.i18n.t('testRun.cannotEditCompleted')
-        : '已完成的 Test Run 不可編輯 Test Case';
+        ? window.i18n.t(run.status === 'archived' ? 'testRun.cannotEditArchived' : 'testRun.cannotEditCompleted')
+        : (run.status === 'archived' ? 'Cannot edit archived Test Run' : 'Cannot edit Test Cases in completed Test Run');
     const lockedConfigAttrs = lockedForConfigEdit
         ? ` disabled title="${escapeHtml(lockedConfigMessage)}"`
         : '';
-    const lockedCasesAttrs = (lockedForConfigEdit || lockedForCasesEdit)
+    const lockedCasesAttrs = lockedForCasesEdit
         ? ` disabled title="${escapeHtml(lockedCasesMessage)}"`
         : '';
 
@@ -749,7 +749,7 @@ function buildSetRunDetailRow(run, setData) {
             </button></li>
         `);
         menuItems.push(`
-            <li><button type="button" class="dropdown-item${(lockedForConfigEdit || lockedForCasesEdit) ? ' disabled' : ''}"${lockedCasesAttrs}
+            <li><button type="button" class="dropdown-item${lockedForCasesEdit ? ' disabled' : ''}"${lockedCasesAttrs}
                     onclick="event.stopPropagation(); editTestCases(${run.id})">
                 <i class="fas fa-list me-2"></i><span data-i18n="testRun.editTestCases">編輯 Test Case</span>
             </button></li>
@@ -1038,7 +1038,7 @@ async function confirmAddExistingRunToSet() {
         .map(input => parseInt(input.value, 10));
 
     if (!selected.length) {
-        AppUtils.showWarning(window.i18n?.t('testRun.sets.addExisting.selectWarning') || '請至少選擇一個 Test Run');
+        AppUtils.showWarning(window.i18n?.t('testRun.sets.addExisting.selectWarning') || 'Select at least one Test Run');
         return;
     }
 
@@ -1055,7 +1055,7 @@ async function confirmAddExistingRunToSet() {
         }
 
         addExistingRunToSetModalInstance.hide();
-        AppUtils.showSuccess(window.i18n?.t('testRun.sets.addExisting.success') || '已將選定的 Test Run 加入 Set');
+        AppUtils.showSuccess(window.i18n?.t('testRun.sets.addExisting.success') || 'Selected Test Runs added to Set');
         await loadTestRunConfigs();
         await refreshCurrentSetDetail();
     } catch (error) {

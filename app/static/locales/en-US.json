@@ -1611,6 +1611,7 @@
     "buildNumberPlaceholder": "e.g., v1.2.3 / build #4567",
     "cancelled": "Cancelled",
     "cannotEditCompleted": "Cannot edit Test Cases in completed Test Run",
+    "cannotEditArchived": "Cannot edit archived Test Run",
     "caseId": "Case ID",
     "caseNumber": "Case Number",
     "caseSelect": {
