@@ -43,31 +43,17 @@ router = APIRouter(prefix="/teams", tags=["test-case-sets"])
 # 註: 所有路由都應用 /teams 前綴
 
 TEST_CASE_SET_CSV_COLUMNS = [
-    "record_id",
     "test_case_number",
     "title",
     "priority",
-    "test_case_set_id",
-    "test_case_section_id",
     "section_name",
-    "section_path",
-    "section_level",
     "precondition",
     "steps",
     "expected_result",
-    "test_result",
-    "assignee",
-    "attachments",
-    "test_results_files",
-    "user_story_map",
     "tcg",
-    "parent_record",
     "test_data",
-    "team_id",
     "created_at",
     "updated_at",
-    "last_sync_at",
-    "raw_fields",
 ]
 
 
@@ -596,40 +582,22 @@ async def export_test_case_set_csv(
             section_id = row.test_case_section_id
             if section_id is None:
                 section_name = "Unassigned"
-                section_path = ""
-                section_level = 1
             else:
                 section_meta = section_lookup.get(section_id, {})
                 section_name = section_meta.get("name") or ""
-                section_path = section_meta.get("path") or ""
-                section_level = section_meta.get("level") or ""
 
             writer.writerow([
-                row.lark_record_id or str(row.id),
                 _csv_text(row.test_case_number),
                 _csv_text(row.title),
                 _csv_enum(row.priority),
-                row.test_case_set_id,
-                row.test_case_section_id if row.test_case_section_id is not None else "",
                 section_name,
-                section_path,
-                section_level,
                 _csv_text(row.precondition),
                 _csv_text(row.steps),
                 _csv_text(row.expected_result),
-                _csv_enum(row.test_result),
-                _csv_json_cell(row.assignee_json),
-                _csv_json_cell(row.attachments_json),
-                _csv_json_cell(row.test_results_files_json),
-                _csv_json_cell(row.user_story_map_json),
                 _csv_json_cell(row.tcg_json),
-                _csv_json_cell(row.parent_record_json),
                 _csv_json_cell(row.test_data_json),
-                row.team_id,
                 _csv_datetime(row.created_at),
                 _csv_datetime(row.updated_at),
-                _csv_datetime(row.last_sync_at),
-                _csv_json_cell(row.raw_fields_json),
             ])
 
         csv_bytes = output.getvalue().encode("utf-8-sig")

@@ -179,7 +179,7 @@ def test_export_csv_returns_complete_header_and_set_rows(temp_db, test_data):
     assert rows[0] == TEST_CASE_SET_CSV_COLUMNS
     # Header + 2 data rows (case1, case2), no other-team case
     assert len(rows) == 3
-    numbers = [r[1] for r in rows[1:]]
+    numbers = [r[0] for r in rows[1:]]
     assert "TC-001" in numbers
     assert "TC-002" in numbers
     assert "TC-OTHER" not in numbers
@@ -209,13 +209,9 @@ def test_export_csv_preserves_multiline_and_json_fields(temp_db, test_data):
     # JSON fields are compact JSON
     assert json.loads(tc001[idx["tcg"]]) == ["TCG-1", "TP-2"]
     assert json.loads(tc001[idx["test_data"]]) == [{"name": "account", "value": "demo"}]
-    assert json.loads(tc001[idx["raw_fields"]]) == {"Custom": "值"}
-    assert json.loads(tc001[idx["assignee"]]) == {"name": "Ada", "email": "ada@example.com"}
     # Section metadata
     assert tc001[idx["section_name"]] == "Smoke"
-    assert tc001[idx["record_id"]] == "rec-1"
     assert tc001[idx["priority"]] == "High"
-    assert tc001[idx["test_result"]] == "Passed"
 
 
 def test_export_csv_empty_set_returns_header_only(temp_db, test_data):
