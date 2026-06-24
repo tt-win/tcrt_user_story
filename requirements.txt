@@ -45,7 +45,7 @@ pyperclip==1.11.0
 psutil==7.2.2
 
 # Testing
-pytest==9.0.2
+pytest==9.0.3
 pytest-asyncio==1.3.0
 httpx==0.28.1
 
